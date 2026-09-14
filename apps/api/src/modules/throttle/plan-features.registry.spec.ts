@@ -20,3 +20,12 @@ describe('customerPayments plan feature', () => {
         });
     });
 });
+
+describe('commercial feature domains', () => {
+    it.each([{llmTier:'premium'}, {maxContacts:-2}, {maxChannelAccounts:{whatsapp:-2}},
+        {rateLimits:{outbound:-100}}, {rateLimits:{priority:0}}, {channels:['email']},
+        {channels:['whatsapp','whatsapp']}, {llmHardBudgetUsdCents:1.5},
+        {llmHardBudgetUsdCents:100,llmCostBudgetUsdCents:101}])('rejects unsafe limits %p', features => {
+        expect(validatePlanFeatures(features).typeErrors.length).toBeGreaterThan(0);
+    });
+});

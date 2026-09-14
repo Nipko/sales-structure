@@ -1,3 +1,4 @@
+import { subscriptionMrr } from './subscription-mrr.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -20,7 +21,10 @@ export class FinancialsService {
             where: { status: 'active', ...COMMERCIAL_SUBSCRIPTIONS },
             include: { plan: true },
         });
-        const mrrCents = activeSubs.reduce((sum: number, s: any) => sum + (s.plan?.priceUsdCents || 0), 0);
+        const rates = await usdRateMap(this.prisma,activeSubs.map(s => s.chargeCurrency),new Date());
+        const mrrValues = activeSubs.map(s => subscriptionMrr(s,rates));
+        const mrrCents = mrrValues.reduce<number>((sum,value) => sum + (value ?? 0),0);
+        const mrrUnpricedSubscriptions = mrrValues.filter(value => value === null).length;
         const activeCustomers = activeSubs.length;
         const arpu = activeCustomers > 0 ? mrrCents / activeCustomers : 0;
         const arr = mrrCents * 12;
@@ -51,6 +55,7 @@ export class FinancialsService {
 
         return {
             mrrCents,
+            mrrUnpricedSubscriptions,
             arrCents: arr,
             activeCustomers,
             arpuCents: Math.round(arpu),
@@ -144,6 +149,7 @@ export class FinancialsService {
                 infraCost: s.infraCostCents,
                 totalCost,
                 grossMargin,
+                costCoverage: 'llm_and_infrastructure_only',
                 revenue: s.revenueCollectedCents,
             };
         });
@@ -175,6 +181,7 @@ export class FinancialsService {
             plan: s.planSlug,
             revenue: s.revenueCents,
             llmCost: s.llmCostCents,
+            costCoverage: 'llm_only',
             profit: s.revenueCents - s.llmCostCents,
             margin:
                 s.revenueCents > 0

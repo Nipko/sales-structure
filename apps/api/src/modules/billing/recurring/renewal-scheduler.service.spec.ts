@@ -43,13 +43,15 @@ describe('RenewalSchedulerService capacity and money units', () => {
         const prisma: any = {
             billingSubscription: {
                 findMany: jest.fn().mockResolvedValue([options.dueSub ?? sub]),
+                findUnique: jest.fn().mockResolvedValue({ ...sub, ...(options.dueSub ?? {}), plan: { slug: 'custom' }, tenant: { billingCountry: 'CO' } }),
                 update: jest.fn().mockResolvedValue({}),
             },
             billingChargeAttempt: {
                 findFirst: jest.fn(async () => latest.shift() ?? null),
                 update: jest.fn().mockResolvedValue({}),
             },
-            $transaction: jest.fn(async (ops: any[]) => Promise.all(ops)),
+            $queryRawUnsafe: jest.fn().mockResolvedValue([]),
+            $transaction: jest.fn(async (ops: any) => typeof ops === 'function' ? ops(prisma) : Promise.all(ops)),
         };
         const engine = {
             computeNextCycle: jest.fn().mockReturnValue({

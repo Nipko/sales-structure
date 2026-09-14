@@ -3,7 +3,7 @@
  *
  * From 1 October 2026 Meta charges the business's own WhatsApp account per
  * delivered service message, and an account with no payment method attached
- * stops delivering. Not "degrades" — stops.
+ * can exhaust its monthly service allowance; paid deliveries then require funding.
  *
  * The engine already handles that AFTER the fact: error 131042 on a send, or on
  * a webhook after an HTTP 200, pauses the account's billable producers and
@@ -187,6 +187,12 @@ export function readFundingFromGraph(answer: GraphAccountAnswer, at: Date): Fund
     }
 
     const funding = (answer.body as any)?.primary_funding_id;
+    if (!answer.body || typeof answer.body !== 'object' || (answer.body as any).error
+        || !Object.prototype.hasOwnProperty.call(answer.body, 'primary_funding_id')
+        || (funding !== null && typeof funding !== 'string')) {
+        return Object.freeze({ state: 'unknown' as const, source: 'graph_account_read' as const,
+            checkedAt, actionable: false, detail: detailOf('unknown', 'Meta no aportó evidencia interpretable de financiación') });
+    }
     const attached = typeof funding === 'string' ? funding.trim() : '';
     if (attached) {
         return Object.freeze({
@@ -203,7 +209,7 @@ export function readFundingFromGraph(answer: GraphAccountAnswer, at: Date): Fund
         state: 'absent' as const, source: 'graph_account_read' as const, checkedAt,
         actionable: true,
         detail: detailOf('absent', 'la cuenta respondió correctamente y no tiene método de pago. '
-            + 'Desde el 1 de octubre, sin método de pago Meta deja de entregar los mensajes'),
+            + 'Desde el 1 de octubre, configura la financiación antes de agotar la franquicia de servicio; los envíos cobrables necesitan financiación'),
     });
 }
 

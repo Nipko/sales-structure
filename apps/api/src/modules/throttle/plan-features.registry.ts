@@ -73,6 +73,7 @@ export const PLAN_FEATURE_REGISTRY: PlanFeatureDef[] = [
     // ── AI & engagement ──
     { key: 'llmTier', type: 'string', category: 'ai' },
     { key: 'llmCostBudgetUsdCents', type: 'number', category: 'ai' },
+    { key: 'llmHardBudgetUsdCents', type: 'number', category: 'ai' },
     { key: 'customPrompt', type: 'boolean', category: 'ai' },
     { key: 'customTemplates', type: 'boolean', category: 'ai' },
     { key: 'aiInsights', type: 'boolean', category: 'ai' },
@@ -135,7 +136,7 @@ export const FEATURE_OVERRIDE_KEYS: string[] = [
     'mediaStorageMb', 'automationRules', 'maxDripSequences', 'broadcastCampaigns',
     'outboundWebhooks', 'maxWebhookSubscriptions', 'externalCrm', 'widgetTriggers',
     'knowledgeArticles', 'knowledgeMaxCharsPerDoc', 'knowledgeEmbeddingsPerMonth', 'knowledgeCrawlPages',
-    'publicApiKeys', 'publicApiRateLimit', 'llmCostBudgetUsdCents',
+    'publicApiKeys', 'publicApiRateLimit', 'llmCostBudgetUsdCents', 'llmHardBudgetUsdCents',
 ];
 
 /** All keys a quota-override payload may contain (besides metadata). */
@@ -184,22 +185,40 @@ export function validatePlanFeatures(features: Record<string, any> | undefined |
             typeErrors.push(`${key} expected ${def.type}`);
             continue;
         }
+        if (def.type === 'number' && (!Number.isSafeInteger(value) || value < -1)) {
+            typeErrors.push(`${key} expected a non-negative integer or -1`);
+        }
+        if (key === 'llmTier' && !['tier_1', 'tier_2', 'tier_3', 'tier_4'].includes(value)) {
+            typeErrors.push('llmTier expected tier_1, tier_2, tier_3 or tier_4');
+        }
+        if (key === 'channels' && (new Set(value).size !== value.length
+            || value.some((channel: unknown) => typeof channel !== 'string'
+                || !['whatsapp', 'instagram', 'messenger', 'telegram', 'sms', 'web_widget'].includes(channel)))) {
+            typeErrors.push('channels expected unique supported channels');
+        }
         if (key === 'rateLimits') {
             for (const [rk, rv] of Object.entries(value as Record<string, any>)) {
                 if (!RATE_SET.has(rk)) unknownKeys.push(`rateLimits.${rk}`);
-                else if (typeof rv !== 'number') typeErrors.push(`rateLimits.${rk} expected number`);
+                else if (!Number.isSafeInteger(rv) || (rk === 'priority' ? rv < 1 : rv < -1)) {
+                    typeErrors.push(`rateLimits.${rk} expected a valid integer limit`);
+                }
             }
         } else if (key === 'mediaProcessing') {
             for (const [mk, mv] of Object.entries(value as Record<string, any>)) {
                 if (!MEDIA_SET.has(mk)) unknownKeys.push(`mediaProcessing.${mk}`);
-                else if (typeof mv !== 'number') typeErrors.push(`mediaProcessing.${mk} expected number`);
+                else if (!Number.isSafeInteger(mv) || mv < -1) typeErrors.push(`mediaProcessing.${mk} expected a non-negative integer or -1`);
             }
         } else if (key === 'maxChannelAccounts') {
             for (const [ck, cv] of Object.entries(value as Record<string, any>)) {
                 if (!CHANNEL_ACCT_SET.has(ck)) unknownKeys.push(`maxChannelAccounts.${ck}`);
-                else if (typeof cv !== 'number') typeErrors.push(`maxChannelAccounts.${ck} expected number`);
+                else if (!Number.isSafeInteger(cv) || cv < -1) typeErrors.push(`maxChannelAccounts.${ck} expected a non-negative integer or -1`);
             }
         }
+    }
+    const soft = features.llmCostBudgetUsdCents;
+    const hard = features.llmHardBudgetUsdCents;
+    if (typeof hard === 'number' && hard >= 0 && typeof soft === 'number' && soft > hard) {
+        typeErrors.push('llmCostBudgetUsdCents must not exceed llmHardBudgetUsdCents');
     }
     return { unknownKeys, typeErrors };
 }

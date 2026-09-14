@@ -1,3 +1,4 @@
+import { claimCatalogRenewal } from './catalog-renewal';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
@@ -207,14 +208,14 @@ export class RenewalSchedulerService {
                     && ['abandoned', 'superseded', 'stale'].includes(latestForCycle.status);
                 if (latestForCycle && !recoverableTerminal) continue;
 
-                const claim = await this.engine.claimAttempt({
+                const claimInput = {
                     subscriptionId: sub.id,
                     tenantId: sub.tenantId,
                     provider: sub.provider as PaymentProviderName,
                     purpose: sub.status === SubscriptionStatus.TRIALING
                         || sub.status === SubscriptionStatus.PENDING_AUTH
-                        ? 'initial'
-                        : 'renewal',
+                        ? 'initial' as const
+                        : 'renewal' as const,
                     periodStart: cycle.periodStart,
                     periodEnd: cycle.periodEnd,
                     amountCents: amount,
@@ -222,7 +223,10 @@ export class RenewalSchedulerService {
                     scheduledAt: cycle.scheduledAt,
                     paymentSourceId: sub.defaultPaymentSourceId,
                     attemptNumber: recoverableTerminal ? latestForCycle.attemptNumber + 1 : 1,
-                });
+                };
+                const claim = claimInput.purpose === 'renewal'
+                    ? await claimCatalogRenewal(this.prisma, this.engine, claimInput)
+                    : await this.engine.claimAttempt(claimInput);
 
                 // Already claimed by the twin run — the expected quiet outcome.
                 if (!claim) continue;

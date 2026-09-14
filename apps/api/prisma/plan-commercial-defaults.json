@@ -1,0 +1,6 @@
+{
+  "emprendedor": { "priceUsdCents": 2900, "monthlyCopCents": 12990000, "maxAiMessages": 1000, "llmCostBudgetUsdCents": 210, "llmHardBudgetUsdCents": 300 },
+  "starter": { "priceUsdCents": 6900, "monthlyCopCents": 29990000, "maxAiMessages": 5000, "llmCostBudgetUsdCents": 560, "llmHardBudgetUsdCents": 800 },
+  "pro": { "priceUsdCents": 17900, "monthlyCopCents": 79990000, "maxAiMessages": 15000, "llmCostBudgetUsdCents": 1750, "llmHardBudgetUsdCents": 2500 },
+  "enterprise": { "priceUsdCents": 49900, "monthlyCopCents": 219990000, "maxAiMessages": 40000, "llmCostBudgetUsdCents": 5600, "llmHardBudgetUsdCents": 8000 }
+}

@@ -1,3 +1,4 @@
+import { TenantGuard } from '../../common/guards/tenant.guard';
 import {
   Controller,
   Get,
@@ -489,6 +490,16 @@ export class WhatsappController {
         contradictory: readiness.contradictions.length,
       },
     };
+  }
+
+  @Post('connection/check-funding')
+  @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
+  @Roles('super_admin', 'tenant_admin')
+  async checkFunding(@Request() req: any, @Body() body: { phoneNumberId?: string }) {
+    if (!req.tenantId) throw new BadRequestException('tenant_required');
+    if (typeof body?.phoneNumberId !== 'string') throw new BadRequestException('invalid_phone_number_id');
+    const schema = await this.prisma.getTenantSchemaName(req.tenantId);
+    return { success: true, data: await this.connectionService.checkFunding(schema, body.phoneNumberId) };
   }
 
   // ======================== BUSINESS PROFILE ========================

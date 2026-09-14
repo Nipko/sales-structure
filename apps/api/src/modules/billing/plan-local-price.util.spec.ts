@@ -47,3 +47,8 @@ describe('resolveLocalPlanPrice', () => {
         expect(resolveLocalPlanPrice(ovr, country, cycle as any)).toBeNull();
     });
 });
+
+// The checkout and renewal engine persist cents in PostgreSQL INTEGER columns.
+it('refuses annual amounts the charge ledger cannot store',()=>{
+    expect(resolveLocalPlanPrice({CO:{currency:'COP',annual:{amountCents:2375892000}}},'CO','annual')).toBeNull();
+});

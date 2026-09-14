@@ -1,3 +1,4 @@
+import { LlmSpendGuardService } from './router/llm-spend-guard.service';
 import { Module } from '@nestjs/common';
 import { LLMRouterService } from './router/llm-router.service';
 import { OpenAIProvider } from './providers/openai.provider';
@@ -16,6 +17,7 @@ import { SettingsModule } from '../settings/settings.module';
         DeepSeekProvider,
         XAIProvider,
         LLMRouterService,
+        LlmSpendGuardService,
         {
             provide: 'LLM_PROVIDERS',
             useFactory: (openai: OpenAIProvider, anthropic: AnthropicProvider, gemini: GeminiProvider, deepseek: DeepSeekProvider, xai: XAIProvider) => [openai, anthropic, gemini, deepseek, xai],

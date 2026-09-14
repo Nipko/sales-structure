@@ -328,6 +328,15 @@ export class TenantThrottleService {
             });
         }
 
+        for (const key of OVERRIDABLE_QUOTA_KEYS) {
+            const value = (overrides as Record<string, any>)[key];
+            if (value === undefined || value === null) continue;
+            if (!Number.isSafeInteger(value) || (key === 'priority' ? value < 1 : value < -1)) {
+                const { BadRequestException } = await import('@nestjs/common');
+                throw new BadRequestException({ error: 'invalid_override_value', key });
+            }
+        }
+
         // Validate the nested maxChannelAccounts override: object of { channelType: number }.
         const mca = (overrides as Record<string, any>).maxChannelAccounts;
         if (mca !== undefined) {
@@ -339,7 +348,7 @@ export class TenantThrottleService {
                 });
             }
             const allowed = new Set<string>(CHANNEL_ACCOUNT_KEYS as readonly string[]);
-            const badInner = Object.keys(mca).filter(k => !allowed.has(k) || typeof mca[k] !== 'number');
+            const badInner = Object.keys(mca).filter(k => !allowed.has(k) || !Number.isSafeInteger(mca[k]) || mca[k] < -1);
             if (badInner.length) {
                 throw new BadRequestException({
                     error: 'invalid_override_keys',

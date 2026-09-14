@@ -99,6 +99,8 @@ model Tenant {
 
   @@map("tenants")
   @@schema("public")
+  llmSpendReservations LlmSpendReservation[]
+
 }
 
 // Durable index of tenant schemas that have ever received provider-neutral
@@ -1355,5 +1357,22 @@ model AutomationTemplate {
   @@index([category], map: "idx_automation_templates_category")
   @@index([industry], map: "idx_automation_templates_industry")
   @@map("automation_templates")
+  @@schema("public")
+}
+
+// Per-provider-call cost estimates; unknown outcomes retain their reserve.
+model LlmSpendReservation {
+  id String @id
+  tenantId String @map("tenant_id") @db.Uuid
+  month String
+  model String
+  reservedMicro BigInt @map("reserved_micro")
+  accountedMicro BigInt @map("accounted_micro")
+  basis String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  @@index([tenantId, month], map: "llm_spend_reservations_tenant_month")
+  @@map("llm_spend_reservations")
   @@schema("public")
 }

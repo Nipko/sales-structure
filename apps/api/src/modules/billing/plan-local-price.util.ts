@@ -34,6 +34,6 @@ export function resolveLocalPlanPrice(
     const amountCents = Number(entry.amountCents);
     const currency = String(entry.currency || countryEntry.currency || '').trim().toUpperCase();
 
-    if (!Number.isSafeInteger(amountCents) || amountCents <= 0 || !currency) return null;
+    if (!Number.isSafeInteger(amountCents) || amountCents <= 0 || amountCents > 2147483647 || !currency) return null;
     return { amountCents, currency };
 }

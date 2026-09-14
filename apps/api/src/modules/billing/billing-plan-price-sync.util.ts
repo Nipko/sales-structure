@@ -85,7 +85,7 @@ function validateAmount(
     value: unknown,
     allowZero: boolean,
 ): value is number {
-    if (!Number.isSafeInteger(value) || Number(value) < 0) {
+    if (!Number.isSafeInteger(value) || Number(value) < 0 || Number(value) > 2147483647) {
         issues.push({
             path,
             code: 'invalid_amount',

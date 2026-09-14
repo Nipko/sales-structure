@@ -27,7 +27,7 @@ const LATER = new Date('2026-09-21T12:00:00.000Z');
 
 const graph = (over: Partial<Parameters<typeof readFundingFromGraph>[0]> = {}) =>
     readFundingFromGraph({
-        status: 200, body: {}, requestedFundingField: true, ...over,
+        status: 200, body: { primary_funding_id: null }, requestedFundingField: true, ...over,
     }, AT);
 
 const metaError = (code: number, message = 'synthetic') =>
@@ -41,7 +41,7 @@ describe('whether a number can still be charged after 1 October', () => {
 
     describe('the answer that costs somebody an errand', () => {
         it('concludes absence from a valid answer that asked the right question', () => {
-            const reading = graph({ body: { id: '123' }, requestedFundingField: true });
+            const reading = graph({ body: { id: '123', primary_funding_id: null }, requestedFundingField: true });
             expect(reading.state).toBe('absent');
             expect(reading.actionable).toBe(true);
             expect(reading.detail).toContain('1 de octubre');
@@ -86,9 +86,9 @@ describe('whether a number can still be charged after 1 October', () => {
             expect(graph({ body: { primary_funding_id: '   ' } }).state).toBe('absent');
         });
 
-        it.each([null, 0, false, [], {}])(
-            'treats a funding id of %p as absence rather than a value', value => {
-                expect(graph({ body: { primary_funding_id: value } }).state).toBe('absent');
+        it.each([0, false, [], {}])(
+            'treats an invalid funding id of %p as unknown', value => {
+                expect(graph({ body: { primary_funding_id: value } }).state).toBe('unknown');
             });
     });
 
@@ -164,7 +164,7 @@ describe('whether a number can still be charged after 1 October', () => {
             // A timeout must not make yesterday's `absent` disappear. A warning
             // that clears itself on a network hiccup is worse than no warning.
             const absent = readFundingFromGraph(
-                { status: 200, body: {}, requestedFundingField: true }, AT);
+                { status: 200, body: { primary_funding_id: null }, requestedFundingField: true }, AT);
             const timedOut = readFundingFromGraph(
                 { status: 0, body: null, requestedFundingField: true }, LATER);
             expect(moreAuthoritative(absent, timedOut)).toBe(absent);
@@ -174,7 +174,7 @@ describe('whether a number can still be charged after 1 October', () => {
         it('lets a newer established reading replace an older one', () => {
             // Somebody adding a card must clear the warning.
             const absent = readFundingFromGraph(
-                { status: 200, body: {}, requestedFundingField: true }, AT);
+                { status: 200, body: { primary_funding_id: null }, requestedFundingField: true }, AT);
             const attached = readFundingFromGraph(
                 { status: 200, body: { primary_funding_id: 'fund-1' }, requestedFundingField: true },
                 LATER);
@@ -194,7 +194,7 @@ describe('whether a number can still be charged after 1 October', () => {
         });
 
         it.each([
-            ['absent', { status: 200, body: {}, requestedFundingField: true }],
+            ['absent', { status: 200, body: { primary_funding_id: null }, requestedFundingField: true }],
             ['restricted', { status: 400, body: metaError(131042), requestedFundingField: true }],
         ])('calls a %s account not ready', (_state, answer) => {
             expect(deliveryReadiness(readFundingFromGraph(answer as any, AT))).toBe('not_ready');
@@ -217,7 +217,7 @@ describe('whether a number can still be charged after 1 October', () => {
             // again, which is the system's job. Putting it in front of somebody
             // is how a warning becomes noise and the real one gets ignored.
             const actionable = (answer: any) => readFundingFromGraph(answer, AT).actionable;
-            expect(actionable({ status: 200, body: {}, requestedFundingField: true })).toBe(true);
+            expect(actionable({ status: 200, body: { primary_funding_id: null }, requestedFundingField: true })).toBe(true);
             expect(actionable({ status: 400, body: metaError(131042), requestedFundingField: true }))
                 .toBe(true);
             expect(actionable({ status: 0, body: null, requestedFundingField: true })).toBe(false);

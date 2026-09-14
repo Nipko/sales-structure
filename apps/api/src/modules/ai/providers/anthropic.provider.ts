@@ -111,7 +111,7 @@ export class AnthropicProvider implements ILLMProvider {
         }
     }
 
-    async *generateStream(options: LLMRequestOptions): AsyncGenerator<string, void, unknown> {
+    async *generateStream(options: LLMRequestOptions, transport?: LLMTransportOptions): AsyncGenerator<string, void, unknown> {
         try {
             const anthropic = await this.ensureClient();
 
@@ -127,7 +127,7 @@ export class AnthropicProvider implements ILLMProvider {
                 req.system = options.systemPrompt;
             }
 
-            const stream = await anthropic.messages.create(req);
+            const stream = await anthropic.messages.create(req, transport ? { maxRetries: transport.maxRetries } : undefined);
 
             for await (const chunk of stream) {
                 if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {

@@ -1,6 +1,6 @@
-import { BadRequestException, Body, Controller, Get, HttpCode, HttpStatus, Logger, NotFoundException, Param, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, ConflictException, Controller, Get, HttpCode, HttpStatus, Logger, NotFoundException, Param, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
-import { IsBoolean, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsPositive, IsString, MaxLength, Min } from 'class-validator';
+import { IsBoolean, IsDateString, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsPositive, IsString, Max, MaxLength, Min } from 'class-validator';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { BillingService } from './billing.service';
@@ -59,8 +59,9 @@ class SetTenantPlanDto {
 }
 
 class UpdatePlanDto {
+    @IsDateString() expectedUpdatedAt!: string;
     @IsOptional() @IsString() name?: string;
-    @IsOptional() @IsInt() @Min(0) priceUsdCents?: number;
+    @IsOptional() @IsInt() @Min(0) @Max(2147483647) priceUsdCents?: number;
     @IsOptional() @IsInt() @Min(0) trialDays?: number;
     @IsOptional() @IsBoolean() requiresCardForTrial?: boolean;
     @IsOptional() @IsInt() @Min(-1) maxAgents?: number;
@@ -151,6 +152,25 @@ export class BillingAdminController {
         return { success: true, data: PLAN_FEATURE_REGISTRY };
     }
 
+    @Get('llm-spend')
+    async llmSpend() {
+        const month = new Date().toISOString().slice(0, 7);
+        const rows = await this.prisma.$queryRawUnsafe(`SELECT t.id, t.name, t.plan,
+            COALESCE(t.settings->'quotaOverrides'->'llmHardBudgetUsdCents',p.features->'llmHardBudgetUsdCents','-1'::jsonb) AS ceiling,
+            COALESCE(SUM(r.accounted_micro),0)::text AS accounted_micro,
+            COUNT(r.id) FILTER (WHERE r.basis='reserved_estimate')::int AS unresolved,
+            COUNT(r.id)::int AS records
+            FROM public.tenants t JOIN public.billing_plans p ON p.slug=t.plan
+            LEFT JOIN public.llm_spend_reservations r ON r.tenant_id=t.id AND r.month=$1
+            WHERE t.is_active=true GROUP BY t.id,t.name,t.plan,t.settings,p.features
+            ORDER BY COALESCE(SUM(r.accounted_micro),0) DESC LIMIT 200`, month) as any[];
+        return { success: true, data: { month, limit: 200, tenants: rows.map(row => ({
+            tenantId: row.id, name: row.name, plan: row.plan, ceilingUsdCents: row.ceiling,
+            accountedUsdCents: Number(row.accounted_micro)/10000, unresolved: row.unresolved,
+            initialized: row.records > 0,
+        })) } };
+    }
+
     @Get('plans/:slug')
     async getPlan(@Param('slug') slug: string) {
         const plan = await this.prisma.billingPlan.findUnique({ where: { slug } });
@@ -167,107 +187,123 @@ export class BillingAdminController {
         @Body() body: UpdatePlanDto,
         @Req() req: any,
     ) {
-        const existing = await this.prisma.billingPlan.findUnique({ where: { slug } });
-        if (!existing) throw new NotFoundException('Plan not found');
+        const { updated, priceSync } = await this.prisma.$transaction(async tx => {
+            await tx.$queryRawUnsafe('SELECT id FROM public.billing_plans WHERE slug = $1 FOR UPDATE', slug);
+            const existing = await tx.billingPlan.findUnique({ where: { slug } });
+            if (!existing) throw new NotFoundException('Plan not found');
+            if (!body.expectedUpdatedAt || new Date(body.expectedUpdatedAt).getTime() !== new Date(existing.updatedAt).getTime()) {
+                throw new ConflictException({ error: 'plan_edit_conflict' });
+            }
 
-        let priceSync;
-        try {
-            priceSync = reconcilePlanPriceSync({
-                planSlug: slug,
-                existingOverrides: existing.priceLocalOverrides,
-                incomingOverrides: body.priceLocalOverrides,
-                existingUsdPriceCents: existing.priceUsdCents,
-                nextUsdPriceCents: body.priceUsdCents ?? existing.priceUsdCents,
-                existingLegacyMpPlanId: existing.mpPlanId,
-            });
-        } catch (error) {
-            if (error instanceof PriceOverrideValidationError) {
-                throw new BadRequestException({
-                    error: 'invalid_price_local_overrides',
-                    message: 'priceLocalOverrides contiene países, monedas o montos inválidos.',
-                    issues: error.issues,
+            let priceSync;
+            try {
+                priceSync = reconcilePlanPriceSync({
+                    planSlug: slug,
+                    existingOverrides: existing.priceLocalOverrides,
+                    incomingOverrides: body.priceLocalOverrides,
+                    existingUsdPriceCents: existing.priceUsdCents,
+                    nextUsdPriceCents: body.priceUsdCents ?? existing.priceUsdCents,
+                    existingLegacyMpPlanId: existing.mpPlanId,
                 });
+            } catch (error) {
+                if (error instanceof PriceOverrideValidationError) {
+                    throw new BadRequestException({
+                        error: 'invalid_price_local_overrides',
+                        message: 'priceLocalOverrides contiene países, monedas o montos inválidos.',
+                        issues: error.issues,
+                    });
+                }
+                throw error;
             }
-            throw error;
-        }
 
-        // Validate the incoming features against the canonical registry and MERGE
-        // into the stored object (instead of replacing it), so a partial payload
-        // can't silently wipe omitted keys and a typo can't create a dead key.
-        let mergedFeatures = existing.features as any;
-        if (body.features) {
-            const { unknownKeys, typeErrors } = validatePlanFeatures(body.features);
-            if (unknownKeys.length || typeErrors.length) {
-                throw new BadRequestException({
-                    error: 'invalid_features',
-                    unknownKeys,
-                    typeErrors,
-                    message: 'El objeto features contiene claves desconocidas o tipos inválidos. Consultá GET /billing-admin/feature-registry.',
-                });
+            // Validate the incoming features against the canonical registry and MERGE
+            // into the stored object (instead of replacing it), so a partial payload
+            // can't silently wipe omitted keys and a typo can't create a dead key.
+            let mergedFeatures = existing.features as any;
+            if (body.features) {
+                const { unknownKeys, typeErrors } = validatePlanFeatures(body.features);
+                if (unknownKeys.length || typeErrors.length) {
+                    throw new BadRequestException({
+                        error: 'invalid_features',
+                        unknownKeys,
+                        typeErrors,
+                        message: 'El objeto features contiene claves desconocidas o tipos inválidos. Consultá GET /billing-admin/feature-registry.',
+                    });
+                }
+                mergedFeatures = this.mergeFeatures((existing.features as any) ?? {}, body.features);
+                const mergedValidation = validatePlanFeatures(mergedFeatures);
+                if (mergedValidation.unknownKeys.length || mergedValidation.typeErrors.length) {
+                    throw new BadRequestException({ error: 'invalid_features', ...mergedValidation });
+                }
             }
-            mergedFeatures = this.mergeFeatures((existing.features as any) ?? {}, body.features);
-        }
 
-        const updated = await this.prisma.billingPlan.update({
-            where: { slug },
-            data: {
-                name: body.name ?? existing.name,
-                priceUsdCents: body.priceUsdCents ?? existing.priceUsdCents,
-                trialDays: body.trialDays ?? existing.trialDays,
-                requiresCardForTrial: body.requiresCardForTrial ?? existing.requiresCardForTrial,
-                maxAgents: body.maxAgents ?? existing.maxAgents,
-                maxAiMessages: body.maxAiMessages ?? existing.maxAiMessages,
-                features: mergedFeatures,
-                priceLocalOverrides: priceSync.priceLocalOverrides,
-                mpPlanId: priceSync.legacyMpPlanId,
-                isActive: body.isActive ?? existing.isActive,
-            },
-        });
-
-        const invalidated = await this.throttle.invalidatePlanCacheForSlug(slug);
-
-        // Audit trail — plan catalog edits move real money, so record who changed
-        // what (before → after), the same pattern setTenantPlan uses. tenantId is
-        // null because a plan is global catalog, not a per-tenant resource.
-        const scalarFields = ['name', 'priceUsdCents', 'trialDays', 'requiresCardForTrial', 'maxAgents', 'maxAiMessages', 'isActive'];
-        const changes: Record<string, any> = {};
-        for (const f of scalarFields) {
-            if ((existing as any)[f] !== (updated as any)[f]) {
-                changes[f] = { from: (existing as any)[f], to: (updated as any)[f] };
-            }
-        }
-        if (body.features) {
-            changes.features = Object.fromEntries(
-                Object.keys(body.features).map((k) => [
-                    k,
-                    { from: (existing.features as any)?.[k], to: (updated.features as any)?.[k] },
-                ]),
-            );
-        }
-        if (body.priceLocalOverrides) {
-            changes.priceLocalOverrides = { from: existing.priceLocalOverrides, to: updated.priceLocalOverrides };
-        }
-        if (priceSync.invalidated.length > 0) {
-            changes.providerPlanInvalidations = {
-                reason: 'configured_amount_changed',
-                cycles: priceSync.invalidated,
-            };
-        }
-        if (Object.keys(changes).length > 0) {
-            await this.prisma.auditLog.create({
+            const updated = await tx.billingPlan.update({
+                where: { slug },
                 data: {
-                    tenantId: null,
-                    userId: auditActor(req.user).userId,
-                    action: 'billing_plan_updated',
-                    resource: `billing-plans/${slug}`,
-                    details: { slug, changes },
+                    name: body.name ?? existing.name,
+                    priceUsdCents: body.priceUsdCents ?? existing.priceUsdCents,
+                    trialDays: body.trialDays ?? existing.trialDays,
+                    requiresCardForTrial: body.requiresCardForTrial ?? existing.requiresCardForTrial,
+                    maxAgents: body.maxAgents ?? existing.maxAgents,
+                    maxAiMessages: body.maxAiMessages ?? existing.maxAiMessages,
+                    features: mergedFeatures,
+                    priceLocalOverrides: priceSync.priceLocalOverrides,
+                    mpPlanId: priceSync.legacyMpPlanId,
+                    isActive: body.isActive ?? existing.isActive,
                 },
             });
-        }
 
+            // Audit trail — plan catalog edits move real money, so record who changed
+            // what (before → after), the same pattern setTenantPlan uses. tenantId is
+            // null because a plan is global catalog, not a per-tenant resource.
+            const scalarFields = ['name', 'priceUsdCents', 'trialDays', 'requiresCardForTrial', 'maxAgents', 'maxAiMessages', 'isActive'];
+            const changes: Record<string, any> = {};
+            for (const f of scalarFields) {
+                if ((existing as any)[f] !== (updated as any)[f]) {
+                    changes[f] = { from: (existing as any)[f], to: (updated as any)[f] };
+                }
+            }
+            if (body.features) {
+                changes.features = Object.fromEntries(
+                    Object.keys(body.features).map((k) => [
+                        k,
+                        { from: (existing.features as any)?.[k], to: (updated.features as any)?.[k] },
+                    ]),
+                );
+            }
+            if (body.priceLocalOverrides) {
+                changes.priceLocalOverrides = { from: existing.priceLocalOverrides, to: updated.priceLocalOverrides };
+            }
+            if (priceSync.invalidated.length > 0) {
+                changes.providerPlanInvalidations = {
+                    reason: 'configured_amount_changed',
+                    cycles: priceSync.invalidated,
+                };
+            }
+            if (Object.keys(changes).length > 0) {
+                await tx.auditLog.create({
+                    data: {
+                        tenantId: null,
+                        userId: auditActor(req.user).userId,
+                        action: 'billing_plan_updated',
+                        resource: `billing-plans/${slug}`,
+                        details: { slug, changes },
+                    },
+                });
+            }
+
+            return { updated, priceSync };
+        });
+        // Committed changes remain successful if cache invalidation needs a retry;
+        // the panel gets an explicit warning and a retry action (TTL is five minutes).
+        let invalidated = 0;
+        let cacheInvalidationPending = false;
+        try { invalidated = await this.throttle.invalidatePlanCacheForSlug(slug); }
+        catch { cacheInvalidationPending = true; this.logger.error(`Plan cache invalidation pending: ${slug}`); }
         return {
             success: true,
             data: updated,
+            cacheInvalidationPending,
             invalidatedTenants: invalidated,
             invalidatedProviderCycles: priceSync.invalidated,
         };

@@ -77,7 +77,7 @@ export class DeepSeekProvider implements ILLMProvider {
         }
     }
 
-    async *generateStream(options: LLMRequestOptions): AsyncGenerator<string, void, unknown> {
+    async *generateStream(options: LLMRequestOptions, transport?: LLMTransportOptions): AsyncGenerator<string, void, unknown> {
         try {
             const openai = await this.ensureClient();
             const formattedMessages = this.formatMessages(options);
@@ -90,7 +90,7 @@ export class DeepSeekProvider implements ILLMProvider {
                 stream: true,
             };
 
-            const stream = await openai.chat.completions.create(req);
+            const stream = await openai.chat.completions.create(req, transport ? { maxRetries: transport.maxRetries } : undefined);
 
             for await (const chunk of stream) {
                 const content = chunk.choices[0]?.delta?.content;

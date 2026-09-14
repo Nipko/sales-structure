@@ -1,3 +1,4 @@
+import { subscriptionMrr } from './subscription-mrr.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
@@ -52,9 +53,10 @@ export class FinancialSnapshotService {
             },
         });
 
+        const mrrRates = await usdRateMap(this.prisma,activeSubs.map(s => s.chargeCurrency),monthEnd);
         const mrrCents = activeSubs
             .filter((s: any) => s.status === 'active')
-            .reduce((sum: number, s: any) => sum + (s.plan?.priceUsdCents || 0), 0);
+            .reduce((sum: number, s: any) => sum + (subscriptionMrr(s,mrrRates) ?? 0), 0);
 
         // Plan distribution
         const planDist: Record<string, number> = {};
@@ -145,11 +147,11 @@ export class FinancialSnapshotService {
                     tenantId: tenant.id,
                     snapshotMonth: monthStart,
                     planSlug: sub.plan?.slug || 'unknown',
-                    mrrCents: sub.plan?.priceUsdCents || 0,
+                    mrrCents: sub.status === 'active' ? (subscriptionMrr(sub,mrrRates) ?? 0) : 0,
                     status: sub.status,
                     revenueCents: tenantRevenue,
                     llmCostCents: tenantLlmCost,
-                    aiMessages: stats.totals.calls || 0,
+                    aiMessages: Number(await this.redis.get(`ai_msg:${tenant.id}:${monthStart.toISOString().slice(0,7)}`) ?? 0),
                     conversations: 0,
                 });
             } catch (e: any) {
@@ -204,6 +206,8 @@ export class FinancialSnapshotService {
         // Upsert financial snapshot
         const revenueBreakdown = {
             reportingCurrency: 'USD',
+            mrrUnpricedSubscriptions: activeSubs.filter(s => s.status === 'active' && subscriptionMrr(s,mrrRates) === null).length,
+            costCoverage: 'llm_and_infrastructure_only',
             byCurrency: revenue.byCurrency,
             missingRates: revenue.missingRates,
         } as any;

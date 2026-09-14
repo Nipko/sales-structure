@@ -1,3 +1,4 @@
+import { readFundingFromGraph } from '../../channels/whatsapp-funding-readiness';
 import { Inject, Injectable, Logger, BadRequestException, NotFoundException, Optional, UnauthorizedException, forwardRef } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ConfigService } from '@nestjs/config';
@@ -427,6 +428,31 @@ export class WhatsappConnectionService {
   //
   // There is one resolver. `channel-token.service.ts` owns it, and
   // `one-send-context-resolver.spec.ts` fails if a second one appears.
+
+  /** Read-only Meta check. Card data is entered exclusively in Meta's own interface. */
+  async checkFunding(schemaName: string, phoneNumberId: string) {
+    if (!/^[0-9]{5,30}$/.test(phoneNumberId)) throw new BadRequestException('invalid_phone_number_id');
+    const connection = await this.resolveConnection(schemaName, phoneNumberId);
+    if (!/^[0-9]{5,30}$/.test(connection.wabaId ?? '')) throw new BadRequestException('waba_identity_unknown');
+    let answer: { status: number; body: unknown } = { status: 0, body: null };
+    try {
+      const response = await fetch(`${META_GRAPH}/${connection.wabaId}?fields=id,primary_funding_id`, {
+        headers: { Authorization: `Bearer ${connection.accessToken}` }, signal: AbortSignal.timeout(10000),
+      });
+      const body = await response.json();
+      answer = response.ok && String(body?.id ?? '') !== connection.wabaId
+        ? { status: 0, body: null } : { status: response.status, body };
+    } catch { /* Transport uncertainty is unknown, never no-card. */ }
+    const reading = readFundingFromGraph({ ...answer, requestedFundingField: true }, new Date());
+    const evidence = { state: reading.state, source: reading.source,
+      checkedAt: reading.checkedAt!.toISOString(), wabaId: connection.wabaId };
+    const changed = await this.prisma.$executeRawUnsafe(`UPDATE public.channel_accounts
+      SET metadata=jsonb_set(COALESCE(metadata,'{}'::jsonb),'{fundingReadiness}',$4::jsonb), updated_at=clock_timestamp()
+      WHERE tenant_id::uuid=$1::uuid AND channel_type='whatsapp' AND account_id=$2 AND is_active=true
+        AND metadata->>'wabaId'=$3`, connection.tenantId, phoneNumberId, connection.wabaId, JSON.stringify(evidence));
+    if (!changed) throw new BadRequestException('funding_connection_changed');
+    return { phoneNumberId, ...evidence };
+  }
 
   /** The connection and its own credential, or a refusal. Never another number. */
   private async resolveConnection(

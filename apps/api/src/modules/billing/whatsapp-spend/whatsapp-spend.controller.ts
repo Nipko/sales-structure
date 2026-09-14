@@ -1,3 +1,4 @@
+import { TenantGuard } from '../../../common/guards/tenant.guard';
 import {
     BadRequestException, Body, Controller, Get, Param, Post, Query, Request, UseGuards,
 } from '@nestjs/common';
@@ -299,19 +300,28 @@ export class WhatsappSpendController {
      * and a tenant sent on one false errand does not act on the next warning.
      */
     @Get('funding-readiness')
-    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
     @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
     @ApiBearerAuth()
     @ApiOperation({ summary: 'Whether each number can still be charged, from evidence already held' })
     async fundingReadiness(@Request() req: any) {
-        const tenantId = req.user?.tenantId;
+        const tenantId = req.tenantId;
         if (!tenantId) throw new BadRequestException('User does not belong to a tenant');
         const accounts = await this.prisma.channelAccount.findMany({
             where: { tenantId, channelType: 'whatsapp' },
-            select: { accountId: true, displayName: true },
+            select: { accountId: true, displayName: true, metadata: true },
         });
         const numbers = await Promise.all(accounts.map(async account => {
             let reading: FundingReadiness = neverAsked();
+            const metadata = (account as any).metadata ?? {};
+            const saved = metadata.fundingReadiness;
+            const checked = new Date(saved?.checkedAt ?? '').getTime();
+            if (saved?.wabaId && saved.wabaId === metadata.wabaId && Number.isFinite(checked)
+                && checked <= Date.now() && Date.now() - checked < 86400000
+                && ['attached','absent','unknown','restricted'].includes(saved.state)) {
+                reading = { state: saved.state, source: 'graph_account_read', checkedAt: new Date(checked),
+                    actionable: ['absent','restricted'].includes(saved.state), detail: 'Stored Meta funding reading' };
+            }
             try {
                 const pause = await this.pauses.current(tenantId, account.accountId);
                 // A pause Meta caused for payment eligibility IS evidence about
@@ -331,6 +341,7 @@ export class WhatsappSpendController {
             return {
                 channelAccountId: account.accountId,
                 displayName: account.displayName ?? null,
+                wabaId: metadata.wabaId ?? null,
                 state: reading.state,
                 source: reading.source,
                 detail: reading.detail,
@@ -352,9 +363,11 @@ export class WhatsappSpendController {
                  */
                 probe: {
                     reachesMeta: false,
-                    note: 'Hoy esto informa lo que ya sabemos: un rechazo de elegibilidad de pago '
-                        + 'que Meta hizo de verdad. No consulta a Meta, así que no puede afirmar '
-                        + 'que haya tarjeta ni que falte. «No comprobado» no es «sin tarjeta».',
+                    checkEndpoint: '/whatsapp/connection/check-funding',
+                    evidenceMaxAgeSeconds: 86400,
+                    note: 'Esta lectura usa evidencia guardada y rechazos reales. Para comprobar la cuenta usa check-funding. '
+                        + 'No hace una consulta automática a Meta. '
+                        + '«No comprobado» no es «sin tarjeta».',
                 },
             },
         };

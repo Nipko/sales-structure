@@ -40,7 +40,8 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
     const query: SpendQuery = async <R = any[]>(sql: string, params: any[] = []): Promise<R> =>
         (await client.query(sql, params)).rows as any;
 
-    const req = (role = 'tenant_admin') => ({ user: { tenantId, role } });
+    // TenantGuard resolves this before a real controller invocation.
+    const req = (role = 'tenant_admin') => ({ tenantId, user: { tenantId, role } });
 
     /** The USD card in force, read by hand — never through the estimator's resolver. */
     const usdCard = WHATSAPP_RATE_CARDS

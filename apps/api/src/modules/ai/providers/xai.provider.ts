@@ -77,7 +77,7 @@ export class XAIProvider implements ILLMProvider {
         }
     }
 
-    async *generateStream(options: LLMRequestOptions): AsyncGenerator<string, void, unknown> {
+    async *generateStream(options: LLMRequestOptions, transport?: LLMTransportOptions): AsyncGenerator<string, void, unknown> {
         try {
             const client = await this.ensureClient();
             const formattedMessages = this.formatMessages(options);
@@ -87,7 +87,7 @@ export class XAIProvider implements ILLMProvider {
                 temperature: Number(options.temperature ?? 0.7),
                 stream: true,
             };
-            const stream = await client.chat.completions.create(req);
+            const stream = await client.chat.completions.create(req, transport ? { maxRetries: transport.maxRetries } : undefined);
             for await (const chunk of stream) {
                 const content = chunk.choices[0]?.delta?.content;
                 if (content) yield content;

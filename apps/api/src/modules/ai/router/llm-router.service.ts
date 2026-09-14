@@ -1,3 +1,4 @@
+import { LlmSpendGuardService, LlmBudgetExceeded, LlmBudgetUnavailable } from './llm-spend-guard.service';
 import { Injectable, Logger, Inject } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -132,6 +133,7 @@ export class LLMRouterService {
         private redis: RedisService,
         private llmKeys: LlmKeyService,
         private eventEmitter: EventEmitter2,
+        private spendGuard?: LlmSpendGuardService,
     ) { }
 
     getProvider(name: string): ILLMProvider {
@@ -509,7 +511,9 @@ export class LLMRouterService {
             for (const candidate of candidates) {
                 const startTime = Date.now();
                 try {
-                    const provider = this.getProvider(candidate.provider);
+                    const rawProvider = this.getProvider(candidate.provider);
+                    const provider = accountOperationalUsage && options.tenantId && this.spendGuard
+                        ? this.spendGuard.wrap(rawProvider, options.tenantId, candidate) : rawProvider;
                     const reqOptions: LLMRequestOptions = {
                         ...options as Omit<LLMRequestOptions, 'model'>,
                         model: candidate.id,
@@ -557,6 +561,7 @@ export class LLMRouterService {
                     return { ...response, routingDecision: decision };
                 } catch (err: any) {
                     const durationMs = Date.now() - startTime;
+                    if (err instanceof LlmBudgetExceeded || err instanceof LlmBudgetUnavailable) throw err;
                     if (err instanceof LLMSourceAuthorityUnavailable) {
                         if (accountOperationalUsage && err.usage) this.trackStats(options.tenantId,candidate,durationMs,err.usage,false)
                             .catch(e=>this.logger.warn(`AI stats tracking failed: ${e.message}`));
@@ -610,7 +615,9 @@ export class LLMRouterService {
             this.logger.warn(`Model ${options.model || '(none)'} not in registry, falling back to ${modelConfig.id}`);
         }
 
-        const provider = this.getProvider(modelConfig.provider);
+        const rawProvider = this.getProvider(modelConfig.provider);
+        const provider = accountOperationalUsage && options.tenantId && this.spendGuard
+            ? this.spendGuard.wrap(rawProvider, options.tenantId, modelConfig) : rawProvider;
         const reqOptions: LLMRequestOptions = {
             ...options as Omit<LLMRequestOptions, 'model'>,
             model: modelConfig.id,
@@ -630,6 +637,7 @@ export class LLMRouterService {
             return { ...response };
         } catch (e: any) {
             const durationMs = Date.now() - startTime;
+            if (e instanceof LlmBudgetExceeded || e instanceof LlmBudgetUnavailable) throw e;
             if (e instanceof LLMSourceAuthorityUnavailable) {
                 if (accountOperationalUsage && e.usage) this.trackStats(options.tenantId,modelConfig,durationMs,e.usage,false)
                     .catch(err=>this.logger.warn(`AI stats tracking failed: ${err.message}`));
@@ -1036,17 +1044,27 @@ export class LLMRouterService {
         let charCount = 0;
         let errored = false;
         let firstChunkMs: number | undefined;
+        let streamReservation: string | undefined;
+        let completed = false;
+        let outputBytes = 0;
+        if (options.tenantId && this.spendGuard) {
+            Object.assign(reqOptions, this.spendGuard.bounded(reqOptions));
+            streamReservation = await this.spendGuard.reserve(options.tenantId, modelConfig, reqOptions);
+        }
 
         try {
-            for await (const chunk of provider.generateStream(reqOptions)) {
+            for await (const chunk of provider.generateStream(reqOptions, { maxRetries: 0 })) {
                 if (firstChunkMs === undefined) firstChunkMs = Date.now() - startMs;
                 charCount += chunk.length;
+                outputBytes += Buffer.byteLength(chunk, 'utf8');
                 yield chunk;
             }
+            completed = true;
         } catch (e) {
             errored = true;
             throw e;
         } finally {
+            if (completed && streamReservation && this.spendGuard) await this.spendGuard.recordStream(streamReservation, modelConfig, reqOptions, outputBytes);
             const durationMs = Date.now() - startMs;
             const estimatedTokensOut = Math.ceil(charCount / 4);
             // TTFT breaker signal — only when a first chunk actually arrived (success).

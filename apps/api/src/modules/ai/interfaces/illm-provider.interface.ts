@@ -46,5 +46,5 @@ export interface ILLMProvider {
     /**
      * Generate a stream of text from the model
      */
-    generateStream(options: LLMRequestOptions): AsyncGenerator<string, void, unknown>;
+    generateStream(options: LLMRequestOptions, transport?: LLMTransportOptions): AsyncGenerator<string, void, unknown>;
 }

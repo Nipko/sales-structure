@@ -546,6 +546,23 @@ const PLANS = [
     },
 ];
 
+// Factory commercial values share the migration's source. Runtime edits still
+// win: the seed remains create-only unless an operator explicitly uses --force.
+const commercialDefaults = require('./plan-commercial-defaults.json');
+for (const plan of PLANS) {
+    if (Array.isArray(plan.features?.channels)) plan.features.channels = plan.features.channels.filter(channel => channel !== 'email');
+    const commercial = commercialDefaults[plan.slug];
+    if (!commercial) continue;
+    plan.priceUsdCents = commercial.priceUsdCents;
+    plan.maxAiMessages = commercial.maxAiMessages;
+    plan.features.llmCostBudgetUsdCents = commercial.llmCostBudgetUsdCents;
+    plan.features.llmHardBudgetUsdCents = commercial.llmHardBudgetUsdCents;
+    plan.priceLocalOverrides.CO = {
+        currency: 'COP', amountCents: commercial.monthlyCopCents,
+        ...(Math.round(commercial.monthlyCopCents * 12 * .9) <= 2147483647 ? { annual: { currency: 'COP', amountCents: Math.round(commercial.monthlyCopCents * 12 * .9) } } : {}),
+    };
+}
+
 // The runtime source of truth for prices/features is the billing_plans table,
 // edited from the super-admin panel (/admin/plans → PUT /billing-admin/plans/:slug).
 // So this seed is CREATE-ONLY by default: it bootstraps missing plans on a fresh
@@ -579,6 +596,14 @@ async function main() {
                 if (prev.annual || vals.annual) {
                     merged.annual = { ...(prev.annual ?? {}), ...(vals.annual ?? {}) };
                 }
+                // Price-bound provider objects cannot survive a factory price change.
+                for (const [before, after] of [[prev, merged], [prev.annual, merged.annual]]) {
+                    if (!after || (before?.amountCents === after.amountCents && before?.currency === after.currency)) continue;
+                    for (const key of Object.keys(after)) {
+                        if (/^(mpPlanId|wompiPlanId|stripePriceId|synced|sync)/.test(key)) delete after[key];
+                    }
+                }
+                if (country === 'CO' && commercialDefaults[plan.slug] && !vals.annual) delete merged.annual;
                 mergedOverrides[country] = merged;
             }
             await prisma.billingPlan.update({
@@ -593,6 +618,7 @@ async function main() {
                     sortOrder: plan.sortOrder,
                     features: plan.features,
                     priceLocalOverrides: mergedOverrides,
+                    mpPlanId: existing.priceUsdCents === plan.priceUsdCents ? existing.mpPlanId : null,
                     isActive: true,
                 },
             });

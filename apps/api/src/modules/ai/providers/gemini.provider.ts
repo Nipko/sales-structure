@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { ILLMProvider, LLMRequestOptions, LLMResponse } from '../interfaces/illm-provider.interface';
+import { ILLMProvider, LLMRequestOptions, LLMResponse, LLMTransportOptions } from '../interfaces/illm-provider.interface';
 import { LlmKeyService } from '../../settings/llm-key.service';
 
 @Injectable()
@@ -72,7 +72,8 @@ export class GeminiProvider implements ILLMProvider {
                 finishReason,
                 usage: response.usageMetadata ? {
                     promptTokens: response.usageMetadata.promptTokenCount,
-                    completionTokens: response.usageMetadata.candidatesTokenCount,
+                    completionTokens: (response.usageMetadata.candidatesTokenCount ?? 0)
+                        + (Number((response.usageMetadata as any).thoughtsTokenCount) || 0),
                     totalTokens: response.usageMetadata.totalTokenCount,
                 } : undefined,
                 raw: response,
@@ -83,7 +84,7 @@ export class GeminiProvider implements ILLMProvider {
         }
     }
 
-    async *generateStream(options: LLMRequestOptions): AsyncGenerator<string, void, unknown> {
+    async *generateStream(options: LLMRequestOptions, transport?: LLMTransportOptions): AsyncGenerator<string, void, unknown> {
         try {
             const genAI = await this.ensureClient();
             // Bound per-request latency (default has no client timeout). The router

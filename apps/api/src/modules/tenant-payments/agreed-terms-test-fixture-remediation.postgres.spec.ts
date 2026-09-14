@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-var-requires */
+/* eslint-disable @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports */
 import { randomUUID } from 'crypto';
 import { Client } from 'pg';
 import { isDisposableDatabase } from '../../common/__fixtures__/disposable-database';

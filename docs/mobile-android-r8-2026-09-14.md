@@ -1,6 +1,14 @@
 # Optimización Android y diagnóstico de release
 
 Fecha: 14 de septiembre de 2026. AAB Parallly Mobile 1.1.0 (10) compilado y validado.
+**Incidencia posterior: v10 bloqueado por SecureStore.** El probe nativo con su
+DEX exacto reproduce `NullPointerException` en `RecordTypeConverter.kt:74`; R8
+eliminó el miembro `PropertyDescriptor.fieldAnnotation` y sustituyó la lectura
+por `throw null`, aunque las anotaciones y el DTO permanecían en el DEX.
+La corrección para 1.1.1 añade keep solo a los tipos de anotación de
+`expo.modules.kotlin.records` y a constructores de implementaciones de
+`ValidationBinder`. Requiere repetir la conversión con el nuevo binario.
+
 Play confirma optimización alta y 91% de ofuscación para el build 10, disponible
 en pruebas internas desde el 14-sep-2026 a la 01:05 de Bogotá. La observación del
 build 9 (ofuscación 1%) corresponde al binario anterior en producción. Permanecen
@@ -21,8 +29,9 @@ Android recomienda activar ambas fases y usar `proguard-android-optimize.txt`.
 - Reducción de recursos release: `android.enableShrinkResourcesInReleaseBuilds=true`.
 - Modo completo: `android.enableR8.fullMode=true`.
 - Reglas base: `proguard-android-optimize.txt`.
-- Archivo generado `android/app/parallly-r8.pro`: conserva solamente los atributos
-  `SourceFile,LineNumberTable` para interpretar ubicaciones en errores.
+- Archivo generado `android/app/parallly-r8.pro`: conserva los atributos
+  `SourceFile,LineNumberTable` para interpretar ubicaciones en errores, los tipos
+  de anotación del contrato Expo Record y los constructores de sus validadores.
 
 No cambia debug, firma, SDK, versión de AGP ni configuración iOS. El plugin
 falla con un mensaje explícito si una actualización del SDK cambia el formato
@@ -40,6 +49,18 @@ No se agregan reglas `-keep class **`, exclusiones de bibliotecas completas ni
 `-dontoptimize`, `-dontobfuscate`, `-dontshrink` o supresión global de advertencias.
 Se conservan las reglas existentes de la plantilla y las reglas consumer
 de las dependencias; los atributos de diagnóstico no mantienen clases vivas.
+Tras la incidencia v10 se añade explícitamente este límite de reflexión:
+
+```proguard
+-keep @interface expo.modules.kotlin.records.** { *; }
+-keep class * implements expo.modules.kotlin.records.ValidationBinder {
+    public <init>();
+}
+```
+
+Son diez tipos de anotación y siete constructores en el SDK instalado. No se
+permite optimización de este límite: la sola presencia de metadata no impide
+que R8 suponga que los proxies de anotación no tienen instancias.
 
 La revisión del código instalado confirmó:
 

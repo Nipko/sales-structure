@@ -23,7 +23,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     slug: 'parallly-mobile',
     owner: 'nirlevin',
     scheme: 'parallly',
-    version: '1.1.0',
+    version: '1.1.1',
     orientation: 'portrait',
     userInterfaceStyle: 'automatic',
     icon: './assets/icon.png',

@@ -63,9 +63,13 @@ describe('Android release R8 configuration', () => {
         expect(() => configureReleaseGradle(change(gradleFixture()))).toThrow('Android release optimization');
     });
 
-    it('preserves crash locations without adding blanket keep or disabling R8 phases', () => {
+    it('preserves the Expo Record reflection boundary without keeping entire modules or disabling R8', () => {
         expect(DIAGNOSTIC_RULES).toContain('-keepattributes SourceFile,LineNumberTable');
-        expect(DIAGNOSTIC_RULES).not.toMatch(/^-keep\s|^-dont(?:optimize|obfuscate|shrink|warn)\b/m);
+        expect(DIAGNOSTIC_RULES).toContain('-keep @interface expo.modules.kotlin.records.** { *; }');
+        expect(DIAGNOSTIC_RULES).toContain('-keep class * implements expo.modules.kotlin.records.ValidationBinder {\n    public <init>();\n}');
+        expect(DIAGNOSTIC_RULES).not.toMatch(/^-dont(?:optimize|obfuscate|shrink|warn)\b/m);
+        expect(DIAGNOSTIC_RULES).not.toMatch(/^-keep\s+class\s+(?:\*\*|expo\.modules\.\*\*)/m);
+        expect(DIAGNOSTIC_RULES).not.toContain('allowoptimization');
     });
 
     it('creates the diagnostic rules during prebuild, including repeated regeneration', async () => {

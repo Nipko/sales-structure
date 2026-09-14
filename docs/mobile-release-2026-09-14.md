@@ -1,4 +1,4 @@
-# Android 1.1.0 — auditoría de compatibilidad y publicación
+# Android 1.1.1 — auditoría de compatibilidad y publicación
 
 ## Estado
 
@@ -6,9 +6,9 @@
 `REACT-NATIVE-2` (`7730735217`) en `cloud.parallly.mobile@1.1.0+10`, dist `10`:
 la conversión nativa de opciones de SecureStore lanza `NullPointerException`
 durante el inicio de sesión con Google en Android 11. La revisión del 14-sep
-observó 25 eventos en tres dispositivos identificados como OnePlus8Pro. Se requiere
-reproducción nativa y un candidato corregido; las pruebas estáticas y la mejora de
-optimización no certificaban este recorrido en ejecución.
+observó 25 eventos en tres dispositivos identificados como OnePlus8Pro. Las
+pruebas estáticas y la mejora de optimización no certificaban este recorrido en
+ejecución.
 
 La reproducción aislada en el Samsung confirmó el NPE con el DEX exacto de v10,
 sin acceder a credenciales ni datos de la app. ReTrace lo ubica en
@@ -17,19 +17,80 @@ convirtió la lectura de la clave en `throw null`. La estructura de
 `SecureStoreOptions` estaba conservada; repetir su regla de keep no soluciona
 este límite de reflexión.
 
-El candidato **1.1.1** conserva específicamente las anotaciones
+El candidato **1.1.1 (12)** conserva específicamente las anotaciones
 `expo.modules.kotlin.records.**` y los constructores de `ValidationBinder` usados
 por `createInstance()`. Mantiene R8 completo, shrinking y mapas de Sentry. La
-conversión nativa del nuevo AAB y la instalación desde Play deben verificarse
-antes de reemplazar el candidato bloqueado. En Play, v10 fue guardado para más
+conversión nativa del nuevo AAB ya pasó; falta validar la instalación y el acceso
+real desde Play antes de reemplazar el candidato bloqueado en producción.
+En Play, v10 fue guardado para más
 adelante y ya no figura en los cambios listos para enviar a revisión.
 
+EAS terminó el candidato el 14-sep-2026 a las 07:16:56 UTC desde el commit
+`a516c144cd0ab2a4a94b10d19d786bf7a178aaf5`, build
+[`3f8c9d02-c694-47c2-9f93-21daa9176533`](https://expo.dev/accounts/nirlevin/projects/parallly-mobile/builds/3f8c9d02-c694-47c2-9f93-21daa9176533).
+El código 11 quedó reservado por EAS en un intento cuya carga falló por falta de
+espacio local; no se creó ni distribuyó un binario 11. El reintento cargó
+correctamente el código 12. Play publicó `1.1.1 (12)` en pruebas internas el
+14-sep-2026 a las 02:21 de Bogotá, release 6, con notas en cuatro idiomas.
+
+La prueba reproducible está en
+[`apps/mobile/scripts/android-records-probe`](../apps/mobile/scripts/android-records-probe/README.md).
+Vincula el mapping con el AAB por SHA-256 y ejecuta el DEX exacto con mapas
+sintéticos, sin llamar módulos ni acceder a datos de la app. En v10 pasan las
+tres etapas de construcción/reflexión y fallan las siete etapas de conversión
+con NPE, incluida la validación de campos obligatorios de notificaciones.
+La salida es `RESULT failures=7`, código 1. En el AAB 12 pasan las diez etapas,
+con `RESULT failures=0`, código 0: 100 conversiones vacías, 100 con valores
+explícitos y 100 registros válidos de notificaciones, más cuatro rechazos
+semánticos de datos inválidos. Esto no sustituye la prueba completa de inicio
+de sesión desde Play.
+
+## Evidencia del candidato corregido 1.1.1 (12)
+
+| Dato | Resultado |
+|---|---|
+| AAB | `parallly-1.1.1-v12.aab`, 52.039.230 bytes |
+| SHA-256 AAB | `362F2DB492D6F819458D40909FC6D0E67860E016FBA3F8DF61F580C9600AB05C` |
+| SHA-256 DEX | `DE4532F905581D7C12430198DF408D5DD67CF04A07D0A2218E26AB32A1061351` |
+| Mapping | 69.298.430 bytes, 7.643 clases renombradas; SHA coincide con el mapping embebido |
+| Firma y estructura | `bundletool validate` y `jarsigner` PASS; mismo certificado de upload que v9/v10 |
+| Manifest | Package correcto, mínimo 24, destino 36, sin restricción de orientación; redimensionable y `adjustNothing` |
+| API embebida | `https://api.parallly-chat.cloud/api/v1` |
+| Optimización | R8 8.11.18, ofuscación, optimización y shrinking activos, modo completo |
+| Diagnóstico Sentry | Google Services procesado y un nuevo mapping subido; `BUILD SUCCESSFUL` |
+| Prueba Android | Samsung SM-S918B, Android 16: diez etapas PASS, salida 0 |
+| Análisis Play | Artefacto `4860230132141226011`: optimización Alta, 91% de ofuscación, R8 completo, DEX 7,43 MB, páginas de 16 KB |
+| Distribución interna | Release 6, disponible el 14-sep-2026 a las 02:21 de Bogotá; descarga 13,5 MB, actualización desde v10 3,59 MB |
+
+Artefactos y logs en `C:/Users/USER/Desktop/parallly-v12-play`. La prueba usa el
+DEX exacto del AAB y verifica sus hashes; no reinstala la app ni lee SecureStore.
+El Samsung todavía tenía instalado `1.0.0 (9)` al ejecutar el diagnóstico.
+
+## Evento adicional de Google Sign-In
+
+Sentry `REACT-NATIVE-3` (`7730787001`), evento
+`df19fb8df28844a38a49a85944cec56c`, pertenece a `1.1.0 (10)`: un evento manejado
+en Android 11 el 14-sep-2026 a las 06:55:33.974 UTC, con `flow=google_signin` y
+`google_status_code=8`. El mapping exacto resuelve `a6.e` como
+`com.google.android.gms.common.api.ApiException`. Sentry no recibió stack.
+
+Google define [INTERNAL_ERROR (8)](https://developers.google.com/android/reference/com/google/android/gms/common/api/CommonStatusCodes#INTERNAL_ERROR)
+como un error interno para el que reintentar debería resolver el problema.
+`LoginScreen` muestra el código y libera el botón en `finally`. El evento no
+demuestra una configuración OAuth incorrecta, un fallo no manejado ni el mismo
+NPE de Expo Record. Comparte dispositivo y traza con el evento de SecureStore;
+esa coincidencia no establece causalidad. Se debe comprobar el acceso real con
+Google en el build 12 y revisar cualquier repetición antes de promoverlo.
+
+## Base de comparación de la auditoría
+
 El AAB `1.1.0 (10)` terminó en EAS y pasó la validación de artefacto y firma.
-Google Play lo publicó en la prueba interna el 14-sep-2026 a la 01:05 de Bogotá;
-la comprobación física todavía está pendiente. Play Console confirma `1.0.0 (9)` en Producción
+Google Play lo publicó en la prueba interna el 14-sep-2026 a la 01:05 de Bogotá,
+antes de identificar la regresión; el build 12 lo sustituye en ese segmento.
+Play Console confirma `1.0.0 (9)` en Producción
 al 100%, con fecha 25-ago-2026. El Samsung SM-S918B
 conectado tiene `versionCode=9`, `versionName=1.0.0`, instalado por
-`com.android.vending`. Coincide con el último build Android terminado de EAS.
+`com.android.vending`. Coincide con el build base del 25 de agosto.
 
 | Referencia | Valor |
 |---|---|
@@ -38,7 +99,7 @@ conectado tiene `versionCode=9`, `versionName=1.0.0`, instalado por
 | Build base | `66ec0b67-5e25-450e-a65f-70b4f4766eff` |
 | Fecha del build base | 25-ago-2026 |
 | Commit informado por EAS | `a0f925ef68247ec509965cb359d208cbe1d732bd` |
-| Versión candidata | `1.1.0 (10)`; versionCode asignado por EAS remoto con autoIncrement |
+| Versión candidata | `1.1.1 (12)`; versionCode asignado por EAS remoto con autoIncrement |
 
 La metadata git de EAS identifica la base de comparación; por sí sola no prueba que
 un build histórico no incluyera archivos modificados sin commit.
@@ -126,7 +187,7 @@ para trabajar con los nuevos controles de la plataforma. Los alquileres ahora mu
 el siguiente paso de revisión o inspección y permiten continuar en la web.
 ```
 
-## Evidencia del artefacto
+## Evidencia histórica del artefacto 1.1.0 (10), bloqueado
 
 | Dato | Resultado |
 |---|---|
@@ -152,11 +213,14 @@ equivale al porcentaje que publica Play Console.
 
 ## Distribución
 
-- Prueba interna: `1.1.0 (10)` disponible para verificadores internos desde
-  14-sep-2026, 01:05 Bogotá, segmento `4701526887696492046`, release `5`.
+- Prueba interna: `1.1.1 (12)` disponible para verificadores internos desde
+  14-sep-2026, 02:21 Bogotá, segmento `4701526887696492046`, release `6`.
+  Sustituye a `1.1.0 (10)`, cuya release `5` no debe promoverse.
 - Play reconoce los adjuntos de ReTrace y símbolos de depuración nativos.
 - No se pierden teléfonos, tablets ni Chromebooks compatibles frente a v9.
-- Instalación y comprobación física: solicitadas al usuario, pendientes.
+- Instalación y comprobación física del build 12: solicitadas al usuario,
+  pendientes. El diagnóstico aislado PASS no sustituye Google Sign-In ni la
+  conservación de la sesión en la app instalada desde Play.
 - Producción: todavía `1.0.0 (9)`. Candidato `1.1.0 (10)` guardado con las cuatro
   notas de idioma, 100% y todos los países de destino actuales, segmento
   `4698586868298478161`, release `3`. **No enviar v10**: reemplazarlo por el candidato

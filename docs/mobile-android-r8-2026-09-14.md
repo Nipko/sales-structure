@@ -1,13 +1,34 @@
 # Optimización Android y diagnóstico de release
 
-Fecha: 14 de septiembre de 2026. AAB Parallly Mobile 1.1.0 (10) compilado y validado.
+Fecha: 14 de septiembre de 2026. El AAB 1.1.0 (10) superó firma y estructura,
+pero falló la conversión nativa de registros.
 **Incidencia posterior: v10 bloqueado por SecureStore.** El probe nativo con su
 DEX exacto reproduce `NullPointerException` en `RecordTypeConverter.kt:74`; R8
 eliminó el miembro `PropertyDescriptor.fieldAnnotation` y sustituyó la lectura
 por `throw null`, aunque las anotaciones y el DTO permanecían en el DEX.
 La corrección para 1.1.1 añade keep solo a los tipos de anotación de
 `expo.modules.kotlin.records` y a constructores de implementaciones de
-`ValidationBinder`. Requiere repetir la conversión con el nuevo binario.
+`ValidationBinder`. El candidato 1.1.1 (12), EAS
+`3f8c9d02-c694-47c2-9f93-21daa9176533`, terminó y pasó la conversión con su
+DEX exacto en Android 16: diez etapas PASS, salida 0. Conserva R8 completo,
+optimización, ofuscación y shrinking; el mapping se subió a Sentry.
+
+El [diagnóstico reproducible](../apps/mobile/scripts/android-records-probe/README.md)
+comprueba el mapping embebido y cada DEX mediante SHA-256. En Android 16 el
+binario v10 supera las tres etapas de construcción y reflexión, pero falla las
+siete etapas de conversión, con `RESULT failures=7` y salida 1. Incluye
+opciones vacías, valores explícitos, rechazo de tipos incorrectos y registros
+de notificaciones con campos obligatorios. Las pruebas usan objetos sintéticos;
+no llaman a SecureStore ni acceden a sesiones, almacenamiento o datos de la app.
+
+En v12 pasan 300 conversiones válidas y cuatro rechazos de datos inválidos.
+El DEX tiene 7.428.824 bytes y SHA-256
+`DE4532F905581D7C12430198DF408D5DD67CF04A07D0A2218E26AB32A1061351`.
+El mapping conserva las reglas acotadas y `r8.json` confirma que las tres fases
+siguen activas. Play confirma también para el build 12, artefacto
+`4860230132141226011`, **91% de ofuscación**, optimización **Alta**, R8 completo
+y compatibilidad de páginas de 16 KB. Las cifras del build 10 que aparecen
+abajo son evidencia histórica.
 
 Play confirma optimización alta y 91% de ofuscación para el build 10, disponible
 en pruebas internas desde el 14-sep-2026 a la 01:05 de Bogotá. La observación del

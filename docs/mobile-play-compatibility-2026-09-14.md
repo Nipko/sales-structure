@@ -1,10 +1,25 @@
 # Compatibilidad Android: recomendaciones de Play Console
 
 Fecha: 14 de septiembre de 2026. Referencia observada en Producción: 1.0.0 (9).
-El AAB 1.1.0 (10) terminó en EAS, fue validado localmente y Play confirma
-optimización alta con 91% de ofuscación. Está disponible en pruebas internas desde
-el 14-sep-2026 a la 01:05 de Bogotá. La actualización de producción y la
-validación visual física permanecen pendientes.
+
+**La versión 1.1.0 (10) está bloqueada para producción por un fallo de
+SecureStore.** Aunque su AAB superó las verificaciones de firma y estructura y
+Play mostró optimización alta, Sentry registró el error de conversión de
+`SecureStoreOptions` en `cloud.parallly.mobile@1.1.0+10`, distribución 10. Una
+prueba independiente con el DEX exacto reprodujo el NPE sin acceder a datos de la
+app. Las métricas históricas de Play que aparecen abajo no certifican su
+funcionamiento. La versión 10 se distribuyó únicamente en pruebas internas.
+
+El candidato que la sustituye es **1.1.1 (12)**, con una corrección acotada de las
+reglas R8 para las anotaciones de registros de Expo. El build
+[EAS 3f8c9d02-c694-47c2-9f93-21daa9176533](https://expo.dev/accounts/nirlevin/projects/parallly-mobile/builds/3f8c9d02-c694-47c2-9f93-21daa9176533)
+terminó el 14-sep-2026 a las 07:16:56 UTC. Su AAB pasó firma y estructura,
+conserva el manifiesto adaptable y pasó las diez etapas del diagnóstico de
+conversión con el DEX exacto en Android 16. Play publicó la prueba interna a las
+02:21 de Bogotá y confirma para el artefacto `4860230132141226011` optimización
+Alta, 91% de ofuscación, R8 completo, DEX de 7,43 MB y compatibilidad de páginas
+de 16 KB. La prueba completa del inicio de sesión permanece pendiente.
+La corrección de SecureStore no pretende resolver el aviso de APIs edge-to-edge.
 
 ## Orientación y ventanas
 
@@ -20,7 +35,8 @@ Conserva la orientación configurada en iOS, las actividades de librerías y el
 `adjustNothing` que utiliza `useKeyboardSpace` para gestionar el teclado.
 No incluye una excepción temporal a las reglas de Android 16.
 
-Comprobación con `expo config --type introspect --json`:
+Comprobación histórica del candidato 1.1.0 con
+`expo config --type introspect --json`:
 
 - Versión 1.1.0.
 - MainActivity sin `android:screenOrientation`.
@@ -33,7 +49,7 @@ sin restricción de orientación, `resizeableActivity=true` y
 `windowSoftInputMode=0x00000030` (`adjustNothing`). La comprobación de orientación
 iOS anterior proviene de introspección; el AAB valida solamente Android.
 
-## Evidencia del AAB 1.1.0 (10)
+## Evidencia histórica del AAB 1.1.0 (10), bloqueado
 
 - EAS `0bf6fdb7-6f21-4d4b-bd4a-71a756c89ed7`: `FINISHED`, perfil `production`,
   completado el 14-sep-2026 a las 05:55:44 UTC.
@@ -51,7 +67,7 @@ Fuentes: `C:/Users/USER/Desktop/parallly-v10-play/artifact-validation.json`,
 `build-view.json`, `build-log-01.txt` y el AAB `parallly-1.1.0-v10.aab` del mismo
 directorio. [Detalle de R8 y estadísticas internas](mobile-android-r8-2026-09-14.md).
 
-## Análisis confirmado en Play Console
+## Análisis histórico confirmado en Play Console para 1.1.0 (10)
 
 El explorador de app bundles, artefacto `4860230114055681879`, muestra para la
 versión 1.1.0 (10):
@@ -66,11 +82,13 @@ versión 1.1.0 (10):
 | Descarga | 13,5 MB; 6,99 MB menos que el build 9 |
 | Actualización | 4,53 MB |
 
-Play indica que el build 10 está disponible en pruebas internas, publicado el
+Play indicó que el build 10 estaba disponible en pruebas internas, publicado el
 14-sep-2026 a la 01:05 de Bogotá. El problema de optimización del build 9 (1%)
 corresponde al artefacto anterior y puede seguir asociado a producción hasta
 actualizarla. Estas métricas verifican el build 10; no certifican su prueba
 física, su publicación en producción ni la desaparición de avisos edge-to-edge.
+El fallo posterior de SecureStore impide promover este artefacto a producción;
+el candidato 1.1.1 (12) requiere sus propias comprobaciones.
 
 ## Adaptación de formularios
 
@@ -107,11 +125,51 @@ métodos compilados de las dependencias y puede cambiar su presentación.
 React Native documenta la obsolescencia de color y translucidez de StatusBar desde
 API 35. [Referencia oficial de StatusBar 0.81](https://reactnative.dev/docs/0.81/statusbar).
 
-No se parchean dependencias ni se actualiza el SDK por inferencia. La revisión
-del aviso edge-to-edge en el nuevo AAB sigue pendiente: los cambios propios no
-garantizan que desaparezca. R8 y sus mapas están comprobados en el artefacto y
-Play confirma 91% de ofuscación; las estadísticas internas de R8 se documentan
-por separado y no sustituyen ese porcentaje observado en Play.
+### Decisión de mantenimiento: actualización coordinada del SDK
+
+La revisión de las fuentes oficiales y del registro npm del 14-sep-2026 no
+identifica un parche pequeño dentro de Expo SDK 54 que resuelva todos los
+orígenes reportados. No se incorporan cambios adicionales de edge-to-edge al
+hotfix 1.1.1:
+
+- La [matriz oficial de SDK 54](https://raw.githubusercontent.com/expo/expo/sdk-54/packages/expo/bundledNativeModules.json)
+  sigue indicando React Native 0.81.5, react-native-screens `~4.16.0` y
+  expo-image-picker `~17.0.11`, coincidiendo con lo instalado. El registro npm
+  no ofrece versiones posteriores dentro de las series 4.16.x y 17.0.x.
+- Existe React Native 0.81.6, pero sus fuentes de
+  [WindowUtil](https://raw.githubusercontent.com/facebook/react-native/v0.81.6/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/view/WindowUtil.kt)
+  y [StatusBarModule](https://raw.githubusercontent.com/facebook/react-native/v0.81.6/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/modules/statusbar/StatusBarModule.kt)
+  conservan las llamadas de color y los modos de recorte señalados. Ese parche
+  no elimina el origen de React Native.
+- [ExpoCropImageUtils en la rama SDK 54](https://raw.githubusercontent.com/expo/expo/sdk-54/packages/expo-image-picker/android/src/main/java/expo/modules/imagepicker/ExpoCropImageUtils.kt)
+  conserva `window.statusBarColor`; no hay una corrección publicada en la serie
+  compatible instalada que sustituya esa implementación.
+- [Material 1.14.0](https://github.com/material-components/material-components-android/releases/tag/1.14.0)
+  incorpora cambios de componentes y dependencias. Su
+  [EdgeToEdgeUtils](https://raw.githubusercontent.com/material-components/material-components-android/1.14.0/lib/java/com/google/android/material/internal/EdgeToEdgeUtils.java)
+  evita esas llamadas de color desde API 35, conservándolas para versiones
+  anteriores. Forzar solamente esa dependencia no cubre los orígenes de React
+  Native, screens e ImagePicker ni demuestra que Play retire el aviso.
+
+El aviso queda clasificado como **mantenimiento de compatibilidad del SDK y sus
+dependencias**, separado del fallo de SecureStore. Su solución debe evaluarse
+en una actualización coordinada de Expo/React Native y las bibliotecas de
+navegación y ventanas. No se garantiza su eliminación por cambiar una propiedad
+de React, retirar `statusBarTranslucent` o activar R8.
+
+Para cerrar esta recomendación se requiere:
+
+1. Un AAB nuevo con las versiones compatibles seleccionadas y un análisis de
+   Play de ese artefacto que permita comprobar los orígenes restantes del aviso.
+2. Validación visual en Android 15 y 16 de navegación, modales, teclado, barras
+   del sistema, adjuntos y rotación, con gestos y navegación de tres botones.
+3. Si Play conserva llamadas necesarias para Android anteriores, registrar los
+   métodos y condiciones por versión que permanecen; no declarar el aviso
+   eliminado ni inferir un fallo visual únicamente por su presencia estática.
+
+Las métricas de R8 de ambos builds no demuestran la corrección de edge-to-edge.
+Las estadísticas internas de R8 se documentan por separado y no sustituyen el
+porcentaje observado en Play.
 [Métrica oficial de optimización DEX](https://developer.android.com/topic/performance/vitals/code-optimization).
 
 ## Verificación pendiente con el binario de Play

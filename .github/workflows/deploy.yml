@@ -1187,7 +1187,7 @@ jobs:
             # run 34792674974 identified the exact nine rows as test data. This
             # command cannot invent customer agreement: it only cancels the
             # declared ids when all nine still match their observed tenant,
-            # timestamp, pending state and the candidate runtime's own orphan
+            # calendar date, pending state and the candidate runtime's own orphan
             # predicate. One SERIALIZABLE transaction updates them and records
             # an audit event per appointment; any mismatch rolls everything back.
             # The preflight below remains read-only and independently proves that

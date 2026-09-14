@@ -2,6 +2,28 @@
 
 ## Estado
 
+**Candidato v10 bloqueado; no enviar a Producción.** Sentry confirmó el evento
+`REACT-NATIVE-2` (`7730735217`) en `cloud.parallly.mobile@1.1.0+10`, dist `10`:
+la conversión nativa de opciones de SecureStore lanza `NullPointerException`
+durante el inicio de sesión con Google en Android 11. La revisión del 14-sep
+observó 25 eventos en tres dispositivos identificados como OnePlus8Pro. Se requiere
+reproducción nativa y un candidato corregido; las pruebas estáticas y la mejora de
+optimización no certificaban este recorrido en ejecución.
+
+La reproducción aislada en el Samsung confirmó el NPE con el DEX exacto de v10,
+sin acceder a credenciales ni datos de la app. ReTrace lo ubica en
+`RecordTypeConverter.kt:74`: R8 eliminó `PropertyDescriptor.fieldAnnotation` y
+convirtió la lectura de la clave en `throw null`. La estructura de
+`SecureStoreOptions` estaba conservada; repetir su regla de keep no soluciona
+este límite de reflexión.
+
+El candidato **1.1.1** conserva específicamente las anotaciones
+`expo.modules.kotlin.records.**` y los constructores de `ValidationBinder` usados
+por `createInstance()`. Mantiene R8 completo, shrinking y mapas de Sentry. La
+conversión nativa del nuevo AAB y la instalación desde Play deben verificarse
+antes de reemplazar el candidato bloqueado. En Play, v10 fue guardado para más
+adelante y ya no figura en los cambios listos para enviar a revisión.
+
 El AAB `1.1.0 (10)` terminó en EAS y pasó la validación de artefacto y firma.
 Google Play lo publicó en la prueba interna el 14-sep-2026 a la 01:05 de Bogotá;
 la comprobación física todavía está pendiente. Play Console confirma `1.0.0 (9)` en Producción
@@ -137,6 +159,7 @@ equivale al porcentaje que publica Play Console.
 - Instalación y comprobación física: solicitadas al usuario, pendientes.
 - Producción: todavía `1.0.0 (9)`. Candidato `1.1.0 (10)` guardado con las cuatro
   notas de idioma, 100% y todos los países de destino actuales, segmento
-  `4698586868298478161`, release `3`. Envío a revisión pendiente de la comprobación física.
+  `4698586868298478161`, release `3`. **No enviar v10**: reemplazarlo por el candidato
+  que resuelva el fallo de SecureStore y pase la comprobación física.
 
 Un envío a revisión no equivale a una publicación aprobada.

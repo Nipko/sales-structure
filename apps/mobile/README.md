@@ -24,7 +24,7 @@ Vive en el **monorepo** y consume **`@parallext/shared`** (vía `file:../../pack
 - ✅ **Push nativo** (Expo): registro del token + `/push/expo-subscribe`; el backend envía vía Expo Push API en mensaje/handoff/SLA/cita; **tap → conversación exacta** (deep-link, también en cold start). *Requiere `eas init` (projectId) y un **development build** — NO funciona en Expo Go (SDK 53+ quitó remote push de Expo Go).*
 - ✅ **Seguridad**: re-bloqueo biométrico al volver tras más de 15 minutos en segundo
   plano, con overlay de desbloqueo
-- 📦 **Estado Android comprobado al 14-sep-2026:** `1.1.0 (10)` está disponible en la prueba interna de Google Play, con AAB/firma validados y optimización Alta (ofuscación 91%). Producción conserva `1.0.0 (9)` mientras se comprueba el binario nuevo en el SM-S918B. Evidencia y estado de publicación: [`../../docs/mobile-release-2026-09-14.md`](../../docs/mobile-release-2026-09-14.md).
+- 📦 **Estado Android al 14-sep-2026:** Producción conserva `1.0.0 (9)`. La prueba interna `1.1.0 (10)` está **bloqueada por un fallo de SecureStore reproducido en el DEX optimizado**. El candidato `1.1.1` corrige las reglas de reflexión de Expo Record y requiere validación nativa antes de distribuir. Evidencia y estado: [`../../docs/mobile-release-2026-09-14.md`](../../docs/mobile-release-2026-09-14.md).
 - 🚧 iOS no se declara publicado. Opcionales aplazados: tema claro, switch multi-tenant y centro de notificaciones persistente.
 
 ## Push nativo — cómo activarlo

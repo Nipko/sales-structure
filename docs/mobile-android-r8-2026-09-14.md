@@ -1,8 +1,10 @@
 # Optimización Android y diagnóstico de release
 
-Fecha: 14 de septiembre de 2026. Cambio preparado para Parallly Mobile 1.1.0.
-La observación de Play del build 9 (ofuscación 1%) corresponde al binario anterior;
-el nuevo porcentaje queda pendiente de compilar y analizar el AAB.
+Fecha: 14 de septiembre de 2026. AAB Parallly Mobile 1.1.0 (10) compilado y validado.
+Play confirma optimización alta y 91% de ofuscación para el build 10, disponible
+en pruebas internas desde el 14-sep-2026 a la 01:05 de Bogotá. La observación del
+build 9 (ofuscación 1%) corresponde al binario anterior en producción. Permanecen
+pendientes la prueba física y la actualización de producción.
 
 ## Causa y configuración reproducible
 
@@ -80,19 +82,69 @@ Comprobado localmente:
   optimizado, la inclusión de `parallly-r8.pro`, Sentry Gradle 5.11.0 y subida de
   mapping habilitada. No modifica el proyecto Android local.
 
-Introspect no ejecuta dangerous mods ni compila Java/Kotlin. Antes de distribuir,
-verificar en el build EAS que existe `parallly-r8.pro`, que R8 finaliza sin errores,
-que el mapping se conserva y Sentry registra su subida. Inspeccionar en el AAB
-`BUNDLE-METADATA/com.android.tools.build.obfuscation/proguard.map` y, si la versión
-de herramientas lo produce, `BUNDLE-METADATA/com.android.tools/r8.json`.
+### Evidencia del artefacto terminado
+
+EAS terminó el build de producción el 14-sep-2026 a las 05:55:44 UTC.
+El registro de compilación contiene `BUILD SUCCESSFUL` y la tarea
+`uploadSentryProguardMappingsRelease`, con confirmación de subida del mapping
+nativo a Sentry. Esto confirma la entrega del mapa; no una prueba de simbolicación
+de un fallo real en el dispositivo.
+
+| Comprobación | Resultado |
+| --- | --- |
+| Build EAS | `0bf6fdb7-6f21-4d4b-bd4a-71a756c89ed7`, `FINISHED`, perfil `production` |
+| Commit | `d67c1fa0f9fe6883b60a8814fcaf0fbde36236b2` |
+| Aplicación | `cloud.parallly.mobile`, versión `1.1.0`, versionCode `10` |
+| SDK | mínimo 24, objetivo 36 |
+| AAB | 52.032.300 bytes; firma verificada y `bundletool validate` aprobado |
+| SHA-256 AAB | `1CAFA2E8EC550803EB87025AA7668007AB235C1DEC25D479C2595628BF5FE14A` |
+| Mapping incluido | `BUNDLE-METADATA/com.android.tools.build.obfuscation/proguard.map`, 69.276.634 bytes |
+| Clases renombradas | 7.637, según el mapping inspeccionado |
+| Metadatos R8 | `BUNDLE-METADATA/com.android.tools/r8.json`, versión 8.11.18 |
+
+El `r8.json` del ZIP confirma `isObfuscationEnabled=true`,
+`isOptimizationsEnabled=true`, `isShrinkingEnabled=true` y
+`isProGuardCompatibilityModeEnabled=false`. Sus estadísticas internas son
+`noObfuscationPercentage=14.52`, `noOptimizationPercentage=15.45` y
+`noShrinkingPercentage=15.19`. Son estadísticas internas de R8, distintas del
+91% de ofuscación que Play muestra para este artefacto; se conservan sus nombres
+originales para no confundir las mediciones.
+
+Fuentes locales: `C:/Users/USER/Desktop/parallly-v10-play/artifact-validation.json`,
+`build-view.json`, `build-log-01.txt` y el AAB `parallly-1.1.0-v10.aab` del mismo
+directorio. La introspección previa no ejecutaba dangerous mods; estos resultados
+proceden de la compilación y del artefacto descargado.
+
+### Resultado confirmado en Google Play
+
+El explorador de app bundles de Play Console, artefacto `4860230114055681879`,
+analizó el AAB 1.1.0 (10) y muestra:
+
+| Métrica de Play | Resultado |
+| --- | --- |
+| Optimización | Alta |
+| Porcentaje de ofuscación | 91%, superior al umbral de 25% observado en Play |
+| R8 | Modo completo |
+| Código DEX | 7,42 MB |
+| Páginas de memoria | Admite 16 KB |
+| Tamaño de descarga | 13,5 MB; reducción de 6,99 MB frente al build 9 |
+| Tamaño de actualización | 4,53 MB |
+
+La versión 10 figura disponible en pruebas internas, publicada el
+14-sep-2026 a la 01:05 de Bogotá. Esta evidencia confirma el resultado de
+optimización del nuevo artefacto. El aviso de 1% del build 9 es histórico para
+ese binario y puede seguir asociado a producción hasta actualizarla; no se
+registra aquí una publicación del build 10 en producción.
 
 Play mide código DEX Java/Kotlin, no el bundle JavaScript ni bibliotecas `.so`.
-Puede usar `r8.json`, mapping o heurísticas según los metadatos disponibles; por
-eso esta configuración no demuestra por sí sola el porcentaje final ni que el
-aviso del build 9 desapareció.
+Puede usar `r8.json`, mapping o heurísticas según los metadatos disponibles. El
+91% anterior procede de su análisis visible, no de calcular un porcentaje a
+partir del recuento local de clases renombradas.
 [Métrica oficial DEX](https://developer.android.com/topic/performance/vitals/code-optimization).
 
-La comprobación funcional debe usar el binario release optimizado: inicio y
+La comprobación funcional permanece pendiente y debe usar el binario release optimizado: inicio y
 Google Sign-In, biometría/SecureStore, push, cámara y adjuntos, notas de voz,
 Inbox y reconexión, y las operaciones móviles corregidas. Una sesión de Expo Go
-o una compilación debug no valida compatibilidad con R8.
+o una compilación debug no valida compatibilidad con R8. También queda pendiente
+comprobar las advertencias de APIs edge-to-edge; la optimización alta no demuestra
+que hayan desaparecido ni sustituye la prueba física del binario de Play.

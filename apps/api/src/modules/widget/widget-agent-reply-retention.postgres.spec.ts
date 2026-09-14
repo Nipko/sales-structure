@@ -48,7 +48,7 @@ const databaseUrl = process.env.LEARNING_EVIDENCE_TEST_DATABASE_URL;
         // had, one that had no key at all until this codebase gave it a column.
         await sql('CREATE TABLE eval_runs(id UUID PRIMARY KEY DEFAULT gen_random_uuid(),agent_snapshot JSONB,results JSONB)');
         await sql('CREATE TABLE conversation_quality_scores(id UUID PRIMARY KEY DEFAULT gen_random_uuid(),conversation_id UUID)');
-        await prisma.transactionInTenantSchema(schema,query => ensureEvidenceProvenance(query as any));
+        await prisma.transactionInTenantSchema(schema,query => ensureEvidenceProvenance(query as any), { schemaLock: true });
         learning = new LearningService(prisma,{} as any,{} as any);
         await learning.ensureTables(schema);
     });

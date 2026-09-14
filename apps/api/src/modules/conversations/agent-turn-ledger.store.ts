@@ -39,7 +39,7 @@ export class AgentTurnLedgerStore {
                 await query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))::text',
                     [`turn-ledger-bootstrap:${schema}`]);
                 for (const statement of TURN_LEDGER_DDL) await query(statement);
-            }).catch(error => { this.initialized.delete(schema); throw error; });
+            }, { schemaLock: true }).catch(error => { this.initialized.delete(schema); throw error; });
             this.initialized.set(schema, initialize);
         }
         await this.initialized.get(schema);

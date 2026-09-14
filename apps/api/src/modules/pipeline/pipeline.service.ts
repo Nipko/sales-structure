@@ -598,7 +598,7 @@ export class PipelineService {
                  ON pipeline_stages (pipeline_id, slug) NULLS NOT DISTINCT`,
             );
             return pipelineId;
-        });
+        }, { schemaLock: true });
     }
 
     private async ensureMultiPipeline(tenantId: string): Promise<{ schema: string; defaultPipelineId: string }> {

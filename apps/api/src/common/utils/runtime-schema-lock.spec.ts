@@ -1,7 +1,40 @@
 import { isRuntimeSchemaDdl, withRuntimeSchemaLock } from './runtime-schema-lock';
 import { WebhookSubscriptionService } from '../../modules/public-api/webhook-subscription.service';
+import { PrismaService } from '../../modules/prisma/prisma.service';
 
 describe('runtime schema initialization', () => {
+    function tenantFixture() {
+        const tx = { $executeRawUnsafe: jest.fn().mockResolvedValue(0), $queryRawUnsafe: jest.fn().mockResolvedValue([]) };
+        const prisma = Object.create(PrismaService.prototype) as PrismaService;
+        Object.defineProperty(prisma, '$transaction', { value: async (work: any) => work(tx) });
+        return { prisma, tx };
+    }
+
+    it('takes the declared schema lock before the business callback can read a table', async () => {
+        const { prisma, tx } = tenantFixture();
+        await prisma.transactionInTenantSchema('tenant_test', async query => {
+            expect(tx.$queryRawUnsafe).toHaveBeenCalledWith(expect.stringContaining('pg_advisory_xact_lock'), 'runtime-schema:tenant_test');
+            await query('SELECT * FROM pipeline_stages');
+            await query('ALTER TABLE pipeline_stages ADD COLUMN IF NOT EXISTS transition_rules jsonb');
+        }, { schemaLock: true });
+        expect(tx.$queryRawUnsafe.mock.calls.filter(([sql]) => sql.includes('pg_advisory_xact_lock'))).toHaveLength(1);
+    });
+
+    it('refuses a late schema lock instead of waiting while holding relation locks', async () => {
+        const { prisma, tx } = tenantFixture();
+        await expect(prisma.transactionInTenantSchema('tenant_test', async query => {
+            await query('SELECT * FROM pipeline_stages');
+            await query('CREATE INDEX IF NOT EXISTS stage_id ON pipeline_stages(id)');
+        })).rejects.toThrow('runtime_schema_lock_required_at_transaction_start');
+        expect(tx.$queryRawUnsafe.mock.calls).toEqual([['SELECT * FROM pipeline_stages']]);
+    });
+
+    it('keeps ordinary business transactions free of the schema mutex', async () => {
+        const { prisma, tx } = tenantFixture();
+        await prisma.transactionInTenantSchema('tenant_test', query => query('SELECT * FROM pipeline_stages'));
+        expect(tx.$queryRawUnsafe.mock.calls).toEqual([['SELECT * FROM pipeline_stages']]);
+    });
+
     it.each([
         'CREATE TABLE IF NOT EXISTS foo(id uuid)',
         '/* outer /* nested */ migration */ CREATE TABLE IF NOT EXISTS foo(id uuid)',

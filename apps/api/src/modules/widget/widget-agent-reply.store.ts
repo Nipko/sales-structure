@@ -253,7 +253,7 @@ export class WidgetAgentReplyStore {
                 if(!(await query<any[]>('SELECT id FROM public.tenants WHERE id=$1::uuid AND schema_name=$2 AND current_schema()=$2 AND is_active=true FOR SHARE',[tenantId,schema]))[0])
                     throw new Error('widget_agent_reply_tenant_unavailable');
                 for(const statement of WIDGET_AGENT_REPLY_DDL)await query(statement);
-            }).catch(error=>{this.initialized.delete(schema);throw error;});
+            }, { schemaLock: true }).catch(error=>{this.initialized.delete(schema);throw error;});
             this.initialized.set(schema,initialize);
         }
         await this.initialized.get(schema);

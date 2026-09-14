@@ -1,3 +1,4 @@
+import { withRuntimeSchemaLock } from '../../common/utils/runtime-schema-lock';
 import { enrollmentTermsHash, enrollmentTermsReviewResult } from '../education/enrollment-terms';
 import { LLMSourceAuthorityUnavailable } from '../ai/interfaces/llm-source-authority';
 import { appointmentVehicleId, vehicleAppointmentTerms, vehicleAppointmentBusyIntervals, VehicleAppointmentError, type VehicleAppointmentTerms } from '../appointments/vehicle-appointment-capacity';
@@ -1587,7 +1588,6 @@ export class AIToolExecutorService {
         }
     }
 
-
     /**
      * De la lista cruda de imagenes de una entidad a hasta N medias validas.
      *
@@ -2383,7 +2383,9 @@ export class AIToolExecutorService {
             `CREATE UNIQUE INDEX IF NOT EXISTS "uidx_consent_execution_ledger_${schema}" ON "${schema}".consent_records (execution_ledger_id) WHERE execution_ledger_id IS NOT NULL`,
             `CREATE UNIQUE INDEX IF NOT EXISTS "uidx_consent_request_${schema}" ON "${schema}".consent_records (consent_request_id) WHERE consent_request_id IS NOT NULL`,
         ];
-        for (const statement of statements) await this.prisma.$executeRawUnsafe(statement);
+        await withRuntimeSchemaLock(this.prisma, schema, async (tx) => {
+            for (const statement of statements) await tx.$executeRawUnsafe(statement);
+        });
         this.consentSchemaReady.add(schema);
     }
 

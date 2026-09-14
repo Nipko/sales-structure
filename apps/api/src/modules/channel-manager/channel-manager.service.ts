@@ -1,3 +1,4 @@
+import { withRuntimeSchemaLock } from '../../common/utils/runtime-schema-lock';
 import { Injectable, Logger, NotFoundException, BadRequestException, ConflictException, Optional } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { PrismaService } from '../prisma/prisma.service';
@@ -106,70 +107,72 @@ export class ChannelManagerService {
             return;
         }
 
-        await this.prisma.$queryRawUnsafe(`
-            CREATE TABLE IF NOT EXISTS "${schemaName}".cm_listings (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                external_id TEXT NOT NULL,
-                provider TEXT NOT NULL,
-                name TEXT NOT NULL,
-                address TEXT,
-                check_in_time TEXT DEFAULT '15:00',
-                check_out_time TEXT DEFAULT '11:00',
-                max_guests INT DEFAULT 4,
-                base_price_cents INT DEFAULT 0,
-                currency TEXT DEFAULT 'USD',
-                status TEXT DEFAULT 'active',
-                amenities TEXT[] DEFAULT '{}',
-                photos TEXT[] DEFAULT '{}',
-                property_id UUID,
-                last_synced_at TIMESTAMPTZ DEFAULT now(),
-                sync_generation UUID,
-                is_deleted BOOLEAN NOT NULL DEFAULT false,
-                deleted_at TIMESTAMPTZ,
-                created_at TIMESTAMPTZ DEFAULT now(),
-                UNIQUE(external_id, provider)
-            )
-        `);
+        await withRuntimeSchemaLock(this.prisma, schemaName, async (tx) => {
+            await tx.$queryRawUnsafe(`
+                CREATE TABLE IF NOT EXISTS "${schemaName}".cm_listings (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    external_id TEXT NOT NULL,
+                    provider TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    address TEXT,
+                    check_in_time TEXT DEFAULT '15:00',
+                    check_out_time TEXT DEFAULT '11:00',
+                    max_guests INT DEFAULT 4,
+                    base_price_cents INT DEFAULT 0,
+                    currency TEXT DEFAULT 'USD',
+                    status TEXT DEFAULT 'active',
+                    amenities TEXT[] DEFAULT '{}',
+                    photos TEXT[] DEFAULT '{}',
+                    property_id UUID,
+                    last_synced_at TIMESTAMPTZ DEFAULT now(),
+                    sync_generation UUID,
+                    is_deleted BOOLEAN NOT NULL DEFAULT false,
+                    deleted_at TIMESTAMPTZ,
+                    created_at TIMESTAMPTZ DEFAULT now(),
+                    UNIQUE(external_id, provider)
+                )
+            `);
 
-        await this.prisma.$queryRawUnsafe(`
-            CREATE TABLE IF NOT EXISTS "${schemaName}".cm_reservations (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                listing_id UUID NOT NULL REFERENCES "${schemaName}".cm_listings(id) ON DELETE CASCADE,
-                external_id TEXT,
-                provider TEXT NOT NULL,
-                guest_name TEXT NOT NULL,
-                guest_email TEXT,
-                guest_phone TEXT,
-                check_in DATE NOT NULL,
-                check_out DATE NOT NULL,
-                guests INT DEFAULT 1,
-                total_cents INT DEFAULT 0,
-                currency TEXT DEFAULT 'USD',
-                status TEXT DEFAULT 'confirmed',
-                source TEXT,
-                notes TEXT,
-                contact_id UUID,
-                synced_at TIMESTAMPTZ DEFAULT now(),
-                sync_generation UUID,
-                is_deleted BOOLEAN NOT NULL DEFAULT false,
-                deleted_at TIMESTAMPTZ,
-                created_at TIMESTAMPTZ DEFAULT now(),
-                UNIQUE(external_id, provider)
-            )
-        `);
+            await tx.$queryRawUnsafe(`
+                CREATE TABLE IF NOT EXISTS "${schemaName}".cm_reservations (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    listing_id UUID NOT NULL REFERENCES "${schemaName}".cm_listings(id) ON DELETE CASCADE,
+                    external_id TEXT,
+                    provider TEXT NOT NULL,
+                    guest_name TEXT NOT NULL,
+                    guest_email TEXT,
+                    guest_phone TEXT,
+                    check_in DATE NOT NULL,
+                    check_out DATE NOT NULL,
+                    guests INT DEFAULT 1,
+                    total_cents INT DEFAULT 0,
+                    currency TEXT DEFAULT 'USD',
+                    status TEXT DEFAULT 'confirmed',
+                    source TEXT,
+                    notes TEXT,
+                    contact_id UUID,
+                    synced_at TIMESTAMPTZ DEFAULT now(),
+                    sync_generation UUID,
+                    is_deleted BOOLEAN NOT NULL DEFAULT false,
+                    deleted_at TIMESTAMPTZ,
+                    created_at TIMESTAMPTZ DEFAULT now(),
+                    UNIQUE(external_id, provider)
+                )
+            `);
 
-        await this.prisma.$queryRawUnsafe(`
-            CREATE TABLE IF NOT EXISTS "${schemaName}".cm_availability (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                listing_id UUID NOT NULL REFERENCES "${schemaName}".cm_listings(id) ON DELETE CASCADE,
-                date DATE NOT NULL,
-                is_available BOOLEAN DEFAULT true,
-                price_cents INT,
-                min_nights INT DEFAULT 1,
-                notes TEXT,
-                UNIQUE(listing_id, date)
-            )
-        `);
+            await tx.$queryRawUnsafe(`
+                CREATE TABLE IF NOT EXISTS "${schemaName}".cm_availability (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    listing_id UUID NOT NULL REFERENCES "${schemaName}".cm_listings(id) ON DELETE CASCADE,
+                    date DATE NOT NULL,
+                    is_available BOOLEAN DEFAULT true,
+                    price_cents INT,
+                    min_nights INT DEFAULT 1,
+                    notes TEXT,
+                    UNIQUE(listing_id, date)
+                )
+            `);
+        });
 
         await this.ensureSyncGenerationColumns(schemaName);
 

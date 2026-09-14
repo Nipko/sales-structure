@@ -1,3 +1,4 @@
+import { ensureWidgetSchema } from '../widget/widget-schema';
 import { randomUUID } from 'crypto';
 import { Pool } from 'pg';
 import { readFileSync } from 'fs';
@@ -54,6 +55,10 @@ const connection=process.env.PARALLLY_ISOLATION_TEST_URL;
             tenant:{findUnique:async({where}:any)=>where.id===tenantId?{id:tenantId,schemaName:schema,isActive:true,onboardingCompletedAt:new Date(),isInternal:true,language:'es'}:null,
                 findMany:async()=>[{id:tenantId,schemaName:schema}]},
         };
+        prisma.$transaction = (callback: any) => prisma.transactionInTenantSchema(schema, (query: any) => callback({
+            $queryRawUnsafe: (sql: string, ...params: any[]) => query(sql, params),
+        }));
+
         const ddl=readFileSync(resolve(__dirname,'../../../prisma/tenant-schema.sql'),'utf8').replace(/\{\{SCHEMA_NAME\}\}/g,schema);
         for(const statement of (PrismaService.prototype as any).splitSqlStatements(ddl)){
             const match=statement.match(/^(?:CREATE TABLE IF NOT EXISTS|ALTER TABLE)\s+"[^"]+"\."([a-z_]+)"/i);
@@ -264,10 +269,11 @@ const connection=process.env.PARALLLY_ISOLATION_TEST_URL;
         expect((await q('SELECT calendar_sync_revision,status FROM appointments WHERE id=$1::uuid',[appointment.id]))[0]).toMatchObject({calendar_sync_revision:1,status:'confirmed'});
     });
     it('stores Web Chat notice and delivery state together, with replay and receipt separated',async()=>{
-        const publicDDL=readFileSync(resolve(__dirname,'../widget/widget.service.ts'),'utf8');
-        for(const table of ['widget_configs','widget_sessions']){
-            const start=publicDDL.indexOf(`CREATE TABLE IF NOT EXISTS public.${table}`),end=publicDDL.indexOf('`',start);await raw(publicDDL.slice(start,end));
-        }
+        await ensureWidgetSchema({
+            $transaction: (callback: any) => prisma.transactionInTenantSchema(schema, (query: any) => callback({
+                $queryRawUnsafe: (sql: string, ...params: any[]) => query(sql, params),
+            })),
+        } as any);
         const widget=(await raw("INSERT INTO public.widget_configs(tenant_id,widget_id,allowed_domains,locale) VALUES($1::uuid,$2,'{example.test}','es') RETURNING *",[tenantId,`wgt_${randomUUID()}`]))[0];
         const redis:any={get:async()=>null,set:async()=>{},del:async()=>{}};
         const throttle:any={getPlanFeatures:async()=>({widget:true}),getPriority:async()=>2},config:any={get:()=> 'test-widget-notice-secret-length-32',getOrThrow:()=> 'test-widget-notice-secret-length-32'};

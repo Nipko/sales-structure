@@ -33,12 +33,12 @@ export class AttributionService {
     }
 
     async ensureTables(schemaName: string): Promise<void> {
-        const cacheKey = `ctwa_cols:${schemaName}`;
+        const cacheKey = `ctwa_cols:v2:${schemaName}`;
         if (await this.redis.get(cacheKey)) return;
-        try {
-            await this.prisma.executeInTenantSchema(
-                schemaName,
-                `CREATE TABLE IF NOT EXISTS ctwa_attributions (
+
+        await this.prisma.executeInTenantSchema(
+            schemaName,
+            `CREATE TABLE IF NOT EXISTS ctwa_attributions (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                     contact_id UUID NOT NULL,
                     conversation_id UUID,
@@ -52,16 +52,14 @@ export class AttributionService {
                     captured_at TIMESTAMPTZ DEFAULT NOW(),
                     UNIQUE(contact_id, source_id)
                 )`,
-                [],
-            );
-            await this.prisma.executeInTenantSchema(
-                schemaName,
-                `CREATE INDEX IF NOT EXISTS idx_ctwa_captured ON ctwa_attributions(captured_at)`,
-                [],
-            );
-        } catch (e: any) {
-            if (!/already exists|42P07|23505/.test(e.message || '')) throw e;
-        }
+            [],
+        );
+        await this.prisma.executeInTenantSchema(
+            schemaName,
+            `CREATE INDEX IF NOT EXISTS idx_ctwa_captured ON ctwa_attributions(captured_at)`,
+            [],
+        );
+
         await this.redis.set(cacheKey, '1', 86400);
     }
 

@@ -53,6 +53,9 @@ function buildHarness(options: {
         $queryRawUnsafe: queryRaw,
         $executeRawUnsafe: jest.fn(async () => 0),
     };
+    prisma.$transaction = async (callback: any) => callback({
+        $executeRawUnsafe: prisma.$executeRawUnsafe, $queryRawUnsafe: jest.fn().mockResolvedValue([]),
+    });
     const redis: any = {
         del: jest.fn(async () => 1),
         getJson: jest.fn(),

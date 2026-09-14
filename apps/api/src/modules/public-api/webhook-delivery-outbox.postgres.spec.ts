@@ -24,6 +24,7 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         client = new PrismaClient({ datasourceUrl: databaseUrl });
         await ensureSyntheticGlobalTables(sql => client.$executeRawUnsafe(sql));
         const prisma = {
+            $transaction: client.$transaction.bind(client),
             $queryRawUnsafe: async (sql: string, ...params: any[]) =>
                 client.$queryRawUnsafe(sql, ...params),
         };

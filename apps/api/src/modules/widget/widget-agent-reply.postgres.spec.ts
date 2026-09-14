@@ -1,3 +1,4 @@
+import { ensureWidgetSchema } from './widget-schema';
 import { randomUUID } from 'crypto';
 import { readFileSync } from 'fs';
 import { join } from 'path';
@@ -52,11 +53,7 @@ const databaseUrl=process.env.PARALLLY_ISOLATION_TEST_URL;
             source_contact_id UUID,source_conversation_id UUID,channel TEXT,transcript JSONB,source_evidence JSONB)`);
         await sql('CREATE TABLE learning_examples(id UUID PRIMARY KEY,source_id UUID,agent_id UUID,status TEXT)');
         await sql('CREATE TABLE learning_releases(id UUID PRIMARY KEY,agent_id UUID,status TEXT,snapshot JSONB,snapshot_hash TEXT,example_ids UUID[])');
-        const publicDDL=readFileSync(join(__dirname,'widget.service.ts'),'utf8');
-        for(const table of ['widget_configs','widget_sessions']){
-            const start=publicDDL.indexOf(`CREATE TABLE IF NOT EXISTS public.${table}`);
-            await client.$executeRawUnsafe(publicDDL.slice(start,publicDDL.indexOf('`',start)));
-        }
+        await ensureWidgetSchema(client);
         await client.$executeRawUnsafe(`INSERT INTO public.widget_configs(id,tenant_id,widget_id,allowed_domains,locale)
             VALUES($1::uuid,$2::uuid,$3,ARRAY['example.test'],'en')`,widgetConfigId,tenantId,widgetId);
         for(const statement of HANDOFF_RECEIPT_DDL)await sql(statement);

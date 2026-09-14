@@ -1,3 +1,4 @@
+import { withRuntimeSchemaLock } from '../../common/utils/runtime-schema-lock';
 import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException, Optional } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
@@ -614,9 +615,11 @@ export class ExternalCrmService {
             )`,
             `CREATE INDEX IF NOT EXISTS "idx_crm_sync_log_recent_${schema}" ON "${schema}"."crm_sync_log" (provider, created_at DESC)`,
         ];
-        for (const ddl of ddls) {
-            await this.prisma.$executeRawUnsafe(ddl);
-        }
+        await withRuntimeSchemaLock(this.prisma, schema, async (tx) => {
+            for (const ddl of ddls) {
+                await tx.$executeRawUnsafe(ddl);
+            }
+        });
         // Where a pushed note went, so an erasure can take it back. Its own DDL
         // constant rather than another literal here, because the erasure path
         // and the parity test read the same one.

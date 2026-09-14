@@ -1,3 +1,4 @@
+import { withRuntimeSchemaLock } from '../../common/utils/runtime-schema-lock';
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { PrismaService } from '../prisma/prisma.service';
@@ -189,49 +190,51 @@ export class EcommerceService {
         );
         if (exists.length > 0) return;
 
-        await this.prisma.$queryRawUnsafe(`
-            CREATE TABLE IF NOT EXISTS "${schemaName}".ecommerce_products (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                external_id TEXT NOT NULL,
-                provider TEXT NOT NULL,
-                title TEXT NOT NULL,
-                description TEXT,
-                handle TEXT,
-                vendor TEXT,
-                product_type TEXT,
-                price_cents INT,
-                currency TEXT DEFAULT 'USD',
-                compare_at_price_cents INT,
-                image_url TEXT,
-                images TEXT[] DEFAULT '{}',
-                variants JSONB DEFAULT '[]',
-                tags TEXT[] DEFAULT '{}',
-                status TEXT DEFAULT 'active',
-                inventory_quantity INT DEFAULT 0,
-                synced_at TIMESTAMPTZ DEFAULT now(),
-                created_at TIMESTAMPTZ DEFAULT now(),
-                UNIQUE(external_id, provider)
-            )
-        `);
+        await withRuntimeSchemaLock(this.prisma, schemaName, async (tx) => {
+            await tx.$queryRawUnsafe(`
+                CREATE TABLE IF NOT EXISTS "${schemaName}".ecommerce_products (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    external_id TEXT NOT NULL,
+                    provider TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    description TEXT,
+                    handle TEXT,
+                    vendor TEXT,
+                    product_type TEXT,
+                    price_cents INT,
+                    currency TEXT DEFAULT 'USD',
+                    compare_at_price_cents INT,
+                    image_url TEXT,
+                    images TEXT[] DEFAULT '{}',
+                    variants JSONB DEFAULT '[]',
+                    tags TEXT[] DEFAULT '{}',
+                    status TEXT DEFAULT 'active',
+                    inventory_quantity INT DEFAULT 0,
+                    synced_at TIMESTAMPTZ DEFAULT now(),
+                    created_at TIMESTAMPTZ DEFAULT now(),
+                    UNIQUE(external_id, provider)
+                )
+            `);
 
-        await this.prisma.$queryRawUnsafe(`
-            CREATE TABLE IF NOT EXISTS "${schemaName}".abandoned_carts (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                external_id TEXT,
-                provider TEXT NOT NULL,
-                contact_id UUID,
-                contact_phone TEXT,
-                contact_email TEXT,
-                items JSONB DEFAULT '[]',
-                total_cents INT DEFAULT 0,
-                currency TEXT DEFAULT 'USD',
-                checkout_url TEXT,
-                status TEXT DEFAULT 'abandoned',
-                recovery_sent_at TIMESTAMPTZ,
-                recovered_at TIMESTAMPTZ,
-                created_at TIMESTAMPTZ DEFAULT now()
-            )
-        `);
+            await tx.$queryRawUnsafe(`
+                CREATE TABLE IF NOT EXISTS "${schemaName}".abandoned_carts (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    external_id TEXT,
+                    provider TEXT NOT NULL,
+                    contact_id UUID,
+                    contact_phone TEXT,
+                    contact_email TEXT,
+                    items JSONB DEFAULT '[]',
+                    total_cents INT DEFAULT 0,
+                    currency TEXT DEFAULT 'USD',
+                    checkout_url TEXT,
+                    status TEXT DEFAULT 'abandoned',
+                    recovery_sent_at TIMESTAMPTZ,
+                    recovered_at TIMESTAMPTZ,
+                    created_at TIMESTAMPTZ DEFAULT now()
+                )
+            `);
+        });
 
         this.logger.log(`E-commerce tables created for schema ${schemaName}`);
     }

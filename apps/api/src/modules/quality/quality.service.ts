@@ -29,8 +29,6 @@ export interface JudgeResult {
     resolutionReason: string;
 }
 
-
-
 @Injectable()
 export class QualityService {
     private readonly logger = new Logger(QualityService.name);
@@ -67,34 +65,13 @@ export class QualityService {
     }
 
     async ensureTables(schemaName: string): Promise<void> {
-        const cacheKey = `quality_cols:v4:${schemaName}`;
+        const cacheKey = `quality_cols:v5:${schemaName}`;
         const cached = await this.redis.get(cacheKey);
         if (cached) return;
 
-        const ignoreDupError = (err: any) => {
-            const msg = err?.message || '';
-            const code = String(err?.code || err?.meta?.code || '');
-            if (
-                code === '23505' ||
-                code === '42P07' ||
-                code === '42710' ||
-                code === '42701' ||
-                msg.includes('already exists') ||
-                msg.includes('23505') ||
-                msg.includes('42P07') ||
-                msg.includes('42710') ||
-                msg.includes('42701')
-            ) {
-                this.logger.debug(`[QA ensureTables] Skip non-fatal database existence/concurrency error: ${msg}`);
-                return;
-            }
-            throw err;
-        };
-
-        try {
-            await this.prisma.executeInTenantSchema(
-                schemaName,
-                `CREATE TABLE IF NOT EXISTS conversation_quality_scores (
+        await this.prisma.executeInTenantSchema(
+            schemaName,
+            `CREATE TABLE IF NOT EXISTS conversation_quality_scores (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                     conversation_id UUID NOT NULL,
                     agent_id UUID,
@@ -112,11 +89,8 @@ export class QualityService {
                     rubric_version VARCHAR(20) DEFAULT 'v1',
                     created_at TIMESTAMPTZ DEFAULT NOW()
                 )`,
-                [],
-            );
-        } catch (err) {
-            ignoreDupError(err);
-        }
+            [],
+        );
 
         for (const statement of [
             `ALTER TABLE conversation_quality_scores ADD COLUMN IF NOT EXISTS agent_id UUID`,
@@ -125,54 +99,38 @@ export class QualityService {
             `ALTER TABLE conversations ADD COLUMN IF NOT EXISTS agent_config_version INTEGER`,
             `ALTER TABLE conversations ADD COLUMN IF NOT EXISTS agent_attribution_conflicted BOOLEAN NOT NULL DEFAULT false`,
         ]) {
-            try {
-                await this.prisma.executeInTenantSchema(schemaName, statement, []);
-            } catch (err) {
-                ignoreDupError(err);
-            }
+
+            await this.prisma.executeInTenantSchema(schemaName, statement, []);
+
         }
 
-        try {
-            await this.prisma.executeInTenantSchema(
-                schemaName,
-                `CREATE INDEX IF NOT EXISTS idx_cqs_conversation ON conversation_quality_scores(conversation_id)`,
-                [],
-            );
-        } catch (err) {
-            ignoreDupError(err);
-        }
+        await this.prisma.executeInTenantSchema(
+            schemaName,
+            `CREATE INDEX IF NOT EXISTS idx_cqs_conversation ON conversation_quality_scores(conversation_id)`,
+            [],
+        );
 
-        try {
-            await this.prisma.executeInTenantSchema(
-                schemaName,
-                `CREATE INDEX IF NOT EXISTS idx_cqs_created ON conversation_quality_scores(created_at)`,
-                [],
-            );
-        } catch (err) {
-            ignoreDupError(err);
-        }
+        await this.prisma.executeInTenantSchema(
+            schemaName,
+            `CREATE INDEX IF NOT EXISTS idx_cqs_created ON conversation_quality_scores(created_at)`,
+            [],
+        );
 
         for (const statement of [
             `CREATE INDEX IF NOT EXISTS idx_cqs_agent_created ON conversation_quality_scores(agent_id, created_at)`,
             `CREATE INDEX IF NOT EXISTS idx_conversations_agent_created ON conversations(agent_persona_id, created_at)`,
         ]) {
-            try {
-                await this.prisma.executeInTenantSchema(schemaName, statement, []);
-            } catch (err) {
-                ignoreDupError(err);
-            }
+
+            await this.prisma.executeInTenantSchema(schemaName, statement, []);
+
         }
 
-        try {
-            // T1.8 — resolution verification flag on conversations
-            await this.prisma.executeInTenantSchema(
-                schemaName,
-                `ALTER TABLE conversations ADD COLUMN IF NOT EXISTS resolution_verified BOOLEAN`,
-                [],
-            );
-        } catch (err) {
-            ignoreDupError(err);
-        }
+        // T1.8 — resolution verification flag on conversations
+        await this.prisma.executeInTenantSchema(
+            schemaName,
+            `ALTER TABLE conversations ADD COLUMN IF NOT EXISTS resolution_verified BOOLEAN`,
+            [],
+        );
 
         for (const statement of QUALITY_EVIDENCE_DDL) {
             await this.prisma.executeInTenantSchema(schemaName, statement, []);

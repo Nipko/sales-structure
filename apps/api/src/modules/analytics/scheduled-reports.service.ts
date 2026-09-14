@@ -1,3 +1,4 @@
+import { withRuntimeSchemaLock } from '../../common/utils/runtime-schema-lock';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
@@ -31,31 +32,35 @@ export class ScheduledReportsService {
         const cached = await this.redis.get(cacheKey);
         if (cached) return;
 
-        await this.prisma.$queryRawUnsafe(
-            `CREATE TABLE IF NOT EXISTS "${schemaName}".scheduled_reports (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                tenant_id UUID NOT NULL,
-                frequency TEXT NOT NULL DEFAULT 'weekly',
-                recipients TEXT[] DEFAULT '{}',
-                is_active BOOLEAN DEFAULT true,
-                last_sent_at TIMESTAMPTZ,
-                last_enqueued_at TIMESTAMPTZ,
-                created_at TIMESTAMPTZ DEFAULT NOW(),
-                updated_at TIMESTAMPTZ DEFAULT NOW()
-            )`,
-        );
-
-        await this.prisma.$queryRawUnsafe(
-            `ALTER TABLE "${schemaName}".scheduled_reports ADD COLUMN IF NOT EXISTS last_enqueued_at TIMESTAMPTZ`,
-        );
-
-        try {
-            await this.prisma.$queryRawUnsafe(
-                `ALTER TABLE "${schemaName}".scheduled_reports
-                 ALTER COLUMN tenant_id TYPE UUID USING tenant_id::uuid`,
+        await withRuntimeSchemaLock(this.prisma, schemaName, async (tx) => {
+            await tx.$queryRawUnsafe(
+                `CREATE TABLE IF NOT EXISTS "${schemaName}".scheduled_reports (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    tenant_id UUID NOT NULL,
+                    frequency TEXT NOT NULL DEFAULT 'weekly',
+                    recipients TEXT[] DEFAULT '{}',
+                    is_active BOOLEAN DEFAULT true,
+                    last_sent_at TIMESTAMPTZ,
+                    last_enqueued_at TIMESTAMPTZ,
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ DEFAULT NOW()
+                )`,
             );
+
+            await tx.$queryRawUnsafe(
+                `ALTER TABLE "${schemaName}".scheduled_reports ADD COLUMN IF NOT EXISTS last_enqueued_at TIMESTAMPTZ`,
+            );
+
+        });
+
+        // Historical text rows remain readable via tenant_id::text. This optional
+        // conversion must not make an otherwise usable table unavailable.
+        try {
+            await withRuntimeSchemaLock(this.prisma, schemaName, tx => tx.$queryRawUnsafe(
+                `ALTER TABLE "${schemaName}".scheduled_reports ALTER COLUMN tenant_id TYPE UUID USING tenant_id::uuid`,
+            ));
         } catch {
-            // Already UUID or empty table — ignore
+            this.logger.debug('Optional tenant_id UUID conversion deferred');
         }
 
         await this.redis.set(cacheKey, '1', 86400);

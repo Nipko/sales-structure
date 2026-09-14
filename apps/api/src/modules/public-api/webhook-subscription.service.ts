@@ -1,3 +1,4 @@
+import { withRuntimeSchemaLock } from '../../common/utils/runtime-schema-lock';
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { HttpService } from '@nestjs/axios';
@@ -46,57 +47,60 @@ export class WebhookSubscriptionService {
     // ── Lazy table creation ───────────────────────────────────────────
 
     private async ensureTable(): Promise<void> {
-        const cacheKey = 'hook_tables_ok_v2';
+        const cacheKey = 'hook_tables_ok_v3';
         const cached = await this.redis.get(cacheKey);
         if (cached) return;
 
-        await this.prisma.$queryRawUnsafe(
-            `CREATE TABLE IF NOT EXISTS public.webhook_subscriptions (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                tenant_id UUID NOT NULL REFERENCES public.tenants(id),
-                target_url TEXT NOT NULL,
-                event TEXT NOT NULL,
-                secret TEXT NOT NULL,
-                is_active BOOLEAN DEFAULT true,
-                created_at TIMESTAMPTZ DEFAULT NOW(),
-                last_triggered_at TIMESTAMPTZ
-            )`,
-        );
+        await withRuntimeSchemaLock(this.prisma, 'public', async (tx) => {
+            await tx.$queryRawUnsafe(
+                `CREATE TABLE IF NOT EXISTS public.webhook_subscriptions (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    tenant_id UUID NOT NULL REFERENCES public.tenants(id),
+                    target_url TEXT NOT NULL,
+                    event TEXT NOT NULL,
+                    secret TEXT NOT NULL,
+                    is_active BOOLEAN DEFAULT true,
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    last_triggered_at TIMESTAMPTZ
+                )`,
+            );
 
-        await this.prisma.$queryRawUnsafe(
-            `CREATE INDEX IF NOT EXISTS idx_webhook_subs_tenant_event
-             ON public.webhook_subscriptions (tenant_id, event)
-             WHERE is_active = true`,
-        );
+            await tx.$queryRawUnsafe(
+                `CREATE INDEX IF NOT EXISTS idx_webhook_subs_tenant_event
+                 ON public.webhook_subscriptions (tenant_id, event)
+                 WHERE is_active = true`,
+            );
 
-        await this.prisma.$queryRawUnsafe(
-            `CREATE TABLE IF NOT EXISTS public.webhook_delivery_outbox (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                subscription_id UUID NOT NULL
-                    REFERENCES public.webhook_subscriptions(id) ON DELETE CASCADE,
-                tenant_id UUID NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
-                event TEXT NOT NULL,
-                event_key TEXT NOT NULL,
-                payload JSONB NOT NULL,
-                state TEXT NOT NULL DEFAULT 'pending'
-                    CHECK (state IN ('pending','in_flight','accepted','rejected','unknown')),
-                attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
-                lease_token UUID,
-                lease_expires_at TIMESTAMPTZ,
-                status_code INTEGER,
-                error TEXT,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                UNIQUE(subscription_id, event_key),
-                CHECK ((state = 'in_flight') =
-                    (lease_token IS NOT NULL AND lease_expires_at IS NOT NULL))
-            )`,
-        );
-        await this.prisma.$queryRawUnsafe(
-            `CREATE INDEX IF NOT EXISTS idx_webhook_delivery_outbox_pending
-                ON public.webhook_delivery_outbox(created_at)
-                WHERE state = 'pending'`,
-        );
+            await tx.$queryRawUnsafe(
+                `CREATE TABLE IF NOT EXISTS public.webhook_delivery_outbox (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    subscription_id UUID NOT NULL
+                        REFERENCES public.webhook_subscriptions(id) ON DELETE CASCADE,
+                    tenant_id UUID NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
+                    event TEXT NOT NULL,
+                    event_key TEXT NOT NULL,
+                    payload JSONB NOT NULL,
+                    state TEXT NOT NULL DEFAULT 'pending'
+                        CHECK (state IN ('pending','in_flight','accepted','rejected','unknown')),
+                    attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+                    lease_token UUID,
+                    lease_expires_at TIMESTAMPTZ,
+                    status_code INTEGER,
+                    error TEXT,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    UNIQUE(subscription_id, event_key),
+                    CHECK ((state = 'in_flight') =
+                        (lease_token IS NOT NULL AND lease_expires_at IS NOT NULL))
+                )`,
+            );
+            await tx.$queryRawUnsafe(
+                `CREATE INDEX IF NOT EXISTS idx_webhook_delivery_outbox_pending
+                    ON public.webhook_delivery_outbox(created_at)
+                    WHERE state = 'pending'`,
+            );
+
+        });
 
         await this.redis.set(cacheKey, '1', 86400); // 24h
     }

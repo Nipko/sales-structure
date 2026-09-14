@@ -1,3 +1,4 @@
+import { ensureWidgetSchema } from './widget-schema';
 import { randomUUID } from 'crypto';
 import { Pool } from 'pg';
 import { readFileSync } from 'fs';
@@ -68,12 +69,11 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
         };
         service = new WidgetService(prisma, redis, config, throttle);
         // Only create the public widget tables needed by this suite, using their production DDL.
-        const publicDDL = readFileSync(join(__dirname, 'widget.service.ts'), 'utf8');
-        for (const table of ['widget_configs', 'widget_sessions']) {
-            const start = publicDDL.indexOf(`CREATE TABLE IF NOT EXISTS public.${table}`);
-            const end = publicDDL.indexOf('`', start);
-            await q(publicDDL.slice(start, end));
-        }
+        await ensureWidgetSchema({
+            $transaction: (callback: any) => prisma.transactionInTenantSchema(schema, (query: any) => callback({
+                $queryRawUnsafe: (sql: string, ...params: any[]) => query(sql, params),
+            })),
+        } as any);
         widget = (await q("INSERT INTO public.widget_configs(tenant_id,widget_id,allowed_domains,locale) VALUES($1::uuid,$2,$3::text[],'es') RETURNING *", [tenantId, `wgt_${randomUUID()}`, ['example.test']]))[0];
         store = new WidgetMessageStore(prisma, redis, relay, throttle, config);
         controls = new ToolExecutionControlService(prisma, config, {} as any, {} as any);

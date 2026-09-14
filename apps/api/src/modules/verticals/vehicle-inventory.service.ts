@@ -1,3 +1,4 @@
+import { withRuntimeSchemaLock } from '../../common/utils/runtime-schema-lock';
 import { Injectable, Logger, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
@@ -31,78 +32,80 @@ export class VehicleInventoryService {
         );
         if (exists.length > 0) return;
 
-        await this.prisma.$queryRawUnsafe(`
-            CREATE TABLE IF NOT EXISTS "${schemaName}".vehicles (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                make TEXT NOT NULL,
-                model TEXT NOT NULL,
-                year INT NOT NULL,
-                trim_level TEXT,
-                vin TEXT,
-                license_plate TEXT,
-                color TEXT,
-                fuel_type TEXT DEFAULT 'gasoline',
-                transmission TEXT DEFAULT 'automatic',
-                mileage_km INT DEFAULT 0,
-                condition TEXT DEFAULT 'new',
-                price_cents INT NOT NULL,
-                currency TEXT DEFAULT 'COP',
-                status TEXT DEFAULT 'available',
-                category TEXT DEFAULT 'sedan',
-                features TEXT[] DEFAULT '{}',
-                photos TEXT[] DEFAULT '{}',
-                description TEXT,
-                location TEXT,
-                is_featured BOOLEAN DEFAULT false,
-                acquired_at DATE,
-                sold_at DATE,
-                sold_price_cents INT,
-                buyer_contact_id UUID,
-                created_at TIMESTAMPTZ DEFAULT now(),
-                updated_at TIMESTAMPTZ DEFAULT now()
-            )
-        `);
+        await withRuntimeSchemaLock(this.prisma, schemaName, async (tx) => {
+            await tx.$queryRawUnsafe(`
+                CREATE TABLE IF NOT EXISTS "${schemaName}".vehicles (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    make TEXT NOT NULL,
+                    model TEXT NOT NULL,
+                    year INT NOT NULL,
+                    trim_level TEXT,
+                    vin TEXT,
+                    license_plate TEXT,
+                    color TEXT,
+                    fuel_type TEXT DEFAULT 'gasoline',
+                    transmission TEXT DEFAULT 'automatic',
+                    mileage_km INT DEFAULT 0,
+                    condition TEXT DEFAULT 'new',
+                    price_cents INT NOT NULL,
+                    currency TEXT DEFAULT 'COP',
+                    status TEXT DEFAULT 'available',
+                    category TEXT DEFAULT 'sedan',
+                    features TEXT[] DEFAULT '{}',
+                    photos TEXT[] DEFAULT '{}',
+                    description TEXT,
+                    location TEXT,
+                    is_featured BOOLEAN DEFAULT false,
+                    acquired_at DATE,
+                    sold_at DATE,
+                    sold_price_cents INT,
+                    buyer_contact_id UUID,
+                    created_at TIMESTAMPTZ DEFAULT now(),
+                    updated_at TIMESTAMPTZ DEFAULT now()
+                )
+            `);
 
-        await this.prisma.$queryRawUnsafe(`
-            CREATE INDEX IF NOT EXISTS idx_vehicles_status ON "${schemaName}".vehicles(status)
-        `);
+            await tx.$queryRawUnsafe(`
+                CREATE INDEX IF NOT EXISTS idx_vehicles_status ON "${schemaName}".vehicles(status)
+            `);
 
-        await this.prisma.$queryRawUnsafe(`
-            CREATE INDEX IF NOT EXISTS idx_vehicles_make_model ON "${schemaName}".vehicles(make, model)
-        `);
+            await tx.$queryRawUnsafe(`
+                CREATE INDEX IF NOT EXISTS idx_vehicles_make_model ON "${schemaName}".vehicles(make, model)
+            `);
 
-        await this.prisma.$queryRawUnsafe(`
-            CREATE TABLE IF NOT EXISTS "${schemaName}".vehicle_inquiries (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                vehicle_id UUID NOT NULL REFERENCES "${schemaName}".vehicles(id) ON DELETE CASCADE,
-                contact_id UUID,
-                contact_name TEXT,
-                contact_phone TEXT,
-                contact_email TEXT,
-                inquiry_type TEXT DEFAULT 'info',
-                notes TEXT,
-                status TEXT DEFAULT 'new',
-                assigned_to UUID,
-                created_at TIMESTAMPTZ DEFAULT now()
-            )
-        `);
+            await tx.$queryRawUnsafe(`
+                CREATE TABLE IF NOT EXISTS "${schemaName}".vehicle_inquiries (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    vehicle_id UUID NOT NULL REFERENCES "${schemaName}".vehicles(id) ON DELETE CASCADE,
+                    contact_id UUID,
+                    contact_name TEXT,
+                    contact_phone TEXT,
+                    contact_email TEXT,
+                    inquiry_type TEXT DEFAULT 'info',
+                    notes TEXT,
+                    status TEXT DEFAULT 'new',
+                    assigned_to UUID,
+                    created_at TIMESTAMPTZ DEFAULT now()
+                )
+            `);
 
-        await this.prisma.$queryRawUnsafe(`
-            CREATE TABLE IF NOT EXISTS "${schemaName}".test_drives (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                vehicle_id UUID NOT NULL REFERENCES "${schemaName}".vehicles(id) ON DELETE CASCADE,
-                contact_id UUID,
-                contact_name TEXT NOT NULL,
-                contact_phone TEXT,
-                scheduled_date DATE NOT NULL,
-                scheduled_time TIME NOT NULL,
-                duration_min INT DEFAULT 30,
-                status TEXT DEFAULT 'scheduled',
-                notes TEXT,
-                assigned_to UUID,
-                created_at TIMESTAMPTZ DEFAULT now()
-            )
-        `);
+            await tx.$queryRawUnsafe(`
+                CREATE TABLE IF NOT EXISTS "${schemaName}".test_drives (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    vehicle_id UUID NOT NULL REFERENCES "${schemaName}".vehicles(id) ON DELETE CASCADE,
+                    contact_id UUID,
+                    contact_name TEXT NOT NULL,
+                    contact_phone TEXT,
+                    scheduled_date DATE NOT NULL,
+                    scheduled_time TIME NOT NULL,
+                    duration_min INT DEFAULT 30,
+                    status TEXT DEFAULT 'scheduled',
+                    notes TEXT,
+                    assigned_to UUID,
+                    created_at TIMESTAMPTZ DEFAULT now()
+                )
+            `);
+        });
 
         this.logger.log(`Vehicle inventory tables created for schema ${schemaName}`);
     }

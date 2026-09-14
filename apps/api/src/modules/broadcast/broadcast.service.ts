@@ -1,3 +1,4 @@
+import { withRuntimeSchemaLock } from '../../common/utils/runtime-schema-lock';
 import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException, Inject, Optional, forwardRef } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Cron } from '@nestjs/schedule';
@@ -937,7 +938,7 @@ export class BroadcastService {
     }
 
     private async ensureBroadcastTables(schema: string): Promise<void> {
-        const cacheKey = `broadcast:tables:v3:${schema}`;
+        const cacheKey = `broadcast:tables:v4:${schema}`;
         const cached = await this.redis.get(cacheKey);
         if (cached) return;
 
@@ -952,17 +953,16 @@ export class BroadcastService {
         // con "column does not exist". La columna se agregó al canónico.
         await this.prisma.ensureCanonicalTables(schema, ['campaign_recipients']);
 
-        try {
-            await this.prisma.$queryRawUnsafe(`CREATE INDEX IF NOT EXISTS idx_campaign_recipients_campaign ON "${schema}".campaign_recipients(campaign_id)`);
-            await this.prisma.$queryRawUnsafe(`CREATE INDEX IF NOT EXISTS idx_campaign_recipients_status ON "${schema}".campaign_recipients(campaign_id, status)`);
-        } catch { /* ok */ }
+        await withRuntimeSchemaLock(this.prisma, schema, async (tx) => {
+            await tx.$queryRawUnsafe(`CREATE INDEX IF NOT EXISTS idx_campaign_recipients_campaign ON "${schema}".campaign_recipients(campaign_id)`);
+            await tx.$queryRawUnsafe(`CREATE INDEX IF NOT EXISTS idx_campaign_recipients_status ON "${schema}".campaign_recipients(campaign_id, status)`);
 
-        // Multi-channel columns
-        try {
-            await this.prisma.$queryRawUnsafe(`ALTER TABLE "${schema}".campaign_recipients ADD COLUMN IF NOT EXISTS email VARCHAR(255) DEFAULT ''`);
-            await this.prisma.$queryRawUnsafe(`ALTER TABLE "${schema}".campaign_recipients ADD COLUMN IF NOT EXISTS channel VARCHAR(50) DEFAULT 'whatsapp'`);
-            await this.prisma.$queryRawUnsafe(`ALTER TABLE "${schema}".campaigns ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMPTZ`);
-        } catch { /* ok */ }
+            // Multi-channel columns
+
+            await tx.$queryRawUnsafe(`ALTER TABLE "${schema}".campaign_recipients ADD COLUMN IF NOT EXISTS email VARCHAR(255) DEFAULT ''`);
+            await tx.$queryRawUnsafe(`ALTER TABLE "${schema}".campaign_recipients ADD COLUMN IF NOT EXISTS channel VARCHAR(50) DEFAULT 'whatsapp'`);
+            await tx.$queryRawUnsafe(`ALTER TABLE "${schema}".campaigns ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMPTZ`);
+        });
 
         await this.redis.set(cacheKey, 'true', 86400);
     }

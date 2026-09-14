@@ -1,3 +1,4 @@
+import { withRuntimeSchemaLock } from '../../common/utils/runtime-schema-lock';
 import {
     BadRequestException,
     ForbiddenException,
@@ -307,11 +308,11 @@ export class OrdersService {
 
             // Índice propio de este módulo: no está en el canónico y es
             // aditivo, así que se mantiene acá.
-            await this.prisma.$queryRawUnsafe(`
+            await withRuntimeSchemaLock(this.prisma, schema, tx => tx.$queryRawUnsafe(`
                 CREATE INDEX IF NOT EXISTS idx_orders_opportunity_id
                 ON "${schema}".orders(opportunity_id)
                 WHERE opportunity_id IS NOT NULL
-            `);
+            `));
 
             // A lazy-created/existing orders table must receive the same exact
             // ownership FK + guard as schemas migrated during API startup.

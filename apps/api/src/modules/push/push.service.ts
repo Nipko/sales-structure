@@ -1,3 +1,4 @@
+import { withRuntimeSchemaLock } from '../../common/utils/runtime-schema-lock';
 import { BadRequestException, ConflictException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
@@ -348,29 +349,32 @@ export class PushService implements OnModuleInit {
     }
 
     async ensurePushTable(): Promise<void> {
-        await this.prisma.$queryRawUnsafe(`
-            CREATE TABLE IF NOT EXISTS public.push_subscriptions (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-                tenant_id UUID NOT NULL,
-                endpoint TEXT NOT NULL UNIQUE,
-                keys JSONB NOT NULL,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-            )
-        `);
-        await this.prisma.$queryRawUnsafe(
-            `ALTER TABLE public.push_subscriptions ADD COLUMN IF NOT EXISTS provider VARCHAR(20) DEFAULT 'webpush'`,
-        ).catch(() => {});
-        await this.prisma.$queryRawUnsafe(
-            `ALTER TABLE public.push_subscriptions ADD COLUMN IF NOT EXISTS device_id UUID`,
-        ).catch(() => {});
-        await this.prisma.$queryRawUnsafe(`
-            CREATE INDEX IF NOT EXISTS idx_push_subs_user ON public.push_subscriptions(user_id)
-        `);
-        await this.prisma.$queryRawUnsafe(`
-            CREATE INDEX IF NOT EXISTS idx_push_subs_expo_device
-            ON public.push_subscriptions(device_id)
-            WHERE provider = 'expo' AND device_id IS NOT NULL
-        `);
+        await withRuntimeSchemaLock(this.prisma, 'public', async (tx) => {
+            await tx.$queryRawUnsafe(`
+                CREATE TABLE IF NOT EXISTS public.push_subscriptions (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+                    tenant_id UUID NOT NULL,
+                    endpoint TEXT NOT NULL UNIQUE,
+                    keys JSONB NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+            `);
+            await tx.$queryRawUnsafe(
+                `ALTER TABLE public.push_subscriptions ADD COLUMN IF NOT EXISTS provider VARCHAR(20) DEFAULT 'webpush'`,
+            );
+            await tx.$queryRawUnsafe(
+                `ALTER TABLE public.push_subscriptions ADD COLUMN IF NOT EXISTS device_id UUID`,
+            );
+            await tx.$queryRawUnsafe(`
+                CREATE INDEX IF NOT EXISTS idx_push_subs_user ON public.push_subscriptions(user_id)
+            `);
+            await tx.$queryRawUnsafe(`
+                CREATE INDEX IF NOT EXISTS idx_push_subs_expo_device
+                ON public.push_subscriptions(device_id)
+                WHERE provider = 'expo' AND device_id IS NOT NULL
+            `);
+        });
+
     }
 }

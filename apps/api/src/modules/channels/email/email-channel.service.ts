@@ -1,3 +1,4 @@
+import { withRuntimeSchemaLock } from '../../../common/utils/runtime-schema-lock';
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../redis/redis.service';
@@ -57,22 +58,25 @@ export class EmailChannelService {
         const cached = await this.redis.get(this.TABLE_CACHE_KEY);
         if (cached) return;
 
-        await this.prisma.$queryRawUnsafe(`
-            CREATE TABLE IF NOT EXISTS public.email_channel_configs (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                tenant_id UUID NOT NULL REFERENCES public.tenants(id),
-                provider TEXT NOT NULL DEFAULT 'smtp',
-                from_email TEXT NOT NULL,
-                from_name TEXT,
-                reply_to TEXT,
-                inbound_type TEXT DEFAULT 'sendgrid_parse',
-                provider_config JSONB DEFAULT '{}',
-                is_active BOOLEAN DEFAULT true,
-                created_at TIMESTAMPTZ DEFAULT NOW(),
-                updated_at TIMESTAMPTZ DEFAULT NOW(),
-                UNIQUE(tenant_id)
-            )
-        `);
+        await withRuntimeSchemaLock(this.prisma, 'public', async (tx) => {
+            await tx.$queryRawUnsafe(`
+                CREATE TABLE IF NOT EXISTS public.email_channel_configs (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    tenant_id UUID NOT NULL REFERENCES public.tenants(id),
+                    provider TEXT NOT NULL DEFAULT 'smtp',
+                    from_email TEXT NOT NULL,
+                    from_name TEXT,
+                    reply_to TEXT,
+                    inbound_type TEXT DEFAULT 'sendgrid_parse',
+                    provider_config JSONB DEFAULT '{}',
+                    is_active BOOLEAN DEFAULT true,
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ DEFAULT NOW(),
+                    UNIQUE(tenant_id)
+                )
+            `);
+
+        });
 
         await this.redis.set(this.TABLE_CACHE_KEY, '1', 86400);
         this.logger.log('email_channel_configs table ensured');
@@ -208,25 +212,27 @@ export class EmailChannelService {
 
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
 
-        await this.prisma.$queryRawUnsafe(`
-            CREATE TABLE IF NOT EXISTS "${schemaName}".email_threads (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                conversation_id UUID NOT NULL,
-                subject TEXT,
-                message_id_header TEXT,
-                in_reply_to TEXT,
-                references_header TEXT,
-                cc TEXT[],
-                bcc TEXT[],
-                created_at TIMESTAMPTZ DEFAULT NOW()
-            )
-        `);
+        await withRuntimeSchemaLock(this.prisma, schemaName, async (tx) => {
+            await tx.$queryRawUnsafe(`
+                CREATE TABLE IF NOT EXISTS "${schemaName}".email_threads (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    conversation_id UUID NOT NULL,
+                    subject TEXT,
+                    message_id_header TEXT,
+                    in_reply_to TEXT,
+                    references_header TEXT,
+                    cc TEXT[],
+                    bcc TEXT[],
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                )
+            `);
 
-        // Index for fast lookup by conversation
-        await this.prisma.$queryRawUnsafe(`
-            CREATE INDEX IF NOT EXISTS idx_email_threads_conv
-            ON "${schemaName}".email_threads (conversation_id)
-        `);
+            // Index for fast lookup by conversation
+            await tx.$queryRawUnsafe(`
+                CREATE INDEX IF NOT EXISTS idx_email_threads_conv
+                ON "${schemaName}".email_threads (conversation_id)
+            `);
+        });
 
         await this.redis.set(cacheKey, '1', 86400);
         this.logger.log(`email_threads table ensured for schema ${schemaName}`);

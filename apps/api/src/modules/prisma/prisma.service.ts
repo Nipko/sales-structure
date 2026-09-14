@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
+import { acquireRuntimeSchemaLock, isRuntimeSchemaDdl, withRuntimeSchemaLock } from '../../common/utils/runtime-schema-lock';
 import { resolveMirroredDealStatus } from '../pipeline/pipeline-outcome.util';
 import { ensurePrimaryPipeline } from '../../common/utils/primary-pipeline.util';
 
@@ -68,7 +69,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
             try {
                 await this.$connect();
                 this.logger.log('Database connection established');
-                
+
                 // Widen critical columns system-wide at startup
                 await this.ensureVarcharColumnsWiden().catch((err) => {
                     this.logger.error(`Column widening failed (non-blocking): ${err.message}`);
@@ -152,6 +153,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         // to this query lifecycle and cannot leak across pooled connections.
         return this.$transaction(async (tx: any) => {
             await tx.$executeRawUnsafe(`SET LOCAL search_path TO "${schemaName}", public`);
+            if (isRuntimeSchemaDdl(query)) await acquireRuntimeSchemaLock(tx, schemaName);
             return tx.$queryRawUnsafe(query, ...sanitizedParams) as Promise<T>;
         }, { timeout: options?.timeout ?? 15000 });
     }
@@ -169,7 +171,12 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         this.validateSchemaName(schemaName);
         return this.$transaction(async (tx: any) => {
             await tx.$executeRawUnsafe(`SET LOCAL search_path TO "${schemaName}", public`);
+            let schemaLocked = false;
             const query = async <R = any[]>(sql: string, params: any[] = []): Promise<R> => {
+                if (!schemaLocked && isRuntimeSchemaDdl(sql)) {
+                    await acquireRuntimeSchemaLock(tx, schemaName);
+                    schemaLocked = true;
+                }
                 const sanitizedParams = this.sanitizeParams(sql, params);
                 return tx.$queryRawUnsafe(sql, ...sanitizedParams) as Promise<R>;
             };
@@ -218,7 +225,8 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         }
 
         if (!schemaAlreadyExists) {
-            await this.$executeRawUnsafe(`CREATE SCHEMA "${schemaName}";`);
+            await withRuntimeSchemaLock(this, schemaName, tx =>
+                tx.$executeRawUnsafe(`CREATE SCHEMA IF NOT EXISTS "${schemaName}";`));
         }
 
         const template = await this.loadTenantSchemaTemplate();
@@ -233,7 +241,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         const unexpectedErrors: Array<{ statement: string; error: unknown }> = [];
         for (const statement of statements) {
             try {
-                await this.$executeRawUnsafe(statement);
+                await withRuntimeSchemaLock(this, schemaName, tx => tx.$executeRawUnsafe(statement));
             } catch (e: any) {
                 // Skip "already exists" errors (42P06, 42710, 42P07) for idempotency
                 const code = e?.meta?.code || '';
@@ -315,7 +323,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
             }
             for (const statement of matching) {
                 try {
-                    await this.$executeRawUnsafe(statement);
+                    await withRuntimeSchemaLock(this, schemaName, tx => tx.$executeRawUnsafe(statement));
                 } catch (e: any) {
                     const code = e?.meta?.code || '';
                     // Ya existe: es exactamente el caso normal de una reparación.
@@ -675,7 +683,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
 
             for (const schema of schemas) {
                 const schemaName = schema.schema_name;
-                
+
                 const alterStatements = [
                     `ALTER TABLE "${schemaName}"."contacts" ALTER COLUMN "avatar_url" TYPE TEXT;`,
                     `ALTER TABLE "${schemaName}"."messages" ALTER COLUMN "media_url" TYPE TEXT;`,
@@ -695,9 +703,11 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
 
                 for (const sql of alterStatements) {
                     try {
-                        await (super.$executeRawUnsafe as any)(sql);
+                        await this.executeInTenantSchema(schemaName, sql);
                     } catch (e: any) {
-                        // Suppress error for tables or columns that don't exist in older or custom tenant schemas
+                        // Only missing optional tables/columns are expected on historical schemas.
+                        const code = e?.meta?.code ?? e?.code;
+                        if (!['42P01', '42703'].includes(code)) throw e;
                     }
                 }
             }
@@ -922,7 +932,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
             if (p.length <= 255) return p;
 
             const lowerQuery = query.toLowerCase();
-            const isKnownLongField = 
+            const isKnownLongField =
                 lowerQuery.includes('content_text') ||
                 lowerQuery.includes('description') ||
                 lowerQuery.includes('summary') ||
@@ -1025,29 +1035,19 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
                 // pipelines table that missed this constraint. Multiple
                 // defaults are ambiguous tenant data, so index creation is
                 // intentionally fail-closed for that schema.
-                await (super.$executeRawUnsafe as any)(
-                    `CREATE UNIQUE INDEX IF NOT EXISTS uidx_pipelines_default_per_tenant
-                     ON "${schemaName}"."pipelines" (tenant_id) WHERE is_default = true`
-                );
-                await (super.$executeRawUnsafe as any)(
-                    `ALTER TABLE "${schemaName}"."pipeline_stages" ADD COLUMN IF NOT EXISTS pipeline_id UUID`
-                );
+                await this.executeInTenantSchema(schemaName, `CREATE UNIQUE INDEX IF NOT EXISTS uidx_pipelines_default_per_tenant
+                     ON "${schemaName}"."pipelines" (tenant_id) WHERE is_default = true`);
+                await this.executeInTenantSchema(schemaName, `ALTER TABLE "${schemaName}"."pipeline_stages" ADD COLUMN IF NOT EXISTS pipeline_id UUID`);
                 // Ownership reconciliation compares these fields.  Historical
                 // schemas may predate the explicit outcome/rules columns, so
                 // establish that contract before invoking the reconciler or a
                 // missing column would make this schema permanently skip the
                 // later ALTER statements on every startup.
-                await (super.$executeRawUnsafe as any)(
-                    `ALTER TABLE "${schemaName}"."pipeline_stages"
-                     ADD COLUMN IF NOT EXISTS terminal_outcome VARCHAR(10)`
-                );
-                await (super.$executeRawUnsafe as any)(
-                    `ALTER TABLE "${schemaName}"."pipeline_stages"
-                     ADD COLUMN IF NOT EXISTS transition_rules JSONB DEFAULT '[]'::jsonb`
-                );
-                await (super.$executeRawUnsafe as any)(
-                    `ALTER TABLE "${schemaName}"."deals" ADD COLUMN IF NOT EXISTS pipeline_id UUID`
-                );
+                await this.executeInTenantSchema(schemaName, `ALTER TABLE "${schemaName}"."pipeline_stages"
+                     ADD COLUMN IF NOT EXISTS terminal_outcome VARCHAR(10)`);
+                await this.executeInTenantSchema(schemaName, `ALTER TABLE "${schemaName}"."pipeline_stages"
+                     ADD COLUMN IF NOT EXISTS transition_rules JSONB DEFAULT '[]'::jsonb`);
+                await this.executeInTenantSchema(schemaName, `ALTER TABLE "${schemaName}"."deals" ADD COLUMN IF NOT EXISTS pipeline_id UUID`);
                 const pipelineResolution = await this.transactionInTenantSchema(
                     schemaName,
                     (query) => ensurePrimaryPipeline(query, tenantId),
@@ -1063,10 +1063,8 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
                 // slug).  Historical schemas that never received the full
                 // template must gain the same conflict target after ownership
                 // reconciliation has removed safe duplicates.
-                await (super.$executeRawUnsafe as any)(
-                    `CREATE UNIQUE INDEX IF NOT EXISTS uidx_pipeline_stages_pipeline_slug
-                     ON "${schemaName}"."pipeline_stages" (pipeline_id, slug) NULLS NOT DISTINCT`
-                );
+                await this.executeInTenantSchema(schemaName, `CREATE UNIQUE INDEX IF NOT EXISTS uidx_pipeline_stages_pipeline_slug
+                     ON "${schemaName}"."pipeline_stages" (pipeline_id, slug) NULLS NOT DISTINCT`);
 
                 // Older tenant schemas predate the explicit outcome/link columns. Add
                 // the contract, but never manufacture a terminal outcome from probability.
@@ -1076,26 +1074,20 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
                       WHERE COALESCE(is_terminal, false) = false
                         AND terminal_outcome IS NOT NULL`
                 );
-                await (super.$executeRawUnsafe as any)(
-                    `ALTER TABLE "${schemaName}"."pipeline_stages"
-                     DROP CONSTRAINT IF EXISTS pipeline_stages_terminal_outcome_check`
-                );
-                await (super.$executeRawUnsafe as any)(
-                    `ALTER TABLE "${schemaName}"."pipeline_stages"
+                await this.transactionInTenantSchema(schemaName, async (query) => {
+                    await query(`ALTER TABLE "${schemaName}"."pipeline_stages"
+                     DROP CONSTRAINT IF EXISTS pipeline_stages_terminal_outcome_check`);
+                    await query(`ALTER TABLE "${schemaName}"."pipeline_stages"
                      ADD CONSTRAINT pipeline_stages_terminal_outcome_check CHECK (
                          (COALESCE(is_terminal, false) = false AND terminal_outcome IS NULL)
                          OR (is_terminal = true AND terminal_outcome IN ('won', 'lost'))
-                     ) NOT VALID`
-                );
-                await (super.$executeRawUnsafe as any)(
-                    `ALTER TABLE "${schemaName}"."opportunities"
+                     ) NOT VALID`);
+                });
+                await this.executeInTenantSchema(schemaName, `ALTER TABLE "${schemaName}"."opportunities"
                      ADD COLUMN IF NOT EXISTS deal_id UUID
-                     REFERENCES "${schemaName}"."deals"(id) ON DELETE SET NULL`
-                );
-                await (super.$executeRawUnsafe as any)(
-                    `CREATE INDEX IF NOT EXISTS idx_opportunities_deal_id
-                     ON "${schemaName}"."opportunities"(deal_id)`
-                );
+                     REFERENCES "${schemaName}"."deals"(id) ON DELETE SET NULL`);
+                await this.executeInTenantSchema(schemaName, `CREATE INDEX IF NOT EXISTS idx_opportunities_deal_id
+                     ON "${schemaName}"."opportunities"(deal_id)`);
                 const duplicateDealLinks = await (super.$queryRawUnsafe as any)(
                     `SELECT deal_id, COUNT(*)::int AS opportunity_count
                        FROM "${schemaName}"."opportunities"
@@ -1110,11 +1102,9 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
                         `opportunities linked to deal ${duplicateDealLinks[0].deal_id}; manual repair required`,
                     );
                 } else {
-                    await (super.$executeRawUnsafe as any)(
-                        `CREATE UNIQUE INDEX IF NOT EXISTS uidx_opportunities_deal_id
+                    await this.executeInTenantSchema(schemaName, `CREATE UNIQUE INDEX IF NOT EXISTS uidx_opportunities_deal_id
                          ON "${schemaName}"."opportunities"(deal_id)
-                         WHERE deal_id IS NOT NULL`
-                    );
+                         WHERE deal_id IS NOT NULL`);
                 }
 
                 // 2. Repair the historical Deal mirror from the canonical stage outcome.

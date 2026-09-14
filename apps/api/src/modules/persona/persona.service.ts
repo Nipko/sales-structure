@@ -1,3 +1,4 @@
+import { withRuntimeSchemaLock } from '../../common/utils/runtime-schema-lock';
 import { BadRequestException, ConflictException, ForbiddenException, forwardRef, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { AgentConfigurationRevisionStore } from './agent-configuration-revision';
 import { readServingPersona } from './serving-persona';
@@ -421,7 +422,6 @@ export class PersonaService {
         lines.push('  </skillset>');
     }
 
-
     /**
      * Deep merge two config objects (template overrides default).
      */
@@ -689,50 +689,52 @@ export class PersonaService {
     async ensureMultiAgentTables(tenantId: string): Promise<void> {
         const schemaName = await this.tenantsService.getSchemaName(tenantId);
 
-        await this.prisma.$executeRawUnsafe(`
-            CREATE TABLE IF NOT EXISTS "${schemaName}"."agent_personas" (
-                "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                "name" VARCHAR(255) NOT NULL,
-                "template_id" VARCHAR(100),
-                "is_active" BOOLEAN DEFAULT true,
-                "is_default" BOOLEAN DEFAULT false,
-                "config_json" JSONB NOT NULL,
-                "channels" TEXT[] DEFAULT '{}',
-                "channel_bindings" TEXT[] DEFAULT '{}',
-                "schedule_mode" VARCHAR(20) DEFAULT '24_7',
-                "version" INTEGER DEFAULT 1,
-                "created_by" VARCHAR(255),
-                "created_at" TIMESTAMP DEFAULT NOW(),
-                "updated_at" TIMESTAMP DEFAULT NOW()
-            )
-        `);
+        await withRuntimeSchemaLock(this.prisma, schemaName, async (tx) => {
+            await tx.$executeRawUnsafe(`
+                CREATE TABLE IF NOT EXISTS "${schemaName}"."agent_personas" (
+                    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    "name" VARCHAR(255) NOT NULL,
+                    "template_id" VARCHAR(100),
+                    "is_active" BOOLEAN DEFAULT true,
+                    "is_default" BOOLEAN DEFAULT false,
+                    "config_json" JSONB NOT NULL,
+                    "channels" TEXT[] DEFAULT '{}',
+                    "channel_bindings" TEXT[] DEFAULT '{}',
+                    "schedule_mode" VARCHAR(20) DEFAULT '24_7',
+                    "version" INTEGER DEFAULT 1,
+                    "created_by" VARCHAR(255),
+                    "created_at" TIMESTAMP DEFAULT NOW(),
+                    "updated_at" TIMESTAMP DEFAULT NOW()
+                )
+            `);
 
-        // Multi-account: bind an agent to a SPECIFIC connected account
-        // ("${channelType}:${accountId}"), so two WhatsApp numbers can run
-        // different agents. `channels` (type-level) stays as the fallback.
-        // ALTER for tenants whose table predates this column.
-        await this.prisma.$executeRawUnsafe(
-            `ALTER TABLE "${schemaName}"."agent_personas" ADD COLUMN IF NOT EXISTS "channel_bindings" TEXT[] DEFAULT '{}'`,
-        );
+            // Multi-account: bind an agent to a SPECIFIC connected account
+            // ("${channelType}:${accountId}"), so two WhatsApp numbers can run
+            // different agents. `channels` (type-level) stays as the fallback.
+            // ALTER for tenants whose table predates this column.
+            await tx.$executeRawUnsafe(
+                `ALTER TABLE "${schemaName}"."agent_personas" ADD COLUMN IF NOT EXISTS "channel_bindings" TEXT[] DEFAULT '{}'`,
+            );
 
-        await this.prisma.$executeRawUnsafe(`
-            CREATE TABLE IF NOT EXISTS "${schemaName}"."agent_templates" (
-                "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                "name" VARCHAR(255) NOT NULL,
-                "description" TEXT,
-                "icon" VARCHAR(50) DEFAULT 'bot',
-                "config_json" JSONB NOT NULL,
-                "is_builtin" BOOLEAN DEFAULT false,
-                "created_by" VARCHAR(255),
-                "created_at" TIMESTAMP DEFAULT NOW()
-            )
-        `);
+            await tx.$executeRawUnsafe(`
+                CREATE TABLE IF NOT EXISTS "${schemaName}"."agent_templates" (
+                    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    "name" VARCHAR(255) NOT NULL,
+                    "description" TEXT,
+                    "icon" VARCHAR(50) DEFAULT 'bot',
+                    "config_json" JSONB NOT NULL,
+                    "is_builtin" BOOLEAN DEFAULT false,
+                    "created_by" VARCHAR(255),
+                    "created_at" TIMESTAMP DEFAULT NOW()
+                )
+            `);
 
-        // Create indexes (one per call — Prisma doesn't allow multiple statements)
-        await this.prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "idx_agent_personas_active_${schemaName}" ON "${schemaName}"."agent_personas" ("is_active")`);
-        await this.prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "idx_agent_personas_channels_${schemaName}" ON "${schemaName}"."agent_personas" USING GIN ("channels")`);
-        await this.prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "idx_agent_personas_bindings_${schemaName}" ON "${schemaName}"."agent_personas" USING GIN ("channel_bindings")`);
-        await this.prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "idx_agent_personas_default_${schemaName}" ON "${schemaName}"."agent_personas" ("is_default") WHERE "is_default" = true`);
+            // Create indexes (one per call — Prisma doesn't allow multiple statements)
+            await tx.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "idx_agent_personas_active_${schemaName}" ON "${schemaName}"."agent_personas" ("is_active")`);
+            await tx.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "idx_agent_personas_channels_${schemaName}" ON "${schemaName}"."agent_personas" USING GIN ("channels")`);
+            await tx.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "idx_agent_personas_bindings_${schemaName}" ON "${schemaName}"."agent_personas" USING GIN ("channel_bindings")`);
+            await tx.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "idx_agent_personas_default_${schemaName}" ON "${schemaName}"."agent_personas" ("is_default") WHERE "is_default" = true`);
+        });
     }
 
     private async ensureTablesForTenant(tenantId: string): Promise<void> {

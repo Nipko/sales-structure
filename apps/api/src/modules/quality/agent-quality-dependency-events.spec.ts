@@ -51,6 +51,9 @@ describe('Agent Quality dependency mutation events', () => {
             $queryRawUnsafe: jest.fn(async (sql: string) =>
                 sql.includes('SELECT id') ? [] : [row]),
         };
+        prisma.$transaction = async (callback: any) => callback({
+            $executeRawUnsafe: prisma.$executeRawUnsafe, $queryRawUnsafe: jest.fn().mockResolvedValue([]),
+        });
         const service = new BusinessInfoService(
             prisma,
             { del: jest.fn() } as any,

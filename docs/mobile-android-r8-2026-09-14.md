@@ -1,18 +1,40 @@
 # Optimización Android y diagnóstico de release
 
-Fecha: 14 de septiembre de 2026. AAB Parallly Mobile 1.1.0 (10) compilado y validado.
+Fecha: 14 de septiembre de 2026. El AAB 1.1.0 (10) superó firma y estructura,
+pero falló la conversión nativa de registros.
 **Incidencia posterior: v10 bloqueado por SecureStore.** El probe nativo con su
 DEX exacto reproduce `NullPointerException` en `RecordTypeConverter.kt:74`; R8
 eliminó el miembro `PropertyDescriptor.fieldAnnotation` y sustituyó la lectura
 por `throw null`, aunque las anotaciones y el DTO permanecían en el DEX.
 La corrección para 1.1.1 añade keep solo a los tipos de anotación de
 `expo.modules.kotlin.records` y a constructores de implementaciones de
-`ValidationBinder`. Requiere repetir la conversión con el nuevo binario.
+`ValidationBinder`. El candidato 1.1.1 (12), EAS
+`3f8c9d02-c694-47c2-9f93-21daa9176533`, terminó y pasó la conversión con su
+DEX exacto en Android 16: diez etapas PASS, salida 0. Conserva R8 completo,
+optimización, ofuscación y shrinking; el mapping se subió a Sentry.
+
+El [diagnóstico reproducible](../apps/mobile/scripts/android-records-probe/README.md)
+comprueba el mapping embebido y cada DEX mediante SHA-256. En Android 16 el
+binario v10 supera las tres etapas de construcción y reflexión, pero falla las
+siete etapas de conversión, con `RESULT failures=7` y salida 1. Incluye
+opciones vacías, valores explícitos, rechazo de tipos incorrectos y registros
+de notificaciones con campos obligatorios. Las pruebas usan objetos sintéticos;
+no llaman a SecureStore ni acceden a sesiones, almacenamiento o datos de la app.
+
+En v12 pasan 300 conversiones válidas y cuatro rechazos de datos inválidos.
+El DEX tiene 7.428.824 bytes y SHA-256
+`DE4532F905581D7C12430198DF408D5DD67CF04A07D0A2218E26AB32A1061351`.
+El mapping conserva las reglas acotadas y `r8.json` confirma que las tres fases
+siguen activas. Play confirma también para el build 12, artefacto
+`4860230132141226011`, **91% de ofuscación**, optimización **Alta**, R8 completo
+y compatibilidad de páginas de 16 KB. Las cifras del build 10 que aparecen
+abajo son evidencia histórica.
 
 Play confirma optimización alta y 91% de ofuscación para el build 10, disponible
 en pruebas internas desde el 14-sep-2026 a la 01:05 de Bogotá. La observación del
-build 9 (ofuscación 1%) corresponde al binario anterior en producción. Permanecen
-pendientes la prueba física y la actualización de producción.
+build 9 (ofuscación 1%) corresponde al binario anterior en producción. El usuario
+reportó que el build 12 funciona en el Samsung actualizado desde Play; esa versión
+está enviada a revisión de producción, pendiente de aprobación pública.
 
 ## Causa y configuración reproducible
 
@@ -151,11 +173,12 @@ analizó el AAB 1.1.0 (10) y muestra:
 | Tamaño de descarga | 13,5 MB; reducción de 6,99 MB frente al build 9 |
 | Tamaño de actualización | 4,53 MB |
 
-La versión 10 figura disponible en pruebas internas, publicada el
+La versión 10 se publicó en pruebas internas el
 14-sep-2026 a la 01:05 de Bogotá. Esta evidencia confirma el resultado de
 optimización del nuevo artefacto. El aviso de 1% del build 9 es histórico para
 ese binario y puede seguir asociado a producción hasta actualizarla; no se
-registra aquí una publicación del build 10 en producción.
+registra aquí una publicación del build 10 en producción. El build 12 lo
+sustituyó en la prueba interna a las 02:21 de Bogotá.
 
 Play mide código DEX Java/Kotlin, no el bundle JavaScript ni bibliotecas `.so`.
 Puede usar `r8.json`, mapping o heurísticas según los metadatos disponibles. El
@@ -163,9 +186,10 @@ Puede usar `r8.json`, mapping o heurísticas según los metadatos disponibles. E
 partir del recuento local de clases renombradas.
 [Métrica oficial DEX](https://developer.android.com/topic/performance/vitals/code-optimization).
 
-La comprobación funcional permanece pendiente y debe usar el binario release optimizado: inicio y
-Google Sign-In, biometría/SecureStore, push, cámara y adjuntos, notas de voz,
-Inbox y reconexión, y las operaciones móviles corregidas. Una sesión de Expo Go
-o una compilación debug no valida compatibilidad con R8. También queda pendiente
-comprobar las advertencias de APIs edge-to-edge; la optimización alta no demuestra
-que hayan desaparecido ni sustituye la prueba física del binario de Play.
+La comprobación general reportada por el usuario sobre el build 12 instalado
+desde Play fue favorable; ADB confirmó versión, código e instalador. Se distingue
+del diagnóstico aislado PASS y no certifica cada recorrido de biometría, push,
+cámara, audio y reconexión ni la matriz de versiones Android. Una sesión de Expo Go
+o debug no valida compatibilidad con R8. Las recomendaciones de APIs edge-to-edge,
+imágenes y optimizador de recursos requieren mantenimiento de dependencias;
+la optimización alta no demuestra que hayan desaparecido.

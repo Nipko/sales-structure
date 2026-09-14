@@ -1,10 +1,35 @@
 # Compatibilidad Android: recomendaciones de Play Console
 
 Fecha: 14 de septiembre de 2026. Referencia observada en Producción: 1.0.0 (9).
-El AAB 1.1.0 (10) terminó en EAS, fue validado localmente y Play confirma
-optimización alta con 91% de ofuscación. Está disponible en pruebas internas desde
-el 14-sep-2026 a la 01:05 de Bogotá. La actualización de producción y la
-validación visual física permanecen pendientes.
+
+**La versión 1.1.0 (10) está bloqueada para producción por un fallo de
+SecureStore.** Aunque su AAB superó las verificaciones de firma y estructura y
+Play mostró optimización alta, Sentry registró el error de conversión de
+`SecureStoreOptions` en `cloud.parallly.mobile@1.1.0+10`, distribución 10. Una
+prueba independiente con el DEX exacto reprodujo el NPE sin acceder a datos de la
+app. Las métricas históricas de Play que aparecen abajo no certifican su
+funcionamiento. La versión 10 se distribuyó únicamente en pruebas internas.
+
+El candidato que la sustituye es **1.1.1 (12)**, con una corrección acotada de las
+reglas R8 para las anotaciones de registros de Expo. El build
+[EAS 3f8c9d02-c694-47c2-9f93-21daa9176533](https://expo.dev/accounts/nirlevin/projects/parallly-mobile/builds/3f8c9d02-c694-47c2-9f93-21daa9176533)
+terminó el 14-sep-2026 a las 07:16:56 UTC. Su AAB pasó firma y estructura,
+conserva el manifiesto adaptable y pasó las diez etapas del diagnóstico de
+conversión con el DEX exacto en Android 16. Play publicó la prueba interna a las
+02:21 de Bogotá y confirma para el artefacto `4860230132141226011` optimización
+Alta, 91% de ofuscación, R8 completo, DEX de 7,43 MB y compatibilidad de páginas
+de 16 KB. ADB confirmó en el teléfono la versión 1.1.1, código 12, instalada
+desde Google Play, con última actualización el 14-sep-2026 a las 02:24:47 de
+Bogotá. Después de recibir la lista de comprobación de Google, Inbox, CRM,
+operaciones y conservación de sesión al reiniciar, el usuario respondió
+«si parece que marcha bien». Se registra como validación funcional reportada
+por el usuario, sin comprobación automatizada individual de esos flujos.
+Android 11 no se ha probado físicamente en esta validación.
+
+La release 4 de Producción, código 12, está enviada y Play muestra «Cambios en
+la etapa de revisión», con verificaciones rápidas iniciales en curso. Su
+publicación pública depende de la aprobación de Google.
+La corrección de SecureStore no pretende resolver el aviso de APIs edge-to-edge.
 
 ## Orientación y ventanas
 
@@ -20,7 +45,8 @@ Conserva la orientación configurada en iOS, las actividades de librerías y el
 `adjustNothing` que utiliza `useKeyboardSpace` para gestionar el teclado.
 No incluye una excepción temporal a las reglas de Android 16.
 
-Comprobación con `expo config --type introspect --json`:
+Comprobación histórica del candidato 1.1.0 con
+`expo config --type introspect --json`:
 
 - Versión 1.1.0.
 - MainActivity sin `android:screenOrientation`.
@@ -33,7 +59,7 @@ sin restricción de orientación, `resizeableActivity=true` y
 `windowSoftInputMode=0x00000030` (`adjustNothing`). La comprobación de orientación
 iOS anterior proviene de introspección; el AAB valida solamente Android.
 
-## Evidencia del AAB 1.1.0 (10)
+## Evidencia histórica del AAB 1.1.0 (10), bloqueado
 
 - EAS `0bf6fdb7-6f21-4d4b-bd4a-71a756c89ed7`: `FINISHED`, perfil `production`,
   completado el 14-sep-2026 a las 05:55:44 UTC.
@@ -51,7 +77,7 @@ Fuentes: `C:/Users/USER/Desktop/parallly-v10-play/artifact-validation.json`,
 `build-view.json`, `build-log-01.txt` y el AAB `parallly-1.1.0-v10.aab` del mismo
 directorio. [Detalle de R8 y estadísticas internas](mobile-android-r8-2026-09-14.md).
 
-## Análisis confirmado en Play Console
+## Análisis histórico confirmado en Play Console para 1.1.0 (10)
 
 El explorador de app bundles, artefacto `4860230114055681879`, muestra para la
 versión 1.1.0 (10):
@@ -66,11 +92,37 @@ versión 1.1.0 (10):
 | Descarga | 13,5 MB; 6,99 MB menos que el build 9 |
 | Actualización | 4,53 MB |
 
-Play indica que el build 10 está disponible en pruebas internas, publicado el
+Play indicó que el build 10 estaba disponible en pruebas internas, publicado el
 14-sep-2026 a la 01:05 de Bogotá. El problema de optimización del build 9 (1%)
 corresponde al artefacto anterior y puede seguir asociado a producción hasta
 actualizarla. Estas métricas verifican el build 10; no certifican su prueba
 física, su publicación en producción ni la desaparición de avisos edge-to-edge.
+El fallo posterior de SecureStore impide promover este artefacto a producción;
+el candidato 1.1.1 (12) requiere sus propias comprobaciones.
+
+## Recomendación adicional: optimización integrada de recursos
+
+La metadata del AAB 1.1.1 (12) confirma **Android Gradle Plugin 8.11.0 y
+R8 8.11.18**. La reducción, optimización y ofuscación de código están activas,
+con `compatMode=false`; sin embargo,
+`resourceOptimization.isOptimizedShrinkingEnabled=false`. La etiqueta Alta
+del explorador de Play y la reducción convencional de recursos no implican que
+esté habilitado el nuevo optimizador integrado de código y recursos.
+
+El AGP 8.11.0 instalado no registra la opción
+`android.r8.optimizedResourceShrinking`; AGP 8.12 sí la incorpora. Google
+documenta su introducción en 8.12, la activación mediante esa propiedad en
+8.12/8.13 y su habilitación predeterminada desde 9.0 cuando se reducen recursos.
+Añadir únicamente el flag al proyecto actual no habilita esa función.
+[Configuración oficial](https://developer.android.com/topic/performance/app-optimization/enable-app-optimization#optimize-resource-shrinking),
+[anuncio de introducción en AGP 8.12](https://android-developers.googleblog.com/2025/09/improve-app-performance-with-optimized-resource-shrinking.html).
+
+La recomendación se incorpora al mantenimiento coordinado de herramientas y
+SDK. No se cambia AGP ni se genera otro hotfix para satisfacerla. Su cierre
+requiere un build con herramientas compatibles, comprobar el valor real en
+`r8.json` y validar los recursos utilizados en ejecución, además de repetir el
+diagnóstico de registros y las pruebas funcionales. No debe confundirse esta
+mejora de tamaño con la corrección del NPE de SecureStore.
 
 ## Adaptación de formularios
 
@@ -107,19 +159,109 @@ métodos compilados de las dependencias y puede cambiar su presentación.
 React Native documenta la obsolescencia de color y translucidez de StatusBar desde
 API 35. [Referencia oficial de StatusBar 0.81](https://reactnative.dev/docs/0.81/statusbar).
 
-No se parchean dependencias ni se actualiza el SDK por inferencia. La revisión
-del aviso edge-to-edge en el nuevo AAB sigue pendiente: los cambios propios no
-garantizan que desaparezca. R8 y sus mapas están comprobados en el artefacto y
-Play confirma 91% de ofuscación; las estadísticas internas de R8 se documentan
-por separado y no sustituyen ese porcentaje observado en Play.
+### Decisión de mantenimiento: actualización coordinada del SDK
+
+La revisión de las fuentes oficiales y del registro npm del 14-sep-2026 no
+identifica un parche pequeño dentro de Expo SDK 54 que resuelva todos los
+orígenes reportados. No se incorporan cambios adicionales de edge-to-edge al
+hotfix 1.1.1:
+
+- La [matriz oficial de SDK 54](https://raw.githubusercontent.com/expo/expo/sdk-54/packages/expo/bundledNativeModules.json)
+  sigue indicando React Native 0.81.5, react-native-screens `~4.16.0` y
+  expo-image-picker `~17.0.11`, coincidiendo con lo instalado. El registro npm
+  no ofrece versiones posteriores dentro de las series 4.16.x y 17.0.x.
+- Existe React Native 0.81.6, pero sus fuentes de
+  [WindowUtil](https://raw.githubusercontent.com/facebook/react-native/v0.81.6/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/view/WindowUtil.kt)
+  y [StatusBarModule](https://raw.githubusercontent.com/facebook/react-native/v0.81.6/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/modules/statusbar/StatusBarModule.kt)
+  conservan las llamadas de color y los modos de recorte señalados. Ese parche
+  no elimina el origen de React Native.
+- [ExpoCropImageUtils en la rama SDK 54](https://raw.githubusercontent.com/expo/expo/sdk-54/packages/expo-image-picker/android/src/main/java/expo/modules/imagepicker/ExpoCropImageUtils.kt)
+  conserva `window.statusBarColor`; no hay una corrección publicada en la serie
+  compatible instalada que sustituya esa implementación.
+- [Material 1.14.0](https://github.com/material-components/material-components-android/releases/tag/1.14.0)
+  incorpora cambios de componentes y dependencias. Su
+  [EdgeToEdgeUtils](https://raw.githubusercontent.com/material-components/material-components-android/1.14.0/lib/java/com/google/android/material/internal/EdgeToEdgeUtils.java)
+  evita esas llamadas de color desde API 35, conservándolas para versiones
+  anteriores. Forzar solamente esa dependencia no cubre los orígenes de React
+  Native, screens e ImagePicker ni demuestra que Play retire el aviso.
+
+El aviso queda clasificado como **mantenimiento de compatibilidad del SDK y sus
+dependencias**, separado del fallo de SecureStore. Su solución debe evaluarse
+en una actualización coordinada de Expo/React Native y las bibliotecas de
+navegación y ventanas. No se garantiza su eliminación por cambiar una propiedad
+de React, retirar `statusBarTranslucent` o activar R8.
+
+Para cerrar esta recomendación se requiere:
+
+1. Un AAB nuevo con las versiones compatibles seleccionadas y un análisis de
+   Play de ese artefacto que permita comprobar los orígenes restantes del aviso.
+2. Validación visual en Android 15 y 16 de navegación, modales, teclado, barras
+   del sistema, adjuntos y rotación, con gestos y navegación de tres botones.
+3. Si Play conserva llamadas necesarias para Android anteriores, registrar los
+   métodos y condiciones por versión que permanecen; no declarar el aviso
+   eliminado ni inferir un fallo visual únicamente por su presencia estática.
+
+Las métricas de R8 de ambos builds no demuestran la corrección de edge-to-edge.
+Las estadísticas internas de R8 se documentan por separado y no sustituyen el
+porcentaje observado en Play.
 [Métrica oficial de optimización DEX](https://developer.android.com/topic/performance/vitals/code-optimization).
 
-## Verificación pendiente con el binario de Play
+## Recomendación de imágenes y descargas
 
-Probar Android 15 y 16, orientación vertical/horizontal, pantalla dividida y un
-dispositivo grande o plegable. Cubrir login, Inbox, teclado del chat, notas,
-creación de lead, formularios de operación, adjuntos y permisos de cámara/audio.
+Se resolvieron los símbolos del aviso del candidato 10 con su propio mapping
+R8. Todos los orígenes identificados pertenecen a dependencias; no a una
+implementación nativa propia de Parallly:
+
+| Símbolo reportado en v10 | Origen identificado |
+| --- | --- |
+| `F.c.c` | AndroidX `IconCompat.Api23Impl.toIcon` |
+| `G2.a.c/d`, `K2.e.c`, `M2.b.a` | Fresco: decodificación, transcodificación y lectura de dimensiones |
+| `u1.k.h/i` | Android Image Cropper: `decodeImage` y `decodeSampledBitmap` |
+| `v9.b.m` | Expo Notifications: coroutine `downloadImage` |
+| `L.k.run` | Incluye `Fresco.HttpUrlConnectionNetworkFetcher.fetchSync`, fusionado por R8 con otros `Runnable` |
+| `O5.w.u` | ExoPlayer `DefaultHttpDataSource.open` |
+| `com.bumptech.glide.load.data.l.f` | Glide `HttpUrlFetcher.loadDataWithRedirects` |
+| `ab.d.d` | Kotlin `BuiltInsResourceLoader.loadResource` |
+
+Las fuentes instaladas incluyen Fresco 3.6.0 mediante React Native,
+Android Image Cropper 4.6.0 mediante Expo ImagePicker, ExoPlayer 2.18.1 mediante
+expo-av y Glide 4.16.0 mediante expo-image-loader. El código de pantallas utiliza
+`React Native Image` y Expo ImagePicker. No se encontró código nativo propio
+que utilice directamente `BitmapFactory` o `URLConnection` para esos flujos.
+
+El aviso estático requiere interpretación: la lectura de dimensiones de
+[Fresco usa `inJustDecodeBounds=true`](https://raw.githubusercontent.com/facebook/fresco/v3.6.0/imagepipeline-base/src/main/java/com/facebook/imageutils/BitmapUtil.kt),
+y [Kotlin abre recursos del classloader](https://raw.githubusercontent.com/JetBrains/kotlin/v2.1.20/core/deserialization/src/org/jetbrains/kotlin/serialization/deserialization/builtins/BuiltInsResourceLoader.kt),
+no imágenes. [Glide ya implementa el descargador señalado](https://raw.githubusercontent.com/bumptech/glide/v4.16.0/library/src/main/java/com/bumptech/glide/load/data/HttpUrlFetcher.java),
+por lo que cambiar el componente de imagen por otra biblioteca no demuestra
+que desaparezca la recomendación. Expo Notifications sí conserva
+[descarga y decodificación directa en SDK 54](https://raw.githubusercontent.com/expo/expo/sdk-54/packages/expo-notifications/android/src/main/java/expo/modules/notifications/notifications/presentation/builders/DownloadImage.kt).
+
+No se ha demostrado un fallo de memoria o de descarga por estos símbolos.
+Se clasifican como mantenimiento de dependencias y rendimiento, sin cambios
+adicionales al hotfix 1.1.1. Antes de cerrar la recomendación se deberá analizar
+el AAB actualizado y comprobar imágenes, adjuntos, audio y notificaciones con
+contenido representativo. Los nombres ofuscados anteriores pertenecen al
+mapping de v10 y no deben reutilizarse para atribuir símbolos de v12.
+
+## Validación funcional y cobertura pendiente con el binario de Play
+
+El teléfono autorizado ejecuta 1.1.1 (12), con instalador Google Play y última
+actualización a las 02:24:47 de Bogotá. El usuario reportó que funciona tras
+recibir la lista de comprobación de inicio de sesión con Google, Inbox, CRM,
+operaciones y conservación de sesión al reiniciar. Es evidencia funcional
+reportada por el usuario; no equivale a pruebas automatizadas ni a una
+certificación individual de cada paso. El diagnóstico independiente con el DEX
+exacto sí pasó sus diez etapas en Android 16, pero no ejercita almacenamiento,
+autenticación real ni interfaz. Android 11 no se probó físicamente.
+
+Permanece pendiente la matriz visual de Android 15 y 16, orientación
+vertical/horizontal, pantalla dividida y un dispositivo grande o plegable.
+Cubrir teclado del chat, notas, creación de lead, formularios de operación,
+adjuntos y permisos de cámara/audio.
 Revisar recortes, botones accesibles mediante scroll, insets y conservación del
-estado al rotar. No se realizó smoke visual nativo en esta revisión: no hay una
-superficie CUA nativa disponible. TypeScript, pruebas de componentes y manifest
-son evidencia complementaria; no sustituyen esa comprobación física.
+estado al rotar. No se realizó una inspección visual nativa automatizada en
+esta revisión. TypeScript, pruebas de componentes y manifest son evidencia
+complementaria; no sustituyen esa matriz física. La release 4 de Producción,
+código 12, ya está enviada, con verificaciones iniciales de Play en curso y
+publicación pública pendiente de aprobación.

@@ -11,7 +11,7 @@
  *   - dry-run unless the exact apply flag is present;
  *   - every id must exist exactly once across tenant schemas;
  *   - each unresolved row must still be pending, match its observed creation
- *     timestamp, and still fail the runtime's canonical agreed-terms predicate;
+ *     date, and still fail the runtime's canonical agreed-terms predicate;
  *   - known tenant ownership is checked where GitHub did not mask the id;
  *   - all row locks, updates and audit entries share one SERIALIZABLE transaction;
  *   - a prior successful run is accepted only when our exact reason is stored.
@@ -36,15 +36,18 @@ const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
  * creation timestamp and state still make the appointment identity unambiguous.
  */
 const AUTHORIZED_FIXTURES = Object.freeze([
-    Object.freeze({ id: 'f3f210fd-55a1-4bd3-944d-a9c0f49b565b', tenantId: '3e8ad32e-a16b-42e6-9634-b8e8cc29292d', createdAt: '2026-05-21T04:09:27.000Z' }),
-    Object.freeze({ id: 'ab40198b-e47f-43f6-b479-dc07a70a11cb', tenantId: '0633374a-4700-4c72-9b52-cd0cb2730a7a', createdAt: '2026-05-28T06:37:45.000Z' }),
-    Object.freeze({ id: '90f5d2bb-78fc-4e40-831c-de9c8e52e3f6', tenantId: '0633374a-4700-4c72-9b52-cd0cb2730a7a', createdAt: '2026-05-26T04:17:02.000Z' }),
-    Object.freeze({ id: '33dbd9a1-5672-4410-8b6f-a844e995a0bb', tenantId: '0633374a-4700-4c72-9b52-cd0cb2730a7a', createdAt: '2026-05-26T04:16:20.000Z' }),
-    Object.freeze({ id: '6eba1ada-9f12-41bd-bc87-c633c232afb2', tenantId: '0633374a-4700-4c72-9b52-cd0cb2730a7a', createdAt: '2026-05-26T03:49:58.000Z' }),
-    Object.freeze({ id: '11da9ded-89fb-46b6-8cd0-c59a4319ceba', tenantId: '0633374a-4700-4c72-9b52-cd0cb2730a7a', createdAt: '2026-05-26T03:49:02.000Z' }),
-    Object.freeze({ id: '6d143978-086d-47b3-9f91-70de03d0c9dd', tenantId: '0633374a-4700-4c72-9b52-cd0cb2730a7a', createdAt: '2026-05-26T03:47:56.000Z' }),
-    Object.freeze({ id: '7647ea49-d387-4cba-98f3-7ce21ba63465', tenantId: null, createdAt: '2026-05-20T05:53:29.000Z' }),
-    // GitHub masked the time portion. The date is still an independent guard.
+    // Use the reported calendar date for every row. GitHub masked one hour in
+    // the evidence and PostgreSQL timestamp-without-time-zone parsing depends
+    // on the container timezone. The date remains an independent identity
+    // guard without pretending those two representations are byte-identical.
+    Object.freeze({ id: 'f3f210fd-55a1-4bd3-944d-a9c0f49b565b', tenantId: '3e8ad32e-a16b-42e6-9634-b8e8cc29292d', createdAt: '2026-05-21' }),
+    Object.freeze({ id: 'ab40198b-e47f-43f6-b479-dc07a70a11cb', tenantId: '0633374a-4700-4c72-9b52-cd0cb2730a7a', createdAt: '2026-05-28' }),
+    Object.freeze({ id: '90f5d2bb-78fc-4e40-831c-de9c8e52e3f6', tenantId: '0633374a-4700-4c72-9b52-cd0cb2730a7a', createdAt: '2026-05-26' }),
+    Object.freeze({ id: '33dbd9a1-5672-4410-8b6f-a844e995a0bb', tenantId: '0633374a-4700-4c72-9b52-cd0cb2730a7a', createdAt: '2026-05-26' }),
+    Object.freeze({ id: '6eba1ada-9f12-41bd-bc87-c633c232afb2', tenantId: '0633374a-4700-4c72-9b52-cd0cb2730a7a', createdAt: '2026-05-26' }),
+    Object.freeze({ id: '11da9ded-89fb-46b6-8cd0-c59a4319ceba', tenantId: '0633374a-4700-4c72-9b52-cd0cb2730a7a', createdAt: '2026-05-26' }),
+    Object.freeze({ id: '6d143978-086d-47b3-9f91-70de03d0c9dd', tenantId: '0633374a-4700-4c72-9b52-cd0cb2730a7a', createdAt: '2026-05-26' }),
+    Object.freeze({ id: '7647ea49-d387-4cba-98f3-7ce21ba63465', tenantId: null, createdAt: '2026-05-20' }),
     Object.freeze({ id: '28867020-6909-498a-9b2d-bb7d12116c3b', tenantId: 'aaeaf495-92ec-464a-8cd4-9e457d3a12f9', createdAt: '2026-08-13' }),
 ]);
 

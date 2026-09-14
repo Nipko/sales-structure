@@ -1,40 +1,38 @@
-import { HeroSection } from "../../components/sections/HeroSection";
-import { ResultsBand } from "../../components/sections/ResultsBand";
+import { HeroSection } from "../../components/sections/BusinessHero";
 import { StatsCounter } from "../../components/sections/StatsCounter";
-import { TrustRow } from "../../components/sections/TrustRow";
-import { VerticalsShowcase } from "../../components/sections/VerticalsShowcase";
-import { ToolsShowcase } from "../../components/sections/ToolsShowcase";
-import { MobileAppSection } from "../../components/sections/MobileAppSection";
-import { AiControlSection } from "../../components/sections/AiControlSection";
+import { BusinessSolutions } from "../../components/sections/BusinessSolutions";
+import { BusinessRollout } from "../../components/sections/BusinessRollout";
+import { BusinessAdaptability } from "../../components/sections/BusinessAdaptability";
+import { ChannelExperience } from "../../components/sections/ChannelExperience";
+import { IntelligenceShowcase } from "../../components/sections/PlatformIntelligence";
+import { MobileAppShowcase } from "../../components/sections/MobileAppShowcase";
 import { PricingSection } from "../../components/sections/PricingSection";
 import { FAQSection } from "../../components/sections/FAQSection";
 import { CTABanner } from "../../components/layout/CTABanner";
 import { JsonLd } from "../../components/ui/JsonLd";
 import { organizationJsonLd, softwareAppJsonLd } from "../../lib/seo";
+import styles from "./home.module.css";
 
 export default function HomePage() {
   return (
-    <>
+    <div className={styles.home}>
       <JsonLd data={organizationJsonLd()} />
       <JsonLd data={softwareAppJsonLd()} />
       <HeroSection />
-      <TrustRow />
-      <ResultsBand />
-      {/* The three states, one of which is a zero.
-
-          This band existed, was code-backed, and was pinned by the validator —
-          and was mounted on NO page, so the certification state it publishes
-          reached no reader. A contract enforced over a component nobody renders
-          is a contract about nothing: the five connectable channels were on the
-          site and the zero certified ones were not. */}
-      <StatsCounter />
-      <ToolsShowcase />
-      <VerticalsShowcase />
-      <MobileAppSection />
-      <AiControlSection />
+      <BusinessRollout />
+      <BusinessSolutions />
+      <ChannelExperience compact />
+      <IntelligenceShowcase />
+      <MobileAppShowcase />
+      <BusinessAdaptability />
+      <div className={styles.productState}>
+        <StatsCounter />
+      </div>
       <PricingSection />
       <FAQSection />
-      <CTABanner />
-    </>
+      <div className={styles.closing}>
+        <CTABanner />
+      </div>
+    </div>
   );
 }

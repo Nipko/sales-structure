@@ -1,3 +1,4 @@
+import { ensureWidgetSchema } from './widget-schema';
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -16,28 +17,7 @@ export class WidgetTriggersService {
         const cached = await this.redis.get(this.TABLE_CACHE_KEY);
         if (cached) return;
 
-        await this.prisma.$queryRawUnsafe(
-            `CREATE TABLE IF NOT EXISTS public.widget_triggers (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                widget_config_id UUID NOT NULL,
-                name TEXT NOT NULL,
-                conditions JSONB DEFAULT '[]',
-                condition_operator TEXT DEFAULT 'AND',
-                action_type TEXT DEFAULT 'show_bubble_message',
-                action_config JSONB DEFAULT '{}',
-                frequency_minutes INTEGER DEFAULT 0,
-                is_active BOOLEAN DEFAULT true,
-                priority INTEGER DEFAULT 0,
-                created_at TIMESTAMPTZ DEFAULT NOW(),
-                updated_at TIMESTAMPTZ DEFAULT NOW()
-            )`,
-        );
-
-        await this.prisma.$queryRawUnsafe(
-            `CREATE INDEX IF NOT EXISTS idx_widget_triggers_config
-             ON public.widget_triggers (widget_config_id)
-             WHERE is_active = true`,
-        );
+        await ensureWidgetSchema(this.prisma);
 
         await this.redis.set(this.TABLE_CACHE_KEY, '1', 86400);
         this.logger.log('widget_triggers table ensured');

@@ -1,0 +1,48 @@
+.home {
+  --color-bg: #f7f9fc;
+  --color-surface: #fff;
+  --color-surface-light: #edf2f8;
+  --color-surface-elevated: #e6edf5;
+  --color-border: #dbe3ed;
+  --color-border-light: #bfcddd;
+  --color-text-primary: #14283f;
+  --color-text-secondary: #53667c;
+  --color-text-muted: #63748a;
+  --color-accent: #245ec7;
+  --color-accent-hover: #1c4ba4;
+  --color-accent-solid: #245ec7;
+  --color-accent-solid-hover: #1c4ba4;
+  background: #f7f9fc;
+  color: #14283f;
+  color-scheme: light;
+}
+.home :global(.glass-card) { background: #fff; border-color: #dbe3ed; box-shadow: 0 6px 20px #152a4310; backdrop-filter: none; }
+.home :global(.glass-card):hover { background: #fff; border-color: #bfcddd; }
+.home :global(.text-emerald-400) { color: #267652; }
+.home :global(.text-cyan-300) { color: #167089; }
+.home :global(.text-sky-300) { color: #2662ac; }
+.home :global(.text-violet-300) { color: #6c4bac; }
+.home :global(.text-emerald-300) { color: #267652; }
+.home :global(section[id]) { scroll-margin-top: 80px; }
+.home a:focus-visible, .home button:focus-visible, .home select:focus-visible { outline: 3px solid #4b83df; outline-offset: 4px; }
+.flow { background: #fff; }
+.flow > section { padding-top: 78px; padding-bottom: 78px; }
+.flow h2 { font-size: clamp(30px, 3.4vw, 42px); font-weight: 600; }
+.flow :global(.glass-card) { border-radius: 0; border: 0; border-left: 1px solid #dbe3ed; box-shadow: none; padding: 0 18px; }
+.flow ol { gap: 0; }
+.productState { background: #edf2f7; border-block: 1px solid #dbe3ed; }
+.productState > section { padding-block: 34px; border: 0; }
+.productState > section > div { max-width: 1000px; }
+.productState p:first-child { margin-bottom: 20px; }
+.productState :global(.grid) p:first-child { font-size: 25px; margin-bottom: 4px; }
+.productState :global(.grid) p:last-child { max-width: 230px; margin-inline: auto; font-size: 11px; line-height: 1.5; }
+.home :global(#precios) { background: #fff; padding-top: 78px; padding-bottom: 72px; }
+.home :global(#precios .text-amber-300\/90) { color: #875400; }
+.home :global(#preguntas) { padding-block: 75px; }
+.closing { background: #102337; --color-text-primary: #fff; --color-text-secondary: #c1cddd; --color-text-muted: #b2c1d2; --color-border: #435a72; --color-bg: #102337; --color-surface: #102337; --color-surface-light: #1d3853; --color-accent: #94c1ff; --color-accent-hover: #c2dcff; }
+.closing { color: #fff; }
+.closing > section { padding-block: 60px; }
+.closing > section > div > div { border: 0; background: transparent; border-radius: 0; padding-block: 5px; }
+.closing h2 { max-width: 800px; margin-inline: auto; font-weight: 600; }
+.closing :global(.text-text-primary) { color: #fff; }
+@media (max-width: 700px) { .flow > section { padding-block: 55px; } .flow ol { gap: 28px; } .home :global(#precios), .home :global(#preguntas) { padding-block: 55px; } }

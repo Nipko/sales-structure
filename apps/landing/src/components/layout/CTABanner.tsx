@@ -10,11 +10,8 @@ export function CTABanner() {
   const t = useTranslations("cta");
 
   return (
-    <Section>
-      <div className="relative bg-gradient-to-br from-surface via-surface to-accent/10 border border-accent/30 rounded-3xl py-16 px-6 text-center overflow-hidden">
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="w-[500px] h-[500px] bg-accent/8 rounded-full blur-3xl" />
-        </div>
+    <Section className="site-cta">
+      <div className="relative py-5 px-0 text-center">
         <div className="relative">
           <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-5 tracking-tight">
             {t("title")}

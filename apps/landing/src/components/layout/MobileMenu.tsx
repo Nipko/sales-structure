@@ -6,6 +6,7 @@ import Link from "../LocalizedLink";
 import { useLang } from "../LangProvider";
 import { SIGNUP_URL, LOGIN_URL } from "../../lib/constants";
 import { PRODUCT_MENU } from "../../data/navigation";
+import { Icon } from "../ui/Icon";
 
 interface MobileMenuProps {
   open: boolean;
@@ -27,12 +28,13 @@ export function MobileMenu({ open, onClose }: MobileMenuProps) {
           animate={{ height: "auto", opacity: 1 }}
           exit={{ height: 0, opacity: 0 }}
           transition={{ duration: 0.2 }}
-          className="fixed top-16 left-0 right-0 z-40 max-h-[calc(100dvh-4rem)] overflow-y-auto overscroll-contain border-b border-border bg-bg lg:hidden"
+          className="site-mobile fixed top-16 left-0 right-0 z-40 max-h-[calc(100dvh-4rem)] overflow-y-auto overscroll-contain border-b border-border bg-bg lg:hidden"
         >
           <div className="px-6 py-4 flex flex-col gap-4">
             <Link href="/soluciones" onClick={onClose} className="text-text-secondary hover:text-text-primary transition-colors">
               {t("navSolutions")}
             </Link>
+            <Link href="/soluciones#adaptabilidad" onClick={onClose} className="text-sm text-accent">{t("menuBusinessMissing")} →</Link>
             <div>
               <Link href="/producto" onClick={onClose} className="text-text-primary font-semibold hover:text-accent transition-colors">
                 {t("navProduct")}
@@ -45,7 +47,7 @@ export function MobileMenu({ open, onClose }: MobileMenuProps) {
                     onClick={onClose}
                     className="flex items-center gap-2 rounded-lg border border-border bg-surface/60 px-3 py-2.5 text-xs text-text-secondary hover:border-accent/40 hover:text-text-primary transition-colors"
                   >
-                    <span aria-hidden="true">{item.emoji}</span>
+                    <span aria-hidden="true" className="text-accent">{Icon[item.icon]("h-4 w-4")}</span>
                     <span>{t(item.labelKey)}</span>
                   </Link>
                 ))}

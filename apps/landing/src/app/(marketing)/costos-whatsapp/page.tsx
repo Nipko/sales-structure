@@ -2,6 +2,7 @@
 
 import Link from "@/components/LocalizedLink";
 import { useTranslations } from "next-intl";
+import { PageContents } from "../../../components/sections/CommercialGuide";
 import { Section } from "../../../components/ui/Section";
 import { Icon } from "../../../components/ui/Icon";
 import { FAQItem } from "../../../components/ui/FAQItem";
@@ -48,7 +49,7 @@ export default function WhatsappCostsPage() {
   const faqs = FAQ_NUMBERS.map((n) => ({ question: t(`faqQ${n}`), answer: t(`faqA${n}`) }));
 
   return (
-    <>
+    <div className="reference-page">
       <JsonLd
         data={breadcrumbJsonLd([
           { name: "Inicio", url: routes.home },
@@ -69,14 +70,15 @@ export default function WhatsappCostsPage() {
           <p className="mt-1 text-sm text-text-muted">{t("heroReviewedNote")}</p>
         </div>
       </section>
+      <PageContents kind="costs" />
 
       {/* The three payments — the same panel /precios renders */}
-      <Section className="border-y border-border/50 bg-surface/20">
+      <Section id="pagos" className="border-y border-border/50 bg-surface/20">
         <ThreePaymentsPanel />
       </Section>
 
       {/* How Meta's charge works */}
-      <Section>
+      <Section id="reglas">
         <div className="mx-auto max-w-3xl">
           <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">{t("ruleTitle")}</h2>
           <p className="mt-4 leading-relaxed text-text-secondary">{t("ruleIntro")}</p>
@@ -150,7 +152,7 @@ export default function WhatsappCostsPage() {
       </Section>
 
       {/* Setting up Meta billing — five steps, two of which are not ours */}
-      <Section className="border-y border-border/50 bg-surface/20">
+      <Section id="conexion" className="border-y border-border/50 bg-surface/20">
         <div className="mx-auto max-w-3xl">
           <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">{t("setupTitle")}</h2>
           <p className="mt-4 leading-relaxed text-text-secondary">{t("setupIntro")}</p>
@@ -253,7 +255,7 @@ export default function WhatsappCostsPage() {
       </Section>
 
       {/* FAQ */}
-      <Section className="border-t border-border/50 bg-surface/20">
+      <Section id="preguntas" className="border-t border-border/50 bg-surface/20">
         <div className="mb-10 text-center">
           <h2 className="text-3xl font-bold tracking-tight">{t("faqTitle")}</h2>
         </div>
@@ -289,6 +291,6 @@ export default function WhatsappCostsPage() {
           </div>
         </div>
       </Section>
-    </>
+    </div>
   );
 }

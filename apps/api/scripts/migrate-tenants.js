@@ -139,6 +139,11 @@ async function migrate() {
           // CONSTRAINT + ADD CONSTRAINT must never straddle autocommit: if any
           // statement fails, the whole tenant returns to its prior schema.
           await prisma.$transaction(async (tx) => {
+            // Share the runtime schema lock with API/worker lazy initialization.
+            await tx.$queryRawUnsafe(
+              'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))::text',
+              `runtime-schema:${t.schema_name}`,
+            );
             for (let index = 0; index < stmts.length; index++) {
               failedStatement = index;
               const stmt = stmts[index];

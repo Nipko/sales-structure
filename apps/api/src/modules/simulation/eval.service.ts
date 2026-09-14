@@ -228,9 +228,9 @@ export class EvalService {
 
     private async ensureTable(schema: string): Promise<void> {
         if (this.ensured.has(schema)) return;
-        try {
-            await this.prisma.executeInTenantSchema(schema,
-                `CREATE TABLE IF NOT EXISTS eval_scenarios (
+
+        await this.prisma.executeInTenantSchema(schema,
+            `CREATE TABLE IF NOT EXISTS eval_scenarios (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                     key TEXT UNIQUE NOT NULL,
                     title TEXT NOT NULL,
@@ -244,20 +244,20 @@ export class EvalService {
                     seed_origin TEXT,
                     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
                  )`);
-            await this.prisma.executeInTenantSchema(schema,
-                `ALTER TABLE eval_scenarios ADD COLUMN IF NOT EXISTS expected_actions JSONB NOT NULL DEFAULT '[]'::jsonb`);
-            for (const ddl of [
-                `ALTER TABLE eval_scenarios ADD COLUMN IF NOT EXISTS profile_id TEXT`,
-                `ALTER TABLE eval_scenarios ADD COLUMN IF NOT EXISTS locale TEXT`,
-                `ALTER TABLE eval_scenarios ADD COLUMN IF NOT EXISTS contract_version INT`,
-                `ALTER TABLE eval_scenarios ADD COLUMN IF NOT EXISTS seed_origin TEXT`,
-                `ALTER TABLE eval_scenarios ADD COLUMN IF NOT EXISTS managed_seed_key TEXT`,
-                `ALTER TABLE eval_scenarios ADD COLUMN IF NOT EXISTS seed_state TEXT NOT NULL DEFAULT 'active'`,
-            ]) {
-                await this.prisma.executeInTenantSchema(schema, ddl);
-            }
-            await this.prisma.executeInTenantSchema(schema,
-                `CREATE TABLE IF NOT EXISTS eval_runs (
+        await this.prisma.executeInTenantSchema(schema,
+            `ALTER TABLE eval_scenarios ADD COLUMN IF NOT EXISTS expected_actions JSONB NOT NULL DEFAULT '[]'::jsonb`);
+        for (const ddl of [
+            `ALTER TABLE eval_scenarios ADD COLUMN IF NOT EXISTS profile_id TEXT`,
+            `ALTER TABLE eval_scenarios ADD COLUMN IF NOT EXISTS locale TEXT`,
+            `ALTER TABLE eval_scenarios ADD COLUMN IF NOT EXISTS contract_version INT`,
+            `ALTER TABLE eval_scenarios ADD COLUMN IF NOT EXISTS seed_origin TEXT`,
+            `ALTER TABLE eval_scenarios ADD COLUMN IF NOT EXISTS managed_seed_key TEXT`,
+            `ALTER TABLE eval_scenarios ADD COLUMN IF NOT EXISTS seed_state TEXT NOT NULL DEFAULT 'active'`,
+        ]) {
+            await this.prisma.executeInTenantSchema(schema, ddl);
+        }
+        await this.prisma.executeInTenantSchema(schema,
+            `CREATE TABLE IF NOT EXISTS eval_runs (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                     agent_id UUID,
                     k INT NOT NULL DEFAULT 1,
@@ -269,25 +269,22 @@ export class EvalService {
                     trigger TEXT,
                     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
                  )`);
-            await this.prisma.executeInTenantSchema(schema,
-                `CREATE INDEX IF NOT EXISTS idx_eval_runs_agent ON eval_runs (agent_id)`);
-            for (const ddl of [
-                'ALTER TABLE eval_runs ADD COLUMN IF NOT EXISTS agent_snapshot JSONB',
-                "ALTER TABLE eval_runs ADD COLUMN IF NOT EXISTS channel_type TEXT NOT NULL DEFAULT 'web_widget'",
-                "ALTER TABLE eval_runs ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'completed'",
-                'ALTER TABLE eval_runs ADD COLUMN IF NOT EXISTS error TEXT',
-                "ALTER TABLE eval_runs ADD COLUMN IF NOT EXISTS regression_case_ids UUID[] NOT NULL DEFAULT '{}'::uuid[]",
-                'ALTER TABLE eval_runs ADD COLUMN IF NOT EXISTS release_evidence JSONB',
-                'ALTER TABLE eval_runs ADD COLUMN IF NOT EXISTS release_readiness JSONB',
-                // A run whose learning release is later withdrawn stays here with
-                // its transcripts intact and stops counting as proof.
-                ...evidenceProvenanceDdl('eval_runs'),
-            ]) await this.prisma.executeInTenantSchema(schema, ddl);
-            this.ensured.add(schema);
-        } catch (e: any) {
-            if (/already exists|duplicate|23505|42P07/i.test(e?.message || '')) this.ensured.add(schema);
-            else throw e;
-        }
+        await this.prisma.executeInTenantSchema(schema,
+            `CREATE INDEX IF NOT EXISTS idx_eval_runs_agent ON eval_runs (agent_id)`);
+        for (const ddl of [
+            'ALTER TABLE eval_runs ADD COLUMN IF NOT EXISTS agent_snapshot JSONB',
+            "ALTER TABLE eval_runs ADD COLUMN IF NOT EXISTS channel_type TEXT NOT NULL DEFAULT 'web_widget'",
+            "ALTER TABLE eval_runs ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'completed'",
+            'ALTER TABLE eval_runs ADD COLUMN IF NOT EXISTS error TEXT',
+            "ALTER TABLE eval_runs ADD COLUMN IF NOT EXISTS regression_case_ids UUID[] NOT NULL DEFAULT '{}'::uuid[]",
+            'ALTER TABLE eval_runs ADD COLUMN IF NOT EXISTS release_evidence JSONB',
+            'ALTER TABLE eval_runs ADD COLUMN IF NOT EXISTS release_readiness JSONB',
+            // A run whose learning release is later withdrawn stays here with
+            // its transcripts intact and stops counting as proof.
+            ...evidenceProvenanceDdl('eval_runs'),
+        ]) await this.prisma.executeInTenantSchema(schema, ddl);
+        this.ensured.add(schema);
+
     }
 
     async listScenarios(tenantId: string): Promise<any[]> {

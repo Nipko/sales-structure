@@ -1,3 +1,4 @@
+import { withRuntimeSchemaLock } from '../../common/utils/runtime-schema-lock';
 import { BadRequestException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
@@ -50,10 +51,11 @@ export class PoliciesService {
             `CREATE UNIQUE INDEX IF NOT EXISTS "idx_policies_active_type_${schemaName}" ON "${schemaName}"."policies" ("type") WHERE "is_active" = true`,
             `CREATE INDEX IF NOT EXISTS "idx_policies_type_version_${schemaName}" ON "${schemaName}"."policies" ("type", "version" DESC)`,
         ];
-        for (const sql of stmts) {
-            try { await this.prisma.$executeRawUnsafe(sql); }
-            catch (e: any) { this.logger.warn(`policies ensureSchema failed: ${e.message}`); }
-        }
+        await withRuntimeSchemaLock(this.prisma, schemaName, async (tx) => {
+            for (const sql of stmts) {
+                await tx.$executeRawUnsafe(sql);
+            }
+        });
         this.initialized.add(tenantId);
         return schemaName;
     }

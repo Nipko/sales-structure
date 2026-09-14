@@ -54,32 +54,13 @@ export class ProceduresService {
     ) {}
 
     async ensureTables(schemaName: string): Promise<void> {
-        const cacheKey = `procedures_cols:${schemaName}`;
+        const cacheKey = `procedures_cols:v2:${schemaName}`;
         const cached = await this.redis.get(cacheKey);
         if (cached) return;
 
-        const ignoreDupError = (err: any) => {
-            const msg = err?.message || '';
-            const code = String(err?.code || err?.meta?.code || '');
-            if (
-                code === '23505' ||
-                code === '42P07' ||
-                code === '42710' ||
-                msg.includes('already exists') ||
-                msg.includes('23505') ||
-                msg.includes('42P07') ||
-                msg.includes('42710')
-            ) {
-                this.logger.debug(`[Procedures ensureTables] Skip non-fatal database existence/concurrency error: ${msg}`);
-                return;
-            }
-            throw err;
-        };
-
-        try {
-            await this.prisma.executeInTenantSchema(
-                schemaName,
-                `CREATE TABLE IF NOT EXISTS procedures (
+        await this.prisma.executeInTenantSchema(
+            schemaName,
+            `CREATE TABLE IF NOT EXISTS procedures (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                     name TEXT NOT NULL,
                     description TEXT,
@@ -93,21 +74,14 @@ export class ProceduresService {
                     created_at TIMESTAMPTZ DEFAULT NOW(),
                     updated_at TIMESTAMPTZ DEFAULT NOW()
                 )`,
-                [],
-            );
-        } catch (err) {
-            ignoreDupError(err);
-        }
+            [],
+        );
 
-        try {
-            await this.prisma.executeInTenantSchema(
-                schemaName,
-                `CREATE INDEX IF NOT EXISTS idx_procedures_status ON procedures(status)`,
-                [],
-            );
-        } catch (err) {
-            ignoreDupError(err);
-        }
+        await this.prisma.executeInTenantSchema(
+            schemaName,
+            `CREATE INDEX IF NOT EXISTS idx_procedures_status ON procedures(status)`,
+            [],
+        );
 
         await this.redis.set(cacheKey, '1', 86400);
     }

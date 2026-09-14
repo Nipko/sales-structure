@@ -743,12 +743,12 @@ export class VerticalIntegrationsService {
         // tenantId passed where a schema name belongs would poison the cache and
         // only surface later as a raw Postgres 3F000. Fail readably, here.
         this.prisma.assertTenantSchemaName(schemaName);
-        const cacheKey = `vi_cols:v2:${schemaName}`;
+        const cacheKey = `vi_cols:v3:${schemaName}`;
         if (await this.redis.get(cacheKey)) return;
-        try {
-            await this.prisma.executeInTenantSchema(
-                schemaName,
-                `CREATE TABLE IF NOT EXISTS vi_items (
+
+        await this.prisma.executeInTenantSchema(
+            schemaName,
+            `CREATE TABLE IF NOT EXISTS vi_items (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                     provider VARCHAR(20) NOT NULL,
                     item_type VARCHAR(40) NOT NULL,
@@ -764,33 +764,31 @@ export class VerticalIntegrationsService {
                     deleted_at TIMESTAMPTZ,
                     UNIQUE(provider, item_type, external_id)
                 )`,
-                [],
-            );
-            await this.prisma.executeInTenantSchema(
-                schemaName,
-                `CREATE INDEX IF NOT EXISTS idx_vi_items_lookup ON vi_items(provider, item_type)`,
-                [],
-            );
-            // Existing tenant schemas predate generation/tombstones. Keep each
-            // ALTER in its own statement for PgBouncer transaction mode.
-            await this.prisma.executeInTenantSchema(
-                schemaName,
-                `ALTER TABLE vi_items ADD COLUMN IF NOT EXISTS sync_generation UUID`,
-                [],
-            );
-            await this.prisma.executeInTenantSchema(
-                schemaName,
-                `ALTER TABLE vi_items ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT false`,
-                [],
-            );
-            await this.prisma.executeInTenantSchema(
-                schemaName,
-                `ALTER TABLE vi_items ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`,
-                [],
-            );
-        } catch (e: any) {
-            if (!/already exists|42P07|23505/.test(e.message || '')) throw e;
-        }
+            [],
+        );
+        await this.prisma.executeInTenantSchema(
+            schemaName,
+            `CREATE INDEX IF NOT EXISTS idx_vi_items_lookup ON vi_items(provider, item_type)`,
+            [],
+        );
+        // Existing tenant schemas predate generation/tombstones. Keep each
+        // ALTER in its own statement for PgBouncer transaction mode.
+        await this.prisma.executeInTenantSchema(
+            schemaName,
+            `ALTER TABLE vi_items ADD COLUMN IF NOT EXISTS sync_generation UUID`,
+            [],
+        );
+        await this.prisma.executeInTenantSchema(
+            schemaName,
+            `ALTER TABLE vi_items ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT false`,
+            [],
+        );
+        await this.prisma.executeInTenantSchema(
+            schemaName,
+            `ALTER TABLE vi_items ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`,
+            [],
+        );
+
         await this.redis.set(cacheKey, '1', 86400);
     }
 

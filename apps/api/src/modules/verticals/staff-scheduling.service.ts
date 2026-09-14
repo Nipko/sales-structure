@@ -1,3 +1,4 @@
+import { withRuntimeSchemaLock } from '../../common/utils/runtime-schema-lock';
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -30,55 +31,57 @@ export class StaffSchedulingService {
         );
         if (exists.length > 0) return;
 
-        await this.prisma.$queryRawUnsafe(`
-            CREATE TABLE IF NOT EXISTS "${schemaName}".staff_members (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                name TEXT NOT NULL,
-                email TEXT,
-                phone TEXT,
-                role TEXT DEFAULT 'stylist',
-                avatar_url TEXT,
-                specialties TEXT[] DEFAULT '{}',
-                is_active BOOLEAN DEFAULT true,
-                sort_order INT DEFAULT 0,
-                created_at TIMESTAMPTZ DEFAULT now(),
-                updated_at TIMESTAMPTZ DEFAULT now()
-            )
-        `);
+        await withRuntimeSchemaLock(this.prisma, schemaName, async (tx) => {
+            await tx.$queryRawUnsafe(`
+                CREATE TABLE IF NOT EXISTS "${schemaName}".staff_members (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    name TEXT NOT NULL,
+                    email TEXT,
+                    phone TEXT,
+                    role TEXT DEFAULT 'stylist',
+                    avatar_url TEXT,
+                    specialties TEXT[] DEFAULT '{}',
+                    is_active BOOLEAN DEFAULT true,
+                    sort_order INT DEFAULT 0,
+                    created_at TIMESTAMPTZ DEFAULT now(),
+                    updated_at TIMESTAMPTZ DEFAULT now()
+                )
+            `);
 
-        await this.prisma.$queryRawUnsafe(`
-            CREATE TABLE IF NOT EXISTS "${schemaName}".staff_schedules (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                staff_id UUID NOT NULL REFERENCES "${schemaName}".staff_members(id) ON DELETE CASCADE,
-                day_of_week INT NOT NULL CHECK (day_of_week >= 0 AND day_of_week <= 6),
-                start_time TIME NOT NULL,
-                end_time TIME NOT NULL,
-                is_active BOOLEAN DEFAULT true,
-                UNIQUE(staff_id, day_of_week)
-            )
-        `);
+            await tx.$queryRawUnsafe(`
+                CREATE TABLE IF NOT EXISTS "${schemaName}".staff_schedules (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    staff_id UUID NOT NULL REFERENCES "${schemaName}".staff_members(id) ON DELETE CASCADE,
+                    day_of_week INT NOT NULL CHECK (day_of_week >= 0 AND day_of_week <= 6),
+                    start_time TIME NOT NULL,
+                    end_time TIME NOT NULL,
+                    is_active BOOLEAN DEFAULT true,
+                    UNIQUE(staff_id, day_of_week)
+                )
+            `);
 
-        await this.prisma.$queryRawUnsafe(`
-            CREATE TABLE IF NOT EXISTS "${schemaName}".staff_service_links (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                staff_id UUID NOT NULL REFERENCES "${schemaName}".staff_members(id) ON DELETE CASCADE,
-                service_id UUID NOT NULL,
-                duration_override_min INT,
-                price_override INT,
-                UNIQUE(staff_id, service_id)
-            )
-        `);
+            await tx.$queryRawUnsafe(`
+                CREATE TABLE IF NOT EXISTS "${schemaName}".staff_service_links (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    staff_id UUID NOT NULL REFERENCES "${schemaName}".staff_members(id) ON DELETE CASCADE,
+                    service_id UUID NOT NULL,
+                    duration_override_min INT,
+                    price_override INT,
+                    UNIQUE(staff_id, service_id)
+                )
+            `);
 
-        await this.prisma.$queryRawUnsafe(`
-            CREATE TABLE IF NOT EXISTS "${schemaName}".staff_breaks (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                staff_id UUID NOT NULL REFERENCES "${schemaName}".staff_members(id) ON DELETE CASCADE,
-                date DATE NOT NULL,
-                start_time TIME NOT NULL,
-                end_time TIME NOT NULL,
-                reason TEXT
-            )
-        `);
+            await tx.$queryRawUnsafe(`
+                CREATE TABLE IF NOT EXISTS "${schemaName}".staff_breaks (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    staff_id UUID NOT NULL REFERENCES "${schemaName}".staff_members(id) ON DELETE CASCADE,
+                    date DATE NOT NULL,
+                    start_time TIME NOT NULL,
+                    end_time TIME NOT NULL,
+                    reason TEXT
+                )
+            `);
+        });
 
         this.logger.log(`Staff scheduling tables created for schema ${schemaName}`);
     }

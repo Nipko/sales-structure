@@ -1678,7 +1678,7 @@ export class KnowledgeService {
      * returns them) until they're re-ingested.
      */
     private async ensureKbSearchVector(schema: string): Promise<void> {
-        const cacheKey = `kb_search_tsv:${schema}`;
+        const cacheKey = `kb_search_tsv:v2:${schema}`;
         try { if (await this.redis.get(cacheKey)) return; } catch { /* check fresh */ }
         try {
             await this.prisma.executeInTenantSchema(schema,
@@ -1691,14 +1691,9 @@ export class KnowledgeService {
             // Column + index are in place → cache so we skip this next time.
             this.redis.set(cacheKey, '1', 86400).catch(() => {});
         } catch (e: any) {
-            // Cache only on a benign "already exists" (column/index present). On any other
-            // error do NOT cache — else a transient DDL failure silently disables BM25 for
-            // this tenant for 24h (search degrades to vector-only via the tsPool .catch).
-            if (/already exists|duplicate|23505|42P07/i.test(e?.message || '')) {
-                this.redis.set(cacheKey, '1', 86400).catch(() => {});
-            } else {
-                this.logger.warn(`[KB tsv] ensure failed: ${e.message}`);
-            }
+            // A failed statement never proves that later schema steps ran.
+            // Keep vector-only fallback available and retry setup on the next request.
+            this.logger.warn(`[KB tsv] ensure failed: ${e.message}`);
         }
     }
 

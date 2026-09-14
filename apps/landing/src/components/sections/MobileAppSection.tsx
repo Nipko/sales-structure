@@ -3,7 +3,7 @@
 import Link from "../LocalizedLink";
 import { motion } from "motion/react";
 import { useTranslations } from "next-intl";
-import { ANDROID_EARLY_ACCESS_URL } from "../../lib/constants";
+import { ANDROID_PLAY_STORE_URL } from "../../lib/constants";
 import { Icon } from "../ui/Icon";
 import { Section } from "../ui/Section";
 
@@ -130,7 +130,7 @@ export function MobileAppSection() {
               {t("statusBadge")}
             </span>
             <span className="rounded-full border border-border bg-surface/80 px-3 py-1.5 text-xs font-semibold text-text-secondary">
-              {t("playSoon")}
+              {t("storeAvailability")}
             </span>
           </div>
 
@@ -155,10 +155,12 @@ export function MobileAppSection() {
 
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
             <a
-              href={ANDROID_EARLY_ACCESS_URL}
+              href={ANDROID_PLAY_STORE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-accent px-6 py-3.5 text-sm font-bold text-white transition-colors hover:bg-accent-hover"
             >
-              {t("requestAccess")} {Icon.arrow("h-4 w-4")}
+              {t("downloadApp")} {Icon.externalLink("h-4 w-4")}
             </a>
             <Link
               href="/producto/app-android"

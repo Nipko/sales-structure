@@ -1,9 +1,9 @@
 import { buildMetadata } from "../../../../lib/seo";
 
 export const metadata = buildMetadata({
-  title: "App Android para agentes",
+  title: "Parallly para Android — Disponible en Google Play",
   description:
-    "Conoce la app Android de Parallly para agentes: conversaciones multicanal, copiloto de IA, CRM y operación diaria desde el teléfono. Acceso anticipado; Google Play próximamente.",
+    "Descarga Parallly en Google Play. Atiende conversaciones y sigue contactos, oportunidades y tareas desde Android con los permisos de tu equipo.",
   path: "/producto/app-android",
 });
 

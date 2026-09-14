@@ -30,31 +30,12 @@ export class TraceService {
 
     async ensureTables(schemaName: string): Promise<void> {
         // v2 forces a one-time re-ensure on existing tenants so turn_traces appears.
-        const cacheKey = `trace_cols_v2:${schemaName}`;
+        const cacheKey = `trace_cols_v3:${schemaName}`;
         if (await this.redis.get(cacheKey)) return;
 
-        const ignoreDupError = (err: any) => {
-            const msg = err?.message || '';
-            const code = String(err?.code || err?.meta?.code || '');
-            if (
-                code === '23505' ||
-                code === '42P07' ||
-                code === '42710' ||
-                msg.includes('already exists') ||
-                msg.includes('23505') ||
-                msg.includes('42P07') ||
-                msg.includes('42710')
-            ) {
-                this.logger.debug(`[Trace ensureTables] Skip non-fatal database existence/concurrency error: ${msg}`);
-                return;
-            }
-            throw err;
-        };
-
-        try {
-            await this.prisma.executeInTenantSchema(
-                schemaName,
-                `CREATE TABLE IF NOT EXISTS conversation_traces (
+        await this.prisma.executeInTenantSchema(
+            schemaName,
+            `CREATE TABLE IF NOT EXISTS conversation_traces (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                     conversation_id UUID NOT NULL,
                     provider VARCHAR(40),
@@ -70,27 +51,20 @@ export class TraceService {
                     stage VARCHAR(40),
                     created_at TIMESTAMPTZ DEFAULT NOW()
                 )`,
-                [],
-            );
-        } catch (err) {
-            ignoreDupError(err);
-        }
+            [],
+        );
 
-        try {
-            await this.prisma.executeInTenantSchema(
-                schemaName,
-                `CREATE INDEX IF NOT EXISTS idx_ctrace_conversation ON conversation_traces(conversation_id, created_at)`,
-                [],
-            );
-        } catch (err) {
-            ignoreDupError(err);
-        }
+        await this.prisma.executeInTenantSchema(
+            schemaName,
+            `CREATE INDEX IF NOT EXISTS idx_ctrace_conversation ON conversation_traces(conversation_id, created_at)`,
+            [],
+        );
 
         // Step-by-step turn traces (WS5 #1) — one row per turn, steps[] as JSONB.
-        try {
-            await this.prisma.executeInTenantSchema(
-                schemaName,
-                `CREATE TABLE IF NOT EXISTS turn_traces (
+
+        await this.prisma.executeInTenantSchema(
+            schemaName,
+            `CREATE TABLE IF NOT EXISTS turn_traces (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                     conversation_id UUID NOT NULL,
                     message_id UUID NULL,
@@ -99,21 +73,14 @@ export class TraceService {
                     steps JSONB DEFAULT '[]'::jsonb,
                     created_at TIMESTAMPTZ DEFAULT NOW()
                 )`,
-                [],
-            );
-        } catch (err) {
-            ignoreDupError(err);
-        }
+            [],
+        );
 
-        try {
-            await this.prisma.executeInTenantSchema(
-                schemaName,
-                `CREATE INDEX IF NOT EXISTS idx_turntrace_conv ON turn_traces(conversation_id, created_at)`,
-                [],
-            );
-        } catch (err) {
-            ignoreDupError(err);
-        }
+        await this.prisma.executeInTenantSchema(
+            schemaName,
+            `CREATE INDEX IF NOT EXISTS idx_turntrace_conv ON turn_traces(conversation_id, created_at)`,
+            [],
+        );
 
         await this.redis.set(cacheKey, '1', 86400);
     }

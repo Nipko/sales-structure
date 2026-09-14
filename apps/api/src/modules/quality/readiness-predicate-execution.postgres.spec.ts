@@ -333,6 +333,20 @@ const TABLES = ['faqs', 'products', 'companies', 'menu_items', 'real_estate_list
         const tenantId = randomUUID();
         const cache = new Map<string, string>();
         const prismaLike = {
+            $transaction: async (work: any) => {
+                const client = await pool.connect();
+                try {
+                    await client.query('BEGIN');
+                    await client.query(`SET LOCAL search_path TO "${schema}",public`);
+                    const result = await work({
+                        $queryRawUnsafe: async (text: string, ...values: any[]) => (await client.query(text, values)).rows,
+                        $executeRawUnsafe: async (text: string, ...values: any[]) => (await client.query(text, values)).rowCount,
+                    });
+                    await client.query('COMMIT');
+                    return result;
+                } catch (error) { await client.query('ROLLBACK'); throw error; }
+                finally { client.release(); }
+            },
             executeInTenantSchema: async (_schema: string, text: string, values: any[] = []) => sql(text, values),
             $queryRawUnsafe: async (text: string, ...values: any[]) => sql(text, values),
             $executeRawUnsafe: async (text: string) => sql(text).then(() => 0),

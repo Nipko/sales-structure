@@ -3,7 +3,6 @@
 import { motion, useReducedMotion } from "motion/react";
 import { useTranslations } from "next-intl";
 import { Section } from "../ui/Section";
-import { CountUp } from "../ui/CountUp";
 import { PRODUCT_CAPABILITY_COUNTS } from "../../data/product-capabilities";
 import { MARKETING_CLAIMS } from "../../data/marketing-claims";
 
@@ -55,8 +54,7 @@ export function StatsCounter() {
             transition={{ delay: index * 0.08 }}
           >
             <p className="text-3xl sm:text-4xl font-bold text-text-primary">
-              {/* A zero has nothing to count up to, and animating it looks broken. */}
-              {stat.num === 0 ? "0" : <CountUp target={stat.num} />}
+              {stat.num}
             </p>
             <p className="mt-1.5 text-xs sm:text-sm text-text-secondary leading-tight">
               {t(stat.labelKey)}

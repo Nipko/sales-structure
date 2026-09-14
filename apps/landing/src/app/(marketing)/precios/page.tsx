@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { motion, AnimatePresence } from "motion/react";
+import { motion } from "motion/react";
 import { useLocale, useTranslations } from "next-intl";
 import { FEATURE_MATRIX, FEATURE_CATEGORIES, resolveFeatureValue } from "../../../data/pricing";
 import {
@@ -12,6 +12,7 @@ import {
   type PricingCountry,
 } from "../../../lib/api";
 import { usePlanCatalog } from "../../../hooks/usePlanCatalog";
+import { PageContents, PricingIntro, PlanGuide } from "../../../components/sections/CommercialGuide";
 import { Section } from "../../../components/ui/Section";
 import { Icon } from "../../../components/ui/Icon";
 import { FAQItem } from "../../../components/ui/FAQItem";
@@ -58,8 +59,6 @@ function formatLimit(value: unknown, locale: string, unlimited: string): string 
 export default function PricingPage() {
   const [annual, setAnnual] = useState(false);
   const [expandedCat, setExpandedCat] = useState<string | null>("communication");
-  const [quizStep, setQuizStep] = useState(0);
-  const [quizScores, setQuizScores] = useState([0, 0, 0]);
   const t = useTranslations("pricingPage");
   const locale = useLocale();
   const { country, setCountry, plans, status, retry } = usePlanCatalog();
@@ -72,35 +71,8 @@ export default function PricingPage() {
 
   useEffect(() => setAnnual(false), [country]);
 
-  const quizAnswer = (step: number, score: number) => {
-    const next = [...quizScores];
-    next[step] = score;
-    setQuizScores(next);
-    setQuizStep(step + 1);
-  };
-
-  const quizResult = (): ApiPlan | null => {
-    const total = quizScores.reduce((a, b) => a + b, 0);
-    if (selfServePlans.length === 0) return null;
-    const planIndex = Math.min(
-      selfServePlans.length - 1,
-      Math.round((total / 6) * (selfServePlans.length - 1)),
-    );
-    return selfServePlans[planIndex];
-  };
-
-  const recommendedPlan = quizStep >= 3 ? quizResult() : null;
-  const recommendedCycle = annual ? "annual" : "monthly";
-  const recommendedCycleAvailable = recommendedPlan
-    ? (annual ? recommendedPlan.annualAvailable : recommendedPlan.monthlyAvailable)
-    : false;
-  const recommendedCanSignup = Boolean(
-    recommendedPlan?.signupAvailable
-    && (recommendedCycleAvailable || (!annual && recommendedPlan.trialAvailable)),
-  );
-
   return (
-    <>
+    <div className="reference-page pricing-page">
       <JsonLd data={pricingJsonLd()} />
       <JsonLd
         data={breadcrumbJsonLd([
@@ -170,8 +142,11 @@ export default function PricingPage() {
         </div>
       </section>
 
+      <PageContents kind="pricing" />
+      <PricingIntro />
+
       {/* Plan Cards */}
-      <Section>
+      <Section id="planes">
         {status === "loading" && (
           <div className="rounded-2xl border border-border bg-surface py-12 text-center text-text-secondary" aria-live="polite">
             {t("loadingPlans")}
@@ -183,10 +158,11 @@ export default function PricingPage() {
             <button type="button" onClick={retry} className="text-accent hover:text-accent-hover font-semibold">
               {t("retry")}
             </button>
+            <a className="block mt-4 font-semibold text-accent" href={`mailto:${CONTACT_EMAIL}`}>{t("contactSales")}</a>
           </div>
         )}
         {status === "ready" && (
-          <div className={`grid grid-cols-1 md:grid-cols-2 ${plans.length >= 5 ? "lg:grid-cols-3" : "lg:grid-cols-4"} gap-5 items-start`}>
+          <div className={`grid grid-cols-1 md:grid-cols-2 ${plans.length >= 5 ? "lg:grid-cols-3" : "lg:grid-cols-2 xl:grid-cols-4"} gap-5 items-start`}>
             {plans.map((plan, index) => {
               const salesLed = isSalesLed(plan);
               const highlighted = plan.slug === "pro";
@@ -300,11 +276,13 @@ export default function PricingPage() {
       </Section>
 
       {/* Full Comparison Matrix */}
-      <Section className="bg-surface/30">
+      <Section id="comparar" className="bg-surface/30">
         <div className="text-center mb-12">
           <h2 className="text-3xl sm:text-4xl font-bold mb-4 tracking-tight">{t("comparisonTitle")}</h2>
           <p className="text-text-secondary max-w-2xl mx-auto">{t("comparisonSubtitle")}</p>
         </div>
+
+        {status !== "ready" && <div className="rounded-xl border border-border bg-white p-6 text-center text-sm text-text-secondary" role="status"><p>{status === "loading" ? t("loadingPlans") : t("comparisonUnavailable")}</p><a href="#planes" className="inline-block mt-3 font-semibold text-accent">{t("reviewPlans")} →</a></div>}
 
         {status === "ready" && <div className="overflow-x-auto -mx-6 px-6">
           <table className="w-full min-w-[700px]">
@@ -376,69 +354,7 @@ export default function PricingPage() {
         </div>}
       </Section>
 
-      {/* Plan Quiz */}
-      {status === "ready" && <Section>
-        <div className="max-w-2xl mx-auto text-center">
-          <h2 className="text-3xl font-bold mb-3">{t("quizTitle")}</h2>
-          <p className="text-text-secondary mb-8">{t("quizSubtitle")}</p>
-
-          {quizStep < 3 ? (
-            <div className="bg-surface border border-border rounded-2xl p-8">
-              <p className="text-sm text-text-muted mb-2">
-                {quizStep + 1} / 3
-              </p>
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={quizStep}
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -20 }}
-                >
-                  <p className="text-lg font-semibold mb-6">{t(`quizQ${quizStep + 1}`)}</p>
-                  <div className="flex flex-col gap-3">
-                    {["a", "b", "c"].map((letter, li) => (
-                      <button
-                        type="button"
-                        key={letter}
-                        onClick={() => quizAnswer(quizStep, li)}
-                        className="w-full text-left px-5 py-3 bg-bg border border-border rounded-xl hover:border-accent/40 transition-colors cursor-pointer"
-                      >
-                        {t(`quizA${quizStep + 1}${letter}`)}
-                      </button>
-                    ))}
-                  </div>
-                </motion.div>
-              </AnimatePresence>
-            </div>
-          ) : (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="bg-surface border border-accent/30 rounded-2xl p-8"
-            >
-              <p className="text-text-muted mb-2">{t("quizResult")}</p>
-              <p className="text-4xl font-bold text-accent mb-4">{recommendedPlan?.name ?? "—"}</p>
-              <a
-                href={recommendedPlan
-                  ? (recommendedCanSignup
-                      ? planSignupUrl(recommendedPlan.slug, recommendedPlan.displayCountry, recommendedCycle)
-                      : planContactUrl(recommendedPlan.name, recommendedPlan.displayCountry, recommendedCycle))
-                  : planContactUrl("Catalog", country ?? "CO", recommendedCycle)}
-                className="inline-flex items-center gap-2 bg-accent hover:bg-accent-hover text-white px-6 py-3 rounded-xl font-semibold transition-colors"
-              >
-                {recommendedCanSignup ? t("startFree") : t("requestAccess")} {Icon.arrow()}
-              </a>
-              <button
-                type="button"
-                onClick={() => { setQuizStep(0); setQuizScores([0, 0, 0]); }}
-                className="block mx-auto mt-3 text-sm text-text-muted hover:text-text-primary transition-colors cursor-pointer"
-              >
-                {t("quizRetry")}
-              </button>
-            </motion.div>
-          )}
-        </div>
-      </Section>}
+      <Section id="orientacion"><PlanGuide /></Section>
 
       {/* Enterprise CTA */}
       <Section className="bg-surface/30">
@@ -455,12 +371,12 @@ export default function PricingPage() {
       </Section>
 
       {/* The three payments, in full, before the FAQ that used to carry them alone */}
-      <Section className="border-y border-border/50">
+      <Section id="costos" className="border-y border-border/50">
         <ThreePaymentsPanel />
       </Section>
 
       {/* Pricing FAQ */}
-      <Section>
+      <Section id="preguntas">
         <div className="text-center mb-12">
           <h2 className="text-3xl font-bold mb-4">{t("faqTitle")}</h2>
         </div>
@@ -483,6 +399,6 @@ export default function PricingPage() {
       </Section>
 
       <CTABanner />
-    </>
+    </div>
   );
 }

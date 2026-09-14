@@ -31,6 +31,7 @@ export function Navbar() {
   useEffect(() => {
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
+      document.querySelector<HTMLButtonElement>('header button[aria-expanded="true"]')?.focus();
       setActiveMenu(null);
       setMobileOpen(false);
     };
@@ -53,10 +54,14 @@ export function Navbar() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 8 }}
             transition={{ duration: 0.15 }}
-            className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-[540px] bg-bg/95 backdrop-blur-xl border border-border rounded-2xl shadow-2xl p-4 grid grid-cols-2 gap-1"
+            className="site-mega absolute top-full left-1/2 -translate-x-1/2 mt-2 w-[650px] max-h-[calc(100dvh-6rem)] overflow-y-auto overscroll-contain border rounded-2xl shadow-2xl p-4 grid grid-cols-2 gap-1"
             onMouseEnter={() => openMenu(menu.labelKey)}
             onMouseLeave={scheduleClose}
           >
+            <Link href={menu.labelKey === "navProduct" ? "/producto" : "/soluciones"} onClick={() => setActiveMenu(null)} className="col-span-2 flex items-center justify-between px-3 py-3 mb-2 border-b border-border font-semibold text-accent">
+              {t(menu.labelKey === "navProduct" ? "menuOverview" : "menuAllBusinesses")}
+              <span aria-hidden="true">{Icon.arrow("h-4 w-4")}</span>
+            </Link>
             {menu.items.map((item) => (
               <Link
                 key={item.href}
@@ -64,7 +69,7 @@ export function Navbar() {
                 className="flex items-start gap-3 p-3 rounded-xl hover:bg-surface-light transition-colors group"
                 onClick={() => setActiveMenu(null)}
               >
-                <span className="text-xl mt-0.5" aria-hidden="true">{item.emoji}</span>
+                <span className="text-accent mt-0.5" aria-hidden="true">{Icon[item.icon]("h-5 w-5")}</span>
                 <div>
                   <p className="text-sm font-semibold text-text-primary group-hover:text-accent transition-colors">
                     {t(item.labelKey)}
@@ -73,6 +78,7 @@ export function Navbar() {
                 </div>
               </Link>
             ))}
+            {menu.labelKey === "navSolutions" && <Link href="/soluciones#adaptabilidad" onClick={() => setActiveMenu(null)} className="col-span-2 px-3 py-3 mt-2 rounded-lg bg-accent/5 text-sm font-semibold text-accent">{t("menuBusinessMissing")} →</Link>}
           </motion.div>
         )}
       </AnimatePresence>
@@ -88,12 +94,13 @@ export function Navbar() {
         {t("skipToContent")}
       </a>
       <motion.header
-        className="fixed top-0 left-0 right-0 z-50 border-b border-border/50 bg-bg/80 backdrop-blur-xl"
+        onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setActiveMenu(null); }}
+        className="site-header fixed top-0 left-0 right-0 z-50 border-b border-border/50 backdrop-blur-xl"
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
       >
-        <div className="mx-auto max-w-6xl flex items-center justify-between px-6 h-16">
+        <div className="mx-auto max-w-[1248px] flex items-center justify-between px-6 h-16">
           <Link href="/" className="flex items-center gap-2">
             <img src="/parallly-logo.svg" alt="Parallly" className="h-9 w-auto" />
           </Link>
@@ -102,40 +109,36 @@ export function Navbar() {
             {/* Solutions mega menu */}
             <div
               className="relative"
-              onMouseEnter={() => openMenu(SOLUTIONS_MENU.labelKey)}
               onMouseLeave={scheduleClose}
             >
-              <Link
-                href="/soluciones"
-                aria-haspopup="true"
+              <button
+                type="button"
                 aria-expanded={activeMenu === SOLUTIONS_MENU.labelKey}
                 aria-controls={`mega-${SOLUTIONS_MENU.labelKey}`}
-                onFocus={() => openMenu(SOLUTIONS_MENU.labelKey)}
+                onClick={() => activeMenu === SOLUTIONS_MENU.labelKey ? setActiveMenu(null) : openMenu(SOLUTIONS_MENU.labelKey)}
                 className="flex items-center gap-1 px-3 py-2 rounded-lg hover:text-text-primary hover:bg-surface-light/50 transition-colors"
               >
                 {t("navSolutions")}
                 {Icon.chevronDown("w-3.5 h-3.5")}
-              </Link>
+              </button>
               {renderMega(SOLUTIONS_MENU)}
             </div>
 
             {/* Product mega menu */}
             <div
               className="relative"
-              onMouseEnter={() => openMenu(PRODUCT_MENU.labelKey)}
               onMouseLeave={scheduleClose}
             >
-              <Link
-                href="/producto"
-                aria-haspopup="true"
+              <button
+                type="button"
                 aria-expanded={activeMenu === PRODUCT_MENU.labelKey}
                 aria-controls={`mega-${PRODUCT_MENU.labelKey}`}
-                onFocus={() => openMenu(PRODUCT_MENU.labelKey)}
+                onClick={() => activeMenu === PRODUCT_MENU.labelKey ? setActiveMenu(null) : openMenu(PRODUCT_MENU.labelKey)}
                 className="flex items-center gap-1 px-3 py-2 rounded-lg hover:text-text-primary hover:bg-surface-light/50 transition-colors"
               >
                 {t("navProduct")}
                 {Icon.chevronDown("w-3.5 h-3.5")}
-              </Link>
+              </button>
               {renderMega(PRODUCT_MENU)}
             </div>
 

@@ -147,12 +147,12 @@ export class ReviewsService {
 
     // ── Tables ───────────────────────────────────────────────
     async ensureTables(schemaName: string): Promise<void> {
-        const cacheKey = `gbp_cols:${schemaName}`;
+        const cacheKey = `gbp_cols:v2:${schemaName}`;
         if (await this.redis.get(cacheKey)) return;
-        try {
-            await this.prisma.executeInTenantSchema(
-                schemaName,
-                `CREATE TABLE IF NOT EXISTS gbp_reviews (
+
+        await this.prisma.executeInTenantSchema(
+            schemaName,
+            `CREATE TABLE IF NOT EXISTS gbp_reviews (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                     review_name TEXT UNIQUE NOT NULL,
                     reviewer_name TEXT,
@@ -165,12 +165,12 @@ export class ReviewsService {
                     ai_suggestion TEXT,
                     synced_at TIMESTAMPTZ DEFAULT NOW()
                 )`,
-                [],
-            );
-            await this.prisma.executeInTenantSchema(schemaName, `CREATE INDEX IF NOT EXISTS idx_gbp_created ON gbp_reviews(create_time)`, []);
-            await this.prisma.executeInTenantSchema(
-                schemaName,
-                `CREATE TABLE IF NOT EXISTS gbp_reply_effects (
+            [],
+        );
+        await this.prisma.executeInTenantSchema(schemaName, `CREATE INDEX IF NOT EXISTS idx_gbp_created ON gbp_reviews(create_time)`, []);
+        await this.prisma.executeInTenantSchema(
+            schemaName,
+            `CREATE TABLE IF NOT EXISTS gbp_reply_effects (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                     event_key TEXT UNIQUE NOT NULL,
                     review_id UUID NOT NULL REFERENCES gbp_reviews(id) ON DELETE CASCADE,
@@ -190,14 +190,12 @@ export class ReviewsService {
                     CHECK ((state='sending' AND lease_token IS NOT NULL AND lease_expires_at IS NOT NULL)
                         OR (state<>'sending' AND lease_token IS NULL AND lease_expires_at IS NULL))
                 )`,
-                [],
-            );
-            await this.prisma.executeInTenantSchema(schemaName,
-                `CREATE INDEX IF NOT EXISTS idx_gbp_reply_effects_due
+            [],
+        );
+        await this.prisma.executeInTenantSchema(schemaName,
+            `CREATE INDEX IF NOT EXISTS idx_gbp_reply_effects_due
                  ON gbp_reply_effects(state, created_at) WHERE state IN ('pending','unknown','failed')`, []);
-        } catch (e: any) {
-            if (!/already exists|42P07|23505/.test(e.message || '')) throw e;
-        }
+
         await this.redis.set(cacheKey, '1', 86400);
     }
 

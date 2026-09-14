@@ -51,6 +51,7 @@ describe('PushService outbound endpoint policy', () => {
 
     it('normalizes and validates the endpoint before persistence', async () => {
         const prisma = { $queryRawUnsafe: jest.fn().mockResolvedValue([{ endpoint: 'https://fcm.googleapis.com/subscription-id' }]) } as any;
+        prisma.$transaction = async (callback: any) => callback({ $queryRawUnsafe: prisma.$queryRawUnsafe });
         const service = new PushService(prisma, { get: jest.fn() } as any);
 
         await service.subscribe('11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222', {
@@ -69,6 +70,7 @@ describe('PushService outbound endpoint policy', () => {
 
     it('fails closed instead of reassigning an endpoint owned by another account', async () => {
         const prisma = { $queryRawUnsafe: jest.fn().mockResolvedValue([]) } as any;
+        prisma.$transaction = async (callback: any) => callback({ $queryRawUnsafe: prisma.$queryRawUnsafe });
         const service = new PushService(prisma, { get: jest.fn() } as any);
 
         await expect(service.subscribe(
@@ -89,6 +91,7 @@ describe('PushService outbound endpoint policy', () => {
                     : []
             )),
         } as any;
+        prisma.$transaction = async (callback: any) => callback({ $queryRawUnsafe: prisma.$queryRawUnsafe });
         const service = new PushService(prisma, { get: jest.fn() } as any);
 
         await service.subscribeExpo(
@@ -118,6 +121,7 @@ describe('PushService outbound endpoint policy', () => {
 
     it('fails closed when an Expo endpoint belongs to a different installation', async () => {
         const prisma = { $queryRawUnsafe: jest.fn().mockResolvedValue([]) } as any;
+        prisma.$transaction = async (callback: any) => callback({ $queryRawUnsafe: prisma.$queryRawUnsafe });
         const service = new PushService(prisma, { get: jest.fn() } as any);
 
         await expect(service.subscribeExpo(
@@ -130,6 +134,7 @@ describe('PushService outbound endpoint policy', () => {
 
     it('scopes unsubscribe by endpoint, user and tenant', async () => {
         const prisma = { $queryRawUnsafe: jest.fn().mockResolvedValue([]) } as any;
+        prisma.$transaction = async (callback: any) => callback({ $queryRawUnsafe: prisma.$queryRawUnsafe });
         const service = new PushService(prisma, { get: jest.fn() } as any);
 
         await service.unsubscribe(
@@ -148,6 +153,7 @@ describe('PushService outbound endpoint policy', () => {
 
     it('scopes native Expo unsubscribe by token, user and tenant', async () => {
         const prisma = { $queryRawUnsafe: jest.fn().mockResolvedValue([]) } as any;
+        prisma.$transaction = async (callback: any) => callback({ $queryRawUnsafe: prisma.$queryRawUnsafe });
         const service = new PushService(prisma, { get: jest.fn() } as any);
 
         await service.unsubscribeExpo(
@@ -171,6 +177,7 @@ describe('PushService outbound endpoint policy', () => {
 
     it('removes only this user and tenant Expo registrations when legacy clients have no local token', async () => {
         const prisma = { $queryRawUnsafe: jest.fn().mockResolvedValue([]) } as any;
+        prisma.$transaction = async (callback: any) => callback({ $queryRawUnsafe: prisma.$queryRawUnsafe });
         const service = new PushService(prisma, { get: jest.fn() } as any);
 
         await service.unsubscribeExpo(
@@ -191,6 +198,7 @@ describe('PushService outbound endpoint policy', () => {
 
     it('rejects an invalid Expo token before issuing a delete', async () => {
         const prisma = { $queryRawUnsafe: jest.fn() } as any;
+        prisma.$transaction = async (callback: any) => callback({ $queryRawUnsafe: prisma.$queryRawUnsafe });
         const service = new PushService(prisma, { get: jest.fn() } as any);
 
         await expect(service.unsubscribeExpo(
@@ -211,6 +219,7 @@ describe('PushService outbound endpoint policy', () => {
                 .mockResolvedValueOnce(firstPage)
                 .mockResolvedValueOnce(secondPage),
         } as any;
+        prisma.$transaction = async (callback: any) => callback({ $queryRawUnsafe: prisma.$queryRawUnsafe });
         const service = new PushService(prisma, { get: jest.fn() } as any);
         const dispatch = jest.spyOn(service as any, 'dispatch')
             .mockResolvedValueOnce(100)
@@ -232,6 +241,7 @@ describe('PushService outbound endpoint policy', () => {
         const prisma = { $queryRawUnsafe: jest.fn().mockResolvedValue([
             { notification_preferences: stored },
         ]) } as any;
+        prisma.$transaction = async (callback: any) => callback({ $queryRawUnsafe: prisma.$queryRawUnsafe });
         const service = new PushService(prisma, { get: jest.fn() } as any);
 
         await expect(service.updatePreferences(
@@ -250,6 +260,7 @@ describe('PushService outbound endpoint policy', () => {
 
     it('filters server push by the category chosen by the user', async () => {
         const prisma = { $queryRawUnsafe: jest.fn().mockResolvedValue([]) } as any;
+        prisma.$transaction = async (callback: any) => callback({ $queryRawUnsafe: prisma.$queryRawUnsafe });
         const service = new PushService(prisma, { get: jest.fn() } as any);
         await service.sendToUser(
             '11111111-1111-4111-8111-111111111111',
@@ -264,6 +275,7 @@ describe('PushService outbound endpoint policy', () => {
 
     it('uses the product default when an older preference object lacks a category', async () => {
         const prisma = { $queryRawUnsafe: jest.fn().mockResolvedValue([]) } as any;
+        prisma.$transaction = async (callback: any) => callback({ $queryRawUnsafe: prisma.$queryRawUnsafe });
         const service = new PushService(prisma, { get: jest.fn() } as any);
         await service.sendToUser(
             '11111111-1111-4111-8111-111111111111',

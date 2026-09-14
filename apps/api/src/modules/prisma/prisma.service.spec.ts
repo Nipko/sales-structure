@@ -18,6 +18,9 @@ describe('PrismaService tenant schema lifecycle', () => {
         Object.defineProperty(service, 'tenant', { value: tenant, configurable: true });
         Object.defineProperty(service, '$queryRawUnsafe', { value: queryRaw, configurable: true });
         Object.defineProperty(service, '$executeRawUnsafe', { value: executeRaw, configurable: true });
+        Object.defineProperty(service, '$transaction', { value: async (callback: any) => callback({
+            $executeRawUnsafe: executeRaw, $queryRawUnsafe: jest.fn().mockResolvedValue([]),
+        }), configurable: true });
         jest.spyOn(service as any, 'loadTenantSchemaTemplate').mockResolvedValue(
             'CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."sentinel" (id UUID);',
         );
@@ -44,7 +47,7 @@ describe('PrismaService tenant schema lifecycle', () => {
             data: { schemaName: expectedSchemaName },
         });
         expect(queryRaw).not.toHaveBeenCalledWith(expect.any(String), staleSchemaName);
-        expect(executeRaw).toHaveBeenCalledWith(`CREATE SCHEMA "${expectedSchemaName}";`);
+        expect(executeRaw).toHaveBeenCalledWith(`CREATE SCHEMA IF NOT EXISTS "${expectedSchemaName}";`);
         expect(executeRaw.mock.calls.map(([sql]) => String(sql)).join('\n'))
             .not.toContain(`"${staleSchemaName}"."sentinel"`);
     });

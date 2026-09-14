@@ -1,0 +1,72 @@
+.section { background: #f7f9fc; color: #14283f; padding: 86px 24px; }
+.container { max-width: 1200px; margin: auto; }
+.heading { display: grid; grid-template-columns: 1.1fr .9fr; align-items: end; gap: 60px; margin-bottom: 34px; }
+.eyebrow { color: #245ec7; margin: 0 0 14px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .12em; }
+.heading h2 { margin: 0; font-size: clamp(31px, 3.6vw, 44px); font-weight: 650; letter-spacing: -.04em; line-height: 1.13; text-wrap: balance; }
+.heading > p { margin: 0 0 3px; color: #52677d; font-size: 15px; line-height: 1.75; max-width: 470px; }
+.selector { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); padding: 6px; gap: 6px; border: 1px solid #dbe4ef; border-radius: 12px; background: #fff; }
+.selector button { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 58px; padding: 10px 8px; background: transparent; border: 1px solid transparent; border-radius: 7px; color: #52677d; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; transition: background .2s, color .2s; }
+.selector button[aria-pressed=true] { background: #edf3ff; border-color: #c7d8f7; color: #183f84; }
+.selector button:hover { background: #f0f4f9; }
+.selector img { width: 22px; height: 22px; }
+.webMark, .telegramMark { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; flex-shrink: 0; }
+.webMark { color: #245ec7; }
+.telegramMark { color: #2086b5; }
+.experience { display: grid; grid-template-columns: .9fr 1.1fr; gap: 64px; padding: 40px 0 32px; align-items: start; }
+.guide { padding: 14px 0; }
+.selectedChannel { display: flex; align-items: center; gap: 9px; margin: 0 0 18px; font-size: 13px; font-weight: 650; }
+.guide h3 { margin: 0 0 16px; max-width: 480px; font-size: clamp(26px, 2.8vw, 34px); font-weight: 650; line-height: 1.18; letter-spacing: -.035em; text-wrap: balance; }
+.benefit { margin: 0 0 25px; color: #52677d; font-size: 14px; line-height: 1.75; }
+.stepsLabel { margin: 0 0 16px; color: #314b67; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 17px; }
+.steps li { display: flex; align-items: flex-start; gap: 12px; }
+.steps li > span { display: grid; place-items: center; flex-shrink: 0; width: 24px; height: 24px; border: 1px solid #c5d3e6; border-radius: 50%; color: #245ec7; font-size: 10px; font-weight: 700; }
+.steps p { margin: 0; padding-top: 1px; color: #52677d; font-size: 13px; line-height: 1.7; }
+.requirement { display: flex; gap: 10px; margin-top: 24px; padding-top: 20px; border-top: 1px solid #dce4ee; color: #65758a; }
+.requirement > span { flex-shrink: 0; margin-top: 3px; }
+.requirement p { margin: 0; font-size: 12px; line-height: 1.75; }
+.demoFrame { min-width: 0; --color-text-muted: #5f7186; }
+.demoFrame > figcaption > span:first-child { color: #7f540e; background: #fff5df; border-color: #ead3a4; }
+.demo { border: 1px solid #d4dfec; border-radius: 12px; overflow: hidden; background: #fff; box-shadow: 0 15px 34px #1023370a; }
+.demoHeader { display: flex; align-items: center; gap: 12px; padding: 19px 23px; border-bottom: 1px solid #e2e8f0; }
+.businessAvatar { display: grid; place-items: center; width: 38px; height: 38px; background: #102337; color: #fff; border-radius: 10px; font-size: 18px; font-weight: 650; }
+.demoHeader > div { flex: 1; }
+.demoHeader strong { display: block; font-size: 13px; font-weight: 650; }
+.demoHeader > div > span { display: flex; align-items: center; gap: 5px; color: #61758b; font-size: 10px; margin-top: 4px; }
+.demoHeader img, .demoHeader .webMark, .demoHeader .telegramMark { width: 13px; height: 13px; }
+.demoHeader .webMark svg, .demoHeader .telegramMark svg { width: 13px; height: 13px; }
+.mode { color: #6b7b8e; font-size: 9px; text-transform: uppercase; letter-spacing: .05em; }
+.conversation { display: flex; flex-direction: column; gap: 15px; min-height: 380px; padding: 20px 24px; background: #f5f7fa; }
+.conversationDate { margin: 0 0 3px; text-align: center; color: #697b8d; font-size: 10px; }
+.customer, .reply { max-width: 88%; border-radius: 9px; padding: 12px 15px; animation: appear .25s ease-out; }
+.customer { align-self: flex-start; border: 1px solid #e1e7ef; background: #fff; }
+.reply { align-self: flex-end; background: #e5efff; border: 1px solid #d0e0fc; }
+.customer small, .reply small { display: flex; gap: 5px; align-items: center; margin-bottom: 4px; color: #5c6e83; font-size: 9px; font-weight: 600; }
+.reply small { color: #265caa; }
+.customer p, .reply p { margin: 0; color: #294059; font-size: 12px; line-height: 1.7; }
+.source { display: flex; gap: 6px; align-items: center; margin-top: 9px; padding-top: 8px; border-top: 1px solid #cbdcf5; color: #42678f; font-size: 9px; }
+.handoff { display: flex; align-items: flex-start; gap: 10px; padding: 13px 14px; border: 1px solid #cbded3; border-radius: 7px; background: #edf6f0; animation: appear .25s ease-out; }
+.handoff > span { color: #327258; flex-shrink: 0; }
+.handoff strong { color: #285f48; font-size: 11px; font-weight: 650; }
+.handoff p { margin: 4px 0 0; color: #4d705e; font-size: 10px; line-height: 1.65; }
+.waiting { display: flex; gap: 10px; align-items: center; align-self: center; color: #61748d; margin: auto 0; }
+.waiting p { max-width: 210px; font-size: 12px; line-height: 1.7; }
+.demoControls { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 15px 21px; border-top: 1px solid #e1e8f0; }
+.stepDots { display: flex; gap: 6px; }
+.stepDots button { width: 30px; height: 30px; border: 1px solid #d7e0ec; border-radius: 50%; background: #fff; color: #65778f; font-size: 10px; cursor: pointer; }
+.stepDots button[aria-pressed=true] { background: #245ec7; color: #fff; border-color: #245ec7; }
+.advance { display: inline-flex; align-items: center; gap: 9px; min-height: 38px; padding: 6px 0; border: 0; background: transparent; color: #245ec7; font: inherit; font-size: 12px; font-weight: 650; cursor: pointer; }
+.publishNote { display: flex; align-items: center; gap: 17px; padding: 22px 25px; border: 1px solid #d1def0; border-radius: 9px; background: #edf3fb; }
+.publishNote > span { color: #245ec7; flex-shrink: 0; }
+.publishNote > div { flex: 1; }
+.publishNote strong { display: block; font-size: 13px; font-weight: 650; }
+.publishNote p { margin: 5px 0 0; max-width: 710px; color: #536980; font-size: 12px; line-height: 1.75; }
+.publishNote a { display: inline-flex; gap: 8px; align-items: center; flex-shrink: 0; color: #245ec7; font-size: 12px; font-weight: 650; }
+.scope { margin: 17px 0 0; color: #65758a; font-size: 11px; line-height: 1.7; }
+.assistLink { display:inline-flex; align-items:center; gap:8px; margin-top:22px; min-height:36px; color:#245ec7; font-size:12px; font-weight:650; }
+.section button:focus-visible, .section a:focus-visible { outline: 3px solid #245ec7; outline-offset: 4px; }
+@keyframes appear { from { opacity: .4; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+@media(max-width:1000px) { .experience { gap: 36px; } .heading { gap: 35px; } .selector button { font-size: 12px; gap: 7px; } .publishNote { align-items: flex-start; flex-wrap: wrap; } .publishNote a { margin-left: 37px; } }
+@media(max-width:760px) { .section { padding: 60px 22px; } .heading { grid-template-columns: 1fr; gap: 17px; } .selector { display: flex; flex-wrap: wrap; } .selector button { flex: 1 1 28%; min-height: 50px; font-size: 12px; } .experience { grid-template-columns: 1fr; gap: 22px; padding-top: 24px; } .guide { padding: 0; } .guide h3 { max-width: 560px; } .demoFrame { max-width: 600px; width: 100%; } .conversation { min-height: 385px; } .publishNote { padding: 20px; gap: 12px; } .publishNote > div { flex-basis: calc(100% - 40px); } .publishNote a { margin-left: 32px; } .compact .stepsLabel, .compact .steps { display: none; } .compact .benefit { margin-bottom: 0; } }
+@media(max-width:400px) { .section { padding-inline: 18px; } .selector button { gap: 6px; padding-inline: 3px; font-size: 11px; } .selector img, .selector .webMark, .selector .telegramMark { width: 18px; height: 18px; } .demoHeader { padding: 15px; } .conversation { padding: 18px 15px; } .customer, .reply { max-width: 94%; } .mode { display: none; } .demoControls { padding: 12px 15px; gap: 8px; } }
+@media(prefers-reduced-motion:reduce) { .customer, .reply, .handoff { animation: none; } .selector button { transition: none; } }

@@ -1,3 +1,4 @@
+import { withRuntimeSchemaLock } from '../../common/utils/runtime-schema-lock';
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -46,48 +47,40 @@ export class AbTestService {
     // ENSURE A/B TEST TABLES — lazy creation with Redis cache
     // ================================================================
     async ensureAbTestTables(schema: string): Promise<void> {
-        const cacheKey = `ab_tables:${schema}`;
+        const cacheKey = `ab_tables:v2:${schema}`;
         const cached = await this.redis.get(cacheKey);
         if (cached) return;
 
-        try {
-            await this.prisma.$queryRawUnsafe(
+        await withRuntimeSchemaLock(this.prisma, schema, async (tx) => {
+            await tx.$queryRawUnsafe(
                 `CREATE TABLE IF NOT EXISTS "${schema}".campaign_variants (
-                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                    campaign_id UUID NOT NULL,
-                    name TEXT NOT NULL,
-                    content JSONB NOT NULL,
-                    percentage INTEGER NOT NULL DEFAULT 50,
-                    is_winner BOOLEAN DEFAULT false,
-                    stats JSONB DEFAULT '{"sent":0,"delivered":0,"read":0,"responded":0,"failed":0}',
-                    created_at TIMESTAMPTZ DEFAULT NOW()
-                )`,
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        campaign_id UUID NOT NULL,
+                        name TEXT NOT NULL,
+                        content JSONB NOT NULL,
+                        percentage INTEGER NOT NULL DEFAULT 50,
+                        is_winner BOOLEAN DEFAULT false,
+                        stats JSONB DEFAULT '{"sent":0,"delivered":0,"read":0,"responded":0,"failed":0}',
+                        created_at TIMESTAMPTZ DEFAULT NOW()
+                    )`,
             );
-        } catch { /* already exists */ }
 
-        try {
-            await this.prisma.$queryRawUnsafe(
+            await tx.$queryRawUnsafe(
                 `CREATE INDEX IF NOT EXISTS idx_campaign_variants_campaign ON "${schema}".campaign_variants(campaign_id)`,
             );
-        } catch { /* ok */ }
 
-        try {
-            await this.prisma.$queryRawUnsafe(
+            await tx.$queryRawUnsafe(
                 `ALTER TABLE "${schema}".campaign_recipients ADD COLUMN IF NOT EXISTS variant_id UUID`,
             );
-        } catch { /* ok */ }
 
-        try {
-            await this.prisma.$queryRawUnsafe(
+            await tx.$queryRawUnsafe(
                 `ALTER TABLE "${schema}".campaigns ADD COLUMN IF NOT EXISTS is_ab_test BOOLEAN DEFAULT false`,
             );
-        } catch { /* ok */ }
 
-        try {
-            await this.prisma.$queryRawUnsafe(
+            await tx.$queryRawUnsafe(
                 `ALTER TABLE "${schema}".campaigns ADD COLUMN IF NOT EXISTS ab_test_config JSONB DEFAULT '{}'`,
             );
-        } catch { /* ok */ }
+        });
 
         await this.redis.set(cacheKey, 'true', 86400);
     }

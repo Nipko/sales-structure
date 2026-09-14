@@ -8,6 +8,9 @@ export const routes = {
   productBooking: "/producto/reservas",
   productCrm: "/producto/crm",
   productAndroid: "/producto/app-android",
+  productKnowledge: "/producto/conocimiento",
+  productAssist: "/producto/parallly-assist",
+  productQuality: "/producto/calidad",
   pricing: "/precios",
   // The canonical answer to "who charges me what". Linked from every surface
   // that shows a price or a CTA, so the three payments cannot be discovered on

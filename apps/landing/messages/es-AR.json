@@ -29,7 +29,6 @@
     "ctaBanner": "Explorá la configuración para {industry}"
   },
   "pricingPage": {
-    "heroSubtitle": "Elegí el plan que mejor se adapte a tu negocio. Las condiciones vigentes aparecen directamente en cada plan.",
     "upsellEmpToStarter1": "Agregá Instagram y Messenger",
     "needMore": "¿Necesitás más? →",
     "comparisonTitle": "Compará todos los planes en detalle",
@@ -46,7 +45,6 @@
   },
   "pricing": {
     "subtitle": "Consultá en cada plan la prueba, los requisitos y los límites vigentes.",
-    "title": "Precios y condiciones vigentes, sin valores de respaldo",
     "currencyHint": "Seleccioná tu país para consultar la moneda y el precio vigentes. Si no hay tarifa local, vas a ver el importe en USD."
   },
   "howItWorks": {
@@ -62,8 +60,6 @@
     "f7Desc": "Cargá tu catálogo, FAQs, políticas y documentos. Tu agente busca con IA y responde con info real."
   },
   "faq": {
-    "a2": "Subís tu información (catálogo, FAQs, reglas) y elegís tu industria. La IA aprende y responde con tu tono. Usamos modelos avanzados (Claude, GPT-4, Gemini) entrenados con la info de tu negocio.",
-    "a5": "La configuración es guiada: conectás un canal, elegís tu industria, revisás la información del negocio y probás el agente antes de activarlo. El tiempo depende de las conexiones y el contenido.",
     "a7": "Podés gestionar las opciones disponibles desde facturación. La fecha efectiva y las condiciones aparecen antes de confirmar el cambio.",
     "ctaText": "¿Tenés otra pregunta? Escribinos por WhatsApp.",
     "ctaLink": "Escribinos por WhatsApp"
@@ -133,5 +129,18 @@
   "labelledDemos": {
     "subtitle": "Cada panel de este sitio dice qué es antes de mostrar un resultado. Ninguno de estos cuatro es una grabación de un cliente ni de una prueba: son ejemplos dibujados, y lo que hay detrás de cada uno lo podés ir a leer en el código.",
     "closingNote": "Nada de esto certifica un canal ni un rubro: el reporte de cierre auditado no certifica ninguno todavía. Lo que sí te conviene revisar antes de contratar es quién te cobra qué."
+  },
+  "mobileApp": {
+    "downloadApp": "Descargá en Google Play",
+    "heroSubtitle": "Atendé conversaciones, tomá el relevo de la IA, actualizá contactos y gestioná las operaciones habilitadas desde Android. Descargá la app de Parallly en Google Play e iniciá sesión con tu cuenta.",
+    "accessTitle": "Llevá a tu equipo a Parallly para Android",
+    "accessSubtitle": "Descargá la app en Google Play e iniciá sesión con tu cuenta de Parallly para continuar la atención y el seguimiento desde el teléfono."
+  },
+  "productOperations": {
+    "mobile": {
+      "downloadCta": "Descargá en Google Play",
+      "note": "Descargá la app desde Google Play e iniciá sesión con tu cuenta activa de Parallly. El acceso y las funciones respetan los permisos de tu equipo.",
+      "guideDescription": "Empezá en el panel web con la orientación de Parallly Assist. Configurá tu empresa y tu equipo; después descargá la app desde Google Play e iniciá sesión para continuar desde Android."
+    }
   }
 }

@@ -90,6 +90,34 @@ const ready = !!pooledUrl && !!directUrl;
         expect(pids.size).toBe(1);
     });
 
+    it('serializes lazy table and index creation through transaction pooling', async () => {
+        await Promise.all(Array.from({ length: 8 }, () =>
+            prisma.transactionInTenantSchema(schema, async (query: any) => {
+                await query('CREATE TABLE IF NOT EXISTS runtime_ddl_probe(id integer)');
+                await query('CREATE INDEX IF NOT EXISTS runtime_ddl_probe_id ON runtime_ddl_probe(id)');
+            }),
+        ));
+        const result = await direct.query('SELECT to_regclass($1)::text AS name', [schema + '.runtime_ddl_probe_id']);
+        expect(result.rows[0].name).toBe(schema + '.runtime_ddl_probe_id');
+        const free = await asClient(client => client.query(
+            'SELECT pg_try_advisory_xact_lock(hashtextextended($1,0)) AS acquired', ['runtime-schema:' + schema],
+        ));
+        expect(free.rows[0].acquired).toBe(true);
+    });
+
+    it('rolls back failed lazy DDL and releases its lock through the pool', async () => {
+        await expect(prisma.transactionInTenantSchema(schema, async (query: any) => {
+            await query('CREATE TABLE runtime_ddl_rollback(id integer)');
+            await query('SELECT 1/0');
+        })).rejects.toThrow();
+        const result = await direct.query('SELECT to_regclass($1)::text AS name', [schema + '.runtime_ddl_rollback']);
+        expect(result.rows[0].name).toBeNull();
+        const free = await asClient(client => client.query(
+            'SELECT pg_try_advisory_xact_lock(hashtextextended($1,0)) AS acquired', ['runtime-schema:' + schema],
+        ));
+        expect(free.rows[0].acquired).toBe(true);
+    });
+
     // ── what transaction pooling really does to session state ────────────────
     describe('session state is shared, not reset', () => {
         /**

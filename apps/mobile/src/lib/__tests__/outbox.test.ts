@@ -20,6 +20,7 @@ import {
     enqueue,
     pendingFor,
     retry,
+    setOutboxConversationAccess,
 } from '../outbox';
 import { api } from '../api';
 
@@ -116,5 +117,25 @@ describe('outbox account isolation', () => {
 
         expect(mockStorage.has('parallly_outbox_v1')).toBe(false);
         expect(sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('drops only a denied thread and blocks late enqueue and reconnect retry for it', async () => {
+        sendMessage.mockResolvedValue({ success: false, error: 'offline' });
+        enqueue({ id: 'denied', tenantId: 'tenant-1', conversationId: 'private', body: 'private draft' });
+        await tick();
+        enqueue({ id: 'retained', tenantId: 'tenant-1', conversationId: 'other', body: 'other draft' });
+        await tick();
+        setOutboxConversationAccess('private', false);
+        expect(pendingFor('private')).toHaveLength(0);
+        expect(pendingFor('other')).toHaveLength(1);
+        expect(enqueue({ id: 'late', tenantId: 'tenant-1', conversationId: 'private', body: 'late callback' })).toBe(false);
+        sendMessage.mockClear();
+        sendMessage.mockResolvedValue({ success: true });
+        retry(); await tick();
+        expect(sendMessage).toHaveBeenCalledTimes(1);
+        expect(sendMessage).toHaveBeenCalledWith('tenant-1', 'other', 'other draft', 'retained');
+        setOutboxConversationAccess('private', true);
+        expect(enqueue({ id: 'new', tenantId: 'tenant-1', conversationId: 'private', body: 'new authorized reply' })).toBe(true);
+        await tick();
     });
 });

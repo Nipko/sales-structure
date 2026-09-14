@@ -10,6 +10,7 @@ import { useToast } from '../components/Toast';
 import { useI18n, SUPPORTED_LOCALES, LOCALE_LABELS } from '../i18n';
 import { haptic } from '../lib/haptics';
 import { ACCOUNT_DELETION_URL, PRIVACY_POLICY_URL } from '../lib/config';
+import { mobileManagementPermissions } from '../lib/mobileManagementPermissions';
 import { theme } from '../theme';
 
 const STATUSES = [
@@ -30,17 +31,18 @@ export function MoreScreen() {
     const { t, locale, setLocale } = useI18n();
     const [availability, setAvailability] = useState('online');
     const [localTasks, setLocalTasks] = useState<any[]>([]);
+    const { viewAnalytics } = mobileManagementPermissions(user?.role);
 
     // React Query: datos del agente (cache 2 min, refetch automático al volver).
     const { data: moreData, isLoading: loading, isError, refetch } = useQuery({
-        queryKey: ['more-stats', tenantId, user?.id],
+        queryKey: ['more-stats', tenantId, user?.id, user?.role],
         queryFn: async () => {
             if (!tenantId) return null;
             const end = new Date().toISOString();
             const start = new Date(Date.now() - 30 * 86400000).toISOString();
             const [r, k, s, tk]: any[] = await Promise.all([
-                api.getResolutionStats(tenantId, start, end),
-                api.getOverviewKpis(tenantId, start, end),
+                viewAnalytics ? api.getResolutionStats(tenantId, start, end) : Promise.resolve(null),
+                viewAnalytics ? api.getOverviewKpis(tenantId, start, end) : Promise.resolve(null),
                 api.getAgentsStatus(tenantId),
                 api.getTasks(tenantId, user?.id ? `assignedTo=${user.id}&status=pending` : 'status=pending'),
             ]);
@@ -56,7 +58,7 @@ export function MoreScreen() {
             return {
                 stats: r?.success ? (r.data?.summary || r.data) : null,
                 kpis: k?.success ? k.data : null,
-                analyticsError: !r?.success || !k?.success,
+                analyticsError: viewAnalytics && (!r?.success || !k?.success),
                 tasks: (Array.isArray(tasksResult.data) ? tasksResult.data : (tasksResult.data?.tasks || []))
                     .filter((x: any) => !['completed', 'done', 'closed'].includes(String(x.status || '').toLowerCase())),
             };
@@ -186,7 +188,7 @@ export function MoreScreen() {
                     </>
                 )}
 
-                {!loading && !coreLoadError && (
+                {viewAnalytics && !loading && !coreLoadError && (
                     <>
                         {/* Analytics */}
                         <Text style={styles.section}>{t('more.performance')}</Text>

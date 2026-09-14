@@ -53,7 +53,6 @@ describe('verticalOperationPolicy', () => {
             { kind: 'service_requests', itemType: 'service_request', states: ['pending', 'quoted', 'scheduled', 'dispatched', 'in_progress', 'completed'] },
             { kind: 'education', itemType: 'enrollment', states: ['enrolled', 'active', 'completed'] },
             { kind: 'photo_sessions', itemType: 'photo_session', states: ['requested', 'scheduled', 'in_progress', 'delivered'] },
-            { kind: 'vehicle_rentals', itemType: 'vehicle_rental', states: ['reserved', 'picked_up', 'returned'] },
             { kind: 'pet_boarding', itemType: 'boarding', states: ['reserved', 'checked_in', 'checked_out'] },
         ];
 
@@ -165,9 +164,9 @@ describe('verticalOperationPolicy', () => {
             expect(availableItemActions('photo_sessions', 'tenant_agent', 'photo_session', 'scheduled')).toEqual([]);
             expect(availableItemActions('photo_sessions', 'tenant_admin', 'photo_session', 'scheduled')).toEqual(['advance', 'cancel']);
             expect(availableItemActions('photo_sessions', 'tenant_admin', 'photo_session', 'in_progress')).toEqual(['deliver', 'cancel']);
-            expect(availableItemActions('vehicle_rentals', 'tenant_agent', 'vehicle_rental', 'reserved')).toEqual(['pick_up']);
-            expect(availableItemActions('vehicle_rentals', 'tenant_admin', 'vehicle_rental', 'reserved')).toEqual(['pick_up', 'cancel']);
-            expect(availableItemActions('vehicle_rentals', 'tenant_admin', 'vehicle_rental', 'picked_up')).toEqual(['return_vehicle', 'cancel']);
+            expect(availableItemActions('vehicle_rentals', 'tenant_agent', 'vehicle_rental', 'reserved')).toEqual([]);
+            expect(availableItemActions('vehicle_rentals', 'tenant_admin', 'vehicle_rental', 'reserved')).toEqual(['cancel']);
+            expect(availableItemActions('vehicle_rentals', 'tenant_admin', 'vehicle_rental', 'picked_up')).toEqual(['cancel']);
             expect(availableItemActions('pet_boarding', 'tenant_agent', 'boarding', 'reserved')).toEqual(['check_in']);
             expect(availableItemActions('pet_boarding', 'tenant_supervisor', 'boarding', 'reserved')).toEqual(['check_in', 'cancel']);
             expect(availableItemActions('pet_boarding', 'tenant_supervisor', 'boarding', 'checked_in')).toEqual(['check_out', 'cancel']);
@@ -177,6 +176,14 @@ describe('verticalOperationPolicy', () => {
             expect(availableItemActions('test_drives', 'tenant_admin', 'test_drive', 'scheduled')).toEqual([]);
         });
 
+        it.each(['pending_review', 'reserved', 'picked_up'])(
+            'never sends inspection transitions through generic status from %s', (status) => {
+                expect(getSafeNextStatus('vehicle_rentals', 'vehicle_rental', status)).toBeNull();
+                expect(availableItemActions('vehicle_rentals', 'tenant_agent', 'vehicle_rental', status)).toEqual([]);
+                expect(availableItemActions('vehicle_rentals', 'tenant_supervisor', 'vehicle_rental', status)).toEqual(['cancel']);
+            },
+        );
+
         it.each([
             ['restaurant', 'restaurant_order', 'delivered'],
             ['orders', 'order', 'paid'],
@@ -185,6 +192,7 @@ describe('verticalOperationPolicy', () => {
             ['education', 'enrollment', 'completed'],
             ['photo_sessions', 'photo_session', 'delivered'],
             ['vehicle_rentals', 'vehicle_rental', 'returned'],
+            ['vehicle_rentals', 'vehicle_rental', 'rejected'],
             ['pet_boarding', 'boarding', 'checked_out'],
         ] as Array<[VerticalOperationKind, string, string]>)('returns no actions for terminal %s/%s=%s', (kind, itemType, status) => {
             expect(availableItemActions(kind, 'tenant_admin', itemType, status)).toEqual([]);

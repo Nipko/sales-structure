@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, ScrollView, StyleSheet, ActivityIndicator, Linking, TouchableOpacity, TextInput, Alert } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useKeyboardSpace } from '../lib/useKeyboardSpace';
@@ -9,6 +9,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../components/Toast';
 import { useI18n } from '../i18n';
 import { haptic } from '../lib/haptics';
+import { mobileManagementPermissions } from '../lib/mobileManagementPermissions';
 import { theme } from '../theme';
 
 function tagNamesOf(tags: any[]): string[] {
@@ -24,6 +25,9 @@ export function LeadDetailScreen() {
     const nav = useNavigation<any>();
     const { leadId } = route.params;
     const { tenantId, user } = useAuth();
+    const { archiveLeads } = mobileManagementPermissions(user?.role);
+    const canArchiveRef = useRef(archiveLeads);
+    canArchiveRef.current = archiveLeads;
     const { t } = useI18n();
     const toast = useToast();
     const kbSpace = useKeyboardSpace();
@@ -186,6 +190,7 @@ export function LeadDetailScreen() {
     const archived = !!(l.is_archived || l.archived_at);
 
     const toggleArchive = () => {
+        if (!canArchiveRef.current) return;
         Alert.alert(
             archived ? t('crm.restore') : t('crm.archive'),
             archived ? t('crm.restoreConfirmMsg') : t('crm.archiveConfirmMsg'),
@@ -195,7 +200,7 @@ export function LeadDetailScreen() {
                     text: archived ? t('crm.restore') : t('crm.archive'),
                     style: archived ? 'default' : 'destructive',
                     onPress: async () => {
-                        if (!tenantId) return;
+                        if (!tenantId || !canArchiveRef.current) return;
                         try {
                             const r: any = archived ? await api.restoreLead(tenantId, leadId) : await api.archiveLead(tenantId, leadId);
                             if (!r?.success) throw new Error('fail');
@@ -343,11 +348,11 @@ export function LeadDetailScreen() {
             )}
 
             {/* Archive / restore */}
-            <TouchableOpacity style={styles.archiveBtn} onPress={toggleArchive}
+            {archiveLeads && <TouchableOpacity style={styles.archiveBtn} onPress={toggleArchive}
                 accessibilityRole="button" accessibilityLabel={archived ? t('crm.restore') : t('crm.archive')}>
                 <Ionicons name={archived ? 'archive-outline' : 'archive'} size={18} color={archived ? theme.accent : theme.danger} />
                 <Text style={[styles.archiveText, { color: archived ? theme.accent : theme.danger }]}>{archived ? t('crm.restore') : t('crm.archive')}</Text>
-            </TouchableOpacity>
+            </TouchableOpacity>}
         </ScrollView>
     );
 }

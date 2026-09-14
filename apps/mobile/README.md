@@ -24,7 +24,7 @@ Vive en el **monorepo** y consume **`@parallext/shared`** (vía `file:../../pack
 - ✅ **Push nativo** (Expo): registro del token + `/push/expo-subscribe`; el backend envía vía Expo Push API en mensaje/handoff/SLA/cita; **tap → conversación exacta** (deep-link, también en cold start). *Requiere `eas init` (projectId) y un **development build** — NO funciona en Expo Go (SDK 53+ quitó remote push de Expo Go).*
 - ✅ **Seguridad**: re-bloqueo biométrico al volver tras más de 15 minutos en segundo
   plano, con overlay de desbloqueo
-- 📦 **Estado Android documentado al 10-ago-2026:** AAB `1.0.0 (7)` validado y activo en prueba interna; el rollout de Producción fue enviado a revisión. Este README no confirma una aprobación posterior ni visibilidad pública: verificar Play Console antes de comunicar el estado actual.
+- 📦 **Estado Android comprobado al 14-sep-2026:** `1.1.0 (10)` está disponible en la prueba interna de Google Play, con AAB/firma validados y optimización Alta (ofuscación 91%). Producción conserva `1.0.0 (9)` mientras se comprueba el binario nuevo en el SM-S918B. Evidencia y estado de publicación: [`../../docs/mobile-release-2026-09-14.md`](../../docs/mobile-release-2026-09-14.md).
 - 🚧 iOS no se declara publicado. Opcionales aplazados: tema claro, switch multi-tenant y centro de notificaciones persistente.
 
 ## Push nativo — cómo activarlo
@@ -34,7 +34,7 @@ Vive en el **monorepo** y consume **`@parallext/shared`** (vía `file:../../pack
 4. Abre la app (dev build, no Expo Go), acepta permisos → el token Expo se registra solo
 
 ## Requisitos previos
-- Node 18+, `npm`
+- Node >=20.19.4 (Node 22 recomendado), `npm`
 - Expo Go (para dev) o un development build
 - Para tiendas: cuenta **Apple Developer** ($99/año) y **Google Play** ($25), `eas-cli`
 

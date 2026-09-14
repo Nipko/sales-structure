@@ -27,6 +27,7 @@ import { theme } from '../theme';
 import { randomUUID } from 'expo-crypto';
 import { catalogMoney,catalogRequestKey,currentOrderReview,type CatalogReview } from '../lib/catalogOrderReview';
 import { CatalogOrderQuoteCard } from '../components/CatalogOrderQuoteCard';
+import { readHomeServices } from '../lib/operationScheduling';
 
 export type ComposerKind = OperationComposerKind;
 
@@ -162,6 +163,7 @@ function Field({
             <Text style={styles.label}>{label}</Text>
             <TextInput
                 style={[styles.input, multiline && styles.multiline]}
+                accessibilityLabel={label}
                 value={value}
                 onChangeText={onChange}
                 placeholder={placeholder}
@@ -209,7 +211,7 @@ function Choices({
     );
 }
 
-function ReferencePicker({
+export function ReferencePicker({
     label,
     items,
     value,
@@ -368,6 +370,9 @@ export function OperationCreateModal({
                 primaryRows = rows(plans);
                 secondaryRows = rows(policies);
             }
+            if (kind === 'service_requests') {
+                primaryRows = readHomeServices(await api.getBookableServices(tenantId));
+            }
             if (kind === 'pet_boarding') {
                 const services = await api.getBookableServices(tenantId);
                 secondaryRows = rows(services).filter((service) => ['hotel', 'guarderia'].includes(String(service.category || '').toLowerCase()));
@@ -378,7 +383,7 @@ export function OperationCreateModal({
             setSecondary(normalized.secondary);
             if (!hasRemoteResource && initialPrimaryId && normalized.primary.some((item) => item.id === initialPrimaryId)) {
                 setSelectedPrimary(initialPrimaryId);
-            } else if (!hasRemoteResource && normalized.primary.length === 1) setSelectedPrimary(normalized.primary[0].id);
+            } else if (!hasRemoteResource && kind !== 'service_requests' && normalized.primary.length === 1) setSelectedPrimary(normalized.primary[0].id);
             if (initialSecondaryId && normalized.secondary.some((item) => item.id === initialSecondaryId)) {
                 setSelectedSecondary(initialSecondaryId);
             } else if (normalized.secondary.length === 1) setSelectedSecondary(normalized.secondary[0].id);
@@ -581,7 +586,8 @@ export function OperationCreateModal({
         if (kind === 'insurance' && mode === 'claim') return !!selectedSecondary
             && !!form.description?.trim() && validIncidentDay(form.date);
         if (kind === 'insurance' && mode === 'policy') return isManager && !!selectedContact && !!form.policyNumber?.trim() && Number(form.amount) > 0 && validDay(form.startsAt);
-        if (kind === 'service_requests') return !!selectedContact && !!form.serviceType?.trim();
+        if (kind === 'service_requests') return !!selectedContact
+            && (primary.some(item => item.id === selectedPrimary) || !!form.serviceType?.trim());
         if (kind === 'photo_sessions') return isManager && !!selectedContact && !!form.sessionType?.trim() && validDay(form.date) && validTime(form.time);
         if (kind === 'test_drives') return !!selectedPrimary && !!form.customerName?.trim() && validDay(form.date) && validTime(form.time);
         if (kind === 'vehicle_rentals' || kind === 'pet_boarding') return !!selectedPrimary
@@ -589,7 +595,7 @@ export function OperationCreateModal({
             && (kind === 'pet_boarding' ? !!selectedPetOwnerContactId : !!selectedContact)
             && validDay(form.date) && validDay(form.endDate) && form.endDate > form.date;
         return false;
-    }, [cartItems.length, form, isManager, kind, mode, selectedContact, selectedPetOwnerContactId, selectedPrimary, selectedSecondary]);
+    }, [cartItems.length, form, isManager, kind, mode, primary, selectedContact, selectedPetOwnerContactId, selectedPrimary, selectedSecondary]);
 
     const submit = async () => {
         if (!canSubmit || submitting || catalogSubmitting.current) return;
@@ -686,9 +692,11 @@ export function OperationCreateModal({
                     endsAt: validDay(form.endDate) ? form.endDate : undefined,
                 });
             } else if (kind === 'service_requests') {
+                const service = primary.find(item => item.id === selectedPrimary);
                 response = await api.createServiceRequest(tenantId, {
                     contactId: selectedContact,
-                    serviceType: form.serviceType.trim(),
+                    ...(service ? { serviceId: service.id } : {}),
+                    serviceType: service?.raw.category || form.serviceType.trim(),
                     urgency: form.urgency,
                     customerName: selectedContactName,
                     customerPhone: selectedContactPhone || undefined,
@@ -740,7 +748,7 @@ export function OperationCreateModal({
             }
             if (!response?.success) throw new Error(response?.error || 'create_failed');
             haptic.success();
-            toast.success(t('ops.create.success'));
+            toast.success(t(kind === 'vehicle_rentals' ? 'ops.rental.requestCreated' : 'ops.create.success'));
             await onCreated();
             onClose();
         } catch (error: any) {
@@ -756,7 +764,9 @@ export function OperationCreateModal({
     };
 
     const orderCatalog = kind === 'restaurant' || kind === 'orders';
-    const selectorError = referenceError || contactsError || resourcesError;
+    // Capturing an unscheduled request remains valid without a ready catalog.
+    // The scheduling command later requires a service chosen from a fresh read.
+    const selectorError = (referenceError && kind !== 'service_requests') || contactsError || resourcesError;
     const initialSelectorLoading = loadingReferences
         || (contactsLoading && contacts.length === 0)
         || (resourcesLoading && primary.length === 0);
@@ -925,7 +935,10 @@ export function OperationCreateModal({
                         </>}
 
                         {kind === 'service_requests' && <>
-                            <Field label={t('ops.field.serviceType')} value={form.serviceType || ''} onChange={(value) => set('serviceType', value)} />
+                            {referenceError ? <Text accessibilityRole="alert" style={styles.errorText}>{t('ops.home.loadError')}</Text>
+                                : !loadingReferences && <ReferencePicker label={t('ops.home.service')} items={primary} value={selectedPrimary} onChange={setSelectedPrimary} emptyLabel={t('ops.home.empty')} />}
+                            {!selectedPrimary && <Field label={t('ops.field.serviceType')} value={form.serviceType || ''} onChange={value => set('serviceType', value)} />}
+                            <Text style={styles.hint}>{t('ops.home.intakeHint')}</Text>
                             <Choices label={t('ops.field.urgency')} value={form.urgency} onChange={(value) => set('urgency', value)} choices={['normal', 'alta', 'emergencia', 'flexible'].map((value) => ({ value, label: t(`ops.urgency.${value}`) }))} />
                             <Field label={t('ops.field.address')} value={form.address || ''} onChange={(value) => set('address', value)} />
                             <Field label={t('ops.field.city')} value={form.city || ''} onChange={(value) => set('city', value)} />

@@ -105,7 +105,13 @@ de capacidades vacía muestra **Sin módulo operativo**; no es un fallo de naveg
 - Acciones sensibles de seguros o cancelaciones pueden requerir manager o confirmación.
 - Registros terminales y estados desconocidos permanecen en lectura.
 
-Las 18 verticales están implementadas pero no certificadas E2E. Consulta
+Los alquileres de vehículos pueden quedar **pendientes de revisión**. La revisión
+corresponde a administración/supervisión; la entrega y devolución requieren registrar
+una inspección en el dashboard. La app indica el paso pendiente y permite abrir
+**Alquileres** en la web según el rol. No confirma entregas o devoluciones sin esa
+evidencia. Las cancelaciones permitidas siguen disponibles para los responsables.
+
+Las capacidades publicadas por la API determinan lo que está disponible. Consulta
 `product-capabilities-reference.md` antes de presentar una capacidad como completa.
 
 ## 6. Citas y reservas
@@ -118,12 +124,19 @@ ejemplo, pedido recibido → en preparación → listo → entregado, o solicitu
 Cuando una transición requiere fecha y hora, la app debe guardarlas junto con el nuevo
 estado; si no hay disponibilidad, no fuerza la operación.
 
+En servicios a domicilio puedes registrar una solicitud sin agendar describiendo el
+tipo de servicio, o vincularla a un servicio del catálogo. Para programarla sí debes
+seleccionar un servicio activo con duración. Al programar una solicitud antigua sin
+servicio, elige uno antes de enviar; la app no lo asigna automáticamente. Un error de
+catálogo se muestra de forma explícita y no habilita la programación.
+
 ## 7. Más: disponibilidad, tareas e indicadores
 
 - Cambia tu estado a online, ausente u offline.
 - Consulta tareas asignadas y márcalas completadas.
 - Visualiza indicadores operativos de los últimos 30 días cuando el endpoint y tu rol
-  lo permiten. Esto no equivale a acceso a la página web de analítica del equipo.
+  lo permiten (administración y supervisión). El rol agente no consulta ni muestra
+  esta sección. Esto no equivale a acceso a la página web de analítica del equipo.
 - Cambia el idioma entre español, inglés, portugués y francés.
 - Abre preferencias de notificaciones, política de privacidad y solicitud de
   eliminación de cuenta.
@@ -134,6 +147,8 @@ estado; si no hay disponibilidad, no fuerza la operación.
 Las notificaciones push pueden avisar de mensajes, handoffs, SLA y citas. Al tocar una
 notificación compatible, la app abre la conversación indicada, incluso desde inicio
 en frío. Puedes configurar categorías desde **Más → Preferencias de notificaciones**.
+Estas preferencias móviles son locales al dispositivo; no sustituyen las preferencias
+de cuenta administradas por la plataforma.
 
 El push remoto requiere un build nativo compatible y permisos del sistema; no funciona
 como push remoto en Expo Go para los SDK actuales.
@@ -157,5 +172,5 @@ Si pierdes conexión:
 
 Usa el dashboard web para conectar canales, crear o editar agentes IA, gestionar
 usuarios, facturación, planes, datos de empresa, integraciones, API keys, catálogos,
-configuración avanzada y analítica completa. La ausencia de estas opciones en móvil es
+conocimiento, Assist/Calidad, configuración avanzada y analítica completa. La ausencia de estas opciones en móvil es
 intencional.

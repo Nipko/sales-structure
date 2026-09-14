@@ -23,7 +23,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     slug: 'parallly-mobile',
     owner: 'nirlevin',
     scheme: 'parallly',
-    version: '1.0.0',
+    version: '1.1.0',
     orientation: 'portrait',
     userInterfaceStyle: 'automatic',
     icon: './assets/icon.png',
@@ -67,6 +67,17 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
                 url: 'https://sentry.io/',
                 organization: process.env.SENTRY_ORG,
                 project: process.env.SENTRY_PROJECT,
+                // Upload the R8 mapping as well as the existing JavaScript source maps.
+                // SDK 7.2 ships this Gradle integration; native source/symbol uploads stay off.
+                experimental_android: {
+                    enableAndroidGradlePlugin: true,
+                    includeProguardMapping: true,
+                    autoUploadProguardMapping: true,
+                    uploadNativeSymbols: false,
+                    autoUploadNativeSymbols: false,
+                    includeNativeSources: false,
+                    includeSourceContext: false,
+                },
             },
         ],
         'expo-localization',
@@ -80,6 +91,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         // Keyboard fix for EAS/store builds (edge-to-edge SDK 54): force adjustNothing
         // so lib/useKeyboardSpace owns the inset math. Mirrors the local manual setting.
         './plugins/withSoftInputAdjustNothing',
+        // Android rotates/resizes freely; orientation above still applies on iOS.
+        './plugins/withAndroidAdaptiveLayout',
+        './plugins/withAndroidReleaseOptimization',
         // GATE 0 (seguridad): network_security_config Android → solo HTTPS (sin
         // cleartext) + plantilla de cert pinning opt-in. Mirrors the local setting.
         './plugins/withAndroidNetworkSecurity',

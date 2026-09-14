@@ -7,19 +7,26 @@ const mockToastError = jest.fn();
 const mockLogout = jest.fn();
 const mockSetAvailability = jest.fn();
 const mockRefetch = jest.fn();
+const mockResolutionStats = jest.fn();
+const mockOverviewKpis = jest.fn();
+const mockAgentsStatus = jest.fn();
+const mockTasks = jest.fn();
 let mockQueryResult: any;
+let mockQueryOptions: any;
+let mockRole: string | undefined;
 
 jest.mock('@react-navigation/native', () => ({
     useNavigation: () => ({ navigate: jest.fn() }),
 }));
 
+jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
 jest.mock('@tanstack/react-query', () => ({
-    useQuery: () => mockQueryResult,
+    useQuery: (options: any) => { mockQueryOptions = options; return mockQueryResult; },
 }));
 
 jest.mock('../../contexts/AuthContext', () => ({
     useAuth: () => ({
-        user: { id: 'agent-1', name: 'Agente demo', email: 'agent@example.com', role: 'tenant_agent' },
+        user: { id: 'agent-1', name: 'Agente demo', email: 'agent@example.com', role: mockRole },
         tenantId: 'tenant-1',
         logout: mockLogout,
     }),
@@ -30,7 +37,13 @@ jest.mock('../../components/Toast', () => ({
 }));
 
 jest.mock('../../lib/api', () => ({
-    api: { setAvailability: mockSetAvailability },
+    api: {
+        setAvailability: (...args: any[]) => mockSetAvailability(...args),
+        getResolutionStats: (...args: any[]) => mockResolutionStats(...args),
+        getOverviewKpis: (...args: any[]) => mockOverviewKpis(...args),
+        getAgentsStatus: (...args: any[]) => mockAgentsStatus(...args),
+        getTasks: (...args: any[]) => mockTasks(...args),
+    },
     requireApiSuccess: (result: any) => {
         if (!result?.success) throw new Error(result?.error || 'request_failed');
         return result;
@@ -58,6 +71,11 @@ jest.mock('../../i18n', () => {
 describe('MoreScreen legal links', () => {
     beforeEach(() => {
         jest.clearAllMocks();
+        mockRole = 'tenant_agent';
+        mockResolutionStats.mockResolvedValue({ success: true, data: { summary: { aiResolutionRate: 80 } } });
+        mockOverviewKpis.mockResolvedValue({ success: true, data: { totalConversations: 5 } });
+        mockAgentsStatus.mockResolvedValue({ success: true, data: [] });
+        mockTasks.mockResolvedValue({ success: true, data: [] });
         mockQueryResult = { data: { tasks: [], analyticsError: false }, isLoading: false, isError: false, refetch: mockRefetch };
         jest.spyOn(Linking, 'openURL').mockResolvedValue(undefined as never);
     });
@@ -111,5 +129,50 @@ describe('MoreScreen legal links', () => {
 
         fireEvent.press(screen.getByRole('button', { name: 'common.retry' }));
         expect(mockRefetch).toHaveBeenCalledTimes(1);
+    });
+
+    it.each(['tenant_agent', 'tenant_viewer', 'unknown', undefined])(
+        'no consulta ni muestra analítica para el rol %s', async (role) => {
+            mockRole = role;
+            // Even cached privileged data must not reveal the performance section.
+            mockQueryResult.data.stats = { aiResolutionRate: 80 };
+            render(<MoreScreen />);
+
+            const result = await mockQueryOptions.queryFn();
+
+            expect(mockResolutionStats).not.toHaveBeenCalled();
+            expect(mockOverviewKpis).not.toHaveBeenCalled();
+            expect(mockAgentsStatus).toHaveBeenCalledWith('tenant-1');
+            expect(mockTasks).toHaveBeenCalledWith('tenant-1', 'assignedTo=agent-1&status=pending');
+            expect(result.analyticsError).toBe(false);
+            expect(result.stats).toBeNull();
+            expect(screen.queryByText('more.performance')).toBeNull();
+            expect(screen.getByText('more.availability')).toBeTruthy();
+        },
+    );
+
+    it.each(['tenant_admin', 'tenant_supervisor', 'super_admin'])(
+        'mantiene la consulta y sección de analítica para %s', async (role) => {
+            mockRole = role;
+            render(<MoreScreen />);
+
+            await mockQueryOptions.queryFn();
+
+            expect(mockResolutionStats).toHaveBeenCalledWith('tenant-1', expect.any(String), expect.any(String));
+            expect(mockOverviewKpis).toHaveBeenCalledWith('tenant-1', expect.any(String), expect.any(String));
+            expect(screen.getByText('more.performance')).toBeTruthy();
+        },
+    );
+
+    it('separa la caché por rol y oculta analítica al perder permisos', () => {
+        mockRole = 'tenant_admin';
+        const view = render(<MoreScreen />);
+        const adminQueryKey = mockQueryOptions.queryKey;
+
+        mockRole = 'tenant_agent';
+        view.rerender(<MoreScreen />);
+
+        expect(mockQueryOptions.queryKey).not.toEqual(adminQueryKey);
+        expect(screen.queryByText('more.performance')).toBeNull();
     });
 });

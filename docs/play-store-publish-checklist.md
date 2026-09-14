@@ -1,5 +1,10 @@
 # Play Store — Estado y checklist de publicación (Parallly Mobile)
 
+> **Seguimiento 14-sep-2026:** Parallly ya tiene ficha pública en Google Play.
+> Consultar [la auditoría y release actual](mobile-release-2026-09-14.md) para el nuevo
+> candidato. La evidencia y los estados de agosto de este checklist son históricos y
+> no certifican el AAB nuevo.
+
 > **Actualización al 25-ago-2026.** El envío fue rechazado el 16-ago-2026 por
 > **“Declaración inexacta de aplicaciones de salud”**. La revisión técnica confirmó que
 > la app móvil no integra Health Connect, datos clínicos, diagnóstico, medicación ni

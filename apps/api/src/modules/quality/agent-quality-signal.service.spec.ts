@@ -172,10 +172,15 @@ describe('AgentQualitySignalService', () => {
     afterEach(() => jest.useRealTimers());
 
     it('creates both durable tables under a tenant advisory lock and caches only after DDL', async () => {
-        const { service, txCalls, redis } = createHarness({ tablesCached: false });
+        const { service, prisma, txCalls, redis } = createHarness({ tablesCached: false });
 
         await service.ensureTables(SCHEMA);
 
+        expect(prisma.transactionInTenantSchema).toHaveBeenCalledWith(
+            SCHEMA,
+            expect.any(Function),
+            { schemaLock: true },
+        );
         expect(txCalls[0].sql).toContain('pg_advisory_xact_lock');
         expect(txCalls.some((call) => call.sql.includes('CREATE TABLE IF NOT EXISTS agent_quality_snapshots'))).toBe(true);
         expect(txCalls.some((call) => call.sql.includes('CREATE TABLE IF NOT EXISTS agent_quality_signals'))).toBe(true);

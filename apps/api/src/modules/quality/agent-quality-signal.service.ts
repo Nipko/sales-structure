@@ -196,7 +196,7 @@ export class AgentQualitySignalService {
                 [`agent-quality-attention-tables:${schemaName}`],
             );
             for (const statement of statements) await query(statement, []);
-        });
+        }, { schemaLock: true });
         // Mark readiness only after every table and index exists.
         await this.redis.set(this.tablesCacheKey(schemaName), '1', 86_400).catch(() => undefined);
     }

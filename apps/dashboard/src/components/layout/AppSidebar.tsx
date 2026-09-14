@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
+import { AgentToolNavigationStatus } from '@/components/AgentToolModuleNotice';
 import { useRole } from "@/hooks/useRole";
 import { useNavigationPreferences } from "@/hooks/useNavigationPreferences";
 import { useCurrentNavigationLocation } from "@/hooks/useCurrentNavigationLocation";
@@ -984,7 +985,9 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
             <span className={cn("absolute -right-1 -top-1 h-2 w-2 rounded-full ring-2 ring-background", criticalQualityBadge ? "bg-red-500" : "bg-orange-500")} />
           )}
         </span>
-        {expanded && <span className="min-w-0 flex-1 truncate text-left">{item.label}</span>}
+        {expanded && <span className="min-w-0 flex-1 truncate text-left">{item.label}
+          {useTenantTree && item.href && !item.planLocked && <AgentToolNavigationStatus href={item.href} />}
+        </span>}
         {/* El candado dice por qué el destino no es el que el nombre promete:
             el plan no la incluye, así que el enlace lleva a Facturación en vez
             de a un 403. */}
@@ -1060,6 +1063,7 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
             <TooltipTrigger asChild>{primary}</TooltipTrigger>
             <TooltipContent side="right">
               <span className="font-semibold">{item.label}</span>
+              {useTenantTree && item.href && !item.planLocked && <AgentToolNavigationStatus href={item.href} />}
             </TooltipContent>
           </Tooltip>
         )}
@@ -1089,7 +1093,7 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
                             : "text-neutral-500 hover:bg-neutral-50 hover:text-foreground dark:text-neutral-400 dark:hover:bg-neutral-800/50",
                         )}
                       >
-                        <span className="truncate">{child.label}</span>
+                        <span className="truncate">{child.label}{useTenantTree && <AgentToolNavigationStatus href={child.href} />}</span>
                       </Link>
                     </li>
                   ))}

@@ -1,6 +1,6 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { SimulationEvidenceBoundary, SimulationRetirement } from './SimulationEvidenceBoundary';
+import { SimulationEvidenceBoundary, SimulationResolutionState, SimulationRetirement } from './SimulationEvidenceBoundary';
 
 let mockLocale = 'es';
 const mockMessages: Record<string, any> = Object.fromEntries(['es','en','pt','fr'].map(locale => [locale, require(`../../../messages/${locale}.json`).simulation]));
@@ -12,6 +12,21 @@ jest.mock('next-intl', () => ({useTranslations: () => (key: string) => {
 beforeEach(() => {mockLocale = 'es';});
 
 describe('simulation evidence availability', () => {
+    it.each(['es', 'en', 'pt', 'fr'])('does not render waiting for customer data as a red failure in %s', locale => {
+        mockLocale = locale;
+        for (const status of ['needs_customer_input', 'not_assessable']) {
+            const html = renderToStaticMarkup(createElement(SimulationResolutionState, { resolved: null, resolutionStatus: status }));
+            expect(html).toContain(mockMessages[locale][status === 'needs_customer_input' ? 'needsCustomerInput' : 'notAssessable']);
+            expect(html).not.toMatch(/text-red|0%|<svg/);
+        }
+    });
+
+    it('keeps conclusive success and failure accessible without relying on icon color', () => {
+        for (const resolved of [true, false]) {
+            const html = renderToStaticMarkup(createElement(SimulationResolutionState, { resolved }));
+            expect(html).toContain(mockMessages.es[resolved ? 'resolved' : 'notResolved']);
+        }
+    });
     it.each(['es','en','pt','fr'])('withholds cached transcripts and scores for unavailable evidence in %s', locale => {
         mockLocale = locale;
         for (const state of [{status:'retired' as const,loading:false,error:false},

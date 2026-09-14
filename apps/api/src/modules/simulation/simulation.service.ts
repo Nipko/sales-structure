@@ -14,6 +14,8 @@ import { RedisService } from '../redis/redis.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { PersonaService } from '../persona/persona.service';
 import { QualityService, JudgeResult } from '../quality/quality.service';
+import { qualityJudgeContext, qualityJudgeScopeHash } from '../quality/quality-judge-context';
+import { QUALITY_RUBRIC_HASH } from '../quality/quality-rubric';
 import { AgentTestService } from '../conversations/agent-test.service';
 import { CONVERSATIONAL_CHANNELS } from '@parallext/shared';
 import { AgentEvaluationSnapshot } from '../conversations/agent-evaluation-snapshot';
@@ -59,6 +61,8 @@ interface ScenarioDef {
 }
 
 interface ScenarioResult extends ScenarioDef {
+    rubricHash?: string;
+    evaluationScopeHash?: string;
     transcript: Array<{ role: 'customer' | 'agent'; content: string }>;
     judge: JudgeResult | null;
     turns: number;
@@ -366,9 +370,10 @@ export class SimulationService {
             const avgScore = scored.length
                 ? Math.round((scored.reduce((s, r) => s + r.judge.overall, 0) / scored.length) * 100) / 100
                 : 0;
-            const resolvedRate = scored.length
-                ? Math.round((scored.filter((r) => r.judge?.resolved).length / results.length) * 10000) / 100
-                : 0;
+            const conclusive = scored.filter(r => typeof r.judge.resolved === 'boolean');
+            const resolvedRate = conclusive.length
+                ? Math.round((conclusive.filter(r => r.judge.resolved === true).length / conclusive.length) * 10000) / 100
+                : null;
 
             if (!scored.length) throw new Error('Simulation produced no scorable scenarios');
             if (scored.length !== results.length) throw new Error('Simulation has unscorable scenarios');
@@ -523,7 +528,7 @@ Los mensajes deben sonar como personas reales de Latinoamérica escribiendo por 
                 try {
                     const scenarioHash = revisionHash(scenarios[idx]);
                     await this.agentTest.assertSnapshotExecutable(snapshot, tenantId, agentId);
-                    const completed = previous.find(r => r.key === scenarios[idx].key && (r as any).scenarioHash === scenarioHash && isScoredScenario(r));
+                    const completed = previous.find(r => r.rubricHash === QUALITY_RUBRIC_HASH && r.key === scenarios[idx].key && (r as any).scenarioHash === scenarioHash && isScoredScenario(r));
                     if (completed) {
                         if (isReplayDefinition(completed)) {
                             if (!replayRun) throw new SimulationReplayUnavailable();
@@ -638,8 +643,9 @@ Los mensajes deben sonar como personas reales de Latinoamérica escribiendo por 
             .join('\n');
 
         await this.agentTest.assertSnapshotExecutable(snapshot);
+        const judgeContext = qualityJudgeContext(snapshot.config, { source: 'simulation' });
         const judge = await useSource(()=>this.qualityService.judgeTranscript(tenantId, transcriptText, AGENT_TEST_EXECUTION_CONTEXT,
-            this.agentTest.snapshotSourceAuthority(snapshot)));
+            this.agentTest.snapshotSourceAuthority(snapshot), judgeContext));
         await this.agentTest.assertSnapshotExecutable(snapshot);
 
         return {
@@ -648,6 +654,8 @@ Los mensajes deben sonar como personas reales de Latinoamérica escribiendo por 
             turns: Math.floor(transcript.length / 2),
             latencyMs: Date.now() - startedAt,
             judge,
+            rubricHash: QUALITY_RUBRIC_HASH,
+            evaluationScopeHash: qualityJudgeScopeHash(judgeContext),
             falseClaims: falseClaims.length ? falseClaims : undefined,
         };
         } catch (cause: any) {
@@ -744,6 +752,11 @@ Reglas:
             total: results.length,
             scored: scored.length,
             failed: results.length - scored.length,
+            resolutionCoverage: {
+                conclusive: scored.filter(r => typeof r.judge.resolved === 'boolean').length,
+                needsCustomerInput: scored.filter(r => r.judge.resolutionStatus === 'needs_customer_input').length,
+                notAssessable: scored.filter(r => r.judge.resolved == null && r.judge.resolutionStatus !== 'needs_customer_input').length,
+            },
             byDifficulty,
             complete: results.length > 0 && scored.length === results.length,
             failures: results.filter(r => !isScoredScenario(r)).map(r => ({ key: r.key, title: r.title, error: r.error || 'judge_missing' })),
@@ -762,6 +775,10 @@ Reglas:
             const base = await withSimulationReplayRun(this.prisma,schemaName,baselineRunId,async(_query,run)=>run);
             const baseResults: ScenarioResult[] = Array.isArray(base.results) ? base.results : [];
             const baseAvg = Number(base.avg_score) || 0;
+            const scoreComparable = baseResults.filter(isScoredScenario).length > 0 && scored.length > 0
+                && [...baseResults.filter(isScoredScenario), ...scored].every(result => result.rubricHash === QUALITY_RUBRIC_HASH)
+                && scored.every(result => typeof result.evaluationScopeHash === 'string'
+                    && baseResults.find(prior => prior.key === result.key)?.evaluationScopeHash === result.evaluationScopeHash);
             const baseByKey = new Map(baseResults.map((b) => [b.key, b]));
 
             const regressions: any[] = [];
@@ -773,28 +790,30 @@ Reglas:
                 const after = r.judge.overall;
                 const delta = Math.round((after - before) * 100) / 100;
                 if ((r.falseClaims?.length || 0) > (b.falseClaims?.length || 0)) {
-                    regressions.push({ key: r.key, title: r.title, before, after, delta, reason: 'new_false_claim' });
-                } else if (after <= before - REGRESSION_THRESHOLD) {
+                    regressions.push({ key: r.key, title: r.title, before: scoreComparable ? before : null,
+                        after: scoreComparable ? after : null, delta: scoreComparable ? delta : null, reason: 'new_false_claim' });
+                } else if (scoreComparable && after <= before - REGRESSION_THRESHOLD) {
                     regressions.push({ key: r.key, title: r.title, before, after, delta });
-                } else if (after >= before + REGRESSION_THRESHOLD) {
+                } else if (scoreComparable && after >= before + REGRESSION_THRESHOLD) {
                     improvements.push({ key: r.key, title: r.title, before, after, delta });
                 }
             }
             for (const b of baseResults.filter(isScoredScenario)) {
                 const current = results.find(r => r.key === b.key);
                 if (!current || !isScoredScenario(current)) regressions.push({ key: b.key, title: b.title,
-                    before: b.judge.overall, after: null, reason: !current ? 'scenario_missing' : 'scenario_failed', error: current?.error });
+                    before: scoreComparable ? b.judge.overall : null, after: null, reason: !current ? 'scenario_missing' : 'scenario_failed', error: current?.error });
             }
             const curAvg = scored.length
                 ? scored.reduce((s, r) => s + r.judge.overall, 0) / scored.length
                 : 0;
             summary.baseline = {
                 runId: baselineRunId,
-                baselineAvg: Math.round(baseAvg * 100) / 100,
-                avgDelta: Math.round((curAvg - baseAvg) * 100) / 100,
+                scoreComparable,
+                baselineAvg: scoreComparable ? Math.round(baseAvg * 100) / 100 : null,
+                avgDelta: scoreComparable ? Math.round((curAvg - baseAvg) * 100) / 100 : null,
                 regressions,
                 improvements,
-                hasRegression: regressions.length > 0,
+                hasRegression: regressions.length > 0 ? true : scoreComparable ? false : null,
             };
         }
 

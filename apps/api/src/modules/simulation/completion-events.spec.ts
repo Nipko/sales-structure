@@ -231,6 +231,21 @@ describe('agent quality completion events', () => {
             expect(scenarios).toHaveBeenCalledTimes(1);
         });
 
+        it.each([
+            { outcomes: [null, null], expected: null },
+            { outcomes: [true, null, false], expected: 50 },
+        ])('does not count missing customer input as an unsuccessful resolution: %p', async ({ outcomes, expected }) => {
+            const { service, prisma } = makeService({ version: 3, config_json: {} });
+            jest.spyOn(service as any, 'generateSyntheticScenarios').mockResolvedValue(outcomes.map((_, index) => ({ key: `triage-${index}`, source: 'synthetic' })));
+            jest.spyOn(service as any, 'runScenariosConcurrently').mockResolvedValue(outcomes.map(resolved => ({ judge: {
+                overall: 8, resolved, resolutionStatus: resolved == null ? 'needs_customer_input' : resolved ? 'resolved' : 'unresolved',
+            } })));
+            jest.spyOn(service as any, 'buildSummary').mockResolvedValue({});
+            await service.executeRun(tenantId, runId);
+            const update = (prisma.executeInTenantSchema.mock.calls as any[][]).find(call => call[1].includes("SET status='completed'"))!;
+            expect(update[2][4]).toBe(expected);
+        });
+
         it('emits failure and rejects so the worker cannot mark a broken run successful', async () => {
             const { service, eventEmitter, agentTest } = makeService(null);
 

@@ -938,7 +938,7 @@ export class KnowledgeService {
     ): Promise<{ blocked: boolean; value?: T }> {
         return this.prisma.transactionInTenantSchema(schema, async query => {
             // Erasure takes the exclusive form of this same lock before redaction.
-            await query(`SELECT pg_advisory_xact_lock_shared(hashtextextended($1,0))`, [`agent-privacy:${schema}`]);
+            await query(`SELECT pg_advisory_xact_lock_shared(hashtextextended($1,0))::text`, [`agent-privacy:${schema}`]);
             if (conversationId) {
                 const contact = await query<any[]>(`SELECT c.id FROM conversations c
                     WHERE c.id=$1::uuid AND NOT EXISTS

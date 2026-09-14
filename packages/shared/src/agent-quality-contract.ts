@@ -97,7 +97,7 @@ export interface AgentQualitySimulationEvidence {
     completedAt: string | null;
     scenarioCount: number;
     averageScore: number;
-    resolvedRate: number;
+    resolvedRate: number | null;
     source: string;
 }
 

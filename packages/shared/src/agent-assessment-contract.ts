@@ -184,7 +184,7 @@ export interface AgentAssessment {
 export const AGENT_SETUP_TASK_CHECKS: Readonly<Record<Exclude<AgentSetupTaskKey, 'mission' | 'catalog' | 'tests'>, readonly string[]>> = {
     channel: ['channel_assignment', 'channel_connection', 'channel_coverage', 'operational_channel_scope'],
     agent: ['agent_active', 'persona_identity', 'custom_prompt', 'fallback_message', 'behavior_rules', 'handoff_triggers'],
-    business: ['business_identity', 'business_contact'],
+    business: ['business_identity', 'business_contact', 'business_context'],
     knowledge: ['knowledge_coverage', 'rag_knowledge', 'rag_configuration', 'tool_faqs', 'tool_policies', 'media_privacy_policy'],
     team: ['human_handoff_route'],
     hours: ['business_hours', 'after_hours_behavior'],

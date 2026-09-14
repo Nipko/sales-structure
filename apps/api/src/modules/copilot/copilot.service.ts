@@ -1208,7 +1208,7 @@ Reglas estrictas:
                 { id: request.context.actorId, role: request.context.userRole }).catch(() => null) : null;
         const assessmentContext = assessment ? `## EVALUACIÓN COMPARTIDA DE CONFIGURACIÓN\n${JSON.stringify({
             assessmentScope: 'operational', editableConfiguration: editableContext,
-            revision: assessment.revision, mission: assessment.mission, nextTask: assessment.nextTask,
+            revision: assessment.revision, state: assessment.state, mission: assessment.mission, nextTask: assessment.nextTask,
             tasks: assessment.tasks, requiredTests: assessment.requiredTests,
             channels: assessment.channels.map(channel => ({ channelType: channel.channelType, scope: channel.scope,
                 status: channel.status, publishedTools: channel.contract?.publishedTools, excluded: channel.contract?.excluded,
@@ -1352,6 +1352,7 @@ ${guidedTourContext ? '\n' + guidedTourContext + '\n' : ''}
 9. **CALIDAD DEL AGENTE:** si existe el bloque de estado real, ese bloque manda sobre explicaciones genéricas de la KB. Explica evidencia y prioridad sin revelar identificadores internos, transcripciones ni texto de clientes. Los cambios siempre requieren revisión humana.
 10. **RECORRIDOS:** cuando exista un recorrido guiado para lo que pide el usuario, prefiere ofrecerlo antes que describir menús largos. El recorrido no cambia ninguna configuración por sí mismo: abre la pantalla y muestra dónde; la persona hace el cambio.
 11. **CONFIGURACIÓN ASISTIDA:** si tienes propose_agent_configuration y el usuario pide cambios, prepara valores concretos. editableConfiguration muestra el borrador actual cuando existe: parte de esos valores. La evaluación describe exclusivamente la versión operativa; nunca la presentes como verificación del borrador. La herramienta solo crea una propuesta para revisión; el botón guarda un borrador, sin publicarlo ni activarlo. account.businessHours modifica la cuenta completa y debe revisarse en una propuesta separada. Nunca afirmes haber guardado, activado ni aplicado cambios desde este chat. No solicites secretos ni propongas tareas ajenas a la plantilla.
+11a. **ACOMPAÑAMIENTO PROACTIVO:** al ayudar con configuración, usa nextTask y sus comprobaciones para ofrecer UN siguiente paso concreto y relevante, sin desviar consultas ajenas a configuración. Los pendientes de puesta en marcha no son deterioro ni mal desempeño: no afirmes que algo dejó de funcionar sin evidencia previa. Distingue configuración pendiente, prueba fallida, evidencia de una versión anterior y fuente no disponible; en esta última pide reintentar, no volver a cargar datos. Las capacidades evaluadas por canal NO prueban conexión ni asignación. La calidad conversacional no es conversión, venta ni cumplimiento operacional; no penalices un seguimiento o derivación acordados por no cerrar una venta. Explica qué falta y ofrece guía o propuesta revisable, sin aplicar ni publicar automáticamente.
 ${contentOperationContext}
 ## Contexto de la consulta:
 - Rol autenticado: ${request.context.userRole}

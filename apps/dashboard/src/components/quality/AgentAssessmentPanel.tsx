@@ -9,6 +9,7 @@ import { useRole } from '@/hooks/useRole';
 import { api } from '@/lib/api';
 import { setupTaskLabelKey } from '@/lib/initial-setup';
 import { QUALITY_HEALTH_REFRESH_EVENT } from '@/lib/quality-health-events';
+import { openQualityAssistant } from '@/lib/quality-assistant-contract';
 import { AgentMissionEditor } from './AgentMissionEditor';
 import { AgentOperationalStateSummary, OperationalStateBadge, OperationalStateLegend, operationalStatesPresent } from './OperationalState';
 
@@ -70,8 +71,15 @@ function AgentAssessmentContent({ agentId, assessment: provided }: { agentId?: s
         <p className="mt-2 text-xs text-neutral-500">{tDraft('assessmentOperational')}</p>
         {assessment.mission.definition && <p className="mt-2 text-sm">{assessment.mission.definition.objective}</p>}
         <p className="mt-1 text-xs text-neutral-600 dark:text-neutral-400">{t(`sources.${assessment.mission.source}`)}</p>
+        <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-300">{t('setupGuidance')}</p>
         <AgentMissionEditor key={assessment.agent?.id ?? 'no-agent'} assessment={assessment} />
-        {next && <Link href={next.href} className="mt-3 inline-flex rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white">{t('next')}: {tSetup(setupTaskLabelKey(next))}</Link>}
+        {next && <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Link href={next.href} className="inline-flex rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white">{t('next')}: {tSetup(setupTaskLabelKey(next))}</Link>
+            {assessment.agent && <button type="button" className="min-h-10 rounded-lg border border-indigo-300 px-3 py-2 text-sm font-medium" onClick={() => openQualityAssistant({
+                agentId: assessment.agent!.id, agentName: assessment.agent!.name, href: next.href,
+                code: next.pendingCheckCode, prompt: t('assistPrompt', { task: tSetup(setupTaskLabelKey(next)) }),
+            })}>{t('askAssist')}</button>}
+        </div>}
         <details className="mt-3 text-sm"><summary className="cursor-pointer font-medium">{t('details')}</summary>
             <h3 className="mt-3 text-xs font-semibold uppercase tracking-wide text-neutral-500">{t('tasksTitle')}</h3>
             <ul className="mt-2 space-y-2">{visibleTasks.map(task => <li key={task.key} className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -80,15 +88,12 @@ function AgentAssessmentContent({ agentId, assessment: provided }: { agentId?: s
                     "how far along is this", and that question was never asked
                     here. Salud's word below is the whole answer. */}
                 {task.state && <OperationalStateBadge state={task.state} />}
-                {/* Salud's own word stays next to the shared one: it is what the
-                    check tables say, and it still carries "no aplica", which has
-                    no rung on the ladder. Where the two differ the server meant
-                    it — a mission running on its template's default is `pending`
-                    ("falta acordarla"), never `degraded`. */}
-                <span className="text-xs text-neutral-500">{tQuality(`checkStatuses.${task.status}`)}</span>
+                {/* One verdict per task; not-applicable has no operational badge. */}
+                {!task.state && <span className="text-xs text-neutral-500">{tQuality(`checkStatuses.${task.status}`)}</span>}
             </li>)}</ul>
             {assessment.channels.length > 0 && <>
                 <h3 className="mt-4 text-xs font-semibold uppercase tracking-wide text-neutral-500">{t('channelsTitle')}</h3>
+                <p className="mt-1 text-xs text-neutral-600 dark:text-neutral-400">{t('channelScope')}</p>
                 <ul className="mt-2 space-y-2">{assessment.channels.map((channel, index) => <li key={`${channel.channelType ?? 'unspecified'}:${index}`} className="flex flex-wrap items-center gap-x-2 gap-y-1">
                     <span>{channelName(channel.channelType)}</span>
                     {channel.scope === 'preview' && <span className="text-xs text-neutral-500">{t('channelPreview')}</span>}

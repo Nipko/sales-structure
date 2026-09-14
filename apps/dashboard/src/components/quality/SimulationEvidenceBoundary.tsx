@@ -2,9 +2,17 @@
 
 import { useState, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
-import { Loader2 } from 'lucide-react';
+import { CheckCircle2, Loader2, XCircle } from 'lucide-react';
 
 export type SimulationStatus = 'pending' | 'running' | 'completed' | 'failed' | 'retired';
+
+/** Inconclusive customer outcomes are not failed scenarios. */
+export function SimulationResolutionState({ resolved, resolutionStatus }: { resolved: boolean | null; resolutionStatus?: string }) {
+    const t = useTranslations('simulation');
+    if (resolved == null) return <span className="text-xs text-muted-foreground">{t(resolutionStatus === 'needs_customer_input' ? 'needsCustomerInput' : 'notAssessable')}</span>;
+    return <span>{resolved ? <CheckCircle2 size={15} aria-hidden="true" className="text-emerald-500 inline" />
+        : <XCircle size={15} aria-hidden="true" className="text-red-400 inline" />}<span className="sr-only">{t(resolved ? 'resolved' : 'notResolved')}</span></span>;
+}
 
 /** Hide cached evidence while authority is unknown or the source was withdrawn. */
 export function SimulationEvidenceBoundary({ status, loading, error, retry, children }: {

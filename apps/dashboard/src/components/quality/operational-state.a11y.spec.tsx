@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { scanScreen } from "@/test/a11y";
 import { AgentAssessmentPanel } from "./AgentAssessmentPanel";
 import { AppliedDraftEvidence } from "./AgentConfigurationReview";
+import { QUALITY_ASSIST_EVENT, parseQualityAssistantDetail } from '@/lib/quality-assistant-contract';
 
 /**
  * The surfaces that started speaking this week, read the way a screen reader
@@ -59,6 +60,30 @@ const assessment = (over: Partial<AgentAssessment> = {}): AgentAssessment => ({
 } as unknown as AgentAssessment);
 
 describe("the states a person is asked to act on", () => {
+    it('guides setup through Assist using agent scope, without publishing or inventing a signal', async () => {
+        const { container } = await import('@/test/a11y').then(module => module.renderScreen(<AgentAssessmentPanel assessment={assessment({ state: 'pending' })} />));
+        const messages = JSON.parse(readFileSync(join(__dirname, '../../../messages/es.json'), 'utf8'));
+        const event = jest.fn();
+        window.addEventListener(QUALITY_ASSIST_EVENT, event);
+        try {
+            const button = [...container.querySelectorAll('button')].find(item => item.textContent === messages.agentAssessment.askAssist)!;
+            expect(button).toBeDefined();
+            button.click();
+            const detail = parseQualityAssistantDetail((event.mock.calls[0][0] as CustomEvent).detail);
+            expect(detail).toMatchObject({ agentId: AGENT, prompt: expect.stringContaining('sin aplicar ni publicar') });
+            expect(detail?.signalId).toBeUndefined();
+            expect(container.textContent).toContain(messages.agentAssessment.setupGuidance);
+        } finally { window.removeEventListener(QUALITY_ASSIST_EVENT, event); }
+    });
+
+    it('never defines attention as prior deterioration and separates capability checks from connections in every language', () => {
+        for (const locale of ['es', 'en', 'pt', 'fr']) {
+            const messages = JSON.parse(readFileSync(join(__dirname, `../../../messages/${locale}.json`), 'utf8'));
+            expect(messages.agentOperationalState.states.degraded.label).not.toMatch(/deteriorado|degraded|dégradé/i);
+            for (const key of ['channelScope', 'setupGuidance', 'askAssist', 'assistPrompt']) expect(messages.agentAssessment[key]).toEqual(expect.any(String));
+            expect(messages.simulation.rubricChanged).toEqual(expect.any(String));
+        }
+    });
     it("hands a screen reader no violations on the assessment panel", async () => {
         expect(await scanScreen(<AgentAssessmentPanel assessment={assessment()} />)).toEqual([]);
     });

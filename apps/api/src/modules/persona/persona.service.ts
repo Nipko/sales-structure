@@ -2,6 +2,7 @@ import { withRuntimeSchemaLock } from '../../common/utils/runtime-schema-lock';
 import { BadRequestException, ConflictException, ForbiddenException, forwardRef, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { AgentConfigurationRevisionStore } from './agent-configuration-revision';
 import { readServingPersona } from './serving-persona';
+import { summarizeAgentToolConfiguration } from './agent-tool-configuration-summary';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { TenantsService } from '../tenants/tenants.service';
@@ -812,6 +813,24 @@ export class PersonaService {
             `SELECT COUNT(*)::int AS cnt FROM "${schemaName}".agent_personas WHERE is_active = true`,
         ) as any[];
         return Number(rows[0]?.cnt || 0);
+    }
+
+    /** A read-only navigation projection. Never bootstrap agents or read drafts
+     * just because somebody opens a manual business module. */
+    async getToolConfigurationSummary(tenantId: string) {
+        const schema = await this.tenantsService.getSchemaName(tenantId);
+        const rows = await this.prisma.executeInTenantSchema<Array<{ is_active: boolean; config_valid: boolean; tools: unknown }>>(schema, `
+            WITH durable AS (
+                SELECT is_active, COALESCE(jsonb_typeof(config_json)='object',false) AS config_valid,
+                    config_json->'tools' AS tools FROM agent_personas
+            ) SELECT * FROM durable
+            UNION ALL
+            SELECT true AS is_active, config_valid, tools FROM (
+                SELECT COALESCE(jsonb_typeof(config_json)='object',false) AS config_valid, config_json->'tools' AS tools
+                FROM persona_config WHERE is_active=true AND NOT EXISTS (SELECT 1 FROM durable)
+                ORDER BY version DESC LIMIT 1
+            ) legacy`);
+        return summarizeAgentToolConfiguration(rows);
     }
 
     async listAgents(tenantId: string): Promise<any[]> {

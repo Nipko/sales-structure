@@ -235,13 +235,13 @@ export class AgentAssessmentService {
                 // aggregate says: an unreadable source is not a passing one.
                 sourceAvailable: !task.checks.some(check =>
                     (check as any)?.evidence?.sourceAvailability === 'unavailable'),
+                operationalIssue: task.checks.some(check => check.evidence?.hasCredentialIssue === true),
             }),
         });
         const tasks: AgentSetupTask[] = [withState({ key: 'mission', status: saved !== undefined && (!isAgentMissionV1(saved) || unsupportedIntents.length) ? 'fail' : configured ? 'pass' : 'warning', checks: [],
             href: `/admin/agent/${agent.id}`, tourId: null, dependsOn: [] },
             // `warning` on this task means "running on the template's mission",
-            // not "something broke". Everywhere else warning is "revisar", which
-            // is why the shared word is stated here instead of derived.
+            // not "something broke". It is unfinished setup, not a regression.
             configured ? undefined : 'pending')];
         const defaults: Record<string, { href: string; tourId: AgentSetupTask['tourId']; dependsOn: AgentSetupTask['key'][] }> = {
             channel: { href: '/admin/channels', tourId: 'connect_channel', dependsOn: ['agent'] },

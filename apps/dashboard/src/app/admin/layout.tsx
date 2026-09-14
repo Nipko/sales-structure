@@ -33,6 +33,8 @@ import { NavigationPageProvider } from "@/contexts/NavigationPageContext";
 import { QualityHealthProvider } from "@/contexts/QualityHealthContext";
 import QualityAttentionBanner from "@/components/quality/QualityAttentionBanner";
 import QualityFocusBanner from "@/components/quality/QualityFocusBanner";
+import { AgentToolConfigurationProvider } from '@/contexts/AgentToolConfigurationContext';
+import { AgentToolModuleNotice } from '@/components/AgentToolModuleNotice';
 
 export type RestrictionLevel = "none" | "warning" | "soft_lock" | "hard_lock";
 
@@ -184,6 +186,7 @@ export default function AdminLayout({
 
   const content = (
     <TenantProvider>
+      <AgentToolConfigurationProvider>
       <QualityHealthProvider>
       <NavigationPageProvider>
       <div className="flex h-screen bg-white dark:bg-neutral-950">
@@ -211,7 +214,7 @@ export default function AdminLayout({
             <QualityFocusBanner />
           </Suspense>
           <div className="flex-1 flex overflow-hidden">
-            <main id="main-content" ref={mainRef} tabIndex={-1} className="flex-1 overflow-auto p-4 md:p-6">{children}</main>
+            <main id="main-content" ref={mainRef} tabIndex={-1} className="flex-1 overflow-auto p-4 md:p-6"><AgentToolModuleNotice />{children}</main>
           </div>
         </div>
       </div>
@@ -241,6 +244,7 @@ export default function AdminLayout({
       <HelpAssistant />
       </NavigationPageProvider>
       </QualityHealthProvider>
+      </AgentToolConfigurationProvider>
     </TenantProvider>
   );
 

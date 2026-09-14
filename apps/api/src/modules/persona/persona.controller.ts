@@ -733,6 +733,12 @@ export class PersonaController {
 
     // ── Multi-Agent CRUD ──────────────────────────────────────
 
+    @Get(':tenantId/tool-configuration-summary')
+    @ApiOperation({ summary: 'Read published tool activation counts without exposing agent configuration' })
+    async getToolConfigurationSummary(@Param('tenantId') tenantId: string) {
+        return { success: true, data: await this.personaService.getToolConfigurationSummary(tenantId) };
+    }
+
     @Get(':tenantId/agents')
     @ApiOperation({ summary: 'List all agent personas for a tenant' })
     async listAgents(@Param('tenantId') tenantId: string) {

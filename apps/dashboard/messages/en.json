@@ -1,4 +1,30 @@
 {
+  "agentToolNavigation": {
+    "title": "AI tools in this module",
+    "manage": "Review agents and tools",
+    "refresh": "Refresh status",
+    "scopeTitle": "How it works",
+    "status": {
+      "loading": "Checking AI…",
+      "unknown": "AI status unverified",
+      "no_agents": "No agents",
+      "disabled": "AI disabled",
+      "paused": "Paused agents only",
+      "configured": "AI configured"
+    },
+    "description": {
+      "loading": "Reading your agents' operational configuration.",
+      "unknown": "We could not confirm the AI configuration. This does not mean it is disabled or change your manual access.",
+      "no_agents": "No agents are configured. You can still manage this module manually.",
+      "disabled": "No agent has the related tools enabled. You can still use this module manually.",
+      "paused": "Related tools are enabled only on paused agents; those agents are not serving customers.",
+      "configured": "At least one active agent has a related tool enabled. This does not confirm execution readiness or activation on every agent."
+    },
+    "manualScope": "The menu and manual operations depend on your role, plan and industry. Disabling an agent's tool does not close the module for your team or change other agents.",
+    "runtimeScope": "AI can only execute tools enabled and authorized for that agent, channel and operation. Plan, connection, data and subpermission requirements still apply.",
+    "draftScope": "This status reflects the operational configuration, not the draft. Save the draft and complete publication to apply changes to AI.",
+    "editorScope": "These switches control this agent's tools, not the menu or manual business operations. Changes apply to the operational agent upon publication; enabling them does not unlock modules outside your plan, role or industry."
+  },
   "operationalNotices": {
     "resolutionAdminOnly": "Only an administrator can resolve the sending outcome.",
     "title": "Operational notices",
@@ -11944,8 +11970,8 @@
         "meaning": "It is working, with evidence of real use behind it, not only configuration."
       },
       "degraded": {
-        "label": "Degraded",
-        "meaning": "Something that was working stopped. It needs a person to look at it."
+        "label": "Needs attention",
+        "meaning": "A problem or check needs review. This state does not establish that it previously worked."
       }
     },
     "agent": {
@@ -11954,7 +11980,7 @@
       "prepared": "The agent is configured end to end, but it has not been tested yet.",
       "tested": "The agent passed its tests. Evidence from real conversations is still missing before we can say it is operating.",
       "operating": "The agent is serving, backed by evidence of real use.",
-      "degraded": "Something that was working broke. One degraded part is not averaged away by the healthy ones: review it before going on."
+      "degraded": "A problem or check needs review. See the evidence and next step; this alone does not mean the agent has deteriorated."
     }
   },
   "agentAssessment": {
@@ -11966,10 +11992,10 @@
     },
     "next": "Next step",
     "details": "Review dependencies and tests",
-    "testEvidence": "There are {count} mission scenarios to verify. An overall score does not certify each scenario.",
+    "testEvidence": "There are {count} mission scenarios to review; check each result. An overall score does not certify every scenario.",
     "capabilityEvidence": "We observed {count} published tools across the assessed channels. Publication does not prove a successful result.",
     "tasksTitle": "Setup steps",
-    "channelsTitle": "Assessed connections",
+    "channelsTitle": "Capabilities evaluated by channel",
     "channelPreview": "preview",
     "channelUnspecified": "Unidentified connection",
     "channelTypes": {
@@ -11983,14 +12009,18 @@
     "testsTitle": "Mission scenarios",
     "toolsTitle": "Tools",
     "toolsInState": "{count} in this state",
-    "capabilityDegraded": "One of the connections reports a degraded contract. We are not counting published tools until it is reviewed.",
+    "capabilityDegraded": "A capability assessment needs attention. Review its evidence before treating its tools as available.",
     "capabilityNoChannels": "No connections are assigned to this agent yet, so there are no published tools to observe.",
     "evidence": {
       "not_verified": "not verified",
       "verified": "verified",
       "failed": "failed",
       "stale": "evidence from an earlier version"
-    }
+    },
+    "channelScope": "This view evaluates capabilities, not connection status. To see what is connected and assigned, review “Connect and assign a channel”.",
+    "setupGuidance": "Complete setup step by step with Parallly Assist. Missing information or tests does not mean poor performance; real outcomes are evaluated separately.",
+    "askAssist": "Guide me with Parallly Assist",
+    "assistPrompt": "Help me with this step: {task}. Review the current configuration, explain what is missing and guide me without applying or publishing changes automatically."
   },
   "qualityHealth": {
     "title": "Your agents' health",
@@ -12427,6 +12457,11 @@
     "failedScenarios": "Errored",
     "regressionDetected": "Regression detected",
     "noRegression": "No regressions",
+    "rubricChanged": "Scores are not comparable: the objective or rubric changed, or a comparable score is missing. Run both versions with the same objective and rubric; this does not establish declining performance.",
+    "notResolved": "Unresolved",
+    "needsCustomerInput": "Awaiting customer information",
+    "notAssessable": "Insufficient evidence",
+    "resolutionCoverage": "Conversational resolution: {conclusive} conclusive cases, {waiting} awaiting customer information and {unknown} inconclusive. The rate uses only conclusive cases; it does not measure sales or conversion.",
     "resolution": "Resolution",
     "tone": "Tone",
     "accuracy": "Accuracy",

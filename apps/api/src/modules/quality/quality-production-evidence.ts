@@ -2,6 +2,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import type { JudgeResult } from './quality.service';
 import { QUALITY_MESSAGE_LIMIT, QUALITY_RUBRIC_VERSION, qualityHash, qualityTranscript } from './quality-evidence';
 import { releasesForMessages } from '../learning/agent-evidence-provenance';
+import { qualityJudgeContext, type QualityJudgeContext } from './quality-judge-context';
 
 /** The shared privacy fence spans provider I/O and persistence. Erasure either wins
  * before any transcript leaves the DB or waits, then deletes all derived evidence. */
@@ -10,7 +11,7 @@ export async function scoreProductionEvidence(
     schemaName: string,
     conversationId: string,
     rubricHash: string,
-    judgeTranscript: (transcript: string) => Promise<JudgeResult>,
+    judgeTranscript: (transcript: string, context: QualityJudgeContext) => Promise<JudgeResult>,
 ) {
     return prisma.transactionInTenantSchema(schemaName, async (query) => {
         await query(`SELECT pg_advisory_xact_lock_shared(hashtextextended($1,0))::text`, [`agent-privacy:${schemaName}`]);
@@ -53,7 +54,9 @@ export async function scoreProductionEvidence(
                 ? { state: 'captured', agentId, version: agentConfigVersion, hash: qualityHash(configs[0].config_json), config: configs[0].config_json }
                 : { state: 'unavailable', agentId, version: agentConfigVersion, reason: 'historical_configuration_unavailable' };
         }
-        const judge = await judgeTranscript(selected.transcript);
+        const judge = await judgeTranscript(selected.transcript, qualityJudgeContext(
+            configuration.state === 'captured' ? configuration.config : null,
+            { source: 'production', coverage: selected.coverage }));
 
         // Locks only the final CAS, never the conversation during slow provider work.
         // Message triggers acquire this row lock too, so their commit cannot interleave

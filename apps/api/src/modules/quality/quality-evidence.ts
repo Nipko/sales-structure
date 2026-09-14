@@ -1,6 +1,6 @@
 import { createHash } from 'crypto';
 
-export const QUALITY_RUBRIC_VERSION = 'v3';
+export const QUALITY_RUBRIC_VERSION = 'v4';
 export const QUALITY_MESSAGE_LIMIT = 60;
 export const QUALITY_CHARACTER_LIMIT = 24_000;
 
@@ -52,7 +52,7 @@ export function qualityHash(value: unknown): string {
 export const CURRENT_QUALITY_CTE = `WITH current_quality AS (
     SELECT DISTINCT ON (q.conversation_id) q.*
     FROM conversation_quality_scores q JOIN conversations c ON c.id=q.conversation_id
-    WHERE q.source_revision=c.qa_revision AND q.rubric_version='v3' AND q.rubric_hash=$3
+    WHERE q.source_revision=c.qa_revision AND q.rubric_version='${QUALITY_RUBRIC_VERSION}' AND q.rubric_hash=$3
       AND NOT EXISTS (SELECT 1 FROM customer_memory_erasure e WHERE e.contact_id=c.contact_id)
     ORDER BY q.conversation_id,q.created_at DESC,q.id DESC
 )`;

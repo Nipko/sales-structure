@@ -73,6 +73,7 @@ function paymentRailStatus(cfg: TenantPaymentsConfig | null): PaymentRailStatus 
 }
 
 export function CapabilitiesSection({ config, onChange, apptReadiness }: CapabilitiesSectionProps) {
+  const tNavigation = useTranslations('agentToolNavigation');
   const tSetup = useTranslations("qualityHealth.setup");
   const t = useTranslations("agent.capabilities");
   const { verticalConfig, isVerticalConfigLoading } = useAuth();
@@ -167,6 +168,7 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
 
   return (
     <div className="space-y-4">
+      <p className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-sm text-neutral-600 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300">{tNavigation('editorScope')}</p>
       {(!verticalConfig || isVerticalConfigLoading || availability.faqs.reason === "profile_unknown") && (
         <p role="status" className="text-sm text-amber-700 dark:text-amber-300">{t("toolAvailabilityState.profile_unknown")}</p>
       )}

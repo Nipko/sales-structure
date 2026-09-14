@@ -48,7 +48,7 @@ export interface EvalGateScenario {
     readonly title?: string;
     readonly score?: number | null;
     readonly passed?: boolean;
-    readonly resolved?: boolean;
+    readonly resolved?: boolean | null;
     readonly error?: string | null;
     readonly runs?: readonly EvalGateAttempt[];
     readonly contextHash?: string;

@@ -1,4 +1,30 @@
 {
+  "agentToolNavigation": {
+    "title": "Ferramentas de IA neste módulo",
+    "manage": "Revisar agentes e ferramentas",
+    "refresh": "Atualizar estado",
+    "scopeTitle": "Como funciona",
+    "status": {
+      "loading": "Verificando IA…",
+      "unknown": "IA a verificar",
+      "no_agents": "Sem agentes",
+      "disabled": "IA desativada",
+      "paused": "Somente agentes pausados",
+      "configured": "IA configurada"
+    },
+    "description": {
+      "loading": "Consultando a configuração operacional dos seus agentes.",
+      "unknown": "Não pudemos confirmar a configuração de IA. Isso não significa que esteja desativada nem altera seu acesso manual.",
+      "no_agents": "Não há agentes configurados. Você pode continuar gerenciando este módulo manualmente.",
+      "disabled": "Nenhum agente tem as ferramentas relacionadas ativadas. Você pode continuar usando este módulo manualmente.",
+      "paused": "As ferramentas relacionadas só estão ativadas em agentes pausados; esses agentes não atendem clientes.",
+      "configured": "Pelo menos um agente ativo tem uma ferramenta relacionada ativada. Isso não confirma que esteja pronta para execução nem ativada em todos os agentes."
+    },
+    "manualScope": "O menu e a gestão manual dependem do seu papel, plano e setor. Desativar a ferramenta de um agente não fecha o módulo para sua equipe nem altera outros agentes.",
+    "runtimeScope": "A IA só pode executar ferramentas ativadas e autorizadas para esse agente, canal e operação. Os requisitos de plano, conexões, dados e subpermissões continuam valendo.",
+    "draftScope": "Este estado reflete a configuração operacional, não o rascunho. Salve o rascunho e conclua a publicação para aplicar mudanças à IA.",
+    "editorScope": "Estes controles gerenciam as ferramentas deste agente, não o menu nem a gestão manual do negócio. As mudanças são aplicadas ao agente operacional ao publicá-las; ativá-las não libera módulos fora do seu plano, papel ou setor."
+  },
   "operationalNotices": {
     "resolutionAdminOnly": "Somente um administrador pode resolver o resultado do envio.",
     "title": "Avisos operacionais",
@@ -11944,8 +11970,8 @@
         "meaning": "Está funcionando e há evidência de uso real, não apenas configuração."
       },
       "degraded": {
-        "label": "Deteriorado",
-        "meaning": "Algo que vinha funcionando parou. Precisa que uma pessoa revise."
+        "label": "Precisa de atenção",
+        "meaning": "Um problema ou uma verificação precisa de revisão. Este estado não confirma que antes funcionava."
       }
     },
     "agent": {
@@ -11954,7 +11980,7 @@
       "prepared": "O agente está configurado de ponta a ponta, mas ainda não foi testado.",
       "tested": "O agente passou nos testes. Falta evidência de conversas reais para dizer que está operando.",
       "operating": "O agente está atendendo, com evidência de uso real que o respalda.",
-      "degraded": "Algo que vinha funcionando quebrou. Uma parte deteriorada não é compensada pelas que estão bem: revise antes de continuar."
+      "degraded": "Há um problema ou uma verificação para revisar. Consulte as evidências e o próximo passo; isso não significa, por si só, que o agente piorou."
     }
   },
   "agentAssessment": {
@@ -11966,10 +11992,10 @@
     },
     "next": "Próxima etapa",
     "details": "Revisar dependências e testes",
-    "testEvidence": "Há {count} cenários da missão para verificar. Uma nota geral não certifica cada cenário.",
+    "testEvidence": "Há {count} cenários de missão para revisar; consulte cada resultado. Uma pontuação geral não certifica todos os cenários.",
     "capabilityEvidence": "Foram observadas {count} ferramentas publicadas nos canais avaliados. Publicação não comprova um resultado.",
     "tasksTitle": "Passos de configuração",
-    "channelsTitle": "Conexões avaliadas",
+    "channelsTitle": "Capacidades avaliadas por canal",
     "channelPreview": "prévia",
     "channelUnspecified": "Conexão não identificada",
     "channelTypes": {
@@ -11983,14 +12009,18 @@
     "testsTitle": "Cenários de missão",
     "toolsTitle": "Ferramentas",
     "toolsInState": "{count} neste estado",
-    "capabilityDegraded": "Alguma conexão informa o contrato deteriorado. Não contamos ferramentas publicadas até que seja revisada.",
+    "capabilityDegraded": "Uma avaliação de capacidades precisa de atenção. Revise as evidências antes de considerar suas ferramentas disponíveis.",
     "capabilityNoChannels": "Ainda não há conexões atribuídas a este agente, portanto não há ferramentas publicadas para observar.",
     "evidence": {
       "not_verified": "sem comprovação",
       "verified": "comprovado",
       "failed": "falhou",
       "stale": "evidência de uma versão anterior"
-    }
+    },
+    "channelScope": "Esta visão avalia capacidades, não confirma conexões. Para saber o que está conectado e atribuído, revise «Conectar e atribuir um canal».",
+    "setupGuidance": "Conclua a configuração passo a passo com o Parallly Assist. Dados ou testes pendentes não significam mau desempenho; os resultados reais são avaliados separadamente.",
+    "askAssist": "Me guiar com o Parallly Assist",
+    "assistPrompt": "Ajude-me com este passo: {task}. Revise a configuração atual, explique o que falta e me guie sem aplicar nem publicar alterações automaticamente."
   },
   "qualityHealth": {
     "title": "Saúde dos seus agentes",
@@ -12427,6 +12457,11 @@
     "failedScenarios": "Com erro",
     "regressionDetected": "Regressão detectada",
     "noRegression": "Sem regressões",
+    "rubricChanged": "As notas não são comparáveis: o objetivo ou critério mudou, ou falta uma nota comparável. Execute ambas as versões com o mesmo objetivo e critério; isso não demonstra piora do agente.",
+    "notResolved": "Não resolvido",
+    "needsCustomerInput": "Aguardando informações do cliente",
+    "notAssessable": "Evidência insuficiente",
+    "resolutionCoverage": "Resolução conversacional: {conclusive} casos conclusivos, {waiting} aguardando dados do cliente e {unknown} inconclusivos. A taxa usa apenas casos conclusivos; não mede vendas nem conversão.",
     "resolution": "Resolução",
     "tone": "Tom",
     "accuracy": "Precisão",

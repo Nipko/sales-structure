@@ -12,6 +12,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { AgentTestService } from '../conversations/agent-test.service';
 import { QualityService } from '../quality/quality.service';
+import { qualityJudgeContext } from '../quality/quality-judge-context';
+import { QUALITY_RUBRIC_HASH } from '../quality/quality-rubric';
 import {
     composeSubtypeEvalPack,
     CONVERSATIONAL_CHANNELS,
@@ -557,7 +559,7 @@ export class EvalService {
                 const contextHash=releaseRunContext({agentId,dependencyRevision:snapshot.manifest?.revision||'',
                     configHash:snapshot.configHash,channelType,k,passPolicy,threshold});
                 for (const sc of scenarios) {
-                    const completed = opts?.previousResults?.find(row => row.contextHash===contextHash && row.key === sc.key && row.scenarioHash === revisionHash(sc) && !row.error && Number.isFinite(row.score));
+                    const completed = opts?.previousResults?.find(row => row.rubricHash === QUALITY_RUBRIC_HASH && row.contextHash===contextHash && row.key === sc.key && row.scenarioHash === revisionHash(sc) && !row.error && Number.isFinite(row.score));
                     if (completed) { out.push(completed); continue; }
                     activeScenario = sc;
                     const hasActions = Array.isArray(sc.expectedActions) && sc.expectedActions.length > 0;
@@ -623,7 +625,7 @@ export class EvalService {
 
     /** Run a scenario k times; pass per the policy (all / majority). */
     private async runPassK(tenantId: string, agentId: string, schema: string, sc: any, k: number, passPolicy: 'all' | 'majority', threshold: number, hasActions: boolean, snapshot?: AgentEvaluationSnapshot, channelType = 'web_widget', assertLease?: () => Promise<void>, beforeModelUnits?: (units: number) => Promise<void>) {
-        const runs: Array<{ score: number; passed: boolean; resolved?: boolean; flags?: string[]; actionChecks?: any[] }> = [];
+        const runs: Array<{ score: number; passed: boolean; resolved?: boolean | null; flags?: string[]; actionChecks?: any[] }> = [];
         for (let i = 0; i < k; i++) runs.push(await this.runScenarioWithActions(tenantId, agentId, schema, sc, threshold, hasActions, snapshot, channelType, assertLease, beforeModelUnits));
         const passes = runs.filter(r => r.passed).length;
         const required = passPolicy === 'all' ? k : Math.floor(k / 2) + 1;
@@ -631,6 +633,7 @@ export class EvalService {
             key: sc.key,
             ...regressionProvenance(sc),
             scenarioHash: revisionHash(sc),
+            rubricHash: QUALITY_RUBRIC_HASH,
             title: sc.title,
             k,
             passes,
@@ -688,13 +691,13 @@ export class EvalService {
                 lines.push(`Cliente: ${msg}`, `Agente: ${reply}`);
                 history.push({ role: 'user', content: msg }, { role: 'assistant', content: reply });
             }
-            let transcript = lines.join('\n');
-            if (sc.criteria) transcript += `\n\n[Criterio esperado para esta conversación: ${sc.criteria}]`;
+            const transcript = lines.join('\n');
             await beforeModelUnits?.(1);
             await this.agentTest.assertSnapshotExecutable(snapshot);
             const judge = await withReviewedRegressionScenarios(this.prisma,schema,[reviewedSource],agentId,channelType,
                 ()=>this.quality.judgeTranscript(tenantId, transcript, AGENT_TEST_EXECUTION_CONTEXT,
-                    this.agentTest.snapshotSourceAuthority(snapshot)));
+                    this.agentTest.snapshotSourceAuthority(snapshot),
+                    qualityJudgeContext(snapshot.config, { source: 'simulation', scenarioCriterion: sc.criteria })));
             await this.agentTest.assertSnapshotExecutable(snapshot);
             const score = judge.overall;
 
@@ -713,7 +716,7 @@ export class EvalService {
             // Human release review must inspect the actual replies, not a judge's
             // aggregate score. Bound storage and disclose any shortened sample.
             const transcriptTruncated=history.some(row=>row.content.length>8_000);
-            return { score, passed: score >= threshold && actionsPassed, resolved: !!judge.resolved, flags: judge.flags || [], actionChecks,
+            return { score, passed: score >= threshold && actionsPassed, resolved: judge.resolved, resolutionStatus: judge.resolutionStatus, flags: judge.flags || [], actionChecks,
                 model: [...servingModels].sort().join('+') || null, models: [...servingModels].sort(),
                 fixtureAssumptions: ['synthetic_A2_for_appointment_readers'],
                 transcript:history.map(row=>({...row,content:row.content.slice(0,8_000)})),transcriptTruncated };

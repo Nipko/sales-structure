@@ -16,6 +16,8 @@ function fixture(){
     const state={erased:false,fail:false,rows:[] as any[]};
     const query=jest.fn(async(sql:string,params:any[]=[])=>{
         if(state.fail)throw new Error('metrics database unavailable');
+        if(sql.includes('SELECT pg_advisory_xact_lock_shared')&&!sql.includes(')::text'))
+            throw new Error("Failed to deserialize column of type 'void'");
         if(sql.includes('SELECT c.id FROM conversations'))return state.erased?[]:[{id:conversationId}];
         if(sql.includes('INSERT INTO kb_retrieval_log'))state.rows.push(...JSON.parse(params[0]).map((row:any)=>({...row,was_used:false,conversation_id:params[2]})));
         if(sql.includes('UPDATE kb_retrieval_log')){
@@ -77,6 +79,16 @@ describe('Observable attribution without semantic overclaim',()=>{
 });
 
 describe('Retrieval and final response persistence',()=>{
+    it('casts the privacy lock result for Prisma without changing its key or transaction ordering',async()=>{
+        const f=fixture();await f.track();
+        expect((await f.service.recordResponseAttribution(tenantId,conversationId,'[Article: Devoluciones]',[item])).persistence).toBe('recorded');
+        const calls=f.query.mock.calls;
+        const locks=calls.filter(([sql])=>sql.includes('pg_advisory_xact_lock_shared'));
+        expect(locks).toHaveLength(2);
+        for(const [sql,params] of locks){expect(sql).toContain('))::text');expect(params).toEqual(['agent-privacy:tenant_quality']);}
+        expect(calls.findIndex(([sql])=>sql.includes('pg_advisory_xact_lock_shared')))
+            .toBeLessThan(calls.findIndex(([sql])=>sql.includes('INSERT INTO kb_retrieval_log')));
+    });
     it('stores a conversation gap sentinel without claiming use',async()=>{
         const f=fixture();await f.track(null);
         expect(f.state.rows).toEqual([expect.objectContaining({document_id:null,relevance_passed:false,was_used:false,conversation_id:conversationId})]);

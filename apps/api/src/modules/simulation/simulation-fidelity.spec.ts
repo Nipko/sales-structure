@@ -12,6 +12,7 @@ import { SimulationService } from './simulation.service';
 import { EvalService } from './eval.service';
 import { evaluationSnapshot } from '../conversations/agent-evaluation-snapshot';
 import { revisionHash } from '../evaluation-revision/evaluation-revision';
+import { QUALITY_RUBRIC_HASH } from '../quality/quality-rubric';
 
 const replayRun={schemaName:'test_schema',runId:'test_run'};
 const frozenSnapshot = evaluationSnapshot('tenant', 'agent', {version:1,config_json:{language:'fr'}});
@@ -51,8 +52,8 @@ describe('simulation execution fidelity', () => {
         expect(quality.judgeTranscript).not.toHaveBeenCalled();
     });
     it('passes the same frozen revision, actual channel and owned tool sandbox through every turn', async () => {
-        const { service, agentTest } = simulation();
-        const snapshot = evaluationSnapshot('tenant', 'agent', { version: 9, config_json: { language: 'fr' } });
+        const { service, agentTest, quality } = simulation();
+        const snapshot = evaluationSnapshot('tenant', 'agent', { version: 9, config_json: { language: 'fr', persona: { role: 'Customer support' } } });
         const session = { sandboxContactId: 'sandbox', sandboxConversationId: 'conversation', recordInbound: jest.fn(), assertLease: jest.fn(), reset: jest.fn() };
         await (service as any).runScenario('tenant', 'agent', 'instagram', scenario('one'), snapshot, session,replayRun);
         expect(agentTest.test).toHaveBeenCalledTimes(2);
@@ -61,13 +62,15 @@ describe('simulation execution fidelity', () => {
             expect(call[3]).toMatchObject({ disableTools: false, evalMode: true, agentSnapshot: snapshot, sandboxConversationId: 'conversation', beforeToolExecution:expect.any(Function),beforeModelExecution:expect.any(Function) });
         }
         expect(session.recordInbound.mock.calls).toEqual([['bonjour'], ['oui']]);
+        expect(quality.judgeTranscript).toHaveBeenCalledWith('tenant', expect.any(String), expect.any(Object), expect.any(Function),
+            expect.objectContaining({ source: 'simulation', configuration: 'captured', role: 'Customer support' }));
     });
 
     it('preserves partial evidence when customer generation fails and retries only failed scenarios', async () => {
         const { service, agentTest, llm } = simulation();
         llm.execute.mockRejectedValue(new Error('provider timeout'));
         const synthetic = { ...scenario('broken'), source: 'synthetic',replayMessages:undefined };
-        const good = { ...scenario('done'), scenarioHash: revisionHash(scenario('done')), transcript: [], turns: 1, latencyMs: 1, judge };
+        const good = { ...scenario('done'), rubricHash: QUALITY_RUBRIC_HASH, scenarioHash: revisionHash(scenario('done')), transcript: [], turns: 1, latencyMs: 1, judge };
         const reset = jest.fn(); const checkpoint = jest.fn();
         const result = await (service as any).runScenariosConcurrently('tenant', 'agent', 'telegram', [scenario('done'), synthetic], frozenSnapshot, { reset, recordInbound: jest.fn() }, [good], checkpoint,replayRun);
         expect(result[0]).toBe(good);
@@ -95,6 +98,42 @@ describe('simulation execution fidelity', () => {
         const summary = await (service as any).buildSummary('schema', results, 'baseline');
         expect(summary).toMatchObject({ total: 2, scored: 1, failed: 1, complete: false, falseClaimCount: 1 });
         expect(summary.baseline.regressions.map((row: any) => row.reason).sort()).toEqual(['new_false_claim', 'scenario_failed', 'scenario_missing']);
+        expect(summary.baseline.scoreComparable).toBe(false);
+        expect(summary.baseline.regressions.every((row: any) => row.before === null && row.after === null)).toBe(true);
+    });
+
+    it('reruns checkpoints scored with a previous rubric', async () => {
+        const f = simulation();
+        const old = { ...scenario('one'), scenarioHash: revisionHash(scenario('one')), rubricHash: 'old', transcript: [], turns: 1, latencyMs: 1, judge };
+        const results = await (f.service as any).runScenariosConcurrently('tenant', 'agent', 'telegram', [scenario('one')], frozenSnapshot, undefined, [old], undefined, replayRun);
+        expect(f.quality.judgeTranscript).toHaveBeenCalledTimes(1);
+        expect(results[0].rubricHash).toBe(QUALITY_RUBRIC_HASH);
+    });
+
+    it('does not report a changed rubric as declining agent performance', async () => {
+        const f = simulation();
+        const old = { ...scenario('one'), rubricHash: 'old', judge: { ...judge, overall: 10 }, transcript: [], turns: 1, latencyMs: 1 };
+        f.prisma.executeInTenantSchema.mockResolvedValue([{ results: [old], avg_score: 10 }]);
+        const summary = await (f.service as any).buildSummary('schema', [{ ...old, rubricHash: QUALITY_RUBRIC_HASH, judge: { ...judge, overall: 5 } }], 'baseline');
+        expect(summary.baseline).toMatchObject({ scoreComparable: false, avgDelta: null, hasRegression: null, regressions: [] });
+    });
+
+    it('reports the denominator and distinguishes waiting for customer input from insufficient evidence', async () => {
+        const f = simulation();
+        const summary = await (f.service as any).buildSummary('schema', [
+            { ...scenario('triage'), judge: { ...judge, resolved: null, resolutionStatus: 'needs_customer_input' } },
+            { ...scenario('partial'), judge: { ...judge, resolved: null, resolutionStatus: 'not_assessable' } },
+            { ...scenario('answered'), judge: { ...judge, resolved: true, resolutionStatus: 'resolved' } },
+        ]);
+        expect(summary.resolutionCoverage).toEqual({ conclusive: 1, needsCustomerInput: 1, notAssessable: 1 });
+    });
+
+    it('does not compare scores across changed agent objectives', async () => {
+        const f = simulation();
+        const old = { ...scenario('one'), rubricHash: QUALITY_RUBRIC_HASH, evaluationScopeHash: 'support-mission', judge, transcript: [], turns: 1, latencyMs: 1 };
+        f.prisma.executeInTenantSchema.mockResolvedValue([{ results: [old], avg_score: 8 }]);
+        const summary = await (f.service as any).buildSummary('schema', [{ ...old, evaluationScopeHash: 'sales-mission', judge: { ...judge, overall: 4 } }], 'baseline');
+        expect(summary.baseline).toMatchObject({ scoreComparable: false, avgDelta: null, hasRegression: null });
     });
 });
 

@@ -9,6 +9,7 @@ import { scoreProductionEvidence } from './quality-production-evidence';
 import { QUALITY_EVIDENCE_DDL } from './quality-evidence-schema';
 import { CURRENT_QUALITY_CTE } from './quality-evidence';
 import { QUALITY_RUBRIC_HASH, RUBRIC_PROMPT } from './quality-rubric';
+import { qualityJudgeContext, type QualityJudgeContext } from './quality-judge-context';
 export { RUBRIC_PROMPT } from './quality-rubric';
 
 export const QUALITY_QUEUE = 'quality-scoring';
@@ -25,7 +26,8 @@ export interface JudgeResult {
     accuracy: number;
     empathy: number;
     flags: string[];
-    resolved: boolean;
+    resolved: boolean | null;
+    resolutionStatus?: 'resolved' | 'unresolved' | 'needs_customer_input' | 'not_assessable';
     resolutionReason: string;
 }
 
@@ -145,7 +147,7 @@ export class QualityService {
         await this.ensureTables(schemaName);
         const result = await scoreProductionEvidence(this.prisma, schemaName, conversationId,
             QUALITY_RUBRIC_HASH,
-            (transcript) => this.judgeTranscript(tenantId, transcript));
+            (transcript, context) => this.judgeTranscript(tenantId, transcript, undefined, undefined, context));
         if (result.status === 'scored' && result.agentId) {
             this.eventEmitter.emit('quality.scored', { tenantId, agentId: result.agentId,
                 agentConfigVersion: result.agentConfigVersion, status: result.status,
@@ -249,10 +251,13 @@ export class QualityService {
      * The transcript should use "Cliente:" / "Agente:" line prefixes.
      */
     async judgeTranscript(tenantId: string, transcript: string, executionContext?: import('../../common/types/execution-context').ServiceExecutionContext,
-        withSourceAuthority?: import('../ai/interfaces/llm-source-authority').LLMSourceAuthority): Promise<JudgeResult> {
+        withSourceAuthority?: import('../ai/interfaces/llm-source-authority').LLMSourceAuthority,
+        context?: QualityJudgeContext): Promise<JudgeResult> {
         const response = await this.llmRouter.execute({
             model: 'gpt-4o-mini',
-            messages: [{ role: 'user', content: transcript }],
+            messages: [{ role: 'user', content: JSON.stringify({
+                evaluationContext: context ?? qualityJudgeContext(null, { source: 'production' }), transcript,
+            }) }],
             systemPrompt: RUBRIC_PROMPT,
             withSourceAuthority,
             executionContext,
@@ -275,9 +280,13 @@ export class QualityService {
                     throw new Error(`Invalid QA judge field: ${field}`);
                 }
             }
-            if (!Array.isArray(parsed?.flags)
+            const resolutionStatuses = ['resolved', 'unresolved', 'needs_customer_input', 'not_assessable'];
+            const resolutionStatus = parsed.resolutionStatus ?? (parsed.resolved === true ? 'resolved' : parsed.resolved === false ? 'unresolved' : null);
+            const inconclusive = resolutionStatus === 'needs_customer_input' || resolutionStatus === 'not_assessable';
+            if (!resolutionStatuses.includes(resolutionStatus)
+                || (inconclusive ? parsed.resolved !== null : parsed.resolved !== (resolutionStatus === 'resolved'))
+                || !Array.isArray(parsed?.flags)
                 || parsed.flags.some((flag: unknown) => typeof flag !== 'string')
-                || typeof parsed?.resolved !== 'boolean'
                 || typeof parsed?.resolutionReason !== 'string') {
                 throw new Error('Invalid QA judge response shape');
             }
@@ -289,6 +298,7 @@ export class QualityService {
                 empathy: Number(parsed.empathy),
                 flags: parsed.flags,
                 resolved: parsed.resolved,
+                resolutionStatus,
                 resolutionReason: parsed.resolutionReason,
             };
         } catch (error: any) {

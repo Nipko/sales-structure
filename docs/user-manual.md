@@ -798,6 +798,25 @@ El editor sólo ofrece las familias compatibles con el perfil del tenant y expli
 falta un dato, plan o proveedor. Guardar un interruptor prepara el permiso en el
 borrador; no cambia por sí solo la versión operativa.
 
+Los interruptores pertenecen a cada agente: no desactivan el trabajo manual del
+equipo ni conceden acceso a módulos fuera del plan, rol o tipo de negocio. Por
+ejemplo, desactivar **Citas** para la IA no impide gestionar citas manualmente.
+
+El menú lateral y los módulos relacionados muestran el estado de las herramientas
+en las versiones operativas de todos los agentes de la cuenta:
+
+- **IA desactivada**: ningún agente tiene habilitada una herramienta relacionada.
+- **Solo agentes pausados**: únicamente agentes pausados la tienen habilitada.
+- **IA configurada**: al menos un agente activo la tiene habilitada; no significa
+  que todos la tengan ni que estén listos para ejecutarla. Siguen aplicándose los
+  permisos, datos, conexiones y requisitos de cada herramienta.
+- **IA por verificar**: no se pudo comprobar la configuración. No equivale a estar
+  desactivada y no bloquea el trabajo manual.
+
+Los cambios guardados como borrador no alteran este indicador hasta publicarse.
+Desde el aviso del módulo puedes actualizar el estado y, si tu rol lo permite,
+abrir **Revisar agentes y herramientas**.
+
 ### Guardado y publicación
 
 La barra inferior **Guardar borrador** conserva la revisión sin cambiar el agente que
@@ -837,6 +856,29 @@ Al crear un agente nuevo, "Recomendados para tu negocio" aparece destacado segú
 
 Modo simulador: chateá con la versión operativa o con el borrador guardado sin afectar
 contactos reales. Úsalo antes de preparar, aprobar y publicar una revisión.
+
+Los pasos pendientes de una cuenta nueva son **puesta en marcha**, no deterioro del
+agente. El panel de misión ofrece el siguiente paso y **Guiarme con Parallly Assist**;
+Assist vuelve a revisar la configuración antes de orientar o preparar una propuesta.
+**Requiere atención** indica una comprobación o problema para revisar, sin afirmar
+que antes funcionaba. La lista de capacidades por canal no acredita su conexión:
+esa comprobación pertenece al paso **Conectar y asignar un canal**.
+
+La evaluación conversacional considera la misión de la versión que produjo las
+respuestas, cuando está disponible. Un seguimiento solicitado o una derivación
+correcta pueden cumplir el objetivo sin cerrar una venta. Si falta la configuración
+histórica o parte de la transcripción, la evaluación no debe inventarlas.
+El puntaje no certifica ventas, pagos, reservas ni conversión comercial: esos
+resultados requieren sus registros operativos. Las notas de criterios anteriores
+se conservan como historial; no se recalifican automáticamente ni se comparan como
+mejoras o caídas frente a un criterio diferente. Para comparar, prueba ambas
+versiones bajo el criterio actual.
+
+Si el cliente todavía no ha precisado su consulta y el agente pide los datos
+necesarios, el simulador puede mostrar **Espera información del cliente**. No es
+un fallo ni una venta perdida. La tasa de resolución conversacional usa solo los
+casos concluyentes y muestra cuántos esperan datos o no tienen evidencia
+suficiente; cuando ninguno es concluyente, no muestra un 0% inventado.
 
 Una conversación manual sirve para depurar, pero no demuestra calidad general. El
 Centro de calidad usa por separado pruebas repetibles y evidencia real atribuida a la

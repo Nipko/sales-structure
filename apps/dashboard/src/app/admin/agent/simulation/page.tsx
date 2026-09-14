@@ -13,7 +13,7 @@ import {
 import { PageHeader } from "@/components/ui/page-header";
 import { HelpPanel } from "@/components/ui/help-panel";
 import { guidedTourAnchorId } from "@/lib/guided-tours";
-import { SimulationEvidenceBoundary, SimulationRetirement, type SimulationStatus } from "@/components/quality/SimulationEvidenceBoundary";
+import { SimulationEvidenceBoundary, SimulationResolutionState, SimulationRetirement, type SimulationStatus } from "@/components/quality/SimulationEvidenceBoundary";
 
 // ── Types ───────────────────────────────────────────────────
 interface Agent { id: string; name: string; is_default?: boolean; is_active?: boolean; }
@@ -44,7 +44,8 @@ interface ScenarioResult {
     transcript: Array<{ role: "customer" | "agent"; content: string }>;
     judge: {
         overall: number; resolution: number; tone: number; accuracy: number; empathy: number;
-        flags: string[]; resolved: boolean; resolutionReason: string;
+        flags: string[]; resolved: boolean | null; resolutionReason: string;
+        resolutionStatus?: 'resolved' | 'unresolved' | 'needs_customer_input' | 'not_assessable';
     } | null;
     turns: number;
     error?: string;
@@ -405,28 +406,34 @@ function RunResults({ run, loading, onOpenScenario, t }: {
             </div>
 
             {/* Baseline diff */}
+            {s.resolutionCoverage && <p className="mb-4 text-xs text-muted-foreground">{t('resolutionCoverage', {
+                conclusive: s.resolutionCoverage.conclusive, waiting: s.resolutionCoverage.needsCustomerInput, unknown: s.resolutionCoverage.notAssessable,
+            })}</p>}
             {base && (
                 <div className={cn(
                     "rounded-lg border p-4 mb-6",
                     base.hasRegression ? "border-red-300 dark:border-red-500/30 bg-red-50/50 dark:bg-red-500/[0.04]"
+                        : base.scoreComparable === false ? "border-neutral-300 dark:border-neutral-700"
                         : "border-emerald-300 dark:border-emerald-500/30 bg-emerald-50/50 dark:bg-emerald-500/[0.04]",
                 )}>
                     <div className="flex items-center gap-2 mb-3">
                         {base.hasRegression
                             ? <><AlertTriangle size={16} className="text-red-400" /><span className="text-sm font-medium text-foreground">{t("regressionDetected")}</span></>
-                            : <><CheckCircle2 size={16} className="text-emerald-500" /><span className="text-sm font-medium text-foreground">{t("noRegression")}</span></>}
-                        <span className={cn("ml-auto text-sm font-semibold flex items-center gap-1", base.avgDelta >= 0 ? "text-emerald-500" : "text-red-400")}>
+                            : base.scoreComparable === false ? <span className="text-sm text-muted-foreground">{t("rubricChanged")}</span>
+                                : <><CheckCircle2 size={16} className="text-emerald-500" /><span className="text-sm font-medium text-foreground">{t("noRegression")}</span></>}
+                        {base.avgDelta != null && <span className={cn("ml-auto text-sm font-semibold flex items-center gap-1", base.avgDelta >= 0 ? "text-emerald-500" : "text-red-400")}>
                             {base.avgDelta >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
                             {base.avgDelta >= 0 ? "+" : ""}{base.avgDelta}
-                        </span>
+                        </span>}
                     </div>
+                    {base.hasRegression && base.scoreComparable === false && <p className="mb-2 text-xs text-muted-foreground">{t("rubricChanged")}</p>}
                     {base.regressions?.length > 0 && (
                         <div className="space-y-1">
                             {base.regressions.map((r: any) => (
                                 <div key={r.key} className="text-xs text-text-secondary flex items-center gap-2">
                                     <TrendingDown size={12} className="text-red-400 shrink-0" />
                                     <span className="truncate flex-1">{r.title}</span>
-                                    <span className="text-muted-foreground">{r.before} → <span className="text-red-400">{r.after}</span></span>
+                                    {base.scoreComparable !== false && r.before != null && r.after != null && <span className="text-muted-foreground">{r.before} → <span className="text-red-400">{r.after}</span></span>}
                                 </div>
                             ))}
                         </div>
@@ -480,9 +487,7 @@ function RunResults({ run, loading, onOpenScenario, t }: {
                                             : <span className={cn("font-semibold", scoreColor(r.judge.overall))}>{r.judge.overall}/10</span>}
                                     </td>
                                     <td className="py-2.5 px-3 text-center">
-                                        {r.error || !r.judge ? "—" : r.judge.resolved
-                                            ? <CheckCircle2 size={15} className="text-emerald-500 inline" />
-                                            : <XCircle size={15} className="text-red-400 inline" />}
+                                        {r.error || !r.judge ? "—" : <SimulationResolutionState resolved={r.judge.resolved} resolutionStatus={r.judge.resolutionStatus} />}
                                     </td>
                                     <td className="py-2.5 px-3 text-text-secondary max-w-[220px] truncate text-xs">
                                         {r.falseClaims?.length ? (
@@ -562,6 +567,7 @@ function ScenarioDrawer({ scenario, onClose, t }: {
                         </div>
                     )}
 
+                    {judge && judge.resolved == null && <SimulationResolutionState resolved={judge.resolved} resolutionStatus={judge.resolutionStatus} />}
                     {judge?.resolutionReason && (
                         <p className="text-xs text-text-secondary italic border-l-2 border-accent/40 pl-3">{judge.resolutionReason}</p>
                     )}

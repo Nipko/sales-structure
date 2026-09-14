@@ -1,4 +1,5 @@
 import { QUALITY_RUBRIC_HASH } from './quality-rubric';
+import { QUALITY_RUBRIC_VERSION } from './quality-evidence';
 import { Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import type {
     AgentQualityCheck,
@@ -638,7 +639,7 @@ export class AgentQualityService {
                           JOIN conversations c ON c.id = cqs.conversation_id
                          WHERE cqs.agent_id = $1::uuid
                            AND cqs.agent_config_version = $2
-                           AND cqs.source_revision = c.qa_revision AND cqs.rubric_version = 'v3' AND cqs.rubric_hash = $3
+                           AND cqs.source_revision = c.qa_revision AND cqs.rubric_version = '${QUALITY_RUBRIC_VERSION}' AND cqs.rubric_hash = $3
                            AND NOT EXISTS (SELECT 1 FROM customer_memory_erasure e WHERE e.contact_id=c.contact_id)
                            AND cqs.invalidated_at IS NULL
                            AND COALESCE(c.agent_attribution_conflicted, false) = false
@@ -676,7 +677,7 @@ export class AgentQualityService {
                           JOIN conversations c ON c.id = cqs.conversation_id
                          WHERE cqs.agent_id = $1::uuid
                            AND cqs.agent_config_version = $2
-                           AND cqs.source_revision = c.qa_revision AND cqs.rubric_version = 'v3' AND cqs.rubric_hash = $3
+                           AND cqs.source_revision = c.qa_revision AND cqs.rubric_version = '${QUALITY_RUBRIC_VERSION}' AND cqs.rubric_hash = $3
                            AND NOT EXISTS (SELECT 1 FROM customer_memory_erasure e WHERE e.contact_id=c.contact_id)
                            AND cqs.invalidated_at IS NULL
                            AND COALESCE(c.agent_attribution_conflicted, false) = false
@@ -1119,7 +1120,7 @@ export class AgentQualityService {
                 completedAt: simRow.completed_at ? this.iso(simRow.completed_at) : null,
                 scenarioCount: Number(simRow.scenario_count) || 0,
                 averageScore: Number(simRow.avg_score) || 0,
-                resolvedRate: Number(simRow.resolved_rate) || 0,
+                resolvedRate: simRow.resolved_rate == null ? null : Number(simRow.resolved_rate),
                 source: simRow.scenario_source || 'synthetic',
             } : null,
         };

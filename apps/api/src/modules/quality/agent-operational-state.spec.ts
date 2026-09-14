@@ -42,7 +42,9 @@ describe('the state an agent is said to be in', () => {
         expect(operationalStateFromCheck('pass', { sourceAvailable: false })).toBe('unknown');
         expect(operationalStateFromCheck('fail', { sourceAvailable: false })).toBe('unknown');
         expect(operationalStateFromCheck('pass')).toBe('prepared');
-        expect(operationalStateFromCheck('warning')).toBe('degraded');
+        expect(operationalStateFromCheck('warning')).toBe('pending');
+        expect(operationalStateFromCheck('warning', { operationalIssue: true })).toBe('degraded');
+        expect(operationalStateFromCheck('warning', { operationalIssue: true, sourceAvailable: false })).toBe('unknown');
         expect(operationalStateFromCheck('fail')).toBe('pending');
     });
 

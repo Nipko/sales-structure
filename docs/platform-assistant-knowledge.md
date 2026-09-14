@@ -84,6 +84,20 @@ libre del juez, consultas de recuperación, fingerprints, actores y secretos. La
 respuesta solo puede explicar una prioridad y devolver rutas internas validadas;
 nunca confirma una edición ni ejecuta el cambio.
 
+En puesta en marcha, Assist ofrece un siguiente paso relevante desde `nextTask` y
+sus comprobaciones; no transforma datos o pruebas pendientes en deterioro del
+agente. «Requiere atención» no presupone funcionamiento anterior. La lista de
+capacidades por canal no acredita conexiones: el paso de conectar y asignar es la
+referencia para ello. Una fuente no disponible requiere reintentar la verificación,
+no afirmar que el usuario debe volver a cargar datos.
+
+La rúbrica conversacional considera el objetivo de la versión evaluada cuando
+puede comprobarse. No exige una venta ante una consulta, seguimiento o derivación
+acordada, ni interpreta silencio como fracaso comercial. La opinión del evaluador
+no certifica pagos, reservas ni conversión; los resultados operativos conservan
+sus fuentes independientes. Un cambio de rúbrica exige volver a probar para
+comparar notas: no implica que el agente haya empeorado.
+
 ## Cobertura obligatoria
 
 La colección localizada debe cubrir, además de los artículos funcionales actuales:

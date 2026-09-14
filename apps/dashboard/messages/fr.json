@@ -1,4 +1,30 @@
 {
+  "agentToolNavigation": {
+    "title": "Outils d’IA dans ce module",
+    "manage": "Vérifier les agents et outils",
+    "refresh": "Actualiser l’état",
+    "scopeTitle": "Fonctionnement",
+    "status": {
+      "loading": "Vérification de l’IA…",
+      "unknown": "IA à vérifier",
+      "no_agents": "Aucun agent",
+      "disabled": "IA désactivée",
+      "paused": "Agents en pause uniquement",
+      "configured": "IA configurée"
+    },
+    "description": {
+      "loading": "Lecture de la configuration opérationnelle de vos agents.",
+      "unknown": "Nous n’avons pas pu confirmer la configuration de l’IA. Cela ne signifie pas qu’elle est désactivée et ne modifie pas votre accès manuel.",
+      "no_agents": "Aucun agent n’est configuré. Vous pouvez continuer à gérer ce module manuellement.",
+      "disabled": "Aucun agent n’a activé les outils associés. Vous pouvez continuer à utiliser ce module manuellement.",
+      "paused": "Les outils associés ne sont activés que sur des agents en pause ; ces agents ne servent pas les clients.",
+      "configured": "Au moins un agent actif dispose d’un outil associé activé. Cela ne confirme ni sa disponibilité pour l’exécution ni son activation pour tous les agents."
+    },
+    "manualScope": "Le menu et la gestion manuelle dépendent de votre rôle, de votre offre et de votre secteur. Désactiver l’outil d’un agent ne ferme pas le module à votre équipe et ne modifie pas les autres agents.",
+    "runtimeScope": "L’IA ne peut exécuter que les outils activés et autorisés pour cet agent, ce canal et cette opération. Les exigences d’offre, de connexion, de données et de sous-autorisations restent applicables.",
+    "draftScope": "Cet état reflète la configuration opérationnelle, pas le brouillon. Enregistrez le brouillon et finalisez sa publication pour appliquer les changements à l’IA.",
+    "editorScope": "Ces interrupteurs contrôlent les outils de cet agent, pas le menu ni la gestion manuelle de l’entreprise. Les changements s’appliquent à l’agent opérationnel lors de leur publication ; les activer ne débloque pas de modules hors de votre offre, rôle ou secteur."
+  },
   "operationalNotices": {
     "resolutionAdminOnly": "Seul un administrateur peut résoudre le résultat de l’envoi.",
     "title": "Avis opérationnels",
@@ -11944,8 +11970,8 @@
         "meaning": "Cela fonctionne, avec des preuves d'usage réel, pas seulement de la configuration."
       },
       "degraded": {
-        "label": "Dégradé",
-        "meaning": "Quelque chose qui fonctionnait s'est arrêté. Une personne doit y regarder."
+        "label": "À vérifier",
+        "meaning": "Un problème ou un contrôle nécessite une vérification. Cet état ne prouve pas que cela fonctionnait auparavant."
       }
     },
     "agent": {
@@ -11954,7 +11980,7 @@
       "prepared": "L'agent est configuré de bout en bout, mais il n'a pas encore été testé.",
       "tested": "L'agent a réussi ses tests. Il manque des preuves issues de conversations réelles pour dire qu'il est opérationnel.",
       "operating": "L'agent répond, avec des preuves d'usage réel à l'appui.",
-      "degraded": "Quelque chose qui fonctionnait est cassé. Une partie dégradée n'est pas compensée par celles qui vont bien : vérifiez-la avant de continuer."
+      "degraded": "Un problème ou un contrôle doit être vérifié. Consultez les preuves et la prochaine étape ; cela ne signifie pas en soi que l’agent s’est dégradé."
     }
   },
   "agentAssessment": {
@@ -11966,10 +11992,10 @@
     },
     "next": "Prochaine étape",
     "details": "Vérifier les dépendances et tests",
-    "testEvidence": "Il reste {count} scénarios de mission à vérifier. Une note globale ne certifie pas chaque scénario.",
+    "testEvidence": "Il y a {count} scénarios de mission à examiner ; consultez chaque résultat. Un score global ne certifie pas chaque scénario.",
     "capabilityEvidence": "Nous avons observé {count} outils publiés sur les canaux évalués. La publication ne prouve pas un résultat.",
     "tasksTitle": "Étapes de mise en route",
-    "channelsTitle": "Connexions évaluées",
+    "channelsTitle": "Capacités évaluées par canal",
     "channelPreview": "aperçu",
     "channelUnspecified": "Connexion non identifiée",
     "channelTypes": {
@@ -11983,14 +12009,18 @@
     "testsTitle": "Scénarios de mission",
     "toolsTitle": "Outils",
     "toolsInState": "{count} dans cet état",
-    "capabilityDegraded": "Une des connexions signale un contrat dégradé. Nous ne comptons pas les outils publiés tant qu'elle n'a pas été vérifiée.",
+    "capabilityDegraded": "Une évaluation de capacités nécessite une vérification. Consultez les preuves avant de considérer ses outils comme disponibles.",
     "capabilityNoChannels": "Aucune connexion n'est encore attribuée à cet agent, il n'y a donc pas d'outils publiés à observer.",
     "evidence": {
       "not_verified": "non vérifié",
       "verified": "vérifié",
       "failed": "échec",
       "stale": "preuve d'une version antérieure"
-    }
+    },
+    "channelScope": "Cette vue évalue les capacités, pas l’état des connexions. Pour savoir ce qui est connecté et attribué, consultez « Connecter et attribuer un canal ».",
+    "setupGuidance": "Terminez la configuration étape par étape avec Parallly Assist. Des informations ou des tests manquants ne signifient pas de mauvaises performances ; les résultats réels sont évalués séparément.",
+    "askAssist": "Me guider avec Parallly Assist",
+    "assistPrompt": "Aide-moi pour cette étape : {task}. Vérifie la configuration actuelle, explique ce qui manque et guide-moi sans appliquer ni publier automatiquement de modifications."
   },
   "qualityHealth": {
     "title": "Santé de vos agents",
@@ -12427,6 +12457,11 @@
     "failedScenarios": "En erreur",
     "regressionDetected": "Régression détectée",
     "noRegression": "Aucune régression",
+    "rubricChanged": "Les notes ne sont pas comparables : l’objectif ou les critères ont changé, ou une note comparable manque. Testez les deux versions avec le même objectif et les mêmes critères ; cela ne prouve pas une baisse de performance.",
+    "notResolved": "Non résolu",
+    "needsCustomerInput": "En attente d’informations du client",
+    "notAssessable": "Preuves insuffisantes",
+    "resolutionCoverage": "Résolution conversationnelle : {conclusive} cas concluants, {waiting} en attente d’informations du client et {unknown} indéterminés. Le taux ne porte que sur les cas concluants ; il ne mesure ni les ventes ni la conversion.",
     "resolution": "Résolution",
     "tone": "Ton",
     "accuracy": "Précision",

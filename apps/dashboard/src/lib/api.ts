@@ -905,6 +905,7 @@ export const api = {
     getActivationMetrics: () => apiGet(`/financials/activation`),
 
     // --- Multi-Agent ---
+    getAgentToolConfigurationSummary: (tenantId: string) => apiGet<import('@parallext/shared').AgentToolConfigurationSummary>(`/persona/${tenantId}/tool-configuration-summary`),
     listAgents: (tenantId: string) => apiGet(`/persona/${tenantId}/agents`),
     // Disconnect ONE specific connected account of a channel type (multi-account).
     disconnectChannelAccount: (channelType: string, accountId: string) =>

@@ -21,7 +21,7 @@ import type { AgentQualityCheckStatus, AgentQualityPillarStatus, AgentQualitySta
  * directive names are their labels, and live in the four message files:
  *
  *   unknown → desconocido · pending → pendiente · prepared → preparado
- *   tested → probado · operating → operativo · degraded → deteriorado
+ *   tested → probado · operating → operativo · degraded → requiere atención
  */
 export const AGENT_OPERATIONAL_STATES = [
     'unknown',
@@ -52,7 +52,7 @@ export function operationalStateFromQuality(status: AgentQualityStatus | null | 
         case 'operating_with_evidence': return 'operating';
         case 'ready_for_pilot': return 'tested';
         case 'configuration_incomplete': return 'pending';
-        // Both of these mean something that was working needs a person to look.
+        // Attention is warranted, but these codes do not establish prior success.
         case 'at_risk':
         case 'review_required': return 'degraded';
         case 'not_evaluated': return 'pending';
@@ -68,11 +68,13 @@ export function operationalStateFromQuality(status: AgentQualityStatus | null | 
  * it drag a rollup down.
  */
 export function operationalStateFromCheck(status: AgentQualityCheckStatus | null | undefined,
-    options: { sourceAvailable?: boolean } = {}): AgentOperationalState | null {
+    options: { sourceAvailable?: boolean; operationalIssue?: boolean } = {}): AgentOperationalState | null {
     if (options.sourceAvailable === false) return 'unknown';
     switch (status) {
         case 'pass': return 'prepared';
-        case 'warning': return 'degraded';
+        // A missing optional setup field is not evidence of deterioration.
+        // Known operational risks (e.g. expiring credentials) opt in explicitly.
+        case 'warning': return options.operationalIssue ? 'degraded' : 'pending';
         case 'fail': return 'pending';
         case 'not_applicable': return null;
         default: return 'unknown';
@@ -130,8 +132,8 @@ export function operationalStateFromKnownFlag(value: boolean | null | undefined,
 /**
  * The state of a whole made of parts.
  *
- * A single degraded part makes the whole degraded: something that was working
- * stopped, and no amount of green elsewhere changes that. Otherwise anything
+ * A single degraded part makes the whole require attention: a known risk cannot
+ * be averaged away by green elsewhere. This does not imply prior success. Anything
  * unknown makes the whole unknown, because a claim of "operating" cannot rest on
  * a part nobody could read. Only when every part is known and healthy does the
  * ladder decide, and then it is the least advanced part that speaks — an agent

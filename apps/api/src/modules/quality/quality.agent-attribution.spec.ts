@@ -5,19 +5,19 @@ const CONVERSATION_ID = '22222222-2222-4222-8222-222222222222';
 const AGENT_ID = '33333333-3333-4333-8333-333333333333';
 
 describe('QualityService agent attribution', () => {
-    function buildHarness(agentId: string | null, version: number | null) {
+    function buildHarness(agentId: string | null, version: number | null, options: { config?: any; currentVersion?: number; handedOff?: boolean } = {}) {
         const executeInTenantSchema = jest.fn(async (_schema: string, sql: string, _params: any[] = []) => {
             if (sql.includes('FROM conversations WHERE id=')) {
                 return [{
                     contact_id: '44444444-4444-4444-8444-444444444444', qa_revision: '2',
                     resolution_type: 'ai_resolved',
-                    was_handed_off: false,
+                    was_handed_off: options.handedOff ?? false,
                     agent_persona_id: agentId,
                     agent_config_version: version,
                 }];
             }
             if (sql.includes('COUNT(*)::int AS total_messages')) return [{total_messages:2,text_messages:2}];
-            if (sql.includes('FROM agent_personas')) return [{version,config_json:{mission:'Answer questions'}}];
+            if (sql.includes('FROM agent_personas')) return [{version: options.currentVersion ?? version,config_json: options.config ?? {mission:'Answer questions'}}];
             if (sql.includes('INSERT INTO conversation_quality_scores')) return [{id:'evidence-id'}];
             if (sql.includes('FROM messages')) {
                 return [
@@ -96,6 +96,25 @@ describe('QualityService agent attribution', () => {
         expect(insert![2].slice(0, 3)).toEqual([CONVERSATION_ID, null, null]);
     });
 
+    it('evaluates the actual version objective, without sending tool credentials', async () => {
+        const mission = { version: 1, objective: 'Acordar seguimiento', intentKeys: ['request_follow_up'],
+            successCriteria: ['Confirmar el siguiente contacto'], handoffConditions: ['Derivar a una persona si lo solicita'] };
+        const { service, llmRouter } = buildHarness(AGENT_ID, 5, { config: { mission, tools: { crm: { enabled: true, token: 'SECRET' } } } });
+        await service.scoreConversation(TENANT_ID, CONVERSATION_ID);
+        const content = llmRouter.execute.mock.calls[0][0].messages[0].content;
+        expect(JSON.parse(content)).toMatchObject({ evaluationContext: { configuration: 'captured', mission: { objective: mission.objective },
+            coverage: { complete: true } }, transcript: expect.stringContaining('Cliente:') });
+        expect(content).not.toContain('SECRET');
+    });
+
+    it.each([{ currentVersion: 6 }, { handedOff: true }])('never judges old or mixed replies against the current agent config: %p', async options => {
+        const { service, llmRouter } = buildHarness(AGENT_ID, 5, { ...options, config: { persona: { role: 'NEW OBJECTIVE' } } });
+        await service.scoreConversation(TENANT_ID, CONVERSATION_ID);
+        const content = llmRouter.execute.mock.calls[0][0].messages[0].content;
+        expect(JSON.parse(content).evaluationContext).toMatchObject({ configuration: 'unavailable', mission: null });
+        expect(content).not.toContain('NEW OBJECTIVE');
+    });
+
     it('throws malformed judge output so BullMQ retries instead of persisting score zero', async () => {
         const { service, llmRouter, executeInTenantSchema, eventEmitter } = buildHarness(AGENT_ID, 5);
         llmRouter.execute.mockResolvedValue({ content: '{}' });
@@ -123,6 +142,25 @@ describe('QualityService agent attribution', () => {
         const { service, llmRouter } = buildHarness(AGENT_ID,5);
         llmRouter.execute.mockResolvedValue({content:JSON.stringify({overall,resolution:8,tone:8,accuracy:8,empathy:8,flags:[],resolved:true,resolutionReason:'text'})});
         await expect(service.scoreConversation(TENANT_ID,CONVERSATION_ID)).rejects.toThrow('invalid response');
+    });
+
+    it.each(['needs_customer_input', 'not_assessable'])('preserves an inconclusive resolution as null: %s', async resolutionStatus => {
+        const { service, llmRouter, executeInTenantSchema } = buildHarness(AGENT_ID, 5);
+        llmRouter.execute.mockResolvedValue({ content: JSON.stringify({ overall: 8, resolution: 8, tone: 8, accuracy: 8, empathy: 8,
+            flags: [], resolved: null, resolutionStatus, resolutionReason: 'Se pidió precisar la consulta; faltan datos del cliente.' }) });
+        await service.scoreConversation(TENANT_ID, CONVERSATION_ID);
+        const insert = (executeInTenantSchema.mock.calls as any[][]).find(call => call[1].includes('INSERT INTO conversation_quality_scores'))!;
+        expect(insert[2][17]).toBeNull();
+        expect(insert[1]).toContain("'unknown'");
+    });
+
+    it('rejects contradictory or invented resolution statuses rather than silently marking failure', async () => {
+        const { service, llmRouter } = buildHarness(AGENT_ID, 5);
+        for (const resolutionStatus of ['needs_customer_input', 'made_up']) {
+            llmRouter.execute.mockResolvedValue({ content: JSON.stringify({ overall: 8, resolution: 8, tone: 8, accuracy: 8, empathy: 8,
+                flags: [], resolved: false, resolutionStatus, resolutionReason: 'Waiting' }) });
+            await expect(service.scoreConversation(TENANT_ID, CONVERSATION_ID)).rejects.toThrow('invalid response');
+        }
     });
 
     it('propagates queue outages instead of silently claiming QA was scheduled', async () => {

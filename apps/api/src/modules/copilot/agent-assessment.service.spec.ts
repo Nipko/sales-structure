@@ -46,6 +46,27 @@ function harness(options: { missing?: boolean; drift?: boolean; unknown?: boolea
 }
 
 describe('shared agent assessment', () => {
+    it('treats missing business context and hours as initial setup, not deterioration', async () => {
+        const h = harness();
+        h.overview.preparation.dimensions[0].checks = [
+            { code: 'business_identity', status: 'pass', evidence: { configured: true } },
+            { code: 'business_context', status: 'warning', evidence: { goals: 0, audiences: 0 } },
+            { code: 'business_hours', status: 'warning', evidence: { configured: false } },
+        ] as any;
+        const result = await h.service.getAssessment(TENANT, AGENT);
+        for (const key of ['business', 'hours']) expect(result.tasks.find(task => task.key === key))
+            .toMatchObject({ status: 'warning', state: 'pending' });
+        expect(result.state).not.toBe('degraded');
+    });
+
+    it('still surfaces real credential risks instead of hiding them as setup', async () => {
+        const h = harness();
+        h.overview.preparation.dimensions[0].checks = [
+            { code: 'channel_connection', status: 'warning', evidence: { hasCredentialIssue: true } },
+        ] as any;
+        expect((await h.service.getAssessment(TENANT, AGENT)).tasks.find(task => task.key === 'channel'))
+            .toMatchObject({ state: 'degraded' });
+    });
     it('carries the specific unsupported-assignment diagnosis into setup and Assist', async () => {
         const h = harness();
         h.overview.preparation.dimensions[0].checks = [

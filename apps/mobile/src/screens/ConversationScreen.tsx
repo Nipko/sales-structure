@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
-    View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator,
+    View, Text, FlatList, ScrollView, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator,
     KeyboardAvoidingView, Alert, Image, Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,13 +9,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { api, requireApiSuccess } from '../lib/api';
-import { getInboxSocket, getAgentSocket } from '../lib/socket';
+import { getInboxSocket, getAgentSocket, onAgentReady } from '../lib/socket';
+import { isConversationAccessLost } from '../lib/conversationAccess';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../components/Toast';
 import { Modal } from '../components/AppModal';
 import { useI18n } from '../i18n';
 import { useKeyboardSpace } from '../lib/useKeyboardSpace';
-import { enqueue, pendingFor, subscribeOutbox, retry as retryOutbox } from '../lib/outbox';
+import { enqueue, pendingFor, subscribeOutbox, retry as retryOutbox, setOutboxConversationAccess } from '../lib/outbox';
 import { useAudioRecorder, fmtDuration } from '../lib/useAudioRecorder';
 import { AudioPlayer } from '../components/AudioPlayer';
 import { snoozeUntil, SNOOZE_PRESETS, type SnoozePreset } from '../lib/snooze';
@@ -28,9 +29,8 @@ interface Msg { id: string; content: string; sender: string; senderName?: string
     pending?: boolean; failed?: boolean;
     /** The row's own state. `failed` means a provider refused it; `pending` that no send was attempted. */
     status?: string;
-    /** Derived from `status`: the server sent it and the customer does not have it.
-     *  Deliberately not `failed` — that one invites a tap-retry, and a human
-     *  reply carries no idempotency key, so retrying it can duplicate. */
+    /** Server delivery failure, distinct from a local outbox retry. The loaded
+     *  row does not expose the original request key needed for a safe retry. */
     notDelivered?: boolean }
 interface Note { id: string; content: string; agentName?: string; createdAt?: string }
 type TimelineItem = (Msg & { kind: 'msg' }) | (Note & { kind: 'note'; timestamp?: string });
@@ -79,6 +79,9 @@ export function ConversationScreen() {
     const [conv, setConv] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState(false);
+    const [accessUnavailable, setAccessUnavailable] = useState(false);
+    const accessLostRef = useRef(false);
+    const loadSequence = useRef(0);
     const [hasMore, setHasMore] = useState(false);
     const [loadingMore, setLoadingMore] = useState(false);
     const [loadMoreError, setLoadMoreError] = useState(false);
@@ -109,34 +112,71 @@ export function ConversationScreen() {
     const listRef = useRef<FlatList>(null);
     const { state: recState, durationMs: recMs, startRecording, stopRecording, cancelRecording } = useAudioRecorder();
 
-    const load = useCallback(async () => {
-        if (!tenantId) return;
+    const revokeAccess = useCallback(() => {
+        accessLostRef.current = true;
+        loadSequence.current++;
+        setAccessUnavailable(true);
+        setConv(null);
+        setMessages([]);
+        setNotes([]);
+        setViewers([]);
+        setReplyTo(null);
+        setText('');
+        setTranslations({});
+        setSummary(null);
+        setNextAction(null);
+        setHasMore(false);
+        setLoading(false);
+        setLoadingMore(false);
+        setContactOpen(false);
+        setAgentsOpen(false);
+        setNoteOpen(false);
+        setNoteText('');
+        setToneOpen(false);
+        setSnoozeOpen(false);
+        setCannedOpen(false);
+        setMacrosOpen(false);
+        void cancelRecording();
+        setOutboxConversationAccess(conversationId, false);
+    }, [conversationId, cancelRecording]);
+
+    const load = useCallback(async (recheckAccess = false) => {
+        if (!tenantId || (accessLostRef.current && !recheckAccess)) return;
+        const request = ++loadSequence.current;
         try {
             const res: any = requireApiSuccess(await api.getConversation(tenantId, conversationId, { limit: 50 }));
+            if (request !== loadSequence.current) return;
             if (!res.data) throw new Error('missing_conversation');
+            accessLostRef.current = false;
+            setAccessUnavailable(false);
+            setOutboxConversationAccess(conversationId, true);
             setConv(res.data);
             setMessages(Array.isArray(res.data.messages) ? res.data.messages : []);
             setNotes(Array.isArray(res.data.notes) ? res.data.notes : []);
             setHasMore(!!res.data.hasMore);
             setLoadMoreError(false);
             setLoadError(false);
-        } catch {
+        } catch (error) {
+            if (request !== loadSequence.current) return;
+            if (isConversationAccessLost(error)) { revokeAccess(); return; }
             // Preserve a previously loaded conversation during a failed socket/
             // background refresh. On the first load, render an honest retry state.
             setLoadError(true);
         } finally {
-            setLoading(false);
+            if (request === loadSequence.current) setLoading(false);
         }
-    }, [tenantId, conversationId]);
+    }, [tenantId, conversationId, revokeAccess]);
 
     // Load older messages (cursor = timestamp of oldest message already loaded).
     const loadMore = useCallback(async () => {
-        if (!tenantId || loadingMore || !hasMore || messages.length === 0) return;
+        if (!tenantId || accessLostRef.current || loadingMore || !hasMore || messages.length === 0) return;
+        const request = loadSequence.current;
         setLoadingMore(true);
         setLoadMoreError(false);
         const oldest = messages[0]?.timestamp;
         try {
             const res: any = requireApiSuccess(await api.getConversation(tenantId, conversationId, { limit: 50, before: oldest }));
+            if (request !== loadSequence.current) return;
             if (!Array.isArray(res.data?.messages)) throw new Error('missing_messages');
             setMessages((prev) => {
                 const existingIds = new Set(prev.map((m) => m.id));
@@ -144,14 +184,25 @@ export function ConversationScreen() {
                 return [...fresh, ...prev];
             });
             setHasMore(!!res.data.hasMore);
-        } catch {
+        } catch (error) {
+            if (request !== loadSequence.current) return;
+            if (isConversationAccessLost(error)) { revokeAccess(); return; }
             setLoadMoreError(true);
         } finally {
             setLoadingMore(false);
         }
-    }, [tenantId, conversationId, loadingMore, hasMore, messages]);
+    }, [tenantId, conversationId, loadingMore, hasMore, messages, revokeAccess]);
 
-    useEffect(() => { load(); }, [load]);
+    useEffect(() => {
+        accessLostRef.current = false;
+        setAccessUnavailable(false);
+        setConv(null);
+        setMessages([]);
+        setNotes([]);
+        setLoading(true);
+        void load();
+        return () => { loadSequence.current++; accessLostRef.current = true; };
+    }, [load]);
 
     useEffect(() => {
         if (!tenantId) return;
@@ -160,14 +211,22 @@ export function ConversationScreen() {
     }, [tenantId]);
 
     useEffect(() => {
+        if (!tenantId || accessUnavailable) return;
         const inbox = getInboxSocket();
         const agent = getAgentSocket();
+        let presenceReady = false;
 
         // Live messages arrive tenant-wide on /inbox → filter to this conversation.
         const onNewMessage = (payload: any) => {
             const cid = payload?.conversationId || payload?.conversation_id;
             if (!cid || cid === conversationId) load();
         };
+        const onConversationUpdated = (payload: any) => {
+            const cid = payload?.conversationId || payload?.conversation_id || payload?.id;
+            if (!cid || cid === conversationId) void load();
+        };
+        const refresh = () => { void load(); };
+        const onDisconnect = () => { presenceReady = false; setViewers([]); };
         // Collision detection (other agents viewing) lives on /agent.
         const onViewers = (p: any) => {
             if (p?.conversationId !== conversationId) return;
@@ -175,21 +234,39 @@ export function ConversationScreen() {
         };
 
         inbox.on('newMessage', onNewMessage);
+        inbox.on('conversationUpdated', onConversationUpdated);
+        inbox.on('connect', refresh);
+        agent.on('inbox:refresh', refresh);
+        agent.on('disconnect', onDisconnect);
         agent.on('conversation:viewers_update', onViewers);
-        agent.emit('conversation:open', { conversationId }); // joins the conversation room
-        agent.emit('conversation:viewing_start', { conversationId });
+        const stopReady = onAgentReady(() => {
+            if (accessLostRef.current) return;
+            presenceReady = true;
+            agent.emit('conversation:open', { conversationId });
+            agent.emit('conversation:viewing_start', { conversationId });
+            void load();
+        });
         const hb = setInterval(
-            () => agent.emit('conversation:heartbeat', { conversationId }),
+            () => {
+                if (presenceReady && agent.connected && !accessLostRef.current) {
+                    agent.emit('conversation:heartbeat', { conversationId });
+                }
+            },
             15000,
         );
 
         return () => {
             clearInterval(hb);
-            agent.emit('conversation:viewing_stop', { conversationId });
+            stopReady();
+            if (presenceReady && agent.connected) agent.emit('conversation:viewing_stop', { conversationId });
             inbox.off('newMessage', onNewMessage);
+            inbox.off('conversationUpdated', onConversationUpdated);
+            inbox.off('connect', refresh);
+            agent.off('inbox:refresh', refresh);
+            agent.off('disconnect', onDisconnect);
             agent.off('conversation:viewers_update', onViewers);
         };
-    }, [conversationId, load, user?.id]);
+    }, [tenantId, conversationId, load, user?.id, accessUnavailable]);
 
     // Re-render + reconcile when the outbox changes (message queued, sent or failed).
     useEffect(() => subscribeOutbox(() => { setOutboxTick((x) => x + 1); load(); }), [load]);
@@ -197,8 +274,8 @@ export function ConversationScreen() {
     const timeline = useMemo<TimelineItem[]>(() => {
         // `notDelivered` is the server's word, not the offline queue's: a reply
         // the provider refused is a different thing from one this phone never
-        // managed to send, and only the second is safe to retry — a human reply
-        // carries no idempotency key, so a retry of the first can duplicate it.
+        // managed to send. The outbox preserves the original request key;
+        // the loaded server row does not expose that key for a safe retry.
         const msgs: TimelineItem[] = messages.map((m) => ({ ...m, kind: 'msg',
             notDelivered: m.sender !== 'inbound' && (m.status === 'failed' || m.status === 'pending') }));
         const nts: TimelineItem[] = notes.map((n) => ({ ...n, kind: 'note', timestamp: n.createdAt }));
@@ -403,7 +480,7 @@ export function ConversationScreen() {
     };
 
     const send = async () => {
-        if (!text.trim() || !tenantId || sending) return;
+        if (!text.trim() || !tenantId || sending || accessLostRef.current) return;
         // Prepend quote if replying
         const body = replyTo
             ? `↩ "${replyTo.content.slice(0, 60)}${replyTo.content.length > 60 ? '…' : ''}"\n\n${text.trim()}`
@@ -418,10 +495,20 @@ export function ConversationScreen() {
         setMessages((prev) => [...prev, { id: tmpId, sender: 'outbound', content: body, timestamp: new Date().toISOString() }]);
         try {
             const result = await api.sendMessage(tenantId, conversationId, body, tmpId);
-            if (!result?.success) throw new Error(result?.error || 'send_failed');
+            requireApiSuccess(result);
             haptic.success();
             load();
-        } catch {
+        } catch (error) {
+            // A write denial may only mean this agent must claim the thread.
+            // Recheck read access, and never enqueue a rejected write as offline.
+            if (isConversationAccessLost(error)) {
+                setMessages((prev) => prev.filter((m) => m.id !== tmpId));
+                if (!accessLostRef.current) setText(body);
+                toast.error(t('conv.sendError'));
+                void load();
+                return;
+            }
+            if (accessLostRef.current) return;
             // Don't lose it: hand off to the outbox to auto-retry on reconnect.
             // It renders as a pending bubble (sourced from the queue, not `messages`).
             setMessages((prev) => prev.filter((m) => m.id !== tmpId));
@@ -436,7 +523,7 @@ export function ConversationScreen() {
     };
     // ── Audio recording ───────────────────────────────────────────────────────
     const handleMicPress = async () => {
-        if (!tenantId) return;
+        if (!tenantId || accessLostRef.current) return;
         if (recState === 'recording') {
             // Stop → upload → send
             const result = await stopRecording();
@@ -447,6 +534,7 @@ export function ConversationScreen() {
                 const fname = `voice_${Date.now()}.m4a`;
                 const uploadRes: any = await api.uploadMedia(tenantId, { uri: result.uri, fileName: fname, mimeType: 'audio/m4a' });
                 if (!uploadRes?.success || !uploadRes.data?.url) { toast.error(uploadRes?.message || t('conv.audioError')); return; }
+                if (accessLostRef.current) return;
                 const r: any = await api.sendMediaMessage(tenantId, conversationId, uploadRes.data.url, '', 'audio', fname);
                 if (!r?.success) throw new Error('fail');
                 load();
@@ -464,7 +552,7 @@ export function ConversationScreen() {
 
     // Outbound media: pick from camera/gallery → upload → send as image message.
     const pickFrom = async (source: 'camera' | 'gallery') => {
-        if (!tenantId) return;
+        if (!tenantId || accessLostRef.current) return;
         try {
             let res: ImagePicker.ImagePickerResult;
             if (source === 'camera') {
@@ -482,6 +570,7 @@ export function ConversationScreen() {
             const up: any = await api.uploadMedia(tenantId, { uri: asset.uri, fileName: asset.fileName || undefined, mimeType: asset.mimeType || undefined });
             const url = up?.data?.url;
             if (!up?.success || !url) { toast.error(up?.message || t('conv.mediaError')); return; }
+            if (accessLostRef.current) return;
             const absolute = String(url).startsWith('http') ? url : `${SOCKET_URL}${url}`;
             const r: any = await api.sendMediaMessage(tenantId, conversationId, absolute, '');
             if (!r?.success) throw new Error('fail');
@@ -494,7 +583,7 @@ export function ConversationScreen() {
         }
     };
     const pickDocument = async () => {
-        if (!tenantId) return;
+        if (!tenantId || accessLostRef.current) return;
         try {
             const res = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
             if (res.canceled || !res.assets?.[0]) return;
@@ -503,6 +592,7 @@ export function ConversationScreen() {
             const up: any = await api.uploadMedia(tenantId, { uri: f.uri, fileName: f.name, mimeType: f.mimeType || guessMime(f.name) });
             const url = up?.data?.url;
             if (!up?.success || !url) { toast.error(up?.message || t('conv.mediaTypeError')); return; }
+            if (accessLostRef.current) return;
             const absolute = String(url).startsWith('http') ? url : `${SOCKET_URL}${url}`;
             const r: any = await api.sendMediaMessage(tenantId, conversationId, absolute, '', 'document', f.name);
             if (!r?.success) throw new Error('fail');
@@ -515,7 +605,7 @@ export function ConversationScreen() {
         }
     };
     const pickVideo = async () => {
-        if (!tenantId) return;
+        if (!tenantId || accessLostRef.current) return;
         try {
             const p = await ImagePicker.requestMediaLibraryPermissionsAsync();
             if (!p.granted) { toast.error(t('conv.galleryPerm')); return; }
@@ -529,6 +619,7 @@ export function ConversationScreen() {
             const up: any = await api.uploadMedia(tenantId, { uri: v.uri, fileName: name, mimeType: v.mimeType || 'video/mp4' });
             const url = up?.data?.url;
             if (!up?.success || !url) { toast.error(up?.message || t('conv.mediaTypeError')); return; }
+            if (accessLostRef.current) return;
             const absolute = String(url).startsWith('http') ? url : `${SOCKET_URL}${url}`;
             const r: any = await api.sendMediaMessage(tenantId, conversationId, absolute, '', 'video', name);
             if (!r?.success) throw new Error('fail');
@@ -580,13 +671,13 @@ export function ConversationScreen() {
     };
 
     if (loading) return <View style={styles.center}><ActivityIndicator color={theme.accent} size="large" /></View>;
-    if (loadError && !conv) return (
+    if (accessUnavailable || (loadError && !conv)) return (
         <View style={styles.center}>
-            <Ionicons name="cloud-offline-outline" size={40} color={theme.textSecondary} />
-            <Text style={styles.loadErrorText} accessibilityRole="alert" accessibilityLiveRegion="assertive">{t('common.loadError')}</Text>
+            <Ionicons name={accessUnavailable ? 'lock-closed-outline' : 'cloud-offline-outline'} size={40} color={theme.textSecondary} />
+            <Text style={styles.loadErrorText} accessibilityRole="alert" accessibilityLiveRegion="assertive">{t(accessUnavailable ? 'conv.accessUnavailable' : 'common.loadError')}</Text>
             <TouchableOpacity
                 style={styles.retryButton}
-                onPress={() => { setLoading(true); void load(); }}
+                onPress={() => { setLoading(true); void load(true); }}
                 accessibilityRole="button"
                 accessibilityLabel={t('common.retry')}
             >
@@ -874,7 +965,7 @@ export function ConversationScreen() {
             </Sheet>
 
             {/* Note */}
-            <Sheet visible={noteOpen} title={t('conv.noteSheet')} onClose={() => setNoteOpen(false)}>
+            <Sheet visible={noteOpen} title={t('conv.noteSheet')} onClose={() => setNoteOpen(false)} scrollable>
                 <TextInput style={styles.noteInput} placeholder={t('conv.notePlaceholder')} placeholderTextColor={theme.textSecondary} value={noteText} onChangeText={setNoteText} multiline />
                 <TouchableOpacity style={styles.saveBtn} onPress={saveNote} disabled={acting || !noteText.trim()}>
                     <Text style={styles.saveBtnText}>{t('conv.saveNote')}</Text>
@@ -882,7 +973,7 @@ export function ConversationScreen() {
             </Sheet>
 
             {/* Summary */}
-            <Sheet visible={nextAction !== null} title={t('conv.nbaTitle')} onClose={() => setNextAction(null)}>
+            <Sheet visible={nextAction !== null} title={t('conv.nbaTitle')} onClose={() => setNextAction(null)} scrollable>
                 {nextAction === '...'
                     ? <ActivityIndicator color={theme.accent} />
                     : <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -891,12 +982,12 @@ export function ConversationScreen() {
                       </View>}
             </Sheet>
 
-            <Sheet visible={summary !== null} title={t('conv.summarySheet')} onClose={() => setSummary(null)}>
+            <Sheet visible={summary !== null} title={t('conv.summarySheet')} onClose={() => setSummary(null)} scrollable>
                 {summary === '...' ? <ActivityIndicator color={theme.accent} /> : <Text style={styles.summaryText}>{summary}</Text>}
             </Sheet>
 
             {/* Contact 360° */}
-            <Sheet visible={contactOpen} title={conv?.contact?.name || t('conv.contactSheet')} onClose={() => setContactOpen(false)}>
+            <Sheet visible={contactOpen} title={conv?.contact?.name || t('conv.contactSheet')} onClose={() => setContactOpen(false)} scrollable>
                 {conv?.contact && (
                     <View>
                         <View style={styles.contactActions}>
@@ -984,7 +1075,7 @@ function Action({ icon, label, color, onPress, disabled }: { icon: any; label: s
         </TouchableOpacity>
     );
 }
-function Sheet({ visible, title, onClose, children }: { visible: boolean; title: string; onClose: () => void; children: React.ReactNode }) {
+function Sheet({ visible, title, onClose, children, scrollable = false }: { visible: boolean; title: string; onClose: () => void; children: React.ReactNode; scrollable?: boolean }) {
     const insets = useSafeAreaInsets();
     return (
         <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
@@ -992,7 +1083,9 @@ function Sheet({ visible, title, onClose, children }: { visible: boolean; title:
                 <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={onClose}>
                     <View style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]} onStartShouldSetResponder={() => true}>
                         <Text style={styles.sheetTitle}>{title}</Text>
-                        {children}
+                        {scrollable
+                            ? <ScrollView style={{ flexShrink: 1 }} keyboardShouldPersistTaps="handled">{children}</ScrollView>
+                            : children}
                     </View>
                 </TouchableOpacity>
             </KeyboardAvoidingView>

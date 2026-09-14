@@ -2,8 +2,12 @@ import React, { useMemo, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
+    Linking,
+    KeyboardAvoidingView,
+    Platform,
     RefreshControl,
     SectionList,
+    ScrollView,
     StyleSheet,
     Text,
     TextInput,
@@ -37,8 +41,10 @@ import { parseApiTimestamp } from '../lib/localTimestamp';
 import { resourceRentalCustomer, resourceRentalPhone } from '../lib/resourceRentalDisplay';
 import { AppointmentsScreen } from './AppointmentsScreen';
 import { ReservationsScreen } from './ReservationsScreen';
-import { OperationCreateModal } from './OperationCreateModal';
-import { buildScheduledTransition, validScheduleInput } from '../lib/operationScheduling';
+import { OperationCreateModal, ReferencePicker } from './OperationCreateModal';
+import { buildScheduledTransition, buildHomeServiceSchedule, readHomeServices, validScheduleInput } from '../lib/operationScheduling';
+import { vehicleRentalHandoff } from '../lib/vehicleRentalHandoff';
+import { DASHBOARD_URL } from '../lib/config';
 import { catalogMoney,catalogPaymentKey } from '../lib/catalogOrderReview';
 
 interface OperationItem {
@@ -60,6 +66,7 @@ interface OperationItem {
     scheduledAt?: string;
     orderVersion?:number;
     paymentStatus?:string;
+    serviceId?: string;
 }
 
 interface OperationSection {
@@ -94,6 +101,7 @@ const STATUS_COLORS: Record<string, string> = {
     reviewing: theme.warning,
     submitted: theme.warning,
     pending: theme.warning,
+    pending_review: theme.warning,
     partial: theme.warning,
     draft: theme.textSecondary,
     open: theme.accent,
@@ -435,6 +443,7 @@ async function loadOperationSections(
                     title: row.service_type || '',
                     subtitle: row.customer_name || row.issue_description || '',
                     status: row.status || 'pending',
+                    serviceId: row.service_id || undefined,
                     when: row.scheduled_at || row.preferred_date || row.created_at,
                     dateOnly: !row.scheduled_at && !!row.preferred_date,
                     meta: row.address || row.city || '',
@@ -495,7 +504,7 @@ async function loadOperationSections(
         return [{
             key: kind === 'vehicle_rentals' ? 'ops.section.vehicleRentals' : 'ops.section.petBoarding',
             data: rows
-                .filter((row) => activeStatus(row.status, ['returned', 'checked_out', 'cancelled']))
+                .filter((row) => activeStatus(row.status, ['returned', 'checked_out', 'rejected', 'cancelled']))
                 .sort((a, b) => String(a.start_date || '').localeCompare(String(b.start_date || '')))
                 .map((row) => ({
                     id: 'rental:' + row.id,
@@ -506,7 +515,7 @@ async function loadOperationSections(
                         || row.pet_name
                         || '',
                     subtitle: resourceRentalCustomer(row),
-                    status: row.status || 'reserved',
+                    status: row.status || 'unknown',
                     when: row.start_date,
                     dateOnly: true,
                     meta: [row.end_date, resourceRentalPhone(row)].filter(Boolean).join(' · '),
@@ -574,6 +583,14 @@ export function VerticalOperationsScreen({ kind }: { kind: VerticalWorkspaceKind
     const [scheduleItem, setScheduleItem] = useState<OperationItem | null>(null);
     const [scheduleDate, setScheduleDate] = useState(tomorrowDay());
     const [scheduleTime, setScheduleTime] = useState('09:00');
+    const [scheduleServiceId, setScheduleServiceId] = useState('');
+    const homeServices = useQuery({
+        queryKey: ['home-service-catalog', tenantId],
+        queryFn: async () => readHomeServices(await api.getBookableServices(tenantId!)),
+        enabled: !!tenantId && scheduleItem?.entityType === 'service_request',
+        staleTime: 0,
+        retry: false,
+    });
 
     const restaurantSubType = String(verticalConfig?.subType || '').trim().toLowerCase();
     const canManageTableReservations = kind === 'restaurant'
@@ -636,6 +653,10 @@ export function VerticalOperationsScreen({ kind }: { kind: VerticalWorkspaceKind
         if (kind === 'photo_sessions' && item.entityType === 'photo_session') return api.updatePhotoSession(tenantId, id, { status });
         if (kind === 'insurance' && item.entityType === 'quote') return api.updateInsuranceQuoteStatus(tenantId, id, status);
         if ((kind === 'vehicle_rentals' && item.entityType === 'vehicle_rental') || (kind === 'pet_boarding' && item.entityType === 'boarding')) {
+            if (kind === 'vehicle_rentals' && (status !== 'cancelled'
+                || !availableItemActions(kind, user?.role, item.entityType, item.status).includes('cancel'))) {
+                throw new Error('rental_inspection_required');
+            }
             return api.updateResourceRentalStatus(tenantId, id, status);
         }
         return null;
@@ -733,6 +754,7 @@ export function VerticalOperationsScreen({ kind }: { kind: VerticalWorkspaceKind
                     : tomorrowDay());
             setScheduleDate(preferredDate);
             setScheduleTime(existingTime || '09:00');
+            setScheduleServiceId(item.serviceId || '');
             setSelected(null);
             setScheduleItem(item);
             return;
@@ -749,7 +771,10 @@ export function VerticalOperationsScreen({ kind }: { kind: VerticalWorkspaceKind
     };
 
     const scheduleOperation = () => {
-        const payload = buildScheduledTransition(scheduleDate, scheduleTime);
+        const payload = scheduleItem?.entityType === 'service_request'
+            ? buildHomeServiceSchedule(scheduleDate, scheduleTime, scheduleServiceId,
+                homeServices.isSuccess && !homeServices.isFetching ? homeServices.data : [])
+            : buildScheduledTransition(scheduleDate, scheduleTime);
         if (!tenantId || !scheduleItem || !payload) return;
         const item = scheduleItem;
         setScheduleItem(null);
@@ -758,7 +783,12 @@ export function VerticalOperationsScreen({ kind }: { kind: VerticalWorkspaceKind
             : api.updateServiceRequest(tenantId, entityId(item), payload));
     };
 
-    const scheduleInputValid = validScheduleInput(scheduleDate, scheduleTime);
+    const scheduleInputValid = validScheduleInput(scheduleDate, scheduleTime)
+        && (scheduleItem?.entityType !== 'service_request'
+            || !!buildHomeServiceSchedule(scheduleDate, scheduleTime, scheduleServiceId,
+                homeServices.isSuccess && !homeServices.isFetching ? homeServices.data : []));
+    const rentalHandoff = selected?.entityType === 'vehicle_rental'
+        ? vehicleRentalHandoff(selected.status, user?.role) : null;
 
     if (kind === 'none') return <UnavailableWorkspace />;
     if (query.isLoading) return <SafeAreaView style={styles.center}><ActivityIndicator color={theme.accent} size="large" /></SafeAreaView>;
@@ -918,6 +948,17 @@ export function VerticalOperationsScreen({ kind }: { kind: VerticalWorkspaceKind
                                 <Text style={styles.detailValue}>{selected.amount}</Text>
                             </View>
                         )}
+                        {rentalHandoff && <View style={styles.rentalGuide}>
+                            <Text style={styles.dialogLabel}>{t(rentalHandoff.titleKey)}</Text>
+                            <Text style={styles.dialogHint}>{t(rentalHandoff.bodyKey)}</Text>
+                            {rentalHandoff.path && <TouchableOpacity
+                                style={styles.sheetAction}
+                                accessibilityRole="link"
+                                accessibilityLabel={t('ops.rental.openWeb')}
+                                onPress={() => void Linking.openURL(`${DASHBOARD_URL.replace(/\/$/, '')}${rentalHandoff.path}`)
+                                    .catch(() => toast.error(t('more.openLinkError')))}
+                            ><Text style={styles.sheetActionText}>{t('ops.rental.openWeb')}</Text></TouchableOpacity>}
+                        </View>}
                         {!!selected && availableItemActions(kind, user?.role, selected.entityType, selected.status)
                             .filter((action) => action !== 'edit')
                             .length > 0 && (
@@ -989,16 +1030,35 @@ export function VerticalOperationsScreen({ kind }: { kind: VerticalWorkspaceKind
             )}
 
             <Modal visible={!!scheduleItem} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setScheduleItem(null)}>
-                <TouchableOpacity style={styles.centerBackdrop} activeOpacity={1} onPress={() => setScheduleItem(null)}>
+                <KeyboardAvoidingView style={styles.workspaceBody} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+                <TouchableOpacity style={[styles.centerBackdrop, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 12 }]} activeOpacity={1} onPress={() => setScheduleItem(null)}>
                     <View style={styles.dialog} onStartShouldSetResponder={() => true}>
+                        <ScrollView keyboardShouldPersistTaps="handled">
                         <Text style={styles.sheetTitle}>{t(scheduleItem?.entityType === 'photo_session' ? 'ops.schedule.photoTitle' : 'ops.schedule.title')}</Text>
                         <Text style={styles.dialogHint}>{t(scheduleItem?.entityType === 'photo_session' ? 'ops.schedule.photoBody' : 'ops.schedule.body')}</Text>
+                        {scheduleItem?.entityType === 'service_request' && <View>
+                            {homeServices.isFetching ? <ActivityIndicator color={theme.accent} />
+                                : homeServices.isError ? <View>
+                                    <Text accessibilityRole="alert" style={styles.validationText}>{t('ops.home.loadError')}</Text>
+                                    <TouchableOpacity onPress={() => void homeServices.refetch()} accessibilityRole="button">
+                                        <Text style={styles.closeText}>{t('common.retry')}</Text>
+                                    </TouchableOpacity>
+                                </View> : <ReferencePicker
+                                    label={t('ops.home.service')}
+                                    items={(homeServices.data || []).map(service => ({ id: service.id, title: service.name, raw: service }))}
+                                    value={scheduleServiceId}
+                                    onChange={setScheduleServiceId}
+                                    emptyLabel={t('ops.home.empty')}
+                                />}
+                            <Text style={styles.dialogHint}>{t('ops.home.required')}</Text>
+                        </View>}
                         <Text style={styles.dialogLabel}>{t('ops.field.date')}</Text>
                         <TextInput
                             style={styles.dialogInput}
                             value={scheduleDate}
                             onChangeText={setScheduleDate}
                             placeholder="YYYY-MM-DD"
+                            accessibilityLabel={t('ops.field.date')}
                             placeholderTextColor={theme.textSecondary}
                             keyboardType="numbers-and-punctuation"
                             autoCapitalize="none"
@@ -1009,6 +1069,7 @@ export function VerticalOperationsScreen({ kind }: { kind: VerticalWorkspaceKind
                             value={scheduleTime}
                             onChangeText={setScheduleTime}
                             placeholder="HH:mm"
+                            accessibilityLabel={t('ops.field.time')}
                             placeholderTextColor={theme.textSecondary}
                             keyboardType="numbers-and-punctuation"
                             autoCapitalize="none"
@@ -1029,13 +1090,17 @@ export function VerticalOperationsScreen({ kind }: { kind: VerticalWorkspaceKind
                                 <Text style={styles.sheetActionText}>{t('ops.schedule.submit')}</Text>
                             </TouchableOpacity>
                         </View>
+                        </ScrollView>
                     </View>
                 </TouchableOpacity>
+                </KeyboardAvoidingView>
             </Modal>
 
             <Modal visible={!!deliveryItem} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setDeliveryItem(null)}>
-                <TouchableOpacity style={styles.centerBackdrop} activeOpacity={1} onPress={() => setDeliveryItem(null)}>
+                <KeyboardAvoidingView style={styles.workspaceBody} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+                <TouchableOpacity style={[styles.centerBackdrop, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 12 }]} activeOpacity={1} onPress={() => setDeliveryItem(null)}>
                     <View style={styles.dialog} onStartShouldSetResponder={() => true}>
+                        <ScrollView keyboardShouldPersistTaps="handled">
                         <Text style={styles.sheetTitle}>{t('ops.delivery.title')}</Text>
                         <Text style={styles.dialogHint}>{t('ops.delivery.body')}</Text>
                         <TextInput
@@ -1061,8 +1126,10 @@ export function VerticalOperationsScreen({ kind }: { kind: VerticalWorkspaceKind
                                 <Text style={styles.sheetActionText}>{t('ops.action.deliver')}</Text>
                             </TouchableOpacity>
                         </View>
+                        </ScrollView>
                     </View>
                 </TouchableOpacity>
+                </KeyboardAvoidingView>
             </Modal>
         </SafeAreaView>
     );
@@ -1127,6 +1194,7 @@ export function OperationsScreen() {
 }
 
 const styles = StyleSheet.create({
+    rentalGuide: { marginTop: 14, padding: 14, borderWidth: 1, borderColor: theme.border, borderRadius: 14 },
     root: { flex: 1, backgroundColor: theme.bg },
     workspaceRoot: { flex: 1, backgroundColor: theme.bg },
     workspaceSwitcherBar: { backgroundColor: theme.bg },
@@ -1182,7 +1250,7 @@ const styles = StyleSheet.create({
     tableReservationsModal: { flex: 1, backgroundColor: theme.bg },
     tableReservationsClose: { position: 'absolute', right: 12, zIndex: 30, elevation: 8, width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.bgCard, borderColor: theme.border, borderWidth: 1, shadowColor: '#000', shadowOpacity: 0.22, shadowRadius: 5, shadowOffset: { width: 0, height: 2 } },
     centerBackdrop: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 22, backgroundColor: 'rgba(0,0,0,0.58)' },
-    dialog: { width: '100%', maxWidth: 420, borderRadius: 16, padding: 18, backgroundColor: theme.bgCard, borderWidth: 1, borderColor: theme.border },
+    dialog: { width: '100%', maxWidth: 420, maxHeight: '100%', borderRadius: 16, padding: 18, backgroundColor: theme.bgCard, borderWidth: 1, borderColor: theme.border },
     dialogHint: { color: theme.textSecondary, fontSize: 13, lineHeight: 18, marginTop: 6 },
     dialogLabel: { color: theme.textSecondary, fontSize: 12, fontWeight: '700', marginTop: 13 },
     dialogInput: { minHeight: 46, borderWidth: 1, borderColor: theme.border, borderRadius: 10, color: theme.text, backgroundColor: theme.bg, paddingHorizontal: 12, marginTop: 14 },

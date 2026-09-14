@@ -30,6 +30,7 @@ interface OutboxScope {
 
 let activeScope: OutboxScope | null = null;
 let queue: OutboxItem[] = [];
+const inaccessibleConversations = new Set<string>();
 const subscribers = new Set<() => void>();
 let flushing = false;
 let scopeGeneration = 0;
@@ -89,6 +90,7 @@ export async function activateOutboxScope(userId: string, tenantId: string): Pro
     const scope: OutboxScope = { userId, tenantId, storageKey: storageKey(userId, tenantId) };
     activeScope = scope;
     queue = [];
+    inaccessibleConversations.clear();
     notifySubscribers();
 
     await storageWrites.catch(() => {});
@@ -119,6 +121,7 @@ export function deactivateOutboxScope(): void {
     scopeGeneration++;
     activeScope = null;
     queue = [];
+    inaccessibleConversations.clear();
     notifySubscribers();
 }
 
@@ -150,10 +153,26 @@ export function pendingFor(conversationId: string): OutboxItem[] {
     return queue.filter((q) => q.conversationId === conversationId && isValidForScope(q, activeScope!));
 }
 
+/** A confirmed access loss removes this thread's queue and blocks late enqueue/retry. */
+export function setOutboxConversationAccess(conversationId: string, allowed: boolean): void {
+    if (!activeScope) return;
+    if (allowed) {
+        inaccessibleConversations.delete(conversationId);
+        return;
+    }
+    inaccessibleConversations.add(conversationId);
+    const remaining = queue.filter((q) => q.conversationId !== conversationId);
+    if (remaining.length !== queue.length) {
+        queue = remaining;
+        notify();
+    }
+}
+
 /** Queue a message only when it belongs to the active user + tenant. */
 export function enqueue(item: OutboxItem): boolean {
     const scope = activeScope;
     if (!scope || item.tenantId !== scope.tenantId) return false;
+    if (inaccessibleConversations.has(item.conversationId)) return false;
     if (item.agentId && item.agentId !== scope.userId) return false;
     queue.push({ ...item, agentId: scope.userId, failed: false });
     notify();
@@ -178,6 +197,7 @@ export async function flush(): Promise<void> {
     try {
         for (const item of [...queue]) {
             if (generation !== scopeGeneration || activeScope?.storageKey !== scope.storageKey) return;
+            if (inaccessibleConversations.has(item.conversationId)) continue;
             if (!isValidForScope(item, scope)) {
                 queue = queue.filter((q) => q.id !== item.id);
                 notify();

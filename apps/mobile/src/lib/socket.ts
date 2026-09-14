@@ -3,29 +3,47 @@ import { SOCKET_URL } from './config';
 import { tokens, refreshAccessToken } from './api';
 import { log } from './log';
 
-// When a socket's auth is rejected (expired access token), refresh it once so the
-// auto-reconnect picks up a fresh token. Debounced — connect_error fires on every
-// retry. Without this, live updates silently stop until the next HTTP 401 refresh.
-let refreshingSocketAuth = false;
-function refreshSocketAuth() {
-    if (refreshingSocketAuth) return;
-    refreshingSocketAuth = true;
-    refreshAccessToken().finally(() => {
-        setTimeout(() => { refreshingSocketAuth = false; }, 4000);
-    });
-}
-
-// Two namespaces, mirroring the dashboard backend:
-//   /inbox  (ConversationsGateway)   → newMessage / conversationUpdated (auto-joins tenant room)
-//   /agent  (AgentConsoleGateway)    → inbox:handoff / inbox:refresh / collision viewers (needs agent:join)
 let inboxSocket: Socket | null = null;
 let agentSocket: Socket | null = null;
+let sessionGeneration = 0;
+let refreshingSocketAuth: Promise<void> | null = null;
+const reconnectTimers = new Set<ReturnType<typeof setTimeout>>();
+let agentReady = false;
+const agentReadyListeners = new Set<() => void>();
 
-// Auth as a CALLBACK so every (re)connection sends a FRESH access token. This is
-// the key fix: a token that expired mid-session no longer breaks the socket forever.
-const authCb = (cb: (data: any) => void) => {
-    tokens.get().then(({ access }) => cb({ token: access })).catch(() => cb({}));
+function isCurrent(socket: Socket, generation: number): boolean {
+    return generation === sessionGeneration && (socket === inboxSocket || socket === agentSocket);
+}
+
+// Read a fresh token on every connection; a logged-out session cannot reuse it.
+const authFor = (generation: number) => (cb: (data: any) => void) => {
+    tokens.get().then(({ access }) => cb(generation === sessionGeneration ? { token: access } : {}))
+        .catch(() => cb({}));
 };
+
+function refreshSocketAuth(): Promise<void> {
+    if (refreshingSocketAuth) return refreshingSocketAuth;
+    const generation = sessionGeneration;
+    const refresh = refreshAccessToken().then(() => {}, () => {});
+    refreshingSocketAuth = refresh;
+    void refresh.then(() => {
+        if (generation === sessionGeneration && refreshingSocketAuth === refresh) refreshingSocketAuth = null;
+    });
+    return refresh;
+}
+
+// Server-forced disconnects do not auto-reconnect. Wait for refresh, and guard
+// delayed callbacks so logout cannot reconnect a socket from the old session.
+function reconnectAfterRefresh(socket: Socket, generation: number): void {
+    void refreshSocketAuth().then(() => {
+        if (!isCurrent(socket, generation)) return;
+        const timer = setTimeout(() => {
+            reconnectTimers.delete(timer);
+            if (isCurrent(socket, generation) && socket.disconnected) socket.connect();
+        }, 1500);
+        reconnectTimers.add(timer);
+    });
+}
 
 const OPTS = {
     transports: ['websocket', 'polling'] as string[],
@@ -35,7 +53,6 @@ const OPTS = {
     timeout: 12000,
 };
 
-// ── Connection status (so the UI can show ● LIVE / ○ offline) ──────────────
 export type SocketStatus = 'connecting' | 'connected' | 'disconnected';
 let inboxStatus: SocketStatus = 'disconnected';
 const statusListeners = new Set<(s: SocketStatus) => void>();
@@ -47,69 +64,100 @@ function setInboxStatus(s: SocketStatus) {
 export function getInboxStatus(): SocketStatus { return inboxStatus; }
 export function onInboxStatus(cb: (s: SocketStatus) => void): () => void {
     statusListeners.add(cb);
-    cb(inboxStatus); // emit current immediately
+    cb(inboxStatus);
     return () => { statusListeners.delete(cb); };
 }
 
-/** /inbox namespace — live messages. Auto-joins the tenant room from the JWT. */
+/** The initial inbox:update confirms agent:join completed on this connection. */
+export function onAgentReady(cb: () => void): () => void {
+    agentReadyListeners.add(cb);
+    if (agentReady && agentSocket?.connected) cb();
+    return () => { agentReadyListeners.delete(cb); };
+}
+
+/** /inbox — tenant room is joined from the verified JWT. */
 export function getInboxSocket(): Socket {
     if (!inboxSocket) {
+        const generation = sessionGeneration;
         setInboxStatus('connecting');
-        inboxSocket = io(`${SOCKET_URL}/inbox`, { auth: authCb, ...OPTS });
-        inboxSocket.on('connect', () => { log('[socket/inbox] connected', inboxSocket?.id); setInboxStatus('connected'); });
-        inboxSocket.on('disconnect', (r) => {
-            log('[socket/inbox] disconnect:', r);
-            setInboxStatus('disconnected');
-            // Server forced the disconnect (e.g. expired token) → socket.io won't
-            // auto-reconnect. Refresh the token and reconnect manually.
-            if (r === 'io server disconnect') { refreshSocketAuth(); setTimeout(() => inboxSocket?.connect(), 1500); }
+        const socket = io(SOCKET_URL + '/inbox', { auth: authFor(generation), ...OPTS });
+        inboxSocket = socket;
+        socket.on('connect', () => {
+            if (!isCurrent(socket, generation)) return;
+            log('[socket/inbox] connected', socket.id);
+            setInboxStatus('connected');
         });
-        inboxSocket.on('connect_error', (e) => { log('[socket/inbox] connect_error:', e?.message); setInboxStatus('disconnected'); refreshSocketAuth(); });
-        inboxSocket.on('error', (e: any) => log('[socket/inbox] error:', e?.message || e));
+        socket.on('disconnect', (reason) => {
+            if (!isCurrent(socket, generation)) return;
+            setInboxStatus('disconnected');
+            if (reason === 'io server disconnect') reconnectAfterRefresh(socket, generation);
+        });
+        socket.on('connect_error', () => {
+            if (!isCurrent(socket, generation)) return;
+            setInboxStatus('disconnected');
+            void refreshSocketAuth();
+        });
+        socket.on('error', (e: any) => log('[socket/inbox] error:', e?.message || e));
     }
     return inboxSocket;
 }
 
-/** /agent namespace — handoff + collision. Must emit agent:join after each connect. */
+/** /agent — agent:join and presence must be restored after each reconnect. */
 export function getAgentSocket(): Socket {
     if (!agentSocket) {
-        agentSocket = io(`${SOCKET_URL}/agent`, { auth: authCb, ...OPTS });
-        // Rooms are per-socket → re-join on every (re)connect, not just the first.
-        agentSocket.on('connect', async () => {
-            log('[socket/agent] connected', agentSocket?.id);
+        const generation = sessionGeneration;
+        const socket = io(SOCKET_URL + '/agent', { auth: authFor(generation), ...OPTS });
+        agentSocket = socket;
+        socket.on('connect', async () => {
+            if (!isCurrent(socket, generation)) return;
+            agentReady = false;
+            const connectionId = socket.id;
             try {
-                const u = await tokens.getUser();
-                if (u?.tenantId) agentSocket!.emit('agent:join', { agentId: u.id, tenantId: u.tenantId });
-            } catch { /* noop */ }
+                const user = await tokens.getUser();
+                if (isCurrent(socket, generation) && socket.connected && socket.id === connectionId && user?.tenantId) {
+                    socket.emit('agent:join', { agentId: user.id, tenantId: user.tenantId });
+                }
+            } catch { /* A failed local session read cannot join a tenant room. */ }
         });
-        agentSocket.on('disconnect', (r) => {
-            log('[socket/agent] disconnect:', r);
-            if (r === 'io server disconnect') { refreshSocketAuth(); setTimeout(() => agentSocket?.connect(), 1500); }
+        socket.on('inbox:update', () => {
+            if (!isCurrent(socket, generation) || !socket.connected || agentReady) return;
+            agentReady = true;
+            agentReadyListeners.forEach((listener) => listener());
         });
-        agentSocket.on('connect_error', (e) => { log('[socket/agent] connect_error:', e?.message); refreshSocketAuth(); });
-        agentSocket.on('error', (e: any) => log('[socket/agent] error:', e?.message || e));
+        socket.on('disconnect', (reason) => {
+            if (!isCurrent(socket, generation)) return;
+            agentReady = false;
+            if (reason === 'io server disconnect') reconnectAfterRefresh(socket, generation);
+        });
+        socket.on('connect_error', () => {
+            if (isCurrent(socket, generation)) void refreshSocketAuth();
+        });
+        socket.on('error', (e: any) => log('[socket/agent] error:', e?.message || e));
     }
     return agentSocket;
 }
 
-/** Open both sockets eagerly (call right after login). Reconnects any that dropped. */
 export function connectRealtime() {
-    const i = getInboxSocket();
-    const a = getAgentSocket();
-    if (i.disconnected) i.connect();
-    if (a.disconnected) a.connect();
+    const inbox = getInboxSocket();
+    const agent = getAgentSocket();
+    if (inbox.disconnected) inbox.connect();
+    if (agent.disconnected) agent.connect();
 }
-
-/** Back-compat: existing screens await connectSocket() for the inbox namespace. */
 export async function connectSocket(): Promise<Socket> { return getInboxSocket(); }
-
 export function getSocket(): Socket | null { return inboxSocket; }
 
 export function disconnectSocket() {
-    inboxSocket?.disconnect();
+    sessionGeneration++;
+    reconnectTimers.forEach(clearTimeout);
+    reconnectTimers.clear();
+    refreshingSocketAuth = null;
+    agentReady = false;
+    agentReadyListeners.clear();
+    const inbox = inboxSocket;
+    const agent = agentSocket;
     inboxSocket = null;
-    agentSocket?.disconnect();
     agentSocket = null;
-    refreshingSocketAuth = false; // clear so the next session can refresh auth
+    inbox?.disconnect();
+    agent?.disconnect();
     setInboxStatus('disconnected');
 }

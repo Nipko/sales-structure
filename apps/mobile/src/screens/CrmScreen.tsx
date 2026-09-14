@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, FlatList, TouchableOpacity, TextInput, StyleSheet, RefreshControl, ActivityIndicator, KeyboardAvoidingView, Alert } from 'react-native';
+import { View, Text, FlatList, ScrollView, TouchableOpacity, TextInput, StyleSheet, RefreshControl, ActivityIndicator, KeyboardAvoidingView, Alert } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -228,7 +228,8 @@ export function CrmScreen() {
                 <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding" keyboardVerticalOffset={0}>
                 <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => { setCreateError(''); setCreateOpen(false); }}>
                     <View style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]} onStartShouldSetResponder={() => true}>
-                        <Text style={styles.sheetTitle}>{t('crm.newLead')}</Text>
+                        <ScrollView style={{ flexShrink: 1 }} keyboardShouldPersistTaps="handled">
+                        <Text style={styles.sheetTitle} accessibilityRole="header">{t('crm.newLead')}</Text>
                         <TextInput style={styles.input} placeholder={t('crm.firstName')} placeholderTextColor={theme.textSecondary}
                             value={form.first_name} onChangeText={(v) => setForm((f) => ({ ...f, first_name: v }))} />
                         <TextInput style={styles.input} placeholder={t('crm.lastName')} placeholderTextColor={theme.textSecondary}
@@ -242,9 +243,11 @@ export function CrmScreen() {
                             <Text style={styles.sheetError} accessibilityRole="alert">{createError}</Text>
                         )}
                         <TouchableOpacity style={[styles.primaryBtn, (saving || !canCreateLead) && { opacity: 0.5 }]}
-                            onPress={createLead} disabled={saving || !canCreateLead}>
+                            onPress={createLead} disabled={saving || !canCreateLead}
+                            accessibilityRole="button" accessibilityLabel={t('crm.createLead')}>
                             {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>{t('crm.createLead')}</Text>}
                         </TouchableOpacity>
+                        </ScrollView>
                     </View>
                 </TouchableOpacity>
                 </KeyboardAvoidingView>

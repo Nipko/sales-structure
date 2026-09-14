@@ -1,5 +1,12 @@
 # GATE 0 — Checklist ejecutable de producción (app móvil)
 
+> **Referencia histórica (junio–agosto de 2026).** Sus pendientes no describen por sí
+> solos el código actual. La revisión de septiembre está en
+> [Android 1.1.0](mobile-release-2026-09-14.md): la base ya ejecuta 27 suites y 331
+> pruebas, incluidas push/outbox, y CI ejecuta la suite móvil en `vertical-quality.yml`
+> y `deploy.yml`. Las comprobaciones físicas citadas abajo corresponden a builds
+> antiguos y deben repetirse para un candidato nuevo.
+
 > Objetivo: llevar la app móvil de "feature-complete" a **listo para producción**, al estándar de la plataforma. Derivado de `docs/mobile-app-audit-2026-q2.md` (Partes 1-3) + **verificación en código** (jun 2026).
 > Regla: **el GATE 0 precede a cualquier feature nueva.** "Definition of Done para producción" = todo el GATE 0 ✅ + núcleo de alcance sólido.
 

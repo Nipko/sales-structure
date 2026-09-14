@@ -13,6 +13,8 @@ export const AUTH_LOGOUT_TIMEOUT_MS = 2_000;
 
 export interface ApiResult<T = any> {
     success: boolean;
+    /** HTTP failures retain their status so access loss is not treated as offline. */
+    httpStatus?: number;
     data?: T;
     error?: string;
     /** Stable backend error identifier when the response provides one. */
@@ -44,6 +46,7 @@ export async function parseApiResponse<T = any>(res: Response): Promise<ApiResul
         const message = typeof body?.message === 'string' ? body.message : undefined;
         return {
             success: false,
+            httpStatus: res.status,
             error: responseError(body, res.status),
             ...(errorCode ? { errorCode } : {}),
             ...(message ? { message } : {}),
@@ -60,7 +63,9 @@ export function requireApiSuccess<T extends ApiResult<any>>(
     result: T | null | undefined,
     fallback = 'request_failed',
 ): T {
-    if (!result?.success) throw new Error(result?.error || fallback);
+    if (!result?.success) {
+        throw Object.assign(new Error(result?.error || fallback), { httpStatus: result?.httpStatus });
+    }
     return result;
 }
 

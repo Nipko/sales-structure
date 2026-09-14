@@ -1,5 +1,10 @@
 # Play Console — estado final y seguimiento de publicación
 
+> **Seguimiento 14-sep-2026:** Parallly ya tiene ficha pública en Google Play.
+> La auditoría de compatibilidad y la nueva versión están en
+> [mobile-release-2026-09-14.md](mobile-release-2026-09-14.md). Los estados de revisión
+> y artefactos de agosto documentados abajo son históricos.
+
 > **Actualización al 25-ago-2026.** Google Play rechazó la publicación del 16-ago-2026
 > por **“Declaración inexacta de aplicaciones de salud”**. La auditoría del binario y
 > del producto confirmó que la app móvil no integra Health Connect, datos clínicos,

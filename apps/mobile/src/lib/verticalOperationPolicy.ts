@@ -97,10 +97,6 @@ const SAFE_TRANSITIONS: Readonly<Record<string, Readonly<Record<string, string>>
         scheduled: 'in_progress',
         in_progress: 'delivered',
     },
-    vehicle_rental: {
-        reserved: 'picked_up',
-        picked_up: 'returned',
-    },
     boarding: {
         reserved: 'checked_in',
         checked_in: 'checked_out',
@@ -124,7 +120,7 @@ const TERMINAL_BY_ITEM: Readonly<Record<string, ReadonlySet<string>>> = {
     service_request: new Set(['completed', 'cancelled']),
     photo_session: new Set(['delivered', 'cancelled']),
     test_drive: new Set(['completed', 'cancelled', 'no_show']),
-    vehicle_rental: new Set(['returned', 'cancelled']),
+    vehicle_rental: new Set(['returned', 'rejected', 'cancelled']),
     boarding: new Set(['checked_out', 'cancelled']),
 };
 
@@ -274,6 +270,13 @@ export function availableItemActions(
         return [];
     }
 
+    // Pickup/return now require immutable inspections. The generic status
+    // endpoint only accepts cancellation; review/inspection stays on the web.
+    if (kind === 'vehicle_rentals' && type === 'vehicle_rental') {
+        return manager && ['pending_review', 'reserved', 'picked_up'].includes(state)
+            ? ['cancel'] : [];
+    }
+
     const nextStatus = getSafeNextStatus(kind, type, state);
     if (!nextStatus) return [];
 
@@ -300,11 +303,10 @@ export function availableItemActions(
         return [transitionAction(kind, nextStatus), 'cancel'];
     }
 
-    if (kind === 'vehicle_rentals' || kind === 'pet_boarding') {
+    if (kind === 'pet_boarding') {
         const transition = transitionAction(kind, nextStatus);
         if (!manager) {
-            const intakeTransition = (kind === 'vehicle_rentals' && state === 'reserved')
-                || (kind === 'pet_boarding' && state === 'reserved');
+            const intakeTransition = state === 'reserved';
             return intakeTransition ? [transition] : [];
         }
         return [transition, 'cancel'];

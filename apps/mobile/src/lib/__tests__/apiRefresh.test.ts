@@ -83,7 +83,7 @@ describe('safe API response parsing', () => {
             json: async () => ({ message: 'Bad gateway' }),
         } as Response);
 
-        expect(result).toEqual({ success: false, error: 'Bad gateway', message: 'Bad gateway' });
+        expect(result).toEqual({ success: false, httpStatus: 502, error: 'Bad gateway', message: 'Bad gateway' });
         expect(() => requireApiSuccess(result)).toThrow('Bad gateway');
     });
 
@@ -99,6 +99,7 @@ describe('safe API response parsing', () => {
 
         expect(result).toEqual({
             success: false,
+            httpStatus: 409,
             error: 'Ya hay una sesión activa para esta cuenta',
             errorCode: 'session_conflict',
             message: 'Ya hay una sesión activa para esta cuenta',
@@ -108,5 +109,14 @@ describe('safe API response parsing', () => {
     it('returns successful envelopes unchanged', () => {
         const result = { success: true, data: { id: 'ok' } };
         expect(requireApiSuccess(result)).toBe(result);
+    });
+
+    it.each([403, 404])('retains explicit HTTP %s through the error envelope and rejection', async (status) => {
+        const result = await parseApiResponse({
+            ok: false, status, json: async () => ({ message: 'Conversation unavailable' }),
+        } as Response);
+        expect(result.httpStatus).toBe(status);
+        try { requireApiSuccess(result); throw new Error('expected_rejection'); }
+        catch (error) { expect(error).toMatchObject({ httpStatus: status }); }
     });
 });

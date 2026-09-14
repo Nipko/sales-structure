@@ -63,6 +63,15 @@ export interface FamilyPreflight {
     readonly orphans: number | null;
     /** Stable code, never a driver message: those carry query text and values. */
     readonly error: string | null;
+    /** Bounded, non-personal references an operator can use to open each row. */
+    readonly sample: readonly PreflightRowRef[];
+    readonly sampleTruncated: boolean;
+}
+
+export interface PreflightRowRef {
+    readonly id: string;
+    readonly status: string;
+    readonly createdAt: string;
 }
 
 export interface TenantPreflight {
@@ -172,6 +181,39 @@ function countSql(schema: string, spec: FamilySpec, withPredicate: boolean): str
              WHERE ${predicate}target.status NOT IN (${states})`;
 }
 
+const DETAIL_LIMIT = 20;
+
+/** The same predicate as the count, projected only to non-personal operator fields. */
+function detailSql(schema: string, spec: FamilySpec, withPredicate: boolean): string {
+    if (!identifier.test(schema)) throw new Error('invalid_sql_schema');
+    if (!identifier.test(spec.table)) throw new Error('invalid_sql_table');
+    if (spec.liveStates.some(state => !identifier.test(state))) throw new Error('invalid_sql_state');
+    const states = spec.liveStates.map(state => `'${state}'`).join(', ');
+    const predicate = withPredicate ? `${spec.orphanPredicate(schema)} AND ` : '';
+    return `SELECT target.id::text AS id, target.status::text AS status, target.created_at
+              FROM "${schema}".${spec.table} target
+             WHERE ${predicate}target.status NOT IN (${states})
+             ORDER BY target.created_at DESC, target.id
+             LIMIT ${DETAIL_LIMIT}`;
+}
+
+function readSample(rows: unknown, count: number): readonly PreflightRowRef[] | null {
+    if (!Array.isArray(rows) || rows.length !== Math.min(count, DETAIL_LIMIT)) return null;
+    const sample: PreflightRowRef[] = [];
+    for (const candidate of rows) {
+        if (!candidate || typeof candidate !== 'object') return null;
+        const row = candidate as Record<string, unknown>;
+        const id = String(row.id ?? '');
+        const status = String(row.status ?? '');
+        const created = new Date(String(row.created_at ?? ''));
+        if (!/^[A-Za-z0-9_-]{1,100}$/.test(id)
+            || !/^[a-z0-9_-]{1,40}$/i.test(status)
+            || Number.isNaN(created.getTime())) return null;
+        sample.push(Object.freeze({ id, status, createdAt: created.toISOString() }));
+    }
+    return Object.freeze(sample);
+}
+
 /**
  * A count is a count. Anything else — null, a string, a float, a negative — is
  * a shape this gate does not understand, and understanding it wrongly is how a
@@ -219,7 +261,7 @@ export async function preflightFamily(
     query: OrphanQuery, schema: string, family: AgreedTermsFamily,
 ): Promise<FamilyPreflight> {
     const spec = PREFLIGHT_FAMILIES[family];
-    const base = { family, table: spec.table } as const;
+    const base = { family, table: spec.table, sample: Object.freeze([]), sampleTruncated: false } as const;
     try {
         if (!await relationPresent(query, schema, spec.table)) {
             return Object.freeze({ ...base, outcome: 'not_provisioned', orphans: null, error: null });
@@ -235,11 +277,19 @@ export async function preflightFamily(
         if (counted === null) {
             return Object.freeze({ ...base, outcome: 'failed', orphans: null, error: 'invalid_count_shape' });
         }
+        const sample = counted > 0
+            ? readSample(await query<any[]>(detailSql(schema, spec, acceptancePresent)), counted)
+            : Object.freeze([]) as readonly PreflightRowRef[];
+        if (sample === null) {
+            return Object.freeze({ ...base, outcome: 'failed', orphans: null, error: 'invalid_detail_shape' });
+        }
         return Object.freeze({
             ...base,
             outcome: acceptancePresent ? 'counted' : 'acceptance_store_absent',
             orphans: counted,
             error: null,
+            sample,
+            sampleTruncated: counted > DETAIL_LIMIT,
         });
     } catch (error) {
         return Object.freeze({ ...base, outcome: 'failed', orphans: null, error: errorCode(error) });
@@ -265,7 +315,7 @@ export async function preflightTenant(
             tenantId, schema, schemaPresent: false, orphans: 0, inspected: 0, failures: 1,
             families: Object.freeze([Object.freeze({
                 family: AGREED_TERMS_FAMILIES[0], table: '-', outcome: 'failed' as const,
-                orphans: null, error: errorCode(error),
+                orphans: null, error: errorCode(error), sample: Object.freeze([]), sampleTruncated: false,
             })]),
         });
     }
@@ -338,6 +388,28 @@ export function preflightFindings(summary: PreflightSummary): string[] {
                 + ` outcome=${family.outcome}`
                 + ` orphans=${family.orphans ?? '-'}`
                 + (family.error ? ` error=${family.error}` : ''));
+        }
+    }
+    return lines;
+}
+
+/**
+ * Actionable bootstrap evidence for the first deploy that introduces the
+ * authenticated detail endpoint. IDs, states and dates only; never customer or
+ * monetary data. The normal finding line stays compact and stable for tooling.
+ */
+export function preflightReviewLines(summary: PreflightSummary): string[] {
+    const lines: string[] = [];
+    for (const tenant of summary.tenants) {
+        for (const family of tenant.families) {
+            for (const row of family.sample) {
+                lines.push(`AGREED_TERMS_REVIEW tenant=${tenant.tenantId} family=${family.family}`
+                    + ` row=${row.id} status=${row.status} created_at=${row.createdAt}`);
+            }
+            if (family.sampleTruncated) {
+                lines.push(`AGREED_TERMS_REVIEW tenant=${tenant.tenantId} family=${family.family}`
+                    + ` rows_omitted=${(family.orphans ?? family.sample.length) - family.sample.length}`);
+            }
         }
     }
     return lines;

@@ -2,6 +2,7 @@ import {
     preflightAgreedTerms,
     preflightFamily,
     preflightFindings,
+    preflightReviewLines,
     preflightSummaryLine,
     preflightTenant,
     PREFLIGHT_FAMILIES,
@@ -38,6 +39,7 @@ function fakeDb(options: {
     columns?: string[];
     counts?: Record<string, unknown>;
     fail?: (sql: string, params: any[]) => Error | null;
+    details?: Record<string, Row[]>;
 } = {}) {
     const schemas = options.schemas ?? ['tenant_demo'];
     const relations = new Set(options.relations
@@ -69,6 +71,15 @@ function fakeDb(options: {
         const counts = options.counts ?? {};
         const key = Object.prototype.hasOwnProperty.call(counts, keyed) ? keyed
             : Object.prototype.hasOwnProperty.call(counts, table) ? table : null;
+        if (sql.includes('SELECT target.id::text AS id')) {
+            if (options.details?.[table]) return options.details[table];
+            const count = Number(key === null ? 0 : counts[key]);
+            return Array.from({ length: Math.min(count, 20) }, (_, index) => ({
+                id: `row-${index + 1}`,
+                status: 'pending',
+                created_at: `2026-09-${String(index + 1).padStart(2, '0')}T12:00:00.000Z`,
+            }));
+        }
         return [{ orphans: key === null ? 0 : counts[key] }];
     };
     return { query: query as any, seen };
@@ -96,6 +107,17 @@ describe('the deploy gate for rows nobody agreed to', () => {
         expect(findings).toEqual([`tenant=${TENANT} family=appointments outcome=counted orphans=3`]);
         // A deploy log is not a place for a customer list.
         expect(findings.join(' ')).not.toMatch(/@|\+\d|name|phone|email/i);
+        expect(preflightReviewLines(summary)).toEqual([
+            `AGREED_TERMS_REVIEW tenant=${TENANT} family=appointments row=row-1 status=pending created_at=2026-09-01T12:00:00.000Z`,
+            `AGREED_TERMS_REVIEW tenant=${TENANT} family=appointments row=row-2 status=pending created_at=2026-09-02T12:00:00.000Z`,
+            `AGREED_TERMS_REVIEW tenant=${TENANT} family=appointments row=row-3 status=pending created_at=2026-09-03T12:00:00.000Z`,
+        ]);
+    });
+
+    it('fails closed when the actionable detail does not match the count', async () => {
+        const db = fakeDb({ counts: { 'appointments:orphans': 2 }, details: { appointments: [] } });
+        const family = await preflightFamily(db.query, 'tenant_demo', 'appointments');
+        expect(family).toMatchObject({ outcome: 'failed', orphans: null, error: 'invalid_detail_shape' });
     });
 
     it('adds up across tenants instead of reporting the first one', async () => {

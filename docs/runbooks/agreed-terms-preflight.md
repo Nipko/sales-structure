@@ -55,8 +55,11 @@ predicado, así que una fila mal formada se niega en vez de tumbar la corrida.
 AGREED_TERMS_PREFLIGHT tenants=12 families=41 orphans=7 errors=0 blocks=1
 ```
 
-Sólo identificadores y conteos: ni nombres, ni teléfonos, ni importes. Un registro
-de deploy no es lugar para una lista de clientes.
+El resumen lleva identificadores y conteos. Cuando hay filas, le siguen líneas
+`AGREED_TERMS_REVIEW` con el ID de la fila, su estado y fecha de creación. No
+incluyen nombres, teléfonos, correos, notas ni importes. Esto permite resolver el
+primer despliegue, cuando la ruta autenticada de detalle todavía no existe en el
+runtime anterior, sin copiar una lista de clientes al log.
 
 | `outcome` | Qué significa | Qué hacer |
 |---|---|---|

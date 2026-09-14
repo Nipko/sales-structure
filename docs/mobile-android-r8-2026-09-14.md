@@ -32,8 +32,9 @@ abajo son evidencia histórica.
 
 Play confirma optimización alta y 91% de ofuscación para el build 10, disponible
 en pruebas internas desde el 14-sep-2026 a la 01:05 de Bogotá. La observación del
-build 9 (ofuscación 1%) corresponde al binario anterior en producción. Permanecen
-pendientes la prueba física y la actualización de producción.
+build 9 (ofuscación 1%) corresponde al binario anterior en producción. El usuario
+reportó que el build 12 funciona en el Samsung actualizado desde Play; esa versión
+está enviada a revisión de producción, pendiente de aprobación pública.
 
 ## Causa y configuración reproducible
 
@@ -172,11 +173,12 @@ analizó el AAB 1.1.0 (10) y muestra:
 | Tamaño de descarga | 13,5 MB; reducción de 6,99 MB frente al build 9 |
 | Tamaño de actualización | 4,53 MB |
 
-La versión 10 figura disponible en pruebas internas, publicada el
+La versión 10 se publicó en pruebas internas el
 14-sep-2026 a la 01:05 de Bogotá. Esta evidencia confirma el resultado de
 optimización del nuevo artefacto. El aviso de 1% del build 9 es histórico para
 ese binario y puede seguir asociado a producción hasta actualizarla; no se
-registra aquí una publicación del build 10 en producción.
+registra aquí una publicación del build 10 en producción. El build 12 lo
+sustituyó en la prueba interna a las 02:21 de Bogotá.
 
 Play mide código DEX Java/Kotlin, no el bundle JavaScript ni bibliotecas `.so`.
 Puede usar `r8.json`, mapping o heurísticas según los metadatos disponibles. El
@@ -184,9 +186,10 @@ Puede usar `r8.json`, mapping o heurísticas según los metadatos disponibles. E
 partir del recuento local de clases renombradas.
 [Métrica oficial DEX](https://developer.android.com/topic/performance/vitals/code-optimization).
 
-La comprobación funcional permanece pendiente y debe usar el binario release optimizado: inicio y
-Google Sign-In, biometría/SecureStore, push, cámara y adjuntos, notas de voz,
-Inbox y reconexión, y las operaciones móviles corregidas. Una sesión de Expo Go
-o una compilación debug no valida compatibilidad con R8. También queda pendiente
-comprobar las advertencias de APIs edge-to-edge; la optimización alta no demuestra
-que hayan desaparecido ni sustituye la prueba física del binario de Play.
+La comprobación general reportada por el usuario sobre el build 12 instalado
+desde Play fue favorable; ADB confirmó versión, código e instalador. Se distingue
+del diagnóstico aislado PASS y no certifica cada recorrido de biometría, push,
+cámara, audio y reconexión ni la matriz de versiones Android. Una sesión de Expo Go
+o debug no valida compatibilidad con R8. Las recomendaciones de APIs edge-to-edge,
+imágenes y optimizador de recursos requieren mantenimiento de dependencias;
+la optimización alta no demuestra que hayan desaparecido.

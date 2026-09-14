@@ -2,6 +2,13 @@
 
 ## Estado
 
+**1.1.1 (12) enviada a revisión de Google Play.** La prueba interna está publicada,
+el usuario reportó funcionamiento correcto y ADB confirma el build 12 instalado
+desde `com.android.vending`. Play muestra la release de producción `4` en la
+etapa de revisión, con verificaciones rápidas iniciales en curso. Publicación
+administrada desactivada: se publicará tras la aprobación de Google. El envío
+contiene únicamente el build 12; v10 no se envió a producción.
+
 **Candidato v10 bloqueado; no enviar a Producción.** Sentry confirmó el evento
 `REACT-NATIVE-2` (`7730735217`) en `cloud.parallly.mobile@1.1.0+10`, dist `10`:
 la conversión nativa de opciones de SecureStore lanza `NullPointerException`
@@ -20,10 +27,9 @@ este límite de reflexión.
 El candidato **1.1.1 (12)** conserva específicamente las anotaciones
 `expo.modules.kotlin.records.**` y los constructores de `ValidationBinder` usados
 por `createInstance()`. Mantiene R8 completo, shrinking y mapas de Sentry. La
-conversión nativa del nuevo AAB ya pasó; falta validar la instalación y el acceso
-real desde Play antes de reemplazar el candidato bloqueado en producción.
-En Play, v10 fue guardado para más
-adelante y ya no figura en los cambios listos para enviar a revisión.
+conversión nativa del nuevo AAB pasó y el usuario reportó que marcha bien tras
+instalarlo desde Play. v10 fue guardado para más adelante antes de preparar y
+enviar el build 12.
 
 EAS terminó el candidato el 14-sep-2026 a las 07:16:56 UTC desde el commit
 `a516c144cd0ab2a4a94b10d19d786bf7a178aaf5`, build
@@ -65,6 +71,12 @@ de sesión desde Play.
 Artefactos y logs en `C:/Users/USER/Desktop/parallly-v12-play`. La prueba usa el
 DEX exacto del AAB y verifica sus hashes; no reinstala la app ni lee SecureStore.
 El Samsung todavía tenía instalado `1.0.0 (9)` al ejecutar el diagnóstico.
+Después actualizó desde Play: ADB confirma `versionCode=12`, `versionName=1.1.1`,
+instalador `com.android.vending` y actualización a las 02:24:47 de Bogotá.
+Tras solicitar Google Sign-In, navegación Inbox/CRM/Operación y reapertura con
+sesión conservada, el usuario respondió «si parece que marcha bien». Esto es una
+comprobación reportada por el usuario, no observación automatizada de la interfaz.
+No se realizó prueba física en Android 11 ni se certifican todos los dispositivos.
 
 ## Evento adicional de Google Sign-In
 
@@ -79,8 +91,9 @@ como un error interno para el que reintentar debería resolver el problema.
 `LoginScreen` muestra el código y libera el botón en `finally`. El evento no
 demuestra una configuración OAuth incorrecta, un fallo no manejado ni el mismo
 NPE de Expo Record. Comparte dispositivo y traza con el evento de SecureStore;
-esa coincidencia no establece causalidad. Se debe comprobar el acceso real con
-Google en el build 12 y revisar cualquier repetición antes de promoverlo.
+esa coincidencia no establece causalidad. El usuario reportó funcionamiento
+correcto al comprobar el build 12; una nueva incidencia con ese código requiere
+investigar el evento de esa versión, sin atribuirla automáticamente a SecureStore.
 
 ## Base de comparación de la auditoría
 
@@ -147,7 +160,8 @@ completa de la operación del taller.
 - AAB: `bundletool validate` PASS, package/versión/SDK y API de producción embebida
   correctos; firma verificada y certificado de upload coincide. MainActivity sin
   restricción de orientación, redimensionable y con `adjustNothing` conservado.
-  Mapping R8 incluido y subida nativa a Sentry completada. Prueba física pendiente.
+  Mapping R8 incluido y subida nativa a Sentry completada. La reproducción nativa
+  y la comprobación del usuario para el build 12 se detallan arriba.
 - EAS conserva el keystore de upload y las credenciales FCM. No tiene una cuenta de
   servicio asignada a Play Store Submissions; la publicación requiere la sesión de
   Play Console. No se reutiliza la clave FCM como credencial de publicación.
@@ -218,12 +232,13 @@ equivale al porcentaje que publica Play Console.
   Sustituye a `1.1.0 (10)`, cuya release `5` no debe promoverse.
 - Play reconoce los adjuntos de ReTrace y símbolos de depuración nativos.
 - No se pierden teléfonos, tablets ni Chromebooks compatibles frente a v9.
-- Instalación y comprobación física del build 12: solicitadas al usuario,
-  pendientes. El diagnóstico aislado PASS no sustituye Google Sign-In ni la
-  conservación de la sesión en la app instalada desde Play.
-- Producción: todavía `1.0.0 (9)`. Candidato `1.1.0 (10)` guardado con las cuatro
-  notas de idioma, 100% y todos los países de destino actuales, segmento
-  `4698586868298478161`, release `3`. **No enviar v10**: reemplazarlo por el candidato
-  que resuelva el fallo de SecureStore y pase la comprobación física.
+- Instalación y comprobación física del build 12: usuario reporta funcionamiento
+  correcto; ADB verifica versión e instalador de Play. El diagnóstico aislado
+  PASS y el reporte del usuario son evidencias diferentes.
+- Producción: build `12 (1.1.1)` enviado, segmento `4698586868298478161`, release `4`,
+  cuatro idiomas, 100% y todos los países de destino actuales. Play muestra
+  «Cambios en la etapa de revisión» y verificaciones rápidas iniciales en curso.
+  La aprobación pública está pendiente; la versión pública confirmada sigue
+  siendo `1.0.0 (9)`. `1.1.0 (10)` no forma parte del envío.
 
 Un envío a revisión no equivale a una publicación aprobada.

@@ -18,7 +18,17 @@ conserva el manifiesto adaptable y pasó las diez etapas del diagnóstico de
 conversión con el DEX exacto en Android 16. Play publicó la prueba interna a las
 02:21 de Bogotá y confirma para el artefacto `4860230132141226011` optimización
 Alta, 91% de ofuscación, R8 completo, DEX de 7,43 MB y compatibilidad de páginas
-de 16 KB. La prueba completa del inicio de sesión permanece pendiente.
+de 16 KB. ADB confirmó en el teléfono la versión 1.1.1, código 12, instalada
+desde Google Play, con última actualización el 14-sep-2026 a las 02:24:47 de
+Bogotá. Después de recibir la lista de comprobación de Google, Inbox, CRM,
+operaciones y conservación de sesión al reiniciar, el usuario respondió
+«si parece que marcha bien». Se registra como validación funcional reportada
+por el usuario, sin comprobación automatizada individual de esos flujos.
+Android 11 no se ha probado físicamente en esta validación.
+
+La release 4 de Producción, código 12, está enviada y Play muestra «Cambios en
+la etapa de revisión», con verificaciones rápidas iniciales en curso. Su
+publicación pública depende de la aprobación de Google.
 La corrección de SecureStore no pretende resolver el aviso de APIs edge-to-edge.
 
 ## Orientación y ventanas
@@ -89,6 +99,30 @@ actualizarla. Estas métricas verifican el build 10; no certifican su prueba
 física, su publicación en producción ni la desaparición de avisos edge-to-edge.
 El fallo posterior de SecureStore impide promover este artefacto a producción;
 el candidato 1.1.1 (12) requiere sus propias comprobaciones.
+
+## Recomendación adicional: optimización integrada de recursos
+
+La metadata del AAB 1.1.1 (12) confirma **Android Gradle Plugin 8.11.0 y
+R8 8.11.18**. La reducción, optimización y ofuscación de código están activas,
+con `compatMode=false`; sin embargo,
+`resourceOptimization.isOptimizedShrinkingEnabled=false`. La etiqueta Alta
+del explorador de Play y la reducción convencional de recursos no implican que
+esté habilitado el nuevo optimizador integrado de código y recursos.
+
+El AGP 8.11.0 instalado no registra la opción
+`android.r8.optimizedResourceShrinking`; AGP 8.12 sí la incorpora. Google
+documenta su introducción en 8.12, la activación mediante esa propiedad en
+8.12/8.13 y su habilitación predeterminada desde 9.0 cuando se reducen recursos.
+Añadir únicamente el flag al proyecto actual no habilita esa función.
+[Configuración oficial](https://developer.android.com/topic/performance/app-optimization/enable-app-optimization#optimize-resource-shrinking),
+[anuncio de introducción en AGP 8.12](https://android-developers.googleblog.com/2025/09/improve-app-performance-with-optimized-resource-shrinking.html).
+
+La recomendación se incorpora al mantenimiento coordinado de herramientas y
+SDK. No se cambia AGP ni se genera otro hotfix para satisfacerla. Su cierre
+requiere un build con herramientas compatibles, comprobar el valor real en
+`r8.json` y validar los recursos utilizados en ejecución, además de repetir el
+diagnóstico de registros y las pruebas funcionales. No debe confundirse esta
+mejora de tamaño con la corrección del NPE de SecureStore.
 
 ## Adaptación de formularios
 
@@ -172,12 +206,62 @@ Las estadísticas internas de R8 se documentan por separado y no sustituyen el
 porcentaje observado en Play.
 [Métrica oficial de optimización DEX](https://developer.android.com/topic/performance/vitals/code-optimization).
 
-## Verificación pendiente con el binario de Play
+## Recomendación de imágenes y descargas
 
-Probar Android 15 y 16, orientación vertical/horizontal, pantalla dividida y un
-dispositivo grande o plegable. Cubrir login, Inbox, teclado del chat, notas,
-creación de lead, formularios de operación, adjuntos y permisos de cámara/audio.
+Se resolvieron los símbolos del aviso del candidato 10 con su propio mapping
+R8. Todos los orígenes identificados pertenecen a dependencias; no a una
+implementación nativa propia de Parallly:
+
+| Símbolo reportado en v10 | Origen identificado |
+| --- | --- |
+| `F.c.c` | AndroidX `IconCompat.Api23Impl.toIcon` |
+| `G2.a.c/d`, `K2.e.c`, `M2.b.a` | Fresco: decodificación, transcodificación y lectura de dimensiones |
+| `u1.k.h/i` | Android Image Cropper: `decodeImage` y `decodeSampledBitmap` |
+| `v9.b.m` | Expo Notifications: coroutine `downloadImage` |
+| `L.k.run` | Incluye `Fresco.HttpUrlConnectionNetworkFetcher.fetchSync`, fusionado por R8 con otros `Runnable` |
+| `O5.w.u` | ExoPlayer `DefaultHttpDataSource.open` |
+| `com.bumptech.glide.load.data.l.f` | Glide `HttpUrlFetcher.loadDataWithRedirects` |
+| `ab.d.d` | Kotlin `BuiltInsResourceLoader.loadResource` |
+
+Las fuentes instaladas incluyen Fresco 3.6.0 mediante React Native,
+Android Image Cropper 4.6.0 mediante Expo ImagePicker, ExoPlayer 2.18.1 mediante
+expo-av y Glide 4.16.0 mediante expo-image-loader. El código de pantallas utiliza
+`React Native Image` y Expo ImagePicker. No se encontró código nativo propio
+que utilice directamente `BitmapFactory` o `URLConnection` para esos flujos.
+
+El aviso estático requiere interpretación: la lectura de dimensiones de
+[Fresco usa `inJustDecodeBounds=true`](https://raw.githubusercontent.com/facebook/fresco/v3.6.0/imagepipeline-base/src/main/java/com/facebook/imageutils/BitmapUtil.kt),
+y [Kotlin abre recursos del classloader](https://raw.githubusercontent.com/JetBrains/kotlin/v2.1.20/core/deserialization/src/org/jetbrains/kotlin/serialization/deserialization/builtins/BuiltInsResourceLoader.kt),
+no imágenes. [Glide ya implementa el descargador señalado](https://raw.githubusercontent.com/bumptech/glide/v4.16.0/library/src/main/java/com/bumptech/glide/load/data/HttpUrlFetcher.java),
+por lo que cambiar el componente de imagen por otra biblioteca no demuestra
+que desaparezca la recomendación. Expo Notifications sí conserva
+[descarga y decodificación directa en SDK 54](https://raw.githubusercontent.com/expo/expo/sdk-54/packages/expo-notifications/android/src/main/java/expo/modules/notifications/notifications/presentation/builders/DownloadImage.kt).
+
+No se ha demostrado un fallo de memoria o de descarga por estos símbolos.
+Se clasifican como mantenimiento de dependencias y rendimiento, sin cambios
+adicionales al hotfix 1.1.1. Antes de cerrar la recomendación se deberá analizar
+el AAB actualizado y comprobar imágenes, adjuntos, audio y notificaciones con
+contenido representativo. Los nombres ofuscados anteriores pertenecen al
+mapping de v10 y no deben reutilizarse para atribuir símbolos de v12.
+
+## Validación funcional y cobertura pendiente con el binario de Play
+
+El teléfono autorizado ejecuta 1.1.1 (12), con instalador Google Play y última
+actualización a las 02:24:47 de Bogotá. El usuario reportó que funciona tras
+recibir la lista de comprobación de inicio de sesión con Google, Inbox, CRM,
+operaciones y conservación de sesión al reiniciar. Es evidencia funcional
+reportada por el usuario; no equivale a pruebas automatizadas ni a una
+certificación individual de cada paso. El diagnóstico independiente con el DEX
+exacto sí pasó sus diez etapas en Android 16, pero no ejercita almacenamiento,
+autenticación real ni interfaz. Android 11 no se probó físicamente.
+
+Permanece pendiente la matriz visual de Android 15 y 16, orientación
+vertical/horizontal, pantalla dividida y un dispositivo grande o plegable.
+Cubrir teclado del chat, notas, creación de lead, formularios de operación,
+adjuntos y permisos de cámara/audio.
 Revisar recortes, botones accesibles mediante scroll, insets y conservación del
-estado al rotar. No se realizó smoke visual nativo en esta revisión: no hay una
-superficie CUA nativa disponible. TypeScript, pruebas de componentes y manifest
-son evidencia complementaria; no sustituyen esa comprobación física.
+estado al rotar. No se realizó una inspección visual nativa automatizada en
+esta revisión. TypeScript, pruebas de componentes y manifest son evidencia
+complementaria; no sustituyen esa matriz física. La release 4 de Producción,
+código 12, ya está enviada, con verificaciones iniciales de Play en curso y
+publicación pública pendiente de aprobación.

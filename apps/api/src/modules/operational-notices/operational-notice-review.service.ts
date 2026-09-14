@@ -112,7 +112,7 @@ export class OperationalNoticeReviewService {
             await query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))::text',[`${schema}:operational-notice-review-schema`]);
             await query('ALTER TABLE operational_notice_outbox ADD COLUMN IF NOT EXISTS review_revision INTEGER NOT NULL DEFAULT 0');
             await query(NOTICE_REVIEW_DDL);
-        });
+        }, { schemaLock: true });
         const schemas=prepared.get(this.prisma)||new Set<string>();schemas.add(schema);prepared.set(this.prisma,schemas);
     }
     private transaction<T>(schema:string,work:(query:NoticeQuery)=>Promise<T>):Promise<T>{

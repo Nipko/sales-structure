@@ -101,9 +101,9 @@ const url=process.env.OPERATIONAL_NOTICE_REVIEW_TEST_DATABASE_URL;
     });
     it('rolls back the review record and outcome together when the transaction fails, then recovers',async()=>{
         const request=await input('suppress'),faulty=Object.create(prisma);
-        faulty.transactionInTenantSchema=(name:string,work:any)=>prisma.transactionInTenantSchema(name,query=>work(async(text:string,params:any[])=>{
+        faulty.transactionInTenantSchema=(name:string,work:any,options?:any)=>prisma.transactionInTenantSchema(name,query=>work(async(text:string,params:any[])=>{
             const rows=await query(text,params);if(text.startsWith('UPDATE operational_notice_outbox SET state=$2'))throw new Error('forced_storage_failure');return rows;
-        }));
+        }),options);
         await expect(new OperationalNoticeReviewService(faulty,{get:async()=>null} as any).review(tenantId,noticeId,admin,request)).rejects.toThrow('forced_storage_failure');
         expect((await sql('SELECT COUNT(*)::int AS n FROM operational_notice_reviews'))[0].n).toBe(0);
         expect((await service.detail(tenantId,noticeId)).state).toBe('reconciliation_required');
@@ -150,9 +150,9 @@ const url=process.env.OPERATIONAL_NOTICE_REVIEW_TEST_DATABASE_URL;
     it('retains the privacy fence during review and redacts history without resurrecting it on retry',async()=>{
         const request=await input();let release!:()=>void,entered!:()=>void;
         const hold=new Promise<void>(resolve=>release=resolve),ready=new Promise<void>(resolve=>entered=resolve);
-        const guarded=Object.create(prisma);guarded.transactionInTenantSchema=(name:string,work:any)=>prisma.transactionInTenantSchema(name,query=>work(async(sql:string,params:any[])=>{
+        const guarded=Object.create(prisma);guarded.transactionInTenantSchema=(name:string,work:any,options?:any)=>prisma.transactionInTenantSchema(name,query=>work(async(sql:string,params:any[])=>{
             const rows=await query(sql,params);if(sql.includes('FROM operational_notice_outbox n WHERE')&&sql.includes('FOR UPDATE')){entered();await hold;}return rows;
-        }));
+        }),options);
         const reviewing=new OperationalNoticeReviewService(guarded,{get:async()=>null} as any).review(tenantId,noticeId,admin,request);await ready;
         try{await prisma.transactionInTenantSchema(schema,async query=>expect((await query<any[]>('SELECT pg_try_advisory_xact_lock(hashtextextended($1,0)) AS acquired',[`agent-privacy:${schema}`]))[0].acquired).toBe(false));}
         finally{release();}

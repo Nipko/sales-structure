@@ -278,7 +278,7 @@ export class IdentityService {
                 email=COALESCE(email,(SELECT email FROM customer_profiles WHERE id=$2::uuid)),updated_at=NOW() WHERE id=$1::uuid`,[keepProfileId,removeProfileId]);
             await query('DELETE FROM customer_profiles WHERE id=$1::uuid',[removeProfileId]);
             await query(`UPDATE merge_suggestions SET status='approved',reviewed_by=$2::uuid,reviewed_at=NOW() WHERE id=$1::uuid`,[suggestionId,userId]);
-        });
+        }, { schemaLock: true });
         this.logger.log(`[Identity] Merge approved: ${suggestionId}`);
     }
 

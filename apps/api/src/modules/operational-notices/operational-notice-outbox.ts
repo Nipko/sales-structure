@@ -32,7 +32,7 @@ export async function ensureOperationalNoticeOutbox(prisma: PrismaService, schem
                     'tour.booking_confirmed','property.booking_confirmed','order.confirmed','handoff.sla_escalated','push.domain_event'))`);
         }
         await query("CREATE INDEX IF NOT EXISTS idx_operational_notice_due ON operational_notice_outbox(state,next_attempt_at) WHERE state IN ('pending','queued','failed')");
-    });
+    }, { schemaLock: true });
     const schemas = prepared.get(prisma) || new Set<string>(); schemas.add(schema); prepared.set(prisma, schemas);
 }
 

@@ -80,7 +80,7 @@ export class PetCommands {
         await this.prisma.transactionInTenantSchema(schema, async query => {
             await query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))::text', [`pet-schema:${schema}`]);
             await query(PET_COMMAND_RECEIPT_DDL);
-        });
+        }, { schemaLock: true });
         this.ready.add(schema);
     }
     private async contact(query: TenantQuery, schema: string, contactId: string, conversationId?: string): Promise<void> {

@@ -162,21 +162,30 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
      * Execute a multi-statement business mutation on one tenant connection/transaction.
      * The callback receives the same parameter-sanitized query primitive used by
      * executeInTenantSchema, but every call shares one SET LOCAL search_path and commit.
+     * Mixed schema transactions must set schemaLock so the schema mutex precedes
+     * all table, row and domain advisory locks. Never acquire it after reading a
+     * table: a concurrent initializer may own the mutex and wait for that table.
      */
     async transactionInTenantSchema<T>(
         schemaName: string,
         callback: (query: <R = any[]>(sql: string, params?: any[]) => Promise<R>) => Promise<T>,
-        options?: { timeout?: number },
+        options?: { timeout?: number; schemaLock?: boolean },
     ): Promise<T> {
         this.validateSchemaName(schemaName);
         return this.$transaction(async (tx: any) => {
             await tx.$executeRawUnsafe(`SET LOCAL search_path TO "${schemaName}", public`);
-            let schemaLocked = false;
+            let schemaLocked = options?.schemaLock === true;
+            if (schemaLocked) await acquireRuntimeSchemaLock(tx, schemaName);
+            let hasExecutedQuery = false;
             const query = async <R = any[]>(sql: string, params: any[] = []): Promise<R> => {
                 if (!schemaLocked && isRuntimeSchemaDdl(sql)) {
+                    if (hasExecutedQuery) {
+                        throw new Error('runtime_schema_lock_required_at_transaction_start: use schemaLock for mixed schema transactions');
+                    }
                     await acquireRuntimeSchemaLock(tx, schemaName);
                     schemaLocked = true;
                 }
+                hasExecutedQuery = true;
                 const sanitizedParams = this.sanitizeParams(sql, params);
                 return tx.$queryRawUnsafe(sql, ...sanitizedParams) as Promise<R>;
             };
@@ -867,7 +876,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
                 throw new Error(`Native evidence table ${schemaName}.${table} does not exist`);
             }
             await this.ensureNativeEvidenceOwnershipWithQuery(query, schemaName, [table]);
-        }, { timeout: 60_000 });
+        }, { schemaLock: true, timeout: 60_000 });
     }
 
     private async ensureNativeEvidenceOpportunityOwnership(): Promise<void> {
@@ -904,7 +913,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
                         schemaName,
                         NATIVE_EVIDENCE_TABLES.filter((table) => present.has(table)),
                     );
-                }, { timeout: 60_000 });
+                }, { schemaLock: true, timeout: 60_000 });
             } catch (error: any) {
                 this.logger.error(
                     `[Schema Migration] Native evidence ownership failed for ${schemaName}: ${error.message}`,

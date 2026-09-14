@@ -64,7 +64,7 @@ export class AgentDispatchOutboxStore {
                      AND current_schema()=$2 AND is_active=true FOR SHARE`, [tenantId, schema]))[0])
                     throw new DispatchOutboxError('dispatch_tenant_unavailable');
                 for (const statement of DISPATCH_OUTBOX_DDL) await query(statement);
-            }).catch(error => { this.initialized.delete(schema); throw error; });
+            }, { schemaLock: true }).catch(error => { this.initialized.delete(schema); throw error; });
             this.initialized.set(schema, initialize);
         }
         await this.initialized.get(schema);

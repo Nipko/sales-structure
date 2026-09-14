@@ -117,9 +117,9 @@ const databaseUrl=process.env.PARALLLY_ISOLATION_TEST_URL;
     });
     it('rolls the status back if its durable intent cannot be stored',async()=>{
         const order=await place(contactOn,threadOn);
-        const faulty={...prisma,transactionInTenantSchema:(s:string,work:any)=>prisma.transactionInTenantSchema(s,(run:any)=>work((sql:string,p:any[])=>{
+        const faulty={...prisma,transactionInTenantSchema:(s:string,work:any,options?:any)=>prisma.transactionInTenantSchema(s,(run:any)=>work((sql:string,p:any[])=>{
             if(sql.startsWith('INSERT INTO operational_notice_outbox'))throw new Error('notice_storage_failed');return run(sql,p);
-        }))};
+        }),options)};
         await expect(new CatalogOrderCommands(faulty).advance(schema,order.id,'confirmed')).rejects.toThrow('notice_storage_failed');
         expect(await query('SELECT status FROM orders WHERE id=$1::uuid',[order.id])).toEqual([{status:'pending'}]);
         expect(await notices()).toHaveLength(0);

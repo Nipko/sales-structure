@@ -29,7 +29,7 @@ export class WatchtowerService {
             const pending = this.prisma.transactionInTenantSchema(schema, async query => {
                 await query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))::text', [`quality-sampling-schema:${schema}`]);
                 for (const statement of WATCHTOWER_SCHEMA) await query(statement);
-            });
+            }, { schemaLock: true });
             this.initialized.set(schema, pending);
             pending.catch(() => this.initialized.delete(schema));
         }

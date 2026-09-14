@@ -7,6 +7,7 @@ import { rollUpOperationalState, type AgentAssessment } from '@parallext/shared'
 import { useTenant } from '@/contexts/TenantContext';
 import { useRole } from '@/hooks/useRole';
 import { api } from '@/lib/api';
+import { setupTaskLabelKey } from '@/lib/initial-setup';
 import { QUALITY_HEALTH_REFRESH_EVENT } from '@/lib/quality-health-events';
 import { AgentMissionEditor } from './AgentMissionEditor';
 import { AgentOperationalStateSummary, OperationalStateBadge, OperationalStateLegend, operationalStatesPresent } from './OperationalState';
@@ -70,11 +71,11 @@ function AgentAssessmentContent({ agentId, assessment: provided }: { agentId?: s
         {assessment.mission.definition && <p className="mt-2 text-sm">{assessment.mission.definition.objective}</p>}
         <p className="mt-1 text-xs text-neutral-600 dark:text-neutral-400">{t(`sources.${assessment.mission.source}`)}</p>
         <AgentMissionEditor key={assessment.agent?.id ?? 'no-agent'} assessment={assessment} />
-        {next && <Link href={next.href} className="mt-3 inline-flex rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white">{t('next')}: {tSetup(`items.${next.key}`)}</Link>}
+        {next && <Link href={next.href} className="mt-3 inline-flex rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white">{t('next')}: {tSetup(setupTaskLabelKey(next))}</Link>}
         <details className="mt-3 text-sm"><summary className="cursor-pointer font-medium">{t('details')}</summary>
             <h3 className="mt-3 text-xs font-semibold uppercase tracking-wide text-neutral-500">{t('tasksTitle')}</h3>
             <ul className="mt-2 space-y-2">{visibleTasks.map(task => <li key={task.key} className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                <Link href={task.href} className="underline">{tSetup(`items.${task.key}`)}</Link>
+                <Link href={task.href} className="underline">{tSetup(setupTaskLabelKey(task))}</Link>
                 {/* No badge for a task that does not apply: the six states answer
                     "how far along is this", and that question was never asked
                     here. Salud's word below is the whole answer. */}

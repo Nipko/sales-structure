@@ -219,6 +219,30 @@ function check(overview: AgentQualityOverview, code: string) {
 }
 
 describe('AgentQualityService', () => {
+    it('names unsupported assignments without claiming the four live channels are disconnected', async () => {
+        const channels = ['whatsapp', 'instagram', 'messenger', 'telegram'];
+        const result = await createHarness({ agent: { channels: [...channels, 'email'] },
+            channelRows: channels.map(channel_type => ({ channel_type, account_id: `${channel_type}-1`,
+                has_account_token: true, metadata: { tokenExpiresAt: '2099-01-01T00:00:00Z' } })),
+        }).service.getOverview(TENANT_ID, AGENT_ID);
+        expect(check(result, 'channel_connection')).toMatchObject({ status: 'pass', evidence: { assigned: 4, connected: 4 } });
+        expect(check(result, 'operational_channel_scope')).toMatchObject({ status: 'fail',
+            href: `/admin/agent/${AGENT_ID}?tab=persona&focus=channels`,
+            evidence: { unsupportedAssignments: 1, unsupportedChannelTypes: 'email' } });
+    });
+
+    it.each([
+        [{ aiOutsideHours: false, afterHoursMessageOverride: 'Volvemos mañana.' }, 'pass'],
+        [{}, 'pass'], // Runtime defaults to answering outside business hours.
+        [{ aiOutsideHours: false, afterHoursMessageOverride: '   ' }, 'warning'],
+    ])('checks the effective after-hours behavior for %j', async (hours, expected) => {
+        const result = await createHarness({ config: { ...completeConfig, hours },
+            tenantSettings: { businessHours: { is247: false, schedule: { monday: { enabled: true, open: '09:00', close: '17:00' } } } },
+        }).service.getOverview(TENANT_ID, AGENT_ID);
+        expect(check(result, 'business_hours').status).toBe('pass');
+        expect(check(result, 'after_hours_behavior').status).toBe(expected);
+    });
+
     it('diagnoses every configurable tool family, including the latest native operations', async () => {
         const tools = Object.fromEntries(AGENT_CONFIG_TOOL_FAMILIES.map(family => [family, { enabled: true }]));
         const result = await createHarness({

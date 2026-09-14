@@ -34,6 +34,7 @@ export default function InitialSetupCard({
   onProgress?: (progress: { total: number; completed: number }) => void;
 } = {}) {
   const t = useTranslations("qualityHealth.setup");
+  const tq = useTranslations("agentQuality");
   const { verticalConfig } = useAuth();
   const { activeTenantId: tenantId } = useTenant();
   const { role, impersonating } = useRole();
@@ -145,20 +146,28 @@ export default function InitialSetupCard({
                     className="flex min-h-14 flex-col gap-2 rounded-lg border border-indigo-100 bg-white/90 p-3 dark:border-indigo-500/15 dark:bg-neutral-900/60 sm:flex-row sm:items-center sm:gap-2.5"
                   >
                     <div className="flex min-w-0 flex-1 items-center gap-2.5">
-                      {item.done
+                      {item.done && !item.notApplicable
                         ? <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white"><Check size={14} aria-hidden="true" /></span>
                         : <Circle size={22} className="shrink-0 text-indigo-300 dark:text-indigo-500" aria-hidden="true" />}
-                      <span className="min-w-0 flex-1 text-sm font-medium text-neutral-800 dark:text-neutral-200">{t(`items.${item.key}`)}{item.verification === "unavailable" && <span className="block text-xs font-normal">{t("verificationUnavailable")}</span>}</span>
+                      <span className="min-w-0 flex-1 text-sm font-medium text-neutral-800 dark:text-neutral-200">
+                        {t(item.labelKey)}
+                        {item.verification === "unavailable" && <span className="block text-xs font-normal">{t("verificationUnavailable")}</span>}
+                        {item.notApplicable && <span className="block text-xs font-normal">{tq("checkStatuses.not_applicable")}</span>}
+                        {item.key !== 'channel' && item.pendingCheck && !item.verification && tq.has(`checks.${item.pendingCheck.code}`)
+                          && <span className="block text-xs font-normal">{t("pendingReason", { check: tq(`checks.${item.pendingCheck.code}`) })}</span>}
+                      </span>
                     </div>
                     {!item.done && (
                       <div
                         {...(isNext ? { id: guidedTourAnchorId("setup-next") } : {})}
                         className="flex shrink-0 flex-wrap items-center gap-1"
                       >
-                        <Link href={item.href} className="inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:text-indigo-300 dark:hover:bg-indigo-500/10">
+                        {item.verification ? <button type="button" onClick={() => void load()} className="inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-xs font-semibold text-indigo-700 dark:text-indigo-300">
+                          <RotateCw size={12} aria-hidden="true" /> {t("retry")}
+                        </button> : <Link href={item.href} className="inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:text-indigo-300 dark:hover:bg-indigo-500/10">
                           {t("continue")} <ArrowRight size={12} aria-hidden="true" />
-                        </Link>
-                        {canShowMe && (
+                        </Link>}
+                        {canShowMe && !item.verification && (
                           <button
                             type="button"
                             onClick={() => startTour(item)}

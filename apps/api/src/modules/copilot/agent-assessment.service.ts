@@ -255,10 +255,12 @@ export class AgentAssessmentService {
         for (const [key, codes] of Object.entries(AGENT_SETUP_TASK_CHECKS)) {
             const relevant = checks.filter(check => codes.includes(check.code));
             if (key === 'appointments' && relevant.every(check => check.status === 'not_applicable')) continue;
-            const firstPending = relevant.find(check => ['fail', 'warning', 'unknown'].includes(check.status));
-            tasks.push(withState({ key: key as AgentSetupTask['key'], status: setupTaskStatus(relevant), checks: relevant,
+            const taskStatus = setupTaskStatus(relevant);
+            const firstPending = relevant.find(check => check.status === taskStatus && ['fail', 'warning', 'unknown'].includes(check.status));
+            tasks.push(withState({ key: key as AgentSetupTask['key'], status: taskStatus, checks: relevant,
+                ...(firstPending ? { pendingCheckCode: firstPending.code } : {}),
                 ...defaults[key], href: firstPending?.href ?? defaults[key].href,
-                tourId: firstPending?.code === 'test_drive_permissions' ? null : findGuidedTourForQualityCode(firstPending?.code)?.id ?? defaults[key].tourId,
+                tourId: firstPending?.status === 'unknown' || firstPending?.code === 'test_drive_permissions' ? null : findGuidedTourForQualityCode(firstPending?.code, firstPending?.evidence)?.id ?? defaults[key].tourId,
                 ...(key === 'channel' ? { channelType: preferredChannel } : {}) }));
         }
         const catalog = getVerticalCatalog(industry, subType);

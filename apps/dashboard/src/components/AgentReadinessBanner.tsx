@@ -7,6 +7,7 @@ import type { AgentQualityOverview } from "@parallext/shared";
 import { AlertTriangle, ArrowRight, CheckCircle2, CircleDashed, Gauge, RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { agentReadinessBlockers } from "@/lib/agent-readiness";
 
 interface Props {
   tenantId: string | null | undefined;
@@ -55,12 +56,6 @@ const BLOCKER_TARGETS: Record<string, (agentId: string) => string> = {
   test_drive_staff: () => "/admin/appointments",
 };
 
-/** Recommendation codes arrive as `fix_<check>`; both forms name the same check. */
-function normalizeBlockerCode(code: string): string {
-  const normalized = String(code || "").trim().toLowerCase();
-  return normalized.startsWith("fix_") ? normalized.slice(4) : normalized;
-}
-
 const STATUS_STYLES: Record<AgentQualityOverview["status"], string> = {
   not_evaluated: "border-neutral-300 bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-800/60",
   configuration_incomplete: "border-amber-300 bg-amber-50 dark:border-amber-500/30 dark:bg-amber-500/10",
@@ -75,9 +70,12 @@ const STATUS_STYLES: Record<AgentQualityOverview["status"], string> = {
 export function AgentReadinessBanner({ tenantId, agentId, refreshKey = 0 }: Props) {
   const t = useTranslations("agentQuality");
   const ta = useTranslations("agent");
+  const td = useTranslations("agentDraft");
+  const ts = useTranslations("qualityHealth.setup");
   const [overview, setOverview] = useState<AgentQualityOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
+  const [retry, setRetry] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -94,7 +92,7 @@ export function AgentReadinessBanner({ tenantId, agentId, refreshKey = 0 }: Prop
       .catch(() => { if (active) setFailed(true); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [tenantId, agentId, refreshKey]);
+  }, [tenantId, agentId, refreshKey, retry]);
 
   if (!tenantId || !agentId) return null;
   const href = `/admin/agent/quality?agent=${encodeURIComponent(agentId)}`;
@@ -112,17 +110,20 @@ export function AgentReadinessBanner({ tenantId, agentId, refreshKey = 0 }: Prop
     </aside>
   );
 
-  const blockerCodes = overview.preparation.criticalBlockers.map(normalizeBlockerCode).filter(Boolean);
-  const blockers = blockerCodes.length;
+  const allBlockers = agentReadinessBlockers(overview);
+  const missing = allBlockers.filter(blocker => !blocker.unavailable);
+  const unavailable = allBlockers.filter(blocker => blocker.unavailable);
+  const blockers = missing.length;
   const needsEvidence = overview.production.sampleSize < overview.production.minimumSample;
   const Icon = overview.status === "operating_with_evidence" ? CheckCircle2 : AlertTriangle;
 
   // Naming the blockers is the whole point: a bare count sends the owner to a
   // page that looks fine and says nothing about what to correct.
-  const namedBlockers = blockerCodes.slice(0, 3).map((code) => ({
+  const namedBlockers = missing.slice(0, 3).map(({ code, check }) => ({
     code,
     label: t.has(`checks.${code}`) ? t(`checks.${code}`) : t("checks.unknown"),
-    href: (BLOCKER_TARGETS[code] ?? (() => href))(agentId),
+    href: check?.href ?? (BLOCKER_TARGETS[code] ?? (() => href))(agentId),
+    unsupportedTypes: code === 'operational_channel_scope' ? check?.evidence?.unsupportedChannelTypes : null,
   }));
   const extraBlockers = blockers - namedBlockers.length;
 
@@ -131,10 +132,11 @@ export function AgentReadinessBanner({ tenantId, agentId, refreshKey = 0 }: Prop
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-start gap-3">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/70 text-indigo-600 shadow-sm dark:bg-black/10 dark:text-indigo-300"><Gauge size={18} aria-hidden="true" /></div>
-          <div className="min-w-0"><p id="agent-quality-banner-title" className="text-sm font-semibold text-foreground">{t(`statuses.${overview.status}.title`)}</p><p className="mt-0.5 text-xs leading-5 text-muted-foreground">{blockers > 0 ? t("banner.blockers", { count: blockers }) : overview.tested.stale ? t("banner.stale") : needsEvidence ? t("banner.evidence", { current: overview.production.sampleSize, minimum: overview.production.minimumSample }) : t("banner.current")}</p></div>
+          <div className="min-w-0"><p id="agent-quality-banner-title" className="text-sm font-semibold text-foreground">{unavailable.length > 0 && !blockers ? t("banner.verificationTitle") : t(`statuses.${overview.status}.title`)}</p><p className="mt-0.5 text-xs leading-5 text-muted-foreground">{blockers > 0 ? t("banner.blockers", { count: blockers }) : unavailable.length ? t("banner.verificationPending", { count: unavailable.length }) : overview.tested.stale ? t("banner.stale") : needsEvidence ? t("banner.evidence", { current: overview.production.sampleSize, minimum: overview.production.minimumSample }) : t("banner.current")}</p></div>
         </div>
         <Link href={href} className="inline-flex min-h-10 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-current/15 bg-white/70 px-3 py-2 text-xs font-semibold text-foreground hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:bg-black/10 dark:hover:bg-black/20"><Icon size={14} aria-hidden="true" /> {t("banner.openCenter")} <ArrowRight size={13} aria-hidden="true" /></Link>
       </div>
+      <p className="mt-2 text-xs text-muted-foreground">{td("assessmentOperational")}</p>
 
       {namedBlockers.length > 0 && (
         <div className="mt-3 border-t border-current/10 pt-3">
@@ -150,6 +152,7 @@ export function AgentReadinessBanner({ tenantId, agentId, refreshKey = 0 }: Prop
                 >
                   <AlertTriangle size={12} className="shrink-0 text-amber-600 dark:text-amber-400" aria-hidden="true" />
                   <span>{blocker.label}</span>
+                  {blocker.unsupportedTypes && <span>({String(blocker.unsupportedTypes)})</span>}
                   <span className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-300">{ta("readiness.fix")}</span>
                   <ArrowRight size={11} aria-hidden="true" />
                 </Link>
@@ -159,6 +162,17 @@ export function AgentReadinessBanner({ tenantId, agentId, refreshKey = 0 }: Prop
           {extraBlockers > 0 && (
             <p className="mt-1 text-[11px] text-muted-foreground">{ta("readiness.more", { count: extraBlockers })}</p>
           )}
+        </div>
+      )}
+      {unavailable.length > 0 && (
+        <div className="mt-3 border-t border-current/10 pt-3">
+          <p className="text-xs font-semibold">{t("banner.verificationPending", { count: unavailable.length })}</p>
+          <ul className="mt-1 space-y-1 text-xs text-muted-foreground">
+            {unavailable.map(({ code }) => <li key={code}>{t.has(`checks.${code}`) ? t(`checks.${code}`) : t("checks.unknown")} — {ts("verificationUnavailable")}</li>)}
+          </ul>
+          <button type="button" onClick={() => setRetry(value => value + 1)} className="mt-2 inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-xs font-semibold text-indigo-600 dark:text-indigo-300">
+            <RefreshCw size={12} aria-hidden="true" /> {ts("retry")}
+          </button>
         </div>
       )}
     </aside>

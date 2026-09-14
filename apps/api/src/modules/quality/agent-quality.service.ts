@@ -790,6 +790,9 @@ export class AgentQualityService {
         const operationalBindings = bindings.filter((binding) => OPERATIONAL_CHANNELS.has(binding.split(':', 1)[0]));
         const assignedCount = operationalChannels.length + operationalBindings.length;
         const unsupportedCount = channels.length + bindings.length - assignedCount;
+        const unsupportedChannelTypes = [...new Set([...channels, ...bindings.map(binding => binding.split(':')[0])]
+            .filter(type => !OPERATIONAL_CHANNELS.has(type))
+            .map(type => /^[a-z][a-z0-9_]{0,31}$/.test(type) ? type : 'unrecognized'))].sort().join(',').slice(0, MAX_EVIDENCE_LIST_CHARS);
         const assignmentHealth: Array<{ type: string; connected: boolean; stale: boolean; health: CredentialHealth }> = [
             ...operationalChannels.map((channel) => ({
                 type: channel,
@@ -916,7 +919,7 @@ export class AgentQualityService {
         });
 
         add({ code: 'channel_assignment', dimension: 'actions_outcomes', status: status(assignedCount > 0), critical: true, weight: 5, href: `/admin/agent/${agent.id}?tab=persona&focus=channels`, evidence: { assigned: assignedCount } });
-        add({ code: 'operational_channel_scope', dimension: 'actions_outcomes', status: unsupportedCount > 0 ? 'fail' : 'pass', critical: true, weight: 3, href: `/admin/agent/${agent.id}`, evidence: { unsupportedAssignments: unsupportedCount } });
+        add({ code: 'operational_channel_scope', dimension: 'actions_outcomes', status: unsupportedCount > 0 ? 'fail' : 'pass', critical: true, weight: 3, href: `/admin/agent/${agent.id}?tab=persona&focus=channels`, evidence: { unsupportedAssignments: unsupportedCount, unsupportedChannelTypes } });
         // A critical block here means "this agent cannot work at all": nothing can
         // reach it, or what reaches it cannot be answered. A partially connected
         // agent is a coverage problem (below), not an outage — calling it critical
@@ -938,7 +941,8 @@ export class AgentQualityService {
                         : credentialWarningAssignments > 0 ? 'warning' : 'pass',
             critical: true,
             weight: 5,
-            href: '/admin/channels',
+            href: staleBindings > 0 && !credentialAffectedAssignments && !credentialWarningAssignments
+                ? `/admin/agent/${agent.id}?tab=persona&focus=channels` : '/admin/channels',
             evidence: {
                 assigned: assignedCount,
                 connected: connectedOperational,
@@ -950,6 +954,7 @@ export class AgentQualityService {
                 // without it the sentence rendered as "connect none".
                 connectedChannels,
                 disconnectedChannels,
+                staleBindings,
             },
         });
         add({
@@ -1047,8 +1052,8 @@ export class AgentQualityService {
             || (config.hours?.schedule && Object.keys(config.hours.schedule).length > 0);
         add({ code: 'business_hours', dimension: 'robustness_operations', status: status(!!hasHours, 'warning'), critical: false, weight: 4, href: '/admin/settings/business-hours', evidence: { configured: !!hasHours } });
         const is247 = hours.is247 === true;
-        const hasAfterHoursBehavior = is247 || hours.aiOutsideHours === true || config.hours?.aiOutsideHours === true
-            || text(hours.afterHoursMessage) || text(config.hours?.afterHoursMessage);
+        const hasAfterHoursBehavior = is247 || (config.hours?.aiOutsideHours ?? true)
+            || text(config.hours?.afterHoursMessageOverride) || text(hours.afterHoursMessage) || text(config.hours?.afterHoursMessage);
         add({ code: 'after_hours_behavior', dimension: 'robustness_operations', status: hasHours && !is247 ? status(hasAfterHoursBehavior, 'warning') : 'not_applicable', critical: false, weight: 2, href: '/admin/settings/business-hours', evidence: { required: !!hasHours && !is247, configured: hasAfterHoursBehavior } });
         add({ code: 'llm_limits', dimension: 'robustness_operations', status: status(Number(config.llm?.maxTokens) > 0 && Number(config.llm?.temperature) >= 0, 'warning'), critical: false, weight: 2, href: `/admin/agent/${agent.id}`, evidence: { maxTokens: Number(config.llm?.maxTokens) || 0 } });
 

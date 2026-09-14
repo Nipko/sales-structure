@@ -111,6 +111,8 @@ export interface AgentSetupTask {
      *  state is what says the question was not asked. */
     state: AgentOperationalState | null;
     checks: AgentQualityCheck[];
+    /** Check responsible for this task's current status and repair destination. */
+    pendingCheckCode?: string;
     href: string;
     tourId: GuidedTourId | null;
     dependsOn: AgentSetupTaskKey[];

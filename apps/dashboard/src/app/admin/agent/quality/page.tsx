@@ -155,9 +155,12 @@ export default function AgentQualityPage() {
   }, [loadOverview]);
 
   const guidedTourFor = useCallback((code: string): GuidedTourId | null => {
-    const tour = findGuidedTourForQualityCode(code);
+    const check = overview?.preparation.dimensions.flatMap(dimension => dimension.checks)
+      .find(check => check.code === code.replace(/^fix_/, ''));
+    if (check?.status === 'unknown') return null;
+    const tour = findGuidedTourForQualityCode(code, check?.evidence);
     return tour && canRoleRunGuidedTour(tour, role) ? tour.id : null;
-  }, [role]);
+  }, [role, overview]);
   const startGuidedTour = useCallback((tourId: GuidedTourId) => {
     const detail: GuidedTourStartDetail = { tourId, agentId: agentId || undefined };
     window.dispatchEvent(new CustomEvent<GuidedTourStartDetail>(GUIDED_TOUR_START_EVENT, { detail }));

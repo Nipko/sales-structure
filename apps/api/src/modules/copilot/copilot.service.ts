@@ -704,9 +704,12 @@ REGLA DE RECORRIDOS: cuando el usuario pregunte DÓNDE o CÓMO hacer algo que cu
         // Codes alone made the model invent the cause ("no tenés canales").
         // Bounded evidence lets it say what is actually failing, and nothing else.
         const criticalBlockerEvidence: Record<string, Record<string, string | number | boolean>> = {};
+        const criticalBlockerStatuses: Record<string, string> = {};
         for (const blocker of criticalBlockers) {
             const evidence = this.checkEvidenceForCode(overview, blocker);
             if (evidence) criticalBlockerEvidence[blocker] = evidence;
+            criticalBlockerStatuses[blocker] = overview.preparation.dimensions.flatMap(dimension => dimension.checks)
+                .find(check => check.code === blocker)?.status ?? 'unknown';
         }
         const recommendations = overview.recommendations.slice(0, 5).map((item) => ({
             code: item.code,
@@ -727,6 +730,7 @@ REGLA DE RECORRIDOS: cuando el usuario pregunte DÓNDE o CÓMO hacer algo que cu
                 status: overview.preparation.status,
                 criticalBlockers,
                 criticalBlockerEvidence,
+                criticalBlockerStatuses,
             },
             tested: { status: overview.tested.status, stale: overview.tested.stale },
             production: {
@@ -766,12 +770,14 @@ REGLA DE RECORRIDOS: cuando el usuario pregunte DÓNDE o CÓMO hacer algo que cu
         }
         // "Mostrarme dónde" for the very thing being explained. The tour only
         // opens and highlights the screen; the person still makes the change.
-        const tour = findGuidedTourForQualityCode(
-            requestedSignal?.code ?? recommendations[0]?.code ?? criticalBlockers[0],
-        );
+        const tourCode = requestedSignal?.code ?? recommendations[0]?.code ?? criticalBlockers[0];
+        const focusedCheck = overview.preparation.dimensions.flatMap(dimension => dimension.checks)
+            .find(check => check.code === tourCode?.replace(/^fix_/, ''));
+        const tour = focusedCheck?.status === 'unknown' ? null
+            : findGuidedTourForQualityCode(tourCode, this.checkEvidenceForCode(overview, tourCode) ?? undefined);
         if (tour && canRoleRunGuidedTour(tour, userRole)) this.addGuidedTourAction(actions, tour.id);
         return {
-            prompt: `## ESTADO REAL DEL AGENTE (autoritativo, derivado del tenant autenticado)\n${JSON.stringify(qualityContext)}\nREGLA: explica este estado y prioriza una sola acción. No inventes evidencia, puntajes, causas ni enlaces. No afirmes que un cambio fue aplicado.`,
+            prompt: `## ESTADO REAL DEL AGENTE (autoritativo, derivado del tenant autenticado)\n${JSON.stringify(qualityContext)}\nREGLA: explica este estado y prioriza una sola acción. No inventes evidencia, puntajes, causas ni enlaces. No afirmes que un cambio fue aplicado. unknown significa que no se pudo verificar, no que falta configurar. operational_channel_scope pide revisar las asignaciones indicadas por unsupportedChannelTypes, no conectar otro canal. Esta evaluación describe la versión operativa; guardar un borrador no resuelve sus pendientes hasta publicar la corrección.`,
             actions,
         };
     }

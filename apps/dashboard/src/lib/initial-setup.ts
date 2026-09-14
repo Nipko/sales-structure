@@ -1,4 +1,4 @@
-import type { AgentSetupTask, AgentSetupTaskKey, GuidedTourId, GuidedTourStartDetail } from "@parallext/shared";
+import type { AgentQualityCheck, AgentSetupTask, AgentSetupTaskKey, GuidedTourId, GuidedTourStartDetail } from "@parallext/shared";
 
 /**
  * The card's view of one setup task — and nothing else.
@@ -19,11 +19,14 @@ export interface EssentialSetupItem {
   key: EssentialSetupItemKey;
   href: string;
   done: boolean;
+  labelKey: string;
   /** The tour "Mostrarme dónde" runs for this item. `null` = no tour covers it. */
   tourId: GuidedTourId | null;
   channelType?: GuidedTourStartDetail["channelType"];
   /** An unavailable check is not a verified missing setting. */
   verification?: "unavailable";
+  pendingCheck?: AgentQualityCheck;
+  notApplicable?: true;
 }
 
 /**
@@ -41,8 +44,28 @@ export function essentialSetupItemsFromAssessment(
     key: task.key,
     href: task.href,
     done: task.status === "pass" || task.status === "not_applicable",
+    labelKey: setupTaskLabelKey(task),
     tourId: task.tourId,
     channelType: task.channelType,
+    ...(task.pendingCheckCode ? { pendingCheck: task.checks.find(check => check.code === task.pendingCheckCode) } : {}),
+    ...(task.status === "not_applicable" ? { notApplicable: true as const } : {}),
     ...(task.status === "unknown" ? { verification: "unavailable" as const } : {}),
   }));
+}
+
+/** Labels explain the server's diagnosis without recomputing readiness. */
+export function setupTaskLabelKey(task: Pick<AgentSetupTask, 'key' | 'status' | 'pendingCheckCode' | 'checks'>): string {
+  if (task.key !== 'channel') return `items.${task.key}`;
+  if (task.status === 'unknown') return 'channelActions.verify';
+  if (task.status === 'pass') return 'channelActions.ready';
+  const check = task.checks.find(check => check.code === task.pendingCheckCode);
+  if (check?.code === 'operational_channel_scope') return 'channelActions.unsupported';
+  if (check?.code === 'channel_assignment') return 'channelActions.assign';
+  if (check?.code === 'channel_coverage') return 'channelActions.coverage';
+  if (check?.code === 'channel_connection') {
+    if (check.evidence?.hasCredentialIssue) return 'channelActions.credentials';
+    if (Number(check.evidence?.staleBindings) > 0) return 'channelActions.reassign';
+    return 'channelActions.connect';
+  }
+  return 'items.channel';
 }

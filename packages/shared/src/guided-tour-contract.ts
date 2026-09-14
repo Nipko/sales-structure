@@ -246,12 +246,15 @@ export function canRoleRunGuidedTour(tour: GuidedTourDefinition, role: string | 
  * Resolve the tour that helps with a quality check or recommendation code.
  * Accepts `fix_<check>` recommendation codes as well as bare check codes.
  */
-export function findGuidedTourForQualityCode(code: unknown): GuidedTourDefinition | null {
+export function findGuidedTourForQualityCode(code: unknown, evidence?: Record<string, unknown>): GuidedTourDefinition | null {
     if (typeof code !== 'string' || !code) return null;
     const normalized = code.trim().toLowerCase();
     const candidates = normalized.startsWith('fix_')
         ? [normalized, normalized.slice(4)]
         : [normalized];
+    if (candidates.includes('channel_connection') && Number(evidence?.staleBindings) > 0 && !evidence?.hasCredentialIssue) {
+        return GUIDED_TOURS.find(tour => tour.id === 'assign_agent_channel') ?? null;
+    }
     for (const tour of GUIDED_TOURS) {
         if (candidates.some((candidate) => tour.qualityCodes.includes(candidate))) return tour;
     }

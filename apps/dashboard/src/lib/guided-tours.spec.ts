@@ -1,6 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
-import { GUIDED_TOUR_IDS, getGuidedTour } from "@parallext/shared";
+import { GUIDED_TOUR_IDS, getGuidedTour, findGuidedTourForQualityCode } from "@parallext/shared";
 import {
   GUIDED_TOUR_ANCHOR_NAMES,
   getGuidedTourStepDefinitions,
@@ -59,6 +59,12 @@ function lookup(messages: Record<string, unknown>, key: string): unknown {
 }
 
 describe("guided tour catalogue", () => {
+  it('reassigns a stale account without sending the owner to reconnect a healthy channel', () => {
+    expect(findGuidedTourForQualityCode('fix_channel_connection', { staleBindings: 1, hasCredentialIssue: false })?.id).toBe('assign_agent_channel');
+    expect(findGuidedTourForQualityCode('channel_connection', { staleBindings: 1, hasCredentialIssue: true })?.id).toBe('connect_channel');
+    expect(findGuidedTourForQualityCode('channel_connection')?.id).toBe('connect_channel');
+  });
+
   it('preserves required steps hidden in tabs and supplies a safe control to reveal them', () => {
     const plan = planGuidedTourRun('agent_handoff_rules', CONTEXT, {
       currentRoute: `/admin/agent/${AGENT_ID}`, inPlace: false,
@@ -165,6 +171,11 @@ describe("guided tour copy", () => {
     const keys = [...guidedTourMessageKeys(), 'guidedTours.connect_channel.steps.channel.title', 'guidedTours.connect_channel.steps.channel.content',
       'qualityHealth.setup.items.appointments', 'qualityHealth.setup.verificationUnavailable', 'qualityHealth.focus.verificationUnavailable',
       'qualityHealth.focus.verifiedResolved', 'productTour.finishFormFirst'];
+    keys.push(...['ready', 'verify', 'unsupported', 'assign', 'coverage', 'reassign', 'credentials', 'connect'].map(key => `qualityHealth.setup.channelActions.${key}`),
+      ...['title', 'draftScope', 'unsupported', 'disconnected', 'stale', 'remove'].map(key => `agent.assignmentReview.${key}`),
+      'qualityHealth.setup.pendingReason', 'agentQuality.banner.verificationTitle', 'agentQuality.banner.verificationPending',
+      'agentQuality.evidenceKeys.unsupportedChannelTypes', 'qualityHealth.focus.explanations.stale_channel_binding',
+      'qualityHealth.focus.explanations.fix_operational_channel_scope');
     expect(keys.filter(key => typeof lookup(localized, key) !== 'string')).toEqual([]);
   });
 });

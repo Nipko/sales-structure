@@ -230,7 +230,9 @@ export default function QualityFocusBanner() {
   const { signal, overview } = payload;
   const check = findCheck(overview, signal.code);
   const evidence = check?.evidence ?? {};
-  const explanationCode = `focus.explanations.${signal.code}`;
+  const staleAssignment = check?.code === 'channel_connection'
+    && Number(evidence.staleBindings) > 0 && !evidence.hasCredentialIssue;
+  const explanationCode = staleAssignment ? 'focus.explanations.stale_channel_binding' : `focus.explanations.${signal.code}`;
   const explanation = !check || check.status === "unknown"
     ? t("focus.verificationUnavailable")
     : t(t.has(explanationCode) ? explanationCode : "focus.explanations.generic", {
@@ -242,11 +244,11 @@ export default function QualityFocusBanner() {
     credentialIssue: scalar(evidence.credentialIssue, "none"),
   });
 
-  const tour = findGuidedTourForQualityCode(signal.code);
+  const tour = !check || check.status === 'unknown' ? null : findGuidedTourForQualityCode(signal.code, evidence);
   const canShowMe = Boolean(tour)
     && canRoleRunGuidedTour(tour!, role)
     && wideEnoughForTour;
-  const reviewHref = safeQualityHref(signal.href, signal.agent.id);
+  const reviewHref = safeQualityHref(check?.href ?? signal.href, signal.agent.id);
 
   const startTour = () => {
     if (!tour) return;

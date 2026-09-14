@@ -566,6 +566,28 @@ describe('CopilotService authenticated context', () => {
         expect(response.actions!.length).toBeLessThanOrEqual(3);
     });
 
+    it('does not prescribe a connection tour when the connection check is unavailable', async () => {
+        const { service, agentQuality } = createService();
+        const overview = channelBlockedOverview({ availability: 'unknown' });
+        overview.preparation.dimensions[0].checks[0].status = 'unknown';
+        agentQuality.getOverview.mockResolvedValue(overview);
+        const { prompt, actions } = await (service as any).buildAgentQualityContext(
+            TENANT_ID, { kind: 'agent_quality', agentId: AGENT_ID }, 'tenant_admin',
+        );
+        expect(prompt).toContain('"criticalBlockerStatuses":{"channel_connection":"unknown"}');
+        expect(prompt).toContain('unknown significa que no se pudo verificar');
+        expect(actions.some((action: any) => action.code === 'start_guided_tour')).toBe(false);
+    });
+
+    it('uses the assignment tour for a stale account with a healthy replacement', async () => {
+        const { service, agentQuality } = createService();
+        agentQuality.getOverview.mockResolvedValue(channelBlockedOverview({ staleBindings: 1, hasCredentialIssue: false }));
+        const { actions } = await (service as any).buildAgentQualityContext(
+            TENANT_ID, { kind: 'agent_quality', agentId: AGENT_ID }, 'tenant_admin',
+        );
+        expect(actions).toContainEqual(expect.objectContaining({ code: 'start_guided_tour', tourId: 'assign_agent_channel' }));
+    });
+
     it('withholds an admin-only tour from a supervisor but still opens the quality center', async () => {
         const { service, agentQuality, qualitySignals } = createService();
         jest.spyOn(service as any, 'searchKb').mockReturnValue([]);

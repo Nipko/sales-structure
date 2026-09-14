@@ -149,6 +149,14 @@ describe('OutboundQueueProcessor durable dispatch', () => {
         expect(h.sendStrict).not.toHaveBeenCalled();
     });
 
+    it('keeps a failed queue move observable instead of turning it into DelayedError', async () => {
+        const h = harness({ rateAllowed: false });
+        const error = new Error('Missing lock for job. moveToDelayed');
+        h.job.moveToDelayed.mockRejectedValueOnce(error);
+        await expect(h.processor.process(h.job, 'worker-token')).rejects.toBe(error);
+        expect(h.sendStrict).not.toHaveBeenCalled();
+    });
+
     it('keeps a receipt it observed but could not write, without sending again', async () => {
         const h = harness({ settleFails: true });
         // The row keeps its live permission, so no other worker can take it; the

@@ -4698,6 +4698,14 @@
       "deactivated": "Agent turned off: it stopped answering."
     },
     "noConnectedChannelsHint": "Your agent cannot receive messages until you connect at least one (WhatsApp, Instagram, Messenger, Telegram or your website chat).",
+    "assignmentReview": {
+      "title": "Assignments that need review",
+      "draftScope": "These selections belong to the draft. Quality checks describe the operational version; saving the draft does not change it.",
+      "unsupported": "{assignment}: unsupported channel type. Review and remove this assignment.",
+      "disconnected": "{assignment}: assigned, but without an active connection.",
+      "stale": "{assignment}: the assigned account is no longer connected. Remove it and select the current account.",
+      "remove": "Remove from draft"
+    },
     "channelOverviewUnavailable": "We could not verify connected channels",
     "channelOverviewUnavailableHint": "Reload before changing or saving assignments. We preserved the current configuration.",
     "connectChannel": "Connect",
@@ -12010,6 +12018,17 @@
     "bannerAgent": "Review {agent} first.",
     "navBadge": "{count, plural, one {# open critical or high action} other {# open critical or high actions}}",
     "setup": {
+      "channelActions": {
+        "ready": "Channels connected and assigned",
+        "verify": "Verify channel status",
+        "unsupported": "Review unsupported assignments",
+        "assign": "Assign a connected channel",
+        "coverage": "Review channel coverage",
+        "reassign": "Reassign the reconnected account",
+        "credentials": "Review channel authorization",
+        "connect": "Connect an assigned channel"
+      },
+      "pendingReason": "Pending: {check}",
       "verificationUnavailable": "Awaiting verification. Retry when the lookup is available.",
       "title": "Getting started",
       "description": "Only essential steps available for your plan, role, and industry. This guide disappears when completed.",
@@ -12024,7 +12043,7 @@
         "knowledge": "Load what the agent must know",
         "catalog": "Load your catalog",
         "business": "Tell us what your business does",
-        "team": "Invite someone to receive the chats",
+        "team": "Have someone available to receive chats",
         "hours": "Confirm your hours",
         "appointments": "Set up services and availability",
         "mission": "Agree the agent mission",
@@ -12042,6 +12061,8 @@
       "showMe": "Show me where",
       "noneValue": "none",
       "explanations": {
+        "stale_channel_binding": "The channel is connected, but an assignment for {agent} points to a previous account. Remove that assignment and select the current account in the draft; publish the correction to apply it to the operational version.",
+        "fix_operational_channel_scope": "{agent} has assignments for unsupported channel types. Review the listed types and remove those assignments from the draft; you do not need to connect another channel to resolve this notice. Publish the correction to apply it.",
         "fix_channel_connection": "{credentialIssue, select, none {{agent} has no connected channel that can receive messages. Connect {disconnected} or assign a channel that is already connected.} expiring {{agent} is replying normally over {connectedChannels}, but that channel’s authorisation expires soon. Renew it before it stops sending.} unknown {{agent} is connected to {connectedChannels}, but we could not verify that channel’s authorisation. Open it in Channels to confirm it is still valid.} other {{agent} is connected to {connectedChannels}, but that authorisation no longer works ({credentialIssue}): until it is renewed, the agent cannot send replies.}}",
         "fix_channel_coverage": "{agent} is assigned to {assigned} channels and only {connected} are connected. Not connected: {disconnected}. Connect that channel or remove it from the agent's assignment.",
         "fix_channel_assignment": "{agent} has no channel assigned, so right now it serves nobody. Pick the channels this agent should answer.",
@@ -12319,6 +12340,7 @@
       "audiences": "Audiences",
       "availableSources": "Available sources",
       "unsupportedAssignments": "Unsupported assignments",
+      "unsupportedChannelTypes": "Unsupported channel types",
       "chunks": "Indexed chunks",
       "published": "Published",
       "services": "Services",
@@ -12358,6 +12380,8 @@
       "description": "This is a decision aid, not a promise of perfection or automatic learning. It combines verifiable configuration, repeatable tests, and evidence from real interactions; critical blockers take precedence over averages."
     },
     "banner": {
+      "verificationTitle": "Configuration verification pending",
+      "verificationPending": "We could not verify {count, plural, one {# requirement} other {# requirements}}.",
       "loading": "Reviewing agent quality…",
       "unavailableTitle": "Quality analysis is unavailable",
       "unavailableDescription": "Open the center to retry and review the configuration.",

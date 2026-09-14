@@ -4698,6 +4698,14 @@
       "deactivated": "Agente desativado: parou de responder."
     },
     "noConnectedChannelsHint": "Seu agente não pode receber mensagens até você conectar pelo menos um (WhatsApp, Instagram, Messenger, Telegram ou o chat do seu site).",
+    "assignmentReview": {
+      "title": "Atribuições que precisam de revisão",
+      "draftScope": "Estas seleções pertencem ao rascunho. A avaliação de qualidade descreve a versão operacional; salvar o rascunho não a altera.",
+      "unsupported": "{assignment}: tipo de canal incompatível. Revise e remova esta atribuição.",
+      "disconnected": "{assignment}: atribuído, mas sem conexão ativa.",
+      "stale": "{assignment}: a conta atribuída não está mais conectada. Remova-a e selecione a conta atual.",
+      "remove": "Remover do rascunho"
+    },
     "channelOverviewUnavailable": "Não foi possível verificar os canais conectados",
     "channelOverviewUnavailableHint": "Recarregue antes de alterar ou salvar atribuições. Preservamos a configuração atual.",
     "connectChannel": "Conectar",
@@ -12010,6 +12018,17 @@
     "bannerAgent": "Revise primeiro {agent}.",
     "navBadge": "{count, plural, one {# ação crítica ou alta aberta} other {# ações críticas ou altas abertas}}",
     "setup": {
+      "channelActions": {
+        "ready": "Canais conectados e atribuídos",
+        "verify": "Verificar o estado dos canais",
+        "unsupported": "Revisar atribuições incompatíveis",
+        "assign": "Atribuir um canal conectado",
+        "coverage": "Revisar a cobertura dos canais",
+        "reassign": "Reatribuir a conta reconectada",
+        "credentials": "Revisar a autorização do canal",
+        "connect": "Conectar um canal atribuído"
+      },
+      "pendingReason": "Pendente: {check}",
       "verificationUnavailable": "Verificação pendente. Tente novamente quando a consulta estiver disponível.",
       "title": "Primeiros passos",
       "description": "Somente os passos essenciais disponíveis para seu plano, função e setor. Este guia desaparece ao concluí-los.",
@@ -12024,7 +12043,7 @@
         "knowledge": "Carregar o que o agente precisa saber",
         "catalog": "Carregar o seu catálogo",
         "business": "Contar o que o seu negócio faz",
-        "team": "Convidar alguém para receber os chats",
+        "team": "Contar com alguém para receber os chats",
         "hours": "Confirmar o seu horário",
         "appointments": "Configurar serviços e disponibilidade",
         "mission": "Definir a missão do agente",
@@ -12042,6 +12061,8 @@
       "showMe": "Mostrar onde",
       "noneValue": "nenhum",
       "explanations": {
+        "stale_channel_binding": "O canal está conectado, mas uma atribuição de {agent} aponta para uma conta anterior. Remova essa atribuição e selecione a conta atual no rascunho; publique a correção para aplicá-la à versão operacional.",
+        "fix_operational_channel_scope": "{agent} tem atribuições de tipos de canal não compatíveis. Revise os tipos indicados e remova essas atribuições do rascunho; não é necessário conectar outro canal para resolver este aviso. Publique a correção para aplicá-la.",
         "fix_channel_connection": "{credentialIssue, select, none {{agent} não tem nenhum canal conectado que possa receber mensagens. Conecte {disconnected} ou atribua um canal que já esteja conectado.} expiring {{agent} responde normalmente por {connectedChannels}, mas a autorização desse canal vence em breve. Renove-a antes que pare de enviar.} unknown {{agent} está conectado a {connectedChannels}, mas não conseguimos verificar a autorização desse canal. Abra-o em Canais para confirmar que continua válida.} other {{agent} está conectado a {connectedChannels}, mas essa autorização não funciona mais ({credentialIssue}): até renová-la, o agente não pode enviar respostas.}}",
         "fix_channel_coverage": "{agent} está atribuído a {assigned} canais e apenas {connected} estão conectados. Sem conexão: {disconnected}. Conecte esse canal ou tire-o da atribuição do agente.",
         "fix_channel_assignment": "{agent} não tem nenhum canal atribuído, então hoje não atende ninguém. Marque no agente os canais que ele vai responder.",
@@ -12319,6 +12340,7 @@
       "audiences": "Públicos",
       "availableSources": "Fontes disponíveis",
       "unsupportedAssignments": "Atribuições incompatíveis",
+      "unsupportedChannelTypes": "Tipos de canal incompatíveis",
       "chunks": "Fragmentos indexados",
       "published": "Publicadas",
       "services": "Serviços",
@@ -12358,6 +12380,8 @@
       "description": "É uma ajuda à decisão, não uma promessa de perfeição nem aprendizado automático. Combina configuração verificável, testes repetíveis e evidências de interações reais; bloqueios críticos prevalecem sobre médias."
     },
     "banner": {
+      "verificationTitle": "Verificação da configuração pendente",
+      "verificationPending": "Não foi possível verificar {count, plural, one {# requisito} other {# requisitos}}.",
       "loading": "Revisando a qualidade do agente…",
       "unavailableTitle": "A análise de qualidade não está disponível",
       "unavailableDescription": "Abra o centro para tentar novamente e revisar a configuração.",

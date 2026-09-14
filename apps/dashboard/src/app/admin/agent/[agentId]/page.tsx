@@ -21,7 +21,7 @@ import { LoadFailureNotice } from "@/components/ui/load-failure";
 import { AgentReadinessBanner } from "@/components/AgentReadinessBanner";
 import { AGENT_CONFIGURATION_APPLIED_EVENT, requestQualityHealthRefresh } from "@/lib/quality-health-events";
 import { guidedTourAnchorId } from "@/lib/guided-tours";
-import { channelOverviewIsAuthoritative, normalizeAgentChannelAssignments } from "@/lib/agent-channel-assignment";
+import { agentChannelAssignmentIssues, channelOverviewIsAuthoritative, normalizeAgentChannelAssignments } from "@/lib/agent-channel-assignment";
 import type { AgentConfigurationWorkspace } from '@parallext/shared';
 import { AgentDraftStatus } from '@/components/quality/AgentDraftStatus';
 import { agentDraftTestHref, prepareDraftSave, type DraftSaveAttempt } from '@/lib/agent-draft-save';
@@ -348,6 +348,11 @@ export default function AgentEditorPage() {
     return CHANNEL_ORDER.filter(type =>
       CHANNEL_META[type] && (connected.has(type) || assignedTypes.has(type)));
   })();
+
+  const assignmentIssues = agentChannelAssignmentIssues({
+    accounts, channels: assignedChannels, bindings: assignedBindings,
+    overviewAvailable: channelOverviewAvailable, supportedTypes: CHANNEL_ORDER,
+  });
 
   // ── Deep link: ?tab=<id>&focus=<field> ─────────────────────
   //
@@ -783,6 +788,26 @@ export default function AgentEditorPage() {
               {t("channelAssignment")}
             </span>
           </div>
+
+          <p className="mb-3 text-xs text-neutral-500">{t("assignmentReview.draftScope")}</p>
+          {assignmentIssues.length > 0 && (
+            <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 p-3 dark:border-amber-500/40 dark:bg-amber-500/10" role="status">
+              <p className="text-sm font-semibold">{t("assignmentReview.title")}</p>
+              <ul className="mt-2 space-y-2">
+                {assignmentIssues.map(issue => (
+                  <li key={`${issue.kind}:${issue.value}`} className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <span className="break-all">{t(`assignmentReview.${issue.reason}`, { assignment: issue.value })}</span>
+                    <button type="button" className="min-h-8 rounded-md px-2 font-semibold underline"
+                      onClick={() => issue.kind === 'channel'
+                        ? setAssignedChannels(current => current.filter(value => value !== issue.value))
+                        : setAssignedBindings(current => current.filter(value => value !== issue.value))}>
+                      {t("assignmentReview.remove")}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {!channelOverviewAvailable ? (
             <div className="rounded-lg border border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-500/10 p-4" role="status">

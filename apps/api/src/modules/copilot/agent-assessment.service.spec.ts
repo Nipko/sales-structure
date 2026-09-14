@@ -46,6 +46,31 @@ function harness(options: { missing?: boolean; drift?: boolean; unknown?: boolea
 }
 
 describe('shared agent assessment', () => {
+    it('carries the specific unsupported-assignment diagnosis into setup and Assist', async () => {
+        const h = harness();
+        h.overview.preparation.dimensions[0].checks = [
+            { code: 'channel_assignment', status: 'pass', evidence: { assigned: 4 } },
+            { code: 'channel_connection', status: 'pass', evidence: { connected: 4 } },
+            { code: 'operational_channel_scope', status: 'fail', evidence: { unsupportedAssignments: 1, unsupportedChannelTypes: 'email' },
+                href: `/admin/agent/${AGENT}?focus=channels` },
+        ] as any;
+        const result = await h.service.getAssessment(TENANT, AGENT);
+        expect(result.tasks.find(task => task.key === 'channel')).toMatchObject({ status: 'fail',
+            pendingCheckCode: 'operational_channel_scope', href: `/admin/agent/${AGENT}?focus=channels`, tourId: 'assign_agent_channel' });
+    });
+
+    it('routes an unknown task to its unreadable check and does not offer a corrective tour', async () => {
+        const h = harness();
+        h.overview.preparation.dimensions[0].checks = [
+            { code: 'knowledge_coverage', status: 'warning', href: '/admin/knowledge' },
+            { code: 'media_privacy_policy', status: 'unknown', href: '/admin/settings/policies?type=privacy',
+                evidence: { sourceAvailability: 'unavailable' } },
+        ] as any;
+        const result = await h.service.getAssessment(TENANT, AGENT);
+        expect(result.tasks.find(task => task.key === 'knowledge')).toMatchObject({ status: 'unknown',
+            pendingCheckCode: 'media_privacy_policy', href: '/admin/settings/policies?type=privacy', tourId: null });
+    });
+
     it('resolves a default agent server-side and reuses the runtime composer on each assigned channel', async () => {
         const { service, capabilities, prisma } = harness();
         const assessment = await service.getAssessment(TENANT);

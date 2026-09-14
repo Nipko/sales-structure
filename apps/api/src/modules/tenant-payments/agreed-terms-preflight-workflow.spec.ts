@@ -19,7 +19,6 @@ import { resolve } from 'node:path';
 
 const WORKFLOW = resolve(__dirname, '../../../../../.github/workflows/deploy.yml');
 const SCRIPT = resolve(__dirname, '../../../scripts/preflight-agreed-terms.cjs');
-const REMEDIATION = resolve(__dirname, '../../../scripts/remediate-agreed-terms-test-fixtures.cjs');
 
 const workflow = existsSync(WORKFLOW) ? readFileSync(WORKFLOW, 'utf8') : null;
 const contract = workflow ? describe : describe.skip;
@@ -37,21 +36,6 @@ contract('the deploy still runs the agreed-terms gate, and runs it in time', () 
         // not here.
         expect(existsSync(SCRIPT)).toBe(true);
         expect(workflow).toContain('scripts/preflight-agreed-terms.cjs');
-    });
-
-    it('runs the authorized exact-fixture remediation after backup and before the independent gate', () => {
-        expect(existsSync(REMEDIATION)).toBe(true);
-        const backup = at('===> Pre-migration backup (rollback point)...');
-        const remediation = at('node scripts/remediate-agreed-terms-test-fixtures.cjs --apply-authorized-test-fixtures');
-        const preflight = at('node scripts/preflight-agreed-terms.cjs');
-        expect(backup).toBeLessThan(remediation);
-        expect(remediation).toBeLessThan(preflight);
-
-        const section = workflow!.slice(remediation, preflight);
-        expect(section).toContain('FIXTURE_RC');
-        expect(section).toContain('expected=9 found=9');
-        expect(section).toContain('applied=1 errors=0');
-        expect(section).toMatch(/if \[ "\$FIXTURE_RC" -ne 0 \]; then[\s\S]*?exit 1/);
     });
 
     it('runs it after the rollback point and before either migration', () => {

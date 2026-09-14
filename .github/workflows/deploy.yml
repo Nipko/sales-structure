@@ -1182,32 +1182,6 @@ jobs:
             fi
             echo "  [OK] no live Mercado Pago platform mandates"
 
-            echo "===> Resolving the nine authorized legacy appointment test fixtures..."
-            # One-time bootstrap authorized by the operator on 2026-09-13 after
-            # run 34792674974 identified the exact nine rows as test data. This
-            # command cannot invent customer agreement: it only cancels the
-            # declared ids when all nine still match their observed tenant,
-            # calendar date, pending state and the candidate runtime's own orphan
-            # predicate. One SERIALIZABLE transaction updates them and records
-            # an audit event per appointment; any mismatch rolls everything back.
-            # The preflight below remains read-only and independently proves that
-            # no other live row was hidden by the remediation.
-            if FIXTURE_OUT="$($DC run --rm api node scripts/remediate-agreed-terms-test-fixtures.cjs --apply-authorized-test-fixtures 2>&1)"; then
-              FIXTURE_RC=0
-            else
-              FIXTURE_RC=$?
-            fi
-            printf '%s\n' "$FIXTURE_OUT"
-            if [ "$FIXTURE_RC" -ne 0 ]; then
-              echo "::error::Authorized test-fixture remediation failed (exit $FIXTURE_RC); transaction rolled back and no migration ran"
-              exit 1
-            fi
-            if ! printf '%s\n' "$FIXTURE_OUT" | grep -q 'AGREED_TERMS_TEST_FIXTURE_REMEDIATION expected=9 found=9 .*applied=1 errors=0'; then
-              echo "::error::Test-fixture remediation did not report the exact authorized cardinality; refusing to migrate"
-              exit 1
-            fi
-            echo "  [OK] authorized appointment fixtures are terminal and audited"
-
             echo "===> Pre-flight: rows this release would stop being able to charge..."
             # WHY THIS RUNS HERE, between the backup and the migrations.
             #

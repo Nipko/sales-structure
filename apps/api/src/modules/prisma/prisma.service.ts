@@ -29,6 +29,10 @@ const TENANT_PUBLIC_PURGE_ORDER = [
     'tenant_invitations', 'channel_accounts', 'whatsapp_onboardings',
     'whatsapp_credentials', 'tenant_financial_snapshots', 'storage_snapshots',
     'sms_package_orders', 'sms_credit_ledger', 'sms_credit_balances',
+    // Legacy public-schema tables created by the 002/003 seed migrations.
+    // These predate the per-tenant schema split and still live in public with
+    // a tenant_id column; they must be purged before the tenant row is deleted.
+    'canned_responses', 'automation_rules', 'pipeline_stages',
     'crm_connections', 'api_keys', 'audit_logs', 'users',
 ] as const;
 

@@ -41,7 +41,7 @@ export interface WhatsappReadinessNumber {
      * the currency chooses the card.
      *
      * There is deliberately no `paused` here. This shape comes from
-     * `GET /whatsapp/connection/billing-readiness`, which is about the billing
+     * `GET /channels/whatsapp/connection/billing-readiness`, which is about the billing
      * TIME ZONE and returns no such field — the panel used to filter on one
      * anyway, so the pause block never rendered and the number that had stopped
      * sending looked healthy. Pause state has its own endpoint and its own

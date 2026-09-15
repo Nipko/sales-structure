@@ -13,7 +13,7 @@ import * as path from 'path';
  * The panel had the markup for all of it. It just never received the fact.
  *
  * It filtered `readiness.filter(number => number.paused)`, and `readiness` came
- * from `GET /whatsapp/connection/billing-readiness` — an endpoint about the
+ * from `GET /channels/whatsapp/connection/billing-readiness` — an endpoint about the
  * billing TIME ZONE, whose payload has no `paused` field and never had one. So
  * the filter was permanently empty: the explanation never rendered, the resume
  * button never rendered, and the endpoint that actually knows was not called by

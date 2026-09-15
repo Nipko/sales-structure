@@ -29,6 +29,30 @@ interface PurgeExternalPlan {
     googleOAuthTokens: string[];
 }
 
+/**
+ * Qué probó la respuesta del proveedor sobre un efecto remoto de la purga.
+ *
+ * `detached` y `moot` son pruebas: el proveedor confirmó que lo desenganchó, o
+ * que la autorización de la que colgaba ya no existe. `stranded` es lo contrario
+ * de una prueba — un error terminal que no dice si quedó enganchado, y que otro
+ * intento va a repetir palabra por palabra. `retryable` es un fallo del camino
+ * (timeout, 5xx, red), el único que otro intento sí puede resolver.
+ */
+type ProviderTeardownOutcome = 'detached' | 'moot' | 'stranded' | 'retryable';
+
+/** Efecto remoto que sobrevive al borrado y hay que quitar a mano. */
+export interface PurgeStrandedTeardown {
+    effect: string;
+    channelType: string;
+    accountId: string;
+    reason: string;
+}
+
+interface PurgeExternalProgressEntry {
+    outcome: ProviderTeardownOutcome;
+    reason: string;
+}
+
 @Injectable()
 export class OffboardingService {
     private readonly logger = new Logger(OffboardingService.name);
@@ -984,11 +1008,22 @@ export class OffboardingService {
             let wabaId: string | undefined;
             if (account.channelType === 'whatsapp') {
                 encryptedCredential = credentialFor('system_user_token') || account.accessToken;
-                const rows = await this.prisma.executeInTenantSchema<any[]>(
-                    schemaName,
-                    `SELECT meta_waba_id FROM whatsapp_channels WHERE phone_number_id = $1 LIMIT 1`,
-                    [account.accountId],
-                );
+                let rows: any[] = [];
+                try {
+                    rows = await this.prisma.executeInTenantSchema<any[]>(
+                        schemaName,
+                        `SELECT meta_waba_id FROM whatsapp_channels WHERE phone_number_id = $1 LIMIT 1`,
+                        [account.accountId],
+                    );
+                } catch (error: any) {
+                    // Un schema ya borrado por un intento anterior, o uno legacy
+                    // sin esa tabla, no puede ser lo que impida capturar el WABA:
+                    // la fila de onboarding lo sabe igual. Cualquier otro error
+                    // sí frena, para no perder la credencial sin verla.
+                    const missingSchemaOrTable = ['3F000', '42P01'].includes(error?.code)
+                        || /does not exist/i.test(String(error?.message));
+                    if (!missingSchemaOrTable) throw error;
+                }
                 wabaId = rows?.[0]?.meta_waba_id;
                 if (!wabaId) {
                     const onboarding = await this.prisma.whatsappOnboarding.findFirst({
@@ -1081,11 +1116,121 @@ export class OffboardingService {
         }
     }
 
-    /** Execute the previously captured, idempotent provider teardown. */
-    private async executePurgeExternalPlan(tenantId: string, plan: PurgeExternalPlan): Promise<void> {
-        const failures: string[] = [];
-        for (const channel of plan.channels) {
+    /** El error que devolvió el proveedor, en una línea legible y sin la credencial. */
+    private parseProviderError(body: string): { code?: number; subcode?: number; message?: string } {
+        if (!body) return {};
+        try {
+            const parsed = JSON.parse(body);
+            const error = parsed?.error ?? parsed;
+            const code = typeof error?.code === 'number'
+                ? error.code
+                : (typeof error?.error_code === 'number' ? error.error_code : undefined);
+            const message = typeof error?.message === 'string'
+                ? error.message
+                : (typeof error?.description === 'string' ? error.description : undefined);
+            return {
+                code,
+                subcode: typeof error?.error_subcode === 'number' ? error.error_subcode : undefined,
+                message,
+            };
+        } catch {
+            return {};
+        }
+    }
+
+    /**
+     * La credencial viaja en la query string de estas llamadas, así que la URL
+     * nunca entra en un log ni en un mensaje de error. Sólo el cuerpo.
+     */
+    private describeProviderError(status: number, body: string): string {
+        const error = this.parseProviderError(body);
+        const parts = [`HTTP ${status}`];
+        if (error.code !== undefined) {
+            parts.push(`code ${error.code}${error.subcode !== undefined ? `/${error.subcode}` : ''}`);
+        }
+        const detail = error.message ?? (error.code === undefined ? body : undefined);
+        if (detail) parts.push(detail.trim().slice(0, 200));
+        return parts.join(' · ');
+    }
+
+    /**
+     * Qué prueba la respuesta del proveedor sobre el efecto que queríamos quitar.
+     *
+     * Graph API no usa 404 para "ese objeto ya no está": contesta 400 con un
+     * cuerpo que dice cuál de todos los motivos fue. Mirar sólo el status —
+     * perdonando 404 y 410, que Meta nunca manda— es por qué una WABA ya
+     * desenganchada dejaba un tenant imposible de borrar para siempre.
+     */
+    private classifyProviderTeardown(
+        channelType: string,
+        status: number,
+        body: string,
+    ): { outcome: ProviderTeardownOutcome; reason: string } {
+        const reason = this.describeProviderError(status, body);
+
+        if (status >= 200 && status < 300) {
+            // Telegram contesta 200 con {"ok":false} cuando rechaza la orden.
+            if (/"ok"\s*:\s*false/i.test(body)) return { outcome: 'stranded', reason };
+            return { outcome: 'detached', reason };
+        }
+        // El objeto no existe: no queda nada colgando de él.
+        if (status === 404 || status === 410) return { outcome: 'detached', reason };
+        // El proveedor contestó sobre sí mismo, no sobre el objeto. Otro intento sirve.
+        if (status === 408 || status === 429 || status >= 500) return { outcome: 'retryable', reason };
+
+        const error = this.parseProviderError(body);
+        // La app dejó de estar autorizada sobre esa cuenta; su suscripción se fue
+        // con la autorización, así que ya no hay efecto que quitar.
+        if (error.code === 190 && error.subcode === 458) return { outcome: 'moot', reason };
+
+        // Todo lo demás es terminal y ambiguo — 100/33 dice literalmente "no
+        // existe, O no se puede cargar por permisos faltantes", que no prueba
+        // nada—: se registra como varado en vez de afirmar una desconexión que
+        // no ocurrió, y no se reintenta porque la respuesta no va a cambiar.
+        return { outcome: 'stranded', reason };
+    }
+
+    /**
+     * Ejecutar el teardown remoto ya capturado, marcando cada efecto por separado.
+     *
+     * Devuelve los efectos que quedaron varados. Lanza sólo cuando algo puede
+     * salir distinto en otro intento: negarse a terminar por un error terminal
+     * no desengancha nada y deja un tenant a medio borrar que ya no se puede
+     * ni borrar ni reactivar.
+     */
+    private async executePurgeExternalPlan(
+        tenantId: string,
+        plan: PurgeExternalPlan,
+        progress: Record<string, PurgeExternalProgressEntry>,
+        recordProgress: (effect: string, entry: PurgeExternalProgressEntry) => Promise<void>,
+    ): Promise<PurgeStrandedTeardown[]> {
+        const retryable: string[] = [];
+        const stranded: PurgeStrandedTeardown[] = [];
+
+        const resolve = async (
+            effect: string,
+            run: () => Promise<{ outcome: ProviderTeardownOutcome; reason: string }>,
+        ): Promise<PurgeExternalProgressEntry> => {
+            // Un efecto ya resuelto no se repite: el reintento no debe volver a
+            // pedir la revocación que ya consumió su propia credencial (Instagram
+            // borra el permiso con el mismo token que el reintento necesitaría).
+            const done = progress[effect];
+            if (done?.outcome && done.outcome !== 'retryable') return done;
+
+            let entry: PurgeExternalProgressEntry;
             try {
+                entry = await run();
+            } catch (error: any) {
+                // No llegamos a hablar con el proveedor. Eso sí se reintenta.
+                entry = { outcome: 'retryable', reason: error?.message || String(error) };
+            }
+            if (entry.outcome !== 'retryable') await recordProgress(effect, entry);
+            return entry;
+        };
+
+        for (const channel of plan.channels) {
+            const effect = `${channel.channelType}:${channel.accountId}`;
+            const entry = await resolve(effect, async () => {
                 const credential = this.decryptToken(channel.encryptedCredential);
                 let url: string;
                 let method: 'DELETE' | 'POST';
@@ -1103,33 +1248,111 @@ export class OffboardingService {
                     method = 'DELETE';
                 }
                 const response = await this.fetchWithDeadline(url, { method });
-                if (!response.ok && response.status !== 404 && response.status !== 410) {
-                    throw new Error(`HTTP ${response.status}`);
-                }
-            } catch (error: any) {
-                failures.push(`${channel.channelType}/${channel.accountId}: ${error.message}`);
+                const body = await response.text().catch(() => '');
+                return this.classifyProviderTeardown(channel.channelType, response.status, body);
+            });
+
+            if (entry.outcome === 'retryable') {
+                retryable.push(`${channel.channelType}/${channel.accountId}: ${entry.reason}`);
+            } else if (entry.outcome === 'stranded') {
+                stranded.push({
+                    effect,
+                    channelType: channel.channelType,
+                    accountId: channel.accountId,
+                    reason: entry.reason,
+                });
+                this.logger.error(
+                    `[Purge ${tenantId}] ${channel.channelType}/${channel.accountId} quedó SIN desenganchar en el `
+                    + `proveedor (${entry.reason}). El borrado sigue; hay que quitarlo a mano en el proveedor.`,
+                );
             }
         }
 
-        for (const encryptedToken of plan.googleOAuthTokens) {
-            try {
+        for (const [index, encryptedToken] of plan.googleOAuthTokens.entries()) {
+            const effect = `google_oauth:${index}`;
+            const entry = await resolve(effect, async () => {
                 const response = await this.fetchWithDeadline('https://oauth2.googleapis.com/revoke', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                     body: new URLSearchParams({ token: this.decryptToken(encryptedToken) }).toString(),
                 });
-                if (!response.ok && response.status !== 400) {
-                    throw new Error(`HTTP ${response.status}`);
+                const body = await response.text().catch(() => '');
+                // Google contesta 400 a un token que ya no es válido: revocado,
+                // caducado o revocado por el usuario. No queda nada que revocar.
+                if (response.status === 400) {
+                    return { outcome: 'detached', reason: this.describeProviderError(400, body) };
                 }
-            } catch (error: any) {
-                failures.push(`google_oauth: ${error.message}`);
+                return this.classifyProviderTeardown('google_oauth', response.status, body);
+            });
+
+            if (entry.outcome === 'retryable') {
+                retryable.push(`google_oauth: ${entry.reason}`);
+            } else if (entry.outcome === 'stranded') {
+                stranded.push({
+                    effect,
+                    channelType: 'google_oauth',
+                    accountId: String(index),
+                    reason: entry.reason,
+                });
+                this.logger.error(
+                    `[Purge ${tenantId}] un refresh token de Google NO pudo revocarse (${entry.reason}). `
+                    + `El borrado sigue; hay que revocarlo a mano desde la cuenta de Google.`,
+                );
             }
         }
 
-        if (failures.length > 0) {
-            throw new Error(`External teardown incomplete (${failures.join('; ')})`);
+        if (retryable.length > 0) {
+            throw new Error(`External teardown incomplete (${retryable.join('; ')})`);
         }
-        this.logger.log(`[Purge ${tenantId}] External provider teardown completed`);
+        this.logger.log(
+            `[Purge ${tenantId}] External provider teardown completed`
+            + (stranded.length > 0 ? ` (${stranded.length} varado(s), hay que quitarlos a mano)` : ''),
+        );
+        return stranded;
+    }
+
+    /** Releer del saga los efectos que un intento anterior dejó varados. */
+    private strandedTeardownsFromProgress(
+        progress: Record<string, PurgeExternalProgressEntry>,
+    ): PurgeStrandedTeardown[] {
+        return Object.entries(progress || {})
+            .filter(([, entry]) => entry?.outcome === 'stranded')
+            .map(([effect, entry]) => {
+                const separator = effect.indexOf(':');
+                return {
+                    effect,
+                    channelType: separator > 0 ? effect.slice(0, separator) : effect,
+                    accountId: separator > 0 ? effect.slice(separator + 1) : '',
+                    reason: entry.reason,
+                };
+            });
+    }
+
+    /**
+     * Marcar un efecto remoto como resuelto antes de seguir con el siguiente.
+     *
+     * Sin esto, el reintento repite efectos ya cumplidos, y los que consumen su
+     * propia credencial (revocar el permiso de Instagram invalida el token con
+     * el que se revoca) fallan para siempre en el segundo intento.
+     */
+    private async recordPurgeExternalProgress(
+        tenantId: string,
+        effect: string,
+        entry: PurgeExternalProgressEntry,
+    ): Promise<void> {
+        await this.prisma.$executeRawUnsafe(
+            `UPDATE public.tenants
+                SET settings = COALESCE(settings, '{}'::jsonb) || jsonb_build_object(
+                        'purgeSaga', COALESCE(settings->'purgeSaga', '{}'::jsonb) || jsonb_build_object(
+                            'externalProgress',
+                            COALESCE(settings->'purgeSaga'->'externalProgress', '{}'::jsonb) || $2::jsonb
+                        )
+                    ),
+                    updated_at = NOW()
+              WHERE id = $1::uuid`,
+            tenantId,
+            JSON.stringify({ [effect]: entry }),
+        );
     }
 
     private decryptToken(encryptedValue: string): string {
@@ -1344,6 +1567,8 @@ export class OffboardingService {
         usersRevoked: number;
         /** Mandato que sobrevive al borrado y hay que cancelar a mano en el proveedor. */
         strandedMandate: { provider: string; mandateId: string } | null;
+        /** Canales/permisos que el proveedor no confirmó desenganchar; hay que quitarlos a mano. */
+        strandedExternalTeardown: PurgeStrandedTeardown[];
     }> {
         const lockKey = tenantLifecycleLockKey(tenantId);
         const lockTtlSeconds = TENANT_LIFECYCLE_LOCK_TTL_SECONDS;
@@ -1445,6 +1670,11 @@ export class OffboardingService {
             let publicRowsDeleted: Record<string, number>;
             let mediaResult: { removed: number; tenantDir: string; archiveDir?: string };
             let strandedMandate: { provider: string; mandateId: string } | null = null;
+            // Efectos remotos que un intento anterior ya resolvió. Se releen del
+            // saga para que el reintento no repita lo cumplido ni pierda lo varado.
+            const externalProgress = (settings?.purgeSaga?.externalProgress
+                ?? {}) as Record<string, PurgeExternalProgressEntry>;
+            let strandedExternalTeardown: PurgeStrandedTeardown[] = [];
             try {
                 await lease.assertOwned();
                 releaseQueueFence = await this.fenceQueuesForPurge(tenantId);
@@ -1506,7 +1736,12 @@ export class OffboardingService {
 
                 if (settings?.purgeSaga?.externalCompleted !== true) {
                     await lease.assertOwned();
-                    await this.executePurgeExternalPlan(tenantId, externalPlan);
+                    strandedExternalTeardown = await this.executePurgeExternalPlan(
+                        tenantId,
+                        externalPlan,
+                        externalProgress,
+                        (effect, entry) => this.recordPurgeExternalProgress(tenantId, effect, entry),
+                    );
                     const subscription = await this.prisma.billingSubscription.findUnique({ where: { tenantId } });
                     if (subscription?.providerSubscriptionId && !['cancelled', 'expired'].includes(subscription.status)) {
                         await lease.assertOwned();
@@ -1530,6 +1765,12 @@ export class OffboardingService {
                           WHERE id = $1::uuid`,
                         tenantId,
                     );
+                } else {
+                    // El teardown ya se había dado por terminado en un intento
+                    // anterior. Lo varado entonces sigue varado ahora: el resumen
+                    // tiene que decirlo igual, o el operador cierra el caso
+                    // creyendo que no quedó nada enganchado en el proveedor.
+                    strandedExternalTeardown = this.strandedTeardownsFromProgress(externalProgress);
                 }
 
                 // All remaining irreversible local cleanup precedes the public
@@ -1590,6 +1831,7 @@ export class OffboardingService {
                 mediaFilesRemoved: mediaResult.removed,
                 usersRevoked: userIds.length,
                 strandedMandate,
+                strandedExternalTeardown,
             };
         } catch (error: any) {
             // Nothing was mutated: the tenant is still whole, so the fence must

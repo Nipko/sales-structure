@@ -83,7 +83,7 @@ describe('OffboardingService purge saga', () => {
         jest.spyOn(service as any, 'fenceQueuesForPurge')
             .mockImplementation(async () => { order.push('queue-fence'); return releaseFence; });
         jest.spyOn(service as any, 'executePurgeExternalPlan')
-            .mockImplementation(async () => { order.push('external'); });
+            .mockImplementation(async () => { order.push('external'); return []; });
         jest.spyOn(service as any, 'cleanupPurgeRedis')
             .mockImplementation(async () => { order.push('redis-cleanup'); });
         jest.spyOn(service as any, 'assertPurgeAccessGate')
@@ -517,5 +517,146 @@ describe('OffboardingService purge saga', () => {
 
         fetchSpy.mockRestore();
         jest.useRealTimers();
+    });
+});
+
+describe('OffboardingService provider teardown', () => {
+    const tenantId = '11111111-1111-4111-8111-111111111111';
+
+    function makeService() {
+        const queue = {} as any;
+        const prisma: any = { $executeRawUnsafe: jest.fn().mockResolvedValue(1) };
+        const service = new OffboardingService(
+            prisma, {} as any, {} as any, {} as any, {} as any,
+            queue, queue, queue, queue, queue, queue,
+            queue, queue, queue, queue, queue, queue, queue,
+        );
+        jest.spyOn(service as any, 'decryptToken').mockReturnValue('plain-token');
+        return { service, prisma };
+    }
+
+    function whatsappPlan() {
+        return {
+            version: 1 as const,
+            capturedAt: '2026-09-15T00:00:00.000Z',
+            channels: [{
+                channelType: 'whatsapp',
+                accountId: '1098548256684442',
+                wabaId: '1504413688085945',
+                encryptedCredential: 'iv:tag:cipher',
+            }],
+            googleOAuthTokens: [],
+        };
+    }
+
+    function respond(status: number, body: string) {
+        return { status, text: async () => body } as any;
+    }
+
+    afterEach(() => jest.restoreAllMocks());
+
+    /**
+     * El caso que dejó un tenant real imposible de borrar: Graph API no contesta
+     * 404 cuando el objeto ya no está o el token no lo alcanza — contesta 400.
+     */
+    it('records a terminal Meta error as stranded instead of blocking the purge forever', async () => {
+        const { service } = makeService();
+        jest.spyOn(service as any, 'fetchWithDeadline').mockResolvedValue(respond(400, JSON.stringify({
+            error: {
+                message: "Unsupported delete request. Object with ID '1504413688085945' does not exist, "
+                    + 'cannot be loaded due to missing permissions, or does not support this operation.',
+                type: 'GraphMethodException',
+                code: 100,
+                error_subcode: 33,
+            },
+        })));
+        const recorded: any[] = [];
+
+        const stranded = await (service as any).executePurgeExternalPlan(
+            tenantId, whatsappPlan(), {},
+            async (effect: string, entry: any) => { recorded.push([effect, entry]); },
+        );
+
+        expect(stranded).toHaveLength(1);
+        expect(stranded[0]).toMatchObject({ channelType: 'whatsapp', accountId: '1098548256684442' });
+        // El motivo real del proveedor, no un "HTTP 400" que no dice nada.
+        expect(stranded[0].reason).toContain('code 100/33');
+        expect(recorded).toEqual([['whatsapp:1098548256684442', expect.objectContaining({ outcome: 'stranded' })]]);
+    });
+
+    it('keeps failing when the provider failure is transient, so a retry is a real retry', async () => {
+        const { service } = makeService();
+        jest.spyOn(service as any, 'fetchWithDeadline').mockResolvedValue(respond(503, 'upstream unavailable'));
+        const recorded: any[] = [];
+
+        await expect((service as any).executePurgeExternalPlan(
+            tenantId, whatsappPlan(), {},
+            async (effect: string, entry: any) => { recorded.push([effect, entry]); },
+        )).rejects.toThrow('External teardown incomplete');
+        // Nada se marca: si se marcara, el reintento saltearía una desconexión
+        // que nunca ocurrió y la daría por hecha.
+        expect(recorded).toEqual([]);
+    });
+
+    it('never repeats an effect a previous attempt already resolved', async () => {
+        const { service } = makeService();
+        const fetchSpy = jest.spyOn(service as any, 'fetchWithDeadline');
+        const plan = {
+            ...whatsappPlan(),
+            channels: [
+                ...whatsappPlan().channels,
+                {
+                    channelType: 'instagram',
+                    accountId: 'ig-1',
+                    encryptedCredential: 'iv:tag:cipher',
+                },
+            ],
+        };
+
+        const stranded = await (service as any).executePurgeExternalPlan(
+            tenantId, plan,
+            {
+                'whatsapp:1098548256684442': { outcome: 'stranded', reason: 'HTTP 400 · code 100/33' },
+                // Revocar el permiso de Instagram invalida el token con el que se
+                // revoca: repetirlo falla para siempre y traba el borrado.
+                'instagram:ig-1': { outcome: 'detached', reason: 'HTTP 200' },
+            },
+            async () => { /* nada nuevo que marcar */ },
+        );
+
+        expect(fetchSpy).not.toHaveBeenCalled();
+        expect(stranded).toEqual([expect.objectContaining({ channelType: 'whatsapp' })]);
+    });
+
+    it('treats a confirmed detach and a withdrawn authorization as done', async () => {
+        const { service } = makeService();
+        const fetchSpy = jest.spyOn(service as any, 'fetchWithDeadline')
+            .mockResolvedValueOnce(respond(200, '{"success":true}'))
+            .mockResolvedValueOnce(respond(400, JSON.stringify({
+                error: { message: 'User has not authorized application', type: 'OAuthException', code: 190, error_subcode: 458 },
+            })));
+
+        const first = await (service as any).executePurgeExternalPlan(tenantId, whatsappPlan(), {}, async () => {});
+        const second = await (service as any).executePurgeExternalPlan(tenantId, whatsappPlan(), {}, async () => {});
+
+        expect(fetchSpy).toHaveBeenCalledTimes(2);
+        expect(first).toEqual([]);
+        expect(second).toEqual([]);
+    });
+
+    it('does not read a stale plan as proof: a provider that answers ok:false is not detached', async () => {
+        const { service } = makeService();
+        jest.spyOn(service as any, 'fetchWithDeadline')
+            .mockResolvedValue(respond(200, '{"ok":false,"error_code":401,"description":"Unauthorized"}'));
+        const plan = {
+            version: 1 as const,
+            capturedAt: '2026-09-15T00:00:00.000Z',
+            channels: [{ channelType: 'telegram', accountId: '@bot', encryptedCredential: 'iv:tag:cipher' }],
+            googleOAuthTokens: [],
+        };
+
+        const stranded = await (service as any).executePurgeExternalPlan(tenantId, plan, {}, async () => {});
+
+        expect(stranded).toEqual([expect.objectContaining({ channelType: 'telegram', accountId: '@bot' })]);
     });
 });

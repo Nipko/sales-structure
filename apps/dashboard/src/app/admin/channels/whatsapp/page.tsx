@@ -142,7 +142,11 @@ export default function WhatsAppSetupPage() {
     const loadSpend = async () => {
         const [summaryRes, readinessRes, awaitingRes, pausesRes, consumptionRes, policyRes] = await Promise.all([
             api.fetch("/whatsapp/spend/summary?days=30").catch(() => null),
-            api.fetch("/whatsapp/connection/billing-readiness").catch(() => null),
+            // Vive en el controlador de la conexión (`channels/whatsapp`), no en
+            // el de gasto (`whatsapp/spend`). Sin el prefijo daba 404, y el
+            // `.catch` lo convertía en una lista vacía: la pantalla no avisaba
+            // nada sobre números que Meta no puede tarifar.
+            api.fetch("/channels/whatsapp/connection/billing-readiness").catch(() => null),
             // Effects whose delivery nobody can confirm. Read separately and
             // failing separately: money waiting on a person is worth showing
             // even when the summary could not be read, and vice versa.

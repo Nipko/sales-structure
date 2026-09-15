@@ -5,6 +5,7 @@ import { resolveMirroredDealStatus } from '../pipeline/pipeline-outcome.util';
 import { ensurePrimaryPipeline } from '../../common/utils/primary-pipeline.util';
 
 const TENANT_PUBLIC_PURGE_ORDER = [
+    'llm_spend_reservations', 'evaluation_knowledge_usages',
     'chat_identity_challenges', 'customer_portal_access_challenges', 'platform_notification_outbox', 'push_subscriptions',
     'feature_request_subscribers', 'feature_request_comments',
     'feature_request_votes', 'feature_requests', 'webhook_delivery_outbox', 'webhook_subscriptions',
@@ -29,10 +30,12 @@ const TENANT_PUBLIC_PURGE_ORDER = [
     'tenant_invitations', 'channel_accounts', 'whatsapp_onboardings',
     'whatsapp_credentials', 'tenant_financial_snapshots', 'storage_snapshots',
     'sms_package_orders', 'sms_credit_ledger', 'sms_credit_balances',
-    // Legacy public-schema tables created by the 002/003 seed migrations.
-    // These predate the per-tenant schema split and still live in public with
-    // a tenant_id column; they must be purged before the tenant row is deleted.
-    'canned_responses', 'automation_rules', 'pipeline_stages',
+    // Legacy tables from 002/003 seed migrations and v4_* bootstrap scripts.
+    // wait_jobs references automation_rules (FK), so it must be deleted first.
+    'daily_metrics', 'commercial_offers', 'knowledge_resources',
+    'carla_personality_profiles', 'carla_prompt_templates',
+    'legal_text_versions', 'consent_records', 'opt_out_records', 'deletion_requests',
+    'canned_responses', 'wait_jobs', 'automation_rules', 'pipeline_stages',
     'crm_connections', 'api_keys', 'audit_logs', 'users',
 ] as const;
 

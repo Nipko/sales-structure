@@ -27,6 +27,11 @@ const url = process.env.LEGACY_SCHEMA_TEST_URL;
 const suite = url ? describe : describe.skip;
 
 suite('reparar el schema de un tenant legacy', () => {
+    // Cada caso aplica la plantilla ENTERA del schema de tenant, unas cien
+    // sentencias DDL. Sobre un disco real eso pasa de los 5s por defecto de
+    // jest; lo que se ve entonces no es el timeout sino su consecuencia —una
+    // transacción huérfana—, que manda a buscar el problema donde no está.
+    jest.setTimeout(120_000);
     let db: PrismaClient;
     let service: PrismaService;
     const schemas: string[] = [];

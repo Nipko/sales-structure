@@ -44,6 +44,25 @@ const TENANT_PUBLIC_PURGE_CLASSIFIED = new Set<string>([
     'fiscal_invoices',
 ]);
 
+/**
+ * Los schemas de tenant que un barrido de arranque debe recorrer.
+ *
+ * Excluye las réplicas efímeras de "Probar agente" (`tenant_eval_<8hex>_<24hex>`):
+ * se crean con TTL, son copias PARCIALES del schema de origen y se borran al
+ * terminar la corrida. Recorrerlas no arregla nada —casi toda sentencia da
+ * 42P01— y llenaba cada arranque de errores tragados, que es lo que hacía que
+ * una migración que NO llegó a un cliente se viera igual que una prueba. Peor
+ * en el barrido que ESCRIBE datos: sincronizar oportunidades dentro de una
+ * réplica es trabajo sobre algo que está por desaparecer.
+ *
+ * El resto del código ya las excluye (el outbox de despacho las rechaza, el
+ * motor de alojamiento las trata como sólo-lectura, el scope de usuarios exige
+ * un lease); estos dos barridos eran los únicos que leían el catálogo a ciegas.
+ */
+const SWEEPABLE_TENANT_SCHEMAS = `SELECT schema_name FROM information_schema.schemata
+    WHERE schema_name LIKE 'tenant_%'
+      AND schema_name !~ '^tenant_eval_[a-f0-9]{8}_[a-f0-9]{24}$'`;
+
 const NATIVE_EVIDENCE_TABLES = [
     'appointments',
     'tour_bookings',
@@ -687,7 +706,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     private async ensureVarcharColumnsWiden(): Promise<void> {
         try {
             const schemas = await (super.$queryRawUnsafe as any)(
-                `SELECT schema_name FROM information_schema.schemata WHERE schema_name LIKE 'tenant_%'`
+                SWEEPABLE_TENANT_SCHEMAS
             );
 
             if (!schemas || schemas.length === 0) {
@@ -1004,7 +1023,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     private async syncHistoricalOpportunitiesToDeals(): Promise<void> {
         try {
             const schemas = await (super.$queryRawUnsafe as any)(
-                `SELECT schema_name FROM information_schema.schemata WHERE schema_name LIKE 'tenant_%'`
+                SWEEPABLE_TENANT_SCHEMAS
             );
 
             if (!schemas || schemas.length === 0) return;

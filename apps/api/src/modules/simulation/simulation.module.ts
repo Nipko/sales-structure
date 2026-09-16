@@ -18,7 +18,8 @@ import { WatchtowerService } from './watchtower.service';
 import { WatchtowerController } from './watchtower.controller';
 import { QUALITY_QUEUE } from '../quality/quality.service';
 import { AGENT_RELEASE_QUEUE } from './agent-release-contract';
-import { AgentReleaseService } from './agent-release.service';
+import { AgentReleaseService } from './agent-release.service';
+import { EvalNamespaceReaperService } from './eval-namespace-reaper.service';
 import { AgentReleaseController } from './agent-release.controller';
 import { AgentReleaseProcessor } from './agent-release.processor';
 import { CERTIFICATION_QUEUE } from './certification-contract';
@@ -51,7 +52,7 @@ import { BenchmarkProcessor } from './benchmark.processor';
         BullModule.registerQueue({ name: CERTIFICATION_QUEUE }),
         BullModule.registerQueue({ name: BENCHMARK_QUEUE }),
     ],
-    providers: [SimulationService, SimulationProcessor, EvalService, EvalAutorunListener, EvalAutorunStateService, EvalGateProcessor, WatchtowerService,AgentReleaseService,AgentReleaseProcessor,CertificationService,CertificationProcessor,BenchmarkService,BenchmarkProcessor],
+    providers: [SimulationService, SimulationProcessor, EvalService, EvalAutorunListener, EvalAutorunStateService, EvalGateProcessor, WatchtowerService,AgentReleaseService,AgentReleaseProcessor,CertificationService,CertificationProcessor,BenchmarkService,BenchmarkProcessor,EvalNamespaceReaperService],
     controllers: [SimulationController, EvalController, WatchtowerController,AgentReleaseController,CertificationController,BenchmarkController],
     exports: [SimulationService, EvalService, CertificationService, BenchmarkService],
 })

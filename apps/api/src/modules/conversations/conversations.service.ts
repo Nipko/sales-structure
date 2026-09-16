@@ -372,6 +372,34 @@ const PARTIAL_SUCCESS_MSG: Record<string, string> = {
 const partialSuccessText = (lang?: string) =>
     PARTIAL_SUCCESS_MSG[(lang || 'es').slice(0, 2).toLowerCase()] || PARTIAL_SUCCESS_MSG.es;
 
+// El presupuesto de modelo del mes se agotó. El error genérico invita a repetir
+// —y cada repetición vuelve a fallar y suma un intento fallido más— para un
+// corte que dura hasta el 1 del mes que viene. Se dice lo que pasa y se pasa a
+// una persona, que es la única salida real para el cliente.
+const BUDGET_EXHAUSTED_MSG: Record<string, string> = {
+    es: 'Ahora mismo no puedo seguir atendiéndote por este medio automático. No lo repitas, que no va a cambiar: aviso a una persona del equipo para que siga contigo.',
+    en: 'I can’t keep helping you automatically right now. Please don’t resend it — it won’t change: I’m letting someone from the team know so they can take over.',
+    pt: 'Agora não consigo continuar te atendendo por este meio automático. Não repita, não vai mudar: estou avisando alguém da equipe para continuar com você.',
+    fr: "Je ne peux pas continuer à vous répondre automatiquement pour le moment. Ne renvoyez pas votre message, cela ne changera rien : je préviens quelqu'un de l'équipe pour prendre le relais.",
+};
+const budgetExhaustedText = (lang?: string) =>
+    BUDGET_EXHAUSTED_MSG[(lang || 'es').slice(0, 2).toLowerCase()] || BUDGET_EXHAUSTED_MSG.es;
+
+/**
+ * ¿El turno murió porque el tenant agotó su techo de gasto de modelo?
+ *
+ * Se reconoce por el cuerpo de la excepción y no importando la clase, para no
+ * atar el pipeline de conversación al módulo del router. `LlmBudgetExceeded` es
+ * una `HttpException` con `{ error: 'llm_budget_exceeded' }`, que Nest expone
+ * tanto en `.response` como por `getResponse()`; el router la relanza tal cual.
+ */
+const isLlmBudgetExhausted = (error: any): boolean => {
+    if (!error) return false;
+    const body = typeof error.getResponse === 'function' ? error.getResponse() : error.response;
+    if (body && typeof body === 'object' && (body as any).error === 'llm_budget_exceeded') return true;
+    return typeof error.message === 'string' && error.message.includes('llm_budget_exceeded');
+};
+
 // Deterministic replies to appointment reminder / attendance buttons (not persona
 // copy) — i18n'd here like HANDOFF_MSG. Keyed by 2-letter language; falls back to es.
 const APPOINTMENT_REPLIES: Record<string, {
@@ -4709,6 +4737,35 @@ export class ConversationsService {
                 await observeMission({kind:'error',state:'error_after_commit'});
                 try { if (session) session.trace.steps.push(turnTrace.toEvent()); else this.eventEmitter.emit('llm.turn.steps', turnTrace.toEvent()); } catch { /* ignore */ }
                 return partialSuccessText(userLanguage);
+            }
+
+            // El presupuesto de modelo del mes se agotó. No es un tropiezo del
+            // turno: es un corte que dura hasta el mes que viene, así que
+            // pedirle al cliente que repita es mentirle y, además, cada repetición
+            // vuelve a fallar y le suma un intento fallido. Se le dice la verdad
+            // y se lo pasa a una persona.
+            if (isLlmBudgetExhausted(e)) {
+                this.logger.error(
+                    `[Pipeline] El tenant ${tenantId} agotó su techo de gasto de modelo: `
+                    + `la conversación ${conversation.id} pasa a una persona`,
+                );
+                this.recordAgentSignal(tenantId, 'llm_budget_exhausted', session);
+                turnTrace.add('decision', 'llm_budget_exhausted', { error: e?.message });
+                await observeMission({ kind: 'error', state: 'llm_budget_exhausted' });
+                try {
+                    this.eventEmitter.emit('llm.budget.exhausted', {
+                        tenantId, conversationId: conversation.id, at: new Date(),
+                    });
+                } catch { /* avisar no puede romper el turno */ }
+                if (!session) {
+                    await this.handoffService
+                        .executeHandoff(tenantId, conversation.id, msg, 'llm_budget_exhausted')
+                        .catch((handoffError: any) => this.logger.error(
+                            `[Pipeline] No se pudo escalar tras agotarse el presupuesto: ${handoffError?.message}`,
+                        ));
+                }
+                try { if (session) session.trace.steps.push(turnTrace.toEvent()); else this.eventEmitter.emit('llm.turn.steps', turnTrace.toEvent()); } catch { /* ignore */ }
+                return budgetExhaustedText(userLanguage);
             }
 
             // Increment failed attempts for handoff threshold

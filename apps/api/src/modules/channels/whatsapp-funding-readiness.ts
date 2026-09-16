@@ -27,6 +27,19 @@
  *   · a 200 that did not include the field because nobody requested it, or
  *     because this token cannot see it, is `unknown` too. An absent key in a
  *     response you did not ask the right question of proves nothing;
+ *
+ *     KNOWN GAP, said out loud rather than left to be discovered: Graph tends to
+ *     OMIT fields that have no value instead of emitting them as `null`. If a
+ *     WABA with no payment method answers `{"id":"..."}` and nothing else, this
+ *     function reports `unknown` — which means the one outcome the module was
+ *     built to produce, "you have no card, go add one", may never be reached in
+ *     practice. It is left this way on purpose: the same empty body is also what
+ *     a token without billing permission gets, and the two are indistinguishable
+ *     from here. Closing it needs evidence from a real account with and without
+ *     funding under a Tech Provider token — not a guess encoded as a rule. Until
+ *     then the screen says "we could not establish it", which is true, and the
+ *     deadline copy tells the owner to add the method regardless;
+
  *   · `attached` is not solvency. A card can be attached and declined, expired
  *     or over its limit, and Meta will still say it is attached. So `attached`
  *     is never treated as "this will work", only as "the thing that is missing
@@ -208,8 +221,13 @@ export function readFundingFromGraph(answer: GraphAccountAnswer, at: Date): Fund
     return Object.freeze({
         state: 'absent' as const, source: 'graph_account_read' as const, checkedAt,
         actionable: true,
+        // La franquicia de 1.000 entregas es una TARIFA, no un plazo de gracia.
+        // `docs/whatsapp-meta-pricing-2026-10.md` prohíbe explícitamente decir
+        // que se puede empezar sin tarjeta hasta agotarla: esa excepción no está
+        // documentada y el 1-oct, sin método de pago, las entregas se detienen.
         detail: detailOf('absent', 'la cuenta respondió correctamente y no tiene método de pago. '
-            + 'Desde el 1 de octubre, configura la financiación antes de agotar la franquicia de servicio; los envíos cobrables necesitan financiación'),
+            + 'Agrégalo en la WABA antes del 30 de septiembre de 2026: el 1 de octubre, sin método de pago, '
+            + 'Meta deja de entregar los mensajes de servicio'),
     });
 }
 

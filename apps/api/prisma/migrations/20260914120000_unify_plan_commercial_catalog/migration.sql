@@ -3,7 +3,14 @@
 INSERT INTO public.audit_logs (id, action, resource, details, created_at)
 SELECT gen_random_uuid(), 'billing_catalog_unified', 'billing-plans/' || slug,
        jsonb_build_object('before', to_jsonb(p), 'revision', '2026-09-14'), clock_timestamp()
-FROM public.billing_plans p WHERE slug IN ('emprendedor','starter','pro','enterprise');
+FROM public.billing_plans p WHERE slug IN ('emprendedor','starter','pro','enterprise')
+  -- Una sola vez. Un deploy que reintenta tras un corte de red volvería a
+  -- escribir la "antes-imagen" capturando el estado YA CAMBIADO, y el registro
+  -- diría que los precios nuevos eran los viejos.
+  AND NOT EXISTS (SELECT 1 FROM public.audit_logs a
+    WHERE a.action = 'billing_catalog_unified'
+      AND a.resource = 'billing-plans/' || p.slug
+      AND a.details->>'revision' = '2026-09-14');
 
 UPDATE public.billing_plans p SET
  price_usd_cents = v.usd, max_ai_messages = v.messages,
@@ -31,8 +38,14 @@ WHERE jsonb_typeof(features->'channels')='array' AND (features->'channels') ? 'e
 INSERT INTO public.audit_logs (id,tenant_id,action,resource,details,created_at)
 SELECT gen_random_uuid(),id,'commercial_quota_overrides_reset','tenants/' || id::text,
  jsonb_build_object('before',settings->'quotaOverrides'),clock_timestamp()
-FROM public.tenants WHERE plan IN ('emprendedor','starter','pro','enterprise')
- AND jsonb_typeof(settings->'quotaOverrides')='object';
+FROM public.tenants t WHERE plan IN ('emprendedor','starter','pro','enterprise')
+ AND jsonb_typeof(settings->'quotaOverrides')='object'
+ -- Idem: al reintentar, `quotaOverrides` sigue siendo un objeto (con las claves
+ -- ya quitadas), así que sin esto la segunda corrida guardaría como "antes" el
+ -- después.
+ AND NOT EXISTS (SELECT 1 FROM public.audit_logs a
+   WHERE a.action = 'commercial_quota_overrides_reset'
+     AND a.resource = 'tenants/' || t.id::text);
 UPDATE public.tenants SET settings=jsonb_set(settings,'{quotaOverrides}',
  (settings->'quotaOverrides') - 'maxAiMessages' - 'llmCostBudgetUsdCents' - 'llmHardBudgetUsdCents')
 WHERE plan IN ('emprendedor','starter','pro','enterprise') AND jsonb_typeof(settings->'quotaOverrides')='object';

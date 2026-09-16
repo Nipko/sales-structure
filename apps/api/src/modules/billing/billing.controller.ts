@@ -10,6 +10,7 @@ import type { Response } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
 import { BillingService } from './billing.service';
 import { InvoiceGeneratorService } from './invoice-generator.service';
+import { resolveNextPeriodPrice } from './recurring/catalog-renewal';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { MediaThrottleService } from '../media-processing/media-throttle.service';
 import { RequiresVerifiedEmail } from '../../common/decorators/requires-verified-email.decorator';
@@ -191,11 +192,27 @@ export class BillingController {
                  */
                 nextCharge: (sub as any).engine === 'internal' && (sub as any).nextChargeAt
                     && (sub as any).chargeAmountCents
-                    ? {
-                        at: (sub as any).nextChargeAt,
-                        amountCents: (sub as any).chargeAmountCents,
-                        currency: (sub as any).chargeCurrency,
-                    }
+                    ? (() => {
+                        const frozen = {
+                            amountCents: (sub as any).chargeAmountCents,
+                            currency: (sub as any).chargeCurrency,
+                        };
+                        // El importe que se va a cobrar, no el del período que
+                        // ya pasó: la renovación repreciará contra el catálogo.
+                        const next = resolveNextPeriodPrice(
+                            (sub as any).plan, tenant?.billingCountry,
+                            ((sub as any).metadata?.billingCycle === 'annual') ? 'annual' : 'monthly',
+                            frozen,
+                        );
+                        return {
+                            at: (sub as any).nextChargeAt,
+                            amountCents: next.amountCents,
+                            currency: next.currency,
+                            // Para que el panel pueda decir "pasa de X a Y".
+                            frozenAmountCents: frozen.amountCents,
+                            changesAtRenewal: next.amountCents !== frozen.amountCents,
+                        };
+                    })()
                     : null,
                 payments: recentPayments,
             },

@@ -387,6 +387,23 @@ jobs:
           npx prisma generate
           npx prisma migrate deploy
 
+      # El guardián de gasto puede callar al agente de un cliente que paga, y
+      # su única suite estaba condicionada a una variable que no existía en
+      # ningún workflow: las siete pruebas que verifican la serialización por
+      # tenant, el no-doble-cobro y el rechazo ANTES de invocar al proveedor
+      # nunca se habían ejecutado. Se le da su propia base desechable acá.
+      - name: LLM spend guard against real PostgreSQL
+        env:
+          PGPASSWORD: ci
+          PLAN_ECONOMICS_TEST_URL: postgresql://parallext:ci@localhost:5432/parallly_plan_economics_eval_isolation
+        run: |
+          psql -h localhost -U parallext -d postgres             -c 'CREATE DATABASE parallly_plan_economics_eval_isolation'
+          cd apps/api
+          DATABASE_URL="$PLAN_ECONOMICS_TEST_URL" DIRECT_DATABASE_URL="$PLAN_ECONOMICS_TEST_URL"             npx prisma migrate deploy
+          DATABASE_URL="$PLAN_ECONOMICS_TEST_URL" DIRECT_DATABASE_URL="$PLAN_ECONOMICS_TEST_URL"             node prisma/seed-billing-plans.js
+          cd ..
+          npx jest --config apps/api/jest.config.js --runInBand --forceExit             apps/api/src/modules/ai/router/llm-spend-guard.postgres.spec.ts
+
       - name: Tenant schema migration compatibility smoke test
         run: cd apps/api && npm run test:migrate:tenants
 

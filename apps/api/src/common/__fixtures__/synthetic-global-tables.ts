@@ -66,6 +66,22 @@ const BILLING_PLAN_COLUMNS: ReadonlyArray<[string, string]> = [
     ['created_at', 'TIMESTAMPTZ DEFAULT NOW()'], ['updated_at', 'TIMESTAMPTZ DEFAULT NOW()'],
 ];
 
+/**
+ * `public.audit_logs`, con los tipos del `20260301000000_init`: `id` UUID con
+ * `gen_random_uuid()`, pero `user_id` y `tenant_id` TEXT — no UUID. Esa asimetría
+ * es real y ya mordió antes al comparar columnas entre tablas.
+ *
+ * Está acá porque una migración de catálogo comercial guarda su antes-imagen
+ * en esta tabla antes de tocar precios, y una base sintética sin ella hacía
+ * fallar la suite de migraciones bajo carga con `relation "public.audit_logs"
+ * does not exist` — la migración era correcta, el andamio estaba incompleto.
+ */
+const AUDIT_LOG_COLUMNS: ReadonlyArray<[string, string]> = [
+    ['user_id', 'TEXT'], ['tenant_id', 'TEXT'], ['action', 'TEXT'],
+    ['resource', "TEXT DEFAULT ''"], ['details', "JSONB DEFAULT '{}'::jsonb"],
+    ['ip', 'TEXT'], ['created_at', 'TIMESTAMPTZ DEFAULT NOW()'],
+];
+
 const BILLING_SUBSCRIPTION_COLUMNS: ReadonlyArray<[string, string]> = [
     ['tenant_id', 'UUID'], ['plan_id', 'UUID'], ['status', 'TEXT'], ['provider', 'TEXT'],
     ['provider_subscription_id', 'TEXT'], ['provider_customer_id', 'TEXT'],
@@ -252,6 +268,7 @@ export async function ensureSyntheticGlobalTables(exec: Exec): Promise<void> {
         { generatedId: true });
     await ensure(exec, 'chat_identity_challenges', CHAT_IDENTITY_CHALLENGE_COLUMNS,
         { generatedId: true });
+    await ensure(exec, 'audit_logs', AUDIT_LOG_COLUMNS, { generatedId: true });
     await ensure(exec, 'billing_plans', BILLING_PLAN_COLUMNS, { generatedId: true });
     await exec('CREATE UNIQUE INDEX IF NOT EXISTS synthetic_billing_plans_slug_key ON public.billing_plans(slug)');
     await ensure(exec, 'billing_subscriptions', BILLING_SUBSCRIPTION_COLUMNS, { generatedId: true });

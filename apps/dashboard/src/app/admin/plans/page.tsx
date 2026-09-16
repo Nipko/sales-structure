@@ -11,6 +11,7 @@ import { HelpPanel } from "@/components/ui/help-panel";
 import { TabNav } from "@/components/ui/tab-nav";
 import { PlanSpendOverview } from "./_components/PlanSpendOverview";
 import { PlanMoneyInput } from "./_components/PlanMoneyInput";
+import { PlanQuotaInput } from "./_components/PlanQuotaInput";
 import { ProvidersTab } from "./_components/ProvidersTab";
 
 type TabId = "plans" | "providers";
@@ -187,7 +188,15 @@ export default function PlansPage() {
     const [editSlug, setEditSlug] = useState<string | null>(null);
     const [editBuffer, setEditBuffer] = useState<Plan | null>(null);
     const [invalidMoney, setInvalidMoney] = useState<Record<string, boolean>>({});
-    const moneyValidity = (key: string, valid: boolean) => setInvalidMoney(previous => ({ ...previous, [key]: !valid }));
+    const fieldValidity = (key: string, valid: boolean) => setInvalidMoney(previous => ({ ...previous, [key]: !valid }));
+    // Las etiquetas de los campos de nivel superior viven sueltas bajo
+    // `plansPage`, no bajo una sub-clave: se pide con reserva para que un campo
+    // nuevo sin traducir no rompa la pantalla ni se quede sin nombre accesible.
+    const planFieldLabel = (key: string): string => {
+        try { const label = t(key as any); return label && label !== key ? label : key; }
+        catch { return key; }
+    };
+    const moneyValidity = fieldValidity;
     const [saving, setSaving] = useState(false);
     const [toast, setToast] = useState<{ type: "success" | "error"; msg: string } | null>(null);
     const [routing, setRouting] = useState<PaymentProvidersStatus["routing"] | null>(null);
@@ -283,8 +292,19 @@ export default function PlansPage() {
                 setToast({ type: (res as any).cacheInvalidationPending ? "error" : "success", msg: (res as any).cacheInvalidationPending ? t("cachePending") : `${t("saved")} — ${t("cacheInvalidated", { count: String((res as any).invalidatedTenants ?? 0) })}` });
                 cancelEdit();
                 load();
+            } else if (res.errorCode === "plan_edit_conflict") {
+                // Nest devuelve el objeto de la excepción tal cual, sin `message`,
+                // así que el código estable viaja en `errorCode` y `error` queda
+                // en "Error 409". Comparar contra `error` no acertaba nunca y el
+                // super_admin veía el 409 crudo.
+                setToast({ type: "error", msg: t("editConflict") });
+                // El buffer ya perdió: su `updatedAt` no es el vigente y
+                // reenviarlo volvería a chocar. Se descarta y se recarga con lo
+                // que guardó el otro administrador, para poder comparar.
+                cancelEdit();
+                load();
             } else {
-                setToast({ type: "error", msg: res.error === "plan_edit_conflict" ? t("editConflict") : (res.error || t("saveError")) });
+                setToast({ type: "error", msg: res.error || t("saveError") });
             }
         } catch {
             setToast({ type: "error", msg: t("saveError") });
@@ -300,7 +320,8 @@ export default function PlansPage() {
                 setToast({ type: "success", msg: t("reconcileDone", { scanned: String(res.data?.scanned ?? 0), drift: String(res.data?.drift ?? 0) }) });
                 load();
             } else {
-                setToast({ type: "error", msg: res.error === "plan_edit_conflict" ? t("editConflict") : (res.error || t("saveError")) });
+                // Reconciliar no edita un plan: aquí no hay conflicto de revisión.
+                setToast({ type: "error", msg: res.error || t("saveError") });
             }
         } catch {
             setToast({ type: "error", msg: t("saveError") });
@@ -439,12 +460,11 @@ export default function PlansPage() {
         const numVal = typeof val === "number" ? val : 0;
         if (!isEditing) return <span className="font-mono text-xs">{fmtNum(numVal)}</span>;
         return (
-            <input
-                type="number"
+            <PlanQuotaInput key={`${editSlug}:feature:${key}`} value={numVal}
+                label={tf(key)} errorLabel={t("invalidQuota")}
+                onValidity={valid => fieldValidity(`feature:${key}`, valid)}
                 className={inputCls}
-                value={numVal}
-                onChange={e => updateFeature(key, parseInt(e.target.value) || 0)}
-            />
+                onValue={value => updateFeature(key, value)} />
         );
     };
 
@@ -477,12 +497,11 @@ export default function PlansPage() {
             );
         }
         return (
-            <input
-                type="number"
+            <PlanQuotaInput key={`${editSlug}:top:${key}`} value={val as number}
+                label={planFieldLabel(key)} errorLabel={t("invalidQuota")}
+                onValidity={valid => fieldValidity(`top:${key}`, valid)}
                 className={inputCls}
-                value={val as number}
-                onChange={e => updateTopLevel(key, parseInt(e.target.value) || 0)}
-            />
+                onValue={value => updateTopLevel(key, value)} />
         );
     };
 

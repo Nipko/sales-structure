@@ -69,6 +69,13 @@ const FEATURE_OVERRIDES: { key: string; labelKey: string; source: "feature" | "r
     { key: "publicApiKeys", labelKey: "publicApiKeys", source: "feature" },
     { key: "publicApiRateLimit", labelKey: "publicApiRateLimit", source: "feature" },
     { key: "llmCostBudgetUsdCents", labelKey: "llmCostBudgetUsdCents", source: "feature" },
+    // El techo DURO: el guardián de gasto lo lee antes que el valor del plan y
+    // corta la IA cuando se alcanza. El backend ya aceptaba la excepción y la
+    // tabla de planes ya mostraba el valor resultante, pero la única pantalla
+    // que la escribe no ofrecía el campo — y la migración del catálogo único
+    // borró las que había. Sin esto no hay forma de darle aire a un tenant sin
+    // editarle el plan a toda su familia.
+    { key: "llmHardBudgetUsdCents", labelKey: "llmHardBudgetUsdCents", source: "feature" },
     { key: "priority", labelKey: "rateLimitsPriority", source: "rate" },
     { key: "maxPendingJobs", labelKey: "rateLimitsMaxPendingJobs", source: "rate" },
 ];

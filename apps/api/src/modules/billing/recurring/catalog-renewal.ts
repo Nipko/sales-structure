@@ -1,6 +1,35 @@
 import { resolveLocalPlanPrice } from '../plan-local-price.util';
 import { wompiTransactionLimitViolation } from './renewal-scheduler.service';
 
+/** Los cuatro planes estándar renuevan al catálogo; un contrato custom conserva su precio acordado. */
+export const CATALOGUE_PRICED_PLANS = ['emprendedor', 'starter', 'pro', 'enterprise'];
+
+/**
+ * El importe del PRÓXIMO período, con la misma regla que usa la renovación.
+ *
+ * Existe para que el panel del cliente pueda mostrar lo que realmente se le va a
+ * cobrar. `billing_subscriptions.chargeAmountCents` es el importe CONGELADO del
+ * período que ya pasó, y el repricing ocurre dentro del scheduler, que sólo toma
+ * suscripciones a 15 minutos del cobro: entre que cambia el catálogo y ese
+ * momento, el cliente veía un importe y se le iba a cobrar otro.
+ *
+ * Devuelve el congelado cuando el catálogo no puede resolverse o cambiaría de
+ * moneda — ahí la renovación se niega, así que prometer el precio nuevo sería
+ * otra mentira distinta.
+ */
+export function resolveNextPeriodPrice(
+    plan: { slug?: string; priceLocalOverrides?: any } | null | undefined,
+    billingCountry: string | null | undefined,
+    cycle: 'monthly' | 'annual',
+    frozen: { amountCents?: number | null; currency?: string | null },
+): { amountCents?: number | null; currency?: string | null } {
+    if (!plan?.slug || !CATALOGUE_PRICED_PLANS.includes(plan.slug)) return frozen;
+    const price = resolveLocalPlanPrice(plan.priceLocalOverrides, billingCountry as any, cycle);
+    if (!price?.amountCents || !price.currency) return frozen;
+    if (price.currency !== frozen.currency) return frozen;
+    return price;
+}
+
 /** Freeze a catalogue price and its first attempt together; never reprice an existing attempt. */
 export async function claimCatalogRenewal(prisma: any, engine: any, input: any) {
     return prisma.$transaction(async (tx: any) => {

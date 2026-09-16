@@ -1996,7 +1996,7 @@ export class AuthService {
             // devuelve el nombre físico canónico (con UUID) y lo persiste; nunca
             // seguimos usando el placeholder basado en slug.
             await assertLockOwned();
-            const effectiveSchemaName = await this.prisma.createTenantSchema(tenant.schemaName);
+            const effectiveSchemaName = await this.prisma.createTenantSchema(tenant.schemaName, { intent: 'repair' });
             await assertLockOwned();
             await this.redis.del(`tenant:${existingTenantId}:schema`);
             this.logger.log(`[Onboarding] Schema verificado/reparado: ${effectiveSchemaName}`);

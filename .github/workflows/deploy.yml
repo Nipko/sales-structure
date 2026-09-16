@@ -400,6 +400,9 @@ jobs:
           # `_eval_isolation` y contiene `plan_economics`, que es lo que
           # cada una exige para aceptar que es desechable y local.
           PARALLLY_ISOLATION_TEST_URL: postgresql://parallext:ci@localhost:5432/parallly_plan_economics_eval_isolation
+          # Y la del repunte de schema, que necesita la tabla `tenants` REAL
+          # (la sintética del fixture por worker no tiene ni `slug`).
+          LEGACY_SCHEMA_TEST_URL: postgresql://parallext:ci@localhost:5432/parallly_plan_economics_eval_isolation
         run: |
           psql -h localhost -U parallext -d postgres             -c 'CREATE DATABASE parallly_plan_economics_eval_isolation'
           cd apps/api
@@ -410,7 +413,8 @@ jobs:
           cd "$GITHUB_WORKSPACE"
           npx jest --config apps/api/jest.config.js --runInBand --forceExit \
             apps/api/src/modules/ai/router/llm-spend-guard.postgres.spec.ts \
-            apps/api/src/modules/simulation/eval-namespace-reaper.postgres.spec.ts
+            apps/api/src/modules/simulation/eval-namespace-reaper.postgres.spec.ts \
+            apps/api/src/modules/prisma/legacy-schema-repoint.postgres.spec.ts
 
       - name: Tenant schema migration compatibility smoke test
         run: cd apps/api && npm run test:migrate:tenants

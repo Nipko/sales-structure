@@ -101,6 +101,16 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
                     this.logger.error(`Column widening failed (non-blocking): ${err.message}`);
                 });
 
+                // Un schema de tenant que nadie reclama no se ve desde ningún
+                // lado del producto: ni en la lista de empresas, ni en su
+                // ficha, ni en la purga —que sólo borra el schema declarado y
+                // dejaría éste con los datos adentro—. Se dice en cada arranque
+                // para que deje de depender de que a alguien se le ocurra
+                // buscarlo. No bloquea: es un informe, no un gate.
+                await this.reportOrphanTenantSchemas().catch((err) => {
+                    this.logger.error(`Orphan tenant schema inventory failed (non-blocking): ${err.message}`);
+                });
+
                 // Existing tenant schemas predate exact native-evidence
                 // ownership. Migrate them without inventing contact-only
                 // backfills; unresolved historical rows deliberately stay NULL.
@@ -227,7 +237,10 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
      * suffixed by the tenant UUID. A future tenant may reuse the human slug, but
      * can never be pointed at the previous tenant's physical schema.
      */
-    async createTenantSchema(requestedSchemaName: string): Promise<string> {
+    async createTenantSchema(
+        requestedSchemaName: string,
+        options: { intent?: 'provision' | 'repair' } = {},
+    ): Promise<string> {
         this.validateSchemaName(requestedSchemaName);
 
         const tenant = await this.tenant.findUnique({
@@ -240,7 +253,37 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
             );
         }
 
-        const schemaName = this.buildUniqueTenantSchemaName(requestedSchemaName, tenant.id);
+        const canonicalSchemaName = this.buildUniqueTenantSchemaName(requestedSchemaName, tenant.id);
+
+        /**
+         * Un tenant que YA vive en un schema físico con tablas no se muda acá.
+         *
+         * Este método también se llama para "verificar/reparar" el schema de un
+         * tenant existente (auth.service, cierre de onboarding). Para uno
+         * anterior al sufijo —`tenant_ioffi`, `tenant_parallly`— el nombre
+         * canónico no existe todavía, así que el camino de abajo repuntaba
+         * `tenants.schema_name` al nuevo, creaba un schema VACÍO y aplicaba la
+         * plantilla: el poblado quedaba huérfano y el negocio perdía toda su
+         * historia sin un solo error. Ya pasó una vez, con 172 mensajes y 13
+         * conversaciones de un cliente activo.
+         *
+         * Reparar es reparar lo que hay. Pero el sufijo protege OTRA cosa, y
+         * las dos son ciertas a la vez: un tenant NUEVO cuyo slug choca con el
+         * schema que dejó un negocio borrado no puede heredarlo — ahí quedarse
+         * sería peor todavía, porque son datos de otro. Los dos casos se ven
+         * IGUAL desde la fila (`schema_name` apunta al mismo lado en ambos), así
+         * que lo que los separa no es el dato sino la intención de quien llama:
+         * `provision` da de alta, `repair` verifica lo que ya existe. El
+         * defecto era, literalmente, que esas dos intenciones compartían función
+         * sin decirlo. Mover los datos de un cliente es una operación explícita,
+         * nunca el efecto lateral de un paso de verificación.
+         */
+        // `repair` sólo se queda donde el tenant ya vive si ahí hay tablas; un
+        // cascarón vacío de un alta que murió a mitad sí se reemplaza.
+        const keepsCurrentSchema = options.intent === 'repair'
+            && tenant.schemaName !== canonicalSchemaName
+            && await this.schemaHasTables(tenant.schemaName);
+        const schemaName = keepsCurrentSchema ? tenant.schemaName : canonicalSchemaName;
         this.validateSchemaName(schemaName);
         const schemaAlreadyExists = await this.schemaExists(schemaName);
 
@@ -313,6 +356,68 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         const maxBaseLength = 63 - tenantSuffix.length - 1;
         const base = requestedSchemaName.slice(0, maxBaseLength).replace(/_+$/, '');
         return `${base}_${tenantSuffix}`;
+    }
+
+    /**
+     * ¿Ese schema existe y tiene tablas de verdad?
+     *
+     * La diferencia con `schemaExists` es la que separa "hay un cascarón de un
+     * alta que falló" de "acá vive un cliente": lo primero se puede reemplazar,
+     * lo segundo no se toca.
+     */
+    private async schemaHasTables(schemaName: string): Promise<boolean> {
+        const rows = await this.$queryRawUnsafe(
+            `SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+              WHERE n.nspname = $1 AND c.relkind = 'r' LIMIT 1`,
+            schemaName,
+        ) as any[];
+        return rows?.length > 0;
+    }
+
+    /**
+     * Schemas de tenant que ninguna fila de `public.tenants` reclama.
+     *
+     * Existen por dos vías: un alta que creó el schema y no llegó a comitear el
+     * tenant, y —la cara— un tenant que fue repuntado a otro nombre y dejó el
+     * poblado atrás. Ninguna se ve desde el producto, así que sin esto sólo
+     * aparecen si a alguien se le ocurre buscarlas a mano. Excluye las réplicas
+     * efímeras de "Probar agente", que son huérfanas por diseño.
+     */
+    async findOrphanTenantSchemas(): Promise<Array<{ schemaName: string; tables: number }>> {
+        const rows = await this.$queryRawUnsafe(
+            `SELECT s.schema_name AS "schemaName",
+                    (SELECT count(*)::int FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+                      WHERE n.nspname = s.schema_name AND c.relkind = 'r') AS tables
+               FROM information_schema.schemata s
+               LEFT JOIN public.tenants t ON t.schema_name = s.schema_name
+              WHERE s.schema_name LIKE 'tenant\\_%'
+                AND t.id IS NULL
+                AND s.schema_name !~ '^tenant_eval_[a-f0-9]{8}_[a-f0-9]{24}$'
+              ORDER BY s.schema_name`,
+        ) as Array<{ schemaName: string; tables: number }>;
+        return rows ?? [];
+    }
+
+    /** Deja el inventario en el log de arranque, separando lo vacío de lo que tiene datos. */
+    private async reportOrphanTenantSchemas(): Promise<void> {
+        const orphans = await this.findOrphanTenantSchemas();
+        if (orphans.length === 0) return;
+
+        const withData = orphans.filter((orphan) => orphan.tables > 0);
+        const empty = orphans.filter((orphan) => orphan.tables === 0);
+        if (withData.length > 0) {
+            // Con tablas adentro es lo grave: son datos de alguien que el
+            // producto no muestra y que una purga no borraría.
+            this.logger.error(
+                `[Schemas huérfanos] ${withData.length} schema(s) con datos que ningún tenant reclama: `
+                + withData.map((orphan) => `${orphan.schemaName} (${orphan.tables} tablas)`).join(', '),
+            );
+        }
+        if (empty.length > 0) {
+            this.logger.warn(
+                `[Schemas huérfanos] ${empty.length} schema(s) vacío(s) sin dueño: ${empty.map((o) => o.schemaName).join(', ')}`,
+            );
+        }
     }
 
     private async schemaExists(schemaName: string): Promise<boolean> {

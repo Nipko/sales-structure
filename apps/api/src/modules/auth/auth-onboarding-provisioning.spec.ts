@@ -114,7 +114,10 @@ describe('AuthService onboarding provisioning retry', () => {
         const result = await service.completeOnboarding(userId, {} as any);
 
         expect(prisma.createTenantSchema).toHaveBeenCalledTimes(3);
-        expect(prisma.createTenantSchema).toHaveBeenLastCalledWith(canonicalSchema);
+        // Con la intención explícita: este paso REPARA el schema de un tenant que
+        // ya existe. Sin ella, para un tenant anterior al sufijo uuid, repuntaría
+        // `schema_name` a un schema nuevo y vacío y dejaría su historia atrás.
+        expect(prisma.createTenantSchema).toHaveBeenLastCalledWith(canonicalSchema, { intent: 'repair' });
         expect(redis.del).toHaveBeenCalledWith(`tenant:${tenantId}:schema`);
         expect(persona.createDefaultAgentFromGoals).toHaveBeenCalledTimes(3);
         expect(persona.createDefaultAgentFromGoals).toHaveBeenNthCalledWith(

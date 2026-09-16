@@ -401,7 +401,9 @@ jobs:
           cd apps/api
           DATABASE_URL="$PLAN_ECONOMICS_TEST_URL" DIRECT_DATABASE_URL="$PLAN_ECONOMICS_TEST_URL"             npx prisma migrate deploy
           DATABASE_URL="$PLAN_ECONOMICS_TEST_URL" DIRECT_DATABASE_URL="$PLAN_ECONOMICS_TEST_URL"             node prisma/seed-billing-plans.js
-          cd ..
+          # `cd ..` desde apps/api deja el shell en apps/, no en la raíz:
+          # jest no encontraba su config y el paso moría después de migrar.
+          cd "$GITHUB_WORKSPACE"
           npx jest --config apps/api/jest.config.js --runInBand --forceExit             apps/api/src/modules/ai/router/llm-spend-guard.postgres.spec.ts
 
       - name: Tenant schema migration compatibility smoke test

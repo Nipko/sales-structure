@@ -118,7 +118,8 @@ const PLATFORM_SCOPED: Readonly<Record<string, string>> = Object.freeze({
         + 'is no tenant id for `TenantGuard` to check',
     'whatsapp.controller.ts':
         'the same shape: every route resolves the tenant from the session, and the public half is the Meta webhook '
-        + 'with its HMAC signature',
+        + 'with its HMAC signature. The funding check is the one route that takes a tenant id, and it carries the '
+        + 'three guards on the method',
 });
 
 const controllers = (): Array<{ name: string; path: string; source: string }> => {
@@ -136,6 +137,44 @@ const controllers = (): Array<{ name: string; path: string; source: string }> =>
 
 const guarded = (source: string): boolean =>
     source.includes("AuthGuard('jwt')") && source.includes('RolesGuard') && source.includes('TenantGuard');
+
+/** The argument list of every `@UseGuards(...)` in the file, with its offset. */
+const useGuardsCalls = (source: string): Array<{ index: number; args: string }> => {
+    const calls: Array<{ index: number; args: string }> = [];
+    const marker = '@UseGuards(';
+    for (let at = source.indexOf(marker); at >= 0; at = source.indexOf(marker, at + 1)) {
+        let depth = 0;
+        for (let i = at + marker.length - 1; i < source.length; i++) {
+            if (source[i] === '(') depth++;
+            else if (source[i] === ')' && --depth === 0) {
+                calls.push({ index: at, args: source.slice(at + marker.length, i) });
+                break;
+            }
+        }
+    }
+    return calls;
+};
+
+/**
+ * The three guards on the CLASS — the only placement that covers every route in
+ * the file.
+ *
+ * `guarded` above answers a coarser question (does this file mention the three
+ * guards at all), which is the right net for "nobody wrote down what protects
+ * this surface". It is the wrong one for deciding an exception entry is stale:
+ * a method-level `@UseGuards` protects its own route and says nothing about the
+ * public webhook two hundred lines below it. Adding one guarded method to a
+ * controller that is unauthenticated by design used to read as "this whole
+ * controller is protected now".
+ */
+const classGuarded = (source: string): boolean => {
+    const classAt = source.search(/export\s+(?:abstract\s+)?class\s/);
+    if (classAt < 0) return false;
+    return useGuardsCalls(source).some(call => call.index < classAt
+        && call.args.includes("AuthGuard('jwt')")
+        && call.args.includes('RolesGuard')
+        && call.args.includes('TenantGuard'));
+};
 
 describe('every controller says what protects it', () => {
     const all = controllers();
@@ -181,7 +220,7 @@ describe('every controller says what protects it', () => {
         // the list starts being read as decoration.
         const overtaken = [...Object.keys(UNAUTHENTICATED), ...Object.keys(PLATFORM_SCOPED)]
             .filter(name => all.find(row => row.name === name)?.source
-                ? guarded(all.find(row => row.name === name)!.source) : false);
+                ? classGuarded(all.find(row => row.name === name)!.source) : false);
         expect({ overtaken }).toEqual({ overtaken: [] });
         // And an entry for a controller nobody has any more.
         const orphans = [...Object.keys(UNAUTHENTICATED), ...Object.keys(PLATFORM_SCOPED)]

@@ -6377,12 +6377,12 @@
   },
   "setupWizard": {
     "title": "Configurez votre agent IA",
-  "subtitle": "En quelques minutes, vous aurez un brouillon prêt à tester, examiner et publier",
+    "subtitle": "En quelques minutes, vous aurez un brouillon prêt à tester, examiner et publier",
     "testTitle": "Testez",
     "connectTitle": "Connectez",
     "discoverTitle": "Découvrez",
     "connectBannerTitle": "Vous n'avez pas encore connecté de canal",
-  "connectBannerDesc": "Aucun canal ne reçoit encore de messages. Connectez-le, puis publiez la version de l'agent qui doit le prendre en charge.",
+    "connectBannerDesc": "Aucun canal ne reçoit encore de messages. Connectez-le, puis publiez la version de l'agent qui doit le prendre en charge.",
     "connectBannerCta": "Connecter WhatsApp",
     "resumeBannerTitle": "Reprenez votre configuration",
     "resumeBannerDesc": "Vous avez laissé l'assistant à moitié. Tout a été enregistré : vous pouvez continuer là où vous en étiez.",
@@ -6400,7 +6400,7 @@
       "continue": "Continuer",
       "connectLater": "Connecter plus tard",
       "connected": "Connecté !",
-    "connectedDesc": "Le numéro {phone} est connecté. Vérifiez son assignation et publiez l'agent avant de servir les clients.",
+      "connectedDesc": "Le numéro {phone} est connecté. Vérifiez son assignation et publiez l'agent avant de servir les clients.",
       "coexistenceHint": "Scannez le QR code depuis votre app WhatsApp Business pour connecter votre numéro actuel sans perdre vos conversations.",
       "channel_instagram": "Instagram",
       "channel_messenger": "Messenger",
@@ -6682,7 +6682,7 @@
       "cap_offers_desc": "Partage les offres actives et codes promo"
     },
     "completion": {
-    "title": "Le brouillon de {name} est préparé",
+      "title": "Le brouillon de {name} est préparé",
       "configured": "Configuré",
       "pending": "Connexion en attente",
       "testAgent": "Tester mon agent",
@@ -6696,7 +6696,7 @@
       "stepOf": "Étape {current} sur {total}"
     },
     "pageTitle": "Faites connaissance avec votre agent",
-  "pageSubtitle": "Trois étapes pour préparer et tester ; vous publierez la version examinée à la fin.",
+    "pageSubtitle": "Trois étapes pour préparer et tester ; vous publierez la version examinée à la fin.",
     "exit": "Sortir",
     "exitHint": "Nous gardons ce que vous avez fait et vous ramenons au panneau",
     "steps": {
@@ -6709,23 +6709,23 @@
       "subtitle": "Nous avons préparé un agent à partir de ce que vous nous avez dit. Confirmez-le ou modifiez-le.",
       "prepared": "Nous avons préparé {name} à partir de ce que vous nous avez dit de votre activité. Confirmez le nom et le message d'accueil, puis testez-le juste à côté.",
       "saving": "Enregistrement…",
-    "saved": "Brouillon enregistré",
-    "autosaveHint": "Le brouillon est enregistré lorsque vous quittez le champ ; la version opérationnelle ne change pas.",
+      "saved": "Brouillon enregistré",
+      "autosaveHint": "Le brouillon est enregistré lorsque vous quittez le champ ; la version opérationnelle ne change pas.",
       "changeTemplate": "Changer de modèle"
     },
     "connectStep": {
       "title": "Connectez WhatsApp",
-    "subtitle": "Connectez le canal qui recevra les messages. L'agent commence à répondre après assignation et publication d'une version approuvée.",
+      "subtitle": "Connectez le canal qui recevra les messages. L'agent commence à répondre après assignation et publication d'une version approuvée.",
       "laterTitle": "Ce n'est pas le bon moment ?",
       "laterHint": "Vous pouvez le faire plus tard : nous vous le rappellerons sur l'Accueil et vous pourrez revenir ici quand vous voulez.",
       "showMe": "Montrez-moi où"
     },
     "doneStep": {
-    "title": "Configuration initiale enregistrée",
-    "subtitle": "Examinez et publiez le brouillon pour en faire la version qui servira vos clients.",
+      "title": "Configuration initiale enregistrée",
+      "subtitle": "Examinez et publiez le brouillon pour en faire la version qui servira vos clients.",
       "subtitleDeferred": "Nous vous attendons sur l'Accueil pour connecter WhatsApp. En attendant, voici la suite.",
       "goToPanel": "Aller au panneau",
-    "tourCta": "Examiner et publier mon agent",
+      "tourCta": "Examiner et publier mon agent",
       "essentials": {
         "channel": {
           "title": "Connecter WhatsApp",
@@ -7295,7 +7295,8 @@
     },
     "limitReached": "Vous avez atteint la limite de {limit} {resource} de votre plan actuel ({current}/{limit}).",
     "upgradePlan": "Améliorer le plan",
-    "cancel": "Annuler"
+    "cancel": "Annuler",
+    "aiSpendingPolicy": "Les réponses incluses sont soumises au plafond mensuel de dépenses IA du forfait. Les longues conversations, outils et modèles avancés consomment davantage : l’IA peut s’arrêter avant épuisement du quota de réponses. Les messages WhatsApp sont payés séparément à Meta."
   },
   "couponsPage": {
     "title": "Codes promo",
@@ -7545,7 +7546,9 @@
       "confidence": "Confiance",
       "insufficientTitle": "Prévision non disponible",
       "insufficientBody": "Il faut au moins {need} snapshots mensuels; nous en avons {have}."
-    }
+    },
+    "costCoverageNotice": "Couverture partielle : l’historique global déduit IA et infrastructure ; par entreprise, seule l’IA est déduite. Il ne s’agit pas du bénéfice net ni d’une marge complète : frais de paiement, assistance, multimédia, embeddings, taxes et autres coûts manquent. Les valeurs indisponibles affichent —.",
+    "mrrIncomplete": "Le MRR exclut {count} abonnements sans montant ou conversion vérifiable. Vérifiez leurs prix et les taux de change."
   },
   "featureRequests": {
     "title": "Suggestions",
@@ -11344,8 +11347,20 @@
       "maxChannelAccountsInstagram": "Comptes Instagram",
       "maxChannelAccountsMessenger": "Pages Messenger",
       "maxChannelAccountsTelegram": "Bots Telegram",
-      "maxChannelAccountsSms": "Numéros SMS"
-    }
+      "maxChannelAccountsSms": "Numéros SMS",
+      "llmHardBudgetUsdCents": "Plafond mensuel du modèle (centimes USD)"
+    },
+    "invalidMoney": "Saisissez un montant valide sans symbole, avec les séparateurs de votre langue et deux décimales au maximum.",
+    "editConflict": "Un autre administrateur a modifié ce forfait. Rechargez et vérifiez ses modifications avant d’enregistrer.",
+    "cachePending": "Le forfait est enregistré, mais le cache reste à invalider. Réessayez ; il expire sous cinq minutes.",
+    "saveError": "Enregistrement impossible. Vérifiez les valeurs et réessayez.",
+    "spendTitle": "Dépenses du modèle par entreprise",
+    "spendRefresh": "Actualiser",
+    "spendExplanation": "Estimations en USD pour le mois UTC, jusqu’à 200 entreprises. Réservations en attente incluses ; ce n’est pas une facture. — signifie qu’aucun enregistrement durable n’existe encore pour le mois. Modifiez les plafonds dans les capacités du forfait ; -1 supprime le plafond. La limite peut arrêter l’IA avant épuisement des réponses incluses. Meta, multimédia et embeddings sont contrôlés séparément.",
+    "spendTenant": "Entreprise et forfait",
+    "spendUsed": "Comptabilisé et réservé",
+    "spendCeiling": "Plafond mensuel",
+    "spendUnknown": "Réservations non résolues"
   },
   "reportBuilder": {
     "title": "Rapports personnalisés",
@@ -13665,11 +13680,26 @@
     },
     "publish_agent_revision": {
       "steps": {
-        "draft": { "title": "Enregistrez un brouillon", "content": "Le brouillon rassemble la configuration et les connexions à examiner ; il ne répond pas encore aux clients." },
-        "test": { "title": "Testez le brouillon", "content": "Choisissez Brouillon enregistré et testez objectifs, outils, limites et transfert humain sans affecter les conversations réelles." },
-        "prepare": { "title": "Préparez une version", "content": "Créez le candidat à partir du brouillon actuel. Ses preuves doivent correspondre exactement à cette révision." },
-        "review": { "title": "Examinez et décidez", "content": "Vérifiez changements, canaux, scénarios et limites des preuves avant d'approuver. L'examen ne publie rien." },
-        "publish": { "title": "Publiez la version approuvée", "content": "Choisissez le candidat approuvé et décidez s'il faut aussi activer l'agent. Confirmez seulement si cette configuration doit servir les clients." }
+        "draft": {
+          "title": "Enregistrez un brouillon",
+          "content": "Le brouillon rassemble la configuration et les connexions à examiner ; il ne répond pas encore aux clients."
+        },
+        "test": {
+          "title": "Testez le brouillon",
+          "content": "Choisissez Brouillon enregistré et testez objectifs, outils, limites et transfert humain sans affecter les conversations réelles."
+        },
+        "prepare": {
+          "title": "Préparez une version",
+          "content": "Créez le candidat à partir du brouillon actuel. Ses preuves doivent correspondre exactement à cette révision."
+        },
+        "review": {
+          "title": "Examinez et décidez",
+          "content": "Vérifiez changements, canaux, scénarios et limites des preuves avant d'approuver. L'examen ne publie rien."
+        },
+        "publish": {
+          "title": "Publiez la version approuvée",
+          "content": "Choisissez le candidat approuvé et décidez s'il faut aussi activer l'agent. Confirmez seulement si cette configuration doit servir les clients."
+        }
       }
     },
     "human_handoff_route": {
@@ -13738,9 +13768,18 @@
     },
     "privacy_policy": {
       "steps": {
-        "type": { "title": "Politique de confidentialité", "content": "Ouvrez Confidentialité. L'agent a besoin d'une version active pour expliquer le traitement des images et des audios avant de demander le consentement." },
-        "content": { "title": "Expliquez le traitement des médias", "content": "Précisez ce qui est traité, pourquoi, pendant combien de temps et comment retirer le consentement. Faites vérifier le texte par la personne responsable de la confidentialité." },
-        "save": { "title": "Publiez une version active", "content": "Enregistrez la politique. L'agent peut alors la présenter, demander un consentement explicite et traiter le média seulement après l'avoir obtenu." }
+        "type": {
+          "title": "Politique de confidentialité",
+          "content": "Ouvrez Confidentialité. L'agent a besoin d'une version active pour expliquer le traitement des images et des audios avant de demander le consentement."
+        },
+        "content": {
+          "title": "Expliquez le traitement des médias",
+          "content": "Précisez ce qui est traité, pourquoi, pendant combien de temps et comment retirer le consentement. Faites vérifier le texte par la personne responsable de la confidentialité."
+        },
+        "save": {
+          "title": "Publiez une version active",
+          "content": "Enregistrez la politique. L'agent peut alors la présenter, demander un consentement explicite et traiter le média seulement après l'avoir obtenu."
+        }
       }
     },
     "appointments_setup": {
@@ -14597,7 +14636,7 @@
     "title": "Facturation WhatsApp (Meta)",
     "whoCharges": "À partir du 1er octobre 2026, Meta facture VOTRE compte WhatsApp Business pour chaque message de service livré. Cette facturation est celle de Meta, pas de Parallly, et elle est réglée avec le moyen de paiement enregistré chez Meta. Votre abonnement Parallly est un paiement séparé et ne change pas pour autant.",
     "paymentDeadlineTitle": "Ajoutez le moyen de paiement chez Meta avant le 30 septembre",
-    "paymentDeadlineBody": "Il s'ajoute dans l'administration WhatsApp officielle de Meta. Parallly ne reçoit, ne stocke et ne voit pas les données de cette carte. Sans moyen valide, Meta peut cesser de livrer les messages à partir du 1er octobre.",
+    "paymentDeadlineBody": "Meta facture WhatsApp directement à votre entreprise. Votre abonnement Parallly est payé séparément via Wompi. Nous ne copions pas les cartes entre services : les données de carte Meta sont saisies et restent chez Meta.",
     "defaultProtection": "Parallly commence par mesurer des alertes à 2 000 livraisons par numéro et 60 par contact chaque mois. Ces seuils n'interrompent pas les messages tant que la protection reste en mode observation.",
     "protectionTitle": "Protection des dépenses",
     "protectionObserve": "Observer seulement",
@@ -14702,5 +14741,25 @@
       "total_not_representable": "le total ne peut pas être exprimé dans la devise du compte"
     },
     "seeSpendPanel": "Voir la facturation WhatsApp"
+  },
+  "whatsappFunding": {
+    "title": "Financement de votre compte WhatsApp",
+    "separation": "Meta facture WhatsApp directement à votre entreprise. Votre abonnement Parallly est payé séparément via Wompi. Nous ne copions pas les cartes entre services : les données de carte Meta sont saisies et restent chez Meta.",
+    "step1": "Ouvrez WhatsApp Manager et connectez-vous comme administrateur de l’entreprise.",
+    "step2": "Sélectionnez le compte WhatsApp (WABA) indiqué ci-dessous. Dans Vue d’ensemble, ouvrez les paramètres de paiement et ajoutez un moyen de paiement.",
+    "step3": "Revenez ici pour vérifier le compte. Inutile de reconnecter les numéros ou de changer la carte Parallly.",
+    "openMeta": "Ouvrir les paiements chez Meta",
+    "allowance": "À partir du 1er octobre 2026, Meta inclut 1 000 messages de service livrés par numéro et mois civil. Sans financement, les livraisons suivantes peuvent être bloquées ; les modèles payants exigent aussi un financement. Configurez-le avant épuisement du quota.",
+    "error": "Vérification du financement impossible. Consultez le compte chez Meta ; cela ne prouve pas l’absence de carte.",
+    "reload": "Recharger",
+    "waba": "Compte WhatsApp",
+    "unknown": "Le financement n’a pas pu être établi.",
+    "checked": "Dernière vérification",
+    "checking": "Vérification…",
+    "check": "Vérifier chez Meta",
+    "not_checked": "Non vérifié",
+    "attached": "Moyen de paiement associé. Les fonds et l’approbation du débit ne sont pas garantis.",
+    "absent": "Meta indique l’absence de moyen de paiement.",
+    "restricted": "Meta a restreint le financement. Résolvez le problème dans son gestionnaire de paiements."
   }
 }

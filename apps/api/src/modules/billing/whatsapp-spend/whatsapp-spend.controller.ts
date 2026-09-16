@@ -363,7 +363,7 @@ export class WhatsappSpendController {
                  */
                 probe: {
                     reachesMeta: false,
-                    checkEndpoint: '/whatsapp/connection/check-funding',
+                    checkEndpoint: '/channels/whatsapp/connection/check-funding',
                     evidenceMaxAgeSeconds: 86400,
                     note: 'Esta lectura usa evidencia guardada y rechazos reales. Para comprobar la cuenta usa check-funding. '
                         + 'No hace una consulta automática a Meta. '

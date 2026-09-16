@@ -9,6 +9,8 @@ import {
 } from "lucide-react";
 import { HelpPanel } from "@/components/ui/help-panel";
 import { TabNav } from "@/components/ui/tab-nav";
+import { PlanSpendOverview } from "./_components/PlanSpendOverview";
+import { PlanMoneyInput } from "./_components/PlanMoneyInput";
 import { ProvidersTab } from "./_components/ProvidersTab";
 
 type TabId = "plans" | "providers";
@@ -26,6 +28,7 @@ type CountryPriceOverride = PriceCycle & {
 
 type Plan = {
     id: string;
+    updatedAt: string;
     slug: string;
     name: string;
     priceUsdCents: number;
@@ -69,42 +72,6 @@ function countryDisplayName(country: BillingCountry, locale: string): string {
     } catch {
         return country;
     }
-}
-
-/**
- * Los precios se editan en UNIDADES de la moneda, con separadores de miles.
- *
- * Antes el campo mostraba los centavos crudos (`12570000` para 125.700 COP) y
- * parseaba con `parseInt(valor) || 0`. Dos formas de perder plata sin aviso:
- * escribir `1.282.140` guardaba **1** —parseInt corta en el primer punto— y
- * cualquier símbolo daba NaN, o sea **0**. Y leer siete dígitos sin separación
- * invita a equivocarse en un cero.
- */
-function amountInputValue(amountCents: number | undefined, locale: string): string {
-    if (!Number.isSafeInteger(amountCents) || amountCents === undefined) return "";
-    return new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(amountCents / 100);
-}
-
-/** El precio de referencia se edita en DÓLARES, con decimales. */
-function usdInputValue(cents: number | undefined): string {
-    if (!Number.isSafeInteger(cents) || cents === undefined) return "";
-    return (cents / 100).toFixed(2);
-}
-
-/** "21", "21.00", "21,00", "$21" → 2100 centavos. */
-function parseUsdInput(raw: string): number {
-    const cleaned = raw.replace(/[^\d.,]/g, "").replace(",", ".");
-    const value = Number.parseFloat(cleaned);
-    if (!Number.isFinite(value) || value < 0) return 0;
-    return Math.round(value * 100);
-}
-
-/** Cualquier cosa que el usuario escriba o pegue → centavos. */
-function parseAmountInput(raw: string): number {
-    const digits = raw.replace(/\D/g, "");
-    if (!digits) return 0;
-    const units = Number(digits);
-    return Number.isSafeInteger(units) ? units * 100 : 0;
 }
 
 function formatLocalPrice(amountCents: number | undefined, currency: string, locale: string): string {
@@ -202,7 +169,7 @@ const NESTED_INNER: Record<string, { key: string; label: string }[]> = {
 // Categories that ARE a single nested object (whole category renders as sub-rows).
 const CATEGORY_TO_NESTED: Record<string, string> = { rate: "rateLimits", media: "mediaProcessing" };
 
-const CHANNEL_OPTIONS = ["whatsapp", "instagram", "messenger", "telegram", "sms", "email"];
+const CHANNEL_OPTIONS = ["whatsapp", "instagram", "messenger", "telegram", "sms", "web_widget"];
 
 const LLM_TIERS = ["tier_1", "tier_2", "tier_3", "tier_4"];
 
@@ -219,6 +186,8 @@ export default function PlansPage() {
     const [loading, setLoading] = useState(true);
     const [editSlug, setEditSlug] = useState<string | null>(null);
     const [editBuffer, setEditBuffer] = useState<Plan | null>(null);
+    const [invalidMoney, setInvalidMoney] = useState<Record<string, boolean>>({});
+    const moneyValidity = (key: string, valid: boolean) => setInvalidMoney(previous => ({ ...previous, [key]: !valid }));
     const [saving, setSaving] = useState(false);
     const [toast, setToast] = useState<{ type: "success" | "error"; msg: string } | null>(null);
     const [routing, setRouting] = useState<PaymentProvidersStatus["routing"] | null>(null);
@@ -278,6 +247,7 @@ export default function PlansPage() {
     }, [toast]);
 
     const startEdit = (plan: Plan) => {
+        setInvalidMoney({});
         setEditSlug(plan.slug);
         setEditBuffer(JSON.parse(JSON.stringify(plan)));
     };
@@ -289,9 +259,13 @@ export default function PlansPage() {
 
     const handleSave = async () => {
         if (!editBuffer || !editSlug) return;
+        if (Object.values(invalidMoney).some(Boolean)) {
+            setToast({ type: "error", msg: t("invalidMoney") }); return;
+        }
         setSaving(true);
         try {
             const res = await api.updateAdminPlan(editSlug, {
+                expectedUpdatedAt: editBuffer.updatedAt,
                 name: editBuffer.name,
                 priceUsdCents: editBuffer.priceUsdCents,
                 trialDays: editBuffer.trialDays,
@@ -306,14 +280,14 @@ export default function PlansPage() {
                 isActive: editBuffer.isActive,
             });
             if (res.success) {
-                setToast({ type: "success", msg: `${t("saved")} — ${t("cacheInvalidated", { count: String((res as any).invalidatedTenants ?? 0) })}` });
+                setToast({ type: (res as any).cacheInvalidationPending ? "error" : "success", msg: (res as any).cacheInvalidationPending ? t("cachePending") : `${t("saved")} — ${t("cacheInvalidated", { count: String((res as any).invalidatedTenants ?? 0) })}` });
                 cancelEdit();
                 load();
             } else {
-                setToast({ type: "error", msg: res.error || "Error" });
+                setToast({ type: "error", msg: res.error === "plan_edit_conflict" ? t("editConflict") : (res.error || t("saveError")) });
             }
         } catch {
-            setToast({ type: "error", msg: "Connection error" });
+            setToast({ type: "error", msg: t("saveError") });
         }
         setSaving(false);
     };
@@ -326,10 +300,10 @@ export default function PlansPage() {
                 setToast({ type: "success", msg: t("reconcileDone", { scanned: String(res.data?.scanned ?? 0), drift: String(res.data?.drift ?? 0) }) });
                 load();
             } else {
-                setToast({ type: "error", msg: res.error || "Error" });
+                setToast({ type: "error", msg: res.error === "plan_edit_conflict" ? t("editConflict") : (res.error || t("saveError")) });
             }
         } catch {
-            setToast({ type: "error", msg: "Connection error" });
+            setToast({ type: "error", msg: t("saveError") });
         }
         setReconciling(false);
     };
@@ -495,13 +469,11 @@ export default function PlansPage() {
         // es el precio de venta.
         if (key === "priceUsdCents") {
             return (
-                <input
-                    type="text"
-                    inputMode="decimal"
+                <PlanMoneyInput key={`${editSlug}:usd`} cents={val as number} locale={locale}
+                    label={t("priceRef")} errorLabel={t("invalidMoney")}
+                    onValidity={valid => moneyValidity("usd", valid)}
                     className={`${inputCls} text-right font-mono`}
-                    value={usdInputValue(val as number)}
-                    onChange={e => updateTopLevel(key, parseUsdInput(e.target.value))}
-                />
+                    onValue={value => updateTopLevel(key, value)} />
             );
         }
         return (
@@ -570,6 +542,7 @@ export default function PlansPage() {
 
             {activeTab === "plans" && (<>
 
+            {activeTab === "plans" && <PlanSpendOverview key={plans.map(p => p.updatedAt).join(":")} />}
             <HelpPanel
                 title={tHelp("plans.title")}
                 description={tHelp("plans.description")}
@@ -699,13 +672,12 @@ export default function PlansPage() {
                                 }
                                 return (
                                     <td key={p.slug} className={tdCls}>
-                                        <input
-                                            type="text"
-                                            inputMode="numeric"
+                                        <PlanMoneyInput key={`${editSlug}:${selectedCountry}:monthly`}
+                                            cents={amountCents} locale={locale} label={t("priceLocal", {country: selectedCountry, currency: selectedCurrency})}
+                                            errorLabel={t("invalidMoney")}
+                                            onValidity={valid => moneyValidity(`${selectedCountry}:monthly`, valid)}
                                             className={`${inputCls} text-right font-mono`}
-                                            value={amountInputValue(amountCents, locale)}
-                                            onChange={e => {
-                                                const val = parseAmountInput(e.target.value);
+                                            onValue={val => {
                                                 const currentCountry = editBuffer.priceLocalOverrides?.[selectedCountry] ?? {};
                                                 setEditBuffer({
                                                     ...editBuffer,
@@ -749,13 +721,12 @@ export default function PlansPage() {
                                 }
                                 return (
                                     <td key={p.slug} className={tdCls}>
-                                        <input
-                                            type="text"
-                                            inputMode="numeric"
+                                        <PlanMoneyInput key={`${editSlug}:${selectedCountry}:annual`}
+                                            cents={annualCents} locale={locale} label={t("priceLocalAnnual", {country: selectedCountry, currency: selectedCurrency})}
+                                            errorLabel={t("invalidMoney")}
+                                            onValidity={valid => moneyValidity(`${selectedCountry}:annual`, valid)}
                                             className={`${inputCls} text-right font-mono`}
-                                            value={amountInputValue(annualCents, locale)}
-                                            onChange={e => {
-                                                const val = parseAmountInput(e.target.value);
+                                            onValue={val => {
                                                 const currentCountry = editBuffer.priceLocalOverrides?.[selectedCountry] ?? {};
                                                 setEditBuffer({
                                                     ...editBuffer,

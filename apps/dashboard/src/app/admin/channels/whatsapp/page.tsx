@@ -1,5 +1,6 @@
 "use client";
 
+import { WhatsappFundingPanel } from "@/components/channels/WhatsappFundingPanel";
 import { useTranslations } from "next-intl";
 import { useState, useEffect } from "react";
 import {
@@ -567,6 +568,7 @@ export default function WhatsAppSetupPage() {
             {/* ═══════════ WHATSAPP CHARGES — META, NOT US (connected only) ═══════════ */}
             {isConnected && (
                 <div className="mb-6">
+                    <WhatsappFundingPanel canCheck={user?.role === "super_admin" || user?.role === "tenant_admin"} />
                     <WhatsappSpendPanel
                         summary={spend}
                         consumption={consumption}

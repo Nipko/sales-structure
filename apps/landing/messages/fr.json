@@ -951,7 +951,8 @@
     "liveCalendars": "{count} calendriers",
     "liveCustomPrompt": "Prompt personnalisé",
     "liveWhiteLabel": "Marque blanche",
-    "plansContact": "Contacter l’équipe pour les forfaits"
+    "plansContact": "Contacter l’équipe pour les forfaits",
+    "aiSpendingPolicy": "Les réponses incluses sont soumises au plafond mensuel de dépenses IA du forfait. Les longues conversations, outils et modèles avancés consomment davantage : l’IA peut s’arrêter avant épuisement du quota de réponses. Les messages WhatsApp sont payés séparément à Meta."
   },
   "faq": {
     "title": "Questions fréquentes",

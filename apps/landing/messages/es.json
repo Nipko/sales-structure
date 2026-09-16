@@ -951,7 +951,8 @@
     "liveCalendars": "{count} calendarios",
     "liveCustomPrompt": "Prompt personalizado",
     "liveWhiteLabel": "Marca blanca",
-    "plansContact": "Consultar planes con el equipo"
+    "plansContact": "Consultar planes con el equipo",
+    "aiSpendingPolicy": "Las respuestas incluidas están sujetas al límite mensual de gasto de IA del plan. Conversaciones largas, herramientas y modelos avanzados consumen más presupuesto: la IA puede pausarse antes de agotar la cantidad de respuestas. Los mensajes de WhatsApp se pagan aparte a Meta."
   },
   "faq": {
     "title": "Preguntas frecuentes",

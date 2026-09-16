@@ -24,9 +24,9 @@ export default function CostsTab({ overview, costsTrend, profitability }: Props)
   const t = useTranslations("financials");
 
   const kpis = [
-    { label: t("kpi.llmCost"), value: formatCurrency(overview?.llmCostThisMonth ?? 0), icon: DollarSign, color: "text-red-500", bg: "bg-red-500/10" },
-    { label: t("kpi.infraCost"), value: formatCurrency(overview?.infraCostThisMonth ?? 0), icon: Server, color: "text-amber-500", bg: "bg-amber-500/10" },
-    { label: t("kpi.grossMargin"), value: `${(overview?.grossMargin ?? 0).toFixed(1)}%`, icon: TrendingUp, color: "text-emerald-500", bg: "bg-emerald-500/10" },
+    { label: t("kpi.llmCost"), value: overview?.llmCostThisMonth == null ? "—" : formatCurrency(overview.llmCostThisMonth), icon: DollarSign, color: "text-red-500", bg: "bg-red-500/10" },
+    { label: t("kpi.infraCost"), value: overview?.infraCostThisMonth == null ? "—" : formatCurrency(overview.infraCostThisMonth), icon: Server, color: "text-amber-500", bg: "bg-amber-500/10" },
+    { label: t("kpi.grossMargin"), value: overview?.grossMargin == null ? "—" : `${overview.grossMargin.toFixed(1)}%`, icon: TrendingUp, color: "text-emerald-500", bg: "bg-emerald-500/10" },
   ];
 
   const costData = (costsTrend || []).map((item: any) => ({
@@ -49,6 +49,7 @@ export default function CostsTab({ overview, costsTrend, profitability }: Props)
 
   return (
     <div className="space-y-6">
+      <p role="status" className="text-sm rounded-lg border p-3">{t("costCoverageNotice")}</p>
       <div className="flex justify-end gap-2">
         <button
           onClick={() => api.downloadFinancialsCsv("costs", { months: 12 })}

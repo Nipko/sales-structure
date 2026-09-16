@@ -52,17 +52,17 @@ export default function OverviewTab({ overview, mrrTrend, forecast }: Props) {
   const t = useTranslations("financials");
 
   const row1 = [
-    { label: t("kpi.mrr"), value: formatCurrency(overview?.mrr ?? 0), icon: DollarSign, color: "text-indigo-500", bg: "bg-indigo-500/10" },
-    { label: t("kpi.arr"), value: formatCurrency(overview?.arr ?? 0), icon: TrendingUp, color: "text-emerald-500", bg: "bg-emerald-500/10" },
+    { label: t("kpi.mrr"), value: formatCurrency(overview?.mrrCents ?? 0), icon: DollarSign, color: "text-indigo-500", bg: "bg-indigo-500/10" },
+    { label: t("kpi.arr"), value: formatCurrency(overview?.arrCents ?? 0), icon: TrendingUp, color: "text-emerald-500", bg: "bg-emerald-500/10" },
     { label: t("kpi.activeCustomers"), value: overview?.activeCustomers ?? 0, icon: Users, color: "text-blue-500", bg: "bg-blue-500/10" },
-    { label: t("kpi.arpu"), value: formatCurrency(overview?.arpu ?? 0), icon: Activity, color: "text-purple-500", bg: "bg-purple-500/10" },
+    { label: t("kpi.arpu"), value: formatCurrency(overview?.arpuCents ?? 0), icon: Activity, color: "text-purple-500", bg: "bg-purple-500/10" },
   ];
 
   const row2 = [
     { label: t("kpi.customerChurn"), value: formatPercent(overview?.customerChurnRate ?? 0), icon: TrendingDown, color: "text-red-500", bg: "bg-red-500/10" },
     { label: t("kpi.revenueChurn"), value: formatPercent(overview?.revenueChurnRate ?? 0), icon: TrendingDown, color: "text-orange-500", bg: "bg-orange-500/10" },
     { label: t("kpi.quickRatio"), value: (overview?.quickRatio ?? 0).toFixed(2), icon: Zap, color: "text-amber-500", bg: "bg-amber-500/10" },
-    { label: t("kpi.ltv"), value: formatCurrency(overview?.ltv ?? 0), icon: DollarSign, color: "text-emerald-500", bg: "bg-emerald-500/10" },
+    { label: t("kpi.ltv"), value: formatCurrency(overview?.ltvCents ?? 0), icon: DollarSign, color: "text-emerald-500", bg: "bg-emerald-500/10" },
   ];
 
   const renderKpiRow = (kpis: typeof row1) => (
@@ -126,6 +126,7 @@ export default function OverviewTab({ overview, mrrTrend, forecast }: Props) {
 
   return (
     <div className="space-y-6">
+      {overview?.mrrUnpricedSubscriptions > 0 && <p role="status">{t("mrrIncomplete", { count: overview.mrrUnpricedSubscriptions })}</p>}
       {renderKpiRow(row1)}
       {renderKpiRow(row2)}
 

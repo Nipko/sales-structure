@@ -720,6 +720,7 @@ export default function BillingPage() {
                 <p className="text-sm text-muted-foreground mt-1">{t("subtitle")}</p>
             </header>
 
+            <p className="text-sm rounded-lg border p-3">{t("aiSpendingPolicy")}</p>
             <HelpPanel
                 title={tHelp("settingsBilling.title")}
                 description={tHelp("settingsBilling.description")}

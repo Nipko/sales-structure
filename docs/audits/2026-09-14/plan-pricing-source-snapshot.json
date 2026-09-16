@@ -1,0 +1,187 @@
+{
+  "observed_on": "2026-09-14",
+  "catalog_base_url": "https://api.parallly-chat.cloud/api/v1/billing/public/plans",
+  "catalog": {
+    "CO": [
+      {
+        "slug": "emprendedor",
+        "priceUsdCents": 2500,
+        "displayPriceCents": 12570000,
+        "displayCurrency": "COP",
+        "displayPriceAnnualCents": null,
+        "maxAiMessages": 1000,
+        "maxAgents": 1,
+        "monthlyAvailable": true,
+        "annualAvailable": false,
+        "checkoutMode": "self_serve",
+        "monthlyUnavailableReason": null,
+        "seats": 1,
+        "llmTier": "tier_4"
+      },
+      {
+        "slug": "starter",
+        "priceUsdCents": 4900,
+        "displayPriceCents": 27690000,
+        "displayCurrency": "COP",
+        "displayPriceAnnualCents": null,
+        "maxAiMessages": 5000,
+        "maxAgents": 1,
+        "monthlyAvailable": true,
+        "annualAvailable": false,
+        "checkoutMode": "self_serve",
+        "monthlyUnavailableReason": null,
+        "seats": 3,
+        "llmTier": "tier_3"
+      },
+      {
+        "slug": "pro",
+        "priceUsdCents": 12900,
+        "displayPriceCents": 75770000,
+        "displayCurrency": "COP",
+        "displayPriceAnnualCents": null,
+        "maxAiMessages": 25000,
+        "maxAgents": 3,
+        "monthlyAvailable": true,
+        "annualAvailable": false,
+        "checkoutMode": "self_serve",
+        "monthlyUnavailableReason": null,
+        "seats": 5,
+        "llmTier": "tier_2"
+      },
+      {
+        "slug": "enterprise",
+        "priceUsdCents": 34900,
+        "displayPriceCents": 178980000,
+        "displayCurrency": "COP",
+        "displayPriceAnnualCents": null,
+        "maxAiMessages": 100000,
+        "maxAgents": 10,
+        "monthlyAvailable": true,
+        "annualAvailable": false,
+        "checkoutMode": "self_serve",
+        "monthlyUnavailableReason": null,
+        "seats": -1,
+        "llmTier": "tier_1"
+      },
+      {
+        "slug": "custom",
+        "priceUsdCents": 0,
+        "displayPriceCents": 0,
+        "displayCurrency": "USD",
+        "displayPriceAnnualCents": null,
+        "maxAiMessages": -1,
+        "maxAgents": 999,
+        "monthlyAvailable": false,
+        "annualAvailable": false,
+        "checkoutMode": "contact_sales",
+        "monthlyUnavailableReason": "sales_led",
+        "seats": -1,
+        "llmTier": "tier_1"
+      }
+    ],
+    "MX": [
+      {
+        "slug": "emprendedor",
+        "priceUsdCents": 2500,
+        "displayPriceCents": 2500,
+        "displayCurrency": "USD",
+        "displayPriceAnnualCents": null,
+        "maxAiMessages": 1000,
+        "maxAgents": 1,
+        "monthlyAvailable": false,
+        "annualAvailable": false,
+        "checkoutMode": "contact_sales",
+        "monthlyUnavailableReason": "country_not_supported",
+        "seats": 1,
+        "llmTier": "tier_4"
+      },
+      {
+        "slug": "starter",
+        "priceUsdCents": 4900,
+        "displayPriceCents": 4900,
+        "displayCurrency": "USD",
+        "displayPriceAnnualCents": null,
+        "maxAiMessages": 5000,
+        "maxAgents": 1,
+        "monthlyAvailable": false,
+        "annualAvailable": false,
+        "checkoutMode": "contact_sales",
+        "monthlyUnavailableReason": "country_not_supported",
+        "seats": 3,
+        "llmTier": "tier_3"
+      },
+      {
+        "slug": "pro",
+        "priceUsdCents": 12900,
+        "displayPriceCents": 12900,
+        "displayCurrency": "USD",
+        "displayPriceAnnualCents": null,
+        "maxAiMessages": 25000,
+        "maxAgents": 3,
+        "monthlyAvailable": false,
+        "annualAvailable": false,
+        "checkoutMode": "contact_sales",
+        "monthlyUnavailableReason": "country_not_supported",
+        "seats": 5,
+        "llmTier": "tier_2"
+      },
+      {
+        "slug": "enterprise",
+        "priceUsdCents": 34900,
+        "displayPriceCents": 34900,
+        "displayCurrency": "USD",
+        "displayPriceAnnualCents": null,
+        "maxAiMessages": 100000,
+        "maxAgents": 10,
+        "monthlyAvailable": false,
+        "annualAvailable": false,
+        "checkoutMode": "contact_sales",
+        "monthlyUnavailableReason": "country_not_supported",
+        "seats": -1,
+        "llmTier": "tier_1"
+      },
+      {
+        "slug": "custom",
+        "priceUsdCents": 0,
+        "displayPriceCents": 0,
+        "displayCurrency": "USD",
+        "displayPriceAnnualCents": null,
+        "maxAiMessages": -1,
+        "maxAgents": 999,
+        "monthlyAvailable": false,
+        "annualAvailable": false,
+        "checkoutMode": "contact_sales",
+        "monthlyUnavailableReason": "sales_led",
+        "seats": -1,
+        "llmTier": "tier_1"
+      }
+    ]
+  },
+  "official_documents": [
+    {
+      "source_url": "https://developers.facebook.com/documentation/business-messaging/whatsapp/pricing",
+      "retrieved_at_date": "2026-09-14",
+      "saved_local_file": "scratch\\plan-audit-20260914\\meta-pricing.html",
+      "saved_file_sha256": "f5c0abe371119146b091d7e30713f249936399becf848f84da31fbcbd9534444"
+    },
+    {
+      "source_url": "https://developers.facebook.com/documentation/business-messaging/whatsapp/pricing/non-template-messages",
+      "retrieved_at_date": "2026-09-14",
+      "saved_local_file": "scratch\\plan-audit-20260914\\meta-non-template.html",
+      "saved_file_sha256": "7822ed7622763973c2c47aa704fee984ee4f73113f1cca719d8ba41827899e35"
+    },
+    {
+      "source_url": "https://developers.facebook.com/documentation/business-messaging/whatsapp/embedded-signup/onboarding-customers-as-a-tech-provider/",
+      "retrieved_at_date": "2026-09-14",
+      "saved_local_file": "scratch\\plan-audit-20260914\\meta-tech-provider.html",
+      "saved_file_sha256": "25aeffa77e2b409340e02a90f13346313874694324b1e26ef6ff5e2e51d72f51"
+    },
+    {
+      "source_url": "https://developers.facebook.com/documentation/business-messaging/whatsapp/pricing#rate-cards-effective-october-1-2026",
+      "retrieved_at_date": "2026-09-14",
+      "saved_local_file": "scratch\\plan-audit-20260914\\meta-october-usd.xlsx",
+      "saved_file_sha256": "94913fa225da00935cd50a69a317373302d90afd47b57eeabb5e7cd64e78d867"
+    }
+  ],
+  "note": "Public data only. HTML hashes identify locally saved UTF-8 text, not an HTTP byte-for-byte archive. Raw captures retained in ignored scratch; report contains paraphrases. Rate card is original downloaded bytes. No private contract prices or tenant cost data were read."
+}

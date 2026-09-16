@@ -286,6 +286,7 @@ export function PricingSection() {
         ))}
       </div>
 
+      <p className="text-sm text-center mt-5 text-text-secondary">{t("aiSpendingPolicy")}</p>
       <div className="text-center mt-6">
         <Link href="/precios" className="inline-flex items-center gap-1.5 text-sm text-accent hover:text-accent-hover font-semibold transition-colors">
           {t("fullComparison")}

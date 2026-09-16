@@ -242,3 +242,6 @@ Par numéro et par mois civil, sans report. Pas par pays, pas par contact, et il
 Pas aujourd'hui. La facturation par message de service qui commence le 1er octobre 2026 est celle de WhatsApp ; Instagram, Messenger et Telegram n'ont pas de facturation par message de service de la part de leur fournisseur.
 
 Une question qui reste en suspens ? Écrivez-nous au [support](https://parallly-chat.cloud/support).
+
+
+Pour les comptes existants : ouvrez https://business.facebook.com/wa/manage/home/, sélectionnez la WABA indiquée dans Canaux → WhatsApp et ajoutez un moyen de paiement dans Vue d’ensemble / paiements. Ne reconnectez pas les numéros. Revenez au tableau de bord et choisissez Vérifier chez Meta. Inconnu ne signifie pas absence de carte ; un moyen associé ne garantit pas de fonds. La politique détaillée de Meta conserve le quota mensuel de service sans financement et peut bloquer les livraisons suivantes. Configurez le paiement avant épuisement du quota.

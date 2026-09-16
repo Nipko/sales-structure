@@ -1,0 +1,370 @@
+{
+  "kind": "proposal_and_sensitivity_not_measured_profitability",
+  "assumptions": {
+    "fx_cop_per_usd": 4200,
+    "fx_stress": 4800,
+    "infra_allocation_usd_per_paying_tenant": 5,
+    "invoice_cost_cop_assumed": 250,
+    "wompi": "(collected_COP * 0.0265 + 700) * 1.19",
+    "sales_tax_base": "0 for illustration, not a tax determination",
+    "support_usd_by_plan": [
+      2,
+      4,
+      10,
+      25
+    ],
+    "other_ai_media_usd_by_plan": [
+      0.5,
+      1.5,
+      5,
+      15
+    ],
+    "average_ai_usd_per_reply_by_plan": [
+      0.001,
+      0.0012,
+      0.0015,
+      0.002
+    ],
+    "stress_ai_usd_per_reply": 0.008,
+    "excludes": [
+      "Meta paid directly by tenant",
+      "CAC",
+      "product development",
+      "general administration",
+      "income tax",
+      "refunds and chargebacks"
+    ]
+  },
+  "current_reference": [
+    {
+      "plan": "emprendedor",
+      "proposed": false,
+      "price_collected_cop": 125700,
+      "revenue_net_cop": 125700.0,
+      "replies": 1000,
+      "ai_cost_usd": 1.0,
+      "wompi_fee_cop": 4796.95,
+      "modeled_cost_cop": 40746.95,
+      "contribution_cop": 84953.05,
+      "contribution_percent": 67.58
+    },
+    {
+      "plan": "starter",
+      "proposed": false,
+      "price_collected_cop": 276900,
+      "revenue_net_cop": 276900.0,
+      "replies": 5000,
+      "ai_cost_usd": 6.0,
+      "wompi_fee_cop": 9565.04,
+      "modeled_cost_cop": 79115.04,
+      "contribution_cop": 197784.96,
+      "contribution_percent": 71.43
+    },
+    {
+      "plan": "pro",
+      "proposed": false,
+      "price_collected_cop": 757700,
+      "revenue_net_cop": 757700.0,
+      "replies": 25000,
+      "ai_cost_usd": 37.5,
+      "wompi_fee_cop": 24727.07,
+      "modeled_cost_cop": 266477.07,
+      "contribution_cop": 491222.93,
+      "contribution_percent": 64.83
+    },
+    {
+      "plan": "enterprise",
+      "proposed": false,
+      "price_collected_cop": 1789800,
+      "revenue_net_cop": 1789800.0,
+      "replies": 100000,
+      "ai_cost_usd": 200.0,
+      "wompi_fee_cop": 57274.34,
+      "modeled_cost_cop": 1086524.34,
+      "contribution_cop": 703275.66,
+      "contribution_percent": 39.29
+    }
+  ],
+  "current_expensive_turns": [
+    {
+      "plan": "emprendedor",
+      "proposed": false,
+      "price_collected_cop": 125700,
+      "revenue_net_cop": 125700.0,
+      "replies": 1000,
+      "ai_cost_usd": 8.0,
+      "wompi_fee_cop": 4796.95,
+      "modeled_cost_cop": 70146.95,
+      "contribution_cop": 55553.05,
+      "contribution_percent": 44.19
+    },
+    {
+      "plan": "starter",
+      "proposed": false,
+      "price_collected_cop": 276900,
+      "revenue_net_cop": 276900.0,
+      "replies": 5000,
+      "ai_cost_usd": 40.0,
+      "wompi_fee_cop": 9565.04,
+      "modeled_cost_cop": 221915.04,
+      "contribution_cop": 54984.96,
+      "contribution_percent": 19.86
+    },
+    {
+      "plan": "pro",
+      "proposed": false,
+      "price_collected_cop": 757700,
+      "revenue_net_cop": 757700.0,
+      "replies": 25000,
+      "ai_cost_usd": 200.0,
+      "wompi_fee_cop": 24727.07,
+      "modeled_cost_cop": 948977.07,
+      "contribution_cop": -191277.07,
+      "contribution_percent": -25.24
+    },
+    {
+      "plan": "enterprise",
+      "proposed": false,
+      "price_collected_cop": 1789800,
+      "revenue_net_cop": 1789800.0,
+      "replies": 100000,
+      "ai_cost_usd": 800.0,
+      "wompi_fee_cop": 57274.34,
+      "modeled_cost_cop": 3606524.34,
+      "contribution_cop": -1816724.34,
+      "contribution_percent": -101.5
+    }
+  ],
+  "proposal_reference": [
+    {
+      "plan": "emprendedor",
+      "proposed": true,
+      "price_collected_cop": 129900,
+      "revenue_net_cop": 129900.0,
+      "replies": 1000,
+      "ai_cost_usd": 1.0,
+      "wompi_fee_cop": 4929.4,
+      "modeled_cost_cop": 40879.4,
+      "contribution_cop": 89020.6,
+      "contribution_percent": 68.53
+    },
+    {
+      "plan": "starter",
+      "proposed": true,
+      "price_collected_cop": 299900,
+      "revenue_net_cop": 299900.0,
+      "replies": 5000,
+      "ai_cost_usd": 6.0,
+      "wompi_fee_cop": 10290.35,
+      "modeled_cost_cop": 79840.35,
+      "contribution_cop": 220059.65,
+      "contribution_percent": 73.38
+    },
+    {
+      "plan": "pro",
+      "proposed": true,
+      "price_collected_cop": 799900,
+      "revenue_net_cop": 799900.0,
+      "replies": 15000,
+      "ai_cost_usd": 22.5,
+      "wompi_fee_cop": 26057.85,
+      "modeled_cost_cop": 204807.85,
+      "contribution_cop": 595092.15,
+      "contribution_percent": 74.4
+    },
+    {
+      "plan": "enterprise",
+      "proposed": true,
+      "price_collected_cop": 2199900,
+      "revenue_net_cop": 2199900.0,
+      "replies": 40000,
+      "ai_cost_usd": 80.0,
+      "wompi_fee_cop": 70206.85,
+      "modeled_cost_cop": 595456.85,
+      "contribution_cop": 1604443.15,
+      "contribution_percent": 72.93
+    }
+  ],
+  "proposal_fx_stress": [
+    {
+      "plan": "emprendedor",
+      "proposed": true,
+      "price_collected_cop": 129900,
+      "revenue_net_cop": 129900.0,
+      "replies": 1000,
+      "ai_cost_usd": 1.0,
+      "wompi_fee_cop": 4929.4,
+      "modeled_cost_cop": 45979.4,
+      "contribution_cop": 83920.6,
+      "contribution_percent": 64.6
+    },
+    {
+      "plan": "starter",
+      "proposed": true,
+      "price_collected_cop": 299900,
+      "revenue_net_cop": 299900.0,
+      "replies": 5000,
+      "ai_cost_usd": 6.0,
+      "wompi_fee_cop": 10290.35,
+      "modeled_cost_cop": 89740.35,
+      "contribution_cop": 210159.65,
+      "contribution_percent": 70.08
+    },
+    {
+      "plan": "pro",
+      "proposed": true,
+      "price_collected_cop": 799900,
+      "revenue_net_cop": 799900.0,
+      "replies": 15000,
+      "ai_cost_usd": 22.5,
+      "wompi_fee_cop": 26057.85,
+      "modeled_cost_cop": 230307.85,
+      "contribution_cop": 569592.15,
+      "contribution_percent": 71.21
+    },
+    {
+      "plan": "enterprise",
+      "proposed": true,
+      "price_collected_cop": 2199900,
+      "revenue_net_cop": 2199900.0,
+      "replies": 40000,
+      "ai_cost_usd": 80.0,
+      "wompi_fee_cop": 70206.85,
+      "modeled_cost_cop": 670456.85,
+      "contribution_cop": 1529443.15,
+      "contribution_percent": 69.52
+    }
+  ],
+  "proposal_if_display_price_includes_19pct_sales_vat": [
+    {
+      "plan": "emprendedor",
+      "proposed": true,
+      "price_collected_cop": 129900,
+      "revenue_net_cop": 109159.66,
+      "replies": 1000,
+      "ai_cost_usd": 1.0,
+      "wompi_fee_cop": 4929.4,
+      "modeled_cost_cop": 40879.4,
+      "contribution_cop": 68280.27,
+      "contribution_percent": 62.55
+    },
+    {
+      "plan": "starter",
+      "proposed": true,
+      "price_collected_cop": 299900,
+      "revenue_net_cop": 252016.81,
+      "replies": 5000,
+      "ai_cost_usd": 6.0,
+      "wompi_fee_cop": 10290.35,
+      "modeled_cost_cop": 79840.35,
+      "contribution_cop": 172176.46,
+      "contribution_percent": 68.32
+    },
+    {
+      "plan": "pro",
+      "proposed": true,
+      "price_collected_cop": 799900,
+      "revenue_net_cop": 672184.87,
+      "replies": 15000,
+      "ai_cost_usd": 22.5,
+      "wompi_fee_cop": 26057.85,
+      "modeled_cost_cop": 204807.85,
+      "contribution_cop": 467377.03,
+      "contribution_percent": 69.53
+    },
+    {
+      "plan": "enterprise",
+      "proposed": true,
+      "price_collected_cop": 2199900,
+      "revenue_net_cop": 1848655.46,
+      "replies": 40000,
+      "ai_cost_usd": 80.0,
+      "wompi_fee_cop": 70206.85,
+      "modeled_cost_cop": 595456.85,
+      "contribution_cop": 1253198.62,
+      "contribution_percent": 67.79
+    }
+  ],
+  "proposal_annual_10pct_monthly_equivalent": [
+    {
+      "plan": "emprendedor",
+      "proposed": true,
+      "price_collected_cop": 116910.0,
+      "revenue_net_cop": 116910.0,
+      "replies": 1000,
+      "ai_cost_usd": 1.0,
+      "wompi_fee_cop": 4519.76,
+      "modeled_cost_cop": 40469.76,
+      "contribution_cop": 76440.24,
+      "contribution_percent": 65.38
+    },
+    {
+      "plan": "starter",
+      "proposed": true,
+      "price_collected_cop": 269910.0,
+      "revenue_net_cop": 269910.0,
+      "replies": 5000,
+      "ai_cost_usd": 6.0,
+      "wompi_fee_cop": 9344.61,
+      "modeled_cost_cop": 78894.61,
+      "contribution_cop": 191015.39,
+      "contribution_percent": 70.77
+    },
+    {
+      "plan": "pro",
+      "proposed": true,
+      "price_collected_cop": 719910.0,
+      "revenue_net_cop": 719910.0,
+      "replies": 15000,
+      "ai_cost_usd": 22.5,
+      "wompi_fee_cop": 23535.36,
+      "modeled_cost_cop": 202285.36,
+      "contribution_cop": 517624.64,
+      "contribution_percent": 71.9
+    },
+    {
+      "plan": "enterprise",
+      "proposed": true,
+      "price_collected_cop": 1979910.0,
+      "revenue_net_cop": 1979910.0,
+      "replies": 40000,
+      "ai_cost_usd": 80.0,
+      "wompi_fee_cop": 63269.46,
+      "modeled_cost_cop": 588519.46,
+      "contribution_cop": 1391390.54,
+      "contribution_percent": 70.28
+    }
+  ],
+  "meta_10000_service_deliveries_one_number_usd": {
+    "CO": 7.2,
+    "BR": 61.2,
+    "MX": 76.5,
+    "CL": 180.0,
+    "AR": 234.0,
+    "PE": 270.0
+  },
+  "aws_fixed_cost_per_paying_tenant_usd": {
+    "300": {
+      "20": 15.0,
+      "50": 6.0,
+      "100": 3.0,
+      "200": 1.5,
+      "500": 0.6
+    },
+    "600": {
+      "20": 30.0,
+      "50": 12.0,
+      "100": 6.0,
+      "200": 3.0,
+      "500": 1.2
+    },
+    "1000": {
+      "20": 50.0,
+      "50": 20.0,
+      "100": 10.0,
+      "200": 5.0,
+      "500": 2.0
+    }
+  },
+  "fargate_us_east_1_6vcpu_12gb_730hours": 216.24
+}

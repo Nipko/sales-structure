@@ -71,6 +71,50 @@ function matches(requested: string, declared: string): boolean {
     return a.every((segment, index) => b[index].startsWith(':') || segment === b[index]);
 }
 
+/**
+ * Cada ruta de WhatsApp que declara el cliente HTTP compartido.
+ *
+ * Una plantilla con interpolación anidada (una dentro de otra) no se puede
+ * normalizar con una expresión regular, así que de esas se verifica sólo el
+ * prefijo estático — `exact: false`. Se dice en voz alta para que nadie lea
+ * esto como cobertura total: el prefijo es justamente donde vive el error de
+ * controlador equivocado que esta prueba existe para atrapar, pero la cola de
+ * la ruta queda sin comprobar.
+ */
+function apiClientWhatsappPaths(source: string): Array<{ path: string; exact: boolean }> {
+    const found = new Map<string, boolean>();
+    const add = (raw: string) => {
+        if (!/whatsapp/i.test(raw)) return;
+        const normalized = raw.replace(/\$\{[^${}]*\}/g, ':param').split('?')[0];
+        const residue = normalized.search(/[$`]/);
+        const exact = residue < 0;
+        // Sin la cola interpolada; el segmento parcial que quede se descarta.
+        const path = exact
+            ? normalized
+            : normalized.slice(0, residue).replace(/\/$/, '');
+        found.set(path, (found.get(path) ?? true) && exact);
+    };
+
+    for (const match of source.matchAll(
+        /api(?:Get|Post|Put|Patch|Delete)(?:<[^>]*>)?\(\s*(["'])(\/[^"']*)\1/g,
+    )) add(match[2]);
+    // El backtick de cierre es el que va seguido de `,` o `)`: los de una
+    // plantilla anidada no lo están.
+    for (const match of source.matchAll(
+        /api(?:Get|Post|Put|Patch|Delete)(?:<[^>]*>)?\(\s*`(\/[\s\S]*?)`\s*[,)]/g,
+    )) add(match[1]);
+
+    return [...found].map(([path, exact]) => ({ path, exact }));
+}
+
+/** El prefijo estático de una ruta interpolada contra una ruta declarada. */
+function matchesPrefix(prefix: string, declared: string): boolean {
+    const a = prefix.split('/');
+    const b = declared.split('/');
+    if (a.length > b.length) return false;
+    return a.every((segment, index) => b[index].startsWith(':') || segment === b[index]);
+}
+
 describe('la pantalla de canales → WhatsApp', () => {
     const page = read(path.join(__dirname, 'page.tsx'));
     const routes = declaredRoutes();
@@ -88,6 +132,28 @@ describe('la pantalla de canales → WhatsApp', () => {
 
         const missing = requested.filter(candidate =>
             ![...routes].some(declared => matches(candidate, declared)));
+
+        expect(missing).toEqual([]);
+    });
+});
+
+describe('el cliente HTTP compartido', () => {
+    const routes = declaredRoutes();
+
+    it('no declara ningún método de WhatsApp contra una ruta que la API no tenga', () => {
+        // La misma equivocación de prefijo entró dos veces: una por la pantalla
+        // y otra por acá, donde el nombre del método (`checkWhatsappFunding`)
+        // no deja ver a qué controlador le pega.
+        const requested = apiClientWhatsappPaths(
+            read(path.join(DASHBOARD_SRC, 'lib', 'api.ts')),
+        );
+        expect(requested.length).toBeGreaterThan(2);
+
+        const missing = requested
+            .filter(candidate => ![...routes].some(declared => (candidate.exact
+                ? matches(candidate.path, declared)
+                : matchesPrefix(candidate.path, declared))))
+            .map(candidate => candidate.path);
 
         expect(missing).toEqual([]);
     });

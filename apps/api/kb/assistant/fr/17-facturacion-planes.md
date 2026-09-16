@@ -65,3 +65,6 @@ Non. Ce sont deux paiements distincts : le forfait, c'est le logiciel ; les mess
 Consultez l'historique et les **Données fiscales**. Si aucun téléchargement ni état d'émission n'apparaît, contactez le support ; ne supposez pas qu'une intégration fiscale est active.
 
 Besoin d'aide pour une opération ? Écrivez à https://parallly-chat.cloud/support en joignant le message d'état, sans partager de données de paiement sensibles.
+
+
+Les réponses incluses sont soumises au plafond mensuel de dépenses IA du forfait. Les longues conversations, outils et modèles avancés consomment davantage : l’IA peut s’arrêter avant épuisement du quota de réponses. Les messages WhatsApp sont payés séparément à Meta.

@@ -239,3 +239,6 @@ Per number and per calendar month, with no carry-over. Not per country, not per 
 Not today. The per-service-message charge starting on 1 October 2026 is WhatsApp's; Instagram, Messenger and Telegram have no per-service-message charge from their provider.
 
 Still have questions? Write to us at [support](https://parallly-chat.cloud/support).
+
+
+For existing accounts: open https://business.facebook.com/wa/manage/home/, select the WABA listed under Channels → WhatsApp and add a payment method in Overview / payments. Do not reconnect the numbers. Return to the dashboard and select Check with Meta. Unknown does not mean no card; an attached method does not guarantee funds. Meta’s detailed policy preserves the monthly service allowance without funding and may block subsequent deliveries. Configure payment before exhausting that allowance.

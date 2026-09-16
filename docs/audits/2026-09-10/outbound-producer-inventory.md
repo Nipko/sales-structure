@@ -243,7 +243,7 @@ mensajes entregados, y un indicador de "escribiendo" no lo es.
 
 | Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
 |---:|---|---|---|---|---|---|---|
-| 910 | `dispatchRest` | `dispatch.send` | `dispatch_outbox` | HTTP POST send/location | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 921 | `dispatchRest` | `dispatch.send` | `dispatch_outbox` | HTTP POST send/location | dynamic | 1 | one effect per invocation; no loop reaches this send |
 
 ## La frontera economica: cero productores cobrables fuera de ella
 
@@ -330,7 +330,7 @@ buscar una llamada a la autoridad economica en el codigo del archivo.
 | `modules/recall/recall.service.ts:250` | `recallOne` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/tours/tours.service.ts:441` | `createBooking` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/vacation-rental/properties.service.ts:723` | `createBooking` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
-| `modules/whatsapp/whatsapp.controller.ts:910` | `dispatchRest` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
+| `modules/whatsapp/whatsapp.controller.ts:921` | `dispatchRest` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
 
 ### Lo que esta comprobacion no puede ver
 

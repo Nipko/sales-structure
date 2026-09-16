@@ -65,3 +65,6 @@ No. They are two separate payments: the plan is the software, and the messages W
 Check the history and **Tax details**. If no download or issuance status appears, contact support; do not assume a fiscal integration is active.
 
 Need help with an operation? Write to https://parallly-chat.cloud/support and include the status message, without sharing sensitive payment information.
+
+
+Included replies are subject to the plan’s monthly AI spending limit. Long conversations, tools and advanced models consume more budget: AI may pause before the reply quota is exhausted. WhatsApp messages are paid separately to Meta.

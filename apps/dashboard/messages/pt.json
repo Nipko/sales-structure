@@ -6377,12 +6377,12 @@
   },
   "setupWizard": {
     "title": "Configure seu agente IA",
-  "subtitle": "Em poucos minutos você terá um rascunho pronto para testar, revisar e publicar",
+    "subtitle": "Em poucos minutos você terá um rascunho pronto para testar, revisar e publicar",
     "testTitle": "Teste",
     "connectTitle": "Conecte",
     "discoverTitle": "Descubra",
     "connectBannerTitle": "Você ainda não conectou um canal",
-  "connectBannerDesc": "Ainda não há um canal recebendo mensagens. Conecte-o e depois publique a versão do agente que deve atendê-lo.",
+    "connectBannerDesc": "Ainda não há um canal recebendo mensagens. Conecte-o e depois publique a versão do agente que deve atendê-lo.",
     "connectBannerCta": "Conectar o WhatsApp",
     "resumeBannerTitle": "Retome a configuração",
     "resumeBannerDesc": "Você deixou o assistente pela metade. Tudo foi salvo: dá para continuar de onde parou.",
@@ -6400,7 +6400,7 @@
       "continue": "Continuar",
       "connectLater": "Conectar depois",
       "connected": "Conectado!",
-    "connectedDesc": "O número {phone} foi conectado. Revise a atribuição e publique o agente antes de atender clientes.",
+      "connectedDesc": "O número {phone} foi conectado. Revise a atribuição e publique o agente antes de atender clientes.",
       "coexistenceHint": "Escaneie o QR code no seu app do WhatsApp Business para conectar seu número atual sem perder suas conversas.",
       "channel_instagram": "Instagram",
       "channel_messenger": "Messenger",
@@ -6682,7 +6682,7 @@
       "cap_offers_desc": "Compartilha ofertas ativas e códigos de desconto"
     },
     "completion": {
-    "title": "O rascunho de {name} está preparado",
+      "title": "O rascunho de {name} está preparado",
       "configured": "Configurado",
       "pending": "Falta conectar",
       "testAgent": "Testar meu agente",
@@ -6696,7 +6696,7 @@
       "stepOf": "Passo {current} de {total}"
     },
     "pageTitle": "Conheça o seu agente",
-  "pageSubtitle": "Três passos para preparar e testar; você publicará a versão revisada no final.",
+    "pageSubtitle": "Três passos para preparar e testar; você publicará a versão revisada no final.",
     "exit": "Sair",
     "exitHint": "Guardamos o que você fez e voltamos ao painel",
     "steps": {
@@ -6709,23 +6709,23 @@
       "subtitle": "Preparamos um agente com o que você nos contou. Confirme ou altere.",
       "prepared": "Preparamos {name} com o que você nos contou do seu negócio. Confirme o nome e a saudação, e teste aqui ao lado.",
       "saving": "Salvando…",
-    "saved": "Rascunho salvo",
-    "autosaveHint": "O rascunho é salvo quando você sai do campo; a versão operacional não muda.",
+      "saved": "Rascunho salvo",
+      "autosaveHint": "O rascunho é salvo quando você sai do campo; a versão operacional não muda.",
       "changeTemplate": "Trocar modelo"
     },
     "connectStep": {
       "title": "Conecte o WhatsApp",
-    "subtitle": "Conecte o canal que receberá mensagens. O agente começa a responder depois que uma versão aprovada for atribuída e publicada.",
+      "subtitle": "Conecte o canal que receberá mensagens. O agente começa a responder depois que uma versão aprovada for atribuída e publicada.",
       "laterTitle": "Não é um bom momento?",
       "laterHint": "Você pode deixar para depois: lembramos no Início e você pode voltar aqui quando quiser.",
       "showMe": "Mostrar onde"
     },
     "doneStep": {
-    "title": "Configuração inicial salva",
-    "subtitle": "Revise e publique o rascunho para torná-lo a versão que atenderá seus clientes.",
+      "title": "Configuração inicial salva",
+      "subtitle": "Revise e publique o rascunho para torná-lo a versão que atenderá seus clientes.",
       "subtitleDeferred": "Esperamos você no Início para conectar o WhatsApp. Enquanto isso, veja o que vem a seguir.",
       "goToPanel": "Ir ao painel",
-    "tourCta": "Revisar e publicar meu agente",
+      "tourCta": "Revisar e publicar meu agente",
       "essentials": {
         "channel": {
           "title": "Conectar o WhatsApp",
@@ -7295,7 +7295,8 @@
     },
     "limitReached": "Você atingiu o limite de {limit} {resource} no seu plano atual ({current}/{limit}).",
     "upgradePlan": "Melhorar plano",
-    "cancel": "Cancelar"
+    "cancel": "Cancelar",
+    "aiSpendingPolicy": "As respostas incluídas estão sujeitas ao limite mensal de gasto de IA do plano. Conversas longas, ferramentas e modelos avançados consomem mais orçamento: a IA pode pausar antes de esgotar a quantidade de respostas. As mensagens do WhatsApp são pagas separadamente à Meta."
   },
   "couponsPage": {
     "title": "Cupons promocionais",
@@ -7545,7 +7546,9 @@
       "confidence": "Confiança",
       "insufficientTitle": "Ainda não podemos projetar",
       "insufficientBody": "Precisamos de pelo menos {need} snapshots mensais; temos {have}."
-    }
+    },
+    "costCoverageNotice": "Cobertura parcial: o histórico global desconta IA e infraestrutura; por empresa, desconta apenas IA. Não é lucro líquido nem margem completa: faltam taxas de pagamento, suporte, multimídia, embeddings, impostos e outros custos. Valores indisponíveis aparecem como —.",
+    "mrrIncomplete": "O MRR exclui {count} assinaturas sem valor ou conversão verificável. Revise os preços e as taxas de câmbio."
   },
   "featureRequests": {
     "title": "Sugestões",
@@ -11344,8 +11347,20 @@
       "maxChannelAccountsInstagram": "Contas de Instagram",
       "maxChannelAccountsMessenger": "Páginas do Messenger",
       "maxChannelAccountsTelegram": "Bots do Telegram",
-      "maxChannelAccountsSms": "Números de SMS"
-    }
+      "maxChannelAccountsSms": "Números de SMS",
+      "llmHardBudgetUsdCents": "Teto mensal do modelo (centavos USD)"
+    },
+    "invalidMoney": "Insira um valor válido, sem símbolos, com os separadores do seu idioma e até duas casas decimais.",
+    "editConflict": "Outro administrador alterou este plano. Recarregue e revise as alterações antes de salvar.",
+    "cachePending": "O plano foi salvo, mas a invalidação do cache está pendente. Tente novamente; o cache expira em até cinco minutos.",
+    "saveError": "Não foi possível salvar. Verifique os dados e tente novamente.",
+    "spendTitle": "Gasto do modelo por empresa",
+    "spendRefresh": "Atualizar",
+    "spendExplanation": "Estimativas em USD para o mês UTC, até 200 empresas. Inclui reservas pendentes; não é uma fatura. — indica ausência de registro durável no mês. Edite os tetos nos recursos do plano; -1 remove o teto. O limite pode interromper a IA antes de esgotar as respostas incluídas. Meta, multimídia e embeddings são controlados separadamente.",
+    "spendTenant": "Empresa e plano",
+    "spendUsed": "Contabilizado e reservado",
+    "spendCeiling": "Teto mensal",
+    "spendUnknown": "Reservas pendentes"
   },
   "reportBuilder": {
     "title": "Relatórios personalizados",
@@ -13665,11 +13680,26 @@
     },
     "publish_agent_revision": {
       "steps": {
-        "draft": { "title": "Salve um rascunho", "content": "O rascunho reúne a configuração e as conexões que você quer revisar; ainda não responde aos clientes." },
-        "test": { "title": "Teste o rascunho", "content": "Escolha Rascunho salvo e teste objetivos, ferramentas, limites e transferência humana sem afetar conversas reais." },
-        "prepare": { "title": "Prepare uma versão", "content": "Crie o candidato a partir do rascunho atual. A evidência deve corresponder exatamente a esta revisão." },
-        "review": { "title": "Revise e decida", "content": "Confira mudanças, canais, cenários e limites da evidência antes de aprovar. Revisar não publica." },
-        "publish": { "title": "Publique a versão aprovada", "content": "Escolha o candidato aprovado e decida se também ativa o agente. Confirme somente quando esta for a configuração que deve atender." }
+        "draft": {
+          "title": "Salve um rascunho",
+          "content": "O rascunho reúne a configuração e as conexões que você quer revisar; ainda não responde aos clientes."
+        },
+        "test": {
+          "title": "Teste o rascunho",
+          "content": "Escolha Rascunho salvo e teste objetivos, ferramentas, limites e transferência humana sem afetar conversas reais."
+        },
+        "prepare": {
+          "title": "Prepare uma versão",
+          "content": "Crie o candidato a partir do rascunho atual. A evidência deve corresponder exatamente a esta revisão."
+        },
+        "review": {
+          "title": "Revise e decida",
+          "content": "Confira mudanças, canais, cenários e limites da evidência antes de aprovar. Revisar não publica."
+        },
+        "publish": {
+          "title": "Publique a versão aprovada",
+          "content": "Escolha o candidato aprovado e decida se também ativa o agente. Confirme somente quando esta for a configuração que deve atender."
+        }
       }
     },
     "human_handoff_route": {
@@ -13738,9 +13768,18 @@
     },
     "privacy_policy": {
       "steps": {
-        "type": { "title": "Política de privacidade", "content": "Abra Privacidade. O agente precisa de uma versão ativa para explicar o tratamento de imagens e áudios antes de pedir consentimento." },
-        "content": { "title": "Explique o tratamento de mídia", "content": "Informe o que é processado, por quê, por quanto tempo é conservado e como retirar o consentimento. Revise o texto com a pessoa responsável pela privacidade." },
-        "save": { "title": "Publique uma versão ativa", "content": "Salve a política. A partir daí, o agente pode mostrá-la, pedir consentimento explícito e processar a mídia somente depois de recebê-lo." }
+        "type": {
+          "title": "Política de privacidade",
+          "content": "Abra Privacidade. O agente precisa de uma versão ativa para explicar o tratamento de imagens e áudios antes de pedir consentimento."
+        },
+        "content": {
+          "title": "Explique o tratamento de mídia",
+          "content": "Informe o que é processado, por quê, por quanto tempo é conservado e como retirar o consentimento. Revise o texto com a pessoa responsável pela privacidade."
+        },
+        "save": {
+          "title": "Publique uma versão ativa",
+          "content": "Salve a política. A partir daí, o agente pode mostrá-la, pedir consentimento explícito e processar a mídia somente depois de recebê-lo."
+        }
       }
     },
     "appointments_setup": {
@@ -14597,7 +14636,7 @@
     "title": "Cobrança do WhatsApp (Meta)",
     "whoCharges": "A partir de 1º de outubro de 2026 a Meta cobra da SUA conta do WhatsApp Business cada mensagem de serviço entregue. Essa cobrança é da Meta, não da Parallly, e é paga com a forma de pagamento cadastrada na Meta. Sua assinatura da Parallly é um pagamento separado e não muda por causa disso.",
     "paymentDeadlineTitle": "Adicione a forma de pagamento na Meta antes de 30 de setembro",
-    "paymentDeadlineBody": "Ela é adicionada na administração oficial do WhatsApp da Meta. A Parallly não recebe, armazena nem vê os dados desse cartão. Sem uma forma válida, a Meta pode deixar de entregar mensagens a partir de 1º de outubro.",
+    "paymentDeadlineBody": "A Meta cobra o WhatsApp diretamente da sua empresa. A assinatura Parallly é paga separadamente pela Wompi. Não copiamos cartões entre serviços: os dados do cartão da Meta são inseridos e permanecem na Meta.",
     "defaultProtection": "A Parallly começa medindo alertas em 2.000 entregas por número e 60 por contato por mês. Esses limites não interrompem mensagens enquanto a proteção estiver no modo de observação.",
     "protectionTitle": "Proteção de gastos",
     "protectionObserve": "Somente observar",
@@ -14702,5 +14741,25 @@
       "total_not_representable": "o total não pode ser expresso na moeda da conta"
     },
     "seeSpendPanel": "Ver a cobrança do WhatsApp"
+  },
+  "whatsappFunding": {
+    "title": "Financiamento da sua conta do WhatsApp",
+    "separation": "A Meta cobra o WhatsApp diretamente da sua empresa. A assinatura Parallly é paga separadamente pela Wompi. Não copiamos cartões entre serviços: os dados do cartão da Meta são inseridos e permanecem na Meta.",
+    "step1": "Abra o WhatsApp Manager e entre como administrador da empresa.",
+    "step2": "Selecione a conta do WhatsApp (WABA) indicada abaixo. Em Visão geral, abra as configurações de pagamentos e adicione uma forma de pagamento.",
+    "step3": "Volte aqui e confira a conta. Não é necessário reconectar números nem mudar o cartão da Parallly.",
+    "openMeta": "Abrir pagamentos na Meta",
+    "allowance": "A partir de 1º de outubro de 2026, a Meta inclui 1.000 entregas de serviço por número e mês calendário. Sem financiamento, pode bloquear as entregas seguintes; modelos cobrados também exigem financiamento. Configure antes de esgotar a franquia.",
+    "error": "Não foi possível verificar o financiamento. Confira sua conta na Meta; isso não prova que falta cartão.",
+    "reload": "Recarregar",
+    "waba": "Conta do WhatsApp",
+    "unknown": "Não foi possível estabelecer o estado de financiamento.",
+    "checked": "Última verificação",
+    "checking": "Verificando…",
+    "check": "Verificar na Meta",
+    "not_checked": "Não verificado",
+    "attached": "Forma de pagamento associada. Não garante saldo nem aprovação da cobrança.",
+    "absent": "A Meta informa que não há forma de pagamento.",
+    "restricted": "A Meta restringiu o financiamento. Resolva no gerenciador de pagamentos."
   }
 }

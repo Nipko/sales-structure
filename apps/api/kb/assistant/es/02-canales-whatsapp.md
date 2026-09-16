@@ -240,3 +240,6 @@ Por número y por mes calendario, sin acumulación. No son por país, no son por
 Hoy no. El cobro por mensaje de servicio que empieza el 1 de octubre de 2026 es de WhatsApp; Instagram, Messenger y Telegram no tienen un cobro por mensaje de servicio de su proveedor.
 
 ¿Te quedó alguna duda? Escríbenos en [soporte](https://parallly-chat.cloud/support).
+
+
+Para cuentas existentes: abre https://business.facebook.com/wa/manage/home/, selecciona la WABA indicada en Canales → WhatsApp y agrega el medio de pago en Información general / pagos. No reconectes los números. Vuelve al panel y pulsa Comprobar en Meta. Un estado desconocido no significa ausencia de tarjeta; un método asociado no garantiza fondos. Según la política detallada de Meta, sin financiación se mantiene la franquicia mensual de servicio y pueden bloquearse las entregas posteriores. Configura el pago antes de agotar esa franquicia.

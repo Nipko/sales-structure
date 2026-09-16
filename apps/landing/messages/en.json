@@ -951,7 +951,8 @@
     "liveCalendars": "{count} calendars",
     "liveCustomPrompt": "Custom prompt",
     "liveWhiteLabel": "White label",
-    "plansContact": "Ask the team about plans"
+    "plansContact": "Ask the team about plans",
+    "aiSpendingPolicy": "Included replies are subject to the plan’s monthly AI spending limit. Long conversations, tools and advanced models consume more budget: AI may pause before the reply quota is exhausted. WhatsApp messages are paid separately to Meta."
   },
   "faq": {
     "title": "Frequently Asked Questions",

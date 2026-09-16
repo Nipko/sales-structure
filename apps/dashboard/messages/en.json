@@ -6377,12 +6377,12 @@
   },
   "setupWizard": {
     "title": "Set up your AI agent",
-  "subtitle": "In a few minutes you will have a draft ready to test, review, and publish",
+    "subtitle": "In a few minutes you will have a draft ready to test, review, and publish",
     "testTitle": "Try it",
     "connectTitle": "Connect it",
     "discoverTitle": "Discover",
     "connectBannerTitle": "You haven't connected a channel yet",
-  "connectBannerDesc": "There is no channel receiving messages yet. Connect it, then publish the agent version that should handle it.",
+    "connectBannerDesc": "There is no channel receiving messages yet. Connect it, then publish the agent version that should handle it.",
     "connectBannerCta": "Connect WhatsApp",
     "resumeBannerTitle": "Pick up your setup",
     "resumeBannerDesc": "You left the assistant halfway. Everything was saved: you can carry on where you were.",
@@ -6400,7 +6400,7 @@
       "continue": "Continue",
       "connectLater": "Connect later",
       "connected": "Connected!",
-    "connectedDesc": "The number {phone} is connected. Review its assignment and publish the agent before serving customers.",
+      "connectedDesc": "The number {phone} is connected. Review its assignment and publish the agent before serving customers.",
       "coexistenceHint": "Scan the QR code from your WhatsApp Business app to connect your current number without losing your chats.",
       "channel_instagram": "Instagram",
       "channel_messenger": "Messenger",
@@ -6682,7 +6682,7 @@
       "cap_offers_desc": "Share active deals and discount codes"
     },
     "completion": {
-    "title": "The draft for {name} is prepared",
+      "title": "The draft for {name} is prepared",
       "configured": "Configured",
       "pending": "Pending connection",
       "testAgent": "Test my agent",
@@ -6696,7 +6696,7 @@
       "stepOf": "Step {current} of {total}"
     },
     "pageTitle": "Meet your agent",
-  "pageSubtitle": "Three steps to prepare and test; you will publish the reviewed version at the end.",
+    "pageSubtitle": "Three steps to prepare and test; you will publish the reviewed version at the end.",
     "exit": "Exit",
     "exitHint": "We save what you did and take you back to the panel",
     "steps": {
@@ -6709,23 +6709,23 @@
       "subtitle": "We prepared an agent from what you told us. Confirm it or change it.",
       "prepared": "We prepared {name} using what you told us about your business. Confirm the name and greeting, and try it right here.",
       "saving": "Saving…",
-    "saved": "Draft saved",
-    "autosaveHint": "The draft saves when you leave the field; the operational version does not change.",
+      "saved": "Draft saved",
+      "autosaveHint": "The draft saves when you leave the field; the operational version does not change.",
       "changeTemplate": "Change template"
     },
     "connectStep": {
       "title": "Connect WhatsApp",
-    "subtitle": "Connect the channel that will receive messages. The agent starts replying after an approved version is assigned and published.",
+      "subtitle": "Connect the channel that will receive messages. The agent starts replying after an approved version is assigned and published.",
       "laterTitle": "Not a good moment?",
       "laterHint": "You can leave it for later: we'll remind you on Home and you can come back here whenever you want.",
       "showMe": "Show me where"
     },
     "doneStep": {
-    "title": "Initial setup saved",
-    "subtitle": "Review and publish the draft to make it the version that serves your customers.",
+      "title": "Initial setup saved",
+      "subtitle": "Review and publish the draft to make it the version that serves your customers.",
       "subtitleDeferred": "We'll be waiting on Home to connect WhatsApp. Meanwhile, here is what comes next.",
       "goToPanel": "Go to the panel",
-    "tourCta": "Review and publish my agent",
+      "tourCta": "Review and publish my agent",
       "essentials": {
         "channel": {
           "title": "Connect WhatsApp",
@@ -7295,7 +7295,8 @@
     },
     "limitReached": "You've reached the limit of {limit} {resource} on your current plan ({current}/{limit}).",
     "upgradePlan": "Upgrade plan",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "aiSpendingPolicy": "Included replies are subject to the plan’s monthly AI spending limit. Long conversations, tools and advanced models consume more budget: AI may pause before the reply quota is exhausted. WhatsApp messages are paid separately to Meta."
   },
   "couponsPage": {
     "title": "Promo coupons",
@@ -7545,7 +7546,9 @@
       "confidence": "Confidence",
       "insufficientTitle": "Forecast not available yet",
       "insufficientBody": "We need at least {need} monthly snapshots for a meaningful projection; we have {have}."
-    }
+    },
+    "costCoverageNotice": "Partial coverage: global history deducts AI and infrastructure; the business breakdown deducts AI only. This is not net profit or a complete margin: payment fees, support, multimedia, embeddings, taxes and other costs are missing. Unavailable figures display —.",
+    "mrrIncomplete": "MRR excludes {count} subscriptions without a verifiable amount or conversion. Review their prices and exchange rates."
   },
   "featureRequests": {
     "title": "Feature Requests",
@@ -11344,8 +11347,20 @@
       "maxChannelAccountsInstagram": "Instagram accounts",
       "maxChannelAccountsMessenger": "Messenger pages",
       "maxChannelAccountsTelegram": "Telegram bots",
-      "maxChannelAccountsSms": "SMS numbers"
-    }
+      "maxChannelAccountsSms": "SMS numbers",
+      "llmHardBudgetUsdCents": "Monthly model spending ceiling (USD cents)"
+    },
+    "invalidMoney": "Enter a valid amount without symbols, using your language’s separators and up to two decimal places.",
+    "editConflict": "Another administrator changed this plan. Reload and review their changes before saving.",
+    "cachePending": "The plan was saved, but cache invalidation is pending. Retry invalidation; cached values expire within five minutes.",
+    "saveError": "Could not save. Check the values and try again.",
+    "spendTitle": "Model spending by business",
+    "spendRefresh": "Refresh",
+    "spendExplanation": "USD estimates for the UTC month, up to 200 businesses. Includes pending reservations; this is not an invoice. — means no durable record exists for the month yet. Edit ceilings in plan capabilities; -1 removes the ceiling. The limit may stop AI before the reply quota is exhausted. Meta, multimedia and embeddings are controlled separately.",
+    "spendTenant": "Business and plan",
+    "spendUsed": "Accounted and reserved",
+    "spendCeiling": "Monthly ceiling",
+    "spendUnknown": "Unresolved reservations"
   },
   "reportBuilder": {
     "title": "Custom Reports",
@@ -13665,11 +13680,26 @@
     },
     "publish_agent_revision": {
       "steps": {
-        "draft": { "title": "Save a draft", "content": "The draft gathers the configuration and connections you want to review; it does not answer customers yet." },
-        "test": { "title": "Test the draft", "content": "Choose Saved draft and test goals, tools, limits, and human handoff without affecting real conversations." },
-        "prepare": { "title": "Prepare a release", "content": "Create the candidate from the current draft. Its evidence must match this exact revision." },
-        "review": { "title": "Review and decide", "content": "Check changes, channels, scenarios, and evidence limits before approving. Review does not publish." },
-        "publish": { "title": "Publish the approved version", "content": "Choose the approved candidate and decide whether to activate the agent too. Confirm only when this is the configuration that should serve customers." }
+        "draft": {
+          "title": "Save a draft",
+          "content": "The draft gathers the configuration and connections you want to review; it does not answer customers yet."
+        },
+        "test": {
+          "title": "Test the draft",
+          "content": "Choose Saved draft and test goals, tools, limits, and human handoff without affecting real conversations."
+        },
+        "prepare": {
+          "title": "Prepare a release",
+          "content": "Create the candidate from the current draft. Its evidence must match this exact revision."
+        },
+        "review": {
+          "title": "Review and decide",
+          "content": "Check changes, channels, scenarios, and evidence limits before approving. Review does not publish."
+        },
+        "publish": {
+          "title": "Publish the approved version",
+          "content": "Choose the approved candidate and decide whether to activate the agent too. Confirm only when this is the configuration that should serve customers."
+        }
       }
     },
     "human_handoff_route": {
@@ -13738,9 +13768,18 @@
     },
     "privacy_policy": {
       "steps": {
-        "type": { "title": "Privacy policy", "content": "Open Privacy. The agent needs an active version to explain how images and audio are handled before requesting consent." },
-        "content": { "title": "Explain media processing", "content": "State what is processed, why, how long it is retained, and how consent can be withdrawn. Have the text reviewed by the person responsible for privacy." },
-        "save": { "title": "Publish an active version", "content": "Save the policy. The agent can then show it, request explicit consent, and process media only after consent is received." }
+        "type": {
+          "title": "Privacy policy",
+          "content": "Open Privacy. The agent needs an active version to explain how images and audio are handled before requesting consent."
+        },
+        "content": {
+          "title": "Explain media processing",
+          "content": "State what is processed, why, how long it is retained, and how consent can be withdrawn. Have the text reviewed by the person responsible for privacy."
+        },
+        "save": {
+          "title": "Publish an active version",
+          "content": "Save the policy. The agent can then show it, request explicit consent, and process media only after consent is received."
+        }
       }
     },
     "appointments_setup": {
@@ -14597,7 +14636,7 @@
     "title": "WhatsApp charges (Meta)",
     "whoCharges": "From 1 October 2026 Meta charges YOUR WhatsApp Business account for every delivered service message. That charge is Meta’s, not Parallly’s, and it is paid with the payment method on your Meta account. Your Parallly subscription is a separate payment and does not change because of this.",
     "paymentDeadlineTitle": "Add a payment method at Meta before 30 September",
-    "paymentDeadlineBody": "You add it in Meta's official WhatsApp management. Parallly does not receive, store or see that card's details. Without a valid method, Meta may stop delivering messages from 1 October.",
+    "paymentDeadlineBody": "Meta bills WhatsApp directly to your business. Your Parallly subscription is paid separately through Wompi. We do not copy cards between services: Meta card details are entered and remain with Meta.",
     "defaultProtection": "Parallly starts by measuring alerts at 2,000 deliveries per number and 60 per contact each month. These thresholds do not stop messages while protection is in observation mode.",
     "protectionTitle": "Spend protection",
     "protectionObserve": "Observe only",
@@ -14702,5 +14741,25 @@
       "total_not_representable": "the total cannot be expressed in the account's currency"
     },
     "seeSpendPanel": "See WhatsApp charges"
+  },
+  "whatsappFunding": {
+    "title": "Funding your WhatsApp account",
+    "separation": "Meta bills WhatsApp directly to your business. Your Parallly subscription is paid separately through Wompi. We do not copy cards between services: Meta card details are entered and remain with Meta.",
+    "step1": "Open WhatsApp Manager and sign in as a business administrator.",
+    "step2": "Select the WhatsApp account (WABA) shown below. From Overview, open payment settings and add a payment method.",
+    "step3": "Return here and check the account. No need to reconnect numbers or change your Parallly card.",
+    "openMeta": "Open payments in Meta",
+    "allowance": "From October 1, 2026, Meta includes 1,000 service deliveries per number and calendar month. Without funding it may block further deliveries; chargeable templates also require funding. Set it up before exhausting the allowance.",
+    "error": "We could not verify funding. Check your account in Meta; this does not prove a card is missing.",
+    "reload": "Reload",
+    "waba": "WhatsApp account",
+    "unknown": "Funding status could not be established.",
+    "checked": "Last checked",
+    "checking": "Checking…",
+    "check": "Check with Meta",
+    "not_checked": "Not checked",
+    "attached": "Payment method attached. Funds and charge approval are not guaranteed.",
+    "absent": "Meta reports no payment method.",
+    "restricted": "Meta has restricted funding. Resolve it in its payment manager."
   }
 }

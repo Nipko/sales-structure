@@ -30,20 +30,47 @@ export function resolveFactoryPlanSeedPath(): string {
     return path;
 }
 
+/**
+ * The four quota fields this contract reads out of the literal.
+ *
+ * They are named here because of what lives BELOW the literal: the seed mutates
+ * the plans it just declared (commercial prices, response allowances, channel
+ * lists). Those are not contract fields, so reading the literal is still the
+ * truth — but the day somebody mutates one of THESE, the literal stops being
+ * the factory contract and this loader has to say so instead of quietly
+ * reporting the pre-mutation value.
+ */
+const CONTRACT_FIELDS = ['sortOrder', 'maxAgents', 'pipelineStages', 'appointmentsServices'] as const;
+
 function readPlanLiteral(seedPath: string): unknown {
     const source = readFileSync(seedPath, 'utf8');
     const declaration = 'const PLANS = ';
-    const endComment = '// The runtime source of truth';
     const start = source.indexOf(declaration);
-    const end = source.indexOf(endComment, start + declaration.length);
-    if (start < 0 || end < 0) {
+    // The literal ends at its own terminator in column 0, not at whatever
+    // comment happens to follow it: the previous end marker was the
+    // `// The runtime source of truth` banner, and the day a mutation block was
+    // inserted between the two, the slice swallowed it and the whole plan
+    // contract became unreadable ("Unexpected token ';'").
+    const terminator = start < 0 ? -1 : source.indexOf('\n];', start + declaration.length);
+    if (start < 0 || terminator < 0) {
         throw new Error(
             `Could not locate the PLANS literal in ${seedPath}; refusing to use fallback quotas.`,
         );
     }
 
-    const block = source.slice(start + declaration.length, end).trim();
-    const expression = block.endsWith(';') ? block.slice(0, -1) : block;
+    const expression = source.slice(start + declaration.length, terminator + '\n]'.length).trim();
+    const afterLiteral = source.slice(terminator);
+    const mutated = CONTRACT_FIELDS.filter((field) => new RegExp(
+        // `plan.maxAgents =`, `plan.features.pipelineStages =`, `["maxAgents"] =`
+        String.raw`(?:\.|\[\s*['"])${field}(?:['"]\s*\])?\s*(?:=[^=]|\+\+|--)`,
+    ).test(afterLiteral));
+    if (mutated.length > 0) {
+        throw new Error(
+            `${seedPath} rewrites ${mutated.join(', ')} after the PLANS literal, so the literal is no `
+            + `longer the factory contract. Read the applied value instead of this loader.`,
+        );
+    }
+
     try {
         // Evaluate only the isolated literal. The Prisma setup and main() from
         // the seed are never loaded, so this path is deterministic and DB-free.

@@ -168,7 +168,7 @@ export default function NavigationCommandPalette() {
   const filteredDestinations = useMemo(() => {
     if (!normalizedQuery) return destinations;
     return destinations.filter((entry) => normalizeSearch(
-      `${entry.label} ${entry.route.id} ${entry.route.pattern.replaceAll("-", " ")}`,
+      `${entry.label} ${entry.route.id} ${entry.route.pattern.replaceAll("-", " ")} ${(entry.route.keywords ?? []).join(" ")}`,
     ).includes(normalizedQuery));
   }, [destinations, normalizedQuery]);
 

@@ -3,7 +3,7 @@ id: centro-calidad-agente
 title: "Saúde dos agentes e Centro de qualidade"
 routes: ["/admin/agent/quality", "/admin"]
 roles: ["tenant_admin", "tenant_supervisor"]
-keywords: ["saude dos agentes", "centro de qualidade", "qualidade do agente", "preparacao", "qualidade testada", "evidencia de producao", "agente em risco", "configuracao incompleta", "acoes criticas", "badge", "adiar", "Parallly Assist", "melhorar agente", "cobertura dos canais", "conexao operacional do canal", "mostrar onde", "roteiro guiado", "barra de contexto", "exige reautorizar"]
+keywords: ["saude dos agentes", "centro de qualidade", "qualidade do agente", "preparacao", "qualidade testada", "evidencia de producao", "agente em risco", "configuracao incompleta", "acoes criticas", "badge", "adiar", "Parallly Assist", "melhorar agente", "cobertura dos canais", "conexao operacional do canal", "mostrar onde", "roteiro guiado", "barra de contexto", "exige reautorizar", "essenciais", "proxima etapa", "nao esta pronto"]
 ---
 
 # Saúde dos agentes e Centro de qualidade
@@ -20,7 +20,9 @@ agentes, conexões ou configurações em **IA e crescimento → Agente de IA**.
 - O badge de **Insights → Saúde dos agentes** conta somente sinais **Críticos e Altos
   abertos**. É um contador de atenção, não uma pontuação.
 - O aviso global aparece apenas para um sinal Crítico aberto ou o estado **Agente em
-  risco**. Você pode **Revisar**, **Perguntar ao Assist** ou **Adiar por 24 h**.
+  risco**, e só depois da primeira resposta real a um cliente: enquanto a conta está
+  em fase de primeiros passos, o cartão do Início é o único guia. Você pode **Revisar**,
+  **Perguntar ao Assist** ou **Adiar por 24 h**.
 - Adiar oculta esse sinal temporariamente; não o corrige. Esses avisos ficam no
   dashboard e não enviam e-mail nem notificação push.
 
@@ -28,7 +30,10 @@ agentes, conexões ou configurações em **IA e crescimento → Agente de IA**.
 
 - **Preparação:** verifica negócio e escopo, conhecimento, conversa e marca, ações,
   segurança e transferência, e robustez operacional. Uma capacidade fora do escopo
-  pode aparecer como **Não se aplica** e não reduz o resultado.
+  pode aparecer como **Não se aplica** e não reduz o resultado. O estado geral é
+  decidido pelos **essenciais** (canal, agente, negócio, equipe) e por qualquer
+  problema real; uma missão sem ajustar ou um teste sem rodar ficam como pendências,
+  mas não declaram um agente que já responde como «não pronto».
 - **Qualidade testada:** mostra a avaliação crítica e a simulação mais recentes, com
   versão, data, limite e cenários. Evidências anteriores podem ficar desatualizadas
   quando o agente muda. É evidência automatizada, não uma certificação.
@@ -38,7 +43,7 @@ agentes, conexões ou configurações em **IA e crescimento → Agente de IA**.
   aparece **Evidência insuficiente**, não zero.
 
 Evidências históricas que não identificam o agente de forma inequívoca não são
-atribuídas retroativamente. Por isso, uma versão recém-publicada pode precisar de
+atribuídas retroativamente. Por isso, uma versão recém-salva pode precisar de
 novas interações antes de exibir um sinal de produção útil.
 
 ## O que a "Conexão operacional do canal" verifica
@@ -159,11 +164,13 @@ conectar, em vez de afirmar que você não tem canais conectados.
 ## Perguntas frequentes
 
 **O checklist de configuração é igual ao Centro de qualidade?**
-Não. O cartão **Primeiros passos** no Início mostra somente etapas essenciais
-disponíveis para seu plano, papel e setor e desaparece ao concluí-las. Ele substitui a
-antiga pílula flutuante `8/9`. Saúde dos agentes acrescenta testes e evidência real.
+Não. O cartão **Primeiros passos** no Início mostra somente os quatro essenciais (canal,
+agente, negócio e equipe) disponíveis para seu plano e papel, sinaliza a etapa **Próximo**
+e desaparece ao concluí-los. Ele substitui a antiga pílula flutuante `8/9`. Saúde dos
+agentes acrescenta o que melhora o agente (missão, conhecimento, horário, agendamentos,
+catálogo), os testes e a evidência de produção.
 
-**Uma boa pontuação de simulação basta para publicar?**
+**Uma boa pontuação de simulação basta para deixá-lo atender sozinho?**
 Não. Ela ajuda a reduzir o risco, mas deve ser revisada junto com bloqueios críticos,
 atualidade da versão e evidência real quando disponível.
 

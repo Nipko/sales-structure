@@ -66,7 +66,8 @@ common ones:
   still works; sync them again from **Templates** whenever you want.
 
 Read the warning before you consider setup finished: the amber card means "connected, but
-check this", not "all set".
+check this", not "all set". If this is your first channel, the default agent gets assigned to
+it and starts answering there from that moment.
 
 ## Coexistence mode: keep your WhatsApp Business app
 

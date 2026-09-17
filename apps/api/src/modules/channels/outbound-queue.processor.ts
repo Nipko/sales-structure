@@ -16,7 +16,8 @@ import { readProviderRefusal } from './funding-failure';
 import { AccountPauseStore } from './account-pause-store';
 import { ChannelTokenService } from './channel-token.service';
 import { RedisService } from '../redis/redis.service';
-import { OutboundMessage, isScopedAddressKey } from '@parallext/shared';
+import { OutboundMessage, isScopedAddressKey, advanceOnboardingStage } from '@parallext/shared';
+import { mutateTenantSettingsAtomic } from '../../common/utils/tenant-settings.util';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { TenantNotificationSmsService } from '../sms-credits/tenant-notification-sms.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -224,6 +225,28 @@ export class OutboundQueueProcessor extends WorkerHost {
      * exact lease. A retry re-enters here and re-admits — the outbox, not BullMQ,
      * is what bounds how many attempts this row can ever get.
      */
+    /**
+     * Tenants this process already moved to `live`, so the settings row is not
+     * re-read on every delivered reply. A restart forgets the set and the next
+     * reply re-checks once; `advanceOnboardingStage` makes the write idempotent
+     * and monotonic. Fire-and-forget: a stage that fails to advance must never
+     * cost a delivery its receipt.
+     */
+    private readonly liveMarked = new Set<string>();
+
+    private markTenantLive(tenantId: string): void {
+        if (!tenantId || this.liveMarked.has(tenantId)) return;
+        this.liveMarked.add(tenantId);
+        mutateTenantSettingsAtomic(this.prisma, tenantId, (current) => {
+            const stage = advanceOnboardingStage(current.onboardingStage, 'live');
+            if (current.onboardingStage === stage) return current as Record<string, unknown>;
+            return { ...current, onboardingStage: stage };
+        }).catch((error: any) => {
+            this.liveMarked.delete(tenantId);
+            this.logger.warn(`[Dispatch] onboardingStage → live failed for ${tenantId}: ${error?.message}`);
+        });
+    }
+
     private async processDispatch(reference: DispatchJobReference, job: Job<OutboundJobData>, token?: string): Promise<string> {
         const { tenantId, dispatchId } = reference;
         if (!this.dispatchOutbox) throw new Error('dispatch_outbox_unavailable');
@@ -664,6 +687,11 @@ export class OutboundQueueProcessor extends WorkerHost {
                     .catch(() => undefined);
                 await this.dispatchOutbox.settle(tenantId, dispatchId, admitted.leaseToken,
                     { kind: 'sent', receipt: outcome.receipt });
+                // A reply inside a real conversation reached the provider: the
+                // account is live from this moment (onboarding stage), whatever
+                // the setup card still lists as polish. Proactive sends (campaigns,
+                // reminders) prove nothing about attending a customer.
+                if (!proactive) this.markTenantLive(tenantId);
                 // Chain the next effect only now that this one actually arrived.
                 // Order is enforced here, not by a delay somebody guessed.
                 await this.chainNext(tenantId, dispatchId);

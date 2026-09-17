@@ -3,7 +3,7 @@ id: centro-calidad-agente
 title: "Santé des agents et Centre de qualité"
 routes: ["/admin/agent/quality", "/admin"]
 roles: ["tenant_admin", "tenant_supervisor"]
-keywords: ["sante des agents", "centre de qualite", "qualite de l agent", "preparation", "qualite testee", "preuves de production", "agent a risque", "configuration incomplete", "actions critiques", "badge", "reporter", "Parallly Assist", "ameliorer agent", "couverture des canaux", "connexion operationnelle du canal", "montrez-moi ou", "parcours guide", "barre de contexte", "nouvelle autorisation"]
+keywords: ["sante des agents", "centre de qualite", "qualite de l agent", "preparation", "qualite testee", "preuves de production", "agent a risque", "configuration incomplete", "actions critiques", "badge", "reporter", "Parallly Assist", "ameliorer agent", "couverture des canaux", "connexion operationnelle du canal", "montrez-moi ou", "parcours guide", "barre de contexte", "nouvelle autorisation", "essentiels", "etape suivante", "pas pret"]
 ---
 
 # Santé des agents et Centre de qualité
@@ -21,8 +21,9 @@ Agent IA**.
 - Le badge **Insights → Santé des agents** compte uniquement les signaux **Critiques
   et Élevés ouverts**. C'est un compteur d'attention, pas un score.
 - La bannière globale apparaît seulement pour un signal Critique ouvert ou un état
-  **Agent à risque**. Vous pouvez **Examiner**, **Demander à Assist** ou **Reporter de
-  24 h**.
+  **Agent à risque**, et seulement après la première réponse réelle à un client : tant
+  que le compte est en mise en route, la carte de l'Accueil est le seul guide. Vous pouvez
+  **Examiner**, **Demander à Assist** ou **Reporter de 24 h**.
 - Reporter masque temporairement ce signal, sans le corriger. Ces alertes restent dans
   le dashboard et n'envoient ni e-mail ni notification push.
 
@@ -31,7 +32,10 @@ Agent IA**.
 - **Préparation :** vérifie l'entreprise et le périmètre, les connaissances, la
   conversation et la marque, les actions, la sécurité et le transfert, ainsi que la
   robustesse opérationnelle. Une capacité hors périmètre peut être **Non applicable**
-  et ne réduit pas le résultat.
+  et ne réduit pas le résultat. L'état général est déterminé par les **essentiels**
+  (canal, agent, entreprise, équipe) et par tout problème réel ; une mission non ajustée
+  ou un test non exécuté restent en attente, mais ne déclarent pas « pas prêt » pour un
+  agent qui répond déjà.
 - **Qualité testée :** affiche la dernière évaluation critique et la dernière
   simulation, avec version, date, seuil et scénarios. Les preuves antérieures peuvent
   devenir obsolètes lorsque l'agent change. Il s'agit d'une preuve automatisée, pas
@@ -42,7 +46,7 @@ Agent IA**.
   Si l'échantillon est encore trop faible, l'état est **Preuves insuffisantes**, pas zéro.
 
 Les preuves historiques qui n'identifient pas l'agent sans ambiguïté ne sont pas
-attribuées rétroactivement. Une version récemment publiée peut donc avoir besoin de
+attribuées rétroactivement. Une version récemment enregistrée peut donc avoir besoin de
 nouvelles interactions avant de produire un signal utile.
 
 ## Ce que vérifie « Connexion opérationnelle du canal »
@@ -169,12 +173,13 @@ lieu d'affirmer que vous n'avez aucun canal connecté.
 ## Questions fréquentes
 
 **La checklist de configuration est-elle identique au Centre de qualité ?**
-Non. La carte **Mise en route** de l'Accueil affiche uniquement les étapes essentielles
-disponibles pour votre forfait, rôle et secteur, puis disparaît une fois terminée.
-Elle remplace l'ancienne pastille flottante `8/9`. La Santé des agents ajoute tests et
-preuves réelles.
+Non. La carte **Mise en route** de l'Accueil affiche uniquement les quatre essentiels
+(canal, agent, entreprise et équipe) disponibles pour votre forfait et votre rôle,
+signale l'étape **Suivant** et disparaît une fois terminée. Elle remplace l'ancienne
+pastille flottante `8/9`. La Santé des agents ajoute ce qui améliore l'agent (mission,
+connaissances, horaires, rendez-vous, catalogue), les tests et les preuves réelles.
 
-**Un bon score de simulation suffit-il pour publier ?**
+**Un bon score de simulation suffit-il pour le laisser s'occuper des clients seul ?**
 Non. Il réduit le risque, mais doit être examiné avec les blocages critiques, la
 fraîcheur de la version et les preuves réelles lorsqu'elles sont disponibles.
 

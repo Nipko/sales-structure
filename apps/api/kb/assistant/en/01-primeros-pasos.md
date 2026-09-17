@@ -3,7 +3,7 @@ id: primeros-pasos
 title: "Getting started and initial setup"
 routes: ["/admin/setup-wizard", "/admin", "/admin/channels", "/admin/agent", "/admin/settings/billing"]
 roles: ["tenant_admin"]
-keywords: ["getting started", "start", "sign up", "create account", "onboarding", "initial setup", "setup wizard", "setup", "connect channel", "connect whatsapp", "test agent", "essentials", "checklist", "your progress", "8/9", "tour", "trial", "new user", "meet your agent", "connect later", "show me where", "email verification"]
+keywords: ["getting started", "start", "sign up", "create account", "onboarding", "initial setup", "setup wizard", "setup", "connect channel", "connect whatsapp", "test agent", "essentials", "checklist", "your progress", "8/9", "tour", "trial", "new user", "meet your agent", "connect later", "show me where", "email verification", "next step", "four essentials", "already answers", "immediate changes"]
 ---
 
 # Getting started and initial setup
@@ -33,9 +33,9 @@ Parallly sends a **6-digit code** to confirm your email address. That verificati
 
 After signing up, the dashboard opens **Meet your agent**, a **three-step** wizard (also available at `/admin/setup-wizard`):
 
-1. **Your agent** — you don't pick a template: Parallly already prepared an agent from the industry and goals you declared, with its name, role, and greeting. This step is to **confirm or adjust it** (name and welcome message) and try it in the chat next to it. If you'd rather start from something else, the secondary **Change template** button takes you to the full agent list.
-2. **Connect WhatsApp** — the requirements, the connection route, and the button that opens the Meta window (see the next section).
-3. **Done** — what comes next, with **three of the essentials**: connect the channel, load what the agent must know, and add the person who receives the chats. The **Getting started** card on Home computes up to six steps from your plan, role, and industry, so it can show more than this fixed summary.
+1. **Your agent** — you don't pick a template: Parallly already prepared an agent from the industry and business type you declared, with its name, role, greeting, and example rules. This step is to **confirm or adjust it** (name and welcome message) and try it in the chat next to it. What you save is applied immediately. If you'd rather start from something else, the secondary **Change template** button takes you to the full agent list.
+2. **Connect your channel** — WhatsApp first, with the requirements and the button that opens the Meta window (see the next section); Instagram, Messenger, Telegram, and Web Chat connect from the same screen.
+3. **Done** — if you connected the channel, your agent **already answers there**: message it from another phone to see for yourself. After that, the **Getting started** card on Home shows whichever essentials are still missing.
 
 **Connect later** is a valid exit: it is recorded, the wizard lets you continue, and **Home reminds you** with the **Getting started** card and a resume notice. Nothing you already configured is lost.
 
@@ -43,7 +43,7 @@ You can reopen the wizard whenever you want from **Settings → Setup assistant*
 
 ## How to connect your first channel
 
-Without a connected channel, the business **receives no messages through that channel**. Connecting it does not publish the agent draft: you must then review its assignment, test the draft, and publish the approved version. We recommend starting with **WhatsApp**, the most widely used channel in Latin America.
+Without a connected channel, the business **receives no messages through that channel**. When you connect your first channel, your default agent gets assigned to it and starts answering there just as you tested it in the chat; there's no need to go back to the editor. We recommend starting with **WhatsApp**, the most widely used channel in Latin America.
 
 Before connecting WhatsApp, have on hand:
 
@@ -61,23 +61,25 @@ Later on, you can manage everything from **Channels**, in the **Administration**
 
 ## The product tour and "Show me where"
 
-When the wizard has an agent draft, the last step offers **Review and publish my agent**. That path does not publish by itself: it takes you through the editor, testing, candidate preparation and review, and ends at the publication confirmation. Connecting a channel and publishing the agent are independent states; the path asks you to check the assignment before confirming.
-
-The general product tour remains available from **Home**. It highlights the agent, channels, conversations, analytics and, when applicable, the tool specific to your industry.
+The wizard's last step offers **Take the dashboard tour**: it's the general **Home** tour, which highlights the agent, channels, conversations, analytics and, when applicable, the tool specific to your industry. It only opens if you ask for it and changes nothing.
 
 Besides that general tour, when that screen or that step has a tour, the pending card, the screen's **Help** panel, and Parallly Assist show a **Show me where** (or **Show me how**) button: it opens the right screen and highlights, step by step, where the change is made. The tour **does not change** anything by itself; it only takes you to the exact place.
 
 ## The "Getting started" card
 
-**Getting started** appears on **Home** while you have essential steps that are both
-pending and available for your plan, role, and industry:
+**Getting started** appears on **Home** while any of the **four essentials**
+available for your plan and role is still missing, in this order:
 
-- **connect WhatsApp** (or another certified channel available to your account);
+- **connect a channel** (WhatsApp, Instagram, Messenger, Telegram, or Web Chat);
 - **review your agent** (name, message for when it cannot answer, rules, and reasons to hand off to a person);
 - **describe what your business does** in Business information;
-- **load what the agent must know**: FAQs, documents, or your industry's catalog;
-- **invite a person** who receives the chats when the AI hands them over;
-- **confirm your business hours**, if your industry works with a calendar.
+- **invite a person** who receives the chats when the AI hands them over.
+
+The step marked **Next** is the one worth doing now. Loading knowledge, confirming business
+hours, setting up appointments, or the catalog improve the agent, but they are not required
+for it to answer: they live in **Agent health**, not on this card. While the card is on Home
+you won't see the global critical-actions banner, the install-app notice, or the trial
+countdown: the card is the only guide.
 
 Each item has **Continue**, which opens the screen where it is done and, when a tour covers that step, also **Show me where**, which highlights the exact field or button step by step. Some steps have no tour — your industry's own catalog, for example — and roles that cannot run tours see only **Continue**. Each pending step opens an allowed route. The card disappears when all steps are done
 and does not turn into a floating `8/9` pill. If Parallly cannot verify a source, it
@@ -86,11 +88,11 @@ their own modules and do not inflate this essential progress.
 
 ## What to do first: recommended order
 
-1. **Complete the business information and knowledge**: website, documents, policies, FAQs, and the relevant catalog.
-2. **Connect WhatsApp** (or your main channel). Connecting it does not put a draft in front of customers.
-3. **Adjust the agent draft**: tone, rules, greeting, tools, and channel assignment; test it in the internal chat.
-4. **Prepare, review, and publish** the approved version. Publication makes the draft content and assignments operational.
-5. **Send a message from your phone** and confirm both the reply and conversation in **Conversations**.
+1. **Confirm your agent** in the wizard and test it in the test chat.
+2. **Connect WhatsApp** (or your main channel). From that moment the agent is assigned and answers there.
+3. **Send a message from another phone** and confirm both the reply and conversation in **Conversations**.
+4. **Complete the business information and knowledge**: website, documents, policies, FAQs, and the relevant catalog.
+5. **Adjust the agent whenever you want**: tone, rules, greeting, tools, and channel assignment. Saving applies the change immediately; test it in the test chat.
 6. **Invite your team** from **Users** and assign roles: administrator, supervisor, or agent.
 
 ## Frequently asked questions

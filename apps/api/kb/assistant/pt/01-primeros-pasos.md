@@ -3,7 +3,7 @@ id: primeros-pasos
 title: "Primeiros passos e configuração inicial"
 routes: ["/admin/setup-wizard", "/admin", "/admin/channels", "/admin/agent", "/admin/settings/billing"]
 roles: ["tenant_admin"]
-keywords: ["primeiros passos", "começar", "cadastro", "criar conta", "onboarding", "configuracao inicial", "assistente de configuracao", "setup", "wizard", "conectar canal", "conectar whatsapp", "testar agente", "essenciais", "checklist", "seu progresso", "8/9", "tour", "trial", "usuario novo", "conheca seu agente", "conectar depois", "mostrar onde", "verificacao de e-mail"]
+keywords: ["primeiros passos", "começar", "cadastro", "criar conta", "onboarding", "configuracao inicial", "assistente de configuracao", "setup", "wizard", "conectar canal", "conectar whatsapp", "testar agente", "essenciais", "checklist", "seu progresso", "8/9", "tour", "trial", "usuario novo", "conheca seu agente", "conectar depois", "mostrar onde", "verificacao de e-mail", "proxima etapa", "quatro essenciais", "ja responde", "mudancas imediatas"]
 ---
 
 # Primeiros passos e configuração inicial
@@ -33,9 +33,9 @@ O Parallly envia um **código de 6 dígitos** para confirmar seu endereço de e-
 
 Depois do cadastro, o painel abre **Conheça o seu agente**, um assistente de **três etapas** (também disponível na rota `/admin/setup-wizard`):
 
-1. **Seu agente** — você não escolhe modelo: o Parallly já preparou um agente a partir do setor e dos objetivos que você declarou, com nome, papel e saudação. Esta etapa serve para **confirmá-lo ou ajustá-lo** (nome e mensagem de boas-vindas) e testá-lo no chat ao lado. Se preferir outra base, o botão secundário **Trocar modelo** leva à lista completa de agentes.
-2. **Conecte o WhatsApp** — os requisitos, a rota de conexão e o botão que abre a janela da Meta (veja a seção seguinte).
-3. **Pronto** — o que vem depois, com **três dos essenciais**: conectar o canal, carregar o que o agente precisa saber e somar a pessoa que recebe as conversas. O cartão **Primeiros passos** do Início calcula até seis etapas conforme seu plano, papel e setor, então pode mostrar mais do que esse resumo fixo.
+1. **Seu agente** — você não escolhe modelo: o Parallly já preparou um agente a partir do setor e do tipo de negócio que você declarou, com nome, papel, saudação e regras de exemplo. Esta etapa serve para **confirmá-lo ou ajustá-lo** (nome e mensagem de boas-vindas) e testá-lo no chat ao lado. O que você salva já fica aplicado na hora. Se preferir outra base, o botão secundário **Trocar modelo** leva à lista completa de agentes.
+2. **Conecte seu canal** — WhatsApp primeiro, com os requisitos e o botão que abre a janela da Meta (veja a seção seguinte); Instagram, Messenger, Telegram e o chat web se conectam na mesma tela.
+3. **Pronto** — se você conectou o canal, seu agente **já responde por ali**: mande uma mensagem de outro celular para ver. Depois, o cartão **Primeiros passos** do Início mostra os essenciais que faltam.
 
 **Conectar depois** é uma saída válida: fica registrada, o assistente deixa você continuar e o **Início lembra você** com o cartão **Primeiros passos** e um aviso para retomar. Nada do que você já configurou se perde.
 
@@ -43,7 +43,7 @@ Você pode reabrir o assistente quando quiser em **Configurações → Assistent
 
 ## Como conectar seu primeiro canal
 
-Sem um canal conectado, a empresa **não recebe mensagens por esse canal**. Conectar o canal não publica o rascunho do agente: depois você precisa revisar a atribuição, testar o rascunho e publicar a versão aprovada. Recomendamos começar pelo **WhatsApp**, o canal mais usado na América Latina.
+Sem um canal conectado, a empresa **não recebe mensagens por esse canal**. Ao conectar o primeiro canal, seu agente padrão fica atribuído a ele e começa a responder por ali, do jeito que você testou no chat; não é preciso voltar ao editor. Recomendamos começar pelo **WhatsApp**, o canal mais usado na América Latina.
 
 Antes de conectar o WhatsApp, tenha em mãos:
 
@@ -61,23 +61,21 @@ Mais adiante, você administra tudo em **Canais**, na seção **Administração*
 
 ## O tour do produto e "Mostrar onde"
 
-Quando o assistente tem um rascunho de agente, a última etapa oferece **Revisar e publicar meu agente**. Esse roteiro não publica sozinho: passa pelo editor, teste, preparação e revisão do candidato e termina na confirmação da publicação. Conectar um canal e publicar o agente são estados independentes; o roteiro pede que você confira a atribuição antes de confirmar.
-
-O tour geral do produto continua disponível no **Início**. Ele destaca o agente, os canais, as conversas, as análises e, quando aplicável, a ferramenta específica do seu setor.
+A última etapa do assistente oferece **Ver o tour do painel**: é o tour geral do **Início**, que destaca o agente, os canais, as conversas, as análises e, quando aplicável, a ferramenta específica do seu setor. Ele só abre se você pedir e não modifica nada.
 
 Além desse tour geral, quando aquela tela ou aquela etapa têm roteiro, o cartão pendente, o painel de **Ajuda** da tela e o Parallly Assist mostram o botão **Mostrar onde** (ou **Mostrar como**): ele abre a tela certa e destaca, passo a passo, onde a mudança é feita. O roteiro **não modifica** nada sozinho; ele só leva você ao lugar exato.
 
 ## O cartão "Primeiros passos"
 
-**Primeiros passos** aparece no **Início** enquanto houver etapas essenciais pendentes
-e disponíveis para seu plano, papel e setor:
+**Primeiros passos** aparece no **Início** enquanto faltar algum dos **quatro essenciais**
+disponíveis para seu plano e seu papel, nesta ordem:
 
-- **conectar o WhatsApp** (ou outro canal certificado disponível na sua conta);
+- **conectar um canal** (WhatsApp, Instagram, Messenger, Telegram ou o chat web);
 - **revisar seu agente** (nome, mensagem para quando não souber responder, regras e motivos para passar a um humano);
 - **contar o que seu negócio faz** em Informações do negócio;
-- **carregar o que o agente precisa saber**: perguntas frequentes, documentos ou o catálogo do seu setor;
-- **convidar uma pessoa** que receba as conversas quando a IA as transferir;
-- **confirmar seu horário**, se o seu setor trabalha com agenda.
+- **convidar uma pessoa** que receba as conversas quando a IA as transferir.
+
+A etapa marcada **Próximo** é a que vale a pena fazer agora. Carregar conhecimento, confirmar o horário, preparar agendamentos ou o catálogo melhoram o agente, mas não são requisito para ele responder: ficam em **Saúde dos agentes**, não neste cartão. Enquanto o cartão estiver no Início, você não vai ver o aviso global de ações críticas, o aviso para instalar o app nem a contagem regressiva do teste: o cartão é o único guia.
 
 Cada item tem **Continuar**, que abre a tela onde isso é feito e, quando existe roteiro para aquela etapa, também **Mostrar onde**, que ainda destaca passo a passo o campo ou o botão exato. Algumas etapas não têm roteiro — o catálogo próprio do seu setor, por exemplo — e os papéis que não podem executar roteiros veem apenas **Continuar**. Cada etapa pendente abre uma rota permitida. O cartão desaparece ao concluir tudo e
 não vira uma pílula flutuante `8/9`. Se o Parallly não puder verificar uma fonte,
@@ -86,11 +84,11 @@ avançadas ficam em seus módulos e não aumentam esse progresso essencial.
 
 ## O que fazer primeiro: ordem recomendada
 
-1. **Complete as informações e o conhecimento da empresa**: site, documentos, políticas, perguntas frequentes e o catálogo correspondente.
-2. **Conecte o WhatsApp** (ou seu canal principal). A conexão ainda não coloca um rascunho para atender clientes.
-3. **Ajuste o rascunho do agente**: tom, regras, saudação, ferramentas e atribuição do canal; teste no chat interno.
-4. **Prepare, revise e publique** a versão aprovada. A publicação torna operacionais o conteúdo e as atribuições do rascunho.
-5. **Envie uma mensagem do seu celular** e confirme a resposta e a conversa em **Conversas**.
+1. **Confirme seu agente** no assistente e teste no chat de teste.
+2. **Conecte o WhatsApp** (ou seu canal principal). A partir desse momento o agente fica atribuído e responde por ali.
+3. **Envie uma mensagem de outro celular** e confirme a resposta e a conversa em **Conversas**.
+4. **Complete as informações e o conhecimento da empresa**: site, documentos, políticas, perguntas frequentes e o catálogo correspondente.
+5. **Ajuste o agente quando quiser**: tom, regras, saudação, ferramentas e atribuição do canal. Ao salvar, a mudança é aplicada na hora; teste no chat de teste.
 6. **Convide sua equipe** em **Usuários** e atribua funções: administrador, supervisor ou agente.
 
 ## Perguntas frequentes

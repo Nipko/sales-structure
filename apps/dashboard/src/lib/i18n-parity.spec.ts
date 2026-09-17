@@ -129,13 +129,17 @@ describe("i18n key parity across es/en/pt/fr", () => {
             source.help.agentEditor.tips.join(" "),
             source.help.setupWizard.description,
         ].join("\n");
+        // Changes apply immediately by default now (owner decision D1/D15,
+        // sep-2026), so day-0 help must NOT teach a publication pipeline; the
+        // guard that matters is the negative one: never promise that a merely
+        // connected number is already answering.
         const publicationWord: Record<string, RegExp> = {
-            es: /publica(?:r|ción|da)/i,
-            en: /publish(?:ed|ing)?|publication/i,
-            pt: /publica(?:r|ção|da)/i,
-            fr: /publi(?:er|ée|cation)/i,
+            es: /borrador|candidato|publica(?:r|ción|da)/i,
+            en: /draft|candidate|publish(?:ed|ing)?|publication/i,
+            pt: /rascunho|candidato|publica(?:r|ção|da)/i,
+            fr: /brouillon|candidat|publi(?:er|ée|cation)/i,
         };
-        expect(copy).toMatch(publicationWord[locale]);
+        expect([source.help.setupWizard.description, source.help.setupWizard.tips.join(" ")].join("\n")).not.toMatch(publicationWord[locale]);
         expect(copy).not.toMatch(/ya está activo en este número|now live on this number|já está ativo neste número|est actif sur ce numéro/i);
     });
 

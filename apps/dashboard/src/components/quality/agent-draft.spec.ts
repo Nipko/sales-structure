@@ -16,7 +16,7 @@ jest.mock('@/lib/api', () => ({ api: { discardAgentDraft: jest.fn() } }));
 function workspace(): AgentConfigurationWorkspace {
     const body = { name: 'Alex', configJson: { persona: { name: 'Alex', greeting: 'Stored greeting' }, tools: { faqs: { enabled: true } } },
         channels: ['web_widget'], channelBindings: [], scheduleMode: 'business_hours', isActive: true, isDefault: true };
-    return { agentId: '22222222-2222-4222-8222-222222222222', operational: { version: 7, hash: 'a'.repeat(64), body }, draft: {
+    return { agentId: '22222222-2222-4222-8222-222222222222', directCommit: false, operational: { version: 7, hash: 'a'.repeat(64), body }, draft: {
         id: '33333333-3333-4333-8333-333333333333', baseOperationalVersion: 7, baseOperationalHash: 'a'.repeat(64), bodyHash: 'b'.repeat(64),
         body: { ...body, configJson: { ...body.configJson, persona: { ...body.configJson.persona, greeting: 'Draft greeting' } } },
         currentBase: true, createdAt: '2026-09-07T10:00:00.000Z' }, evaluationRevisionId: '33333333-3333-4333-8333-333333333333' };

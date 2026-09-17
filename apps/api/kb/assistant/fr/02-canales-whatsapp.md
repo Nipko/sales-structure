@@ -68,7 +68,8 @@ avertissements. Les plus fréquents :
   connexion fonctionne quand même ; resynchronisez-les depuis **Modèles** quand vous voulez.
 
 Lisez l'avertissement avant de considérer la mise en route comme terminée : la carte ambre
-signifie « connecté, mais vérifiez ceci », pas « tout est prêt ».
+signifie « connecté, mais vérifiez ceci », pas « tout est prêt ». S'il s'agit de votre premier
+canal, l'agent par défaut lui est affecté et y répond dès ce moment.
 
 ## Mode coexistence : conservez votre application WhatsApp Business
 

@@ -1,12 +1,12 @@
 ---
 id: probar-agente
-title: "Probar tu agente antes de publicar"
+title: "Probar tu agente"
 routes: ["/admin/agent", "/admin/agent/simulation", "/admin/procedures"]
 roles: ["tenant_admin"]
 keywords: ["probar agente", "simulacion", "simular conversacion", "chat de prueba", "escenarios", "sinteticos", "historicos", "linea base", "regresion", "puntaje", "calidad del agente", "evaluar agente", "procedimientos", "sop", "procedimiento operativo", "compilar pasos", "palabras clave activacion", "flujo paso a paso", "testear bot", "antes de publicar"]
 ---
 
-# Probar tu agente antes de publicar
+# Probar tu agente
 
 Antes de dejar que tu agente de IA hable con clientes reales, conviene verificar cómo responde. Parallly te da tres herramientas para eso:
 
@@ -55,7 +55,7 @@ Al abrir una simulación completada verás:
 - **Regresiones** — si elegiste una línea base, verás **Regresión detectada** cuando alguna respuesta empeoró respecto a la corrida anterior, o **Sin regresiones** si todo se mantuvo o mejoró.
 - **Tabla de escenarios** — haz clic en cualquier escenario para ver la **transcripción** completa (cliente vs. agente) y los **problemas** que el evaluador detectó en esa conversación.
 
-**Recomendación:** ejecuta una simulación cada vez que cambies la personalidad, las reglas, la base de conocimiento o los procedimientos de tu agente, y compárala con la línea base anterior. Así publicas cambios con evidencia, no con intuición.
+**Recomendación:** ejecuta una simulación cada vez que cambies la personalidad, las reglas, la base de conocimiento o los procedimientos de tu agente, y compárala con la línea base anterior. Así haces cambios con evidencia, no con intuición.
 
 ## Cómo crear un procedimiento (SOP)
 
@@ -91,7 +91,7 @@ Los procedimientos le enseñan a tu agente a ejecutar procesos de tu negocio **p
 No. Todo ocurre en un entorno aislado: no se crean citas, pedidos, descuentos ni conversaciones reales, y ningún mensaje sale hacia tus canales conectados.
 
 **¿Cuál es la diferencia entre el chat de prueba y la simulación?**
-El chat de prueba eres tú conversando con el agente: ideal para revisiones rápidas y puntuales. La simulación corre decenas de conversaciones variadas con calificación automática: ideal antes de publicar cambios importantes.
+El chat de prueba eres tú conversando con el agente: ideal para revisiones rápidas y puntuales. La simulación corre decenas de conversaciones variadas con calificación automática: ideal antes de hacer cambios importantes.
 
 **¿Qué es la "línea base" y para qué sirve?**
 Es una simulación anterior que usas como punto de comparación. Al reutilizar sus mismos escenarios, Parallly puede decirte si un cambio que hiciste **empeoró** alguna respuesta que antes salía bien (una "regresión").
@@ -100,7 +100,7 @@ Es una simulación anterior que usas como punto de comparación. Al reutilizar s
 Abre los escenarios marcados, lee la transcripción y los problemas detectados, ajusta la configuración del agente (personalidad, reglas, conocimiento o procedimientos) y vuelve a ejecutar la simulación comparando con la misma línea base.
 
 **¿Un buen puntaje garantiza que el agente es perfecto?**
-No, pero reduce mucho el riesgo. Como referencia: 8 o más es un buen resultado; entre 5 y 8 conviene revisar los escenarios con menor puntaje; por debajo de 5, revisa la configuración antes de publicar.
+No, pero reduce mucho el riesgo. Como referencia: 8 o más es un buen resultado; entre 5 y 8 conviene revisar los escenarios con menor puntaje; por debajo de 5, revisa la configuración antes de dejarlo atender solo.
 
 **¿Quién puede usar estas herramientas?**
 Solo el rol **administrador**. Si no ves estas opciones en el menú y las necesitas, pídele acceso al administrador de tu cuenta. ¿Dudas? Escríbenos en https://parallly-chat.cloud/support

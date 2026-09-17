@@ -74,3 +74,6 @@ scratch-*.ts
 # SIGKILL stops them, this line is what keeps the survivor out of a commit.
 apps/api/src/modules/channels/gate-census-*.generated.ts
 apps/api/src/modules/recall/lane-entrance.generated.ts
+
+# grabación de 232 MB del onboarding real (14-sep-2026); vive fuera del repo
+/parallly_onboarding.mp4

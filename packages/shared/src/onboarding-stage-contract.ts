@@ -27,6 +27,14 @@ export const ONBOARDING_STAGES = [
     'agent_reviewed',
     'channel_deferred',
     'channel_connected',
+    /**
+     * The agent answered a real customer on a connected channel. This is the
+     * activation moment of the account: until it happens, the day-0 guidance
+     * owns every screen and nothing else may interrupt (trial banner, install
+     * prompt, mascot, quality alarms). Written only by the runtime, on the
+     * first AI reply that was actually sent.
+     */
+    'live',
     'completed',
 ] as const;
 
@@ -38,7 +46,8 @@ const STAGE_RANK: Record<OnboardingStage, number> = {
     agent_reviewed: 1,
     channel_deferred: 1,
     channel_connected: 2,
-    completed: 3,
+    live: 3,
+    completed: 4,
 };
 
 /**
@@ -49,7 +58,7 @@ const STAGE_RANK: Record<OnboardingStage, number> = {
  * after "Conectar después" — which erased the deferral, and with it the
  * reminder on Home that the copy had just promised.
  */
-const STAGES_PROVING_CHANNEL: readonly OnboardingStage[] = ['channel_connected'];
+const STAGES_PROVING_CHANNEL: readonly OnboardingStage[] = ['channel_connected', 'live'];
 
 function provesChannel(stage: OnboardingStage): boolean {
     return STAGES_PROVING_CHANNEL.includes(stage);
@@ -61,6 +70,20 @@ export function isOnboardingStage(value: unknown): value is OnboardingStage {
 
 export function onboardingStageRank(stage: OnboardingStage): number {
     return STAGE_RANK[stage];
+}
+
+/**
+ * True while the account is still on its way to the first real reply — the
+ * window in which the guided setup is the only thing on screen.
+ *
+ * Deliberately conservative in both directions: a tenant WITHOUT a stored
+ * stage (created before the contract, or a role without a tenant) is treated
+ * as live, so no old account loses its banners; and `completed` is live too,
+ * because the wizard's last button writes it and an owner who finished the
+ * wizard without a reply must still see the trial notice eventually.
+ */
+export function isOnboardingBeforeLive(stage: unknown): boolean {
+    return isOnboardingStage(stage) && STAGE_RANK[stage] < STAGE_RANK.live;
 }
 
 /**

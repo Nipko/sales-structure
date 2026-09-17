@@ -1,5 +1,7 @@
 "use client";
 
+import { isOnboardingBeforeLive } from "@parallext/shared";
+import { useAuth } from "@/contexts/AuthContext";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useTranslations } from "next-intl";
 import { Download, X } from "lucide-react";
@@ -83,12 +85,15 @@ export function InstallPrompt() {
         }
     }, []);
 
+    const { user } = useAuth();
     const handleDismiss = useCallback(() => {
         snooze(DISMISS_SNOOZE_MS);
         setDismissed(true);
     }, []);
 
-    if (isStandalone || !canInstall || dismissed) return null;
+    // Nothing interrupts the guided setup: the install box sat over the wizard,
+    // the setup card and the save button for a whole 41-minute recording.
+    if (isStandalone || !canInstall || dismissed || isOnboardingBeforeLive(user?.onboardingStage)) return null;
 
     return (
         <div

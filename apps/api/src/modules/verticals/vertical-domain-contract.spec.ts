@@ -31,7 +31,7 @@ describe('los contratos de dominio canónicos y de compatibilidad', () => {
 
     it('hay uno por perfil y ninguno se perdió', () => {
         expect(drafts).toHaveLength(listSubtypeExperienceProfileIds().length);
-        expect(drafts).toHaveLength(81);
+        expect(drafts).toHaveLength(85);
     });
 
     it('un id con alias resuelve al contrato de su destino, no a uno propio', () => {
@@ -41,7 +41,7 @@ describe('los contratos de dominio canónicos y de compatibilidad', () => {
         // alias existe para reparar — una peluquería canina con persona
         // clínica y "recorrido del paciente".
         const distinct = new Set(drafts.map(d => d.profileId));
-        expect(distinct.size).toBe(80);
+        expect(distinct.size).toBe(84);
         expect(buildDomainContractDraft('veterinaria', 'peluqueria_canina').profileId)
             .toBe('pet_services/peluqueria');
     });

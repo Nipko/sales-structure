@@ -3,7 +3,7 @@ id: primeros-pasos
 title: "Premiers pas et configuration initiale"
 routes: ["/admin/setup-wizard", "/admin", "/admin/channels", "/admin/agent", "/admin/settings/billing"]
 roles: ["tenant_admin"]
-keywords: ["premiers pas", "mise en route", "commencer", "inscription", "creer un compte", "onboarding", "configuration initiale", "assistant de configuration", "setup", "wizard", "connecter canal", "connecter whatsapp", "tester l'agent", "essentiels", "checklist", "votre progression", "8/9", "visite guidee", "trial", "nouvel utilisateur", "rencontrez votre agent", "connecter plus tard", "montrez-moi ou", "verification e-mail"]
+keywords: ["premiers pas", "mise en route", "commencer", "inscription", "creer un compte", "onboarding", "configuration initiale", "assistant de configuration", "setup", "wizard", "connecter canal", "connecter whatsapp", "tester l'agent", "essentiels", "checklist", "votre progression", "8/9", "visite guidee", "trial", "nouvel utilisateur", "rencontrez votre agent", "connecter plus tard", "montrez-moi ou", "verification e-mail", "etape suivante", "quatre essentiels", "repond deja", "changements immediats"]
 ---
 
 # Premiers pas et configuration initiale
@@ -33,9 +33,9 @@ Parallly envoie un **code à 6 chiffres** pour confirmer votre adresse e-mail. C
 
 Après l'inscription, le tableau de bord ouvre **Faites connaissance avec votre agent**, un assistant en **trois étapes** (également accessible via la route `/admin/setup-wizard`) :
 
-1. **Votre agent** — vous ne choisissez pas de modèle : Parallly a déjà préparé un agent à partir du secteur et des objectifs que vous avez déclarés, avec son nom, son rôle et son message d'accueil. Cette étape sert à **le confirmer ou l'ajuster** (nom et message de bienvenue) et à le tester dans le chat affiché à côté. Si vous préférez une autre base, le bouton secondaire **Changer de modèle** ouvre la liste complète des agents.
-2. **Connectez WhatsApp** — les prérequis, le parcours de connexion et le bouton qui ouvre la fenêtre Meta (voir la section suivante).
-3. **Terminé** — la suite, avec **trois des essentiels** : connecter le canal, charger ce que l'agent doit savoir et ajouter la personne qui reçoit les conversations. La carte **Mise en route** de l'Accueil calcule jusqu'à six étapes selon votre forfait, votre rôle et votre secteur : elle peut donc en afficher plus que ce résumé fixe.
+1. **Votre agent** — vous ne choisissez pas de modèle : Parallly a déjà préparé un agent à partir du secteur et du type d'activité que vous avez déclarés, avec son nom, son rôle, son message d'accueil et des règles d'exemple. Cette étape sert à **le confirmer ou l'ajuster** (nom et message de bienvenue) et à le tester dans le chat affiché à côté. Ce que vous enregistrez s'applique aussitôt. Si vous préférez une autre base, le bouton secondaire **Changer de modèle** ouvre la liste complète des agents.
+2. **Connectez votre canal** — WhatsApp en premier, avec les prérequis et le bouton qui ouvre la fenêtre Meta (voir la section suivante) ; Instagram, Messenger, Telegram et le chat web se connectent depuis le même écran.
+3. **Terminé** — si vous avez connecté le canal, votre agent **répond déjà là-bas** : écrivez-lui depuis un autre téléphone pour le voir. Ensuite, la carte **Mise en route** de l'Accueil affiche les essentiels qu'il reste à faire.
 
 **Connecter plus tard** est une sortie valide : elle est enregistrée, l'assistant vous laisse continuer et l'**Accueil vous le rappelle** avec la carte **Mise en route** et un avis pour reprendre. Rien de ce que vous avez déjà configuré n'est perdu.
 
@@ -43,7 +43,7 @@ Vous pouvez rouvrir l'assistant quand vous voulez depuis **Paramètres → Assis
 
 ## Comment connecter votre premier canal
 
-Sans canal connecté, l'entreprise **ne reçoit aucun message par ce canal**. La connexion ne publie pas le brouillon de l'agent : vous devez ensuite vérifier son affectation, tester le brouillon et publier la version approuvée. Nous vous recommandons de commencer par **WhatsApp**, le canal le plus utilisé en Amérique latine.
+Sans canal connecté, l'entreprise **ne reçoit aucun message par ce canal**. En connectant votre premier canal, votre agent par défaut lui est affecté et commence à répondre là-bas exactement comme vous l'avez testé dans le chat ; inutile de retourner dans l'éditeur. Nous vous recommandons de commencer par **WhatsApp**, le canal le plus utilisé en Amérique latine.
 
 Avant de connecter WhatsApp, préparez :
 
@@ -61,23 +61,24 @@ Par la suite, vous gérez l'ensemble depuis **Canaux**, dans la section **Admini
 
 ## La visite guidée du produit et « Montrez-moi où »
 
-Lorsque l'assistant dispose d'un brouillon d'agent, la dernière étape propose **Vérifier et publier mon agent**. Ce parcours ne publie rien de lui-même : il passe par l'éditeur, le test, la préparation et la révision du candidat, puis se termine à la confirmation de publication. Connecter un canal et publier l'agent sont deux états indépendants ; le parcours vous demande de vérifier l'affectation avant de confirmer.
-
-La visite générale du produit reste disponible depuis l'**Accueil**. Elle présente l'agent, les canaux, les conversations, l'analytique et, le cas échéant, l'outil propre à votre secteur.
+La dernière étape de l'assistant propose **Voir la visite du tableau de bord** : c'est la visite générale de l'**Accueil**, qui présente l'agent, les canaux, les conversations, l'analytique et, le cas échéant, l'outil propre à votre secteur. Elle ne s'ouvre que si vous le demandez et ne modifie rien.
 
 Au-delà de cette visite générale, lorsque cet écran ou cette étape dispose d'un parcours, la carte en attente, le panneau d'**Aide** de l'écran et Parallly Assist affichent le bouton **Montrez-moi où** (ou **Montrez-moi comment**) : il ouvre le bon écran et met en évidence, étape par étape, où se fait la modification. Le parcours **ne modifie** rien de lui-même ; il vous amène seulement à l'endroit exact.
 
 ## La carte « Mise en route »
 
-**Mise en route** apparaît sur l'**Accueil** tant que des étapes essentielles sont en
-attente et disponibles pour votre forfait, rôle et secteur :
+**Mise en route** apparaît sur l'**Accueil** tant qu'il manque l'un des **quatre essentiels**
+disponibles pour votre forfait et votre rôle, dans cet ordre :
 
-- **connecter WhatsApp** (ou un autre canal certifié disponible sur votre compte) ;
+- **connecter un canal** (WhatsApp, Instagram, Messenger, Telegram ou le chat web) ;
 - **relire votre agent** (nom, message lorsqu'il ne peut pas répondre, règles et motifs de transfert vers une personne) ;
 - **raconter ce que fait votre entreprise** dans Informations de l'entreprise ;
-- **charger ce que l'agent doit savoir** : questions fréquentes, documents ou le catalogue de votre secteur ;
-- **inviter une personne** qui reçoit les conversations lorsque l'IA les transfère ;
-- **confirmer vos horaires**, si votre secteur travaille avec un agenda.
+- **inviter une personne** qui reçoit les conversations lorsque l'IA les transfère.
+
+L'étape marquée **Suivant** est celle qu'il convient de faire maintenant. Charger les connaissances, confirmer les horaires,
+préparer les rendez-vous ou le catalogue améliorent l'agent, mais ne sont pas requis pour qu'il réponde : ils vivent dans
+**Santé des agents**, pas dans cette carte. Tant que la carte est sur l'Accueil, vous ne verrez ni l'avis global
+d'actions critiques, ni l'avis d'installation de l'application, ni le compte à rebours de l'essai : la carte est le seul guide.
 
 Chaque élément a **Continuer**, qui ouvre l'écran concerné et, lorsqu'un parcours couvre cette étape, aussi **Montrez-moi où**, qui met en évidence, étape par étape, le champ ou le bouton exact. Certaines étapes n'ont pas de parcours — le catalogue propre à votre secteur, par exemple — et les rôles qui ne peuvent pas lancer de parcours ne voient que **Continuer**. Chaque étape ouvre une route autorisée. La carte disparaît une fois tout terminé et
 ne devient pas une pastille flottante `8/9`. Si Parallly ne peut pas vérifier une
@@ -86,11 +87,11 @@ tâches avancées restent dans leurs modules et ne gonflent pas cette progressio
 
 ## Par quoi commencer : ordre recommandé
 
-1. **Complétez les informations et les connaissances de l'entreprise** : site web, documents, politiques, questions fréquentes et catalogue pertinent.
-2. **Connectez WhatsApp** (ou votre canal principal). La connexion ne met pas encore un brouillon au service des clients.
-3. **Ajustez le brouillon de l'agent** : ton, règles, accueil, outils et affectation du canal ; testez-le dans le chat interne.
-4. **Préparez, révisez et publiez** la version approuvée. La publication rend opérationnels le contenu et les affectations du brouillon.
-5. **Envoyez un message depuis votre téléphone** et confirmez la réponse ainsi que la conversation dans **Conversations**.
+1. **Confirmez votre agent** dans l'assistant et testez-le dans le chat de test.
+2. **Connectez WhatsApp** (ou votre canal principal). Dès ce moment, l'agent est affecté et répond là-bas.
+3. **Envoyez un message depuis un autre téléphone** et confirmez la réponse ainsi que la conversation dans **Conversations**.
+4. **Complétez les informations et les connaissances de l'entreprise** : site web, documents, politiques, questions fréquentes et catalogue pertinent.
+5. **Ajustez l'agent quand vous le souhaitez** : ton, règles, accueil, outils et affectation du canal. À l'enregistrement, le changement s'applique aussitôt ; testez-le dans le chat de test.
 6. **Invitez votre équipe** depuis **Utilisateurs** et attribuez les rôles : administrateur, superviseur ou agent.
 
 ## Questions fréquentes

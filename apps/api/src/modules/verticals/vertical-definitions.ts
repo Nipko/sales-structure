@@ -487,6 +487,10 @@ const EDUCATION: VerticalDefinition = {
         { key: 'universitaria', label: { es: 'Universidad / Instituto', en: 'University / College', pt: 'Universidade / Instituto', fr: 'Université / Institut' } },
         { key: 'online', label: { es: 'Cursos online', en: 'Online courses', pt: 'Cursos online', fr: 'Cours en ligne' } },
         { key: 'capacitacion', label: { es: 'Capacitación empresarial', en: 'Corporate training', pt: 'Treinamento empresarial', fr: 'Formation entreprise' } },
+        { key: 'academia_baile', label: { es: 'Academia de baile', en: 'Dance academy', pt: 'Academia de dança', fr: 'École de danse' } },
+        { key: 'academia_musica', label: { es: 'Academia de música o arte', en: 'Music or art academy', pt: 'Academia de música ou arte', fr: 'École de musique ou d\'art' } },
+        { key: 'clases_particulares', label: { es: 'Clases particulares y tutorías', en: 'Private lessons and tutoring', pt: 'Aulas particulares e tutoria', fr: 'Cours particuliers et tutorat' } },
+        { key: 'autoescuela', label: { es: 'Autoescuela', en: 'Driving school', pt: 'Autoescola', fr: 'Auto-école' } },
     ],
     terminology: { customerNoun: { es: 'estudiante', en: 'student', pt: 'estudante', fr: 'étudiant' }, customerNounPlural: { es: 'estudiantes', en: 'students', pt: 'estudantes', fr: 'étudiants' }, transactionNoun: { es: 'matrícula', en: 'enrollment', pt: 'matrícula', fr: 'inscription' }, serviceNoun: { es: 'curso', en: 'course', pt: 'curso', fr: 'cours' }, pipelineNoun: { es: 'inscripciones', en: 'enrollments', pt: 'inscrições', fr: 'inscriptions' } },
     agent: { name: { es: 'Pablo', en: 'Pablo', pt: 'Paulo', fr: 'Paul' }, role: { es: 'Asesor académico', en: 'Academic advisor', pt: 'Orientador acadêmico', fr: 'Conseiller académique' }, tone: 'encouraging', formality: 'semi-formal', greeting: { es: '¡Hola! Soy Pablo, asesor académico. ¿En qué programa o curso estás interesado?', en: 'Hi! I\'m Pablo, your academic advisor. What program or course interests you?', pt: 'Olá! Sou Paulo, orientador acadêmico. Qual programa ou curso te interessa?', fr: 'Bonjour! Je suis Paul, conseiller académique. Quel programme vous intéresse?' }, rules: { es: 'Informa sobre programas, horarios y costos. Ofrece test de nivel si aplica. Nunca prometas becas sin autorización.', en: 'Inform about programs, schedules and costs. Offer placement test. Never promise scholarships.', pt: 'Informe sobre programas, horários e custos. Ofereça teste de nível.', fr: 'Informez sur les programmes, horaires et coûts. Proposez un test de niveau.' }, forbiddenTopics: { es: 'Calificaciones de otros estudiantes|Contenido de exámenes|Becas no autorizadas|Credenciales falsas', en: 'Other students grades|Exam content|Unauthorized scholarships|False credentials', pt: 'Notas de outros estudantes|Conteúdo de provas|Bolsas não autorizadas', fr: 'Notes d\'autres étudiants|Contenu d\'examens|Bourses non autorisées' }, handoffTriggers: { es: 'solicitud de beca|homologacion|queja academica|reembolso|convalidacion', en: 'scholarship request|credit transfer|academic complaint|refund', pt: 'solicitacao de bolsa|transferencia|reclamacao', fr: 'demande de bourse|transfert|plainte academique' } },
@@ -527,7 +531,7 @@ function createGenericVertical(industry: string, config: Partial<VerticalDefinit
         industry,
         subTypes: [],
         terminology: { customerNoun: { es: 'cliente', en: 'customer', pt: 'cliente', fr: 'client' }, customerNounPlural: { es: 'clientes', en: 'customers', pt: 'clientes', fr: 'clients' }, transactionNoun: { es: 'venta', en: 'sale', pt: 'venda', fr: 'vente' }, serviceNoun: { es: 'servicio', en: 'service', pt: 'serviço', fr: 'service' }, pipelineNoun: { es: 'ventas', en: 'sales', pt: 'vendas', fr: 'ventes' } },
-        agent: { name: { es: 'Asistente', en: 'Assistant', pt: 'Assistente', fr: 'Assistant' }, role: { es: 'Asistente virtual de atención al cliente', en: 'Virtual customer service assistant', pt: 'Assistente virtual de atendimento', fr: 'Assistant virtuel service client' }, tone: 'professional', formality: 'semi-formal', greeting: { es: '¡Hola! ¿En qué puedo ayudarte hoy?', en: 'Hello! How can I help you today?', pt: 'Olá! Como posso ajudar?', fr: 'Bonjour! Comment puis-je vous aider?' }, rules: { es: 'Responde de forma profesional y concisa. Si el cliente quiere una reunión, tomá sus datos y avisá que alguien del equipo la coordina.', en: 'Respond professionally and concisely. If the customer wants a meeting, take their details and say someone from the team will arrange it.', pt: 'Responda profissionalmente. Se o cliente quiser uma reunião, colete os dados e avise que alguém da equipe vai agendar.', fr: 'Répondez professionnellement. Si le client veut un rendez-vous, prenez ses coordonnées et indiquez qu\'un membre de l\'équipe le fixera.' }, forbiddenTopics: { es: 'Información confidencial|Datos personales de terceros|Garantías no autorizadas', en: 'Confidential information|Third-party personal data|Unauthorized guarantees', pt: 'Informações confidenciais|Dados pessoais de terceiros|Garantias não autorizadas', fr: 'Informations confidentielles|Données personnelles de tiers|Garanties non autorisées' }, handoffTriggers: { es: 'queja formal|reclamo formal|solicitud de reembolso|quiero mi dinero|hablar con un humano|hablar con una persona', en: 'formal complaint|refund request|speak to a human|talk to a person|want my money back', pt: 'reclamacao formal|reembolso|falar com um humano|falar com uma pessoa', fr: 'plainte formelle|remboursement|parler a un humain|parler a une personne' } },
+        agent: { name: { es: 'Asistente', en: 'Assistant', pt: 'Assistente', fr: 'Assistant' }, role: { es: 'Asistente virtual de atención al cliente', en: 'Virtual customer service assistant', pt: 'Assistente virtual de atendimento', fr: 'Assistant virtuel service client' }, tone: 'professional', formality: 'semi-formal', greeting: { es: '¡Hola! ¿En qué puedo ayudarte hoy?', en: 'Hello! How can I help you today?', pt: 'Olá! Como posso ajudar?', fr: 'Bonjour! Comment puis-je vous aider?' }, rules: { es: 'Responde de forma profesional y cercana. Si el cliente quiere una reunión, toma sus datos y avisa que alguien del equipo la coordina.', en: 'Respond professionally and concisely. If the customer wants a meeting, take their details and say someone from the team will arrange it.', pt: 'Responda profissionalmente. Se o cliente quiser uma reunião, colete os dados e avise que alguém da equipe vai agendar.', fr: 'Répondez professionnellement. Si le client veut un rendez-vous, prenez ses coordonnées et indiquez qu\'un membre de l\'équipe le fixera.' }, forbiddenTopics: { es: 'Información confidencial|Datos personales de terceros|Garantías no autorizadas', en: 'Confidential information|Third-party personal data|Unauthorized guarantees', pt: 'Informações confidenciais|Dados pessoais de terceiros|Garantias não autorizadas', fr: 'Informations confidentielles|Données personnelles de tiers|Garanties non autorisées' }, handoffTriggers: { es: 'queja formal|reclamo formal|solicitud de reembolso|quiero mi dinero|hablar con un humano|hablar con una persona', en: 'formal complaint|refund request|speak to a human|talk to a person|want my money back', pt: 'reclamacao formal|reembolso|falar com um humano|falar com uma pessoa', fr: 'plainte formelle|remboursement|parler a un humain|parler a une personne' } },
         pipeline: { stages: [
             { name: { es: 'Nuevo', en: 'New', pt: 'Novo', fr: 'Nouveau' }, slug: 'nuevo', color: '#3498db', probability: 10, isTerminal: false, transitionRules: [] },
             { name: { es: 'Contactado', en: 'Contacted', pt: 'Contatado', fr: 'Contacté' }, slug: 'contactado', color: '#f39c12', probability: 25, isTerminal: false, transitionRules: [{ type: 'phone_required' }] },
@@ -1296,9 +1300,23 @@ const VETERINARIA: VerticalDefinition = {
     bookingEnabled: true,
 };
 
-const OTRO = createGenericVertical('otro', {});
+/**
+ * A partial agent over a generic vertical. `createGenericVertical` merges a full
+ * `agent`; this is the small door for the three industries that shipped with
+ * the placeholder "Asistente" — the wizard then greeted a new owner with
+ * "Preparamos a Asistente", which reads as "we prepared nothing".
+ */
+function withAgent(definition: VerticalDefinition, agent: Partial<VerticalDefinition['agent']>): VerticalDefinition {
+    return { ...definition, agent: { ...definition.agent, ...agent } };
+}
 
-const EVENT_PLANNING = createGenericVertical('event_planning', {
+const OTRO = withAgent(createGenericVertical('otro', {}), {
+    name: { es: 'Andrea', en: 'Andrea', pt: 'Andrea', fr: 'Andrea' },
+    role: { es: 'Asistente del negocio', en: 'Business assistant', pt: 'Assistente do negócio', fr: 'Assistante de l\'entreprise' },
+    greeting: { es: '¡Hola! Soy Andrea. Cuéntame qué buscas y te ayudo.', en: 'Hi! I am Andrea. Tell me what you are looking for and I will help.', pt: 'Olá! Sou a Andrea. Me conte o que procura e eu ajudo.', fr: 'Bonjour ! Je suis Andrea. Dites-moi ce que vous cherchez et je vous aide.' },
+});
+
+const EVENT_PLANNING = withAgent(createGenericVertical('event_planning', {
     subTypes: [
         { key: 'weddings', label: { es: 'Planeación de bodas', en: 'Wedding planning', pt: 'Planejamento de casamentos', fr: 'Organisation de mariages' } },
     ],
@@ -1309,9 +1327,13 @@ const EVENT_PLANNING = createGenericVertical('event_planning', {
         serviceNoun: { es: 'planeación', en: 'planning service', pt: 'planejamento', fr: 'organisation' },
         pipelineNoun: { es: 'eventos', en: 'events', pt: 'eventos', fr: 'événements' },
     },
+}), {
+    name: { es: 'Camila', en: 'Camila', pt: 'Camila', fr: 'Camila' },
+    role: { es: 'Coordinadora de eventos', en: 'Event coordinator', pt: 'Coordenadora de eventos', fr: 'Coordinatrice d\'événements' },
+    greeting: { es: '¡Hola! Soy Camila. ¿Qué evento estás planeando y para cuándo?', en: 'Hi! I am Camila. What event are you planning, and when?', pt: 'Olá! Sou a Camila. Que evento você está planejando e para quando?', fr: 'Bonjour ! Je suis Camila. Quel événement préparez-vous, et pour quand ?' },
 });
 
-const CONSTRUCCION = createGenericVertical('construccion', {
+const CONSTRUCCION = withAgent(createGenericVertical('construccion', {
     subTypes: [
         { key: 'contratista_general', label: { es: 'Contratista general', en: 'General contractor', pt: 'Empreiteiro geral', fr: 'Entrepreneur général' } },
     ],
@@ -1322,6 +1344,10 @@ const CONSTRUCCION = createGenericVertical('construccion', {
         serviceNoun: { es: 'servicio de construcción', en: 'construction service', pt: 'serviço de construção', fr: 'service de construction' },
         pipelineNoun: { es: 'proyectos', en: 'projects', pt: 'projetos', fr: 'projets' },
     },
+}), {
+    name: { es: 'Andrés', en: 'Andrés', pt: 'André', fr: 'André' },
+    role: { es: 'Asesor de proyectos', en: 'Project advisor', pt: 'Consultor de projetos', fr: 'Conseiller projets' },
+    greeting: { es: '¡Hola! Soy Andrés. Cuéntame qué obra o reforma tienes en mente y te oriento.', en: 'Hi! I am Andrés. Tell me about the project or renovation you have in mind and I will guide you.', pt: 'Olá! Sou o André. Me conte qual obra ou reforma tem em mente e eu oriento.', fr: 'Bonjour ! Je suis André. Parlez-moi du chantier ou de la rénovation que vous envisagez et je vous oriente.' },
 });
 
 // ─────────────────────────────────────────────────────────
@@ -1351,10 +1377,109 @@ export const VERTICAL_REGISTRY: Record<string, VerticalDefinition> = {
     otro: OTRO,
 };
 
-export function getVerticalDefinition(industry: string): VerticalDefinition {
+/**
+ * What changes for a subtype, on top of its industry: the agent's name and
+ * voice, the questions customers really ask and what is on offer. A subtype
+ * without an overlay is the industry recipe with a different label, which is
+ * what every subtype was until sep-2026 — a dance academy got "Pablo, asesor
+ * académico" asking about admission requirements. Only the fields listed here
+ * are overridden; everything else (pipeline, KPIs, hours, sidebar) is inherited.
+ *
+ * Content rule, same as the file header: never state a policy or a price the
+ * owner has not confirmed. Answers invite the customer to ask, and the owner
+ * fills the real data in the guided setup.
+ */
+type VerticalRecipeOverlay = Partial<Pick<VerticalDefinition, 'faqs' | 'services' | 'terminology'>> & { agent?: Partial<VerticalDefinition['agent']> };
+
+const ACADEMY_SERVICES: VerticalDefinition['services'] = [
+    { name: { es: 'Clase de prueba', en: 'Trial class', pt: 'Aula experimental', fr: 'Cours d\'essai' }, description: { es: 'Primera clase para conocer la academia', en: 'First class to get to know the academy', pt: 'Primeira aula para conhecer a academia', fr: 'Premier cours pour découvrir l\'école' }, durationMinutes: 60, price: 0, currency: 'COP', category: 'clases' },
+    { name: { es: 'Mensualidad de clases grupales', en: 'Monthly group classes', pt: 'Mensalidade de aulas em grupo', fr: 'Abonnement mensuel cours collectifs' }, description: { es: 'Clases grupales durante un mes', en: 'Group classes for one month', pt: 'Aulas em grupo durante um mês', fr: 'Cours collectifs pendant un mois' }, durationMinutes: 60, price: 0, currency: 'COP', category: 'clases' },
+    { name: { es: 'Clase personalizada', en: 'Private class', pt: 'Aula particular', fr: 'Cours particulier' }, description: { es: 'Clase individual con un profesor', en: 'One-to-one class with a teacher', pt: 'Aula individual com um professor', fr: 'Cours individuel avec un professeur' }, durationMinutes: 60, price: 0, currency: 'COP', category: 'clases' },
+];
+
+const ACADEMY_FAQS: VerticalDefinition['faqs'] = [
+    { question: { es: '¿Cuánto cuestan las clases?', en: 'How much are the classes?', pt: 'Quanto custam as aulas?', fr: 'Combien coûtent les cours ?' }, answer: { es: 'Depende del tipo de clase y de la frecuencia. Cuéntame qué te interesa y te confirmo el valor. ¿Quieres reservar una clase de prueba?', en: 'It depends on the type of class and how often. Tell me what you are interested in and I will confirm the price. Would you like to book a trial class?', pt: 'Depende do tipo de aula e da frequência. Me conte o que te interessa e confirmo o valor. Quer reservar uma aula experimental?', fr: 'Cela dépend du type de cours et de la fréquence. Dites-moi ce qui vous intéresse et je vous confirme le tarif. Voulez-vous réserver un cours d\'essai ?' }, category: 'precios' },
+    { question: { es: '¿Dónde quedan?', en: 'Where are you located?', pt: 'Onde ficam?', fr: 'Où êtes-vous situés ?' }, answer: { es: 'Con gusto te comparto la dirección de la sede y cómo llegar. Escríbeme y te la confirmo.', en: 'Happy to share the address and directions. Write to me and I will confirm them.', pt: 'Com prazer compartilho o endereço e como chegar. Me escreva e confirmo.', fr: 'Je vous communique volontiers l\'adresse et l\'itinéraire. Écrivez-moi et je vous les confirme.' }, category: 'ubicacion' },
+    { question: { es: '¿Qué horarios tienen?', en: 'What are your schedules?', pt: 'Quais são os horários?', fr: 'Quels sont vos horaires ?' }, answer: { es: 'Cuéntame qué te interesa aprender y qué días te sirven, y te digo las clases disponibles.', en: 'Tell me what you want to learn and which days work for you, and I will tell you the available classes.', pt: 'Me conte o que quer aprender e quais dias te servem, e te digo as aulas disponíveis.', fr: 'Dites-moi ce que vous voulez apprendre et quels jours vous conviennent, et je vous indique les cours disponibles.' }, category: 'horarios' },
+    { question: { es: '¿Hay clases para niños?', en: 'Are there classes for children?', pt: 'Tem aulas para crianças?', fr: 'Y a-t-il des cours pour enfants ?' }, answer: { es: 'Cuéntame la edad y te confirmo si tenemos grupo y en qué horario.', en: 'Tell me the age and I will confirm whether we have a group and at what time.', pt: 'Me conte a idade e confirmo se temos turma e em qual horário.', fr: 'Indiquez-moi l\'âge et je vous confirme si nous avons un groupe et à quel horaire.' }, category: 'clases' },
+    { question: { es: '¿Qué necesito llevar a la primera clase?', en: 'What do I need to bring to the first class?', pt: 'O que preciso levar na primeira aula?', fr: 'Que dois-je apporter au premier cours ?' }, answer: { es: 'Ropa cómoda y ganas de aprender. Si tu clase necesita algo más, te lo confirmo antes.', en: 'Comfortable clothes and the will to learn. If your class needs anything else, I will confirm it beforehand.', pt: 'Roupa confortável e vontade de aprender. Se a sua aula precisar de algo mais, confirmo antes.', fr: 'Une tenue confortable et l\'envie d\'apprendre. Si votre cours nécessite autre chose, je vous le confirme avant.' }, category: 'clases' },
+];
+
+const ACADEMY_TERMINOLOGY: VerticalDefinition['terminology'] = {
+    customerNoun: { es: 'alumno', en: 'student', pt: 'aluno', fr: 'élève' },
+    customerNounPlural: { es: 'alumnos', en: 'students', pt: 'alunos', fr: 'élèves' },
+    transactionNoun: { es: 'inscripción', en: 'enrollment', pt: 'matrícula', fr: 'inscription' },
+    serviceNoun: { es: 'clase', en: 'class', pt: 'aula', fr: 'cours' },
+    pipelineNoun: { es: 'inscripciones', en: 'enrollments', pt: 'matrículas', fr: 'inscriptions' },
+};
+
+// handoffTriggers are unaccented substring matchers, not display text (see the file header).
+const ACADEMY_HANDOFF = { es: 'inscribirme|quiero inscribirme|pagar|descuento|beca|evento privado|show|lesion|me lastime|queja|reclamo|hablar con una persona', en: 'sign me up|enroll|pay|discount|scholarship|private event|show|injury|complaint|talk to a person', pt: 'me inscrever|quero me inscrever|pagar|desconto|bolsa|evento privado|show|lesao|reclamacao|falar com uma pessoa', fr: 'm inscrire|payer|reduction|bourse|evenement prive|spectacle|blessure|plainte|parler a une personne' };
+
+const SUBTYPE_RECIPE_OVERLAYS: Readonly<Record<string, VerticalRecipeOverlay>> = {
+    'education/academia_baile': {
+        agent: {
+            name: { es: 'Valentina', en: 'Valentina', pt: 'Valentina', fr: 'Valentina' },
+            role: { es: 'Asesora de clases', en: 'Class advisor', pt: 'Consultora de aulas', fr: 'Conseillère cours' },
+            tone: 'friendly', formality: 'casual',
+            greeting: { es: '¡Hola! Soy Valentina. ¿Buscas clases para ti, para tu pareja o para un niño?', en: 'Hi! I am Valentina. Are you looking for classes for yourself, for a couple or for a child?', pt: 'Olá! Sou a Valentina. Procura aulas para você, para o casal ou para uma criança?', fr: 'Bonjour ! Je suis Valentina. Vous cherchez des cours pour vous, pour votre couple ou pour un enfant ?' },
+            rules: { es: 'Pregunta qué ritmo o estilo le interesa y qué nivel tiene antes de recomendar una clase.|Confirma los horarios y precios con los datos del negocio; si no los tienes, ofrece confirmarlos.|Lleva la conversación a reservar una clase de prueba.', en: 'Ask which style and level they have before recommending a class.|Confirm schedules and prices from the business data; if you do not have them, offer to confirm.|Guide the conversation towards booking a trial class.', pt: 'Pergunte qual ritmo ou estilo interessa e qual o nível antes de recomendar uma aula.|Confirme horários e preços com os dados do negócio; se não os tiver, ofereça confirmar.|Leve a conversa para reservar uma aula experimental.', fr: 'Demandez quel style et quel niveau avant de recommander un cours.|Confirmez horaires et tarifs avec les données de l\'entreprise ; sinon proposez de les confirmer.|Amenez la conversation vers la réservation d\'un cours d\'essai.' },
+            handoffTriggers: ACADEMY_HANDOFF,
+        },
+        faqs: ACADEMY_FAQS,
+        services: ACADEMY_SERVICES,
+        terminology: ACADEMY_TERMINOLOGY,
+    },
+    'education/academia_musica': {
+        agent: {
+            name: { es: 'Camila', en: 'Camila', pt: 'Camila', fr: 'Camila' },
+            role: { es: 'Asesora de clases', en: 'Class advisor', pt: 'Consultora de aulas', fr: 'Conseillère cours' },
+            tone: 'friendly', formality: 'casual',
+            greeting: { es: '¡Hola! Soy Camila. ¿Qué instrumento o disciplina te gustaría aprender, y para quién es la clase?', en: 'Hi! I am Camila. Which instrument or discipline would you like to learn, and who is the class for?', pt: 'Olá! Sou a Camila. Qual instrumento ou disciplina gostaria de aprender, e para quem é a aula?', fr: 'Bonjour ! Je suis Camila. Quel instrument ou quelle discipline souhaitez-vous apprendre, et pour qui est le cours ?' },
+            handoffTriggers: ACADEMY_HANDOFF,
+        },
+        faqs: ACADEMY_FAQS,
+        services: ACADEMY_SERVICES,
+        terminology: ACADEMY_TERMINOLOGY,
+    },
+    'education/clases_particulares': {
+        agent: {
+            role: { es: 'Tutor', en: 'Tutor', pt: 'Tutor', fr: 'Tuteur' },
+            handoffTriggers: ACADEMY_HANDOFF,
+        },
+        faqs: ACADEMY_FAQS,
+        services: ACADEMY_SERVICES,
+        terminology: ACADEMY_TERMINOLOGY,
+    },
+    'education/autoescuela': {
+        agent: {
+            name: { es: 'Andrés', en: 'Andrés', pt: 'André', fr: 'André' },
+            role: { es: 'Asesor de cursos', en: 'Course advisor', pt: 'Consultor de cursos', fr: 'Conseiller formations' },
+            greeting: { es: '¡Hola! Soy Andrés. ¿Buscas curso para carro, moto o ambos?', en: 'Hi! I am Andrés. Are you looking for a car course, a motorcycle course or both?', pt: 'Olá! Sou o André. Procura curso para carro, moto ou os dois?', fr: 'Bonjour ! Je suis André. Vous cherchez une formation voiture, moto ou les deux ?' },
+            handoffTriggers: ACADEMY_HANDOFF,
+        },
+        services: ACADEMY_SERVICES,
+        terminology: ACADEMY_TERMINOLOGY,
+    },
+};
+
+export function getSubtypeRecipeOverlay(industry: string, subType?: string | null): VerticalRecipeOverlay | null {
+    if (!subType) return null;
+    return SUBTYPE_RECIPE_OVERLAYS[`${industry}/${subType}`] ?? null;
+}
+
+export function getVerticalDefinition(industry: string, subType?: string | null): VerticalDefinition {
     const definition = VERTICAL_REGISTRY[industry];
     if (!definition) {
         throw new Error(`Unknown vertical definition: ${industry}`);
     }
-    return definition;
+    const overlay = getSubtypeRecipeOverlay(industry, subType);
+    if (!overlay) return definition;
+    return {
+        ...definition,
+        ...(overlay.faqs ? { faqs: overlay.faqs } : {}),
+        ...(overlay.services ? { services: overlay.services } : {}),
+        ...(overlay.terminology ? { terminology: { ...definition.terminology, ...overlay.terminology } } : {}),
+        agent: { ...definition.agent, ...(overlay.agent ?? {}) },
+    };
 }

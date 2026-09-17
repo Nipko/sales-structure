@@ -1,12 +1,12 @@
 ---
 id: probar-agente
-title: "Test your agent before going live"
+title: "Test your agent"
 routes: ["/admin/agent", "/admin/agent/simulation", "/admin/procedures"]
 roles: ["tenant_admin"]
 keywords: ["test agent", "simulation", "simulate conversation", "test chat", "scenarios", "synthetic", "historical", "baseline", "regression", "score", "agent quality", "evaluate agent", "procedures", "sop", "standard operating procedure", "compile steps", "trigger keywords", "step by step flow", "test bot", "before going live"]
 ---
 
-# Test your agent before going live
+# Test your agent
 
 Before letting your AI agent talk to real customers, it's worth checking how it responds. Parallly gives you three tools for that:
 
@@ -55,7 +55,7 @@ When you open a completed simulation you'll see:
 - **Regressions** — if you picked a baseline, you'll see **Regression detected** when a response got worse compared to the previous run, or **No regressions** if everything held steady or improved.
 - **Scenario table** — click any scenario to see the full **transcript** (customer vs. agent) and the **issues** the evaluator found in that conversation.
 
-**Recommendation:** run a simulation every time you change your agent's personality, rules, knowledge base, or procedures, and compare it against the previous baseline. That way you ship changes backed by evidence, not gut feeling.
+**Recommendation:** run a simulation every time you change your agent's personality, rules, knowledge base, or procedures, and compare it against the previous baseline. That way you make changes backed by evidence, not gut feeling.
 
 ## How to create a procedure (SOP)
 
@@ -91,7 +91,7 @@ Procedures teach your agent to run your business processes **step by step**: ref
 No. Everything happens in an isolated environment: no real appointments, orders, discounts, or conversations are created, and no message goes out through your connected channels.
 
 **What's the difference between the test chat and the simulation?**
-The test chat is you talking to the agent: great for quick, targeted checks. The simulation runs dozens of varied conversations with automatic scoring: ideal before shipping major changes.
+The test chat is you talking to the agent: great for quick, targeted checks. The simulation runs dozens of varied conversations with automatic scoring: ideal before making major changes.
 
 **What is the "baseline" and what is it for?**
 It's a previous simulation you use as a point of comparison. By reusing its exact scenarios, Parallly can tell you whether a change you made **worsened** a response that used to come out fine (a "regression").
@@ -100,7 +100,7 @@ It's a previous simulation you use as a point of comparison. By reusing its exac
 Open the flagged scenarios, read the transcript and the detected issues, adjust the agent's configuration (personality, rules, knowledge, or procedures), and run the simulation again against the same baseline.
 
 **Does a good score guarantee the agent is perfect?**
-No, but it greatly reduces the risk. As a reference: 8 or above is a good result; between 5 and 8, review the lowest-scoring scenarios; below 5, review the configuration before going live.
+No, but it greatly reduces the risk. As a reference: 8 or above is a good result; between 5 and 8, review the lowest-scoring scenarios; below 5, review the configuration before letting it handle conversations on its own.
 
 **Who can use these tools?**
 Only the **admin** role. If you don't see these options in the menu and you need them, ask your account administrator for access. Questions? Write to us at https://parallly-chat.cloud/support

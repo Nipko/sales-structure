@@ -135,7 +135,7 @@ export default function InitialSetupCard({
               </button>
             </div>
           ) : (
-            <ol className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+            <ol className="mt-4 grid gap-2">
               {items.map((item) => {
                 const isNext = firstPending?.key === item.key;
                 const tour = item.tourId ? getGuidedTour(item.tourId) : null;
@@ -143,13 +143,16 @@ export default function InitialSetupCard({
                 return (
                   <li
                     key={item.key}
-                    className="flex min-h-14 flex-col gap-2 rounded-lg border border-indigo-100 bg-white/90 p-3 dark:border-indigo-500/15 dark:bg-neutral-900/60 sm:flex-row sm:items-center sm:gap-2.5"
+                    className={isNext
+                      ? "flex min-h-14 flex-col gap-2 rounded-lg border-2 border-indigo-400 bg-white p-3 shadow-sm dark:border-indigo-400/60 dark:bg-neutral-900 sm:flex-row sm:items-center sm:gap-2.5"
+                      : "flex min-h-14 flex-col gap-2 rounded-lg border border-indigo-100 bg-white/90 p-3 dark:border-indigo-500/15 dark:bg-neutral-900/60 sm:flex-row sm:items-center sm:gap-2.5"}
                   >
                     <div className="flex min-w-0 flex-1 items-center gap-2.5">
                       {item.done && !item.notApplicable
                         ? <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white"><Check size={14} aria-hidden="true" /></span>
                         : <Circle size={22} className="shrink-0 text-indigo-300 dark:text-indigo-500" aria-hidden="true" />}
                       <span className="min-w-0 flex-1 text-sm font-medium text-neutral-800 dark:text-neutral-200">
+                        {isNext && <span className="mr-2 inline-flex rounded-full bg-indigo-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">{t("nextBadge")}</span>}
                         {t(item.labelKey)}
                         {item.verification === "unavailable" && <span className="block text-xs font-normal">{t("verificationUnavailable")}</span>}
                         {item.notApplicable && <span className="block text-xs font-normal">{tq("checkStatuses.not_applicable")}</span>}

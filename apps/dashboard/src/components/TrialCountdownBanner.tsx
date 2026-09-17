@@ -1,5 +1,7 @@
 "use client";
 
+import { isOnboardingBeforeLive } from "@parallext/shared";
+import { useAuth } from "@/contexts/AuthContext";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useTranslations, useLocale } from "next-intl";
@@ -19,6 +21,7 @@ export default function TrialCountdownBanner({ restriction }: Props) {
     const locale = useLocale();
     const { activeTenantId } = useTenant();
     const { isSuperAdmin, impersonating } = useRole();
+    const { user } = useAuth();
     const [daysLeft, setDaysLeft] = useState<number | null>(null);
     const [nextCharge, setNextCharge] = useState<
         { at: string; amountCents: number; currency: string } | null
@@ -70,6 +73,9 @@ export default function TrialCountdownBanner({ restriction }: Props) {
     };
 
     if (hiddenForSuperAdmin) return null;
+    // A trial countdown on the first screen of an account that has not answered
+    // a single customer is noise; a restriction (soft lock) is not, and stays.
+    if (!restriction && isOnboardingBeforeLive(user?.onboardingStage)) return null;
 
     // Soft lock banner — NOT dismissable
     if (restriction?.level === "soft_lock") {

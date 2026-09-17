@@ -434,6 +434,8 @@ export default function AgentListPage() {
         tourId="assign_agent_channel"
       />
 
+      <AgentReviewModeCard tenantId={activeTenantId} t={t} />
+
       <SetupBanner show={needsSetup} onAction={() => {
         const first = agents[0];
         if (first) router.push(`/admin/agent/${first.id}`);
@@ -949,5 +951,55 @@ function TemplateCard({ template, onSelect, onDelete, t }: TemplateCardProps) {
         {t("useTemplate")}
       </button>
     </div>
+  );
+}
+
+/**
+ * Owner decision D1/D15 (sep-2026): a save applies at once by default. An
+ * account that wants every change approved first opts into the reviewed mode
+ * here; the editor then shows drafts, candidates and publication again.
+ */
+function AgentReviewModeCard({ tenantId, t }: { tenantId: string | null; t: ReturnType<typeof useTranslations> }) {
+  const [mode, setMode] = useState<"immediate" | "reviewed" | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!tenantId) return;
+    let cancelled = false;
+    api.getAgentReviewMode(tenantId).then(res => {
+      if (!cancelled && res.success && res.data) setMode(res.data.mode === "reviewed" ? "reviewed" : "immediate");
+    }).catch(() => { /* the card simply stays hidden */ });
+    return () => { cancelled = true; };
+  }, [tenantId]);
+  if (!tenantId || !mode) return null;
+  const change = async (next: "immediate" | "reviewed") => {
+    if (next === mode || busy) return;
+    setBusy(true);
+    try {
+      const res = await api.setAgentReviewMode(tenantId, next);
+      if (res.success) setMode(next);
+    } finally { setBusy(false); }
+  };
+  return (
+    <details className="mb-4 rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm dark:border-neutral-800 dark:bg-neutral-900">
+      <summary className="cursor-pointer list-none font-medium text-neutral-800 dark:text-neutral-200">
+        {t("reviewMode.title")}
+        <span className="ml-2 text-xs font-normal text-neutral-500">{t(mode === "reviewed" ? "reviewMode.reviewedLabel" : "reviewMode.immediateLabel")}</span>
+      </summary>
+      <p className="mt-2 text-xs text-neutral-500 dark:text-neutral-400">{t("reviewMode.description")}</p>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        {(["immediate", "reviewed"] as const).map(option => (
+          <label key={option} className={cn(
+            "flex cursor-pointer items-start gap-2 rounded-lg border p-3",
+            mode === option ? "border-indigo-400 bg-indigo-50/60 dark:border-indigo-500/60 dark:bg-indigo-500/10" : "border-neutral-200 dark:border-neutral-700"
+          )}>
+            <input type="radio" name="agent-review-mode" className="mt-0.5" checked={mode === option} disabled={busy} onChange={() => void change(option)} />
+            <span>
+              <span className="block font-medium text-neutral-800 dark:text-neutral-200">{t(`reviewMode.${option}Label`)}</span>
+              <span className="block text-xs text-neutral-500 dark:text-neutral-400">{t(`reviewMode.${option}Desc`)}</span>
+            </span>
+          </label>
+        ))}
+      </div>
+    </details>
   );
 }

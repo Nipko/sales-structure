@@ -647,7 +647,7 @@ export class VerticalsService {
         industry = canonicalSelection.industry;
         subType = canonicalSelection.subType;
         const definition = withResolvedVerticalPipeline(
-            getVerticalDefinition(industry),
+            getVerticalDefinition(industry, subType),
             subType,
         );
         // Resolve up front so an unknown industry/subtype cannot be provisioned
@@ -1920,7 +1920,7 @@ export class VerticalsService {
 
             const persona = {
                 ...existingPersona,
-                name: this.orFallback(existingPersona.name, pick(agentDef.name)),
+                name: this.nameOrFallback(existingPersona.name, pick(agentDef.name)),
                 role: this.orFallback(existingPersona.role, pick(agentDef.role)),
                 greeting: this.orFallback(existingPersona.greeting, pick(agentDef.greeting)),
                 personality: {
@@ -1997,6 +1997,17 @@ export class VerticalsService {
     /** Devuelve el valor actual si tiene contenido; si no, el de la vertical. */
     private orFallback(current: any, fallback: string): string {
         return typeof current === 'string' && current.trim().length > 0 ? current : fallback;
+    }
+
+    /**
+     * "Asistente" es el nombre de relleno de la plantilla genérica, no un
+     * nombre que el dueño eligió: para el parche vertical cuenta como hueco, así
+     * que el nombre humano de la industria o del subtipo sí llega al agente.
+     * Cualquier otro nombre se respeta (RELLENA HUECOS, no pisa).
+     */
+    private nameOrFallback(current: any, fallback: string): string {
+        const placeholder = typeof current === 'string' && /^(asistente|assistant|assistente)$/i.test(current.trim());
+        return this.orFallback(placeholder ? '' : current, fallback);
     }
 
     /** 'a|b|c' → ['a','b','c'] (formato del registry para listas). */

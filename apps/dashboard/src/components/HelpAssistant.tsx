@@ -1,5 +1,6 @@
 "use client";
 
+import { isOnboardingBeforeLive } from "@parallext/shared";
 import {
   useCallback,
   useEffect,
@@ -146,6 +147,9 @@ function TenantHelpAssistant() {
   const t = useTranslations("helpAssistant");
   const locale = useLocale();
   const pathname = usePathname();
+  // The guided setup owns the screen until the first real reply; the mascot
+  // greets nobody over it and is not even drawn on the wizard.
+  const beforeLive = isOnboardingBeforeLive(user?.onboardingStage);
   const router = useRouter();
   const searchParams = useSearchParams();
   const {
@@ -200,7 +204,7 @@ function TenantHelpAssistant() {
     // Mientras la tarjeta de puesta en marcha es la guía activa, la burbuja que
     // saluda sola es una guía más encima de las otras. No se marca como
     // anunciada: cuando la cuenta arranca de verdad, el saludo sigue disponible.
-    if (setupCardIsTheGuide) {
+    if (setupCardIsTheGuide || beforeLive) {
       setIntro("done");
       return;
     }
@@ -238,7 +242,7 @@ function TenantHelpAssistant() {
     }
 
     return () => timers.forEach(clearTimeout);
-  }, [setupCardIsTheGuide]);
+  }, [setupCardIsTheGuide, beforeLive]);
 
   useEffect(() => {
     try {
@@ -446,6 +450,7 @@ function TenantHelpAssistant() {
   const introMoving = intro === "enter" || intro === "talk";
   const showAnnouncement = intro === "talk" && !open;
 
+  if (beforeLive && pathname === "/admin/setup-wizard") return null;
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>

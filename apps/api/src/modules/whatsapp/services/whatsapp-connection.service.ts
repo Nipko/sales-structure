@@ -1,3 +1,4 @@
+import { bindDefaultAgentToChannel } from '../../channels/bind-default-agent.util';
 import { readFundingFromGraph } from '../../channels/whatsapp-funding-readiness';
 import {
   Inject, Injectable, Logger, BadRequestException, NotFoundException, Optional, ServiceUnavailableException,
@@ -142,6 +143,8 @@ export class WhatsappConnectionService {
     } catch (e: any) {
       this.logger.warn(`markFirstChannelConnected failed for ${tenantId}: ${e?.message}`);
     }
+    // The agent is born without assignments; the connection is what assigns it.
+    await bindDefaultAgentToChannel(this.prisma, tenantId, 'whatsapp');
   }
 
   async getChannelStatus(schemaName: string) {

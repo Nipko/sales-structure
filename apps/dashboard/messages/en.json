@@ -359,7 +359,8 @@
     "discardError": "The draft was not discarded because it or the operational version changed. Reload and review again.",
     "discarding": "Discarding…",
     "proposalSourceDraft": "Current values belong to the saved draft.",
-    "proposalSourceOperational": "Current values belong to the operational version."
+    "proposalSourceOperational": "Current values belong to the operational version.",
+    "savedLive": "Saved. Your agent now answers this way."
   },
   "qualityRegressions": {
     "openWorkspace": "Failures and reviewed tests",
@@ -953,7 +954,7 @@
       "compliance": "Compliance",
       "aiAgent": "AI Agent",
       "knowledgeBase": "Knowledge Base",
-      "identity": "Identity",
+      "identity": "Contact identity",
       "users": "Users",
       "billing": "Billing",
       "featureRequests": "Improvements",
@@ -4769,7 +4770,8 @@
       "unsupported": "{assignment}: unsupported channel type. Review and remove this assignment.",
       "disconnected": "{assignment}: assigned, but without an active connection.",
       "stale": "{assignment}: the assigned account is no longer connected. Remove it and select the current account.",
-      "remove": "Remove from draft"
+      "remove": "Remove",
+      "connect": "Connect"
     },
     "channelOverviewUnavailable": "We could not verify connected channels",
     "channelOverviewUnavailableHint": "Reload before changing or saving assignments. We preserved the current configuration.",
@@ -4777,6 +4779,15 @@
     "advanced": {
       "title": "Advanced",
       "behaviorHint": "Data the agent must ask for in each situation. You do not need to touch it to get started."
+    },
+    "unsavedLeaveConfirm": "You have unsaved changes. If you leave now they are lost. Leave anyway?",
+    "reviewMode": {
+      "title": "How agent changes apply",
+      "description": "Choose how the changes you save on any agent of this account reach your customers.",
+      "immediateLabel": "Immediately (recommended)",
+      "immediateDesc": "You save and the agent answers that way at once. Every save stays in the history in case you want to go back.",
+      "reviewedLabel": "With prior review",
+      "reviewedDesc": "Saving creates a draft; someone on your team tests, approves and publishes it before it reaches customers."
     }
   },
   "knowledge": {
@@ -6416,12 +6427,12 @@
   },
   "setupWizard": {
     "title": "Set up your AI agent",
-    "subtitle": "In a few minutes you will have a draft ready to test, review, and publish",
+    "subtitle": "In a few minutes you will see your agent answer the way it would answer a customer.",
     "testTitle": "Try it",
     "connectTitle": "Connect it",
     "discoverTitle": "Discover",
     "connectBannerTitle": "You haven't connected a channel yet",
-    "connectBannerDesc": "There is no channel receiving messages yet. Connect it, then publish the agent version that should handle it.",
+    "connectBannerDesc": "There is no channel to receive messages yet. Connect one and your agent starts answering there.",
     "connectBannerCta": "Connect WhatsApp",
     "resumeBannerTitle": "Pick up your setup",
     "resumeBannerDesc": "You left the assistant halfway. Everything was saved: you can carry on where you were.",
@@ -6439,7 +6450,7 @@
       "continue": "Continue",
       "connectLater": "Connect later",
       "connected": "Connected!",
-      "connectedDesc": "The number {phone} is connected. Review its assignment and publish the agent before serving customers.",
+      "connectedDesc": "Number {phone} is connected. Your agent now answers there: write to it from another phone to see it.",
       "coexistenceHint": "Scan the QR code from your WhatsApp Business app to connect your current number without losing your chats.",
       "channel_instagram": "Instagram",
       "channel_messenger": "Messenger",
@@ -6721,7 +6732,7 @@
       "cap_offers_desc": "Share active deals and discount codes"
     },
     "completion": {
-      "title": "The draft for {name} is prepared",
+      "title": "{name} is ready",
       "configured": "Configured",
       "pending": "Pending connection",
       "testAgent": "Test my agent",
@@ -6735,7 +6746,7 @@
       "stepOf": "Step {current} of {total}"
     },
     "pageTitle": "Meet your agent",
-    "pageSubtitle": "Three steps to prepare and test; you will publish the reviewed version at the end.",
+    "pageSubtitle": "Three steps: confirm your agent, try it in the chat and connect the channel your customers write on.",
     "exit": "Exit",
     "exitHint": "We save what you did and take you back to the panel",
     "steps": {
@@ -6748,23 +6759,23 @@
       "subtitle": "We prepared an agent from what you told us. Confirm it or change it.",
       "prepared": "We prepared {name} using what you told us about your business. Confirm the name and greeting, and try it right here.",
       "saving": "Saving…",
-      "saved": "Draft saved",
-      "autosaveHint": "The draft saves when you leave the field; the operational version does not change.",
+      "saved": "Saved",
+      "autosaveHint": "Saved automatically when you leave each field.",
       "changeTemplate": "Change template"
     },
     "connectStep": {
       "title": "Connect WhatsApp",
-      "subtitle": "Connect the channel that will receive messages. The agent starts replying after an approved version is assigned and published.",
+      "subtitle": "Connect the channel your customers write on. As soon as it is connected, the agent answers there just as you tried it in the chat.",
       "laterTitle": "Not a good moment?",
-      "laterHint": "You can leave it for later: we'll remind you on Home and you can come back here whenever you want.",
+      "laterHint": "You can leave it for later: keep trying it in the chat meanwhile, and we remind you on Home.",
       "showMe": "Show me where"
     },
     "doneStep": {
       "title": "Initial setup saved",
-      "subtitle": "Review and publish the draft to make it the version that serves your customers.",
+      "subtitle": "Your agent now answers on the connected channel. Write to it from another phone to see it in action.",
       "subtitleDeferred": "We'll be waiting on Home to connect WhatsApp. Meanwhile, here is what comes next.",
       "goToPanel": "Go to the panel",
-      "tourCta": "Review and publish my agent",
+      "tourCta": "Take the dashboard tour",
       "essentials": {
         "channel": {
           "title": "Connect WhatsApp",
@@ -8273,8 +8284,8 @@
       "title": "How do I connect and manage my channels?",
       "description": "Channels is where you connect each messaging network (WhatsApp, Instagram DM, Facebook Messenger and Telegram) so your agent can receive and reply everywhere. Each card shows whether the channel is \"Connected\" or \"Disconnected\" and takes you to its setup.",
       "tips": [
-        "Start with WhatsApp: open its card and follow Meta's official flow. You will need a WhatsApp Business account and a Facebook page.",
-        "For Instagram DM the account must be professional and linked to a Facebook page; the process uses OAuth and takes under 2 minutes.",
+        "Start with WhatsApp: open its card and follow Meta's official flow. You will need a phone number for WhatsApp and a Facebook account to authorize (you can create it during the process).",
+        "For Instagram DM the account must be professional (Business or Creator); you sign in with Instagram, no Facebook page needed, and it takes under 2 minutes.",
         "Connecting Messenger asks you to sign in with Facebook and pick your business page.",
         "Telegram only needs a Bot Token: create a bot with @BotFather, copy the token and paste it into the channel setup.",
         "A connected channel shows the green \"Connected\" badge. After connecting, assign it an agent from AI Agents: with no agent assigned nobody replies."
@@ -9227,9 +9238,9 @@
     },
     "channelsInstagram": {
       "title": "How do I connect Instagram DM?",
-      "description": "The Instagram DM channel lets your AI agent respond to direct messages on Instagram from Parallly via Meta's official OAuth. To connect it you need a 'Professional' Instagram account (Business or Creator) linked to a Facebook Page.",
+      "description": "The Instagram DM channel lets your AI agent answer Instagram direct messages from Parallly through the official Instagram login. To connect it you need a 'Professional' Instagram account (Business or Creator). No Facebook page is required.",
       "tips": [
-        "Key prerequisite: your Instagram account must be a 'Business' or 'Creator' type and linked to a Facebook Page. If you have a personal account, convert it to a professional one in Instagram's settings before continuing.",
+        "Key prerequisite: your Instagram account must be of type 'Business' or 'Creator'. If you have a personal account, switch it to professional from Instagram's settings before continuing (it takes a minute and is free).",
         "Click 'Connect with Instagram': a Meta popup will open. Log in with the Instagram account you want to connect, accept the 'instagram_business_basic' and 'instagram_business_manage_messages' permissions and complete the flow.",
         "After authorizing, the panel shows the account name, profile picture, and token expiration date (long-lived tokens last ~60 days). The system renews the token automatically, but if you see the 'Expired token' alert, click 'Reconnect'.",
         "Troubleshooting: if the popup doesn't open, disable the browser's popup blocker for this site. If the button stays on 'Connecting...' indefinitely, refresh the page and try again; the flow uses BroadcastChannel to communicate the result between windows."
@@ -9299,14 +9310,14 @@
     "showMeHint": "We open the screen and point out each step. It never changes anything on its own.",
     "agentEditor": {
       "title": "How do I set up my agent?",
-      "description": "This is where you define who your agent is and how it behaves: its name, role, greeting, fallback, rules, and when it hands the chat to a person. Saving keeps a draft; customers receive those changes only after you test, approve, and publish the revision.",
+      "description": "This is where you define who your agent is and how it behaves: its name, role, greeting, fallback, rules, and when it hands the chat to a person. When you save, the changes apply at once on the assigned channels; you can try them in the test chat before or after.",
       "tips": [
-        "1. On the Identity tab, set the agent's name and role. Both are required: the agent introduces itself with that name in every chat.",
+        "1. On the Persona tab, set the agent's name and role. Both are required: the agent introduces itself with that name in every chat.",
         "2. Write the welcome message: it is the first thing your customer reads when they write for the first time.",
         "3. Fill in \"Message when it cannot answer\". It is required and keeps the agent from inventing: use it to promise that a person will follow up.",
         "4. Under Instructions, add at least one strict rule (for example: \"always confirm availability before quoting\").",
         "5. Under \"When to pass to a human\", write at least one reason (for example: \"the customer asks to talk to a person\"). Without it the agent never escalates.",
-        "6. At the top, prepare the channel assignments and status you want to publish. Save the draft, test it, prepare the review, approve it, and publish it; only then do those assignments serve customers."
+        "6. Below, under Channel assignment, tick where this agent answers. If a ticked channel is not connected you will see a link to connect it. Save and you are done."
       ]
     },
     "agentQuality": {
@@ -9322,11 +9333,11 @@
     },
     "setupWizard": {
       "title": "How does this assistant work?",
-      "description": "Three steps prepare the draft and connect WhatsApp. When you finish, review the assignment, test the draft, and publish the approved version before serving customers. You can leave at any time: what you filled in is saved and you can come back from Settings, under Setup assistant.",
+      "description": "Three steps: confirm your agent's name and greeting, try it in the chat and connect the channel your customers write on. What you save applies at once. You can leave at any time: what you filled in is saved and you come back from Settings, under Setup assistant.",
       "tips": [
-        "Your agent already exists, built for your industry. In the first step you just confirm its name and greeting, or adjust them.",
-        "Test it in the chat before connecting anything: that is how you see it answer like a real customer would.",
-        "To connect WhatsApp, have the phone number and access to the code Meta sends by SMS or call.",
+        "Your agent already exists, built for your industry, with an example name, greeting and rules. In the first step you just confirm or adjust them.",
+        "Try it in the chat before connecting anything: that is how you see it answer a real customer, without spending messages or creating bookings.",
+        "To connect WhatsApp, have the phone number and the code Meta sends by SMS or call. Instagram, Messenger and Telegram connect from the same screen.",
         "If you would rather connect later, we remind you on Home and you can come back to this assistant any time."
       ]
     }
@@ -12115,8 +12126,8 @@
       "pendingReason": "Pending: {check}",
       "verificationUnavailable": "Awaiting verification. Retry when the lookup is available.",
       "title": "Getting started",
-      "description": "Only essential steps available for your plan, role, and industry. This guide disappears when completed.",
-      "progress": "{completed}/{total} essentials",
+      "description": "The minimum for your agent to answer a customer. Start with the highlighted step; the rest takes minutes.",
+      "progress": "{completed}/{total} done",
       "loading": "Checking your setup…",
       "unavailable": "We couldn't verify these steps. We won't assume they are incomplete.",
       "retry": "Try again",
@@ -12133,7 +12144,8 @@
         "mission": "Agree the agent mission",
         "tests": "Test agent outcomes"
       },
-      "showMe": "Show me where"
+      "showMe": "Show me where",
+      "nextBadge": "Next"
     },
     "focus": {
       "verificationUnavailable": "We could not verify the current status. Retry before deciding what is missing.",

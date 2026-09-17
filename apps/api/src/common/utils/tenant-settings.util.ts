@@ -53,6 +53,11 @@ export const RESERVED_TENANT_SETTING_KEYS = [
     // en `persona.controller` (lo avanza y lo publica en `setup-status`).
     'onboardingStage',
     'channelConnectSkippedAt',
+    // Cómo se aplican los cambios del agente: 'immediate' (por defecto, "cambiar
+    // es tocar y guardar": cada guardado llega al agente que atiende) o
+    // 'reviewed' (cada guardado es un borrador que pasa por evaluación, revisión
+    // y publicación). Lo escribe sólo `persona.controller` (agent-review-mode).
+    'agentReviewMode',
 ] as const;
 
 /**

@@ -3,7 +3,7 @@ id: centro-calidad-agente
 title: "Salud de agentes y Centro de calidad"
 routes: ["/admin/agent/quality", "/admin"]
 roles: ["tenant_admin", "tenant_supervisor"]
-keywords: ["salud de agentes", "centro de calidad", "calidad del agente", "preparacion", "calidad probada", "evidencia de produccion", "agente en riesgo", "configuracion incompleta", "acciones criticas", "badge", "posponer", "Parallly Assist", "mejorar agente", "cobertura de canales", "conexion operativa del canal", "mostrarme donde", "recorrido guiado", "barra de contexto", "requiere reautorizar"]
+keywords: ["salud de agentes", "centro de calidad", "calidad del agente", "preparacion", "calidad probada", "evidencia de produccion", "agente en riesgo", "configuracion incompleta", "acciones criticas", "badge", "posponer", "Parallly Assist", "mejorar agente", "cobertura de canales", "conexion operativa del canal", "mostrarme donde", "recorrido guiado", "barra de contexto", "requiere reautorizar", "esenciales", "siguiente paso", "no esta listo"]
 ---
 
 # Salud de agentes y Centro de calidad
@@ -20,7 +20,9 @@ conexiones o configuración desde **IA y crecimiento → Agente IA**.
 - El badge de **Insights → Salud de agentes** suma solamente señales **Críticas y
   Altas abiertas**. Es un conteo de atención, no un puntaje.
 - El aviso global aparece solo ante una señal crítica abierta o un estado **Agente en
-  riesgo**. Puedes **Revisar**, **Preguntar a Assist** o **Posponer 24 h**.
+  riesgo**, y sólo después de la primera respuesta real a un cliente: mientras la cuenta
+  está en puesta en marcha, la tarjeta de Inicio es la única guía. Puedes **Revisar**,
+  **Preguntar a Assist** o **Posponer 24 h**.
 - Posponer oculta esa señal temporalmente; no la corrige. Estos avisos viven en el
   dashboard y no envían correo ni notificación push.
 
@@ -28,7 +30,10 @@ conexiones o configuración desde **IA y crecimiento → Agente IA**.
 
 - **Preparación:** revisa negocio y alcance, conocimiento, conversación y marca,
   acciones, seguridad y handoff, y robustez operativa. Una capacidad fuera del
-  alcance puede aparecer como **No aplica** y no reduce el resultado.
+  alcance puede aparecer como **No aplica** y no reduce el resultado. El estado general
+  lo deciden los **esenciales** (canal, agente, negocio, equipo) y cualquier problema
+  real; una misión sin ajustar o una prueba sin correr quedan como pendientes, pero no
+  declaran «no listo» a un agente que ya responde.
 - **Calidad probada:** muestra la evaluación crítica y la simulación más recientes,
   con versión, fecha, umbral y escenarios. Si cambió el agente, la evidencia anterior
   puede quedar desactualizada. Es evidencia automatizada, no una certificación.
@@ -38,7 +43,7 @@ conexiones o configuración desde **IA y crecimiento → Agente IA**.
   insuficiente**, no un cero.
 
 La evidencia histórica que no identifica de forma inequívoca al agente no se asigna
-retroactivamente. Por eso una versión recién publicada puede necesitar nuevas
+retroactivamente. Por eso una versión recién guardada puede necesitar nuevas
 interacciones antes de mostrar una señal de producción útil.
 
 ## Qué verifica "Conexión operativa del canal"
@@ -160,11 +165,13 @@ en vez de afirmar que no tienes canales conectados.
 ## Preguntas frecuentes
 
 **¿El checklist de configuración es lo mismo que el Centro de calidad?**
-No. La tarjeta **Puesta en marcha** de Inicio muestra solo pasos esenciales disponibles
-para tu plan, rol e industria y desaparece al completarlos. Reemplaza la antigua
-pastilla flotante `8/9`. Salud de agentes añade pruebas y evidencia de producción.
+No. La tarjeta **Puesta en marcha** de Inicio muestra solo los cuatro esenciales (canal,
+agente, negocio y equipo) disponibles para tu plan y rol, señala el **Siguiente** paso y
+desaparece al completarlos. Reemplaza la antigua pastilla flotante `8/9`. Salud de agentes
+añade lo que mejora al agente (misión, conocimiento, horario, citas, catálogo), las
+pruebas y la evidencia de producción.
 
-**¿Un buen puntaje de simulación basta para publicar?**
+**¿Un buen puntaje de simulación basta para dejarlo atender solo?**
 No. Ayuda a reducir riesgo, pero debe revisarse junto con bloqueos críticos, vigencia
 de la versión y evidencia real cuando esté disponible.
 

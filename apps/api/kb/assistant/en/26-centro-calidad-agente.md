@@ -3,7 +3,7 @@ id: centro-calidad-agente
 title: "Agent health and Quality center"
 routes: ["/admin/agent/quality", "/admin"]
 roles: ["tenant_admin", "tenant_supervisor"]
-keywords: ["agent health", "quality center", "agent quality", "preparation", "tested quality", "production evidence", "agent at risk", "configuration incomplete", "critical actions", "badge", "snooze", "Parallly Assist", "improve agent", "channel coverage", "operational channel connection", "show me where", "guided tour", "context bar", "needs reauthorisation"]
+keywords: ["agent health", "quality center", "agent quality", "preparation", "tested quality", "production evidence", "agent at risk", "configuration incomplete", "critical actions", "badge", "snooze", "Parallly Assist", "improve agent", "channel coverage", "operational channel connection", "show me where", "guided tour", "context bar", "needs reauthorisation", "essentials", "next step", "not ready"]
 ---
 
 # Agent health and Quality center
@@ -20,7 +20,9 @@ edit agents, connections, or configuration under **AI & Growth → AI Agent**.
 - The **Insights → Agent health** badge counts only open **Critical and High**
   signals. It is an attention count, not a score.
 - The global banner appears only for an open Critical signal or an **Agent at risk**
-  status. You can **Review**, **Ask Assist**, or **Snooze for 24 hours**.
+  status, and only after the first real reply to a customer: while the account is in
+  getting-started mode, the Home card is the only guide. You can **Review**, **Ask
+  Assist**, or **Snooze for 24 hours**.
 - Snoozing hides that signal temporarily; it does not fix it. These alerts stay in
   the dashboard and do not send email or push notifications.
 
@@ -28,7 +30,10 @@ edit agents, connections, or configuration under **AI & Growth → AI Agent**.
 
 - **Preparation:** checks business and scope, knowledge, conversation and brand,
   actions, safety and handoff, and operational robustness. A capability outside the
-  agent's scope can be **Not applicable** and does not lower the result.
+  agent's scope can be **Not applicable** and does not lower the result. The overall
+  status is decided by the **essentials** (channel, agent, business, team) and any
+  real problem; an unfinished mission or a test that hasn't run stay as pending, but
+  they do not mark an agent that already answers as "not ready".
 - **Tested quality:** shows the latest critical evaluation and simulation, including
   version, date, threshold, and scenarios. Earlier evidence can become outdated when
   the agent changes. It is automated evidence, not a certification.
@@ -38,7 +43,7 @@ edit agents, connections, or configuration under **AI & Growth → AI Agent**.
   **Insufficient evidence**, not zero.
 
 Historical evidence that does not identify the agent unambiguously is not assigned
-retroactively. A newly published version may therefore need new interactions before
+retroactively. A newly saved version may therefore need new interactions before
 it has a useful production signal.
 
 ## What "Operational channel connection" actually checks
@@ -157,11 +162,13 @@ claiming that you have no connected channels.
 ## Frequently asked questions
 
 **Is the setup checklist the same as the Quality center?**
-No. The **Getting started** card on Home shows only essential steps available for
-your plan, role, and industry and disappears when they are complete. It replaces the
-old floating `8/9` pill. Agent health adds repeatable tests and production evidence.
+No. The **Getting started** card on Home shows only the four essentials (channel,
+agent, business, and team) available for your plan and role, flags the **Next** step,
+and disappears when they are complete. It replaces the old floating `8/9` pill. Agent
+health adds what improves the agent (mission, knowledge, hours, appointments,
+catalog), tests, and production evidence.
 
-**Is a strong simulation score enough to publish?**
+**Is a strong simulation score enough to let it handle conversations on its own?**
 No. It helps reduce risk, but review it together with critical blockers, version
 freshness, and real evidence when available.
 

@@ -172,7 +172,9 @@ describe('PersonaController setup wizard — avanzar sin destruir', () => {
         // Sin agente durable, el respaldo legado SÍ es lo que lee el runtime.
         expect(personaService.savePersonaFromYaml).toHaveBeenCalledTimes(1);
         const [, payload] = personaService.createAgent.mock.calls[0];
-        expect(payload.channels).toEqual(['whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget']);
+        // Nace sin asignaciones (D16, sep-2026): como predeterminado ya atiende
+        // todo, y la asignación real la hace la conexión del primer canal.
+        expect(payload.channels).toEqual([]);
         // El marcador de plantilla se sustituye, nunca se guarda crudo.
         expect(payload.configJson.persona.greeting).toBe('¡Hola! Soy Ana de Clínica Norte.');
     });

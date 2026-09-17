@@ -195,6 +195,41 @@ export class PersonaController {
         });
     }
 
+    /**
+     * Cómo se aplican los cambios del agente en este tenant.
+     *
+     * `immediate` (por defecto): cada guardado llega al agente que atiende —
+     * "cambiar es tocar y guardar". `reviewed`: cada guardado es un borrador que
+     * pasa por evaluación, revisión y publicación (el flujo del 7-sep, ahora
+     * opcional). Sólo el administrador lo cambia; es una preferencia del
+     * negocio, no del agente.
+     */
+    @Get(':tenantId/agent-review-mode')
+    @Roles('tenant_admin')
+    @ApiOperation({ summary: 'How agent saves apply for this account: immediately (default) or after review and publication' })
+    async getAgentReviewMode(@Param('tenantId') tenantId: string) {
+        const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
+        const mode = (tenant?.settings as any)?.agentReviewMode === 'reviewed' ? 'reviewed' : 'immediate';
+        return { success: true, data: { mode } };
+    }
+
+    @Post(':tenantId/agent-review-mode')
+    @Roles('tenant_admin')
+    @ApiOperation({ summary: 'Choose whether agent saves apply immediately (default) or go through review and publication' })
+    async setAgentReviewMode(
+        @Param('tenantId') tenantId: string,
+        @Body() body: { mode?: string },
+    ) {
+        const mode = body?.mode;
+        if (mode !== 'immediate' && mode !== 'reviewed') {
+            throw new BadRequestException({ error: 'agent_review_mode_invalid', message: 'mode must be immediate or reviewed' });
+        }
+        await mutateTenantSettingsAtomic(this.prisma, tenantId, (current) => (
+            current.agentReviewMode === mode ? (current as Record<string, unknown>) : { ...current, agentReviewMode: mode }
+        ));
+        return { success: true, data: { mode } };
+    }
+
     @Post(':tenantId/setup-wizard')
     @Roles('tenant_admin')
     /**
@@ -430,14 +465,13 @@ export class PersonaController {
         if (defaultAgent) {
             throw new BadRequestException({ error: 'agent_draft_contract_required' });
         } else {
-            // Agente NUEVO: acá sí hay que decidir dónde atiende. Los cinco
-            // tipos solo se siembran cuando el tenant no tiene ningún otro
-            // agente; con otros agentes vivos, quedarse con lo que el emisor
-            // eligió evita robarles sus canales.
+            // Agente NUEVO: acá sí hay que decidir dónde atiende. Sin otros
+            // agentes vivos nace sin asignaciones: como agente por defecto
+            // atiende todo, y cada conexión lo vincula cuando ocurre. Con otros
+            // agentes vivos, quedarse con lo que el emisor eligió evita robarles
+            // sus canales.
             const channelsForNewAgent = selectedChannels
-                ?? (agents.length === 0
-                    ? ['whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget']
-                    : undefined);
+                ?? (agents.length === 0 ? [] : undefined);
             // Sin agente durable, `persona_config` SÍ es lo que lee el runtime.
             const yamlContent = yaml.dump(config, { lineWidth: -1 });
             await this.personaService.savePersonaFromYaml(tenantId, yamlContent, createdBy);

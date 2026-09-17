@@ -359,7 +359,8 @@
     "discardError": "Le brouillon ou la version opérationnelle a changé. Rechargez et vérifiez à nouveau avant de l’abandonner.",
     "discarding": "Abandon en cours…",
     "proposalSourceDraft": "Les valeurs actuelles appartiennent au brouillon enregistré.",
-    "proposalSourceOperational": "Les valeurs actuelles appartiennent à la version opérationnelle."
+    "proposalSourceOperational": "Les valeurs actuelles appartiennent à la version opérationnelle.",
+    "savedLive": "Enregistré. Votre agent répond désormais ainsi."
   },
   "qualityRegressions": {
     "openWorkspace": "Échecs et tests révisés",
@@ -953,7 +954,7 @@
       "compliance": "Conformité",
       "aiAgent": "Agent IA",
       "knowledgeBase": "Base de connaissances",
-      "identity": "Identité",
+      "identity": "Identité des contacts",
       "users": "Utilisateurs",
       "billing": "Facturation",
       "featureRequests": "Améliorations",
@@ -4769,7 +4770,8 @@
       "unsupported": "{assignment} : type de canal non pris en charge. Vérifiez et retirez cette attribution.",
       "disconnected": "{assignment} : attribué, mais sans connexion active.",
       "stale": "{assignment} : le compte attribué n’est plus connecté. Retirez-le et sélectionnez le compte actuel.",
-      "remove": "Retirer du brouillon"
+      "remove": "Retirer",
+      "connect": "Connecter"
     },
     "channelOverviewUnavailable": "Impossible de vérifier les canaux connectés",
     "channelOverviewUnavailableHint": "Rechargez avant de modifier ou d’enregistrer les attributions. La configuration actuelle a été conservée.",
@@ -4777,6 +4779,15 @@
     "advanced": {
       "title": "Avancé",
       "behaviorHint": "Données que l'agent doit demander selon la situation. Inutile d'y toucher pour démarrer."
+    },
+    "unsavedLeaveConfirm": "Vous avez des modifications non enregistrées. Si vous partez maintenant, elles seront perdues. Partir quand même ?",
+    "reviewMode": {
+      "title": "Comment s'appliquent les modifications de l'agent",
+      "description": "Choisissez comment les modifications que vous enregistrez sur un agent de ce compte atteignent vos clients.",
+      "immediateLabel": "Immédiatement (recommandé)",
+      "immediateDesc": "Vous enregistrez et l'agent répond ainsi aussitôt. Chaque enregistrement reste dans l'historique si vous voulez revenir en arrière.",
+      "reviewedLabel": "Avec révision préalable",
+      "reviewedDesc": "L'enregistrement crée un brouillon ; quelqu'un de votre équipe le teste, l'approuve et le publie avant qu'il n'atteigne les clients."
     }
   },
   "knowledge": {
@@ -6416,12 +6427,12 @@
   },
   "setupWizard": {
     "title": "Configurez votre agent IA",
-    "subtitle": "En quelques minutes, vous aurez un brouillon prêt à tester, examiner et publier",
+    "subtitle": "En quelques minutes vous verrez votre agent répondre comme il le ferait à un client.",
     "testTitle": "Testez",
     "connectTitle": "Connectez",
     "discoverTitle": "Découvrez",
     "connectBannerTitle": "Vous n'avez pas encore connecté de canal",
-    "connectBannerDesc": "Aucun canal ne reçoit encore de messages. Connectez-le, puis publiez la version de l'agent qui doit le prendre en charge.",
+    "connectBannerDesc": "Il n'y a pas encore de canal pour recevoir des messages. Connectez-en un et votre agent commence à y répondre.",
     "connectBannerCta": "Connecter WhatsApp",
     "resumeBannerTitle": "Reprenez votre configuration",
     "resumeBannerDesc": "Vous avez laissé l'assistant à moitié. Tout a été enregistré : vous pouvez continuer là où vous en étiez.",
@@ -6439,7 +6450,7 @@
       "continue": "Continuer",
       "connectLater": "Connecter plus tard",
       "connected": "Connecté !",
-      "connectedDesc": "Le numéro {phone} est connecté. Vérifiez son assignation et publiez l'agent avant de servir les clients.",
+      "connectedDesc": "Le numéro {phone} est connecté. Votre agent y répond désormais : écrivez-lui depuis un autre téléphone pour le voir.",
       "coexistenceHint": "Scannez le QR code depuis votre app WhatsApp Business pour connecter votre numéro actuel sans perdre vos conversations.",
       "channel_instagram": "Instagram",
       "channel_messenger": "Messenger",
@@ -6721,7 +6732,7 @@
       "cap_offers_desc": "Partage les offres actives et codes promo"
     },
     "completion": {
-      "title": "Le brouillon de {name} est préparé",
+      "title": "{name} est prêt",
       "configured": "Configuré",
       "pending": "Connexion en attente",
       "testAgent": "Tester mon agent",
@@ -6735,7 +6746,7 @@
       "stepOf": "Étape {current} sur {total}"
     },
     "pageTitle": "Faites connaissance avec votre agent",
-    "pageSubtitle": "Trois étapes pour préparer et tester ; vous publierez la version examinée à la fin.",
+    "pageSubtitle": "Trois étapes : confirmez votre agent, testez-le dans le chat et connectez le canal par lequel vos clients vous écrivent.",
     "exit": "Sortir",
     "exitHint": "Nous gardons ce que vous avez fait et vous ramenons au panneau",
     "steps": {
@@ -6748,23 +6759,23 @@
       "subtitle": "Nous avons préparé un agent à partir de ce que vous nous avez dit. Confirmez-le ou modifiez-le.",
       "prepared": "Nous avons préparé {name} à partir de ce que vous nous avez dit de votre activité. Confirmez le nom et le message d'accueil, puis testez-le juste à côté.",
       "saving": "Enregistrement…",
-      "saved": "Brouillon enregistré",
-      "autosaveHint": "Le brouillon est enregistré lorsque vous quittez le champ ; la version opérationnelle ne change pas.",
+      "saved": "Enregistré",
+      "autosaveHint": "Enregistré automatiquement quand vous quittez chaque champ.",
       "changeTemplate": "Changer de modèle"
     },
     "connectStep": {
       "title": "Connectez WhatsApp",
-      "subtitle": "Connectez le canal qui recevra les messages. L'agent commence à répondre après assignation et publication d'une version approuvée.",
+      "subtitle": "Connectez le canal par lequel vos clients vous écrivent. Dès qu'il est connecté, l'agent y répond exactement comme vous l'avez testé dans le chat.",
       "laterTitle": "Ce n'est pas le bon moment ?",
-      "laterHint": "Vous pouvez le faire plus tard : nous vous le rappellerons sur l'Accueil et vous pourrez revenir ici quand vous voulez.",
+      "laterHint": "Vous pouvez le faire plus tard : continuez à le tester dans le chat en attendant, et nous vous le rappellerons sur l'Accueil.",
       "showMe": "Montrez-moi où"
     },
     "doneStep": {
       "title": "Configuration initiale enregistrée",
-      "subtitle": "Examinez et publiez le brouillon pour en faire la version qui servira vos clients.",
+      "subtitle": "Votre agent répond désormais sur le canal connecté. Écrivez-lui depuis un autre téléphone pour le voir en action.",
       "subtitleDeferred": "Nous vous attendons sur l'Accueil pour connecter WhatsApp. En attendant, voici la suite.",
       "goToPanel": "Aller au panneau",
-      "tourCta": "Examiner et publier mon agent",
+      "tourCta": "Voir la visite du tableau de bord",
       "essentials": {
         "channel": {
           "title": "Connecter WhatsApp",
@@ -8273,8 +8284,8 @@
       "title": "Comment connecter et gérer vos canaux ?",
       "description": "Canaux est l'endroit où vous connectez chaque messagerie (WhatsApp, Instagram DM, Facebook Messenger et Telegram) pour que votre agent puisse recevoir et répondre partout. Chaque carte indique si le canal est « Connecté » ou « Déconnecté » et mène à sa configuration.",
       "tips": [
-        "Commencez par WhatsApp : ouvrez sa carte et suivez le parcours officiel de Meta. Il vous faut un compte WhatsApp Business et une page Facebook.",
-        "Pour Instagram DM, le compte doit être professionnel et lié à une page Facebook ; le processus utilise OAuth et prend moins de 2 minutes.",
+        "Commencez par WhatsApp : ouvrez sa carte et suivez le parcours officiel de Meta. Il vous faut un numéro pour WhatsApp et un compte Facebook pour autoriser (vous pouvez le créer pendant le processus).",
+        "Pour Instagram DM, le compte doit être professionnel (Entreprise ou Créateur) ; vous vous connectez avec Instagram, sans page Facebook, et cela prend moins de 2 minutes.",
         "Connecter Messenger demande de vous connecter avec Facebook et de choisir la page de votre entreprise.",
         "Telegram ne demande qu'un Bot Token : créez un bot avec @BotFather, copiez le token et collez-le dans la configuration du canal.",
         "Un canal connecté affiche le badge vert « Connecté ». Après la connexion, attribuez-lui un agent depuis Agents IA : sans agent attribué, personne ne répond."
@@ -9227,9 +9238,9 @@
     },
     "channelsInstagram": {
       "title": "Comment connecter Instagram DM ?",
-      "description": "Le canal Instagram DM permet à ton agent IA de répondre aux messages directs sur Instagram depuis Parallly via l'OAuth officiel de Meta. Pour le connecter, tu as besoin d'un compte Instagram de type 'Professionnel' (Entreprise ou Créateur) lié à une page Facebook.",
+      "description": "Le canal Instagram DM permet à votre agent IA de répondre aux messages directs Instagram depuis Parallly avec la connexion officielle Instagram. Pour le connecter, il vous faut un compte Instagram de type « Professionnel » (Entreprise ou Créateur). Aucune page Facebook n'est requise.",
       "tips": [
-        "Prérequis clé : ton compte Instagram doit être de type 'Entreprise' ou 'Créateur' et être lié à une page Facebook. Si tu as un compte personnel, convertis-le en compte professionnel dans les paramètres Instagram avant de continuer.",
+        "Prérequis clé : votre compte Instagram doit être de type « Entreprise » ou « Créateur ». Si vous avez un compte personnel, passez-le en professionnel depuis les paramètres d'Instagram avant de continuer (une minute, gratuit).",
         "Clique sur 'Connecter avec Instagram' : une fenêtre pop-up Meta s'ouvrira. Connecte-toi avec le compte Instagram à relier, accepte les permissions 'instagram_business_basic' et 'instagram_business_manage_messages' et complète le flux.",
         "Après autorisation, le panneau affiche le nom du compte, la photo de profil et la date d'expiration du token (les tokens longue durée durent ~60 jours). Le système renouvelle le token automatiquement, mais si tu vois l'alerte 'Token expiré', clique sur 'Reconnecter'.",
         "Dépannage : si la pop-up ne s'ouvre pas, désactive le bloqueur de pop-ups du navigateur pour ce site. Si le bouton reste sur 'Connexion en cours...' indéfiniment, actualise la page et réessaie ; le flux utilise BroadcastChannel pour communiquer le résultat entre fenêtres."
@@ -9299,14 +9310,14 @@
     "showMeHint": "Nous ouvrons l'écran et indiquons chaque étape. Rien n'est modifié automatiquement.",
     "agentEditor": {
       "title": "Comment configurer mon agent ?",
-      "description": "Vous définissez ici qui est votre agent et comment il se comporte : nom, rôle, accueil, réponse lorsqu'il ne sait pas, règles et transfert vers une personne. L'enregistrement conserve un brouillon ; les clients ne reçoivent ces changements qu'après le test, l'approbation et la publication de la révision.",
+      "description": "Vous définissez ici qui est votre agent et comment il se comporte : nom, rôle, accueil, réponse lorsqu'il ne sait pas, règles et transfert vers une personne. À l'enregistrement, les changements s'appliquent immédiatement sur les canaux assignés ; vous pouvez les tester dans le chat de test avant ou après.",
       "tips": [
-        "1. Dans l'onglet Identité, renseignez le nom et le rôle de l'agent. Les deux sont obligatoires : l'agent se présente avec ce nom dans chaque conversation.",
+        "1. Dans l'onglet Persona, renseignez le nom et le rôle de l'agent. Les deux sont obligatoires : l'agent se présente avec ce nom dans chaque conversation.",
         "2. Rédigez le message de bienvenue : c'est la première chose que lit votre client lorsqu'il écrit pour la première fois.",
         "3. Remplissez « Message quand il ne peut pas répondre ». Il est obligatoire et empêche l'agent d'inventer : utilisez-le pour promettre qu'une personne prendra le relais.",
         "4. Dans Instructions, ajoutez au moins une règle stricte (par exemple : « toujours confirmer la disponibilité avant de chiffrer »).",
         "5. Dans « Quand passer à une personne », écrivez au moins un motif (par exemple : « le client demande à parler à quelqu'un »). Sans cela l'agent n'escalade jamais.",
-        "6. En haut, préparez les affectations de canal et l'état à publier. Enregistrez le brouillon, testez-le, préparez la révision, approuvez-la et publiez-la ; ce n'est qu'alors que ces affectations servent les clients."
+        "6. En bas, dans Affectation des canaux, cochez où cet agent répond. Si un canal coché n'est pas connecté, un lien vous permet de le connecter. Enregistrez, c'est tout."
       ]
     },
     "agentQuality": {
@@ -9322,11 +9333,11 @@
     },
     "setupWizard": {
       "title": "Comment fonctionne cet assistant ?",
-      "description": "Trois étapes préparent le brouillon et connectent WhatsApp. Ensuite, vérifiez l'affectation, testez le brouillon et publiez la version approuvée avant de servir les clients. Vous pouvez sortir quand vous voulez : ce que vous avez rempli est enregistré et vous revenez depuis Configuration, dans Assistant de configuration.",
+      "description": "Trois étapes : confirmez le nom et le message d'accueil de votre agent, testez-le dans le chat et connectez le canal par lequel vos clients vous écrivent. Ce que vous enregistrez s'applique immédiatement. Vous pouvez sortir quand vous voulez : ce que vous avez rempli est enregistré et vous revenez depuis Configuration, dans Assistant de configuration.",
       "tips": [
-        "Votre agent existe déjà, construit pour votre secteur. À la première étape vous confirmez seulement son nom et son message d'accueil, ou vous les ajustez.",
-        "Testez-le dans le chat avant de connecter quoi que ce soit : c'est ainsi que vous voyez comment il répond à un vrai client.",
-        "Pour connecter WhatsApp, ayez sous la main le numéro et l'accès au code que Meta envoie par SMS ou appel.",
+        "Votre agent existe déjà, construit pour votre secteur, avec un nom, un message d'accueil et des règles d'exemple. À la première étape vous les confirmez ou les ajustez.",
+        "Testez-le dans le chat avant de connecter quoi que ce soit : c'est ainsi que vous le voyez répondre à un vrai client, sans dépenser de messages ni créer de réservations.",
+        "Pour connecter WhatsApp, ayez sous la main le numéro et le code que Meta envoie par SMS ou appel. Instagram, Messenger et Telegram se connectent depuis le même écran.",
         "Si vous préférez connecter plus tard, nous vous le rappelons sur l'Accueil et vous pouvez revenir à cet assistant à tout moment."
       ]
     }
@@ -12115,8 +12126,8 @@
       "pendingReason": "En attente : {check}",
       "verificationUnavailable": "Vérification en attente. Réessayez lorsque la consultation sera disponible.",
       "title": "Mise en route",
-      "description": "Uniquement les étapes essentielles disponibles pour votre forfait, rôle et secteur. Ce guide disparaît une fois terminé.",
-      "progress": "{completed}/{total} essentielles",
+      "description": "Le minimum pour que votre agent réponde à un client. Commencez par l'étape mise en avant ; le reste prend quelques minutes.",
+      "progress": "{completed}/{total} prêts",
       "loading": "Vérification de la configuration…",
       "unavailable": "Impossible de vérifier ces étapes. Nous ne les considérerons pas comme incomplètes.",
       "retry": "Réessayer",
@@ -12133,7 +12144,8 @@
         "mission": "Définir la mission de l’agent",
         "tests": "Tester les résultats de l’agent"
       },
-      "showMe": "Montrez-moi où"
+      "showMe": "Montrez-moi où",
+      "nextBadge": "Suivant"
     },
     "focus": {
       "verificationUnavailable": "Nous ne pouvons pas vérifier le statut actuel. Réessayez avant de décider ce qui manque.",

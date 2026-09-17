@@ -67,7 +67,8 @@ Las más comunes:
   sirve igual; vuelve a sincronizarlas desde **Plantillas** cuando quieras.
 
 Lee la advertencia antes de dar por terminada la puesta en marcha: la tarjeta ámbar
-significa "conectado, pero revisa esto", no "todo listo".
+significa "conectado, pero revisa esto", no "todo listo". Si es tu primer canal, el agente
+predeterminado queda asignado a él y responde ahí desde ese momento.
 
 ## Modo coexistencia: mantén tu app de WhatsApp Business
 

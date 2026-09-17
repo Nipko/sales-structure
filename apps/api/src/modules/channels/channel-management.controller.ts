@@ -17,6 +17,7 @@ import { personaChannelCacheKeys } from '../../common/utils/persona-cache.util';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
 import { CERTIFIED_SELF_SERVICE_CHANNELS, advanceOnboardingStage } from '@parallext/shared';
+import { bindDefaultAgentToChannel } from './bind-default-agent.util';
 import { mutateTenantSettingsAtomic } from '../../common/utils/tenant-settings.util';
 import { buildChannelCertificationMatrix, summariseChannelCertification } from './channel-certification-matrix';
 import { channelCertificationRuntime } from './channel-certification-runtime';
@@ -64,7 +65,7 @@ export class ChannelManagementController {
      * el primer connect escribe, así sobrevive a reconexiones/desconexiones.
      * Fire-and-forget: nunca debe romper el flujo de conexión.
      */
-    private async markFirstChannelConnected(tenantId: string): Promise<void> {
+    private async markFirstChannelConnected(tenantId: string, channelType?: string): Promise<void> {
         try {
             await this.prisma.tenant.updateMany({
                 where: { id: tenantId, firstChannelConnectedAt: null },
@@ -73,6 +74,7 @@ export class ChannelManagementController {
         } catch (e: any) {
             this.logger.warn(`markFirstChannelConnected failed for ${tenantId}: ${e?.message}`);
         }
+        if (channelType) await bindDefaultAgentToChannel(this.prisma, tenantId, channelType);
         // The onboarding stage is the single source of truth for the guidance
         // surfaces (setup card, resume banner, first-channel tour). Connecting
         // is exactly the event they wait for, so advance it here — monotonically,
@@ -456,7 +458,7 @@ export class ChannelManagementController {
             });
         }
 
-        void this.markFirstChannelConnected(tenantId);
+        void this.markFirstChannelConnected(tenantId, 'telegram');
 
         // 4. Store encrypted credential
         const existingCred = await this.prisma.whatsappCredential.findFirst({
@@ -844,7 +846,7 @@ export class ChannelManagementController {
                     });
                 }
 
-                void this.markFirstChannelConnected(tenantId);
+                void this.markFirstChannelConnected(tenantId, 'messenger');
 
                 // Store encrypted credential (messenger_token per tenant)
                 const existingCred = await this.prisma.whatsappCredential.findFirst({
@@ -1125,7 +1127,7 @@ export class ChannelManagementController {
             });
         }
 
-        void this.markFirstChannelConnected(tenantId);
+        void this.markFirstChannelConnected(tenantId, 'instagram');
 
         // Store encrypted credential with expiration
         const existingCred = await this.prisma.whatsappCredential.findFirst({
@@ -1346,7 +1348,7 @@ export class ChannelManagementController {
             await this.prisma.channelAccount.create({ data: channelData });
         }
 
-        void this.markFirstChannelConnected(tenantId);
+        void this.markFirstChannelConnected(tenantId, 'sms');
 
         // 5. Store encrypted credential
         const existingCred = await this.prisma.whatsappCredential.findFirst({
@@ -1552,7 +1554,7 @@ export class ChannelManagementController {
             });
         }
 
-        void this.markFirstChannelConnected(tenantId);
+        void this.markFirstChannelConnected(tenantId, channelType);
 
         // Store encrypted credential (reuse whatsapp_credentials table for all channels)
         const existingCred = await this.prisma.whatsappCredential.findFirst({

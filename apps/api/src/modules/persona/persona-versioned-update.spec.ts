@@ -4,7 +4,7 @@ import { PersonaController } from './persona.controller';
 
 const TENANT = '11111111-1111-4111-8111-111111111111';
 const AGENT = '22222222-2222-4222-8222-222222222222';
-function harness(failFinalWrite = false) {
+function harness(failFinalWrite = false, agentReviewMode: 'immediate' | 'reviewed' = 'immediate') {
     let current: any = { id: AGENT, version: 8, config_json: { persona: { name: 'Luna', greeting: 'Actual' } }, channel_bindings: [] };
     let other: any = { id: 'other', version: 3, is_default: true, channels: ['whatsapp'], channel_bindings: ['telegram:1'] };
     const sql: string[] = [];
@@ -23,7 +23,7 @@ function harness(failFinalWrite = false) {
         }
         throw new Error('Unexpected query: ' + statement);
     };
-    const prisma = { channelAccount: { findMany: jest.fn().mockResolvedValue([]) }, transactionInTenantSchema: jest.fn(async (_schema, work) => {
+    const prisma = { channelAccount: { findMany: jest.fn().mockResolvedValue([]) }, tenant: { findUnique: jest.fn().mockResolvedValue({ settings: { agentReviewMode } }) }, transactionInTenantSchema: jest.fn(async (_schema, work) => {
         let release!: () => void;
         const before = queue; queue = new Promise(resolve => { release = resolve; }); await before;
         const snapshot = JSON.stringify({ current, other });
@@ -71,10 +71,25 @@ describe('agent editor optimistic concurrency', () => {
         await expect(controller.updateAgent(TENANT, AGENT, { isActive: true })).rejects.toBeInstanceOf(BadRequestException);
         expect(updateAgent).not.toHaveBeenCalled();
     });
-    it.each([{ isActive: true }, { configJson: { persona: { name: 'Changed' } } }, { isDefault: true }, { channels: ['whatsapp'] }, { partialDraft: true }])(
-        'cannot bypass draft publication with the legacy update payload %j', async payload => {
+    it.each([{ configJson: { persona: { name: 'Changed' } } }, { isDefault: true }, { channels: ['whatsapp'] }, { partialDraft: true }])(
+        'cannot bypass the configuration contract with the legacy update payload %j', async payload => {
             const h = harness();
             await expect(h.service.updateAgent(TENANT, AGENT, { ...payload, expectedVersion: 8 })).rejects.toMatchObject({ response: { error: 'agent_draft_contract_required' } });
             expect(h.sql).toEqual([]); expect(h.current().version).toBe(8);
         });
+    // Owner decision D1/D15 (sep-2026): changes apply at once by default, so the
+    // switch that turned the agent off can turn it back on. Only an account that
+    // opted into reviewed changes routes activation through a published version.
+    it('activates with the switch when changes are immediate (the default)', async () => {
+        const h = harness();
+        const saved = await h.service.updateAgent(TENANT, AGENT, { expectedVersion: 8, isActive: true });
+        expect(saved.version).toBe(9);
+        expect(h.sql.filter(sql => sql.startsWith('UPDATE'))).toHaveLength(1);
+        expect(h.events.emit).toHaveBeenCalledWith('agent.version.updated', expect.objectContaining({ changed: 'agent_activated' }));
+    });
+    it('still routes activation through review when the account chose reviewed changes', async () => {
+        const h = harness(false, 'reviewed');
+        await expect(h.service.updateAgent(TENANT, AGENT, { expectedVersion: 8, isActive: true })).rejects.toMatchObject({ response: { error: 'agent_draft_contract_required' } });
+        expect(h.sql).toEqual([]); expect(h.current().version).toBe(8);
+    });
 });

@@ -1,3 +1,4 @@
+import { AGENT_SETUP_ESSENTIAL_TASKS, isEssentialSetupTask } from '@parallext/shared';
 import { ConflictException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { CONVERSATIONAL_CHANNELS, EVAL_LANGUAGES, operationalStateFromCheck, operationalStateFromQuality,
@@ -314,6 +315,15 @@ export class AgentAssessmentService {
                 : requiredTests.some(test => test.state === 'unknown') ? 'unknown'
                     : requiredTests.some(test => test.evidence === 'failed' || test.evidence === 'stale') ? 'degraded'
                         : proven ? 'tested' : 'pending'));
+        // Essentials first: the setup card on Home shows only these, in this
+        // order, and "the next thing to do" is the first essential still open.
+        // Mission, knowledge, hours, appointments, catalog and tests make the
+        // agent better; they follow, for the health panel.
+        const essentialRank = (key: AgentSetupTask['key']) => {
+            const index = AGENT_SETUP_ESSENTIAL_TASKS.indexOf(key);
+            return index === -1 ? AGENT_SETUP_ESSENTIAL_TASKS.length : index;
+        };
+        tasks.sort((a, b) => essentialRank(a.key) - essentialRank(b.key));
         // A channel whose projection could not be read is unknown, not ready. A
         // channel whose contract blocks writers is not prepared either: the
         // profile, the role or the surface itself cannot commit the business
@@ -374,12 +384,18 @@ export class AgentAssessmentService {
             // own tasks are parts of the agent: leaving them out let the whole
             // read "operating" while a needed tool was blocked and not one task
             // of the mission had been proven.
+            // "Can it attend today" is decided by what is verifiable: the
+            // essential tasks, plus any REAL problem elsewhere (something
+            // unreadable, something that broke). A template-derived mission or a
+            // test that was never run is unfinished polish, not a reason to tell
+            // a new owner that a working agent "is not ready" (owner decision D2,
+            // sep-2026); those tasks keep their own `pending` for the health panel.
             state: rollUpOperationalState([
                 operationalStateFromQuality(overview.status),
-                ...tasks.map(task => task.state),
+                ...tasks.filter(task => isEssentialSetupTask(task.key) || task.state === 'degraded' || task.state === 'unknown').map(task => task.state),
                 ...statedChannels.map(channel => channel.state),
                 ...tools.map(tool => tool.state),
-                ...requiredTests.map(test => test.state),
+                ...requiredTests.filter(test => test.state !== 'pending').map(test => test.state),
             ]),
             // No cast. The contract carries `readinessAudit` now, so the
             // shape the surfaces read is the shape this hands over — the cast

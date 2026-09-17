@@ -15,9 +15,9 @@ describe('AUTH-01 versioned 1:1 authoring packages', () => {
     const compatible = listVerticalAuthoringPackages({ includeLegacy: true });
 
     it('covers 76 canonical configurations plus five compatibility identities', () => {
-        expect(canonical).toHaveLength(76);
-        expect(compatible).toHaveLength(81);
-        expect(new Set(compatible.map(entry => entry.packageId)).size).toBe(81);
+        expect(canonical).toHaveLength(80);
+        expect(compatible).toHaveLength(85);
+        expect(new Set(compatible.map(entry => entry.packageId)).size).toBe(85);
         expect(compatible.filter(entry => entry.compatibility.legacy)).toHaveLength(5);
         expect(canonical.every(entry => entry.version === VERTICAL_AUTHORING_PACKAGE_VERSION)).toBe(true);
     });
@@ -36,8 +36,8 @@ describe('AUTH-01 versioned 1:1 authoring packages', () => {
 
     it('does not pretend the 60 inherited glossaries were expert-reviewed', () => {
         const summary = summariseVerticalAuthoringPackages(canonical);
-        expect(summary.terminologyExpertReview).toBe(60);
-        expect(summary.promptTemplateExpertReview).toBe(70);
+        expect(summary.terminologyExpertReview).toBe(64);
+        expect(summary.promptTemplateExpertReview).toBe(74);
         const inherited = canonical.filter(entry =>
             entry.governance.expertReviewsRequired.includes('terminology.domain_glossary'));
         expect(inherited.every(entry => entry.governance.promotionBlockers

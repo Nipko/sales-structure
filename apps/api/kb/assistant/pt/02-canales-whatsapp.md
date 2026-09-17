@@ -65,7 +65,8 @@ tela não mostra um sucesso limpo: aparece um **card âmbar** com os avisos. Os 
   funciona do mesmo jeito; sincronize de novo em **Modelos** quando quiser.
 
 Leia o aviso antes de dar a instalação por concluída: o card âmbar significa "conectado,
-mas confira isto", não "tudo pronto".
+mas confira isto", não "tudo pronto". Se for o seu primeiro canal, o agente padrão fica
+atribuído a ele e responde por ali a partir desse momento.
 
 ## Modo coexistência: mantenha seu app WhatsApp Business
 

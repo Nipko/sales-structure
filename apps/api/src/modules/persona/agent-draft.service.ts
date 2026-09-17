@@ -1,19 +1,48 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { buildDomainContractDraft, resolveSubtypeExperienceProfile, TOOL_GROUP_PLAN_FEATURE, VERTICAL_TOOL_GROUPS } from '@parallext/shared';
 import type { AgentConfigurationWorkspace, AgentDraftRevision, SaveAgentDraftRequest, SavedAgentDraft, DiscardAgentDraftRequest } from '@parallext/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { PersonaService } from './persona.service';
+import { normalizeAgentConfigLists } from './agent-config-normalize';
 import { AgentConfigurationRevisionStore, operationalConfigurationBody, operationalConfigurationHash, validateConfigurationBody,
     type AgentConfigurationBody, type ConfigurationRevisionActor, type RevisionQuery } from './agent-configuration-revision';
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 
+/** What a direct commit changed, so the caller can settle it after COMMIT. */
+export interface CommittedRevision {
+    revisionId: string;
+    version: number;
+    hash: string;
+    priorBindings: string[];
+    activated: boolean;
+}
+
+export type SavedAgentDraftResult = SavedAgentDraft & { committed?: CommittedRevision };
+
+/**
+ * How this tenant applies agent changes. `immediate` is the default and the
+ * owner's decision (D1/D15, sep-2026): "cambiar es tocar y guardar" — a save
+ * reaches the serving agent at once, with the revision kept for history.
+ * `reviewed` is the opt-in mode where a save is a draft that goes live through
+ * evaluation, review and publication.
+ */
+export function directCommitMode(settings: unknown): boolean {
+    return (settings as any)?.agentReviewMode !== 'reviewed';
+}
+
 /** Administration-only boundary. Runtime keeps reading agent_personas. */
 @Injectable()
 export class AgentDraftService {
+    private readonly logger = new Logger(AgentDraftService.name);
+
     constructor(private readonly prisma: PrismaService, private readonly persona: PersonaService,
-        private readonly throttle: TenantThrottleService) {}
+        private readonly throttle: TenantThrottleService,
+        // Optional and last: the positional specs keep compiling, and a missing
+        // emitter degrades to no notification, never to a failed save.
+        private readonly events: EventEmitter2 = null as any) {}
 
     private authorize(tenantId: string, agentId: string, actor: ConfigurationRevisionActor, write: boolean): void {
         if (!(write ? ['tenant_admin', 'super_admin'] : ['tenant_admin', 'tenant_supervisor', 'super_admin']).includes(actor?.role))
@@ -36,7 +65,8 @@ export class AgentDraftService {
 
     /** A shared tenant lock precedes the agent lock, matching every configuration writer. */
     async readWithQuery(query: RevisionQuery, tenantId: string, agentId: string): Promise<AgentConfigurationWorkspace> {
-        const tenants = await query<any[]>('SELECT id FROM public.tenants WHERE id=$1::uuid AND schema_name=current_schema() FOR SHARE', [tenantId]);
+        const tenants = await query<any[]>(`SELECT t.id, to_jsonb(t)->'settings' AS settings FROM public.tenants t
+            WHERE t.id=$1::uuid AND t.schema_name=current_schema() FOR SHARE`, [tenantId]);
         if (!tenants[0]) throw new NotFoundException({ error: 'tenant_not_found' });
         const operational = (await query<any[]>('SELECT * FROM agent_personas WHERE id=$1::uuid FOR SHARE', [agentId]))[0];
         if (!operational) throw new NotFoundException({ error: 'agent_not_found' });
@@ -44,7 +74,7 @@ export class AgentDraftService {
         const row = await new AgentConfigurationRevisionStore(this.prisma).readWithQuery(query, agentId);
         const draft = row ? this.revision(row, hash) : null;
         return { agentId, operational: { version: Number(operational.version), hash, body: operationalConfigurationBody(operational) },
-            draft, evaluationRevisionId: draft?.currentBase ? draft.id : null };
+            draft, evaluationRevisionId: draft?.currentBase ? draft.id : null, directCommit: directCommitMode(tenants[0].settings) };
     }
 
     async read(tenantId: string, agentId: string, actor: ConfigurationRevisionActor): Promise<AgentConfigurationWorkspace> {
@@ -68,13 +98,78 @@ export class AgentDraftService {
             || typeof input.requestKey !== 'string' || !/^[a-zA-Z0-9_-]{8,100}$/.test(input.requestKey))
             throw new BadRequestException({ error: 'agent_configuration_revision_request_invalid' });
         validateConfigurationBody(input.body);
+        // Empty list rows are dropped BEFORE the request is hashed, so the
+        // idempotent replay of the same edit hashes the same.
+        input.body.configJson = normalizeAgentConfigLists(input.body.configJson);
     }
 
-    private async validateCandidate(tenantId: string, schema: string, operational: any, tenant: any, input: SaveAgentDraftRequest): Promise<void> {
+    private async validateCandidate(tenantId: string, schema: string, operational: any, tenant: any, input: SaveAgentDraftRequest,
+        directCommit: boolean): Promise<void> {
         const body = input.body;
-        // Deactivation is an immediate safety action. Reactivation belongs to publication.
-        if (body.isActive !== operational.is_active) throw new BadRequestException({ error: 'agent_activation_managed_separately' });
+        // Deactivation is an immediate safety action. With reviewed changes,
+        // reactivation belongs to publication; with immediate changes the switch
+        // simply switches on, because the revision it applies IS the serving one.
+        if (body.isActive !== operational.is_active && !directCommit) throw new BadRequestException({ error: 'agent_activation_managed_separately' });
         await this.assertConfigurationEntitlement(tenantId, schema, operational, tenant, body);
+        // What goes live may not be incomplete: drafts may be partial while
+        // Assist guides the owner, the serving configuration may not.
+        if (directCommit) this.persona.assertAgentConfigValid(body.configJson);
+    }
+
+    /**
+     * Apply the saved revision to the serving agent, inside the same
+     * transaction and under the same locks. The revision row stays as history
+     * (with its base version and hashes), the draft pointer goes away because
+     * there is nothing left to publish, and the version bump is what tells every
+     * open editor and every cache that the agent changed.
+     */
+    private async commitWithQuery(query: RevisionQuery, agentId: string, operational: any, body: AgentConfigurationBody,
+        revisionId: string): Promise<CommittedRevision> {
+        const scheduleMode = body.scheduleMode === '24/7' ? '24_7' : body.scheduleMode;
+        // A commit never demotes the default agent: that is a separate, explicit action.
+        const isDefault = body.isDefault || operational.is_default === true;
+        if (isDefault && operational.is_default !== true)
+            await query('UPDATE agent_personas SET is_default=false, updated_at=NOW() WHERE is_default=true AND id<>$1::uuid', [agentId]);
+        const rows = await query<any[]>(`UPDATE agent_personas SET name=$2, config_json=$3::jsonb, channels=$4::text[], channel_bindings=$5::text[],
+            schedule_mode=$6, is_active=$7, is_default=$8, version=version+1, updated_at=NOW()
+            WHERE id=$1::uuid AND version=$9 RETURNING *`,
+            [agentId, body.name, JSON.stringify(body.configJson), body.channels, body.channelBindings, scheduleMode, body.isActive, isDefault, Number(operational.version)]);
+        if (!rows[0]) throw new ConflictException({ error: 'agent_operational_version_changed' });
+        await query('DELETE FROM agent_configuration_drafts WHERE agent_id=$1::uuid', [agentId]);
+        return { revisionId, version: Number(rows[0].version), hash: operationalConfigurationHash(rows[0]),
+            priorBindings: Array.isArray(operational.channel_bindings) ? operational.channel_bindings : [],
+            activated: body.isActive === true && operational.is_active !== true };
+    }
+
+    /**
+     * After the COMMIT, never inside it: the runtime cache must forget the
+     * previous revision, the audit row records who changed what, and the
+     * listeners that re-evaluate an agent after a behaviour change get told.
+     * None of these may roll back a commit that already happened.
+     */
+    async settleCommit(tenantId: string, agentId: string, actor: ConfigurationRevisionActor, committed: CommittedRevision): Promise<void> {
+        try {
+            await this.persona.invalidatePersonaResolutionCaches(tenantId);
+        } catch (error: any) {
+            this.logger.error(`[DirectCommit] cache invalidation deferred for agent ${agentId}: ${error?.message}`);
+        }
+        try {
+            await this.prisma.auditLog.create({ data: {
+                tenantId, action: 'agent.configuration.committed', resource: `agent:${agentId}`, userId: actor.id,
+                details: { revisionId: committed.revisionId, operationalVersion: committed.version, operationalHash: committed.hash,
+                    activated: committed.activated, mode: 'immediate' },
+            } });
+        } catch (error: any) {
+            this.logger.error(`[DirectCommit] audit write failed for ${committed.revisionId}: ${error?.message}`);
+        }
+        if (!this.events) return;
+        try {
+            this.events.emit('agent.version.updated', { tenantId, agentId, changed: committed.activated ? 'agent_activated' : 'agent_configuration_committed' });
+            this.events.emit('agent.config.updated', { tenantId, agentId, changed: 'agent_configuration_committed',
+                revisionId: committed.revisionId, operationalVersion: committed.version, operationalHash: committed.hash });
+        } catch (error: any) {
+            this.logger.error(`[DirectCommit] notification failed for ${committed.revisionId}: ${error?.message}`);
+        }
     }
 
     /**
@@ -120,7 +215,7 @@ export class AgentDraftService {
 
     /** Used by Assist so its proposal receipt and this revision share one transaction. */
     async saveWithQuery(query: RevisionQuery, schema: string, tenantId: string, agentId: string, input: SaveAgentDraftRequest,
-        actor: ConfigurationRevisionActor): Promise<SavedAgentDraft> {
+        actor: ConfigurationRevisionActor): Promise<SavedAgentDraftResult> {
         this.authorize(tenantId, agentId, actor, true);
         this.assertRequest(input);
         // Lock before dynamic checks: a replay needs no new entitlement and never moves the pointer.
@@ -130,15 +225,22 @@ export class AgentDraftService {
         const operational = (await query<any[]>('SELECT * FROM agent_personas WHERE id=$1::uuid FOR UPDATE', [agentId]))[0];
         if (!operational) throw new NotFoundException({ error: 'agent_not_found' });
         const replay = await query<any[]>('SELECT revision_id FROM agent_configuration_commands WHERE requested_by=$1::uuid AND request_key=$2', [actor.id, input.requestKey]);
+        const directCommit = directCommitMode(tenants[0].settings);
         if (!replay[0]) {
             // CAS is checked again by the store; checking first avoids treating a stale editor as invalid business configuration.
             if (Number(operational.version) !== input.expectedOperationalVersion)
                 throw new ConflictException({ error: 'agent_operational_version_changed' });
-            await this.validateCandidate(tenantId, schema, operational, tenants[0], input);
+            await this.validateCandidate(tenantId, schema, operational, tenants[0], input, directCommit);
         }
         const row = await new AgentConfigurationRevisionStore(this.prisma).saveWithQuery(query, { tenantId, agentId, actor, ...input });
+        // A replay already committed (or never will): committing twice would bump the version for nothing.
+        const committed = row.idempotentReplay === true || !directCommit ? undefined
+            : await this.commitWithQuery(query, agentId, operational, input.body, row.id);
         const workspace = await this.readWithQuery(query, tenantId, agentId);
-        return { savedRevision: this.revision(row, workspace.operational.hash), idempotentReplay: row.idempotentReplay === true, workspace };
+        // The revision's `currentBase` is judged against the hash it was saved
+        // on; after a commit the operational hash moved past it by design.
+        return { savedRevision: this.revision(row, committed ? row.base_operational_hash : workspace.operational.hash),
+            idempotentReplay: row.idempotentReplay === true, workspace, ...(committed ? { committed } : {}) };
     }
 
     async save(tenantId: string, agentId: string, input: SaveAgentDraftRequest, actor: ConfigurationRevisionActor): Promise<SavedAgentDraft> {
@@ -146,7 +248,10 @@ export class AgentDraftService {
         this.assertRequest(input);
         const schema = await this.schema(tenantId);
         await new AgentConfigurationRevisionStore(this.prisma).ensure(schema);
-        return this.prisma.transactionInTenantSchema(schema, query => this.saveWithQuery(query, schema, tenantId, agentId, input, actor));
+        const saved = await this.prisma.transactionInTenantSchema(schema, query => this.saveWithQuery(query, schema, tenantId, agentId, input, actor));
+        if (saved.committed) await this.settleCommit(tenantId, agentId, actor, saved.committed);
+        const { committed: _committed, ...result } = saved;
+        return result;
     }
 
     async discard(tenantId: string, agentId: string, input: DiscardAgentDraftRequest, actor: ConfigurationRevisionActor): Promise<AgentConfigurationWorkspace> {

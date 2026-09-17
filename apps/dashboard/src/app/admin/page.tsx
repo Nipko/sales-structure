@@ -440,6 +440,9 @@ export default function AdminDashboard() {
     /** La lectura no volvió (o falló): no se dibuja NINGUNA guía de puesta en marcha. */
     const guideSilent = guideOwnsHome && !guideKnown;
     const setupCardOnly = guideOwnsHome && guideKnown && guide.landing === "setup_card_only";
+    // One guide, not two: the setup card's next item IS "conectar un canal",
+    // with the same CTA and the same tour. The amber banner said it again above.
+    const SHOW_CONNECT_BANNER = false;
 
     // Única publicación de la señal: el aviso rojo de calidad y la burbuja del
     // asistente se callan cuando la puesta en marcha es dueña de la pantalla.
@@ -473,7 +476,7 @@ export default function AdminDashboard() {
 
     return (
         <div className="animate-in">
-            {setupCardOnly && canManageChannels && (
+            {setupCardOnly && canManageChannels && SHOW_CONNECT_BANNER && (
                 <div className="mb-6 rounded-xl border border-amber-300 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 p-4 flex flex-col gap-3 sm:flex-row sm:items-center">
                     <div className="w-9 h-9 rounded-lg bg-amber-100 dark:bg-amber-500/20 flex items-center justify-center shrink-0">
                         <MessageSquare size={18} className="text-amber-600 dark:text-amber-400" />
@@ -533,12 +536,15 @@ export default function AdminDashboard() {
                 <DataSourceBadge state={(overviewState === "unavailable" || detailsState === "unavailable") ? "unavailable" : isLive ? "live" : "unverified"} />
             </div>
 
-            <HelpPanel
-                title={tHelp("dashboard.title")}
-                description={tHelp("dashboard.description")}
-                tips={tHelp.raw("dashboard.tips") as string[]}
-                mediaKey="dashboard"
-            />
+            {/* KPI tips over a board of zeros are not help; the card is the help. */}
+            {!setupCardOnly && (
+                <HelpPanel
+                    title={tHelp("dashboard.title")}
+                    description={tHelp("dashboard.description")}
+                    tips={tHelp.raw("dashboard.tips") as string[]}
+                    mediaKey="dashboard"
+                />
+            )}
 
             {/* Salud de agentes aparece recién cuando hay un canal: sobre una cuenta
                 recién creada sólo repetiría, en rojo, lo que la tarjeta de puesta en
@@ -705,7 +711,7 @@ export default function AdminDashboard() {
             )}
 
             {/* Stats Grid */}
-            <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 animate-stagger">
+            <div className={cn("mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 animate-stagger", setupCardOnly && "hidden")}>
                 {statConfig.map((stat: any) => {
                     const Icon = stat.icon;
                     const rawValue = overview[stat.key];

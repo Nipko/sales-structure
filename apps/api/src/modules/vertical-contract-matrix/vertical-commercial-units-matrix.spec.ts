@@ -18,12 +18,12 @@ describe('vertical commercial-units contract/static matrix', () => {
         expect(matrix.bootstrapCertified).toBe(false);
         expect(matrix.dimensions).toEqual({
             industries: 20,
-            subtypes: 75,
-            operationalConfigurations: 76,
+            subtypes: 79,
+            operationalConfigurations: 80,
         });
         expect(matrix.industries).toHaveLength(20);
-        expect(matrix.configurations).toHaveLength(76);
-        expect(matrix.configurations.filter((row) => row.subtype !== null)).toHaveLength(75);
+        expect(matrix.configurations).toHaveLength(80);
+        expect(matrix.configurations.filter((row) => row.subtype !== null)).toHaveLength(79);
         expect(matrix.failures).toEqual([]);
     });
 

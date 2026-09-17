@@ -31,6 +31,7 @@ const CANDIDATE_ID = "99999999-9999-4999-8999-999999999999";
 function workspace(overrides: Partial<AgentConfigurationWorkspace["operational"]> = {}): AgentConfigurationWorkspace {
     return {
         agentId: AGENT_ID,
+        directCommit: false,
         operational: {
             version: 4,
             hash: OPERATIONAL_HASH,

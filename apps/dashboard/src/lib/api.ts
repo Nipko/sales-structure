@@ -913,6 +913,9 @@ export const api = {
     getAgent: (tenantId: string, agentId: string) => apiGet(`/persona/${tenantId}/agents/${agentId}`),
     getAgentConfiguration: (tenantId: string, agentId: string) => apiGet<AgentConfigurationWorkspace>(`/persona/${tenantId}/agents/${agentId}/configuration`),
     saveAgentDraft: (tenantId: string, agentId: string, data: SaveAgentDraftRequest) => apiPut<SavedAgentDraft>(`/persona/${tenantId}/agents/${agentId}/configuration/draft`, data),
+    /** `immediate` (default): saves reach the serving agent at once. `reviewed`: saves are drafts that go through review and publication. */
+    getAgentReviewMode: (tenantId: string) => apiGet<{ mode: "immediate" | "reviewed" }>(`/persona/${tenantId}/agent-review-mode`),
+    setAgentReviewMode: (tenantId: string, mode: "immediate" | "reviewed") => apiPost<{ mode: string }>(`/persona/${tenantId}/agent-review-mode`, { mode }),
     discardAgentDraft: (tenantId: string, agentId: string, data: DiscardAgentDraftRequest) => apiPost<AgentConfigurationWorkspace>(`/persona/${tenantId}/agents/${agentId}/configuration/draft/discard`, data),
     createAgent: (tenantId: string, data: any) => apiPost(`/persona/${tenantId}/agents`, data),
     updateAgent: (tenantId: string, agentId: string, data: any) => apiPut(`/persona/${tenantId}/agents/${agentId}`, data),
@@ -2849,6 +2852,9 @@ function readFieldErrors(json: any): ApiFieldError[] | undefined {
     const raw = json?.fields;
     if (!Array.isArray(raw)) return undefined;
     const fields = raw
+        // `agent_invalid` sends its fields as plain paths ("behavior.rules");
+        // `validation_failed` sends objects. Both are field lists.
+        .map((entry: any) => (typeof entry === "string" ? { path: entry } : entry))
         .filter((entry: any) => entry && typeof entry === "object" && typeof entry.path === "string")
         .slice(0, 50)
         .map((entry: any) => ({

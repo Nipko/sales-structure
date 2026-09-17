@@ -4,7 +4,6 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { AgentAssessmentPanel } from "@/components/quality/AgentAssessmentPanel";
 import {
     ChevronRight, ChevronLeft, Check, Sparkles, Loader2,
     Plug, PartyPopper, LogOut, ArrowRight, Clock, Compass, AlertTriangle,
@@ -19,7 +18,6 @@ import { api } from "@/lib/api";
 import { guidedTourAnchorId } from "@/lib/guided-tours";
 import { readSetupStatusFacts, type SetupStatusDefaultAgent } from "@/lib/onboarding-guide";
 import AnimatedLogo from "@/components/AnimatedLogo";
-import { AgentDraftStatus } from '@/components/quality/AgentDraftStatus';
 import { prepareDraftSave, type DraftSaveAttempt } from '@/lib/agent-draft-save';
 import { HelpPanel } from "@/components/ui/help-panel";
 import WhatsAppConnectPanel from "../channels/whatsapp/WhatsAppConnectPanel";
@@ -324,6 +322,17 @@ export default function SetupWizardPage() {
         channelConnectSkippedAt: options.channelConnectSkippedAt,
     }), [postWizard]);
 
+    /**
+     * Connecting a channel binds the agent and bumps its version on the server.
+     * Re-read the workspace so a later edit does not save against a stale base.
+     */
+    const refreshWorkspace = useCallback(async () => {
+        const agentId = workspaceRef.current?.agentId;
+        if (!tenantId || !agentId) return;
+        const res = await api.getAgentConfiguration(tenantId, agentId).catch(() => null);
+        if (res?.success && res.data) { workspaceRef.current = res.data; setWorkspace(res.data); }
+    }, [tenantId]);
+
     /** Guarda lo que la persona escribió. Solo se llama si hubo edición real. */
     const saveAgentEdits = useCallback(async (options: WizardProgress = {}): Promise<boolean> => {
         const current = workspaceRef.current;
@@ -335,7 +344,9 @@ export default function SetupWizardPage() {
                 const result = await api.saveAgentDraft(tenantId, current.agentId, saveAttempt.current.request);
                 if (!result.success || !result.data) { setError(tDraft('saveFailed')); return false; }
                 workspaceRef.current = result.data.workspace; setWorkspace(result.data.workspace); saveAttempt.current = null;
-                if (result.data.savedRevision.id !== result.data.workspace.draft?.id) { setError(tDraft('baseChanged')); return false; }
+                // With immediate changes the revision was applied and the draft
+                // pointer is gone by design; only a reviewed draft can go stale.
+                if (!result.data.workspace.directCommit && result.data.savedRevision.id !== result.data.workspace.draft?.id) { setError(tDraft('baseChanged')); return false; }
                 return advanceStage(options);
             } catch { setError(tDraft('saveFailed')); return false; }
         }
@@ -449,15 +460,9 @@ export default function SetupWizardPage() {
             const openCopilot = localStorage.getItem(SETUP_COPILOT_PENDING_KEY) === "1";
             localStorage.removeItem(SETUP_COPILOT_PENDING_KEY);
             if (openCopilot) localStorage.setItem("parallly:openCopilot", "1");
-            if (options.openTour && workspaceRef.current?.agentId) {
-                window.dispatchEvent(new CustomEvent<GuidedTourStartDetail>(GUIDED_TOUR_START_EVENT, {
-                    detail: { tourId: "publish_agent_revision", agentId: workspaceRef.current.agentId },
-                }));
-                return;
-            }
-            // The general dashboard tour remains available from Home. Finishing
-            // this wizard prioritizes the review that makes the saved draft live.
-            else if (options.openTour) localStorage.setItem(PRODUCT_TOUR_PENDING_KEY, "true");
+            // The tour is offered, never fired on its own: only the explicit
+            // "ver el recorrido" button arms it, and Home runs it once.
+            if (options.openTour) localStorage.setItem(PRODUCT_TOUR_PENDING_KEY, "true");
         } catch { /* mejoras opcionales no bloquean el cierre */ }
         window.location.href = "/admin";
     }, [draftKey, saveOrAdvance]);
@@ -498,8 +503,6 @@ export default function SetupWizardPage() {
                 </button>
             </div>
 
-            {workspace && <AgentDraftStatus workspace={workspace} tenantId={tenantId} />}
-            <AgentAssessmentPanel />
             <HelpPanel
                 title={tHelp("setupWizard.title")}
                 description={tHelp("setupWizard.description")}
@@ -591,7 +594,7 @@ export default function SetupWizardPage() {
                                     {saving
                                         ? <span className="inline-flex items-center gap-1.5"><Loader2 size={12} className="animate-spin" /> {t("agentStep.saving")}</span>
                                         : savedAt && !hasUnsavedEdits
-                                            ? <span className="inline-flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400"><Check size={12} /> {tDraft('saved')}</span>
+                                            ? <span className="inline-flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400"><Check size={12} /> {tDraft(workspace?.directCommit ? 'savedLive' : 'saved')}</span>
                                             : <span>{t("agentStep.autosaveHint")}</span>}
                                 </div>
 
@@ -668,7 +671,7 @@ export default function SetupWizardPage() {
                                 <WhatsAppConnectPanel
                                     tenantId={tenantId}
                                     variant="onboarding"
-                                    onConnected={() => setChannelConnected(true)}
+                                    onConnected={() => { setChannelConnected(true); void refreshWorkspace(); }}
                                     onAcknowledged={() => setStep(LAST_STEP)}
                                 />
 
@@ -678,7 +681,7 @@ export default function SetupWizardPage() {
                                             <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                                                 {t("connect.otherChannels")}
                                             </p>
-                                            <SecondaryChannels tenantId={tenantId} onConnected={() => setChannelConnected(true)} />
+                                            <SecondaryChannels tenantId={tenantId} onConnected={() => { setChannelConnected(true); void refreshWorkspace(); }} />
                                         </div>
 
                                         <div className="mt-7 rounded-xl border border-neutral-200 bg-neutral-50 p-4 dark:border-white/10 dark:bg-white/[0.03]">

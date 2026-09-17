@@ -359,7 +359,8 @@
     "discardError": "No se descartó: el borrador o la versión operativa cambiaron. Recarga y revisa de nuevo.",
     "discarding": "Descartando…",
     "proposalSourceDraft": "Los valores actuales pertenecen al borrador guardado.",
-    "proposalSourceOperational": "Los valores actuales pertenecen a la versión operativa."
+    "proposalSourceOperational": "Los valores actuales pertenecen a la versión operativa.",
+    "savedLive": "Guardado. Tu agente ya responde así."
   },
   "qualityRegressions": {
     "openWorkspace": "Fallos y pruebas revisadas",
@@ -953,7 +954,7 @@
       "compliance": "Privacidad",
       "aiAgent": "Agente IA",
       "knowledgeBase": "Base de Conocimiento",
-      "identity": "Identidad",
+      "identity": "Identidad de contactos",
       "users": "Usuarios",
       "billing": "Facturación",
       "featureRequests": "Mejoras",
@@ -4769,7 +4770,8 @@
       "unsupported": "{assignment}: tipo de canal no compatible. Revisa y retira esta asignación.",
       "disconnected": "{assignment}: asignado, pero sin una conexión activa.",
       "stale": "{assignment}: la cuenta asignada ya no está conectada. Retírala y selecciona la cuenta actual.",
-      "remove": "Quitar del borrador"
+      "remove": "Quitar",
+      "connect": "Conectar"
     },
     "channelOverviewUnavailable": "No pudimos verificar los canales conectados",
     "channelOverviewUnavailableHint": "Vuelve a cargar antes de cambiar o guardar asignaciones. Conservamos la configuración actual.",
@@ -4777,6 +4779,15 @@
     "advanced": {
       "title": "Avanzado",
       "behaviorHint": "Datos que el agente debe pedir en cada situación. No hace falta tocarlo para empezar."
+    },
+    "unsavedLeaveConfirm": "Tienes cambios sin guardar. Si sales ahora se pierden. ¿Salir de todas formas?",
+    "reviewMode": {
+      "title": "Cómo se aplican los cambios del agente",
+      "description": "Elige cómo llegan a tus clientes los cambios que guardas en cualquier agente de esta cuenta.",
+      "immediateLabel": "Al momento (recomendado)",
+      "immediateDesc": "Guardas y el agente ya responde así. Cada guardado queda en el historial por si quieres volver atrás.",
+      "reviewedLabel": "Con revisión previa",
+      "reviewedDesc": "Guardar crea un borrador; alguien de tu equipo lo prueba, lo aprueba y lo publica antes de que llegue a clientes."
     }
   },
   "knowledge": {
@@ -6416,12 +6427,12 @@
   },
   "setupWizard": {
     "title": "Configura tu agente IA",
-    "subtitle": "En pocos minutos tendrás un borrador listo para probar, revisar y publicar",
+    "subtitle": "En pocos minutos verás a tu agente responder como lo haría con un cliente.",
     "testTitle": "Pruébalo",
     "connectTitle": "Conéctalo",
     "discoverTitle": "Descúbrelo",
     "connectBannerTitle": "Todavía no conectaste un canal",
-    "connectBannerDesc": "Todavía no hay un canal para recibir mensajes. Conéctalo y luego publica la versión del agente que debe atenderlo.",
+    "connectBannerDesc": "Todavía no hay un canal para recibir mensajes. Conéctalo y tu agente empieza a responder ahí.",
     "connectBannerCta": "Conectar WhatsApp",
     "resumeBannerTitle": "Retoma la configuración",
     "resumeBannerDesc": "Dejaste el asistente a medias. Se guardó todo: puedes seguir donde estabas.",
@@ -6439,7 +6450,7 @@
       "continue": "Continuar",
       "connectLater": "Conectar después",
       "connected": "¡Conectado!",
-      "connectedDesc": "El número {phone} quedó conectado. Revisa la asignación y publica el agente antes de atender clientes.",
+      "connectedDesc": "El número {phone} quedó conectado. Tu agente ya responde ahí: escríbele desde otro celular para verlo.",
       "coexistenceHint": "Escanea el código QR desde tu app de WhatsApp Business para conectar tu número actual sin perder tus chats.",
       "channel_instagram": "Instagram",
       "channel_messenger": "Messenger",
@@ -6721,7 +6732,7 @@
       "cap_offers_desc": "Comparte ofertas activas y códigos de descuento"
     },
     "completion": {
-      "title": "El borrador de {name} está preparado",
+      "title": "{name} quedó preparado",
       "configured": "Configurado",
       "pending": "Falta conectar",
       "testAgent": "Probar mi agente",
@@ -6735,7 +6746,7 @@
       "stepOf": "Paso {current} de {total}"
     },
     "pageTitle": "Conoce a tu agente",
-    "pageSubtitle": "Tres pasos para preparar y probar; publicarás la versión revisada al final.",
+    "pageSubtitle": "Tres pasos: confirma tu agente, pruébalo en el chat y conecta el canal por el que te escriben.",
     "exit": "Salir",
     "exitHint": "Guardamos lo que hiciste y vuelves al panel",
     "steps": {
@@ -6748,23 +6759,23 @@
       "subtitle": "Preparamos un agente con lo que nos contaste. Confírmalo o cámbialo.",
       "prepared": "Preparamos a {name} con lo que nos contaste de tu negocio. Confirma el nombre y el saludo, y pruébalo acá al lado.",
       "saving": "Guardando…",
-      "saved": "Borrador guardado",
-      "autosaveHint": "El borrador se guarda cuando sales del campo; la versión operativa no cambia.",
+      "saved": "Guardado",
+      "autosaveHint": "Se guarda solo al salir de cada campo.",
       "changeTemplate": "Cambiar plantilla"
     },
     "connectStep": {
       "title": "Conecta WhatsApp",
-      "subtitle": "Conecta el canal que recibirá mensajes. El agente empieza a responder después de asignar y publicar una versión aprobada.",
+      "subtitle": "Conecta el canal por el que te escriben tus clientes. En cuanto quede conectado, el agente responde ahí tal como lo probaste en el chat.",
       "laterTitle": "¿No es buen momento?",
-      "laterHint": "Puedes dejarlo para después: te lo vamos a recordar en Inicio y puedes volver acá cuando quieras.",
+      "laterHint": "Puedes dejarlo para después: mientras tanto sigue probándolo en el chat, y te lo recordamos en Inicio.",
       "showMe": "Mostrarme dónde"
     },
     "doneStep": {
       "title": "Configuración inicial guardada",
-      "subtitle": "Revisa y publica el borrador para convertirlo en la versión que atenderá a tus clientes.",
+      "subtitle": "Tu agente ya responde por el canal conectado. Escríbele desde otro celular para verlo en acción.",
       "subtitleDeferred": "Te esperamos en Inicio para conectar WhatsApp. Mientras tanto, estos son los pasos que siguen.",
       "goToPanel": "Ir al panel",
-      "tourCta": "Revisar y publicar mi agente",
+      "tourCta": "Ver el recorrido del panel",
       "essentials": {
         "channel": {
           "title": "Conectar WhatsApp",
@@ -8273,8 +8284,8 @@
       "title": "¿Cómo conectar y gestionar tus canales?",
       "description": "Canales es el lugar donde conectas cada red de mensajería (WhatsApp, Instagram DM, Facebook Messenger y Telegram) para que tu agente pueda recibir y responder desde todas. Cada tarjeta muestra si el canal está \"Conectado\" o \"Desconectado\" y te lleva a su configuración.",
       "tips": [
-        "Empieza por WhatsApp: entra a su tarjeta y sigue el flujo oficial de Meta. Vas a necesitar una cuenta de WhatsApp Business y una página de Facebook.",
-        "Para Instagram DM la cuenta tiene que ser profesional y estar vinculada a una página de Facebook; el proceso usa OAuth y tarda menos de 2 minutos.",
+        "Empieza por WhatsApp: entra a su tarjeta y sigue el flujo oficial de Meta. Vas a necesitar un número para WhatsApp y una cuenta de Facebook para autorizar (puedes crearla en el proceso).",
+        "Para Instagram DM la cuenta tiene que ser profesional (Empresa o Creador); inicias sesión con Instagram, sin página de Facebook, y tarda menos de 2 minutos.",
         "Conectar Messenger te pide iniciar sesión con Facebook y elegir la página de tu negocio.",
         "Telegram solo necesita un Bot Token: crea un bot con @BotFather, copia el token y pégalo en la configuración del canal.",
         "Un canal conectado muestra el badge verde \"Conectado\". Después de conectar, asígnale un agente desde Agentes IA: sin agente asignado nadie responde."
@@ -9227,9 +9238,9 @@
     },
     "channelsInstagram": {
       "title": "¿Cómo conecto Instagram DM?",
-      "description": "El canal de Instagram DM permite que tu agente de IA responda mensajes directos en Instagram desde Parallly vía OAuth oficial de Meta. Para conectarlo necesitas una cuenta de Instagram de tipo 'Profesional' (Empresa o Creador) vinculada a una página de Facebook.",
+      "description": "El canal de Instagram DM permite que tu agente de IA responda mensajes directos en Instagram desde Parallly con el inicio de sesión oficial de Instagram. Para conectarlo necesitas una cuenta de Instagram de tipo 'Profesional' (Empresa o Creador). No hace falta una página de Facebook.",
       "tips": [
-        "Requisito previo clave: tu cuenta de Instagram debe ser del tipo 'Empresa' o 'Creador' y estar vinculada a una página de Facebook. Si tienes una cuenta personal, conviértela en profesional desde la configuración de Instagram antes de continuar.",
+        "Requisito previo clave: tu cuenta de Instagram debe ser del tipo 'Empresa' o 'Creador'. Si tienes una cuenta personal, conviértela en profesional desde la configuración de Instagram antes de continuar (toma un minuto y es gratis).",
         "Haz clic en 'Conectar con Instagram': se abrirá una ventana emergente de Meta. Inicia sesión con la cuenta de Instagram que quieres conectar, acepta los permisos 'instagram_business_basic' e 'instagram_business_manage_messages' y completa el flujo.",
         "Después de autorizar, el panel mostrará el nombre de la cuenta, la foto de perfil y la fecha de expiración del token (los tokens de larga duración duran ~60 días). El sistema renueva el token automáticamente, pero si ves la alerta 'Token expirado', haz clic en 'Reconectar'.",
         "Troubleshooting: si la ventana emergente no abre, desactiva el bloqueador de ventanas emergentes del navegador para este sitio. Si el botón dice 'Conectando...' indefinidamente, refresca la página e intenta de nuevo; el flujo usa BroadcastChannel para comunicar el resultado entre ventanas."
@@ -9299,14 +9310,14 @@
     "showMeHint": "Te abrimos la pantalla y te señalamos paso a paso dónde se hace. No cambia nada por su cuenta.",
     "agentEditor": {
       "title": "¿Cómo configuro mi agente?",
-      "description": "Acá defines quién es tu agente y cómo se comporta: su nombre, rol, saludo, respuesta cuando no sabe, reglas y cuándo pasa la conversación a una persona. Guardar conserva un borrador; los clientes reciben esos cambios sólo después de probar, aprobar y publicar la revisión.",
+      "description": "Acá defines quién es tu agente y cómo se comporta: su nombre, rol, saludo, respuesta cuando no sabe, reglas y cuándo pasa la conversación a una persona. Al guardar, los cambios se aplican al momento en los canales asignados; puedes probarlos en el chat de prueba antes o después.",
       "tips": [
-        "1. En la pestaña Identidad, pon el nombre y el rol del agente. Son obligatorios: el agente se presenta con ese nombre en cada conversación.",
+        "1. En la pestaña Persona, pon el nombre y el rol del agente. Son obligatorios: el agente se presenta con ese nombre en cada conversación.",
         "2. Escribe el mensaje de bienvenida: es lo primero que lee tu cliente cuando escribe por primera vez.",
         "3. Completa \"Mensaje cuando no puede responder\". Es obligatorio y evita que el agente invente: úsalo para prometer que una persona va a responder.",
         "4. En Instrucciones, agrega al menos una regla estricta (por ejemplo: \"siempre confirmar disponibilidad antes de cotizar\").",
         "5. En \"Cuándo pasar a un humano\", escribe al menos un motivo (por ejemplo: \"el cliente pide hablar con una persona\"). Sin eso, el agente nunca escala.",
-        "6. Arriba, prepara las asignaciones de canal y el estado que quieres publicar. Guarda el borrador, pruébalo, prepara la revisión, apruébala y publícala; sólo entonces esas asignaciones atienden clientes."
+        "6. Abajo, en Asignación de canales, marca por dónde responde este agente. Si un canal marcado no está conectado, verás un enlace para conectarlo. Guarda y listo."
       ]
     },
     "agentQuality": {
@@ -9322,11 +9333,11 @@
     },
     "setupWizard": {
       "title": "¿Cómo funciona este asistente?",
-      "description": "Son tres pasos para preparar el borrador y conectar WhatsApp. Al terminar, revisa la asignación, prueba el borrador y publica la versión aprobada antes de atender clientes. Puedes salir cuando quieras: lo que llenaste se guarda y vuelves desde Configuración, en Asistente de configuración.",
+      "description": "Son tres pasos: confirma el nombre y el saludo de tu agente, pruébalo en el chat y conecta el canal por el que te escriben. Lo que guardas queda aplicado al momento. Puedes salir cuando quieras: lo que llenaste se guarda y vuelves desde Configuración, en Asistente de configuración.",
       "tips": [
-        "Tu agente ya está creado según tu industria. En el primer paso solo confirmas su nombre y su saludo, o los ajustas.",
-        "Pruébalo en el chat antes de conectar nada: así ves cómo responde a un cliente real.",
-        "Para conectar WhatsApp ten a mano el número y acceso al código que envía Meta por SMS o llamada.",
+        "Tu agente ya está creado según tu industria, con nombre, saludo y reglas de ejemplo. En el primer paso solo los confirmas o los ajustas.",
+        "Pruébalo en el chat antes de conectar nada: así ves cómo responde a un cliente real, sin gastar mensajes ni crear reservas.",
+        "Para conectar WhatsApp ten a mano el número y el código que Meta envía por SMS o llamada. Instagram, Messenger y Telegram se conectan desde la misma pantalla.",
         "Si prefieres conectar después, lo recordamos en Inicio y puedes volver a este asistente cuando quieras."
       ]
     }
@@ -12115,8 +12126,8 @@
       "pendingReason": "Pendiente: {check}",
       "verificationUnavailable": "Pendiente de verificar. Reintenta cuando la consulta esté disponible.",
       "title": "Puesta en marcha",
-      "description": "Solo los pasos esenciales disponibles para tu plan, rol e industria. Esta guía desaparece al completarlos.",
-      "progress": "{completed}/{total} esenciales",
+      "description": "Lo mínimo para que tu agente responda a un cliente. Empieza por el paso marcado; el resto toma minutos.",
+      "progress": "{completed}/{total} listos",
       "loading": "Verificando la puesta en marcha…",
       "unavailable": "No pudimos verificar estos pasos. No asumiremos que están incompletos.",
       "retry": "Reintentar",
@@ -12133,7 +12144,8 @@
         "mission": "Acordar la misión del agente",
         "tests": "Probar los resultados del agente"
       },
-      "showMe": "Mostrarme dónde"
+      "showMe": "Mostrarme dónde",
+      "nextBadge": "Siguiente"
     },
     "focus": {
       "verificationUnavailable": "No pudimos verificar el estado actual. Reintenta antes de decidir qué falta.",

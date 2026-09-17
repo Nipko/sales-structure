@@ -281,6 +281,11 @@ export class AgentConfigurationService {
                 WHERE id=$1::uuid RETURNING *`, [proposal.id, actor.id, appliedVersion, draft?.savedRevision.id ?? null]);
             return { proposal: applied[0], draft, replay: false };
         });
+        // A draft that the tenant applies immediately went live inside the
+        // transaction above; the cache drop, audit row and notification belong
+        // after COMMIT, exactly as a save from the editor.
+        const committed = (result.draft as any)?.committed;
+        if (committed && !result.replay) await this.drafts.settleCommit(tenantId, result.proposal.agent_id, actor, committed);
         // Repeatable finalization repairs a cache failure after a committed update.
         let verified = true;
         try {
@@ -292,7 +297,9 @@ export class AgentConfigurationService {
         } catch { verified = false; }
         const [assessment, draftVerification] = await Promise.all([
             this.assessment.getAssessment(tenantId, result.proposal.agent_id).catch(() => null),
-            this.verifyAppliedDraft(tenantId, result.proposal.agent_id, result.draft),
+            // A committed revision has no draft pointer left to exercise: verify
+            // the serving configuration instead of a revision that already moved.
+            this.verifyAppliedDraft(tenantId, result.proposal.agent_id, committed ? undefined : result.draft),
         ]);
         return { proposal: this.publicProposal(result.proposal), assessment, assessmentScope: 'operational', draft: result.draft,
             draftVerification, verification: verified && (result.draft || assessment) ? 'verified' : 'unavailable' };

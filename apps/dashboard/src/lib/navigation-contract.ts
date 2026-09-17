@@ -25,6 +25,8 @@ export interface NavigationRouteDefinition {
   dynamicTitleParam?: string;
   /** False for callbacks or legacy aliases that should not appear in search. */
   discoverable?: boolean;
+  /** Words a person types that the label does not contain ("identidad" for the agent). */
+  keywords?: readonly string[];
 }
 
 export type NavigationLabelOverrides = Readonly<
@@ -65,7 +67,8 @@ const NAVIGATION_ROUTE_DEFINITIONS = [
   { id: "pipelineDealDetail", pattern: "/admin/pipeline/:dealId", titleKey: "navigation.routes.pipelineDealDetail", scope: "tenant", parentId: "pipeline", dynamicTitleParam: "dealId" },
 
   // AI, knowledge and growth
-  { id: "agents", pattern: "/admin/agent", titleKey: "nav.items.aiAgent", scope: "tenant" },
+  { id: "agents", pattern: "/admin/agent", titleKey: "nav.items.aiAgent", scope: "tenant",
+    keywords: ["identidad", "nombre", "saludo", "personalidad", "asistente", "bot", "agente", "identity", "assistant", "agent"] },
   { id: "agentDetail", pattern: "/admin/agent/:agentId", titleKey: "navigation.routes.agentDetail", scope: "tenant", parentId: "agents", dynamicTitleParam: "agentId" },
   { id: "agentTest", pattern: "/admin/agent/:agentId/test", titleKey: "nav.items.agentSimulation", scope: "tenant", parentId: "agentDetail" },
   { id: "agentLearning", pattern: "/admin/agent/:agentId/learning", titleKey: "agentLearning.openWorkspace", scope: "tenant", parentId: "agentDetail" },
@@ -93,7 +96,7 @@ const NAVIGATION_ROUTE_DEFINITIONS = [
   { id: "attribution", pattern: "/admin/attribution", titleKey: "nav.items.attribution", scope: "tenant" },
   { id: "reportBuilder", pattern: "/admin/report-builder", titleKey: "nav.items.reportBuilder", scope: "tenant" },
   { id: "sales", pattern: "/admin/sales", titleKey: "nav.items.sales", scope: "tenant" },
-  { id: "identity", pattern: "/admin/identity", titleKey: "nav.items.identity", scope: "tenant" },
+  { id: "identity", pattern: "/admin/identity", titleKey: "nav.items.identity", scope: "tenant", keywords: ["duplicados", "fusionar", "contactos"] },
   { id: "compliance", pattern: "/admin/compliance", titleKey: "nav.items.compliance", scope: "tenant" },
   { id: "featureRequests", pattern: "/admin/feature-requests", titleKey: "nav.items.featureRequests", scope: "shared" },
   { id: "users", pattern: "/admin/users", titleKey: "nav.items.users", scope: "tenant" },

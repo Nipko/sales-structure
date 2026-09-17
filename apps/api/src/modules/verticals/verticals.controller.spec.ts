@@ -55,12 +55,12 @@ describe('VerticalsController tenant isolation', () => {
             version: VERTICAL_IDENTIFIER_CONTRACT_VERSION,
             contract: 'vertical-identifiers',
             count: 20,
-            subtypeCount: 80,
-            configurationCount: 81,
+            subtypeCount: 84,
+            configurationCount: 85,
             canonicalIndustryCount: 20,
-            canonicalConfigurationCount: 76,
-            canonicalProfileCount: 76,
-            resolvableProfileCount: 81,
+            canonicalConfigurationCount: 80,
+            canonicalProfileCount: 80,
+            resolvableProfileCount: 85,
             aliases: VERTICAL_INDUSTRY_ALIASES,
         });
         expect(result.meta.aliases.educacion).toBe('education');
@@ -81,7 +81,7 @@ describe('VerticalsController tenant isolation', () => {
         const result = await controller.getDefinitions();
 
         // Los 80 ids del payload incluyen destinos y compatibilidad legacy.
-        expect(result.meta.subtypeCount).toBe(80);
+        expect(result.meta.subtypeCount).toBe(84);
         for (const blocked of listBlockedSubtypeProfiles()) {
             const id = `${blocked.industry}/${blocked.subtype}`;
             expect(result.meta.availability[id]).toBe('legacy_only');
@@ -116,7 +116,7 @@ describe('VerticalsController tenant isolation', () => {
 
         const result = controller.getCertificationCatalog('co');
 
-        expect(result.data.entries).toHaveLength(81);
+        expect(result.data.entries).toHaveLength(85);
         expect(result.data.entries.every(entry => entry.market.operatingCountry === 'CO'))
             .toBe(true);
         expect(new Set(result.data.entries.map(entry => entry.version))).toEqual(new Set([1]));

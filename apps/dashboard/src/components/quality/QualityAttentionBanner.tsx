@@ -1,5 +1,7 @@
 "use client";
 
+import { isOnboardingBeforeLive } from "@parallext/shared";
+import { useAuth } from "@/contexts/AuthContext";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -75,8 +77,13 @@ export default function QualityAttentionBanner() {
     };
   }, [canLaunchTour, pathname]);
 
+  const { user: authUser } = useAuth();
   const topAction = summary?.topAction;
   if (!topAction || !shouldShowQualityAttentionBanner(summary)) return null;
+  // Before the first real reply, every "critical" is unfinished setup, and the
+  // setup card already says it without the red. The bar returns once the agent
+  // is live, where a critical means something that worked stopped working.
+  if (isOnboardingBeforeLive(authUser?.onboardingStage)) return null;
   if (pathname === "/admin/setup-wizard" || pathname.startsWith("/admin/agent/quality")) return null;
   if (pathname === "/admin" && isOnboardingGuidanceOwningHome(onboardingLanding)) return null;
   if (tourSuppressedPath === pathname) return null;

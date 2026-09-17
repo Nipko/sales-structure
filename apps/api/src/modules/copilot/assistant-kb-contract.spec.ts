@@ -513,7 +513,7 @@ describe('Parallly Assist knowledge-base contract', () => {
     const offeredIndustries = new Set(
       profiles.filter((profile) => profile.commercialisable).map((profile) => profile.industry),
     );
-    expect(profiles).toHaveLength(76);
+    expect(profiles).toHaveLength(80);
     expect(offeredIndustries.size).toBe(18);
     expect(canonicalVerticalIds.filter((industry) => !offeredIndustries.has(industry)))
       .toEqual(['event_planning', 'construccion']);
@@ -981,11 +981,14 @@ describe('Parallly Assist knowledge-base contract', () => {
   });
 
   it('describes the agent editor and Assist from the settings they can actually change', () => {
+    // Owner decision D1/D15 (sep-2026): a save applies at once by default and
+    // the reviewed flow is an opt-in. Assist applies its accepted proposal the
+    // same way and never toggles the agent on or off.
     const assistMarkers: Record<(typeof LOCALES)[number], RegExp> = {
-      es: /Assist muestra una propuesta.{0,160}guarda un \*\*borrador\*\*.{0,80}no publica ni activa/i,
-      en: /Assist presents a proposal.{0,160}saves a \*\*draft\*\*.{0,80}does not publish or activate/i,
-      pt: /Assist mostra uma proposta.{0,160}salva um \*\*rascunho\*\*.{0,80}sem publicar nem ativar/i,
-      fr: /Assist présente une proposition.{0,160}enregistre un \*\*brouillon\*\*.{0,80}sans publier ni activer/i,
+      es: /Assist muestra una propuesta.{0,120}se aplica al agente.{0,120}modo revisado.{0,80}nunca enciende ni apaga/i,
+      en: /Assist presents a proposal.{0,120}applies the change to the agent.{0,140}reviewed mode.{0,80}never turns the agent on or off/i,
+      pt: /Assist mostra uma proposta.{0,120}aplicada ao agente.{0,140}modo revisado.{0,80}nunca liga nem desliga/i,
+      fr: /Assist présente une proposition.{0,120}applique le changement à l'agent.{0,140}mode révisé.{0,40}n'active ni ne désactive jamais/i,
     };
     const accountHours: Record<(typeof LOCALES)[number], RegExp> = {
       es: /horario comercial pertenece al negocio y se comparte entre sus agentes/i,
@@ -994,16 +997,18 @@ describe('Parallly Assist knowledge-base contract', () => {
       fr: /horaires d'ouverture appartiennent au tenant et sont partagés par ses agents/i,
     };
     const reviewedActivation: Record<(typeof LOCALES)[number], RegExp> = {
-      es: /Reactivarlo requiere revisar y publicar una versión/i,
-      en: /Reactivation requires reviewing and publishing a version/i,
-      pt: /Reativar exige revisar e publicar uma versão/i,
-      fr: /réactiver exige d'examiner et de publier une version/i,
+      es: /reactivarlo con el mismo interruptor: enciende al momento.{0,40}En modo revisado, reactivar pasa por revisar y publicar/i,
+      en: /reactivate it with the same switch: it turns on right away.{0,40}In reviewed mode, reactivat/i,
+      pt: /reativá-lo com o mesmo interruptor.{0,60}modo revisado/i,
+      fr: /le réactiver avec le même interrupteur.{0,80}mode révisé/i,
     };
+    // The immediate save with its green toast, then the reviewed mode as the
+    // explicit exception (draft button, review and publication sections).
     const publicationWorkflow: Record<(typeof LOCALES)[number], RegExp> = {
-      es: /Guardar borrador.{0,500}Probar agente.{0,500}Publicar y ver historial/is,
-      en: /Save draft.{0,500}Test agent.{0,500}Publish and view history/is,
-      pt: /Salvar rascunho.{0,500}Testar agente.{0,500}Publicar e ver histórico/is,
-      fr: /Enregistrer le brouillon.{0,500}Tester l'agent.{0,500}Publier et voir l'historique/is,
+      es: /haz clic en \*\*Guardar\*\*.{0,120}Guardado\. Tu agente ya responde así\..{0,900}Modo revisado \(opcional\).{0,200}Guardar borrador.{0,200}Publicar y ver historial/is,
+      en: /click \*\*Save\*\*.{0,120}Saved\. Your agent now answers this way\..{0,900}Reviewed mode \(optional\).{0,200}Save draft.{0,200}Publish and view history/is,
+      pt: /clique em \*\*Salvar\*\*.{0,120}Salvo\. Seu agente já responde assim\..{0,900}Modo revisado \(opcional\).{0,200}Salvar rascunho.{0,200}Publicar e ver histórico/is,
+      fr: /cliquez sur \*\*Enregistrer\*\*.{0,120}Enregistré\. Votre agent répond désormais ainsi\..{0,900}Mode révisé \(facultatif\).{0,200}Enregistrer le brouillon.{0,200}Publier et voir l'historique/is,
     };
     const retainedRemoval: Record<(typeof LOCALES)[number], RegExp> = {
       es: /Eliminar.{0,180}desactiva.{0,100}libera sus conexiones.{0,100}conserva su registro/is,
@@ -1025,18 +1030,27 @@ describe('Parallly Assist knowledge-base contract', () => {
     }
   });
 
-  it('keeps channel connection separate from reviewed agent publication', () => {
+  it('tells a new owner that connecting the first channel is what makes the agent answer', () => {
+    // Owner decision D16 (sep-2026): the first connection assigns the default
+    // agent; nothing is published afterwards. The recommended order therefore
+    // starts with the agent, then the channel, then a real message.
     const connectionMarkers: Record<(typeof LOCALES)[number], RegExp> = {
-      es: /Conectar el canal no publica el borrador del agente/i,
-      en: /Connecting it does not publish the agent draft/i,
-      pt: /Conectar o canal não publica o rascunho do agente/i,
-      fr: /La connexion ne publie pas le brouillon de l'agent/i,
+      es: /Al conectar el primer canal, tu agente predeterminado queda asignado a él y empieza a responder/i,
+      en: /When you connect your first channel, your default agent gets assigned to it and starts answering/i,
+      pt: /Ao conectar o primeiro canal, seu agente padrão fica atribuído a ele e começa a responder/i,
+      fr: /En connectant votre premier canal, votre agent par défaut lui est affecté et commence à répondre/i,
     };
     const publicationMarkers: Record<(typeof LOCALES)[number], RegExp> = {
-      es: /Prepara, revisa y publica.{0,220}La publicación es la que vuelve operativos/is,
-      en: /Prepare, review, and publish.{0,220}Publication makes/is,
-      pt: /Prepare, revise e publique.{0,220}A publicação torna operacionais/is,
-      fr: /Préparez, révisez et publiez.{0,220}La publication rend opérationnels/is,
+      es: /1\. \*\*Confirma tu agente\*\*.{0,800}Ajusta el agente cuando quieras.{0,160}se aplica al momento/is,
+      en: /1\. \*\*Confirm your agent\*\*.{0,800}Adjust the agent whenever you want.{0,160}applies the change immediately/is,
+      pt: /1\. \*\*Confirme seu agente\*\*.{0,800}Ajuste o agente quando quiser.{0,160}aplicada na hora/is,
+      fr: /1\. \*\*Confirmez votre agent\*\*.{0,800}Ajustez l'agent quand vous le souhaitez.{0,160}s'applique aussitôt/is,
+    };
+    const draftFirstLeftovers: Record<(typeof LOCALES)[number], RegExp> = {
+      es: /Conectar el canal no publica el borrador|Prepara, revisa y publica/i,
+      en: /Connecting it does not publish the agent draft|Prepare, review, and publish/i,
+      pt: /Conectar o canal não publica o rascunho|Prepare, revise e publique/i,
+      fr: /La connexion ne publie pas le brouillon|Préparez, révisez et publiez/i,
     };
 
     for (const locale of LOCALES) {
@@ -1044,6 +1058,7 @@ describe('Parallly Assist knowledge-base contract', () => {
       expect(article).toBeDefined();
       expect(article!.body).toMatch(connectionMarkers[locale]);
       expect(article!.body).toMatch(publicationMarkers[locale]);
+      expect(article!.body).not.toMatch(draftFirstLeftovers[locale]);
     }
   });
 

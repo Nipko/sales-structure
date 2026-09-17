@@ -181,6 +181,21 @@ export interface AgentAssessment {
     configuration: Record<string, unknown> | null;
 }
 
+/**
+ * The tasks without which the agent cannot answer a customer at all. These are
+ * the day-0 essentials: the setup card on Home shows only these, in this order,
+ * and only they decide whether the agent "can attend today". Everything else
+ * (mission, knowledge, hours, appointments, catalog, tests) makes the agent
+ * BETTER and lives in the health panel; a template-derived mission or a test
+ * that was never run is unfinished polish, not a reason to tell a new owner
+ * that their working agent "is not ready".
+ */
+export const AGENT_SETUP_ESSENTIAL_TASKS: readonly AgentSetupTaskKey[] = ['channel', 'agent', 'business', 'team'];
+
+export function isEssentialSetupTask(key: AgentSetupTaskKey): boolean {
+    return AGENT_SETUP_ESSENTIAL_TASKS.includes(key);
+}
+
 export const AGENT_SETUP_TASK_CHECKS: Readonly<Record<Exclude<AgentSetupTaskKey, 'mission' | 'catalog' | 'tests'>, readonly string[]>> = {
     channel: ['channel_assignment', 'channel_connection', 'channel_coverage', 'operational_channel_scope'],
     agent: ['agent_active', 'persona_identity', 'custom_prompt', 'fallback_message', 'behavior_rules', 'handoff_triggers'],

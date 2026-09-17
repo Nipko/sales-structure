@@ -1,4 +1,5 @@
 import type { AgentQualityCheck, AgentSetupTask, AgentSetupTaskKey, GuidedTourId, GuidedTourStartDetail } from "@parallext/shared";
+import { isEssentialSetupTask } from "@parallext/shared";
 
 /**
  * The card's view of one setup task — and nothing else.
@@ -40,7 +41,11 @@ export function essentialSetupItemsFromAssessment(
   tasks: AgentSetupTask[],
   canAccess: (href: string) => boolean,
 ): EssentialSetupItem[] {
-  return tasks.filter(task => canAccess(task.href)).map(task => ({
+  // Only what the agent needs to answer a customer at all. Mission, knowledge,
+  // hours, appointments, catalogue and tests make it better and live in Salud
+  // de agentes; nine equal boxes made a new owner say "tendría que trabajar en
+  // todos estos" and leave.
+  return tasks.filter(task => isEssentialSetupTask(task.key) && canAccess(task.href)).map(task => ({
     key: task.key,
     href: task.href,
     done: task.status === "pass" || task.status === "not_applicable",

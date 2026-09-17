@@ -20,7 +20,7 @@ describe('native backlog scope and state model', () => {
     it('covers exactly every build/hybrid profile and no blocked integration slice', () => {
         const backlog = deriveNativeBacklogAll();
         expect(backlog).toHaveLength(BUILD_AND_HYBRID.length);
-        expect(backlog).toHaveLength(54);
+        expect(backlog).toHaveLength(58);
         expect(backlog.map(entry => entry.profileId)).not.toContain('finanzas/fintech');
         expect(backlog.map(entry => entry.profileId)).not.toContain('salud/medica_general');
         expect(deriveNativeBacklog('rubro/inventado')).toBeNull();
@@ -176,7 +176,7 @@ describe('concrete CAP, LIVE, UX and SEC evidence', () => {
     it('leaves no historical CAP alert open after resolving every profile contract', () => {
         const capacityItems = deriveNativeBacklogAll()
             .flatMap(entry => entry.items.filter(item => item.alert === 'CAP'));
-        expect(capacityItems).toHaveLength(35);
+        expect(capacityItems).toHaveLength(39);
         for (const item of capacityItems) {
             expect(item.state).toBe('stale');
             expect(item.openCodeWork).toEqual([]);
@@ -259,7 +259,7 @@ describe('writers and exportable summary', () => {
         const totalStates = Object.values(report.states).reduce((sum, count) => sum + count, 0);
         const totalResponsibilities = Object.values(report.responsibilities)
             .reduce((sum, count) => sum + count, 0);
-        expect(report.generatedFrom.profiles).toBe(54);
+        expect(report.generatedFrom.profiles).toBe(58);
         expect(report.generatedFrom.alerts).toBe(totalStates);
         expect(totalResponsibilities).toBe(totalStates);
         expect(report.internalGates.open).toBe(0);
@@ -273,23 +273,23 @@ describe('writers and exportable summary', () => {
         }
     });
 
-    it('pins the measured 260-item distribution so a registry change requires re-audit', () => {
+    it('pins the measured 276-item distribution so a registry change requires re-audit', () => {
         const report = summariseNativeBacklogDetailed();
         expect(report.states).toEqual({
             open: 0,
-            stale: 82,
-            external_gate: 140,
+            stale: 86,
+            external_gate: 152,
             decision_gate: 17,
             expert_gate: 21,
         });
         expect(report.responsibilities).toEqual({
-            internal: 82,
+            internal: 86,
             decision: 17,
             external: 21,
-            mixed: 140,
+            mixed: 152,
         });
-        expect(report.internalGates).toEqual({ verified: 222, open: 0 });
-        expect(report.laterGates).toEqual({ external: 140, decision: 17, expert: 21 });
+        expect(report.internalGates).toEqual({ verified: 238, open: 0 });
+        expect(report.laterGates).toEqual({ external: 152, decision: 17, expert: 21 });
     });
 
     it('keeps responsibility totals consistent', () => {

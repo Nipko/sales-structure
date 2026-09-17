@@ -3,7 +3,7 @@ id: primeros-pasos
 title: "Getting started and initial setup"
 routes: ["/admin/setup-wizard", "/admin", "/admin/channels", "/admin/agent", "/admin/settings/billing"]
 roles: ["tenant_admin"]
-keywords: ["getting started", "start", "sign up", "create account", "onboarding", "initial setup", "setup wizard", "setup", "connect channel", "connect whatsapp", "test agent", "essentials", "checklist", "your progress", "8/9", "tour", "trial", "new user", "meet your agent", "connect later", "show me where", "email verification", "next step", "four essentials", "already answers", "immediate changes"]
+keywords: ["getting started", "start", "sign up", "create account", "onboarding", "initial setup", "setup wizard", "setup", "connect channel", "connect whatsapp", "test agent", "essentials", "checklist", "your progress", "8/9", "tour", "trial", "new user", "meet your agent", "connect later", "show me where", "email verification", "next step", "four essentials", "already answers", "immediate changes", "trial link", "trial page", "show it to my partner"]
 ---
 
 # Getting started and initial setup
@@ -37,13 +37,15 @@ After signing up, the dashboard opens **Meet your agent**, a **three-step** wiza
 2. **Connect your channel** — WhatsApp first, with the requirements and the button that opens the Meta window (see the next section); Instagram, Messenger, Telegram, and Web Chat connect from the same screen.
 3. **Done** — if you connected the channel, your agent **already answers there**: message it from another phone to see for yourself. After that, the **Getting started** card on Home shows whichever essentials are still missing.
 
+This step also shows the **your agent's link** card: a public page — its address starts with `/w/` followed by an identifier that is never your business name — where anyone can chat with your agent just like a customer would. It exists from day 0, before you connect any channel, so you can try it from another phone or show it to a partner. Its actions are **Open**, **Copy link**, **Put it in my bio** (for Instagram → Edit profile → Links), **Show it to my partner** (opens WhatsApp with a message already written), and **The two lines for your website** (the embed code for whoever manages your site). The same card also lives in **Administration → Channels**, always available, never "connected" or "disconnected".
+
 **Connect later** is a valid exit: it is recorded, the wizard lets you continue, and **Home reminds you** with the **Getting started** card and a resume notice. Nothing you already configured is lost.
 
 You can reopen the wizard whenever you want from **Settings → Setup assistant**.
 
 ## How to connect your first channel
 
-Without a connected channel, the business **receives no messages through that channel**. When you connect your first channel, your default agent gets assigned to it and starts answering there just as you tested it in the chat; there's no need to go back to the editor. We recommend starting with **WhatsApp**, the most widely used channel in Latin America.
+Without a connected channel, the business **receives no messages through that channel**. When you connect your first channel, your default agent gets assigned to it and starts answering there just as you tested it in the chat; there's no need to go back to the editor. We recommend starting with **WhatsApp**, the most widely used channel in Latin America. Meanwhile, your agent already answers on your agent's link, though that page doesn't count as a connected channel.
 
 Before connecting WhatsApp, have on hand:
 
@@ -111,6 +113,9 @@ Yes, when your account has capacity available. Each connection uses its own agen
 
 **What about the SMS channel?**
 SMS is not a conversation channel: it's used to send notifications to your customers using credits (1 credit = 1 message segment).
+
+**What is "your agent's link"?**
+It's a public page that exists from day 0, before you connect any channel, where anyone can chat with your agent just like a customer would. The platform pays for its first messages up to a per-account allowance, and each page has a daily message cap; once it's reached, the chat itself says so and continues the next day or once you activate your plan. It doesn't count as a connected channel: the **Getting started** card keeps asking for a real channel (WhatsApp, Instagram, Messenger, Telegram, or your site's web chat).
 
 **I skipped the wizard — how do I get back to it?**
 From **Settings → Setup assistant**, or directly at `/admin/setup-wizard`. You can also configure each piece separately from the **AI Agent** and **Channels** menus: the **Getting started** card on Home shows pending essentials and, when that step has a tour, its **Show me where** button.

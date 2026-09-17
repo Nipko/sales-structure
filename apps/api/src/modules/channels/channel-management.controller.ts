@@ -138,7 +138,8 @@ export class ChannelManagementController {
         const widgets = await this.prisma.$queryRawUnsafe(
             `SELECT widget_id AS account_id, name
                FROM public.widget_configs
-              WHERE tenant_id = $1::uuid AND is_active = true`,
+              WHERE tenant_id = $1::uuid AND is_active = true
+                AND COALESCE(is_demo, false) = false`,
             tenantId,
         ).catch(() => {
             widgetLookupAvailable = false;

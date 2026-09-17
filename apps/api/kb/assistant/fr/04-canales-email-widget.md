@@ -3,7 +3,7 @@ id: canales-email-widget
 title: "Chat web et état de l'intégration Email"
 routes: ["/admin/channels", "/admin/channels/email", "/admin/settings/integrations/web-chat", "/admin/settings/integrations/web-chat/triggers"]
 roles: ["tenant_admin"]
-keywords: ["email", "e-mail", "etat du canal email", "widget", "chat web", "chat sur mon site", "chat sur ma page", "bulle de chat", "code d'integration", "installer widget", "declencheurs", "declencheurs proactifs", "message de bienvenue", "formulaire pre-chat"]
+keywords: ["email", "e-mail", "etat du canal email", "widget", "chat web", "chat sur mon site", "chat sur ma page", "bulle de chat", "code d'integration", "installer widget", "declencheurs", "declencheurs proactifs", "message de bienvenue", "formulaire pre-chat", "lien de votre agent", "code en deux lignes"]
 ---
 
 # Chat web et état de l'intégration Email
@@ -21,6 +21,12 @@ L'écran indique si le chat web et les déclencheurs proactifs sont activés et 
 Email existe comme adaptateur technique et point d'entrée interne pour des intégrations administrées, mais **ce n'est pas encore un canal conversationnel certifié ni configurable en libre-service**. La page **Canaux → Email** ne dispose actuellement pas du contrat d'API nécessaire pour enregistrer une configuration par tenant. Ne saisissez pas d'identifiants et ne considérez pas que cet écran rend le canal opérationnel.
 
 Si votre organisation a besoin d'une intégration e-mail, demandez une évaluation technique au support. Tant que le flux n'est pas implémenté et certifié de bout en bout, Parallly Assist ne doit promettre ni connexion, ni envoi, ni réception dans la boîte de conversations, ni réponses automatiques par Email.
+
+### Le lien de votre agent et le chat web de votre site
+
+Le **lien de votre agent** (la page publique que vous voyez dans l'assistant de configuration, dont l'adresse commence par `/w/` suivi d'un identifiant) sert à tester votre agent et à le montrer à quelqu'un avant de connecter le moindre canal. Ce n'est pas la même chose que le chat web de cet écran : il ne compte pas comme un canal connecté et n'utilise pas le quota de chat web de votre forfait, même si les conversations qu'il reçoit apparaissent dans votre boîte de réception comme n'importe quelle conversation de chat web.
+
+Le **chat web que vous installez sur votre site** (le widget de cet écran) compte, lui, comme un canal connecté et utilise la fonctionnalité de chat web de votre forfait. Les deux partagent la même famille de code en deux lignes : celui que vous copiez ici avec **Copier le code** est le même type d'extrait que l'action **Les deux lignes pour votre site** génère depuis le lien de votre agent, pour l'envoyer à la personne qui gère votre site.
 
 ---
 

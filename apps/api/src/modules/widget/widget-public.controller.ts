@@ -67,7 +67,7 @@ export class WidgetPublicController {
     ) {
         const config = await this.widgetService.getConfig(params.widgetId);
         if (!config) return { success: false, error: 'Widget not found' };
-        this.assertOrigin(origin, config.allowed_domains);
+        this.assertOrigin(origin, config.allowed_domains, config.is_demo === true);
 
         let triggers: any[] = [];
         try {
@@ -89,6 +89,7 @@ export class WidgetPublicController {
                 preChatFields: config.pre_chat_fields,
                 locale: config.locale,
                 tenantName: config.tenant_name,
+                isDemo: config.is_demo === true,
                 triggers,
             },
         };
@@ -103,7 +104,7 @@ export class WidgetPublicController {
     ) {
         const config = await this.widgetService.getConfig(body.widgetId);
         if (!config) return { success: false, error: 'Widget not found' };
-        this.assertOrigin(origin, config.allowed_domains);
+        this.assertOrigin(origin, config.allowed_domains, config.is_demo === true);
 
         const limit = await this.rateLimit.consumeSession({
             ip: resolveWidgetHttpIp(request),
@@ -153,10 +154,8 @@ export class WidgetPublicController {
         };
     }
 
-    private assertOrigin(origin: string | undefined, allowedDomains: unknown): void {
-        if (!isWidgetOriginAllowed(origin, allowedDomains)) {
-            throw new ForbiddenException('Origin not allowed');
-        }
+    private assertOrigin(origin: string | undefined, allowedDomains: unknown, platformHosted = false) {
+        if (!isWidgetOriginAllowed(origin, allowedDomains, { platformHosted })) throw new ForbiddenException('Origin not allowed');
     }
 
     private throwRateLimited(retryAfterSeconds: number): never {

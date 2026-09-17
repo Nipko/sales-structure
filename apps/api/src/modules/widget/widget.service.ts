@@ -1,5 +1,5 @@
 import { ensureWidgetSchema } from './widget-schema';
-import { ForbiddenException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { ConfigService } from '@nestjs/config';
@@ -12,13 +12,8 @@ import {
     type SubscriptionAccessMode,
 } from '../../common/utils/subscription-entitlement.util';
 
-/** Default widget strings by language (es/en/pt/fr). Fallback: es. */
-const WIDGET_DEFAULTS: Record<string, { welcomeMessage: string; agentName: string }> = {
-    es: { welcomeMessage: '¡Hola! ¿En qué te puedo ayudar?', agentName: 'Asistente' },
-    en: { welcomeMessage: 'Hello! How can I help you?',       agentName: 'Assistant' },
-    pt: { welcomeMessage: 'Olá! Como posso te ajudar?',       agentName: 'Assistente' },
-    fr: { welcomeMessage: 'Bonjour ! Comment puis-je vous aider ?', agentName: 'Assistant' },
-};
+import { WIDGET_DEFAULTS } from './widget-defaults';
+import { DemoAllowanceService } from '../throttle/demo-allowance.service';
 
 @Injectable()
 export class WidgetService implements OnModuleInit {
@@ -30,6 +25,7 @@ export class WidgetService implements OnModuleInit {
         private readonly redis: RedisService,
         private readonly config: ConfigService,
         private readonly throttle: TenantThrottleService,
+        @Optional() private readonly demoAllowance?: DemoAllowanceService,
     ) {
         // No hardcoded literal fallback — a predictable secret would let anyone
         // forge widget session tokens. Prefer a dedicated secret, else the platform
@@ -75,9 +71,15 @@ export class WidgetService implements OnModuleInit {
         return config;
     }
 
+    /**
+     * The tenant's own web chat widgets. The public link ("El enlace de
+     * {Nombre}", is_demo) is deliberately absent: it is not a widget the owner
+     * configures, and deleting it from here would break a URL already shared in
+     * an Instagram bio. It is offered by setup-status instead.
+     */
     async listWidgets(tenantId: string): Promise<any[]> {
         return this.prisma.$queryRawUnsafe(
-            `SELECT * FROM public.widget_configs WHERE tenant_id = $1::uuid ORDER BY created_at DESC`,
+            `SELECT * FROM public.widget_configs WHERE tenant_id = $1::uuid AND COALESCE(is_demo, false) = false ORDER BY created_at DESC`,
             tenantId,
         );
     }
@@ -134,7 +136,7 @@ export class WidgetService implements OnModuleInit {
                  is_active = COALESCE($11, is_active),
                  locale = COALESCE($12, locale),
                  updated_at = NOW()
-             WHERE id = $1::uuid AND tenant_id = $2::uuid
+             WHERE id = $1::uuid AND tenant_id = $2::uuid AND COALESCE(is_demo, false) = false
              RETURNING *`,
             widgetConfigId, tenantId,
             data.name ?? null,
@@ -157,7 +159,7 @@ export class WidgetService implements OnModuleInit {
 
     async deleteWidget(tenantId: string, widgetConfigId: string): Promise<void> {
         const rows: any[] = await this.prisma.$queryRawUnsafe(
-            `DELETE FROM public.widget_configs WHERE id = $1::uuid AND tenant_id = $2::uuid RETURNING widget_id`,
+            `DELETE FROM public.widget_configs WHERE id = $1::uuid AND tenant_id = $2::uuid AND COALESCE(is_demo, false) = false RETURNING widget_id`,
             widgetConfigId, tenantId,
         );
         if (rows?.[0]?.widget_id) {
@@ -175,7 +177,7 @@ export class WidgetService implements OnModuleInit {
         page?: string;
         resumeToken?: string;
     }): Promise<{ sessionId: string; token: string }> {
-        if (!await this.isTenantWidgetRuntimeAvailable(widgetConfig?.tenant_id, 'write')) {
+        if (!await this.isTenantWidgetRuntimeAvailable(widgetConfig?.tenant_id, 'write', widgetConfig?.is_demo === true)) {
             throw new ForbiddenException({ error: 'subscription_unavailable' });
         }
         if (data.resumeToken) {
@@ -217,7 +219,7 @@ export class WidgetService implements OnModuleInit {
             }
             const rows: any[] = await this.prisma.$queryRawUnsafe(
                 `SELECT ws.*, wc.tenant_id, wc.widget_id, wc.allowed_domains,
-                        wc.is_active AS widget_is_active
+                        wc.is_active AS widget_is_active, wc.is_demo, wc.locale AS widget_locale
                  FROM public.widget_sessions ws
                  JOIN public.widget_configs wc ON wc.id = ws.widget_config_id AND wc.tenant_id = ws.tenant_id
                  WHERE ws.id = $1::uuid
@@ -234,7 +236,7 @@ export class WidgetService implements OnModuleInit {
                 this.logger.warn(`[Widget] token claim mismatch for session ${decoded.sessionId}`);
                 return null;
             }
-            if (!await this.isTenantWidgetRuntimeAvailable(row.tenant_id)) return null;
+            if (!await this.isTenantWidgetRuntimeAvailable(row.tenant_id, 'read', row.is_demo === true)) return null;
             return row;
         } catch {
             return null;
@@ -252,16 +254,26 @@ export class WidgetService implements OnModuleInit {
             config.id, config.tenant_id, config.widget_id,
         );
         if (!active?.length) return false;
-        return this.isTenantWidgetRuntimeAvailable(config.tenant_id);
+        return this.isTenantWidgetRuntimeAvailable(config.tenant_id, 'read', config.is_demo === true);
     }
 
+    /**
+     * The tenant must be ready and entitled. The plan's `widget` feature gates
+     * the embeddable widget; the day-0 public link (is_demo) is paid by the
+     * platform up to a cap (D19) and therefore only needs the allowance to be
+     * switched on.
+     */
     private async isTenantWidgetRuntimeAvailable(
         tenantId: string,
         mode: SubscriptionAccessMode = 'read',
+        demo = false,
     ): Promise<boolean> {
         if (!await resolveReadyTenantContext(this.prisma, this.redis, tenantId)) return false;
         const entitlement = await resolveTenantSubscriptionAccess(this.prisma, tenantId, mode);
         if (!entitlement.allowed) return false;
+        // The allowance only ADDS a lane. A tenant whose plan includes the web
+        // chat keeps its widget even if the platform switches the demo off.
+        if (demo && (await this.demoAllowance?.get())?.enabled !== false) return true;
         const features = await this.throttle.getPlanFeatures(tenantId);
         return features.widget === true;
     }

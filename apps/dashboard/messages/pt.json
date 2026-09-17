@@ -4283,7 +4283,17 @@
     "retry": "Tentar novamente",
     "credentialUnknown": "Sem verificar",
     "credentialUnknownHint": "Nao conseguimos ler as credenciais deste canal. Ele pode estar enviando normalmente; tente novamente.",
-    "credentialHint": "O canal aparece conectado, mas suas credenciais nao permitem enviar mensagens. Reconecte o canal para reautorizar."
+    "credentialHint": "O canal aparece conectado, mas suas credenciais nao permitem enviar mensagens. Reconecte o canal para reautorizar.",
+    "demoLink": {
+      "title": "O link de {agentName}",
+      "description": "Qualquer pessoa pode escrever para o seu agente por este link. Não há nada para conectar.",
+      "always": "Sempre disponível",
+      "open": "Abrir",
+      "copy": "Copiar link",
+      "copied": "Copiado",
+      "opensInNewTab": "abre em uma nova aba",
+      "agentFallback": "seu agente"
+    }
   },
   "agent": {
     "title": "Agente IA",
@@ -6802,7 +6812,24 @@
         }
       }
     },
-    "connectBannerShowMe": "Mostrar onde"
+    "connectBannerShowMe": "Mostrar onde",
+    "demoLink": {
+      "title": "O link de {agentName}",
+      "why": "Um link onde qualquer pessoa pode escrever: serve para testar hoje e para a bio do seu Instagram.",
+      "open": "Abrir",
+      "copy": "Copiar link",
+      "copied": "Copiado",
+      "bio": "Colocar na minha bio",
+      "bioHint": "Cole no Instagram → Editar perfil → Links.",
+      "share": "Mostrar ao meu sócio",
+      "shareMessage": "Veja como {agentName} responde: {url}",
+      "website": "Colocar no meu site",
+      "websiteHint": "É lá que o chat do seu site é criado e as duas linhas são copiadas.",
+      "copyFailed": "Não foi possível copiar. Selecione o link e copie à mão.",
+      "openLink": "Abrir o link de {agentName}",
+      "meanwhile": "Enquanto isso, {agentName} já atende pelo link.",
+      "agentFallback": "seu agente"
+    }
   },
   "copilot": {
     "subtitle": "Seu assistente da plataforma",
@@ -7807,6 +7834,19 @@
     "dayFri": "Sex",
     "daySat": "Sab",
     "daySun": "Dom"
+  },
+  "publicChat": {
+    "title": "{agentName} · {tenantName}",
+    "fallbackTitle": "Chat",
+    "loading": "Carregando…",
+    "demoBadge": "Página de teste",
+    "chatRegionLabel": "Chat com {agentName}",
+    "notFoundTitle": "Este link não existe ou já não está disponível.",
+    "notFoundHint": "Se um negócio te enviou, peça o link de novo.",
+    "errorTitle": "Não conseguimos abrir o chat.",
+    "errorHint": "Verifique sua conexão e tente de novo.",
+    "tryAgain": "Tentar novamente",
+    "madeWith": "Feito com Parallly"
   },
   "photoManager": {
     "title": "Fotos",

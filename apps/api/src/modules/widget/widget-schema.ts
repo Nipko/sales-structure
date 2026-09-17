@@ -24,6 +24,16 @@ export async function ensureWidgetSchema(prisma: PrismaClient): Promise<void> {
                         updated_at TIMESTAMPTZ DEFAULT NOW()
                     )
                 `);
+        // D11 (sep-2026): the tenant's public link "El enlace de {Nombre}" is a
+        // widget born at day 0 with is_demo = true. It never counts as a
+        // connected channel and its traffic is paid by the platform up to a
+        // cap. Additive so the template can run on every start.
+        await tx.$queryRawUnsafe(`ALTER TABLE public.widget_configs ADD COLUMN IF NOT EXISTS is_demo BOOLEAN NOT NULL DEFAULT false`);
+        // One public link per tenant is an invariant, not a hope: two concurrent
+        // provisionings both see NOT EXISTS under READ COMMITTED, and the loser
+        // must fail with 23505 instead of minting a second link.
+        await tx.$queryRawUnsafe(`CREATE UNIQUE INDEX IF NOT EXISTS ux_widget_configs_demo_per_tenant
+            ON public.widget_configs (tenant_id) WHERE is_demo = true AND is_active = true`);
         await tx.$queryRawUnsafe(`
                     CREATE TABLE IF NOT EXISTS public.widget_sessions (
                         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

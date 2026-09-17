@@ -3,7 +3,7 @@ id: canales-email-widget
 title: "Chat web e estado da integração de Email"
 routes: ["/admin/channels", "/admin/channels/email", "/admin/settings/integrations/web-chat", "/admin/settings/integrations/web-chat/triggers"]
 roles: ["tenant_admin"]
-keywords: ["email", "e-mail", "estado do canal de email", "widget", "chat web", "chat no meu site", "chat na minha pagina", "balao de chat", "codigo de incorporacao", "instalar widget", "gatilhos", "gatilhos proativos", "mensagem de boas-vindas", "formulario pre-chat"]
+keywords: ["email", "e-mail", "estado do canal de email", "widget", "chat web", "chat no meu site", "chat na minha pagina", "balao de chat", "codigo de incorporacao", "instalar widget", "gatilhos", "gatilhos proativos", "mensagem de boas-vindas", "formulario pre-chat", "link do seu agente", "codigo de duas linhas"]
 ---
 
 # Chat web e estado da integração de Email
@@ -21,6 +21,12 @@ A tela informa se o chat web e os gatilhos proativos estão habilitados e quanto
 Email existe como adaptador técnico e entrada interna para integrações gerenciadas, mas **ainda não é um canal conversacional certificado nem configurável por autosserviço**. A página **Canais → Email** não tem atualmente o contrato de API necessário para salvar configurações por tenant. Não insira credenciais nem suponha que essa tela torne o canal operacional.
 
 Se sua organização precisa integrar e-mail, peça uma avaliação técnica ao suporte. Até que o fluxo seja implementado e certificado de ponta a ponta, a Parallly Assist não deve prometer conexão, envio, recebimento na caixa de conversas nem respostas automáticas por Email.
+
+### O link do seu agente e o chat web do seu site
+
+O **link do seu agente** (a página pública que você vê no assistente de configuração, com endereço começando em `/w/` seguido de um identificador) serve para testar seu agente e mostrá-lo a alguém antes de conectar qualquer canal. Não é a mesma coisa que o chat web desta tela: não conta como canal conectado e não usa o cupo de chat web do seu plano, mesmo que as conversas que ele recebe apareçam na sua caixa de entrada como qualquer conversa de chat web.
+
+O **chat web que você instala no seu site** (o widget desta tela) conta como canal conectado e usa a função de chat web do seu plano. Os dois compartilham a mesma família de código de duas linhas: o que você copia aqui com **Copiar código** é o mesmo tipo de trecho que a ação **As duas linhas para o seu site** gera a partir do link do seu agente, para você enviar a quem cuida do seu site.
 
 ---
 

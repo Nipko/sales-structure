@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
+import { DemoAllowanceService } from '../throttle/demo-allowance.service';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'crypto';
 import * as jwt from 'jsonwebtoken';
@@ -26,19 +27,59 @@ const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 export class WidgetMessageStore {
     private readonly jwtSecret: string;
     constructor(private readonly prisma: PrismaService, private readonly redis: RedisService,
-        private readonly relay: WsRelayService, private readonly throttle: TenantThrottleService, config: ConfigService) {
+        private readonly relay: WsRelayService, private readonly throttle: TenantThrottleService, config: ConfigService,
+        @Optional() private readonly demoAllowance?: DemoAllowanceService) {
         this.jwtSecret = config.get<string>('WIDGET_JWT_SECRET') || config.getOrThrow<string>('JWT_SECRET');
     }
 
-    async assertAvailable(tenantId: string): Promise<string> {
+    /**
+     * The plan's `widget` feature gates the embeddable web chat; the day-0
+     * public link (is_demo) rides on the platform-paid allowance instead.
+     *
+     * A caller that knows WHICH widget is being used (the visitor's entry
+     * points: config, session, first message) asks about that widget. The
+     * inner paths — delivering a stored reply, reading a session's messages,
+     * bootstrapping the reply store — only ask whether the subsystem is
+     * available for the tenant, because the widget that opened the session was
+     * already checked one by one; asking them for an id they do not carry is
+     * what left the whole lane dead on the default plan.
+     */
+    async assertAvailable(tenantId: string, widgetId?: string): Promise<string> {
         const ready = await resolveReadyTenantContext(this.prisma, this.redis, tenantId);
-        if (!ready || !(await resolveTenantSubscriptionAccess(this.prisma,tenantId,'write')).allowed
-            || (await this.throttle.getPlanFeatures(tenantId)).widget !== true) throw new Error('widget_delivery_unavailable');
+        if (!ready || !(await resolveTenantSubscriptionAccess(this.prisma,tenantId,'write')).allowed) throw new Error('widget_delivery_unavailable');
+        if ((await this.throttle.getPlanFeatures(tenantId)).widget !== true) {
+            const demo = widgetId ? await this.isDemoWidget(tenantId, widgetId) : await this.hasDemoWidget(tenantId);
+            if (!demo) throw new Error('widget_delivery_unavailable');
+            if ((await this.demoAllowance?.get())?.enabled === false) throw new Error('widget_delivery_unavailable');
+        }
         return ready.schemaName;
     }
 
+    /** Authoritative demo mark: the widget row, never the page URL the visitor sent. */
+    async isDemoWidget(tenantId: string, widgetId: string): Promise<boolean> {
+        return this.readDemoMark(`widget:demo:${widgetId}`,
+            'SELECT is_demo FROM public.widget_configs WHERE widget_id = $1 AND tenant_id = $2::uuid AND is_active = true',
+            [widgetId, tenantId]);
+    }
+
+    /** Whether the tenant has a public link at all (tenant-level availability). */
+    async hasDemoWidget(tenantId: string): Promise<boolean> {
+        return this.readDemoMark(`widget:demo:tenant:${tenantId}`,
+            'SELECT true AS is_demo FROM public.widget_configs WHERE tenant_id = $1::uuid AND is_demo = true AND is_active = true LIMIT 1',
+            [tenantId]);
+    }
+
+    private async readDemoMark(key: string, sql: string, params: any[]): Promise<boolean> {
+        const cached = await this.redis.get(key).catch(() => null);
+        if (cached === '1' || cached === '0') return cached === '1';
+        const rows = await this.prisma.$queryRawUnsafe<any[]>(sql, ...params).catch(() => [] as any[]);
+        const demo = rows?.[0]?.is_demo === true;
+        await this.redis.set(key, demo ? '1' : '0', 300).catch(() => {});
+        return demo;
+    }
+
     async ensureConversation(credentials:WidgetSessionCredentials):Promise<any>{
-        const claims=this.claims(credentials.token),schema=await this.assertAvailable(claims.tenantId);
+        const claims=this.claims(credentials.token),schema=await this.assertAvailable(claims.tenantId,claims.widgetId);
         return this.prisma.transactionInTenantSchema(schema,async query=>{
             await this.privacyFence(query,schema);
             const session=await this.authorize(query,schema,claims,credentials,true);
@@ -52,7 +93,7 @@ export class WidgetMessageStore {
             [session.visitor_name||null,session.visitor_phone||null,session.visitor_email||null,`widget_${session.id}`]);
             const conversations=await query<any[]>(`INSERT INTO conversations(contact_id,channel_type,channel_account_id,status,metadata,created_at,updated_at)
                 VALUES($1::uuid,'web_widget',$2,'active',$3::jsonb,NOW(),NOW()) RETURNING id`,
-            [contacts[0].id,session.widget_id,JSON.stringify({widgetSessionId:session.id,page:session.page_url})]);
+            [contacts[0].id,session.widget_id,JSON.stringify({widgetSessionId:session.id,page:session.page_url,...(session.is_demo===true?{demo:true}:{})})]);
             await query('UPDATE public.widget_sessions SET contact_id=$2::uuid,conversation_id=$3::uuid,last_seen_at=NOW() WHERE id=$1::uuid',
                 [session.id,contacts[0].id,conversations[0].id]);
             return {...session,contact_id:contacts[0].id,conversation_id:conversations[0].id};
@@ -61,7 +102,7 @@ export class WidgetMessageStore {
 
     async receive(credentials:WidgetSessionCredentials,text:string):Promise<{session:any;messageId:string}>{
         await this.ensureConversation(credentials);
-        const claims=this.claims(credentials.token),schema=await this.assertAvailable(claims.tenantId);
+        const claims=this.claims(credentials.token),schema=await this.assertAvailable(claims.tenantId,claims.widgetId);
         return this.prisma.transactionInTenantSchema(schema,async query=>{
             await this.privacyFence(query,schema);
             const session=await this.authorize(query,schema,claims,credentials);
@@ -170,7 +211,7 @@ export class WidgetMessageStore {
 
     async acknowledge(credentials:WidgetSessionCredentials,messageId:string):Promise<boolean>{
         if(!UUID.test(messageId))return false;
-        const claims=this.claims(credentials.token),schema=await this.assertAvailable(claims.tenantId);
+        const claims=this.claims(credentials.token),schema=await this.assertAvailable(claims.tenantId,claims.widgetId);
         return this.prisma.transactionInTenantSchema(schema,async query=>{
             await this.privacyFence(query,schema);
             const session=await this.authorize(query,schema,claims,credentials);
@@ -188,12 +229,12 @@ export class WidgetMessageStore {
         return decoded;
     }
     private async authorize(query:WidgetMessageQuery,schema:string,claims:any,credentials:WidgetSessionCredentials,lockSession=false){
-        const rows=await query<any[]>(`SELECT ws.*,wc.widget_id,wc.allowed_domains FROM public.widget_sessions ws
+        const rows=await query<any[]>(`SELECT ws.*,wc.widget_id,wc.allowed_domains,wc.is_demo FROM public.widget_sessions ws
             JOIN public.widget_configs wc ON wc.id=ws.widget_config_id AND wc.tenant_id=ws.tenant_id
             WHERE ws.id=$1::uuid AND ws.tenant_id=$2::uuid AND ws.token=$3 AND wc.widget_id=$4 AND wc.is_active=true
                 AND ws.last_seen_at>NOW()-INTERVAL '90 days' ${lockSession?'FOR UPDATE OF ws FOR SHARE OF wc':'FOR SHARE OF ws,wc'}`,[claims.sessionId,claims.tenantId,credentials.token,claims.widgetId]);
         const session=rows[0];
-        if(!session||!isWidgetOriginAllowed(credentials.origin,session.allowed_domains))throw new Error('widget_session_invalid');
+        if(!session||!isWidgetOriginAllowed(credentials.origin,session.allowed_domains,{platformHosted:session.is_demo===true}))throw new Error('widget_session_invalid');
         if(session.contact_id)await this.assertNotErased(query,schema,session.contact_id);
         return session;
     }

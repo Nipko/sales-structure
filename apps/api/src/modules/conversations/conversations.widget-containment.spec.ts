@@ -270,6 +270,61 @@ describe('ConversationsService widget containment', () => {
         )).toBe(false);
     });
 
+    // D11/D19 (sep-2026): the public link "El enlace de {Nombre}" is paid by
+    // the platform. Its turns never touch the plan quota nor need the plan's
+    // widget feature, and once the allowance is spent they answer with words.
+    it('a demo turn reserves the platform allowance and ignores the plan quota and feature', async () => {
+        const reserveDemoMessageCount = jest.fn().mockResolvedValue({ allowed: true, count: 1, adopted: false });
+        const commitDemoMessageCount = jest.fn().mockResolvedValue(undefined);
+        const { service, throttle } = makeService({
+            throttle: {
+                getPlanFeatures: jest.fn().mockResolvedValue({ widget: false, llmTier: 'tier_2', llmCostBudgetUsdCents: 100 }),
+                reserveDemoMessageCount, commitDemoMessageCount, releaseDemoMessageCount: jest.fn().mockResolvedValue(undefined),
+            },
+        });
+        (service as any).demoAllowance = { get: jest.fn().mockResolvedValue({ enabled: true, messagesPerTenant: 200, dailyCapPerPage: 60 }) };
+        const text = await collect(service.processWidgetMessage('10000000-0000-4000-8000-000000000001', 'tenant_1', '20000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000003', 'hello', { inboundMessageId: '40000000-0000-4000-8000-000000000004', channelAccountId: 'widget', demo: true }));
+        expect(text).toBe('safe reply');
+        expect(reserveDemoMessageCount).toHaveBeenCalledWith('10000000-0000-4000-8000-000000000001', 'web_widget:40000000-0000-4000-8000-000000000004', 200);
+        expect(commitDemoMessageCount).toHaveBeenCalledTimes(1);
+        expect(throttle.reserveAiMessageCount).not.toHaveBeenCalled();
+        expect(throttle.commitAiMessageCount).not.toHaveBeenCalled();
+        expect((service as any).generateResponse).toHaveBeenCalledTimes(1);
+    });
+    it('a spent allowance answers the cap text without the provider, and a switched-off allowance answers nothing', async () => {
+        const { service } = makeService({
+            throttle: {
+                getPlanFeatures: jest.fn().mockResolvedValue({ widget: false, llmTier: 'tier_2', llmCostBudgetUsdCents: 100 }),
+                reserveDemoMessageCount: jest.fn().mockResolvedValue({ allowed: false, count: 200, adopted: false }), releaseDemoMessageCount: jest.fn(),
+            },
+        });
+        (service as any).demoAllowance = { get: jest.fn().mockResolvedValue({ enabled: true, messagesPerTenant: 200, dailyCapPerPage: 60 }) };
+        const text = await collect(service.processWidgetMessage('10000000-0000-4000-8000-000000000001', 'tenant_1', '20000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000003', 'hello', { inboundMessageId: '40000000-0000-4000-8000-000000000004', channelAccountId: 'widget', demo: true }));
+        expect(text).toMatch(/message cap|tope de mensajes/i);
+        expect((service as any).generateResponse).not.toHaveBeenCalled();
+        (service as any).demoAllowance = { get: jest.fn().mockResolvedValue({ enabled: false, messagesPerTenant: 0, dailyCapPerPage: 1 }) };
+        await expect(service.processWidgetMessage('10000000-0000-4000-8000-000000000001', 'tenant_1', '20000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000003', 'hello', { inboundMessageId: '50000000-0000-4000-8000-000000000005', channelAccountId: 'widget', demo: true })).resolves.toBeNull();
+    });
+    // The promise the cap text makes ("cuando el negocio active su plan, el chat
+    // sigue") has to be true: with the web chat in the plan, the same link runs
+    // on the plan quota and the platform stops paying.
+    it('the same link falls through to the plan lane once the plan includes the web chat', async () => {
+        const reserveDemoMessageCount = jest.fn();
+        const { service, throttle } = makeService({ throttle: { reserveDemoMessageCount, releaseDemoMessageCount: jest.fn() } });
+        (service as any).demoAllowance = { get: jest.fn().mockResolvedValue({ enabled: true, messagesPerTenant: 0, dailyCapPerPage: 60 }) };
+        const text = await collect(service.processWidgetMessage('10000000-0000-4000-8000-000000000001', 'tenant_1', '20000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000003', 'hello', { inboundMessageId: '40000000-0000-4000-8000-000000000004', channelAccountId: 'widget', demo: true }));
+        expect(text).toBe('safe reply');
+        expect(reserveDemoMessageCount).not.toHaveBeenCalled();
+        expect(throttle.reserveAiMessageCount).toHaveBeenCalledWith('10000000-0000-4000-8000-000000000001', 'web_widget:40000000-0000-4000-8000-000000000004', 10);
+        expect(throttle.commitAiMessageCount).toHaveBeenCalledTimes(1);
+    });
+
+    it('a normal widget turn still needs the plan feature', async () => {
+        const { service } = makeService({ throttle: { getPlanFeatures: jest.fn().mockResolvedValue({ widget: false, llmTier: 'tier_2', llmCostBudgetUsdCents: 100 }) } });
+        await expect(service.processWidgetMessage('10000000-0000-4000-8000-000000000001', 'tenant_1', '20000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000003', 'hello', { inboundMessageId: '40000000-0000-4000-8000-000000000004', channelAccountId: 'widget' })).resolves.toBeNull();
+        expect((service as any).generateResponse).not.toHaveBeenCalled();
+    });
+
     it('fails closed on handoff routing until human widget delivery is verified', async () => {
         const { service, llmRouter } = makeService();
         const handoff = (service as any).handoffService;

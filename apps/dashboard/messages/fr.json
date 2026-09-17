@@ -4283,7 +4283,17 @@
     "retry": "Reessayer",
     "credentialUnknown": "Non verifie",
     "credentialUnknownHint": "Nous n avons pas pu lire les identifiants de ce canal. Il envoie peut-etre normalement ; reessayez.",
-    "credentialHint": "Le canal apparait connecte, mais ses identifiants ne permettent plus d'envoyer. Reconnectez le canal pour reautoriser."
+    "credentialHint": "Le canal apparait connecte, mais ses identifiants ne permettent plus d'envoyer. Reconnectez le canal pour reautoriser.",
+    "demoLink": {
+      "title": "Le lien de {agentName}",
+      "description": "N'importe qui peut écrire à votre agent depuis ce lien. Rien à connecter.",
+      "always": "Toujours disponible",
+      "open": "Ouvrir",
+      "copy": "Copier le lien",
+      "copied": "Copié",
+      "opensInNewTab": "ouvre dans un nouvel onglet",
+      "agentFallback": "votre agent"
+    }
   },
   "agent": {
     "title": "Agent IA",
@@ -6802,7 +6812,24 @@
         }
       }
     },
-    "connectBannerShowMe": "Montrez-moi où"
+    "connectBannerShowMe": "Montrez-moi où",
+    "demoLink": {
+      "title": "Le lien de {agentName}",
+      "why": "Un lien où n'importe qui peut lui écrire : utile pour tester aujourd'hui et pour votre bio Instagram.",
+      "open": "Ouvrir",
+      "copy": "Copier le lien",
+      "copied": "Copié",
+      "bio": "Le mettre dans ma bio",
+      "bioHint": "Collez-le dans Instagram → Modifier le profil → Liens.",
+      "share": "Le montrer à mon associé",
+      "shareMessage": "Regarde comment {agentName} répond : {url}",
+      "website": "Le mettre sur mon site web",
+      "websiteHint": "C'est là que le chat de votre site se crée et que les deux lignes se copient.",
+      "copyFailed": "Impossible de copier. Sélectionnez le lien et copiez-le à la main.",
+      "openLink": "Ouvrir le lien de {agentName}",
+      "meanwhile": "En attendant, {agentName} répond déjà via son lien.",
+      "agentFallback": "votre agent"
+    }
   },
   "copilot": {
     "subtitle": "Votre assistant de la plateforme",
@@ -7807,6 +7834,19 @@
     "dayFri": "Ven",
     "daySat": "Sam",
     "daySun": "Dim"
+  },
+  "publicChat": {
+    "title": "{agentName} · {tenantName}",
+    "fallbackTitle": "Chat",
+    "loading": "Chargement…",
+    "demoBadge": "Page de test",
+    "chatRegionLabel": "Chat avec {agentName}",
+    "notFoundTitle": "Ce lien n'existe pas ou n'est plus disponible.",
+    "notFoundHint": "Si une entreprise vous l'a envoyé, redemandez-lui le lien.",
+    "errorTitle": "Nous n'avons pas pu ouvrir le chat.",
+    "errorHint": "Vérifiez votre connexion et réessayez.",
+    "tryAgain": "Réessayer",
+    "madeWith": "Fait avec Parallly"
   },
   "photoManager": {
     "title": "Photos",

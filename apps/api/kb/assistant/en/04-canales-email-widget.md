@@ -3,7 +3,7 @@ id: canales-email-widget
 title: "Web chat and Email integration status"
 routes: ["/admin/channels", "/admin/channels/email", "/admin/settings/integrations/web-chat", "/admin/settings/integrations/web-chat/triggers"]
 roles: ["tenant_admin"]
-keywords: ["email", "email channel status", "widget", "web chat", "chat on my website", "chat on my site", "chat bubble", "embed code", "install widget", "triggers", "proactive triggers", "welcome message", "pre-chat form"]
+keywords: ["email", "email channel status", "widget", "web chat", "chat on my website", "chat on my site", "chat bubble", "embed code", "install widget", "triggers", "proactive triggers", "welcome message", "pre-chat form", "agent link", "two-line code"]
 ---
 
 # Web chat and Email integration status
@@ -21,6 +21,12 @@ The screen shows whether web chat and proactive triggers are enabled and how muc
 Email exists as a technical adapter and internal inbound surface for managed integrations, but it is **not yet a certified conversational channel or available for self-service configuration**. The **Channels → Email** page currently lacks the API contract required to save per-tenant settings. Do not enter credentials or assume that this screen makes the channel operational.
 
 If your organization needs an email integration, ask support for a technical assessment. Until the flow is implemented and certified end to end, Parallly Assist must not promise connection, sending, inbox delivery, or automatic AI replies over Email.
+
+### Your agent's link and your website's web chat
+
+**Your agent's link** (the public page you see in the setup wizard, with an address starting with `/w/` followed by an identifier) is for trying your agent and showing it to someone before you connect any channel. It isn't the same as the web chat on this screen: it doesn't count as a connected channel and it doesn't use your plan's web chat allowance, even though the conversations it receives show up in your inbox like any other web chat conversation.
+
+The **web chat you install on your site** (the widget on this screen) does count as a connected channel and does use your plan's web chat feature. Both share the same two-line code family: the one you copy here with **Copy code** is the same kind of snippet the **The two lines for your website** action generates from your agent's link, for you to send to whoever manages your site.
 
 ---
 

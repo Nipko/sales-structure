@@ -276,7 +276,8 @@ export class AgentQualityService {
             this.prisma.$queryRawUnsafe(
                 `SELECT 'web_widget' AS channel_type, widget_id AS account_id
                    FROM public.widget_configs
-                  WHERE tenant_id = $1::uuid AND is_active = true`,
+                  WHERE tenant_id = $1::uuid AND is_active = true
+                    AND COALESCE(is_demo, false) = false`,
                 tenantId,
             ).then((rows: any) => ({ available: true, rows: (rows as any[]) || [] }))
                 .catch(() => ({ available: false, rows: [] as any[] })),

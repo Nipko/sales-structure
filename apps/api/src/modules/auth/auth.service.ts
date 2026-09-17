@@ -1,4 +1,5 @@
 import { Injectable, UnauthorizedException, ConflictException, NotFoundException, BadRequestException, ForbiddenException, Logger, Optional } from '@nestjs/common';
+import { ensureDemoWidget } from '../widget/widget-demo-link';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
@@ -2011,6 +2012,8 @@ export class AuthService {
                 selection.industry,
                 selection.subType || undefined,
             );
+            await assertLockOwned();
+            await ensureDemoWidget(this.prisma, existingTenantId);
             const businessDraft = canonicalSettings.businessInfoDraft || {};
             await assertLockOwned();
             await this.businessInfoService.upsertPrimary(existingTenantId, {
@@ -2315,6 +2318,10 @@ export class AuthService {
             industry,
             subType || undefined,
         );
+        // 5.5. "El enlace de {Nombre}" (D11): the public page where the owner
+        // can show the agent today. Idempotent and never fatal.
+        await assertLockOwned();
+        await ensureDemoWidget(this.prisma, result.tenant.id, { locale: tenantLangCode });
 
         // 6. Business Identity es parte del readiness del agente: sin ella
         // <turn.business> queda vacío. Es crítica y el draft durable permite

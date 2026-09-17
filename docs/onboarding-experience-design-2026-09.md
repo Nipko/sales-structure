@@ -299,7 +299,7 @@ Las ocho del diagnóstico siguen vigentes (día 0 escribe directo al agente vivo
 |---|---|---|
 | D9 | La receta para negocios fuera de las 18 industrias se **genera con el modelo** en segundo plano, con esquema sin precio/dirección/teléfono y validador | Sí |
 | D10 | **Precios de ejemplo**: columna de estado; el agente **no dice** un precio de ejemplo (más seguro que decirlo "como referencia") y ofrece confirmarlo; "Usar así" nunca confirma un precio | Sí, ocultar hasta confirmar |
-| D11 | **El enlace de {Nombre}** (página pública del chat web) para cada agente desde el paso 3, con tope diario y marcado como demo | Sí |
+| D11 | **El enlace de {Nombre}** (página pública del chat web) para cada agente desde el paso 3, con tope diario y marcado como demo | Sí — hecho el 17-sep: `/w/{widgetId}`, `widget_configs.is_demo`, no cuenta como canal ni como activación |
 | D12 | Los **cinco canales en pie de igualdad**, ordenados por la receta, con "conectar después" por canal | Sí |
 | D13 | **Contenido de las recetas**: ≈38 recetas (18 industrias + 20 capas de subtipo) × 14 campos ≈ 1.000 textos en español, ≈4.000 con en/pt/fr; unas 25 jornadas para español y 60 en total. Secuencia: español para las 6 industrias de más demanda → validación con un dueño real por industria en una sesión de 15 minutos de "Usar así" (criterio: ≤2 tarjetas cambiadas de 7) → traducción → el resto | Empezar por 6 con el equipo; nombrar a quién valida |
 | D14 | El **editor se reorganiza por tarjetas** y las pestañas técnicas pasan a "Avanzado" | Sí |
@@ -307,7 +307,7 @@ Las ocho del diagnóstico siguen vigentes (día 0 escribe directo al agente vivo
 | D16 | **Receptor de avisos por defecto**: la persona del alta, por correo (y su WhatsApp si lo da) | Sí |
 | D17 | **Países con montos de ejemplo reales** en la primera ola (CO, MX, AR, PE, CL, BR); el resto con `[precio]` | Sí |
 | D18 | **Dónde viven las academias**: subtipos de `education` (reutilizan la reserva de clases) | `education` |
-| D19 | **Cuota del enlace de prueba**: la plataforma paga los primeros N mensajes de demo por tenant antes de elegir plan | Sí, con tope |
+| D19 | **Cuota del enlace de prueba**: la plataforma paga los primeros N mensajes de demo por tenant antes de elegir plan | Sí, con tope — hecho el 17-sep: `onboarding.demoAllowance` (200 de por vida por cuenta, 60 por página y día); "antes de elegir plan" = durante el trial del plan del alta, `pending_auth` sigue bloqueado |
 | D20 | **Instagram**: confirmar de una vez con el flujo vigente de Meta que no exige página de Facebook (el código usa Instagram Login) y retirar ese requisito de todos los textos | Hecho el 17-sep en la ayuda de canales y de Instagram (4 idiomas): el código usa `instagram.com/oauth/authorize` con permisos `instagram_business_*`, que no piden página |
 
 ---

@@ -7,7 +7,9 @@ var API='${apiBase}';
 var SK='parallly_w_'+WID;
 var IO_CDN='https://cdn.socket.io/4.8.1/socket.io.min.js';
 
-var st={open:false,cfg:null,sess:null,sock:null,msgs:[],unread:0,typing:false,pcDone:false,el:{}};
+// page: rendered inline inside a host element (C.mode==='page'); capped: composer locked by a server cap notice;
+// retryTimer: the single pending auto-retry after a rate limit (see scheduleRetry).
+var st={open:false,cfg:null,sess:null,sock:null,msgs:[],unread:0,typing:false,pcDone:false,page:false,capped:false,retryTimer:null,el:{}};
 
 function loadIO(cb){if(window.io)return cb();var s=document.createElement('script');s.src=IO_CDN;s.onload=cb;s.onerror=function(){console.error('Parallly widget: socket.io load failed')};document.head.appendChild(s)}
 
@@ -48,6 +50,8 @@ function connectWS(){
   var wsUrl=API.replace('/api/v1','');
   st.sock=io(wsUrl+'/widget',{auth:{token:st.sess.token},transports:['websocket','polling'],reconnection:true,reconnectionDelay:2000,reconnectionAttempts:15});
   st.sock.on('widget:connected',function(){});
+  // A (re)connect ends a cap lock: the server decides again whether the next message goes through.
+  st.sock.on('connect',function(){clearRetry();if(st.capped)setComposer(true)});
   st.sock.on('widget:history',function(d){
     (d.messages||[]).forEach(function(m){mergeWidgetMessage(m)});renderMsgs();
     (d.messages||[]).forEach(ackWidgetMessage)
@@ -55,6 +59,7 @@ function connectWS(){
   st.sock.on('widget:message',function(d){
     var added=mergeWidgetMessage(d);st.typing=false;renderMsgs();renderTyping();ackWidgetMessage(d);
     if(added){if(!st.open){st.unread++;renderBadge()}playSound()}
+    if(st.capped){clearRetry();setComposer(true)}
   });
   // Streaming (#6 Fase-2): the assistant reply arrives token-by-token.
   st.sock.on('widget:stream_start',function(d){
@@ -92,7 +97,55 @@ function connectWS(){
   st.sock.on('disconnect',function(){markPendingFailed()});
   st.sock.io.on('reconnect_failed',function(){markPendingFailed()});
   st.sock.on('widget:typing',function(d){st.typing=d.isTyping;renderTyping()});
-  st.sock.on('widget:error',function(d){console.warn('Parallly:',d.message)});
+  st.sock.on('widget:error',onWidgetError);
+}
+
+// Caps the visitor must see in the chat (the server already localised d.message for the demo codes).
+// Anything else stays a console warning: it is a developer signal, not a visitor-facing state.
+var CAP_CODES={demo_daily_cap:1,demo_allowance_exhausted:1,rate_limited:1};
+// A rate limit never reaches the visitor in their language: the server sends a hardcoded
+// English 'Rate limit exceeded'. Say it ourselves, and wait out the window it reported.
+var MAX_RETRY_MS=60000;
+function onWidgetError(d){
+  d=d||{};
+  if(!CAP_CODES[d.code]){console.warn('Parallly:',d.message);return}
+  var limited=d.code==='rate_limited';
+  var text=limited?getT('rateLimited'):((typeof d.message==='string'&&d.message.trim())?d.message.trim():getT('capReached'));
+  // The server refused this turn BEFORE persisting it, and on a cap it does not even hang up:
+  // without this the visitor's own bubble would spin on '↻' forever under a notice saying the chat stopped.
+  markPendingFailed();
+  pushSystemNotice(text);
+  setComposer(false);
+  // Only rate_limited ends in a server-initiated disconnect, and socket.io never reconnects
+  // from one of those on its own - the composer would stay dead for good. The demo caps keep
+  // the socket, so their unlock stays where it was: the next 'connect' or agent message.
+  if(limited)scheduleRetry(d.retryAfterSeconds)
+}
+function clearRetry(){if(st.retryTimer){clearTimeout(st.retryTimer);st.retryTimer=null}}
+function scheduleRetry(seconds){
+  clearRetry();
+  // No usable window (absent, null, NaN, Infinity) means no automatic retry: a 'connect' or the
+  // next agent message is still allowed to unlock, but nothing here guesses when that is.
+  if(typeof seconds!=='number'||!isFinite(seconds)||seconds<0)return;
+  // The server reports the whole window (an hour for the per-IP rule); nobody stares at a dead
+  // composer that long, so we retry sooner and let the server refuse again if it still wants to.
+  st.retryTimer=setTimeout(function(){
+    st.retryTimer=null;
+    setComposer(true);
+    if(st.sock&&typeof st.sock.connect==='function')st.sock.connect()
+  },Math.min(seconds*1000,MAX_RETRY_MS))
+}
+// A system notice is not an agent message: no id, no ack, never merged/deduped by identity, never sent back.
+function pushSystemNotice(text){
+  var last=st.msgs[st.msgs.length-1];
+  if(last&&last.role==='system'&&last.content===text){renderMsgs();return}
+  st.msgs.push({role:'system',content:text,ts:new Date().toISOString()});
+  renderMsgs()
+}
+function setComposer(enabled){
+  st.capped=!enabled;
+  if(st.el.input)st.el.input.disabled=!enabled;
+  if(st.el.sendBtn)st.el.sendBtn.disabled=!enabled
 }
 
 function findWidgetMessage(id){if(!id)return null;for(var i=0;i<st.msgs.length;i++)if(st.msgs[i].id===id)return st.msgs[i];return null}
@@ -116,7 +169,7 @@ function markPendingFailed(){
 }
 
 function send(txt){
-  if(!txt.trim()||!st.sock)return;
+  if(st.capped||!txt.trim()||!st.sock)return;
   // pending until the server acks it - previously every message rendered as
   // delivered even when it was silently dropped by a dead socket.
   st.msgs.push({role:'user',content:txt.trim(),ts:new Date().toISOString(),pending:true});
@@ -168,6 +221,7 @@ var CSS=\`
 .pw-msg{max-width:82%;padding:10px 14px;border-radius:14px;font-size:13px;line-height:1.5;word-wrap:break-word;white-space:pre-wrap;animation:pw-fade .2s ease-out}
 .pw-msg.in{background:#fff;align-self:flex-start;border-bottom-left-radius:4px;box-shadow:0 1px 2px rgba(0,0,0,.06)}
 .pw-msg.out{color:#fff;align-self:flex-end;border-bottom-right-radius:4px}
+.pw-msg.sys{align-self:center;max-width:90%;padding:6px 12px;border-radius:10px;background:#eceef2;color:#6b7280;font-size:11px;line-height:1.4;text-align:center;box-shadow:none}
 .pw-msg-time{font-size:10px;opacity:.6;margin-top:4px}
 .pw-welcome{text-align:center;padding:20px;color:#666;font-size:13px}
 @keyframes pw-fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
@@ -184,6 +238,7 @@ var CSS=\`
 .pw-input-wrap{padding:12px 14px;display:flex;align-items:flex-end;gap:8px;border-top:1px solid #eee;background:#fff;flex-shrink:0}
 .pw-input{flex:1;border:1px solid #ddd;border-radius:20px;padding:8px 14px;font-size:13px;font-family:inherit;resize:none;outline:none;max-height:100px;line-height:1.4;transition:border-color .2s}
 .pw-input:focus{border-color:var(--pw-color,#6c5ce7)}
+.pw-input:disabled{background:#f3f4f6;color:#9ca3af;cursor:not-allowed}
 .pw-send{width:36px;height:36px;border-radius:50%;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:opacity .2s}
 .pw-send:disabled{opacity:.4;cursor:default}
 .pw-send svg{width:18px;height:18px;fill:#fff}
@@ -211,12 +266,30 @@ var CSS=\`
   .pw-wrap.pos-br .pw-panel,.pw-wrap.pos-bl .pw-panel{transform-origin:bottom center}
   .pw-bubble{width:54px;height:54px}
 }
+
+/* Page mode: the panel IS the page. It sits statically inside the host and fills it (the host
+   sets the height); no launcher, no close control. The two-class selectors outrank the mobile
+   full-screen rule above, so the same DOM reads inline at every width. */
+:host(.pw-page-host){display:block;width:100%;height:100%}
+.pw-wrap.pw-page{position:static;width:100%;height:100%;z-index:auto}
+.pw-page .pw-panel{position:static;width:100%;max-width:none;height:100%;max-height:none;border-radius:0;box-shadow:none;transform:none;opacity:1;pointer-events:auto;transition:none}
+.pw-page .pw-close,.pw-page .pw-bubble,.pw-page .pw-badge{display:none}
 \`;
 
+// Page mode mounts inside window.__paralllyWidget.host (default '#parallly-widget-host').
+// A missing or invalid host is not an error: the widget falls back to the floating bubble on body.
+function pageHost(){
+  if(C.mode!=='page')return null;
+  try{return document.querySelector(C.host||'#parallly-widget-host')||null}catch(e){return null}
+}
+
 function build(){
+  var mount=pageHost();st.page=!!mount;
   var host=document.createElement('div');host.id='parallly-widget';
+  // Inline styles on the host outrank the shadow's :host{all:initial}, so the block fills the mount.
+  if(st.page){host.className='pw-page-host';host.style.display='block';host.style.width='100%';host.style.height='100%'}
   var shadow=host.attachShadow({mode:'closed'});
-  document.body.appendChild(host);
+  (mount||document.body).appendChild(host);
 
   var style=document.createElement('style');
   var pc=st.cfg.primaryColor||'#6c5ce7';
@@ -224,7 +297,7 @@ function build(){
   shadow.appendChild(style);
 
   var wrap=document.createElement('div');
-  wrap.className='pw-wrap pos-'+(st.cfg.position==='bottom-left'?'bl':'br');
+  wrap.className='pw-wrap pos-'+(st.cfg.position==='bottom-left'?'bl':'br')+(st.page?' pw-page':'');
   wrap.style.setProperty('--pw-color',pc);
   shadow.appendChild(wrap);
 
@@ -285,15 +358,19 @@ function build(){
   pw.innerHTML='Powered by <a href="https://parallly-chat.cloud" target="_blank" rel="noopener">Parallly</a>';
   panel.appendChild(pw);
 
-  // Bubble
-  var bubble=document.createElement('button');bubble.className='pw-bubble';bubble.style.background=pc;
-  bubble.innerHTML='<svg class="ico-chat" viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg><svg class="ico-close" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12" stroke="#fff" stroke-width="2.5" stroke-linecap="round" fill="none"/></svg>';
-  var badge=document.createElement('span');badge.className='pw-badge hidden';badge.textContent='0';
-  bubble.appendChild(badge);
-  bubble.onclick=toggle;
-  wrap.appendChild(bubble);
+  // Bubble (floating mode only: in page mode the panel is the page, so there is nothing to launch)
+  var bubble=null,badge=null;
+  if(!st.page){
+    bubble=document.createElement('button');bubble.className='pw-bubble';bubble.style.background=pc;
+    bubble.innerHTML='<svg class="ico-chat" viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg><svg class="ico-close" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12" stroke="#fff" stroke-width="2.5" stroke-linecap="round" fill="none"/></svg>';
+    badge=document.createElement('span');badge.className='pw-badge hidden';badge.textContent='0';
+    bubble.appendChild(badge);
+    bubble.onclick=toggle;
+    wrap.appendChild(bubble);
+  }
 
   st.el.panel=panel;st.el.bubble=bubble;st.el.badge=badge;st.el.wrap=wrap;
+  if(st.page){st.open=true;panel.classList.add('show')}
 }
 
 function buildChat(panel){
@@ -330,6 +407,7 @@ function buildChat(panel){
 }
 
 function toggle(){
+  if(st.page)return;
   st.open=!st.open;
   st.el.panel.classList.toggle('show',st.open);
   st.el.bubble.classList.toggle('open',st.open);
@@ -348,6 +426,8 @@ function renderMsgs(){
   var frag=document.createDocumentFragment();
   st.msgs.forEach(function(m){
     var d=document.createElement('div');
+    // Server notices (caps, rate limits) are not agent messages: muted, centred, no timestamp.
+    if(m.role==='system'){d.className='pw-msg sys';d.textContent=m.content||'';frag.appendChild(d);return}
     d.className='pw-msg '+(m.role==='user'?'out':'in');
     if(m.role==='user')d.style.background=st.cfg.primaryColor||'#6c5ce7';
     d.textContent=m.caption||((m.mediaUrl&&m.content===m.mediaUrl)?'':m.content)||'';
@@ -377,10 +457,10 @@ function renderMsgs(){
 }
 
 function renderTyping(){if(st.el.typing){st.el.typing.classList.toggle('show',st.typing);if(st.typing)st.el.msgs.scrollTop=st.el.msgs.scrollHeight}}
-function renderBadge(){if(st.el.badge){st.el.badge.textContent=st.unread;st.el.badge.classList.toggle('hidden',st.unread===0)}}
+function renderBadge(){if(st.page||!st.el.badge)return;st.el.badge.textContent=st.unread;st.el.badge.classList.toggle('hidden',st.unread===0)}
 
 function doSend(){
-  if(!st.el.input)return;
+  if(!st.el.input||st.capped)return;
   var v=st.el.input.value;
   if(!v.trim())return;
   send(v);
@@ -389,10 +469,10 @@ function doSend(){
 
 /* i18n */
 var T={
-  es:{formTitle:'Antes de empezar',formSub:'Completa los datos para que podamos ayudarte mejor.',field_name:'Nombre',field_email:'Correo',field_phone:'Tel\\u00E9fono',ph_name:'Tu nombre',ph_email:'tu@correo.com',ph_phone:'+57 300 123 4567',start:'Iniciar chat',placeholder:'Escribe un mensaje...'},
-  en:{formTitle:'Before we start',formSub:'Fill in your details so we can help you better.',field_name:'Name',field_email:'Email',field_phone:'Phone',ph_name:'Your name',ph_email:'you@email.com',ph_phone:'+1 555 123 4567',start:'Start chat',placeholder:'Type a message...'},
-  pt:{formTitle:'Antes de come\\u00E7ar',formSub:'Preencha seus dados para que possamos ajud\\u00E1-lo melhor.',field_name:'Nome',field_email:'E-mail',field_phone:'Telefone',ph_name:'Seu nome',ph_email:'voce@email.com',ph_phone:'+55 11 9999 0000',start:'Iniciar chat',placeholder:'Digite uma mensagem...'},
-  fr:{formTitle:'Avant de commencer',formSub:'Remplissez vos informations pour que nous puissions mieux vous aider.',field_name:'Nom',field_email:'E-mail',field_phone:'T\\u00E9l\\u00E9phone',ph_name:'Votre nom',ph_email:'vous@email.com',ph_phone:'+33 6 12 34 56 78',start:'D\\u00E9marrer le chat',placeholder:'\\u00C9crivez un message...'}
+  es:{formTitle:'Antes de empezar',formSub:'Completa los datos para que podamos ayudarte mejor.',field_name:'Nombre',field_email:'Correo',field_phone:'Tel\\u00E9fono',ph_name:'Tu nombre',ph_email:'tu@correo.com',ph_phone:'+57 300 123 4567',start:'Iniciar chat',placeholder:'Escribe un mensaje...',capReached:'Este chat alcanz\\u00F3 su l\\u00EDmite por hoy. Vuelve ma\\u00F1ana.',rateLimited:'Est\\u00E1s enviando mensajes muy r\\u00E1pido. Espera un momento e int\\u00E9ntalo de nuevo.'},
+  en:{formTitle:'Before we start',formSub:'Fill in your details so we can help you better.',field_name:'Name',field_email:'Email',field_phone:'Phone',ph_name:'Your name',ph_email:'you@email.com',ph_phone:'+1 555 123 4567',start:'Start chat',placeholder:'Type a message...',capReached:'This chat reached its limit for today. Come back tomorrow.',rateLimited:'You are sending messages too quickly. Wait a moment and try again.'},
+  pt:{formTitle:'Antes de come\\u00E7ar',formSub:'Preencha seus dados para que possamos ajud\\u00E1-lo melhor.',field_name:'Nome',field_email:'E-mail',field_phone:'Telefone',ph_name:'Seu nome',ph_email:'voce@email.com',ph_phone:'+55 11 9999 0000',start:'Iniciar chat',placeholder:'Digite uma mensagem...',capReached:'Este chat atingiu o limite de hoje. Volte amanh\\u00E3.',rateLimited:'Voc\\u00EA est\\u00E1 enviando mensagens muito r\\u00E1pido. Aguarde um momento e tente novamente.'},
+  fr:{formTitle:'Avant de commencer',formSub:'Remplissez vos informations pour que nous puissions mieux vous aider.',field_name:'Nom',field_email:'E-mail',field_phone:'T\\u00E9l\\u00E9phone',ph_name:'Votre nom',ph_email:'vous@email.com',ph_phone:'+33 6 12 34 56 78',start:'D\\u00E9marrer le chat',placeholder:'\\u00C9crivez un message...',capReached:'Ce chat a atteint sa limite pour aujourd\\'hui. Revenez demain.',rateLimited:'Vous envoyez des messages trop rapidement. Attendez un instant et r\\u00E9essayez.'}
 };
 function getT(k){var l=(st.cfg&&st.cfg.locale)||'es';return(T[l]||T.es)[k]||k}
 

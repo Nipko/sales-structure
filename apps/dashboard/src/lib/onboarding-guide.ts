@@ -26,6 +26,22 @@ export interface SetupStatusDefaultAgent {
   greeting: string;
 }
 
+/**
+ * "El enlace de {Nombre}": the public page where anyone can chat with the
+ * tenant's agent (owner decision D11). Provisioned on day 0 by the API on top
+ * of the tenant's web widget; the dashboard only ever receives it.
+ */
+export interface SetupStatusDemoLink {
+  widgetId: string;
+  /**
+   * `/w/<widgetId>` — a PATH on the dashboard's own origin, never a full URL.
+   * The absolute link is `${window.location.origin}${path}`, so no build-time
+   * variable has to know where the dashboard is served from.
+   */
+  path: string;
+  agentName: string;
+}
+
 export interface SetupStatusFacts {
   hasAnyChannel: boolean;
   /** The channel types with at least one active connection (`whatsapp`, `instagram`…). */
@@ -42,6 +58,8 @@ export interface SetupStatusFacts {
   defaultAgentTemplateId: string | null;
   /** Tenant timezone, so the wizard stops writing a hardcoded America/Bogota. */
   timezone: string | null;
+  /** The agent's public link; `null` until the API has provisioned one (or on an older API). */
+  demoLink: SetupStatusDemoLink | null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -73,6 +91,19 @@ function readDefaultAgent(data: Record<string, unknown>): SetupStatusDefaultAgen
   return null;
 }
 
+/**
+ * A link is only a link with both halves. A path that is not root-relative is
+ * refused too: `${origin}${path}` must stay on this origin, and a value like
+ * `https://…` or `//host/…` would quietly send the person somewhere else.
+ */
+function readDemoLink(value: unknown): SetupStatusDemoLink | null {
+  if (!isRecord(value)) return null;
+  const widgetId = optionalString(value.widgetId);
+  const path = optionalString(value.path);
+  if (!widgetId || !path || !path.startsWith("/") || path.startsWith("//")) return null;
+  return { widgetId, path, agentName: optionalString(value.agentName) ?? "" };
+}
+
 function readChannelTypes(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return Array.from(new Set(
@@ -102,6 +133,7 @@ export function readSetupStatusFacts(response: unknown): SetupStatusFacts | null
     defaultAgent: readDefaultAgent(data),
     defaultAgentTemplateId: optionalString(data.defaultAgentTemplateId),
     timezone: optionalString(data.timezone),
+    demoLink: readDemoLink(data.demoLink),
   };
 }
 

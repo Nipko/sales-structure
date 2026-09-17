@@ -4,7 +4,7 @@ import { RedisService } from '../redis/redis.service';
 
 export interface WidgetRateLimitResult {
     allowed: boolean;
-    blockedScope?: 'ip' | 'visitor' | 'session' | 'widget' | 'tenant';
+    blockedScope?: 'ip' | 'visitor' | 'session' | 'widget' | 'tenant' | 'widget_day';
     retryAfterSeconds: number;
 }
 
@@ -16,6 +16,7 @@ interface RateRule {
 }
 
 const HOUR = 60 * 60;
+const DAY = 24 * HOUR;
 const MINUTE = 60;
 
 /**
@@ -69,6 +70,19 @@ export class WidgetRateLimitService {
             { scope: 'ip', key: `widget:rl:message:ip:${ip}`, limit: WIDGET_SECURITY_LIMITS.messagesPerIpHour, windowSeconds: HOUR },
             { scope: 'widget', key: `widget:rl:message:widget:${input.widgetId}`, limit: WIDGET_SECURITY_LIMITS.messagesPerWidgetHour, windowSeconds: HOUR },
             { scope: 'tenant', key: `widget:rl:message:tenant:${input.tenantId}`, limit: WIDGET_SECURITY_LIMITS.messagesPerTenantHour, windowSeconds: HOUR },
+        ]);
+    }
+
+    /**
+     * D11: a demo page has a cap per calendar day. The key embeds the UTC
+     * date, so the renewed TTL of incrementRateLimit cannot keep a busy day
+     * open forever, and a new day starts a new counter.
+     */
+    async consumeDemoDaily(input: { widgetId: string; limit: number; now?: Date }): Promise<WidgetRateLimitResult> {
+        const day = (input.now ?? new Date()).toISOString().slice(0, 10).replace(/-/g, '');
+        const limit = Number.isFinite(input.limit) && input.limit > 0 ? Math.floor(input.limit) : 1;
+        return this.consume([
+            { scope: 'widget_day', key: `widget:rl:demo:day:${day}:${input.widgetId}`, limit, windowSeconds: DAY },
         ]);
     }
 

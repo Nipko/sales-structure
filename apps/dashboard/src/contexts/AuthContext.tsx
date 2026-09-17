@@ -92,7 +92,9 @@ const AuthContext = createContext<AuthContextType | null>(null);
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud/api/v1";
 
 // Pages that don't need session management (nobody is logged in on them).
-const PUBLIC_PATHS = ["/login", "/signup", "/forgot-password", "/book", "/kb"];
+// `/w/` (with the slash) is the agent's public chat page — a visitor, not a
+// session, so no activity ping and no idle modal there.
+const PUBLIC_PATHS = ["/login", "/signup", "/forgot-password", "/book", "/kb", "/w/"];
 
 // Authenticated pages that live outside /admin: the registration funnel. They used to sit
 // in PUBLIC_PATHS, which switched OFF the activity ping and the proactive token refresh —

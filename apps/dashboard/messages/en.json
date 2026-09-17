@@ -4283,7 +4283,17 @@
     "retry": "Retry",
     "credentialUnknown": "Not verified",
     "credentialUnknownHint": "We could not read this channel credentials. It may be sending normally; try again.",
-    "credentialHint": "The channel shows as connected, but its credentials can no longer send messages. Reconnect the channel to re-authorise."
+    "credentialHint": "The channel shows as connected, but its credentials can no longer send messages. Reconnect the channel to re-authorise.",
+    "demoLink": {
+      "title": "{agentName}'s link",
+      "description": "Anyone can write to your agent from this link. There is nothing to connect.",
+      "always": "Always available",
+      "open": "Open",
+      "copy": "Copy link",
+      "copied": "Copied",
+      "opensInNewTab": "opens in a new tab",
+      "agentFallback": "your agent"
+    }
   },
   "agent": {
     "title": "AI Agent",
@@ -6802,7 +6812,24 @@
         }
       }
     },
-    "connectBannerShowMe": "Show me where"
+    "connectBannerShowMe": "Show me where",
+    "demoLink": {
+      "title": "{agentName}'s link",
+      "why": "A link where anyone can write to them: good for testing today and for your Instagram bio.",
+      "open": "Open",
+      "copy": "Copy link",
+      "copied": "Copied",
+      "bio": "Put it in my bio",
+      "bioHint": "Paste it in Instagram → Edit profile → Links.",
+      "share": "Show it to my partner",
+      "shareMessage": "See how {agentName} replies: {url}",
+      "website": "Put it on my website",
+      "websiteHint": "That's where your site's chat is created and the two lines are copied.",
+      "copyFailed": "Could not copy. Select the link and copy it by hand.",
+      "openLink": "Open {agentName}'s link",
+      "meanwhile": "Meanwhile, {agentName} is already answering through the link.",
+      "agentFallback": "your agent"
+    }
   },
   "copilot": {
     "subtitle": "Your platform assistant",
@@ -7807,6 +7834,19 @@
     "dayFri": "Fri",
     "daySat": "Sat",
     "daySun": "Sun"
+  },
+  "publicChat": {
+    "title": "{agentName} · {tenantName}",
+    "fallbackTitle": "Chat",
+    "loading": "Loading…",
+    "demoBadge": "Test page",
+    "chatRegionLabel": "Chat with {agentName}",
+    "notFoundTitle": "This link does not exist or is no longer available.",
+    "notFoundHint": "If a business sent it to you, ask them for the link again.",
+    "errorTitle": "We could not open the chat.",
+    "errorHint": "Check your connection and try again.",
+    "tryAgain": "Try again",
+    "madeWith": "Made with Parallly"
   },
   "photoManager": {
     "title": "Photos",

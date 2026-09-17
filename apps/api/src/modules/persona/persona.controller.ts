@@ -1,4 +1,6 @@
-import { BadRequestException, Controller, Get, Post, Put, Delete, Body, Param, Query, Req, Logger, UseGuards } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Post, Put, Delete, Body, Param, Query, Req, Logger, Optional, UseGuards } from '@nestjs/common';
+import { RedisService } from '../redis/redis.service';
+import { ensureDemoWidget } from '../widget/widget-demo-link';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { PersonaService } from './persona.service';
@@ -41,6 +43,9 @@ export class PersonaController {
         private readonly personaService: PersonaService,
         private readonly prisma: PrismaService,
         private readonly throttleService: TenantThrottleService,
+        // Optional so the specs that build this controller by hand keep working;
+        // without it the public link's cached name refreshes on its own TTL.
+        @Optional() private readonly redis?: RedisService,
     ) {}
 
     /**
@@ -710,9 +715,14 @@ export class PersonaController {
             }
         }
 
+        // The public link exists for every tenant, including the ones born
+        // before D11: the wizard's last step and the channels page read it here.
+        const demoLink = await ensureDemoWidget(this.prisma, tenantId, { agentName: defaultAgent?.name ?? defaultAgentName, redis: this.redis });
+
         return {
             success: true,
             data: {
+                demoLink,
                 setupWizardCompleted: settings.setupWizardCompleted || false,
                 // "Saltar" también marca completed (para no reabrir el bucle de
                 // redirect), así que sin este flag no había forma de distinguir a quien

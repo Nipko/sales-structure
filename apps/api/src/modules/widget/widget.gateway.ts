@@ -1,4 +1,6 @@
 import { WidgetMessageStore } from './widget-message-store.service';
+import { DemoAllowanceService } from '../throttle/demo-allowance.service';
+import { demoDailyCapText, widgetRateLimitedText } from './widget-demo-link';
 import { widgetPublicMessage } from './widget-message-protocol';
 import { WsRelayService } from '../redis/ws-relay.service';
 import { Interval } from '@nestjs/schedule';
@@ -49,6 +51,7 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect, 
         private readonly rateLimit: WidgetRateLimitService,
         @Optional() private readonly messages?: WidgetMessageStore,
         @Optional() private readonly relay?: WsRelayService,
+        @Optional() private readonly demoAllowance?: DemoAllowanceService,
     ) {}
 
     afterInit():void {
@@ -101,7 +104,7 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect, 
             this.rejectClient(client, 'Invalid session');
             return;
         }
-        if (!isWidgetOriginAllowed(client.handshake.headers.origin, session.allowed_domains)) {
+        if (!isWidgetOriginAllowed(client.handshake.headers.origin, session.allowed_domains, { platformHosted: session.is_demo === true })) {
             this.rejectClient(client, 'Origin not allowed');
             return;
         }
@@ -241,7 +244,7 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect, 
             this.rejectClient(client, 'Invalid session');
             return;
         }
-        if (!isWidgetOriginAllowed(client.handshake.headers.origin, session.allowed_domains)) {
+        if (!isWidgetOriginAllowed(client.handshake.headers.origin, session.allowed_domains, { platformHosted: session.is_demo === true })) {
             this.rejectClient(client, 'Origin not allowed');
             return;
         }
@@ -267,12 +270,30 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect, 
         });
         if (!messageLimit.allowed) {
             client.emit('widget:error', {
-                message: 'Rate limit exceeded',
+                message: widgetRateLimitedText(session.widget_locale),
                 code: 'rate_limited',
                 retryAfterSeconds: messageLimit.retryAfterSeconds,
             });
             client.disconnect();
             return;
+        }
+        // D11: the public link has a cap per calendar day. Reaching it is not
+        // abuse: the visitor keeps the socket and sees why the chat stopped.
+        // The session already proved the tenant may serve this widget (plan or
+        // allowance). Here the only demo-specific rule left is the daily cap of
+        // the public page.
+        const demo = session.is_demo === true;
+        if (demo) {
+            const allowance = await this.demoAllowance?.get();
+            const daily = await this.rateLimit.consumeDemoDaily({ widgetId: session.widget_id, limit: allowance?.dailyCapPerPage ?? 60 });
+            if (!daily.allowed) {
+                client.emit('widget:error', {
+                    message: demoDailyCapText(session.widget_locale),
+                    code: 'demo_daily_cap',
+                    retryAfterSeconds: daily.retryAfterSeconds,
+                });
+                return;
+            }
         }
         const capabilities = this.resolveCurrentCapabilities(session);
         if (!capabilities.formalChannel) {
@@ -292,7 +313,7 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect, 
 
         await this.streamAssistantReply(
             client, tenantId, schemaName, conversationId, contactId, data.content,
-            received.messageId,
+            received.messageId, demo,
         );
     }
 
@@ -311,6 +332,7 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect, 
         contactId: string,
         text: string,
         inboundMessageId?: string,
+        demo = (client as any).widgetSession?.is_demo === true,
     ): Promise<void> {
         client.emit('widget:typing', { isTyping: true });
         try {
@@ -319,10 +341,13 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect, 
                 {
                     inboundMessageId,
                     channelAccountId: (client as any).widgetSession?.widget_id,
-                    allowHumanHandoff: hasWidgetCapability(
+                    // A demo visitor never lands in the human inbox: the page
+                    // exists to show the agent, not to page the owner's team.
+                    allowHumanHandoff: !demo && hasWidgetCapability(
                         (client as any).widgetCapabilities as WidgetCapabilitySnapshot | undefined,
                         'human_handoff',
                     ),
+                    demo,
                 },
             );
             // Text and private provenance were committed together by the core.

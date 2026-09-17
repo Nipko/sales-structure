@@ -16,13 +16,18 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/lib/api";
 import { guidedTourAnchorId } from "@/lib/guided-tours";
-import { readSetupStatusFacts, type SetupStatusDefaultAgent } from "@/lib/onboarding-guide";
+import {
+    readSetupStatusFacts,
+    type SetupStatusDefaultAgent,
+    type SetupStatusDemoLink,
+} from "@/lib/onboarding-guide";
 import AnimatedLogo from "@/components/AnimatedLogo";
 import { prepareDraftSave, type DraftSaveAttempt } from '@/lib/agent-draft-save';
 import { HelpPanel } from "@/components/ui/help-panel";
 import WhatsAppConnectPanel from "../channels/whatsapp/WhatsAppConnectPanel";
 import SecondaryChannels from "./_components/SecondaryChannels";
 import AgentTestChat from "./_components/AgentTestChat";
+import DemoLinkCard from "./_components/DemoLinkCard";
 import {
     PRODUCT_TOUR_PENDING_KEY,
     SETUP_COPILOT_PENDING_KEY,
@@ -135,6 +140,12 @@ export default function SetupWizardPage() {
     /** Tipos de canal ya conectados SEGÚN EL SERVIDOR (no según esta sesión). */
     const [connectedTypes, setConnectedTypes] = useState<string[]>([]);
     const [deferred, setDeferred] = useState(false);
+    /**
+     * "El enlace de {Nombre}": the public page where anyone can already write
+     * to the agent (D11). It comes from setup-status because the API provisions
+     * it on day 0; this page never creates one, it only hands it out.
+     */
+    const [demoLink, setDemoLink] = useState<SetupStatusDemoLink | null>(null);
     const [workspace, setWorkspace] = useState<AgentConfigurationWorkspace | null>(null);
     const workspaceRef = useRef<AgentConfigurationWorkspace | null>(null);
     const hasAgentRef = useRef(false);
@@ -236,6 +247,7 @@ export default function SetupWizardPage() {
             if (facts?.hasAnyChannel) setChannelConnected(true);
             setConnectedTypes(facts?.connectedChannelTypes ?? []);
             if (facts?.channelConnectSkippedAt) setDeferred(true);
+            setDemoLink(facts?.demoLink ?? null);
 
             // El borrador devuelve el paso Y lo que se estaba escribiendo. Solo
             // pisa al servidor cuando difiere: si lo hace, queda marcado como
@@ -681,12 +693,22 @@ export default function SetupWizardPage() {
                                             <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                                                 {t("connect.otherChannels")}
                                             </p>
-                                            <SecondaryChannels tenantId={tenantId} onConnected={() => { setChannelConnected(true); void refreshWorkspace(); }} />
+                                            <SecondaryChannels
+                                                tenantId={tenantId}
+                                                demoLink={demoLink}
+                                                agentName={agentName}
+                                                onConnected={() => { setChannelConnected(true); void refreshWorkspace(); }}
+                                            />
                                         </div>
 
                                         <div className="mt-7 rounded-xl border border-neutral-200 bg-neutral-50 p-4 dark:border-white/10 dark:bg-white/[0.03]">
                                             <p className="text-[13px] font-medium text-foreground">{t("connectStep.laterTitle")}</p>
                                             <p className="mt-0.5 text-[12px] text-muted-foreground">{t("connectStep.laterHint")}</p>
+                                            {demoLink && (
+                                                <p className="mt-0.5 text-[12px] text-muted-foreground">
+                                                    {t("demoLink.meanwhile", { agentName: agentName.trim() || demoLink.agentName || t("demoLink.agentFallback") })}
+                                                </p>
+                                            )}
                                             <div className="mt-3 flex flex-wrap items-center gap-2">
                                                 <button
                                                     type="button"
@@ -718,6 +740,14 @@ export default function SetupWizardPage() {
                         <p className="mb-6 text-sm text-muted-foreground">
                             {deferred && !channelConnected ? t("doneStep.subtitleDeferred") : t("doneStep.subtitle")}
                         </p>
+
+                        {/* The one thing that works today, channel or no channel:
+                            the agent's public link, to try now and to share. */}
+                        {demoLink && (
+                            <div className="mb-6">
+                                <DemoLinkCard demoLink={demoLink} agentName={agentName} />
+                            </div>
+                        )}
 
                         <ol className="space-y-2">
                             {(["channel", "knowledge", "team"] as const).map((key, index) => (

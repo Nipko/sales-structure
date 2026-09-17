@@ -75,6 +75,39 @@ describe("readSetupStatusFacts", () => {
 
     expect(facts?.connectedChannelTypes).toEqual([]);
   });
+
+  describe("el enlace público del agente", () => {
+    it("lo lee tal cual lo manda el servidor", () => {
+      const facts = readSetupStatusFacts({
+        success: true,
+        data: { demoLink: { widgetId: "wgt_abc", path: "/w/wgt_abc", agentName: "Ana" } },
+      });
+
+      expect(facts?.demoLink).toEqual({ widgetId: "wgt_abc", path: "/w/wgt_abc", agentName: "Ana" });
+    });
+
+    it("sin nombre del agente sigue siendo un enlace: el nombre lo pone la pantalla", () => {
+      const facts = readSetupStatusFacts({
+        success: true,
+        data: { demoLink: { widgetId: "wgt_abc", path: "/w/wgt_abc" } },
+      });
+
+      expect(facts?.demoLink).toEqual({ widgetId: "wgt_abc", path: "/w/wgt_abc", agentName: "" });
+    });
+
+    it.each([
+      ["un API viejo que no lo manda", {}],
+      ["null", { demoLink: null }],
+      ["sin path", { demoLink: { widgetId: "wgt_abc" } }],
+      ["sin widgetId", { demoLink: { path: "/w/wgt_abc" } }],
+      // `${origin}${path}` tiene que quedarse en este origen: una URL completa o
+      // una protocolo-relativa mandaría a la persona a otro sitio.
+      ["una URL completa", { demoLink: { widgetId: "wgt_abc", path: "https://evil.test/w/x" } }],
+      ["una ruta protocolo-relativa", { demoLink: { widgetId: "wgt_abc", path: "//evil.test/w/x" } }],
+    ])("%s no es un enlace: null", (_label, data) => {
+      expect(readSetupStatusFacts({ success: true, data })?.demoLink).toBeNull();
+    });
+  });
 });
 
 describe("estado desconocido", () => {

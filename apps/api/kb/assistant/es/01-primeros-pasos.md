@@ -3,7 +3,7 @@ id: primeros-pasos
 title: "Primeros pasos y configuración inicial"
 routes: ["/admin/setup-wizard", "/admin", "/admin/channels", "/admin/agent", "/admin/settings/billing"]
 roles: ["tenant_admin"]
-keywords: ["primeros pasos", "puesta en marcha", "empezar", "registro", "crear cuenta", "onboarding", "configuracion inicial", "asistente de configuracion", "setup", "wizard", "conectar canal", "conectar whatsapp", "probar agente", "esenciales", "checklist", "tu progreso", "8/9", "tour", "trial", "nuevo usuario", "conoce a tu agente", "conectar despues", "mostrarme donde", "verificacion de correo", "siguiente paso", "cuatro esenciales", "ya responde", "cambios inmediatos"]
+keywords: ["primeros pasos", "puesta en marcha", "empezar", "registro", "crear cuenta", "onboarding", "configuracion inicial", "asistente de configuracion", "setup", "wizard", "conectar canal", "conectar whatsapp", "probar agente", "esenciales", "checklist", "tu progreso", "8/9", "tour", "trial", "nuevo usuario", "conoce a tu agente", "conectar despues", "mostrarme donde", "verificacion de correo", "siguiente paso", "cuatro esenciales", "ya responde", "cambios inmediatos", "enlace de prueba", "pagina de prueba", "mostrarselo a mi socio"]
 ---
 
 # Primeros pasos y configuración inicial
@@ -37,13 +37,15 @@ Después del alta, el panel abre **Conoce a tu agente**, un asistente de **tres 
 2. **Conecta tu canal** — WhatsApp primero, con los requisitos y el botón que abre la ventana de Meta (ver la sección siguiente); Instagram, Messenger, Telegram y el chat web se conectan desde la misma pantalla.
 3. **Listo** — si conectaste el canal, tu agente **ya responde ahí**: escríbele desde otro celular para verlo. Después, la tarjeta **Puesta en marcha** de Inicio muestra los esenciales que falten.
 
+En este paso también aparece la tarjeta **el enlace de tu agente**: una página pública — su dirección empieza con `/w/` seguida de un identificador que nunca es el nombre de tu negocio — donde cualquiera puede chatear con tu agente igual que un cliente. Existe desde el día 0, antes de conectar cualquier canal, para probarlo desde otro celular o mostrárselo a un socio. Sus acciones son **Abrir**, **Copiar enlace**, **Ponerlo en mi bio** (para Instagram → Editar perfil → Enlaces), **Mostrárselo a mi socio** (abre WhatsApp con un mensaje ya escrito) y **Las dos líneas para tu página web** (el código de inserción para quien administra tu sitio). La misma tarjeta vive también en **Administración → Canales**, siempre disponible, nunca «conectado» ni «desconectado».
+
 **Conectar después** es una salida válida: queda registrada, el asistente te deja continuar y **Inicio te lo recuerda** con la tarjeta **Puesta en marcha** y un aviso para retomar. No pierdes nada de lo que ya configuraste.
 
 Puedes reabrir el asistente cuando quieras desde **Configuración → Asistente de configuración**.
 
 ## Cómo conectar tu primer canal
 
-Sin un canal conectado, el negocio **no recibe mensajes por ese medio**. Al conectar el primer canal, tu agente predeterminado queda asignado a él y empieza a responder ahí tal como lo probaste en el chat; no hay que volver al editor. Te recomendamos empezar por **WhatsApp**, el canal más usado en Latinoamérica.
+Sin un canal conectado, el negocio **no recibe mensajes por ese medio**. Al conectar el primer canal, tu agente predeterminado queda asignado a él y empieza a responder ahí tal como lo probaste en el chat; no hay que volver al editor. Te recomendamos empezar por **WhatsApp**, el canal más usado en Latinoamérica. Mientras tanto, tu agente ya responde en el enlace de tu agente, aunque esa página no cuenta como canal conectado.
 
 Antes de conectar WhatsApp ten a mano:
 
@@ -110,6 +112,9 @@ Sí, cuando tu cuenta tenga capacidad disponible. Cada conexión usa su propio a
 
 **¿Y el canal SMS?**
 SMS no es un canal de conversación: sirve para enviar notificaciones a tus clientes mediante créditos (1 crédito = 1 segmento de mensaje).
+
+**¿Qué es «el enlace de tu agente»?**
+Es una página pública que existe desde el día 0, antes de conectar cualquier canal, donde cualquiera puede chatear con tu agente igual que un cliente. La plataforma paga sus primeros mensajes hasta un cupo por cuenta y cada página tiene un tope de mensajes por día; al llegar al límite el propio chat lo dice y sigue al día siguiente o cuando actives tu plan. No cuenta como canal conectado: la tarjeta **Puesta en marcha** sigue pidiendo un canal real (WhatsApp, Instagram, Messenger, Telegram o el chat web de tu sitio).
 
 **Me salté el asistente, ¿cómo lo retomo?**
 Desde **Configuración → Asistente de configuración**, o directo en la ruta `/admin/setup-wizard`. También puedes configurar cada pieza por separado desde los menús **Agente IA** y **Canales**: la tarjeta **Puesta en marcha** de Inicio muestra los esenciales pendientes y, cuando ese paso tiene recorrido, su botón **Mostrarme dónde**.

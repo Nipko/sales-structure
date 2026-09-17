@@ -3,7 +3,9 @@
 import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
-import { Instagram, Facebook, Send, Globe, ArrowRight, ChevronDown, Loader2 } from "lucide-react";
+import { buildDemoLinkUrl } from "@/lib/widget-snippet";
+import type { SetupStatusDemoLink } from "@/lib/onboarding-guide";
+import { Instagram, Facebook, Send, Link2, ArrowRight, ChevronDown, Loader2, ExternalLink } from "lucide-react";
 
 const META_APP_ID = process.env.NEXT_PUBLIC_META_APP_ID || "";
 const MESSENGER_CONFIG_ID = process.env.NEXT_PUBLIC_MESSENGER_FB_LOGIN_CONFIG_ID || "1288798860026149";
@@ -11,7 +13,12 @@ const INSTAGRAM_APP_ID = process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID || "1472258884
 const INSTAGRAM_REDIRECT_URI = process.env.NEXT_PUBLIC_INSTAGRAM_REDIRECT_URI || "https://admin.parallly-chat.cloud/admin/channels/instagram/callback";
 
 interface Props {
+    /** Kept for the caller's sake; every connection here is tenant-scoped by the session already. */
     tenantId: string;
+    /** "El enlace de {Nombre}", from setup-status. Null hides the entry: nothing is created here. */
+    demoLink?: SetupStatusDemoLink | null;
+    /** The name the wizard is showing; it wins over what setup-status returned. */
+    agentName?: string;
     onConnected?: () => void;
 }
 
@@ -20,11 +27,14 @@ interface Props {
  *  - Telegram: form inline (bot token).
  *  - Messenger: FB.login() vía SDK (popup propio de Meta, el wizard sigue montado).
  *  - Instagram: popup OAuth + BroadcastChannel("ig_oauth") de retorno.
- *  - Webchat: 1 click crea el widget.
- * Todos los inline llaman onConnected() al conectar → el wizard avanza a "Descúbrelo".
+ *  - El enlace de {Nombre}: abre la página pública en otra pestaña. Antes esta
+ *    entrada era "Chat web" y creaba un widget NUEVO en cada clic; el enlace
+ *    existe desde el día 0, así que acá no se crea nada.
+ * Los tres que conectan llaman onConnected() al conectar → el wizard avanza a "Listo".
  */
-export default function SecondaryChannels({ tenantId, onConnected }: Props) {
+export default function SecondaryChannels({ demoLink, agentName, onConnected }: Props) {
     const t = useTranslations("setupWizard.connect");
+    const tw = useTranslations("setupWizard");
     const tc = useTranslations("common");
 
     const [busy, setBusy] = useState<string | null>(null);       // canal conectándose
@@ -120,15 +130,7 @@ export default function SecondaryChannels({ tenantId, onConnected }: Props) {
         }, 600);
     };
 
-    const connectWebchat = async () => {
-        setBusy("webchat"); clearError("webchat");
-        try {
-            await api.fetch(`/widgets/${tenantId}`, { method: "POST", body: JSON.stringify({ name: "Web Chat" }) });
-            onConnected?.();
-        } catch (err: any) {
-            setError("webchat", err?.message || err?.data?.message || tc("connectionError"));
-        } finally { setBusy(null); }
-    };
+    const demoName = (agentName ?? "").trim() || demoLink?.agentName || tw("demoLink.agentFallback");
 
     const cardCls = "flex items-center gap-3 p-3 rounded-xl border border-neutral-200 dark:border-white/10 bg-white dark:bg-white/[0.04] hover:border-indigo-500/30 text-left transition-all cursor-pointer disabled:opacity-60 disabled:cursor-default";
 
@@ -150,11 +152,27 @@ export default function SecondaryChannels({ tenantId, onConnected }: Props) {
                 <ChannelButton id="instagram" icon={Instagram} color="#E4405F" onClick={connectInstagram} />
                 <ChannelButton id="messenger" icon={Facebook} color="#0084FF" onClick={connectMessenger} />
                 <ChannelButton id="telegram" icon={Send} color="#0088CC" onClick={() => setTgOpen((v) => !v)} expandable />
-                <ChannelButton id="webchat" icon={Globe} color="#00b894" onClick={connectWebchat} />
+                {demoLink && (
+                    // A real link: it opens the public page in a new tab and
+                    // posts nothing. Reachable by Tab without any extra wiring.
+                    <a
+                        href={buildDemoLinkUrl(demoLink.path)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label={`${tw("demoLink.openLink", { agentName: demoName })} (${tw("discover.opensInNewTab")})`}
+                        className={cardCls}
+                    >
+                        <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white shrink-0" style={{ background: "#00b894" }}>
+                            <Link2 size={16} aria-hidden="true" />
+                        </div>
+                        <span className="text-[13px] text-foreground flex-1">{tw("demoLink.openLink", { agentName: demoName })}</span>
+                        <ExternalLink size={14} aria-hidden="true" className="text-muted-foreground shrink-0" />
+                    </a>
+                )}
             </div>
 
             {/* Errores inline por canal */}
-            {(["instagram", "messenger", "webchat"] as const).map((id) => errors[id] ? (
+            {(["instagram", "messenger"] as const).map((id) => errors[id] ? (
                 <p key={id} className="text-[12px] text-rose-500 mt-1.5">{t(`channel_${id}`)}: {errors[id]}</p>
             ) : null)}
 

@@ -1,4 +1,6 @@
 import { isCanonicalConsentRecovery, canonicalConsentRecoveryDirective } from './canonical-consent-recovery';
+import { DemoAllowanceService } from '../throttle/demo-allowance.service';
+import { demoAllowanceExhaustedText } from '../widget/widget-demo-link';
 import { projectAvailableService } from '../appointments/service-price-status';
 import { servedAgentAuthority, type ServedAgentAuthority } from '../persona/served-agent-authority';
 import { LearningService } from '../learning/learning.service';
@@ -520,6 +522,7 @@ export class ConversationsService {
         private turnCapabilityComposer?: TurnCapabilityComposerService,
         @Optional() private readonly learning?: LearningService,
         @Optional() private readonly widgetAgentReplies?: WidgetAgentReplyStore,
+        @Optional() private readonly demoAllowance?: DemoAllowanceService,
         @Optional() private readonly dispatchOutbox?: AgentDispatchOutboxStore,
         // Compatibility injection for release tooling. Durable delivery is now
         // mandatory and never branches on this validation cohort.
@@ -5770,7 +5773,7 @@ export class ConversationsService {
         conversationId: string,
         contactId: string,
         text: string,
-        options?: { allowHumanHandoff?: boolean; channelAccountId?: string; inboundMessageId?: string },
+        options?: { allowHumanHandoff?: boolean; channelAccountId?: string; inboundMessageId?: string; demo?: boolean },
     ): Promise<WidgetAgentReplyReceipt | null> {
         const inboundMessageId = options?.inboundMessageId;
         if (!inboundMessageId || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(inboundMessageId))
@@ -5813,6 +5816,9 @@ export class ConversationsService {
         const widgetQuotaEffectId = `web_widget:${inboundMessageId}`;
         let widgetQuotaHeld = false;
         let widgetQuotaCommitted = false;
+        // Which counter holds the reservation, so the finally block releases the
+        // one that was actually taken.
+        let widgetQuotaLane: 'plan' | 'demo' = 'plan';
         try {
             const conversations = await this.prisma.executeInTenantSchema<any[]>(schemaName,
                 'SELECT * FROM conversations WHERE id = $1::uuid AND contact_id = $2::uuid AND channel_type = $3 LIMIT 1',
@@ -5823,7 +5829,13 @@ export class ConversationsService {
                 throw new Error('widget_conversation_scope_mismatch');
             if (conversation.status === 'waiting_human' || conversation.status === 'with_human') return null;
             const plan = await this.throttle.getPlanFeatures(tenantId);
-            if (plan.widget !== true) return null;
+            // The public link (D11/D19) is paid by the platform ONLY while the
+            // tenant's plan does not include the web chat. The moment it does,
+            // the same link runs on the plan like any other web chat — which is
+            // what makes "cuando el negocio active su plan, el chat sigue" true.
+            const demoTurn = options?.demo === true && plan.widget !== true;
+            const demoAllowance = demoTurn ? await this.demoAllowance?.get() : null;
+            if (demoTurn ? demoAllowance?.enabled === false : plan.widget !== true) return null;
             const concurrentReceipt = await this.widgetAgentReplies.lookup(tenantId, binding);
             if (concurrentReceipt) return concurrentReceipt;
             const replyKey = 'widget:reply:' + tenantId + ':' + inboundMessageId;
@@ -5875,14 +5887,18 @@ export class ConversationsService {
                 if (!this.isWithinBusinessHours(config, businessHours) && config.hours?.aiOutsideHours === false) {
                     reply = config.hours?.afterHoursMessageOverride || businessHours?.afterHoursMessage || config.hours?.afterHoursMessage || null;
                 } else {
-                    const usage = await this.throttle.getAiMessageUsage(tenantId);
-                    const reservation = await this.throttle.reserveAiMessageCount(
-                        tenantId, widgetQuotaEffectId, usage.limit,
-                    );
+                    // A demo reply is reserved against the platform-paid lifetime
+                    // counter, so the owner's plan quota and usage card never see it.
+                    const reservation = demoTurn
+                        ? await this.throttle.reserveDemoMessageCount(tenantId, widgetQuotaEffectId, demoAllowance?.messagesPerTenant ?? 0)
+                        : await this.throttle.reserveAiMessageCount(
+                            tenantId, widgetQuotaEffectId, (await this.throttle.getAiMessageUsage(tenantId)).limit,
+                        );
                     if (!reservation.allowed) {
-                        reply = await this.buildQuotaFallbackMessage(tenantId);
+                        reply = demoTurn ? demoAllowanceExhaustedText(language) : await this.buildQuotaFallbackMessage(tenantId);
                     } else {
                         widgetQuotaHeld = true;
+                        widgetQuotaLane = demoTurn ? 'demo' : 'plan';
                         await this.persistConversationPersonaResolution(schemaName, conversationId, personaResolution);
                         reply = await this.generateResponse(
                             tenantId, conversation, msg, config, contact, leads?.[0],
@@ -5892,7 +5908,8 @@ export class ConversationsService {
                             operationalScope, replyProvenance,
                         );
                         if (reply && !isErrorFallback(reply)) {
-                            await this.throttle.commitAiMessageCount(tenantId, widgetQuotaEffectId);
+                            if (demoTurn) await this.throttle.commitDemoMessageCount(tenantId, widgetQuotaEffectId);
+                            else await this.throttle.commitAiMessageCount(tenantId, widgetQuotaEffectId);
                             widgetQuotaCommitted = true;
                         }
                     }
@@ -5938,7 +5955,9 @@ export class ConversationsService {
                 operationalScope, learningFootprints: [...replyProvenance.getFootprints()], text: reply });
         } finally {
             if (widgetQuotaHeld && !widgetQuotaCommitted) {
-                await this.throttle.releaseAiMessageCount(tenantId, widgetQuotaEffectId)
+                await (widgetQuotaLane === 'demo'
+                    ? this.throttle.releaseDemoMessageCount(tenantId, widgetQuotaEffectId)
+                    : this.throttle.releaseAiMessageCount(tenantId, widgetQuotaEffectId))
                     .catch(error => this.logger.warn(`Widget AI message reservation release failed: ${error.message}`));
             }
             clearInterval(heartbeat);

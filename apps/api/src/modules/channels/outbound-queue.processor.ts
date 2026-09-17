@@ -22,7 +22,7 @@ import { TenantNotificationSmsService } from '../sms-credits/tenant-notification
 import { PrismaService } from '../prisma/prisma.service';
 import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription-entitlement.util';
 import { AgentDispatchOutboxStore } from './agent-dispatch-outbox.store';
-import { DISPATCH_TERMINAL_STATES, DISPATCH_MAX_ATTEMPTS } from './agent-dispatch-outbox';
+import { DISPATCH_TERMINAL_STATES, DISPATCH_MAX_ATTEMPTS, DispatchOutboxError, type DispatchRow } from './agent-dispatch-outbox';
 import { transportNotAvailable } from './strict-dispatch-transport';
 import { dispatchPriceFacts } from './dispatch-price-facts';
 import { OutboundQueueService } from './outbound-queue.service';
@@ -252,13 +252,53 @@ export class OutboundQueueProcessor extends WorkerHost {
         };
 
         const preflight = async (errorCode: string, options?: { permanent?: boolean; retryInSeconds?: number }) => {
-            const row = await this.dispatchOutbox!.failPreflight(tenantId, dispatchId, { errorCode, ...options });
+            let row: DispatchRow;
+            try {
+                row = await this.dispatchOutbox!.failPreflight(tenantId, dispatchId, { errorCode, ...options });
+            } catch (error) {
+                // ── A REFUSAL THAT ARRIVES AFTER THE ROW ALREADY ENDED ──────
+                //
+                // The row was read open at the top of this method, and ended
+                // before the refusal reached it: another execution of this
+                // same job settled it, or admission suppressed it in its own
+                // committed transaction. The store rightly refuses to write
+                // over that decision — and letting its refusal escape failed
+                // the job into Sentry (`dispatch_terminal:suppressed`,
+                // 2026-09-17) about something already recorded, with nothing
+                // left that anyone could do.
+                //
+                // So it ends the way the early terminal check ends it. Only a
+                // TERMINAL row: `dispatch_lease_active` still escapes, because
+                // `admitted` is not a decision — the holder's outcome is the
+                // thing still missing, and completing this job would close
+                // work nobody knows the result of.
+                const code = error instanceof DispatchOutboxError ? error.code : '';
+                if (!code.startsWith('dispatch_terminal:')) throw error;
+                const state = code.slice('dispatch_terminal:'.length);
+                // Deliberately not the `<id> <state> (<code>)` shape above: that
+                // line counts refusals that WERE recorded, and this one was not.
+                this.logger.warn(`[Dispatch] ${dispatchId} refusal ${errorCode} not recorded: `
+                    + `the row had already ended as ${state}`);
+                return `dispatch:${state}`;
+            }
             this.logger.warn(`[Dispatch] ${dispatchId} ${row.state} (${errorCode}) attempts=${row.attempts}`);
             // A row that may still be admitted keeps its job, rescheduled to the
             // date the database chose. Only a terminal row completes the job.
             if (row.state === 'failed') await waitUntil(row.availableAt, errorCode);
             return `dispatch:${row.state}:${errorCode}`;
         };
+
+        // ── ERASURE CAN EMPTY A ROW THAT STILL HAS A JOB ─────────────────────
+        //
+        // A `failed` row keeps a delayed job, and erasure redacts rows in every
+        // state. When that job fires the binding is gone, and the lines below
+        // read `binding.channelType` — a TypeError into Sentry, with the row
+        // left `failed` and redacted, which recovery never republishes. Admission
+        // would refuse it as `dispatch_redacted` and suppress it; this reaches
+        // the same answer without first dereferencing what erasure removed.
+        if (existing.redacted || !existing.binding) {
+            return preflight('dispatch_redacted', { permanent: true });
+        }
 
         const entitlement = await resolveTenantSubscriptionAccess(this.prisma, tenantId, 'write');
         if (!entitlement.allowed) {
@@ -277,7 +317,16 @@ export class OutboundQueueProcessor extends WorkerHost {
             accessToken = (await this.channelToken.getChannelToken(tenantId,
                 existing.binding!.channelType as any, existing.binding!.channelAccountId)).accessToken;
         } catch (error: any) {
-            return preflight(`channel_credentials_unavailable:${String(error?.message || '').slice(0, 60)}`);
+            // The refusal's CODE when there is one. Its message starts "Could
+            // not resolve a whatsapp connection for tenant …", so sixty
+            // characters of it end inside the tenant id and every refusal —
+            // a disconnected number, the provider's own token
+            // (`credential_not_client_scoped`), a storage blip — was recorded
+            // as the same string. The row and the log line are all an operator
+            // has to tell them apart.
+            const reason = isConnectionRefusal(error)
+                ? error.code : String(error?.message || '').slice(0, 60);
+            return preflight(`channel_credentials_unavailable:${reason}`);
         }
 
         let admitted;
@@ -287,6 +336,25 @@ export class OutboundQueueProcessor extends WorkerHost {
             const code = String(error?.code || error?.message || 'admission_failed');
             if (code.startsWith('dispatch_terminal:')) return `dispatch:${code}`;
             if (code === 'dispatch_lease_active') return 'dispatch:lease_held_elsewhere';
+            if (code === 'dispatch_effect_superseded') {
+                // ── ADMISSION ALREADY DECIDED, AND COMMITTED IT ─────────────
+                //
+                // The agent changed, the reminder's appointment moved, or the
+                // person who wrote this lost the right to send it. `admit`
+                // suppressed the row in its own transaction, with the reason
+                // (`agent_…`, `proactive_…`, `human_…`), and only then said so.
+                //
+                // This code used to fall through to the generic permanent
+                // preflight below, which reopened a row that was already
+                // suppressed and threw `dispatch_terminal:suppressed` — no race
+                // required, every time. There is nothing to record: the row is
+                // read back only so the job and the log name the real reason.
+                const ended = await this.dispatchOutbox!.read(tenantId, dispatchId).catch(() => null);
+                const state = ended?.state ?? 'suppressed';
+                const reason = ended?.errorCode ?? code;
+                this.logger.warn(`[Dispatch] ${dispatchId} ${state} (${reason}) attempts=${ended?.attempts ?? '?'}`);
+                return `dispatch:${state}:${reason}`;
+            }
             if (code === 'dispatch_awaiting_predecessor') {
                 // A stray or early job. The chain below is what normally brings
                 // this item back; parking briefly keeps it as a safety net.

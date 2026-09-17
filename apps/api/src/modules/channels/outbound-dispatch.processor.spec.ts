@@ -2,6 +2,7 @@ import { DelayedError } from 'bullmq';
 import { OutboundQueueProcessor } from './outbound-queue.processor';
 import { DispatchOutboxError, type DispatchRow } from './agent-dispatch-outbox';
 import type { StrictDispatchOutcome } from './strict-dispatch-transport';
+import { ConnectionRefusedError } from './connection-refusal';
 import { permissiveSpendGate, resolvingChannelToken, openPauseStore } from './__fixtures__/spend-gate-double';
 
 const tenantId = '11111111-1111-4111-8111-111111111111';
@@ -224,5 +225,100 @@ describe('OutboundQueueProcessor durable dispatch', () => {
         await expect(h.processor.process(h.job)).resolves.toBe('dispatch:lease_held_elsewhere');
         expect(h.dispatchOutbox.failPreflight).not.toHaveBeenCalled();
         expect(h.sendStrict).not.toHaveBeenCalled();
+    });
+
+    describe('a refusal that arrives after the row already ended', () => {
+        it('ends the job like the early terminal check instead of failing it into Sentry', async () => {
+            // Production, 2026-09-17: `dispatch_terminal:suppressed` thrown out of
+            // the preflight. The row ended between the processor's read and the
+            // refusal, so there was nothing left to record — the throw only
+            // failed the job and paged somebody about a decision already made.
+            const h = harness({ credentials: false });
+            h.dispatchOutbox.failPreflight.mockRejectedValueOnce(
+                new DispatchOutboxError('dispatch_terminal:suppressed'));
+            await expect(h.processor.process(h.job, 'worker-token')).resolves.toBe('dispatch:suppressed');
+            expect(h.dispatchOutbox.failPreflight).toHaveBeenCalledTimes(1);
+            expect(h.dispatchOutbox.admit).not.toHaveBeenCalled();
+            expect(h.sendStrict).not.toHaveBeenCalled();
+            // A terminal row keeps no job: parking it would only bring the same
+            // answer back later.
+            expect(h.job.moveToDelayed).not.toHaveBeenCalled();
+        });
+
+        it('does the same for every terminal state, not only suppressed', async () => {
+            for (const state of ['sent', 'stored', 'reconciliation_required'] as const) {
+                const h = harness({ strict: false });
+                h.dispatchOutbox.failPreflight.mockRejectedValueOnce(
+                    new DispatchOutboxError(`dispatch_terminal:${state}`));
+                await expect(h.processor.process(h.job)).resolves.toBe(`dispatch:${state}`);
+                expect(h.sendStrict).not.toHaveBeenCalled();
+            }
+        });
+
+        it('keeps a live or lapsed permission somebody else holds an error, as before', async () => {
+            // Not the same problem. `admitted` is not a decision that was made:
+            // the holder's outcome is still missing, and completing this job
+            // would close the work with nobody knowing whether it was sent.
+            const h = harness({ credentials: false });
+            h.dispatchOutbox.failPreflight.mockRejectedValueOnce(new DispatchOutboxError('dispatch_lease_active'));
+            await expect(h.processor.process(h.job)).rejects.toMatchObject({ code: 'dispatch_lease_active' });
+            expect(h.sendStrict).not.toHaveBeenCalled();
+        });
+
+        it('keeps any other failure to record the refusal an error, as before', async () => {
+            const h = harness({ credentials: false });
+            const broken = new Error('could not write the refusal');
+            h.dispatchOutbox.failPreflight.mockRejectedValueOnce(broken);
+            await expect(h.processor.process(h.job)).rejects.toBe(broken);
+        });
+
+        it('does not record a second refusal over the suppression admission already committed', async () => {
+            // The deterministic way to reach the production throw, with no race
+            // at all: the agent was edited (or the reminder cancelled, or the
+            // operator removed) while the reply waited. `admit` suppresses the
+            // row in its own transaction, commits, and says
+            // `dispatch_effect_superseded`. That code used to fall through to the
+            // generic permanent preflight, which re-opened the row, found it
+            // suppressed and threw `dispatch_terminal:suppressed`.
+            const h = harness({ admit: async () => { throw new DispatchOutboxError('dispatch_effect_superseded'); } });
+            h.dispatchOutbox.read
+                .mockResolvedValueOnce(row())
+                .mockResolvedValueOnce(row({ state: 'suppressed', attempts: 1,
+                    errorCode: 'agent_agent_operational_revision_changed' }));
+            await expect(h.processor.process(h.job))
+                .resolves.toBe('dispatch:suppressed:agent_agent_operational_revision_changed');
+            expect(h.dispatchOutbox.failPreflight).not.toHaveBeenCalled();
+            expect(h.dispatchOutbox.settle).not.toHaveBeenCalled();
+            expect(h.sendStrict).not.toHaveBeenCalled();
+        });
+    });
+
+    it('suppresses a row erasure emptied while its job waited, instead of crashing on the binding', async () => {
+        // A `failed` row keeps a delayed job. Erasure redacts rows in every
+        // state, so when that job fires the binding is null — and reading
+        // `binding.channelType` threw a TypeError before admission, which is
+        // the one step that knows a redacted row can never be sent.
+        const h = harness({ current: row({ state: 'failed', attempts: 1, redacted: true,
+            binding: null, payload: null }) });
+        await expect(h.processor.process(h.job)).resolves.toBe('dispatch:suppressed:dispatch_redacted');
+        expect(h.dispatchOutbox.failPreflight).toHaveBeenCalledWith(tenantId, dispatchId,
+            { errorCode: 'dispatch_redacted', permanent: true });
+        expect(h.channelGateway.getStrictTransport).not.toHaveBeenCalled();
+        expect(h.sendStrict).not.toHaveBeenCalled();
+    });
+
+    it('records WHICH connection refusal stopped the credential, not the first words of its prose', async () => {
+        // The message is "Could not resolve a whatsapp connection for tenant …",
+        // and the sixty characters kept of it end inside the tenant id. The code
+        // — `credential_not_client_scoped`, `connection_disconnected`,
+        // `connection_state_unreadable` — was the part an operator needed.
+        const h = harness();
+        (h as any).processor.channelToken.getChannelToken = jest.fn(async () => {
+            throw new ConnectionRefusedError('credential_not_client_scoped',
+                { tenantId, channelType: 'whatsapp', requestedAccountId: 'phone-1', detail: 'provider_system_user' });
+        });
+        await expect(h.processor.process(h.job, 'worker-token')).rejects.toBeInstanceOf(DelayedError);
+        expect(h.dispatchOutbox.failPreflight).toHaveBeenCalledWith(tenantId, dispatchId,
+            { errorCode: 'channel_credentials_unavailable:credential_not_client_scoped' });
     });
 });

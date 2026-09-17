@@ -8,11 +8,23 @@ import { guidedTourAnchorId } from "@/lib/guided-tours";
 import {
   EMBEDDED_SIGNUP_FINISH_EVENTS,
   EmbeddedSignupSessionData,
+  EmbeddedSignupTerminalEvent,
+  admitAuthorizationCode,
   buildEmbeddedSignupLoginOptions,
   extractEmbeddedSignupSessionData,
   getEmbeddedSignupErrorDetails,
   parseEmbeddedSignupEvent,
 } from "./embedded-signup-events";
+import {
+  ConnectFailure,
+  isRecord,
+  mapConnectFailure,
+  readOnboardingId,
+  readServerDiagnostics,
+  readServerUserMessage,
+} from "./connect-failure";
+
+export { mapConnectFailure };
 
 // ============================================
 // Types
@@ -50,24 +62,6 @@ interface FacebookLoginResponse {
   message?: unknown;
 }
 
-/**
- * A failure the person can act on: what happened, and the one thing to do next.
- *
- * Until now every one of these arrived as raw Spanish prose from the WhatsApp
- * service — untranslated for three of our four locales, and with no next step
- * attached. The service already emits stable codes; this maps them.
- */
-interface ConnectFailure {
-  /** i18n key under `channels.whatsapp.errors`. */
-  key: string;
-  /** Server prose, kept as a detail line when it adds something. */
-  detail?: string;
-  /** Where the fix lives, when it is another screen. */
-  href?: string;
-  hrefLabelKey?: string;
-  retryable: boolean;
-}
-
 // ============================================
 // WhatsApp Service API base
 // ============================================
@@ -94,99 +88,17 @@ const META_WINDOW_FOCUS_PROBE_MS = 4_000;
 /** Below this width the Meta flow is genuinely painful; say so before the click. */
 const MOBILE_BREAKPOINT_PX = 768;
 
-/** Service code → i18n key. Both prefixed and bare forms are seen in the wild. */
-const ERROR_KEY_BY_CODE: Record<string, string> = {
-  WA_ES_DUPLICATE_CUSTOMER_BINDING: "onboardingInProgress",
-  WHATSAPP_TOKEN_COVERAGE_REQUIRED: "tokenCoverage",
-  WHATSAPP_TOKEN_MISSING_WABA_SCOPE: "tokenCoverage",
-  PLAN_LIMIT_REACHED: "planLimit",
-  CHANNEL_ACCESS_DENIED: "channelNotInPlan",
-  CHANNEL_ENTITLEMENT_CHECK_UNAVAILABLE: "entitlementUnavailable",
-  WA_ES_CONFIG_INVALID: "invalidConfig",
-  WA_ES_PHONE_REGISTRATION_FAILED: "phoneRegistration",
-  WA_ES_PERMISSIONS_INSUFFICIENT: "permissions",
-  WA_ES_COEXISTENCE_NOT_ACKNOWLEDGED: "coexistenceNotAcknowledged",
-  WA_ES_CODE_EXPIRED: "codeExpired",
-  WA_ES_RATE_LIMITED: "rateLimited",
-  WA_ES_TENANT_NOT_FOUND: "invalidConfig",
-};
-
-const RETRYABLE_ERROR_KEYS = new Set([
-  "network",
-  "onboardingInProgress",
-  "entitlementUnavailable",
-  "rateLimited",
-  "codeExpired",
-  "popupBlocked",
-  "generic",
-]);
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function readServerErrorCode(body: unknown): string | null {
-  if (!isRecord(body)) return null;
-  const direct = body.code ?? body.errorCode;
-  if (typeof direct === "string" && direct) return direct.toUpperCase();
-  // Nest wraps the thrown object under `message` for some exception filters.
-  if (isRecord(body.message)) return readServerErrorCode(body.message);
-  return null;
-}
-
 /**
- * Lo ÚNICO del servidor que se le puede mostrar a una persona.
+ * Every authorization code this page already offered to the server, or refused.
  *
- * `userMessage` es el campo que el servicio escribe pensado para leerse; el
- * resto no. `message` en un 500 sin mapear de Nest vale literalmente "Internal
- * server error", y así salía impreso bajo la tarjeta ámbar, en inglés, en las
- * cuatro configuraciones de idioma.
+ * Module scope on purpose, not a ref: the Facebook SDK that re-delivers a
+ * stale `authResponse.code` lives on `window.FB`, one per page load, while this
+ * component mounts more than once in that same page — the connect card, the
+ * "add another number" panel after a success, the setup panel. A per-instance
+ * memory forgets exactly the code the SDK still remembers. Meta codes are
+ * single-use, so there is never a reason to send one twice.
  */
-function readServerUserMessage(body: unknown): string | undefined {
-  if (!isRecord(body)) return undefined;
-  const direct = body.userMessage;
-  if (typeof direct === "string" && direct.trim()) return direct.trim();
-  if (isRecord(body.message)) return readServerUserMessage(body.message);
-  return undefined;
-}
-
-/** Prosa técnica del servidor: sirve para la consola, nunca para la pantalla. */
-function readServerDiagnostics(body: unknown): string | undefined {
-  if (!isRecord(body)) return undefined;
-  for (const candidate of [body.message, body.error]) {
-    if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
-  }
-  if (isRecord(body.message)) return readServerDiagnostics(body.message);
-  return undefined;
-}
-
-function readOnboardingId(body: unknown): string | null {
-  if (!isRecord(body)) return null;
-  for (const key of ["onboardingId", "id", "existingOnboardingId"]) {
-    const value = body[key];
-    if (typeof value === "string" && value.trim()) return value.trim();
-  }
-  if (isRecord(body.message)) return readOnboardingId(body.message);
-  return null;
-}
-
-/** Map a failed `/onboarding/start` into something with a next step. */
-export function mapConnectFailure(status: number, body: unknown): ConnectFailure {
-  const code = readServerErrorCode(body);
-  const key = (code && ERROR_KEY_BY_CODE[code])
-    || (status === 409 ? "onboardingInProgress" : null)
-    || (status === 402 || status === 403 ? "channelNotInPlan" : null)
-    || "generic";
-  const serverRetryable = isRecord(body) && typeof body.retryable === "boolean" ? body.retryable : null;
-
-  return {
-    key,
-    detail: readServerUserMessage(body),
-    href: key === "planLimit" ? "/admin/settings/billing" : undefined,
-    hrefLabelKey: key === "planLimit" ? "goToBilling" : undefined,
-    retryable: serverRetryable ?? RETRYABLE_ERROR_KEYS.has(key),
-  };
-}
+const handledAuthorizationCodes = new Set<string>();
 
 /** Bounded warning codes; anything else is shown verbatim as the server wrote it. */
 export const KNOWN_WHATSAPP_WARNINGS = [
@@ -225,7 +137,10 @@ export default function WhatsAppEmbeddedSignup({ tenantId, mode = "standard", on
   }, []);
   // Use a ref to capture session data from window message (available immediately, no React state delay)
   const sessionDataRef = useRef<EmbeddedSignupSessionData>({});
-  const terminalEventRef = useRef<"cancel" | "error" | null>(null);
+  const terminalEventRef = useRef<EmbeddedSignupTerminalEvent>(null);
+  // Meta posted FINISH for the current launch: only then can a code that
+  // follows a CANCEL/ERROR be a real authorization and not SDK leftovers.
+  const finishSeenRef = useRef(false);
   const onErrorRef = useRef(onError);
   const tRef = useRef(t);
 
@@ -286,6 +201,7 @@ export default function WhatsAppEmbeddedSignup({ tenantId, mode = "standard", on
       metaSignalRef.current = true;
 
       if (EMBEDDED_SIGNUP_FINISH_EVENTS.has(embeddedEvent.event)) {
+        finishSeenRef.current = true;
         // Store synchronously so handleFBResponse can include Meta's customer-owned IDs.
         sessionDataRef.current = {
           business_id: embeddedEvent.session.business_id ?? sessionDataRef.current.business_id,
@@ -375,8 +291,21 @@ export default function WhatsAppEmbeddedSignup({ tenantId, mode = "standard", on
         metaSignalRef.current = true;
         clearWindowWatchdog();
 
-        if (!response.authResponse?.code) {
-          const terminalEventAlreadyReported = terminalEventRef.current !== null;
+        // Decided and, when there is a code, recorded as spent for this page in
+        // the same call — before any request below. Sent or refused as
+        // leftovers, a second callback carrying it (even one arriving during
+        // the exchange) can never race the same code to the server.
+        const decision = admitAuthorizationCode(response.authResponse?.code, handledAuthorizationCodes, {
+          terminalEvent: terminalEventRef.current,
+          finishSeen: finishSeenRef.current,
+        });
+        // A CANCEL/ERROR card for this launch is already on screen: it is the
+        // truth about what happened and nothing below may replace it.
+        const terminalEventAlreadyReported = terminalEventRef.current !== null;
+        // The callback closes the launch, whatever it carried.
+        terminalEventRef.current = null;
+
+        if (decision.action === "no_code") {
           const details = getEmbeddedSignupErrorDetails(response);
           if (!terminalEventAlreadyReported) {
             reportFailure(
@@ -388,12 +317,26 @@ export default function WhatsAppEmbeddedSignup({ tenantId, mode = "standard", on
           } else if (mountedRef.current) {
             setLaunching(false);
           }
-          terminalEventRef.current = null;
           return;
         }
 
-        const code = response.authResponse.code;
-        terminalEventRef.current = null;
+        if (decision.action !== "submit") {
+          // El SDK de Meta devolvió un código de un intento anterior porque la
+          // ventana se cerró sin terminar. Mandarlo al servidor sólo produce
+          // "This authorization code has been used" y una tarjeta de error de
+          // conexión para alguien que únicamente cerró la ventana. Se le dice
+          // lo que pasó —no hubo autorización nueva— con el botón de reintentar
+          // a la vista. El código no va a la consola: sigue siendo una credencial.
+          console.warn("[EmbeddedSignup] Ignored an authorization code that was not new:", decision.action);
+          if (!terminalEventAlreadyReported) {
+            reportFailure({ key: "authorization", retryable: true }, t("metaAuthorizationError"));
+          } else if (mountedRef.current) {
+            setLaunching(false);
+          }
+          return;
+        }
+
+        const code = decision.code;
 
         // Extract session info: try authResponse first, then ref from window message (synchronous)
         const authSession = extractEmbeddedSignupSessionData(response.authResponse);
@@ -539,6 +482,7 @@ export default function WhatsAppEmbeddedSignup({ tenantId, mode = "standard", on
 
     sessionDataRef.current = {};
     terminalEventRef.current = null;
+    finishSeenRef.current = false;
     metaSignalRef.current = false;
     focusLostRef.current = false;
     setFailure(null);

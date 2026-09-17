@@ -2049,6 +2049,10 @@ export const api = {
     // --- Plan management (super_admin) ---
     getWhatsappFundingReadiness: () => apiGet<{ numbers: any[] }>('/whatsapp/spend/funding-readiness'),
     checkWhatsappFunding: (phoneNumberId: string) => apiPost('/channels/whatsapp/connection/check-funding', { phoneNumberId }),
+    // The only writer of `channel_accounts.waba_timezone`. Without it the spend
+    // admission refuses every chargeable send of that number (`timezone_missing`).
+    setWhatsappBillingTimeZone: (phoneNumberId: string, timeZone: string) =>
+        apiPost<{ phoneNumberId: string; timeZone: string; alsoApplied: string[] }>('/channels/whatsapp/connection/billing-timezone', { phoneNumberId, timeZone }),
     getAdminLlmSpend: () => apiGet<any>('/billing-admin/llm-spend'),
     getAdminPlans: () => apiGet('/billing-admin/plans'),
     getAdminPlan: (slug: string) => apiGet(`/billing-admin/plans/${slug}`),

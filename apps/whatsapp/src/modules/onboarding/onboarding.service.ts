@@ -5,11 +5,20 @@ import {
   NotFoundException,
   ConflictException,
   ForbiddenException,
+  HttpException,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
-import { MetaGraphService, MetaApiError, WabaInfo } from '../meta-graph/meta-graph.service';
+import {
+  MetaGraphService,
+  MetaApiError,
+  MetaReadFailure,
+  WabaInfo,
+  TokenDebugInfo,
+  META_RATE_LIMITED_USER_MESSAGE,
+  classifyMetaReadFailure,
+} from '../meta-graph/meta-graph.service';
 import { AuditService } from '../audit/audit.service';
 import { StartOnboardingDto } from './dto/start-onboarding.dto';
 import { Cron } from '@nestjs/schedule';
@@ -21,8 +30,11 @@ import {
 } from '../../common/enums/onboarding-status.enum';
 import {
   OnboardingErrorCode,
-  RETRYABLE_ERRORS,
+  ONBOARDING_GATE_CODES,
+  isRelaunchableFailure,
+  isServerResumableFailure,
 } from '../../common/enums/onboarding-error.enum';
+import { disconnectedCoveragePhoneIds, liveCoverageWabaIds } from './live-coverage-wabas';
 import * as crypto from 'crypto';
 
 interface RequestUser {
@@ -30,6 +42,88 @@ interface RequestUser {
   role: string;
   tenantId?: string;
 }
+
+/**
+ * Marca una excepción cuyo fallo YA quedó registrado (fila FAILED + auditoría).
+ *
+ * El incidente del 16-sep-2026 fue exactamente este: `startOnboarding`
+ * envolvía en su try/catch la llamada a `continueOnboardingFromDiscovery`, que
+ * ya había registrado su propio fallo, y la segunda pasada pisaba el código y
+ * el mensaje con "Bad Request Exception". La estructura ya no anida los dos
+ * catch; la marca es el cinturón por si alguien vuelve a hacerlo.
+ */
+const ONBOARDING_FAILURE_RECORDED = Symbol('onboardingFailureRecorded');
+
+const GENERIC_ONBOARDING_FAILURE_MESSAGE =
+  'No pudimos completar la conexión con WhatsApp. Intenta de nuevo en unos minutos y, si se repite, escríbenos a soporte.';
+
+/**
+ * Campos del cuerpo de una HttpException que pueden viajar al panel junto al
+ * código: identificadores del propio tenant que ayudan a decir QUÉ falló. Nada
+ * de texto libre, y nunca pueden renombrar `code`, `userMessage`, `retryable`
+ * u `onboardingId`.
+ */
+const SAFE_FAILURE_EXTRAS = ['wabaId', 'targetWabaId', 'existingOnboardingId'] as const;
+
+interface DescribedOnboardingFailure {
+  code: string;
+  userMessage: string;
+  status: number;
+  extras: Record<string, string>;
+}
+
+/**
+ * The number being connected is in a business account the credential that
+ * other live numbers depend on cannot read. Shared by COVERAGE_REQUIRED and
+ * MISSING_WABA_SCOPE, which since the target has its own code are only ever
+ * about ANOTHER, already-connected number. Neither is relaunchable: the same
+ * Meta portfolio hands back the same access, so the text names the two ways
+ * out and never says "try again".
+ */
+const OTHER_CONNECTED_NUMBER_MESSAGE =
+  'Este número pertenece a otra cuenta de negocio en Meta, distinta a la de un número que ya tienes conectado, y no podemos atender los dos a la vez. Desconecta primero el número que ya tienes conectado o escríbenos a soporte para ayudarte.';
+
+/**
+ * Meta did not grant the number being connected. The Meta window lets the
+ * person choose the business account and tick the numbers to share, and a
+ * number left unticked comes back exactly like this — so here, unlike the
+ * message above, opening the window again IS the way out.
+ */
+const TARGET_NOT_GRANTED_MESSAGE =
+  'Meta no nos dio acceso al número que quieres conectar. Abre otra vez la ventana de Meta, elige la cuenta de negocio donde está ese número y márcalo. Si se repite, escríbenos a soporte.';
+
+/**
+ * Meta did not answer a coverage probe (no response, 5xx): nothing was learned
+ * about access, so nothing is decided and nothing is written. The failure code
+ * is server-resumable, so `retryOnboarding` runs the same attempt again with the
+ * stored token. Same words as the API twin's WHATSAPP_COVERAGE_CHECK_UNAVAILABLE.
+ */
+const COVERAGE_CHECK_UNAVAILABLE_MESSAGE =
+  'No pudimos confirmar el acceso con Meta en este momento. Intenta de nuevo en unos minutos.';
+
+/**
+ * The error `assertTokenCoverage` throws when a probe got no real answer from
+ * Meta. Every other failure it throws is a coverage verdict (409).
+ */
+const isCoverageCheckUnavailable = (error: unknown): error is MetaApiError =>
+  error instanceof MetaApiError && error.retryable;
+
+/**
+ * Rotation states a stored credential may still sign with: the same set and
+ * the same reading (trim + lower-case, a missing state reads as `active`) as
+ * `USABLE_ROTATION_STATES` / `assessCredential` in
+ * apps/api/src/modules/channels/connection-usability.ts. This service cannot
+ * import from the API, so the rule is copied — change both.
+ *
+ * Why it matters to onboarding: the retain rule never looked at the state. A
+ * REVOKED permanent token that still read every WABA was retained, and storing
+ * it back wrote `rotation_state='active'` on it — reactivating a token someone
+ * revoked on purpose. One that did not cover refused a good new authorization.
+ */
+const USABLE_ROTATION_STATES: ReadonlySet<string> = new Set(['active']);
+
+const normalizedRotationState = (rotationState: unknown): string =>
+  String(rotationState ?? 'active').trim().toLowerCase();
 
 /**
  * Códigos estables de advertencia de un onboarding COMPLETED_WITH_WARNINGS.
@@ -98,6 +192,13 @@ export class OnboardingService {
 
     this.logger.log(`[Onboarding] Record created: ${onboarding.id}`);
 
+    // This try covers ONLY the code exchange and its persistence. The rest of
+    // the flow runs outside it because `continueOnboardingFromDiscovery`
+    // records its own failures: wrapping it here recorded every one of them
+    // twice, and the second pass overwrote the real code with the text of the
+    // exception the first pass had thrown.
+    let longLivedToken: string;
+    let longLivedExpiresIn: number;
     try {
       // ---- 3. Exchange code → SHORT-LIVED user token ----
       await this.updateStatus(onboarding.id, OnboardingStatus.EXCHANGE_IN_PROGRESS);
@@ -110,8 +211,6 @@ export class OnboardingService {
       // ---- 4. Convert to LONG-LIVED token ----
       this.logger.log(`[Onboarding][${onboarding.id}] Step 4: Converting short-lived token to long-lived token`);
 
-      let longLivedToken: string;
-      let longLivedExpiresIn: number;
       try {
         const longLivedResult = await this.metaGraph.exchangeForLongLivedToken(exchangeResult.accessToken);
         longLivedToken = longLivedResult.accessToken;
@@ -144,15 +243,15 @@ export class OnboardingService {
       });
 
       this.logger.log(`[Onboarding][${onboarding.id}] Exchange completed — stored both tokens in exchangePayload`);
-
-      // Continue from step 5 onward with the long-lived token
-      return await this.continueOnboardingFromDiscovery(
-        onboarding.id, tenantId, userId, longLivedToken, longLivedExpiresIn, dto,
-      );
-
     } catch (error: any) {
       return this.handleOnboardingFailure(error, onboarding.id, tenantId, userId);
     }
+
+    // Continue from step 5 onward with the long-lived token. Outside the try on
+    // purpose: this call records its own failures exactly once.
+    return this.continueOnboardingFromDiscovery(
+      onboarding.id, tenantId, userId, longLivedToken, longLivedExpiresIn, dto,
+    );
   }
 
   /**
@@ -181,6 +280,13 @@ export class OnboardingService {
       } catch (debugError: any) {
         this.logger.warn(`[Onboarding][${onboardingId}] Token debug call failed (non-blocking): ${debugError.message}`);
       }
+
+      // ---- 5b. Classify what the Embedded Signup token IS ----
+      // Outside the non-blocking debug try on purpose: a token that belongs to
+      // the provider must stop the flow, not be logged and stored.
+      const esuTokenExpiresIn = this.classifyEmbeddedSignupToken(
+        onboardingId, tokenDebugData, longLivedExpiresIn,
+      );
 
       // ---- 6. Discover WABA and phone number ----
       await this.updateStatus(onboardingId, OnboardingStatus.ASSET_DISCOVERY_IN_PROGRESS);
@@ -340,7 +446,9 @@ export class OnboardingService {
 
       // ---- 9. Resolve a credential that covers ALL connected WABAs ----
       let finalToken = longLivedToken;
-      let finalExpiresIn = longLivedExpiresIn;
+      // 0 when step 5b established that the Embedded Signup token itself never
+      // expires; the long-lived window otherwise.
+      let finalExpiresIn = esuTokenExpiresIn;
       try {
         this.logger.log(`[Onboarding][${onboardingId}] Step 11a: Attempting System User Token generation for WABA=${wabaId}`);
         const systemUserResult = await this.metaGraph.generateSystemUserToken(wabaId, longLivedToken);
@@ -349,7 +457,7 @@ export class OnboardingService {
           finalExpiresIn = 0; // permanent — no expiry
           this.logger.log(`[Onboarding][${onboardingId}] System User Token generated — permanent, no expiry`);
         } else {
-          this.logger.log(`[Onboarding][${onboardingId}] System User Token not available — using long-lived token (${longLivedExpiresIn}s)`);
+          this.logger.log(`[Onboarding][${onboardingId}] System User Token not available — using the Embedded Signup token (expiresIn=${esuTokenExpiresIn}s)`);
         }
       } catch (sysUserError: any) {
         this.logger.warn(`[Onboarding][${onboardingId}] System User Token failed (non-blocking): ${sysUserError.message}`);
@@ -401,7 +509,8 @@ export class OnboardingService {
       await this.storeEncryptedCredential(tenantId, finalToken, finalExpiresIn,
         provenanceEstablished
           ? { ownerBusinessId: businessId as string, source: businessIdSource }
-          : null);
+          : null,
+        { minted: usableCredential.minted });
 
       // ---- 10-11. Persist channel + routing only after entitlement and token
       // coverage have both passed (CRITICAL — any failure aborts onboarding). ----
@@ -593,22 +702,152 @@ export class OnboardingService {
   }
 
   /**
-   * Handles onboarding failure — marks record as FAILED, audits, throws.
+   * What the Embedded Signup token is, decided from `debug_token`.
+   *
+   * Returns the expiry to store: 0 (permanent) for a valid SYSTEM_USER token
+   * that Meta reports as never expiring — a Business Integration System User
+   * minted for this client — and the long-lived window otherwise. Before this,
+   * only a token returned by `generateSystemUserToken` counted as permanent,
+   * so a BISU that never expires was stored with 60 days of life (incident
+   * cotes-asociados, 16-sep-2026).
+   *
+   * A never-expiring SYSTEM_USER whose user id is OUR configured system user is
+   * the provider's own token, not the client's: signing a tenant's messages with
+   * it attributes them to the provider and bills another portfolio. That fails
+   * closed here, before anything is stored.
+   *
+   * A failed or unrecognised `debug_token` keeps today's behaviour.
+   */
+  private classifyEmbeddedSignupToken(
+    onboardingId: string,
+    debug: TokenDebugInfo | null,
+    longLivedExpiresIn: number,
+  ): number {
+    const expiresAt: unknown = debug?.expiresAt;
+    const neverExpires = (typeof expiresAt === 'number' || (typeof expiresAt === 'string' && expiresAt.trim() !== ''))
+      && Number(expiresAt) === 0;
+    const isPermanentSystemUser = !!debug?.isValid
+      && String(debug?.type ?? '').toUpperCase() === 'SYSTEM_USER'
+      && neverExpires;
+
+    if (!isPermanentSystemUser) {
+      this.logger.log(
+        `[Onboarding][${onboardingId}] Token classification: ${debug ? 'long_lived' : 'unverified'} ` +
+        `(type=${debug?.type ?? 'unknown'}, expiresAt=${debug?.expiresAt ?? 'unknown'}) — expiresIn=${longLivedExpiresIn}s`,
+      );
+      return longLivedExpiresIn;
+    }
+
+    const providerSystemUserId = String(this.config.get<string>('meta.systemUserId') ?? '').trim();
+    if (providerSystemUserId && String(debug?.userId ?? '').trim() === providerSystemUserId) {
+      this.logger.error(
+        `[Onboarding][${onboardingId}] Token classification: provider_system_user — refusing to store a token ` +
+        `that belongs to the provider's own system user`,
+      );
+      throw new MetaApiError(
+        OnboardingErrorCode.PERMISSIONS_INSUFFICIENT,
+        'Meta devolvió una credencial que no pertenece a tu negocio. Vuelve a conectar desde la ventana de Meta.',
+        'Embedded Signup returned a never-expiring SYSTEM_USER token whose user_id is the configured provider system user',
+        false,
+      );
+    }
+
+    this.logger.log(
+      `[Onboarding][${onboardingId}] Token classification: business_integration_system_user ` +
+      `(type=SYSTEM_USER, expiresAt=0) — stored as permanent`,
+    );
+    return 0;
+  }
+
+  /**
+   * What a failure means for the person: a stable code, a message written to be
+   * read, and the HTTP status the dashboard maps.
+   *
+   * Only `MetaApiError` used to keep its code. Every Nest exception thrown by
+   * this flow's own boundaries — token coverage (409), plan (400), entitlement
+   * check (503) — carries `{ code, userMessage }` in its body, and all of them
+   * became `WA_ES_GRAPH_API_ERROR` with the framework's English text
+   * ("Conflict Exception") as the message.
+   */
+  private describeOnboardingFailure(error: any): DescribedOnboardingFailure {
+    if (error instanceof MetaApiError) {
+      return {
+        code: error.code,
+        userMessage: error.userMessage || GENERIC_ONBOARDING_FAILURE_MESSAGE,
+        status: 400,
+        extras: {},
+      };
+    }
+
+    if (error instanceof HttpException) {
+      const body = error.getResponse();
+      if (body && typeof body === 'object' && typeof (body as any).code === 'string' && (body as any).code) {
+        const record = body as Record<string, unknown>;
+        const extras: Record<string, string> = {};
+        for (const key of SAFE_FAILURE_EXTRAS) {
+          if (typeof record[key] === 'string' && (record[key] as string).trim()) {
+            extras[key] = record[key] as string;
+          }
+        }
+        return {
+          code: record.code as string,
+          userMessage: typeof record.userMessage === 'string' && record.userMessage.trim()
+            ? record.userMessage
+            : GENERIC_ONBOARDING_FAILURE_MESSAGE,
+          status: error.getStatus(),
+          extras,
+        };
+      }
+    }
+
+    return {
+      code: OnboardingErrorCode.GRAPH_API_ERROR,
+      userMessage: GENERIC_ONBOARDING_FAILURE_MESSAGE,
+      status: 400,
+      extras: {},
+    };
+  }
+
+  /**
+   * Handles onboarding failure — marks the record FAILED, audits, throws.
+   *
+   * Exactly once per attempt: an exception this method already threw is
+   * rethrown untouched, without writing, logging or auditing again.
    */
   private async handleOnboardingFailure(error: any, onboardingId: string, tenantId: string, userId: string): Promise<never> {
-    const errorCode = error instanceof MetaApiError ? error.code : OnboardingErrorCode.GRAPH_API_ERROR;
-    const errorMessage = error instanceof MetaApiError ? error.userMessage : error.message;
+    if (error && typeof error === 'object' && (error as any)[ONBOARDING_FAILURE_RECORDED]) {
+      throw error;
+    }
+
+    const { code, userMessage, status, extras } = this.describeOnboardingFailure(error);
+    const retryable = isRelaunchableFailure(code);
+    // The technical text is for the log and the audit trail. It never reaches
+    // `userMessage`: a person reading "Bad Request Exception" has no next step.
+    const technicalMessage = String(error?.message ?? error ?? 'unknown error');
+
+    // `exchange_payload` holds the short- and long-lived tokens IN PLAIN TEXT
+    // so `retryOnboarding` can resume without a new authorisation. For a code
+    // it cannot resume, `retryOnboarding` refuses before ever reading them:
+    // from here on they only sit in the table. The case that made this urgent
+    // is the provider-token refusal — the token that must never be stored was
+    // left stored. Same write as the FAILED mark, so there is no window where
+    // the row says "failed" and still carries them. Resumable codes keep the
+    // payload: that is what the resume runs on.
+    const scrubbedPayload = isServerResumableFailure(code)
+      ? null
+      : await this.scrubbedExchangePayload(onboardingId, code);
 
     await this.prisma.whatsappOnboarding.update({
       where: { id: onboardingId },
       data: {
         status: OnboardingStatus.FAILED,
-        errorCode,
-        errorMessage,
+        errorCode: code,
+        errorMessage: userMessage,
+        ...(scrubbedPayload ? { exchangePayload: scrubbedPayload } : {}),
       },
     });
 
-    this.logger.error(`[Onboarding][${onboardingId}] FAILED: ${errorCode} — ${error.message}`);
+    this.logger.error(`[Onboarding][${onboardingId}] FAILED: ${code} (HTTP ${status}) — ${technicalMessage}`);
 
     await this.audit.log({
       action: 'onboarding_failed',
@@ -616,15 +855,58 @@ export class OnboardingService {
       userId,
       entityType: 'whatsapp_onboarding',
       entityId: onboardingId,
-      metadata: { errorCode, errorMessage, retryable: RETRYABLE_ERRORS.has(errorCode) },
+      metadata: { errorCode: code, errorMessage: userMessage, technicalMessage, httpStatus: status, retryable },
     });
 
-    throw new BadRequestException({
-      code: errorCode,
-      userMessage: errorMessage,
-      retryable: RETRYABLE_ERRORS.has(errorCode),
+    const failure = new HttpException({
+      code,
+      userMessage,
+      retryable,
       onboardingId,
-    });
+      ...extras,
+    }, status);
+    Object.defineProperty(failure, ONBOARDING_FAILURE_RECORDED, { value: true, enumerable: false });
+    throw failure;
+  }
+
+  /**
+   * The payload to write in place of one that may hold tokens, or `null` when
+   * the row has none — a failure during the code exchange must not gain a
+   * payload it never had.
+   *
+   * Allow-list, not deny-list: only `exchangedAt` survives, so a token field
+   * added to the payload later is dropped without anyone remembering this
+   * method. Never logs the payload.
+   */
+  private async scrubbedExchangePayload(
+    onboardingId: string,
+    code: string,
+  ): Promise<Record<string, string> | null> {
+    const marker: Record<string, string> = {
+      tokensScrubbedAt: new Date().toISOString(),
+      scrubReason: code,
+    };
+
+    let current: unknown;
+    try {
+      const row = await this.prisma.whatsappOnboarding.findUnique({
+        where: { id: onboardingId },
+        select: { exchangePayload: true },
+      });
+      current = row?.exchangePayload;
+    } catch (readError: any) {
+      // Not knowing what is there is not a reason to leave tokens behind: the
+      // marker replaces whatever it was, and the failure is still recorded.
+      this.logger.warn(`[Onboarding][${onboardingId}] Could not read exchange payload before scrubbing (${readError?.message}) — overwriting it`);
+      return marker;
+    }
+
+    if (current === null || current === undefined) return null;
+
+    const exchangedAt = current && typeof current === 'object' && !Array.isArray(current)
+      ? (current as Record<string, unknown>).exchangedAt
+      : undefined;
+    return typeof exchangedAt === 'string' ? { exchangedAt, ...marker } : marker;
   }
 
   /**
@@ -719,7 +1001,11 @@ export class OnboardingService {
       throw new BadRequestException(`Solo se puede reintentar un onboarding con status FAILED. Estado actual: ${onboarding.status}`);
     }
 
-    if (onboarding.errorCode && !RETRYABLE_ERRORS.has(onboarding.errorCode as OnboardingErrorCode)) {
+    // Besides transient errors, the gate failures an operator or a plan change
+    // fixes without the client authorising again (WABA access granted, dead
+    // number disconnected, plan upgraded, entitlement check back) resume here
+    // with the stored token.
+    if (onboarding.errorCode && !isServerResumableFailure(onboarding.errorCode)) {
       throw new BadRequestException({
         code: onboarding.errorCode,
         userMessage: `Este error no es reintentable: ${onboarding.errorCode}. Debes iniciar un nuevo proceso de onboarding.`,
@@ -1219,6 +1505,22 @@ export class OnboardingService {
    * Select a tenant-wide credential without sacrificing an already permanent
    * token. Direct WABA reads are stronger evidence than merely seeing a scope
    * name in debug_token: every required asset must be accessible now.
+   *
+   * The stored permanent token is retained when it covers every live WABA, and
+   * never traded for one that expires while ANOTHER live number depends on it.
+   * It stops counting when the send path would refuse it (rotation state) or
+   * when the number being connected is the only live WABA and it cannot read
+   * it: then it protects nobody and the covering candidate replaces it.
+   *
+   * "Cannot read" means Meta REFUSED (rule T). A probe Meta did not answer — a
+   * timeout, a 5xx, a throttle — says nothing about access: it aborts the whole
+   * decision with a retryable, server-resumable error before anything is minted
+   * or written, whichever credential was being probed. Otherwise a bad minute
+   * at Meta swapped a permanent credential that covers for one that expires.
+   *
+   * TWIN: apps/api WhatsappConnectionService.saveConnection applies the same
+   * probe order, rotation-state rule, no-downgrade refinement and rule T.
+   * Change both.
    */
   private async resolveCredentialForCoverage(
     tenantId: string,
@@ -1234,62 +1536,265 @@ export class OnboardingService {
 
     const rows = await this.prisma.executeInTenantSchema<any[]>(
       tenant.schemaName,
-      `SELECT DISTINCT meta_waba_id FROM whatsapp_channels WHERE meta_waba_id IS NOT NULL`,
+      `SELECT DISTINCT meta_waba_id, channel_status, phone_number_id
+         FROM whatsapp_channels
+        WHERE meta_waba_id IS NOT NULL`,
     );
-    const requiredWabas = [...new Set([
-      ...rows.map((row: any) => String(row.meta_waba_id)),
-      String(targetWabaId),
-    ])];
+    // Only LIVE WABAs must be covered — rule R-S3 in live-coverage-wabas.ts,
+    // with its twin in the API. The second authority lives in public
+    // `channel_accounts`, which `executeInTenantSchema` cannot see (its
+    // search_path is the tenant schema), so it is read through the Prisma
+    // client, and only for the rows whose status already says disconnected.
+    //
+    // NO tenant filter, on purpose: the table is unique on (channel_type,
+    // account_id) and `registerChannelAccount` moves the row to whichever
+    // tenant connected the number last. A number that moved away is dead for
+    // this tenant even though its row is active — for someone else.
+    const disconnectedPhoneIds = disconnectedCoveragePhoneIds(rows || []);
+    const accounts = disconnectedPhoneIds.length > 0
+      ? await this.prisma.channelAccount.findMany({
+        where: {
+          channelType: 'whatsapp',
+          accountId: { in: disconnectedPhoneIds },
+        },
+        select: { tenantId: true, accountId: true, isActive: true },
+      })
+      : [];
+    const requiredWabas = liveCoverageWabaIds({
+      tenantId,
+      rows: rows || [],
+      accounts,
+      targetWabaId,
+    });
+    const knownWabas = new Set((rows || [])
+      .map((row: any) => String(row.meta_waba_id ?? '').trim())
+      .filter(Boolean));
+    const skippedWabas = [...knownWabas].filter(waba => !requiredWabas.includes(waba));
+    if (skippedWabas.length > 0) {
+      this.logger.log(
+        `[Credential] Coverage for tenant=${tenantId} skips ${skippedWabas.length} dead WABA(s) ` +
+        `(disconnected + account inactive or moved to another tenant): ${skippedWabas.join(', ')}`,
+      );
+    }
     const existing = await this.prisma.whatsappCredential.findFirst({
       where: { tenantId, credentialType: 'system_user_token' },
     });
+    // The only stored credential any retain / no-downgrade rule below may look
+    // at. A refused rotation state makes it `null`: it is never retained (so
+    // never written back as active) and never blocks the candidate, which then
+    // has to cover every live WABA on its own and replaces it.
+    const storedPermanent = this.storedPermanentToConsider(tenantId, existing);
 
-    // A freshly generated permanent token is the preferred candidate, but it
-    // still has to prove coverage of every older WABA before replacing one.
+    // A permanent candidate (a generated System User token, or an Embedded
+    // Signup token `classifyEmbeddedSignupToken` found never expires) is the
+    // preferred one, but it still has to prove coverage of every live WABA
+    // before replacing anything.
     if (candidateExpiresIn === 0) {
-      await this.assertTokenCoverage(candidateToken, requiredWabas);
-      return { accessToken: candidateToken, expiresInSeconds: 0, minted: true };
+      try {
+        await this.assertTokenCoverage(candidateToken, requiredWabas, targetWabaId);
+        return { accessToken: candidateToken, expiresInSeconds: 0, minted: true };
+      } catch (candidateFailure) {
+        // Since round 1 the permanent candidate is the COMMON case, and this
+        // branch used to throw without looking at the table. Before that, the
+        // same attempt fell through to the retain branch below: a tenant whose
+        // permanent token already covers every WABA kept sending, and the
+        // connection went through with it. Keep that outcome — also after a
+        // candidate probe Meta did not answer: a stored token that PROVES it
+        // covers every live WABA is safe to keep whatever the candidate reads.
+        if (storedPermanent) {
+          let permanentToken: string | null = null;
+          try {
+            permanentToken = this.decryptToken(storedPermanent.encryptedValue);
+          } catch (decryptError: any) {
+            // An unreadable stored token retains nothing; the person still
+            // hears about the attempt they made.
+            this.logger.warn(`[Credential] Stored permanent token for tenant=${tenantId} could not be decrypted: ${decryptError?.message}`);
+          }
+          let retained: { accessToken: string; expiresInSeconds: number; minted: boolean } | null = null;
+          if (permanentToken) {
+            try {
+              retained = await this.retainPermanentIfItCovers(tenantId, permanentToken, requiredWabas, targetWabaId);
+            } catch (storedUnavailable) {
+              // Rule T: Meta did not answer for the stored token, so nobody
+              // knows whether it covers — the candidate's refusal is not the
+              // verdict either. When the candidate blipped too, that is the
+              // attempt the person made.
+              throw isCoverageCheckUnavailable(candidateFailure) ? candidateFailure : storedUnavailable;
+            }
+          }
+          if (retained) return retained;
+        }
+        // The ORIGINAL failure: the person is told about the attempt they
+        // made, not about the token that happened to be in the table. A
+        // candidate probe Meta did not answer stays retryable, never a verdict.
+        throw candidateFailure;
+      }
     }
 
-    if (existing?.expiresAt === null) {
-      const permanentToken = this.decryptToken(existing.encryptedValue);
-      try {
-        await this.assertTokenCoverage(permanentToken, requiredWabas);
-        this.logger.log(`[Credential] Retaining permanent token for tenant=${tenantId}; it covers ${requiredWabas.length} WABA(s)`);
-        // RETAINED, not minted. This is the token that was already in the
-        // table; this flow did not obtain it and knows nothing about whose
-        // portfolio it belongs to. Stamping provenance on it would assert a
-        // verification nobody performed — and the writer's own comment says
-        // "it is not an inference about a token found lying in the table",
-        // which is exactly what this one is.
-        return { accessToken: permanentToken, expiresInSeconds: 0, minted: false };
-      } catch {
+    if (storedPermanent) {
+      const permanentToken = this.decryptToken(storedPermanent.encryptedValue);
+      // Rule T: throws, before anything below runs, when Meta did not answer
+      // for the stored token. Only a refusal returns `null` and reaches the
+      // no-downgrade rule and P2's replacement.
+      const retained = await this.retainPermanentIfItCovers(tenantId, permanentToken, requiredWabas, targetWabaId);
+      if (retained) return retained;
+
+      // The no-downgrade rule protects the OTHER live numbers that sign with
+      // the stored permanent token: swapping it for one that expires would
+      // take them down in 60 days. When no other live WABA is required, the
+      // stored token protects nobody — it cannot read the only number left —
+      // and refusing locked the tenant out for good (dead rows around, or the
+      // same number re-connected after its token lost access).
+      const dependentWabas = requiredWabas.filter(wabaId => wabaId !== String(targetWabaId));
+      if (dependentWabas.length > 0) {
         throw new ConflictException({
-          code: 'WHATSAPP_TOKEN_COVERAGE_REQUIRED',
-          userMessage: 'El token permanente actual no cubre la nueva cuenta y no se reemplazará por uno temporal. Reintenta Embedded Signup con autorización de todas las cuentas.',
+          code: ONBOARDING_GATE_CODES.TOKEN_COVERAGE_REQUIRED,
+          // No new Meta window fixes this (the failure is not relaunchable):
+          // the permanent connection other numbers depend on cannot see the
+          // new number's business account, and it is never swapped for one
+          // that expires.
+          userMessage: OTHER_CONNECTED_NUMBER_MESSAGE,
           targetWabaId,
         });
       }
+
+      await this.assertTokenCoverage(candidateToken, requiredWabas, targetWabaId);
+      this.logger.log(
+        `[Credential] Replacing the stored permanent token for tenant=${tenantId}: it cannot read ` +
+        `target WABA=${targetWabaId} and no other live WABA depends on it (new expiresIn=${candidateExpiresIn}s)`,
+      );
+      return { accessToken: candidateToken, expiresInSeconds: candidateExpiresIn, minted: true };
     }
 
-    await this.assertTokenCoverage(candidateToken, requiredWabas);
+    await this.assertTokenCoverage(candidateToken, requiredWabas, targetWabaId);
     return { accessToken: candidateToken, expiresInSeconds: candidateExpiresIn, minted: true };
   }
 
-  private async assertTokenCoverage(accessToken: string, wabaIds: string[]): Promise<void> {
-    for (const wabaId of wabaIds) {
+  /**
+   * The stored credential the retain and no-downgrade rules may consider: a
+   * permanent one (`expires_at IS NULL`) in a rotation state the send path
+   * still signs with. `null` otherwise — including for a revoked or rotating
+   * permanent token, which must be neither retained (storing it would write
+   * `rotation_state='active'` back on it) nor allowed to refuse a candidate on
+   * the strength of a credential nothing can send with.
+   */
+  private storedPermanentToConsider<T extends { expiresAt: Date | null; rotationState?: string | null }>(
+    tenantId: string,
+    existing: T | null,
+  ): T | null {
+    if (!existing || existing.expiresAt !== null) return null;
+    const state = normalizedRotationState(existing.rotationState);
+    if (!USABLE_ROTATION_STATES.has(state)) {
+      this.logger.log(
+        `[Credential] Stored permanent token for tenant=${tenantId} is not usable ` +
+        `(rotation_state=${state || 'unset'}) — ignored: never retained, never blocks the new authorization`,
+      );
+      return null;
+    }
+    return existing;
+  }
+
+  /**
+   * The permanent token already in the table, when it covers every required
+   * WABA; `null` when Meta REFUSED one of them, so the caller decides which
+   * conflict the person sees.
+   *
+   * A probe Meta did not answer is neither: the retryable error is rethrown
+   * (rule T). Returning `null` for it told every caller "does not cover" and
+   * let a temporary candidate replace a permanent token that did.
+   */
+  private async retainPermanentIfItCovers(
+    tenantId: string,
+    permanentToken: string,
+    requiredWabas: string[],
+    targetWabaId: string,
+  ): Promise<{ accessToken: string; expiresInSeconds: number; minted: boolean } | null> {
+    try {
+      await this.assertTokenCoverage(permanentToken, requiredWabas, targetWabaId);
+    } catch (coverageFailure) {
+      if (isCoverageCheckUnavailable(coverageFailure)) throw coverageFailure;
+      return null;
+    }
+    this.logger.log(`[Credential] Retaining permanent token for tenant=${tenantId}; it covers ${requiredWabas.length} WABA(s)`);
+    // RETAINED, not minted. This is the token that was already in the
+    // table; this flow did not obtain it and knows nothing about whose
+    // portfolio it belongs to. Stamping provenance on it would assert a
+    // verification nobody performed — and the writer's own comment says
+    // "it is not an inference about a token found lying in the table",
+    // which is exactly what this one is.
+    return { accessToken: permanentToken, expiresInSeconds: 0, minted: false };
+  }
+
+  /**
+   * Proves `accessToken` reads every WABA in `wabaIds` by reading each one.
+   *
+   * The TARGET is probed first, then the rest in the order given (row order).
+   * `liveCoverageWabaIds` lists the old numbers before the target, and walking
+   * it as-is blamed a token that could not read the number being connected on
+   * whichever old WABA came first: the person was told to disconnect another
+   * number when what was missing was ticking THIS one in the Meta window.
+   *
+   * Two codes, because the two failures have opposite ways out:
+   *   - the target → TARGET_NOT_GRANTED: a new Meta authorization fixes it;
+   *   - another, already-connected WABA → MISSING_WABA_SCOPE: the same
+   *     portfolio hands back the same access, so it is not relaunchable.
+   *
+   * Both are verdicts, so both need Meta to have REFUSED: a 4xx Graph error
+   * that is not throttling, or a 200 for another WABA (`classifyMetaReadFailure`).
+   * A probe Meta did not answer — no response, 5xx, 429, a throttling code —
+   * stops the walk with a retryable MetaApiError instead (rule T): RATE_LIMITED
+   * for a throttle, GRAPH_API_ERROR otherwise. Both are server-resumable, so the
+   * failure keeps `exchange_payload` and `retryOnboarding` can run it again.
+   */
+  private async assertTokenCoverage(accessToken: string, wabaIds: string[], targetWabaId: string): Promise<void> {
+    const target = String(targetWabaId);
+    const probeOrder = [target, ...wabaIds.filter(wabaId => wabaId !== target)];
+    for (const wabaId of probeOrder) {
+      const isTarget = wabaId === target;
+      let resolved: WabaInfo;
       try {
-        const resolved = await this.metaGraph.getWabaDirectly(wabaId, accessToken);
-        if (String(resolved?.id || '') !== wabaId) throw new Error('asset mismatch');
+        resolved = await this.metaGraph.getWabaDirectly(wabaId, accessToken);
       } catch (error: any) {
-        this.logger.warn(`Credential coverage check failed for WABA=${wabaId}: ${error?.message}`);
-        throw new ConflictException({
-          code: 'WHATSAPP_TOKEN_MISSING_WABA_SCOPE',
-          userMessage: 'La credencial no tiene permiso sobre todas las cuentas de WhatsApp conectadas.',
-          wabaId,
-        });
+        const failure = classifyMetaReadFailure(error);
+        if (failure.kind === 'transient') throw this.coverageCheckUnavailable(wabaId, isTarget, failure);
+        this.logger.warn(`Credential coverage check failed for WABA=${wabaId}${isTarget ? ' (target)' : ''}: ${error?.message}`);
+        throw this.coverageRefused(wabaId, target);
+      }
+      // A 200 for another WABA is Meta answering too: this token does not
+      // reach the one that was asked for.
+      if (String(resolved?.id || '') !== wabaId) {
+        this.logger.warn(`Credential coverage check failed for WABA=${wabaId}${isTarget ? ' (target)' : ''}: asset mismatch`);
+        throw this.coverageRefused(wabaId, target);
       }
     }
+  }
+
+  private coverageRefused(wabaId: string, target: string): ConflictException {
+    const isTarget = wabaId === target;
+    return new ConflictException({
+      code: isTarget
+        ? ONBOARDING_GATE_CODES.TOKEN_TARGET_NOT_GRANTED
+        : ONBOARDING_GATE_CODES.TOKEN_MISSING_WABA_SCOPE,
+      userMessage: isTarget ? TARGET_NOT_GRANTED_MESSAGE : OTHER_CONNECTED_NUMBER_MESSAGE,
+      wabaId,
+      targetWabaId: target,
+    });
+  }
+
+  /**
+   * The retryable error for a coverage probe Meta did not answer. The technical
+   * text carries ids, the HTTP status and the Graph code — never a token, and
+   * never the axios error (its request config holds the access token).
+   */
+  private coverageCheckUnavailable(wabaId: string, isTarget: boolean, failure: MetaReadFailure): MetaApiError {
+    const answer = failure.httpStatus === undefined ? 'no response' : `HTTP ${failure.httpStatus}`;
+    const graphCode = failure.graphCode === undefined ? '' : `, Graph code ${failure.graphCode}`;
+    const technical = `Coverage check for WABA=${wabaId}${isTarget ? ' (target)' : ''} got no usable answer from Meta ` +
+      `(${answer}${graphCode}${failure.rateLimited ? ', rate limited' : ''}) — no coverage decision taken`;
+    this.logger.warn(`[Credential] ${technical}`);
+    return failure.rateLimited
+      ? new MetaApiError(OnboardingErrorCode.RATE_LIMITED, META_RATE_LIMITED_USER_MESSAGE, technical, true)
+      : new MetaApiError(OnboardingErrorCode.GRAPH_API_ERROR, COVERAGE_CHECK_UNAVAILABLE_MESSAGE, technical, true);
   }
 
   /**
@@ -1298,7 +1803,7 @@ export class OnboardingService {
   private async storeEncryptedCredential(
     tenantId: string,
     accessToken: string,
-    expiresInSeconds?: number,
+    expiresInSeconds: number,
     /**
      * Whose portfolio this token was minted for, when the caller established it.
      *
@@ -1307,7 +1812,19 @@ export class OnboardingService {
      * still sends, because every tenant connected before this column existed
      * has one and refusing them would be an outage caused by bookkeeping.
      */
-    provenance?: { ownerBusinessId: string; source: string } | null,
+    provenance: { ownerBusinessId: string; source: string } | null,
+    /**
+     * Whether THIS flow obtained the token (`resolveCredentialForCoverage`'s
+     * `minted`) or retained the one already in the table.
+     *
+     * A minted token replaces the previous one, and the provenance columns
+     * describe the previous one: left alone, a new token nobody attributed
+     * inherited another token's kind, owner and scopes, and the send-time guard
+     * read them as this token's. So a minted token always rewrites them — with
+     * what was established, or with NULL. A retained token is the same token,
+     * and its provenance stays exactly as it was.
+     */
+    origin: { minted: boolean },
   ) {
     const encryptedValue = this.encryptToken(accessToken);
 
@@ -1343,8 +1860,19 @@ export class OnboardingService {
       data.ownerBusinessId = provenance.ownerBusinessId;
       data.metaAppId = process.env.META_APP_ID ?? null;
       data.provenanceVerifiedAt = new Date();
+      // This flow never reads the scopes, so whatever sits in the column
+      // belongs to the token being replaced — and the send guard refuses a
+      // BISU whose recorded scopes lack messaging.
+      if (origin.minted) data.grantedScopes = null;
       this.logger.log(`[Onboarding] credential provenance recorded: business_integration_system_user `
         + `owner=${provenance.ownerBusinessId} (${provenance.source})`);
+    } else if (origin.minted) {
+      data.credentialKind = null;
+      data.ownerBusinessId = null;
+      data.metaAppId = null;
+      data.grantedScopes = null;
+      data.provenanceVerifiedAt = null;
+      this.logger.log('[Onboarding] credential provenance cleared: new token, provenance not established');
     }
 
     if (existing) {

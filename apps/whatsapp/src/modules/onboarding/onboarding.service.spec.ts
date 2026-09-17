@@ -372,4 +372,141 @@ describe('OnboardingService Business Portfolio resolution', () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  // ── What the Embedded Signup token IS ──────────────────────────────────────
+  //
+  // Incidente cotes-asociados (16-sep-2026): `debug_token` dijo
+  // `type=SYSTEM_USER, expires_at=0` — un Business Integration System User que
+  // no vence — y el flujo lo guardó con 60 días de vida, porque sólo un token
+  // devuelto por `generateSystemUserToken` se consideraba permanente. El monitor
+  // habría pedido reautorizar un token que nunca vence, y la regla de no
+  // degradar un permanente nunca lo habría protegido.
+  describe('token classification after debug_token', () => {
+    it('stores a never-expiring SYSTEM_USER token as permanent', async () => {
+      const harness = createHarness();
+      harness.metaGraph.debugToken.mockResolvedValue({
+        isValid: true, type: 'SYSTEM_USER', expiresAt: 0, userId: 'bisu-1', scopes: [],
+      });
+
+      await harness.continueOnboarding('business-owner');
+
+      const coverage = (harness.service as any).resolveCredentialForCoverage;
+      expect(coverage).toHaveBeenCalledTimes(1);
+      expect(coverage.mock.calls[0][3]).toBe(0);
+      // The provider System User mint stays exactly where it was — owner
+      // decision pending — it just no longer decides the expiry alone.
+      expect(harness.metaGraph.generateSystemUserToken).toHaveBeenCalledWith(wabaId, 'long-lived-token');
+    });
+
+    it('fails closed before storing anything when the token is the PROVIDER system user', async () => {
+      const harness = createHarness();
+      harness.config.get.mockImplementation((key: string) => (key === 'meta.systemUserId' ? 'bisu-1' : undefined));
+      harness.metaGraph.debugToken.mockResolvedValue({
+        isValid: true, type: 'SYSTEM_USER', expiresAt: 0, userId: 'bisu-1', scopes: [],
+      });
+
+      await expect(harness.continueOnboarding('business-owner')).rejects.toMatchObject({
+        response: expect.objectContaining({ code: 'WA_ES_PERMISSIONS_INSUFFICIENT', retryable: false }),
+      });
+
+      expect((harness.service as any).storeEncryptedCredential).not.toHaveBeenCalled();
+      expect((harness.service as any).resolveCredentialForCoverage).not.toHaveBeenCalled();
+      expect((harness.service as any).registerChannelAccount).not.toHaveBeenCalled();
+      expect(getChannelInsert(harness.prisma)).toBeUndefined();
+    });
+
+    it.each([
+      ['a USER token', { isValid: true, type: 'USER', expiresAt: 1790000000 }],
+      ['a SYSTEM_USER token that expires', { isValid: true, type: 'SYSTEM_USER', expiresAt: 1790000000 }],
+      ['an invalid SYSTEM_USER token', { isValid: false, type: 'SYSTEM_USER', expiresAt: 0 }],
+      ['a SYSTEM_USER token with no expiry reported', { isValid: true, type: 'SYSTEM_USER', expiresAt: null }],
+    ])('keeps the long-lived expiry for %s', async (_label, debug) => {
+      const harness = createHarness();
+      harness.metaGraph.debugToken.mockResolvedValue({ ...debug, scopes: [] });
+
+      await harness.continueOnboarding('business-owner');
+
+      expect((harness.service as any).resolveCredentialForCoverage.mock.calls[0][3]).toBe(5184000);
+    });
+
+    it('keeps the long-lived expiry when debug_token is unavailable', async () => {
+      const harness = createHarness();
+      harness.metaGraph.debugToken.mockRejectedValue(new Error('debug down'));
+
+      await harness.continueOnboarding('business-owner');
+
+      expect((harness.service as any).resolveCredentialForCoverage.mock.calls[0][3]).toBe(5184000);
+    });
+  });
+});
+
+// ── Stale provenance on a replaced token ─────────────────────────────────────
+//
+// `storeEncryptedCredential` reemplaza el token pero sólo escribía procedencia
+// cuando la había. Un token nuevo sin procedencia heredaba la del anterior:
+// `credential_kind`, `owner_business_id`, `granted_scopes`… de OTRO token,
+// leídos por la guarda de envío como si describieran a éste.
+describe('OnboardingService credential provenance on replace', () => {
+  const tenantId = '090baca7-46da-4061-b5ea-7f72350178e6';
+  const PROVENANCE_FIELDS = ['credentialKind', 'ownerBusinessId', 'metaAppId', 'grantedScopes', 'provenanceVerifiedAt'];
+
+  function credentialHarness() {
+    const existing = {
+      id: 'cred-1',
+      tenantId,
+      credentialType: 'system_user_token',
+      encryptedValue: 'old-encrypted',
+      credentialKind: 'business_integration_system_user',
+      ownerBusinessId: 'business-old',
+      metaAppId: 'app-old',
+      grantedScopes: 'whatsapp_business_management',
+      provenanceVerifiedAt: new Date('2026-09-01T00:00:00Z'),
+    };
+    const prisma = {
+      whatsappCredential: {
+        findFirst: jest.fn().mockResolvedValue(existing),
+        update: jest.fn().mockResolvedValue(existing),
+        create: jest.fn(),
+      },
+    };
+    const config = { get: jest.fn().mockReturnValue(undefined) };
+    const service = new OnboardingService(prisma as any, {} as any, config as any, {} as any);
+    const updateData = () => prisma.whatsappCredential.update.mock.calls[0][0].data;
+    return { service, prisma, updateData };
+  }
+
+  it('clears the previous token provenance when this flow minted a token it could not attribute', async () => {
+    const { service, updateData } = credentialHarness();
+
+    await (service as any).storeEncryptedCredential(tenantId, 'new-token', 0, null, { minted: true });
+
+    for (const field of PROVENANCE_FIELDS) {
+      expect(updateData()).toHaveProperty(field, null);
+    }
+  });
+
+  it('leaves provenance untouched on a RETAINED token', async () => {
+    const { service, updateData } = credentialHarness();
+
+    await (service as any).storeEncryptedCredential(tenantId, 'permanent-existing', 0, null, { minted: false });
+
+    for (const field of PROVENANCE_FIELDS) {
+      expect(updateData()).not.toHaveProperty(field);
+    }
+  });
+
+  it('records the new provenance and drops scopes that described the previous token', async () => {
+    const { service, updateData } = credentialHarness();
+
+    await (service as any).storeEncryptedCredential(
+      tenantId, 'new-token', 0, { ownerBusinessId: 'business-new', source: 'api_discovery' }, { minted: true },
+    );
+
+    expect(updateData()).toEqual(expect.objectContaining({
+      credentialKind: 'business_integration_system_user',
+      ownerBusinessId: 'business-new',
+      grantedScopes: null,
+      provenanceVerifiedAt: expect.any(Date),
+    }));
+  });
 });

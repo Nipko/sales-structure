@@ -3901,6 +3901,7 @@
       "disconnectConfirm": "Are you sure you want to disconnect WhatsApp? Messages will no longer be received.",
       "disconnectSuccess": "WhatsApp disconnected successfully.",
       "disconnectPartial": "WhatsApp marked as disconnected on the platform, but Meta may keep sending webhooks. Please review the integration in Meta Business Suite.",
+      "disconnectLocalIncomplete": "Meta stopped sending us this number's messages, but we couldn't finish disconnecting it on the platform. Contact support so we can complete it.",
       "pageSubtitle": "Connect and manage your WhatsApp Business account with Meta Cloud API.",
       "loadingStatus": "Loading WhatsApp status...",
       "connectButton": "Connect with Facebook",
@@ -4042,8 +4043,12 @@
           "action": "This usually happens when the number already has WhatsApp active, or has two-step verification on. Delete WhatsApp from that number, or turn off the two-step PIN, and try again."
         },
         "tokenCoverage": {
-          "title": "The authorization does not cover this account",
-          "action": "Try again and, in the Meta window, authorize ALL the WhatsApp accounts it shows you. If you leave one out, we cannot send messages from it."
+          "title": "This number belongs to a different business account",
+          "action": "It belongs to a different business account than a number you already have connected, and we can't use both at once. Disconnect the number that was already connected first, or contact support so we can sort it out."
+        },
+        "tokenTargetNotGranted": {
+          "title": "Meta didn't give us access to the number you want to connect",
+          "action": "Open the Meta window again, choose the business account that holds that number and select it before finishing. If it happens again, contact support."
         },
         "planLimit": {
           "title": "You reached your plan's limit",
@@ -4074,8 +4079,8 @@
           "action": "Pick \"I already use WhatsApp Business\" again and follow every step in the Meta window."
         },
         "codeExpired": {
-          "title": "The authorization expired",
-          "action": "Too much time passed between opening the window and finishing. Try again without long pauses."
+          "title": "The Meta authorization was already used or expired",
+          "action": "This happens when the window was closed before finishing or took too long. Open the Meta window again and finish every step without closing it."
         },
         "rateLimited": {
           "title": "Too many attempts",
@@ -4106,7 +4111,41 @@
           "action": "Check your internet connection and try again. If it keeps happening, try again in a few minutes."
         }
       },
-      "connectionRequestFailed": "We could not reach the server. Check your connection and try again."
+      "connectionRequestFailed": "We could not reach the server. Check your connection and try again.",
+      "billingZone": {
+        "title": "WhatsApp billing time zone",
+        "blockedTitle": "Your agent can't send messages from this number until you confirm the WhatsApp billing time zone",
+        "blockedBody": "Meta dates every charge in your WhatsApp account's time zone and doesn't share it in a way we can use without your confirmation. Until it's set, your agent's replies from {number} won't go out.",
+        "whereToCheck": "Where do I find it? In WhatsApp Manager (business.facebook.com), open Business settings → Accounts → WhatsApp accounts and pick your account. It's the time zone chosen when the WhatsApp Business account was created.",
+        "searchLabel": "Search time zone",
+        "searchPlaceholder": "Type a city or a country, for example Bogotá",
+        "selectLabel": "WhatsApp billing time zone",
+        "noResults": "No time zone matches “{query}”.",
+        "suggestionCommon": "We suggest {zone} because it's the most common. Confirm it only if it's your WhatsApp account's time zone.",
+        "suggestionSameAccount": "Another number on the same WhatsApp account already uses {zone}. Confirm it for this number too.",
+        "suggestionConflict": "Two numbers on the same WhatsApp account have different time zones ({zones}). There is only one for the whole account: choose the right one.",
+        "confirm": "Confirm {zone}",
+        "confirmPending": "Choose a time zone to confirm",
+        "chooseFirst": "Choose a time zone from the list.",
+        "saving": "Saving…",
+        "saved": "Done: the billing time zone for {number} is now {zone}.",
+        "savedAlsoApplied": "It was also applied to {numbers}, on the same WhatsApp account.",
+        "errorInvalidZone": "That time zone isn't valid. Choose one from the list.",
+        "errorVerifyEmail": "To confirm the time zone, verify your email address first.",
+        "errorNotAllowed": "Only an account administrator can confirm the billing time zone. Ask an administrator to do it.",
+        "errorNumberNotFound": "This number is no longer connected to your account. Reload the page.",
+        "errorFailed": "We couldn't save the time zone. Please try again.",
+        "askAdmin": "Only an account administrator can confirm it: ask an administrator to open this page and confirm it.",
+        "verifyEmailFirst": "To confirm it, verify your email address first.",
+        "verifyEmailCta": "Verify my email",
+        "setLabel": "Billing time zone: {zone}",
+        "setConflict": "Another number on the same WhatsApp account uses a different time zone ({zones}). There is only one per account: check which one is right.",
+        "fix": "Fix",
+        "change": "Change time zone",
+        "cancel": "Cancel",
+        "unknown": "We couldn't check this number's billing time zone.",
+        "retry": "Retry"
+      }
     },
     "whatsappDesc": "WhatsApp Business API via Meta Cloud API",
     "instagram": {
@@ -6996,7 +7035,6 @@
     "createName": "Template name",
     "createNameHint": "Lowercase letters, numbers, and underscores only. E.g.: payment_reminder",
     "createNumber": "Number / account",
-    "createNumberDefault": "Primary number (default)",
     "createLanguage": "Language",
     "createCategory": "Category",
     "createHeader": "Header (optional)",

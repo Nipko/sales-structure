@@ -3901,6 +3901,7 @@
       "disconnectConfirm": "¿Seguro que deseas desconectar WhatsApp? Se dejarán de recibir mensajes.",
       "disconnectSuccess": "WhatsApp desconectado correctamente.",
       "disconnectPartial": "WhatsApp se marcó como desconectado en la plataforma, pero Meta podría seguir intentando enviar webhooks. Revisa la integración en Meta Business Suite.",
+      "disconnectLocalIncomplete": "Meta dejó de enviarnos los mensajes de este número, pero no pudimos terminar de desconectarlo en la plataforma. Escríbenos a soporte para completarlo.",
       "pageSubtitle": "Conecta y gestiona tu cuenta de WhatsApp Business con Meta Cloud API.",
       "loadingStatus": "Cargando estado de WhatsApp...",
       "connectButton": "Conectar con Facebook",
@@ -4042,8 +4043,12 @@
           "action": "Suele pasar cuando el número ya tiene WhatsApp activo o tiene la verificación en dos pasos encendida. Borra la app de WhatsApp de ese número, o apaga el PIN de dos pasos, y vuelve a intentar."
         },
         "tokenCoverage": {
-          "title": "La autorización no cubre esta cuenta",
-          "action": "Vuelve a intentar y, en la ventana de Meta, autoriza TODAS las cuentas de WhatsApp que te muestre. Si dejas alguna afuera, no podemos enviar mensajes desde ella."
+          "title": "Este número es de otra cuenta de negocio",
+          "action": "Pertenece a una cuenta de negocio distinta a la de un número que ya tienes conectado, y no podemos usar los dos a la vez. Desconecta primero el número que ya estaba conectado, o escríbenos a soporte para resolverlo."
+        },
+        "tokenTargetNotGranted": {
+          "title": "Meta no nos dio acceso al número que quieres conectar",
+          "action": "Abre de nuevo la ventana de Meta, elige la cuenta de negocio donde está ese número y márcalo antes de terminar. Si se repite, escríbenos a soporte."
         },
         "planLimit": {
           "title": "Llegaste al límite de tu plan",
@@ -4074,8 +4079,8 @@
           "action": "Vuelve a elegir la opción \"Ya uso WhatsApp Business\" y sigue los pasos completos en la ventana de Meta."
         },
         "codeExpired": {
-          "title": "La autorización venció",
-          "action": "Pasó demasiado tiempo entre que abriste la ventana y terminaste. Vuelve a intentar sin pausas largas."
+          "title": "La autorización de Meta ya se usó o venció",
+          "action": "Pasa cuando la ventana se cerró antes de terminar o tardó demasiado. Abre de nuevo la ventana de Meta y termina todos los pasos sin cerrarla."
         },
         "rateLimited": {
           "title": "Demasiados intentos",
@@ -4106,7 +4111,41 @@
           "action": "Revisa tu conexión a internet y vuelve a intentar. Si sigue igual, prueba de nuevo en unos minutos."
         }
       },
-      "connectionRequestFailed": "No pudimos conectar con el servidor. Revisa tu conexión e inténtalo de nuevo."
+      "connectionRequestFailed": "No pudimos conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.",
+      "billingZone": {
+        "title": "Zona horaria de facturación de WhatsApp",
+        "blockedTitle": "Tu agente no puede enviar mensajes por este número hasta que confirmes la zona horaria de facturación de WhatsApp",
+        "blockedBody": "Meta fecha cada cobro en la zona horaria de tu cuenta de WhatsApp y no nos la informa de una forma que podamos usar sin tu confirmación. Mientras falte, las respuestas de tu agente por {number} no salen.",
+        "whereToCheck": "¿Dónde la veo? En WhatsApp Manager (business.facebook.com), abre Configuración del negocio → Cuentas → Cuentas de WhatsApp y elige tu cuenta. Es la zona horaria que se eligió al crear la cuenta de WhatsApp Business.",
+        "searchLabel": "Buscar zona horaria",
+        "searchPlaceholder": "Escribe una ciudad o un país, por ejemplo Bogotá",
+        "selectLabel": "Zona horaria de facturación de WhatsApp",
+        "noResults": "Ninguna zona horaria coincide con “{query}”.",
+        "suggestionCommon": "Te sugerimos {zone} porque es la más común. Confírmala solo si es la zona horaria de tu cuenta de WhatsApp.",
+        "suggestionSameAccount": "Otro número de tu misma cuenta de WhatsApp ya usa {zone}. Confírmala para este número también.",
+        "suggestionConflict": "Dos números de tu misma cuenta de WhatsApp tienen zonas horarias distintas ({zones}). Es una sola para toda la cuenta: elige la correcta.",
+        "confirm": "Confirmar {zone}",
+        "confirmPending": "Elige una zona horaria para confirmar",
+        "chooseFirst": "Elige una zona horaria de la lista.",
+        "saving": "Guardando…",
+        "saved": "Listo: la zona horaria de facturación de {number} quedó en {zone}.",
+        "savedAlsoApplied": "También se aplicó a {numbers}, de la misma cuenta de WhatsApp.",
+        "errorInvalidZone": "Esa zona horaria no es válida. Elige una de la lista.",
+        "errorVerifyEmail": "Para confirmar la zona horaria, primero verifica tu correo electrónico.",
+        "errorNotAllowed": "Solo un administrador de la cuenta puede confirmar la zona horaria de facturación. Pídeselo a un administrador.",
+        "errorNumberNotFound": "Este número ya no está conectado a tu cuenta. Recarga la página.",
+        "errorFailed": "No pudimos guardar la zona horaria. Inténtalo de nuevo.",
+        "askAdmin": "Solo un administrador de la cuenta puede confirmarla: pide a un administrador que entre a esta página y la confirme.",
+        "verifyEmailFirst": "Para confirmarla, primero verifica tu correo electrónico.",
+        "verifyEmailCta": "Verificar mi correo",
+        "setLabel": "Zona horaria de facturación: {zone}",
+        "setConflict": "Otro número de tu misma cuenta de WhatsApp usa una zona horaria distinta ({zones}). Es una sola por cuenta: revisa cuál es la correcta.",
+        "fix": "Corregir",
+        "change": "Cambiar zona horaria",
+        "cancel": "Cancelar",
+        "unknown": "No pudimos comprobar la zona horaria de facturación de este número.",
+        "retry": "Reintentar"
+      }
     },
     "whatsappDesc": "WhatsApp Business API via Meta Cloud API",
     "instagram": {
@@ -6996,7 +7035,6 @@
     "createName": "Nombre de la plantilla",
     "createNameHint": "Solo letras minúsculas, números y guiones bajos. Ej: recordatorio_pago",
     "createNumber": "Número / cuenta",
-    "createNumberDefault": "Número principal (por defecto)",
     "createLanguage": "Idioma",
     "createCategory": "Categoría",
     "createHeader": "Encabezado (opcional)",

@@ -18,6 +18,93 @@ export class MetaApiError extends Error {
   }
 }
 
+/**
+ * Meta's answer when an OAuth code was already exchanged or has expired.
+ * Subcodes 36007/36009 are the documented ones; the message is matched too
+ * because Meta does not always send a subcode for this error.
+ */
+const SPENT_CODE_SUBCODES = new Set([36007, 36009]);
+const SPENT_CODE_MESSAGE = /authorization code has been used|code has expired|has expired/i;
+
+function isSpentAuthorizationCode(metaError: any): boolean {
+  if (!metaError || typeof metaError !== 'object') return false;
+  if (SPENT_CODE_SUBCODES.has(Number(metaError.error_subcode))) return true;
+  return typeof metaError.message === 'string' && SPENT_CODE_MESSAGE.test(metaError.message);
+}
+
+export const META_RATE_LIMITED_USER_MESSAGE = 'Meta está limitando las solicitudes. Por favor intenta en unos momentos.';
+
+/**
+ * Graph error codes Meta uses for throttling: 4 (app), 17 (user), 32 (page),
+ * 613 (per-endpoint), 130429 (Cloud API throughput) and the Business Use Case
+ * range 80000-80014 (80007 is WhatsApp Business Management). They usually come
+ * back as HTTP 400/403 with an `OAuthException` body — the same shape as a
+ * permission refusal — so the status alone never tells the two apart.
+ */
+const META_RATE_LIMIT_CODES: ReadonlySet<number> = new Set([4, 17, 32, 613, 130429]);
+const BUSINESS_USE_CASE_RATE_LIMIT_MIN = 80000;
+const BUSINESS_USE_CASE_RATE_LIMIT_MAX = 80014;
+
+export function isMetaRateLimit(statusCode: unknown, metaError: any): boolean {
+  if (Number(statusCode) === 429) return true;
+  const code = Number(metaError?.code);
+  if (!Number.isInteger(code)) return false;
+  return META_RATE_LIMIT_CODES.has(code)
+    || (code >= BUSINESS_USE_CASE_RATE_LIMIT_MIN && code <= BUSINESS_USE_CASE_RATE_LIMIT_MAX);
+}
+
+/** Graph codes Meta documents as a temporary issue due to downtime: 1 (unknown) and 2 (service). */
+const META_TRANSIENT_CODES: ReadonlySet<number> = new Set([1, 2]);
+
+/**
+ * What a failed Graph read says about ACCESS.
+ *
+ *   - `denied`: Meta answered and refused — HTTP 4xx other than 429, with a
+ *     Graph error that is neither throttling nor flagged transient (permission,
+ *     object not found, unsupported get request, OAuthException).
+ *   - `transient`: everything else. No HTTP answer at all (timeout, abort, DNS,
+ *     connection reset), a 5xx, a 429 or a throttling code, a Graph error Meta
+ *     marks `is_transient`, or a 4xx without a Graph body (a proxy, a 408).
+ *     None of these says anything about what the token can read.
+ *
+ * `withRetry` has already retried 429/5xx by the time the error gets here; what
+ * is still failing after the retries is still transient.
+ */
+export interface MetaReadFailure {
+  kind: 'denied' | 'transient';
+  rateLimited: boolean;
+  /** Absent when nothing answered. */
+  httpStatus?: number;
+  graphCode?: number;
+}
+
+export function classifyMetaReadFailure(error: unknown): MetaReadFailure {
+  const source: any = error instanceof MetaApiError && error.originalError ? error.originalError : error;
+  const response = source?.response;
+  const httpStatus = Number(response?.status);
+  if (!response || !Number.isInteger(httpStatus)) {
+    return {
+      kind: 'transient',
+      rateLimited: error instanceof MetaApiError && error.code === OnboardingErrorCode.RATE_LIMITED,
+    };
+  }
+
+  const metaError = response.data?.error;
+  const hasGraphError = !!metaError && typeof metaError === 'object' && !Array.isArray(metaError);
+  const graphCode = hasGraphError && Number.isInteger(Number(metaError.code)) ? Number(metaError.code) : undefined;
+  const answer = graphCode === undefined ? { httpStatus } : { httpStatus, graphCode };
+
+  if (isMetaRateLimit(httpStatus, hasGraphError ? metaError : undefined)) {
+    return { kind: 'transient', rateLimited: true, ...answer };
+  }
+
+  const refused = httpStatus >= 400 && httpStatus < 500
+    && hasGraphError
+    && metaError.is_transient !== true
+    && !(graphCode !== undefined && META_TRANSIENT_CODES.has(graphCode));
+  return { kind: refused ? 'denied' : 'transient', rateLimited: false, ...answer };
+}
+
 export interface ExchangeCodeResult {
   accessToken: string;
   tokenType: string;
@@ -103,11 +190,22 @@ export class MetaGraphService {
         );
 
         if (!response.data.access_token) {
+          // NOT retryable. Meta already received the code, and the code is
+          // single-use: `withRetry` re-sent it up to three times, and every
+          // answer after the first could only be "this code has been used".
+          // The technical message names the fields that came back, never their
+          // values — this string reaches the log and the audit trail.
+          const returnedFields = response.data && typeof response.data === 'object'
+            ? Object.keys(response.data).join(',')
+            : typeof response.data;
+          // The person reads `userMessage`. "Token de acceso" told them nothing
+          // they could act on; the only step that can work is a new Meta
+          // window, because the code this one carried is already spent.
           throw new MetaApiError(
             OnboardingErrorCode.EXCHANGE_FAILED,
-            'No se pudo obtener el token de acceso de Meta',
-            `Exchange returned no access_token: ${JSON.stringify(response.data)}`,
-            true,
+            'Meta no terminó de autorizar la conexión. Abre otra vez la ventana de Meta y complétala hasta el final. Si se repite, escríbenos a soporte.',
+            `Exchange returned no access_token (fields: ${returnedFields || 'none'})`,
+            false,
           );
         }
 
@@ -633,12 +731,32 @@ export class MetaGraphService {
   private handleMetaApiError(error: any, defaultCode: OnboardingErrorCode, userMessage: string): never {
     const metaError = error?.response?.data?.error;
     const statusCode = error?.response?.status;
-    const isRateLimit = statusCode === 429 || metaError?.code === 4 || metaError?.code === 32;
+
+    // A spent OAuth code. The Facebook JS SDK keeps the last
+    // `authResponse.code` and hands it to a later FB.login callback when the
+    // Meta window closes without finishing, so the dashboard can post a code
+    // that was already exchanged. It is single-use: `retryable=false` so
+    // `withRetry` never re-sends it, and a code of its own so the person is told
+    // to open the Meta window again instead of seeing a generic exchange error.
+    // Only for the code exchange — "has expired" means something else on other
+    // calls (an expired session token).
+    if (defaultCode === OnboardingErrorCode.EXCHANGE_FAILED && isSpentAuthorizationCode(metaError)) {
+      this.logger.warn(`Meta rejected a spent authorization code: ${JSON.stringify(metaError)} | Status: ${statusCode}`);
+      throw new MetaApiError(
+        OnboardingErrorCode.CODE_EXPIRED,
+        'El código de autorización de Meta ya se usó o venció. Abre de nuevo la ventana de Meta y complétala sin cerrarla.',
+        metaError?.message || error?.message || 'Authorization code already used or expired',
+        false,
+        error,
+      );
+    }
+
+    const isRateLimit = isMetaRateLimit(statusCode, metaError);
 
     if (isRateLimit) {
       throw new MetaApiError(
         OnboardingErrorCode.RATE_LIMITED,
-        'Meta está limitando las solicitudes. Por favor intenta en unos momentos.',
+        META_RATE_LIMITED_USER_MESSAGE,
         `Meta rate limit: ${JSON.stringify(metaError)}`,
         true,
         error,

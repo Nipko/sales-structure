@@ -3901,6 +3901,7 @@
       "disconnectConfirm": "Tem certeza que deseja desconectar o WhatsApp? As mensagens não serão mais recebidas.",
       "disconnectSuccess": "WhatsApp desconectado com sucesso.",
       "disconnectPartial": "WhatsApp marcado como desconectado na plataforma, mas o Meta pode continuar enviando webhooks. Revise a integração no Meta Business Suite.",
+      "disconnectLocalIncomplete": "O Meta parou de nos enviar as mensagens deste número, mas não conseguimos concluir a desconexão na plataforma. Fale com o suporte para finalizá-la.",
       "pageSubtitle": "Conecte e gerencie sua conta do WhatsApp Business com a Meta Cloud API.",
       "loadingStatus": "Carregando status do WhatsApp...",
       "connectButton": "Conectar com Facebook",
@@ -4042,8 +4043,12 @@
           "action": "Costuma acontecer quando o número já tem WhatsApp ativo ou está com a verificação em duas etapas ligada. Apague o WhatsApp desse número, ou desligue o PIN de duas etapas, e tente de novo."
         },
         "tokenCoverage": {
-          "title": "A autorização não cobre esta conta",
-          "action": "Tente de novo e, na janela da Meta, autorize TODAS as contas de WhatsApp que aparecerem. Se deixar alguma de fora, não conseguimos enviar mensagens por ela."
+          "title": "Este número é de outra conta comercial",
+          "action": "Ele pertence a uma conta comercial diferente da de um número que você já tem conectado, e não conseguimos usar os dois ao mesmo tempo. Desconecte primeiro o número que já estava conectado, ou fale com o suporte para resolvermos."
+        },
+        "tokenTargetNotGranted": {
+          "title": "A Meta não nos deu acesso ao número que você quer conectar",
+          "action": "Abra de novo a janela da Meta, escolha a conta comercial onde está esse número e marque-o antes de terminar. Se acontecer de novo, fale com o suporte."
         },
         "planLimit": {
           "title": "Você chegou ao limite do seu plano",
@@ -4074,8 +4079,8 @@
           "action": "Escolha de novo a opção \"Já uso o WhatsApp Business\" e siga todos os passos na janela da Meta."
         },
         "codeExpired": {
-          "title": "A autorização expirou",
-          "action": "Passou tempo demais entre abrir a janela e terminar. Tente de novo sem pausas longas."
+          "title": "A autorização da Meta já foi usada ou expirou",
+          "action": "Acontece quando a janela foi fechada antes de terminar ou demorou demais. Abra de novo a janela da Meta e conclua todas as etapas sem fechá-la."
         },
         "rateLimited": {
           "title": "Tentativas demais",
@@ -4106,7 +4111,41 @@
           "action": "Verifique sua conexão com a internet e tente de novo. Se continuar, tente novamente em alguns minutos."
         }
       },
-      "connectionRequestFailed": "Não conseguimos falar com o servidor. Verifique sua conexão e tente de novo."
+      "connectionRequestFailed": "Não conseguimos falar com o servidor. Verifique sua conexão e tente de novo.",
+      "billingZone": {
+        "title": "Fuso horário de cobrança do WhatsApp",
+        "blockedTitle": "Seu agente não pode enviar mensagens por este número até você confirmar o fuso horário de cobrança do WhatsApp",
+        "blockedBody": "A Meta data cada cobrança no fuso horário da sua conta do WhatsApp e não o informa de uma forma que possamos usar sem a sua confirmação. Enquanto faltar, as respostas do seu agente por {number} não são enviadas.",
+        "whereToCheck": "Onde vejo? No WhatsApp Manager (business.facebook.com), abra Configurações do negócio → Contas → Contas do WhatsApp e escolha sua conta. É o fuso horário escolhido ao criar a conta do WhatsApp Business.",
+        "searchLabel": "Buscar fuso horário",
+        "searchPlaceholder": "Digite uma cidade ou um país, por exemplo São Paulo",
+        "selectLabel": "Fuso horário de cobrança do WhatsApp",
+        "noResults": "Nenhum fuso horário corresponde a “{query}”.",
+        "suggestionCommon": "Sugerimos {zone} porque é o mais comum. Confirme-o apenas se for o fuso horário da sua conta do WhatsApp.",
+        "suggestionSameAccount": "Outro número da mesma conta do WhatsApp já usa {zone}. Confirme-o também para este número.",
+        "suggestionConflict": "Dois números da mesma conta do WhatsApp têm fusos horários diferentes ({zones}). É um só para toda a conta: escolha o correto.",
+        "confirm": "Confirmar {zone}",
+        "confirmPending": "Escolha um fuso horário para confirmar",
+        "chooseFirst": "Escolha um fuso horário da lista.",
+        "saving": "Salvando…",
+        "saved": "Pronto: o fuso horário de cobrança de {number} agora é {zone}.",
+        "savedAlsoApplied": "Também foi aplicado a {numbers}, da mesma conta do WhatsApp.",
+        "errorInvalidZone": "Esse fuso horário não é válido. Escolha um da lista.",
+        "errorVerifyEmail": "Para confirmar o fuso horário, verifique primeiro seu e-mail.",
+        "errorNotAllowed": "Apenas um administrador da conta pode confirmar o fuso horário de cobrança. Peça a um administrador.",
+        "errorNumberNotFound": "Este número não está mais conectado à sua conta. Recarregue a página.",
+        "errorFailed": "Não conseguimos salvar o fuso horário. Tente novamente.",
+        "askAdmin": "Apenas um administrador da conta pode confirmá-lo: peça a um administrador que abra esta página e o confirme.",
+        "verifyEmailFirst": "Para confirmá-lo, verifique primeiro seu e-mail.",
+        "verifyEmailCta": "Verificar meu e-mail",
+        "setLabel": "Fuso horário de cobrança: {zone}",
+        "setConflict": "Outro número da mesma conta do WhatsApp usa um fuso horário diferente ({zones}). É um só por conta: verifique qual é o correto.",
+        "fix": "Corrigir",
+        "change": "Alterar fuso horário",
+        "cancel": "Cancelar",
+        "unknown": "Não conseguimos verificar o fuso horário de cobrança deste número.",
+        "retry": "Tentar novamente"
+      }
     },
     "whatsappDesc": "WhatsApp Business API via Meta Cloud API",
     "instagram": {
@@ -6996,7 +7035,6 @@
     "createName": "Nome do template",
     "createNameHint": "Apenas letras minúsculas, números e underscores. Ex: lembrete_pagamento",
     "createNumber": "Número / conta",
-    "createNumberDefault": "Número principal (padrão)",
     "createLanguage": "Idioma",
     "createCategory": "Categoria",
     "createHeader": "Cabeçalho (opcional)",

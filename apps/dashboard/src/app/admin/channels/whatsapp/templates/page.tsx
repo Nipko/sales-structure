@@ -10,6 +10,7 @@ import {
     XCircle, Sprout, AlertCircle, Info, Plus, X, Loader2,
 } from "lucide-react";
 import { HelpPanel } from "@/components/ui/help-panel";
+import { readWhatsAppChannelRows, whatsAppRowPhoneNumberId } from "../whatsapp-channel-rows";
 
 type Template = {
     id: string;
@@ -144,11 +145,14 @@ function CreateTemplateModal({ t, onClose, onCreated }: {
         (async () => {
             try {
                 const res = await api.fetch("/channels/whatsapp/status");
-                const src: any = res?.data || res || {};
-                const list: any[] = (Array.isArray(src.channels) && src.channels.length) ? src.channels
-                    : (Array.isArray(src.accounts) && src.accounts.length) ? src.accounts
-                    : (src.channel ? [src.channel] : (src.account ? [src.account] : []));
-                setWaNumbers(list);
+                // A template is created on a number's WhatsApp Business
+                // Account, so a disconnected number (its row stays behind) is
+                // not a choice. The form names the first connected number
+                // explicitly instead of leaving an empty "default" that reads
+                // as "whichever row came first".
+                const rows = readWhatsAppChannelRows(res);
+                setWaNumbers(rows.connected);
+                setPhoneNumberId(whatsAppRowPhoneNumberId(rows.preferred));
             } catch { /* non-fatal */ }
         })();
     }, []);
@@ -244,9 +248,8 @@ function CreateTemplateModal({ t, onClose, onCreated }: {
                                         onChange={e => setPhoneNumberId(e.target.value)}
                                         className="w-full bg-[var(--bg-tertiary)] border border-border rounded-lg px-3 py-2 text-sm"
                                     >
-                                        <option value="">{t("createNumberDefault")}</option>
                                         {waNumbers.map((n: any) => {
-                                            const pnid = n.phone_number_id || n.metadata?.phoneNumberId || n.accountId;
+                                            const pnid = whatsAppRowPhoneNumberId(n);
                                             const label = n.display_phone_number || n.metadata?.displayPhoneNumber || n.accountId || pnid;
                                             return <option key={pnid} value={pnid}>{label}</option>;
                                         })}

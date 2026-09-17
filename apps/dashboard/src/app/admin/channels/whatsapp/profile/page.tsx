@@ -11,6 +11,7 @@ import {
     MessageSquare, BadgeCheck, Smartphone, Radio, HelpCircle,
 } from "lucide-react";
 import { HelpPanel } from "@/components/ui/help-panel";
+import { readWhatsAppChannelRows, whatsAppRowPhoneNumberId } from "../whatsapp-channel-rows";
 
 const VERTICALS = [
     "UNDEFINED", "OTHER", "AUTO", "BEAUTY", "APPAREL", "EDU", "ENTERTAIN",
@@ -118,19 +119,14 @@ export default function WhatsAppProfilePage() {
             let selected = "";
             try {
                 const status = await api.fetch("/channels/whatsapp/status");
-                const src = status?.data || status || {};
-                const numbers: WhatsAppNumber[] = Array.isArray(src.channels)
-                    ? src.channels
-                    : Array.isArray(src.accounts)
-                        ? src.accounts
-                        : src.channel
-                            ? [src.channel]
-                            : src.account
-                                ? [src.account]
-                                : [];
-                setWaNumbers(numbers);
-                const first = numbers[0];
-                selected = first?.phone_number_id || first?.metadata?.phoneNumberId || first?.accountId || "";
+                // `channels` also carries the row a disconnected number leaves
+                // behind, and it is the oldest once a number was replaced: the
+                // screen opened on a number that no longer sends, whose profile
+                // the tenant's credential may not even reach. Offer only
+                // connected numbers and start on the first of them.
+                const rows = readWhatsAppChannelRows<WhatsAppNumber>(status);
+                setWaNumbers(rows.connected);
+                selected = whatsAppRowPhoneNumberId(rows.preferred);
                 setPhoneNumberId(selected);
             } catch { /* profile request will show the actionable error */ }
             await loadProfile(false, selected);
@@ -311,7 +307,7 @@ export default function WhatsAppProfilePage() {
                         className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm"
                     >
                         {waNumbers.map((number) => {
-                            const id = number.phone_number_id || number.metadata?.phoneNumberId || number.accountId || "";
+                            const id = whatsAppRowPhoneNumberId(number);
                             const label = number.display_phone_number || number.metadata?.displayPhoneNumber || number.display_name || id;
                             return <option key={id} value={id}>{label}</option>;
                         })}

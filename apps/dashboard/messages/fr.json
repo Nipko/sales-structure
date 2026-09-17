@@ -3901,6 +3901,7 @@
       "disconnectConfirm": "Êtes-vous sûr de vouloir déconnecter WhatsApp ? Les messages ne seront plus reçus.",
       "disconnectSuccess": "WhatsApp déconnecté avec succès.",
       "disconnectPartial": "WhatsApp marqué comme déconnecté sur la plateforme, mais Meta pourrait continuer à envoyer des webhooks. Vérifiez l'intégration dans Meta Business Suite.",
+      "disconnectLocalIncomplete": "Meta a cessé de nous envoyer les messages de ce numéro, mais nous n'avons pas pu terminer la déconnexion sur la plateforme. Contactez le support pour la finaliser.",
       "pageSubtitle": "Connectez et gérez votre compte WhatsApp Business avec l'API Meta Cloud.",
       "loadingStatus": "Chargement du statut WhatsApp...",
       "connectButton": "Se connecter avec Facebook",
@@ -4042,8 +4043,12 @@
           "action": "Cela arrive souvent quand le numéro a déjà WhatsApp actif, ou que la validation en deux étapes est activée. Supprimez WhatsApp de ce numéro, ou désactivez le code PIN en deux étapes, puis réessayez."
         },
         "tokenCoverage": {
-          "title": "L'autorisation ne couvre pas ce compte",
-          "action": "Réessayez et, dans la fenêtre Meta, autorisez TOUS les comptes WhatsApp affichés. Si vous en laissez un de côté, nous ne pouvons pas envoyer de messages depuis celui-ci."
+          "title": "Ce numéro appartient à un autre compte d'entreprise",
+          "action": "Il dépend d'un compte d'entreprise différent de celui d'un numéro que vous avez déjà connecté, et nous ne pouvons pas utiliser les deux en même temps. Déconnectez d'abord le numéro déjà connecté, ou contactez le support pour régler cela."
+        },
+        "tokenTargetNotGranted": {
+          "title": "Meta ne nous a pas donné accès au numéro que vous voulez connecter",
+          "action": "Rouvrez la fenêtre Meta, choisissez le compte d'entreprise où se trouve ce numéro et cochez-le avant de terminer. Si cela se reproduit, contactez le support."
         },
         "planLimit": {
           "title": "Vous avez atteint la limite de votre forfait",
@@ -4074,8 +4079,8 @@
           "action": "Choisissez à nouveau l'option « J'utilise déjà WhatsApp Business » et suivez toutes les étapes dans la fenêtre Meta."
         },
         "codeExpired": {
-          "title": "L'autorisation a expiré",
-          "action": "Trop de temps s'est écoulé entre l'ouverture de la fenêtre et la fin. Réessayez sans longues pauses."
+          "title": "L'autorisation Meta a déjà été utilisée ou a expiré",
+          "action": "Cela arrive quand la fenêtre a été fermée avant la fin ou a pris trop de temps. Rouvrez la fenêtre Meta et terminez toutes les étapes sans la fermer."
         },
         "rateLimited": {
           "title": "Trop de tentatives",
@@ -4106,7 +4111,41 @@
           "action": "Vérifie ta connexion internet et réessaie. Si cela persiste, réessaie dans quelques minutes."
         }
       },
-      "connectionRequestFailed": "Impossible de joindre le serveur. Vérifie ta connexion et réessaie."
+      "connectionRequestFailed": "Impossible de joindre le serveur. Vérifie ta connexion et réessaie.",
+      "billingZone": {
+        "title": "Fuseau horaire de facturation WhatsApp",
+        "blockedTitle": "Votre agent ne peut pas envoyer de messages depuis ce numéro tant que vous n'avez pas confirmé le fuseau horaire de facturation WhatsApp",
+        "blockedBody": "Meta date chaque facturation dans le fuseau horaire de votre compte WhatsApp et ne nous le communique pas sous une forme utilisable sans votre confirmation. Tant qu'il manque, les réponses de votre agent depuis {number} ne partent pas.",
+        "whereToCheck": "Où le trouver ? Dans WhatsApp Manager (business.facebook.com), ouvrez Paramètres de l'entreprise → Comptes → Comptes WhatsApp et choisissez votre compte. C'est le fuseau horaire choisi lors de la création du compte WhatsApp Business.",
+        "searchLabel": "Rechercher un fuseau horaire",
+        "searchPlaceholder": "Saisissez une ville ou un pays, par exemple Bogotá",
+        "selectLabel": "Fuseau horaire de facturation WhatsApp",
+        "noResults": "Aucun fuseau horaire ne correspond à « {query} ».",
+        "suggestionCommon": "Nous suggérons {zone} car c'est le plus courant. Confirmez-le uniquement s'il s'agit du fuseau horaire de votre compte WhatsApp.",
+        "suggestionSameAccount": "Un autre numéro du même compte WhatsApp utilise déjà {zone}. Confirmez-le aussi pour ce numéro.",
+        "suggestionConflict": "Deux numéros du même compte WhatsApp ont des fuseaux horaires différents ({zones}). Il n'y en a qu'un pour tout le compte : choisissez le bon.",
+        "confirm": "Confirmer {zone}",
+        "confirmPending": "Choisissez un fuseau horaire pour confirmer",
+        "chooseFirst": "Choisissez un fuseau horaire dans la liste.",
+        "saving": "Enregistrement…",
+        "saved": "C'est fait : le fuseau horaire de facturation de {number} est maintenant {zone}.",
+        "savedAlsoApplied": "Il a aussi été appliqué à {numbers}, du même compte WhatsApp.",
+        "errorInvalidZone": "Ce fuseau horaire n'est pas valide. Choisissez-en un dans la liste.",
+        "errorVerifyEmail": "Pour confirmer le fuseau horaire, vérifiez d'abord votre adresse e-mail.",
+        "errorNotAllowed": "Seul un administrateur du compte peut confirmer le fuseau horaire de facturation. Demandez-le à un administrateur.",
+        "errorNumberNotFound": "Ce numéro n'est plus connecté à votre compte. Rechargez la page.",
+        "errorFailed": "Nous n'avons pas pu enregistrer le fuseau horaire. Réessayez.",
+        "askAdmin": "Seul un administrateur du compte peut le confirmer : demandez à un administrateur d'ouvrir cette page et de le confirmer.",
+        "verifyEmailFirst": "Pour le confirmer, vérifiez d'abord votre adresse e-mail.",
+        "verifyEmailCta": "Vérifier mon e-mail",
+        "setLabel": "Fuseau horaire de facturation : {zone}",
+        "setConflict": "Un autre numéro du même compte WhatsApp utilise un fuseau horaire différent ({zones}). Il n'y en a qu'un par compte : vérifiez lequel est le bon.",
+        "fix": "Corriger",
+        "change": "Modifier le fuseau horaire",
+        "cancel": "Annuler",
+        "unknown": "Nous n'avons pas pu vérifier le fuseau horaire de facturation de ce numéro.",
+        "retry": "Réessayer"
+      }
     },
     "whatsappDesc": "WhatsApp Business API via Meta Cloud API",
     "instagram": {
@@ -6996,7 +7035,6 @@
     "createName": "Nom du modèle",
     "createNameHint": "Lettres minuscules, chiffres et underscores uniquement. Ex : rappel_paiement",
     "createNumber": "Numéro / compte",
-    "createNumberDefault": "Numéro principal (par défaut)",
     "createLanguage": "Langue",
     "createCategory": "Catégorie",
     "createHeader": "En-tête (optionnel)",

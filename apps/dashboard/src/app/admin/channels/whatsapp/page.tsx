@@ -32,6 +32,16 @@ import {
     whatsAppRouteKey,
     type WhatsAppConnectRouteId,
 } from "./whatsapp-connect-routes";
+import { readDisconnectOutcome } from "./disconnect-outcome";
+import { readWhatsAppChannelRows, whatsAppRowPhoneNumberId } from "./whatsapp-channel-rows";
+import WhatsAppBillingTimeZone, { type BillingZoneSaved } from "./WhatsAppBillingTimeZone";
+import {
+    billingZoneAccess,
+    billingZoneNumberLabel,
+    billingZoneStateFor,
+    readBillingZoneReadiness,
+    type BillingZoneReadiness,
+} from "./billing-time-zone";
 import { guidedTourAnchorId } from "@/lib/guided-tours";
 import { DisconnectChannelModal } from "@/components/ui/disconnect-channel-modal";
 import { HelpPanel } from "@/components/ui/help-panel";
@@ -100,16 +110,24 @@ export default function WhatsAppSetupPage() {
     const [consumption, setConsumption] = useState<WhatsappConsumption | null>(null);
     const [spendPolicy, setSpendPolicy] = useState<WhatsappSpendPolicy | null>(null);
     const [changingEnforcement, setChangingEnforcement] = useState(false);
+    // The billing time zone of each number, from the same readiness read. Kept
+    // apart from `readiness` because null here means "could not ask", which
+    // must not render as "every number is fine" — and until the first read
+    // lands nothing is shown, rather than a failure that has not happened.
+    const [billingZones, setBillingZones] = useState<BillingZoneReadiness | null>(null);
+    const [billingZonesRead, setBillingZonesRead] = useState(false);
 
     const loadData = async () => {
         setLoading(true);
         try {
             const statusRes = await api.fetch("/channels/whatsapp/status");
             setStatus(statusRes);
-            const channelData = statusRes?.channel || statusRes?.data?.account;
+            // The number "prueba tu agente" opens: the first CONNECTED one. A
+            // replaced number keeps its disconnected row, and it is the oldest.
+            const channelData = readWhatsAppChannelRows(statusRes).preferred;
             if (channelData) {
                 setPhoneNumber(channelData.display_phone_number || channelData.metadata?.displayPhoneNumber || channelData.accountId || "");
-                setPhoneNumberId(channelData.phone_number_id || channelData.metadata?.phoneNumberId || channelData.accountId || "");
+                setPhoneNumberId(whatsAppRowPhoneNumberId(channelData));
             }
             setStatusUnavailable(false);
             void loadSpend();
@@ -164,6 +182,8 @@ export default function WhatsAppSetupPage() {
         ]);
         setSpend((summaryRes as any)?.data ?? null);
         setReadiness(((readinessRes as any)?.data?.numbers ?? []) as WhatsappReadinessNumber[]);
+        setBillingZones(readBillingZoneReadiness(readinessRes));
+        setBillingZonesRead(true);
         setAwaiting(((awaitingRes as any)?.data ?? null) as WhatsappAwaitingResolution | null);
         setPauses(((pausesRes as any)?.data?.numbers ?? []) as WhatsappNumberPause[]);
         setConsumption(((consumptionRes as any)?.data ?? null) as WhatsappConsumption | null);
@@ -212,6 +232,24 @@ export default function WhatsAppSetupPage() {
         }
     };
 
+    /**
+     * A zone was confirmed. Say which numbers it now covers — the server also
+     * carries it to numbers of the same WhatsApp account that report the same
+     * Meta zone — and read the readiness again so every card reflects it.
+     */
+    const handleBillingZoneSaved = async (saved: BillingZoneSaved) => {
+        const rows = readWhatsAppChannelRows(status).all;
+        const label = (id: string) => billingZoneNumberLabel(id, rows, billingZones);
+        const text = tw("billingZone.saved", { number: label(saved.phoneNumberId), zone: saved.timeZone });
+        setMessage({
+            type: "success",
+            text: saved.alsoApplied.length
+                ? `${text} ${tw("billingZone.savedAlsoApplied", { numbers: saved.alsoApplied.map(label).join(", ") })}`
+                : text,
+        });
+        await loadSpend();
+    };
+
     useEffect(() => { loadData(); }, []);
 
     const handleDisconnect = async () => {
@@ -219,10 +257,19 @@ export default function WhatsAppSetupPage() {
         try {
             const res = await api.fetch("/channels/whatsapp/disconnect", { method: "POST" });
             setShowDisconnectModal(false);
-            if (res?.providerOk === false) {
-                setMessage({ type: "warning", text: res.message || t("whatsapp.disconnectPartial") });
-            } else {
+            // El endpoint contesta 200 aunque Meta se niegue; lo que pasó está en
+            // `metaUnsubscribed`/`metaError`. Se muestra el texto traducido, no
+            // la prosa del servidor (en español y pensada para soporte).
+            const outcome = readDisconnectOutcome(res);
+            if (outcome === "complete") {
                 setMessage({ type: "success", text: t("whatsapp.disconnectSuccess") });
+            } else {
+                setMessage({
+                    type: "warning",
+                    text: outcome === "local_incomplete"
+                        ? t("whatsapp.disconnectLocalIncomplete")
+                        : t("whatsapp.disconnectPartial"),
+                });
             }
             await loadData();
         } catch (err: any) {
@@ -261,16 +308,17 @@ export default function WhatsAppSetupPage() {
         return <div className="p-8 text-center text-[var(--text-secondary)]">{tw("loadingStatus")}</div>;
     }
 
-    const statusData = status?.data || status;
-    const isConnected = statusData?.connected === true || status?.status === "connected" || statusData?.status === "connected";
     // Robust across response shapes: the WhatsApp controller returns { channel, channels }
     // while the generic channel controller returns { data: { account, accounts } }.
-    const waSrc: any = status?.data || status || {};
-    const waChannels: any[] =
-        (Array.isArray(waSrc.channels) && waSrc.channels.length) ? waSrc.channels
-        : (Array.isArray(waSrc.accounts) && waSrc.accounts.length) ? waSrc.accounts
-        : (waSrc.channel ? [waSrc.channel]
-        : (waSrc.account ? [waSrc.account] : []));
+    const waRows = readWhatsAppChannelRows(status);
+    const statusData = status?.data || status;
+    const isConnected = statusData?.connected === true || status?.status === "connected" || statusData?.status === "connected"
+        || waRows.connected.length > 0;
+    // Only connected numbers are "active": `channels` also carries the row a
+    // disconnect leaves behind. Listing it showed a dead number as working,
+    // spent a plan slot the API no longer counts, and offered a per-number
+    // disconnect the API refuses for an account that is not active.
+    const waChannels = waRows.connected;
     const canAddWa = canAddChannelAccount("whatsapp", waChannels.length);
     const activeRoute = getWhatsAppConnectRoute(selectedRoute);
 
@@ -490,7 +538,7 @@ export default function WhatsAppSetupPage() {
                         </div>
                         <div className="p-6 flex flex-col gap-4">
                             {waChannels.map((ch: any, idx: number) => {
-                                const pnid = ch?.phone_number_id || ch?.metadata?.phoneNumberId || ch?.accountId;
+                                const pnid = whatsAppRowPhoneNumberId(ch);
                                 return (
                                     <div key={pnid || ch?.id || idx} className={cn("rounded-lg", waChannels.length > 1 && "border border-border bg-[var(--bg-tertiary)] p-4")}>
                                         <div className="flex items-start justify-between gap-4">
@@ -529,6 +577,16 @@ export default function WhatsAppSetupPage() {
                                                 </button>
                                             )}
                                         </div>
+                                        {billingZonesRead && (
+                                            <WhatsAppBillingTimeZone
+                                                phoneNumberId={pnid}
+                                                numberLabel={billingZoneNumberLabel(pnid, waChannels, billingZones)}
+                                                state={billingZoneStateFor(pnid, billingZones)}
+                                                access={billingZoneAccess(user)}
+                                                onSaved={handleBillingZoneSaved}
+                                                onRetry={() => { void loadSpend(); }}
+                                            />
+                                        )}
                                     </div>
                                 );
                             })}

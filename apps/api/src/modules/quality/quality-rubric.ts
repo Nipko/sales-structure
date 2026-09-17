@@ -36,4 +36,16 @@ En "flags" lista únicamente problemas concretos respaldados por la transcripci�
 En "resolved" indica true SOLO si la necesidad conversacional quedó atendida en el alcance acordado (resolutionStatus=resolved). Un seguimiento solicitado o una derivación correcta pueden atender esa necesidad sin cerrar una venta; una promesa vaga no demuestra que se atendió. Usa false con unresolved solo ante una necesidad clara que quedó sin atender; usa null con needs_customer_input si se espera información necesaria, o not_assessable si la evidencia no permite concluir. Nunca afirmes una venta, pago o reserva verificados a partir del texto.
 Usa español. No incluyas explicaciones fuera del JSON.`;
 
-export const QUALITY_RUBRIC_HASH = qualityHash({ prompt: RUBRIC_PROMPT, version: QUALITY_RUBRIC_VERSION, model: 'gpt-4o-mini', temperature: 0.2, maxTokens: 500 });
+/**
+ * The call the rubric hash names, sent verbatim by `judgeTranscript`. Changing
+ * any of these is a different yardstick and must change the hash with it: the
+ * literals used to live twice and could drift apart silently.
+ *
+ * JSON mode is deliberately outside the hash. It constrains the syntax of the
+ * answer, not what is being measured, and every current verdict is read
+ * through `rubric_hash`: hashing it would orphan all of them to fix a parser.
+ */
+export const QUALITY_JUDGE_CALL = Object.freeze({ model: 'gpt-4o-mini', temperature: 0.2, maxTokens: 500 });
+
+export const QUALITY_RUBRIC_HASH = qualityHash({ prompt: RUBRIC_PROMPT, version: QUALITY_RUBRIC_VERSION,
+    model: QUALITY_JUDGE_CALL.model, temperature: QUALITY_JUDGE_CALL.temperature, maxTokens: QUALITY_JUDGE_CALL.maxTokens });

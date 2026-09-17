@@ -154,13 +154,80 @@ describe('QualityService agent attribution', () => {
         expect(insert[1]).toContain("'unknown'");
     });
 
-    it('rejects contradictory or invented resolution statuses rather than silently marking failure', async () => {
+    const insertOf = (executeInTenantSchema: jest.Mock) => (executeInTenantSchema.mock.calls as any[][])
+        .find(call => String(call[1]).includes('INSERT INTO conversation_quality_scores'));
+    const verdict = (overrides: Record<string, unknown>) => JSON.stringify({ overall: 8, resolution: 8, tone: 8, accuracy: 8, empathy: 8,
+        flags: [], resolutionReason: 'Se pidió precisar la consulta.', ...overrides });
+
+    it('asks the provider for JSON with the exact parameters the rubric hash names', async () => {
         const { service, llmRouter } = buildHarness(AGENT_ID, 5);
-        for (const resolutionStatus of ['needs_customer_input', 'made_up']) {
-            llmRouter.execute.mockResolvedValue({ content: JSON.stringify({ overall: 8, resolution: 8, tone: 8, accuracy: 8, empathy: 8,
-                flags: [], resolved: false, resolutionStatus, resolutionReason: 'Waiting' }) });
-            await expect(service.scoreConversation(TENANT_ID, CONVERSATION_ID)).rejects.toThrow('invalid response');
-        }
+        await service.scoreConversation(TENANT_ID, CONVERSATION_ID);
+        expect(llmRouter.execute).toHaveBeenCalledWith(expect.objectContaining({
+            model: 'gpt-4o-mini', temperature: 0.2, maxTokens: 500, jsonMode: true,
+        }));
+    });
+
+    // The rubric steers greeting-only conversations to needs_customer_input,
+    // and a judge that also writes the old boolean `resolved:false` failed all
+    // three attempts at temperature 0.2 and reached Sentry. Both fields say
+    // "not resolved"; the status says why. The unknown reading is the only one
+    // that does not invent a failure the judge did not claim.
+    it.each([
+        ['needs_customer_input', false], ['not_assessable', false], ['needs_customer_input', undefined],
+    ])('keeps an inconclusive verdict unknown when the judge writes %s with resolved:%p', async (resolutionStatus, resolved) => {
+        const { service, llmRouter, executeInTenantSchema, eventEmitter } = buildHarness(AGENT_ID, 5);
+        llmRouter.execute.mockResolvedValue({ content: verdict({ resolutionStatus, resolved }), finishReason: 'stop' });
+        await expect(service.scoreConversation(TENANT_ID, CONVERSATION_ID)).resolves.toMatchObject({ status: 'scored' });
+        const insert = insertOf(executeInTenantSchema)!;
+        expect(insert[2][17]).toBeNull();
+        expect(insert[1]).toContain("'unknown'");
+        expect(eventEmitter.emit).toHaveBeenCalledWith('quality.scored', expect.objectContaining({ status: 'scored' }));
+    });
+
+    it.each([
+        [{ resolved: true, resolutionStatus: 'needs_customer_input' }],
+        [{ resolved: true, resolutionStatus: 'unresolved' }],
+        [{ resolved: false, resolutionStatus: 'resolved' }],
+        [{ resolved: null, resolutionStatus: 'unresolved' }],
+        [{ resolved: 'false', resolutionStatus: 'unresolved' }],
+        [{ resolved: false, resolutionStatus: 'made_up' }],
+        [{ resolved: null }],
+    ])('rejects contradictory or invented resolutions rather than choosing a verdict: %p', async (fields) => {
+        const { service, llmRouter, executeInTenantSchema, eventEmitter } = buildHarness(AGENT_ID, 5);
+        llmRouter.execute.mockResolvedValue({ content: verdict(fields), finishReason: 'stop' });
+        await expect(service.scoreConversation(TENANT_ID, CONVERSATION_ID)).rejects.toThrow('invalid response');
+        expect(insertOf(executeInTenantSchema)).toBeUndefined();
+        expect(eventEmitter.emit).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        ['a completion cut by maxTokens', { content: '{"overall": 8, "resolution": 7, "flags": ["Respondió con', finishReason: 'length',
+            usage: { promptTokens: 4000, completionTokens: 500, totalTokens: 4500 } }, 'output_truncated', null],
+        ['an empty completion', { content: '', finishReason: 'content_filter' }, 'content_filtered', null],
+        ['prose instead of JSON', { content: 'Lo siento, no puedo evaluar esto.', finishReason: 'stop' }, 'not_json', null],
+        ['a missing score', { content: verdict({ overall: undefined, resolved: true, resolutionStatus: 'resolved' }), finishReason: 'stop' }, 'invalid_score', 'overall'],
+        ['an inconsistent resolution', { content: verdict({ resolved: true, resolutionStatus: 'needs_customer_input' }), finishReason: 'stop' }, 'resolution_inconsistent', 'resolved'],
+        ['non-string flags', { content: verdict({ flags: [{ problema: 'x' }], resolved: true, resolutionStatus: 'resolved' }), finishReason: 'stop' }, 'invalid_flags', 'flags'],
+    ])('names why %s was refused, without logging what the judge wrote', async (_label, response, reason, field) => {
+        const { service, llmRouter, executeInTenantSchema } = buildHarness(AGENT_ID, 5);
+        const warn = jest.spyOn((service as any).logger, 'warn').mockImplementation(() => undefined);
+        // Stands in for anything the judge may quote back from the customer.
+        const quoted = 'CUSTOMER-QUOTED-TEXT';
+        const content = response.content.replace('Se pidió precisar la consulta.', quoted);
+        llmRouter.execute.mockResolvedValue({ ...response, content });
+
+        await expect(service.scoreConversation(TENANT_ID, CONVERSATION_ID)).rejects.toMatchObject({
+            message: expect.stringContaining('QA judge returned an invalid response'), reason, field,
+        });
+        expect(insertOf(executeInTenantSchema)).toBeUndefined();
+        const logged = warn.mock.calls.map(call => String(call[0])).join('\n');
+        expect(logged).toContain('[QA] Failed to parse judge JSON');
+        expect(logged).toContain(`reason=${reason}`);
+        expect(logged).toContain(`finishReason=${response.finishReason}`);
+        expect(logged).toContain(`contentLength=${content.length}`);
+        expect(logged).toContain(`tenant=${TENANT_ID}`);
+        expect(logged).not.toContain(quoted);
+        expect(logged).not.toContain('Respondió con');
     });
 
     it('propagates queue outages instead of silently claiming QA was scheduled', async () => {

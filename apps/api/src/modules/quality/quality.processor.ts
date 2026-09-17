@@ -3,6 +3,7 @@ import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import * as Sentry from '@sentry/nestjs';
 import { QualityService, QUALITY_QUEUE, QualityJob } from './quality.service';
+import { isQualityJudgeInvalidResponse } from './quality-judge-response';
 import { PrismaService } from '../prisma/prisma.service';
 import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription-entitlement.util';
 
@@ -34,10 +35,22 @@ export class QualityProcessor extends WorkerHost {
     onFailed(job: Job<QualityJob>, err: Error) {
         this.logger.error(`quality-scoring ${job.id} failed (attempt ${job.attemptsMade}): ${err.message}`);
         if (job.attemptsMade >= (job.opts.attempts ?? 1)) {
-            Sentry.captureException(err, {
-                tags: { queue: QUALITY_QUEUE },
-                extra: { tenantId: job.data?.tenantId, conversationId: job.data?.conversationId },
-            });
+            const extra = { tenantId: job.data?.tenantId, conversationId: job.data?.conversationId };
+            if (isQualityJudgeInvalidResponse(err)) {
+                // The job still fails: no verdict is invented and nothing is
+                // persisted, so the conversation stays visibly unscored. But a
+                // model answering off-contract is not a crash in this worker,
+                // and one Sentry issue per rejection reason says at a glance
+                // whether it is truncation, JSON syntax or a contradictory verdict.
+                Sentry.captureException(err, {
+                    level: 'warning',
+                    fingerprint: ['quality-judge-invalid-response', err.reason],
+                    tags: { queue: QUALITY_QUEUE, judge_reason: err.reason },
+                    extra: { ...extra, field: err.field },
+                });
+                return;
+            }
+            Sentry.captureException(err, { tags: { queue: QUALITY_QUEUE }, extra });
         }
     }
 }

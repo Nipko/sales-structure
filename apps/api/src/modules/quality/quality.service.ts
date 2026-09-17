@@ -8,8 +8,9 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { scoreProductionEvidence } from './quality-production-evidence';
 import { QUALITY_EVIDENCE_DDL } from './quality-evidence-schema';
 import { CURRENT_QUALITY_CTE } from './quality-evidence';
-import { QUALITY_RUBRIC_HASH, RUBRIC_PROMPT } from './quality-rubric';
+import { QUALITY_JUDGE_CALL, QUALITY_RUBRIC_HASH, RUBRIC_PROMPT } from './quality-rubric';
 import { qualityJudgeContext, type QualityJudgeContext } from './quality-judge-context';
+import { isQualityJudgeInvalidResponse, parseJudgeResponse } from './quality-judge-response';
 export { RUBRIC_PROMPT } from './quality-rubric';
 
 export const QUALITY_QUEUE = 'quality-scoring';
@@ -254,56 +255,39 @@ export class QualityService {
         withSourceAuthority?: import('../ai/interfaces/llm-source-authority').LLMSourceAuthority,
         context?: QualityJudgeContext): Promise<JudgeResult> {
         const response = await this.llmRouter.execute({
-            model: 'gpt-4o-mini',
+            model: QUALITY_JUDGE_CALL.model,
             messages: [{ role: 'user', content: JSON.stringify({
                 evaluationContext: context ?? qualityJudgeContext(null, { source: 'production' }), transcript,
             }) }],
             systemPrompt: RUBRIC_PROMPT,
             withSourceAuthority,
             executionContext,
-            temperature: 0.2,
-            maxTokens: 500,
+            temperature: QUALITY_JUDGE_CALL.temperature,
+            maxTokens: QUALITY_JUDGE_CALL.maxTokens,
+            // This call has no `task`, so the router sends it straight to the
+            // named model with no fallback; OpenAI maps jsonMode to
+            // response_format json_object, which needs the word "JSON" in the
+            // prompt (RUBRIC_PROMPT has it). An unescaped quote inside a reason
+            // or a brace in surrounding prose was refused like a bad verdict.
+            jsonMode: true,
             tenantId,
         });
-        return this.parseJudge(response.content);
-    }
-
-    private parseJudge(raw: string): JudgeResult {
         try {
-            const match = raw.match(/\{[\s\S]*\}/);
-            const parsed = JSON.parse(match ? match[0] : raw);
-            const scores = ['overall', 'resolution', 'tone', 'accuracy', 'empathy'] as const;
-            for (const field of scores) {
-                if (typeof parsed?.[field] !== 'number' || !Number.isFinite(parsed[field])
-                    || Number(parsed[field]) < 0
-                    || Number(parsed[field]) > 10) {
-                    throw new Error(`Invalid QA judge field: ${field}`);
-                }
+            return parseJudgeResponse(response);
+        } catch (error) {
+            if (isQualityJudgeInvalidResponse(error)) {
+                // Lengths, counts and codes only: the completion quotes the
+                // customer and never reaches a log. finishReason separates a
+                // completion cut by maxTokens from a verdict that was wrong.
+                const content = typeof response.content === 'string' ? response.content : '';
+                const finishReason = typeof response.finishReason === 'string' && /^[a-z_]{1,32}$/.test(response.finishReason)
+                    ? response.finishReason : 'unknown';
+                this.logger.warn(`[QA] Failed to parse judge JSON: reason=${error.reason} field=${error.field ?? '-'}`
+                    + `${error.detail ? ` ${error.detail}` : ''} finishReason=${finishReason} contentLength=${content.length}`
+                    + ` completionTokens=${response.usage?.completionTokens ?? 'unknown'} maxTokens=${QUALITY_JUDGE_CALL.maxTokens}`
+                    + ` tenant=${tenantId}`);
             }
-            const resolutionStatuses = ['resolved', 'unresolved', 'needs_customer_input', 'not_assessable'];
-            const resolutionStatus = parsed.resolutionStatus ?? (parsed.resolved === true ? 'resolved' : parsed.resolved === false ? 'unresolved' : null);
-            const inconclusive = resolutionStatus === 'needs_customer_input' || resolutionStatus === 'not_assessable';
-            if (!resolutionStatuses.includes(resolutionStatus)
-                || (inconclusive ? parsed.resolved !== null : parsed.resolved !== (resolutionStatus === 'resolved'))
-                || !Array.isArray(parsed?.flags)
-                || parsed.flags.some((flag: unknown) => typeof flag !== 'string')
-                || typeof parsed?.resolutionReason !== 'string') {
-                throw new Error('Invalid QA judge response shape');
-            }
-            return {
-                overall: Number(parsed.overall),
-                resolution: Number(parsed.resolution),
-                tone: Number(parsed.tone),
-                accuracy: Number(parsed.accuracy),
-                empathy: Number(parsed.empathy),
-                flags: parsed.flags,
-                resolved: parsed.resolved,
-                resolutionStatus,
-                resolutionReason: parsed.resolutionReason,
-            };
-        } catch (error: any) {
-            this.logger.warn('[QA] Failed to parse judge JSON');
-            throw new Error('QA judge returned an invalid response');
+            throw error;
         }
     }
 }

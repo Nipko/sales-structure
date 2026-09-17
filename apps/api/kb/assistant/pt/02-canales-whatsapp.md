@@ -3,7 +3,7 @@ id: canales-whatsapp
 title: "Conectar o WhatsApp"
 routes: ["/admin/channels", "/admin/channels/whatsapp", "/admin/channels/whatsapp/templates"]
 roles: ["tenant_admin"]
-keywords: ["whatsapp", "conectar whatsapp", "numero de whatsapp", "whatsapp business", "coexistencia", "app do whatsapp", "migrar numero", "templates", "modelos", "modelo whatsapp", "sincronizar conversas", "historico de conversas", "codigo qr", "verificacao", "meta", "facebook", "desconectar whatsapp", "janela de 24 horas", "varias contas", "segundo numero", "exige reautorizar", "popup bloqueado", "conexao com avisos", "negocio nao verificado", "cobranca da meta", "meta cobra", "custo do whatsapp", "forma de pagamento", "cartao na meta", "mensagens de servico", "mil mensagens gratis", "teto de gasto", "envio pausado", "parou de responder", "1 de outubro", "fatura da meta"]
+keywords: ["whatsapp", "conectar whatsapp", "numero de whatsapp", "whatsapp business", "coexistencia", "app do whatsapp", "migrar numero", "templates", "modelos", "modelo whatsapp", "sincronizar conversas", "historico de conversas", "codigo qr", "verificacao", "meta", "facebook", "desconectar whatsapp", "janela de 24 horas", "varias contas", "segundo numero", "exige reautorizar", "popup bloqueado", "conexao com avisos", "negocio nao verificado", "cobranca da meta", "meta cobra", "custo do whatsapp", "forma de pagamento", "cartao na meta", "mensagens de servico", "mil mensagens gratis", "teto de gasto", "envio pausado", "parou de responder", "1 de outubro", "fatura da meta", "onde esta seu numero", "qual opcao e a minha", "numero com outro provedor"]
 ---
 
 # Conectar o WhatsApp
@@ -21,12 +21,16 @@ O WhatsApp é o canal principal do Parallly: ao conectá-lo, seu agente de IA co
 
 1. Na barra lateral, seção **Administração**, entre em **Canais**.
 2. No card do **WhatsApp**, clique em **Conectar**.
-3. Antes das rotas aparece **"Antes de conectar o WhatsApp"**: uma lista curta com o número, o acesso ao código de verificação dele e a conta do Facebook. Marque os três itens e clique em **Continuar**; até confirmar, o botão diz **Confirme os itens para continuar**. É um lembrete, não uma validação: nada dos seus dados é conferido ali. A mesma etapa aparece no assistente **Conheça o seu agente** e na tela do **WhatsApp**.
-4. Você verá a tela **"Escolha seu método de conexão"** com três rotas:
-   - **WhatsApp Business App** (etiqueta **Coexistência**, marcada **Recomendado**, ~20 min) — se você já usa o app WhatsApp Business no seu celular e quer mantê-lo junto com suas conversas. É a rota que sugerimos; veja a próxima seção.
-   - **Número novo** (~5 min) — para um número que nunca foi usado no WhatsApp. É o caminho mais rápido se você vai estrear uma linha.
-   - **Migrar de outro provedor** (~15 min) — se você já usa o WhatsApp com outra plataforma (Wati, 360dialog, Twilio, etc.) e quer trazer seu número sem ficar fora do ar.
-5. Escolha seu método e clique em **Conectar com Facebook**. Uma janela da Meta será aberta.
+3. Antes de abrir qualquer janela, fazemos uma única pergunta: **"Onde está hoje o seu número de WhatsApp?"**. Cada resposta pede o seu:
+   - **No app WhatsApp Business de um celular** — coexistência: o número continua no seu celular, você escaneia um código QR pelo app e precisa abri-lo pelo menos a cada 14 dias para a conexão continuar ativa.
+   - **No WhatsApp normal do meu celular** — primeiro você passa para o WhatsApp Business (grátis, mantém seu número e suas conversas) e volta a esta tela.
+   - **É um número novo ou sem WhatsApp** — cadastro direto com a Meta: é preciso o número, o código de verificação dele e uma conta do Facebook.
+   - **Outro provedor já usa esse número** — um número só pode estar com um provedor por vez: peça ao provedor atual para desligar a verificação em duas etapas do número; isso depende deles e costuma levar de algumas horas a alguns dias.
+   - **Não está comigo agora** — fica anotado e a gente lembra você no **Início**.
+
+   A primeira resposta é a rota de coexistência, com o detalhe completo na seção seguinte. Nas duas últimas, nenhuma janela da Meta é aberta ainda: enquanto isso, seu agente continua respondendo pelo link do seu agente.
+4. Ao responder, você vê quanto tempo isso toma de **você** para concluir essa rota e, quando a resposta abre uma rota, o resumo dela: o essencial primeiro, com o detalhe completo em **"Ver mais detalhes"**. Os avisos que importam — a janela de 24 horas para autorizar o histórico, o PIN de duas etapas antes de migrar — ficam sempre visíveis, nunca escondidos ali. Clique em **Conectar com Facebook** para abrir a janela da Meta.
+5. Enquanto a janela estiver aberta, um texto na tela diz o que fazer ali; se você travar ou mudar de ideia, o link **Cancelar e voltar** te leva de volta a esta tela sem perder o que você já respondeu.
 6. Faça login com sua conta do Facebook e selecione (ou crie) seu portfólio do Meta Business.
 7. Selecione ou adicione sua conta do WhatsApp Business e o número de telefone.
 8. Verifique o número com um **código por SMS ou chamada de voz** e aprove as permissões.
@@ -211,6 +215,9 @@ Cada conexão é independente: tem seu próprio agente de IA (você o atribui no
 
 **Posso continuar usando o WhatsApp Business no meu celular?**
 Sim, com o modo **Coexistência**: a IA responde pelo Parallly e você mantém o app. Só lembre de abri-lo pelo menos a cada 14 dias.
+
+**Como sei qual das cinco opções é a minha?**
+Repare em onde você responde hoje aos seus clientes: se é o app verde do WhatsApp Business no celular, é a primeira opção, e se é o WhatsApp de sempre, é a segunda. Se o número é novo ou ainda não tem WhatsApp, ou se hoje outra plataforma responde por ele, são a terceira e a quarta opção; e se por enquanto você não tem o número à mão, a quinta deixa você retomar depois. Na dúvida, escolha o que descreve onde o número está **hoje**, não para onde você pretende levá-lo: a tela seguinte mostra exatamente o que você precisa antes de decidir de vez.
 
 **Perco minhas conversas anteriores ao conectar?**
 Não, se você conectar por coexistência: são sincronizados até 6 meses de conversas de texto e seus contatos. Se migrar de outro provedor, o histórico desse provedor não é transferido.

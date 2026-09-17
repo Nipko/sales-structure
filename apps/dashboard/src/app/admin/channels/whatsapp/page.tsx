@@ -24,7 +24,8 @@ import {
     AlertTriangle, Shield, Timer, Plus, Trash2, HelpCircle,
 } from "lucide-react";
 import WhatsAppEmbeddedSignup, { isKnownWhatsAppWarning } from "./WhatsAppEmbeddedSignup";
-import WhatsAppPrerequisites from "./WhatsAppPrerequisites";
+import WhatsAppTriage from "./WhatsAppTriage";
+import { readRememberedTriage, routeAfterTriage } from "./whatsapp-triage";
 import WhatsAppRouteBrief from "./WhatsAppRouteBrief";
 import {
     WHATSAPP_CONNECT_ROUTES,
@@ -455,7 +456,20 @@ export default function WhatsAppSetupPage() {
                         faltaba el numero o el codigo de verificacion. */}
                     {!prereqsOk ? (
                         <div className="rounded-xl border border-border bg-[var(--bg-secondary)] p-6 mb-6">
-                            <WhatsAppPrerequisites onContinue={() => setPrereqsOk(true)} />
+                            <WhatsAppTriage
+                                tenantId={getTenantId()}
+                                initialAnswerId={readRememberedTriage(getTenantId())}
+                                onRoute={(answer) => {
+                                    const next = routeAfterTriage(answer);
+                                    if (next) setSelectedRoute(next);
+                                    setPrereqsOk(true);
+                                }}
+                                // Aquí no hay asistente que anote el "después":
+                                // lo honesto es dejarla ver las tres formas y
+                                // elegir, no dejarla sin nada que tocar.
+                                onLater={() => setPrereqsOk(true)}
+                                onShowAllRoutes={() => setPrereqsOk(true)}
+                            />
                         </div>
                     ) : (
                         <>
@@ -495,10 +509,7 @@ export default function WhatsAppSetupPage() {
                                                 <span className={cn("text-[10px] font-semibold px-2 py-0.5 rounded-md", route.accent.bg, route.accent.fg)}>
                                                     {tw(whatsAppRouteKey(route, "Tag"))}
                                                 </span>
-                                                <span className="text-[11px] text-[var(--text-secondary)] flex items-center gap-1">
-                                                    <Timer size={11} />
-                                                    {tw(whatsAppRouteKey(route, "Time"))}
-                                                </span>
+
                                             </div>
                                         </button>
                                     );

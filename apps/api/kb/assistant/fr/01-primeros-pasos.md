@@ -3,7 +3,7 @@ id: primeros-pasos
 title: "Premiers pas et configuration initiale"
 routes: ["/admin/setup-wizard", "/admin", "/admin/channels", "/admin/agent", "/admin/settings/billing"]
 roles: ["tenant_admin"]
-keywords: ["premiers pas", "mise en route", "commencer", "inscription", "creer un compte", "onboarding", "configuration initiale", "assistant de configuration", "setup", "wizard", "connecter canal", "connecter whatsapp", "tester l'agent", "essentiels", "checklist", "votre progression", "8/9", "visite guidee", "trial", "nouvel utilisateur", "rencontrez votre agent", "connecter plus tard", "montrez-moi ou", "verification e-mail", "etape suivante", "quatre essentiels", "repond deja", "changements immediats", "lien d'essai", "page d'essai", "montrer a mon associe"]
+keywords: ["premiers pas", "mise en route", "commencer", "inscription", "creer un compte", "onboarding", "configuration initiale", "assistant de configuration", "setup", "wizard", "connecter canal", "connecter whatsapp", "tester l'agent", "essentiels", "checklist", "votre progression", "8/9", "visite guidee", "trial", "nouvel utilisateur", "rencontrez votre agent", "connecter plus tard", "montrez-moi ou", "verification e-mail", "etape suivante", "quatre essentiels", "repond deja", "changements immediats", "lien d'essai", "page d'essai", "montrer a mon associe", "ou vit votre numero", "question avant de connecter whatsapp", "bon chemin des le depart"]
 ---
 
 # Premiers pas et configuration initiale
@@ -45,7 +45,7 @@ Vous pouvez rouvrir l'assistant quand vous voulez depuis **Paramètres → Assis
 
 ## Comment connecter votre premier canal
 
-Sans canal connecté, l'entreprise **ne reçoit aucun message par ce canal**. En connectant votre premier canal, votre agent par défaut lui est affecté et commence à répondre là-bas exactement comme vous l'avez testé dans le chat ; inutile de retourner dans l'éditeur. Nous vous recommandons de commencer par **WhatsApp**, le canal le plus utilisé en Amérique latine. En attendant, votre agent répond déjà sur le lien de votre agent, même si cette page ne compte pas comme un canal connecté.
+Sans canal connecté, l'entreprise **ne reçoit aucun message par ce canal**. En connectant votre premier canal, votre agent par défaut lui est affecté et commence à répondre là-bas exactement comme vous l'avez testé dans le chat ; inutile de retourner dans l'éditeur. Nous vous recommandons de commencer par **WhatsApp**, le canal le plus utilisé en Amérique latine : il commence par une seule question — où vit aujourd'hui votre numéro ? — pour que vous choisissiez le bon chemin dès le départ. En attendant, votre agent répond déjà sur le lien de votre agent, même si cette page ne compte pas comme un canal connecté.
 
 Avant de connecter WhatsApp, préparez :
 

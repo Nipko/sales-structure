@@ -1,7 +1,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { api } from "@/lib/api";
 import { useTenant } from "@/contexts/TenantContext";
 import { cn } from "@/lib/utils";
@@ -20,6 +20,15 @@ import {
 import { DisconnectChannelModal } from "@/components/ui/disconnect-channel-modal";
 import { HelpPanel } from "@/components/ui/help-panel";
 import { LoadFailureNotice } from "@/components/ui/load-failure";
+import { META_CONNECT_ERROR } from "@parallext/shared";
+import { ConnectFailureCard } from "../_components/ConnectFailureCard";
+import { ConnectTriage } from "../_components/ConnectTriage";
+import {
+    connectFailureForCode,
+    mapConnectFailure,
+    readConnectEvidence,
+    type ChannelConnectFailure,
+} from "../_components/connect-errors";
 
 declare global {
     interface Window {
@@ -77,7 +86,24 @@ export default function MessengerSetupPage() {
     const [sdkLoaded, setSdkLoaded] = useState(false);
     const [copied, setCopied] = useState("");
     const [message, setMessage] = useState({ type: "", text: "" });
+    // A failed connection is a card with ONE action, never a sentence Meta wrote.
+    const [failure, setFailure] = useState<ChannelConnectFailure | null>(null);
     const [showDisconnectModal, setShowDisconnectModal] = useState(false);
+
+    /**
+     * Losing focus is the proof Facebook's window actually opened.
+     *
+     * `FB.login` reports a blocked pop-up and a closed pop-up identically — a
+     * callback with no `authResponse` — and those are two different fixes:
+     * "allow pop-ups" versus "finish the window". The same signal the WhatsApp
+     * panel uses tells them apart, and it is the only one available.
+     */
+    const windowOpenedRef = useRef(false);
+    useEffect(() => {
+        const onBlur = () => { windowOpenedRef.current = true; };
+        window.addEventListener("blur", onBlur);
+        return () => window.removeEventListener("blur", onBlur);
+    }, []);
 
     // Load Facebook SDK
     useEffect(() => {
@@ -136,17 +162,19 @@ export default function MessengerSetupPage() {
     useEffect(() => { loadData(); }, [loadData]);
 
     const handleOAuthConnect = () => {
+        setMessage({ type: "", text: "" });
         if (!sdkLoaded || !window.FB) {
-            setMessage({ type: "error", text: t("messenger.sdkNotLoaded") });
+            setFailure(connectFailureForCode("messenger", "sdk_not_loaded"));
             return;
         }
         if (!MESSENGER_CONFIG_ID) {
-            setMessage({ type: "error", text: t("configIdNotSet") });
+            setFailure(connectFailureForCode("messenger", "config_missing"));
             return;
         }
 
         setConnecting(true);
-        setMessage({ type: "", text: "" });
+        setFailure(null);
+        windowOpenedRef.current = false;
 
         window.FB.login(
             (response: any) => {
@@ -157,17 +185,28 @@ export default function MessengerSetupPage() {
                         .then((result: any) => {
                             if (result.success) {
                                 setMessage({ type: "success", text: t("messenger.connectSuccess") });
+                                setFailure(null);
                                 loadData();
                             } else {
-                                setMessage({ type: "error", text: result.error || t("messenger.connectFailed") });
+                                // `result.error` is the service's prose on a
+                                // non-2xx. It used to be printed as-is; the code
+                                // beside it is what the card is built from.
+                                console.error("[Messenger] Connect refused:", readConnectEvidence(result) ?? result);
+                                setFailure(mapConnectFailure("messenger", result));
                             }
                         })
                         .catch((err: any) => {
-                            setMessage({ type: "error", text: err.message || t("messenger.connectFailed") });
+                            console.error("[Messenger] Connect failed:", err);
+                            setFailure(connectFailureForCode("messenger", META_CONNECT_ERROR.UNAVAILABLE));
                         })
                         .finally(() => setConnecting(false));
                 } else {
-                    setMessage({ type: "", text: "" });
+                    // This branch used to clear the banner and stop: the button
+                    // un-pressed itself and the screen said nothing at all.
+                    setFailure(connectFailureForCode(
+                        "messenger",
+                        windowOpenedRef.current ? META_CONNECT_ERROR.WINDOW_CANCELLED : "popup_blocked",
+                    ));
                     setConnecting(false);
                 }
             },
@@ -200,7 +239,9 @@ export default function MessengerSetupPage() {
             }
             await loadData();
         } catch (err: any) {
-            setMessage({ type: "error", text: err.message || tc("connectionError") });
+            // The thrown text is ours to debug, not theirs to read.
+            console.error("Failed to disconnect Messenger", err);
+            setMessage({ type: "error", text: tc("connectionError") });
         } finally {
             setDisconnecting(false);
         }
@@ -216,10 +257,12 @@ export default function MessengerSetupPage() {
                 setMessage({ type: "success", text: t("messenger.disconnectSuccess") });
                 await loadData();
             } else {
-                setMessage({ type: "error", text: (res as any)?.error || tc("connectionError") });
+                console.error("Failed to disconnect Messenger page", (res as any)?.error);
+                setMessage({ type: "error", text: tc("connectionError") });
             }
         } catch (err: any) {
-            setMessage({ type: "error", text: err.message || tc("connectionError") });
+            console.error("Failed to disconnect Messenger page", err);
+            setMessage({ type: "error", text: tc("connectionError") });
         }
     };
 
@@ -311,6 +354,15 @@ export default function MessengerSetupPage() {
                 </div>
             )}
 
+            {/* A failed connection: what happened, and the one thing to do. */}
+            {failure && (
+                <ConnectFailureCard
+                    namespace="channels.messenger.errors"
+                    failure={failure}
+                    onRetry={handleOAuthConnect}
+                />
+            )}
+
             {!isConnected ? (
                 /* ── Not Connected: OAuth Button ── */
                 <div className="rounded-xl border border-border bg-[var(--bg-secondary)] overflow-hidden mb-6">
@@ -321,9 +373,13 @@ export default function MessengerSetupPage() {
                         </h2>
                     </div>
                     <div className="p-6">
-                        <p className="text-sm text-[var(--text-secondary)] mb-6">
+                        <p className="text-sm text-[var(--text-secondary)] mb-5">
                             {t("messenger.connectDesc")}
                         </p>
+                        {/* Asked BEFORE Meta's window, because Meta's refusal
+                            arrives after the minutes are already spent. It is a
+                            hint, not a gate: the button below never changes. */}
+                        <ConnectTriage namespace="channels.messenger.triage" name="messenger-triage" />
                         <button
                             onClick={handleOAuthConnect}
                             disabled={connecting || !sdkLoaded}

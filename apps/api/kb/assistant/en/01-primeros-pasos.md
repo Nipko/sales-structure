@@ -3,7 +3,7 @@ id: primeros-pasos
 title: "Getting started and initial setup"
 routes: ["/admin/setup-wizard", "/admin", "/admin/channels", "/admin/agent", "/admin/settings/billing"]
 roles: ["tenant_admin"]
-keywords: ["getting started", "start", "sign up", "create account", "onboarding", "initial setup", "setup wizard", "setup", "connect channel", "connect whatsapp", "test agent", "essentials", "checklist", "your progress", "8/9", "tour", "trial", "new user", "meet your agent", "connect later", "show me where", "email verification", "next step", "four essentials", "already answers", "immediate changes", "trial link", "trial page", "show it to my partner"]
+keywords: ["getting started", "start", "sign up", "create account", "onboarding", "initial setup", "setup wizard", "setup", "connect channel", "connect whatsapp", "test agent", "essentials", "checklist", "your progress", "8/9", "tour", "trial", "new user", "meet your agent", "connect later", "show me where", "email verification", "next step", "four essentials", "already answers", "immediate changes", "trial link", "trial page", "show it to my partner", "where does your number live", "question before connecting whatsapp", "right path from the start"]
 ---
 
 # Getting started and initial setup
@@ -45,7 +45,7 @@ You can reopen the wizard whenever you want from **Settings → Setup assistant*
 
 ## How to connect your first channel
 
-Without a connected channel, the business **receives no messages through that channel**. When you connect your first channel, your default agent gets assigned to it and starts answering there just as you tested it in the chat; there's no need to go back to the editor. We recommend starting with **WhatsApp**, the most widely used channel in Latin America. Meanwhile, your agent already answers on your agent's link, though that page doesn't count as a connected channel.
+Without a connected channel, the business **receives no messages through that channel**. When you connect your first channel, your default agent gets assigned to it and starts answering there just as you tested it in the chat; there's no need to go back to the editor. We recommend starting with **WhatsApp**, the most widely used channel in Latin America: it starts with a single question — where does your number live today? — so you pick the right path from the start. Meanwhile, your agent already answers on your agent's link, though that page doesn't count as a connected channel.
 
 Before connecting WhatsApp, have on hand:
 

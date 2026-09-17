@@ -85,6 +85,9 @@ export * from './channel-policy';
 export * from './outbound-message-contract';
 export * from './dispatch-pilot-scope';
 
+// ---- Why connecting Instagram or Messenger failed, as a code and not as prose ----
+export * from './meta-connect-errors';
+
 export * from './email-verification-policy';
 export * from './intent-workflow-contract';
 export * from './provider-resource-binding';

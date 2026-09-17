@@ -4030,7 +4030,8 @@
       "routeRecommended": "Recommended",
       "mobileNote": "This step works better on a computer. From your phone you can use the coexistence option and scan the QR code with your WhatsApp Business app.",
       "brief": {
-        "title": "What this option involves"
+        "title": "What this option involves",
+        "more": "See more details"
       },
       "warnings": {
         "title": "Connected, with a few things pending",
@@ -4157,7 +4158,48 @@
         "cancel": "Cancel",
         "unknown": "We couldn't check this number's billing time zone.",
         "retry": "Retry"
-      }
+      },
+      "triage": {
+        "question": "Where does your WhatsApp number live today?",
+        "questionHint": "Your answer sets up the exact path. It is the only question.",
+        "changeAnswer": "Change my answer",
+        "continue": "Continue",
+        "installDone": "I moved it to WhatsApp Business, continue",
+        "later": "Leave it for later",
+        "minutes": "It takes you about {minutes} minutes.",
+        "allRoutes": "See the three ways to connect",
+        "answerBusinessAppTitle": "In the WhatsApp Business app on a phone",
+        "answerBusinessAppHint": "The green app with the briefcase; you use it to reply to customers.",
+        "answerBusinessAppLead": "We connect that same number without taking it off your phone: you can keep replying from the app whenever you want.",
+        "answerBusinessAppNeed1": "The phone at hand: you will scan a QR code from the app.",
+        "answerBusinessAppNeed2": "A Facebook account to authorize (you can create it on the spot).",
+        "answerBusinessAppNeed3": "Open the app at least once every 14 days so the connection stays alive.",
+        "answerPersonalAppTitle": "In the ordinary WhatsApp on my phone",
+        "answerPersonalAppHint": "Regular WhatsApp, with no business account.",
+        "answerPersonalAppLead": "Move it to WhatsApp Business first. It is free, you keep your number and your chats, and then we carry on here.",
+        "answerPersonalAppNeed1": "Install WhatsApp Business from your app store.",
+        "answerPersonalAppNeed2": "Open it and choose \"use this number\": your chats move by themselves.",
+        "answerPersonalAppNeed3": "Come back to this screen and press the button below.",
+        "answerNewNumberTitle": "It is a new number, or one without WhatsApp",
+        "answerNewNumberHint": "A line you do not use on WhatsApp yet.",
+        "answerNewNumberLead": "We register that number directly with Meta. You will not use it from a phone.",
+        "answerNewNumberNeed1": "The number and access to its verification code (SMS or call).",
+        "answerNewNumberNeed2": "A Facebook account to authorize (you can create it on the spot).",
+        "answerNewNumberNeed3": "That number must not have WhatsApp installed.",
+        "answerOtherProviderTitle": "Another provider already uses it",
+        "answerOtherProviderHint": "Another platform answers on that number today.",
+        "answerOtherProviderLead": "Your number can only be with one provider at a time. When you bring it here, it stops answering with the other one.",
+        "answerOtherProviderNeed1": "Ask your current provider to turn off two-step verification on the number.",
+        "answerOtherProviderNeed2": "That depends on them: it usually takes from a few hours to a few days.",
+        "answerOtherProviderNeed3": "Once it is off, continue here with that same number.",
+        "answerNotAtHandTitle": "I do not have it at hand right now",
+        "answerNotAtHandHint": "The phone or the number is not with you at this moment.",
+        "answerNotAtHandLead": "No rush: we note it down and you pick it up when you have it.",
+        "answerNotAtHandNeed1": "We will remind you on Home.",
+        "answerNotAtHandNeed2": "You can connect another channel now and WhatsApp later."
+      },
+      "liveHint": "Meta's window is open. Finish the steps there and do not close it until you see “Connection successful”. If you cannot see it, look in another window or check that your browser did not block it.",
+      "cancelLaunch": "Cancel and go back"
     },
     "whatsappDesc": "WhatsApp Business API via Meta Cloud API",
     "instagram": {
@@ -4181,7 +4223,82 @@
       "disconnectPartial": "Instagram marked as disconnected on the platform, but the permissions may not have been revoked at Meta. Please review the integration manually.",
       "redirecting": "Redirecting...",
       "backToSetup": "Back to setup",
-      "closeWindow": "You can close this window."
+      "closeWindow": "You can close this window.",
+      "triage": {
+        "question": "Is your Instagram account professional?",
+        "yes": "Yes",
+        "no": "No",
+        "unsure": "I don't know",
+        "ready": "Great. Carry on with the button below.",
+        "stepsTitle": "How to tell (and how to change it)",
+        "steps": [
+          "Open Instagram and go to Settings.",
+          "Look for 'Account type and tools' → 'Switch to professional account'.",
+          "Pick Business or Creator. It is free and takes a minute."
+        ],
+        "alwaysAvailable": "We cannot check this from here, so the connect button stays available: if you are unsure, try anyway."
+      },
+      "errors": {
+        "retry": "Try again",
+        "goToBilling": "Go to Plan and billing",
+        "accountNotProfessional": {
+          "title": "Your Instagram account is still personal",
+          "action": "Open Instagram → Settings → Account type → Switch to professional account. It is free and takes a minute; then come back here and connect."
+        },
+        "noInstagramBusinessAccount": {
+          "title": "That is not the business account",
+          "action": "Connect again and sign in with your business's professional Instagram account, not with a personal one."
+        },
+        "permissionsMissing": {
+          "title": "Some permissions were missing",
+          "action": "Try again and accept every permission the window asks for. Without them we cannot read or answer your messages."
+        },
+        "windowCancelled": {
+          "title": "The connection was left halfway",
+          "action": "Try again and do not close the window until you see 'Connected'."
+        },
+        "tokenExchangeFailed": {
+          "title": "We could not finish the connection",
+          "action": "Try again. If it happens again, write to us and we will get it working."
+        },
+        "planLimit": {
+          "title": "You have reached your plan's limit",
+          "action": "Your plan does not allow another account. Change plan or disconnect one of the ones you already have."
+        },
+        "unavailable": {
+          "title": "We could not connect right now",
+          "action": "It was temporary. Try again in a few minutes."
+        },
+        "popupBlocked": {
+          "title": "The Instagram window did not open",
+          "action": "Allow pop-ups for this site and try again."
+        },
+        "sessionMismatch": {
+          "title": "This is not the window you opened",
+          "action": "Close this window and start again from Channels."
+        },
+        "alreadyUsed": {
+          "title": "This authorization was already used",
+          "action": "Open Channels to see whether Instagram ended up connected; if it did not, try again from there."
+        },
+        "timeout": {
+          "title": "We could not confirm the connection in time",
+          "action": "It may have gone through. Open Channels to check before trying again."
+        },
+        "generic": {
+          "title": "We could not complete the connection",
+          "action": "Try again. If it stays the same, write to us and we will sort it out."
+        },
+        "goToVerifyEmail": "Verify my email",
+        "emailNotVerified": {
+          "title": "Your email is not confirmed yet",
+          "action": "Confirm your email with the code we sent and connect again. It takes a minute."
+        },
+        "channelNotAvailable": {
+          "title": "This channel is not in your plan",
+          "action": "Check your plan to enable it, or connect another channel meanwhile."
+        }
+      }
     },
     "instagramDesc": "Instagram Direct Messages via Graph API",
     "messenger": {
@@ -4200,7 +4317,78 @@
       "disconnect": "Disconnect",
       "disconnectConfirm": "Are you sure you want to disconnect Messenger?",
       "disconnectSuccess": "Messenger disconnected successfully.",
-      "disconnectPartial": "Messenger marked as disconnected on the platform, but some pages may not have been unsubscribed at Meta. Please review the integration manually."
+      "disconnectPartial": "Messenger marked as disconnected on the platform, but some pages may not have been unsubscribed at Meta. Please review the integration manually.",
+      "triage": {
+        "question": "Can you post on your business's Facebook page?",
+        "yes": "Yes",
+        "no": "No",
+        "unsure": "I don't know",
+        "ready": "Great. Carry on with the button below.",
+        "stepsTitle": "How to tell (and how to get it)",
+        "steps": [
+          "If you created the page, you can: you are its administrator.",
+          "If not, open the page on Facebook and try writing a post; if it lets you, you can.",
+          "If it does not, ask the page owner to give you the administrator role."
+        ],
+        "alwaysAvailable": "We cannot check this from here, so the connect button stays available: if you are unsure, try anyway."
+      },
+      "errors": {
+        "retry": "Try again",
+        "goToBilling": "Go to Plan and billing",
+        "noPage": {
+          "title": "We could not find a Facebook page",
+          "action": "Messenger needs your business's page, not your personal profile. Create the page on Facebook, then connect from here."
+        },
+        "notPageAdmin": {
+          "title": "You are not an administrator of that page",
+          "action": "Ask the page owner to give you the administrator role, then connect from here."
+        },
+        "permissionsMissing": {
+          "title": "Some permissions were missing",
+          "action": "Try again and accept every permission the window asks for, the page included. Without them we cannot read or answer your messages."
+        },
+        "windowCancelled": {
+          "title": "The connection was left halfway",
+          "action": "Try again, pick your page, and do not close the window until you see 'Connected'."
+        },
+        "tokenExchangeFailed": {
+          "title": "We could not finish the connection",
+          "action": "Try again. If it happens again, write to us and we will get it working."
+        },
+        "planLimit": {
+          "title": "You have reached your plan's limit",
+          "action": "Your plan does not allow another page. Change plan or disconnect one of the ones you already have."
+        },
+        "unavailable": {
+          "title": "We could not connect right now",
+          "action": "It was temporary. Try again in a few minutes."
+        },
+        "popupBlocked": {
+          "title": "The Facebook window did not open",
+          "action": "Allow pop-ups for this site and try again."
+        },
+        "sdkNotLoaded": {
+          "title": "The Facebook connector did not load",
+          "action": "Reload the page and try again. If you use a content blocker, turn it off for this site."
+        },
+        "configMissing": {
+          "title": "The connection is missing some setup",
+          "action": "This one is on us, not on you. Write to us and we will get it working."
+        },
+        "generic": {
+          "title": "We could not complete the connection",
+          "action": "Try again. If it stays the same, write to us and we will sort it out."
+        },
+        "goToVerifyEmail": "Verify my email",
+        "emailNotVerified": {
+          "title": "Your email is not confirmed yet",
+          "action": "Confirm your email with the code we sent and connect again. It takes a minute."
+        },
+        "channelNotAvailable": {
+          "title": "This channel is not in your plan",
+          "action": "Check your plan to enable it, or connect another channel meanwhile."
+        }
+      }
     },
     "messengerDesc": "Messenger via Facebook Page integration",
     "telegramDesc": "Telegram Bot API — automated direct messages",
@@ -8337,7 +8525,7 @@
       "title": "How do I connect and manage my channels?",
       "description": "Channels is where you connect each messaging network (WhatsApp, Instagram DM, Facebook Messenger and Telegram) so your agent can receive and reply everywhere. Each card shows whether the channel is \"Connected\" or \"Disconnected\" and takes you to its setup.",
       "tips": [
-        "Start with WhatsApp: open its card and follow Meta's official flow. You will need a phone number for WhatsApp and a Facebook account to authorize (you can create it during the process).",
+        "Start with WhatsApp: open its card and follow Meta's official flow. You need a phone number and a Facebook account to authorize (you can create it during the process). No Facebook page is required.",
         "For Instagram DM the account must be professional (Business or Creator); you sign in with Instagram, no Facebook page needed, and it takes under 2 minutes.",
         "Connecting Messenger asks you to sign in with Facebook and pick your business page.",
         "Telegram only needs a Bot Token: create a bot with @BotFather, copy the token and paste it into the channel setup.",
@@ -9296,7 +9484,7 @@
         "Key prerequisite: your Instagram account must be of type 'Business' or 'Creator'. If you have a personal account, switch it to professional from Instagram's settings before continuing (it takes a minute and is free).",
         "Click 'Connect with Instagram': a Meta popup will open. Log in with the Instagram account you want to connect, accept the 'instagram_business_basic' and 'instagram_business_manage_messages' permissions and complete the flow.",
         "After authorizing, the panel shows the account name, profile picture, and token expiration date (long-lived tokens last ~60 days). The system renews the token automatically, but if you see the 'Expired token' alert, click 'Reconnect'.",
-        "Troubleshooting: if the popup doesn't open, disable the browser's popup blocker for this site. If the button stays on 'Connecting...' indefinitely, refresh the page and try again; the flow uses BroadcastChannel to communicate the result between windows."
+        "If something goes wrong, the screen tells you what happened and what to do, with a button to retry: you do not have to interpret Meta's message. If the window never opens, allow pop-ups for this site."
       ]
     },
     "channelsMessenger": {
@@ -9306,7 +9494,7 @@
         "Prerequisite: you must be an administrator of the Facebook Page you want to connect. The page must have 'Messages' enabled in its settings (Settings → General → Messages). If the page doesn't appear in the selector, check your role.",
         "Click 'Connect with Facebook': the Facebook login dialog will open. Sign in with your Facebook account, select the business page and grant the 'pages_messaging', 'pages_show_list' and 'pages_manage_metadata' permissions.",
         "After authorizing, the panel lists the connected pages with their photo, name and ID. You can connect multiple pages in the same tenant if your plan allows it. Each page is associated with an AI agent.",
-        "Troubleshooting: if the 'Connect with Facebook' button is disabled when you arrive, wait 1-2 seconds for the Facebook SDK to load. If the error says 'configIdNotSet', the platform administrator needs to set the 'NEXT_PUBLIC_MESSENGER_FB_LOGIN_CONFIG_ID' environment variable on the server."
+        "If the 'Connect with Facebook' button is disabled when you arrive, wait a second for the connector to load. If something fails, the screen tells you what to do and lets you retry; when the problem is our own setup, it says so and you only need to write to us."
       ]
     },
     "channelsSms": {
@@ -9331,12 +9519,12 @@
     },
     "channelsWhatsapp": {
       "title": "How do I connect WhatsApp Business to Parallly?",
-      "description": "The connection uses Meta's Embedded Signup: an official flow that links your WhatsApp Business number directly from the dashboard. You need a Meta Business account and a phone number not already linked to the personal WhatsApp app.",
+      "description": "The connection uses Meta's Embedded Signup: an official flow that links your WhatsApp Business number from the dashboard. You need a Facebook account to authorize and to choose one of the three routes. No Facebook page is required.",
       "tips": [
-        "Before starting, create or verify your account at 'business.facebook.com'. The number you use must be free from personal WhatsApp (if it's on your phone, remove it from the app first).",
-        "Choose the right route: 'New number' to start fresh, 'Coexistence' if you already use that number in the WhatsApp Business app and want the AI to share it, or 'Migration' to move the number to the API (you'll stop receiving messages in the app).",
-        "Click the green connect button and complete Meta's flow in the popup window. Grant the requested permissions and select the Facebook page linked to your business.",
-        "If you see the error 'number already registered', make sure it is not active in another Meta Business account. For the Migration route, disable two-step verification in the WhatsApp Business app before starting."
+        "Choose the route first. 'I already use WhatsApp Business' (coexistence) is the recommended one: the number keeps working on your phone and the AI answers alongside it. Do not delete the app — that is the whole point.",
+        "'New number' is for a number that does not have WhatsApp yet. 'Migration' moves the number to the API and you stop receiving messages in the phone app: pick it only if that is what you want.",
+        "Click the green connect button and complete Meta's window without closing it until the end. Grant every permission and tick the number you want to connect.",
+        "If something goes wrong, the screen tells you what happened and what to do, with a button to retry. For the Migration route only: turn off two-step verification in the WhatsApp Business app first."
       ]
     },
     "channelsWhatsappProfile": {
@@ -13984,20 +14172,20 @@
           "content": "Here you see at a glance whether WhatsApp is already connected or not."
         },
         "routes": {
-          "title": "Pick your situation",
-          "content": "You already use the WhatsApp Business app (recommended: you keep your chats), you want a new number, or you're coming from another provider."
+          "title": "The three ways to connect",
+          "content": "Your answer picks one of them. They are here in case you want to look."
         },
         "prerequisites": {
-          "title": "Have these at hand",
-          "content": "Confirm these three points before touching the button. This is what makes people give up halfway."
+          "title": "One question only",
+          "content": "Tell us where your number lives today and we set up the exact path. Nothing else to answer."
         },
         "brief": {
           "title": "What the option you picked involves",
           "content": "After connecting you have 24 hours to authorize your history. If you come from another provider, turn off two-step verification first."
         },
         "connect": {
-          "title": "The button opens a Meta window",
-          "content": "Don't close it until you see \"Connection successful\". If it doesn't appear, allow pop-ups and try again."
+          "title": "The button opens Meta's window",
+          "content": "Do not close it until you see \"Connection successful\". If you cannot see it, look in another window or use \"Cancel and go back\" to try again."
         },
         "test": {
           "title": "Try your agent",

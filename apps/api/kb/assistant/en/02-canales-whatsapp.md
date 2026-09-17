@@ -3,7 +3,7 @@ id: canales-whatsapp
 title: "Connect WhatsApp"
 routes: ["/admin/channels", "/admin/channels/whatsapp", "/admin/channels/whatsapp/templates"]
 roles: ["tenant_admin"]
-keywords: ["whatsapp", "connect whatsapp", "whatsapp number", "whatsapp business", "coexistence", "whatsapp app", "migrate number", "templates", "whatsapp template", "sync chats", "chat history", "qr code", "verification", "meta", "facebook", "disconnect whatsapp", "24 hour window", "multiple accounts", "second number", "needs reauthorisation", "popup blocked", "connection with warnings", "business not verified", "meta charges", "whatsapp cost", "payment method", "card on meta", "service messages", "free service messages", "spend ceiling", "sending paused", "stopped replying", "1 october", "meta invoice", "who charges"]
+keywords: ["whatsapp", "connect whatsapp", "whatsapp number", "whatsapp business", "coexistence", "whatsapp app", "migrate number", "templates", "whatsapp template", "sync chats", "chat history", "qr code", "verification", "meta", "facebook", "disconnect whatsapp", "24 hour window", "multiple accounts", "second number", "needs reauthorisation", "popup blocked", "connection with warnings", "business not verified", "meta charges", "whatsapp cost", "payment method", "card on meta", "service messages", "free service messages", "spend ceiling", "sending paused", "stopped replying", "1 october", "meta invoice", "who charges", "where does your number live", "which option is mine", "number with another provider"]
 ---
 
 # Connect WhatsApp
@@ -21,12 +21,16 @@ WhatsApp is Parallly's main channel: once connected, your AI agent starts receiv
 
 1. In the sidebar, under **Administration**, go to **Channels**.
 2. On the **WhatsApp** card, click **Connect**.
-3. Before the routes appear you get **"Before you connect WhatsApp"**: a short list with the number, access to its verification code, and the Facebook account. Tick the three items and click **Continue**; until you do, the button reads **Confirm the items to continue**. It is a reminder, not a validation: nothing about your data is checked there. The same step appears in the **Meet your agent** wizard and on the **WhatsApp** screen.
-4. You'll see the **"Choose your connection method"** screen with three routes:
-   - **WhatsApp Business App** (tagged **Coexistence**, marked **Recommended**, ~20 min) — if you already use the WhatsApp Business app on your phone and want to keep it along with your chats. This is the route we suggest; see the next section.
-   - **New number** (~5 min) — for a number that has never been used on WhatsApp. This is the fastest path when you are starting a new line.
-   - **Migrate from another provider** (~15 min) — if you already use WhatsApp with another platform (Wati, 360dialog, Twilio, etc.) and want to bring your number over with zero downtime.
-5. Pick your method and click **Connect with Facebook**. A Meta window opens.
+3. Before any window opens, we ask you a single question: **"Where does your number live today?"**. Each answer needs its own thing:
+   - **On the WhatsApp Business app on a phone** — coexistence: the number stays on your phone, you scan a QR code from the app, and you have to open it at least every 14 days to keep the connection alive.
+   - **On my regular WhatsApp** — you move it to WhatsApp Business first (free, keeps your number and chats), then come back to this screen.
+   - **A new number, or one with no WhatsApp** — a direct sign-up with Meta: you need the number, its verification code, and a Facebook account.
+   - **Another provider already has it** — a number can only be with one provider at a time: ask your current provider to turn off two-step verification on the number; that permission is theirs to give and usually takes anywhere from a few hours to a few days.
+   - **I don't have it at hand right now** — it gets noted and we remind you on **Home**.
+
+   The first answer is the coexistence route, covered in full in the next section. The last two do not open a Meta window yet: meanwhile your agent keeps answering on your agent's link.
+4. When you answer, you see how long it takes **you** to finish that route, and, when the answer opens a route, its summary: the essentials first, with the full detail under **"See more details"**. The warnings that matter — the 24-hour window to authorize history, the two-step PIN before migrating — stay visible at all times, never hidden there. Click **Connect with Facebook** to open the Meta window.
+5. While the window is open, on-screen text tells you what to do there; if you get stuck or change your mind, the **Cancel and go back** link returns you to this screen without losing what you already answered.
 6. Log in with your Facebook account and select (or create) your Meta Business portfolio.
 7. Select or add your WhatsApp Business account and phone number.
 8. Verify the number with a **code sent by SMS or voice call** and approve the permissions.
@@ -211,6 +215,9 @@ Each connection is independent: it has its own AI agent (you assign it in the ag
 
 **Can I keep using WhatsApp Business on my phone?**
 Yes, with **Coexistence** mode: the AI replies from Parallly and you keep the app. Just remember to open it at least every 14 days.
+
+**How do I know which of the five options is mine?**
+Look at where you answer your customers today: if it's the green WhatsApp Business app on your phone, that's the first option, and if it's your regular WhatsApp, it's the second. If the number is new or doesn't have WhatsApp yet, or if another platform answers on it today, those are the third and fourth options; and if you simply don't have the number at hand right now, the fifth lets you pick it up later. When in doubt, choose whichever describes where the number lives **today**, not where you plan to take it: the next screen shows you exactly what you need before you fully decide.
 
 **Do I lose my previous chats when connecting?**
 No, if you connect via coexistence: up to 6 months of text chats and your contacts get synced. If you migrate from another provider, that provider's history is not transferred.

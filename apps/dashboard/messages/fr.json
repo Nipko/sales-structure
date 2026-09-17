@@ -4030,7 +4030,8 @@
       "routeRecommended": "Recommandé",
       "mobileNote": "Cette étape fonctionne mieux sur un ordinateur. Depuis votre téléphone, vous pouvez utiliser l'option de coexistence et scanner le code QR avec votre WhatsApp Business.",
       "brief": {
-        "title": "Ce que cette option implique"
+        "title": "Ce que cette option implique",
+        "more": "Voir plus de détails"
       },
       "warnings": {
         "title": "Connecté, avec quelques points en attente",
@@ -4157,7 +4158,48 @@
         "cancel": "Annuler",
         "unknown": "Nous n'avons pas pu vérifier le fuseau horaire de facturation de ce numéro.",
         "retry": "Réessayer"
-      }
+      },
+      "triage": {
+        "question": "Où se trouve aujourd'hui votre numéro WhatsApp ?",
+        "questionHint": "Votre réponse prépare le chemin exact. C’est la seule question.",
+        "changeAnswer": "Changer ma réponse",
+        "continue": "Continuer",
+        "installDone": "Je l'ai passé sur WhatsApp Business, continuer",
+        "later": "Le faire plus tard",
+        "minutes": "Cela vous prend environ {minutes} minutes.",
+        "allRoutes": "Voir les trois façons de connecter",
+        "answerBusinessAppTitle": "Dans l'application WhatsApp Business d'un téléphone",
+        "answerBusinessAppHint": "L'application verte avec la mallette ; vous l'utilisez pour répondre à vos clients.",
+        "answerBusinessAppLead": "Nous connectons ce même numéro sans le retirer de votre téléphone : vous continuez à répondre depuis l’application quand vous voulez.",
+        "answerBusinessAppNeed1": "Le téléphone à portée de main : vous allez scanner un QR code depuis l’application.",
+        "answerBusinessAppNeed2": "Un compte Facebook pour autoriser (vous pouvez le créer sur le moment).",
+        "answerBusinessAppNeed3": "Ouvrir l’application au moins une fois tous les 14 jours pour garder la connexion active.",
+        "answerPersonalAppTitle": "Dans le WhatsApp ordinaire de mon téléphone",
+        "answerPersonalAppHint": "Le WhatsApp habituel, sans compte professionnel.",
+        "answerPersonalAppLead": "Passez-le d’abord sur WhatsApp Business. C’est gratuit, vous gardez votre numéro et vos conversations, puis nous continuons ici.",
+        "answerPersonalAppNeed1": "Installez WhatsApp Business depuis votre magasin d’applications.",
+        "answerPersonalAppNeed2": "Ouvrez-la et choisissez « utiliser ce numéro » : vos conversations suivent toutes seules.",
+        "answerPersonalAppNeed3": "Revenez sur cet écran et appuyez sur le bouton ci-dessous.",
+        "answerNewNumberTitle": "C’est un numéro neuf, ou sans WhatsApp",
+        "answerNewNumberHint": "Une ligne que vous n’utilisez pas encore sur WhatsApp.",
+        "answerNewNumberLead": "Nous enregistrons ce numéro directement auprès de Meta. Vous ne l’utiliserez pas depuis un téléphone.",
+        "answerNewNumberNeed1": "Le numéro et l’accès à son code de vérification (SMS ou appel).",
+        "answerNewNumberNeed2": "Un compte Facebook pour autoriser (vous pouvez le créer sur le moment).",
+        "answerNewNumberNeed3": "Ce numéro ne doit pas avoir WhatsApp installé.",
+        "answerOtherProviderTitle": "Un autre fournisseur l’utilise déjà",
+        "answerOtherProviderHint": "Une autre plateforme répond aujourd’hui sur ce numéro.",
+        "answerOtherProviderLead": "Votre numéro ne peut être que chez un fournisseur à la fois. En l’amenant ici, il cesse de répondre chez l’autre.",
+        "answerOtherProviderNeed1": "Demandez à votre fournisseur actuel de désactiver la validation en deux étapes du numéro.",
+        "answerOtherProviderNeed2": "Cela dépend d’eux : cela prend en général de quelques heures à quelques jours.",
+        "answerOtherProviderNeed3": "Une fois désactivée, continuez ici avec ce même numéro.",
+        "answerNotAtHandTitle": "Je ne l’ai pas sous la main maintenant",
+        "answerNotAtHandHint": "Le téléphone ou le numéro n’est pas avec vous en ce moment.",
+        "answerNotAtHandLead": "Rien ne presse : nous le notons et vous reprenez quand vous l’avez.",
+        "answerNotAtHandNeed1": "Nous vous le rappellerons sur l’Accueil.",
+        "answerNotAtHandNeed2": "Vous pouvez connecter un autre canal maintenant et WhatsApp plus tard."
+      },
+      "liveHint": "La fenêtre de Meta est ouverte. Terminez les étapes là-bas et ne la fermez pas avant de voir « Connexion réussie ». Si vous ne la voyez pas, cherchez-la dans une autre fenêtre ou vérifiez que votre navigateur ne l’a pas bloquée.",
+      "cancelLaunch": "Annuler et revenir"
     },
     "whatsappDesc": "WhatsApp Business API via Meta Cloud API",
     "instagram": {
@@ -4181,7 +4223,82 @@
       "disconnectPartial": "Instagram marqué comme déconnecté sur la plateforme, mais les autorisations pourraient ne pas avoir été révoquées chez Meta. Vérifiez l'intégration manuellement.",
       "redirecting": "Redirection...",
       "backToSetup": "Retour a la configuration",
-      "closeWindow": "Vous pouvez fermer cette fenêtre."
+      "closeWindow": "Vous pouvez fermer cette fenêtre.",
+      "triage": {
+        "question": "Votre compte Instagram est-il professionnel ?",
+        "yes": "Oui",
+        "no": "Non",
+        "unsure": "Je ne sais pas",
+        "ready": "Parfait. Continuez avec le bouton ci-dessous.",
+        "stepsTitle": "Comment le savoir (et comment le changer)",
+        "steps": [
+          "Ouvrez Instagram et allez dans Paramètres.",
+          "Cherchez « Type de compte et outils » → « Passer à un compte professionnel ».",
+          "Choisissez Entreprise ou Créateur. C'est gratuit et cela prend une minute."
+        ],
+        "alwaysAvailable": "Nous ne pouvons pas le vérifier d'ici, donc le bouton de connexion reste disponible : en cas de doute, essayez quand même."
+      },
+      "errors": {
+        "retry": "Réessayer",
+        "goToBilling": "Aller à Forfait et facturation",
+        "accountNotProfessional": {
+          "title": "Votre compte Instagram est encore personnel",
+          "action": "Ouvrez Instagram → Paramètres → Type de compte → Passer à un compte professionnel. C'est gratuit et cela prend une minute ; revenez ensuite ici et connectez."
+        },
+        "noInstagramBusinessAccount": {
+          "title": "Ce n'est pas le compte de l'entreprise",
+          "action": "Connectez de nouveau en vous identifiant avec le compte Instagram professionnel de votre entreprise, pas avec un compte personnel."
+        },
+        "permissionsMissing": {
+          "title": "Des autorisations manquaient",
+          "action": "Réessayez et acceptez toutes les autorisations demandées par la fenêtre. Sans elles, nous ne pouvons ni lire ni répondre à vos messages."
+        },
+        "windowCancelled": {
+          "title": "La connexion est restée à mi-chemin",
+          "action": "Réessayez et ne fermez pas la fenêtre avant de voir « Connecté »."
+        },
+        "tokenExchangeFailed": {
+          "title": "Nous n'avons pas pu terminer la connexion",
+          "action": "Réessayez. Si cela se reproduit, écrivez-nous et nous la mettrons en route."
+        },
+        "planLimit": {
+          "title": "Vous avez atteint la limite de votre forfait",
+          "action": "Votre forfait ne permet pas de connecter un autre compte. Changez de forfait ou déconnectez l'un de ceux que vous avez déjà."
+        },
+        "unavailable": {
+          "title": "Nous n'avons pas pu connecter à l'instant",
+          "action": "C'était temporaire. Réessayez dans quelques minutes."
+        },
+        "popupBlocked": {
+          "title": "La fenêtre Instagram ne s'est pas ouverte",
+          "action": "Autorisez les fenêtres pop-up pour ce site et réessayez."
+        },
+        "sessionMismatch": {
+          "title": "Ce n'est pas la fenêtre que vous avez ouverte",
+          "action": "Fermez cette fenêtre et recommencez depuis Canaux."
+        },
+        "alreadyUsed": {
+          "title": "Cette autorisation a déjà été utilisée",
+          "action": "Ouvrez Canaux pour voir si Instagram est connecté ; sinon, réessayez depuis là."
+        },
+        "timeout": {
+          "title": "Nous n'avons pas pu confirmer la connexion à temps",
+          "action": "Elle a peut-être abouti. Ouvrez Canaux pour vérifier avant de réessayer."
+        },
+        "generic": {
+          "title": "Nous n'avons pas pu terminer la connexion",
+          "action": "Réessayez. Si cela persiste, écrivez-nous et nous réglerons cela."
+        },
+        "goToVerifyEmail": "Vérifier mon e-mail",
+        "emailNotVerified": {
+          "title": "Votre e-mail n’est pas encore confirmé",
+          "action": "Confirmez votre e-mail avec le code que nous avons envoyé, puis reconnectez. Cela prend une minute."
+        },
+        "channelNotAvailable": {
+          "title": "Ce canal n’est pas dans votre forfait",
+          "action": "Vérifiez votre forfait pour l’activer, ou connectez un autre canal en attendant."
+        }
+      }
     },
     "instagramDesc": "Instagram Direct Messages via Graph API",
     "messenger": {
@@ -4200,7 +4317,78 @@
       "disconnect": "Deconnecter",
       "disconnectConfirm": "Etes-vous sur de vouloir deconnecter Messenger ?",
       "disconnectSuccess": "Messenger deconnecte avec succes.",
-      "disconnectPartial": "Messenger marqué comme déconnecté sur la plateforme, mais certaines pages pourraient ne pas avoir été désabonnées chez Meta. Vérifiez l'intégration manuellement."
+      "disconnectPartial": "Messenger marqué comme déconnecté sur la plateforme, mais certaines pages pourraient ne pas avoir été désabonnées chez Meta. Vérifiez l'intégration manuellement.",
+      "triage": {
+        "question": "Pouvez-vous publier sur la page Facebook de votre entreprise ?",
+        "yes": "Oui",
+        "no": "Non",
+        "unsure": "Je ne sais pas",
+        "ready": "Parfait. Continuez avec le bouton ci-dessous.",
+        "stepsTitle": "Comment le savoir (et comment l'obtenir)",
+        "steps": [
+          "Si vous avez créé la page, vous le pouvez : vous en êtes l'administrateur.",
+          "Sinon, ouvrez la page sur Facebook et essayez d'écrire une publication ; si cela fonctionne, vous le pouvez.",
+          "Si cela ne fonctionne pas, demandez au propriétaire de la page de vous donner le rôle d'administrateur."
+        ],
+        "alwaysAvailable": "Nous ne pouvons pas le vérifier d'ici, donc le bouton de connexion reste disponible : en cas de doute, essayez quand même."
+      },
+      "errors": {
+        "retry": "Réessayer",
+        "goToBilling": "Aller à Forfait et facturation",
+        "noPage": {
+          "title": "Nous n'avons pas trouvé de page Facebook",
+          "action": "Messenger a besoin de la page de votre entreprise, pas de votre profil personnel. Créez la page sur Facebook, puis connectez depuis ici."
+        },
+        "notPageAdmin": {
+          "title": "Vous n'êtes pas administrateur de cette page",
+          "action": "Demandez au propriétaire de la page de vous donner le rôle d'administrateur, puis connectez depuis ici."
+        },
+        "permissionsMissing": {
+          "title": "Des autorisations manquaient",
+          "action": "Réessayez et acceptez toutes les autorisations demandées par la fenêtre, la page comprise. Sans elles, nous ne pouvons ni lire ni répondre à vos messages."
+        },
+        "windowCancelled": {
+          "title": "La connexion est restée à mi-chemin",
+          "action": "Réessayez, choisissez votre page et ne fermez pas la fenêtre avant de voir « Connecté »."
+        },
+        "tokenExchangeFailed": {
+          "title": "Nous n'avons pas pu terminer la connexion",
+          "action": "Réessayez. Si cela se reproduit, écrivez-nous et nous la mettrons en route."
+        },
+        "planLimit": {
+          "title": "Vous avez atteint la limite de votre forfait",
+          "action": "Votre forfait ne permet pas de connecter une autre page. Changez de forfait ou déconnectez l'une de celles que vous avez déjà."
+        },
+        "unavailable": {
+          "title": "Nous n'avons pas pu connecter à l'instant",
+          "action": "C'était temporaire. Réessayez dans quelques minutes."
+        },
+        "popupBlocked": {
+          "title": "La fenêtre Facebook ne s'est pas ouverte",
+          "action": "Autorisez les fenêtres pop-up pour ce site et réessayez."
+        },
+        "sdkNotLoaded": {
+          "title": "Le connecteur Facebook ne s'est pas chargé",
+          "action": "Rechargez la page et réessayez. Si vous utilisez un bloqueur de contenu, désactivez-le pour ce site."
+        },
+        "configMissing": {
+          "title": "Il manque une partie de la configuration",
+          "action": "Le problème vient de nous, pas de vous. Écrivez-nous et nous la mettrons en route."
+        },
+        "generic": {
+          "title": "Nous n'avons pas pu terminer la connexion",
+          "action": "Réessayez. Si cela persiste, écrivez-nous et nous réglerons cela."
+        },
+        "goToVerifyEmail": "Vérifier mon e-mail",
+        "emailNotVerified": {
+          "title": "Votre e-mail n’est pas encore confirmé",
+          "action": "Confirmez votre e-mail avec le code que nous avons envoyé, puis reconnectez. Cela prend une minute."
+        },
+        "channelNotAvailable": {
+          "title": "Ce canal n’est pas dans votre forfait",
+          "action": "Vérifiez votre forfait pour l’activer, ou connectez un autre canal en attendant."
+        }
+      }
     },
     "messengerDesc": "Messenger via integration de page Facebook",
     "telegramDesc": "Telegram Bot API — messages directs automatises",
@@ -8337,7 +8525,7 @@
       "title": "Comment connecter et gérer vos canaux ?",
       "description": "Canaux est l'endroit où vous connectez chaque messagerie (WhatsApp, Instagram DM, Facebook Messenger et Telegram) pour que votre agent puisse recevoir et répondre partout. Chaque carte indique si le canal est « Connecté » ou « Déconnecté » et mène à sa configuration.",
       "tips": [
-        "Commencez par WhatsApp : ouvrez sa carte et suivez le parcours officiel de Meta. Il vous faut un numéro pour WhatsApp et un compte Facebook pour autoriser (vous pouvez le créer pendant le processus).",
+        "Commencez par WhatsApp : ouvrez sa carte et suivez le parcours officiel de Meta. Il vous faut un numéro de téléphone et un compte Facebook pour autoriser (vous pouvez le créer pendant le processus). Aucune page Facebook n'est requise.",
         "Pour Instagram DM, le compte doit être professionnel (Entreprise ou Créateur) ; vous vous connectez avec Instagram, sans page Facebook, et cela prend moins de 2 minutes.",
         "Connecter Messenger demande de vous connecter avec Facebook et de choisir la page de votre entreprise.",
         "Telegram ne demande qu'un Bot Token : créez un bot avec @BotFather, copiez le token et collez-le dans la configuration du canal.",
@@ -9296,7 +9484,7 @@
         "Prérequis clé : votre compte Instagram doit être de type « Entreprise » ou « Créateur ». Si vous avez un compte personnel, passez-le en professionnel depuis les paramètres d'Instagram avant de continuer (une minute, gratuit).",
         "Clique sur 'Connecter avec Instagram' : une fenêtre pop-up Meta s'ouvrira. Connecte-toi avec le compte Instagram à relier, accepte les permissions 'instagram_business_basic' et 'instagram_business_manage_messages' et complète le flux.",
         "Après autorisation, le panneau affiche le nom du compte, la photo de profil et la date d'expiration du token (les tokens longue durée durent ~60 jours). Le système renouvelle le token automatiquement, mais si tu vois l'alerte 'Token expiré', clique sur 'Reconnecter'.",
-        "Dépannage : si la pop-up ne s'ouvre pas, désactive le bloqueur de pop-ups du navigateur pour ce site. Si le bouton reste sur 'Connexion en cours...' indéfiniment, actualise la page et réessaie ; le flux utilise BroadcastChannel pour communiquer le résultat entre fenêtres."
+        "Si quelque chose échoue, l'écran indique ce qui s'est passé et quoi faire, avec un bouton pour réessayer : vous n'avez pas à interpréter le message de Meta. Si la fenêtre ne s'ouvre pas, autorisez les fenêtres pop-up pour ce site."
       ]
     },
     "channelsMessenger": {
@@ -9306,7 +9494,7 @@
         "Prérequis : tu dois être administrateur de la page Facebook à connecter. La page doit avoir 'Messages' activé dans ses paramètres (Paramètres → Général → Messages). Si la page n'apparaît pas dans le sélecteur, vérifie ton rôle sur la page.",
         "Clique sur 'Connecter avec Facebook' : la fenêtre de connexion Facebook s'ouvrira. Connecte-toi avec ton compte Facebook, sélectionne la page professionnelle et accorde les permissions 'pages_messaging', 'pages_show_list' et 'pages_manage_metadata'.",
         "Après autorisation, le panneau liste les pages connectées avec leur photo, nom et ID. Tu peux connecter plusieurs pages dans le même tenant si ton plan le permet. Chaque page est associée à un agent IA.",
-        "Dépannage : si le bouton 'Connecter avec Facebook' est désactivé à l'arrivée, attends 1-2 secondes le temps que le SDK Facebook charge. Si l'erreur indique 'configIdNotSet', l'administrateur de la plateforme doit configurer la variable 'NEXT_PUBLIC_MESSENGER_FB_LOGIN_CONFIG_ID' sur le serveur."
+        "Si le bouton « Connecter avec Facebook » est désactivé à votre arrivée, attendez une seconde que le connecteur se charge. Si quelque chose échoue, l'écran vous dit quoi faire et vous laisse réessayer ; quand le problème vient de notre configuration, il le dit et il suffit de nous écrire."
       ]
     },
     "channelsSms": {
@@ -9331,12 +9519,12 @@
     },
     "channelsWhatsapp": {
       "title": "Comment connecter WhatsApp Business à Parallly ?",
-      "description": "La connexion utilise l'Embedded Signup de Meta : un flux officiel qui relie votre numéro WhatsApp Business directement depuis le tableau de bord. Vous avez besoin d'un compte Meta Business et d'un numéro de téléphone non lié à l'application WhatsApp personnelle.",
+      "description": "La connexion utilise l'Embedded Signup de Meta : un parcours officiel qui relie votre numéro WhatsApp Business depuis le tableau de bord. Il vous faut un compte Facebook pour autoriser et choisir l'une des trois routes. Aucune page Facebook n'est requise.",
       "tips": [
-        "Avant de commencer, créez ou vérifiez votre compte sur 'business.facebook.com'. Le numéro doit être libre de WhatsApp personnel (s'il est sur votre téléphone, supprimez-le d'abord de l'application).",
-        "Choisissez la bonne route : 'Nouveau numéro' pour partir de zéro, 'Coexistence' si vous utilisez déjà ce numéro dans l'application WhatsApp Business et souhaitez que l'IA le partage, ou 'Migration' pour transférer le numéro vers l'API (vous ne recevrez plus de messages dans l'application).",
-        "Cliquez sur le bouton vert de connexion et complétez le flux Meta dans la fenêtre pop-up. Accordez les autorisations demandées et sélectionnez la page Facebook liée à votre entreprise.",
-        "Si vous voyez l'erreur 'numéro déjà enregistré', vérifiez qu'il n'est pas actif dans un autre compte Meta Business. Pour la route Migration, désactivez la vérification en deux étapes dans l'application WhatsApp Business avant de commencer."
+        "Choisissez d'abord la route. « J'utilise déjà WhatsApp Business » (coexistence) est celle que nous recommandons : le numéro continue de fonctionner sur votre téléphone et l'IA répond en parallèle. Ne supprimez pas l'application — c'est tout l'intérêt.",
+        "« Nouveau numéro » est pour un numéro qui n'a pas encore WhatsApp. « Migration » transfère le numéro vers l'API et vous ne recevez plus de messages dans l'application : ne la choisissez que si c'est ce que vous voulez.",
+        "Cliquez sur le bouton vert et terminez la fenêtre Meta sans la fermer avant la fin. Accordez toutes les autorisations et cochez le numéro à connecter.",
+        "Si quelque chose échoue, l'écran indique ce qui s'est passé et quoi faire, avec un bouton pour réessayer. Uniquement pour la route Migration : désactivez d'abord la validation en deux étapes dans l'application WhatsApp Business."
       ]
     },
     "channelsWhatsappProfile": {
@@ -13984,20 +14172,20 @@
           "content": "Ici vous voyez d'un coup d'œil si WhatsApp est déjà connecté ou pas encore."
         },
         "routes": {
-          "title": "Choisissez votre situation",
-          "content": "Vous utilisez déjà l'application WhatsApp Business (recommandé : vous gardez vos conversations), vous voulez un nouveau numéro, ou vous venez d'un autre fournisseur."
+          "title": "Les trois façons de connecter",
+          "content": "Votre réponse en choisit une. Elles sont ici si vous voulez les voir."
         },
         "prerequisites": {
-          "title": "Ayez ceci sous la main",
-          "content": "Confirmez ces trois points avant de toucher le bouton. C'est ce qui fait le plus abandonner en cours de route."
+          "title": "Une seule question",
+          "content": "Dites-nous où se trouve aujourd'hui votre numéro et nous préparons le chemin exact. Rien d'autre à répondre."
         },
         "brief": {
           "title": "Ce qu'implique l'option choisie",
           "content": "Après la connexion, vous avez 24 heures pour autoriser votre historique. Si vous venez d'un autre fournisseur, désactivez d'abord la validation en deux étapes."
         },
         "connect": {
-          "title": "Le bouton ouvre une fenêtre Meta",
-          "content": "Ne la fermez pas avant de voir « Connexion réussie ». Si elle n'apparaît pas, autorisez les fenêtres pop-up et réessayez."
+          "title": "Le bouton ouvre une fenêtre de Meta",
+          "content": "Ne la fermez pas avant de voir « Connexion réussie ». Si vous ne la voyez pas, cherchez-la dans une autre fenêtre ou utilisez « Annuler et revenir » pour réessayer."
         },
         "test": {
           "title": "Testez votre agent",

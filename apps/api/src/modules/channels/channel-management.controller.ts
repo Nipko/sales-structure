@@ -16,7 +16,16 @@ import { RedisService } from '../redis/redis.service';
 import { personaChannelCacheKeys } from '../../common/utils/persona-cache.util';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
-import { CERTIFIED_SELF_SERVICE_CHANNELS, advanceOnboardingStage } from '@parallext/shared';
+import {
+    CERTIFIED_SELF_SERVICE_CHANNELS,
+    advanceOnboardingStage,
+    META_CONNECT_ERROR,
+    isRetryableMetaConnectError,
+    type MetaConnectChannel,
+    type MetaConnectErrorBody,
+    type MetaConnectErrorCode,
+    type MetaConnectErrorEvidence,
+} from '@parallext/shared';
 import { bindDefaultAgentToChannel } from './bind-default-agent.util';
 import { mutateTenantSettingsAtomic } from '../../common/utils/tenant-settings.util';
 import { buildChannelCertificationMatrix, summariseChannelCertification } from './channel-certification-matrix';
@@ -29,6 +38,20 @@ import {
     resolveCredentialHealth,
     type ChannelCredentialRecord,
 } from '@parallext/shared';
+
+/**
+ * Scopes a Messenger connection cannot work without. Kept next to the handler
+ * that asks for them so the diagnostic and the login dialog cannot drift.
+ */
+const REQUIRED_MESSENGER_SCOPES = ['pages_show_list', 'pages_messaging', 'pages_manage_metadata'];
+
+/**
+ * Last-resort copy for a surface that has not mapped the code yet. The panel
+ * renders its own sentence and its own button from `error`; this only keeps a
+ * bare "Error 400" off the screen in the meantime. It is never Meta's text.
+ */
+const META_CONNECT_FALLBACK_MESSAGE =
+    'No pudimos conectar la cuenta. Abrí el canal en el panel para ver qué falta y cómo resolverlo.';
 
 @ApiTags('channel-management')
 @Controller('channels')
@@ -48,6 +71,57 @@ export class ChannelManagementController {
         private redis: RedisService,
         private events: EventEmitter2,
     ) {}
+
+    /**
+     * The single failure envelope of the two Meta connect handlers.
+     *
+     * Before this, a failed connection answered with prose — and when Meta was
+     * the one refusing, with Meta's own prose. The person read something like
+     * "Page listing failed: (#200) ..." and had nothing to do with it. From
+     * here on the body names WHAT happened (`error`), whether opening Meta's
+     * window again is a real next step (`retryable`, decided by the shared
+     * helper so the panel and the server cannot disagree) and the facts the
+     * panel needs to write the instruction (`evidence`). Meta's `error.message`
+     * and `error_description` stay in the server log, where support can read
+     * them, and never reach the response.
+     */
+    private metaConnectFailure(
+        channel: MetaConnectChannel,
+        code: MetaConnectErrorCode,
+        evidence?: MetaConnectErrorEvidence,
+    ): BadRequestException | ForbiddenException {
+        const hasEvidence = !!evidence && Object.keys(evidence).length > 0;
+        const body: MetaConnectErrorBody = {
+            error: code,
+            channel,
+            retryable: isRetryableMetaConnectError(code),
+            ...(hasEvidence ? { evidence } : {}),
+            message: META_CONNECT_FALLBACK_MESSAGE,
+        };
+        return code === META_CONNECT_ERROR.PLAN_LIMIT
+            ? new ForbiddenException(body)
+            : new BadRequestException(body);
+    }
+
+    /** Scopes a Messenger login needs and this token does not carry. */
+    private missingMessengerScopes(grantedScopes: string[]): string[] {
+        return REQUIRED_MESSENGER_SCOPES.filter((scope) => !grantedScopes.includes(scope));
+    }
+
+    /**
+     * `TenantThrottleService.enforceChannelAccountLimit` predates the typed
+     * connect envelope and answers without `retryable`. The panel reads that
+     * flag to decide whether to offer another attempt, and a plan wall is never
+     * fixed by one, so stamp it here instead of letting it arrive undefined and
+     * be read as "unknown, maybe try again".
+     */
+    private withPlanLimitRetryable(e: unknown): unknown {
+        const response = typeof (e as any)?.getResponse === 'function' ? (e as any).getResponse() : null;
+        if (!response || typeof response !== 'object' || Array.isArray(response)) return e;
+        const body = response as Record<string, unknown>;
+        if (body.error !== META_CONNECT_ERROR.PLAN_LIMIT || 'retryable' in body) return e;
+        return new ForbiddenException({ ...body, retryable: false });
+    }
 
     private rejectRetiredSms(operation: 'connect' | 'test'): void {
         throw new GoneException({
@@ -368,7 +442,11 @@ export class ChannelManagementController {
         const existingActive = await this.prisma.channelAccount.count({
             where: { tenantId, channelType, isActive: true, accountId: { notIn: excludeAccountIds } },
         });
-        await this.throttle.enforceChannelAccountLimit(tenantId, channelType, existingActive);
+        try {
+            await this.throttle.enforceChannelAccountLimit(tenantId, channelType, existingActive);
+        } catch (e: unknown) {
+            throw this.withPlanLimitRetryable(e);
+        }
     }
 
     @Post('telegram/connect')
@@ -629,7 +707,10 @@ export class ChannelManagementController {
         await this.assertChannelAllowed(tenantId, 'messenger');
 
         const userAccessToken = body.userAccessToken;
-        if (!userAccessToken) throw new BadRequestException('User access token is required');
+        // FB.login() answers without an authResponse when the person closes the
+        // dialog or refuses it, so "no token" is not a malformed request: it is
+        // a window that was cancelled, and reopening it IS the next step.
+        if (!userAccessToken) throw this.metaConnectFailure('messenger', META_CONNECT_ERROR.WINDOW_CANCELLED);
 
         const graphVersion = this.configService.get<string>('META_GRAPH_VERSION', 'v21.0');
 
@@ -681,7 +762,7 @@ export class ChannelManagementController {
 
                 if (!tokenData.is_valid) {
                     this.logger.error(`Messenger OAuth: token is NOT valid for tenant ${tenantId}`);
-                    throw new BadRequestException('Facebook token is invalid. Please try connecting again.');
+                    throw this.metaConnectFailure('messenger', META_CONNECT_ERROR.TOKEN_EXCHANGE_FAILED);
                 }
             }
         } catch (e: any) {
@@ -719,8 +800,17 @@ export class ChannelManagementController {
             this.logger.log(`Messenger OAuth: /me/accounts page for tenant ${tenantId}: ${JSON.stringify({ data: (pagesData.data || []).map((p: any) => ({ id: p.id, name: p.name, tasks: p.tasks, has_access_token: !!p.access_token })), paging: pagesData.paging, error: pagesData.error })}`);
 
             if (pagesData.error) {
+                // Meta's own sentence stays here, in the log, where support can
+                // read it. What the person gets is a code and an action.
                 this.logger.error(`Messenger OAuth: /me/accounts error for tenant ${tenantId}: ${JSON.stringify(pagesData.error)}`);
-                throw new BadRequestException(`Page listing failed: ${pagesData.error.message}`);
+                const missingScopes = this.missingMessengerScopes(grantedScopes);
+                if (missingScopes.length > 0 || declinedPerms.length > 0) {
+                    throw this.metaConnectFailure('messenger', META_CONNECT_ERROR.PERMISSIONS_MISSING, {
+                        missingScopes,
+                        declinedScopes: declinedPerms,
+                    });
+                }
+                throw this.metaConnectFailure('messenger', META_CONNECT_ERROR.UNAVAILABLE);
             }
 
             allPages.push(...(pagesData.data || []));
@@ -743,16 +833,28 @@ export class ChannelManagementController {
         });
 
         if (pages.length === 0) {
-            const missingPerms = ['pages_show_list', 'pages_messaging', 'pages_manage_metadata']
-                .filter(p => !grantedScopes.includes(p));
-            const diagParts: string[] = [];
-            if (missingPerms.length > 0) diagParts.push(`missing permissions: ${missingPerms.join(', ')}`);
-            if (declinedPerms.length > 0) diagParts.push(`declined by user: ${declinedPerms.join(', ')}`);
-            if (allPages.length === 0 && missingPerms.length === 0) diagParts.push('token has permissions but /me/accounts returned 0 pages — verify the Facebook user is admin of at least one Page');
-            const diagMsg = diagParts.length > 0 ? ` Diagnostic: ${diagParts.join('. ')}.` : '';
-
+            const missingScopes = this.missingMessengerScopes(grantedScopes);
             this.logger.error(`Messenger OAuth: 0 eligible pages for tenant ${tenantId}. allPages=${allPages.length}, scopes=[${grantedScopes.join(', ')}], declined=[${declinedPerms.join(', ')}]`);
-            throw new BadRequestException(`No Facebook pages found.${diagMsg} Ensure the Facebook account manages at least one Page, that pages_show_list permission was granted in the login dialog, and that all required pages were selected.`);
+
+            // Three different walls used to share one paragraph that named all
+            // three at once. They have different next steps, so they answer
+            // with different codes — and the scope names travel as evidence so
+            // the panel can point at the exact switch in Meta's dialog.
+            if (missingScopes.length > 0 || declinedPerms.length > 0) {
+                throw this.metaConnectFailure('messenger', META_CONNECT_ERROR.PERMISSIONS_MISSING, {
+                    missingScopes,
+                    declinedScopes: declinedPerms,
+                });
+            }
+            if (allPages.length === 0) {
+                throw this.metaConnectFailure('messenger', META_CONNECT_ERROR.NO_PAGE);
+            }
+            // The scopes are there and pages exist, but none came back with
+            // MESSAGING or MANAGE: whoever authorized is not an administrator
+            // of the page they picked.
+            throw this.metaConnectFailure('messenger', META_CONNECT_ERROR.NOT_PAGE_ADMIN, {
+                pageCount: allPages.length,
+            });
         }
 
         // Enforce the plan's per-type account limit. Existing pages reconnect
@@ -769,12 +871,17 @@ export class ChannelManagementController {
             ? Math.max(0, messengerLimit - existingActiveIds.size)
             : Number.POSITIVE_INFINITY;
         const skippedForQuota: string[] = [];
+        // Meta listed the page but handed us no page token for it. That is not
+        // a transient miss: the authorization does not carry administration of
+        // that page, and it has to be answered as such if nothing connects.
+        const skippedNoToken: string[] = [];
 
         // Step 3: For each page, subscribe webhook and store
         const connected: { id: string; name: string; picture?: string }[] = [];
         for (const page of pages) {
             try {
                 if (!page.access_token) {
+                    skippedNoToken.push(page.name || page.id);
                     this.logger.warn(`Messenger OAuth: page ${page.id} (${page.name}) skipped — no access_token (insufficient permissions)`);
                     continue;
                 }
@@ -879,14 +986,31 @@ export class ChannelManagementController {
 
         if (connected.length === 0) {
             if (skippedForQuota.length > 0) {
+                // The plan wall keeps the body it already answered with — the
+                // panel and the billing surfaces read those fields — and only
+                // gains the flag and the facts the new envelope carries. The
+                // sentence is ours, written for the owner, not Meta's.
                 throw new ForbiddenException({
-                    error: 'plan_limit_reached',
+                    error: META_CONNECT_ERROR.PLAN_LIMIT,
+                    channel: 'messenger',
+                    retryable: isRetryableMetaConnectError(META_CONNECT_ERROR.PLAN_LIMIT),
                     limitKey: 'maxChannelAccounts',
                     channelType: 'messenger',
+                    evidence: {
+                        skippedPages: skippedForQuota,
+                        limit: Number.isFinite(messengerLimit) ? messengerLimit : null,
+                    },
                     message: `Tu plan permite hasta ${Number.isFinite(messengerLimit) ? messengerLimit : '∞'} página(s) de Messenger. No se conectó ninguna nueva (${skippedForQuota.join(', ')}). Actualizá tu plan o desconectá otra para conectar más.`,
                 });
             }
-            throw new BadRequestException('Failed to connect any Facebook page');
+            if (skippedNoToken.length > 0) {
+                throw this.metaConnectFailure('messenger', META_CONNECT_ERROR.NOT_PAGE_ADMIN, {
+                    pagesWithoutToken: skippedNoToken.length,
+                });
+            }
+            throw this.metaConnectFailure('messenger', META_CONNECT_ERROR.UNAVAILABLE, {
+                pageCount: pages.length,
+            });
         }
 
         // Invalidate cached token so next message uses the fresh one.
@@ -1005,7 +1129,10 @@ export class ChannelManagementController {
         await this.assertChannelAllowed(tenantId, 'instagram');
 
         const code = body.code;
-        if (!code) throw new BadRequestException('OAuth code is required');
+        // The callback lands without a code when the person closes Meta's
+        // window or denies it. Nothing is wrong with the account: opening the
+        // window again is exactly what is left to do.
+        if (!code) throw this.metaConnectFailure('instagram', META_CONNECT_ERROR.WINDOW_CANCELLED);
 
         const graphVersion = this.configService.get<string>('META_GRAPH_VERSION', 'v21.0');
 
@@ -1030,9 +1157,11 @@ export class ChannelManagementController {
 
         if (!shortToken) {
             const { access_token: _s, ...safeShort } = shortData;
-            this.logger.warn(`Instagram short-lived token exchange failed (HTTP ${shortRes.status}): ${JSON.stringify(safeShort)}`);
-            const igError = safeShort.error_message || safeShort.error?.message || safeShort.error || 'Unknown';
-            throw new BadRequestException(`Instagram token exchange failed: ${igError}`);
+            // Meta's `error_message` / `error.message` is logged with the tenant
+            // id and goes no further: it named things the owner cannot act on
+            // and, forwarded to the screen, it was the wall in the recording.
+            this.logger.warn(`Instagram short-lived token exchange failed for tenant ${tenantId} (HTTP ${shortRes.status}): ${JSON.stringify(safeShort)}`);
+            throw this.metaConnectFailure('instagram', META_CONNECT_ERROR.TOKEN_EXCHANGE_FAILED);
         }
 
         // Step 2: Exchange short-lived → long-lived (60 days)
@@ -1047,8 +1176,8 @@ export class ChannelManagementController {
         const longData = await longRes.json() as any;
         if (!longData.access_token) {
             const { access_token: _l, ...safeLong } = longData;
-            this.logger.warn(`Instagram long-lived token exchange failed: ${JSON.stringify(safeLong)}`);
-            throw new BadRequestException('Instagram long-lived token exchange failed');
+            this.logger.warn(`Instagram long-lived token exchange failed for tenant ${tenantId}: ${JSON.stringify(safeLong)}`);
+            throw this.metaConnectFailure('instagram', META_CONNECT_ERROR.TOKEN_EXCHANGE_FAILED);
         }
 
         const longLivedToken: string = longData.access_token;
@@ -1064,11 +1193,41 @@ export class ChannelManagementController {
         );
         const profile = await profileRes.json() as any;
 
+        // A personal Instagram account cannot receive business messages, so no
+        // amount of retrying connects it. The next step is turning the account
+        // professional in Instagram — a different action, and therefore a
+        // different code. Only an explicit PERSONAL blocks: when Meta omits the
+        // field we do not invent a verdict about the account.
+        const declaredAccountType = typeof profile?.account_type === 'string' ? profile.account_type : '';
+        if (declaredAccountType.toUpperCase() === 'PERSONAL') {
+            this.logger.warn(`Instagram OAuth: tenant ${tenantId} authorized a personal account (account_type=${declaredAccountType})`);
+            throw this.metaConnectFailure('instagram', META_CONNECT_ERROR.ACCOUNT_NOT_PROFESSIONAL, {
+                accountType: declaredAccountType,
+            });
+        }
+
         // Step 4: Encrypt and store
         const encrypted = this.cryptoService.encryptToken(longLivedToken);
         // Use the IG-scoped user ID from profile (matches webhook entry.id)
         // profile.user_id or profile.id is the IGSID, while shortData.user_id is app-scoped
         const igScopedId = String(profile.user_id || profile.id || igUserId);
+
+        // Two silences that look alike and must not share an answer. If Meta
+        // failed to answer at all we cannot name a cause, so it is `unavailable`
+        // and trying again is fair. If Meta answered fine and still named no
+        // account id, there is no professional Instagram account behind what
+        // was authorized — a wall, not a retry. Either way nothing is written:
+        // storing a channel account with an empty accountId would collapse
+        // every unknown sender onto one row, the same shape of damage as
+        // coercing a contactId to ''.
+        if (profile?.error) {
+            this.logger.warn(`Instagram OAuth: profile read failed for tenant ${tenantId}: ${JSON.stringify(profile.error)}`);
+            if (!igScopedId) throw this.metaConnectFailure('instagram', META_CONNECT_ERROR.UNAVAILABLE);
+        } else if (!igScopedId) {
+            this.logger.warn(`Instagram OAuth: Meta resolved no professional Instagram account for tenant ${tenantId}`);
+            throw this.metaConnectFailure('instagram', META_CONNECT_ERROR.NO_INSTAGRAM_BUSINESS_ACCOUNT);
+        }
+
         const displayName = profile.username ? `@${profile.username}` : profile.name || igScopedId;
         const pictureUrl = profile.profile_picture_url || null;
 

@@ -685,6 +685,15 @@ export default function SetupWizardPage() {
                                     variant="onboarding"
                                     onConnected={() => { setChannelConnected(true); void refreshWorkspace(); }}
                                     onAcknowledged={() => setStep(LAST_STEP)}
+                                    // Quien contesta que su número está con otro proveedor, o que no
+                                    // lo tiene a mano, no se queda sin salida: se apunta el "después"
+                                    // y el agente sigue atendiendo por su enlace mientras tanto.
+                                    onPostponed={() => { void connectLater(); }}
+                                    meanwhile={demoLink ? (
+                                        <p className="text-[12px] text-muted-foreground">
+                                            {t("demoLink.meanwhile", { agentName: agentName.trim() || demoLink.agentName || t("demoLink.agentFallback") })}
+                                        </p>
+                                    ) : undefined}
                                 />
 
                                 {!channelConnected && (

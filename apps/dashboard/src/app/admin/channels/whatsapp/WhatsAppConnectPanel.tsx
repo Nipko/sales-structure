@@ -4,8 +4,9 @@ import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { Layers, Sparkles, ArrowRightLeft, ChevronLeft, Check, ArrowRight, AlertTriangle, MessageSquare } from "lucide-react";
 import WhatsAppEmbeddedSignup, { isKnownWhatsAppWarning } from "./WhatsAppEmbeddedSignup";
-import WhatsAppPrerequisites from "./WhatsAppPrerequisites";
+import WhatsAppTriage from "./WhatsAppTriage";
 import WhatsAppRouteBrief from "./WhatsAppRouteBrief";
+import { readRememberedTriage, rememberTriage, routeAfterTriage } from "./whatsapp-triage";
 import {
     WHATSAPP_CONNECT_ROUTES,
     getWhatsAppConnectRoute,
@@ -24,6 +25,10 @@ interface WhatsAppConnectPanelProps {
     onConnected?: (data: WhatsAppConnectedPayload) => void;
     /** Fired when the person acknowledges the connected state (wizard advance). */
     onAcknowledged?: () => void;
+    /** The person answered that she cannot connect today, and why. */
+    onPostponed?: (reason: "other_provider" | "not_at_hand") => void;
+    /** Shown under a postponing answer: the agent already answers on its link. */
+    meanwhile?: React.ReactNode;
     variant?: "page" | "onboarding";
 }
 
@@ -33,12 +38,11 @@ const ROUTE_ICONS: Record<WhatsAppConnectRouteId, typeof Layers> = {
     migration: ArrowRightLeft,
 };
 
-export default function WhatsAppConnectPanel({ tenantId, onConnected, onAcknowledged }: WhatsAppConnectPanelProps) {
+export default function WhatsAppConnectPanel({ tenantId, onConnected, onAcknowledged, onPostponed, meanwhile }: WhatsAppConnectPanelProps) {
     const tw = useTranslations("channels.whatsapp");
     const twn = useTranslations("channels.whatsapp.warnings");
     const t = useTranslations("setupWizard.connect");
     const [route, setRoute] = useState<WhatsAppConnectRouteId | null>(null);
-    const [prereqsOk, setPrereqsOk] = useState(false);
     const [connected, setConnected] = useState<WhatsAppConnectedPayload | null>(null);
 
     if (connected) {
@@ -119,7 +123,7 @@ export default function WhatsAppConnectPanel({ tenantId, onConnected, onAcknowle
         return (
             <div>
                 <button
-                    onClick={() => setRoute(null)}
+                    onClick={() => { setRoute(null); rememberTriage(tenantId, null); }}
                     className="inline-flex items-center gap-1 text-[13px] text-muted-foreground hover:text-foreground mb-4 cursor-pointer"
                 >
                     <ChevronLeft size={14} /> {t("back")}
@@ -148,14 +152,24 @@ export default function WhatsAppConnectPanel({ tenantId, onConnected, onAcknowle
         );
     }
 
-    // Gate suave: confirmar prerrequisitos antes de ver las rutas (reduce abandono en el popup de Meta).
-    if (!prereqsOk) {
-        return <WhatsAppPrerequisites onContinue={() => setPrereqsOk(true)} />;
-    }
-
+    // Una pregunta decide la ruta. El checklist anterior no verificaba nada y
+    // sus tres ítems se leían como tres requisitos obligatorios.
     return (
         <div>
-            <div className="flex items-center gap-3 mb-4 pb-4 border-b border-neutral-200 dark:border-white/10">
+            <WhatsAppTriage
+                tenantId={tenantId}
+                initialAnswerId={readRememberedTriage(tenantId)}
+                meanwhile={meanwhile}
+                onRoute={(answer) => setRoute(routeAfterTriage(answer))}
+                onLater={(answer) => {
+                    if (answer.outcome.kind === "later") onPostponed?.(answer.outcome.reason);
+                }}
+            />
+            <details className="mt-4 group">
+                <summary className="cursor-pointer list-none text-[12px] text-muted-foreground hover:text-foreground">
+                    {tw("triage.allRoutes")}
+                </summary>
+            <div className="flex items-center gap-3 mt-4 mb-4 pb-4 border-b border-neutral-200 dark:border-white/10">
                 <div className="w-11 h-11 rounded-xl bg-[#25D366] flex items-center justify-center shrink-0 shadow-[0_4px_14px_rgba(37,211,102,0.35)]">
                     <WhatsAppGlyph className="w-6 h-6 text-white" />
                 </div>
@@ -190,6 +204,7 @@ export default function WhatsAppConnectPanel({ tenantId, onConnected, onAcknowle
                 );
             })}
             </div>
+            </details>
         </div>
     );
 }

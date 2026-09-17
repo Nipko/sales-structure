@@ -148,6 +148,8 @@ export default function WhatsAppEmbeddedSignup({ tenantId, mode = "standard", on
   // `launchingRef` mirrors the state so the timers can read it without being
   // re-created on every render (which would restart the clock endlessly).
   const launchingRef = useRef(false);
+  /** Launches the person abandoned whose terminal event has not arrived yet. */
+  const abandonedLaunchesRef = useRef(0);
   const metaSignalRef = useRef(false);
   const focusLostRef = useRef(false);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -180,6 +182,31 @@ export default function WhatsAppEmbeddedSignup({ tenantId, mode = "standard", on
     return () => window.removeEventListener("blur", onBlur);
   }, []);
 
+  /**
+   * "Cancelar" while Meta's window is open.
+   *
+   * Until now the only way out was to close Meta's window, which arrives here
+   * as CANCEL — or, when the window never took focus, as `popupBlocked`: the
+   * screen told the owner she had closed something she never saw. This is a
+   * deliberate abandonment: no failure card, no error, just the button back.
+   */
+  const cancelLaunch = useCallback(() => {
+    clearWindowWatchdog();
+    // Meta's window stays open on her screen: we cannot close it. What we can
+    // do is swallow the one terminal event it will send when she closes it, so
+    // an abandonment she chose never comes back as a failure card — and never
+    // tears down a second attempt she started in the meantime.
+    abandonedLaunchesRef.current += 1;
+    focusLostRef.current = false;
+    terminalEventRef.current = null;
+    if (!mountedRef.current) return;
+    setLaunching(false);
+    setProcessing(false);
+    setStep("");
+    setPhase("");
+    setFailure(null);
+  }, [clearWindowWatchdog]);
+
   const reportFailure = useCallback((next: ConnectFailure, plainText: string) => {
     clearWindowWatchdog();
     if (!mountedRef.current) return;
@@ -197,6 +224,12 @@ export default function WhatsAppEmbeddedSignup({ tenantId, mode = "standard", on
       if (event.origin !== "https://www.facebook.com" && event.origin !== "https://web.facebook.com") return;
       const embeddedEvent = parseEmbeddedSignupEvent(event.data);
       if (!embeddedEvent) return;
+      // A finish is real whoever sent it; a cancel or an error from a launch she
+      // already abandoned is not news — and must not tear down a second attempt.
+      if (!EMBEDDED_SIGNUP_FINISH_EVENTS.has(embeddedEvent.event) && abandonedLaunchesRef.current > 0) {
+        abandonedLaunchesRef.current -= 1;
+        return;
+      }
       // Any Meta event proves the window opened: the watchdog must stand down.
       metaSignalRef.current = true;
 
@@ -286,6 +319,12 @@ export default function WhatsAppEmbeddedSignup({ tenantId, mode = "standard", on
   // ---- Handle FB.login() response ----
   const handleFBResponse = useCallback(
     (response: FacebookLoginResponse) => {
+      // She pressed "Cancelar y volver": this callback belongs to the launch she
+      // walked away from. A refusal from it is not a failure to report.
+      if (!response?.authResponse?.code && abandonedLaunchesRef.current > 0) {
+        abandonedLaunchesRef.current -= 1;
+        return;
+      }
       const processResponse = async () => {
         // The SDK answered: the window opened, whatever the outcome.
         metaSignalRef.current = true;
@@ -560,6 +599,23 @@ export default function WhatsAppEmbeddedSignup({ tenantId, mode = "standard", on
                 ? step || tc("loading")
                 : t("connectButton")}
       </button>
+
+      {/* Mientras la ventana de Meta está abierta: qué está pasando y cómo salir.
+          Sin esto el único texto era "Esperando autorización…" y la única salida
+          era cerrar la ventana de Meta, que vuelve como un error que culpa a la
+          persona. */}
+      {launching && !processing && (
+        <div className="mt-3 rounded-lg border border-sky-200 bg-sky-50 p-3 dark:border-sky-500/25 dark:bg-sky-500/10">
+          <p className="text-[12px] leading-relaxed text-sky-900 dark:text-sky-200">{t("liveHint")}</p>
+          <button
+            type="button"
+            onClick={cancelLaunch}
+            className="mt-2 cursor-pointer text-[12px] font-semibold text-sky-700 underline hover:text-sky-900 dark:text-sky-300 dark:hover:text-sky-100"
+          >
+            {t("cancelLaunch")}
+          </button>
+        </div>
+      )}
 
       {/* Progreso visual del Embedded Signup — visible mientras se autoriza/conecta */}
       {(launching || processing) && (() => {

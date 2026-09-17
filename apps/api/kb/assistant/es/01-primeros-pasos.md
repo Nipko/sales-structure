@@ -3,7 +3,7 @@ id: primeros-pasos
 title: "Primeros pasos y configuración inicial"
 routes: ["/admin/setup-wizard", "/admin", "/admin/channels", "/admin/agent", "/admin/settings/billing"]
 roles: ["tenant_admin"]
-keywords: ["primeros pasos", "puesta en marcha", "empezar", "registro", "crear cuenta", "onboarding", "configuracion inicial", "asistente de configuracion", "setup", "wizard", "conectar canal", "conectar whatsapp", "probar agente", "esenciales", "checklist", "tu progreso", "8/9", "tour", "trial", "nuevo usuario", "conoce a tu agente", "conectar despues", "mostrarme donde", "verificacion de correo", "siguiente paso", "cuatro esenciales", "ya responde", "cambios inmediatos", "enlace de prueba", "pagina de prueba", "mostrarselo a mi socio"]
+keywords: ["primeros pasos", "puesta en marcha", "empezar", "registro", "crear cuenta", "onboarding", "configuracion inicial", "asistente de configuracion", "setup", "wizard", "conectar canal", "conectar whatsapp", "probar agente", "esenciales", "checklist", "tu progreso", "8/9", "tour", "trial", "nuevo usuario", "conoce a tu agente", "conectar despues", "mostrarme donde", "verificacion de correo", "siguiente paso", "cuatro esenciales", "ya responde", "cambios inmediatos", "enlace de prueba", "pagina de prueba", "mostrarselo a mi socio", "donde vive tu numero", "pregunta antes de conectar whatsapp", "camino correcto desde el principio"]
 ---
 
 # Primeros pasos y configuración inicial
@@ -45,7 +45,7 @@ Puedes reabrir el asistente cuando quieras desde **Configuración → Asistente 
 
 ## Cómo conectar tu primer canal
 
-Sin un canal conectado, el negocio **no recibe mensajes por ese medio**. Al conectar el primer canal, tu agente predeterminado queda asignado a él y empieza a responder ahí tal como lo probaste en el chat; no hay que volver al editor. Te recomendamos empezar por **WhatsApp**, el canal más usado en Latinoamérica. Mientras tanto, tu agente ya responde en el enlace de tu agente, aunque esa página no cuenta como canal conectado.
+Sin un canal conectado, el negocio **no recibe mensajes por ese medio**. Al conectar el primer canal, tu agente predeterminado queda asignado a él y empieza a responder ahí tal como lo probaste en el chat; no hay que volver al editor. Te recomendamos empezar por **WhatsApp**, el canal más usado en Latinoamérica: arranca con una sola pregunta —¿dónde vive hoy tu número?— para que elijas el camino correcto desde el principio. Mientras tanto, tu agente ya responde en el enlace de tu agente, aunque esa página no cuenta como canal conectado.
 
 Antes de conectar WhatsApp ten a mano:
 

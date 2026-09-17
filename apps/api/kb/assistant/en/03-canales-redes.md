@@ -3,7 +3,7 @@ id: canales-redes
 title: "Connecting Instagram, Messenger, and Telegram"
 routes: ["/admin/channels", "/admin/channels/instagram", "/admin/channels/messenger", "/admin/channels/telegram"]
 roles: ["tenant_admin"]
-keywords: ["instagram", "messenger", "telegram", "facebook", "connect channel", "connect instagram", "connect messenger", "connect telegram", "reconnect", "token expired", "bot", "botfather", "direct messages", "dm", "disconnect channel", "business account", "multiple accounts", "account limit", "facebook page", "social media"]
+keywords: ["instagram", "messenger", "telegram", "facebook", "connect channel", "connect instagram", "connect messenger", "connect telegram", "reconnect", "token expired", "bot", "botfather", "direct messages", "dm", "disconnect channel", "business account", "multiple accounts", "account limit", "facebook page", "social media", "account not professional", "not the page administrator", "retry only when it helps"]
 ---
 
 # Connect Instagram, Messenger, and Telegram
@@ -45,6 +45,12 @@ The authorization Meta grants Parallly for your Instagram account **lasts 60 day
 3. Click **Connect with Facebook**. The Facebook login dialog will open.
 4. Sign in, **select your business's Facebook page**, and grant the requested messaging permissions.
 5. Done: you'll see your **Connected page** and Messenger messages will start arriving in your inbox.
+
+## Before the window opens: a question that never blocks you
+
+Before connecting Instagram or Messenger, the screen asks a self-declared question — for Instagram, "Is your Instagram account professional?"; for Messenger, "Can you post on your business's Facebook page?" — with three answers: **Yes**, **No**, and **I don't know**. Nobody checks it from our side, so your answer **never blocks** the connect button: answer "No" or "I don't know" and you see the same steps to fix it or find out, but you can still try to connect either way.
+
+If the connection fails, the screen no longer repeats Meta's own message: it tells you what to do about your situation. The most common ones are an Instagram account that is **not professional**, Facebook with **no page**, not being that page's **administrator**, **missing permissions** during authorization, the **window closed** before finishing, and having reached your **plan's limit**. The **Try again** button only shows up when trying again can actually help — for example, after closing the window by accident or after accepting the permissions that were missing — never in front of a wall a second attempt cannot change, like an account that is still not professional or a page where you are not the administrator.
 
 ## How to connect Telegram
 

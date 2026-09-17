@@ -263,5 +263,25 @@ export async function disposeOwnedEvalNamespace(query:EvalNamespaceQuery,lease:E
             // well as FKs). Drop the complete internal graph in one statement.
             const tables = await query(`SELECT c.relname::text AS relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND c.relkind IN ('r','p')`, [lease.schemaName]);
             if (tables.length) await query(`DROP TABLE ${tables.map(table => `${quote(lease.schemaName)}.${quote(table.relname)}`).join(',')} RESTRICT`);
+            // Las funciones también son de la réplica. La migración de arranque de
+            // evidencia nativa escribía `validate_native_evidence_opportunity()` en
+            // cada `tenant_%`, réplicas incluidas: sus triggers se van con las
+            // tablas, la función no, y `DROP SCHEMA ... RESTRICT` fallaba con 2BP01
+            // en cada pasada de cada limpiador — la réplica no se podía recoger
+            // nunca. Van después de las tablas porque un trigger depende de su
+            // función, y todas en una sola sentencia para que una dependencia
+            // entre ellas no frene el borrado.
+            //
+            // Sigue siendo RESTRICT, no un CASCADE en cuotas: un trigger o una
+            // vista de OTRO schema que use una de estas funciones hace fallar la
+            // sentencia y la transacción devuelve las tablas. El schema lo pone el
+            // nombre ya validado; del catálogo sólo sale el nombre citado por el
+            // servidor y la firma que identifica la sobrecarga. Sólo funciones y
+            // procedimientos: es lo único que no es tabla que algún camino deja
+            // acá. Cualquier otro tipo de objeto sigue frenando en el DROP SCHEMA,
+            // a la vista, en vez de borrarse sin que nadie lo haya revisado.
+            const routines = await query(`SELECT format('%I(%s)',p.proname,pg_get_function_identity_arguments(p.oid)) AS signature
+                FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname=$1 AND p.prokind IN ('f','p','w')`, [lease.schemaName]);
+            if (routines.length) await query(`DROP ROUTINE ${routines.map(routine => `${quote(lease.schemaName)}.${routine.signature}`).join(',')} RESTRICT`);
             await query(`DROP SCHEMA ${quote(lease.schemaName)} RESTRICT`);
 }

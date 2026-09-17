@@ -57,7 +57,10 @@ const TENANT_PUBLIC_PURGE_CLASSIFIED = new Set<string>([
  *
  * El resto del código ya las excluye (el outbox de despacho las rechaza, el
  * motor de alojamiento las trata como sólo-lectura, el scope de usuarios exige
- * un lease); estos dos barridos eran los únicos que leían el catálogo a ciegas.
+ * un lease); los tres barridos de arranque de este archivo eran los únicos que
+ * leían el catálogo a ciegas, y los tres pasan por acá. Un barrido nuevo que
+ * recorra `tenant_%` y escriba algo también: lo que no es tabla y queda en una
+ * réplica le impide al `DROP SCHEMA ... RESTRICT` de su limpieza recogerla.
  */
 const SWEEPABLE_TENANT_SCHEMAS = `SELECT schema_name FROM information_schema.schemata
     WHERE schema_name LIKE 'tenant_%'
@@ -1011,10 +1014,14 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     }
 
     private async ensureNativeEvidenceOpportunityOwnership(): Promise<void> {
+        // Sin réplicas de "Probar agente", como los otros dos barridos. Éste era
+        // el que más daño les hacía y el único que no fallaba a la vista: a una
+        // réplica le escribía `validate_native_evidence_opportunity()` sin un
+        // solo error, y esa función sobrevive a borrar las tablas. Cada limpiador
+        // hace `DROP SCHEMA ... RESTRICT`, así que la réplica quedaba imposible
+        // de recoger —2BP01 en cada pasada— y cada arranque la volvía a escribir.
         const schemas = await (super.$queryRawUnsafe as any)(
-            `SELECT schema_name
-               FROM information_schema.schemata
-              WHERE schema_name LIKE 'tenant_%'
+            `${SWEEPABLE_TENANT_SCHEMAS}
               ORDER BY schema_name`,
         ) as Array<{ schema_name: string }>;
 

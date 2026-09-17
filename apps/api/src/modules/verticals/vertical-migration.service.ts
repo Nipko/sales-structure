@@ -669,8 +669,8 @@ export class VerticalMigrationService {
             const rows: any[] = await query(
                 `INSERT INTO services
                     (name, description, duration_minutes, price, currency, category,
-                     is_active, sort_order, duration_type)
-                 VALUES ($1, $2, $3, $4, $5, $6, true, $7, $8)
+                     is_active, sort_order, duration_type, price_status)
+                 VALUES ($1, $2, $3, $4, $5, $6, true, $7, $8, 'example')
                  ON CONFLICT (name) DO NOTHING RETURNING id`,
                 [service.name, service.description, service.durationMinutes, service.price,
                     service.currency, service.category, service.sortOrder, service.durationType],

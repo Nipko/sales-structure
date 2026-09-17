@@ -164,6 +164,13 @@ export const AGENT_ISSUE_RESOLUTIONS: readonly AgentIssueResolution[] = Object.f
         note: 'Assist can add the service; the check also needs availability, and saving a week replaces the whole '
             + 'set rather than adding a row, so a person does that on the agenda screen.',
     }),
+    entry({
+        code: 'services_example_price', kind: 'screen', clears: 'closes',
+        note: 'Recipe-seeded services keep the example price until the owner confirms it on the services screen. '
+            + 'Non-critical: booking works meanwhile, and the check never reaches readiness. No tour on purpose: the '
+            + 'screen is Citas for agenda verticals and the service catalogue for the ones that seed services without '
+            + 'an agenda, so the check carries the right href instead.',
+    }),
     entry({ code: 'tool_vehicles', kind: 'screen', clears: 'closes' }),
     entry({ code: 'tool_vehicle_rentals', kind: 'screen', clears: 'closes' }),
     entry({ code: 'tool_pet_boarding', kind: 'screen', clears: 'closes' }),

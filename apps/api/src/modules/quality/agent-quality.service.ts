@@ -16,7 +16,7 @@ import type {
     AgentQualityTestedPillar,
     TenantConfig,
 } from '@parallext/shared';
-import { AGENT_QUALITY_DIMENSIONS, AGENT_CONFIG_TOOL_FAMILIES } from '@parallext/shared';
+import { AGENT_QUALITY_DIMENSIONS, AGENT_CONFIG_TOOL_FAMILIES, VERTICAL_CAPABILITY_MANIFEST } from '@parallext/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { TenantPaymentsService } from '../tenant-payments/tenant-payments.service';
@@ -113,6 +113,8 @@ type ReadinessFacts = {
     policiesUpdatedAt: Date | string | null;
     services: number;
     availabilitySlots: number;
+    /** Active services still carrying the recipe's example price (`price_status = 'example'`). */
+    examplePriceServices: number;
     testDriveServices: number;
     testDriveSlots: number;
     vehicles: number;
@@ -489,6 +491,7 @@ export class AgentQualityService {
                 `SELECT
                     (SELECT COUNT(*)::int FROM services WHERE is_active = true AND btrim(name) <> '' AND duration_minutes > 0) AS services,
                     (SELECT COUNT(*)::int FROM availability_slots WHERE is_active = true AND start_time < end_time) AS slots,
+                    (SELECT COUNT(*)::int FROM services WHERE is_active = true AND COALESCE(price_status, 'confirmed') = 'example') AS example_price_services,
                     (SELECT COUNT(*)::int FROM services WHERE is_active=true AND btrim(name)<>''
                         AND COALESCE(duration_type,'fixed')='fixed' AND duration_minutes BETWEEN 1 AND 1440
                         AND COALESCE(location_type,'in_person') IN ('in_person','hybrid')) AS test_drive_services,
@@ -544,6 +547,7 @@ export class AgentQualityService {
             policiesUpdatedAt: policyRows[0]?.updated_at || null,
             services: Number(appointmentRows[0]?.services) || 0,
             availabilitySlots: Number(appointmentRows[0]?.slots) || 0,
+            examplePriceServices: Number(appointmentRows[0]?.example_price_services) || 0,
             testDriveServices: Number(appointmentRows[0]?.test_drive_services) || 0,
             testDriveSlots: Number(appointmentRows[0]?.test_drive_slots) || 0,
             vehicles: Number(vehicleRows[0]?.count) || 0,
@@ -779,6 +783,11 @@ export class AgentQualityService {
         }
     }
 
+    private servicesScreenHref(industry: string | null): '/admin/appointments' | '/admin/service-catalog' {
+        const routes: readonly string[] | undefined = industry ? (VERTICAL_CAPABILITY_MANIFEST as any)[industry]?.profile?.routes : undefined;
+        return !routes || routes.includes('/admin/appointments') ? '/admin/appointments' : '/admin/service-catalog';
+    }
+
     private buildPreparation(agent: AgentRow, tenant: TenantContext, facts: ReadinessFacts): AgentQualityPreparationPillar {
         const config = (agent.config_json || {}) as TenantConfig;
         const persona: any = config.persona || {};
@@ -846,6 +855,7 @@ export class AgentQualityService {
             tool_appointments: ['appointments'], tool_catalog: ['products'], tool_ecommerce: ['products'],
             tool_orders: ['orders'], tool_offers: ['offers'],
             tool_vehicles: ['vehicles'], test_drive_service: ['appointments'], test_drive_staff: ['appointments'],
+            services_example_price: ['appointments'],
             tool_vehicle_rentals: ['vehicles'], tool_pet_boarding: ['appointments'], tool_payments: ['payments'],
         };
         const add = (check: CheckInput) => {
@@ -978,6 +988,25 @@ export class AgentQualityService {
             },
         });
         add({ code: 'tool_appointments', dimension: 'actions_outcomes', status: this.optionalToolStatus(tools.appointments, facts.services > 0 && facts.availabilitySlots > 0), critical: tools.appointments?.enabled === true, weight: 5, href: '/admin/appointments', evidence: { enabled: tools.appointments?.enabled === true, services: facts.services, availabilitySlots: facts.availabilitySlots } });
+        // A recipe seeds services with an example price so the agent has
+        // something to quote on day 0. Until the owner confirms them, the agent
+        // is quoting a number nobody agreed to — worth a warning, never a
+        // blocker: the booking still works and readiness is not touched. It
+        // stays out of the way only when nothing quotes services at all.
+        add({
+            code: 'services_example_price',
+            dimension: 'actions_outcomes',
+            status: tools.appointments?.enabled !== true && facts.services === 0 && facts.examplePriceServices === 0
+                ? 'not_applicable'
+                : facts.examplePriceServices > 0 ? 'warning' : 'pass',
+            critical: false,
+            weight: 2,
+            // Verticals that seed services without an agenda (home services,
+            // photography, pet boarding) do not show Citas: their services live
+            // in the service catalogue, and a link into a hidden route bounces.
+            href: this.servicesScreenHref(tenant.industry),
+            evidence: { examplePriceServices: facts.examplePriceServices },
+        });
         const missionIntents = (config as any).mission?.intentKeys;
         const wantsTestDrives = tools.vehicles?.enabled === true
             && (!Array.isArray(missionIntents) || missionIntents.includes('schedule_test_drive'));

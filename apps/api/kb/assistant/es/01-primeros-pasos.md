@@ -90,7 +90,7 @@ avanzadas se realizan desde su módulo y no inflan este progreso esencial.
 1. **Confirma tu agente** en el asistente y pruébalo en el chat de prueba.
 2. **Conecta WhatsApp** (o tu canal principal). Desde ese momento el agente queda asignado y responde ahí.
 3. **Envía un mensaje desde otro celular** y confirma la respuesta y la conversación en **Conversaciones**.
-4. **Completa la información y el conocimiento del negocio**: sitio web, documentos, políticas, preguntas frecuentes y el catálogo que corresponda.
+4. **Completa la información y el conocimiento del negocio**: sitio web, documentos, políticas, preguntas frecuentes y el catálogo que corresponda. Confirma también los precios de ejemplo de tus servicios en **Citas** → **Servicios disponibles** para que el agente pueda decirlos.
 5. **Ajusta el agente cuando quieras**: tono, reglas, saludo, herramientas y asignación del canal. Al guardar, el cambio se aplica al momento; pruébalo en el chat de prueba.
 6. **Invita a tu equipo** desde **Usuarios** y asigna roles: administrador, supervisor o agente.
 

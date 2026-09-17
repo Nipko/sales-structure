@@ -27,7 +27,7 @@ const CONFIGURATIONS = listVerticalCapabilityConfigurations();
 
 describe('lo que el manifiesto declara es lo que el agregador devuelve', () => {
     it('hay configuraciones que revisar', () => {
-        expect(CONFIGURATIONS.length).toBe(76);
+        expect(CONFIGURATIONS.length).toBe(80);
     });
 
     it.each(VERTICAL_MANIFEST_INDUSTRIES.map(industry => [industry] as const))(

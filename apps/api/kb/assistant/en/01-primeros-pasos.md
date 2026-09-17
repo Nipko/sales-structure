@@ -91,7 +91,7 @@ their own modules and do not inflate this essential progress.
 1. **Confirm your agent** in the wizard and test it in the test chat.
 2. **Connect WhatsApp** (or your main channel). From that moment the agent is assigned and answers there.
 3. **Send a message from another phone** and confirm both the reply and conversation in **Conversations**.
-4. **Complete the business information and knowledge**: website, documents, policies, FAQs, and the relevant catalog.
+4. **Complete the business information and knowledge**: website, documents, policies, FAQs, and the relevant catalog. Also confirm the example prices of your services under **Appointments** → **Services** so the agent can state them.
 5. **Adjust the agent whenever you want**: tone, rules, greeting, tools, and channel assignment. Saving applies the change immediately; test it in the test chat.
 6. **Invite your team** from **Users** and assign roles: administrator, supervisor, or agent.
 

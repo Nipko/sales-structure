@@ -3,7 +3,7 @@ id: citas-calendarios
 title: "Citas y calendarios"
 routes: ["/admin/appointments", "/admin/settings/public-booking"]
 roles: ["tenant_admin", "tenant_supervisor", "tenant_agent"]
-keywords: ["citas", "agenda", "calendario", "agendar", "reservas", "reservar", "servicios", "disponibilidad", "horarios", "google calendar", "outlook", "recordatorios", "confirmacion de asistencia", "reprogramar", "cancelar cita", "fechas bloqueadas", "link de reunion", "meet", "teams", "booking publico", "pagina de reservas", "cita recurrente"]
+keywords: ["citas", "agenda", "calendario", "agendar", "reservas", "reservar", "servicios", "disponibilidad", "horarios", "google calendar", "outlook", "recordatorios", "confirmacion de asistencia", "reprogramar", "cancelar cita", "fechas bloqueadas", "link de reunion", "meet", "teams", "booking publico", "pagina de reservas", "cita recurrente", "precio de ejemplo", "confirmar precio", "se cotiza", "precio por confirmar"]
 ---
 
 # Citas y calendarios
@@ -26,6 +26,16 @@ Los servicios son lo que tus clientes pueden reservar (una consulta, un corte, u
 6. Guarda con **Crear servicio**. Puedes activar o desactivar servicios cuando quieras.
 
 La pantalla muestra la capacidad actual de servicios; consulta el detalle vigente en **Plan y facturación**.
+
+### Precios de ejemplo y precios confirmados
+
+Cuando activas una industria, la receta de tu rubro precarga los servicios con un precio de ejemplo, para que no arranques desde cero. Cada servicio queda con uno de tres estados de precio: **Precio de ejemplo** (el que trajo la receta, todavía sin confirmar), **Precio confirmado** (el que tú escribiste o aceptaste; puede ser $0 si el servicio es gratis) o **Se cotiza según el caso**.
+
+El agente de IA nunca dice en voz alta un precio de ejemplo ni uno que se cotiza: en la lista de servicios y al confirmar una cita, dice que el precio queda "por confirmar" con el negocio, o que se cotiza caso por caso. Solo menciona los precios ya confirmados.
+
+- En **Citas** → pestaña **Servicios disponibles**, cada servicio con precio de ejemplo muestra la pastilla **Precio de ejemplo** con los botones **Confirmar precio** (conserva el mismo número, ya confirmado) o **Se cotiza**. Editar el precio desde el formulario del servicio también lo confirma.
+- No puedes activar una política de pago (depósito o pago completo) en un servicio cuyo precio no esté confirmado.
+- Mientras queden servicios con precio de ejemplo, **Salud de agentes** muestra un aviso no crítico para recordártelo; no bloquea al agente para responder.
 
 ## Cómo definir tu disponibilidad
 
@@ -115,5 +125,8 @@ No, la agenda funciona sola dentro de Parallly. Conectar Google Calendar u Outlo
 
 **¿Quién puede cambiar la configuración de la agenda?**
 Los administradores y supervisores. Los agentes pueden ver el calendario, crear citas y atender a los clientes, pero no modificar servicios, horarios ni calendarios conectados.
+
+**¿Por qué el agente no dice el precio de un servicio?**
+Porque ese precio todavía es un precio de ejemplo o el servicio se cotiza según el caso. Confírmalo en **Citas** → **Servicios disponibles** y el agente podrá decirlo.
 
 ¿Necesitas más ayuda? Escríbenos en https://parallly-chat.cloud/support

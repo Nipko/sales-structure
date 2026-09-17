@@ -9,7 +9,7 @@ import {
     Plus, Pencil, Trash2, Timer, DollarSign, Clock, Search,
     CheckCircle2, XCircle, Tag, Users, ChevronDown, X, UserPlus, Infinity,
 } from "lucide-react";
-import type { DurationType } from "./shared";
+import type { DurationType, PriceStatus } from "./shared";
 
 interface Service {
     id: string;
@@ -19,6 +19,7 @@ interface Service {
     durationType?: DurationType;
     buffer: number;
     price: number;
+    priceStatus?: PriceStatus;
     color: string;
     active: boolean;
 }
@@ -40,11 +41,14 @@ interface ServicesTabProps {
     onEditService: (svc: Service) => void;
     onDeleteService: (id: string) => void;
     onToggleActive: (svc: Service) => void;
+    /** Confirma un precio de ejemplo tal cual, o lo pasa a "se cotiza", sin abrir el editor. */
+    onPriceStatusChange?: (svc: Service, status: Exclude<PriceStatus, "example">) => void | Promise<void>;
 }
 
-function Toggle({ enabled, onChange }: { enabled: boolean; onChange: () => void }) {
+function Toggle({ enabled, label, onChange }: { enabled: boolean; label: string; onChange: () => void }) {
     return (
-        <button onClick={(e) => { e.stopPropagation(); onChange(); }}
+        <button type="button" role="switch" aria-checked={enabled} aria-label={label}
+            onClick={(e) => { e.stopPropagation(); onChange(); }}
             className={cn("w-10 h-[22px] rounded-full relative transition-colors cursor-pointer border-none flex-shrink-0",
                 enabled ? "bg-indigo-500" : "bg-neutral-300 dark:bg-neutral-600")}>
             <span className={cn("absolute top-[3px] w-4 h-4 rounded-full bg-white transition-transform shadow-sm",
@@ -55,6 +59,7 @@ function Toggle({ enabled, onChange }: { enabled: boolean; onChange: () => void 
 
 export default function ServicesTab({
     services, loading, activeTenantId, onCreateService, onEditService, onDeleteService, onToggleActive,
+    onPriceStatusChange,
 }: ServicesTabProps) {
     const t = useTranslations("appointments");
     const tc = useTranslations("common");
@@ -66,6 +71,14 @@ export default function ServicesTab({
     const [staffMap, setStaffMap] = useState<Record<string, StaffMember[]>>({});
     const [allUsers, setAllUsers] = useState<any[]>([]);
     const [loadingStaff, setLoadingStaff] = useState(false);
+    // Un solo servicio a la vez: los dos botones se apagan mientras se guarda.
+    const [pricePendingId, setPricePendingId] = useState<string | null>(null);
+
+    const handlePriceStatus = async (svc: Service, status: Exclude<PriceStatus, "example">) => {
+        if (!onPriceStatusChange) return;
+        setPricePendingId(svc.id);
+        try { await onPriceStatusChange(svc, status); } finally { setPricePendingId(null); }
+    };
 
     // Load all users once for assignment dropdown
     useEffect(() => {
@@ -211,7 +224,7 @@ export default function ServicesTab({
                                         <div className="w-3.5 h-3.5 rounded-full shrink-0" style={{ backgroundColor: svc.color }} />
                                         <h3 className="font-semibold text-foreground text-base truncate">{svc.name}</h3>
                                     </div>
-                                    <Toggle enabled={svc.active} onChange={() => onToggleActive(svc)} />
+                                    <Toggle enabled={svc.active} label={svc.name} onChange={() => onToggleActive(svc)} />
                                 </div>
 
                                 {/* Status badge */}
@@ -243,12 +256,43 @@ export default function ServicesTab({
                                             <Clock size={12} /> +{svc.buffer} min
                                         </span>
                                     )}
-                                    {svc.price > 0 && (
+                                    {/* Precio (D10): "se cotiza" nunca muestra número; un precio de
+                                        ejemplo del rubro se muestra, pero marcado como lo que es. */}
+                                    {svc.priceStatus === "quote" ? (
                                         <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-neutral-50 dark:bg-neutral-800 text-muted-foreground text-xs font-medium">
-                                            <DollarSign size={12} /> ${svc.price.toLocaleString(numLocale)}
+                                            <DollarSign size={12} /> {t("priceStatus.quotePill")}
                                         </span>
+                                    ) : (
+                                        <>
+                                            {svc.price > 0 && (
+                                                <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-neutral-50 dark:bg-neutral-800 text-muted-foreground text-xs font-medium">
+                                                    <DollarSign size={12} /> ${svc.price.toLocaleString(numLocale)}
+                                                </span>
+                                            )}
+                                            {svc.priceStatus === "example" && (
+                                                <span className="inline-flex items-center px-2.5 py-1.5 rounded-lg border border-dotted border-amber-500/70 text-amber-700 dark:text-amber-300 text-[11px] font-medium">
+                                                    {t("priceStatus.examplePill")}
+                                                </span>
+                                            )}
+                                        </>
                                     )}
                                 </div>
+
+                                {/* Salida a mano del precio de ejemplo, sin abrir el editor */}
+                                {svc.priceStatus === "example" && onPriceStatusChange && (
+                                    <div className="flex items-center gap-3 -mt-2 mb-4">
+                                        <button type="button" disabled={pricePendingId === svc.id}
+                                            onClick={() => handlePriceStatus(svc, "confirmed")}
+                                            className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer border-none bg-transparent p-0 disabled:opacity-50">
+                                            {t("priceStatus.confirmAction")}
+                                        </button>
+                                        <button type="button" disabled={pricePendingId === svc.id}
+                                            onClick={() => handlePriceStatus(svc, "quote")}
+                                            className="text-xs font-medium text-muted-foreground hover:text-foreground hover:underline cursor-pointer border-none bg-transparent p-0 disabled:opacity-50">
+                                            {t("priceStatus.quoteAction")}
+                                        </button>
+                                    </div>
+                                )}
 
                                 {/* Actions */}
                                 <div className="flex items-center gap-2 pt-3 border-t border-neutral-100 dark:border-neutral-800">
@@ -265,7 +309,8 @@ export default function ServicesTab({
                                         <Users size={13} /> Staff
                                         <ChevronDown size={12} className={cn("transition-transform", expandedStaff === svc.id && "rotate-180")} />
                                     </button>
-                                    <button onClick={() => { if (confirm(t('servicesSection.confirmDelete'))) onDeleteService(svc.id); }}
+                                    <button type="button" aria-label={tc("delete")}
+                                        onClick={() => { if (confirm(t('servicesSection.confirmDelete'))) onDeleteService(svc.id); }}
                                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors cursor-pointer border-none bg-transparent ml-auto">
                                         <Trash2 size={13} />
                                     </button>

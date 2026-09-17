@@ -229,6 +229,7 @@ export default function AppointmentsPage() {
     editingService, serviceForm, setServiceForm, savingService,
     loadServices, openCreateServiceModal, openEditServiceModal,
     handleSaveService, handleDeleteService, handleToggleServiceActive,
+    handleSetServicePriceStatus,
   } = useServiceCatalog(activeTenantId, showToast, {
     saveError: t("errors.saveService"),
     deleteError: t("errors.deleteService"),
@@ -1014,6 +1015,7 @@ export default function AppointmentsPage() {
             onEditService={openEditServiceModal}
             onDeleteService={handleDeleteService}
             onToggleActive={handleToggleServiceActive}
+            onPriceStatusChange={handleSetServicePriceStatus}
           />
         )}
 

@@ -19,6 +19,15 @@ export interface Appointment {
 
 export type DurationType = "fixed" | "flexible" | "open";
 
+/**
+ * De dónde salió el número del precio (decisión D10).
+ * - `example`: lo sembró la receta del rubro y el dueño nunca lo confirmó. El
+ *   agente no lo dice.
+ * - `confirmed`: el dueño lo escribió o lo confirmó (0 confirmado = gratis).
+ * - `quote`: se cotiza según el caso; nunca se dice un número.
+ */
+export type PriceStatus = "example" | "confirmed" | "quote";
+
 export interface Service {
   id: string;
   name: string;
@@ -27,6 +36,7 @@ export interface Service {
   durationType?: DurationType;
   buffer: number;
   price: number;
+  priceStatus?: PriceStatus;
   color: string;
   active: boolean;
   category?: string | null;

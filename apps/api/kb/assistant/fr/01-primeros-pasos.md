@@ -90,7 +90,7 @@ tâches avancées restent dans leurs modules et ne gonflent pas cette progressio
 1. **Confirmez votre agent** dans l'assistant et testez-le dans le chat de test.
 2. **Connectez WhatsApp** (ou votre canal principal). Dès ce moment, l'agent est affecté et répond là-bas.
 3. **Envoyez un message depuis un autre téléphone** et confirmez la réponse ainsi que la conversation dans **Conversations**.
-4. **Complétez les informations et les connaissances de l'entreprise** : site web, documents, politiques, questions fréquentes et catalogue pertinent.
+4. **Complétez les informations et les connaissances de l'entreprise** : site web, documents, politiques, questions fréquentes et catalogue pertinent. Confirmez aussi les prix d'exemple de vos services dans **Rendez-vous** → **Services** afin que l'agent puisse les annoncer.
 5. **Ajustez l'agent quand vous le souhaitez** : ton, règles, accueil, outils et affectation du canal. À l'enregistrement, le changement s'applique aussitôt ; testez-le dans le chat de test.
 6. **Invitez votre équipe** depuis **Utilisateurs** et attribuez les rôles : administrateur, superviseur ou agent.
 

@@ -59,6 +59,7 @@ type HarnessOptions = {
     orders?: number;
     offers?: number;
     boardingServices?: number;
+    examplePriceServices?: number;
     paymentConfig?: { ready: boolean; activeProvider: string | null } | Error;
     verticalCatalogs?: Record<string, number>;
     latestEval?: Record<string, any> | null;
@@ -136,7 +137,7 @@ function createHarness(options: HarnessOptions = {}) {
         if (query.includes('FROM faqs')) return [{ count: options.faqs ?? 0, updated_at: null }];
         if (query.includes('FROM policies')) return [{ count: options.policies ?? 0, privacy_count: options.privacyPolicies ?? 0, updated_at: null }];
         if (query.includes('FROM properties') && query.includes('tour_packages')) return [options.verticalCatalogs ?? {}];
-        if (query.includes('FROM services') && query.includes('availability_slots')) return [{ services: options.services ?? 0, slots: options.slots ?? 0, test_drive_services: options.testDriveServices ?? 0, test_drive_slots: options.testDriveSlots ?? 0, boarding_services: options.boardingServices ?? 0 }];
+        if (query.includes('FROM services') && query.includes('availability_slots')) return [{ services: options.services ?? 0, slots: options.slots ?? 0, example_price_services: options.examplePriceServices ?? 0, test_drive_services: options.testDriveServices ?? 0, test_drive_slots: options.testDriveSlots ?? 0, boarding_services: options.boardingServices ?? 0 }];
         if (query.includes('FROM vehicles')) return [{ count: options.vehicles ?? 0 }];
         if (query.includes('FROM products')) return [{ count: options.products ?? 0 }];
         if (query.includes('FROM orders')) return [{ count: options.orders ?? 0 }];
@@ -408,6 +409,61 @@ describe('AgentQualityService', () => {
         const overview = await service.getOverview(TENANT_ID, AGENT_ID);
         expect(check(overview, 'tool_appointments')).toMatchObject({ status: 'fail', critical: true, href: '/admin/appointments' });
         expect(overview.recommendations).toContainEqual(expect.objectContaining({ code: 'fix_tool_appointments', href: '/admin/appointments' }));
+    });
+
+    describe('services still carrying an example price', () => {
+        const booking = { ...completeConfig, tools: { appointments: { enabled: true } } };
+
+        it('warns, without blocking, while a recipe-seeded price is still unconfirmed', async () => {
+            const { service } = createHarness({ config: booking, services: 1, slots: 1, examplePriceServices: 1 });
+            const overview = await service.getOverview(TENANT_ID, AGENT_ID);
+
+            expect(check(overview, 'services_example_price')).toMatchObject({
+                status: 'warning', critical: false, weight: 2, href: '/admin/appointments',
+                evidence: { examplePriceServices: 1 },
+            });
+            expect(overview.recommendations).toContainEqual(expect.objectContaining({
+                code: 'fix_services_example_price', severity: 'medium', href: '/admin/appointments',
+            }));
+            // An example price is a number nobody agreed to, not a broken agenda:
+            // the booking check keeps its own verdict and readiness stays untouched.
+            expect(check(overview, 'tool_appointments')).toMatchObject({ status: 'pass', critical: true });
+            expect(overview.preparation.criticalBlockers).not.toContain('services_example_price');
+            expect(overview.preparation.status).toBe('needs_attention');
+        });
+
+        it('passes once every active service has a confirmed price', async () => {
+            const { service } = createHarness({ config: booking, services: 1, slots: 1, examplePriceServices: 0 });
+            const overview = await service.getOverview(TENANT_ID, AGENT_ID);
+
+            expect(check(overview, 'services_example_price')).toMatchObject({ status: 'pass', critical: false, evidence: { examplePriceServices: 0 } });
+            expect(overview.recommendations.map(item => item.code)).not.toContain('fix_services_example_price');
+        });
+
+        it('never joins the critical blockers, whatever the agenda looks like', async () => {
+            for (const options of [
+                { config: booking, services: 1, slots: 0, examplePriceServices: 1 },
+                { config: booking, services: 0, slots: 0, examplePriceServices: 3 },
+                { config: booking, failedQueries: ['availability_slots'] },
+                { config: completeConfig, services: 2, examplePriceServices: 2 },
+            ]) {
+                const overview = await createHarness(options).service.getOverview(TENANT_ID, AGENT_ID);
+                expect(check(overview, 'services_example_price').critical).toBe(false);
+                expect(overview.preparation.criticalBlockers).not.toContain('services_example_price');
+            }
+        });
+
+        it('steps aside when nothing quotes services, and reports a lost probe as unknown rather than confirmed', async () => {
+            const idle = await createHarness({ config: completeConfig, services: 0, examplePriceServices: 0 }).service.getOverview(TENANT_ID, AGENT_ID);
+            expect(check(idle, 'services_example_price').status).toBe('not_applicable');
+
+            // Booking is off, but a vertical tool can still quote these services.
+            const quoting = await createHarness({ config: completeConfig, services: 2, examplePriceServices: 2 }).service.getOverview(TENANT_ID, AGENT_ID);
+            expect(check(quoting, 'services_example_price')).toMatchObject({ status: 'warning', critical: false });
+
+            const lost = await createHarness({ config: booking, failedQueries: ['availability_slots'] }).service.getOverview(TENANT_ID, AGENT_ID);
+            expect(check(lost, 'services_example_price')).toMatchObject({ status: 'unknown', evidence: { sourceAvailability: 'unavailable' } });
+        });
     });
 
     it('requires a custom prompt only when the editor is in prompt mode', async () => {

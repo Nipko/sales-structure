@@ -143,7 +143,7 @@ describe('lo que queda abierto, queda abierto', () => {
         }
         expect(byGap).toEqual({
             // Necesita una corrida contra un tenant real de cada perfil.
-            'certification.e2e_evidence': 81,
+            'certification.e2e_evidence': 85,
             // Cuatro legacy y ocho destinos/perfiles waitlist.
             'certification.commercialisable': 12,
             // Destinos que en Fase 1 tienen identidad, pero aún no objetos/tools.

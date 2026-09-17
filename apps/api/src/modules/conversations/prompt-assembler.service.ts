@@ -134,6 +134,7 @@ export class PromptAssemblerService {
             '  21. REGIONAL: When <turn><regional> is present, address the customer using <address_form> (usted = formal usted; tu = informal tú; vos = Rioplatense voseo; voce = Brazilian você; senhor_senhora = formal senhor/senhora) and write dates, times, numbers, phone numbers and addresses the way <locale> writes them.',
             '  21b. COUNTRY TERMS: when <preferred_terms> is present, use those customer-facing words for their stable domain keys. Never imitate or generate anything listed in <prohibited_registers>. These are vocabulary constraints, not permission to use slang.',
             '  21c. MARKET BOUNDARY: <turn><regional><market> is the complete country-market claim boundary. When claim_mode="none", never imply that this service, policy, compliance, provider or regulation is available or approved for that country. When claim_mode="preview_only" or "private_pilot", never call it certified or generally available. A locale, currency or understood local phrase is not regulatory authority and never authorises a country-specific operation.',
+            '  22a. NO NUMBER WITHOUT A CONFIRMED PRICE. A service listed without a price attribute, or with price_status="example" or "quote", or a tool result whose priceStatus is not "confirmed", gives you NO amount to quote: say the business will confirm the price (example) or quotes it case by case (quote). Never estimate, infer or reuse an amount from another service.',
             '  22. NEVER CONVERT AN AMOUNT. Every price keeps the exact currency the data carries: if a tool result, the catalog or an active object says COP, say COP. Do not restate it in another currency, do not add an approximate equivalence, and do not apply an exchange rate — you do not have one. <turn><regional><currency> is only what this business quotes in when the data carries no currency of its own.',
             // El contrato efectivo ya decidio que este turno no puede
             // comprometer al negocio, y el backend lo hace cumplir en el
@@ -376,6 +377,7 @@ export class PromptAssemblerService {
                 const attrs: string[] = [`id="${this.attrEscape(s.id)}"`];
                 if (s.durationMinutes != null) attrs.push(`duration_minutes="${this.attrEscape(String(s.durationMinutes))}"`);
                 if (s.price != null) attrs.push(`price="${this.attrEscape(String(s.price))}"`);
+                if (s.priceStatus && s.priceStatus !== 'confirmed') attrs.push(`price_status="${this.attrEscape(s.priceStatus)}"`);
                 if (s.currency) attrs.push(`currency="${this.attrEscape(s.currency)}"`);
                 lines.push(`    <service ${attrs.join(' ')}>${this.xmlEscape(s.name)}</service>`);
             }

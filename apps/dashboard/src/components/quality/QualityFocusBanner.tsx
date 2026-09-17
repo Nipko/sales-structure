@@ -242,6 +242,8 @@ export default function QualityFocusBanner() {
     disconnected: scalar(evidence.disconnectedChannels, t("focus.noneValue")),
     connectedChannels: scalar(evidence.connectedChannels, t("focus.noneValue")),
     credentialIssue: scalar(evidence.credentialIssue, "none"),
+    // `services_example_price` cuenta los servicios cuyo precio nadie confirmó.
+    count: scalar(evidence.examplePriceServices ?? evidence.count, "0"),
   });
 
   const tour = !check || check.status === 'unknown' ? null : findGuidedTourForQualityCode(signal.code, evidence);

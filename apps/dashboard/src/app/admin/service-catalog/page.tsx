@@ -35,6 +35,7 @@ export default function ServiceCatalogPage() {
         editingService, serviceForm, setServiceForm, savingService,
         loadServices, openCreateServiceModal, openEditServiceModal,
         handleSaveService, handleDeleteService, handleToggleServiceActive,
+        handleSetServicePriceStatus,
     } = useServiceCatalog(
         activeTenantId,
         (message) => { setToast(message); setTimeout(() => setToast(null), 3000); },
@@ -74,6 +75,7 @@ export default function ServiceCatalogPage() {
                 onEditService={openEditServiceModal}
                 onDeleteService={handleDeleteService}
                 onToggleActive={handleToggleServiceActive}
+                onPriceStatusChange={handleSetServicePriceStatus}
             />
 
             {showServiceModal && (

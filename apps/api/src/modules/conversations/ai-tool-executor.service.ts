@@ -1,4 +1,5 @@
 import { withRuntimeSchemaLock } from '../../common/utils/runtime-schema-lock';
+import { servicePriceNote, servicePriceStatus } from '../appointments/service-price-status';
 import { enrollmentTermsHash, enrollmentTermsReviewResult } from '../education/enrollment-terms';
 import { LLMSourceAuthorityUnavailable } from '../ai/interfaces/llm-source-authority';
 import { appointmentVehicleId, vehicleAppointmentTerms, vehicleAppointmentBusyIntervals, VehicleAppointmentError, type VehicleAppointmentTerms } from '../appointments/vehicle-appointment-capacity';
@@ -2710,7 +2711,7 @@ export class AIToolExecutorService {
     private async listServices(schema: string): Promise<any> {
         const rows: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT id, name, description, duration_minutes, buffer_minutes, price, currency, is_active, duration_type, duration_minutes_max,
-                    payment_policy, deposit_percent, deposit_amount, location_type, location_address, meeting_link
+                    payment_policy, deposit_percent, deposit_amount, location_type, location_address, meeting_link, price_status
              FROM "${schema}".services WHERE is_active = true AND (is_public IS NULL OR is_public = true)
              ORDER BY sort_order, name`,
         );
@@ -2724,6 +2725,12 @@ export class AIToolExecutorService {
                 // enteraba de que había que cobrar DESPUÉS de crear la cita —
                 // justo el orden invertido que este trabajo vino a arreglar.
                 const policy = resolvePaymentPolicy(s, s.price);
+                // D10: a recipe price nobody confirmed, or a quote-only service,
+                // has NO number for the model. Removing the amount (not just
+                // flagging it) is what keeps the claims guardrail from treating
+                // it as a trusted fact.
+                const priceStatus = servicePriceStatus(s);
+                const confirmed = priceStatus === 'confirmed';
                 return {
                     id: s.id,
                     name: s.name,
@@ -2731,13 +2738,15 @@ export class AIToolExecutorService {
                     durationMinutes: s.duration_minutes,
                     durationMinutesMax: s.duration_minutes_max || null,
                     durationType: s.duration_type || 'fixed',
-                    price: Number(s.price || 0),
+                    price: confirmed ? Number(s.price || 0) : null,
                     currency: s.currency || 'COP',
+                    priceStatus,
+                    ...(confirmed ? {} : { priceNote: servicePriceNote(priceStatus) }),
                     // Los flags dicen QUÉ pasa; la nota dice CÓMO proceder.
-                    requiresPaymentToConfirm: policy.requiresPayment,
-                    amountDueToConfirm: policy.dueAmount,
-                    paymentChoice: policy.customerChooses ? 'deposit_or_full' : undefined,
-                    paymentNote: describePaymentPolicy(policy),
+                    requiresPaymentToConfirm: confirmed && policy.requiresPayment,
+                    amountDueToConfirm: confirmed ? policy.dueAmount : null,
+                    paymentChoice: confirmed && policy.customerChooses ? 'deposit_or_full' : undefined,
+                    paymentNote: confirmed ? describePaymentPolicy(policy) : undefined,
                     appointmentTerms: appointmentServiceTerms(s),
                 };
             }),
@@ -3265,7 +3274,7 @@ export class AIToolExecutorService {
         // inválido → tool_failed. El check de disponibilidad ya la aceptaba
         // (b9bd6332), pero la reserva en sí seguía rota.
         const svcRows: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT id, name, duration_minutes, duration_type, duration_minutes_max, price, currency, location_type, location_address, meeting_link FROM "${schema}".services WHERE id = $1::uuid AND is_active = true`,
+            `SELECT id, name, duration_minutes, duration_type, duration_minutes_max, price, currency, location_type, location_address, meeting_link, price_status FROM "${schema}".services WHERE id = $1::uuid AND is_active = true`,
             args.serviceId,
         );
         if (!svcRows.length) return { error: 'Service not found' };
@@ -3318,7 +3327,9 @@ export class AIToolExecutorService {
         if (args.customerEmail) descriptionParts.push(`Email: ${args.customerEmail}`);
         if (args.customerPhone) descriptionParts.push(`Phone: ${args.customerPhone}`);
         descriptionParts.push('');
-        const priceStr = svc.price ? `${Number(svc.price).toLocaleString()} ${svc.currency || 'COP'}` : 'N/A';
+        const priceStr = servicePriceStatus(svc) !== 'confirmed'
+            ? (servicePriceStatus(svc) === 'quote' ? 'se cotiza según el caso' : 'precio por confirmar')
+            : (svc.price ? `${Number(svc.price).toLocaleString()} ${svc.currency || 'COP'}` : 'N/A');
         descriptionParts.push(`Service: ${svc.name} (${priceStr})`);
         descriptionParts.push(`Duration: ${svc.duration_minutes} min`);
         for (const label of subject.labels) descriptionParts.push(label);
@@ -5345,7 +5356,7 @@ export class AIToolExecutorService {
         try {
             const services = await this.prisma.executeInTenantSchema<any[]>(
                 schemaName,
-                `SELECT id, name, description, duration_minutes, price, currency, category
+                `SELECT id, name, description, duration_minutes, price, currency, category, price_status
                  FROM services WHERE is_active = true
                  ORDER BY category, name`,
             );
@@ -5356,15 +5367,20 @@ export class AIToolExecutorService {
             }
             return readOk({
                 count: services.length,
-                services: services.map(s => ({
-                    id: s.id,
-                    name: s.name,
-                    description: s.description,
-                    durationMinutes: s.duration_minutes,
-                    price: Number(s.price || 0),
-                    currency: s.currency,
-                    category: s.category,
-                })),
+                services: services.map(s => {
+                    const priceStatus = servicePriceStatus(s);
+                    return {
+                        id: s.id,
+                        name: s.name,
+                        description: s.description,
+                        durationMinutes: s.duration_minutes,
+                        price: priceStatus === 'confirmed' ? Number(s.price || 0) : null,
+                        currency: s.currency,
+                        category: s.category,
+                        priceStatus,
+                        ...(priceStatus === 'confirmed' ? {} : { priceNote: servicePriceNote(priceStatus) }),
+                    };
+                }),
             });
         } catch (e: any) {
             this.logger.warn(`[Tool] list services failed: ${e.message}`);

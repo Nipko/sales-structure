@@ -33,7 +33,9 @@ edit agents, connections, or configuration under **AI & Growth → AI Agent**.
   agent's scope can be **Not applicable** and does not lower the result. The overall
   status is decided by the **essentials** (channel, agent, business, team) and any
   real problem; an unfinished mission or a test that hasn't run stay as pending, but
-  they do not mark an agent that already answers as "not ready".
+  they do not mark an agent that already answers as "not ready". For example,
+  while the business hasn't confirmed the example prices its industry recipe
+  seeded, it shows the non-critical **Services with example price** warning.
 - **Tested quality:** shows the latest critical evaluation and simulation, including
   version, date, threshold, and scenarios. Earlier evidence can become outdated when
   the agent changes. It is automated evidence, not a certification.

@@ -2078,8 +2078,8 @@ export class VerticalsService {
                     await query(
                         `INSERT INTO services
                             (name, description, duration_minutes, price, currency, category,
-                             is_active, sort_order, duration_type)
-                         SELECT $1, $2, $3, $4, $5, $6, true, $7, $8
+                             is_active, sort_order, duration_type, price_status)
+                         SELECT $1, $2, $3, $4, $5, $6, true, $7, $8, 'example'
                           WHERE NOT EXISTS (
                               SELECT 1 FROM services WHERE name = ANY($9::text[])
                           )

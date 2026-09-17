@@ -87,7 +87,7 @@ avançadas ficam em seus módulos e não aumentam esse progresso essencial.
 1. **Confirme seu agente** no assistente e teste no chat de teste.
 2. **Conecte o WhatsApp** (ou seu canal principal). A partir desse momento o agente fica atribuído e responde por ali.
 3. **Envie uma mensagem de outro celular** e confirme a resposta e a conversa em **Conversas**.
-4. **Complete as informações e o conhecimento da empresa**: site, documentos, políticas, perguntas frequentes e o catálogo correspondente.
+4. **Complete as informações e o conhecimento da empresa**: site, documentos, políticas, perguntas frequentes e o catálogo correspondente. Confirme também os preços de exemplo dos seus serviços em **Agendamentos** → **Serviços** para que o agente possa dizê-los.
 5. **Ajuste o agente quando quiser**: tom, regras, saudação, ferramentas e atribuição do canal. Ao salvar, a mudança é aplicada na hora; teste no chat de teste.
 6. **Convide sua equipe** em **Usuários** e atribua funções: administrador, supervisor ou agente.
 

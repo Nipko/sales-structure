@@ -54,6 +54,10 @@ export interface BookingTurnContext {
 const MESSAGES: Record<string, Record<string, string | string[]>> = {
     es: {
         bookingPrice: "Precio: {amount} {currency}",
+        servicePriceExample: "precio por confirmar",
+        servicePriceQuote: "se cotiza según el caso",
+        bookingPriceToConfirm: "Precio: por confirmar con el negocio",
+        bookingPriceQuote: "Precio: se cotiza según el caso",
         bookingDuration: 'Duración reservada: {minutes} minutos',
         bookingLocation: 'Lugar: {location}',
         bookingOnline: 'En línea',
@@ -109,6 +113,10 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
     },
     en: {
         bookingPrice: "Price: {amount} {currency}",
+        servicePriceExample: "price to be confirmed",
+        servicePriceQuote: "quoted case by case",
+        bookingPriceToConfirm: "Price: to be confirmed by the business",
+        bookingPriceQuote: "Price: quoted case by case",
         bookingDuration: 'Reserved duration: {minutes} minutes',
         bookingLocation: 'Location: {location}',
         bookingOnline: 'Online',
@@ -145,6 +153,10 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
     },
     pt: {
         bookingPrice: "Preço: {amount} {currency}",
+        servicePriceExample: "preço a confirmar",
+        servicePriceQuote: "sob orçamento",
+        bookingPriceToConfirm: "Preço: a confirmar com o negócio",
+        bookingPriceQuote: "Preço: sob orçamento, conforme o caso",
         bookingDuration: 'Duração reservada: {minutes} minutos',
         bookingLocation: 'Local: {location}',
         bookingOnline: 'Online',
@@ -181,6 +193,10 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
     },
     fr: {
         bookingPrice: "Prix : {amount} {currency}",
+        servicePriceExample: "prix à confirmer",
+        servicePriceQuote: "sur devis",
+        bookingPriceToConfirm: "Prix : à confirmer par l'entreprise",
+        bookingPriceQuote: "Prix : sur devis, selon le cas",
         bookingDuration: 'Durée réservée : {minutes} minutes',
         bookingLocation: 'Lieu : {location}',
         bookingOnline: 'En ligne',
@@ -250,7 +266,7 @@ const UNRECOVERABLE_TOOL_ERRORS = new Set(['appointments_not_configured', 'tool_
 export interface BookingState {
     missionId?: string;
     step: 'idle' | 'show_services' | 'ask_date' | 'show_slots' | 'ask_name' | 'ask_email' | 'confirm' | 'booked' | 'waiting_flow';
-    services?: Array<{ id: string; name: string; durationMinutes: number; durationMinutesMax?: number; durationType?: string; price: number; currency: string; requiresPaymentToConfirm?: boolean; amountDueToConfirm?: number | null; appointmentTerms?: AppointmentServiceTerms }>;
+    services?: Array<{ id: string; name: string; durationMinutes: number; durationMinutesMax?: number; durationType?: string; price: number | null; currency: string; priceStatus?: 'example' | 'confirmed' | 'quote'; requiresPaymentToConfirm?: boolean; amountDueToConfirm?: number | null; appointmentTerms?: AppointmentServiceTerms }>;
     serviceId?: string;
     serviceName?: string;
     date?: string;
@@ -647,7 +663,9 @@ export class BookingEngineService {
                                 id: s.id,
                                 name: s.name,
                                 duration: String(s.durationMinutes ?? ''),
-                                price: String(s.price ?? ''),
+                                // The Flow screen prints whatever it gets: an
+                                // unconfirmed price is sent as nothing at all.
+                                price: s.priceStatus && s.priceStatus !== 'confirmed' ? '' : String(s.price ?? ''),
                                 currency: s.currency ?? '',
                             })),
                             language: L,
@@ -1039,9 +1057,10 @@ export class BookingEngineService {
             } else if (s.durationMinutes > 0) {
                 durLabel = ` (${s.durationMinutes} ${msg(lang, 'minutes')})`;
             }
-            const priceLabel = s.price > 0
-                ? ` - ${s.price.toLocaleString('es-CO')} ${s.currency}`
-                : '';
+            // D10: an example or quote-only price is words, never a number.
+            const priceLabel = s.priceStatus && s.priceStatus !== 'confirmed'
+                ? ` - ${msg(lang, s.priceStatus === 'quote' ? 'servicePriceQuote' : 'servicePriceExample')}`
+                : (Number(s.price) > 0 ? ` - ${Number(s.price).toLocaleString('es-CO')} ${s.currency}` : '');
             return `${i + 1}. ${s.name}${durLabel}${priceLabel}`;
         }).join('\n');
         return {
@@ -1118,7 +1137,10 @@ export class BookingEngineService {
         // el cliente pueda corregirlo antes de que la cita exista.
         const withStaff = state.staffName ? `\n${sl.with}: ${state.staffName}` : '';
         const service = state.services?.find(s => s.id === state.serviceId);
-        const priceSummary = service ? '\n' + msg(lang, 'bookingPrice', { amount: String(service.price), currency: service.currency }) : '';
+        const priceSummary = !service ? ''
+            : service.priceStatus && service.priceStatus !== 'confirmed'
+                ? '\n' + msg(lang, service.priceStatus === 'quote' ? 'bookingPriceQuote' : 'bookingPriceToConfirm')
+                : '\n' + msg(lang, 'bookingPrice', { amount: String(service.price), currency: service.currency });
         const terms = service?.appointmentTerms;
         const duration = terms?.durationType === 'flexible' ? terms.durationMinutesMax || terms.durationMinutes : terms?.durationMinutes;
         const durationSummary = duration ? '\n' + msg(lang, 'bookingDuration', { minutes: String(duration) }) : '';

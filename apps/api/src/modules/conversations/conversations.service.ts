@@ -1,4 +1,5 @@
 import { isCanonicalConsentRecovery, canonicalConsentRecoveryDirective } from './canonical-consent-recovery';
+import { projectAvailableService } from '../appointments/service-price-status';
 import { servedAgentAuthority, type ServedAgentAuthority } from '../persona/served-agent-authority';
 import { LearningService } from '../learning/learning.service';
 import { WidgetAgentReplyStore, type WidgetAgentReplyReceipt } from '../widget/widget-agent-reply.store';
@@ -3468,13 +3469,8 @@ export class ConversationsService {
                 } else {
                     // Not booking-related — LLM handles.
                     if (bookingState.services?.length) {
-                        turnContext.availableServices = bookingState.services.map(s => ({
-                            id: s.id,
-                            name: s.name,
-                            durationMinutes: s.durationMinutes,
-                            price: s.price,
-                            currency: s.currency,
-                        }));
+                        // D10: an unconfirmed price never enters the prompt as a number.
+                        turnContext.availableServices = bookingState.services.map(projectAvailableService);
                     }
                     this.logger.log(`[Pipeline] Not booking-related, LLM handles`);
                     await this.persistBookingState(schemaName, conversation.id, engineResult.state, session);

@@ -33,7 +33,9 @@ agentes, conexões ou configurações em **IA e crescimento → Agente de IA**.
   pode aparecer como **Não se aplica** e não reduz o resultado. O estado geral é
   decidido pelos **essenciais** (canal, agente, negócio, equipe) e por qualquer
   problema real; uma missão sem ajustar ou um teste sem rodar ficam como pendências,
-  mas não declaram um agente que já responde como «não pronto».
+  mas não declaram um agente que já responde como «não pronto». Por exemplo,
+  enquanto o negócio não confirmar os preços de exemplo que vieram da receita
+  do seu ramo, aparece o aviso não crítico **Serviços com preço de exemplo**.
 - **Qualidade testada:** mostra a avaliação crítica e a simulação mais recentes, com
   versão, data, limite e cenários. Evidências anteriores podem ficar desatualizadas
   quando o agente muda. É evidência automatizada, não uma certificação.

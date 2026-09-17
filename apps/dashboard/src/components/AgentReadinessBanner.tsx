@@ -50,6 +50,7 @@ const BLOCKER_TARGETS: Record<string, (agentId: string) => string> = {
   tool_policies: () => "/admin/settings/policies",
   media_privacy_policy: () => "/admin/settings/policies?type=privacy",
   tool_appointments: () => "/admin/appointments",
+  services_example_price: () => "/admin/appointments",
   tool_vehicles: () => "/admin/vehicles",
   test_drive_permissions: (id) => `/admin/agent/${id}`,
   test_drive_service: () => "/admin/appointments",

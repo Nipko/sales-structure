@@ -33,7 +33,9 @@ conexiones o configuración desde **IA y crecimiento → Agente IA**.
   alcance puede aparecer como **No aplica** y no reduce el resultado. El estado general
   lo deciden los **esenciales** (canal, agente, negocio, equipo) y cualquier problema
   real; una misión sin ajustar o una prueba sin correr quedan como pendientes, pero no
-  declaran «no listo» a un agente que ya responde.
+  declaran «no listo» a un agente que ya responde. Por ejemplo, mientras el
+  negocio no confirme los precios de ejemplo que trajo la receta de su rubro,
+  aparece la advertencia no crítica **Servicios con precio de ejemplo**.
 - **Calidad probada:** muestra la evaluación crítica y la simulación más recientes,
   con versión, fecha, umbral y escenarios. Si cambió el agente, la evidencia anterior
   puede quedar desactualizada. Es evidencia automatizada, no una certificación.

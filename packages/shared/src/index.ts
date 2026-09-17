@@ -1014,6 +1014,8 @@ export interface TurnContext {
         name: string;
         durationMinutes?: number;
         price?: number;
+        /** 'example' (recipe, unconfirmed) | 'confirmed' | 'quote' (no number, quoted case by case). */
+        priceStatus?: 'example' | 'confirmed' | 'quote';
         currency?: string;
     }>;
     retrievedKnowledge?: RetrievedKnowledgeItem[];

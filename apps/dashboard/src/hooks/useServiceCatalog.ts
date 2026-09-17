@@ -18,8 +18,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
-import type { Service } from "@/components/appointments/shared";
+import type { PriceStatus, Service } from "@/components/appointments/shared";
 import { readPaymentPolicy } from "@/components/payments/payment-policy-fields";
+
+/** Lo que el dueño puede elegir; `example` solo lo pone el bootstrap. */
+/** What the owner can press: confirmed or quote. "example" is what a recipe wrote, never a choice. */
+export type EditablePriceStatus = Exclude<PriceStatus, "example">;
 
 export interface ServiceFormState {
     name: string;
@@ -28,6 +32,9 @@ export interface ServiceFormState {
     durationType: "fixed" | "flexible" | "open";
     buffer: number;
     price: number;
+    /** Guardar siempre lo manda: `confirmed` salvo que el dueño elija `quote`. */
+    /** The row's real state while editing: an example stays an example until the owner presses a choice. */
+    priceStatus: PriceStatus;
     color: string;
     category: string;
     maxConcurrent: number;
@@ -48,6 +55,7 @@ const EMPTY_FORM: ServiceFormState = {
     durationType: "fixed",
     buffer: 0,
     price: 0,
+    priceStatus: "confirmed",
     color: "#6c5ce7",
     category: "",
     maxConcurrent: 1,
@@ -60,6 +68,11 @@ const EMPTY_FORM: ServiceFormState = {
     depositPercent: null,
     depositAmount: null,
 };
+
+/** Una fila vieja sin la columna se trata como confirmada: nada cambia de aspecto. */
+function readPriceStatus(raw: unknown): PriceStatus {
+    return raw === "example" || raw === "quote" ? raw : "confirmed";
+}
 
 export interface ServiceCatalogMessages {
     saveError: string;
@@ -107,6 +120,7 @@ export function useServiceCatalog(
                     durationType: s.durationType || s.duration_type || "fixed",
                     buffer: s.bufferMinutes || s.buffer || 0,
                     price: parseFloat(s.price || 0),
+                    priceStatus: readPriceStatus(s.priceStatus ?? s.price_status),
                     color: s.color || "#6c5ce7",
                     active: s.isActive ?? s.active ?? true,
                     category: s.category || null,
@@ -137,6 +151,10 @@ export function useServiceCatalog(
             durationType: svc.durationType || "fixed",
             buffer: svc.buffer,
             price: svc.price,
+            // "Usar así" nunca confirma un precio: un ejemplo sigue siendo un
+            // ejemplo hasta que el dueño pulsa "Precio confirmado" o escribe
+            // otro número. Guardar sin tocarlo no decide nada.
+            priceStatus: readPriceStatus(svc.priceStatus),
             color: svc.color,
             category: svc.category || "",
             maxConcurrent: svc.maxConcurrent || 1,
@@ -158,6 +176,9 @@ export function useServiceCatalog(
             const payload = {
                 ...serviceForm,
                 durationMinutesMax: serviceForm.durationMax,
+                // An untouched example is not a decision: the server keeps the
+                // mark unless the owner pressed a choice or changed the number.
+                priceStatus: serviceForm.priceStatus === "example" ? undefined : serviceForm.priceStatus,
             };
             const response: any = editingService
                 ? await api.updateService(activeTenantId, editingService.id, payload)
@@ -197,6 +218,26 @@ export function useServiceCatalog(
         }
     }, [activeTenantId, loadServices]);
 
+    /**
+     * Confirma el precio de ejemplo tal cual está, o lo pasa a "se cotiza",
+     * sin abrir el editor. Se manda solo `priceStatus`: el servidor conserva el
+     * número que ya tiene.
+     */
+    const handleSetServicePriceStatus = useCallback(async (svc: Service, priceStatus: EditablePriceStatus) => {
+        if (!activeTenantId) return;
+        try {
+            const response: any = await api.updateService(activeTenantId, svc.id, { priceStatus });
+            if (!response?.success) {
+                notifyRef.current(response?.error || messagesRef.current.updateError);
+                return;
+            }
+            notifyRef.current(messagesRef.current.updated);
+            loadServices();
+        } catch {
+            notifyRef.current(messagesRef.current.updateError);
+        }
+    }, [activeTenantId, loadServices]);
+
     return {
         services,
         loadingServices,
@@ -212,5 +253,6 @@ export function useServiceCatalog(
         handleSaveService,
         handleDeleteService,
         handleToggleServiceActive,
+        handleSetServicePriceStatus,
     };
 }

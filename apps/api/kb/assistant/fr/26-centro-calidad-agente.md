@@ -35,7 +35,9 @@ Agent IA**.
   et ne réduit pas le résultat. L'état général est déterminé par les **essentiels**
   (canal, agent, entreprise, équipe) et par tout problème réel ; une mission non ajustée
   ou un test non exécuté restent en attente, mais ne déclarent pas « pas prêt » pour un
-  agent qui répond déjà.
+  agent qui répond déjà. Par exemple, tant que l'entreprise n'a pas confirmé
+  les prix d'exemple apportés par la recette de son secteur, l'avertissement
+  non critique **Services à prix d'exemple** s'affiche.
 - **Qualité testée :** affiche la dernière évaluation critique et la dernière
   simulation, avec version, date, seuil et scénarios. Les preuves antérieures peuvent
   devenir obsolètes lorsque l'agent change. Il s'agit d'une preuve automatisée, pas

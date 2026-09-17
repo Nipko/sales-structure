@@ -3,7 +3,7 @@ id: citas-calendarios
 title: "Rendez-vous et calendriers"
 routes: ["/admin/appointments", "/admin/settings/public-booking"]
 roles: ["tenant_admin", "tenant_supervisor", "tenant_agent"]
-keywords: ["rendez-vous", "agenda", "calendrier", "planifier", "réservations", "réserver", "services", "disponibilité", "horaires", "google calendar", "outlook", "rappels", "confirmation de présence", "reprogrammer", "annuler un rendez-vous", "dates bloquées", "lien de réunion", "meet", "teams", "réservation publique", "page de réservation", "rendez-vous récurrent"]
+keywords: ["rendez-vous", "agenda", "calendrier", "planifier", "réservations", "réserver", "services", "disponibilité", "horaires", "google calendar", "outlook", "rappels", "confirmation de présence", "reprogrammer", "annuler un rendez-vous", "dates bloquées", "lien de réunion", "meet", "teams", "réservation publique", "page de réservation", "rendez-vous récurrent", "prix d'exemple", "confirmer le prix", "sur devis", "prix à confirmer"]
 ---
 
 # Rendez-vous et calendriers
@@ -26,6 +26,16 @@ Les services correspondent à ce que vos clients peuvent réserver (une consulta
 6. Enregistrez avec **Créer service**. Vous pouvez activer ou désactiver des services à tout moment.
 
 L'écran affiche votre capacité actuelle de services ; consultez les détails à jour dans **Forfait et facturation**.
+
+### Prix d'exemple et prix confirmés
+
+Lorsque vous activez un secteur, la recette de votre activité préremplit vos services avec un prix d'exemple, pour que vous ne partiez pas de zéro. Chaque service porte l'un des trois états de prix : **Prix d'exemple** (celui apporté par la recette, pas encore confirmé), **Prix confirmé** (celui que vous avez saisi ou accepté ; il peut être de 0 si le service est gratuit) ou **Sur devis**.
+
+L'agent IA ne dit jamais à voix haute un prix d'exemple ni un prix sur devis : dans la liste des services et lors de la confirmation d'un rendez-vous, il indique que le prix reste « à confirmer » avec l'entreprise, ou qu'il est établi sur devis. Il ne mentionne que les prix déjà confirmés.
+
+- Dans **Rendez-vous** → onglet **Services**, chaque service au prix d'exemple affiche le badge **Prix d'exemple** avec les boutons **Confirmer le prix** (conserve le même montant, désormais confirmé) ou **Sur devis**. Modifier le prix depuis le formulaire du service le confirme aussi.
+- Vous ne pouvez pas activer de politique de paiement (acompte ou paiement intégral) sur un service dont le prix n'est pas confirmé.
+- Tant qu'il reste des services au prix d'exemple, la **Santé des agents** affiche un rappel non critique ; cela ne bloque pas l'agent pour répondre.
 
 ## Comment définir votre disponibilité
 
@@ -115,5 +125,8 @@ Non, l'agenda fonctionne seul au sein de Parallly. Connecter Google Calendar ou 
 
 **Qui peut modifier la configuration de l'agenda ?**
 Les administrateurs et les superviseurs. Les agents peuvent consulter le calendrier, créer des rendez-vous et s'occuper des clients, mais pas modifier les services, les horaires ni les calendriers connectés.
+
+**Pourquoi l'agent ne donne-t-il pas le prix d'un service ?**
+Parce que ce prix est encore un prix d'exemple ou que le service est sur devis. Confirmez-le dans **Rendez-vous** → **Services** et l'agent pourra alors le communiquer.
 
 Besoin d'aide supplémentaire ? Écrivez-nous sur https://parallly-chat.cloud/support

@@ -3,7 +3,7 @@ id: citas-calendarios
 title: "Appointments and calendars"
 routes: ["/admin/appointments", "/admin/settings/public-booking"]
 roles: ["tenant_admin", "tenant_supervisor", "tenant_agent"]
-keywords: ["appointments", "scheduling", "calendar", "book", "booking", "reservations", "services", "availability", "working hours", "google calendar", "outlook", "reminders", "attendance confirmation", "reschedule", "cancel appointment", "blocked dates", "meeting link", "meet", "teams", "public booking", "booking page", "recurring appointment"]
+keywords: ["appointments", "scheduling", "calendar", "book", "booking", "reservations", "services", "availability", "working hours", "google calendar", "outlook", "reminders", "attendance confirmation", "reschedule", "cancel appointment", "blocked dates", "meeting link", "meet", "teams", "public booking", "booking page", "recurring appointment", "example price", "confirm price", "quoted case by case", "price to be confirmed"]
 ---
 
 # Appointments and calendars
@@ -26,6 +26,16 @@ Services are what your customers can book (a consultation, a haircut, an advisor
 6. Save with **Create service**. You can activate or deactivate services whenever you like.
 
 The screen shows your current service capacity; check current details in **Plan & Billing**.
+
+### Example prices and confirmed prices
+
+When you turn on an industry, that vertical's recipe pre-fills your services with an example price, so you don't start from zero. Each service carries one of three price states: **Example price** (the one the recipe seeded, still unconfirmed), **Confirmed price** (the one you typed or accepted; it can be $0 if the service is free), or **Quoted case by case**.
+
+The AI agent never states an example price or a quote-only price out loud: in the service list and when confirming an appointment, it says the price is "to be confirmed" with the business, or that it's quoted case by case. It only states prices that are already confirmed.
+
+- Under **Appointments** → **Services** tab, each service with an example price shows the **Example price** pill with the **Confirm price** (keeps the same number, now confirmed) or **Quoted** buttons. Editing the price from the service form also confirms it.
+- You can't turn on a payment policy (deposit or full payment) on a service whose price isn't confirmed.
+- While any services still have an example price, **Agent health** shows a non-critical reminder; it doesn't block the agent from answering.
 
 ## How to set your availability
 
@@ -115,5 +125,8 @@ No, scheduling works on its own inside Parallly. Connecting Google Calendar or O
 
 **Who can change the scheduling settings?**
 Admins and supervisors. Agents can view the calendar, create appointments, and serve customers, but not modify services, hours, or connected calendars.
+
+**Why doesn't the agent state a service's price?**
+Because that price is still an example or the service is quoted case by case. Confirm it under **Appointments** → **Services** and the agent will be able to say it.
 
 Need more help? Write to us at https://parallly-chat.cloud/support

@@ -16,6 +16,8 @@ interface ServiceForm {
   durationType: DurationType;
   buffer: number;
   price: number;
+  /** Guardar siempre lo manda: `confirmed` salvo que el dueño elija `quote`. */
+  priceStatus: "example" | "confirmed" | "quote";
   color: string;
   category: string;
   maxConcurrent: number;
@@ -46,6 +48,12 @@ export default function ServiceModal({
   const t = useTranslations("appointments");
   const locale = useLocale();
   const numLocale = locale === "pt" ? "pt-BR" : locale === "fr" ? "fr-FR" : locale === "en" ? "en-US" : undefined;
+  // El número que trae un servicio sembrado por el rubro no lo escribió el
+  // dueño: sigue siendo ejemplo hasta que pulse "Precio confirmado" o escriba
+  // otro número. Sin precio confirmado no hay anticipo posible.
+  const isExamplePrice = form.priceStatus === "example";
+  const priceQuoted = form.priceStatus === "quote";
+  const priceUnconfirmed = form.priceStatus !== "confirmed";
 
   return (
     <div
@@ -211,32 +219,75 @@ export default function ServiceModal({
                 <input
                   type="text"
                   inputMode="numeric"
-                  value={form.price > 0 ? form.price.toLocaleString(numLocale) : ''}
+                  aria-label={t('price')}
+                  disabled={priceQuoted}
+                  value={!priceQuoted && form.price > 0 ? form.price.toLocaleString(numLocale) : ''}
                   onChange={(e) => {
                     const raw = e.target.value.replace(/[^0-9]/g, '');
                     onChange({ ...form, price: raw ? Number(raw) : 0 });
                   }}
-                  placeholder="0"
-                  className="w-full px-3 pl-7 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  placeholder={priceQuoted ? '—' : '0'}
+                  className="w-full px-3 pl-7 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50"
                 />
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-neutral-400">{t('currency')}</span>
               </div>
             </div>
           </div>
 
+          {/* Estado del precio (D10). Un precio de ejemplo del rubro no se
+              dice hasta que el dueño lo confirme, y guardar lo confirma. "Se
+              cotiza" es que nunca se dice un número; sin número no hay
+              anticipo posible, por eso elegirlo vuelve la política a "sin pago". */}
+          <div>
+            <span id="service-price-status-label" className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
+              {t('priceStatus.label')}
+            </span>
+            <div role="group" aria-labelledby="service-price-status-label" aria-describedby={isExamplePrice ? "service-price-status-hint" : undefined} className="flex gap-2">
+              {(['confirmed', 'quote'] as const).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  aria-pressed={form.priceStatus === value}
+                  onClick={() => onChange(
+                    value === 'quote'
+                      ? { ...form, priceStatus: 'quote', paymentPolicy: 'none', depositPercent: null, depositAmount: null }
+                      : { ...form, priceStatus: 'confirmed' },
+                  )}
+                  className={cn(
+                    "flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium cursor-pointer border transition-colors",
+                    form.priceStatus === value
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-neutral-50 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-700"
+                  )}
+                >
+                  {t(`priceStatus.${value}`)}
+                </button>
+              ))}
+            </div>
+            {isExamplePrice && (
+              <p id="service-price-status-hint" className="text-xs text-amber-600 dark:text-amber-400 mt-2">{t('priceStatus.exampleHint')}</p>
+            )}
+          </div>
+
           {/* Cómo se confirma: va pegado al precio porque el anticipo se
               calcula sobre él, y porque es la decisión que cambia lo que el
               agente le puede decir al cliente. */}
-          <PaymentPolicyFields
-            value={{
-              paymentPolicy: form.paymentPolicy,
-              depositPercent: form.depositPercent,
-              depositAmount: form.depositAmount,
-            }}
-            onChange={(next) => onChange({ ...form, ...next })}
-            currencySymbol="$"
-            inputCls="w-full px-3 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-          />
+          <div className="space-y-2">
+            {priceUnconfirmed && (
+              <p className="text-xs text-neutral-500 dark:text-neutral-400">{t('priceStatus.paymentLocked')}</p>
+            )}
+            <PaymentPolicyFields
+              value={{
+                paymentPolicy: form.paymentPolicy,
+                depositPercent: form.depositPercent,
+                depositAmount: form.depositAmount,
+              }}
+              onChange={(next) => onChange({ ...form, ...next })}
+              disabled={priceUnconfirmed}
+              currencySymbol="$"
+              inputCls="w-full px-3 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+            />
+          </div>
 
           {/* Color picker */}
           <div>

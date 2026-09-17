@@ -1774,6 +1774,15 @@ ALTER TABLE "{{SCHEMA_NAME}}"."services" ADD COLUMN IF NOT EXISTS "duration_minu
 -- (`rebooking.due`) lo lee por servicio y cae a su ventana genérica si está NULL.
 ALTER TABLE "{{SCHEMA_NAME}}"."services" ADD COLUMN IF NOT EXISTS "rebook_after_days" INTEGER;
 
+-- De dónde salió el precio (D10, sep-2026): 'example' lo sembró la receta del
+-- rubro y nadie lo confirmó; 'confirmed' lo escribió o confirmó el dueño (0 =
+-- gratis); 'quote' se cotiza según el caso. El agente solo dice precios
+-- 'confirmed'. DEFAULT 'confirmed' porque todo lo que ya existía lo escribió una
+-- persona; solo las siembras marcan 'example' explícitamente. Sin CHECK a
+-- propósito: ADD CONSTRAINT no tiene IF NOT EXISTS y esta plantilla corre en
+-- cada deploy.
+ALTER TABLE "{{SCHEMA_NAME}}"."services" ADD COLUMN IF NOT EXISTS "price_status" VARCHAR(16) DEFAULT 'confirmed';
+
 -- ---- Service Staff Assignment (many-to-many) ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."service_staff" (
     "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,

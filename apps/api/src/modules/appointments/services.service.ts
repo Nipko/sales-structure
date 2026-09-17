@@ -36,6 +36,51 @@ export interface BookableService {
     paymentPolicy: string;
     depositPercent: number | null;
     depositAmount: number | null;
+    /**
+     * De dónde salió el precio (D10): 'example' lo sembró la receta del rubro,
+     * 'confirmed' lo puso o confirmó el dueño (0 = gratis), 'quote' se cotiza
+     * según el caso. El agente solo dice precios 'confirmed'.
+     */
+    priceStatus: ServicePriceStatus;
+}
+
+export type ServicePriceStatus = 'example' | 'confirmed' | 'quote';
+const OWNER_PRICE_STATUSES: readonly ServicePriceStatus[] = ['confirmed', 'quote'];
+
+/**
+ * What the owner may say about a price: confirmed or quote-only. 'example' is
+ * provenance the recipe writes and a person cannot claim. Typing a price is a
+ * confirmation on its own.
+ */
+export function resolvePriceStatusInput(data: any, current?: { priceStatus?: ServicePriceStatus; price?: number }): ServicePriceStatus {
+    if (data?.priceStatus !== undefined && data?.priceStatus !== null) {
+        if (!OWNER_PRICE_STATUSES.includes(data.priceStatus)) {
+            throw new BadRequestException('priceStatus must be confirmed or quote');
+        }
+        return data.priceStatus;
+    }
+    if (data?.price !== undefined && data?.price !== null) {
+        // The editor resends the whole form. Only a CHANGED number is a
+        // decision; the same example amount coming back untouched is not
+        // ("Usar así" never confirms a price).
+        if (!current || Number(data.price) !== Number(current.price ?? 0)) return 'confirmed';
+    }
+    return current?.priceStatus ?? 'confirmed';
+}
+
+/**
+ * The till derives every charge from the service's price. A deposit on an
+ * example price would collect an invented amount, so a payment policy other
+ * than 'none' needs a confirmed price first.
+ */
+export function assertPaymentPolicyNeedsConfirmedPrice(paymentPolicy: string, priceStatus: ServicePriceStatus): void {
+    if ((paymentPolicy || 'none') === 'none' || priceStatus === 'confirmed') return;
+    throw new BadRequestException({
+        error: 'price_not_confirmed',
+        message: priceStatus === 'quote'
+            ? 'Un servicio que se cotiza según el caso no puede exigir pago para confirmar: fija un precio confirmado primero.'
+            : 'Este precio es de ejemplo: confírmalo (o cámbialo) antes de exigir pago para confirmar.',
+    });
 }
 
 @Injectable()
@@ -89,10 +134,12 @@ export class ServicesService {
         const currency = normalizeCurrencyCode(data.currency);
         const createPolicy = validatePaymentPolicyInput(data as any);
         if (createPolicy.error) throw new BadRequestException(createPolicy.error);
+        const priceStatus = resolvePriceStatusInput(data);
+        assertPaymentPolicyNeedsConfirmedPrice(createPolicy.values.payment_policy ?? 'none', priceStatus);
         try {
             await this.prisma.executeInTenantSchema(schemaName,
-                `INSERT INTO services (id, name, description, duration_minutes, buffer_minutes, price, currency, color, category, max_concurrent, required_fields, duration_type, duration_minutes_max, rebook_after_days, payment_policy, deposit_percent, deposit_amount, created_at, updated_at)
-                 VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13, $14, $15, $16, $17, NOW(), NOW())`,
+                `INSERT INTO services (id, name, description, duration_minutes, buffer_minutes, price, currency, color, category, max_concurrent, required_fields, duration_type, duration_minutes_max, rebook_after_days, payment_policy, deposit_percent, deposit_amount, price_status, created_at, updated_at)
+                 VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13, $14, $15, $16, $17, $18, NOW(), NOW())`,
                 [id, data.name, data.description || null, duration,
                  buffer, data.price || 0, currency, data.color || '#6c5ce7',
                  data.category || null, data.maxConcurrent || 1,
@@ -103,7 +150,8 @@ export class ServicesService {
                  // y el agente confirmaria gratis.
                  createPolicy.values.payment_policy ?? 'none',
                  createPolicy.values.deposit_percent ?? null,
-                 createPolicy.values.deposit_amount ?? null],
+                 createPolicy.values.deposit_amount ?? null,
+                 priceStatus],
             );
         } catch (e: any) {
             // uidx_services_name (tenant-schema.sql): el motor de reservas lista los
@@ -124,6 +172,7 @@ export class ServicesService {
 
     async update(schemaName: string, serviceId: string, data: any, tenantId?: string): Promise<BookableService> {
         const current = await this.getById(schemaName, serviceId);
+        const nextPriceStatus = resolvePriceStatusInput(data, current);
         const nextDurationType = (data.durationType ?? current.durationType) as DurationType;
         if (!['fixed', 'flexible', 'open'].includes(nextDurationType)) {
             throw new BadRequestException('durationType must be fixed, flexible, or open');
@@ -157,6 +206,9 @@ export class ServicesService {
         const buf = data.bufferMinutes ?? data.buffer;
         if (buf !== undefined) { sets.push(`buffer_minutes = $${idx++}`); params.push(buf); }
         if (data.price !== undefined) { sets.push(`price = $${idx++}`); params.push(data.price); }
+        // Editing the number confirms it; "Confirmar precio" confirms it without
+        // retyping; "Se cotiza" withdraws any number from the agent's mouth.
+        if (nextPriceStatus !== current.priceStatus) { sets.push(`price_status = $${idx++}`); params.push(nextPriceStatus); }
         if (data.currency !== undefined) {
             sets.push(`currency = $${idx++}`);
             params.push(normalizeCurrencyCode(data.currency));
@@ -181,6 +233,8 @@ export class ServicesService {
         if (data.rebookAfterDays !== undefined) { sets.push(`rebook_after_days = $${idx++}`); params.push(Number(data.rebookAfterDays) > 0 ? Number(data.rebookAfterDays) : null); }
         const policy = validatePaymentPolicyInput(data as any);
         if (policy.error) throw new BadRequestException(policy.error);
+        const effectivePolicy = policy.values.payment_policy ?? current.paymentPolicy ?? 'none';
+        assertPaymentPolicyNeedsConfirmedPrice(effectivePolicy, nextPriceStatus);
         for (const [dbKey, value] of Object.entries(policy.values)) {
             sets.push(`${dbKey} = $${idx++}`);
             params.push(value);
@@ -188,9 +242,16 @@ export class ServicesService {
         sets.push(`updated_at = NOW()`);
 
         params.push(serviceId);
-        await this.prisma.executeInTenantSchema(schemaName,
-            `UPDATE services SET ${sets.join(', ')} WHERE id = $${idx}::uuid`, params,
+        // Two editors can race (no row lock here): when this write keeps a
+        // paying policy without itself confirming the price, the row must
+        // still be confirmed at write time, or the policy would sit on an
+        // amount nobody confirmed.
+        const settingStatus = nextPriceStatus !== current.priceStatus;
+        const guard = effectivePolicy !== 'none' && !settingStatus ? ` AND COALESCE(price_status, 'confirmed') = 'confirmed'` : '';
+        const updated = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            `UPDATE services SET ${sets.join(', ')} WHERE id = $${idx}::uuid${guard} RETURNING id`, params,
         );
+        if (guard && Array.isArray(updated) && updated.length === 0) assertPaymentPolicyNeedsConfirmedPrice(effectivePolicy, 'example');
         // Invalidate booking services cache
         if (tenantId) {
             await this.redis.del(`booking:services:${tenantId}`).catch(() => {});
@@ -310,6 +371,7 @@ export class ServicesService {
             paymentPolicy: row.payment_policy || 'none',
             depositPercent: row.deposit_percent ?? null,
             depositAmount: row.deposit_amount != null ? Number(row.deposit_amount) : null,
+            priceStatus: row.price_status || 'confirmed',
         };
     }
 

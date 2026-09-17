@@ -78,6 +78,9 @@ integration('what an appointment charge takes', () => {
         await client.query(`ALTER TABLE appointments
             ADD COLUMN IF NOT EXISTS payment_status VARCHAR(20) DEFAULT 'pending',
             ADD COLUMN IF NOT EXISTS amount_due DECIMAL(15,2)`);
+        // Additive column from the template's ALTER block (the slice above only
+        // replays CREATE TABLE): the price SQL hides non-confirmed prices.
+        await client.query(`ALTER TABLE services ADD COLUMN IF NOT EXISTS price_status VARCHAR(16) DEFAULT 'confirmed'`);
         await sql(`INSERT INTO services (id, name, price, currency) VALUES ($1::uuid, 'Control', 80000, 'COP')`,
             [serviceId]);
     }, 120000);

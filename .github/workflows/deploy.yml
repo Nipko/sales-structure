@@ -200,6 +200,7 @@ jobs:
           apps/api/src/modules/quality/quality-listener.service.spec.ts
           apps/api/src/modules/quality/quality.agent-attribution.spec.ts
           apps/api/src/modules/quality/quality.controller.spec.ts
+          apps/api/src/modules/quality/quality.processor.spec.ts
           apps/api/src/modules/simulation/completion-events.spec.ts
           apps/api/src/modules/widget/widget.gateway.security.spec.ts
           apps/api/src/modules/widget/widget-capability-policy.spec.ts
@@ -318,6 +319,7 @@ jobs:
           apps/api/src/modules/verticals/vertical-readiness.contract.spec.ts
           apps/api/src/modules/whatsapp/services/whatsapp-business-profile-multinumber.spec.ts
           apps/api/src/modules/whatsapp/services/whatsapp-token-coverage.spec.ts
+          apps/api/src/modules/whatsapp/services/whatsapp-channel-status.spec.ts
 
       # The artefact gate, from the SAME shared list `candidate` and
       # `vertical-quality` use. Deploy ran none of it: a closure report or a
@@ -340,6 +342,8 @@ jobs:
           npm test --prefix apps/whatsapp -- --runInBand
           src/modules/onboarding/onboarding.service.spec.ts
           src/modules/onboarding/onboarding-token-coverage.spec.ts
+          src/modules/onboarding/onboarding-failure-surface.spec.ts
+          src/modules/meta-graph/meta-graph.service.spec.ts
 
       - name: Mobile vertical and privacy regression
         run: npm test --prefix apps/mobile -- --runInBand
@@ -360,6 +364,14 @@ jobs:
           apps/dashboard/src/lib/billing-checkout-session.spec.ts
           apps/dashboard/src/lib/wompi-payment-methods.spec.ts
           apps/dashboard/src/components/appointments/contact-selection.spec.ts
+          apps/dashboard/src/app/admin/channels/whatsapp/connection-endpoints.spec.ts
+          apps/dashboard/src/app/admin/channels/whatsapp/connect-failure.spec.ts
+          apps/dashboard/src/app/admin/channels/whatsapp/connect-failure-copy.spec.ts
+          apps/dashboard/src/app/admin/channels/whatsapp/disconnect-outcome.spec.ts
+          apps/dashboard/src/app/admin/channels/whatsapp/embedded-signup-events.spec.ts
+          apps/dashboard/src/app/admin/channels/whatsapp/whatsapp-channel-rows.spec.ts
+          apps/dashboard/src/app/admin/channels/whatsapp/billing-time-zone.spec.ts
+          apps/dashboard/src/app/admin/channels/whatsapp/WhatsAppBillingTimeZone.a11y.spec.tsx
 
       # Bloqueante desde ago 2026: el codebase quedó lint-clean (commit 64c46827,
       # 28 errores → 0). Es el único gate automático que atrapa la clase de bug

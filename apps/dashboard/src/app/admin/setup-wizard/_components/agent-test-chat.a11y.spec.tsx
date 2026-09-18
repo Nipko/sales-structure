@@ -15,8 +15,8 @@ import AgentTestChat, { agentTestErrorKey, agentTestStatusKey } from "./AgentTes
  * there is something to say.
  */
 
-jest.mock("@/lib/api", () => ({ __esModule: true, api: { testAgent: jest.fn() } }));
-const { api } = jest.requireMock("@/lib/api") as { api: { testAgent: jest.Mock } };
+jest.mock("@/lib/api", () => ({ __esModule: true, api: { testAgent: jest.fn(), createFaq: jest.fn() } }));
+const { api } = jest.requireMock("@/lib/api") as { api: { testAgent: jest.Mock; createFaq: jest.Mock } };
 
 const ES = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "..", "..", "..", "..", "messages", "es.json"), "utf8"));
 const TENANT = "11111111-1111-4111-8111-111111111111";
@@ -31,7 +31,10 @@ function type(input: HTMLInputElement, value: string) {
 const status = (container: HTMLElement) => container.querySelector<HTMLElement>("[data-agent-test-status]")!;
 
 describe("the wizard's test chat", () => {
-    beforeEach(() => api.testAgent.mockReset());
+    beforeEach(() => {
+        api.testAgent.mockReset();
+        api.createFaq.mockReset();
+    });
 
     it("opens without a quota warning or a version, and keeps one neutral footnote", async () => {
         const screen = await renderScreen(<AgentTestChat tenantId={TENANT} agentId={AGENT} />);
@@ -77,6 +80,43 @@ describe("the wizard's test chat", () => {
             const text = screen.container.textContent ?? "";
             expect(text).toContain(ES.setupWizard.test.quotaReached);
             expect(text).not.toContain("ai_message_quota_exceeded");
+        } finally { screen.unmount(); }
+    });
+
+    it("offers the recipe questions as one-tap tests", async () => {
+        const suggestions = ["¿Cuánto cuesta?", "¿Dónde atienden?", "¿Cómo reservo?"];
+        const screen = await renderScreen(<AgentTestChat tenantId={TENANT} agentId={AGENT} suggestions={suggestions} />);
+        try {
+            const suggestion = Array.from(screen.container.querySelectorAll("button")).find((button) => button.textContent === suggestions[1])!;
+            await interact(() => suggestion.click());
+            expect((screen.container.querySelector("input") as HTMLInputElement).value).toBe(suggestions[1]);
+        } finally { screen.unmount(); }
+    });
+
+    it("turns an owner's correction into a published canonical FAQ", async () => {
+        api.testAgent.mockResolvedValue({ success: true, data: { reply: "Abrimos hasta las cinco.", debug: {} } });
+        api.createFaq.mockResolvedValue({ success: true });
+        const screen = await renderScreen(<AgentTestChat tenantId={TENANT} agentId={AGENT} />);
+        try {
+            const input = screen.container.querySelector("input") as HTMLInputElement;
+            await interact(() => type(input, "¿Hasta qué hora abren?"));
+            await interact(() => Array.from(screen.container.querySelectorAll("button")).find((button) => button.textContent?.includes(ES.setupWizard.test.send))!.click());
+            const correct = Array.from(screen.container.querySelectorAll("button")).find((button) => button.textContent?.includes(ES.setupWizard.test.correctAnswer))!;
+            await interact(() => correct.click());
+            const textarea = screen.container.querySelector("textarea") as HTMLTextAreaElement;
+            await interact(() => {
+                Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(textarea, "Abrimos hasta las seis.");
+                textarea.dispatchEvent(new Event("input", { bubbles: true }));
+            });
+            await interact(() => Array.from(screen.container.querySelectorAll("button")).find((button) => button.textContent?.includes(ES.setupWizard.test.saveCorrection))!.click());
+            expect(api.createFaq).toHaveBeenCalledWith(TENANT, {
+                question: "¿Hasta qué hora abren?",
+                answer: "Abrimos hasta las seis.",
+                category: "onboarding_correction",
+                tags: ["onboarding"],
+                isPublished: true,
+            });
+            expect(screen.container.textContent).toContain(ES.setupWizard.test.correctionSaved);
         } finally { screen.unmount(); }
     });
 

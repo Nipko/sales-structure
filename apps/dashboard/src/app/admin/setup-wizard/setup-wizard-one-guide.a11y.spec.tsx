@@ -482,7 +482,7 @@ describe("the setup wizard: one guide, and every channel treated honestly", () =
                 expect(knowledge?.textContent).not.toContain("Cargar lo que tu agente debe saber");
                 expect(team?.getAttribute("data-done")).toBe("false");
                 expect(team?.textContent).toContain("Pendiente");
-                expect(team?.textContent).toContain("Invitar a una persona");
+                expect(team?.textContent).toContain("Definir quién recibe los casos pendientes");
                 expect(await findAccessibilityViolations(screen.container)).toEqual([]);
             } finally { screen.unmount(); }
         });

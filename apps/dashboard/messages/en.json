@@ -6850,7 +6850,24 @@
       "send": "Send",
       "error": "Couldn't send the message. Please try again.",
       "saveFirst": "Your change is saved when you leave the field; then you can try it here.",
-      "quotaReached": "Your plan's AI messages for this period have run out, so your agent could not answer this try."
+      "quotaReached": "Your plan's AI messages for this period have run out, so your agent could not answer this try.",
+      "correctAnswer": "Correct this answer",
+      "correctionLabel": "Correct answer the agent should learn",
+      "savingCorrection": "Saving…",
+      "saveCorrection": "Save as correct answer",
+      "cancelCorrection": "Cancel",
+      "correctionSaved": "Done. The answer was saved in FAQs and the agent can use it.",
+      "correctionError": "We could not save the correction. Please try again."
+    },
+    "recipeCards": {
+      "title": "Your business already has a prepared foundation",
+      "subtitle": "Review it in plain language. You can use it as is and complete the details only you know.",
+      "useAsIs": "Use this foundation",
+      "applied": "Foundation applied",
+      "offers": { "title": "What you offer", "why": "It helps recommend the right option.", "empty": "There are no prepared services for this business type yet.", "examplePrices": "Example prices are not published as real prices: confirm them in Services.", "quotePrices": "The agent will ask for the details needed before quoting.", "change": "Review services" },
+      "place": { "title": "Where and when you serve", "why": "It avoids promising service outside your hours or in the wrong place.", "prepared": "A starting schedule is ready for review.", "pending": "Business hours still need to be defined.", "note": "Confirm your address, service area, and hours before serving customers.", "change": "Review business and hours" },
+      "purchase": { "title": "How customers buy or book", "why": "It defines the next step the agent will guide.", "empty": "The purchase journey still needs configuration.", "note": "You can change this journey when your operation changes.", "change": "Review the journey", "mode": { "appointment": "Book an appointment", "class": "Book a class", "table": "Book a table", "order": "Place an order", "quote": "Request a quote", "inform": "Information and contact" } },
+      "questions": { "title": "Frequently asked questions", "why": "It gives consistent answers to recurring questions.", "progress": "{ready} of {total} answers are ready", "pending": "Complete {count} answers with real details from your business.", "complete": "The initial answers are ready for review.", "change": "Review questions" }
     },
     "discover": {
       "title": "Discover what you can do",

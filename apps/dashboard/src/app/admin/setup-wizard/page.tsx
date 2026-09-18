@@ -64,6 +64,8 @@ import {
 } from "./done-step-essentials";
 import AgentTestChat from "./_components/AgentTestChat";
 import DemoLinkCard from "./_components/DemoLinkCard";
+import RecipeSetupCards from "./_components/RecipeSetupCards";
+import { readSetupRecipe, type SetupRecipe } from "./setup-recipe";
 import {
     PRODUCT_TOUR_PENDING_KEY,
     SETUP_COPILOT_PENDING_KEY,
@@ -203,6 +205,9 @@ export default function SetupWizardPage() {
     const [demoLink, setDemoLink] = useState<SetupStatusDemoLink | null>(null);
     /** Where this business should start, from its recipe. Empty = default order. */
     const [recommendations, setRecommendations] = useState<ChannelRecommendation[]>([]);
+    const [recipe, setRecipe] = useState<SetupRecipe | null>(null);
+    const [recipeApplied, setRecipeApplied] = useState(false);
+    const [applyingRecipe, setApplyingRecipe] = useState(false);
     /**
      * Her answer to "¿Dónde vive hoy tu número?" as the account recorded it
      * (`setupStatus.whatsappTriage`), and whether she answered it HERE with a
@@ -307,6 +312,8 @@ export default function SetupWizardPage() {
             if (cancelled) return;
             const facts = readSetupStatusFacts(statusRes);
             setRecommendations(readRecipeRecommendations(recipeRes, locale));
+            const setupRecipe = readSetupRecipe(recipeRes, locale);
+            setRecipe(setupRecipe);
             setProgress(readSetupProgressFacts(statusRes));
             setActivation(readSetupActivationFacts(statusRes));
             const templates: any[] = (templatesRes as any)?.success ? ((templatesRes as any).data || []) : [];
@@ -340,6 +347,8 @@ export default function SetupWizardPage() {
             // `operational` is always there; if it ever is not, the person gets
             // the error this file already writes instead of a white page.
             const editable = current?.draft?.body ?? current?.operational?.body;
+            setRecipeApplied(Boolean(setupRecipe?.mainInstructions
+                && editable?.configJson.behavior?.mainInstructions?.trim() === setupRecipe.mainInstructions));
             const templateConfig = ownTemplateId
                 ? (templates.find((tmpl) => tmpl.id === ownTemplateId)?.config
                     ?? templates.find((tmpl) => tmpl.id === ownTemplateId)?.config_json)
@@ -611,6 +620,38 @@ export default function SetupWizardPage() {
         }
         return ok;
     }, [saveAgentEdits]);
+
+    /** Apply the reviewed recipe to the same canonical fields the live agent reads. */
+    const applyPreparedRecipe = useCallback(async () => {
+        const current = workspaceRef.current;
+        if (!tenantId || !current || !recipe?.mainInstructions || applyingRecipe) return;
+        setApplyingRecipe(true);
+        setError(null);
+        try {
+            const body = structuredClone(current.draft?.body ?? current.operational.body);
+            body.configJson.behavior = {
+                ...body.configJson.behavior,
+                mainInstructions: recipe.mainInstructions,
+            };
+            if (recipe.whenUnsure[0]) {
+                body.configJson.persona = {
+                    ...body.configJson.persona,
+                    fallbackMessage: recipe.whenUnsure[0],
+                };
+            }
+            const attempt = prepareDraftSave(current, body, null);
+            const result = await api.saveAgentDraft(tenantId, current.agentId, attempt.request);
+            if (!result.success || !result.data) throw new Error('recipe_save_failed');
+            workspaceRef.current = result.data.workspace;
+            setWorkspace(result.data.workspace);
+            setRecipeApplied(true);
+            setSavedAt(Date.now());
+        } catch {
+            setError(tDraft('saveFailed'));
+        } finally {
+            setApplyingRecipe(false);
+        }
+    }, [applyingRecipe, recipe, tDraft, tenantId]);
 
     /**
      * Salir no es destructivo: lo tipeado se guarda, y lo que no se tocó no se
@@ -946,6 +987,15 @@ export default function SetupWizardPage() {
                                 : t("agentStep.subtitle")}
                         </p>
 
+                        {recipe && (
+                            <RecipeSetupCards
+                                recipe={recipe}
+                                applied={recipeApplied}
+                                applying={applyingRecipe}
+                                onApply={() => void applyPreparedRecipe()}
+                            />
+                        )}
+
                         <div className="grid gap-6 lg:grid-cols-2">
                             <div className="space-y-5">
                                 <div>
@@ -1005,7 +1055,8 @@ export default function SetupWizardPage() {
                                         {t("test.title")}
                                     </p>
                                     <AgentTestChat tenantId={tenantId} agentId={workspace?.agentId ?? null} configurationRevisionId={workspace?.evaluationRevisionId ?? undefined}
-                                        blocked={!workspace || Boolean(workspace.draft && !workspace.draft.currentBase) || hasUnsavedEdits || saving} />
+                                        blocked={!workspace || Boolean(workspace.draft && !workspace.draft.currentBase) || hasUnsavedEdits || saving || applyingRecipe}
+                                        suggestions={recipe?.testQuestions ?? []} />
                                 </div>
                             )}
                         </div>

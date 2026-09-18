@@ -6850,7 +6850,24 @@
       "send": "Enviar",
       "error": "No se pudo enviar el mensaje. Inténtalo de nuevo.",
       "saveFirst": "Tu cambio se guarda al salir del campo; después puedes probarlo aquí.",
-      "quotaReached": "Se acabaron los mensajes de IA de tu plan en este período, así que tu agente no pudo contestar esta prueba."
+      "quotaReached": "Se acabaron los mensajes de IA de tu plan en este período, así que tu agente no pudo contestar esta prueba.",
+      "correctAnswer": "Corregir esta respuesta",
+      "correctionLabel": "Respuesta correcta que debe aprender el agente",
+      "savingCorrection": "Guardando…",
+      "saveCorrection": "Guardar como respuesta correcta",
+      "cancelCorrection": "Cancelar",
+      "correctionSaved": "Listo. La respuesta quedó guardada en Preguntas frecuentes y el agente podrá usarla.",
+      "correctionError": "No pudimos guardar la corrección. Inténtalo de nuevo."
+    },
+    "recipeCards": {
+      "title": "Tu negocio ya tiene una base preparada",
+      "subtitle": "Revísala en lenguaje simple. Puedes usarla como está y completar los datos que solo tú conoces.",
+      "useAsIs": "Usar esta base",
+      "applied": "Base aplicada",
+      "offers": { "title": "Qué ofreces", "why": "Le permite recomendar la opción correcta.", "empty": "Aún no hay servicios preparados para este tipo de negocio.", "examplePrices": "Los precios de ejemplo no se publican como precios reales: confírmalos en Servicios.", "quotePrices": "El agente pedirá los datos necesarios antes de cotizar.", "change": "Revisar servicios" },
+      "place": { "title": "Dónde y cuándo atiendes", "why": "Evita prometer atención fuera de horario o en un lugar incorrecto.", "prepared": "Hay un horario inicial preparado para revisar.", "pending": "Falta definir el horario de atención.", "note": "Confirma dirección, zona de cobertura y horarios antes de atender clientes.", "change": "Revisar negocio y horarios" },
+      "purchase": { "title": "Cómo compran o reservan", "why": "Define el siguiente paso que guiará el agente.", "empty": "El recorrido de compra todavía necesita configuración.", "note": "Podrás cambiar este recorrido cuando cambie tu operación.", "change": "Revisar el recorrido", "mode": { "appointment": "Reserva de cita", "class": "Reserva de clase", "table": "Reserva de mesa", "order": "Pedido", "quote": "Cotización", "inform": "Información y contacto" } },
+      "questions": { "title": "Preguntas frecuentes", "why": "Da respuestas consistentes a las dudas que más se repiten.", "progress": "{ready} de {total} respuestas están listas", "pending": "Completa {count} respuestas con datos reales de tu negocio.", "complete": "Las respuestas iniciales están listas para revisar.", "change": "Revisar preguntas" }
     },
     "discover": {
       "title": "Descubre lo que puedes hacer",

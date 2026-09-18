@@ -32,6 +32,19 @@ import {
     VERTICAL_MANIFEST_INDUSTRIES,
 } from '@parallext/shared';
 
+function recipeSetupPresentation(definition: ReturnType<typeof getVerticalDefinition>, locale: string) {
+    const text = (value: Record<string, string> | undefined): string =>
+        String(value?.[locale] || value?.es || '').trim();
+    return {
+        services: definition.services.map((service) => ({
+            name: text(service.name),
+            durationMinutes: service.durationMinutes,
+            priceState: service.priceStatus === 'quote' ? 'quote' : 'example',
+        })),
+        businessHours: definition.businessHours.schedule,
+    };
+}
+
 @ApiTags('verticals')
 @Controller('verticals')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
@@ -91,6 +104,7 @@ export class VerticalsController {
                         industry, subType: config?.subType ?? null, locale,
                         source: 'generated', generatedAt: generated.generatedAt,
                         recipe: generated.recipe,
+                        setup: recipeSetupPresentation(definition, locale),
                     },
                 };
             }
@@ -104,6 +118,7 @@ export class VerticalsController {
                 locale,
                 source: definition.recipe ? 'registry' : 'none',
                 recipe: definition.recipe ?? null,
+                setup: recipeSetupPresentation(definition, locale),
             },
         };
     }

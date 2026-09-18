@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import {
   DASHBOARD_PAGE_RULES,
+  DAY_ZERO_MAX_DAYS,
   VERTICAL_MANIFEST_INDUSTRIES,
   dashboardRoleCanOpen,
   listCanonicalSubtypeExperienceProfileIds,
@@ -1063,6 +1064,168 @@ describe('Parallly Assist knowledge-base contract', () => {
       expect(article!.body).toMatch(connectionMarkers[locale]);
       expect(article!.body).toMatch(publicationMarkers[locale]);
       expect(article!.body).not.toMatch(draftFirstLeftovers[locale]);
+    }
+  });
+
+  it('documents the day-0 window and the delivery checks with the values the product uses', () => {
+    /**
+     * Ola 6 (sep-2026) moved the end of the quiet day 0 from the wizard's last
+     * button to the agent's first real reply, capped at `DAY_ZERO_MAX_DAYS`, and
+     * added two critical checks that still come through that silence. The help
+     * had kept the old rule in four languages, and named a WhatsApp test card
+     * ("Probá tu agente") that the dashboard had renamed. So the cap is read
+     * from the shared contract and the labels from the dashboard messages, and
+     * the prose has to say them: change either side and this goes red.
+     */
+    const capWords: Record<number, Record<(typeof LOCALES)[number], string>> = {
+      3: { es: 'tres días', en: 'three days', pt: 'três dias', fr: 'trois jours' },
+    };
+    // A new cap needs its words here AND in the articles that state it.
+    const cap = capWords[DAY_ZERO_MAX_DAYS];
+    expect(cap).toBeDefined();
+    const firstRealCustomer: Record<(typeof LOCALES)[number], RegExp> = {
+      es: /primer cliente real/i,
+      en: /first real customer/i,
+      pt: /primeiro cliente real/i,
+      fr: /premier vrai client/i,
+    };
+
+    for (const locale of LOCALES) {
+      const messages = JSON.parse(
+        fs.readFileSync(path.join(dashboardMessagesRoot, `${locale}.json`), 'utf8'),
+      );
+      const articles = new Map(byLocale[locale].map((article) => [article.id, article]));
+      const capPattern = new RegExp(cap[locale].replace(/ /g, '\\s+'), 'i');
+      for (const id of ['primeros-pasos', 'centro-calidad-agente']) {
+        const body = articles.get(id)!.body;
+        expect({ locale, id, firstRealCustomer: firstRealCustomer[locale].test(body), cap: capPattern.test(body) })
+          .toEqual({ locale, id, firstRealCustomer: true, cap: true });
+      }
+
+      // The checks are named in the quality article exactly as the panel names them.
+      const quality = articles.get('centro-calidad-agente')!.body;
+      for (const code of ['channel_unanswered', 'whatsapp_delivery', 'services_example_price']) {
+        const label: unknown = messages?.agentQuality?.checks?.[code];
+        expect(typeof label).toBe('string');
+        expect({ locale, code, named: quality.includes(`**${label}**`) })
+          .toEqual({ locale, code, named: true });
+      }
+
+      const testCard: unknown = messages?.channels?.whatsapp?.testAgentTitle;
+      expect(typeof testCard).toBe('string');
+      expect({ locale, testCard: articles.get('canales-whatsapp')!.body.includes(`**${testCard}**`) })
+        .toEqual({ locale, testCard: true });
+    }
+  });
+
+  it('says what the signup warning says about a number Meta did not register', () => {
+    /**
+     * Ola 6 (sep-2026): Embedded Signup reports a real registration failure as
+     * `phone_registration_deferred`, and the warning on screen says nothing
+     * leaves the number, that it does not resolve by itself, and to write to
+     * support. The help still said a pending registration "usually resolves
+     * itself within minutes", so Assist told an owner whose number could send
+     * nothing to wait. The bullet carries the same "does not resolve by itself"
+     * the dashboard message does, and the support link.
+     */
+    const bullet: Record<(typeof LOCALES)[number], string> = {
+      es: 'Registro del número pendiente',
+      en: 'Number registration still pending',
+      pt: 'Registro do número pendente',
+      fr: 'Enregistrement du numéro encore en attente',
+    };
+    const notByItself: Record<(typeof LOCALES)[number], string> = {
+      es: 'no se resuelve solo',
+      en: "won't resolve by itself",
+      pt: 'não se resolve sozinho',
+      fr: 'ne se règle pas tout seul',
+    };
+    const wait = /en unos minutos|within minutes|em alguns minutos|en quelques minutes/i;
+
+    for (const locale of LOCALES) {
+      const messages = JSON.parse(
+        fs.readFileSync(path.join(dashboardMessagesRoot, `${locale}.json`), 'utf8'),
+      );
+      const warning: unknown = messages?.channels?.whatsapp?.warnings?.codes?.phone_registration_deferred;
+      expect(typeof warning).toBe('string');
+
+      const body = byLocale[locale].find((article) => article.id === 'canales-whatsapp')!.body.replace(/\r\n/g, '\n');
+      const start = body.indexOf(`- **${bullet[locale]}**`);
+      expect({ locale, bullet: start >= 0 }).toEqual({ locale, bullet: true });
+      // The bullet runs to the next list item or blank line.
+      const rest = body.slice(start + 2);
+      const end = rest.search(/\n(?:- |\n)/);
+      const text = (end < 0 ? rest : rest.slice(0, end)).replace(/\s+/g, ' ');
+
+      expect({
+        locale,
+        product: String(warning).includes(notByItself[locale]),
+        help: text.includes(notByItself[locale]),
+        support: text.includes('](https://parallly-chat.cloud/support)'),
+        wait: wait.test(text),
+      }).toEqual({ locale, product: true, help: true, support: true, wait: false });
+    }
+  });
+
+  it('speaks Latin-American Spanish with tú, never voseo', () => {
+    // "Probá tu agente" and "por vos" survived in the Spanish help while every
+    // sentence around them said tú. Only forms that are voseo and nothing else
+    // are listed: none is also a tú form or a first-person preterite.
+    const voseo = /(?:^|[^\wáéíóúñ])(?:vos|podés|tenés|querés|sabés|necesitás|probá|conectá|revisá|agregá|confirmá|mirá|tocá|pulsá|guardá|entrá|hacé|poné)(?![\wáéíóúñ])/i;
+    expect('no se los paga a Meta por vos').toMatch(voseo);
+    expect('la tarjeta **"Probá tu agente"**').toMatch(voseo);
+    expect('Prueba tu agente: puedes, tienes, revisa, confirma').not.toMatch(voseo);
+    const offences = byLocale.es.flatMap((article) => article.raw
+      .split(/\r?\n/)
+      .filter((line) => voseo.test(line))
+      .map((line) => `${path.basename(article.file)}: ${line.trim().slice(0, 100)}`));
+    expect(offences).toEqual([]);
+  });
+
+  it('describes the price choices with the labels the service and plan screens show', () => {
+    /**
+     * FX1 (Ola 6, sep-2026): a service or membership plan with no amount reads
+     * "Sin precio" and offers "Escribir precio" / "Es gratis" / "Se cotiza",
+     * never "Confirmar precio"; free is an explicit "Es gratis" shown as
+     * "Gratis"; the editors offer "Precio confirmado" (an amount above 0) /
+     * "Es gratis" / "Se cotiza según el caso". The help still said a confirmed
+     * price "can be $0" and that a service with no amount could only be
+     * written or quoted, so Assist sent an owner with a free trial class to a
+     * button that no longer makes it free. The labels are read from the
+     * dashboard messages: rename one on either side and this goes red.
+     */
+    const aboveZero: Record<(typeof LOCALES)[number], RegExp> = {
+      es: /mayor que 0/,
+      en: /above 0/,
+      pt: /maior que 0/,
+      fr: /supérieur à 0/,
+    };
+    // A confirmed price is never a zero amount: free is "Es gratis", shown as "Gratis".
+    const zeroAsPrice = /\$\s?0(?![\d.,]*\d)|peut être de 0/;
+
+    for (const locale of LOCALES) {
+      const messages = JSON.parse(
+        fs.readFileSync(path.join(dashboardMessagesRoot, `${locale}.json`), 'utf8'),
+      );
+      const price = messages?.appointments?.priceStatus ?? {};
+      const plan = messages?.memberships?.planPrice ?? {};
+      const articles = new Map(byLocale[locale].map((article) => [article.id, article]));
+      const editorChoices = [price.confirmed, price.free, price.quote];
+      const cardLabels: Record<string, unknown[]> = {
+        'citas-calendarios': [price.examplePill, price.confirmAction, price.quoteAction, price.noPricePill, price.writePrice, price.freePill],
+        'herramientas-tipo-negocio': [price.examplePill, price.confirmAction, price.quoteAction, plan.noPrice, plan.writePrice, price.freePill],
+      };
+
+      for (const [id, labels] of Object.entries(cardLabels)) {
+        const body = articles.get(id)!.body;
+        for (const label of [...editorChoices, ...labels]) {
+          expect(typeof label).toBe('string');
+          expect({ locale, id, label, named: body.includes(`**${label}**`) })
+            .toEqual({ locale, id, label, named: true });
+        }
+        expect({ locale, id, confirmedNeedsAmount: aboveZero[locale].test(body), zeroAsPrice: zeroAsPrice.test(body) })
+          .toEqual({ locale, id, confirmedNeedsAmount: true, zeroAsPrice: false });
+      }
     }
   });
 

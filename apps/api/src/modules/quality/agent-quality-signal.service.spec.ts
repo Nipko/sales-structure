@@ -1,5 +1,6 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import type { AgentQualityOverview } from '@parallext/shared';
+import { AGENT_QUALITY_DELIVERY_FAILURE_CODES } from '@parallext/shared';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { AgentQualitySignalService } from './agent-quality-signal.service';
@@ -79,6 +80,7 @@ type HarnessOptions = {
     cachedSummary?: any;
     attentionRows?: any[];
     topRows?: any[];
+    deliveryRows?: any[];
     signalRows?: any[];
     mutationRows?: any[];
     assistantRows?: any[];
@@ -105,6 +107,9 @@ function createHarness(options: HarnessOptions = {}) {
         if (sql.includes('snapshot.status AS snapshot_status')) return options.attentionRows ?? [];
         if (sql.includes("s.severity IN ('critical', 'high')") && sql.includes('LIMIT 1')) {
             return options.topRows ?? [];
+        }
+        if (sql.includes("s.severity = 'critical'") && sql.includes('s.code = ANY($1::text[])')) {
+            return options.deliveryRows ?? [];
         }
         if (sql.startsWith('UPDATE agent_quality_signals') && sql.includes("state = 'acknowledged'")) {
             return options.mutationRows ?? [signalRow];
@@ -502,5 +507,142 @@ describe('AgentQualitySignalService', () => {
         expect(redis.set).toHaveBeenCalledWith(
             'agent-quality:reconcile:tenant-cursor:v1', healthyTenantId, 86_400 * 7,
         );
+    });
+
+    /**
+     * Ola 6: the banner could not tell "failed" from "could not check" — both
+     * reach it as `critical` — nor say which credential or which WhatsApp
+     * problem it was about. The signal now carries that, from closed
+     * vocabularies, and every field is optional so a row written before them
+     * reads as "not known".
+     */
+    describe('what a signal says beyond its code', () => {
+        const detailed: AgentQualityOverview = {
+            ...overview,
+            recommendations: [
+                {
+                    code: 'fix_channel_connection', pillar: 'preparation', dimension: 'actions_outcomes', severity: 'critical',
+                    href: '/admin/channels', checkStatus: 'unknown', params: { credentialIssue: 'expired' },
+                },
+                {
+                    code: 'fix_whatsapp_delivery', pillar: 'preparation', dimension: 'actions_outcomes', severity: 'critical',
+                    href: '/admin/channels/whatsapp', checkStatus: 'fail', params: { reason: 'timezone_missing', reasons: 'timezone_missing' },
+                },
+                {
+                    // A generic `reason` on another code is not a delivery issue,
+                    // and a status outside the vocabulary is not stored.
+                    code: 'fix_channel_unanswered', pillar: 'preparation', dimension: 'actions_outcomes', severity: 'critical',
+                    href: '/admin/agent', checkStatus: 'broken' as any, params: { reason: 'timezone_missing', credentialIssue: 'expired' },
+                },
+                {
+                    code: 'fix_whatsapp_delivery_extra', pillar: 'preparation', dimension: 'actions_outcomes', severity: 'high',
+                    href: '/admin/channels', checkStatus: 'warning', params: { reason: 'DROP TABLE' },
+                },
+                { code: 'run_eval', pillar: 'tested', dimension: 'robustness_operations', severity: 'high', href: '/admin/agent/simulation' },
+            ],
+        };
+
+        it('persists the check status and the issue, and refreshes them on every reconcile', async () => {
+            const { service, txCalls } = createHarness({ overview: detailed });
+            await service.reconcileAgent(TENANT_ID, AGENT_ID, 'manual');
+            const upserts = txCalls.filter((call) => call.sql.includes('ON CONFLICT (fingerprint) DO UPDATE'));
+            const detail = (code: string) => upserts.find((call) => call.params[2] === code)!.params.slice(9, 12);
+
+            expect(detail('fix_channel_connection')).toEqual(['unknown', 'expired', null]);
+            expect(detail('fix_whatsapp_delivery')).toEqual(['fail', null, 'timezone_missing']);
+            expect(detail('fix_channel_unanswered')).toEqual([null, null, null]);
+            expect(detail('fix_whatsapp_delivery_extra')).toEqual(['warning', null, null]);
+            expect(detail('run_eval')).toEqual([null, null, null]);
+            for (const column of ['check_status', 'credential_issue', 'delivery_issue']) {
+                expect(upserts[0].sql).toContain(`${column} = EXCLUDED.${column}`);
+            }
+        });
+
+        it('puts them on the top action, so the banner needs no second request', async () => {
+            const { service } = createHarness({
+                attentionRows: [{ id: AGENT_ID, name: 'Luna', version: 4, snapshot_status: 'configuration_incomplete', has_snapshot: true, critical_count: 1, high_count: 0 }],
+                topRows: [{
+                    id: SIGNAL_ID, agent_id: AGENT_ID, agent_name: 'Luna', code: 'fix_whatsapp_delivery', severity: 'critical',
+                    href: '/admin/channels/whatsapp', evidence_count: 0,
+                    check_status: 'fail', credential_issue: null, delivery_issue: 'funding_restricted',
+                }],
+            });
+            const summary = await service.getAttentionSummary(TENANT_ID);
+            expect(summary.topAction).toEqual({
+                signalId: SIGNAL_ID, agentId: AGENT_ID, agentName: 'Luna', code: 'fix_whatsapp_delivery', severity: 'critical',
+                href: '/admin/channels/whatsapp', evidenceCount: 0, checkStatus: 'fail', deliveryIssue: 'funding_restricted',
+            });
+        });
+
+        it('says nothing it does not know: an old row has no detail, and a foreign value is dropped', async () => {
+            const legacy = await createHarness({
+                topRows: [{ id: SIGNAL_ID, agent_id: AGENT_ID, agent_name: 'Luna', code: 'fix_channel_connection', severity: 'critical', href: '/admin/channels', evidence_count: 1 }],
+            }).service.getAttentionSummary(TENANT_ID);
+            expect(legacy.topAction).not.toHaveProperty('checkStatus');
+            expect(legacy.topAction).not.toHaveProperty('credentialIssue');
+            expect(legacy.topAction).not.toHaveProperty('deliveryIssue');
+
+            const foreign = await createHarness({
+                topRows: [{ id: SIGNAL_ID, agent_id: AGENT_ID, agent_name: 'Luna', code: 'fix_channel_connection', severity: 'critical', href: '/admin/channels', evidence_count: 1,
+                    check_status: 'maybe', credential_issue: '<script>', delivery_issue: 'x' }],
+            }).service.getAttentionSummary(TENANT_ID);
+            expect(foreign.topAction).toEqual(expect.not.objectContaining({ checkStatus: expect.anything() }));
+            expect(foreign.topAction).not.toHaveProperty('credentialIssue');
+
+            const unknownCheck = await createHarness({
+                topRows: [{ id: SIGNAL_ID, agent_id: AGENT_ID, agent_name: 'Luna', code: 'fix_channel_connection', severity: 'critical', href: '/admin/channels', evidence_count: 1,
+                    check_status: 'unknown', credential_issue: null, delivery_issue: null }],
+            }).service.getAttentionSummary(TENANT_ID);
+            expect(unknownCheck.topAction).toMatchObject({ severity: 'critical', checkStatus: 'unknown' });
+        });
+
+        it('finds the delivery failure even when another critical is the top action', async () => {
+            // Day 0: the banner hides a missing business description, and a
+            // WhatsApp that refuses every reply must not hide behind it.
+            const { service, sqlCalls } = createHarness({
+                topRows: [{ id: SIGNAL_ID, agent_id: AGENT_ID, agent_name: 'Luna', code: 'fix_business_identity', severity: 'critical',
+                    href: '/admin/settings/business-info', evidence_count: 0, check_status: 'fail' }],
+                deliveryRows: [{ id: ACTOR_ID, agent_id: AGENT_ID, agent_name: 'Luna', code: 'fix_whatsapp_delivery', severity: 'critical',
+                    href: '/admin/channels/whatsapp', evidence_count: 0, check_status: 'fail', delivery_issue: 'timezone_missing' }],
+            });
+            const summary = await service.getAttentionSummary(TENANT_ID);
+            expect(summary.topAction).toMatchObject({ code: 'fix_business_identity' });
+            expect(summary.deliveryAction).toEqual({
+                signalId: ACTOR_ID, agentId: AGENT_ID, agentName: 'Luna', code: 'fix_whatsapp_delivery', severity: 'critical',
+                href: '/admin/channels/whatsapp', evidenceCount: 0, checkStatus: 'fail', deliveryIssue: 'timezone_missing',
+            });
+            const query = sqlCalls.find((call) => call.sql.includes('s.code = ANY($1::text[])'))!;
+            expect(query.params).toEqual([[...AGENT_QUALITY_DELIVERY_FAILURE_CODES]]);
+            expect(query.sql).toContain("s.state = 'open'");
+            expect(query.sql).toContain('s.agent_config_version = COALESCE(ap.version, 1)');
+            // A real failure outranks a check that could not be run.
+            expect(query.sql).toMatch(/ORDER BY CASE WHEN s\.check_status = 'fail' THEN 0 ELSE 1 END/);
+        });
+
+        it('says nothing about delivery when no delivery failure is open', async () => {
+            const summary = await createHarness({ topRows: [] }).service.getAttentionSummary(TENANT_ID);
+            expect(summary).not.toHaveProperty('deliveryAction');
+        });
+
+        it('carries the same detail on a listed signal', async () => {
+            const { service } = createHarness({ signalRows: [{ ...signalRow, check_status: 'fail', credential_issue: 'revoked' }] });
+            const [signal] = await service.getSignals(TENANT_ID, 'open');
+            expect(signal).toMatchObject({ checkStatus: 'fail', credentialIssue: 'revoked' });
+            expect(signal).not.toHaveProperty('deliveryIssue');
+        });
+
+        it('adds the columns additively, and a schema marked ready before them runs the DDL again', async () => {
+            const { service, txCalls, redis } = createHarness({ tablesCached: false });
+            await service.ensureTables(SCHEMA);
+            for (const column of ['check_status VARCHAR(20)', 'credential_issue VARCHAR(40)', 'delivery_issue VARCHAR(40)']) {
+                expect(txCalls.some((call) => call.sql.includes(`ALTER TABLE agent_quality_signals ADD COLUMN IF NOT EXISTS ${column}`))).toBe(true);
+            }
+            expect(redis.set).toHaveBeenCalledWith(`agent_quality_attention_tables:v3:${SCHEMA}`, '1', 86400);
+
+            const sql = readFileSync(resolve(__dirname, '../../../prisma/tenant-schema.sql'), 'utf8');
+            for (const column of ['check_status VARCHAR(20)', 'credential_issue VARCHAR(40)', 'delivery_issue VARCHAR(40)']) {
+                expect(sql).toContain(`ALTER TABLE "{{SCHEMA_NAME}}"."agent_quality_signals" ADD COLUMN IF NOT EXISTS ${column};`);
+            }
+        });
     });
 });

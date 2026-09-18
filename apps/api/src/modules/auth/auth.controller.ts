@@ -214,8 +214,13 @@ export class AuthController {
         // que una sesión larga siga trabajando con la foto del día que entró.
         // `undefined` cuando no se puede establecer — el panel lo lee como
         // "sin evidencia" y no manda a nadie al asistente por las dudas.
-        const onboardingStage = await this.authService.resolveOnboardingStageForTenant(user?.tenantId);
-        return { success: true, data: { ...user, onboardingStage } };
+        // Con la etapa viajan la primera respuesta real y el alta: son lo que
+        // decide si la cuenta sigue en su día 0 (isOnboardingBeforeLive).
+        // `hasAnyChannel` is the channel fact the stage was derived from: the
+        // panel proves a connection with it instead of guessing one.
+        const { onboardingStage, firstReplyAt, tenantCreatedAt, hasAnyChannel } =
+            await this.authService.resolveOnboardingFactsForTenant(user?.tenantId);
+        return { success: true, data: { ...user, onboardingStage, firstReplyAt, tenantCreatedAt, hasAnyChannel } };
     }
 
     @Post('activity-ping')

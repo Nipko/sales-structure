@@ -25,6 +25,16 @@ import AnimatedLogo from "@/components/AnimatedLogo";
 import { prepareDraftSave, type DraftSaveAttempt } from '@/lib/agent-draft-save';
 import { HelpPanel } from "@/components/ui/help-panel";
 import WhatsAppConnectPanel from "../channels/whatsapp/WhatsAppConnectPanel";
+import WhatsAppConnectedState from "../channels/whatsapp/WhatsAppConnectedState";
+import { BILLING_READINESS_ENDPOINT, billingZoneAccess } from "../channels/whatsapp/billing-time-zone";
+import type { ConnectedPending, ConnectedReadiness, WhatsAppConnectedPayload } from "../channels/whatsapp/connected-readiness";
+import {
+    doneStepChannel,
+    doneStepFixesOnWhatsappScreen,
+    readConnectedReadiness,
+    readExistingWhatsAppNumber,
+    settledReadiness,
+} from "./done-step-channel";
 import SecondaryChannels from "./_components/SecondaryChannels";
 import AgentTestChat from "./_components/AgentTestChat";
 import DemoLinkCard from "./_components/DemoLinkCard";
@@ -62,6 +72,18 @@ const STEPS = [
 const LAST_STEP: StepIndex = 2;
 
 /**
+ * The line "Listo" says for each thing still stopping WhatsApp: what it is,
+ * and where it is fixed. A `Record` so a new kind of pending cannot reach the
+ * screen without its own sentence.
+ */
+const DONE_STEP_PENDING_LINE: Record<ConnectedPending, string> = {
+    billing_zone: "doneStep.essentials.channel.pendingZone",
+    payment_method: "doneStep.essentials.channel.pendingPayment",
+    phone_registration: "doneStep.essentials.channel.pendingRegistration",
+    webhook_subscription: "doneStep.essentials.channel.pendingWebhook",
+};
+
+/**
  * El cuerpo REAL del endpoint del asistente.
  *
  * `api.applySetupTemplate` quedó tipado para el único camino que existía
@@ -86,17 +108,6 @@ const saveWizard = api.applySetupTemplate as unknown as (
     tenantId: string,
     payload: WizardSavePayload,
 ) => Promise<{ success?: boolean; error?: string } | undefined>;
-
-/** Etiqueta i18n por tipo de canal conectado. */
-const CHANNEL_LABEL_KEY: Record<string, string> = {
-    whatsapp: "connect.whatsappBrandTitle",
-    instagram: "connect.channel_instagram",
-    messenger: "connect.channel_messenger",
-    telegram: "connect.channel_telegram",
-    email: "connect.channel_email",
-    web_widget: "connect.channel_webchat",
-    webchat: "connect.channel_webchat",
-};
 
 /**
  * Nunca mostrar un marcador sin sustituir.
@@ -139,13 +150,31 @@ export default function SetupWizardPage() {
     const [channelConnected, setChannelConnected] = useState(false);
     /** Tipos de canal ya conectados SEGÚN EL SERVIDOR (no según esta sesión). */
     const [connectedTypes, setConnectedTypes] = useState<string[]>([]);
-    const [deferred, setDeferred] = useState(false);
     /**
      * "El enlace de {Nombre}": the public page where anyone can already write
      * to the agent (D11). It comes from setup-status because the API provisions
      * it on day 0; this page never creates one, it only hands it out.
      */
     const [demoLink, setDemoLink] = useState<SetupStatusDemoLink | null>(null);
+    /** El nombre con el que el enlace presenta al agente: lo tipeado gana. */
+    const linkAgentName = agentName.trim() || demoLink?.agentName || t("demoLink.agentFallback");
+    /** El número que se conectó EN ESTA SESIÓN, tal como lo devolvió el alta. */
+    const [whatsappHere, setWhatsappHere] = useState<WhatsAppConnectedPayload | null>(null);
+    /**
+     * Se salió del paso de conexión después de conectar acá. Al volver, el
+     * panel se montaría de cero —sin su "conectado"— y ofrecería otra vez el
+     * selector de ruta: un segundo alta de Meta sobre el número recién
+     * conectado. Desde ese momento el paso muestra el estado conectado.
+     */
+    const [leftConnectedPanel, setLeftConnectedPanel] = useState(false);
+    /** El número que ya estaba conectado antes de entrar. `undefined` = leyendo. */
+    const [existingNumber, setExistingNumber] = useState<WhatsAppConnectedPayload | undefined>(undefined);
+    /**
+     * Si el agente puede responder por WhatsApp. `undefined` = todavía no se
+     * sabe (se lee en "Listo"); `null` = no se pudo leer. Lo trae "Continuar"
+     * desde el estado conectado; si se llegó por otro camino, se lee de nuevo.
+     */
+    const [whatsappReadiness, setWhatsappReadiness] = useState<ConnectedReadiness | null | undefined>(undefined);
     const [workspace, setWorkspace] = useState<AgentConfigurationWorkspace | null>(null);
     const workspaceRef = useRef<AgentConfigurationWorkspace | null>(null);
     const hasAgentRef = useRef(false);
@@ -181,9 +210,10 @@ export default function SetupWizardPage() {
      * muestra el número y el "probalo" que siguen a un alta recién hecha.
      */
     const whatsappAlreadyConnected = connectedTypes.includes("whatsapp");
-    const connectedLabels = connectedTypes
-        .map((type) => (CHANNEL_LABEL_KEY[type] ? t(CHANNEL_LABEL_KEY[type]) : null))
-        .filter((label): label is string => Boolean(label));
+    const whatsappInPlay = whatsappAlreadyConnected || whatsappHere !== null;
+    /** El paso de conexión muestra el estado conectado en vez del panel de alta. */
+    const showConnectedState = whatsappAlreadyConnected || (whatsappHere !== null && leftConnectedPanel);
+    const connectedStatePayload = whatsappAlreadyConnected ? existingNumber : whatsappHere ?? undefined;
 
     useEffect(() => {
         if (!tenantId) return;
@@ -246,7 +276,6 @@ export default function SetupWizardPage() {
 
             if (facts?.hasAnyChannel) setChannelConnected(true);
             setConnectedTypes(facts?.connectedChannelTypes ?? []);
-            if (facts?.channelConnectSkippedAt) setDeferred(true);
             setDemoLink(facts?.demoLink ?? null);
 
             // El borrador devuelve el paso Y lo que se estaba escribiendo. Solo
@@ -256,7 +285,13 @@ export default function SetupWizardPage() {
                 const raw = draftKey ? localStorage.getItem(draftKey) : null;
                 const draft = raw ? JSON.parse(raw) : null;
                 if (draft && typeof draft.step === "number") {
-                    setStep(Math.min(LAST_STEP, Math.max(0, draft.step)) as StepIndex);
+                    const restored = Math.min(LAST_STEP, Math.max(0, draft.step)) as StepIndex;
+                    // "Listo" sólo después de responder la pregunta del canal.
+                    // Un borrador de antes de esta regla podía haber llegado ahí
+                    // con "Siguiente" y sin dejar anotado el "después": se lo
+                    // devuelve a la conexión en vez de a un final sin canal.
+                    const channelUndecided = !facts?.hasAnyChannel && !facts?.channelConnectSkippedAt;
+                    setStep(restored === LAST_STEP && channelUndecided ? 1 : restored);
                 }
                 const matchingBase = draft?.operationalVersion === current?.operational?.version && draft?.revisionId === (current?.draft?.id ?? null);
                 if (matchingBase && typeof draft?.agentName === "string" && draft.agentName.trim() && draft.agentName !== name) {
@@ -282,6 +317,51 @@ export default function SetupWizardPage() {
                 operationalVersion: workspace?.operational?.version, revisionId: workspace?.draft?.id ?? null }));
         } catch { /* noop */ }
     }, [agentName, draftKey, greeting, loading, step, workspace]);
+
+    /**
+     * Qué número estaba conectado antes de entrar, para leer SU zona horaria y
+     * SU método de pago. Un fallo no es un error: el estado conectado lo
+     * encuentra solo cuando la cuenta tiene un único número.
+     */
+    useEffect(() => {
+        if (!whatsappAlreadyConnected) return;
+        let cancelled = false;
+        void api.fetch("/channels/whatsapp/status").catch(() => null).then((res) => {
+            if (!cancelled) setExistingNumber(readExistingWhatsAppNumber(res));
+        });
+        return () => { cancelled = true; };
+    }, [whatsappAlreadyConnected]);
+
+    /**
+     * Volver al paso de conexión vuelve a preguntar: lo que la persona haga
+     * ahí (confirmar la zona, agregar el método de pago) cambia lo que "Listo"
+     * puede decir.
+     */
+    useEffect(() => {
+        if (step === 1) {
+            setWhatsappReadiness(undefined);
+        } else if (whatsappHere) {
+            setLeftConnectedPanel(true);
+        }
+    }, [step, whatsappHere]);
+
+    /**
+     * "Listo" sin la lectura de "Continuar" —se llegó con "Siguiente", con el
+     * círculo del paso o recargando— la hace él mismo, con los mismos datos.
+     */
+    useEffect(() => {
+        if (step !== LAST_STEP || !whatsappInPlay || whatsappReadiness !== undefined) return;
+        const connected = whatsappHere ?? existingNumber;
+        if (!connected) return; // todavía se está leyendo cuál es el número
+        let cancelled = false;
+        void Promise.all([
+            api.fetch(BILLING_READINESS_ENDPOINT).catch(() => null),
+            api.getWhatsappFundingReadiness().catch(() => null),
+        ]).then(([zones, funding]) => {
+            if (!cancelled) setWhatsappReadiness(readConnectedReadiness(zones, funding, connected, Date.now()));
+        });
+        return () => { cancelled = true; };
+    }, [existingNumber, step, whatsappHere, whatsappInPlay, whatsappReadiness]);
 
     interface WizardProgress {
         markCompleted?: boolean;
@@ -456,11 +536,33 @@ export default function SetupWizardPage() {
             channelConnectSkippedAt: new Date().toISOString(),
         });
         if (!ok) return;
-        setDeferred(true);
         setStep(LAST_STEP);
     }, [saveOrAdvance]);
 
-    const finish = useCallback(async (options: { openTour?: boolean } = {}) => {
+    /**
+     * Moverse entre pasos, con una regla: a "Listo" sin canal se llega SOLO
+     * como "conectar después".
+     *
+     * "Siguiente" en el paso de conexión —y el círculo del paso 3— salteaban
+     * WhatsApp sin anotarlo, y "Listo" decía "tu agente ya responde por el
+     * canal conectado" sin canal conectado. Así terminó la grabación del
+     * 14-sep: WhatsApp pendiente, ningún recordatorio y un final que afirmaba lo
+     * contrario. Ahora ese salto guarda la decisión igual que el botón
+     * "Conectar después", y un guardado fallido se queda donde está.
+     */
+    const goToStep = useCallback(async (target: StepIndex) => {
+        if (target === step) return;
+        if (target === LAST_STEP && !channelConnected) {
+            await connectLater();
+            return;
+        }
+        // Un guardado fallido no puede pasar de paso en silencio: el error
+        // queda en pantalla y la persona decide.
+        if (target > step && !(await autosave())) return;
+        setStep(target);
+    }, [autosave, channelConnected, connectLater, step]);
+
+    const finish = useCallback(async (options: { openTour?: boolean; destination?: string } = {}) => {
         setSaving(true);
         savingRef.current = true;
         const ok = await saveOrAdvance({ markCompleted: true, stage: "completed" });
@@ -476,8 +578,30 @@ export default function SetupWizardPage() {
             // "ver el recorrido" button arms it, and Home runs it once.
             if (options.openTour) localStorage.setItem(PRODUCT_TOUR_PENDING_KEY, "true");
         } catch { /* mejoras opcionales no bloquean el cierre */ }
-        window.location.href = "/admin";
+        window.location.href = options.destination ?? "/admin";
     }, [draftKey, saveOrAdvance]);
+
+    /** "Continuar" desde el estado conectado: trae lo que falta para responder. */
+    const acknowledgeWhatsapp = useCallback((readiness: ConnectedReadiness) => {
+        setWhatsappReadiness(settledReadiness(readiness));
+        void goToStep(LAST_STEP);
+    }, [goToStep]);
+
+    const channelOutcome = doneStepChannel({ channelConnected, whatsapp: whatsappInPlay, readiness: whatsappReadiness });
+    /** What the channel item of "Listo" says, once there is a channel. */
+    const channelLines: string[] = channelOutcome.kind === "pending"
+        ? channelOutcome.pending.map((item) => t(DONE_STEP_PENDING_LINE[item]))
+        : channelOutcome.kind === "unconfirmed"
+            ? [t("doneStep.essentials.channel.unconfirmedDescription")]
+            : channelOutcome.kind === "checking"
+                ? [t("doneStep.essentials.channel.checkingDescription")]
+                : channelOutcome.kind === "answering"
+                    ? [
+                        t("doneStep.essentials.channel.connectedDescription"),
+                        ...(channelOutcome.paymentSoon ? [t("doneStep.essentials.channel.paymentSoon")] : []),
+                    ]
+                    : [];
+    const isAdmin = user?.role === "super_admin" || user?.role === "tenant_admin";
 
     const showConnectTour = () => {
         const detail: GuidedTourStartDetail = { tourId: "first_channel_whatsapp" };
@@ -539,7 +663,8 @@ export default function SetupWizardPage() {
                         <div key={s.key} className="flex flex-1 items-center gap-2">
                             <button
                                 type="button"
-                                onClick={() => setStep(i as StepIndex)}
+                                onClick={() => void goToStep(i as StepIndex)}
+                                aria-label={`${t("navigation.stepOf", { current: i + 1, total: STEPS.length })}: ${t(`steps.${s.key}`)}`}
                                 className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-medium transition-colors cursor-pointer ${
                                     i < step ? "bg-emerald-500 text-white"
                                         : i === step ? "bg-indigo-500 text-white"
@@ -547,7 +672,7 @@ export default function SetupWizardPage() {
                                 }`}
                                 aria-current={i === step ? "step" : undefined}
                             >
-                                {i < step ? <Check size={14} /> : i + 1}
+                                {i < step ? <Check size={14} aria-hidden="true" /> : i + 1}
                             </button>
                             <span className={`hidden text-[12px] sm:block ${i === step ? "font-medium text-foreground" : "text-muted-foreground"}`}>
                                 {t(`steps.${s.key}`)}
@@ -645,53 +770,51 @@ export default function SetupWizardPage() {
                             a un admin con WhatsApp en vivo le ofrecía el
                             selector de ruta — y desde ahí podía lanzar un
                             segundo Embedded Signup sobre su número real. */}
-                        {whatsappAlreadyConnected ? (
-                            <div className="rounded-xl border border-emerald-500/30 bg-emerald-50 p-4 dark:border-emerald-500/20 dark:bg-emerald-500/10">
-                                <p className="flex items-center gap-2 text-sm font-semibold text-emerald-800 dark:text-emerald-300">
-                                    <Check size={16} /> {t("connect.connected")}
-                                </p>
-                                {connectedLabels.length > 0 && (
-                                    <div className="mt-2 flex flex-wrap gap-1.5">
-                                        {connectedLabels.map((label) => (
-                                            <span
-                                                key={label}
-                                                className="rounded-full border border-emerald-500/30 px-2 py-0.5 text-[11px] font-medium text-emerald-800 dark:text-emerald-300"
-                                            >
-                                                {label}
-                                            </span>
-                                        ))}
+                        {showConnectedState ? (
+                            // "¡Conectado!" a secas no alcanzaba: la zona
+                            // horaria de facturación y el método de pago en
+                            // Meta deciden si las respuestas salen. Es el mismo
+                            // estado que ve quien conecta acá, con su "Continuar".
+                            <div className="space-y-3">
+                                {connectedStatePayload ? (
+                                    <WhatsAppConnectedState
+                                        connected={connectedStatePayload}
+                                        access={billingZoneAccess(user)}
+                                        // The Meta check is admin-only on the server.
+                                        canCheckFunding={isAdmin}
+                                        onAcknowledged={acknowledgeWhatsapp}
+                                    />
+                                ) : (
+                                    <div role="status" aria-label={tCommon("loading")} className="flex justify-center py-6">
+                                        <Loader2 size={20} aria-hidden="true" className="animate-spin text-indigo-500" />
                                     </div>
                                 )}
-                                <div className="mt-3 flex flex-wrap items-center gap-2">
-                                    <button
-                                        type="button"
-                                        onClick={() => setStep(LAST_STEP)}
-                                        className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-[13px] font-semibold text-white transition-colors hover:bg-indigo-700 cursor-pointer"
-                                    >
-                                        {t("connect.continue")} <ChevronRight size={14} />
-                                    </button>
-                                    <Link
-                                        href="/admin/channels"
-                                        className="inline-flex items-center gap-1.5 text-[13px] font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
-                                    >
-                                        {t("connect.otherChannels")} <ArrowRight size={13} />
-                                    </Link>
-                                </div>
+                                <Link
+                                    href="/admin/channels"
+                                    className="inline-flex items-center gap-1.5 text-[13px] font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
+                                >
+                                    {t("connect.otherChannels")} <ArrowRight size={13} aria-hidden="true" />
+                                </Link>
                             </div>
                         ) : (
                             <>
                                 <WhatsAppConnectPanel
                                     tenantId={tenantId}
                                     variant="onboarding"
-                                    onConnected={() => { setChannelConnected(true); void refreshWorkspace(); }}
-                                    onAcknowledged={() => setStep(LAST_STEP)}
+                                    onConnected={(data) => {
+                                        setChannelConnected(true);
+                                        setWhatsappHere(data);
+                                        setWhatsappReadiness(undefined);
+                                        void refreshWorkspace();
+                                    }}
+                                    onAcknowledged={acknowledgeWhatsapp}
                                     // Quien contesta que su número está con otro proveedor, o que no
                                     // lo tiene a mano, no se queda sin salida: se apunta el "después"
                                     // y el agente sigue atendiendo por su enlace mientras tanto.
                                     onPostponed={() => { void connectLater(); }}
                                     meanwhile={demoLink ? (
                                         <p className="text-[12px] text-muted-foreground">
-                                            {t("demoLink.meanwhile", { agentName: agentName.trim() || demoLink.agentName || t("demoLink.agentFallback") })}
+                                            {t("demoLink.meanwhile", { agentName: linkAgentName })}
                                         </p>
                                     ) : undefined}
                                 />
@@ -715,7 +838,7 @@ export default function SetupWizardPage() {
                                             <p className="mt-0.5 text-[12px] text-muted-foreground">{t("connectStep.laterHint")}</p>
                                             {demoLink && (
                                                 <p className="mt-0.5 text-[12px] text-muted-foreground">
-                                                    {t("demoLink.meanwhile", { agentName: agentName.trim() || demoLink.agentName || t("demoLink.agentFallback") })}
+                                                    {t("demoLink.meanwhile", { agentName: linkAgentName })}
                                                 </p>
                                             )}
                                             <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -746,8 +869,19 @@ export default function SetupWizardPage() {
                 {step === 2 && (
                     <div className="mx-auto max-w-xl">
                         <h2 className="mb-1 text-xl font-semibold text-foreground">{t("doneStep.title")}</h2>
-                        <p className="mb-6 text-sm text-muted-foreground">
-                            {deferred && !channelConnected ? t("doneStep.subtitleDeferred") : t("doneStep.subtitle")}
+                        {/* Lo que dice tiene que ser cierto: "ya responde"
+                            sólo cuando nada conocido lo impide; si falta la
+                            zona horaria o el método de pago de WhatsApp, lo
+                            dice; sin canal, contesta por su enlace y el canal
+                            queda pendiente. */}
+                        <p className="mb-6 text-sm text-muted-foreground" role="status" data-channel-outcome={channelOutcome.kind}>
+                            {channelOutcome.kind === "answering" && t("doneStep.subtitle")}
+                            {channelOutcome.kind === "checking" && t("doneStep.subtitleChecking")}
+                            {channelOutcome.kind === "pending" && t("doneStep.subtitlePending")}
+                            {channelOutcome.kind === "unconfirmed" && t("doneStep.subtitleUnconfirmed")}
+                            {channelOutcome.kind === "no_channel" && (demoLink
+                                ? t("doneStep.subtitleLink", { agentName: linkAgentName })
+                                : t("doneStep.subtitleDeferred"))}
                         </p>
 
                         {/* The one thing that works today, channel or no channel:
@@ -759,17 +893,62 @@ export default function SetupWizardPage() {
                         )}
 
                         <ol className="space-y-2">
-                            {(["channel", "knowledge", "team"] as const).map((key, index) => (
-                                <li key={key} className="flex items-start gap-3 rounded-xl border border-neutral-200 bg-neutral-50 p-4 dark:border-white/10 dark:bg-white/[0.03]">
-                                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-indigo-500 text-[11px] font-bold text-white">
-                                        {index + 1}
-                                    </span>
-                                    <div className="min-w-0">
-                                        <p className="text-[13px] font-semibold text-foreground">{t(`doneStep.essentials.${key}.title`)}</p>
-                                        <p className="mt-0.5 text-[12px] text-muted-foreground">{t(`doneStep.essentials.${key}.description`)}</p>
-                                    </div>
-                                </li>
-                            ))}
+                            {(["channel", "knowledge", "team"] as const).map((key, index) => {
+                                // The channel item is done (said as done), being
+                                // checked, pending with what is missing, or not
+                                // connected; "sin un canal no recibe mensajes de
+                                // nadie" is false once the agent has its link.
+                                const outcome = key === "channel" ? channelOutcome.kind : null;
+                                const channelDone = outcome === "answering";
+                                const channelStuck = outcome === "pending" || outcome === "unconfirmed";
+                                const title = outcome === "pending"
+                                    ? t("doneStep.essentials.channel.pendingTitle")
+                                    : outcome === "unconfirmed"
+                                        ? t("doneStep.essentials.channel.unconfirmedTitle")
+                                        : outcome === "answering" || outcome === "checking"
+                                            ? t("doneStep.essentials.channel.connectedTitle")
+                                            : t(`doneStep.essentials.${key}.title`);
+                                const lines = outcome && outcome !== "no_channel"
+                                    ? channelLines
+                                    : [key === "channel" && demoLink
+                                        ? t("doneStep.essentials.channel.descriptionWithLink")
+                                        : t(`doneStep.essentials.${key}.description`)];
+                                return (
+                                    <li key={key} data-channel-item={outcome ?? undefined} className={`flex items-start gap-3 rounded-xl border p-4 ${channelStuck
+                                        ? "border-amber-300 bg-amber-50 dark:border-amber-500/30 dark:bg-amber-500/10"
+                                        : "border-neutral-200 bg-neutral-50 dark:border-white/10 dark:bg-white/[0.03]"}`}>
+                                        <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white ${channelDone ? "bg-emerald-500" : channelStuck ? "bg-amber-600" : "bg-indigo-500"}`}>
+                                            {channelDone
+                                                ? <Check size={12} aria-hidden="true" />
+                                                : channelStuck
+                                                    ? <AlertTriangle size={12} aria-hidden="true" />
+                                                    : outcome === "checking"
+                                                        ? <Loader2 size={12} aria-hidden="true" className="animate-spin" />
+                                                        : index + 1}
+                                        </span>
+                                        <div className="min-w-0">
+                                            <p className="text-[13px] font-semibold text-foreground">{title}</p>
+                                            {lines.map((line) => (
+                                                <p key={line} className="mt-0.5 text-[12px] text-muted-foreground">{line}</p>
+                                            ))}
+                                            {channelStuck && doneStepFixesOnWhatsappScreen(channelOutcome) && (
+                                                // Termina el asistente y abre la pantalla donde
+                                                // se confirma la zona y se ve el método de pago.
+                                                // Lo que Meta dejó abierto en el alta no se
+                                                // arregla ahí: la línea dice dónde.
+                                                <button
+                                                    type="button"
+                                                    onClick={() => void finish({ destination: "/admin/channels/whatsapp" })}
+                                                    disabled={saving}
+                                                    className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-amber-700 px-3 py-1.5 text-[12px] font-semibold text-white transition-colors hover:bg-amber-800 disabled:opacity-40 cursor-pointer"
+                                                >
+                                                    {t("doneStep.essentials.channel.finishOnWhatsapp")} <ArrowRight size={13} aria-hidden="true" />
+                                                </button>
+                                            )}
+                                        </div>
+                                    </li>
+                                );
+                            })}
                         </ol>
 
                         <div className="mt-6 flex flex-col gap-2 sm:flex-row">
@@ -811,13 +990,9 @@ export default function SetupWizardPage() {
                 {step < LAST_STEP && (
                     <button
                         type="button"
-                        onClick={async () => {
-                            // Un guardado fallido no puede pasar de paso en
-                            // silencio: el error queda en pantalla y la persona
-                            // decide.
-                            if (!(await autosave())) return;
-                            setStep(Math.min(LAST_STEP, step + 1) as StepIndex);
-                        }}
+                        // En el paso de conexión, sin canal, esto es "conectar
+                        // después": se anota igual que el botón de ese nombre.
+                        onClick={() => void goToStep(Math.min(LAST_STEP, step + 1) as StepIndex)}
                         className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-500 px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-indigo-600 cursor-pointer"
                     >
                         {t("navigation.next")} <ChevronRight size={16} />

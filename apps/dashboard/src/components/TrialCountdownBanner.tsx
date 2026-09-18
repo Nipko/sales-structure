@@ -16,6 +16,11 @@ interface Props {
     restriction?: RestrictionInfo;
 }
 
+/** A restriction the account is actually under — `none` is the absence of one. */
+function hasRealRestriction(restriction: RestrictionInfo | null | undefined): boolean {
+    return Boolean(restriction && restriction.level !== "none");
+}
+
 export default function TrialCountdownBanner({ restriction }: Props) {
     const t = useTranslations("trialBanner");
     const locale = useLocale();
@@ -74,8 +79,15 @@ export default function TrialCountdownBanner({ restriction }: Props) {
 
     if (hiddenForSuperAdmin) return null;
     // A trial countdown on the first screen of an account that has not answered
-    // a single customer is noise; a restriction (soft lock) is not, and stays.
-    if (!restriction && isOnboardingBeforeLive(user?.onboardingStage)) return null;
+    // a single customer is noise; a restriction (warning, soft lock) is not, and
+    // stays. "Restriction" means a REAL one: the layout always passes an object,
+    // starting at `{ level: "none" }`, so testing the object's presence made the
+    // exception swallow the rule and "termina en 14 días" greeted every new
+    // owner on every day-0 screen.
+    if (!hasRealRestriction(restriction) && isOnboardingBeforeLive(user?.onboardingStage, {
+        firstReplyAt: user?.firstReplyAt,
+        createdAt: user?.tenantCreatedAt,
+    })) return null;
 
     // Soft lock banner — NOT dismissable
     if (restriction?.level === "soft_lock") {
@@ -169,6 +181,7 @@ export default function TrialCountdownBanner({ restriction }: Props) {
                 </Link>
             </div>
             <button
+                type="button"
                 onClick={handleDismiss}
                 aria-label={t("dismiss")}
                 className={cn(

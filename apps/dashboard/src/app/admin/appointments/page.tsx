@@ -240,6 +240,7 @@ export default function AppointmentsPage() {
     created: t("toasts.serviceCreated"),
     updated: t("toasts.serviceUpdated"),
     deleted: t("toasts.serviceDeleted"),
+    priceMissing: t("errors.servicePriceMissing"),
   });
 
   /* ================================================================ */

@@ -18,7 +18,6 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
 import {
     CERTIFIED_SELF_SERVICE_CHANNELS,
-    advanceOnboardingStage,
     META_CONNECT_ERROR,
     isRetryableMetaConnectError,
     type MetaConnectChannel,
@@ -26,8 +25,9 @@ import {
     type MetaConnectErrorCode,
     type MetaConnectErrorEvidence,
 } from '@parallext/shared';
-import { bindDefaultAgentToChannel } from './bind-default-agent.util';
+import { applyChannelConnectedStage, bindDefaultAgentToChannel } from './bind-default-agent.util';
 import { mutateTenantSettingsAtomic } from '../../common/utils/tenant-settings.util';
+import { readSignupWarnings } from '../whatsapp/whatsapp-signup-warnings';
 import { buildChannelCertificationMatrix, summariseChannelCertification } from './channel-certification-matrix';
 import { channelCertificationRuntime } from './channel-certification-runtime';
 import { RequiresVerifiedEmail } from '../../common/decorators/requires-verified-email.decorator';
@@ -158,13 +158,18 @@ export class ChannelManagementController {
             // would rewrite the whole settings snapshot and silently drop any
             // other branch written between the two statements. `tenant-settings-branch`
             // has an architectural test that rejects exactly that pattern.
-            await mutateTenantSettingsAtomic(this.prisma, tenantId, (current) => {
-                const stage = advanceOnboardingStage(current.onboardingStage, 'channel_connected');
-                // Returning the same object is the transformer's no-op signal:
-                // no write, no updated_at churn on every reconnection.
-                if (current.onboardingStage === stage) return current as Record<string, unknown>;
-                return { ...current, onboardingStage: stage };
-            });
+            //
+            // The transformer is the one Embedded Signup uses
+            // (`recordChannelConnected`), so both connect paths agree on the
+            // one case that matters: a tenant with NO stored stage predates the
+            // stage contract, which reads that as "already active". Advancing
+            // it here used to CREATE `channel_connected` for it, and its next
+            // reply then stamped `firstReplyAt` — "activated today" — on an
+            // account that has been answering customers for years. Only a
+            // stored stage moves; the same object back is the no-op signal (no
+            // write, no updated_at churn on every reconnection).
+            await mutateTenantSettingsAtomic(this.prisma, tenantId,
+                (current) => applyChannelConnectedStage(current) as Record<string, unknown>);
         } catch (e: any) {
             this.logger.warn(`onboardingStage advance failed for ${tenantId}: ${e?.message}`);
         }
@@ -381,6 +386,21 @@ export class ChannelManagementController {
             where: { tenantId, channelType, isActive: true },
         });
 
+        // What the Embedded Signup of each WhatsApp number left open
+        // (webhook not subscribed, number not registered…). Persisted on the
+        // onboarding row, and until now only ever seen by the screen that ran
+        // that signup. `undefined` for other channels (the field is absent),
+        // `null` per number when it could not be read — never `[]`, which says
+        // "nothing is open".
+        const signupWarnings = channelType === 'whatsapp'
+            ? await readSignupWarnings(this.prisma, tenantId, accounts, (error: any) => this.logger.warn(
+                `Signup warnings not readable for tenant ${tenantId}: ${error?.message}`))
+            : undefined;
+        const withSignupWarnings = (accountId: string) => (signupWarnings === undefined ? {} : {
+            signupWarnings: signupWarnings === null ? null : signupWarnings.get(accountId)?.codes ?? [],
+            signupWarningsAt: signupWarnings === null ? null : signupWarnings.get(accountId)?.recordedAt ?? null,
+        });
+
         // Get token expiration for Instagram
         let tokenExpiresAt: Date | null = null;
         if (channelType === 'instagram' && accounts.length > 0) {
@@ -399,11 +419,13 @@ export class ChannelManagementController {
                     displayName: accounts[0].displayName,
                     metadata: accounts[0].metadata,
                     channelType: accounts[0].channelType,
+                    ...withSignupWarnings(accounts[0].accountId),
                 } : null,
                 accounts: accounts.map((a: any) => ({
                     accountId: a.accountId,
                     displayName: a.displayName,
                     metadata: a.metadata,
+                    ...withSignupWarnings(a.accountId),
                 })),
                 tokenExpiresAt,
             },

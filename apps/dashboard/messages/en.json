@@ -360,7 +360,9 @@
     "discarding": "Discarding…",
     "proposalSourceDraft": "Current values belong to the saved draft.",
     "proposalSourceOperational": "Current values belong to the operational version.",
-    "savedLive": "Saved. Your agent now answers this way."
+    "savedLive": "Saved. Your agent now answers this way.",
+    "connectionOwned": "{agents} already answers a channel you gave this agent, and each channel is answered by one agent only. Nothing was saved. If you save again, that channel moves to this agent.",
+    "connectionOwnedUnknown": "Another agent already answers a channel you gave this agent. Nothing was saved. Reload the page to see which one."
   },
   "qualityRegressions": {
     "openWorkspace": "Failures and reviewed tests",
@@ -3105,7 +3107,14 @@
       "confirmAction": "Confirm price",
       "quoteAction": "Quoted per case",
       "exampleHint": "This price is an example for your industry and the agent does not state it. Press \"Confirmed price\" if it is yours, or type your own.",
-      "paymentLocked": "While the price is not confirmed, the agent books without asking for payment."
+      "paymentLocked": "While the price is not confirmed, the agent books without asking for payment.",
+      "free": "It's free",
+      "freePill": "Free",
+      "noPricePill": "No price",
+      "writePrice": "Enter price",
+      "missingHint": "This service has no price yet and the agent doesn't state one. Enter the amount, or choose \"It's free\" or \"Quoted case by case\".",
+      "confirmNeedsAmount": "Enter the amount to confirm the price. If you don't charge for it, choose \"It's free\".",
+      "freeHint": "The agent tells customers this service is free."
     },
     "loadingAppointments": "Loading appointments...",
     "noAppointmentsToShow": "No appointments to show",
@@ -3141,7 +3150,8 @@
       "deleteService": "Error deleting service",
       "updateService": "Error updating service",
       "connectCalendar": "Error connecting calendar",
-      "disconnectCalendar": "Error disconnecting calendar"
+      "disconnectCalendar": "Error disconnecting calendar",
+      "servicePriceMissing": "This service has no price yet. Enter the amount to confirm it, or mark it as \"It's free\" or \"Quoted per case\"."
     },
     "toasts": {
       "serviceUpdated": "Service updated",
@@ -4019,7 +4029,7 @@
       "profileCardDesc": "Manage your business information visible to WhatsApp customers",
       "manageProfile": "Manage profile",
       "testAgentTitle": "Test your agent",
-      "testAgentDesc": "If this number has an active agent with a published version, send a WhatsApp to {number} to test it. If it does not reply, review the agent assignment and publication.",
+      "testAgentDesc": "Message {number} from another phone and watch it reply. If it doesn't answer, check three things: the billing time zone is confirmed, your WhatsApp account has a payment method in Meta, and your agent isn't paused.",
       "testAgentCta": "Open WhatsApp",
       "esuProgress": {
         "auth": "Authorization",
@@ -4038,9 +4048,10 @@
         "codes": {
           "business_not_verified": "Your business is not verified with Meta yet. You can reply, but with a daily conversation limit until you complete verification in Meta Business.",
           "webhook_subscription_failed": "We could not confirm the subscription to incoming messages. Send yourself a message: if your agent does not reply, write to us and we'll fix it.",
-          "phone_registration_deferred": "Number registration is still pending on Meta's side. It usually resolves itself within minutes.",
+          "phone_registration_deferred": "Number registration is still pending on Meta's side. Until it's complete no message can go out from it, and it won't resolve by itself: write to support and we'll finish it with you.",
           "template_sync_failed": "We could not fetch your message templates. You can sync them again from Templates."
-        }
+        },
+        "recordedOn": "Meta reported this when this number was connected, on {date}."
       },
       "errors": {
         "retry": "Try again",
@@ -4198,7 +4209,38 @@
         "answerNotAtHandNeed2": "You can connect another channel now and WhatsApp later."
       },
       "liveHint": "Meta's window is open. Finish the steps there and do not close it until you see “Connection successful”. If you cannot see it, look in another window or check that your browser did not block it.",
-      "cancelLaunch": "Cancel and go back"
+      "cancelLaunch": "Cancel and go back",
+      "afterConnect": {
+        "checkingTitle": "Your number {phone} is connected",
+        "checkingDesc": "We're checking that your agent can reply there…",
+        "pendingTitle": "Your number {phone} is connected. One step left",
+        "needsZoneDesc": "Your agent can't reply there yet: your WhatsApp account's billing time zone still needs to be confirmed.",
+        "needsZoneSuggested": "We've already selected your business's time zone, {zone}. If it's the same, confirm it below with one tap.",
+        "zoneUnknownTitle": "Your number {phone} is connected",
+        "zoneUnknownDesc": "We couldn't check whether your agent can reply there yet. Retry below, or check it later in Channels → WhatsApp.",
+        "needsPaymentDesc": "From 1 October 2026, Meta doesn't deliver your agent's replies if your WhatsApp account has no payment method. Below we show you how to add one.",
+        "restrictedDesc": "Meta isn't delivering your agent's replies because it isn't accepting charges from your WhatsApp account. Below we show you what to check.",
+        "continueLater": "You can continue now and finish this later in Channels → WhatsApp.",
+        "testAfterZone": "First confirm the time zone above: without it your agent can't reply.",
+        "opensInNewTab": "opens in a new tab",
+        "payment": {
+          "title": "Payment method in Meta",
+          "what": "Meta charges your business directly for the replies your agent sends on WhatsApp. That charge doesn't go through Parallly or your subscription: it's paid with a payment method you add to your WhatsApp account, inside Meta. Each number gets 1,000 free replies a month.",
+          "dateBefore": "Add it before 30 September 2026: from 1 October, Meta stops delivering replies from an account with no payment method, even if you haven't used up the free ones.",
+          "dateAfter": "Since 1 October 2026, Meta doesn't deliver replies from an account with no payment method, even if you haven't used up the free ones.",
+          "ready": "Payment method in Meta: done. Meta bills you for WhatsApp directly, separately from Parallly.",
+          "missing": "Meta tells us your WhatsApp account has no payment method.",
+          "restricted": "Meta isn't accepting charges from your WhatsApp account. Check the payment method in Meta.",
+          "unestablished": "We couldn't confirm with Meta whether your WhatsApp account already has a payment method. If you haven't added one yet, add it.",
+          "checking": "Checking with Meta whether your WhatsApp account has a payment method…",
+          "open": "Add a payment method in Meta",
+          "recheck": "I've added it: check again",
+          "rechecking": "Checking…",
+          "later": "You don't have to do it now: you'll find it later in Channels → WhatsApp."
+        },
+        "signupBlocksReplies": "While this is still open, your agent can't answer on this number."
+      },
+      "testAgentBlocked": "While what's pending above is still open, your agent can't answer on {number}. You can test it once it's resolved."
     },
     "whatsappDesc": "WhatsApp Business API via Meta Cloud API",
     "instagram": {
@@ -4969,7 +5011,10 @@
       "confirmDeactivateBody": "It stops answering. Messages keep arriving in the Inbox, but nobody replies until a person takes them.",
       "confirmDeactivate": "Turn off",
       "activated": "Agent turned on: it is answering now.",
-      "deactivated": "Agent turned off: it stopped answering."
+      "deactivated": "Agent turned off: it stopped answering.",
+      "connectionOwned": "Not turned on: {agents} already answers one of its channels, and each channel is answered by one agent only. Remove that channel from one of the two and turn it on again.",
+      "connectionOwnedUnknown": "Not turned on: another agent already answers one of its channels. Reload the page to see which one.",
+      "incomplete": "Not turned on: some required fields are missing. Fill them in, save, and turn it on again."
     },
     "noConnectedChannelsHint": "Your agent cannot receive messages until you connect at least one (WhatsApp, Instagram, Messenger, Telegram or your website chat).",
     "assignmentReview": {
@@ -6987,7 +7032,20 @@
       "essentials": {
         "channel": {
           "title": "Connect WhatsApp",
-          "description": "Without a channel, your agent receives messages from nobody."
+          "description": "Without a channel, your agent receives messages from nobody.",
+          "descriptionWithLink": "For now, people can only write to them through the link. With WhatsApp, your usual customers reach them too.",
+          "connectedTitle": "Channel connected",
+          "connectedDescription": "Whatever people write to you there, your agent already answers.",
+          "checkingDescription": "We're checking that your agent can reply there…",
+          "pendingTitle": "Finish setting up WhatsApp",
+          "pendingZone": "Confirm your number's billing time zone: without it, none of your agent's replies go out on WhatsApp.",
+          "pendingPayment": "Check the payment method on your WhatsApp account, in Meta: if Meta can't charge your account, it doesn't deliver your agent's replies, and from October 1, 2026 it won't deliver them if the account has none either.",
+          "paymentSoon": "If your WhatsApp account doesn't have a payment method in Meta yet, add one before September 30, 2026: from October 1, without it, Meta stops delivering your agent's replies.",
+          "unconfirmedTitle": "Check WhatsApp",
+          "unconfirmedDescription": "We couldn't check whether your agent can reply on WhatsApp yet. You can see it in Channels → WhatsApp.",
+          "finishOnWhatsapp": "Finish in Channels → WhatsApp",
+          "pendingWebhook": "Meta didn't confirm that your customers' messages reach your agent, so it can't answer them yet. Message yourself from another phone: if your agent doesn't reply, write to support and we'll fix it.",
+          "pendingRegistration": "Meta hasn't finished registering your number yet, and until it does your agent can't send replies on WhatsApp. It won't resolve by itself: write to support and we'll finish it with you."
         },
         "knowledge": {
           "title": "Load what your agent must know",
@@ -6997,7 +7055,11 @@
           "title": "Invite a person",
           "description": "When the agent cannot solve something, it needs somebody to hand it to."
         }
-      }
+      },
+      "subtitleLink": "{agentName} already answers through their link: open it below and send a message. WhatsApp is still pending, and we'll remind you on Home.",
+      "subtitleChecking": "Your channel is connected. We're checking that your agent can reply on WhatsApp…",
+      "subtitlePending": "Your WhatsApp is connected, but your agent can't reply there yet. Below is what's missing.",
+      "subtitleUnconfirmed": "Your WhatsApp is connected, but we couldn't check whether your agent can reply there yet."
     },
     "connectBannerShowMe": "Show me where",
     "demoLink": {
@@ -7294,12 +7356,12 @@
     "convertsOn": "Your trial ends on {date}: that day your plan activates and we will charge {amount}.",
     "endsToday": "Your free trial ends today.",
     "endsTomorrow": "Your free trial ends tomorrow.",
-    "endsIn": "Your free trial ends in {days} days.",
+    "endsIn": "Your free trial ends in {days, plural, one {# day} other {# days}}.",
     "managePlan": "Manage plan",
     "dismiss": "Dismiss",
-    "softLock": "Your account is in read-only mode. You have {days} days left to pay.",
+    "softLock": "Your account is in read-only mode. You have {days, plural, one {# day} other {# days}} left to pay.",
     "payNow": "Pay now",
-    "graceWarning": "Your plan has expired. You have {days} days to choose a plan before losing access."
+    "graceWarning": "Your plan has expired. You have {days, plural, one {# day} other {# days}} to choose a plan before losing access."
   },
   "suspendedScreen": {
     "title": "Account suspended",
@@ -11105,6 +11167,22 @@
       "frozen": "Frozen",
       "expired": "Expired",
       "cancelled": "Cancelled"
+    },
+    "planPrice": {
+      "noPrice": "No price",
+      "exampleNote": "The agent won't mention this price until you confirm it.",
+      "missingNote": "This plan has no price yet, so the agent can't say what it costs.",
+      "writePrice": "Enter price",
+      "missingHint": "This plan has no price yet. Enter the amount so the agent can mention it, or choose \"It's free\" or \"Quoted case by case\".",
+      "confirmNeedsAmount": "Enter the amount to confirm the price. If you don't charge for it, choose \"It's free\".",
+      "quoteHint": "The agent won't state any amount for this plan and will offer to have a person quote it.",
+      "currency": "Currency",
+      "errors": {
+        "priceMissing": "This plan has no price yet. Enter the amount to confirm it, or mark it as \"It's free\" or \"Quoted per case\".",
+        "priceRequired": "Enter the plan's price, or mark it as \"It's free\" or \"Quoted per case\".",
+        "priceInvalid": "The price must be a number greater than or equal to zero."
+      },
+      "freeHint": "The agent tells customers this plan is free."
     }
   },
   "classes": {
@@ -11376,7 +11454,8 @@
     "pushBlocked": "Notifications are blocked. Enable them in your browser settings.",
     "pushError": "We could not update push access. Check your connection and try again.",
     "pushEnable": "Enable",
-    "pushDisable": "Disable"
+    "pushDisable": "Disable",
+    "dismiss": "Dismiss"
   },
   "smsPackages": {
     "title": "SMS Packages",
@@ -12248,6 +12327,10 @@
       "board_pet": "Book pet boarding",
       "request_photo_quote": "Quote photography",
       "pay": "Collect payment for an agreed purchase"
+    },
+    "applyErrors": {
+      "connectionOwned": "Not applied: another active agent already answers one of {agent}’s channels, and with two agents on the same channel that channel goes unanswered. Remove that channel from one of them and ask for the change again.",
+      "connectionOwnedAction": "Review {agent}’s channels"
     }
   },
   "agentOperationalState": {
@@ -12361,7 +12444,10 @@
         "coverage": "Review channel coverage",
         "reassign": "Reassign the reconnected account",
         "credentials": "Review channel authorization",
-        "connect": "Connect an assigned channel"
+        "connect": "Connect an assigned channel",
+        "unanswered": "Assign an agent to the channel nobody answers",
+        "whatsappPaymentMethod": "Add a payment method in Meta for WhatsApp",
+        "whatsappDelivery": "Fix what is stopping your WhatsApp replies"
       },
       "pendingReason": "Pending: {check}",
       "verificationUnavailable": "Awaiting verification. Retry when the lookup is available.",
@@ -12408,7 +12494,7 @@
         "fix_rag_knowledge": "{agent} has no indexed knowledge to consult and answers only from its instructions. Upload documents or turn on a knowledge source.",
         "fix_knowledge_coverage": "The knowledge you loaded does not cover the questions coming in, and some topics have no answer. Add content or publish what is still a draft.",
         "fix_tool_appointments": "Booking is on but not fully set up, so {agent} will say there are no slots. Add services and availability blocks.",
-        "fix_services_example_price": "{count, plural, one {There is # service with an example price from your industry.} other {There are # services with an example price from your industry.}} {agent} will not mention it until you confirm it.",
+        "fix_services_example_price": "{priceScope, select, plans {{count, plural, one {There is # membership plan with an example price from your industry.} other {There are # membership plans with an example price from your industry.}}} both {{count, plural, one {There is # example price from your industry across services and plans.} other {There are # example prices from your industry across services and plans.}}} other {{count, plural, one {There is # service with an example price from your industry.} other {There are # services with an example price from your industry.}}}} {agent} will not mention an example price until you confirm it.",
         "fix_business_hours": "The business has no hours defined, so {agent} cannot say when you are open or what to answer after hours. Set the schedule or mark 24/7.",
         "fix_fallback_message": "The message for when {agent} cannot answer is missing, so the conversation ends in a dead end. Write what it should say and who takes over.",
         "fix_behavior_rules": "{agent} has no behavior rules, so it improvises in every conversation. Write at least one rule about what to do and what not to do.",
@@ -12420,8 +12506,26 @@
         "fix_tool_vehicles": "Add at least one available vehicle so {agent} can present real options.",
         "fix_test_drive_permissions": "The mission for {agent} includes test drives. Enable appointments and booking permission, or adjust the mission if it should only provide vehicle information.",
         "fix_test_drive_service": "Create an in-person or hybrid service with a fixed duration for test drives. An online consultation cannot reserve a vehicle.",
-        "fix_test_drive_staff": "Assign an active business user and configure an availability window long enough for the test drive. The exact slot is checked when booking."
+        "fix_test_drive_staff": "Assign an active business user and configure an availability window long enough for the test drive. The exact slot is checked when booking.",
+        "fix_whatsapp_delivery": "{reason, select, timezone_missing {{agent} can't answer on WhatsApp because your number's billing time zone hasn't been confirmed; pick it on the WhatsApp screen and its replies go out again.} funding_absent {Your WhatsApp account has no payment method in Meta: Meta charges for the messages, not us, and from October 1, 2026 it stops delivering {agent}'s replies unless you add one.} funding_restricted {Meta restricted charges on your WhatsApp account, so it won't deliver {agent}'s replies until you sort out the payment in Meta and resume the number on the WhatsApp screen.} currency_unknown {We don't know yet which currency Meta charges you in for WhatsApp, and since you have spend protection on, {agent}'s replies wait until we do.} other {Your WhatsApp account is stopping {agent}'s replies before they go out; check what it's missing on the WhatsApp screen.}}",
+        "fix_channel_unanswered": "{cause, select, conflict {Two agents are assigned to {channels} and, since we don't pick one for you, neither answers. Leave that channel with a single agent.} mixed {Nobody answers on {channels}: some of those channels have no agent and others have two at once. Leave each channel with a single agent.} other {No agent answers on {channels}: messages that arrive there go unanswered. Assign that channel to an agent or mark one as the default agent.}}",
+        "services_no_price": "{priceScope, select, plans {{count, plural, one {There is # membership plan without a price.} other {There are # membership plans without a price.}}} both {{count, plural, one {There is # service or membership plan without a price.} other {There are # services and membership plans without a price.}}} other {{count, plural, one {There is # service without a price.} other {There are # services without a price.}}}} While the price is missing, {agent} tells the customer it is still to be confirmed."
+      },
+      "channelNames": {
+        "whatsapp": "WhatsApp",
+        "instagram": "Instagram",
+        "messenger": "Messenger",
+        "telegram": "Telegram",
+        "web_widget": "Web chat"
       }
+    },
+    "bannerDeliveryFailure": "Your agent can't answer through the channel you connected.",
+    "bannerChannelUnanswered": "A channel you connected has no agent answering it.",
+    "bannerDeliveryReason": {
+      "timezone_missing": "Your WhatsApp number's billing time zone still needs to be confirmed.",
+      "funding_restricted": "Meta isn't accepting charges from your WhatsApp account.",
+      "funding_absent": "Your WhatsApp account has no payment method in Meta.",
+      "currency_unknown": "With spend protection on, we still need to know which currency Meta charges you in."
     }
   },
   "agentQuality": {
@@ -12585,7 +12689,7 @@
       "media_privacy_policy": "Privacy for images and audio",
       "tool_catalog": "Available catalog",
       "tool_appointments": "Scheduling and availability",
-      "services_example_price": "Services with an example price",
+      "services_example_price": "Unconfirmed example prices",
       "tool_orders": "Order management",
       "tool_ecommerce": "Commerce integration",
       "tool_offers": "Current offers",
@@ -12608,7 +12712,9 @@
       "tool_payments": "Payment provider",
       "test_drive_permissions": "Permission to book test drives",
       "test_drive_service": "Test-drive service",
-      "test_drive_staff": "Test-drive staff and availability"
+      "test_drive_staff": "Test-drive staff and availability",
+      "channel_unanswered": "Every connected channel has an agent that replies",
+      "whatsapp_delivery": "WhatsApp can deliver replies"
     },
     "recommendations": {
       "fix": "Configure: {item}",
@@ -12620,7 +12726,9 @@
       "collect_production_evidence": "Collect more real conversations",
       "review_tool_failures": "Review tool failures",
       "resolve_knowledge_gaps": "Strengthen knowledge gaps",
-      "unknown": "Review this recommendation"
+      "unknown": "Review this recommendation",
+      "fix_channel_unanswered": "Assign an agent to the channel nobody answers",
+      "fix_whatsapp_delivery": "Fix what is stopping WhatsApp delivery"
     },
     "productionDetails": {
       "label": "Production details",
@@ -12707,7 +12815,21 @@
       "compatibleAvailability": "Compatible availability windows",
       "mediaProcessingEnabled": "Media processing included",
       "activePrivacyPolicies": "Active privacy policies",
-      "consentRequiredBeforeProcessing": "Prior consent required"
+      "consentRequiredBeforeProcessing": "Prior consent required",
+      "examplePricePlans": "Plans with an example price",
+      "unanswered": "Channels without an agent",
+      "conflicted": "Channels claimed by two agents",
+      "unresolved": "Channels not verified",
+      "unansweredChannels": "Channels nobody answers",
+      "whatsappNumbers": "WhatsApp numbers it answers",
+      "blockedNumbers": "Numbers that cannot deliver",
+      "reason": "Reason",
+      "reasons": "Reasons",
+      "enforcement": "Spend protection",
+      "fundingState": "Payment method in Meta",
+      "fundingRequiredFrom": "Meta requires a payment method from",
+      "noPriceServices": "Services without a price",
+      "noPricePlans": "Plans without a price"
     },
     "common": {
       "yes": "Yes",
@@ -15054,5 +15176,23 @@
     "attached": "Payment method attached. Funds and charge approval are not guaranteed.",
     "absent": "Meta reports no payment method.",
     "restricted": "Meta has restricted funding. Resolve it in its payment manager."
+  },
+  "agentPendingChanges": {
+    "pendingTitle": "You have earlier changes that haven't been applied yet",
+    "pendingBody": "Below is what your agent uses today. Apply those changes so it starts using them, or discard them. If you save without applying them, they're discarded and what you see is saved.",
+    "reviewingTitle": "You're looking at your earlier changes, not applied yet",
+    "reviewingBody": "Fill in anything missing and save to apply them, or discard them to go back to what your agent uses today.",
+    "staleTitle": "You have earlier changes that can no longer be applied",
+    "staleBody": "Your agent changed after you saved them (for example, you switched it on, connected a channel or accepted a suggestion from the assistant). Discard them to be able to save again; what your agent uses today doesn't change.",
+    "apply": "Apply those changes",
+    "saveToApply": "Save and apply",
+    "applying": "Applying…",
+    "discard": "Discard those changes",
+    "discarding": "Discarding…",
+    "discarded": "Done: your earlier changes were discarded.",
+    "discardError": "They couldn't be discarded because your agent changed in the meantime. Reload the page and try again.",
+    "adminOnly": "Only an administrator can apply or discard them.",
+    "saveBlocked": "To save, first discard your earlier changes.",
+    "applyReplacesEdits": "What you edited and haven't saved will be replaced by your earlier changes. Continue?"
   }
 }

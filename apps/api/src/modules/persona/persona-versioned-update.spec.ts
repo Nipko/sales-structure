@@ -77,19 +77,55 @@ describe('agent editor optimistic concurrency', () => {
             await expect(h.service.updateAgent(TENANT, AGENT, { ...payload, expectedVersion: 8 })).rejects.toMatchObject({ response: { error: 'agent_draft_contract_required' } });
             expect(h.sql).toEqual([]); expect(h.current().version).toBe(8);
         });
-    // Owner decision D1/D15 (sep-2026): changes apply at once by default, so the
-    // switch that turned the agent off can turn it back on. Only an account that
-    // opted into reviewed changes routes activation through a published version.
-    it('activates with the switch when changes are immediate (the default)', async () => {
-        const h = harness();
-        const saved = await h.service.updateAgent(TENANT, AGENT, { expectedVersion: 8, isActive: true });
-        expect(saved.version).toBe(9);
-        expect(h.sql.filter(sql => sql.startsWith('UPDATE'))).toHaveLength(1);
-        expect(h.events.emit).toHaveBeenCalledWith('agent.version.updated', expect.objectContaining({ changed: 'agent_activated' }));
-    });
-    it('still routes activation through review when the account chose reviewed changes', async () => {
-        const h = harness(false, 'reviewed');
+    // Switching ON puts a configuration in front of customers. A bare
+    // `is_active=true` here skipped the revision, the audit row and the check
+    // that no other agent serves the same connection, so it is not this
+    // method's job in either mode: immediate mode commits it
+    // (AgentDraftService.activate), reviewed mode publishes it.
+    it.each(['immediate', 'reviewed'] as const)('never switches an agent on by itself (%s changes)', async mode => {
+        const h = harness(false, mode);
         await expect(h.service.updateAgent(TENANT, AGENT, { expectedVersion: 8, isActive: true })).rejects.toMatchObject({ response: { error: 'agent_draft_contract_required' } });
         expect(h.sql).toEqual([]); expect(h.current().version).toBe(8);
+        expect(h.events.emit).not.toHaveBeenCalled();
+    });
+});
+
+/**
+ * Owner decision D1/D15 (sep-2026): changes apply at once by default, so the
+ * switch that turned the agent off must turn it back on. The PUT used to refuse
+ * `isActive: true` outright: a tenant_admin who switched her only agent off and
+ * on got an error, the agent stayed inactive and every channel went silent.
+ */
+describe('the editor switch at the HTTP boundary', () => {
+    const req = { user: { sub: '33333333-3333-4333-8333-333333333333', role: 'tenant_admin' } };
+    function controller() {
+        const personaService = { updateAgent: jest.fn(async () => ({ id: AGENT, is_active: false, version: 9 })) };
+        const drafts = { activate: jest.fn(async () => ({ id: AGENT, is_active: true, version: 9 })) };
+        return { personaService, drafts, controller: new PersonaController(personaService as any, {} as any, {} as any, undefined, drafts as any) };
+    }
+    it('switches the agent on through the committed path of a save, as the signed-in admin', async () => {
+        const h = controller();
+        await expect(h.controller.updateAgent(TENANT, AGENT, { isActive: true, expectedVersion: 8 }, req))
+            .resolves.toEqual({ success: true, data: { id: AGENT, is_active: true, version: 9 } });
+        expect(h.drafts.activate).toHaveBeenCalledWith(TENANT, AGENT, 8, { id: req.user.sub, role: 'tenant_admin' });
+        expect(h.personaService.updateAgent).not.toHaveBeenCalled();
+    });
+    it('keeps switching off as the immediate safety action it was', async () => {
+        const h = controller();
+        await h.controller.updateAgent(TENANT, AGENT, { isActive: false, expectedVersion: 8 }, req);
+        expect(h.personaService.updateAgent).toHaveBeenCalledWith(TENANT, AGENT, { isActive: false, expectedVersion: 8 });
+        expect(h.drafts.activate).not.toHaveBeenCalled();
+    });
+    it.each([{ isActive: 'yes', expectedVersion: 8 }, { isActive: true, expectedVersion: 8, channels: ['whatsapp'] }])(
+        'still accepts nothing but the switch %j', async payload => {
+            const h = controller();
+            await expect(h.controller.updateAgent(TENANT, AGENT, payload, req)).rejects.toMatchObject({ response: { error: 'agent_draft_contract_required' } });
+            expect(h.drafts.activate).not.toHaveBeenCalled(); expect(h.personaService.updateAgent).not.toHaveBeenCalled();
+        });
+    it('refuses to switch on rather than bypass the commit when the commit is not wired', async () => {
+        const updateAgent = jest.fn();
+        const bare = new PersonaController({ updateAgent } as any, {} as any, {} as any);
+        await expect(bare.updateAgent(TENANT, AGENT, { isActive: true, expectedVersion: 8 }, req)).rejects.toMatchObject({ response: { error: 'agent_draft_contract_required' } });
+        expect(updateAgent).not.toHaveBeenCalled();
     });
 });

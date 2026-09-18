@@ -6,6 +6,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { PersonaService } from './persona.service';
 import { AgentDraftService } from './agent-draft.service';
 import { AgentDraftController } from './agent-draft.controller';
+import { PersonaController } from './persona.controller';
+import { readServingPersona } from './serving-persona';
 import { operationalConfigurationBody } from './agent-configuration-revision';
 import type { SaveAgentDraftRequest } from '@parallext/shared';
 import { AgentConfigurationService } from '../copilot/agent-configuration.service';
@@ -63,7 +65,11 @@ integration('Administrative draft boundary with real Prisma transactions', () =>
         (prisma.ensureCanonicalTables as jest.Mock).mockClear();
         events.emit.mockClear(); caches.mockClear(); finalize.mockClear();
         await query('TRUNCATE agent_configuration_commands,agent_configuration_drafts,agent_configuration_revisions,agent_configuration_draft_discards,agent_config_proposals,agent_personas');
-        await client.$executeRawUnsafe("UPDATE public.tenants SET industry='otro',settings='{}'::jsonb WHERE id=$1::uuid", tenantId);
+        // These cases describe the REVIEWED boundary: a save is a draft and the
+        // live agent does not move. Immediate changes became the default
+        // (D1/D15), so the account opts in explicitly; `{}` would commit every
+        // save. Immediate mode has its own block below.
+        await client.$executeRawUnsafe(`UPDATE public.tenants SET industry='otro',settings='{"agentReviewMode":"reviewed"}'::jsonb WHERE id=$1::uuid`, tenantId);
         await query(`INSERT INTO agent_personas(id,name,config_json,channels,channel_bindings,schedule_mode,is_active,is_default,version)
             VALUES($1::uuid,'Alex',$2::jsonb,ARRAY['web_widget'],ARRAY['web_widget:test'],'24_7',true,true,7)`,
             [agentId, JSON.stringify({ persona: { name: 'Alex', role: 'Support', fallbackMessage: 'A colleague can help.' },
@@ -228,5 +234,134 @@ integration('Administrative draft boundary with real Prisma transactions', () =>
         await assist.apply(tenantId, proposal.id, proposal.digest, actor);
         expect((await operational()).version).toBe(8); expect(events.emit).toHaveBeenCalledTimes(1);
         expect(finalize).toHaveBeenCalledWith(tenantId, { businessHours: true });
+    });
+
+    /**
+     * Immediate changes (the default): a save and the switch go live at once,
+     * and one agent serves each connection. `readServingPersona` is the runtime's
+     * own resolver: two active owners of a connection make it throw, and that
+     * turn — every turn on that channel — goes unanswered.
+     */
+    describe('immediate changes: the switch and one agent per connection', () => {
+        const audit = jest.fn(), emitted = { emit: jest.fn() };
+        let immediate: AgentDraftService;
+        const setMode = (settings: string) => client.$executeRawUnsafe('UPDATE public.tenants SET settings=$2::jsonb WHERE id=$1::uuid', tenantId, settings);
+        const row = (id: string) => query('SELECT * FROM agent_personas WHERE id=$1::uuid', [id]).then(rows => rows[0]);
+        const revisions = async () => (await query('SELECT count(*)::int AS n FROM agent_configuration_revisions'))[0].n;
+        const serving = (channel: string, account?: string) =>
+            readServingPersona(<T>(sql: string, params: any[] = []) => prisma.executeInTenantSchema<T>(schema, sql, params), channel, account);
+        const other = async (data: { name: string; active?: boolean; channels?: string[]; bindings?: string[] }) => {
+            const id = randomUUID();
+            await query(`INSERT INTO agent_personas(id,name,config_json,channels,channel_bindings,schedule_mode,is_active,is_default,version)
+                VALUES($1::uuid,$2,$3::jsonb,$4::text[],$5::text[],'24_7',$6,false,3)`,
+                [id, data.name, JSON.stringify({ persona: { name: data.name, role: 'Sales', fallbackMessage: 'A colleague can help.' },
+                    behavior: { rules: ['Use confirmed facts'], handoffTriggers: ['Human requested'] } }),
+                data.channels ?? [], data.bindings ?? [], data.active ?? true]);
+            return id;
+        };
+        beforeAll(async () => {
+            await query('CREATE TABLE IF NOT EXISTS persona_config(config_json JSONB,version INTEGER,is_active BOOLEAN)');
+            Object.defineProperty(prisma, 'auditLog', { configurable: true, value: { create: audit } });
+            immediate = new AgentDraftService(prisma, (service as any).persona, throttle as any, emitted as any);
+        });
+        beforeEach(async () => {
+            audit.mockReset(); emitted.emit.mockClear();
+            await setMode('{}');
+        });
+
+        it('switches an agent back on through the committed, audited path of a save, leaving a stored draft alone', async () => {
+            await setMode('{"agentReviewMode":"reviewed"}');
+            const draft = await immediate.save(tenantId, agentId, await request(), actor);
+            await setMode('{}');
+            await query('UPDATE agent_personas SET is_active=false,version=8 WHERE id=$1::uuid', [agentId]);
+            expect((await serving('web_widget', 'test')).agentId).toBeNull();
+            caches.mockClear();
+            const controller = new PersonaController({ updateAgent: jest.fn() } as any, prisma, throttle as any, undefined, immediate);
+            const result = await controller.updateAgent(tenantId, agentId, { isActive: true, expectedVersion: 8 }, { user: { sub: actor.id, role: actor.role } });
+            expect(result).toMatchObject({ success: true, data: { id: agentId, is_active: true, version: 9 } });
+            // Customers are answered again, by the agent she switched on.
+            expect((await serving('web_widget', 'test')).agentId).toBe(agentId);
+            expect(await revisions()).toBe(2);
+            expect(caches).toHaveBeenCalledWith(tenantId);
+            expect(audit).toHaveBeenCalledWith({ data: expect.objectContaining({ action: 'agent.configuration.committed', userId: actor.id,
+                details: expect.objectContaining({ activated: true, mode: 'immediate', operationalVersion: 9 }) }) });
+            expect(emitted.emit).toHaveBeenCalledWith('agent.version.updated', { tenantId, agentId, changed: 'agent_activated' });
+            // The switch neither applied nor dropped the changes she had not chosen.
+            expect((await immediate.read(tenantId, agentId, actor)).draft).toMatchObject({ id: draft.savedRevision.id, currentBase: false });
+        });
+        it('refuses to switch on an agent whose connection another active agent took meanwhile', async () => {
+            await query('UPDATE agent_personas SET is_active=false,version=8 WHERE id=$1::uuid', [agentId]);
+            const bruno = await other({ name: 'Bruno', channels: ['web_widget'] });
+            await expect(immediate.activate(tenantId, agentId, 8, actor)).rejects.toMatchObject({ status: 409, response: {
+                error: 'agent_connection_owned_by_other_agent', connections: [{ connection: 'web_widget', agentId: bruno, agentName: 'Bruno' }] } });
+            expect(await operational()).toMatchObject({ is_active: false, version: 8 });
+            expect(await row(bruno)).toMatchObject({ channels: ['web_widget'], version: 3 });
+            expect(await revisions()).toBe(0);
+            expect(audit).not.toHaveBeenCalled();
+            expect((await serving('web_widget')).agentId).toBe(bruno);
+        });
+        it('leaves activation to publication when the account chose reviewed changes', async () => {
+            await setMode('{"agentReviewMode":"reviewed"}');
+            await query('UPDATE agent_personas SET is_active=false,version=8 WHERE id=$1::uuid', [agentId]);
+            await expect(immediate.activate(tenantId, agentId, 8, actor)).rejects.toMatchObject({ response: { error: 'agent_draft_contract_required' } });
+            expect(await operational()).toMatchObject({ is_active: false, version: 8 });
+        });
+        it('refuses a save that would leave two active agents serving one connection', async () => {
+            const bruno = await other({ name: 'Bruno', channels: ['telegram'] });
+            const input = await request(); input.body.channels = ['web_widget', 'telegram'];
+            await expect(immediate.save(tenantId, agentId, input, actor)).rejects.toMatchObject({ status: 409, response: {
+                error: 'agent_connection_owned_by_other_agent', connections: [{ connection: 'telegram', agentId: bruno, agentName: 'Bruno' }] } });
+            expect(await operational()).toMatchObject({ channels: ['web_widget'], version: 7 });
+            expect(await row(bruno)).toMatchObject({ channels: ['telegram'], version: 3 });
+            expect(await revisions()).toBe(0);
+            expect((await serving('telegram')).agentId).toBe(bruno);
+        });
+        it('moves exactly the connections the owner was told would move, in the same transaction', async () => {
+            const bruno = await other({ name: 'Bruno', channels: ['telegram', 'instagram'], bindings: ['whatsapp:555', 'whatsapp:777'] });
+            const input = await request();
+            input.body.channels = ['web_widget', 'telegram']; input.body.channelBindings = ['web_widget:test', 'whatsapp:555'];
+            input.reassignConnections = ['telegram', 'whatsapp:555'];
+            const result = await immediate.save(tenantId, agentId, input, actor);
+            expect(result.workspace).toMatchObject({ draft: null, operational: { version: 8, body: { channels: ['web_widget', 'telegram'] } } });
+            expect(await row(bruno)).toMatchObject({ channels: ['instagram'], channel_bindings: ['whatsapp:777'], version: 4 });
+            expect((await serving('telegram')).agentId).toBe(agentId);
+            expect((await serving('whatsapp', '555')).agentId).toBe(agentId);
+            expect((await serving('whatsapp', '777')).agentId).toBe(bruno);
+            expect((await serving('instagram')).agentId).toBe(bruno);
+            expect(emitted.emit).toHaveBeenCalledWith('agent.version.updated', { tenantId, agentId: bruno, changed: 'agent_connection_reassigned' });
+            expect(audit).toHaveBeenCalledWith({ data: expect.objectContaining({ details: expect.objectContaining({
+                reassignedConnections: ['telegram', 'whatsapp:555'], reassignedFrom: [bruno] }) }) });
+        });
+        it('accepts a promised move only for a connection this agent is taking', async () => {
+            await other({ name: 'Bruno', channels: ['instagram'] });
+            const input = await request(); input.reassignConnections = ['instagram'];
+            await expect(immediate.save(tenantId, agentId, input, actor)).rejects.toMatchObject({ response: { error: 'agent_configuration_revision_request_invalid' } });
+            expect(await revisions()).toBe(0);
+        });
+        it('applies old changes through the same guard: refused without the move, moved once she confirms it', async () => {
+            await setMode('{"agentReviewMode":"reviewed"}');
+            const old = await request(); old.body.channels = ['web_widget', 'telegram'];
+            const draft = await immediate.save(tenantId, agentId, old, actor);
+            await setMode('{}');
+            const bruno = await other({ name: 'Bruno', channels: ['telegram'] });
+            const apply = await request({ expectedDraftRevision: draft.savedRevision.id, body: structuredClone(draft.savedRevision.body) });
+            await expect(immediate.save(tenantId, agentId, apply, actor)).rejects.toMatchObject({ response: { error: 'agent_connection_owned_by_other_agent' } });
+            expect((await immediate.read(tenantId, agentId, actor)).draft).toMatchObject({ id: draft.savedRevision.id, currentBase: true });
+            expect((await serving('telegram')).agentId).toBe(bruno);
+            // The editor retries the same command, now carrying the move she saw.
+            const confirmed = await immediate.save(tenantId, agentId, { ...apply, reassignConnections: ['telegram'] }, actor);
+            expect(confirmed.workspace.draft).toBeNull();
+            expect(await row(bruno)).toMatchObject({ channels: [], version: 4 });
+            expect((await serving('telegram')).agentId).toBe(agentId);
+        });
+        it('neither blocks on nor takes from an agent that is switched off', async () => {
+            const carla = await other({ name: 'Carla', active: false, channels: ['telegram'] });
+            const input = await request(); input.body.channels = ['web_widget', 'telegram'];
+            await immediate.save(tenantId, agentId, input, actor);
+            expect(await operational()).toMatchObject({ channels: ['web_widget', 'telegram'], version: 8 });
+            expect(await row(carla)).toMatchObject({ channels: ['telegram'], version: 3 });
+            // Switching Carla on is what would collide, and that is refused.
+            await expect(immediate.activate(tenantId, carla, 3, actor)).rejects.toMatchObject({ response: { error: 'agent_connection_owned_by_other_agent' } });
+        });
     });
 });

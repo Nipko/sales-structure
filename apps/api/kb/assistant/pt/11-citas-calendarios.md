@@ -3,7 +3,7 @@ id: citas-calendarios
 title: "Agendamentos e calendários"
 routes: ["/admin/appointments", "/admin/settings/public-booking"]
 roles: ["tenant_admin", "tenant_supervisor", "tenant_agent"]
-keywords: ["agendamentos", "agenda", "calendário", "agendar", "reservas", "reservar", "serviços", "disponibilidade", "horários", "google calendar", "outlook", "lembretes", "confirmação de presença", "reagendar", "cancelar agendamento", "datas bloqueadas", "link de reunião", "meet", "teams", "reserva pública", "página de reservas", "agendamento recorrente", "preço de exemplo", "confirmar preço", "sob consulta", "preço a confirmar"]
+keywords: ["agendamentos", "agenda", "calendário", "agendar", "reservas", "reservar", "serviços", "disponibilidade", "horários", "google calendar", "outlook", "lembretes", "confirmação de presença", "reagendar", "cancelar agendamento", "datas bloqueadas", "link de reunião", "meet", "teams", "reserva pública", "página de reservas", "agendamento recorrente", "preço de exemplo", "confirmar preço", "sob consulta", "preço a confirmar", "precos de exemplo sem confirmar", "servico sem valor", "matriculas"]
 ---
 
 # Agendamentos e calendários
@@ -18,7 +18,7 @@ Os serviços são aquilo que seus clientes podem reservar (uma consulta, um cort
 
 1. Vá em **Agendamentos** → aba **Serviços**.
 2. Clique em **Novo serviço**.
-3. Preencha o **Nome do serviço**, a **Duração** em minutos e, se quiser, o **Preço**.
+3. Preencha o **Nome do serviço**, a **Duração** em minutos e o **Preço**. Se você não cobra um valor fixo, escolha **É gratuito** ou **Orçado caso a caso**.
 4. Em **Tempo entre agendamentos (min)** você pode deixar um intervalo entre um agendamento e o seguinte (por exemplo, 10 minutos para preparar o espaço).
 5. Escolha a **Modalidade**: **Presencial**, **Online** ou **Híbrido**.
    - Se for presencial, informe o **Endereço**.
@@ -29,13 +29,15 @@ A tela mostra a capacidade atual de serviços; confira os detalhes vigentes em *
 
 ### Preços de exemplo e preços confirmados
 
-Quando você ativa um setor, a receita do seu ramo pré-preenche os serviços com um preço de exemplo, para você não começar do zero. Cada serviço fica com um dos três estados de preço: **Preço de exemplo** (o que veio da receita, ainda não confirmado), **Preço confirmado** (o que você digitou ou aceitou; pode ser R$0 se o serviço for gratuito) ou **Sob consulta**.
+Quando você ativa um setor, a receita do seu ramo pré-preenche os serviços com um preço de exemplo, para você não começar do zero. No formulário do serviço, **Status do preço** tem três opções: **Preço confirmado** (precisa de um valor maior que 0), **É gratuito** ou **Orçado caso a caso**. Enquanto você não escolher uma, o preço que veio da receita continua sendo de exemplo.
 
 O agente de IA nunca diz em voz alta um preço de exemplo nem um que está sob consulta: na lista de serviços e ao confirmar um agendamento, ele diz que o preço fica "a confirmar" com o negócio, ou que é cotado caso a caso. Ele só menciona preços já confirmados.
 
-- Em **Agendamentos** → aba **Serviços**, cada serviço com preço de exemplo mostra o selo **Preço de exemplo** com os botões **Confirmar preço** (mantém o mesmo número, já confirmado) ou **Sob consulta**. Editar o preço no formulário do serviço também o confirma.
-- Você não pode ativar uma política de pagamento (sinal ou pagamento total) num serviço cujo preço não esteja confirmado.
-- Enquanto restarem serviços com preço de exemplo, a **Saúde dos agentes** mostra um aviso não crítico para lembrar você; isso não impede o agente de responder.
+- Em **Agendamentos** → aba **Serviços**, um serviço com preço de exemplo mostra o selo **Preço de exemplo** com os botões **Confirmar preço** (mantém o mesmo valor, já confirmado) ou **É orçado**. Escrever outro valor no formulário também o confirma.
+- Um serviço sem valor mostra **Sem preço**, com **Informar preço**, **É gratuito** ou **É orçado**: não há valor a confirmar, então **Confirmar preço** não aparece. O mesmo vale para um exemplo em 0, como uma aula experimental: se você realmente não cobra por ela, toque em **É gratuito**.
+- Um serviço marcado como **É gratuito** aparece como **Gratuito**, e o agente diz ao cliente que é gratuito. Deixar o valor vazio nunca o torna gratuito.
+- Você não pode ativar uma política de pagamento (sinal ou pagamento total) num serviço gratuito nem num serviço cujo preço não esteja confirmado.
+- Enquanto restarem preços de exemplo sem confirmar, a **Saúde dos agentes** mostra o aviso não crítico **Preços de exemplo sem confirmar**; isso não impede o agente de responder. Numa academia, conta também os planos de matrícula, que se confirmam do mesmo jeito em **Matrículas**.
 - O preço de exemplo vem **na moeda do seu país**, não em pesos colombianos. Se o seu país for Colômbia, México, Argentina, Chile, Peru ou Brasil, o serviço nasce com um valor de exemplo redondo na sua moeda; em qualquer outro país nasce **sem valor**, já com a sua moeda, para você escrever o seu. Esse valor é só uma ordem de grandeza para a tela não começar vazia: não é conversão de câmbio nem preço de mercado, e ninguém o diz em voz alta até você confirmar.
 
 ## Como definir sua disponibilidade
@@ -128,6 +130,6 @@ Não, a agenda funciona sozinha dentro do Parallly. Conectar o Google Calendar o
 Os administradores e supervisores. Os agentes podem ver o calendário, criar agendamentos e atender os clientes, mas não modificar serviços, horários nem calendários conectados.
 
 **Por que o agente não diz o preço de um serviço?**
-Porque esse preço ainda é um preço de exemplo ou o serviço é cotado caso a caso. Confirme-o em **Agendamentos** → **Serviços** e o agente vai poder dizê-lo.
+Porque esse preço ainda é de exemplo, o serviço não tem valor (**Sem preço**) ou é cotado caso a caso. Confirme-o ou informe o valor em **Agendamentos** → **Serviços** e o agente vai poder dizê-lo. Os planos de uma academia se confirmam em **Matrículas**.
 
 Precisa de mais ajuda? Escreva para nós em https://parallly-chat.cloud/support

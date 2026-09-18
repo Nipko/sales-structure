@@ -59,6 +59,8 @@ export * from './provider-integration-policy';
 export * from './navigation-semantics';
 export * from './dashboard-page-access';
 export * from './whatsapp-channel-identity';
+// What an Embedded Signup left open, as codes both WhatsApp services and the panel read.
+export * from './whatsapp-signup-warnings';
 export * from './agent-skillset-policy';
 
 // ---- Plan gating for navigation: no visible option that ends in 403 ----

@@ -32,6 +32,11 @@ export const dashboardShell = (tenantId = TENANT): ApiRoutes => ({
   // page to /login — which reads in a report as "the dashboard redirected" and
   // is really "the fixture forgot the refresh".
   "auth/refresh": ok({ accessToken: "e2e.access.token", refreshToken: "e2e.refresh.token" }),
+  // Ola 6: mientras la cuenta espera la primera respuesta de su agente, el
+  // panel relee el día 0 al abrir y al volver a la pestaña. Una respuesta sin
+  // datos nuevos deja la sesión exactamente como la sembró cada prueba: el
+  // merge nunca borra un dato conocido con uno ausente.
+  "auth/me": ok({}),
   "auth/tenant/timezone": ok({ timezone: "America/Bogota" }),
   "platform-status": ok({ incidents: [], status: "operational" }),
   "system-updates": ok([]),

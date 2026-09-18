@@ -14,6 +14,16 @@ export interface SaveAgentDraftRequest {
     expectedDraftRevision: string | null;
     requestKey: string;
     body: AgentDraftBody;
+    /**
+     * Immediate mode only: the connections of `body` (a channel type such as
+     * `whatsapp`, or one account as `whatsapp:<accountId>`) the owner was told
+     * would move to this agent from another one. The commit takes exactly these
+     * from the other agents in the same transaction; any other connection that
+     * another active agent serves refuses the save with
+     * `agent_connection_owned_by_other_agent`. Ignored in reviewed mode, where
+     * publication refuses every overlap.
+     */
+    reassignConnections?: string[];
 }
 export interface DiscardAgentDraftRequest {
     expectedOperationalVersion: number;

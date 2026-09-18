@@ -11,8 +11,9 @@ import { useIdleTimer } from "@/hooks/useIdleTimer";
 import SessionTimeoutModal from "@/components/SessionTimeoutModal";
 import SessionConflictModal from "@/components/SessionConflictModal";
 import { readSignupAttribution } from "@/lib/signup-attribution";
-import { isOnboardingStage } from "@parallext/shared";
 import { resolveLoginRedirect } from "@/lib/onboarding-guide";
+import { isSessionInDayZero, mergeOnboardingSessionFacts } from "@/lib/onboarding-session-facts";
+import { requestQualityHealthRefresh } from "@/lib/quality-health-events";
 
 // ============================================
 // Constants
@@ -23,6 +24,13 @@ const WARNING_BEFORE_MS = 2 * 60 * 1000; // 2 minutes before timeout
 const WARNING_SECONDS = 120;              // 2 min countdown
 const PROACTIVE_REFRESH_MS = 10 * 60 * 1000; // Refresh at 10 min (access token is 15 min)
 const ACTIVITY_PING_MS = 5 * 60 * 1000; // 5 min — keeps server-side session alive (6 min TTL)
+/**
+ * Tiempo mínimo entre dos lecturas de `/auth/me` al volver a la pestaña. No es
+ * un sondeo: sólo corre cuando la persona vuelve, y sólo mientras la cuenta
+ * sigue en su día 0. Corto a propósito: escribirse desde el celular y volver
+ * al panel lleva menos de un minuto.
+ */
+const DAY_ZERO_FACTS_MIN_INTERVAL_MS = 20 * 1000;
 
 // ============================================
 // Types
@@ -45,6 +53,24 @@ interface User {
     onboardingCompleted?: boolean;
     /** `tenant.settings.onboardingStage`; absent on tenants created before it existed. */
     onboardingStage?: string;
+    /**
+     * ISO of the agent's first reply that actually reached a customer. Until it
+     * exists the day-0 guidance owns the screen (`isOnboardingBeforeLive`);
+     * `null` = the tenant row was read and carries none. Absent on sessions
+     * stored before it travelled.
+     */
+    firstReplyAt?: string | null;
+    /** ISO of the tenant's creation, so the day 0 has an end even without a reply. */
+    tenantCreatedAt?: string | null;
+    /**
+     * Whether the tenant has an active channel connection (`channel_accounts`),
+     * the same count its stage is derived from. It proves a channel for the
+     * day-0 delivery alarm, where the stage cannot: `completed` outranks
+     * `channel_connected`. `undefined` = the server could not read it, or a
+     * session stored before it travelled. A web-chat-only account reads
+     * `false`: widgets live elsewhere.
+     */
+    hasAnyChannel?: boolean;
 }
 
 interface GoogleLoginResult {
@@ -206,25 +232,83 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, []);
 
     /**
-     * La etapa de puesta en marcha que devuelve la renovación de token.
+     * Lo que dice si la cuenta sigue en su día 0 —etapa, primera respuesta y
+     * alta—, tal como lo devuelven la renovación de token y `/auth/me`.
      *
      * El usuario guardado se escribió el día del login; una sesión larga lo
-     * deja viejo. Se ignora cualquier valor que no sea una etapa conocida:
-     * "no vino" nunca puede degradar a la que ya teníamos.
+     * deja viejo. Las reglas de la mezcla viven en `onboarding-session-facts`:
+     * "no vino" nunca degrada lo que ya teníamos, y una primera respuesta
+     * registrada no se borra.
+     *
+     * Cuando cambia la etapa —o aparece o se va un canal— se pide una lectura
+     * nueva de la salud del agente: el resumen en memoria describe la cuenta de
+     * ANTES del cambio, y el aviso rojo lo leería como una falla del canal que
+     * se acaba de conectar.
      */
-    const syncOnboardingStage = useCallback((stage: unknown) => {
-        if (!isOnboardingStage(stage)) return;
+    const syncOnboardingFacts = useCallback((payload: unknown) => {
+        let stageChanged = false;
         try {
             const raw = localStorage.getItem("user");
             if (raw) {
                 const stored = JSON.parse(raw);
-                if (stored && typeof stored === "object" && stored.onboardingStage !== stage) {
-                    localStorage.setItem("user", JSON.stringify({ ...stored, onboardingStage: stage }));
+                if (stored && typeof stored === "object") {
+                    const merged = mergeOnboardingSessionFacts(stored, payload);
+                    if (merged !== stored) {
+                        localStorage.setItem("user", JSON.stringify(merged));
+                        // A channel that appears or goes away also leaves the
+                        // summary in memory describing the account before it.
+                        stageChanged = merged.onboardingStage !== stored.onboardingStage
+                            || merged.hasAnyChannel !== stored.hasAnyChannel;
+                    }
                 }
             }
         } catch { /* usuario guardado corrupto: no es motivo para romper el refresh */ }
-        setUser((prev) => (prev && prev.onboardingStage !== stage ? { ...prev, onboardingStage: stage } : prev));
+        setUser((prev) => (prev ? mergeOnboardingSessionFacts(prev, payload) : prev));
+        if (stageChanged) requestQualityHealthRefresh();
     }, []);
+
+    /**
+     * Relee el día 0 con `/auth/me`, que ya devuelve los tres datos.
+     *
+     * Sin esto el panel se enteraba de la primera respuesta recién en la
+     * próxima renovación de token (hasta 10 minutos): la dueña se escribía
+     * desde su celular, su agente le contestaba y el panel seguía callado como
+     * si nada. No es un sondeo: corre al abrir el panel y al volver a la
+     * pestaña, con unos segundos de mínimo entre lecturas, y sólo mientras la
+     * cuenta sigue esperando su primera respuesta.
+     */
+    const lastFactsReadRef = useRef(0);
+    const refreshDayZeroFacts = useCallback(async () => {
+        if (Date.now() - lastFactsReadRef.current < DAY_ZERO_FACTS_MIN_INTERVAL_MS) return;
+        const token = localStorage.getItem("accessToken");
+        if (!token) return;
+        lastFactsReadRef.current = Date.now();
+        try {
+            const res = await fetch(`${API_URL}/auth/me`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                body: "{}",
+            });
+            if (!res.ok) return;
+            const data = await res.json();
+            if (data?.success) syncOnboardingFacts(data.data);
+        } catch { /* sin red no se sabe nada nuevo: el día 0 sigue como estaba */ }
+    }, [syncOnboardingFacts]);
+
+    const inDayZero = isSessionInDayZero(user);
+    useEffect(() => {
+        if (isPublicPage || !inDayZero) return;
+        void refreshDayZeroFacts();
+        const onReturn = () => {
+            if (document.visibilityState === "visible") void refreshDayZeroFacts();
+        };
+        window.addEventListener("focus", onReturn);
+        document.addEventListener("visibilitychange", onReturn);
+        return () => {
+            window.removeEventListener("focus", onReturn);
+            document.removeEventListener("visibilitychange", onReturn);
+        };
+    }, [inDayZero, isPublicPage, refreshDayZeroFacts]);
 
     // ── Proactive token refresh ──
     useEffect(() => {
@@ -255,7 +339,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                             if (data.data.refreshToken) {
                                 localStorage.setItem("refreshToken", data.data.refreshToken);
                             }
-                            syncOnboardingStage(data.data.onboardingStage);
+                            syncOnboardingFacts(data.data);
                             scheduleRefresh(); // Schedule next refresh
                         }
                     }
@@ -270,7 +354,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return () => {
             if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
         };
-    }, [isAuthenticated, isPublicPage, pathname, syncOnboardingStage]);
+    }, [isAuthenticated, isPublicPage, pathname, syncOnboardingFacts]);
 
     // ── Activity ping — keeps server-side session alive ──
     useEffect(() => {
@@ -338,11 +422,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     if (data.data.refreshToken) {
                         localStorage.setItem("refreshToken", data.data.refreshToken);
                     }
-                    syncOnboardingStage(data.data.onboardingStage);
+                    syncOnboardingFacts(data.data);
                 }
             }
         } catch { /* noop */ }
-    }, [resetActivity, syncOnboardingStage]);
+    }, [resetActivity, syncOnboardingFacts]);
 
     // ── Fetch vertical config ──
     const fetchVerticalConfig = useCallback(async (tenantId: string) => {

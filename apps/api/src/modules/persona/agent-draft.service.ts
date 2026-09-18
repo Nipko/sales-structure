@@ -8,6 +8,7 @@ import { PersonaService } from './persona.service';
 import { normalizeAgentConfigLists } from './agent-config-normalize';
 import { AgentConfigurationRevisionStore, operationalConfigurationBody, operationalConfigurationHash, validateConfigurationBody,
     type AgentConfigurationBody, type ConfigurationRevisionActor, type RevisionQuery } from './agent-configuration-revision';
+import { revisionHash } from '../evaluation-revision/evaluation-revision';
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 
@@ -18,6 +19,17 @@ export interface CommittedRevision {
     hash: string;
     priorBindings: string[];
     activated: boolean;
+    /** Other agents that lost a connection to this one in the same transaction. */
+    reassignedFrom: string[];
+    /** The connections that moved (`whatsapp`, or `whatsapp:<accountId>`). */
+    reassignedConnections: string[];
+}
+
+/** A connection another active agent serves, named in `agent_connection_owned_by_other_agent`. */
+export interface ConnectionOwner {
+    connection: string;
+    agentId: string;
+    agentName: string | null;
 }
 
 export type SavedAgentDraftResult = SavedAgentDraft & { committed?: CommittedRevision };
@@ -92,12 +104,18 @@ export class AgentDraftService {
 
     private assertRequest(input: SaveAgentDraftRequest): void {
         if (!input || typeof input !== 'object' || Array.isArray(input)
-            || Object.keys(input).some(key => !['expectedOperationalVersion', 'expectedDraftRevision', 'requestKey', 'body'].includes(key))
+            || Object.keys(input).some(key => !['expectedOperationalVersion', 'expectedDraftRevision', 'requestKey', 'body', 'reassignConnections'].includes(key))
             || !Number.isInteger(input.expectedOperationalVersion) || input.expectedOperationalVersion < 0
             || (input.expectedDraftRevision !== null && !UUID.test(input.expectedDraftRevision))
             || typeof input.requestKey !== 'string' || !/^[a-zA-Z0-9_-]{8,100}$/.test(input.requestKey))
             throw new BadRequestException({ error: 'agent_configuration_revision_request_invalid' });
         validateConfigurationBody(input.body);
+        // A move can only be promised for a connection this agent is taking.
+        const reassign = input.reassignConnections;
+        if (reassign !== undefined && (!Array.isArray(reassign) || reassign.length > 120 || new Set(reassign).size !== reassign.length
+            || reassign.some(connection => typeof connection !== 'string'
+                || !(input.body.channels.includes(connection) || input.body.channelBindings.includes(connection)))))
+            throw new BadRequestException({ error: 'agent_configuration_revision_request_invalid' });
         // Empty list rows are dropped BEFORE the request is hashed, so the
         // idempotent replay of the same edit hashes the same.
         input.body.configJson = normalizeAgentConfigLists(input.body.configJson);
@@ -117,28 +135,92 @@ export class AgentDraftService {
     }
 
     /**
-     * Apply the saved revision to the serving agent, inside the same
-     * transaction and under the same locks. The revision row stays as history
-     * (with its base version and hashes), the draft pointer goes away because
-     * there is nothing left to publish, and the version bump is what tells every
-     * open editor and every cache that the agent changed.
+     * One agent per connection, kept by the commit itself.
+     *
+     * The runtime refuses a turn when two active agents claim the same
+     * connection at the same priority (`readServingPersona` throws
+     * `agent_connection_assignment_conflict`), so a commit that leaves agent A
+     * and agent B both serving WhatsApp does not "share" it: it silences it.
+     * Publication already refuses every overlap (`AgentPublicationStore.routing`);
+     * an immediate commit is the other way an assignment goes live, and it
+     * owes the same invariant.
+     *
+     * `reassign` is what the owner was told would move to this agent (the
+     * editor's "Se reasignará de …" line). Exactly those connections are taken
+     * from every other agent that holds them, in this transaction, with a
+     * version bump so their open editors know. Any other connection an active
+     * agent serves refuses the commit with `agent_connection_owned_by_other_agent`
+     * and the owners named: nothing promised that move — a stale draft being
+     * applied, an Assist suggestion, an agent switched back on after another one
+     * took its channel. An inactive agent's claim is dormant and stays (it
+     * serves nothing, and switching it on runs this same check).
+     *
+     * Same priority only, like the runtime: a type-level channel and one
+     * account's binding coexist (the binding wins its account).
+     */
+    private async claimConnectionsWithQuery(query: RevisionQuery, agentId: string, body: AgentConfigurationBody,
+        reassign: readonly string[]): Promise<{ reassignedFrom: string[]; reassignedConnections: string[] }> {
+        // An agent that is off serves nothing: its assignments stay as written.
+        if (!body.isActive || (body.channels.length === 0 && body.channelBindings.length === 0))
+            return { reassignedFrom: [], reassignedConnections: [] };
+        const holders = await query<any[]>(`SELECT id, name, is_active, COALESCE(channels,'{}'::text[]) AS channels,
+                COALESCE(channel_bindings,'{}'::text[]) AS channel_bindings
+            FROM agent_personas
+            WHERE id<>$1::uuid AND (COALESCE(channels,'{}'::text[]) && $2::text[] OR COALESCE(channel_bindings,'{}'::text[]) && $3::text[])
+            ORDER BY id FOR UPDATE`, [agentId, body.channels, body.channelBindings]);
+        const promised = new Set(reassign);
+        const refused: ConnectionOwner[] = [];
+        const moves: Array<{ id: string; channels: string[]; bindings: string[] }> = [];
+        for (const holder of holders) {
+            const channels = (holder.channels as string[]).filter(channel => body.channels.includes(channel));
+            const bindings = (holder.channel_bindings as string[]).filter(binding => body.channelBindings.includes(binding));
+            for (const connection of [...channels, ...bindings])
+                if (!promised.has(connection) && holder.is_active === true)
+                    refused.push({ connection, agentId: String(holder.id), agentName: typeof holder.name === 'string' ? holder.name : null });
+            const move = { id: String(holder.id), channels: channels.filter(c => promised.has(c)), bindings: bindings.filter(b => promised.has(b)) };
+            if (move.channels.length > 0 || move.bindings.length > 0) moves.push(move);
+        }
+        if (refused.length > 0) throw new ConflictException({
+            error: 'agent_connection_owned_by_other_agent',
+            message: 'Another active agent serves this connection. Move it explicitly or remove it from one of the agents.',
+            connections: refused,
+        });
+        for (const move of moves)
+            await query(`UPDATE agent_personas
+                SET channels = ARRAY(SELECT kept.c FROM unnest(COALESCE(channels,'{}'::text[])) WITH ORDINALITY AS kept(c, n)
+                        WHERE NOT (kept.c = ANY($2::text[])) ORDER BY kept.n),
+                    channel_bindings = ARRAY(SELECT kept.b FROM unnest(COALESCE(channel_bindings,'{}'::text[])) WITH ORDINALITY AS kept(b, n)
+                        WHERE NOT (kept.b = ANY($3::text[])) ORDER BY kept.n),
+                    version = COALESCE(version,0)+1, updated_at = NOW()
+              WHERE id=$1::uuid`, [move.id, move.channels, move.bindings]);
+        return { reassignedFrom: moves.map(move => move.id),
+            reassignedConnections: [...new Set(moves.flatMap(move => [...move.channels, ...move.bindings]))] };
+    }
+
+    /**
+     * Apply a revision to the serving agent, inside the caller's transaction
+     * and under its locks: the connections it takes (see
+     * `claimConnectionsWithQuery`), then the agent row itself. The revision row
+     * stays as history (with its base version and hashes), and the version bump
+     * is what tells every open editor and every cache that the agent changed.
+     * The draft pointer is the caller's: a save clears it, the switch leaves it.
      */
     private async commitWithQuery(query: RevisionQuery, agentId: string, operational: any, body: AgentConfigurationBody,
-        revisionId: string): Promise<CommittedRevision> {
+        revisionId: string, reassign: readonly string[]): Promise<CommittedRevision> {
         const scheduleMode = body.scheduleMode === '24/7' ? '24_7' : body.scheduleMode;
         // A commit never demotes the default agent: that is a separate, explicit action.
         const isDefault = body.isDefault || operational.is_default === true;
         if (isDefault && operational.is_default !== true)
             await query('UPDATE agent_personas SET is_default=false, updated_at=NOW() WHERE is_default=true AND id<>$1::uuid', [agentId]);
+        const claimed = await this.claimConnectionsWithQuery(query, agentId, body, reassign);
         const rows = await query<any[]>(`UPDATE agent_personas SET name=$2, config_json=$3::jsonb, channels=$4::text[], channel_bindings=$5::text[],
             schedule_mode=$6, is_active=$7, is_default=$8, version=version+1, updated_at=NOW()
             WHERE id=$1::uuid AND version=$9 RETURNING *`,
             [agentId, body.name, JSON.stringify(body.configJson), body.channels, body.channelBindings, scheduleMode, body.isActive, isDefault, Number(operational.version)]);
         if (!rows[0]) throw new ConflictException({ error: 'agent_operational_version_changed' });
-        await query('DELETE FROM agent_configuration_drafts WHERE agent_id=$1::uuid', [agentId]);
         return { revisionId, version: Number(rows[0].version), hash: operationalConfigurationHash(rows[0]),
             priorBindings: Array.isArray(operational.channel_bindings) ? operational.channel_bindings : [],
-            activated: body.isActive === true && operational.is_active !== true };
+            activated: body.isActive === true && operational.is_active !== true, ...claimed };
     }
 
     /**
@@ -157,7 +239,9 @@ export class AgentDraftService {
             await this.prisma.auditLog.create({ data: {
                 tenantId, action: 'agent.configuration.committed', resource: `agent:${agentId}`, userId: actor.id,
                 details: { revisionId: committed.revisionId, operationalVersion: committed.version, operationalHash: committed.hash,
-                    activated: committed.activated, mode: 'immediate' },
+                    activated: committed.activated, mode: 'immediate',
+                    ...(committed.reassignedConnections.length > 0
+                        ? { reassignedConnections: committed.reassignedConnections, reassignedFrom: committed.reassignedFrom } : {}) },
             } });
         } catch (error: any) {
             this.logger.error(`[DirectCommit] audit write failed for ${committed.revisionId}: ${error?.message}`);
@@ -167,6 +251,9 @@ export class AgentDraftService {
             this.events.emit('agent.version.updated', { tenantId, agentId, changed: committed.activated ? 'agent_activated' : 'agent_configuration_committed' });
             this.events.emit('agent.config.updated', { tenantId, agentId, changed: 'agent_configuration_committed',
                 revisionId: committed.revisionId, operationalVersion: committed.version, operationalHash: committed.hash });
+            // The agents that gave a connection away changed version too.
+            for (const other of committed.reassignedFrom)
+                this.events.emit('agent.version.updated', { tenantId, agentId: other, changed: 'agent_connection_reassigned' });
         } catch (error: any) {
             this.logger.error(`[DirectCommit] notification failed for ${committed.revisionId}: ${error?.message}`);
         }
@@ -232,10 +319,14 @@ export class AgentDraftService {
                 throw new ConflictException({ error: 'agent_operational_version_changed' });
             await this.validateCandidate(tenantId, schema, operational, tenants[0], input, directCommit);
         }
-        const row = await new AgentConfigurationRevisionStore(this.prisma).saveWithQuery(query, { tenantId, agentId, actor, ...input });
+        // The move consent authorises the commit; the revision is the content.
+        const { reassignConnections, ...revisionRequest } = input;
+        const row = await new AgentConfigurationRevisionStore(this.prisma).saveWithQuery(query, { tenantId, agentId, actor, ...revisionRequest });
         // A replay already committed (or never will): committing twice would bump the version for nothing.
         const committed = row.idempotentReplay === true || !directCommit ? undefined
-            : await this.commitWithQuery(query, agentId, operational, input.body, row.id);
+            : await this.commitWithQuery(query, agentId, operational, input.body, row.id, reassignConnections ?? []);
+        // Nothing is left to apply once the revision is live.
+        if (committed) await query('DELETE FROM agent_configuration_drafts WHERE agent_id=$1::uuid', [agentId]);
         const workspace = await this.readWithQuery(query, tenantId, agentId);
         // The revision's `currentBase` is judged against the hash it was saved
         // on; after a commit the operational hash moved past it by design.
@@ -252,6 +343,60 @@ export class AgentDraftService {
         if (saved.committed) await this.settleCommit(tenantId, agentId, actor, saved.committed);
         const { committed: _committed, ...result } = saved;
         return result;
+    }
+
+    /**
+     * The editor's switch turning an agent ON, in immediate mode.
+     *
+     * Switching on puts a configuration in front of customers, so it goes
+     * through the same commit as a save: tenant and agent locks, the version
+     * CAS, the entitlement and completeness checks of a live configuration, the
+     * connection ownership guard, a revision kept as history, then — after
+     * COMMIT — the cache drop, the audit row and the notifications
+     * (`settleCommit`). Switching OFF stays `PersonaService.updateAgent`: an
+     * immediate safety action in both modes that never takes anything from
+     * another agent.
+     *
+     * Reviewed mode keeps its rule: the revision that starts serving must be
+     * the reviewed one, so activation belongs to publication.
+     *
+     * The body is the live agent with `isActive: true` — what she sees switched
+     * on, nothing else. A stored draft is left as it is: the switch neither
+     * applies nor discards changes she has not chosen (the base hash covers the
+     * activation, so a pending draft reads as stale afterwards, exactly as after
+     * switching off).
+     */
+    async activate(tenantId: string, agentId: string, expectedVersion: number, actor: ConfigurationRevisionActor): Promise<any> {
+        this.authorize(tenantId, agentId, actor, true);
+        if (!Number.isInteger(expectedVersion) || expectedVersion < 0)
+            throw new BadRequestException({ error: 'agent_version_required', message: 'Reload the agent before saving.' });
+        const schema = await this.schema(tenantId);
+        await new AgentConfigurationRevisionStore(this.prisma).ensure(schema);
+        const result = await this.prisma.transactionInTenantSchema(schema, async query => {
+            const tenants = await query<any[]>(`SELECT t.id,to_jsonb(t)->>'industry' AS industry,to_jsonb(t)->'settings' AS settings
+                FROM public.tenants t WHERE t.id=$1::uuid AND t.schema_name=current_schema() FOR UPDATE`, [tenantId]);
+            if (!tenants[0]) throw new NotFoundException({ error: 'tenant_not_found' });
+            if (!directCommitMode(tenants[0].settings)) throw new BadRequestException({ error: 'agent_draft_contract_required' });
+            const operational = (await query<any[]>('SELECT * FROM agent_personas WHERE id=$1::uuid FOR UPDATE', [agentId]))[0];
+            if (!operational) throw new NotFoundException({ error: 'agent_not_found' });
+            if (Number(operational.version) !== expectedVersion)
+                throw new ConflictException({ error: 'agent_version_conflict', message: 'Agent changed; reload before saving.' });
+            if (operational.is_active === true) return { agent: operational, committed: undefined };
+            const body: AgentConfigurationBody = { ...operationalConfigurationBody(operational), isActive: true };
+            validateConfigurationBody(body);
+            await this.assertConfigurationEntitlement(tenantId, schema, operational, tenants[0], body);
+            this.persona.assertAgentConfigValid(body.configJson);
+            const revision = (await query<any[]>(`INSERT INTO agent_configuration_revisions
+                (agent_id,base_operational_version,base_operational_hash,body,body_hash,created_by)
+                VALUES($1::uuid,$2,$3,$4::jsonb,$5,$6::uuid) RETURNING id`,
+                [agentId, Number(operational.version), operationalConfigurationHash(operational), JSON.stringify(body), revisionHash(body), actor.id]))[0];
+            if (!revision?.id) throw new Error('agent_configuration_revision_write_failed');
+            const committed = await this.commitWithQuery(query, agentId, operational, body, revision.id, []);
+            const agent = (await query<any[]>('SELECT * FROM agent_personas WHERE id=$1::uuid', [agentId]))[0];
+            return { agent, committed };
+        });
+        if (result.committed) await this.settleCommit(tenantId, agentId, actor, result.committed);
+        return result.agent;
     }
 
     async discard(tenantId: string, agentId: string, input: DiscardAgentDraftRequest, actor: ConfigurationRevisionActor): Promise<AgentConfigurationWorkspace> {

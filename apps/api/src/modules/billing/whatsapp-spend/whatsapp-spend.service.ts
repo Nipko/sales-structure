@@ -3,8 +3,9 @@ import { createHash } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
     highestRatePerMessage, priceDeliveries, resolveWhatsAppRate, unitCeiling,
-    wabaCalendarMonth, wabaLocalDate, WHATSAPP_RATE_TABLE_VERSION,
+    wabaLocalDate, WHATSAPP_RATE_TABLE_VERSION,
 } from '../whatsapp-rates';
+import { resolveWabaZone } from './account-send-readiness';
 import {
     abandonExhaustedReceipts, adoptReservation, claimReservation, claimTransmission,
     declareTaskBudget, ensureCounters,
@@ -278,16 +279,16 @@ export class WhatsappSpendService {
         const at = input.at ?? new Date();
 
         // ── 1. Identity. Anything missing here is a refusal with a name. ─────
-        const zone = String(input.wabaTimeZone ?? '').trim();
-        if (!zone) {
+        // `resolveWabaZone` is the one definition of a usable zone: the quality
+        // check that tells an owner "WhatsApp cannot deliver" reads it too, so
+        // the alert and this refusal cannot disagree about the same number.
+        const zoned = resolveWabaZone(input.wabaTimeZone, at);
+        if (!zoned) {
+            const raw = String(input.wabaTimeZone ?? '').trim();
             return blocked(spendBlock('timezone_missing',
-                `account=${input.identity.channelAccountId}`));
+                raw ? `zone=${raw}` : `account=${input.identity.channelAccountId}`));
         }
-        const localDate = wabaLocalDate(at, zone);
-        const allowanceMonth = wabaCalendarMonth(at, zone);
-        if (!localDate || !allowanceMonth) {
-            return blocked(spendBlock('timezone_missing', `zone=${zone}`));
-        }
+        const { zone, localDate, allowanceMonth } = zoned;
         if (input.identity.payerKind === 'unknown' || !input.identity.payerWabaId) {
             return blocked(spendBlock('payer_unknown',
                 `account=${input.identity.channelAccountId}`));

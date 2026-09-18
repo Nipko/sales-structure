@@ -51,7 +51,8 @@ const OPERATIONS: Record<string, { writer: string; family: string; table: string
         writer: 'create_service_request', family: 'service_requests', table: 'service_requests',
         where: {
             status: 'pending', customer_name: 'Alex Rivera', customer_phone: '+573000000001',
-            address: { op: 'ilike', value: '%Calle 45 #12-30%' }, currency: 'COP',
+            // Sin moneda: sin monto, la solicitud nace con la del negocio (D17).
+            address: { op: 'ilike', value: '%Calle 45 #12-30%' },
             service_id: null, scheduled_at: null, assigned_technician_name: null,
         },
     },
@@ -61,7 +62,8 @@ const OPERATIONS: Record<string, { writer: string; family: string; table: string
             status: 'requested', session_type: 'wedding',
             client_name: 'Alex Rivera', client_phone: '+573000000001',
             scheduled_at: { op: 'date_eq', value: fixture.date },
-            price: null, deposit_paid: 0, currency: 'COP',
+            // Sin moneda por la misma razón: una cotización sin precio no la fija.
+            price: null, deposit_paid: 0,
         },
     },
     board_pet: {

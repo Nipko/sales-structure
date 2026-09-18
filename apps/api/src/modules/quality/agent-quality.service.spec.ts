@@ -60,6 +60,11 @@ type HarnessOptions = {
     offers?: number;
     boardingServices?: number;
     examplePriceServices?: number;
+    examplePricePlans?: number;
+    /** Active services / plans with no amount at all (confirmed or NULL status, `price IS NULL`). */
+    noPriceServices?: number;
+    noPricePlans?: number;
+    industry?: string;
     paymentConfig?: { ready: boolean; activeProvider: string | null } | Error;
     verticalCatalogs?: Record<string, number>;
     latestEval?: Record<string, any> | null;
@@ -71,6 +76,17 @@ type HarnessOptions = {
     tools?: Record<string, any>;
     gaps?: Record<string, any>;
     listRows?: any[];
+    /**
+     * What the pipeline's resolver (`readServingPersona`) answers for a
+     * connection, keyed by `type:account`: the serving agent id, `null` = no
+     * active agent, `'conflict'` = two owners, `'error'` = unreadable. Default:
+     * the harness agent answers everything, as the default agent of a
+     * single-agent tenant does.
+     */
+    serving?: Record<string, string | null>;
+    /** The active agent that owns routing gaps. Default: the harness agent. */
+    primaryAgentId?: string | null;
+    rosterFails?: boolean;
 };
 
 function createHarness(options: HarnessOptions = {}) {
@@ -118,6 +134,23 @@ function createHarness(options: HarnessOptions = {}) {
         if (query.includes('unnest(COALESCE(channel_bindings')) {
             return (options.boundChannelBindings ?? []).map((binding) => ({ binding }));
         }
+        if (query.includes('WITH ranked AS')) {
+            // readServingPersona's own query: shaped exactly as it reads it.
+            const [binding] = params;
+            const served = options.serving && binding in options.serving ? options.serving[binding] : AGENT_ID;
+            if (served === 'error') throw new Error('resolution unavailable');
+            const owner = (id: string) => ({ id, name: 'Agent', config_json: completeConfig, version: 2, channels: [],
+                channel_bindings: [], schedule_mode: '24_7', is_active: true, is_default: false });
+            const matches = served === null ? null
+                : served === 'conflict' ? [owner('33333333-3333-4333-8333-333333333333'), owner('44444444-4444-4444-8444-444444444444')]
+                    : [owner(served)];
+            return [{ matches, has_agents: true, legacy_config: null }];
+        }
+        if (query.includes('ORDER BY is_default DESC, created_at ASC')) {
+            if (options.rosterFails) throw new Error('roster unavailable');
+            const primary = options.primaryAgentId === undefined ? AGENT_ID : options.primaryAgentId;
+            return primary ? [{ id: primary }] : [];
+        }
         if (query.includes('FROM agent_personas')) return agent ? [agent] : [];
         if (query.includes('FROM whatsapp_channels')) return options.legacyWhatsAppRows ?? [];
         if (query.includes('FROM companies')) {
@@ -137,7 +170,8 @@ function createHarness(options: HarnessOptions = {}) {
         if (query.includes('FROM faqs')) return [{ count: options.faqs ?? 0, updated_at: null }];
         if (query.includes('FROM policies')) return [{ count: options.policies ?? 0, privacy_count: options.privacyPolicies ?? 0, updated_at: null }];
         if (query.includes('FROM properties') && query.includes('tour_packages')) return [options.verticalCatalogs ?? {}];
-        if (query.includes('FROM services') && query.includes('availability_slots')) return [{ services: options.services ?? 0, slots: options.slots ?? 0, example_price_services: options.examplePriceServices ?? 0, test_drive_services: options.testDriveServices ?? 0, test_drive_slots: options.testDriveSlots ?? 0, boarding_services: options.boardingServices ?? 0 }];
+        if (query.includes('FROM services') && query.includes('availability_slots')) return [{ services: options.services ?? 0, slots: options.slots ?? 0, example_price_services: options.examplePriceServices ?? 0, no_price_services: options.noPriceServices ?? 0, test_drive_services: options.testDriveServices ?? 0, test_drive_slots: options.testDriveSlots ?? 0, boarding_services: options.boardingServices ?? 0 }];
+        if (query.includes('FROM membership_plans') && query.includes('price_status')) return [{ count: options.examplePricePlans ?? 0, no_price: options.noPricePlans ?? 0 }];
         if (query.includes('FROM vehicles')) return [{ count: options.vehicles ?? 0 }];
         if (query.includes('FROM products')) return [{ count: options.products ?? 0 }];
         if (query.includes('FROM orders')) return [{ count: options.orders ?? 0 }];
@@ -179,7 +213,7 @@ function createHarness(options: HarnessOptions = {}) {
                     chatReasons: ['ventas'],
                     customerTypes: ['personas'],
                 },
-                industry: 'saas',
+                industry: options.industry ?? 'saas',
                 updatedAt: options.tenantUpdatedAt ?? '2026-08-01T00:00:00.000Z',
             }),
         },
@@ -196,7 +230,9 @@ function createHarness(options: HarnessOptions = {}) {
         },
         $queryRawUnsafe: jest.fn(async (query: string) => {
             if (options.failedQueries?.some(part => query.includes(part))) throw new Error('Source unavailable');
-            if (query.includes('FROM channel_accounts')) return options.channelRows ?? [{ channel_type: 'whatsapp', account_id: 'wa-1' }];
+            if (query.includes('FROM channel_accounts')) {
+                return options.channelRows ?? [{ channel_type: 'whatsapp', account_id: 'wa-1', waba_timezone: 'America/Bogota' }];
+            }
             if (query.includes('widget_configs')) return options.widgetRows ?? [];
             if (query.includes('FROM users')) return [{ count: options.activeHumans ?? 1 }];
             throw new Error(`Unhandled global test SQL: ${query}`);
@@ -463,6 +499,84 @@ describe('AgentQualityService', () => {
 
             const lost = await createHarness({ config: booking, failedQueries: ['availability_slots'] }).service.getOverview(TENANT_ID, AGENT_ID);
             expect(check(lost, 'services_example_price')).toMatchObject({ status: 'unknown', evidence: { sourceAvailability: 'unavailable' } });
+        });
+
+        it('counts gym membership plans still at the example price, and sends the owner to the memberships screen', async () => {
+            // get_membership_plans withholds an unconfirmed amount like a
+            // service's: a gym whose only pending prices are its plans has an
+            // agent that cannot say what the membership costs.
+            const gym = await createHarness({ config: completeConfig, services: 0, examplePriceServices: 0, examplePricePlans: 3 })
+                .service.getOverview(TENANT_ID, AGENT_ID);
+            expect(check(gym, 'services_example_price')).toMatchObject({
+                status: 'warning', critical: false, href: '/admin/memberships',
+                evidence: { examplePriceServices: 0, examplePricePlans: 3 },
+            });
+            expect(gym.recommendations).toContainEqual(expect.objectContaining({ code: 'fix_services_example_price', href: '/admin/memberships' }));
+            expect(gym.preparation.criticalBlockers).not.toContain('services_example_price');
+
+            // Services pending too: their screen, and the evidence keeps both counts apart.
+            const both = await createHarness({ config: booking, services: 1, slots: 1, examplePriceServices: 1, examplePricePlans: 2 })
+                .service.getOverview(TENANT_ID, AGENT_ID);
+            expect(check(both, 'services_example_price')).toMatchObject({
+                status: 'warning', href: '/admin/appointments', evidence: { examplePriceServices: 1, examplePricePlans: 2 },
+            });
+
+            const confirmed = await createHarness({ config: completeConfig, services: 0, examplePriceServices: 0, examplePricePlans: 0 })
+                .service.getOverview(TENANT_ID, AGENT_ID);
+            expect(check(confirmed, 'services_example_price').status).toBe('not_applicable');
+        });
+
+        it('a lost plan probe is unknown for a gym, and does not touch the services verdict of anyone else', async () => {
+            const failedQueries = ['AS count FROM membership_plans'];
+            const gym = await createHarness({ config: booking, industry: 'gimnasios', services: 1, slots: 1, examplePriceServices: 0, failedQueries })
+                .service.getOverview(TENANT_ID, AGENT_ID);
+            expect(check(gym, 'services_example_price')).toMatchObject({ status: 'unknown', evidence: { sourceAvailability: 'unavailable' } });
+
+            const clinic = await createHarness({ config: booking, services: 1, slots: 1, examplePriceServices: 0, failedQueries })
+                .service.getOverview(TENANT_ID, AGENT_ID);
+            expect(check(clinic, 'services_example_price')).toMatchObject({ status: 'pass' });
+            // The services counts come from their own probe and survive it.
+            expect(check(clinic, 'tool_appointments')).toMatchObject({ status: 'pass' });
+        });
+
+        /**
+         * A service created without a price (Assist never invents one) is
+         * stored confirmed with NULL. Every customer projection reads it as "por
+         * confirmar" and the panel shows "Sin precio" — and this check, counting
+         * only `price_status = 'example'`, stayed green: no nudge anywhere.
+         */
+        it('counts a service with no amount at all, and keeps it apart from the example ones', async () => {
+            const { service, calls } = createHarness({ config: booking, services: 2, slots: 1, examplePriceServices: 0, noPriceServices: 2 });
+            const overview = await service.getOverview(TENANT_ID, AGENT_ID);
+
+            expect(check(overview, 'services_example_price')).toMatchObject({
+                status: 'warning', critical: false, href: '/admin/appointments',
+                evidence: { examplePriceServices: 0, examplePricePlans: 0, noPriceServices: 2, noPricePlans: 0 },
+            });
+            expect(overview.recommendations).toContainEqual(expect.objectContaining({
+                code: 'fix_services_example_price', severity: 'medium', href: '/admin/appointments',
+            }));
+            expect(overview.preparation.criticalBlockers).not.toContain('services_example_price');
+            // The same reading as `customerFacingPrice`: not example, not quote, no amount.
+            const probe = calls.find((call) => call.query.includes('AS no_price_services'))!.query.replace(/\s+/g, ' ');
+            expect(probe).toContain("COALESCE(price_status, 'confirmed') NOT IN ('example', 'quote') AND price IS NULL");
+        });
+
+        it('a plan with no amount sends the owner to the memberships screen, like an example one', async () => {
+            const overview = await createHarness({ config: completeConfig, services: 0, noPricePlans: 1 })
+                .service.getOverview(TENANT_ID, AGENT_ID);
+            expect(check(overview, 'services_example_price')).toMatchObject({
+                status: 'warning', href: '/admin/memberships',
+                evidence: { examplePriceServices: 0, examplePricePlans: 0, noPriceServices: 0, noPricePlans: 1 },
+            });
+        });
+
+        it('passes only when nothing a customer could ask about is left without a price', async () => {
+            const overview = await createHarness({ config: booking, services: 2, slots: 1, examplePriceServices: 0, noPriceServices: 0 })
+                .service.getOverview(TENANT_ID, AGENT_ID);
+            expect(check(overview, 'services_example_price')).toMatchObject({
+                status: 'pass', evidence: { noPriceServices: 0, noPricePlans: 0 },
+            });
         });
     });
 
@@ -1030,5 +1144,500 @@ describe('AgentQualityService', () => {
             expect(call.query).toContain('SELECT DISTINCT ON (cqs.conversation_id)');
             expect(call.query).toContain('ORDER BY cqs.conversation_id, cqs.created_at DESC');
         }
+    });
+
+    /**
+     * Ola 6: the quality data has to be able to say "your agent cannot answer".
+     * Two outages were invisible here — a connection no agent answers, and a
+     * WhatsApp number whose every reply the send admission refuses.
+     */
+    /**
+     * Who answers a connection is `readServingPersona`'s answer, and on a
+     * multi-agent tenant the DEFAULT agent answers every connection nobody else
+     * claims — without being assigned to it (`bindDefaultAgentToChannel` only
+     * assigns when it is the one active agent). Judging it by its explicit
+     * list alone raised a false critical on a working tenant, and hid a real
+     * one: an expired credential on a connection it answers.
+     */
+    describe('the default agent answering a connection by fallback', () => {
+        const OTHER_AGENT = '55555555-5555-4555-8555-555555555555';
+        const whatsapp = { channel_type: 'whatsapp', account_id: 'wa-1', waba_timezone: 'America/Bogota' };
+        const instagram = (tokenExpiresAt: string) => ({
+            channel_type: 'instagram', account_id: 'ig-1', has_account_token: true, metadata: { tokenExpiresAt },
+        });
+
+        it('passes channel_assignment for the agent that answers WhatsApp without being assigned to it', async () => {
+            const overview = await createHarness({
+                agent: { channels: [], channel_bindings: [], is_default: true },
+                channelRows: [whatsapp, instagram('2099-01-01T00:00:00.000Z')],
+                // Instagram belongs to another agent; WhatsApp falls to the default one.
+                serving: { 'whatsapp:wa-1': AGENT_ID, 'instagram:ig-1': OTHER_AGENT },
+            }).service.getOverview(TENANT_ID, AGENT_ID);
+
+            expect(check(overview, 'channel_assignment')).toMatchObject({
+                status: 'pass', critical: true, evidence: { assigned: 0, servedByFallback: 1 },
+            });
+            expect(check(overview, 'channel_connection')).toMatchObject({
+                status: 'pass', evidence: { assigned: 0, servedByFallback: 1, connected: 1, connectedChannels: 'whatsapp' },
+            });
+            expect(overview.preparation.criticalBlockers).not.toContain('channel_assignment');
+            expect(overview.preparation.criticalBlockers).not.toContain('channel_connection');
+        });
+
+        it('fails channel_connection when a connection it answers by fallback has an expired credential', async () => {
+            const overview = await createHarness({
+                agent: { channels: [], channel_bindings: [], is_default: true },
+                channelRows: [instagram('2026-08-01T00:00:00.000Z')],
+                serving: { 'instagram:ig-1': AGENT_ID },
+            }).service.getOverview(TENANT_ID, AGENT_ID);
+
+            expect(check(overview, 'channel_assignment').status).toBe('pass');
+            expect(check(overview, 'channel_connection')).toMatchObject({
+                status: 'fail', critical: true,
+                evidence: { assigned: 0, servedByFallback: 1, connected: 0, credentialAffectedAssignments: 1, credentialIssue: 'expired' },
+            });
+            expect(overview.preparation.criticalBlockers).toContain('channel_connection');
+        });
+
+        it('sees the expired credential next to a healthy assigned channel, too', async () => {
+            const overview = await createHarness({
+                agent: { channels: ['whatsapp'], channel_bindings: [], is_default: true },
+                channelRows: [whatsapp, instagram('2026-08-01T00:00:00.000Z')],
+                serving: { 'whatsapp:wa-1': AGENT_ID, 'instagram:ig-1': AGENT_ID },
+            }).service.getOverview(TENANT_ID, AGENT_ID);
+
+            expect(check(overview, 'channel_connection')).toMatchObject({
+                status: 'fail', evidence: { assigned: 1, servedByFallback: 1, credentialAffectedAssignments: 1 },
+            });
+        });
+
+        it('keeps the assignment coverage about the assignments', async () => {
+            // Assigned to an Instagram that is not connected, answering WhatsApp
+            // by fallback: it works, so no outage — the unconnected assignment
+            // is coverage, counted over the assignments alone.
+            const overview = await createHarness({
+                agent: { channels: ['instagram'], channel_bindings: [], is_default: true },
+                channelRows: [whatsapp],
+                serving: { 'whatsapp:wa-1': AGENT_ID },
+            }).service.getOverview(TENANT_ID, AGENT_ID);
+
+            expect(check(overview, 'channel_connection').status).toBe('pass');
+            expect(check(overview, 'channel_coverage')).toMatchObject({
+                status: 'fail', critical: false, evidence: { assigned: 1, connected: 0, disconnectedChannels: 'instagram' },
+            });
+        });
+
+        it('still fails an agent that answers nothing: not default, nothing assigned', async () => {
+            const overview = await createHarness({
+                agent: { channels: [], channel_bindings: [], is_default: false },
+                channelRows: [whatsapp],
+                serving: { 'whatsapp:wa-1': OTHER_AGENT },
+            }).service.getOverview(TENANT_ID, AGENT_ID);
+
+            expect(check(overview, 'channel_assignment')).toMatchObject({ status: 'fail', evidence: { assigned: 0, servedByFallback: 0 } });
+            expect(check(overview, 'channel_connection').status).toBe('not_applicable');
+            expect(overview.preparation.criticalBlockers).toContain('channel_assignment');
+        });
+
+        it('still fails a single-agent tenant with nothing connected: there is nobody to answer', async () => {
+            const overview = await createHarness({
+                agent: { channels: [], channel_bindings: [], is_default: true },
+                channelRows: [],
+            }).service.getOverview(TENANT_ID, AGENT_ID);
+
+            expect(check(overview, 'channel_assignment')).toMatchObject({ status: 'fail', evidence: { assigned: 0, servedByFallback: 0 } });
+            expect(check(overview, 'channel_connection').status).toBe('not_applicable');
+        });
+
+        it('says unknown, not "answers nobody", when the default agent\'s routing could not be read', async () => {
+            const overview = await createHarness({
+                agent: { channels: [], channel_bindings: [], is_default: true },
+                channelRows: [whatsapp],
+                serving: { 'whatsapp:wa-1': 'error' },
+            }).service.getOverview(TENANT_ID, AGENT_ID);
+
+            expect(check(overview, 'channel_assignment').status).toBe('unknown');
+        });
+    });
+
+    describe('a connection nobody answers (channel_unanswered)', () => {
+        const widget = { channel_type: 'web_widget', account_id: 'wgt_1' };
+        const whatsapp = { channel_type: 'whatsapp', account_id: 'wa-1', waba_timezone: 'America/Bogota' };
+
+        it('never fires on a single-agent tenant: the default agent answers what it is not assigned to', async () => {
+            // Assigned to the web chat only, WhatsApp connected: the resolver
+            // still hands WhatsApp to the default agent.
+            const overview = await createHarness({
+                agent: { channels: ['web_widget'], is_default: true }, widgetRows: [widget], channelRows: [whatsapp],
+            }).service.getOverview(TENANT_ID, AGENT_ID);
+            expect(check(overview, 'channel_unanswered')).toMatchObject({
+                status: 'pass', critical: true, evidence: { connected: 2, unanswered: 0, unansweredChannels: '' },
+            });
+            expect(overview.preparation.criticalBlockers).not.toContain('channel_unanswered');
+        });
+
+        it('fails critically when WhatsApp is connected and no active agent answers it', async () => {
+            const { service, calls } = createHarness({
+                agent: { channels: ['web_widget'] }, widgetRows: [widget], channelRows: [whatsapp],
+                serving: { 'whatsapp:wa-1': null },
+            });
+            const overview = await service.getOverview(TENANT_ID, AGENT_ID);
+            // The gap this closes: the agent's own assignment is fine.
+            expect(check(overview, 'channel_connection').status).toBe('pass');
+            expect(check(overview, 'channel_unanswered')).toMatchObject({
+                status: 'fail', critical: true,
+                href: `/admin/agent/${AGENT_ID}?tab=persona&focus=channels`,
+                evidence: { connected: 2, unanswered: 1, conflicted: 0, unresolved: 0, unansweredChannels: 'whatsapp' },
+            });
+            expect(overview.preparation.criticalBlockers).toContain('channel_unanswered');
+            expect(overview.recommendations).toContainEqual(expect.objectContaining({
+                code: 'fix_channel_unanswered', severity: 'critical', checkStatus: 'fail',
+            }));
+            // Asked of the pipeline's own resolver, per exact connection.
+            const resolutions = calls.filter((call) => call.query.includes('WITH ranked AS'));
+            expect(resolutions.map((call) => call.params)).toEqual(expect.arrayContaining([
+                ['whatsapp:wa-1', 'whatsapp'], ['web_widget:wgt_1', 'web_widget'],
+            ]));
+        });
+
+        it('is one signal for one cause: only the primary agent carries it', async () => {
+            const overview = await createHarness({
+                agent: { channels: ['web_widget'] }, widgetRows: [widget], channelRows: [whatsapp],
+                serving: { 'whatsapp:wa-1': null }, primaryAgentId: '55555555-5555-4555-8555-555555555555',
+            }).service.getOverview(TENANT_ID, AGENT_ID);
+            expect(check(overview, 'channel_unanswered').status).toBe('not_applicable');
+        });
+
+        it('counts two owners of one connection as unanswered: the pipeline refuses to pick', async () => {
+            const overview = await createHarness({ serving: { 'whatsapp:wa-1': 'conflict' } })
+                .service.getOverview(TENANT_ID, AGENT_ID);
+            expect(check(overview, 'channel_unanswered')).toMatchObject({
+                status: 'fail', evidence: { unanswered: 0, conflicted: 1, unansweredChannels: 'whatsapp' },
+            });
+        });
+
+        it('an unreadable resolution is unknown, never a claim of silence', async () => {
+            const overview = await createHarness({ serving: { 'whatsapp:wa-1': 'error' } })
+                .service.getOverview(TENANT_ID, AGENT_ID);
+            expect(check(overview, 'channel_unanswered')).toMatchObject({ status: 'unknown', evidence: { unresolved: 1 } });
+            expect(overview.recommendations).toContainEqual(expect.objectContaining({
+                code: 'fix_channel_unanswered', severity: 'critical', checkStatus: 'unknown',
+            }));
+        });
+
+        it('with the roster unreadable, the default agent is the one that carries it', async () => {
+            const asDefault = await createHarness({ rosterFails: true, agent: { is_default: true }, serving: { 'whatsapp:wa-1': null } })
+                .service.getOverview(TENANT_ID, AGENT_ID);
+            expect(check(asDefault, 'channel_unanswered').status).toBe('fail');
+            const other = await createHarness({ rosterFails: true, agent: { is_default: false }, serving: { 'whatsapp:wa-1': null } })
+                .service.getOverview(TENANT_ID, AGENT_ID);
+            expect(check(other, 'channel_unanswered').status).toBe('not_applicable');
+        });
+
+        it('stays out of the way of an agent that is switched off', async () => {
+            const overview = await createHarness({ agent: { is_active: false }, serving: { 'whatsapp:wa-1': null } })
+                .service.getOverview(TENANT_ID, AGENT_ID);
+            expect(check(overview, 'channel_unanswered').status).toBe('not_applicable');
+        });
+    });
+
+    describe('a WhatsApp number that cannot deliver (whatsapp_delivery)', () => {
+        const established = { billingCurrencyEvidence: { currency: 'COP', source: 'meta_waba', observedAt: '2026-09-10T00:00:00.000Z' } };
+        const number = (over: Record<string, any> = {}) => ({
+            channel_type: 'whatsapp', account_id: 'wa-1', waba_timezone: 'America/Bogota', metadata: established, ...over,
+        });
+        const livePause = {
+            reason: 'funding_not_ready', code: 131042, detail: 'payment issue', since: '2026-09-16T10:00:00.000Z',
+            source: 'status_webhook', observations: 3, lastSeen: '2026-09-17T09:00:00.000Z',
+        };
+
+        it('passes a number the admission lets through', async () => {
+            const overview = await createHarness({ channelRows: [number()] }).service.getOverview(TENANT_ID, AGENT_ID);
+            expect(check(overview, 'whatsapp_delivery')).toMatchObject({
+                status: 'pass', critical: true, href: '/admin/channels/whatsapp',
+                evidence: { whatsappNumbers: 1, blockedNumbers: 0, reason: null, reasons: '', enforcement: 'observe' },
+            });
+        });
+
+        it.each([[null], [''], ['Not/AZone']])('fails critically with no usable billing time zone (%p), even in observe', async (zone) => {
+            const overview = await createHarness({ channelRows: [number({ waba_timezone: zone })] })
+                .service.getOverview(TENANT_ID, AGENT_ID);
+            expect(check(overview, 'whatsapp_delivery')).toMatchObject({
+                status: 'fail', critical: true, href: '/admin/channels/whatsapp',
+                evidence: { blockedNumbers: 1, reason: 'timezone_missing', enforcement: 'observe' },
+            });
+            expect(overview.preparation.criticalBlockers).toContain('whatsapp_delivery');
+            expect(overview.recommendations).toContainEqual(expect.objectContaining({
+                code: 'fix_whatsapp_delivery', severity: 'critical', checkStatus: 'fail', href: '/admin/channels/whatsapp',
+                params: expect.objectContaining({ reason: 'timezone_missing' }),
+            }));
+        });
+
+        it('fails on a live funding pause, and not on a cleared one', async () => {
+            const paused = await createHarness({ channelRows: [number({ metadata: { ...established, sendPause: livePause } })] })
+                .service.getOverview(TENANT_ID, AGENT_ID);
+            expect(check(paused, 'whatsapp_delivery')).toMatchObject({
+                status: 'fail', evidence: { reason: 'funding_restricted', fundingState: 'restricted' },
+            });
+            const cleared = await createHarness({ channelRows: [number({
+                metadata: { ...established, sendPause: { ...livePause, clearedAt: '2026-09-17T10:00:00.000Z', clearedBy: 'operator' } },
+            })] }).service.getOverview(TENANT_ID, AGENT_ID);
+            expect(check(cleared, 'whatsapp_delivery').status).toBe('pass');
+        });
+
+        it('reports an unestablished currency only when the tenant enforces spend protection', async () => {
+            const row = number({ metadata: {} });
+            const observe = await createHarness({ channelRows: [row] }).service.getOverview(TENANT_ID, AGENT_ID);
+            expect(check(observe, 'whatsapp_delivery').status).toBe('pass');
+            const enforce = await createHarness({
+                channelRows: [row],
+                tenantSettings: { businessHours: { is247: true }, chatReasons: ['ventas'], customerTypes: ['personas'], whatsappSpend: { enforcement: 'enforce' } },
+            }).service.getOverview(TENANT_ID, AGENT_ID);
+            expect(check(enforce, 'whatsapp_delivery')).toMatchObject({
+                status: 'fail', evidence: { reason: 'currency_unknown', enforcement: 'enforce' },
+            });
+        });
+
+        it('names every reason when there is more than one', async () => {
+            const overview = await createHarness({
+                channelRows: [number({ waba_timezone: null, metadata: { ...established, sendPause: livePause } })],
+            }).service.getOverview(TENANT_ID, AGENT_ID);
+            expect(check(overview, 'whatsapp_delivery').evidence).toMatchObject({
+                reason: 'multiple', reasons: 'funding_restricted,timezone_missing',
+            });
+        });
+
+        describe('a WABA Meta answered has no payment method', () => {
+            afterEach(() => jest.useRealTimers());
+            const absentOn = (checkedAt: string) => number({ metadata: {
+                ...established, wabaId: 'waba-1',
+                fundingReadiness: { state: 'absent', source: 'graph_account_read', checkedAt, wabaId: 'waba-1' },
+            } });
+            const freeze = (iso: string) => jest.useFakeTimers({
+                now: new Date(iso), doNotFake: ['nextTick', 'setImmediate', 'setTimeout', 'setInterval', 'queueMicrotask'],
+            });
+
+            it('is a warning before 1-oct: it still delivers today', async () => {
+                freeze('2026-09-20T15:00:00.000Z');
+                const overview = await createHarness({ channelRows: [absentOn('2026-09-20T14:00:00.000Z')] })
+                    .service.getOverview(TENANT_ID, AGENT_ID);
+                expect(check(overview, 'whatsapp_delivery')).toMatchObject({
+                    status: 'warning', evidence: { blockedNumbers: 0, reason: 'funding_absent', fundingRequiredFrom: '2026-10-01', fundingState: 'absent' },
+                });
+                expect(overview.preparation.criticalBlockers).not.toContain('whatsapp_delivery');
+                expect(overview.recommendations).toContainEqual(expect.objectContaining({
+                    code: 'fix_whatsapp_delivery', severity: 'high', checkStatus: 'warning',
+                }));
+            });
+
+            it('is a failure from 1-oct: Meta stops delivering', async () => {
+                freeze('2026-10-02T15:00:00.000Z');
+                const overview = await createHarness({ channelRows: [absentOn('2026-10-02T14:00:00.000Z')] })
+                    .service.getOverview(TENANT_ID, AGENT_ID);
+                expect(check(overview, 'whatsapp_delivery')).toMatchObject({
+                    status: 'fail', evidence: { blockedNumbers: 1, reason: 'funding_absent' },
+                });
+            });
+        });
+
+        it('belongs to the agent that answers the number, not to every agent', async () => {
+            const overview = await createHarness({
+                agent: { channels: ['web_widget'] },
+                channelRows: [number({ waba_timezone: null })],
+                serving: { 'whatsapp:wa-1': '66666666-6666-4666-8666-666666666666' },
+            }).service.getOverview(TENANT_ID, AGENT_ID);
+            expect(check(overview, 'whatsapp_delivery').status).toBe('not_applicable');
+        });
+
+        it('with the accounts unreadable, only an agent that could serve WhatsApp reads unknown', async () => {
+            const serving = await createHarness({ failedQueries: ['FROM channel_accounts'], agent: { channels: ['whatsapp'] } })
+                .service.getOverview(TENANT_ID, AGENT_ID);
+            expect(check(serving, 'whatsapp_delivery').status).toBe('unknown');
+            const webOnly = await createHarness({ failedQueries: ['FROM channel_accounts'], agent: { channels: ['web_widget'], is_default: false } })
+                .service.getOverview(TENANT_ID, AGENT_ID);
+            expect(check(webOnly, 'whatsapp_delivery').status).toBe('not_applicable');
+        });
+
+        it('keeps a refused number on an agent that could serve it when the resolution is unreadable', async () => {
+            const overview = await createHarness({
+                channelRows: [number({ waba_timezone: null })], serving: { 'whatsapp:wa-1': 'error' },
+            }).service.getOverview(TENANT_ID, AGENT_ID);
+            expect(check(overview, 'whatsapp_delivery')).toMatchObject({ status: 'fail', evidence: { reason: 'timezone_missing' } });
+        });
+    });
+
+    it('tells a failed critical check from one that could not be run', async () => {
+        const overview = await createHarness({ failedQueries: ['FROM channel_accounts', 'widget_configs'] })
+            .service.getOverview(TENANT_ID, AGENT_ID);
+        expect(overview.recommendations).toContainEqual(expect.objectContaining({
+            code: 'fix_channel_connection', severity: 'critical', checkStatus: 'unknown',
+        }));
+        for (const recommendation of overview.recommendations.filter((item) => item.pillar !== 'preparation')) {
+            expect(recommendation.checkStatus).toBeUndefined();
+        }
+    });
+
+    it('does not resolve serving agents for the Assist channel snapshot', async () => {
+        const { service, calls } = createHarness();
+        await service.getTenantChannelSnapshot(TENANT_ID);
+        expect(calls.some((call) => call.query.includes('WITH ranked AS'))).toBe(false);
+    });
+});
+
+/**
+ * The Embedded Signup bridge is ONE call from the `whatsapp` service. When it
+ * is lost — the API restarting mid rolling deploy, a 5xx, a timeout — the
+ * number is connected and nothing else happened: the default agent is never
+ * assigned to WhatsApp, `first_channel_connected_at` stays NULL and the stage
+ * never reaches `channel_connected` (the 14-sep "asignar un canal"). The
+ * overview reads `channel_accounts` anyway, and is what every reconcile runs,
+ * so it is where the lost record is repaired: idempotent, best effort, and
+ * only for a tenant under the stage contract whose connection facts are
+ * actually missing.
+ */
+describe('AgentQualityService — repairing a connection whose record was lost', () => {
+    const CONNECTED_AT = '2026-09-14T15:04:00.000Z';
+    const TENANT_CREATED_AT = '2026-09-14T14:10:00.000Z';
+    const whatsappRow = (over: Record<string, unknown> = {}) => ({
+        channel_type: 'whatsapp', account_id: 'wa-1', waba_timezone: 'America/Bogota', created_at: CONNECTED_AT, ...over,
+    });
+
+    function repairHarness(over: {
+        settings?: Record<string, unknown>;
+        firstChannelConnectedAt?: Date | null;
+        channelRows?: any[];
+        failedQueries?: string[];
+        updateManyThrows?: boolean;
+        settingsThrows?: boolean;
+    } = {}) {
+        const h = createHarness({
+            channelRows: over.channelRows ?? [whatsappRow()],
+            failedQueries: over.failedQueries,
+            agent: { channels: [], is_default: true },
+        });
+        const settings = {
+            businessHours: { is247: true }, chatReasons: ['ventas'], customerTypes: ['personas'],
+            ...(over.settings ?? { onboardingStage: 'agent_reviewed' }),
+        };
+        h.prisma.tenant.findUnique.mockResolvedValue({
+            settings, industry: 'saas', updatedAt: '2026-08-01T00:00:00.000Z',
+            createdAt: new Date(TENANT_CREATED_AT),
+            firstChannelConnectedAt: over.firstChannelConnectedAt === undefined ? null : over.firstChannelConnectedAt,
+        });
+        const settingsWrites: Array<Record<string, unknown>> = [];
+        const tx = {
+            $queryRawUnsafe: jest.fn(async () => {
+                if (over.settingsThrows) throw new Error('lock timeout');
+                return [{ settings }];
+            }),
+            $executeRawUnsafe: jest.fn(async (_sql: string, _id: string, json: string) => {
+                settingsWrites.push(JSON.parse(json));
+                return 1;
+            }),
+        };
+        h.prisma.tenant.updateMany = jest.fn(async () => {
+            if (over.updateManyThrows) throw new Error('db unavailable');
+            return { count: 1 };
+        });
+        h.prisma.$transaction = jest.fn(async (work: any) => work(tx));
+        // After the assignment the agent row really is a new version: the
+        // overview must be computed (and persisted) against that one.
+        const original = h.prisma.executeInTenantSchema;
+        let assigned = false;
+        h.prisma.executeInTenantSchema = jest.fn(async (schema: string, query: string, params: any[] = []) => {
+            const result = await original(schema, query, params);
+            if (query.includes('UPDATE agent_personas')) assigned = true;
+            if (assigned && query.includes('WHERE id = $1::uuid')) {
+                return (result as any[]).map((row) => ({ ...row, version: 3, channels: ['whatsapp'] }));
+            }
+            return result;
+        });
+        const assignments = () => h.calls.filter((call) => call.query.includes('UPDATE agent_personas'));
+        return { ...h, tx, settingsWrites, assignments };
+    }
+
+    it('records a WhatsApp connection whose bridge call was lost, dated when the number was connected', async () => {
+        const h = repairHarness();
+
+        const overview = await h.service.getOverview(TENANT_ID, AGENT_ID);
+
+        expect(h.prisma.tenant.updateMany).toHaveBeenCalledWith({
+            where: { id: TENANT_ID, firstChannelConnectedAt: null },
+            data: { firstChannelConnectedAt: new Date(CONNECTED_AT) },
+        });
+        expect(h.assignments()).toHaveLength(1);
+        expect(h.assignments()[0].params).toEqual(['whatsapp']);
+        expect(h.settingsWrites).toEqual([expect.objectContaining({ onboardingStage: 'channel_connected' })]);
+        // Computed against the agent as it is after the assignment.
+        expect(overview.agent.version).toBe(3);
+    });
+
+    it('repairs the missing instant for a tenant whose stage already moved on', async () => {
+        const h = repairHarness({ settings: { onboardingStage: 'completed' } });
+
+        await h.service.getOverview(TENANT_ID, AGENT_ID);
+
+        expect(h.prisma.tenant.updateMany).toHaveBeenCalledTimes(1);
+        expect(h.assignments()).toHaveLength(1);
+        // `completed` outranks `channel_connected`: nothing to write there.
+        expect(h.settingsWrites).toEqual([]);
+    });
+
+    it('repairs a stage that never left "connect later" while a number is live', async () => {
+        const h = repairHarness({
+            settings: { onboardingStage: 'channel_deferred' }, firstChannelConnectedAt: new Date('2026-09-15T00:00:00.000Z'),
+        });
+
+        await h.service.getOverview(TENANT_ID, AGENT_ID);
+
+        expect(h.settingsWrites).toEqual([expect.objectContaining({ onboardingStage: 'channel_connected' })]);
+    });
+
+    it('never dates the connection before the tenant existed (a number moved from another tenant)', async () => {
+        const h = repairHarness({ channelRows: [whatsappRow({ created_at: '2025-01-01T00:00:00.000Z' })] });
+
+        await h.service.getOverview(TENANT_ID, AGENT_ID);
+
+        expect(h.prisma.tenant.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+            data: { firstChannelConnectedAt: new Date(TENANT_CREATED_AT) },
+        }));
+    });
+
+    it.each([
+        ['the connection was recorded', { settings: { onboardingStage: 'channel_connected' }, firstChannelConnectedAt: new Date(CONNECTED_AT) }],
+        ['the account is live', { settings: { onboardingStage: 'live' }, firstChannelConnectedAt: new Date(CONNECTED_AT) }],
+        // A tenant from before the stage contract: its instant may be NULL
+        // because it connected before the column existed, and writing "today"
+        // (or a stage) would be a false fact about a years-old account.
+        ['the tenant predates the stage contract', { settings: {}, firstChannelConnectedAt: null }],
+        ['no certified connection is active', { channelRows: [{ channel_type: 'sms', account_id: 'sms-1', created_at: CONNECTED_AT }] }],
+        ['nothing is connected', { channelRows: [] }],
+        ['the accounts could not be read', { failedQueries: ['FROM channel_accounts'] }],
+    ])('writes nothing when %s', async (_label, over) => {
+        const h = repairHarness(over as any);
+
+        const overview = await h.service.getOverview(TENANT_ID, AGENT_ID);
+
+        expect(h.prisma.tenant.updateMany).not.toHaveBeenCalled();
+        expect(h.assignments()).toHaveLength(0);
+        expect(h.prisma.$transaction).not.toHaveBeenCalled();
+        expect(overview.agent.version).toBe(2);
+    });
+
+    it('never costs the overview when the repair fails', async () => {
+        const h = repairHarness({ updateManyThrows: true, settingsThrows: true });
+
+        await expect(h.service.getOverview(TENANT_ID, AGENT_ID)).resolves.toEqual(expect.objectContaining({
+            agent: expect.objectContaining({ id: AGENT_ID }),
+        }));
+    });
+
+    it('is not run by the Assist channel snapshot', async () => {
+        const h = repairHarness();
+
+        await h.service.getTenantChannelSnapshot(TENANT_ID);
+
+        expect(h.prisma.tenant.updateMany).not.toHaveBeenCalled();
+        expect(h.assignments()).toHaveLength(0);
     });
 });

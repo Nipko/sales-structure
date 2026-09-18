@@ -4,6 +4,7 @@ import { useTranslations, useLocale } from "next-intl";
 import { cn } from "@/lib/utils";
 import { Tag, X, Save, MapPin, Video, Globe, Clock, Timer, Infinity } from "lucide-react";
 import { Service, DURATION_PRESETS, SERVICE_COLORS, type DurationType } from "./shared";
+import { servicePriceFormProblem, type ServicePriceFormStatus } from "./service-price";
 import {
   PaymentPolicyFields,
   type PaymentPolicyMode,
@@ -15,9 +16,14 @@ interface ServiceForm {
   durationMax: number | null;
   durationType: DurationType;
   buffer: number;
-  price: number;
-  /** Guardar siempre lo manda: `confirmed` salvo que el dueño elija `quote`. */
-  priceStatus: "example" | "confirmed" | "quote";
+  /** `null` = campo vacío: no hay monto. Nunca se manda como 0 (FX1). */
+  price: number | null;
+  /**
+   * La decisión del dueño sobre el precio: `confirmed`, `free` ("Es gratis")
+   * o `quote`. `example` = todavía no decidió en este formulario, y guardar
+   * conserva lo que la fila tenía.
+   */
+  priceStatus: ServicePriceFormStatus;
   color: string;
   category: string;
   maxConcurrent: number;
@@ -60,9 +66,23 @@ export default function ServiceModal({
   // El número que trae un servicio sembrado por el rubro no lo escribió el
   // dueño: sigue siendo ejemplo hasta que pulse "Precio confirmado" o escriba
   // otro número. Sin precio confirmado no hay anticipo posible.
+  //
+  // FX1: gratis es una elección propia ("Es gratis"), no un campo vacío. El
+  // formulario mandaba el campo vacío como 0, y "Precio confirmado" sobre un
+  // servicio sin monto (o que se cotiza) lo dejaba gratis para el agente.
   const isExamplePrice = form.priceStatus === "example";
   const priceQuoted = form.priceStatus === "quote";
+  const priceFree = form.priceStatus === "free";
   const priceUnconfirmed = form.priceStatus !== "confirmed";
+  const priceProblem = servicePriceFormProblem(form);
+  const priceHint = priceProblem
+    ? t('priceStatus.confirmNeedsAmount')
+    : priceFree
+      ? t('priceStatus.freeHint')
+      : isExamplePrice
+        ? (form.price === null ? t('priceStatus.missingHint') : t('priceStatus.exampleHint'))
+        : null;
+  const priceLocked = priceQuoted || priceFree;
 
   return (
     <div
@@ -229,13 +249,15 @@ export default function ServiceModal({
                   type="text"
                   inputMode="numeric"
                   aria-label={t('price')}
-                  disabled={priceQuoted}
-                  value={!priceQuoted && form.price > 0 ? form.price.toLocaleString(numLocale) : ''}
+                  aria-invalid={priceProblem ? true : undefined}
+                  aria-describedby={priceHint ? "service-price-status-hint" : undefined}
+                  disabled={priceLocked}
+                  value={priceLocked || form.price === null ? '' : form.price.toLocaleString(numLocale)}
                   onChange={(e) => {
                     const raw = e.target.value.replace(/[^0-9]/g, '');
-                    onChange({ ...form, price: raw ? Number(raw) : 0 });
+                    onChange({ ...form, price: raw ? Number(raw) : null });
                   }}
-                  placeholder={priceQuoted ? '—' : '0'}
+                  placeholder={priceLocked ? '—' : undefined}
                   className="w-full px-3 pl-7 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50"
                 />
                 {currency && (
@@ -253,16 +275,18 @@ export default function ServiceModal({
             <span id="service-price-status-label" className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
               {t('priceStatus.label')}
             </span>
-            <div role="group" aria-labelledby="service-price-status-label" aria-describedby={isExamplePrice ? "service-price-status-hint" : undefined} className="flex gap-2">
-              {(['confirmed', 'quote'] as const).map((value) => (
+            <div role="group" aria-labelledby="service-price-status-label" aria-describedby={priceHint ? "service-price-status-hint" : undefined} className="flex flex-wrap gap-2">
+              {(['confirmed', 'free', 'quote'] as const).map((value) => (
                 <button
                   key={value}
                   type="button"
                   aria-pressed={form.priceStatus === value}
                   onClick={() => onChange(
-                    value === 'quote'
-                      ? { ...form, priceStatus: 'quote', paymentPolicy: 'none', depositPercent: null, depositAmount: null }
-                      : { ...form, priceStatus: 'confirmed' },
+                    // Sin número que cobrar (se cotiza) o con un 0 (gratis) no
+                    // hay anticipo posible: la política vuelve a "sin pago".
+                    value === 'confirmed'
+                      ? { ...form, priceStatus: 'confirmed' }
+                      : { ...form, priceStatus: value, paymentPolicy: 'none', depositPercent: null, depositAmount: null },
                   )}
                   className={cn(
                     "flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium cursor-pointer border transition-colors",
@@ -275,8 +299,16 @@ export default function ServiceModal({
                 </button>
               ))}
             </div>
-            {isExamplePrice && (
-              <p id="service-price-status-hint" className="text-xs text-amber-600 dark:text-amber-400 mt-2">{t('priceStatus.exampleHint')}</p>
+            {priceHint && (
+              <p
+                id="service-price-status-hint"
+                className={cn(
+                  "text-xs mt-2",
+                  priceProblem || isExamplePrice ? "text-amber-600 dark:text-amber-400" : "text-neutral-500 dark:text-neutral-400",
+                )}
+              >
+                {priceHint}
+              </p>
             )}
           </div>
 
@@ -284,7 +316,7 @@ export default function ServiceModal({
               calcula sobre él, y porque es la decisión que cambia lo que el
               agente le puede decir al cliente. */}
           <div className="space-y-2">
-            {priceUnconfirmed && (
+            {priceUnconfirmed && !priceFree && (
               <p className="text-xs text-neutral-500 dark:text-neutral-400">{t('priceStatus.paymentLocked')}</p>
             )}
             <PaymentPolicyFields
@@ -470,7 +502,7 @@ export default function ServiceModal({
           </button>
           <button
             onClick={onSave}
-            disabled={saving || !form.name}
+            disabled={saving || !form.name || !!priceProblem}
             className="flex items-center gap-2 px-5 py-2.5 rounded-xl border-none bg-primary text-primary-foreground font-semibold text-sm cursor-pointer disabled:opacity-50 hover:opacity-90 transition-opacity"
           >
             <Save size={16} />

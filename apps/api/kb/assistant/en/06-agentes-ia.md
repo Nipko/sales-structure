@@ -3,7 +3,7 @@ id: agentes-ia
 title: "AI Agents: create and configure"
 routes: ["/admin/agent", "/admin/agent/simulation"]
 roles: ["tenant_admin"]
-keywords: ["agent", "ai agents", "bot", "chatbot", "virtual assistant", "create agent", "template", "personality", "instructions", "tone", "agent schedule", "assign channel", "connection", "duplicate agent", "default agent", "agent limit", "channels without agent", "test agent", "rules", "forbidden topics", "required fields", "when to hand off to a human", "fallback message", "active inactive", "advanced", "assist", "main instructions", "sales and support", "agent draft", "save", "immediate changes", "reviewed mode", "already answers"]
+keywords: ["agent", "ai agents", "bot", "chatbot", "virtual assistant", "create agent", "template", "personality", "instructions", "tone", "agent schedule", "assign channel", "connection", "duplicate agent", "default agent", "agent limit", "channels without agent", "test agent", "rules", "forbidden topics", "required fields", "when to hand off to a human", "fallback message", "active inactive", "advanced", "assist", "main instructions", "sales and support", "agent draft", "save", "immediate changes", "reviewed mode", "already answers", "earlier changes", "changes not applied", "discard changes", "channel nobody answers"]
 ---
 
 # AI Agents: create and configure
@@ -78,6 +78,8 @@ When you're done, click **Save**. The change applies immediately to the assigned
 
 **Reviewed mode (optional).** Teams that prefer to approve every change before it reaches customers can turn on reviewed mode for the account. Then the button reads **Save draft**, the **Review a version** and **Publish and view history** sections appear, and the change only reaches customers after you review and publish that version. By default, the account is in immediate mode.
 
+**Earlier changes not applied yet.** If you saved changes under the old draft-and-review flow and they were never applied, the editor shows **You have earlier changes that haven't been applied yet** at the top. The form shows what your agent uses today: choose **Apply those changes** so it starts using them (they are saved like any change; if a required field is missing, the editor marks it) or **Discard those changes** to leave it as it is. If you save without applying them, they are discarded and what you see is saved. If your agent changed afterwards (for example, you switched it on, connected a channel, or accepted a proposal from Assist), the notice says they can no longer be applied: discard them so you can save again.
+
 ## Active or inactive
 
 The editor header has an **Active / Inactive** switch. An **inactive** agent replies on none of its connections, even when the channel is connected and the schedule says it should. You can deactivate it immediately after confirming, and reactivate it with the same switch: it turns on right away. (In reviewed mode, reactivating goes through reviewing and publishing a version.) **Agent health** flags any inactive agent as a critical blocker, with or without assigned connections.
@@ -105,7 +107,7 @@ The available connection types and capacity appear under **Channels** and **Plan
 
 ## What the "channels without an assigned agent" notice means
 
-If **AI Agent** shows **Channels without an assigned agent**, you have active connections that no agent handles specifically. While an active default agent exists, those messages are answered by its operational version.
+If **AI Agent** shows **Channels without an assigned agent**, you have active connections that no agent handles specifically. While an active default agent exists, those messages are answered by its operational version. If there is no active default agent, or two agents have the same connection assigned, nobody answers there: messages arrive but go unanswered, and **Agent health** flags it as critical under **Every connected channel has an agent that replies**.
 
 Click **Assign agent now** to choose which agent handles each connection and deliver a personalized experience.
 
@@ -128,7 +130,7 @@ From **AI Agent → Test agent** you can chat with the agent exactly as it answe
 Yes, when your account has capacity. Create one with the **Sales Advisor** template and another with **Support Agent**, then assign each one to the matching connection.
 
 **What happens if I connect a channel and don't assign an agent to it?**
-Your default agent replies. You'll see the unassigned-channels notice in **AI Agent** so you can fix it with one click.
+Your default agent replies, if it is active; if not, nobody answers on that channel and **Agent health** tells you. You'll see the unassigned-channels notice in **AI Agent** so you can fix it with one click.
 
 **Can the agent reply via SMS?**
 No. SMS in Parallly is not a conversation channel: it's used only for outbound notifications with credits (1 credit = 1 segment). The self-service conversational surfaces are WhatsApp, Instagram, Messenger, Telegram and web chat. Email retains an internal inbound adapter, but not certified self-service configuration.

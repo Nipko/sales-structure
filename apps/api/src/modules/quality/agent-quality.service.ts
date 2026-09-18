@@ -1,7 +1,8 @@
 import { QUALITY_RUBRIC_HASH } from './quality-rubric';
 import { QUALITY_RUBRIC_VERSION } from './quality-evidence';
-import { Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import type {
+    WhatsappDeliveryBlockReason,
     AgentQualityCheck,
     AgentQualityDimension,
     AgentQualityDimensionResult,
@@ -28,6 +29,17 @@ import {
     worstCredentialHealth,
     type ChannelCredentialHealth,
 } from '@parallext/shared';
+import { readServingPersona } from '../persona/serving-persona';
+import {
+    FUNDING_REQUIRED_FROM,
+    spendEnforcementFromSettings,
+    whatsappAccountSendReadiness,
+    type SpendEnforcementSetting,
+    type WhatsappAccountSendReadiness,
+} from '../billing/whatsapp-spend/account-send-readiness';
+import type { FundingReadinessState } from '../channels/whatsapp-funding-readiness';
+import { recordChannelConnected } from '../channels/bind-default-agent.util';
+import { CERTIFIED_SELF_SERVICE_CHANNELS, isOnboardingStage, onboardingStageRank } from '@parallext/shared';
 
 const PRODUCTION_DAYS = 30;
 const MINIMUM_PRODUCTION_SAMPLE = 20;
@@ -50,6 +62,8 @@ type AgentRow = {
     id: string;
     name: string;
     is_active: boolean;
+    /** Read so a lost roster can still name the agent that owns routing gaps. */
+    is_default?: boolean | null;
     config_json: TenantConfig;
     channels: string[] | null;
     channel_bindings: string[] | null;
@@ -78,7 +92,119 @@ type TenantContext = {
         audioPerMonth: number;
         imagePerMonth: number;
     };
+    /**
+     * Every active operational connection (channel accounts + non-demo web
+     * widgets), who answers it, and — for WhatsApp — what the send admission
+     * would refuse. Optional: contexts built by hand before this existed get
+     * `not_applicable` from the two checks that read it.
+     */
+    connections?: ConnectionFact[];
+    /**
+     * The active agent that carries a routing gap nobody owns (a connection no
+     * agent answers): the default agent, else the oldest active one — one
+     * signal for one cause, not one per agent. `undefined` = roster unread.
+     */
+    primaryAgentId?: string | null;
+    /** `tenants.settings.whatsappSpend.enforcement`, read the admission's way. */
+    spendEnforcement?: SpendEnforcementSetting;
+    /**
+     * A live connection whose record was lost (`findUnrecordedConnection`), or
+     * `null` when there is nothing to repair. Only the overview computes it.
+     */
+    unrecordedConnection?: UnrecordedConnection | null;
 };
+
+/**
+ * Who answers a connection, as `readServingPersona` — the resolver the inbound
+ * pipeline itself calls — decides it. Nothing here re-implements its tiers.
+ */
+type ConnectionServing =
+    /** A durable agent answers it. */
+    | { kind: 'agent'; agentId: string }
+    /** No durable agent exists and the legacy persona answers. */
+    | { kind: 'legacy' }
+    /** No active agent matches: the message is stored and nobody replies. */
+    | { kind: 'none' }
+    /** Two active agents claim it at the same tier and the pipeline refuses to pick. */
+    | { kind: 'conflict' }
+    /** The resolution could not be read. Not the same as `none`. */
+    | { kind: 'unknown' };
+
+type ConnectionFact = {
+    type: string;
+    accountId: string;
+    serving: ConnectionServing;
+    /** WhatsApp only: the admission's account-wide verdict for this number. */
+    send?: WhatsappAccountSendReadiness;
+};
+
+/** Worst first: the funding state that explains a blocked number best. */
+const FUNDING_STATE_RANK: Record<FundingReadinessState, number> = {
+    restricted: 0, absent: 1, unknown: 2, not_checked: 3, attached: 4,
+};
+
+/** A connection that exists while the facts a connection leaves behind do not. */
+type UnrecordedConnection = {
+    /** Certified types with an active `channel_accounts` row, each to be recorded. */
+    readonly types: readonly string[];
+    /** When the earliest of those rows was created: never before the tenant, never in the future. */
+    readonly connectedAt: Date;
+};
+
+const CERTIFIED_CONNECTION_TYPES: ReadonlySet<string> = new Set(CERTIFIED_SELF_SERVICE_CHANNELS);
+
+/**
+ * Whether a live connection is missing its record, and what to record.
+ *
+ * Embedded Signup commits `channel_accounts` in the `whatsapp` service and
+ * tells the API with ONE bridge call, which is what records the connection
+ * (`recordChannelConnected`: first-connection instant, default agent assigned,
+ * stage). A lost call — the API restarting mid rolling deploy, a 5xx, a
+ * timeout — left a connected number with none of the three, and nothing ever
+ * came back for it: the 14-sep "asignar un canal".
+ *
+ * Deliberately narrow, because the repair WRITES:
+ *   · only a tenant under the stage contract (a stored stage). An older one may
+ *     have a NULL instant because it connected before the column existed, and
+ *     "today" would be a false fact about it — nor may a stage be created for
+ *     it (see `applyChannelConnectedStage`);
+ *   · only when a fact is actually missing: no instant, or a stage that never
+ *     reached `channel_connected`. Once both exist this is `null`, so a
+ *     later, deliberate edit of the agent's channels is never "repaired";
+ *   · only from connections read, never from an unreadable table.
+ */
+function findUnrecordedConnection(input: {
+    readonly settings: Record<string, unknown>;
+    readonly firstChannelConnectedAt: Date | string | null | undefined;
+    readonly tenantCreatedAt: Date | string | null | undefined;
+    readonly accountsReadable: boolean;
+    readonly accountRows: readonly any[];
+    readonly now: Date;
+}): UnrecordedConnection | null {
+    if (!input.accountsReadable) return null;
+    const stage = input.settings.onboardingStage;
+    if (!isOnboardingStage(stage)) return null;
+    const connected = input.accountRows.filter((row) => CERTIFIED_CONNECTION_TYPES.has(String(row?.channel_type)));
+    if (connected.length === 0) return null;
+    const instantRecorded = input.firstChannelConnectedAt !== null && input.firstChannelConnectedAt !== undefined;
+    const stageRecorded = onboardingStageRank(stage) >= onboardingStageRank('channel_connected');
+    if (instantRecorded && stageRecorded) return null;
+
+    const now = input.now.getTime();
+    const created = connected
+        .map((row) => new Date(row?.created_at ?? '').getTime())
+        .filter((value) => Number.isFinite(value));
+    let at = created.length > 0 ? Math.min(...created) : now;
+    // A row can be older than the tenant (a number moved from another tenant
+    // keeps its row): the connection did not happen before the account did.
+    const floor = new Date(input.tenantCreatedAt ?? '').getTime();
+    if (Number.isFinite(floor) && at < floor) at = floor;
+    if (at > now) at = now;
+    return {
+        types: [...new Set(connected.map((row) => String(row.channel_type)))].sort(),
+        connectedAt: new Date(at),
+    };
+}
 
 type CredentialHealth = ChannelCredentialHealth;
 
@@ -115,6 +241,25 @@ type ReadinessFacts = {
     availabilitySlots: number;
     /** Active services still carrying the recipe's example price (`price_status = 'example'`). */
     examplePriceServices: number;
+    /**
+     * Active gym membership plans still carrying the seeded example price.
+     * `get_membership_plans` withholds an unconfirmed amount exactly like a
+     * service's, so a gym owner who never confirms a plan has an agent that
+     * cannot say what the membership costs.
+     */
+    examplePricePlans: number;
+    /**
+     * Active services with NO amount a customer could be told: status
+     * confirmed (or NULL, read as confirmed) and `price IS NULL`. A service
+     * created without a price — the Assist `agenda.service.create` writer never
+     * invents one — is stored exactly like that, and every customer projection
+     * (`customerFacingPrice`) reads it as "por confirmar" while the panel shows
+     * "Sin precio". Counted apart from the example ones so the panel can say
+     * which of the two the owner has to fix.
+     */
+    noPriceServices: number;
+    /** The same for active membership plans (the column is NOT NULL today: normally 0). */
+    noPricePlans: number;
     testDriveServices: number;
     testDriveSlots: number;
     vehicles: number;
@@ -191,11 +336,17 @@ export class AgentQualityService {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         if (!schemaName) throw new NotFoundException('Tenant not found');
 
-        const [agent, tenantContext] = await Promise.all([
+        const [loadedAgent, tenantContext] = await Promise.all([
             this.loadAgent(schemaName, agentId),
             this.loadTenantContext(tenantId, schemaName),
         ]);
-        if (!agent) throw new NotFoundException('Agent not found');
+        if (!loadedAgent) throw new NotFoundException('Agent not found');
+        // Repaired BEFORE anything is judged, and the agent re-read after it:
+        // the repair may have assigned it a channel and bumped its version, and
+        // this overview is what the reconcile persists under that version.
+        const agent = await this.repairUnrecordedConnection(tenantId, tenantContext.unrecordedConnection)
+            ? (await this.loadAgent(schemaName, agentId).catch(() => null)) ?? loadedAgent
+            : loadedAgent;
 
         const [facts, tests, production] = await Promise.all([
             this.loadReadinessFacts(tenantId, schemaName),
@@ -245,7 +396,7 @@ export class AgentQualityService {
     private async loadAgent(schemaName: string, agentId: string): Promise<AgentRow | null> {
         const rows = await this.prisma.executeInTenantSchema<AgentRow[]>(
             schemaName,
-            `SELECT id, name, is_active, config_json, channels, channel_bindings, version, updated_at
+            `SELECT id, name, is_active, is_default, config_json, channels, channel_bindings, version, updated_at
                FROM agent_personas
               WHERE id = $1::uuid
               LIMIT 1`,
@@ -254,14 +405,82 @@ export class AgentQualityService {
         return rows?.[0] || null;
     }
 
-    private async loadTenantContext(tenantId: string, schemaName: string): Promise<TenantContext> {
-        const [tenant, channels, widgets, humans, credentialLookup, legacyWhatsAppRows, boundBindingRows, mediaProcessing] = await Promise.all([
+    /**
+     * Record a live connection whose record was lost (`findUnrecordedConnection`).
+     *
+     * Runs inside every overview — the reconcile, the cron and the screen — so
+     * a lost Embedded Signup bridge call is repaired within one reconcile
+     * instead of never. Idempotent by construction: the instant is written
+     * only into an empty column, the assignment only when the type is missing
+     * from the single active agent, the stage only forward; and once both facts
+     * exist the detector stops asking. Never throws: a repair that fails costs
+     * nothing but a retry on the next overview.
+     *
+     * Returns whether it ran, so the caller re-reads the agent it may have assigned.
+     */
+    private async repairUnrecordedConnection(
+        tenantId: string,
+        gap: UnrecordedConnection | null | undefined,
+    ): Promise<boolean> {
+        if (!gap) return false;
+        try {
+            for (const type of gap.types) {
+                await recordChannelConnected(this.prisma, tenantId, type, { connectedAt: gap.connectedAt });
+            }
+            this.logger.log(`[Agent quality] Recorded a connection whose record was lost for tenant=${tenantId} `
+                + `(${gap.types.join(', ')}, connected ${gap.connectedAt.toISOString()})`);
+        } catch (error: any) {
+            // `recordChannelConnected` does not throw; this is defence in depth.
+            this.logger.warn(`[Agent quality] Could not record a lost connection for tenant=${tenantId}: `
+                + `${error?.message || error}`);
+        }
+        return true;
+    }
+
+    /**
+     * Who answers one connection, by the resolver the inbound pipeline calls
+     * (`readServingPersona`): exact binding, then type, then the default agent.
+     * Re-implementing its tiers here is how a single-agent tenant — whose
+     * default agent answers every channel without being assigned to it — would
+     * get a false "nobody answers WhatsApp" on day 0.
+     */
+    private async servingFor(schemaName: string, type: string, accountId: string): Promise<ConnectionServing> {
+        try {
+            const resolution = await readServingPersona(
+                (sql, params) => this.prisma.executeInTenantSchema(schemaName, sql, params ?? []),
+                type,
+                accountId,
+            );
+            if (resolution.agentId) return { kind: 'agent', agentId: resolution.agentId };
+            // No durable agent matched: `config` is the legacy persona, which
+            // answers only while the tenant has never had a durable agent.
+            return resolution.config ? { kind: 'legacy' } : { kind: 'none' };
+        } catch (error: any) {
+            // The pipeline throws this exact exception for the same connection
+            // and the turn dies: two owners is an outage, not a question.
+            if (error instanceof ConflictException) return { kind: 'conflict' };
+            this.logger.debug(`[Agent quality] Serving agent unresolved for ${type}: ${error?.message || error}`);
+            return { kind: 'unknown' };
+        }
+    }
+
+    private async loadTenantContext(
+        tenantId: string,
+        schemaName: string,
+        options: { routing?: boolean } = {},
+    ): Promise<TenantContext> {
+        const [tenant, channels, widgets, humans, credentialLookup, legacyWhatsAppRows, boundBindingRows, mediaProcessing, primaryAgent] = await Promise.all([
             this.prisma.tenant.findUnique({
                 where: { id: tenantId },
-                select: { settings: true, industry: true, updatedAt: true },
+                // The last two tell a connection that was recorded from one
+                // whose record was lost (`findUnrecordedConnection`).
+                select: { settings: true, industry: true, updatedAt: true, createdAt: true, firstChannelConnectedAt: true },
             }),
+            // `waba_timezone` is what the send admission dates every WhatsApp
+            // effect with; without a usable one it refuses them all.
+            // `created_at` dates a connection whose record has to be repaired.
             this.prisma.$queryRawUnsafe(
-                `SELECT channel_type, account_id, metadata,
+                `SELECT channel_type, account_id, metadata, waba_timezone, created_at,
                         CASE WHEN access_token IS NOT NULL
                                    AND access_token NOT IN ('', 'encrypted_ref', 'credential_ref')
                              THEN true ELSE false END AS has_account_token
@@ -335,6 +554,18 @@ export class AgentQualityService {
                 // silently invent an entitlement. Nest always supplies this
                 // global service in the running application.
                 : Promise.resolve({ available: true, enabled: false, audioPerMonth: 0, imagePerMonth: 0 }),
+            // The agent that carries a gap no agent owns. Default first, the
+            // same order the demo link and the setup card name "the" agent by.
+            this.prisma.executeInTenantSchema<Array<{ id: string }>>(
+                schemaName,
+                `SELECT id
+                   FROM agent_personas
+                  WHERE is_active = true
+               ORDER BY is_default DESC, created_at ASC, id ASC
+                  LIMIT 1`,
+                [],
+            ).then((rows) => ({ available: true, id: rows?.[0]?.id ? String(rows[0].id) : null }))
+                .catch(() => ({ available: false, id: null as string | null })),
         ]);
         const channelLookup = channels as { available: boolean; rows: any[] };
         const channelRows = [
@@ -391,8 +622,48 @@ export class AgentQualityService {
                 healthByAssignment.set(channel, worstCredentialHealth(health));
             }
         }
+        const settings = (tenant?.settings as Record<string, any>) || {};
+        const spendEnforcement = spendEnforcementFromSettings(settings);
+        const now = new Date();
+        // Who answers each connection, asked of the pipeline's own resolver, and
+        // what the send admission would refuse for each WhatsApp number. Only
+        // the overview needs it; the Assist snapshot skips the per-connection
+        // reads.
+        const connections: ConnectionFact[] | undefined = options.routing === false ? undefined : await Promise.all(
+            channelRows
+                .filter((row) => OPERATIONAL_CHANNELS.has(String(row.channel_type)))
+                .map(async (row): Promise<ConnectionFact> => {
+                    const type = String(row.channel_type);
+                    const accountId = String(row.account_id);
+                    return {
+                        type,
+                        accountId,
+                        serving: await this.servingFor(schemaName, type, accountId),
+                        ...(type === 'whatsapp' ? {
+                            send: whatsappAccountSendReadiness({
+                                metadata: row.metadata,
+                                wabaTimezone: row.waba_timezone,
+                                enforcement: spendEnforcement,
+                                now,
+                            }),
+                        } : {}),
+                    };
+                }),
+        );
+        const unrecordedConnection = options.routing === false ? null : findUnrecordedConnection({
+            settings,
+            firstChannelConnectedAt: tenant?.firstChannelConnectedAt,
+            tenantCreatedAt: tenant?.createdAt,
+            accountsReadable: channelLookup.available,
+            accountRows: Array.isArray(channelLookup?.rows) ? channelLookup.rows : [],
+            now,
+        });
         return {
-            settings: (tenant?.settings as Record<string, any>) || {},
+            settings,
+            connections,
+            primaryAgentId: primaryAgent.available ? primaryAgent.id : undefined,
+            spendEnforcement,
+            unrecordedConnection,
             industry: tenant?.industry || null,
             updatedAt: tenant?.updatedAt || null,
             channelLookupAvailable: channelLookup.available && widgets.available,
@@ -422,7 +693,7 @@ export class AgentQualityService {
     async getTenantChannelSnapshot(tenantId: string): Promise<TenantChannelSnapshot> {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         if (!schemaName) throw new NotFoundException('Tenant not found');
-        const context = await this.loadTenantContext(tenantId, schemaName);
+        const context = await this.loadTenantContext(tenantId, schemaName, { routing: false });
         const sources = context.channelSourceAvailability;
         const availability = context.channelLookupAvailable ? 'known'
             : sources?.accounts || sources?.widgets ? 'partial' : 'unavailable';
@@ -454,7 +725,7 @@ export class AgentQualityService {
                 return { available: false, ready: false, provider: null };
             })
             : Promise.resolve({ available: false, ready: false, provider: null });
-        const [companies, knowledge, faqRows, policyRows, appointmentRows, productRows, orderRows, offerRows, verticalRows, vehicleRows, payments] = await Promise.all([
+        const [companies, knowledge, faqRows, policyRows, appointmentRows, productRows, orderRows, offerRows, verticalRows, vehicleRows, planPriceRows, payments] = await Promise.all([
             safe<any[]>(
                 'company',
                 `SELECT name, industry, about, phone, email, website, address, city, country, updated_at
@@ -493,6 +764,8 @@ export class AgentQualityService {
                     (SELECT COUNT(*)::int FROM services WHERE is_active = true AND btrim(name) <> '' AND duration_minutes > 0) AS services,
                     (SELECT COUNT(*)::int FROM availability_slots WHERE is_active = true AND start_time < end_time) AS slots,
                     (SELECT COUNT(*)::int FROM services WHERE is_active = true AND COALESCE(price_status, 'confirmed') = 'example') AS example_price_services,
+                    (SELECT COUNT(*)::int FROM services WHERE is_active = true
+                        AND COALESCE(price_status, 'confirmed') NOT IN ('example', 'quote') AND price IS NULL) AS no_price_services,
                     (SELECT COUNT(*)::int FROM services WHERE is_active=true AND btrim(name)<>''
                         AND COALESCE(duration_type,'fixed')='fixed' AND duration_minutes BETWEEN 1 AND 1440
                         AND COALESCE(location_type,'in_person') IN ('in_person','hybrid')) AS test_drive_services,
@@ -530,6 +803,17 @@ export class AgentQualityService {
                     (SELECT COUNT(*)::int FROM services WHERE is_active = true) AS professional_services`, [], [{}],
             ),
             safe<any[]>('vehicles', `SELECT COUNT(*)::int AS count FROM vehicles WHERE status='available'`, [], [{ count: 0 }]),
+            // Its own probe, not a subquery of the appointments one: a schema
+            // without the gym tables must not take the services counts down.
+            // `no_price` mirrors `customerFacingPrice`: a status that is not
+            // 'example' or 'quote' with no amount is "por confirmar" to a customer.
+            safe<any[]>(
+                'membershipPlans',
+                `SELECT COUNT(*) FILTER (WHERE COALESCE(price_status, 'confirmed') NOT IN ('example', 'quote')
+                                           AND price IS NULL)::int AS no_price,
+                        COUNT(*) FILTER (WHERE COALESCE(price_status, 'confirmed') = 'example')::int AS count FROM membership_plans
+                  WHERE is_active = true`, [], [{ count: 0, no_price: 0 }],
+            ),
             paymentState,
         ]);
 
@@ -549,6 +833,9 @@ export class AgentQualityService {
             services: Number(appointmentRows[0]?.services) || 0,
             availabilitySlots: Number(appointmentRows[0]?.slots) || 0,
             examplePriceServices: Number(appointmentRows[0]?.example_price_services) || 0,
+            examplePricePlans: Number(planPriceRows[0]?.count) || 0,
+            noPriceServices: Number(appointmentRows[0]?.no_price_services) || 0,
+            noPricePlans: Number(planPriceRows[0]?.no_price) || 0,
             testDriveServices: Number(appointmentRows[0]?.test_drive_services) || 0,
             testDriveSlots: Number(appointmentRows[0]?.test_drive_slots) || 0,
             vehicles: Number(vehicleRows[0]?.count) || 0,
@@ -826,14 +1113,56 @@ export class AgentQualityService {
                 };
             }),
         ];
+        // ── WHAT THIS AGENT ACTUALLY ANSWERS, NOT ONLY WHAT IT WAS ASSIGNED ──
+        //
+        // Who answers a connection is `readServingPersona`'s answer (asked per
+        // connection in `loadTenantContext`): exact binding, then type, then the
+        // DEFAULT agent for everything nobody claims. On a multi-agent tenant
+        // the default agent therefore answers connections it was never assigned
+        // to — `bindDefaultAgentToChannel` only assigns when it is the ONE
+        // active agent. Judged by its explicit list alone, that agent failed
+        // `channel_assignment` as critical while it was answering customers,
+        // and `channel_connection` went `not_applicable` — so the same agent
+        // answering a connection whose credential EXPIRED raised nothing.
+        //
+        // Only the default agent reaches tier 3, so no other agent gains
+        // anything here (and a single-agent tenant's default agent gains only
+        // what it really answers). A connection it serves through its own
+        // channels or bindings is already in `assignmentHealth`.
+        const assignedTo = (type: string, accountId: string) =>
+            channels.includes(type) || bindings.includes(`${type}:${accountId}`);
+        const mayServeByFallback = agent.is_active === true && agent.is_default === true;
+        const fallbackServed = mayServeByFallback
+            ? (tenant.connections ?? []).filter(({ type, accountId, serving }) => serving.kind === 'agent'
+                && serving.agentId === agent.id && !assignedTo(type, accountId))
+            : [];
+        // Could it be answering one we could not resolve? Then "no channel" is
+        // not a claim we verified.
+        const fallbackUnresolved = mayServeByFallback && (tenant.connections ?? [])
+            .some(({ type, accountId, serving }) => serving.kind === 'unknown' && !assignedTo(type, accountId));
+        // Every connection this agent answers, with the health of that exact
+        // account — the same key a binding reads.
+        const servedHealth: Array<{ type: string; connected: boolean; stale: boolean; health: CredentialHealth }> = [
+            ...assignmentHealth,
+            ...fallbackServed.map(({ type, accountId }) => ({
+                type,
+                connected: true,
+                stale: false,
+                health: (tenant.channelCredentialHealth.get(`${type}:${accountId}`) || 'missing') as CredentialHealth,
+            })),
+        ];
         // "Operational" = it can receive AND it can send back.
-        const connectedOperational = assignmentHealth
+        const connectedOperational = servedHealth
             .filter(({ connected, health }) => connected && !isCredentialFailure(health)).length;
-        const credentialAffectedAssignments = assignmentHealth
+        // What `channel_coverage` says about the ASSIGNMENTS ("asignado a N,
+        // solo M conectados"): a connection answered by fallback is not one of them.
+        const assignedOperational = assignmentHealth
+            .filter(({ connected, health }) => connected && !isCredentialFailure(health)).length;
+        const credentialAffectedAssignments = servedHealth
             .filter(({ connected, health }) => connected && isCredentialFailure(health)).length;
-        const credentialWarningAssignments = assignmentHealth
+        const credentialWarningAssignments = servedHealth
             .filter(({ connected, health }) => connected && isCredentialWarning(health)).length;
-        const credentialIssueCodes = [...new Set(assignmentHealth
+        const credentialIssueCodes = [...new Set(servedHealth
             .filter(({ connected, health }) => connected && health !== 'ok')
             .map(({ health }) => health))];
         const credentialIssue = credentialIssueCodes.length === 0
@@ -841,7 +1170,7 @@ export class AgentQualityService {
             : credentialIssueCodes.length === 1 ? credentialIssueCodes[0] : 'multiple';
         const channelList = (values: string[]) =>
             [...new Set(values)].sort().join(',').slice(0, MAX_EVIDENCE_LIST_CHARS);
-        const connectedChannels = channelList(assignmentHealth
+        const connectedChannels = channelList(servedHealth
             .filter(({ connected, health }) => connected && !isCredentialFailure(health))
             .map(({ type }) => type));
         const disconnectedAssignments = assignmentHealth.filter(({ connected }) => !connected);
@@ -856,14 +1185,16 @@ export class AgentQualityService {
             tool_appointments: ['appointments'], tool_catalog: ['products'], tool_ecommerce: ['products'],
             tool_orders: ['orders'], tool_offers: ['offers'],
             tool_vehicles: ['vehicles'], test_drive_service: ['appointments'], test_drive_staff: ['appointments'],
-            services_example_price: ['appointments'],
+            // A gym's plans are quoted too; for anyone else a lost plan probe
+            // must not turn the services verdict into "unknown".
+            services_example_price: tenant.industry === 'gimnasios' ? ['appointments', 'membershipPlans'] : ['appointments'],
             tool_vehicle_rentals: ['vehicles'], tool_pet_boarding: ['appointments'], tool_payments: ['payments'],
         };
         const add = (check: CheckInput) => {
             const required = dependencies[check.code] ?? (check.code.startsWith('tool_') && check.evidence && 'records' in check.evidence ? ['verticalCatalogs'] : []);
             const unavailable = required.filter(source => facts.unavailableSources?.includes(source));
             if (check.code === 'human_handoff_route' && tenant.humanLookupAvailable === false) unavailable.push('humans');
-            if (['channel_connection', 'channel_coverage'].includes(check.code) && tenant.channelLookupAvailable === false) unavailable.push('channels');
+            if (['channel_connection', 'channel_coverage', 'channel_unanswered'].includes(check.code) && tenant.channelLookupAvailable === false) unavailable.push('channels');
             if (check.code === 'knowledge_coverage' && Number(check.evidence?.availableSources ?? 0) === 0) {
                 unavailable.push(...(facts.unavailableSources ?? []).filter(source => ['knowledge', 'faqs', 'policies', 'products', 'appointments', 'verticalCatalogs'].includes(source)
                     || source === 'vehicles' && tools.vehicles?.enabled === true));
@@ -930,7 +1261,20 @@ export class AgentQualityService {
             },
         });
 
-        add({ code: 'channel_assignment', dimension: 'actions_outcomes', status: status(assignedCount > 0), critical: true, weight: 5, href: `/admin/agent/${agent.id}?tab=persona&focus=channels`, evidence: { assigned: assignedCount } });
+        // Passes for an agent that answers a connection, assigned or by
+        // fallback: "hoy no atiende a nadie" is false for it. Still fails for an
+        // agent that answers nothing — including a single-agent tenant with no
+        // connection yet, which really has nothing to answer.
+        add({
+            code: 'channel_assignment',
+            dimension: 'actions_outcomes',
+            status: assignedCount > 0 || fallbackServed.length > 0 ? 'pass'
+                : fallbackUnresolved ? 'unknown' : 'fail',
+            critical: true,
+            weight: 5,
+            href: `/admin/agent/${agent.id}?tab=persona&focus=channels`,
+            evidence: { assigned: assignedCount, servedByFallback: fallbackServed.length },
+        });
         add({ code: 'operational_channel_scope', dimension: 'actions_outcomes', status: unsupportedCount > 0 ? 'fail' : 'pass', critical: true, weight: 3, href: `/admin/agent/${agent.id}?tab=persona&focus=channels`, evidence: { unsupportedAssignments: unsupportedCount, unsupportedChannelTypes } });
         // A critical block here means "this agent cannot work at all": nothing can
         // reach it, or what reaches it cannot be answered. A partially connected
@@ -939,7 +1283,9 @@ export class AgentQualityService {
         add({
             code: 'channel_connection',
             dimension: 'actions_outcomes',
-            status: assignedCount === 0
+            // Judged over every connection this agent ANSWERS (`servedHealth`),
+            // so an expired credential on one it serves by fallback is seen.
+            status: assignedCount === 0 && fallbackServed.length === 0
                 // `channel_assignment` already blocks this; two critical blockers
                 // for one cause send the person to two different screens.
                 ? 'not_applicable'
@@ -957,6 +1303,7 @@ export class AgentQualityService {
                 ? `/admin/agent/${agent.id}?tab=persona&focus=channels` : '/admin/channels',
             evidence: {
                 assigned: assignedCount,
+                servedByFallback: fallbackServed.length,
                 connected: connectedOperational,
                 credentialAffectedAssignments,
                 credentialWarningAssignments,
@@ -977,36 +1324,151 @@ export class AgentQualityService {
                 // With nothing operational this is the same outage
                 // `channel_connection` already owns; reporting it twice would
                 // duplicate the action, and reporting `pass` would be a lie.
+                // "Operational" counts what it answers by fallback too: that is
+                // what decides whether `channel_connection` owns the outage.
                 : connectedOperational > 0 ? 'fail' : 'not_applicable',
             critical: false,
             weight: 3,
             href: `/admin/agent/${agent.id}`,
             evidence: {
                 assigned: assignedCount,
-                connected: connectedOperational,
+                connected: assignedOperational,
                 disconnectedChannels,
                 staleBindings,
             },
         });
+
+        // ── Connected, and nobody answers it ────────────────────────────────
+        //
+        // `channel_connection` passes as soon as ANY assignment of this agent is
+        // operational. So an agent assigned only to the web chat, on a tenant
+        // whose WhatsApp is connected and served by no agent, raised nothing
+        // while every WhatsApp message went unanswered. Who answers a
+        // connection is the pipeline's own resolution (`servingFor`), and the
+        // default agent answers every channel nobody else claims — so on a
+        // single-agent tenant this can never fire, and must not. One cause,
+        // one signal: the primary agent carries it; every other agent reads
+        // `not_applicable`.
+        const connections = tenant.connections;
+        const isPrimary = agent.is_active === true && (tenant.primaryAgentId !== undefined
+            ? tenant.primaryAgentId === agent.id
+            // The roster could not be read: the default agent is the owner.
+            : agent.is_default === true);
+        const unanswered = (connections ?? [])
+            .filter(({ serving }) => serving.kind === 'none' || serving.kind === 'conflict');
+        const unresolvedServing = (connections ?? []).filter(({ serving }) => serving.kind === 'unknown').length;
+        add({
+            code: 'channel_unanswered',
+            dimension: 'actions_outcomes',
+            status: !connections || !isPrimary || connections.length === 0
+                ? 'not_applicable'
+                : unanswered.length > 0 ? 'fail'
+                    // We could not ask who answers: not a claim of silence.
+                    : unresolvedServing > 0 ? 'unknown' : 'pass',
+            critical: true,
+            weight: 5,
+            href: `/admin/agent/${agent.id}?tab=persona&focus=channels`,
+            evidence: {
+                connected: connections?.length ?? 0,
+                unanswered: unanswered.filter(({ serving }) => serving.kind === 'none').length,
+                conflicted: unanswered.filter(({ serving }) => serving.kind === 'conflict').length,
+                unresolved: unresolvedServing,
+                unansweredChannels: channelList(unanswered.map(({ type }) => type)),
+            },
+        });
+
+        // ── WhatsApp connected, and every reply refused before it leaves ─────
+        //
+        // The send admission refuses EVERY chargeable message from a number
+        // Meta will not bill (a live pause), from a number with no usable
+        // billing time zone, and — only when the tenant enforces spend
+        // protection — from one whose billing currency is not established.
+        // None of that reached this screen: Salud de agentes stayed green while
+        // the agent answered nobody on WhatsApp. `send` is the admission's own
+        // verdict (`account-send-readiness.ts`), not a second copy of its rules.
+        // Scoped to the numbers THIS agent answers, by the same resolution.
+        const whatsappConnections = (connections ?? []).filter(({ type }) => type === 'whatsapp');
+        const mayServeWhatsapp = (accountId?: string) => agent.is_active === true && (agent.is_default === true
+            || channels.includes('whatsapp')
+            || (accountId ? bindings.includes(`whatsapp:${accountId}`) : bindings.some((binding) => binding.startsWith('whatsapp:'))));
+        const servedNumbers = whatsappConnections.filter(({ serving, accountId }) => serving.kind === 'agent'
+            ? serving.agentId === agent.id
+            // Unreadable resolution: kept on an agent that could be serving it,
+            // because the number's refusal is a fact whoever answers it.
+            : serving.kind === 'unknown' && mayServeWhatsapp(accountId));
+        const blockedNumbers = servedNumbers.filter(({ send }) => (send?.refusals.length ?? 0) > 0);
+        const refusalReasons = [...new Set(blockedNumbers.flatMap(({ send }) => send?.refusals ?? []))].sort();
+        const upcomingReasons = [...new Set(servedNumbers.flatMap(({ send }) => send?.upcoming ?? []))].sort();
+        const deliveryReasons: WhatsappDeliveryBlockReason[] = refusalReasons.length ? refusalReasons : upcomingReasons;
+        const fundingState = servedNumbers
+            .map(({ send }) => send?.fundingState ?? 'not_checked')
+            .sort((left, right) => FUNDING_STATE_RANK[left] - FUNDING_STATE_RANK[right])[0] ?? null;
+        add({
+            code: 'whatsapp_delivery',
+            dimension: 'actions_outcomes',
+            status: !connections
+                ? 'not_applicable'
+                // The accounts could not be read: whether a number is refused
+                // is unknown, and only an agent that could serve one is asked.
+                : tenant.channelSourceAvailability?.accounts === false
+                    ? (mayServeWhatsapp() ? 'unknown' : 'not_applicable')
+                    : servedNumbers.length === 0 ? 'not_applicable'
+                        : blockedNumbers.length > 0 ? 'fail'
+                            // A dated stop (no payment method before 1-oct):
+                            // still delivering today, so attention, not outage.
+                            : upcomingReasons.length > 0 ? 'warning' : 'pass',
+            critical: true,
+            weight: 5,
+            // Where both fixes live: WhatsAppBillingTimeZone and
+            // WhatsappFundingPanel (pause, resume, check-funding).
+            href: '/admin/channels/whatsapp',
+            evidence: {
+                whatsappNumbers: servedNumbers.length,
+                blockedNumbers: blockedNumbers.length,
+                reason: deliveryReasons.length === 0 ? null : deliveryReasons.length === 1 ? deliveryReasons[0] : 'multiple',
+                reasons: deliveryReasons.join(','),
+                enforcement: tenant.spendEnforcement ?? 'observe',
+                fundingState,
+                fundingRequiredFrom: deliveryReasons.includes('funding_absent') ? FUNDING_REQUIRED_FROM : null,
+            },
+        });
         add({ code: 'tool_appointments', dimension: 'actions_outcomes', status: this.optionalToolStatus(tools.appointments, facts.services > 0 && facts.availabilitySlots > 0), critical: tools.appointments?.enabled === true, weight: 5, href: '/admin/appointments', evidence: { enabled: tools.appointments?.enabled === true, services: facts.services, availabilitySlots: facts.availabilitySlots } });
-        // A recipe seeds services with an example price so the agent has
-        // something to quote on day 0. Until the owner confirms them, the agent
-        // is quoting a number nobody agreed to — worth a warning, never a
-        // blocker: the booking still works and readiness is not touched. It
-        // stays out of the way only when nothing quotes services at all.
+        // A recipe seeds services — and, for gyms, membership plans — with an
+        // example price. The agent never states an unconfirmed amount, so until
+        // the owner confirms them it cannot say what anything costs — worth a
+        // warning, never a blocker: the booking still works and readiness is
+        // not touched. It stays out of the way only when nothing quotes a price.
+        //
+        // A row with NO amount is the same silence from the customer's side: a
+        // service created without a price (Assist never invents one) is stored
+        // confirmed with NULL, and every customer projection reads it as "por
+        // confirmar". Counting only `price_status = 'example'` left the panel
+        // showing "Sin precio" with no nudge anywhere. Both kinds count; the
+        // evidence keeps the four numbers apart so the panel can say which.
+        const servicePrices = facts.examplePriceServices + facts.noPriceServices;
+        const planPrices = facts.examplePricePlans + facts.noPricePlans;
+        const pendingPrices = servicePrices + planPrices;
         add({
             code: 'services_example_price',
             dimension: 'actions_outcomes',
-            status: tools.appointments?.enabled !== true && facts.services === 0 && facts.examplePriceServices === 0
+            status: tools.appointments?.enabled !== true && facts.services === 0 && pendingPrices === 0
                 ? 'not_applicable'
-                : facts.examplePriceServices > 0 ? 'warning' : 'pass',
+                : pendingPrices > 0 ? 'warning' : 'pass',
             critical: false,
             weight: 2,
             // Verticals that seed services without an agenda (home services,
             // photography, pet boarding) do not show Citas: their services live
             // in the service catalogue, and a link into a hidden route bounces.
-            href: this.servicesScreenHref(tenant.industry),
-            evidence: { examplePriceServices: facts.examplePriceServices },
+            // When only plans are pending, the fix is on the memberships screen.
+            href: servicePrices === 0 && planPrices > 0
+                ? '/admin/memberships'
+                : this.servicesScreenHref(tenant.industry),
+            evidence: {
+                examplePriceServices: facts.examplePriceServices,
+                examplePricePlans: facts.examplePricePlans,
+                noPriceServices: facts.noPriceServices,
+                noPricePlans: facts.noPricePlans,
+            },
         });
         const missionIntents = (config as any).mission?.intentKeys;
         const wantsTestDrives = tools.vehicles?.enabled === true
@@ -1217,6 +1679,9 @@ export class AgentQualityService {
                         : check.critical ? 'critical' : 'high',
                     href: check.href || '/admin/agent',
                     params: check.evidence,
+                    // `critical` covers both "failed" and "could not check";
+                    // this is how a reader tells them apart.
+                    checkStatus: check.status,
                 });
             }
         }

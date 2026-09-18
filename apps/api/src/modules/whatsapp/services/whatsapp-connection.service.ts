@@ -25,8 +25,9 @@ import { ChannelTokenService, type ResolvedConnection, type SendContextRequest }
 // only move the failure to the first message somebody tries to send.
 import { wabaLocalDate } from '../../billing/whatsapp-rates';
 import {
-    contradictoryWabas, describeResolution, resolveZone,
-    type NumberZone, type ZoneEvidence, type ZoneResolution,
+    contradictoryWabas, describeResolution, normalizeMetaTimezoneId, resolveZone, usableZone,
+    zoneConfirmedFor, zoneOnConnection, zoneStillConfirmedFor,
+    type ConnectionZoneDecision, type NumberZone, type ZoneEvidence, type ZoneResolution,
 } from '../waba-timezone-authority';
 import {
     currencyFromMeta, describeCurrency, resolveCurrency,
@@ -36,6 +37,20 @@ import {
 } from './whatsapp-live-coverage';
 
 const META_GRAPH = 'https://graph.facebook.com/v21.0';
+
+/** One `channel_accounts` row as the time zone authority reads it. */
+function numberZoneOf(account: { accountId: string; wabaTimezone: string | null; metadata: unknown }):
+    NumberZone & { metadata: Record<string, any> } {
+  const metadata = (account.metadata ?? {}) as Record<string, any>;
+  return {
+    channelAccountId: account.accountId,
+    wabaId: metadata.wabaId ?? null,
+    timezoneId: Number(metadata.metaTimezoneId) || null,
+    zone: account.wabaTimezone ?? null,
+    evidence: (metadata.wabaTimezoneEvidence ?? null) as ZoneEvidence | null,
+    metadata,
+  };
+}
 
 /**
  * What a person reads when a connect is refused for coverage.
@@ -353,6 +368,14 @@ export class WhatsappConnectionService {
     const existingAccount = await this.prisma.channelAccount.findFirst({
       where: { channelType: 'whatsapp', accountId: phoneNumberId },
     });
+    // The billing zone this connection leaves on the row. A reconnect that
+    // moves the number to another account (another WABA, or the same WABA now
+    // reporting another Meta id) rewrites `wabaId`/`metaTimezoneId` below; the
+    // zone confirmed for the OLD account must not stay beside them, where it
+    // would read as confirmed for the new one. Same rule as Embedded Signup.
+    const zone = await this.billingZoneOnConnection(
+      tenantId, String(phoneNumberId), String(wabaId), data.timezoneId, existingAccount,
+    );
     if (existingAccount) {
       await this.prisma.channelAccount.update({
         where: { id: existingAccount.id },
@@ -361,6 +384,9 @@ export class WhatsappConnectionService {
           displayName: data.verifiedName || data.displayName || data.displayPhoneNumber || phoneNumberId,
           accessToken: 'encrypted_ref',
           isActive: true,
+          // `undefined` leaves the column as it is; `null` clears a zone that
+          // was confirmed for another account.
+          ...(zone.wabaTimezone !== undefined ? { wabaTimezone: zone.wabaTimezone } : {}),
           metadata: {
             ...(existingAccount.metadata as Record<string, unknown>),
             wabaId,
@@ -385,7 +411,8 @@ export class WhatsappConnectionService {
             ...(currencyFromMeta(data.currency, wabaId)
                 ? { billingCurrencyEvidence: { ...currencyFromMeta(data.currency, wabaId)! } }
                 : {}),
-          },
+            ...zone.metadata,
+          } as any,
         },
       });
     } else {
@@ -397,6 +424,7 @@ export class WhatsappConnectionService {
           displayName: data.verifiedName || data.displayName || data.displayPhoneNumber || phoneNumberId,
           accessToken: 'encrypted_ref',
           isActive: true,
+          ...(zone.wabaTimezone ? { wabaTimezone: zone.wabaTimezone } : {}),
           metadata: {
             wabaId,
             phoneNumberId,
@@ -406,7 +434,8 @@ export class WhatsappConnectionService {
             // `waba_timezone` refuses one. Storing it means the mapping can be
             // done later without asking Meta again for every connection.
             ...(data.timezoneId ? { metaTimezoneId: String(data.timezoneId) } : {}),
-          },
+            ...zone.metadata,
+          } as any,
         },
       });
     }
@@ -479,6 +508,59 @@ export class WhatsappConnectionService {
       source: 'channel_credential',
     });
     return { success: true, channelId: rows[0].id };
+  }
+
+  /**
+   * The billing zone a manual connection leaves on its routing row
+   * (`zoneOnConnection`), said out loud when the number ends without one.
+   *
+   * Best effort by construction: the routing write it feeds is what lets any
+   * inbound message reach this tenant, so a failed sibling read costs the
+   * inherited zone and nothing else.
+   */
+  private async billingZoneOnConnection(
+    tenantId: string,
+    phoneNumberId: string,
+    wabaId: string,
+    timezoneId: unknown,
+    existing: { wabaTimezone?: string | null; metadata?: unknown } | null,
+  ): Promise<ConnectionZoneDecision> {
+    let siblings: NumberZone[] = [];
+    if (normalizeMetaTimezoneId(timezoneId)) {
+      try {
+        const rows = await this.prisma.channelAccount.findMany({
+          where: { tenantId, channelType: 'whatsapp', wabaTimezone: { not: null } },
+          select: { accountId: true, wabaTimezone: true, metadata: true },
+        });
+        siblings = (rows ?? []).map(numberZoneOf);
+      } catch (error: any) {
+        this.logger.warn(`[Billing zone] could not read the other numbers of tenant=${tenantId}: ${error?.message}`);
+      }
+    }
+    const decision = zoneOnConnection({
+      existing: existing ? { zone: existing.wabaTimezone ?? null, metadata: existing.metadata } : null,
+      account: { channelAccountId: phoneNumberId, wabaId, timezoneId },
+      siblings,
+    });
+    const reported = normalizeMetaTimezoneId(timezoneId);
+    if (decision.superseded) {
+      const confirmed = zoneConfirmedFor(existing?.metadata);
+      this.logger.warn(`[Billing zone] phone=${phoneNumberId} no longer keeps ${decision.superseded}: it was confirmed `
+        + `for WABA ${confirmed.wabaId ?? 'unknown'} / Meta timezone_id=${confirmed.timezoneId ?? 'unknown'}, `
+        + `and this connection is WABA ${wabaId} / timezone_id=${reported ?? 'none'}`);
+    }
+    if (decision.resolution?.kind === 'inherited') {
+      this.logger.log(`[Billing zone] phone=${phoneNumberId} billed in ${decision.resolution.zone}, carried from `
+        + `${decision.resolution.evidence.from} (same WABA ${wabaId}, same Meta timezone_id=${reported})`);
+    }
+    const endsWithoutZone = decision.wabaTimezone === null
+      || (decision.wabaTimezone === undefined && !usableZone(existing?.wabaTimezone));
+    if (endsWithoutZone) {
+      this.logger.warn(`[Billing zone] phone=${phoneNumberId} (WABA ${wabaId}, Meta timezone_id=${reported ?? 'none'}) `
+        + 'has no confirmed zone: waba_timezone stays NULL, and every reply from this number is refused '
+        + '(timezone_missing) until the owner confirms it');
+    }
+    return decision;
   }
 
   /**
@@ -670,6 +752,9 @@ export class WhatsappConnectionService {
       WHERE tenant_id::uuid=$1::uuid AND channel_type='whatsapp' AND account_id=$2 AND is_active=true
         AND metadata->>'wabaId'=$3`, connection.tenantId, phoneNumberId, connection.wabaId, JSON.stringify(evidence));
     if (!changed) throw new BadRequestException('funding_connection_changed');
+    // An established absence is what `whatsapp_delivery` reports; a fresh
+    // reading must reach Salud de agentes now, in either direction.
+    this.notifyQualityDependency(connection.tenantId);
     return { phoneNumberId, ...evidence };
   }
 
@@ -876,21 +961,20 @@ export class WhatsappConnectionService {
       throw new ConnectionRefusedError('connection_not_found',
         { tenantId, channelType: 'whatsapp', requestedAccountId: phoneNumberId });
     }
+    // The evidence, beside the answer. Without it the platform can say WHAT
+    // the zone is and not WHY, and "why" is the difference between a fact
+    // somebody confirmed and a value that appeared.
+    const evidence: ZoneEvidence = {
+      source: 'human_confirmed', at: new Date().toISOString(),
+      timezoneId: Number((account.metadata as any)?.metaTimezoneId) || null,
+      wabaId: (account.metadata as any)?.wabaId ?? null,
+    };
+    const confirmedMetadata = { ...((account.metadata ?? {}) as object), wabaTimezoneEvidence: evidence };
     await this.prisma.channelAccount.update({
       where: { id: account.id },
       data: {
         wabaTimezone: zone,
-        metadata: {
-          ...((account.metadata ?? {}) as object),
-          // The evidence, beside the answer. Without it the platform can say
-          // WHAT the zone is and not WHY, and "why" is the difference between a
-          // fact somebody confirmed and a value that appeared.
-          wabaTimezoneEvidence: {
-            source: 'human_confirmed', at: new Date().toISOString(),
-            timezoneId: Number((account.metadata as any)?.metaTimezoneId) || null,
-            wabaId: (account.metadata as any)?.wabaId ?? null,
-          },
-        } as any,
+        metadata: confirmedMetadata as any,
       },
     });
     this.logger.log(`WhatsApp ${phoneNumberId} of tenant ${tenantId} is now billed in ${zone}`);
@@ -899,8 +983,22 @@ export class WhatsappConnectionService {
     // id on the SAME business account. Meta's zone belongs to the WABA, so this
     // reads one fact twice rather than guessing a second one — and it is what
     // turns "six numbers, six forms" into "six numbers, one form".
-    const alsoApplied = await this.propagateZone(tenantId, account, zone);
+    const alsoApplied = await this.propagateZone(tenantId, { ...account, metadata: confirmedMetadata }, zone);
+    // Without a zone the send admission refuses every message from the number,
+    // and Salud de agentes says so (`whatsapp_delivery`). It reconciles on this
+    // event rather than on the six-hourly cron: the red bar must go away when
+    // the owner fixes the field, not hours later.
+    this.notifyQualityDependency(tenantId);
     return { phoneNumberId, timeZone: zone, alsoApplied };
+  }
+
+  /** Best effort: the change is already written, and a lost event waits for the cron. */
+  private notifyQualityDependency(tenantId: string): void {
+    try {
+      this.events?.emit(AGENT_QUALITY_DEPENDENCIES_UPDATED, { tenantId, source: 'channel_connection' });
+    } catch (error: any) {
+      this.logger.warn(`Quality reconcile not requested for ${tenantId}: ${error?.message}`);
+    }
   }
 
   /**
@@ -914,12 +1012,23 @@ export class WhatsappConnectionService {
    * Best-effort. A propagation that fails leaves the other numbers exactly as
    * they were — unmapped, blocked with a named diagnosis, and fixable by the
    * same one-field form.
+   *
+   * The donor is checked like any other: its zone evidence must name the
+   * account it is carried across (`zoneStillConfirmedFor`). A zone confirmed
+   * for another WABA or another Meta id says nothing about this one.
    */
   private async propagateZone(tenantId: string, source: { id: string; metadata: unknown },
     zone: string): Promise<readonly string[]> {
     const wabaId = (source.metadata as any)?.wabaId ?? null;
-    const timezoneId = (source.metadata as any)?.metaTimezoneId ?? null;
+    const timezoneId = normalizeMetaTimezoneId((source.metadata as any)?.metaTimezoneId);
     if (!wabaId || !timezoneId) return [];
+    const confirmed = zoneConfirmedFor(source.metadata);
+    if (!zoneStillConfirmedFor(confirmed, { wabaId, timezoneId })) {
+      this.logger.warn(`Not carrying ${zone} across WABA ${wabaId}: it was confirmed for WABA `
+        + `${confirmed.wabaId ?? 'unknown'} / Meta timezone_id=${confirmed.timezoneId ?? 'unknown'}, `
+        + `not for this account (timezone_id=${timezoneId})`);
+      return [];
+    }
     try {
       const siblings = await this.prisma.channelAccount.findMany({
         where: { tenantId, channelType: 'whatsapp', wabaTimezone: null },
@@ -929,7 +1038,7 @@ export class WhatsappConnectionService {
       for (const sibling of siblings) {
         if (sibling.id === source.id) continue;
         const metadata = (sibling.metadata ?? {}) as Record<string, unknown>;
-        if (metadata.wabaId !== wabaId || String(metadata.metaTimezoneId ?? '') !== String(timezoneId)) {
+        if (metadata.wabaId !== wabaId || normalizeMetaTimezoneId(metadata.metaTimezoneId) !== timezoneId) {
           continue;
         }
         await this.prisma.channelAccount.update({
@@ -979,17 +1088,7 @@ export class WhatsappConnectionService {
       where: { tenantId, channelType: 'whatsapp' },
       select: { accountId: true, wabaTimezone: true, metadata: true },
     });
-    const numbers: (NumberZone & { metadata: Record<string, any> })[] = accounts.map(account => {
-      const metadata = (account.metadata ?? {}) as Record<string, any>;
-      return {
-        channelAccountId: account.accountId,
-        wabaId: metadata.wabaId ?? null,
-        timezoneId: Number(metadata.metaTimezoneId) || null,
-        zone: account.wabaTimezone ?? null,
-        evidence: (metadata.wabaTimezoneEvidence ?? null) as ZoneEvidence | null,
-        metadata,
-      };
-    });
+    const numbers: (NumberZone & { metadata: Record<string, any> })[] = accounts.map(numberZoneOf);
     return {
       numbers: numbers.map(number => {
         const resolution = resolveZone(number, numbers);

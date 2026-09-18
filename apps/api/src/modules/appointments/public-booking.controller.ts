@@ -19,6 +19,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { AppointmentsService } from './appointments.service';
 import { ServicesService } from './services.service';
+import { customerFacingPrice, type ServicePriceStatus } from './service-price-status';
 import { CalendarIntegrationService } from './calendar-integration.service';
 import { normalizePhoneE164 } from '../../common/utils/phone.util';
 import { RegionalProfileService } from '../tenants/regional-profile.service';
@@ -39,6 +40,29 @@ interface PublicBookingRequestBody {
     notes?: string;
     staffId?: string;
     idempotencyKey?: string;
+}
+
+/**
+ * A service as the PUBLIC booking API may state it.
+ *
+ * `/booking/:slug/services` is read by anyone with the slug — the booking page,
+ * but also a scraper, a browser's network tab, a price-comparison bot. It used
+ * to return the owner's row as-is, so a recipe's example price nobody confirmed
+ * ("Mensualidad $180.000") travelled in the JSON while the page hid it: the one
+ * customer-facing reader that still published the number. Every other one (the
+ * agent's `list_services`, `get_membership_plans`, the appointment terms) goes
+ * through `customerFacingPrice`, and so does this:
+ *
+ *   · 'example' and 'quote' carry no amount — `price: null`;
+ *   · a row with no amount at all reads 'example' ("por confirmar"), never a
+ *     free service stated as fact;
+ *   · a confirmed amount, 0 included (free), is the only number that travels.
+ */
+export function publicBookingService<T extends { price?: unknown; priceStatus?: unknown }>(
+    service: T,
+): Omit<T, 'price' | 'priceStatus'> & { price: number | null; priceStatus: ServicePriceStatus } {
+    const { priceStatus, price } = customerFacingPrice({ price: service.price, price_status: service.priceStatus });
+    return { ...service, price, priceStatus };
 }
 
 interface ExistingPublicBooking {
@@ -416,7 +440,7 @@ export class PublicBookingController {
         const t = await this.resolveSchema(tenantSlug);
         this.requireBookingEnabled(t);
         const data = await this.servicesService.list(t.schemaName, true);
-        return { success: true, data };
+        return { success: true, data: data.map((service) => publicBookingService(service)) };
     }
 
     @Get(':tenantSlug/services/:serviceId')
@@ -429,7 +453,7 @@ export class PublicBookingController {
         this.requireBookingEnabled(t);
         const data = await this.servicesService.getById(t.schemaName, serviceId);
         if (!data.isActive) throw new BadRequestException('Service not available');
-        return { success: true, data };
+        return { success: true, data: publicBookingService(data) };
     }
 
     @Get(':tenantSlug/slots')
@@ -463,7 +487,7 @@ export class PublicBookingController {
             display: s.time,
             staffId: s.agentId,
         }));
-        return { success: true, data: { service: svc, date, slots } };
+        return { success: true, data: { service: publicBookingService(svc), date, slots } };
     }
 
     @Post(':tenantSlug/book')

@@ -236,7 +236,13 @@ export class AgentAssessmentService {
                 // aggregate says: an unreadable source is not a passing one.
                 sourceAvailable: !task.checks.some(check =>
                     (check as any)?.evidence?.sourceAvailability === 'unavailable'),
-                operationalIssue: task.checks.some(check => check.evidence?.hasCredentialIssue === true),
+                // Known risks to a channel that still works today opt in, so
+                // they read "needs attention", not "not ready to attend": a
+                // credential about to expire, and a WhatsApp number with no
+                // payment method in Meta before the date Meta stops delivering
+                // without one (`whatsapp_delivery` at `warning`).
+                operationalIssue: task.checks.some(check => check.evidence?.hasCredentialIssue === true
+                    || (check.code === 'whatsapp_delivery' && check.status === 'warning')),
             }),
         });
         const tasks: AgentSetupTask[] = [withState({ key: 'mission', status: saved !== undefined && (!isAgentMissionV1(saved) || unsupportedIntents.length) ? 'fail' : configured ? 'pass' : 'warning', checks: [],
@@ -261,7 +267,13 @@ export class AgentAssessmentService {
             tasks.push(withState({ key: key as AgentSetupTask['key'], status: taskStatus, checks: relevant,
                 ...(firstPending ? { pendingCheckCode: firstPending.code } : {}),
                 ...defaults[key], href: firstPending?.href ?? defaults[key].href,
-                tourId: firstPending?.status === 'unknown' || firstPending?.code === 'test_drive_permissions' ? null : findGuidedTourForQualityCode(firstPending?.code, firstPending?.evidence)?.id ?? defaults[key].tourId,
+                // `whatsapp_delivery` has no tour: its fixes live on the WhatsApp
+                // screen and in Meta. Falling back to the channel task's
+                // "connect a channel" tour would walk the owner to connect a
+                // channel that is already connected.
+                tourId: firstPending?.status === 'unknown' || firstPending?.code === 'test_drive_permissions'
+                    || firstPending?.code === 'whatsapp_delivery'
+                    ? null : findGuidedTourForQualityCode(firstPending?.code, firstPending?.evidence)?.id ?? defaults[key].tourId,
                 ...(key === 'channel' ? { channelType: preferredChannel } : {}) }));
         }
         const catalog = getVerticalCatalog(industry, subType);

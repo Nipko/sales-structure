@@ -11,6 +11,7 @@ import {
     CheckCircle2, XCircle, Tag, Users, ChevronDown, X, UserPlus, Infinity,
 } from "lucide-react";
 import type { DurationType, PriceStatus } from "./shared";
+import { servicePriceDisplay, type ServicePriceChoice, type ServicePriceDisplay } from "./service-price";
 
 interface Service {
     id: string;
@@ -19,7 +20,7 @@ interface Service {
     durationMax?: number | null;
     durationType?: DurationType;
     buffer: number;
-    price: number;
+    price: number | null;
     priceStatus?: PriceStatus;
     color: string;
     active: boolean;
@@ -42,8 +43,11 @@ interface ServicesTabProps {
     onEditService: (svc: Service) => void;
     onDeleteService: (id: string) => void;
     onToggleActive: (svc: Service) => void;
-    /** Confirma un precio de ejemplo tal cual, o lo pasa a "se cotiza", sin abrir el editor. */
-    onPriceStatusChange?: (svc: Service, status: Exclude<PriceStatus, "example">) => void | Promise<void>;
+    /**
+     * Sin abrir el editor: confirma un precio de ejemplo tal cual, lo declara
+     * gratis ("Es gratis", explícito: FX1) o lo pasa a "se cotiza".
+     */
+    onPriceStatusChange?: (svc: Service, choice: ServicePriceChoice) => void | Promise<void>;
     /**
      * La moneda del negocio (`useOperatingCurrency()` en la página). El precio
      * llevaba un `$` fijo delante y ninguna moneda detrás: un negocio brasileño
@@ -51,6 +55,67 @@ interface ServicesTabProps {
      * `formatMoney` deja el número desnudo en vez de inventar un símbolo.
      */
     currency?: string | null;
+}
+
+const pillCls = "inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-neutral-50 dark:bg-neutral-800 text-muted-foreground text-xs font-medium";
+const warnPillCls = "inline-flex items-center px-2.5 py-1.5 rounded-lg border border-dotted border-amber-500/70 text-amber-700 dark:text-amber-300 text-[11px] font-medium";
+
+/**
+ * El precio de la tarjeta (D10 + FX1). "Se cotiza" nunca muestra número; un
+ * precio de ejemplo se muestra marcado como lo que es; un servicio sin monto
+ * dice "Sin precio" (antes se leía como 0 y parecía un precio a confirmar); y
+ * uno gratis lo dice, porque es lo que el agente le va a decir al cliente.
+ */
+function ServicePriceBadges({ display, currency, numLocale }: { display: ServicePriceDisplay; currency?: string | null; numLocale?: string }) {
+    const t = useTranslations("appointments");
+    if (display.kind === "quote") return <span className={pillCls}><DollarSign size={12} /> {t("priceStatus.quotePill")}</span>;
+    if (display.kind === "missing") return <span className={warnPillCls}>{t("priceStatus.noPricePill")}</span>;
+    if (display.kind === "free") return <span className={pillCls}><DollarSign size={12} /> {t("priceStatus.freePill")}</span>;
+    return (
+        <>
+            <span className={pillCls}><DollarSign size={12} /> {formatMoney(display.amount, currency, { locale: numLocale })}</span>
+            {display.kind === "example" && <span className={warnPillCls}>{t("priceStatus.examplePill")}</span>}
+        </>
+    );
+}
+
+/**
+ * La salida a mano de un precio que el dueño no decidió, sin abrir el editor.
+ * Un ejemplo con monto se confirma tal cual. Un servicio SIN monto no tiene
+ * nada que confirmar (el servidor lo rechaza con `price_missing`): se escribe
+ * el monto, se declara gratis o se cotiza.
+ */
+function ServicePriceActions({ display, pending, onChoice, onWritePrice }: {
+    display: ServicePriceDisplay;
+    pending: boolean;
+    onChoice: (choice: ServicePriceChoice) => void;
+    onWritePrice: () => void;
+}) {
+    const t = useTranslations("appointments");
+    if (display.kind !== "example" && display.kind !== "missing") return null;
+    const primary = "text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer border-none bg-transparent p-0 disabled:opacity-50";
+    const secondary = "text-xs font-medium text-muted-foreground hover:text-foreground hover:underline cursor-pointer border-none bg-transparent p-0 disabled:opacity-50";
+    return (
+        <div className="flex flex-wrap items-center gap-3 -mt-2 mb-4">
+            {display.kind === "example" ? (
+                <button type="button" disabled={pending} onClick={() => onChoice("confirmed")} className={primary}>
+                    {t("priceStatus.confirmAction")}
+                </button>
+            ) : (
+                <>
+                    <button type="button" onClick={onWritePrice} className={primary}>
+                        {t("priceStatus.writePrice")}
+                    </button>
+                    <button type="button" disabled={pending} onClick={() => onChoice("free")} className={secondary}>
+                        {t("priceStatus.free")}
+                    </button>
+                </>
+            )}
+            <button type="button" disabled={pending} onClick={() => onChoice("quote")} className={secondary}>
+                {t("priceStatus.quoteAction")}
+            </button>
+        </div>
+    );
 }
 
 function Toggle({ enabled, label, onChange }: { enabled: boolean; label: string; onChange: () => void }) {
@@ -82,10 +147,10 @@ export default function ServicesTab({
     // Un solo servicio a la vez: los dos botones se apagan mientras se guarda.
     const [pricePendingId, setPricePendingId] = useState<string | null>(null);
 
-    const handlePriceStatus = async (svc: Service, status: Exclude<PriceStatus, "example">) => {
+    const handlePriceStatus = async (svc: Service, choice: ServicePriceChoice) => {
         if (!onPriceStatusChange) return;
         setPricePendingId(svc.id);
-        try { await onPriceStatusChange(svc, status); } finally { setPricePendingId(null); }
+        try { await onPriceStatusChange(svc, choice); } finally { setPricePendingId(null); }
     };
 
     // Load all users once for assignment dropdown
@@ -264,42 +329,16 @@ export default function ServicesTab({
                                             <Clock size={12} /> +{svc.buffer} min
                                         </span>
                                     )}
-                                    {/* Precio (D10): "se cotiza" nunca muestra número; un precio de
-                                        ejemplo del rubro se muestra, pero marcado como lo que es. */}
-                                    {svc.priceStatus === "quote" ? (
-                                        <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-neutral-50 dark:bg-neutral-800 text-muted-foreground text-xs font-medium">
-                                            <DollarSign size={12} /> {t("priceStatus.quotePill")}
-                                        </span>
-                                    ) : (
-                                        <>
-                                            {svc.price > 0 && (
-                                                <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-neutral-50 dark:bg-neutral-800 text-muted-foreground text-xs font-medium">
-                                                    <DollarSign size={12} /> {formatMoney(svc.price, currency, { locale: numLocale })}
-                                                </span>
-                                            )}
-                                            {svc.priceStatus === "example" && (
-                                                <span className="inline-flex items-center px-2.5 py-1.5 rounded-lg border border-dotted border-amber-500/70 text-amber-700 dark:text-amber-300 text-[11px] font-medium">
-                                                    {t("priceStatus.examplePill")}
-                                                </span>
-                                            )}
-                                        </>
-                                    )}
+                                    <ServicePriceBadges display={servicePriceDisplay(svc)} currency={currency} numLocale={numLocale} />
                                 </div>
 
-                                {/* Salida a mano del precio de ejemplo, sin abrir el editor */}
-                                {svc.priceStatus === "example" && onPriceStatusChange && (
-                                    <div className="flex items-center gap-3 -mt-2 mb-4">
-                                        <button type="button" disabled={pricePendingId === svc.id}
-                                            onClick={() => handlePriceStatus(svc, "confirmed")}
-                                            className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer border-none bg-transparent p-0 disabled:opacity-50">
-                                            {t("priceStatus.confirmAction")}
-                                        </button>
-                                        <button type="button" disabled={pricePendingId === svc.id}
-                                            onClick={() => handlePriceStatus(svc, "quote")}
-                                            className="text-xs font-medium text-muted-foreground hover:text-foreground hover:underline cursor-pointer border-none bg-transparent p-0 disabled:opacity-50">
-                                            {t("priceStatus.quoteAction")}
-                                        </button>
-                                    </div>
+                                {onPriceStatusChange && (
+                                    <ServicePriceActions
+                                        display={servicePriceDisplay(svc)}
+                                        pending={pricePendingId === svc.id}
+                                        onChoice={(choice) => void handlePriceStatus(svc, choice)}
+                                        onWritePrice={() => onEditService(svc)}
+                                    />
                                 )}
 
                                 {/* Actions */}

@@ -4,6 +4,7 @@ import { ensureDemoWidget } from '../widget/widget-demo-link';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { PersonaService } from './persona.service';
+import { AgentDraftService } from './agent-draft.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
@@ -13,6 +14,7 @@ import { PERSONA_TEMPLATES } from './templates';
 import * as yaml from 'js-yaml';
 import { getVerticalCatalog } from '../../common/utils/vertical-catalog.util';
 import { mutateTenantSettingsAtomic } from '../../common/utils/tenant-settings.util';
+import { FIRST_REPLY_SETTING_KEY, isRecordedFirstReply } from '../../common/utils/first-reply.util';
 import {
     advanceOnboardingStage,
     deriveOnboardingStage,
@@ -46,6 +48,10 @@ export class PersonaController {
         // Optional so the specs that build this controller by hand keep working;
         // without it the public link's cached name refreshes on its own TTL.
         @Optional() private readonly redis?: RedisService,
+        // The editor's switch turning an agent on goes through the same commit
+        // as a save. Optional for the same hand-built specs; without it the
+        // switch refuses to turn an agent on rather than bypass that commit.
+        @Optional() private readonly drafts?: AgentDraftService,
     ) {}
 
     /**
@@ -567,7 +573,7 @@ export class PersonaController {
     async getSetupStatus(@Param('tenantId') tenantId: string) {
         const tenant = await this.prisma.tenant.findUnique({
             where: { id: tenantId },
-            select: { settings: true, schemaName: true, industry: true },
+            select: { settings: true, schemaName: true, industry: true, createdAt: true },
         });
         const settings = (tenant?.settings as any) || {};
         const schema = tenant?.schemaName;
@@ -761,6 +767,17 @@ export class PersonaController {
                     channelConnectSkippedAt: settings.channelConnectSkippedAt ?? null,
                 }),
                 channelConnectSkippedAt: settings.channelConnectSkippedAt || null,
+                // La activación, junto a la etapa y con los mismos nombres que
+                // el payload de sesión. La etapa es monótona y `completed` le
+                // gana a `live`, así que "ya le respondió a alguien" viaja
+                // aparte: `firstReplyAt` lo escribe solo `recordFirstReply`, en
+                // la primera respuesta real (nunca la del enlace de prueba), y
+                // el alta acota el día 0. El panel los pasa a
+                // `isOnboardingBeforeLive(stage, { firstReplyAt, createdAt })`.
+                firstReplyAt: isRecordedFirstReply(settings[FIRST_REPLY_SETTING_KEY])
+                    ? settings[FIRST_REPLY_SETTING_KEY] : null,
+                tenantCreatedAt: tenant?.createdAt instanceof Date && Number.isFinite(tenant.createdAt.getTime())
+                    ? tenant.createdAt.toISOString() : null,
                 // El huso del tenant: el asistente lo muestra como chip y los
                 // horarios lo necesitan para no asumir Bogotá.
                 timezone: settings.timezone || null,
@@ -846,12 +863,24 @@ export class PersonaController {
     @Roles('tenant_admin')
     @RequiresVerifiedEmail('activate_agent')
     @ApiOperation({ summary: 'Update an existing agent persona' })
-    async updateAgent(@Param('tenantId') tenantId: string, @Param('agentId') agentId: string, @Body() body: any) {
+    async updateAgent(@Param('tenantId') tenantId: string, @Param('agentId') agentId: string, @Body() body: any, @Req() req?: any) {
         if (!body || !Number.isInteger(body.expectedVersion) || body.expectedVersion < 0) {
             throw new BadRequestException({ error: 'agent_version_required', message: 'Reload the agent before saving.' });
         }
-        if (body.isActive !== false || Object.keys(body).some(key => !['isActive', 'expectedVersion'].includes(key)))
+        if (typeof body.isActive !== 'boolean' || Object.keys(body).some(key => !['isActive', 'expectedVersion'].includes(key)))
             throw new BadRequestException({ error: 'agent_draft_contract_required' });
+        // The switch, ON. With immediate changes (the default) it is a commit:
+        // the one a save makes, audited, cache-invalidating and guarded so two
+        // agents never serve one connection. With reviewed changes the service
+        // refuses it (`agent_draft_contract_required`): publication switches on.
+        // Refusing it here in both modes left an owner who switched her only
+        // agent off unable to switch it back on, and every channel unanswered.
+        if (body.isActive === true) {
+            if (!this.drafts) throw new BadRequestException({ error: 'agent_draft_contract_required' });
+            const activated = await this.drafts.activate(tenantId, agentId, body.expectedVersion,
+                { id: req?.user?.sub ?? req?.user?.id, role: req?.user?.role });
+            return { success: true, data: activated };
+        }
         const paymentEntitlementError = await this.rejectUnavailableCustomerPayments(tenantId, body.configJson);
         if (paymentEntitlementError) return paymentEntitlementError;
 

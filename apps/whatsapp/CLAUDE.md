@@ -66,14 +66,14 @@ Nota: cada `change` del payload se procesa aislado en un try/catch — un templa
 5. `debugToken` (valida tipo/scopes; no bloqueante; extrae WABA de granular scopes si aplica).
 6. Descubrir WABA (usa `wabaId` de session info si viene; si no, scopes o `/me/businesses`).
 7. Resolver el número (`phoneNumberId` de session info o el primero del WABA).
-8. `registerPhoneNumber` con Meta (no fatal si ya estaba registrado).
+8. `registerPhoneNumber` con Meta. Nunca fatal, pero tampoco se traga: si falla y Meta no lee el número como registrado (`status` CONNECTED o un estado de calidad), el onboarding termina `COMPLETED_WITH_WARNINGS` con `phone_registration_deferred` — un número sin registrar no envía nada (`classifyPhoneRegistration`).
 9. Persistir el canal en el schema del tenant (`whatsapp_channels`; DELETE+INSERT con verificación de fila).
 10. **Registrar `channel_account`** (tabla global) para el routing de webhooks — gate autoritativo de `maxChannelAccounts` aquí.
 11. Intentar **System User Token** permanente (flujo Tech Partner; no bloqueante) → guardar el mejor token disponible **cifrado AES-256-GCM** en `whatsapp_credentials` (`credential_type = 'system_user_token'`, con verificación de persistencia).
 12. `subscribeAppToWaba` (suscripción de webhooks). En coexistencia se esperan además los fields `history`, `smb_message_echoes`, `smb_app_state_sync`.
 13. Chequear estado de verificación del negocio (Meta); si no está verificado → `COMPLETED_WITH_WARNINGS`.
 14. Sync de templates en background (inline, no bloqueante).
-15. Marcar `COMPLETED` / `COMPLETED_WITH_WARNINGS` + audit log.
+15. Marcar `COMPLETED` / `COMPLETED_WITH_WARNINGS` + audit log. Los códigos de advertencia (`WHATSAPP_SIGNUP_WARNING_CODES`, en `@parallext/shared`) quedan en `exchange_payload.warnings`; la API devuelve los del último onboarding completado de cada número en `GET /channels/whatsapp/status` (`signupWarnings`).
 
 Estados: `OnboardingStatus` (CREATED → CODE_RECEIVED → EXCHANGE_COMPLETED → ASSETS_DISCOVERED → WEBHOOK_VALIDATED → COMPLETED/…). Terminales: COMPLETED, COMPLETED_WITH_WARNINGS, FAILED, CANCELLED.
 

@@ -304,19 +304,39 @@ describe('OnboardingService Business Portfolio resolution', () => {
     (globalThis as any).fetch = fetchMock;
 
     try {
-      await (harness.service as any).notifyAgentQualityChannelUpdated(tenantId);
+      await (harness.service as any).notifyAgentQualityChannelUpdated(tenantId, phone.id);
     } finally {
       globalThis.fetch = originalFetch;
     }
 
+    // The API records the connection (default agent assigned to WhatsApp,
+    // first-connection instant, onboarding stage) on this call, so it names
+    // the channel and the number it has to re-read.
     expect(fetchMock).toHaveBeenCalledWith(
       'http://api:3000/api/v1/internal/agent-quality-channel-updated',
       expect.objectContaining({
         method: 'POST',
         headers: expect.objectContaining({ 'x-internal-key': 'internal-secret' }),
-        body: JSON.stringify({ tenantId }),
+        body: JSON.stringify({ tenantId, channelType: 'whatsapp', accountId: phone.id }),
       }),
     );
+  });
+
+  it('hands the WABA Meta returned to the routing write, and names the number to the bridge', async () => {
+    const harness = createHarness({
+      directWaba: { id: wabaId, name: 'Selected WABA', timezoneId: '12', currency: 'COP' },
+    });
+    const notify = jest.spyOn(harness.service as any, 'notifyAgentQualityChannelUpdated').mockResolvedValue(undefined);
+
+    await harness.continueOnboarding('business-owner');
+
+    // The routing row is where the billing time zone and currency evidence
+    // are written; it can only write what it is handed.
+    expect((harness.service as any).registerChannelAccount).toHaveBeenCalledWith(
+      tenantId, phone, wabaId, 'business-owner',
+      expect.objectContaining({ timezoneId: '12', currency: 'COP' }),
+    );
+    expect(notify).toHaveBeenCalledWith(tenantId, phone.id);
   });
 
   it('fails closed when the API entitlement boundary is unconfigured or unreachable', async () => {

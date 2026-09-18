@@ -3,7 +3,7 @@ id: primeros-pasos
 title: "Premiers pas et configuration initiale"
 routes: ["/admin/setup-wizard", "/admin", "/admin/channels", "/admin/agent", "/admin/settings/billing"]
 roles: ["tenant_admin"]
-keywords: ["premiers pas", "mise en route", "commencer", "inscription", "creer un compte", "onboarding", "configuration initiale", "assistant de configuration", "setup", "wizard", "connecter canal", "connecter whatsapp", "tester l'agent", "essentiels", "checklist", "votre progression", "8/9", "visite guidee", "trial", "nouvel utilisateur", "rencontrez votre agent", "connecter plus tard", "montrez-moi ou", "verification e-mail", "etape suivante", "quatre essentiels", "repond deja", "changements immediats", "lien d'essai", "page d'essai", "montrer a mon associe", "ou vit votre numero", "question avant de connecter whatsapp", "bon chemin des le depart"]
+keywords: ["premiers pas", "mise en route", "commencer", "inscription", "creer un compte", "onboarding", "configuration initiale", "assistant de configuration", "setup", "wizard", "connecter canal", "connecter whatsapp", "tester l'agent", "essentiels", "checklist", "votre progression", "8/9", "visite guidee", "trial", "nouvel utilisateur", "rencontrez votre agent", "connecter plus tard", "montrez-moi ou", "verification e-mail", "etape suivante", "quatre essentiels", "repond deja", "changements immediats", "lien d'essai", "page d'essai", "montrer a mon associe", "ou vit votre numero", "question avant de connecter whatsapp", "bon chemin des le depart", "jour 0", "premier vrai client", "compte a rebours", "fuseau horaire de facturation", "moyen de paiement chez meta"]
 ---
 
 # Premiers pas et configuration initiale
@@ -34,12 +34,12 @@ Parallly envoie un **code à 6 chiffres** pour confirmer votre adresse e-mail. C
 Après l'inscription, le tableau de bord ouvre **Faites connaissance avec votre agent**, un assistant en **trois étapes** (également accessible via la route `/admin/setup-wizard`) :
 
 1. **Votre agent** — vous ne choisissez pas de modèle : Parallly a déjà préparé un agent à partir du secteur et du type d'activité que vous avez déclarés, avec son nom, son rôle, son message d'accueil et des règles d'exemple. Cette étape sert à **le confirmer ou l'ajuster** (nom et message de bienvenue) et à le tester dans le chat affiché à côté. Ce que vous enregistrez s'applique aussitôt. Si vous préférez une autre base, le bouton secondaire **Changer de modèle** ouvre la liste complète des agents.
-2. **Connectez votre canal** — WhatsApp en premier, avec les prérequis et le bouton qui ouvre la fenêtre Meta (voir la section suivante) ; Instagram, Messenger, Telegram et le chat web se connectent depuis le même écran.
-3. **Terminé** — si vous avez connecté le canal, votre agent **répond déjà là-bas** : écrivez-lui depuis un autre téléphone pour le voir. Ensuite, la carte **Mise en route** de l'Accueil affiche les essentiels qu'il reste à faire.
+2. **Connectez votre canal** — WhatsApp en premier, avec les prérequis et le bouton qui ouvre la fenêtre Meta (voir la section suivante) ; Instagram, Messenger, Telegram et le chat web se connectent depuis le même écran. En connectant WhatsApp, l'écran vérifie deux choses avant de vous dire que votre agent répond déjà : s'il manque au numéro son **fuseau horaire de facturation**, il vous demande de le confirmer (celui de votre entreprise est déjà sélectionné, un geste suffit en général), et il indique si votre compte WhatsApp a un **moyen de paiement chez Meta**. Vous pouvez continuer même s'il manque quelque chose et terminer plus tard dans **Canaux → WhatsApp**.
+3. **Terminé** — cet écran ne dit que votre agent **répond déjà** sur votre canal que lorsque c'est vrai ; écrivez-lui alors depuis un autre téléphone pour le voir. Si WhatsApp est connecté mais qu'il manque le fuseau horaire de facturation ou le moyen de paiement, l'écran indique ce qui reste et propose **Terminer dans Canaux → WhatsApp**. Si vous n'avez connecté aucun canal, il indique que votre agent répond déjà via son lien et que WhatsApp reste à connecter. Ensuite, la carte **Mise en route** de l'Accueil affiche les essentiels qu'il reste à faire.
 
 Cette étape affiche aussi la carte **le lien de votre agent** : une page publique — son adresse commence par `/w/` suivi d'un identifiant qui n'est jamais le nom de votre entreprise — où n'importe qui peut discuter avec votre agent exactement comme un client. Elle existe dès le jour 0, avant de connecter le moindre canal, pour le tester depuis un autre téléphone ou le montrer à un associé. Ses actions sont **Ouvrir**, **Copier le lien**, **Le mettre dans ma bio** (pour Instagram → Modifier le profil → Liens), **Le montrer à mon associé** (ouvre WhatsApp avec un message déjà rédigé) et **Les deux lignes pour votre site** (le code d'intégration à envoyer à la personne qui gère votre site). La même carte se trouve aussi dans **Administration → Canaux**, toujours disponible, jamais « connecté » ni « déconnecté ».
 
-**Connecter plus tard** est une sortie valide : elle est enregistrée, l'assistant vous laisse continuer et l'**Accueil vous le rappelle** avec la carte **Mise en route** et un avis pour reprendre. Rien de ce que vous avez déjà configuré n'est perdu.
+**Connecter plus tard** est une sortie valide : elle est enregistrée, l'assistant vous laisse continuer et l'**Accueil vous le rappelle** avec la carte **Mise en route** et un avis pour reprendre. Appuyer sur **Suivant** à l'étape de connexion sans avoir connecté revient au même : c'est enregistré comme « connecter plus tard », jamais sauté en silence. Rien de ce que vous avez déjà configuré n'est perdu.
 
 Vous pouvez rouvrir l'assistant quand vous voulez depuis **Paramètres → Assistant de configuration**.
 
@@ -79,18 +79,24 @@ disponibles pour votre forfait et votre rôle, dans cet ordre :
 
 L'étape marquée **Suivant** est celle qu'il convient de faire maintenant. Charger les connaissances, confirmer les horaires,
 préparer les rendez-vous ou le catalogue améliorent l'agent, mais ne sont pas requis pour qu'il réponde : ils vivent dans
-**Santé des agents**, pas dans cette carte. Tant que la carte est sur l'Accueil, vous ne verrez ni l'avis global
-d'actions critiques, ni l'avis d'installation de l'application, ni le compte à rebours de l'essai : la carte est le seul guide.
+**Santé des agents**, pas dans cette carte. Sur l'Accueil, tant que la carte est là,
+c'est elle qui vous dit ce qui manque : l'avis global d'actions critiques ne s'y affiche pas.
 
 Chaque élément a **Continuer**, qui ouvre l'écran concerné et, lorsqu'un parcours couvre cette étape, aussi **Montrez-moi où**, qui met en évidence, étape par étape, le champ ou le bouton exact. Certaines étapes n'ont pas de parcours — le catalogue propre à votre secteur, par exemple — et les rôles qui ne peuvent pas lancer de parcours ne voient que **Continuer**. Chaque étape ouvre une route autorisée. La carte disparaît une fois tout terminé et
 ne devient pas une pastille flottante `8/9`. Si Parallly ne peut pas vérifier une
 source, elle affiche **Réessayer** au lieu d'affirmer que l'étape est incomplète. Les
 tâches avancées restent dans leurs modules et ne gonflent pas cette progression.
 
+## Votre jour 0 : le tableau de bord ne vous interrompt pas
+
+Jusqu'à ce que votre agent réponde à son **premier vrai client** — ou jusqu'à trois jours après la création du compte, selon ce qui arrive en premier —, le tableau de bord ne vous interrompt pas : ni compte à rebours de l'essai, ni avis d'installation de l'application, ni salut automatique de la bulle d'aide (« Salut ! Je suis Parallly »), ni avis global d'actions critiques de **Santé des agents**. Terminer l'assistant de configuration ne met pas fin à cette période : c'est la première réponse de votre agent sur un canal connecté ou sur le chat web de votre site qui y met fin, même si c'est vous qui lui écrivez depuis un autre téléphone. Le lien de votre agent et **Tester l'agent** ne comptent pas.
+
+Ce qui s'affiche toujours, c'est un vrai échec de livraison. Si un canal que vous avez connecté ne peut pas répondre — la connexion a cessé de fonctionner, votre agent n'a aucun canal affecté, aucun agent ne prend ce canal en charge ou WhatsApp ne peut pas livrer les réponses —, l'avis global s'affiche quand même et en donne la raison ; sur l'Accueil, c'est l'étape du canal de la carte **Mise en route** qui vous le dit. Un avis de restriction de votre compte, comme un forfait expiré ou le mode lecture seule, s'affiche aussi toujours.
+
 ## Par quoi commencer : ordre recommandé
 
 1. **Confirmez votre agent** dans l'assistant et testez-le dans le chat de test.
-2. **Connectez WhatsApp** (ou votre canal principal). Dès ce moment, l'agent est affecté et répond là-bas.
+2. **Connectez WhatsApp** (ou votre canal principal). Dès ce moment, l'agent est affecté et répond là-bas ; sur WhatsApp, confirmez le fuseau horaire de facturation si l'écran vous le demande.
 3. **Envoyez un message depuis un autre téléphone** et confirmez la réponse ainsi que la conversation dans **Conversations**.
 4. **Complétez les informations et les connaissances de l'entreprise** : site web, documents, politiques, questions fréquentes et catalogue pertinent. Confirmez aussi les prix d'exemple de vos services dans **Rendez-vous** → **Services** afin que l'agent puisse les annoncer.
 5. **Ajustez l'agent quand vous le souhaitez** : ton, règles, accueil, outils et affectation du canal. À l'enregistrement, le changement s'applique aussitôt ; testez-le dans le chat de test.
@@ -120,7 +126,10 @@ C'est une page publique qui existe dès le jour 0, avant de connecter le moindre
 Depuis **Paramètres → Assistant de configuration**, ou directement à `/admin/setup-wizard`. Vous pouvez aussi configurer chaque élément séparément depuis les menus **Agent IA** et **Canaux** : la carte **Mise en route** de l'Accueil montre les essentiels en attente et, lorsque cette étape dispose d'un parcours, son bouton **Montrez-moi où**.
 
 **Dois-je vérifier mon e-mail avant de configurer l'agent ?**
-Non. La vérification de l'e-mail ne bloque ni l'assistant ni la connexion du canal ; vous pouvez la terminer quand le code arrive.
+Non. La vérification de l'e-mail ne bloque ni l'assistant ni la connexion du canal ; vous pouvez la terminer quand le code arrive. Elle est toutefois nécessaire pour confirmer le fuseau horaire de facturation WhatsApp.
+
+**Pourquoi je ne vois pas le compte à rebours de mon essai ?**
+Parce que votre compte est dans son jour 0 : cet avis, celui d'installation de l'application et l'avis global de Santé des agents attendent que votre agent réponde à son premier vrai client, ou que trois jours se soient écoulés depuis la création du compte. Les conditions de votre essai sont toujours dans **Administration → Forfait et facturation**.
 
 **Puis-je utiliser le tableau de bord dans une autre langue ?**
 Oui : espagnol, anglais, portugais et français. Changez la langue depuis le sélecteur en haut du tableau de bord.

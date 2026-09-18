@@ -21,9 +21,11 @@ import {
     MessageSquare, CheckCircle, Check,
     Phone, Sparkles, Layers, ArrowRightLeft,
     AlertCircle, ArrowRight, Sprout, Clock, XCircle, LogOut,
-    AlertTriangle, Shield, Timer, Plus, Trash2, HelpCircle,
+    Shield, Timer, Plus, Trash2, HelpCircle,
 } from "lucide-react";
-import WhatsAppEmbeddedSignup, { isKnownWhatsAppWarning } from "./WhatsAppEmbeddedSignup";
+import WhatsAppEmbeddedSignup from "./WhatsAppEmbeddedSignup";
+import WhatsAppSignupWarningsNotice from "./WhatsAppSignupWarningsNotice";
+import { signupBlocksRepliesOn, signupWarningGroups } from "./signup-warnings";
 import WhatsAppTriage from "./WhatsAppTriage";
 import { readRememberedTriage, routeAfterTriage } from "./whatsapp-triage";
 import WhatsAppRouteBrief from "./WhatsAppRouteBrief";
@@ -65,7 +67,6 @@ export default function WhatsAppSetupPage() {
     const tc = useTranslations("common");
     const t = useTranslations("channels");
     const tw = useTranslations("channels.whatsapp");
-    const twn = useTranslations("channels.whatsapp.warnings");
     const tHelp = useTranslations("help");
     const twt = useTranslations("whatsappTemplates");
     const tSpend = useTranslations("whatsappSpend");
@@ -79,7 +80,10 @@ export default function WhatsAppSetupPage() {
 
     const [selectedRoute, setSelectedRoute] = useState<WhatsAppConnectRouteId>("coexistence");
     const [prereqsOk, setPrereqsOk] = useState(false);
-    const [connectWarnings, setConnectWarnings] = useState<string[]>([]);
+    // What a signup run on this page answered. Canales → WhatsApp shows what
+    // the server kept for every connected number (`signupWarnings` on the
+    // status); this only fills in until that read lists the new number.
+    const [sessionSignup, setSessionSignup] = useState<{ phoneNumberId?: string; warnings: string[] } | null>(null);
     const [showAddNumber, setShowAddNumber] = useState(false);
     const [status, setStatus] = useState<any>(null);
     const [statusUnavailable, setStatusUnavailable] = useState(false);
@@ -320,6 +324,10 @@ export default function WhatsAppSetupPage() {
     // spent a plan slot the API no longer counts, and offered a per-number
     // disconnect the API refuses for an account that is not active.
     const waChannels = waRows.connected;
+    const signupWarningsByNumber = signupWarningGroups(waChannels, sessionSignup);
+    // The number "Prueba tu agente" opens cannot answer while its signup left
+    // open something that stops every reply: the test would go unanswered.
+    const testNumberBlocked = signupBlocksRepliesOn(signupWarningsByNumber, phoneNumberId);
     const canAddWa = canAddChannelAccount("whatsapp", waChannels.length);
     const activeRoute = getWhatsAppConnectRoute(selectedRoute);
 
@@ -379,28 +387,33 @@ export default function WhatsAppSetupPage() {
             )}
 
             {/* Meta conectó, pero con reservas. Sin esto la persona veía "conectado"
-                y se enteraba de la verificación pendiente cuando fallaba un envío. */}
-            {connectWarnings.length > 0 && (
-                <div className="mb-6 rounded-xl border border-amber-300 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 p-4">
-                    <div className="flex items-start gap-2.5">
-                        <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
-                        <div className="min-w-0 flex-1">
-                            <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">{twn("title")}</p>
-                            <p className="mt-0.5 text-xs text-amber-800 dark:text-amber-300">{twn("subtitle")}</p>
-                            <ul className="mt-3 space-y-2">
-                                {connectWarnings.map((warning) => (
-                                    <li key={warning} className="text-[12px] leading-relaxed text-amber-800 dark:text-amber-300">
-                                        • {isKnownWhatsAppWarning(warning) ? twn(`codes.${warning}`) : warning}
-                                    </li>
-                                ))}
-                            </ul>
-                        </div>
+                y se enteraba de la verificación pendiente cuando fallaba un envío.
+                Lo que el servidor guardó de cada número, no solo lo de esta visita. */}
+            <WhatsAppSignupWarningsNotice
+                className="mb-6"
+                groups={signupWarningsByNumber}
+                showNumbers={waChannels.length > 1}
+                numberLabel={(id) => billingZoneNumberLabel(id, waChannels, billingZones)}
+            />
+
+            {/* Prueba tu agente — cierra el loop "canal 100% funcional" tras conectar.
+                Con un pendiente del registro que frena toda respuesta (la misma
+                regla que WhatsAppConnectedState), la prueba no puede contestar:
+                en su lugar se dice qué falta, y el ancla del recorrido sigue ahí. */}
+            {isConnected && phoneNumber && (testNumberBlocked ? (
+                <div
+                    id={guidedTourAnchorId("whatsapp-test")}
+                    className="mb-6 rounded-xl border border-amber-300 dark:border-amber-500/30 bg-white dark:bg-white/[0.04] p-4 flex items-start gap-3"
+                >
+                    <div className="w-9 h-9 rounded-lg bg-amber-500/15 text-amber-700 dark:text-amber-300 flex items-center justify-center shrink-0">
+                        <MessageSquare size={18} aria-hidden="true" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-foreground">{tw("testAgentTitle")}</p>
+                        <p className="text-xs font-semibold text-amber-800 dark:text-amber-300 mt-0.5">{tw("testAgentBlocked", { number: phoneNumber })}</p>
                     </div>
                 </div>
-            )}
-
-            {/* Probá tu agente — cierra el loop "canal 100% funcional" tras conectar */}
-            {isConnected && phoneNumber && (
+            ) : (
                 <div id={guidedTourAnchorId("whatsapp-test")} className="mb-6 rounded-xl border border-emerald-300 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/10 p-4 flex flex-col gap-3 sm:flex-row sm:items-center">
                     <div className="w-9 h-9 rounded-lg bg-emerald-500 text-white flex items-center justify-center shrink-0">
                         <MessageSquare size={18} />
@@ -418,7 +431,7 @@ export default function WhatsAppSetupPage() {
                         {tw("testAgentCta")} <ArrowRight size={14} />
                     </a>
                 </div>
-            )}
+            ))}
 
             {/* Alert */}
             {message.text && (
@@ -524,7 +537,7 @@ export default function WhatsAppSetupPage() {
                                     mode={activeRoute?.mode ?? "standard"}
                                     tenantId={getTenantId()}
                                     onSuccess={(result) => {
-                                        setConnectWarnings(result.warnings ?? []);
+                                        setSessionSignup({ phoneNumberId: result.phoneNumberId, warnings: result.warnings ?? [] });
                                         setMessage({ type: "success", text: tw("channelConnected", { number: result.displayPhoneNumber || "N/A" }) });
                                         loadData();
                                     }}
@@ -620,7 +633,7 @@ export default function WhatsAppSetupPage() {
                                         mode="standard"
                                         tenantId={getTenantId()}
                                         onSuccess={(result) => {
-                                            setConnectWarnings(result.warnings ?? []);
+                                            setSessionSignup({ phoneNumberId: result.phoneNumberId, warnings: result.warnings ?? [] });
                                             setMessage({ type: "success", text: tw("channelConnected", { number: result.displayPhoneNumber || "N/A" }) });
                                             setShowAddNumber(false);
                                             loadData();

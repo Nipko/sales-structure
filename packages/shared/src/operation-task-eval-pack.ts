@@ -213,9 +213,16 @@ const OPERATIONS: Readonly<Record<Operation, OperationCase>> = Object.freeze({
         // sin ambos, el writer escribe `pending`, que significa "recibida", no
         // "el técnico va". Prometer una visita exige el servicio del catálogo y
         // el rechequeo de capacidad, y eso deja las dos columnas escritas.
+        // Sin `currency`, a propósito. La solicitud no lleva monto, y desde D17
+        // su moneda es la del negocio: la que el dueño declaró, o NULL cuando no
+        // la declaró — nunca un COP puesto por el código. Fijar 'COP' acá
+        // certificaba justo el defecto que D17 cerró, y el orden de resolución
+        // ya lo fijan las pruebas de `write-currency.util`. Las demás tareas de
+        // este archivo sí conservan su 'COP': copian la moneda de una fila del
+        // catálogo que el fixture siembra en COP, y eso sí es comportamiento.
         where: {
             status: 'pending', customer_name: f('customerName'), customer_phone: f('customerPhone'),
-            address: { op: 'ilike', value: `%${ADDRESS}%` }, currency: 'COP',
+            address: { op: 'ilike', value: `%${ADDRESS}%` },
             service_id: null, scheduled_at: null, assigned_technician_name: null,
         },
     },
@@ -246,7 +253,9 @@ const OPERATIONS: Readonly<Record<Operation, OperationCase>> = Object.freeze({
             status: 'requested', session_type: 'wedding',
             client_name: f('customerName'), client_phone: f('customerPhone'),
             scheduled_at: { op: 'date_eq', value: f('date') },
-            price: null, deposit_paid: 0, currency: 'COP',
+            // Sin `currency` por la misma razón que la solicitud a domicilio: sin
+            // precio, la moneda es la del negocio (o NULL), no un COP del código.
+            price: null, deposit_paid: 0,
         },
     },
     // ── Hospedaje de mascotas ──────────────────────────────────────────

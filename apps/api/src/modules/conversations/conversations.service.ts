@@ -1,6 +1,7 @@
 import { isCanonicalConsentRecovery, canonicalConsentRecoveryDirective } from './canonical-consent-recovery';
 import { DemoAllowanceService } from '../throttle/demo-allowance.service';
 import { demoAllowanceExhaustedText } from '../widget/widget-demo-link';
+import { recordFirstReply } from '../../common/utils/first-reply.util';
 import { projectAvailableService } from '../appointments/service-price-status';
 import { servedAgentAuthority, type ServedAgentAuthority } from '../persona/served-agent-authority';
 import { LearningService } from '../learning/learning.service';
@@ -5819,6 +5820,10 @@ export class ConversationsService {
         // Which counter holds the reservation, so the finally block releases the
         // one that was actually taken.
         let widgetQuotaLane: 'plan' | 'demo' = 'plan';
+        // True only when the model itself produced this turn's answer. A canned
+        // sentence (after hours, quota exhausted, handoff unavailable) is not the
+        // agent answering anybody, so it never activates the account.
+        let modelAnswered = false;
         try {
             const conversations = await this.prisma.executeInTenantSchema<any[]>(schemaName,
                 'SELECT * FROM conversations WHERE id = $1::uuid AND contact_id = $2::uuid AND channel_type = $3 LIMIT 1',
@@ -5911,6 +5916,7 @@ export class ConversationsService {
                             if (demoTurn) await this.throttle.commitDemoMessageCount(tenantId, widgetQuotaEffectId);
                             else await this.throttle.commitAiMessageCount(tenantId, widgetQuotaEffectId);
                             widgetQuotaCommitted = true;
+                            modelAnswered = true;
                         }
                     }
                 }
@@ -5940,9 +5946,10 @@ export class ConversationsService {
                 { conversationId, contactId, inboundMessageId });
             if (handoff) {
                 try {
-                    return await this.widgetAgentReplies.commitHandoffNotice({ tenantId, schemaName, ...binding,
-                        operationalScope, learningFootprints: [...replyProvenance.getFootprints()],
-                        precedingText: reply?.trim() ? reply : undefined });
+                    return this.activateOnWidgetReply(tenantId, options?.demo === true, modelAnswered,
+                        await this.widgetAgentReplies.commitHandoffNotice({ tenantId, schemaName, ...binding,
+                            operationalScope, learningFootprints: [...replyProvenance.getFootprints()],
+                            precedingText: reply?.trim() ? reply : undefined }));
                 } catch (error: any) {
                     // Somebody handed the conversation back inside this turn, so
                     // the transfer notice would now be false. Fall through and
@@ -5951,8 +5958,9 @@ export class ConversationsService {
                 }
             }
             if (!reply?.trim()) return null;
-            return await this.widgetAgentReplies.commit({ tenantId, schemaName, ...binding,
-                operationalScope, learningFootprints: [...replyProvenance.getFootprints()], text: reply });
+            return this.activateOnWidgetReply(tenantId, options?.demo === true, modelAnswered,
+                await this.widgetAgentReplies.commit({ tenantId, schemaName, ...binding,
+                    operationalScope, learningFootprints: [...replyProvenance.getFootprints()], text: reply }));
         } finally {
             if (widgetQuotaHeld && !widgetQuotaCommitted) {
                 await (widgetQuotaLane === 'demo'
@@ -5963,6 +5971,31 @@ export class ConversationsService {
             clearInterval(heartbeat);
             await this.redis.releaseLockToken(lockKey, token).catch(() => {});
         }
+    }
+
+    /**
+     * The web chat's side of the activation moment.
+     *
+     * A reply from a real web chat never goes through the outbound queue — the
+     * widget reads it from the store this turn just committed — so the queue's
+     * activation never saw it, and a business that answers only by web chat
+     * never activated at all. Stored is delivered here: the visitor's socket and
+     * every reconnect read exactly that row.
+     *
+     * Never for the demo link. A widget row with `is_demo = true` is the
+     * platform-paid page the owner shows people; its visitor is not a customer,
+     * whichever lane (allowance or plan) paid for the turn. The mark comes from
+     * the gateway, which reads it from the widget row itself, never from the URL
+     * the visitor sent. Fire-and-forget: `recordFirstReply` never throws, and
+     * the reply must not wait for a settings write.
+     */
+    private activateOnWidgetReply(
+        tenantId: string, demo: boolean, modelAnswered: boolean,
+        receipt: WidgetAgentReplyReceipt | null,
+    ): WidgetAgentReplyReceipt | null {
+        if (!demo && modelAnswered && receipt?.status === 'stored' && receipt.messages.length > 0)
+            void recordFirstReply(this.prisma, tenantId, { source: 'web_widget' }).catch(() => undefined);
+        return receipt;
     }
 
     /**

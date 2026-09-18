@@ -16,6 +16,29 @@ export function shouldShowQualityAttentionBanner(summary: AgentQualityAttentionS
   return summary.topAction.severity === "critical" || summary.worstStatus === "at_risk";
 }
 
+/**
+ * The summary as it reads once `signalId` is snoozed, before the server says so.
+ *
+ * The banner can show either of the summary's two actions: `topAction`, or
+ * `deliveryAction` when a channel that cannot deliver sits behind an unrelated
+ * critical. Clearing only `topAction` left a snoozed delivery alert on screen
+ * until the re-read landed. Returns the same object when neither matches, so a
+ * caller can skip a state update that would change nothing.
+ */
+export function withoutSnoozedSignal(
+  summary: AgentQualityAttentionSummary,
+  signalId: string,
+): AgentQualityAttentionSummary {
+  const clearsTop = summary.topAction?.signalId === signalId;
+  const clearsDelivery = summary.deliveryAction?.signalId === signalId;
+  if (!clearsTop && !clearsDelivery) return summary;
+  return {
+    ...summary,
+    ...(clearsTop ? { topAction: undefined } : {}),
+    ...(clearsDelivery ? { deliveryAction: undefined } : {}),
+  };
+}
+
 export function shouldBootstrapQualitySummary(
   summary: AgentQualityAttentionSummary,
   lastAttemptAt = 0,

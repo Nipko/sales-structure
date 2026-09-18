@@ -3,7 +3,7 @@ id: primeros-pasos
 title: "Primeros pasos y configuración inicial"
 routes: ["/admin/setup-wizard", "/admin", "/admin/channels", "/admin/agent", "/admin/settings/billing"]
 roles: ["tenant_admin"]
-keywords: ["primeros pasos", "puesta en marcha", "empezar", "registro", "crear cuenta", "onboarding", "configuracion inicial", "asistente de configuracion", "setup", "wizard", "conectar canal", "conectar whatsapp", "probar agente", "esenciales", "checklist", "tu progreso", "8/9", "tour", "trial", "nuevo usuario", "conoce a tu agente", "conectar despues", "mostrarme donde", "verificacion de correo", "siguiente paso", "cuatro esenciales", "ya responde", "cambios inmediatos", "enlace de prueba", "pagina de prueba", "mostrarselo a mi socio", "donde vive tu numero", "pregunta antes de conectar whatsapp", "camino correcto desde el principio"]
+keywords: ["primeros pasos", "puesta en marcha", "empezar", "registro", "crear cuenta", "onboarding", "configuracion inicial", "asistente de configuracion", "setup", "wizard", "conectar canal", "conectar whatsapp", "probar agente", "esenciales", "checklist", "tu progreso", "8/9", "tour", "trial", "nuevo usuario", "conoce a tu agente", "conectar despues", "mostrarme donde", "verificacion de correo", "siguiente paso", "cuatro esenciales", "ya responde", "cambios inmediatos", "enlace de prueba", "pagina de prueba", "mostrarselo a mi socio", "donde vive tu numero", "pregunta antes de conectar whatsapp", "camino correcto desde el principio", "dia 0", "primer cliente real", "cuenta regresiva", "zona horaria de facturacion", "metodo de pago en meta"]
 ---
 
 # Primeros pasos y configuración inicial
@@ -34,12 +34,12 @@ Parallly te envía un **código de 6 dígitos** para confirmar tu dirección de 
 Después del alta, el panel abre **Conoce a tu agente**, un asistente de **tres pasos** (también disponible en la ruta `/admin/setup-wizard`):
 
 1. **Tu agente** — no eliges plantilla: Parallly ya preparó un agente a partir de la industria y el tipo de negocio que declaraste, con su nombre, su rol, su saludo y reglas de ejemplo. Este paso es para **confirmarlo o ajustarlo** (nombre y mensaje de bienvenida) y probarlo en el chat que tienes al lado. Lo que guardas queda aplicado al momento. Si prefieres otra base, el botón secundario **Cambiar plantilla** te lleva a la lista completa de agentes.
-2. **Conecta tu canal** — WhatsApp primero, con los requisitos y el botón que abre la ventana de Meta (ver la sección siguiente); Instagram, Messenger, Telegram y el chat web se conectan desde la misma pantalla.
-3. **Listo** — si conectaste el canal, tu agente **ya responde ahí**: escríbele desde otro celular para verlo. Después, la tarjeta **Puesta en marcha** de Inicio muestra los esenciales que falten.
+2. **Conecta tu canal** — WhatsApp primero, con los requisitos y el botón que abre la ventana de Meta (ver la sección siguiente); Instagram, Messenger, Telegram y el chat web se conectan desde la misma pantalla. Al conectar WhatsApp, la pantalla revisa dos cosas antes de decirte que tu agente ya responde: si al número le falta la **zona horaria de facturación**, te pide confirmarla (ya viene elegida la de tu negocio, así que suele bastar un toque), y te muestra si tu cuenta de WhatsApp tiene un **método de pago en Meta**. Puedes seguir aunque falte algo y terminarlo después en **Canales → WhatsApp**.
+3. **Listo** — dice que tu agente **ya responde** por tu canal solo cuando es cierto; entonces escríbele desde otro celular para verlo. Si WhatsApp quedó conectado pero falta la zona horaria de facturación o el método de pago, te dice qué falta y te ofrece **Terminar en Canales → WhatsApp**. Si no conectaste ningún canal, te dice que tu agente ya responde por su enlace y que WhatsApp queda pendiente. Después, la tarjeta **Puesta en marcha** de Inicio muestra los esenciales que falten.
 
 En este paso también aparece la tarjeta **el enlace de tu agente**: una página pública — su dirección empieza con `/w/` seguida de un identificador que nunca es el nombre de tu negocio — donde cualquiera puede chatear con tu agente igual que un cliente. Existe desde el día 0, antes de conectar cualquier canal, para probarlo desde otro celular o mostrárselo a un socio. Sus acciones son **Abrir**, **Copiar enlace**, **Ponerlo en mi bio** (para Instagram → Editar perfil → Enlaces), **Mostrárselo a mi socio** (abre WhatsApp con un mensaje ya escrito) y **Las dos líneas para tu página web** (el código de inserción para quien administra tu sitio). La misma tarjeta vive también en **Administración → Canales**, siempre disponible, nunca «conectado» ni «desconectado».
 
-**Conectar después** es una salida válida: queda registrada, el asistente te deja continuar y **Inicio te lo recuerda** con la tarjeta **Puesta en marcha** y un aviso para retomar. No pierdes nada de lo que ya configuraste.
+**Conectar después** es una salida válida: queda registrada, el asistente te deja continuar y **Inicio te lo recuerda** con la tarjeta **Puesta en marcha** y un aviso para retomar. Pulsar **Siguiente** en el paso de conexión sin haber conectado cuenta igual: queda registrado como «conectar después», no se salta en silencio. No pierdes nada de lo que ya configuraste.
 
 Puedes reabrir el asistente cuando quieras desde **Configuración → Asistente de configuración**.
 
@@ -79,18 +79,24 @@ disponibles para tu plan y tu rol, en este orden:
 
 El paso marcado **Siguiente** es el que conviene hacer ahora. Cargar conocimiento, confirmar el horario,
 preparar citas o el catálogo mejoran al agente, pero no son requisito para que responda: viven en
-**Salud de agentes**, no en esta tarjeta. Mientras la tarjeta esté en Inicio no verás el aviso global
-de acciones críticas, el aviso para instalar la app ni la cuenta regresiva de la prueba: la tarjeta es la única guía.
+**Salud de agentes**, no en esta tarjeta. En Inicio, mientras esté la tarjeta, es ella la
+que te dice qué falta: ahí no se muestra el aviso global de acciones críticas.
 
 Cada ítem tiene **Continuar**, que abre la pantalla donde se hace y, cuando existe un recorrido para ese paso, también **Mostrarme dónde**, que además resalta paso a paso el campo o el botón exacto. Algunos pasos no tienen recorrido — el catálogo propio de tu industria, por ejemplo — y los roles que no pueden ejecutar recorridos ven solo **Continuar**. Cada paso pendiente abre una ruta permitida. La tarjeta desaparece al completarlos y
 no se convierte en una pastilla flotante `8/9`. Si Parallly no puede verificar una
 fuente, muestra **Reintentar** en vez de afirmar que el paso está incompleto. Las tareas
 avanzadas se realizan desde su módulo y no inflan este progreso esencial.
 
+## Tu día 0: el panel no te interrumpe
+
+Hasta que tu agente le responda a su **primer cliente real** —o hasta tres días después de crear la cuenta, lo que pase primero—, el panel no te interrumpe: no aparecen la cuenta regresiva de la prueba, el aviso para instalar la app, el saludo automático de la ayuda («¡Hola! Soy Parallly») ni el aviso global de acciones críticas de **Salud de agentes**. Terminar el asistente de configuración no cierra este período: lo cierra la primera respuesta de tu agente por un canal conectado o por el chat web de tu sitio, aunque seas tú quien le escribe desde otro celular. El enlace de tu agente y **Probar agente** no cuentan.
+
+Lo que sí aparece siempre es un fallo real de entrega. Si un canal que conectaste no puede responder —la conexión dejó de funcionar, tu agente no tiene canal asignado, ningún agente atiende ese canal o WhatsApp no puede entregar las respuestas—, el aviso global aparece igual y dice el motivo; en Inicio te lo dice el paso del canal de la tarjeta **Puesta en marcha**. También se muestra siempre un aviso de restricción de tu cuenta, como el plan vencido o el modo solo lectura.
+
 ## Qué hacer primero: orden recomendado
 
 1. **Confirma tu agente** en el asistente y pruébalo en el chat de prueba.
-2. **Conecta WhatsApp** (o tu canal principal). Desde ese momento el agente queda asignado y responde ahí.
+2. **Conecta WhatsApp** (o tu canal principal). Desde ese momento el agente queda asignado y responde ahí; en WhatsApp, confirma la zona horaria de facturación si la pantalla te la pide.
 3. **Envía un mensaje desde otro celular** y confirma la respuesta y la conversación en **Conversaciones**.
 4. **Completa la información y el conocimiento del negocio**: sitio web, documentos, políticas, preguntas frecuentes y el catálogo que corresponda. Confirma también los precios de ejemplo de tus servicios en **Citas** → **Servicios disponibles** para que el agente pueda decirlos.
 5. **Ajusta el agente cuando quieras**: tono, reglas, saludo, herramientas y asignación del canal. Al guardar, el cambio se aplica al momento; pruébalo en el chat de prueba.
@@ -120,7 +126,10 @@ Es una página pública que existe desde el día 0, antes de conectar cualquier 
 Desde **Configuración → Asistente de configuración**, o directo en la ruta `/admin/setup-wizard`. También puedes configurar cada pieza por separado desde los menús **Agente IA** y **Canales**: la tarjeta **Puesta en marcha** de Inicio muestra los esenciales pendientes y, cuando ese paso tiene recorrido, su botón **Mostrarme dónde**.
 
 **¿Tengo que verificar mi correo antes de configurar el agente?**
-No. La verificación de correo no bloquea el asistente ni la conexión del canal; puedes completarla cuando te llegue el código.
+No. La verificación de correo no bloquea el asistente ni la conexión del canal; puedes completarla cuando te llegue el código. Eso sí: para confirmar la zona horaria de facturación de WhatsApp necesitas tenerlo verificado.
+
+**¿Por qué no veo la cuenta regresiva de mi prueba?**
+Porque tu cuenta está en su día 0: ese aviso, el de instalar la app y el aviso global de Salud de agentes esperan a que tu agente le responda a su primer cliente real, o a que pasen tres días desde que creaste la cuenta. Las condiciones de tu prueba están siempre en **Administración → Plan y facturación**.
 
 **¿Puedo usar el panel en otro idioma?**
 Sí: español, inglés, portugués y francés. Cambia el idioma desde el selector en la parte superior del panel.

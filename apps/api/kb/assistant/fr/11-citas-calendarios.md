@@ -3,7 +3,7 @@ id: citas-calendarios
 title: "Rendez-vous et calendriers"
 routes: ["/admin/appointments", "/admin/settings/public-booking"]
 roles: ["tenant_admin", "tenant_supervisor", "tenant_agent"]
-keywords: ["rendez-vous", "agenda", "calendrier", "planifier", "réservations", "réserver", "services", "disponibilité", "horaires", "google calendar", "outlook", "rappels", "confirmation de présence", "reprogrammer", "annuler un rendez-vous", "dates bloquées", "lien de réunion", "meet", "teams", "réservation publique", "page de réservation", "rendez-vous récurrent", "prix d'exemple", "confirmer le prix", "sur devis", "prix à confirmer"]
+keywords: ["rendez-vous", "agenda", "calendrier", "planifier", "réservations", "réserver", "services", "disponibilité", "horaires", "google calendar", "outlook", "rappels", "confirmation de présence", "reprogrammer", "annuler un rendez-vous", "dates bloquées", "lien de réunion", "meet", "teams", "réservation publique", "page de réservation", "rendez-vous récurrent", "prix d'exemple", "confirmer le prix", "sur devis", "prix à confirmer", "prix d'exemple non confirmés", "service sans montant", "adhésions"]
 ---
 
 # Rendez-vous et calendriers
@@ -18,7 +18,7 @@ Les services correspondent à ce que vos clients peuvent réserver (une consulta
 
 1. Allez dans **Rendez-vous** → onglet **Services**.
 2. Cliquez sur **Nouveau service**.
-3. Renseignez le **Nom du service**, la **Durée** en minutes et, si vous le souhaitez, le **Prix**.
+3. Renseignez le **Nom du service**, la **Durée** en minutes et le **Prix**. Si vous ne facturez pas un montant fixe, choisissez **C'est gratuit** ou **Sur devis, selon le cas**.
 4. Dans **Temps tampon (min)**, vous pouvez laisser un intervalle entre un rendez-vous et le suivant (par exemple, 10 minutes pour préparer l'espace).
 5. Choisissez la **Modalité** : **Présentiel**, **En ligne** ou **Hybride**.
    - Si c'est en présentiel, indiquez l'**Adresse**.
@@ -29,13 +29,15 @@ L'écran affiche votre capacité actuelle de services ; consultez les détails �
 
 ### Prix d'exemple et prix confirmés
 
-Lorsque vous activez un secteur, la recette de votre activité préremplit vos services avec un prix d'exemple, pour que vous ne partiez pas de zéro. Chaque service porte l'un des trois états de prix : **Prix d'exemple** (celui apporté par la recette, pas encore confirmé), **Prix confirmé** (celui que vous avez saisi ou accepté ; il peut être de 0 si le service est gratuit) ou **Sur devis**.
+Lorsque vous activez un secteur, la recette de votre activité préremplit vos services avec un prix d'exemple, pour que vous ne partiez pas de zéro. Dans le formulaire du service, **Statut du prix** propose trois options : **Prix confirmé** (il faut un montant supérieur à 0), **C'est gratuit** ou **Sur devis, selon le cas**. Tant que vous n'en avez choisi aucune, le prix apporté par la recette reste un prix d'exemple.
 
 L'agent IA ne dit jamais à voix haute un prix d'exemple ni un prix sur devis : dans la liste des services et lors de la confirmation d'un rendez-vous, il indique que le prix reste « à confirmer » avec l'entreprise, ou qu'il est établi sur devis. Il ne mentionne que les prix déjà confirmés.
 
-- Dans **Rendez-vous** → onglet **Services**, chaque service au prix d'exemple affiche le badge **Prix d'exemple** avec les boutons **Confirmer le prix** (conserve le même montant, désormais confirmé) ou **Sur devis**. Modifier le prix depuis le formulaire du service le confirme aussi.
-- Vous ne pouvez pas activer de politique de paiement (acompte ou paiement intégral) sur un service dont le prix n'est pas confirmé.
-- Tant qu'il reste des services au prix d'exemple, la **Santé des agents** affiche un rappel non critique ; cela ne bloque pas l'agent pour répondre.
+- Dans **Rendez-vous** → onglet **Services**, un service au prix d'exemple affiche le badge **Prix d'exemple** avec les boutons **Confirmer le prix** (conserve le même montant, désormais confirmé) ou **Sur devis**. Saisir un autre montant dans le formulaire le confirme aussi.
+- Un service sans montant affiche **Sans prix**, avec **Saisir le prix**, **C'est gratuit** ou **Sur devis** : il n'y a aucun montant à confirmer, donc **Confirmer le prix** n'apparaît pas. Il en va de même pour un exemple à 0, comme un cours d'essai : si vous ne le facturez vraiment pas, appuyez sur **C'est gratuit**.
+- Un service marqué **C'est gratuit** s'affiche **Gratuit**, et l'agent indique au client qu'il est gratuit. Laisser le montant vide ne le rend jamais gratuit.
+- Vous ne pouvez pas activer de politique de paiement (acompte ou paiement intégral) sur un service gratuit ni sur un service dont le prix n'est pas confirmé.
+- Tant qu'il reste des prix d'exemple non confirmés, la **Santé des agents** affiche l'avertissement non critique **Prix d'exemple non confirmés** ; cela ne bloque pas l'agent pour répondre. Dans une salle de sport, il compte aussi les forfaits d'adhésion, qui se confirment de la même façon dans **Adhésions**.
 - Le prix d'exemple arrive **dans la devise de votre pays**, pas en pesos colombiens. Si votre pays est la Colombie, le Mexique, l'Argentine, le Chili, le Pérou ou le Brésil, le service naît avec un montant d'exemple arrondi dans votre devise ; dans tout autre pays il naît **sans montant**, avec votre devise déjà en place, pour que vous saisissiez le vôtre. Ce montant n'est qu'un ordre de grandeur pour que l'écran ne démarre pas vide : ce n'est ni une conversion de devises ni un prix de marché, et personne ne l'énonce tant que vous ne l'avez pas confirmé.
 
 ## Comment définir votre disponibilité
@@ -128,6 +130,6 @@ Non, l'agenda fonctionne seul au sein de Parallly. Connecter Google Calendar ou 
 Les administrateurs et les superviseurs. Les agents peuvent consulter le calendrier, créer des rendez-vous et s'occuper des clients, mais pas modifier les services, les horaires ni les calendriers connectés.
 
 **Pourquoi l'agent ne donne-t-il pas le prix d'un service ?**
-Parce que ce prix est encore un prix d'exemple ou que le service est sur devis. Confirmez-le dans **Rendez-vous** → **Services** et l'agent pourra alors le communiquer.
+Parce que ce prix est encore un prix d'exemple, que le service n'a pas de montant (**Sans prix**) ou qu'il est sur devis. Confirmez-le ou saisissez le montant dans **Rendez-vous** → **Services** et l'agent pourra alors le communiquer. Les forfaits d'une salle de sport se confirment dans **Adhésions**.
 
 Besoin d'aide supplémentaire ? Écrivez-nous sur https://parallly-chat.cloud/support

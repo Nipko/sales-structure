@@ -3,7 +3,7 @@ id: centro-calidad-agente
 title: "Santé des agents et Centre de qualité"
 routes: ["/admin/agent/quality", "/admin"]
 roles: ["tenant_admin", "tenant_supervisor"]
-keywords: ["sante des agents", "centre de qualite", "qualite de l agent", "preparation", "qualite testee", "preuves de production", "agent a risque", "configuration incomplete", "actions critiques", "badge", "reporter", "Parallly Assist", "ameliorer agent", "couverture des canaux", "connexion operationnelle du canal", "montrez-moi ou", "parcours guide", "barre de contexte", "nouvelle autorisation", "essentiels", "etape suivante", "pas pret"]
+keywords: ["sante des agents", "centre de qualite", "qualite de l agent", "preparation", "qualite testee", "preuves de production", "agent a risque", "configuration incomplete", "actions critiques", "badge", "reporter", "Parallly Assist", "ameliorer agent", "couverture des canaux", "connexion operationnelle du canal", "montrez-moi ou", "parcours guide", "barre de contexte", "nouvelle autorisation", "essentiels", "etape suivante", "pas pret", "whatsapp ne livre pas", "fuseau horaire de facturation", "moyen de paiement chez meta", "canal sans reponse", "jour 0", "premier vrai client", "prix d exemple non confirmes"]
 ---
 
 # Santé des agents et Centre de qualité
@@ -21,8 +21,13 @@ Agent IA**.
 - Le badge **Insights → Santé des agents** compte uniquement les signaux **Critiques
   et Élevés ouverts**. C'est un compteur d'attention, pas un score.
 - La bannière globale apparaît seulement pour un signal Critique ouvert ou un état
-  **Agent à risque**, et seulement après la première réponse réelle à un client : tant
-  que le compte est en mise en route, la carte de l'Accueil est le seul guide. Vous pouvez
+  **Agent à risque**, et seulement après que l'agent a répondu à son premier vrai client (ou trois
+  jours après la création du compte, selon ce qui arrive en premier) ; terminer
+  l'assistant de configuration n'avance pas ce moment. En attendant, la carte de l'Accueil
+  est le guide, avec une exception : si un canal que vous avez connecté ne peut pas
+  répondre — la connexion a cessé de fonctionner, l'agent n'a aucun canal affecté, aucun
+  agent ne prend ce canal en charge ou WhatsApp ne peut pas livrer —, la bannière
+  s'affiche quand même et en donne la raison. Vous pouvez
   **Examiner**, **Demander à Assist** ou **Reporter de 24 h**.
 - Reporter masque temporairement ce signal, sans le corriger. Ces alertes restent dans
   le dashboard et n'envoient ni e-mail ni notification push.
@@ -36,8 +41,9 @@ Agent IA**.
   (canal, agent, entreprise, équipe) et par tout problème réel ; une mission non ajustée
   ou un test non exécuté restent en attente, mais ne déclarent pas « pas prêt » pour un
   agent qui répond déjà. Par exemple, tant que l'entreprise n'a pas confirmé
-  les prix d'exemple apportés par la recette de son secteur, l'avertissement
-  non critique **Services à prix d'exemple** s'affiche.
+  les prix d'exemple apportés par la recette de son secteur (services et, dans une salle de
+  sport, forfaits d'adhésion), l'avertissement non critique **Prix d'exemple non confirmés**
+  s'affiche : l'agent n'annonce pas ces prix tant qu'ils ne sont pas confirmés.
 - **Qualité testée :** affiche la dernière évaluation critique et la dernière
   simulation, avec version, date, seuil et scénarios. Les preuves antérieures peuvent
   devenir obsolètes lorsque l'agent change. Il s'agit d'une preuve automatisée, pas
@@ -82,6 +88,42 @@ ou le chat web.
 Un lien qui pointe vers un compte qui n'existe plus (par exemple, le numéro a été
 reconnecté et son identifiant a changé) compte comme une affectation sans connexion : il
 suffit de recocher le compte actuel dans l'éditeur de l'agent.
+
+## Canaux sans réponse et WhatsApp qui ne livre pas
+
+Deux contrôles critiques de **Préparation** expliquent un agent qui ne répond pas alors
+que le canal apparaît connecté :
+
+- **Chaque canal connecté a un agent qui répond**. Il examine chaque connexion active de
+  l'entreprise avec la même règle que Parallly applique à la réception d'un message :
+  d'abord l'agent affecté à ce compte, puis celui affecté à ce type de canal et, à
+  défaut, l'agent par défaut. Il échoue quand un canal connecté n'a personne pour
+  répondre (aucun agent ne l'a et il n'y a pas d'agent par défaut actif) ou quand deux
+  agents le revendiquent en même temps : Parallly ne choisit pas à votre place et aucun
+  ne répond. Les messages arrivent mais restent sans réponse. Il n'apparaît qu'une fois,
+  sur l'agent par défaut (ou, à défaut, sur l'agent actif le plus ancien). Il se corrige
+  dans l'éditeur de l'agent : affectez ce canal à un seul agent ou désignez-en un par
+  défaut ; **Montrez-moi où** vous indique l'endroit.
+- **WhatsApp peut livrer les réponses**. Pour chaque numéro WhatsApp que l'agent prend
+  en charge, il regarde ce que Parallly vérifie avant d'envoyer une réponse. Il échoue —
+  et aucune réponse ne part par ce numéro — quand le **fuseau horaire de facturation** du
+  numéro manque ; quand Meta **refuse de facturer** le compte WhatsApp ; quand le compte
+  **n'a pas de moyen de paiement** chez Meta, à partir du 1er octobre 2026 (avant cette
+  date, c'est un avertissement, pas un blocage) ; ou quand on ignore dans quelle
+  **devise** Meta facture et que la **Protection des dépenses** est active (en
+  **Observation seulement**, la valeur initiale, cela ne bloque rien et n'est pas signalé).
+
+Pour le second, **Examiner** mène à **Canaux → WhatsApp** : le fuseau horaire s'y
+confirme directement et les réponses repartent ; le moyen de paiement s'ajoute dans les
+outils de Meta puis, si le numéro est en pause, vous appuyez sur **Reprendre les envois**
+ou **Vérifier chez Meta** ; la devise se règle en reconnectant le numéro ou en remettant
+la protection des dépenses sur **Observation seulement**. Il n'a pas de parcours guidé, et
+**Canaux** est un écran de l'administrateur : le Superviseur voit le contrôle, mais la
+correction revient à l'Admin.
+
+Quand ils échouent, les deux apparaissent dans **Santé des agents**, dans l'étape du canal
+de la carte **Mise en route** et dans la bannière globale, même avant la première réponse
+réelle : ce sont justement les raisons d'un agent qui ne répond pas.
 
 ## Ce qui se passe quand vous cliquez sur Examiner
 

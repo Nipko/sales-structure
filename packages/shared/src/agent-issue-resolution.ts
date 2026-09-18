@@ -159,6 +159,19 @@ export const AGENT_ISSUE_RESOLUTIONS: readonly AgentIssueResolution[] = Object.f
         tourId: 'connect_channel', clears: 'closes',
     }),
     entry({
+        code: 'channel_unanswered', kind: 'guided_tour', tourId: 'assign_agent_channel', clears: 'closes',
+        note: 'A connection no active agent answers: no default agent to fall back on, and no agent assigned to it '
+            + 'by type or by account (or two agents claim it and the pipeline refuses to pick). Assigning it to an '
+            + 'agent, or making one the default, closes it.',
+    }),
+    entry({
+        code: 'whatsapp_delivery', kind: 'screen', clears: 'needs_person',
+        note: 'The send admission refuses every message from the number. A billing time zone is one field on the '
+            + 'WhatsApp screen and closes it at once. A payment method is added in Meta, not here: after that the '
+            + 'owner resumes the paused number (or re-checks funding) on the same screen. An unestablished currency '
+            + 'under enforced spend protection needs a reconnect, or protection back in observe.',
+    }),
+    entry({
         code: 'tool_appointments', kind: 'assist_operation', operation: 'agenda.service.create',
         tourId: 'appointments_setup', clears: 'needs_person',
         note: 'Assist can add the service; the check also needs availability, and saving a week replaces the whole '
@@ -166,10 +179,13 @@ export const AGENT_ISSUE_RESOLUTIONS: readonly AgentIssueResolution[] = Object.f
     }),
     entry({
         code: 'services_example_price', kind: 'screen', clears: 'closes',
-        note: 'Recipe-seeded services keep the example price until the owner confirms it on the services screen. '
-            + 'Non-critical: booking works meanwhile, and the check never reaches readiness. No tour on purpose: the '
-            + 'screen is Citas for agenda verticals and the service catalogue for the ones that seed services without '
-            + 'an agenda, so the check carries the right href instead.',
+        note: 'Recipe-seeded services, and a gym\'s membership plans, keep the example price until the owner confirms '
+            + 'it: the agent never states an unconfirmed amount. A service or plan with no price at all counts too: '
+            + 'the agent tells the customer it is to be confirmed until the owner writes a price, marks it free or '
+            + 'quoted case by case. Non-critical: booking works meanwhile, and the check never reaches readiness. No '
+            + 'tour on purpose: the screen is Citas for agenda verticals, the service catalogue for the ones that seed '
+            + 'services without an agenda, and /admin/memberships when only a gym\'s membership plans are pending (an '
+            + 'example price or no price), so the check carries the right href instead.',
     }),
     entry({ code: 'tool_vehicles', kind: 'screen', clears: 'closes' }),
     entry({ code: 'tool_vehicle_rentals', kind: 'screen', clears: 'closes' }),

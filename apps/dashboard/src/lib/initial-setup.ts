@@ -72,5 +72,15 @@ export function setupTaskLabelKey(task: Pick<AgentSetupTask, 'key' | 'status' | 
     if (Number(check.evidence?.staleBindings) > 0) return 'channelActions.reassign';
     return 'channelActions.connect';
   }
+  // A connected channel no agent answers: "connect and assign a channel" would
+  // send the owner to connect what is already connected.
+  if (check?.code === 'channel_unanswered') return 'channelActions.unanswered';
+  if (check?.code === 'whatsapp_delivery') {
+    // The only reason that is ALSO a warning (no payment method before
+    // 1-oct-2026, still delivering): say what to add, never "it is blocked".
+    return check.evidence?.reason === 'funding_absent'
+      ? 'channelActions.whatsappPaymentMethod'
+      : 'channelActions.whatsappDelivery';
+  }
   return 'items.channel';
 }

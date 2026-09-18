@@ -9,9 +9,11 @@ import type {
   AgentQualityOverview,
   AgentQualitySeverity,
   AgentQualitySignal,
+  WhatsappDeliveryBlockReason,
 } from "@parallext/shared";
 import {
   GUIDED_TOUR_START_EVENT,
+  WHATSAPP_DELIVERY_BLOCK_REASONS,
   canRoleRunGuidedTour,
   findGuidedTourForQualityCode,
   type GuidedTourStartDetail,
@@ -94,6 +96,94 @@ function scalar(value: unknown, fallback = ""): string {
   if (value === null || value === undefined || value === "") return fallback;
   if (typeof value === "boolean") return value ? "1" : "0";
   return String(value);
+}
+
+function evidenceCount(value: unknown): number | null {
+  if (value === null || value === undefined || value === "" || typeof value === "boolean") return null;
+  const count = Number(value);
+  return Number.isFinite(count) ? Math.max(0, count) : null;
+}
+
+export type PendingPriceScope = "services" | "plans" | "both";
+
+/** One kind of price the agent will not say, counted over services and plans. */
+export interface PendingPriceGroup {
+  count: number;
+  /** Which of the two lists it is in, so the sentence names the right screen's rows. */
+  scope: PendingPriceScope;
+}
+
+/** Every price `services_example_price` counts, split by why the agent keeps quiet. */
+export interface PendingPriceSummary {
+  /** Amounts a recipe seeded and nobody confirmed. `null` when there are none. */
+  example: PendingPriceGroup | null;
+  /** Rows with no amount at all: the agent tells the customer "por confirmar". `null` when there are none. */
+  missing: PendingPriceGroup | null;
+}
+
+function priceGroup(services: number, plans: number): PendingPriceGroup {
+  const scope: PendingPriceScope = services > 0 && plans > 0 ? "both" : plans > 0 ? "plans" : "services";
+  return { count: services + plans, scope };
+}
+
+/**
+ * `services_example_price` counts every price the agent will not say yet, in
+ * four numbers: example amounts on services (`examplePriceServices`) and on a
+ * gym's membership plans (`examplePricePlans`), and services and plans with no
+ * amount at all (`noPriceServices`, `noPricePlans`). Reading only the example
+ * halves told an owner whose only pending prices were empty ones that there
+ * were "0 servicios con un precio de ejemplo". The two kinds are kept apart
+ * because the fix differs — confirm an amount vs. give one — and each says
+ * which list it is in. An API without any of the four falls back to `count`.
+ */
+export function examplePriceSummary(evidence: Record<string, unknown>): PendingPriceSummary | null {
+  const exampleServices = evidenceCount(evidence.examplePriceServices);
+  const examplePlans = evidenceCount(evidence.examplePricePlans);
+  const missingServices = evidenceCount(evidence.noPriceServices);
+  const missingPlans = evidenceCount(evidence.noPricePlans);
+  if ([exampleServices, examplePlans, missingServices, missingPlans].every((value) => value === null)) return null;
+  const example = priceGroup(exampleServices ?? 0, examplePlans ?? 0);
+  const missing = priceGroup(missingServices ?? 0, missingPlans ?? 0);
+  return {
+    // With nothing pending the check passes and this bar says it is resolved;
+    // should a warning still arrive with four zeros, it keeps the one sentence
+    // it always had rather than none.
+    example: example.count > 0 || missing.count === 0 ? example : null,
+    missing: missing.count > 0 ? missing : null,
+  };
+}
+
+/**
+ * Why a `whatsapp_delivery` check says the number cannot deliver, one reason
+ * per sentence of the explanation. `reason` names one, or `multiple` with the
+ * full list in `reasons` (comma-separated). Anything outside the contract's
+ * list is dropped, in the contract's order; `[]` when the check names none.
+ */
+export function whatsappDeliveryReasons(evidence: Record<string, unknown>): WhatsappDeliveryBlockReason[] {
+  const reason = typeof evidence.reason === "string" ? evidence.reason.trim() : "";
+  const listed = reason === "multiple"
+    ? (typeof evidence.reasons === "string" ? evidence.reasons.split(",") : [])
+    : [reason];
+  const wanted = new Set(listed.map((value) => value.trim()));
+  return WHATSAPP_DELIVERY_BLOCK_REASONS.filter((known) => wanted.has(known));
+}
+
+/** The connected channel types a `channel_unanswered` check says nobody answers. */
+export function unansweredChannelTypes(evidence: Record<string, unknown>): string[] {
+  if (typeof evidence.unansweredChannels !== "string") return [];
+  return [...new Set(evidence.unansweredChannels.split(",").map((type) => type.trim()).filter(Boolean))];
+}
+
+/**
+ * Why nobody answers: no agent at all (`none`), two agents claiming the same
+ * channel so the pipeline picks neither (`conflict`), or some of each. The fix
+ * differs — assign one, or leave only one.
+ */
+export function unansweredCause(evidence: Record<string, unknown>): "none" | "conflict" | "mixed" {
+  const none = evidenceCount(evidence.unanswered) ?? 0;
+  const conflicted = evidenceCount(evidence.conflicted) ?? 0;
+  if (conflicted > 0 && none > 0) return "mixed";
+  return conflicted > 0 ? "conflict" : "none";
 }
 
 export default function QualityFocusBanner() {
@@ -233,18 +323,49 @@ export default function QualityFocusBanner() {
   const staleAssignment = check?.code === 'channel_connection'
     && Number(evidence.staleBindings) > 0 && !evidence.hasCredentialIssue;
   const explanationCode = staleAssignment ? 'focus.explanations.stale_channel_binding' : `focus.explanations.${signal.code}`;
-  const explanation = !check || check.status === "unknown"
-    ? t("focus.verificationUnavailable")
-    : t(t.has(explanationCode) ? explanationCode : "focus.explanations.generic", {
+  const examplePrices = examplePriceSummary(evidence);
+  const deliveryReasons = whatsappDeliveryReasons(evidence);
+  // `channel_unanswered` names the channel types; the owner reads "WhatsApp",
+  // not `web_widget`. A type this panel does not know keeps its raw name.
+  const unansweredChannels = unansweredChannelTypes(evidence)
+    .map((type) => (t.has(`focus.channelNames.${type}`) ? t(`focus.channelNames.${type}`) : type));
+  const explanationParams = {
     agent: signal.agent.name,
     assigned: scalar(evidence.assigned ?? evidence.assignedChannels ?? evidence.assignedCount, "0"),
     connected: scalar(evidence.connected ?? evidence.connectedAssignments, "0"),
     disconnected: scalar(evidence.disconnectedChannels, t("focus.noneValue")),
     connectedChannels: scalar(evidence.connectedChannels, t("focus.noneValue")),
     credentialIssue: scalar(evidence.credentialIssue, "none"),
-    // `services_example_price` cuenta los servicios cuyo precio nadie confirmó.
-    count: scalar(evidence.examplePriceServices ?? evidence.count, "0"),
-  });
+    // Only for an API without the four price counts (see `examplePriceSummary`).
+    count: scalar(evidence.count, "0"),
+    priceScope: "services",
+    channels: unansweredChannels.join(", "),
+    cause: unansweredCause(evidence),
+  };
+  const explanation = !check || check.status === "unknown"
+    ? t("focus.verificationUnavailable")
+    // One sentence per reason the number cannot deliver: a number with no
+    // time zone AND no payment method needs both fixed, and saying only one
+    // sends the owner back a second time. `other` = the check named none.
+    : signal.code === "fix_whatsapp_delivery"
+      ? (deliveryReasons.length ? deliveryReasons : ["other"])
+        .map((reason) => t("focus.explanations.fix_whatsapp_delivery", { ...explanationParams, reason }))
+        .join(" ")
+      // One sentence per kind of pending price: example amounts to confirm,
+      // and rows with no amount. Each names services, plans or both.
+      : signal.code === "fix_services_example_price" && examplePrices
+        ? [
+          examplePrices.example && t("focus.explanations.fix_services_example_price", {
+            ...explanationParams, count: examplePrices.example.count, priceScope: examplePrices.example.scope,
+          }),
+          examplePrices.missing && t("focus.explanations.services_no_price", {
+            ...explanationParams, count: examplePrices.missing.count, priceScope: examplePrices.missing.scope,
+          }),
+        ].filter(Boolean).join(" ")
+        // Without the channel list the sentence would name nothing.
+        : signal.code === "fix_channel_unanswered" && unansweredChannels.length === 0
+          ? t("focus.explanations.generic", explanationParams)
+          : t(t.has(explanationCode) ? explanationCode : "focus.explanations.generic", explanationParams);
 
   const tour = !check || check.status === 'unknown' ? null : findGuidedTourForQualityCode(signal.code, evidence);
   const canShowMe = Boolean(tour)

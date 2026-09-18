@@ -3,7 +3,7 @@ id: agentes-ia
 title: "Agents IA : créer et configurer"
 routes: ["/admin/agent", "/admin/agent/simulation"]
 roles: ["tenant_admin"]
-keywords: ["agent", "agents ia", "bot", "chatbot", "assistant virtuel", "créer un agent", "modèle", "personnalité", "instructions", "ton", "horaires de l'agent", "assigner un canal", "connexion", "dupliquer un agent", "agent par défaut", "limite d'agents", "canaux sans agent", "tester l'agent", "règles", "sujets interdits", "champs obligatoires", "quand passer a un humain", "message de repli", "actif inactif", "avance", "assist", "instructions principales", "vente et assistance", "brouillon de l'agent", "enregistrer", "changements immediats", "mode revise", "repond deja"]
+keywords: ["agent", "agents ia", "bot", "chatbot", "assistant virtuel", "créer un agent", "modèle", "personnalité", "instructions", "ton", "horaires de l'agent", "assigner un canal", "connexion", "dupliquer un agent", "agent par défaut", "limite d'agents", "canaux sans agent", "tester l'agent", "règles", "sujets interdits", "champs obligatoires", "quand passer a un humain", "message de repli", "actif inactif", "avance", "assist", "instructions principales", "vente et assistance", "brouillon de l'agent", "enregistrer", "changements immediats", "mode revise", "repond deja", "modifications anterieures", "modifications non appliquees", "supprimer les modifications", "canal sans reponse"]
 ---
 
 # Agents IA : créer et configurer
@@ -78,6 +78,8 @@ Quand vous avez terminé, cliquez sur **Enregistrer**. Le changement s'applique 
 
 **Mode révisé (facultatif).** Les équipes qui préfèrent approuver chaque changement avant qu'il n'atteigne les clients peuvent activer le mode révisé pour le compte. Le bouton affiche alors **Enregistrer le brouillon**, les sections **Examiner une version** et **Publier et voir l'historique** apparaissent, et le changement ne répond aux clients qu'après avoir examiné et publié cette version. Par défaut, le compte est en mode immédiat.
 
+**Modifications antérieures pas encore appliquées.** Si vous avez enregistré des modifications avec l'ancien circuit de brouillon et de révision et qu'elles n'ont jamais été appliquées, l'éditeur affiche en haut **Vous avez des modifications antérieures qui ne sont pas encore appliquées**. Le formulaire montre ce que votre agent utilise aujourd'hui : choisissez **Appliquer ces modifications** pour qu'il commence à les utiliser (elles s'enregistrent comme n'importe quel changement ; s'il manque un champ obligatoire, l'éditeur le signale) ou **Supprimer ces modifications** pour le laisser tel quel. Si vous enregistrez sans les appliquer, elles sont supprimées et ce que vous voyez est enregistré. Si votre agent a changé depuis (par exemple, vous l'avez activé, avez connecté un canal ou accepté une proposition d'Assist), l'avis indique qu'elles ne peuvent plus être appliquées : supprimez-les pour pouvoir enregistrer à nouveau.
+
 ## Actif ou inactif
 
 L'en-tête de l'éditeur comporte un interrupteur **Actif / Inactif**. Un agent **inactif** ne répond sur aucune de ses connexions, même si le canal est connecté et que les horaires disent le contraire. Vous pouvez le désactiver immédiatement après confirmation, et le réactiver avec le même interrupteur : il s'active aussitôt. (En mode révisé, la réactivation passe par l'examen et la publication d'une version.) La **Santé des agents** signale comme blocage critique tout agent inactif, avec ou sans connexions assignées.
@@ -105,7 +107,7 @@ Les types de connexion disponibles et leur capacité figurent dans **Canaux** et
 
 ## Que signifie l'avis « canaux sans agent assigné »
 
-Si **Agent IA** affiche **Canaux sans agent assigné**, vous avez des connexions actives qu'aucun agent ne prend en charge de façon spécifique. Tant qu'un agent par défaut actif existe, sa version opérationnelle traite ces messages.
+Si **Agent IA** affiche **Canaux sans agent assigné**, vous avez des connexions actives qu'aucun agent ne prend en charge de façon spécifique. Tant qu'un agent par défaut actif existe, sa version opérationnelle traite ces messages. S'il n'y a pas d'agent par défaut actif, ou si deux agents ont la même connexion affectée, personne n'y répond : les messages arrivent mais restent sans réponse, et **Santé des agents** le signale comme critique dans **Chaque canal connecté a un agent qui répond**.
 
 Cliquez sur **Assigner un agent maintenant** pour choisir quel agent prend en charge chaque connexion et offrir une expérience personnalisée.
 
@@ -128,7 +130,7 @@ Dans **Agent IA → Tester l'agent**, vous pouvez discuter avec l'agent tel qu'i
 Oui, si votre compte dispose de la capacité nécessaire. Créez-en un avec le modèle **Conseiller Commercial** et un autre avec **Agent de Support**, puis assignez chacun à la connexion correspondante.
 
 **Que se passe-t-il si je connecte un canal sans lui assigner d'agent ?**
-C'est votre agent par défaut qui répond. Vous verrez l'avis de canaux non assignés dans **Agent IA** pour corriger cela en un clic.
+C'est votre agent par défaut qui répond, s'il est actif ; sinon, personne ne répond sur ce canal et **Santé des agents** vous le signale. Vous verrez l'avis de canaux non assignés dans **Agent IA** pour corriger cela en un clic.
 
 **L'agent peut-il répondre par SMS ?**
 Non. Dans Parallly, le SMS n'est pas un canal de conversation : il sert uniquement aux notifications sortantes avec des crédits (1 crédit = 1 segment). Les surfaces conversationnelles en libre-service sont WhatsApp, Instagram, Messenger, Telegram et le chat web. Email conserve un adaptateur inbound interne, mais pas de configuration libre-service certifiée.

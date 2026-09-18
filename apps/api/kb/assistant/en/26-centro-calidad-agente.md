@@ -3,7 +3,7 @@ id: centro-calidad-agente
 title: "Agent health and Quality center"
 routes: ["/admin/agent/quality", "/admin"]
 roles: ["tenant_admin", "tenant_supervisor"]
-keywords: ["agent health", "quality center", "agent quality", "preparation", "tested quality", "production evidence", "agent at risk", "configuration incomplete", "critical actions", "badge", "snooze", "Parallly Assist", "improve agent", "channel coverage", "operational channel connection", "show me where", "guided tour", "context bar", "needs reauthorisation", "essentials", "next step", "not ready"]
+keywords: ["agent health", "quality center", "agent quality", "preparation", "tested quality", "production evidence", "agent at risk", "configuration incomplete", "critical actions", "badge", "snooze", "Parallly Assist", "improve agent", "channel coverage", "operational channel connection", "show me where", "guided tour", "context bar", "needs reauthorisation", "essentials", "next step", "not ready", "whatsapp not delivering", "billing time zone", "payment method in meta", "channel nobody answers", "day 0", "first real customer", "unconfirmed example prices"]
 ---
 
 # Agent health and Quality center
@@ -20,8 +20,12 @@ edit agents, connections, or configuration under **AI & Growth → AI Agent**.
 - The **Insights → Agent health** badge counts only open **Critical and High**
   signals. It is an attention count, not a score.
 - The global banner appears only for an open Critical signal or an **Agent at risk**
-  status, and only after the first real reply to a customer: while the account is in
-  getting-started mode, the Home card is the only guide. You can **Review**, **Ask
+  status, and only after the agent answers its first real customer (or three days after
+  the account was created, whichever comes first); finishing the setup wizard does not
+  bring that moment forward. Until then the Home card is the guide, with one exception:
+  if a channel you connected cannot answer — the connection stopped working, the agent
+  has no channel assigned, no agent handles that channel, or WhatsApp cannot deliver —
+  the banner shows anyway and names the reason. You can **Review**, **Ask
   Assist**, or **Snooze for 24 hours**.
 - Snoozing hides that signal temporarily; it does not fix it. These alerts stay in
   the dashboard and do not send email or push notifications.
@@ -35,7 +39,8 @@ edit agents, connections, or configuration under **AI & Growth → AI Agent**.
   real problem; an unfinished mission or a test that hasn't run stay as pending, but
   they do not mark an agent that already answers as "not ready". For example,
   while the business hasn't confirmed the example prices its industry recipe
-  seeded, it shows the non-critical **Services with example price** warning.
+  seeded (services and, for a gym, membership plans), it shows the non-critical
+  **Unconfirmed example prices** warning: the agent doesn't state those prices until they are confirmed.
 - **Tested quality:** shows the latest critical evaluation and simulation, including
   version, date, threshold, and scenarios. Earlier evidence can become outdated when
   the agent changes. It is automated evidence, not a certification.
@@ -77,6 +82,39 @@ Instagram, Messenger, Telegram, or the web chat.
 A binding that points at an account that no longer exists (for example, the number was
 reconnected and its identifier changed) counts as an assignment without a connection:
 tick the current account again in the agent editor to fix it.
+
+## Channels nobody answers and WhatsApp that can't deliver
+
+Two critical **Preparation** checks explain an agent that doesn't answer even though the
+channel shows as connected:
+
+- **Every connected channel has an agent that replies**. It goes through every active
+  connection of the business with the same rule Parallly uses when a message arrives:
+  first the agent assigned to that account, then the one assigned to that channel type
+  and, if there is none, the default agent. It fails when a connected channel has nobody
+  to answer it (no agent has it assigned and there is no active default agent) or when two
+  agents claim it at once: Parallly doesn't choose for you, and neither answers. Messages
+  arrive but go unanswered. It appears only once, on the default agent (or, if there is
+  none, on the oldest active one). You fix it in the agent editor: assign that channel to a
+  single agent or make one the default; **Show me where** points to the spot.
+- **WhatsApp can deliver replies**. For each WhatsApp number the agent answers, it looks at
+  what Parallly checks before sending a reply. It fails — and no reply goes out from that
+  number — when the number's **billing time zone** is missing; when Meta **won't charge**
+  the WhatsApp account; when the account **has no payment method** in Meta, from 1 October
+  2026 (before that date it is a warning, not a block); or when the **currency** Meta bills
+  in is unknown and **Spend protection** is on (in **Observe only**, the initial setting, it
+  stops nothing and is not reported).
+
+For the second one, **Review** takes you to **Channels → WhatsApp**: the time zone is
+confirmed right there and replies go out again; the payment method is added in Meta's
+tools and then, if the number was paused, you press **Resume sending** or **Check with
+Meta**; the currency is solved by reconnecting the number or setting spend protection
+back to **Observe only**. It has no guided tour, and **Channels** is an admin screen: a
+Supervisor sees the check, but the fix belongs to the Admin.
+
+When they fail, both show in **Agent health**, in the channel step of the **Getting
+started** card, and in the global banner, even before the first real reply: they are
+exactly why an agent doesn't answer.
 
 ## What happens when you click Review
 

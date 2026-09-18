@@ -22,7 +22,7 @@ import { AgentReadinessBanner } from "@/components/AgentReadinessBanner";
 import { AGENT_CONFIGURATION_APPLIED_EVENT, requestQualityHealthRefresh } from "@/lib/quality-health-events";
 import { guidedTourAnchorId } from "@/lib/guided-tours";
 import { agentChannelAssignmentIssues, channelOverviewIsAuthoritative, normalizeAgentChannelAssignments } from "@/lib/agent-channel-assignment";
-import type { AgentConfigurationWorkspace } from '@parallext/shared';
+import type { AgentConfigurationWorkspace, AgentDraftBody, DiscardAgentDraftRequest } from '@parallext/shared';
 import { AgentDraftStatus } from '@/components/quality/AgentDraftStatus';
 import { agentDraftTestHref, prepareDraftSave, type DraftSaveAttempt } from '@/lib/agent-draft-save';
 
@@ -33,6 +33,7 @@ import { BehaviorSection } from "../_components/BehaviorSection";
 import { ScheduleCard } from "../_components/ScheduleCard";
 import { CapabilitiesSection } from "../_components/CapabilitiesSection";
 import { CustomPromptMode } from "../_components/CustomPromptMode";
+import { PendingAgentChangesNotice, pendingAgentChanges } from "../_components/PendingAgentChangesNotice";
 
 // ── Channel metadata ────────────────────────────────────────
 
@@ -119,6 +120,72 @@ function deepMerge(target: any, source: any): any {
   return output;
 }
 
+// ── What the form edits ──────────────────────────────────────
+
+/** Everything the editor turns into a save, as one value. */
+interface EditorForm {
+  config: PersonaConfig;
+  mode: "guided" | "prompt";
+  customPrompt: string;
+  channels: string[];
+  bindings: string[];
+  isDefault: boolean;
+}
+
+/**
+ * Which stored body the form edits.
+ *
+ * Reviewed mode is unchanged: the editor edits the draft when there is one.
+ *
+ * Immediate mode edits what is LIVE, even while an old draft saved before the
+ * switch to immediate save is still stored. Those changes never reached the
+ * agent. Showing them in the form would make the owner read them as her
+ * agent's current behaviour, and her next Save would push all of them live
+ * without her knowing they were there. So the form opens on the live agent,
+ * the pending-changes line says the old changes exist, and they only reach the
+ * form when she chooses "apply" (`view === "draft"`), which saves them through
+ * the normal save path; if that save stops on a missing field, the form keeps
+ * them so she can finish instead of losing them. Saving without applying saves
+ * what she sees, and the old changes are left behind (the line says so). A
+ * stale draft is never shown: its base moved, and applying it would roll back
+ * whatever changed since — an agent switched on, a channel connected.
+ */
+function formBodyFor(workspace: AgentConfigurationWorkspace, view: "live" | "draft"): AgentDraftBody {
+  if (!workspace.directCommit) return workspace.draft?.body ?? workspace.operational.body;
+  if (view === "draft" && workspace.draft?.currentBase) return workspace.draft.body;
+  return workspace.operational.body;
+}
+
+function formFromBody(data: AgentDraftBody, accounts: ChannelAccountLite[], overviewAvailable: boolean): EditorForm {
+  const configData: any = data.configJson || {};
+  const promptMode = (configData.editorMode ?? configData._mode) === "prompt";
+  // Normalize the stored assignment against the CURRENT connected accounts so
+  // the UI (and the next save) are consistent both ways:
+  //  • a type with 2+ accounts uses per-account bindings (expand any legacy
+  //    type-level channel into bindings for all its accounts);
+  //  • a type with ≤1 account uses the type-level channel (fold any leftover
+  //    binding back into `channels` so the assignment isn't lost when a second
+  //    account gets disconnected).
+  const normalized = normalizeAgentChannelAssignments({
+    accounts,
+    channels: data.channels || [],
+    bindings: data.channelBindings || [],
+    overviewAvailable,
+    supportedTypes: CHANNEL_ORDER,
+  });
+  return {
+    config: deepMerge(structuredClone(defaultConfig), configData),
+    mode: promptMode ? "prompt" : "guided",
+    customPrompt: promptMode ? (configData.customPrompt ?? configData._customPrompt ?? "") : "",
+    channels: normalized.channels,
+    bindings: normalized.bindings,
+    isDefault: Boolean(data.isDefault),
+  };
+}
+
+/** The sticky bar's explanation for a Save that is off; both Save buttons point at it. */
+const SAVE_BLOCKED_REASON_ID = "agent-save-blocked-reason";
+
 // ── Types ────────────────────────────────────────────────────
 
 interface AgentData {
@@ -131,6 +198,17 @@ interface AgentData {
   channel_bindings?: string[];
   schedule_mode?: string;
   config_json: PersonaConfig;
+}
+
+/**
+ * The other agents that hold any of these connections: a channel type
+ * (`whatsapp`) or one account (`whatsapp:<accountId>`). One agent serves each
+ * connection; `activeOnly` keeps the agents that serve it right now.
+ */
+function connectionHolders(agents: AgentData[], selfId: string, channels: string[], bindings: string[], activeOnly = false): AgentData[] {
+  return agents.filter(agent => agent.id !== selfId && (!activeOnly || agent.is_active)
+    && (channels.some(channel => agent.channels?.includes(channel))
+      || bindings.some(binding => agent.channel_bindings?.includes(binding))));
 }
 
 // ── Component ────────────────────────────────────────────────
@@ -154,6 +232,17 @@ export default function AgentEditorPage() {
   const tDraft = useTranslations('agentDraft');
   const [workspace, setWorkspace] = useState<AgentConfigurationWorkspace | null>(null);
   const saveAttempt = useRef<DraftSaveAttempt | null>(null);
+  const tPending = useTranslations("agentPendingChanges");
+  // Immediate mode with changes saved before the switch: which body the form
+  // shows (see `formBodyFor`) and what the pending-changes line is doing.
+  const [pendingView, setPendingView] = useState<"live" | "draft">("live");
+  const [pendingBusy, setPendingBusy] = useState<null | "apply" | "discard">(null);
+  const [discardFailed, setDiscardFailed] = useState(false);
+  const discardRequest = useRef<DiscardAgentDraftRequest | null>(null);
+  const pending = pendingAgentChanges(workspace);
+  // Immediate mode moves a channel only to an agent that is on: moving it to
+  // one that is off would leave it with nobody. Reviewed mode keeps its line.
+  const movesOnSave = !workspace?.directCommit || workspace.operational.body.isActive;
 
   const [activeTab, setActiveTab] = useState("persona");
   const [mode, setMode] = useState<"guided" | "prompt">("guided");
@@ -207,6 +296,7 @@ export default function AgentEditorPage() {
     setChannelOverviewAvailable(false);
     setLoadedVersion(null); setExternalChange(false);
     setWorkspace(null); saveAttempt.current = null;
+    setPendingView("live"); setPendingBusy(null); setDiscardFailed(false); discardRequest.current = null;
     let cancelled = false;
 
     Promise.all([
@@ -230,40 +320,17 @@ export default function AgentEditorPage() {
         if (agentRes?.success && agentRes.data) {
           const state: AgentConfigurationWorkspace = agentRes.data;
           setWorkspace(state);
-          const data = state.draft?.body ?? state.operational.body;
+          // Immediate mode opens on the live agent even with old changes
+          // stored; see `formBodyFor`.
+          const data = formBodyFor(state, "live");
           setLoadedVersion(state.operational.version);
-          const configData = data.configJson || {};
-          setConfig(deepMerge(structuredClone(defaultConfig), configData));
-          setIsDefault(data.isDefault || searchParams.get('draftDefault') === '1');
+          const form = formFromBody(data, accts, overviewAvailable);
+          if (searchParams.get('draftDefault') === '1') form.isDefault = true;
+          hydrateForm(form);
           if (searchParams.get('draftDefault') === '1' && !data.isDefault) setToast(tDraft('defaultNeedsSave'));
           // The `agent_active` quality check reads the COLUMN, not
           // `config_json.isActive`; the hero must show the same truth.
           setIsActive(state.operational.body.isActive);
-          if ((configData.editorMode ?? configData._mode) === 'prompt') {
-            setCustomPrompt(configData.customPrompt ?? configData._customPrompt ?? '');
-            setMode("prompt");
-          } else {
-            setCustomPrompt(''); setMode('guided');
-          }
-
-          // Normalize the stored assignment against the CURRENT connected accounts so
-          // the UI (and the next save) are consistent both ways:
-          //  • a type with 2+ accounts uses per-account bindings (expand any legacy
-          //    type-level channel into bindings for all its accounts);
-          //  • a type with ≤1 account uses the type-level channel (fold any leftover
-          //    binding back into `channels` so the assignment isn't lost when a second
-          //    account gets disconnected).
-          const srcChannels: string[] = data.channels || [];
-          const srcBindings: string[] = data.channelBindings || [];
-          const normalized = normalizeAgentChannelAssignments({
-            accounts: accts,
-            channels: srcChannels,
-            bindings: srcBindings,
-            overviewAvailable,
-            supportedTypes: CHANNEL_ORDER,
-          });
-          setAssignedChannels(normalized.channels);
-          setAssignedBindings(normalized.bindings);
         }
         if (agentsRes?.success && Array.isArray(agentsRes.data)) {
           setAllAgents(agentsRes.data);
@@ -349,6 +416,53 @@ export default function AgentEditorPage() {
     dirtyRef.current = true;
     setConfig(prev => deepMerge(prev, updates));
   }, []);
+
+  function hydrateForm(form: EditorForm) {
+    setConfig(form.config);
+    setMode(form.mode);
+    setCustomPrompt(form.customPrompt);
+    setAssignedChannels(form.channels);
+    setAssignedBindings(form.bindings);
+    setIsDefault(form.isDefault);
+  }
+
+  function currentForm(): EditorForm {
+    return { config, mode, customPrompt, channels: assignedChannels, bindings: assignedBindings, isDefault };
+  }
+
+  /** Re-read who holds which channel; the "Se reasignará de" line reads this list. */
+  async function refreshAgents(): Promise<AgentData[] | null> {
+    if (!activeTenantId) return null;
+    try {
+      const res = await api.listAgents(activeTenantId);
+      if (res?.success && Array.isArray(res.data)) { setAllAgents(res.data); return res.data; }
+    } catch { /* the line keeps what it knew */ }
+    return null;
+  }
+
+  function agentNames(agents: AgentData[]): string {
+    return Array.from(new Set(agents.map(agent => agent.name || t("unnamedAgent")))).join(", ");
+  }
+
+  /**
+   * `agent_invalid` names the offending paths ("behavior.rules"); map them
+   * onto the editor's fields so the message lands under a field. The local
+   * check wins when it finds something, because it names the field in words.
+   */
+  function invalidFieldErrors(res: unknown, form: EditorForm): AgentFieldErrors {
+    const fields = (res as { fields?: unknown })?.fields;
+    const remote: string[] = (Array.isArray(fields) ? fields : [])
+      .map((entry: any) => (typeof entry === "string" ? entry : entry?.path))
+      .filter((path: unknown): path is string => typeof path === "string")
+      .map((path: string) => SERVER_FIELD_TO_FOCUS[path] ?? path);
+    const local = validateAgent(form);
+    return Object.keys(local).length > 0
+      ? local
+      : remote.reduce<AgentFieldErrors>((acc, field) => {
+          if (isFocusField(field)) acc[field] = t("validation.blocked");
+          return acc;
+        }, {});
+  }
 
   // ── Channel assignment ─────────────────────────────────────
 
@@ -438,16 +552,17 @@ export default function AgentEditorPage() {
   // handoff reason, and the banner only said "1 critical blocker". Both halves
   // are fixed: we block the save AND we say which field.
 
-  function validateAgent(): AgentFieldErrors {
+  function validateAgent(form: EditorForm): AgentFieldErrors {
     const errors: AgentFieldErrors = {};
     const filled = (value: unknown) => typeof value === "string" && value.trim().length > 0;
     const anyFilled = (list: unknown) => Array.isArray(list) && list.some((item) => filled(item));
-    if (!filled(config.persona.name)) errors.name = t("validation.nameRequired");
-    if (mode === "prompt") return errors;
-    if (!filled(config.persona.role)) errors.role = t("validation.roleRequired");
-    if (!filled(config.persona.fallbackMessage)) errors.fallback = t("validation.fallbackRequired");
-    if (!anyFilled(config.behavior.rules)) errors.rules = t("validation.rulesRequired");
-    if (!anyFilled(config.behavior.handoffTriggers)) errors.handoff = t("validation.handoffRequired");
+    const { config: candidate } = form;
+    if (!filled(candidate.persona.name)) errors.name = t("validation.nameRequired");
+    if (form.mode === "prompt") return errors;
+    if (!filled(candidate.persona.role)) errors.role = t("validation.roleRequired");
+    if (!filled(candidate.persona.fallbackMessage)) errors.fallback = t("validation.fallbackRequired");
+    if (!anyFilled(candidate.behavior.rules)) errors.rules = t("validation.rulesRequired");
+    if (!anyFilled(candidate.behavior.handoffTriggers)) errors.handoff = t("validation.handoffRequired");
     return errors;
   }
 
@@ -479,6 +594,21 @@ export default function AgentEditorPage() {
         setToast(next ? t("activation.activated") : t("activation.deactivated"));
         window.setTimeout(requestQualityHealthRefresh, 1_500);
         setQualityRefreshKey((current) => current + 1);
+      } else if ((res as any)?.errorCode === "agent_connection_owned_by_other_agent") {
+        // Another agent took one of its channels while it was off. Switching
+        // it on would leave two agents on one channel, and that channel silent.
+        const live = workspace?.operational.body;
+        const owners = connectionHolders(await refreshAgents() ?? allAgents, agentId,
+          live?.channels ?? [], live?.channelBindings ?? [], true);
+        setToast(owners.length > 0
+          ? t("activation.connectionOwned", { agents: agentNames(owners) })
+          : t("activation.connectionOwnedUnknown"), "error");
+      } else if ((res as any)?.errorCode === "agent_invalid" && workspace) {
+        // What goes live must be complete, exactly as on a save.
+        const errors = invalidFieldErrors(res, formFromBody(workspace.operational.body, accounts, channelOverviewAvailable));
+        setFieldErrors(errors);
+        revealFirstError(errors);
+        setToast(t("activation.incomplete"), "error");
       } else {
         if ((res as any)?.errorCode === 'agent_version_conflict') setExternalChange(true);
         setToast((res as any)?.error || tc("errorSaving"), "error");
@@ -492,12 +622,21 @@ export default function AgentEditorPage() {
 
   // ── Save ───────────────────────────────────────────────────
 
-  async function handleSave() {
+  function handleSave() {
+    // The Save button saves what the page shows, including the
+    // "Se reasignará de …" line under the channels: those moves are promised.
+    return saveForm(currentForm(), pendingView, { promiseMoves: true });
+  }
+
+  async function saveForm(form: EditorForm, view: "live" | "draft", { promiseMoves }: { promiseMoves: boolean }) {
     if (!activeTenantId || !agentId) return;
     if (!channelOverviewAvailable) { setToast(t('channelOverviewUnavailableHint'), "error"); return; }
+    // Immediate mode refuses every save while a stale draft is stored; say
+    // what to do about it instead of "the configuration changed".
+    if (pending === "stale") { setToast(tPending("saveBlocked"), "error"); return; }
     if (externalChange || loadedVersion === null || !workspace || (workspace.draft && !workspace.draft.currentBase)) { setToast(tConfiguration('editorChanged'), "error"); return; }
-    if (mode === "prompt" && !customPrompt.trim()) { setToast(tDraft('promptRequired'), "error"); return; }
-    const errors = validateAgent();
+    if (form.mode === "prompt" && !form.customPrompt.trim()) { setToast(tDraft('promptRequired'), "error"); return; }
+    const errors = validateAgent(form);
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
       revealFirstError(errors);
@@ -512,45 +651,69 @@ export default function AgentEditorPage() {
       // A binding whose type is NOT multi-account (e.g. its second account was just
       // disconnected) is FOLDED into a type-level channel instead of being dropped —
       // otherwise the agent would silently lose that assignment on save.
-      const bindingsToSave = assignedBindings.filter(b => multiAccountTypes.has(b.split(":")[0]));
-      const foldedTypes = assignedBindings.map(b => b.split(":")[0]).filter(t => !multiAccountTypes.has(t));
+      const bindingsToSave = form.bindings.filter(b => multiAccountTypes.has(b.split(":")[0]));
+      const foldedTypes = form.bindings.map(b => b.split(":")[0]).filter(t => !multiAccountTypes.has(t));
       const channelsToSave = Array.from(new Set([
-        ...assignedChannels.filter(t => !multiAccountTypes.has(t)),
+        ...form.channels.filter(t => !multiAccountTypes.has(t)),
         ...foldedTypes,
       ]));
-      const base = { ...config };
-      const configJson = mode === "prompt"
-        ? { ...base, customPrompt, editorMode: 'prompt', _customPrompt: customPrompt, _mode: "prompt" }
+      const base = { ...form.config };
+      const configJson = form.mode === "prompt"
+        ? { ...base, customPrompt: form.customPrompt, editorMode: 'prompt', _customPrompt: form.customPrompt, _mode: "prompt" }
         : { ...base, customPrompt: undefined, editorMode: 'guided', _customPrompt: undefined, _mode: "wizard" };
       saveAttempt.current = prepareDraftSave(workspace, {
-        ...(workspace.draft?.body ?? workspace.operational.body), name: configJson.persona.name,
-        configJson, channels: channelsToSave, channelBindings: bindingsToSave, isDefault,
+        ...formBodyFor(workspace, view), name: configJson.persona.name,
+        configJson, channels: channelsToSave, channelBindings: bindingsToSave, isDefault: form.isDefault,
+        // Immediate mode: this save IS the live agent, and switching it on or
+        // off belongs to the switch in the hero. Old changes being applied
+        // must never flip it.
+        ...(workspace.directCommit ? { isActive: workspace.operational.body.isActive } : {}),
       }, saveAttempt.current);
-      const res = await api.saveAgentDraft(activeTenantId, agentId, saveAttempt.current.request);
+      // Immediate mode keeps one agent per channel. A channel another agent
+      // holds moves to this one only when the page said so (the line under the
+      // channels); anything else — old changes applied with one click, a
+      // channel someone took since this page loaded — is refused and named.
+      // The consent authorises the commit, it is not content, so a retry
+      // after that refusal reuses the same command with the move added.
+      const reassignConnections = promiseMoves && movesOnSave && workspace.directCommit
+        ? [...channelsToSave.filter(channel => getChannelOwner(channel)), ...bindingsToSave.filter(binding => getBindingOwner(binding))]
+        : [];
+      const request = reassignConnections.length > 0
+        ? { ...saveAttempt.current.request, reassignConnections }
+        : saveAttempt.current.request;
+      const res = await api.saveAgentDraft(activeTenantId, agentId, request);
       if (res?.success && res.data) {
-        setWorkspace(res.data.workspace);
-        setLoadedVersion(res.data.workspace.operational.version);
-        if (res.data.savedRevision.id !== res.data.workspace.draft?.id) setExternalChange(true);
+        const saved = res.data;
+        setWorkspace(saved.workspace);
+        setLoadedVersion(saved.workspace.operational.version);
+        // Reviewed mode: what was saved must now be the draft. Immediate mode:
+        // the commit clears the draft pointer in the same transaction, so the
+        // saved revision is live and no draft remains. Comparing revision ids
+        // there flagged every successful save as someone else's change and
+        // switched Save off behind a "reload" warning.
+        const savedIsCurrent = saved.workspace.directCommit
+          ? !saved.workspace.draft
+          : saved.savedRevision.id === saved.workspace.draft?.id;
+        if (!savedIsCurrent) setExternalChange(true);
         saveAttempt.current = null;
         dirtyRef.current = false;
-        setToast(tDraft(res.data.workspace.directCommit ? 'savedLive' : 'saved'));
+        setPendingView("live");
+        setToast(tDraft(saved.workspace.directCommit ? 'savedLive' : 'saved'));
+        // The other agent gave the channel away: the line has nothing left to say.
+        if (reassignConnections.length > 0) void refreshAgents();
+      } else if ((res as any)?.errorCode === "agent_connection_owned_by_other_agent") {
+        // Nothing was saved. Show who holds it now; the line under the
+        // channels appears, and Save again moves it as that line says.
+        const owners = connectionHolders(await refreshAgents() ?? allAgents, agentId, channelsToSave, bindingsToSave, true);
+        setToast(owners.length > 0
+          ? tDraft("connectionOwned", { agents: agentNames(owners) })
+          : tDraft("connectionOwnedUnknown"), "error");
       } else if (['agent_version_conflict', 'agent_operational_version_changed', 'agent_draft_revision_changed', 'agent_operational_configuration_changed'].includes((res as any)?.errorCode)) {
         setExternalChange(true); setToast(tConfiguration('editorChanged'), "error");
       } else if ((res as any)?.errorCode === "agent_invalid") {
-        // The API enforces the same rules and names the offending paths
-        // ("behavior.rules"); map them onto the editor's fields so the message
-        // lands under a field instead of in a toast nobody can act on.
-        const remote: string[] = (Array.isArray((res as any)?.fields) ? (res as any).fields : [])
-          .map((entry: any) => (typeof entry === "string" ? entry : entry?.path))
-          .filter((path: unknown): path is string => typeof path === "string")
-          .map((path: string) => SERVER_FIELD_TO_FOCUS[path] ?? path);
-        const local = validateAgent();
-        const errors: AgentFieldErrors = Object.keys(local).length > 0
-          ? local
-          : remote.reduce<AgentFieldErrors>((acc, field) => {
-              if (isFocusField(field)) acc[field] = t("validation.blocked");
-              return acc;
-            }, {});
+        // The API enforces the same rules and names the offending paths; they
+        // land under a field instead of in a toast nobody can act on.
+        const errors = invalidFieldErrors(res, form);
         setFieldErrors(errors);
         revealFirstError(errors);
         setToast(t("validation.blocked"), "error");
@@ -564,11 +727,79 @@ export default function AgentEditorPage() {
     }
   }
 
+  // ── Changes saved before immediate save ────────────────────
+  //
+  // Apply goes through the same save path as the Save button, with the old
+  // changes as the form; discard drops the stored pointer (its history stays)
+  // and leaves the live agent untouched.
+
+  async function applyPendingChanges() {
+    if (!workspace?.draft || pending !== "pending" || pendingBusy || saving) return;
+    setPendingBusy("apply");
+    try {
+      // She is already looking at them: "Guardar y aplicar" is the Save button.
+      if (pendingView === "draft") { await handleSave(); return; }
+      if (dirtyRef.current && !window.confirm(tPending("applyReplacesEdits"))) return;
+      const form = formFromBody(workspace.draft.body, accounts, channelOverviewAvailable);
+      form.config = { ...form.config, isActive: workspace.operational.body.isActive };
+      hydrateForm(form);
+      setPendingView("draft");
+      setFieldErrors({});
+      dirtyRef.current = true;
+      // One click, and she has not seen these changes: nothing here promised
+      // to take a channel from another agent. If they claim one, the save is
+      // refused, the form stays on them with the line under the channels, and
+      // "Guardar y aplicar" is the Save that moves it.
+      await saveForm(form, "draft", { promiseMoves: false });
+    } finally {
+      setPendingBusy(null);
+    }
+  }
+
+  async function discardPendingChanges() {
+    if (!activeTenantId || !workspace?.draft || pending === "none" || pendingBusy || saving) return;
+    const draft = workspace.draft;
+    setPendingBusy("discard");
+    setDiscardFailed(false);
+    // A retry of the same discard reuses its key; another draft or base starts another.
+    if (discardRequest.current?.expectedDraftRevision !== draft.id
+      || discardRequest.current?.expectedOperationalHash !== workspace.operational.hash) {
+      discardRequest.current = {
+        requestKey: crypto.randomUUID(), expectedDraftRevision: draft.id,
+        expectedOperationalVersion: workspace.operational.version, expectedOperationalHash: workspace.operational.hash,
+      };
+    }
+    try {
+      const result = await api.discardAgentDraft(activeTenantId, agentId, discardRequest.current);
+      if (!result?.success || !result.data || result.data.draft) { setDiscardFailed(true); return; }
+      discardRequest.current = null;
+      saveAttempt.current = null;
+      setWorkspace(result.data);
+      setLoadedVersion(result.data.operational.version);
+      // The form already shows the live agent, and her edits on top of it
+      // stay. Only when she had opened the old changes does it go back.
+      if (pendingView === "draft") {
+        hydrateForm(formFromBody(result.data.operational.body, accounts, channelOverviewAvailable));
+        setFieldErrors({});
+        dirtyRef.current = false;
+      }
+      setPendingView("live");
+      setToast(tPending("discarded"));
+    } catch {
+      setDiscardFailed(true);
+    } finally {
+      setPendingBusy(null);
+    }
+  }
+
   // ── Save as template ───────────────────────────────────────
 
   async function handleSaveAsTemplate() {
     if (!activeTenantId) return;
-    if (workspace?.draft) { setToast(tDraft('templateOperationalOnly')); setMenuOpen(false); return; }
+    // Reviewed mode only: in immediate mode the template copies the live
+    // agent, which is what the form shows, and the old-draft message would
+    // tell the owner to publish something.
+    if (workspace?.draft && !workspace.directCommit) { setToast(tDraft('templateOperationalOnly')); setMenuOpen(false); return; }
     try {
       const res = await api.saveAgentAsTemplate(
         activeTenantId, agentId,
@@ -626,6 +857,15 @@ export default function AgentEditorPage() {
     (v: any) => v?.enabled === true
   ).length;
 
+  // Save is never off without a reason on screen. A stale draft is the one
+  // case with no other explanation visible next to the button.
+  const saveBlockedReason = pending === "stale" ? tPending("saveBlocked") : null;
+  const saveDisabled = saving || !workspace || externalChange || pendingBusy !== null
+    || Boolean(workspace.draft && !workspace.draft.currentBase);
+  // Immediate mode tests what answers customers: the live agent. An old
+  // draft's revision would test changes the form is not showing.
+  const testHref = workspace && !workspace.directCommit ? agentDraftTestHref(workspace) : `/admin/agent/${agentId}/test`;
+
   const TABS = [
     { id: "persona", label: tt("persona"), icon: User },
     { id: "instructions", label: tt("instructions"), icon: Shield, badge: ruleCount || undefined },
@@ -673,6 +913,17 @@ export default function AgentEditorPage() {
           immediate changes (the default) the editor is an editor. */}
       {workspace && !workspace.directCommit && <AgentDraftStatus workspace={workspace} tenantId={activeTenantId} />}
       {workspace && !workspace.directCommit && <AgentAssessmentPanel agentId={agentId} />}
+      {pending !== "none" && (
+        <PendingAgentChangesNotice
+          state={pending}
+          view={pendingView}
+          busy={pendingBusy}
+          saving={saving}
+          discardFailed={discardFailed}
+          onApply={() => void applyPendingChanges()}
+          onDiscard={() => void discardPendingChanges()}
+        />
+      )}
       {externalChange && <div role="alert" className="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">
         <p>{tConfiguration('editorChanged')}</p>
         <button type="button" onClick={() => window.location.reload()} className="mt-2 min-h-10 rounded-lg border border-current px-3 py-2">{tConfiguration('reloadEditor')}</button>
@@ -701,7 +952,7 @@ export default function AgentEditorPage() {
               </>
             )}
             <Link
-              href={workspace ? agentDraftTestHref(workspace) : `/admin/agent/${agentId}/test`}
+              href={testHref}
               className="px-4 py-2.5 rounded-lg border border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-200 text-sm font-medium cursor-pointer flex items-center gap-1.5 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
               title={t("testAgent")}
             >
@@ -711,9 +962,10 @@ export default function AgentEditorPage() {
               type="button"
               id={guidedTourAnchorId("agent-save")}
               onClick={handleSave}
-              disabled={saving || !workspace || externalChange || Boolean(workspace.draft && !workspace.draft.currentBase)}
+              disabled={saveDisabled}
+              aria-describedby={saveBlockedReason ? SAVE_BLOCKED_REASON_ID : undefined}
               className={cn(
-                "px-5 py-2.5 rounded-lg border-none text-white text-sm font-semibold cursor-pointer flex items-center gap-1.5 transition-colors",
+                "px-5 py-2.5 rounded-lg border-none text-white text-sm font-semibold cursor-pointer flex items-center gap-1.5 transition-colors disabled:cursor-not-allowed disabled:opacity-60",
                 saving
                   ? "bg-neutral-300 dark:bg-neutral-700 cursor-not-allowed"
                   : "bg-indigo-500 hover:bg-indigo-600"
@@ -938,7 +1190,7 @@ export default function AgentEditorPage() {
             })}
           </div>
           )}
-          {(assignedChannels.some(ch => getChannelOwner(ch)) || assignedBindings.some(k => getBindingOwner(k))) && (
+          {movesOnSave && (assignedChannels.some(ch => getChannelOwner(ch)) || assignedBindings.some(k => getBindingOwner(k))) && (
             <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-2 flex items-center gap-1">
               <AlertTriangle size={12} />
               {t("willReassignFrom")} {[
@@ -1071,7 +1323,7 @@ export default function AgentEditorPage() {
       <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-neutral-200 dark:border-neutral-800 bg-white/95 dark:bg-neutral-950/95 backdrop-blur-sm px-6 py-3 flex items-center justify-end gap-3">
         <span className="text-xs text-neutral-400 mr-auto">{t("title")}</span>
         <Link
-          href={workspace ? agentDraftTestHref(workspace) : `/admin/agent/${agentId}/test`}
+          href={testHref}
           className="px-4 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-200 text-sm font-medium no-underline flex items-center gap-1.5 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
         >
           <TestTube2 size={14} /> {t("testAgent")}
@@ -1081,12 +1333,18 @@ export default function AgentEditorPage() {
             <AlertTriangle size={13} /> {t("validation.blocked")}
           </span>
         )}
+        {saveBlockedReason && (
+          <span id={SAVE_BLOCKED_REASON_ID} className="text-xs font-medium text-amber-700 dark:text-amber-300 flex items-center gap-1">
+            <AlertTriangle size={13} aria-hidden="true" /> {saveBlockedReason}
+          </span>
+        )}
         <button
           type="button"
           onClick={handleSave}
-          disabled={saving || !workspace || externalChange || Boolean(workspace.draft && !workspace.draft.currentBase)}
+          disabled={saveDisabled}
+          aria-describedby={saveBlockedReason ? SAVE_BLOCKED_REASON_ID : undefined}
           className={cn(
-            "px-5 py-2 rounded-lg border-none text-white text-sm font-semibold cursor-pointer flex items-center gap-1.5 transition-colors",
+            "px-5 py-2 rounded-lg border-none text-white text-sm font-semibold cursor-pointer flex items-center gap-1.5 transition-colors disabled:cursor-not-allowed disabled:opacity-60",
             saving ? "bg-neutral-300 dark:bg-neutral-700 cursor-not-allowed" : "bg-indigo-500 hover:bg-indigo-600"
           )}
         >

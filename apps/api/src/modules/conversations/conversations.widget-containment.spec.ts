@@ -1,5 +1,13 @@
+// The activation writer is pinned on its own (first-reply.util.spec.ts). Here
+// only WHEN the web chat calls it matters, and a real writer would reach for a
+// `$transaction` this harness does not have.
+jest.mock('../../common/utils/first-reply.util', () => ({
+    recordFirstReply: jest.fn(async () => 'recorded'),
+}));
+
 import { ConversationsService } from './conversations.service';
 import { randomUUID } from 'crypto';
+import { recordFirstReply } from '../../common/utils/first-reply.util';
 import type { WidgetAgentReplyReceipt } from '../widget/widget-agent-reply.store';
 import { handoffNoticeText } from '../handoff/handoff-notice';
 import type { HandoffReceipt } from '../handoff/handoff-receipt';
@@ -425,5 +433,82 @@ describe('ConversationsService widget containment', () => {
         // channel where a draft is the only place the reply exists.
         expect(JSON.parse(draftCall![2][1])).toHaveProperty('learningReleaseIds');
         expect(internal.eventEmitter.emit).toHaveBeenCalledWith('draft.suggested', expect.objectContaining({ text: 'safe reply' }));
+    });
+
+    /**
+     * The web chat's activation moment (slice A, sep-2026).
+     *
+     * A web chat reply never goes through the outbound queue, so the queue's
+     * activation never saw it and a business that answered only by web chat
+     * never left its day 0. The stored reply is the delivery here. The public
+     * demo link ("El enlace de {Nombre}", `widget_configs.is_demo = true`) is
+     * NOT a customer, whichever lane paid for the turn.
+     */
+    describe('the first real reply activates the account', () => {
+        const tenant = '10000000-0000-4000-8000-000000000001';
+        const recordFirstReplyMock = recordFirstReply as jest.MockedFunction<typeof recordFirstReply>;
+        const turn = (service: ConversationsService, options: Record<string, unknown> = {}) =>
+            service.processWidgetMessage(tenant, 'tenant_1', '20000000-0000-4000-8000-000000000002',
+                '30000000-0000-4000-8000-000000000003', 'hello',
+                { inboundMessageId: '40000000-0000-4000-8000-000000000004', ...options });
+
+        beforeEach(() => recordFirstReplyMock.mockClear());
+
+        it('a real web chat reply written by the model records the first reply', async () => {
+            const { service, prisma } = makeService();
+            expect(await collect(turn(service, { channelAccountId: 'widget' }))).toBe('safe reply');
+            expect(recordFirstReplyMock).toHaveBeenCalledTimes(1);
+            expect(recordFirstReplyMock).toHaveBeenCalledWith(prisma, tenant, { source: 'web_widget' });
+        });
+
+        it('the demo link never activates, on the platform allowance', async () => {
+            const { service } = makeService({
+                throttle: {
+                    getPlanFeatures: jest.fn().mockResolvedValue({ widget: false, llmTier: 'tier_2', llmCostBudgetUsdCents: 100 }),
+                    reserveDemoMessageCount: jest.fn().mockResolvedValue({ allowed: true, count: 1, adopted: false }),
+                    commitDemoMessageCount: jest.fn().mockResolvedValue(undefined),
+                    releaseDemoMessageCount: jest.fn().mockResolvedValue(undefined),
+                },
+            });
+            (service as any).demoAllowance = { get: jest.fn().mockResolvedValue({ enabled: true, messagesPerTenant: 200, dailyCapPerPage: 60 }) };
+            // The visitor got a real answer from the model…
+            expect(await collect(turn(service, { demo: true }))).toBe('safe reply');
+            // …and still is not a customer.
+            expect(recordFirstReplyMock).not.toHaveBeenCalled();
+        });
+
+        it('the demo link never activates either once the plan includes the web chat', async () => {
+            // `demoTurn` is false here (the plan pays), but the page is still the demo.
+            const { service, throttle } = makeService();
+            expect(await collect(turn(service, { demo: true }))).toBe('safe reply');
+            expect(throttle.commitAiMessageCount).toHaveBeenCalledTimes(1);
+            expect(recordFirstReplyMock).not.toHaveBeenCalled();
+        });
+
+        it('a canned sentence is not the agent answering anybody', async () => {
+            const { service } = makeService({
+                throttle: {
+                    getAiMessageUsage: jest.fn().mockResolvedValue({ used: 10, limit: 10 }),
+                    reserveAiMessageCount: jest.fn().mockResolvedValue({ allowed: false, count: 10, adopted: false }),
+                },
+            });
+            expect(await collect(turn(service))).toBe('quota fallback');
+            expect(recordFirstReplyMock).not.toHaveBeenCalled();
+        });
+
+        it('a draft that nobody received activates nothing', async () => {
+            const { service } = makeService();
+            const persona = await (service as any).personaService.resolvePersonaForChannel();
+            persona.config.behavior = { draftMode: true };
+            expect(await collect(turn(service))).toBe('');
+            expect(recordFirstReplyMock).not.toHaveBeenCalled();
+        });
+
+        it('a writer that fails never costs the visitor the reply', async () => {
+            recordFirstReplyMock.mockImplementationOnce(() => Promise.reject(new Error('settings row locked')));
+            const { service } = makeService();
+            expect(await collect(turn(service))).toBe('safe reply');
+            await new Promise(resolve => setImmediate(resolve));
+        });
     });
 });

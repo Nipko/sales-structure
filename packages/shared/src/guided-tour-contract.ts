@@ -77,7 +77,7 @@ export const GUIDED_TOURS: readonly GuidedTourDefinition[] = [
         id: 'assign_agent_channel',
         route: '/admin/agent',
         minRole: 'tenant_admin',
-        qualityCodes: ['channel_assignment', 'operational_channel_scope', 'channel_coverage'],
+        qualityCodes: ['channel_assignment', 'operational_channel_scope', 'channel_coverage', 'channel_unanswered'],
         kbArticleIds: ['agentes-ia', 'multi-cuenta'],
     },
     {

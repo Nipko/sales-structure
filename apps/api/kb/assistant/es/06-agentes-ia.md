@@ -3,7 +3,7 @@ id: agentes-ia
 title: "Agentes de IA: crear y configurar"
 routes: ["/admin/agent", "/admin/agent/simulation"]
 roles: ["tenant_admin"]
-keywords: ["agente", "agentes de ia", "bot", "chatbot", "asistente virtual", "crear agente", "plantilla", "personalidad", "instrucciones", "tono", "horario del agente", "asignar canal", "conexion", "duplicar agente", "agente predeterminado", "limite de agentes", "canales sin agente", "probar agente", "reglas", "temas prohibidos", "campos obligatorios", "cuando pasar a un humano", "mensaje cuando no puede responder", "activo inactivo", "avanzado", "assist", "instrucciones principales", "ventas y soporte", "borrador del agente", "guardar", "cambios inmediatos", "modo revisado", "ya responde"]
+keywords: ["agente", "agentes de ia", "bot", "chatbot", "asistente virtual", "crear agente", "plantilla", "personalidad", "instrucciones", "tono", "horario del agente", "asignar canal", "conexion", "duplicar agente", "agente predeterminado", "limite de agentes", "canales sin agente", "probar agente", "reglas", "temas prohibidos", "campos obligatorios", "cuando pasar a un humano", "mensaje cuando no puede responder", "activo inactivo", "avanzado", "assist", "instrucciones principales", "ventas y soporte", "borrador del agente", "guardar", "cambios inmediatos", "modo revisado", "ya responde", "cambios de antes", "cambios sin aplicar", "descartar cambios", "canal que nadie responde"]
 ---
 
 # Agentes de IA: crear y configurar
@@ -78,6 +78,8 @@ Cuando termines, haz clic en **Guardar**. El cambio se aplica al momento en las 
 
 **Modo revisado (opcional).** Los equipos que prefieren aprobar cada cambio antes de que llegue a clientes pueden activar el modo revisado para la cuenta. Entonces el botón dice **Guardar borrador**, aparecen las secciones **Revisar una versión** y **Publicar y ver historial**, y el cambio atiende clientes sólo después de revisar y publicar esa versión. Por defecto la cuenta está en modo inmediato.
 
+**Cambios de antes que todavía no se aplicaron.** Si guardaste cambios con el flujo anterior de borrador y revisión y nunca se aplicaron, el editor muestra arriba **Tienes cambios de antes que todavía no se aplicaron**. El formulario muestra lo que tu agente usa hoy: elige **Aplicar esos cambios** para que empiece a usarlos (se guardan como cualquier cambio; si les falta un campo obligatorio, el editor te lo marca) o **Descartar esos cambios** para dejarlo como está. Si guardas sin aplicarlos, se descartan y se guarda lo que ves. Si tu agente cambió después (por ejemplo, lo encendiste, conectaste un canal o aceptaste una propuesta de Assist), el aviso dice que ya no se pueden aplicar: descártalos para poder volver a guardar.
+
 ## Activo o inactivo
 
 En la cabecera del editor hay un interruptor **Activo / Inactivo**. Un agente **inactivo** no responde en ninguna de sus conexiones, aunque el canal esté conectado y el horario diga que sí. Puedes desactivarlo de inmediato después de confirmar, y reactivarlo con el mismo interruptor: enciende al momento. (En modo revisado, reactivar pasa por revisar y publicar una versión.) **Salud de agentes** marca como bloqueo crítico todo agente inactivo, tenga o no conexiones asignadas.
@@ -105,7 +107,7 @@ La cantidad y el tipo de conexiones disponibles se muestran en **Canales** y **P
 
 ## Qué significa el aviso "canales sin agente asignado"
 
-Si en **Agente IA** ves el aviso **Canales sin agente asignado**, tienes conexiones activas que ningún agente atiende de forma específica. Mientras exista un agente predeterminado activo, esos mensajes los responde su versión operativa.
+Si en **Agente IA** ves el aviso **Canales sin agente asignado**, tienes conexiones activas que ningún agente atiende de forma específica. Mientras exista un agente predeterminado activo, esos mensajes los responde su versión operativa. Si no hay un agente predeterminado activo, o si dos agentes tienen asignada la misma conexión, ahí no contesta nadie: los mensajes llegan pero quedan sin respuesta, y **Salud de agentes** lo marca como crítico en **Cada canal conectado tiene un agente que responde**.
 
 Haz clic en **Asignar agente ahora** para elegir qué agente atiende cada conexión y dar una experiencia personalizada.
 
@@ -128,7 +130,7 @@ Desde el menú **Agente IA → Probar agente** puedes chatear con el agente tal 
 Sí, cuando tu cuenta tenga cupo. Crea uno con la plantilla **Asesor de Ventas** y otro con **Agente de Soporte**, y asigna cada uno a la conexión correspondiente.
 
 **¿Qué pasa si conecto un canal y no le asigno agente?**
-Responde tu agente predeterminado. Verás el aviso de canales sin asignar en **Agente IA** para corregirlo con un clic.
+Responde tu agente predeterminado, si está activo; si no, nadie contesta en ese canal y **Salud de agentes** te lo avisa. Verás el aviso de canales sin asignar en **Agente IA** para corregirlo con un clic.
 
 **¿El agente puede responder por SMS?**
 No. El SMS en Parallly no es un canal de conversación: se usa solo para notificaciones salientes con créditos (1 crédito = 1 segmento). Las superficies conversacionales autoservicio son WhatsApp, Instagram, Messenger, Telegram y el chat web. Email conserva un adaptador inbound interno, pero no una configuración autoservicio certificada.

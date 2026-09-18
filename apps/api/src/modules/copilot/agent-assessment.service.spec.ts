@@ -67,6 +67,57 @@ describe('shared agent assessment', () => {
         expect((await h.service.getAssessment(TENANT, AGENT)).tasks.find(task => task.key === 'channel'))
             .toMatchObject({ state: 'degraded' });
     });
+    describe('the channel essential means "your channel works"', () => {
+        const channelChecks = (unanswered: string, delivery: string, deliveryEvidence: Record<string, unknown> = {}) => [
+            { code: 'channel_assignment', status: 'pass', evidence: { assigned: 1 } },
+            { code: 'channel_connection', status: 'pass', evidence: { connected: 1 } },
+            { code: 'channel_unanswered', status: unanswered, evidence: { unansweredChannels: unanswered === 'fail' ? 'instagram' : '' },
+                href: `/admin/agent/${AGENT}?tab=persona&focus=channels` },
+            { code: 'whatsapp_delivery', status: delivery, evidence: deliveryEvidence, href: '/admin/channels/whatsapp' },
+        ];
+
+        it('counts a connected channel nobody answers as the essential failing', async () => {
+            const h = harness();
+            h.overview.preparation.dimensions[0].checks = channelChecks('fail', 'not_applicable') as any;
+            expect((await h.service.getAssessment(TENANT, AGENT)).tasks.find(task => task.key === 'channel')).toMatchObject({
+                status: 'fail', pendingCheckCode: 'channel_unanswered', tourId: 'assign_agent_channel',
+                href: `/admin/agent/${AGENT}?tab=persona&focus=channels` });
+        });
+
+        it('counts a WhatsApp number that refuses every reply as the essential failing, with no connect-a-channel tour', async () => {
+            const h = harness();
+            h.overview.preparation.dimensions[0].checks = channelChecks('not_applicable', 'fail', { reason: 'timezone_missing' }) as any;
+            const channel = (await h.service.getAssessment(TENANT, AGENT)).tasks.find(task => task.key === 'channel');
+            expect(channel).toMatchObject({ status: 'fail', pendingCheckCode: 'whatsapp_delivery', href: '/admin/channels/whatsapp' });
+            // The number is connected; walking the owner to "connect a channel" is wrong.
+            expect(channel?.tourId).toBeNull();
+        });
+
+        it('keeps a payment method missing before 1-oct a warning that needs attention, never a failure', async () => {
+            // Meta still delivers until 1-oct-2026. The check is `warning`, the
+            // roll-up keeps it apart from `fail`, and the agent reads "needs
+            // attention" — not "not ready to attend", which would be false.
+            const h = harness();
+            h.overview.preparation.dimensions[0].checks = channelChecks('not_applicable', 'warning',
+                { reason: 'funding_absent', fundingRequiredFrom: '2026-10-01' }) as any;
+            const channel = (await h.service.getAssessment(TENANT, AGENT)).tasks.find(task => task.key === 'channel');
+            expect(channel).toMatchObject({ status: 'warning', state: 'degraded', pendingCheckCode: 'whatsapp_delivery', tourId: null });
+            expect(channel?.status).not.toBe('fail');
+            expect(channel?.state).not.toBe('pending');
+        });
+
+        it('does not let the two checks fail a channel where they do not apply', async () => {
+            // A single-agent tenant (the default agent answers every channel)
+            // and an agent that answers no WhatsApp number: both `not_applicable`.
+            const h = harness();
+            h.overview.preparation.dimensions[0].checks = channelChecks('not_applicable', 'not_applicable') as any;
+            const channel = (await h.service.getAssessment(TENANT, AGENT)).tasks.find(task => task.key === 'channel');
+            expect(channel).toMatchObject({ status: 'pass', state: 'prepared', tourId: 'connect_channel' });
+            expect(channel?.pendingCheckCode).toBeUndefined();
+            expect(channel?.checks.map(check => check.code)).toEqual(expect.arrayContaining(['channel_unanswered', 'whatsapp_delivery']));
+        });
+    });
+
     it('carries the specific unsupported-assignment diagnosis into setup and Assist', async () => {
         const h = harness();
         h.overview.preparation.dimensions[0].checks = [

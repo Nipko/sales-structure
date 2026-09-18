@@ -17,6 +17,7 @@ import { SpendMeterUnavailable } from './spend-unavailable';
 import { AccountPauseStore, PauseStateUnavailable } from '../../channels/account-pause-store';
 import { describePause } from '../../channels/account-send-pause';
 import { RedisService } from '../../redis/redis.service';
+import { spendEnforcementFromSettings } from './account-send-readiness';
 
 /**
  * ═══ THE ONE GATE EVERY CHARGEABLE WHATSAPP MESSAGE PASSES ═══
@@ -826,8 +827,9 @@ export class WhatsappSendAdmissionService {
             const tenant = await this.prisma.tenant.findUnique({
                 where: { id: tenantId }, select: { settings: true },
             });
-            const configured = (tenant?.settings as any)?.whatsappSpend?.enforcement;
-            if (configured === 'enforce') mode = 'enforce';
+            // The one reading of the setting: the quality check that predicts
+            // this admission's refusals (`whatsapp_delivery`) uses it too.
+            mode = spendEnforcementFromSettings(tenant?.settings);
         } catch (error: any) {
             // The tenant row could not be read. That is not "they never opted
             // in" — it is "we do not know", and the difference matters: an

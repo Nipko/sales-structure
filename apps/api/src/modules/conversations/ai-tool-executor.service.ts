@@ -1,5 +1,5 @@
 import { withRuntimeSchemaLock } from '../../common/utils/runtime-schema-lock';
-import { servicePriceNote, servicePriceStatus } from '../appointments/service-price-status';
+import { customerFacingPrice, servicePriceNote, servicePriceStatus } from '../appointments/service-price-status';
 import { enrollmentTermsHash, enrollmentTermsReviewResult } from '../education/enrollment-terms';
 import { LLMSourceAuthorityUnavailable } from '../ai/interfaces/llm-source-authority';
 import { appointmentVehicleId, vehicleAppointmentTerms, vehicleAppointmentBusyIntervals, VehicleAppointmentError, type VehicleAppointmentTerms } from '../appointments/vehicle-appointment-capacity';
@@ -2728,8 +2728,10 @@ export class AIToolExecutorService {
                 // D10: a recipe price nobody confirmed, or a quote-only service,
                 // has NO number for the model. Removing the amount (not just
                 // flagging it) is what keeps the claims guardrail from treating
-                // it as a trusted fact.
-                const priceStatus = servicePriceStatus(s);
+                // it as a trusted fact. FX1: neither does a row without an
+                // amount — `Number(s.price || 0)` handed the model a free
+                // service next to `priceStatus: 'confirmed'`.
+                const { priceStatus, price } = customerFacingPrice(s);
                 const confirmed = priceStatus === 'confirmed';
                 return {
                     id: s.id,
@@ -2738,7 +2740,7 @@ export class AIToolExecutorService {
                     durationMinutes: s.duration_minutes,
                     durationMinutesMax: s.duration_minutes_max || null,
                     durationType: s.duration_type || 'fixed',
-                    price: confirmed ? Number(s.price || 0) : null,
+                    price,
                     currency: s.currency || null,
                     priceStatus,
                     ...(confirmed ? {} : { priceNote: servicePriceNote(priceStatus) }),
@@ -4662,13 +4664,15 @@ export class AIToolExecutorService {
                     // del pais — o sea que se leen como un precio real. Decir
                     // "la mensualidad son $180.000" de un monto que el dueno
                     // nunca miro es exactamente lo que D10 vino a cerrar.
-                    const status = servicePriceStatus(p as { price_status?: unknown });
+                    // FX1: the same reading as list_services. A confirmed 0 is
+                    // a plan the owner declared free ("Es gratis").
+                    const { priceStatus: status, price } = customerFacingPrice(p as { price?: unknown; price_status?: unknown });
                     return {
                     id: p.id,
                     name: p.name,
                     description: p.description,
                     durationDays: p.duration_days,
-                    price: status === 'confirmed' ? Number(p.price) : undefined,
+                    price: price ?? undefined,
                     priceStatus: status,
                     priceNote: servicePriceNote(status),
                     currency: status === 'confirmed' ? p.currency : undefined,
@@ -5386,13 +5390,14 @@ export class AIToolExecutorService {
             return readOk({
                 count: services.length,
                 services: services.map(s => {
-                    const priceStatus = servicePriceStatus(s);
+                    // FX1: a row without an amount is "no price", never 0.
+                    const { priceStatus, price } = customerFacingPrice(s);
                     return {
                         id: s.id,
                         name: s.name,
                         description: s.description,
                         durationMinutes: s.duration_minutes,
-                        price: priceStatus === 'confirmed' ? Number(s.price || 0) : null,
+                        price,
                         currency: s.currency,
                         category: s.category,
                         priceStatus,

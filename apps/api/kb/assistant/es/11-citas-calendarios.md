@@ -3,7 +3,7 @@ id: citas-calendarios
 title: "Citas y calendarios"
 routes: ["/admin/appointments", "/admin/settings/public-booking"]
 roles: ["tenant_admin", "tenant_supervisor", "tenant_agent"]
-keywords: ["citas", "agenda", "calendario", "agendar", "reservas", "reservar", "servicios", "disponibilidad", "horarios", "google calendar", "outlook", "recordatorios", "confirmacion de asistencia", "reprogramar", "cancelar cita", "fechas bloqueadas", "link de reunion", "meet", "teams", "booking publico", "pagina de reservas", "cita recurrente", "precio de ejemplo", "confirmar precio", "se cotiza", "precio por confirmar"]
+keywords: ["citas", "agenda", "calendario", "agendar", "reservas", "reservar", "servicios", "disponibilidad", "horarios", "google calendar", "outlook", "recordatorios", "confirmacion de asistencia", "reprogramar", "cancelar cita", "fechas bloqueadas", "link de reunion", "meet", "teams", "booking publico", "pagina de reservas", "cita recurrente", "precio de ejemplo", "confirmar precio", "se cotiza", "precio por confirmar", "precios de ejemplo sin confirmar", "servicio sin monto", "membresias"]
 ---
 
 # Citas y calendarios
@@ -18,7 +18,7 @@ Los servicios son lo que tus clientes pueden reservar (una consulta, un corte, u
 
 1. Ve a **Citas** → pestaña **Servicios disponibles**.
 2. Pulsa **Nuevo servicio**.
-3. Completa el **Nombre del servicio**, la **Duración** en minutos y, si quieres, el **Precio**.
+3. Completa el **Nombre del servicio**, la **Duración** en minutos y el **Precio**. Si no cobras un monto fijo, elige **Es gratis** o **Se cotiza según el caso**.
 4. En **Tiempo entre citas (min)** puedes dejar un respiro entre una cita y la siguiente (por ejemplo, 10 minutos para preparar el espacio).
 5. Elige la **Modalidad**: **Presencial**, **Online** o **Híbrido**.
    - Si es presencial, indica la **Dirección**.
@@ -29,13 +29,15 @@ La pantalla muestra la capacidad actual de servicios; consulta el detalle vigent
 
 ### Precios de ejemplo y precios confirmados
 
-Cuando activas una industria, la receta de tu rubro precarga los servicios con un precio de ejemplo, para que no arranques desde cero. Cada servicio queda con uno de tres estados de precio: **Precio de ejemplo** (el que trajo la receta, todavía sin confirmar), **Precio confirmado** (el que tú escribiste o aceptaste; puede ser $0 si el servicio es gratis) o **Se cotiza según el caso**.
+Cuando activas una industria, la receta de tu rubro precarga los servicios con un precio de ejemplo, para que no arranques desde cero. En el formulario del servicio, **Estado del precio** tiene tres opciones: **Precio confirmado** (necesita un monto mayor que 0), **Es gratis** o **Se cotiza según el caso**. Mientras no elijas una, el precio que trajo la receta sigue siendo de ejemplo.
 
 El agente de IA nunca dice en voz alta un precio de ejemplo ni uno que se cotiza: en la lista de servicios y al confirmar una cita, dice que el precio queda "por confirmar" con el negocio, o que se cotiza caso por caso. Solo menciona los precios ya confirmados.
 
-- En **Citas** → pestaña **Servicios disponibles**, cada servicio con precio de ejemplo muestra la pastilla **Precio de ejemplo** con los botones **Confirmar precio** (conserva el mismo número, ya confirmado) o **Se cotiza**. Editar el precio desde el formulario del servicio también lo confirma.
-- No puedes activar una política de pago (depósito o pago completo) en un servicio cuyo precio no esté confirmado.
-- Mientras queden servicios con precio de ejemplo, **Salud de agentes** muestra un aviso no crítico para recordártelo; no bloquea al agente para responder.
+- En **Citas** → pestaña **Servicios disponibles**, un servicio con precio de ejemplo muestra la pastilla **Precio de ejemplo** con los botones **Confirmar precio** (conserva el mismo monto, ya confirmado) o **Se cotiza**. Escribir otro monto en el formulario también lo confirma.
+- Un servicio sin monto muestra **Sin precio**, con **Escribir precio**, **Es gratis** o **Se cotiza**: no hay monto que confirmar, así que no aparece **Confirmar precio**. Lo mismo pasa con un ejemplo en 0, como una clase de prueba: si de verdad no la cobras, pulsa **Es gratis**.
+- Un servicio marcado **Es gratis** se muestra como **Gratis** y el agente le dice al cliente que es gratis. Dejar el monto vacío nunca lo vuelve gratis.
+- No puedes activar una política de pago (depósito o pago completo) en un servicio gratis ni en uno cuyo precio no esté confirmado.
+- Mientras queden precios de ejemplo sin confirmar, **Salud de agentes** muestra el aviso no crítico **Precios de ejemplo sin confirmar**; no bloquea al agente para responder. En un gimnasio también cuenta los planes de membresía, que se confirman de la misma forma en **Membresías**.
 - El precio de ejemplo viene **en la moneda de tu país**, no en pesos colombianos. Si tu país es Colombia, México, Argentina, Chile, Perú o Brasil, el servicio nace con un monto de ejemplo redondo en tu moneda; en cualquier otro país nace **sin monto**, con tu moneda puesta, para que escribas el tuyo. Ese monto es solo un orden de magnitud para que la pantalla no arranque vacía: no es una conversión de divisas ni un precio de mercado, y nadie lo dice en voz alta hasta que lo confirmas.
 
 ## Cómo definir tu disponibilidad
@@ -128,6 +130,6 @@ No, la agenda funciona sola dentro de Parallly. Conectar Google Calendar u Outlo
 Los administradores y supervisores. Los agentes pueden ver el calendario, crear citas y atender a los clientes, pero no modificar servicios, horarios ni calendarios conectados.
 
 **¿Por qué el agente no dice el precio de un servicio?**
-Porque ese precio todavía es un precio de ejemplo o el servicio se cotiza según el caso. Confírmalo en **Citas** → **Servicios disponibles** y el agente podrá decirlo.
+Porque ese precio todavía es de ejemplo, el servicio no tiene monto (**Sin precio**) o se cotiza según el caso. Confírmalo o escribe el monto en **Citas** → **Servicios disponibles** y el agente podrá decirlo. Los planes de un gimnasio se confirman en **Membresías**.
 
 ¿Necesitas más ayuda? Escríbenos en https://parallly-chat.cloud/support

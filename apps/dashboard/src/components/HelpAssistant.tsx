@@ -149,7 +149,10 @@ function TenantHelpAssistant() {
   const pathname = usePathname();
   // The guided setup owns the screen until the first real reply; the mascot
   // greets nobody over it and is not even drawn on the wizard.
-  const beforeLive = isOnboardingBeforeLive(user?.onboardingStage);
+  const beforeLive = isOnboardingBeforeLive(user?.onboardingStage, {
+    firstReplyAt: user?.firstReplyAt,
+    createdAt: user?.tenantCreatedAt,
+  });
   const router = useRouter();
   const searchParams = useSearchParams();
   const {

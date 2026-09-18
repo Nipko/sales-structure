@@ -1,5 +1,7 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
+import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
 import {
     applyFundingSignal, clearPause, describePause, isPaused, readPause, type SendPause,
 } from './account-send-pause';
@@ -41,10 +43,31 @@ export class AccountPauseStore {
     private readonly cache = new Map<string, { pause: SendPause | null; until: number }>();
     private readonly TTL_MS = 15_000;
 
-    constructor(@Optional() private readonly prisma?: PrismaService) {}
+    constructor(
+        @Optional() private readonly prisma?: PrismaService,
+        // Optional: the PostgreSQL suites build this store without the event
+        // graph, and a missing emitter only delays the quality reconcile to
+        // the six-hourly cron.
+        @Optional() private readonly events?: EventEmitter2,
+    ) {}
 
     private key(tenantId: string, channelAccountId: string) {
         return `${tenantId}:${channelAccountId}`;
+    }
+
+    /**
+     * A pause starting or ending changes whether the agent can answer on this
+     * number, which Salud de agentes reports as `whatsapp_delivery`. Asked on
+     * the transition so the alert appears and clears with the pause, not hours
+     * later. Never throws: it runs on a failure path and on a resume that
+     * already succeeded.
+     */
+    private notifyQuality(tenantId: string): void {
+        try {
+            this.events?.emit(AGENT_QUALITY_DEPENDENCIES_UPDATED, { tenantId, source: 'channel_connection' });
+        } catch (error: any) {
+            this.logger.warn(`[Pause] quality reconcile not requested for ${tenantId}: ${error?.message}`);
+        }
     }
 
     /**
@@ -126,6 +149,7 @@ export class AccountPauseStore {
                 // Said once, loudly, on the transition. Repeating it per message
                 // would bury it under the thing it is trying to explain.
                 this.logger.error(`[Pause] ${describePause(pause)}`);
+                this.notifyQuality(tenantId);
             }
             return pause;
         } catch (error: any) {
@@ -153,6 +177,7 @@ export class AccountPauseStore {
         await this.write(tenantId, channelAccountId, cleared);
         this.logger.log(`[Pause] WhatsApp ${channelAccountId} of tenant ${tenantId} resumed `
             + `(${input.by}${input.note ? `: ${input.note}` : ''})`);
+        this.notifyQuality(tenantId);
         return cleared;
     }
 

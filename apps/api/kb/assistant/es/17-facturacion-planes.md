@@ -44,7 +44,7 @@ Las barras de uso indican el período y la capacidad vigente. Al alcanzar un lí
 
 Tu suscripción a Parallly paga el software. **No paga los mensajes que WhatsApp entrega.**
 
-Desde el **1 de octubre de 2026**, Meta le cobra a **tu propia cuenta de WhatsApp Business** cada mensaje de servicio entregado, con el medio de pago que cargaste **en Meta**. Parallly no te lo factura, no lo cobra por vos y no lo incluye en el plan; cambiar de plan aquí no cambia lo que Meta cobra. Cada número tiene **1.000 mensajes de servicio gratis por mes calendario**.
+Desde el **1 de octubre de 2026**, Meta le cobra a **tu propia cuenta de WhatsApp Business** cada mensaje de servicio entregado, con el medio de pago que cargaste **en Meta**. Parallly no te lo factura, no lo cobra por ti y no lo incluye en el plan; cambiar de plan aquí no cambia lo que Meta cobra. Cada número tiene **1.000 mensajes de servicio gratis por mes calendario**.
 
 Esa factura no aparece en **Plan y facturación**: la emite Meta y se consulta en las herramientas de Meta. Lo que sí ves en Parallly, en **Canales → WhatsApp**, es cuánto llevas de la cuota gratis y qué números quedaron con el envío pausado. Los detalles están en el artículo de **Conectar WhatsApp**.
 

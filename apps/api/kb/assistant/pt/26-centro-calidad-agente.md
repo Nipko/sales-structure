@@ -3,7 +3,7 @@ id: centro-calidad-agente
 title: "Saúde dos agentes e Centro de qualidade"
 routes: ["/admin/agent/quality", "/admin"]
 roles: ["tenant_admin", "tenant_supervisor"]
-keywords: ["saude dos agentes", "centro de qualidade", "qualidade do agente", "preparacao", "qualidade testada", "evidencia de producao", "agente em risco", "configuracao incompleta", "acoes criticas", "badge", "adiar", "Parallly Assist", "melhorar agente", "cobertura dos canais", "conexao operacional do canal", "mostrar onde", "roteiro guiado", "barra de contexto", "exige reautorizar", "essenciais", "proxima etapa", "nao esta pronto"]
+keywords: ["saude dos agentes", "centro de qualidade", "qualidade do agente", "preparacao", "qualidade testada", "evidencia de producao", "agente em risco", "configuracao incompleta", "acoes criticas", "badge", "adiar", "Parallly Assist", "melhorar agente", "cobertura dos canais", "conexao operacional do canal", "mostrar onde", "roteiro guiado", "barra de contexto", "exige reautorizar", "essenciais", "proxima etapa", "nao esta pronto", "whatsapp nao entrega", "fuso horario de cobranca", "meio de pagamento na meta", "canal que ninguem responde", "dia 0", "primeiro cliente real", "precos de exemplo sem confirmar"]
 ---
 
 # Saúde dos agentes e Centro de qualidade
@@ -20,8 +20,12 @@ agentes, conexões ou configurações em **IA e crescimento → Agente de IA**.
 - O badge de **Insights → Saúde dos agentes** conta somente sinais **Críticos e Altos
   abertos**. É um contador de atenção, não uma pontuação.
 - O aviso global aparece apenas para um sinal Crítico aberto ou o estado **Agente em
-  risco**, e só depois da primeira resposta real a um cliente: enquanto a conta está
-  em fase de primeiros passos, o cartão do Início é o único guia. Você pode **Revisar**,
+  risco**, e só depois que o agente responde ao seu primeiro cliente real (ou três dias
+  depois de criar a conta, o que acontecer primeiro); terminar o assistente de
+  configuração não antecipa esse momento. Enquanto isso, o cartão do Início é o guia,
+  com uma exceção: se um canal que você conectou não consegue responder — a conexão
+  parou de funcionar, o agente não tem canal atribuído, nenhum agente atende aquele
+  canal ou o WhatsApp não consegue entregar —, o aviso aparece mesmo assim e diz o motivo. Você pode **Revisar**,
   **Perguntar ao Assist** ou **Adiar por 24 h**.
 - Adiar oculta esse sinal temporariamente; não o corrige. Esses avisos ficam no
   dashboard e não enviam e-mail nem notificação push.
@@ -35,7 +39,8 @@ agentes, conexões ou configurações em **IA e crescimento → Agente de IA**.
   problema real; uma missão sem ajustar ou um teste sem rodar ficam como pendências,
   mas não declaram um agente que já responde como «não pronto». Por exemplo,
   enquanto o negócio não confirmar os preços de exemplo que vieram da receita
-  do seu ramo, aparece o aviso não crítico **Serviços com preço de exemplo**.
+  do seu ramo (serviços e, numa academia, planos de matrícula), aparece o aviso não
+  crítico **Preços de exemplo sem confirmar**: o agente não diz esses preços até que sejam confirmados.
 - **Qualidade testada:** mostra a avaliação crítica e a simulação mais recentes, com
   versão, data, limite e cenários. Evidências anteriores podem ficar desatualizadas
   quando o agente muda. É evidência automatizada, não uma certificação.
@@ -78,6 +83,40 @@ WhatsApp, Instagram, Messenger, Telegram ou o chat web.
 Um vínculo que aponta para uma conta que já não existe (por exemplo, o número foi
 reconectado e mudou de identificador) conta como atribuição sem conexão: basta marcar de
 novo a conta vigente no editor do agente.
+
+## Canais que ninguém responde e WhatsApp que não entrega
+
+Dois controles críticos de **Preparação** explicam um agente que não responde embora o
+canal apareça conectado:
+
+- **Cada canal conectado tem um agente que responde**. Confere cada conexão ativa do
+  negócio com a mesma regra que a Parallly usa ao receber uma mensagem: primeiro o agente
+  atribuído àquela conta, depois o atribuído àquele tipo de canal e, se não houver
+  nenhum, o agente padrão. Falha quando um canal conectado não tem quem responda (ninguém
+  o tem atribuído e não há agente padrão ativo) ou quando dois agentes o reivindicam ao
+  mesmo tempo: a Parallly não escolhe por você e nenhum responde. As mensagens chegam,
+  mas ficam sem resposta. Aparece uma única vez, no agente padrão (ou, se não houver, no
+  ativo mais antigo). Corrige-se no editor do agente: atribua esse canal a um só agente
+  ou marque um como padrão; **Mostrar onde** aponta o lugar.
+- **O WhatsApp consegue entregar as respostas**. Para cada número de WhatsApp que o agente
+  atende, olha o mesmo que a Parallly confere antes de enviar uma resposta. Falha — e
+  nenhuma resposta sai por aquele número — quando falta o **fuso horário de cobrança** do
+  número; quando a Meta **não aceita cobranças** da conta do WhatsApp; quando a conta
+  **não tem meio de pagamento** na Meta, a partir de 1º de outubro de 2026 (antes dessa
+  data é um aviso, não um bloqueio); ou quando não se sabe em que **moeda** a Meta cobra e
+  a **Proteção de gastos** está ativa (com **Somente observar**, o valor inicial, isso não
+  freia nada e não é reportado).
+
+No segundo, **Revisar** leva a **Canais → WhatsApp**: o fuso horário se confirma ali
+mesmo e as respostas voltam a sair; o meio de pagamento se adiciona nas ferramentas da
+Meta e, se o número ficou pausado, depois você toca em **Retomar envios** ou **Verificar
+na Meta**; a moeda se resolve reconectando o número ou voltando a proteção de gastos para
+**Somente observar**. Não há roteiro guiado, e **Canais** é uma tela do administrador:
+Supervisor vê o controle, mas a correção é do Admin.
+
+Quando falham, os dois aparecem na **Saúde dos agentes**, na etapa do canal do cartão
+**Primeiros passos** e no aviso global, mesmo antes da primeira resposta real: são
+justamente o motivo de um agente que não responde.
 
 ## O que acontece ao clicar em Revisar
 

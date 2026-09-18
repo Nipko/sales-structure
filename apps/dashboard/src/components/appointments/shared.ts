@@ -35,7 +35,12 @@ export interface Service {
   durationMax?: number | null;
   durationType?: DurationType;
   buffer: number;
-  price: number;
+  /**
+   * `null` = the row has no amount (D17 seeds it that way outside the six
+   * countries with an example). Read as 0 it looked like a price to confirm,
+   * and confirming it told customers the service was free (FX1).
+   */
+  price: number | null;
   priceStatus?: PriceStatus;
   color: string;
   active: boolean;

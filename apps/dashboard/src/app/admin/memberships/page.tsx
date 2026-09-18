@@ -16,7 +16,7 @@ import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
-    Dumbbell, Users, Plus, Trash2, Edit2, X, Loader2, Save, Pause, Play,
+    Dumbbell, Users, Plus, X, Loader2, Save, Pause, Play,
     AlertTriangle, CheckCircle, Calendar, CalendarDays, Search, Snowflake, Repeat,
     FileSpreadsheet,
 } from "lucide-react";
@@ -24,21 +24,11 @@ import { HelpPanel } from "@/components/ui/help-panel";
 import { BulkImportModal } from "@/components/BulkImportModal";
 import { PaginatedContactSelect } from "@/components/ui/paginated-contact-select";
 import { useOperatingCurrency } from "@/hooks/useOperatingCurrency";
+import { PlanCard } from "./_components/PlanCard";
+import { PlanFormModal } from "./_components/PlanFormModal";
+import { planPriceChoicePayload, type MembershipPlan, type PlanPriceChoice } from "./plan-price";
 
-interface Plan {
-    id: string;
-    name: string;
-    description?: string;
-    duration_days: number;
-    price: number;
-    currency: string | null;
-    class_credits_per_period?: number;
-    personal_training_credits: number;
-    guest_passes: number;
-    freeze_allowance_days: number;
-    perks: string[];
-    is_active: boolean;
-}
+type Plan = MembershipPlan;
 
 interface Member {
     id: string;
@@ -65,6 +55,8 @@ export default function MembershipsPage() {
     const tImport = useTranslations("bulkImport");
     const tHelp = useTranslations("help");
     const { activeTenantId } = useTenant();
+    // Moneda de respaldo para una fila sin moneda propia: sin ella, número desnudo.
+    const operatingCurrency = useOperatingCurrency();
 
     // Mixta, igual que Seguros: los planes son catálogo y el padrón de socios
     // —congelar, descongelar, renovar— es trabajo de todos los días.
@@ -84,7 +76,8 @@ export default function MembershipsPage() {
     const [members, setMembers] = useState<Member[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState("");
-    const [showPlanForm, setShowPlanForm] = useState<Plan | "new" | null>(null);
+    // `focusPrice`: abierto desde "Escribir precio", el cursor arranca en el monto.
+    const [planForm, setPlanForm] = useState<{ plan: Plan | null; focusPrice: boolean } | null>(null);
     const [showFreeze, setShowFreeze] = useState<Member | null>(null);
     // Clases. `createGymClass` existía en el cliente HTTP con 0 llamadores: el
     // dueño no podía crear NI UNA clase, así que get_class_schedule devolvía
@@ -125,6 +118,24 @@ export default function MembershipsPage() {
         if (!confirm(t("deletePlanConfirm"))) return;
         await api.deleteMembershipPlan(activeTenantId, id);
         load();
+    }
+
+    /**
+     * "Confirmar precio" / "Es gratis" / "Se cotiza" desde la tarjeta. Para
+     * confirmar se manda solo el estado y el servidor conserva el número; "Es
+     * gratis" manda el 0 con `free: true`, porque un 0 solo es un precio si el
+     * dueño lo dice. La fila que vuelve reemplaza a la de la lista, así la
+     * tarjeta cambia sin recargar la pestaña entera. Un rechazo
+     * (`price_missing`) lo explica la tarjeta.
+     */
+    async function handlePlanPriceStatus(plan: Plan, choice: PlanPriceChoice) {
+        if (!activeTenantId) return { success: false };
+        const res = await api.updateMembershipPlan(activeTenantId, plan.id, planPriceChoicePayload(choice));
+        if (res?.success && res.data) {
+            const updated = res.data as Partial<Plan>;
+            setPlans(prev => prev.map(p => (p.id === plan.id ? { ...p, ...updated } : p)));
+        }
+        return res;
     }
 
     async function openNewMember() {
@@ -188,7 +199,7 @@ export default function MembershipsPage() {
                 )}
                 {tab === "plans" && canEditPipeline && (
                     <button
-                        onClick={() => setShowPlanForm("new")}
+                        onClick={() => setPlanForm({ plan: null, focusPrice: false })}
                         className="inline-flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium"
                     >
                         <Plus className="h-4 w-4" /> {t("addPlan")}
@@ -250,49 +261,14 @@ export default function MembershipsPage() {
                             {t("noPlans")}
                         </div>
                     ) : plans.map(plan => (
-                        <div key={plan.id} className="bg-card border border-border rounded-xl p-4">
-                            <div className="flex items-start justify-between gap-2 mb-3">
-                                <div>
-                                    <h3 className="font-semibold">{plan.name}</h3>
-                                    <p className="text-xs text-muted-foreground">{plan.duration_days} {t("days")}</p>
-                                </div>
-                                <div className="text-right">
-                                    <div className="text-xl font-bold font-mono">{Number(plan.price).toLocaleString()}</div>
-                                    <div className="text-xs text-muted-foreground font-mono">{plan.currency}</div>
-                                </div>
-                            </div>
-                            {plan.description && <p className="text-xs text-muted-foreground mb-3">{plan.description}</p>}
-                            <div className="space-y-1 text-xs border-t border-border pt-3 mb-3">
-                                <div className="flex justify-between">
-                                    <span className="text-muted-foreground">{t("classCredits")}</span>
-                                    <span className="font-mono">{plan.class_credits_per_period ?? "∞"}</span>
-                                </div>
-                                {plan.personal_training_credits > 0 && (
-                                    <div className="flex justify-between">
-                                        <span className="text-muted-foreground">{t("ptCredits")}</span>
-                                        <span className="font-mono">{plan.personal_training_credits}</span>
-                                    </div>
-                                )}
-                                {plan.guest_passes > 0 && (
-                                    <div className="flex justify-between">
-                                        <span className="text-muted-foreground">{t("guestPasses")}</span>
-                                        <span className="font-mono">{plan.guest_passes}</span>
-                                    </div>
-                                )}
-                                <div className="flex justify-between">
-                                    <span className="text-muted-foreground">{t("freezeAllowance")}</span>
-                                    <span className="font-mono">{plan.freeze_allowance_days}d</span>
-                                </div>
-                            </div>
-                            <div className="flex gap-1 justify-end">
-                                <button onClick={() => setShowPlanForm(plan)} className="p-1.5 hover:bg-muted text-muted-foreground hover:text-foreground rounded transition-colors">
-                                    <Edit2 className="h-3.5 w-3.5" />
-                                </button>
-                                <button onClick={() => handleDeletePlan(plan.id)} className="p-1.5 hover:bg-red-500/10 rounded">
-                                    <Trash2 className="h-3.5 w-3.5 text-red-600" />
-                                </button>
-                            </div>
-                        </div>
+                        <PlanCard
+                            key={plan.id}
+                            plan={plan}
+                            operatingCurrency={operatingCurrency}
+                            onEdit={(p, options) => setPlanForm({ plan: p, focusPrice: !!options?.focusPrice })}
+                            onDelete={(p) => handleDeletePlan(p.id)}
+                            onPriceStatusChange={handlePlanPriceStatus}
+                        />
                     ))}
                 </div>
             )}
@@ -453,11 +429,12 @@ export default function MembershipsPage() {
                 </div>
             )}
 
-            {showPlanForm && (
+            {planForm && (
                 <PlanFormModal
-                    plan={showPlanForm === "new" ? null : showPlanForm}
-                    onClose={() => setShowPlanForm(null)}
-                    onSaved={() => { setShowPlanForm(null); load(); }}
+                    plan={planForm.plan}
+                    focusPrice={planForm.focusPrice}
+                    onClose={() => setPlanForm(null)}
+                    onSaved={() => { setPlanForm(null); load(); }}
                 />
             )}
 
@@ -567,116 +544,6 @@ export default function MembershipsPage() {
                     { key: 'joinedAt', label: tImport('f_joinedAt'), aliases: ['ingreso', 'fecha de ingreso', 'alta'] },
                 ]}
             />
-        </div>
-    );
-}
-
-function PlanFormModal({
-    plan, onClose, onSaved,
-}: { plan: Plan | null; onClose: () => void; onSaved: () => void }) {
-    const operatingCurrency = useOperatingCurrency();
-    const t = useTranslations("memberships");
-    const tc = useTranslations("common");
-    const { activeTenantId } = useTenant();
-    const [form, setForm] = useState({
-        name: plan?.name || "",
-        description: plan?.description || "",
-        durationDays: plan?.duration_days?.toString() || "30",
-        price: plan?.price?.toString() || "",
-        // La moneda del negocio, no un literal. `|| "COP"` le ponia pesos
-        // colombianos al primer precio que cargaba un tenant mexicano, y esa
-        // moneda queda GUARDADA con el registro: el agente despues se la dice
-        // al cliente. No era un default de presentacion, era una decision
-        // comercial tomada por el codigo.
-        currency: plan?.currency || operatingCurrency || "",
-        classCreditsPerPeriod: plan?.class_credits_per_period?.toString() || "",
-        personalTrainingCredits: plan?.personal_training_credits?.toString() || "0",
-        guestPasses: plan?.guest_passes?.toString() || "0",
-        freezeAllowanceDays: plan?.freeze_allowance_days?.toString() || "0",
-    });
-    const [busy, setBusy] = useState(false);
-
-    async function handleSubmit() {
-        if (!activeTenantId || !form.name || !form.durationDays || !form.price) return;
-        setBusy(true);
-        const payload = {
-            name: form.name,
-            description: form.description || undefined,
-            durationDays: parseInt(form.durationDays, 10),
-            price: parseFloat(form.price),
-            // Cuando el negocio no declaro donde opera, el hook contesta
-            // honestamente "no se" y aca NO se manda nada: el API resuelve o
-            // deja NULL. Mandar "" era peor que no mandar, porque del otro
-            // lado la cadena vacia volvia a ser COP.
-            currency: form.currency || undefined,
-            classCreditsPerPeriod: form.classCreditsPerPeriod ? parseInt(form.classCreditsPerPeriod, 10) : null,
-            personalTrainingCredits: parseInt(form.personalTrainingCredits, 10),
-            guestPasses: parseInt(form.guestPasses, 10),
-            freezeAllowanceDays: parseInt(form.freezeAllowanceDays, 10),
-        };
-        try {
-            if (plan) await api.updateMembershipPlan(activeTenantId, plan.id, payload);
-            else await api.createMembershipPlan(activeTenantId, payload);
-            onSaved();
-        } finally { setBusy(false); }
-    }
-
-    return (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
-            <div className="bg-background border border-border rounded-2xl shadow-2xl w-full max-w-xl" onClick={e => e.stopPropagation()}>
-                <div className="flex items-center justify-between p-5 border-b border-border">
-                    <h3 className="text-base font-semibold">{plan ? t("editPlan") : t("newPlan")}</h3>
-                    <button onClick={onClose} className="p-1 hover:bg-muted rounded"><X className="h-4 w-4" /></button>
-                </div>
-                <div className="p-5 space-y-3">
-                    <div>
-                        <label className="block text-sm font-medium mb-1">{t("planName")}</label>
-                        <input type="text" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="w-full bg-card border border-border rounded-lg px-3 py-2 text-sm" />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium mb-1">{t("planDescription")}</label>
-                        <textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} rows={2} className="w-full bg-card border border-border rounded-lg px-3 py-2 text-sm" />
-                    </div>
-                    <div className="grid grid-cols-3 gap-2">
-                        <div>
-                            <label className="block text-xs font-medium mb-1">{t("durationDays")}</label>
-                            <input type="number" value={form.durationDays} onChange={e => setForm({ ...form, durationDays: e.target.value })} className="w-full bg-card border border-border rounded-lg px-2 py-1.5 text-sm" />
-                        </div>
-                        <div className="col-span-2">
-                            <label className="block text-xs font-medium mb-1">{t("price")}</label>
-                            <div className="flex gap-1">
-                                <input type="number" step="0.01" value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} className="flex-1 bg-card border border-border rounded-lg px-2 py-1.5 text-sm" />
-                                <input type="text" value={form.currency} onChange={e => setForm({ ...form, currency: e.target.value })} className="w-20 bg-card border border-border rounded-lg px-2 py-1.5 text-sm font-mono" />
-                            </div>
-                        </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                        <div>
-                            <label className="block text-xs font-medium mb-1">{t("classCreditsPlaceholder")}</label>
-                            <input type="number" placeholder={t("emptyForUnlimited")} value={form.classCreditsPerPeriod} onChange={e => setForm({ ...form, classCreditsPerPeriod: e.target.value })} className="w-full bg-card border border-border rounded-lg px-2 py-1.5 text-sm" />
-                        </div>
-                        <div>
-                            <label className="block text-xs font-medium mb-1">{t("ptCreditsLabel")}</label>
-                            <input type="number" value={form.personalTrainingCredits} onChange={e => setForm({ ...form, personalTrainingCredits: e.target.value })} className="w-full bg-card border border-border rounded-lg px-2 py-1.5 text-sm" />
-                        </div>
-                        <div>
-                            <label className="block text-xs font-medium mb-1">{t("guestPassesLabel")}</label>
-                            <input type="number" value={form.guestPasses} onChange={e => setForm({ ...form, guestPasses: e.target.value })} className="w-full bg-card border border-border rounded-lg px-2 py-1.5 text-sm" />
-                        </div>
-                        <div>
-                            <label className="block text-xs font-medium mb-1">{t("freezeAllowanceLabel")}</label>
-                            <input type="number" value={form.freezeAllowanceDays} onChange={e => setForm({ ...form, freezeAllowanceDays: e.target.value })} className="w-full bg-card border border-border rounded-lg px-2 py-1.5 text-sm" />
-                        </div>
-                    </div>
-                </div>
-                <div className="flex justify-end gap-2 p-4 border-t border-border">
-                    <button onClick={onClose} className="px-3 py-1.5 bg-muted/30 hover:bg-muted text-foreground border border-border rounded-lg text-sm transition-colors">{tc("cancel")}</button>
-                    <button onClick={handleSubmit} disabled={busy || !form.name || !form.price || !form.durationDays} className="inline-flex items-center gap-2 px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium">
-                        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                        {tc("save")}
-                    </button>
-                </div>
-            </div>
         </div>
     );
 }

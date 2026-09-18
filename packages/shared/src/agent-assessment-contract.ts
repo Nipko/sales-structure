@@ -196,8 +196,21 @@ export function isEssentialSetupTask(key: AgentSetupTaskKey): boolean {
     return AGENT_SETUP_ESSENTIAL_TASKS.includes(key);
 }
 
+/**
+ * The preparation checks behind each setup task.
+ *
+ * `channel` means "your channel works": a connected channel no agent answers
+ * (`channel_unanswered`) and a WhatsApp number whose every reply is refused
+ * before it leaves (`whatsapp_delivery`) are that essential failing, not
+ * polish. Both are `not_applicable` wherever they have nothing to say (a
+ * single-agent tenant, an agent that answers no WhatsApp number), and a dated
+ * stop that still delivers today — no payment method in Meta before the
+ * 1-oct-2026 pricing change — is a `warning`, which the roll-up keeps apart
+ * from `fail`.
+ */
 export const AGENT_SETUP_TASK_CHECKS: Readonly<Record<Exclude<AgentSetupTaskKey, 'mission' | 'catalog' | 'tests'>, readonly string[]>> = {
-    channel: ['channel_assignment', 'channel_connection', 'channel_coverage', 'operational_channel_scope'],
+    channel: ['channel_assignment', 'channel_connection', 'channel_coverage', 'operational_channel_scope',
+        'channel_unanswered', 'whatsapp_delivery'],
     agent: ['agent_active', 'persona_identity', 'custom_prompt', 'fallback_message', 'behavior_rules', 'handoff_triggers'],
     business: ['business_identity', 'business_contact', 'business_context'],
     knowledge: ['knowledge_coverage', 'rag_knowledge', 'rag_configuration', 'tool_faqs', 'tool_policies', 'media_privacy_policy'],

@@ -14,7 +14,7 @@ import type { AgentQualityAttentionSummary } from "@parallext/shared";
 import { useTenant } from "@/contexts/TenantContext";
 import { useRole } from "@/hooks/useRole";
 import { api } from "@/lib/api";
-import { QUALITY_HEALTH_CACHE_MS, shouldBootstrapQualitySummary } from "@/lib/quality-health";
+import { QUALITY_HEALTH_CACHE_MS, shouldBootstrapQualitySummary, withoutSnoozedSignal } from "@/lib/quality-health";
 import { QUALITY_HEALTH_REFRESH_EVENT } from "@/lib/quality-health-events";
 
 interface CachedSummary {
@@ -151,8 +151,11 @@ export function QualityHealthProvider({ children }: { children: ReactNode }) {
   const snoozeSignal = useCallback(async (signalId: string, durationHours = 24) => {
     if (!activeTenantId || !signalId) return false;
     const previous = summary;
-    if (summary?.topAction?.signalId === signalId) {
-      setTenantSummary({ tenantId: activeTenantId, data: { ...summary, topAction: undefined } });
+    // Optimistic: whichever of the two actions carries this signal disappears
+    // now; a refused snooze puts `previous` back below.
+    const optimistic = summary ? withoutSnoozedSignal(summary, signalId) : null;
+    if (optimistic && optimistic !== summary) {
+      setTenantSummary({ tenantId: activeTenantId, data: optimistic });
     }
     try {
       const response = await api.snoozeAgentQualitySignal(activeTenantId, signalId, { durationHours });

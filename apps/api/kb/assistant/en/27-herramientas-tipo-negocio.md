@@ -1,9 +1,9 @@
 ---
 id: herramientas-tipo-negocio
 title: "Agent tools for your business type"
-routes: ["/admin/agent", "/admin/agent/quality"]
+routes: ["/admin/agent", "/admin/agent/quality", "/admin/memberships"]
 roles: ["tenant_admin"]
-keywords: ["tools","capabilities","business type","subtype","enable tools","disabled tool","agent setup"]
+keywords: ["tools","capabilities","business type","subtype","enable tools","disabled tool","agent setup","example price","confirm price","quoted per case","memberships","membership plans","gym"]
 ---
 
 # Agent tools for your business type
@@ -28,6 +28,15 @@ Permission depends on business type, agent configuration, the current plan, prep
 If another system owns bookings or orders, reading its data does not mean Parallly can confirm an operation in that system. Hand over to the team when no authorized, verified write path exists.
 
 An enabled tool is configured. A prepared tool meets known requirements. A tested task requires result evidence for the relevant profile, version and channel. A conversation example or a test that only asks for missing information does not prove that a booking or order was created.
+
+## Prices the agent doesn't state yet
+
+Your industry recipe pre-fills example prices so you don't start from zero, and the agent doesn't state them to your customers until you confirm them. That applies to services (see **Appointments and calendars**) and, for a gym, also to **membership plans**:
+
+- Under **Memberships**, each plan with an example price shows the **Example price** pill and a note that the agent won't mention it until you confirm it. **Confirm price** keeps the same amount, now confirmed; **Quoted per case** makes the agent state no amount for that plan and offer to have a person quote it.
+- A plan that shows **No price** has no amount to confirm: press **Enter price**, **It's free** or **Quoted per case**.
+- In the plan form you pick **Confirmed price** (needs an amount above 0), **It's free** or **Quoted case by case**; typing a different amount also confirms it. A free plan shows as **Free**, and the agent tells customers it's free.
+- While any is still unconfirmed, **Agent health** shows the non-critical **Unconfirmed example prices** warning; the agent keeps answering.
 
 ## How Assist helps
 

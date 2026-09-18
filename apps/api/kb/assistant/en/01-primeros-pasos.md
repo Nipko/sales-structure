@@ -3,7 +3,7 @@ id: primeros-pasos
 title: "Getting started and initial setup"
 routes: ["/admin/setup-wizard", "/admin", "/admin/channels", "/admin/agent", "/admin/settings/billing"]
 roles: ["tenant_admin"]
-keywords: ["getting started", "start", "sign up", "create account", "onboarding", "initial setup", "setup wizard", "setup", "connect channel", "connect whatsapp", "test agent", "essentials", "checklist", "your progress", "8/9", "tour", "trial", "new user", "meet your agent", "connect later", "show me where", "email verification", "next step", "four essentials", "already answers", "immediate changes", "trial link", "trial page", "show it to my partner", "where does your number live", "question before connecting whatsapp", "right path from the start"]
+keywords: ["getting started", "start", "sign up", "create account", "onboarding", "initial setup", "setup wizard", "setup", "connect channel", "connect whatsapp", "test agent", "essentials", "checklist", "your progress", "8/9", "tour", "trial", "new user", "meet your agent", "connect later", "show me where", "email verification", "next step", "four essentials", "already answers", "immediate changes", "trial link", "trial page", "show it to my partner", "where does your number live", "question before connecting whatsapp", "right path from the start", "day 0", "first real customer", "trial countdown", "billing time zone", "payment method in meta"]
 ---
 
 # Getting started and initial setup
@@ -34,12 +34,12 @@ Parallly sends a **6-digit code** to confirm your email address. That verificati
 After signing up, the dashboard opens **Meet your agent**, a **three-step** wizard (also available at `/admin/setup-wizard`):
 
 1. **Your agent** — you don't pick a template: Parallly already prepared an agent from the industry and business type you declared, with its name, role, greeting, and example rules. This step is to **confirm or adjust it** (name and welcome message) and try it in the chat next to it. What you save is applied immediately. If you'd rather start from something else, the secondary **Change template** button takes you to the full agent list.
-2. **Connect your channel** — WhatsApp first, with the requirements and the button that opens the Meta window (see the next section); Instagram, Messenger, Telegram, and Web Chat connect from the same screen.
-3. **Done** — if you connected the channel, your agent **already answers there**: message it from another phone to see for yourself. After that, the **Getting started** card on Home shows whichever essentials are still missing.
+2. **Connect your channel** — WhatsApp first, with the requirements and the button that opens the Meta window (see the next section); Instagram, Messenger, Telegram, and Web Chat connect from the same screen. When you connect WhatsApp, the screen checks two things before telling you your agent already answers: if the number has no **billing time zone**, it asks you to confirm one (your business's zone is already selected, so it is usually one tap), and it shows whether your WhatsApp account has a **payment method in Meta**. You can move on even if something is missing and finish it later in **Channels → WhatsApp**.
+3. **Done** — it says your agent **already answers** on your channel only when that is true; then message it from another phone to see for yourself. If WhatsApp is connected but the billing time zone or the payment method is missing, it tells you what is left and offers **Finish in Channels → WhatsApp**. If you didn't connect any channel, it tells you your agent already answers through its link and that WhatsApp is still pending. After that, the **Getting started** card on Home shows whichever essentials are still missing.
 
 This step also shows the **your agent's link** card: a public page — its address starts with `/w/` followed by an identifier that is never your business name — where anyone can chat with your agent just like a customer would. It exists from day 0, before you connect any channel, so you can try it from another phone or show it to a partner. Its actions are **Open**, **Copy link**, **Put it in my bio** (for Instagram → Edit profile → Links), **Show it to my partner** (opens WhatsApp with a message already written), and **The two lines for your website** (the embed code for whoever manages your site). The same card also lives in **Administration → Channels**, always available, never "connected" or "disconnected".
 
-**Connect later** is a valid exit: it is recorded, the wizard lets you continue, and **Home reminds you** with the **Getting started** card and a resume notice. Nothing you already configured is lost.
+**Connect later** is a valid exit: it is recorded, the wizard lets you continue, and **Home reminds you** with the **Getting started** card and a resume notice. Pressing **Next** on the connection step without connecting counts the same: it is recorded as "connect later", never skipped silently. Nothing you already configured is lost.
 
 You can reopen the wizard whenever you want from **Settings → Setup assistant**.
 
@@ -79,19 +79,24 @@ available for your plan and role is still missing, in this order:
 
 The step marked **Next** is the one worth doing now. Loading knowledge, confirming business
 hours, setting up appointments, or the catalog improve the agent, but they are not required
-for it to answer: they live in **Agent health**, not on this card. While the card is on Home
-you won't see the global critical-actions banner, the install-app notice, or the trial
-countdown: the card is the only guide.
+for it to answer: they live in **Agent health**, not on this card. On Home, while the card is there,
+it is the card that tells you what is missing: the global critical-actions banner does not show there.
 
 Each item has **Continue**, which opens the screen where it is done and, when a tour covers that step, also **Show me where**, which highlights the exact field or button step by step. Some steps have no tour — your industry's own catalog, for example — and roles that cannot run tours see only **Continue**. Each pending step opens an allowed route. The card disappears when all steps are done
 and does not turn into a floating `8/9` pill. If Parallly cannot verify a source, it
 shows **Retry** instead of claiming the step is incomplete. Advanced tasks stay in
 their own modules and do not inflate this essential progress.
 
+## Your day 0: the dashboard doesn't interrupt you
+
+Until your agent answers its **first real customer** — or until three days after you created the account, whichever comes first — the dashboard doesn't interrupt you: no trial countdown, no install-app notice, no automatic greeting from the help bubble ("Hi! I'm Parallly"), and no global critical-actions banner from **Agent health**. Finishing the setup wizard does not end this period; your agent's first reply on a connected channel or on your website's web chat does, even when you are the one writing to it from another phone. Your agent's link and **Test agent** don't count.
+
+What always shows is a real delivery failure. If a channel you connected cannot answer — the connection stopped working, your agent has no channel assigned, no agent handles that channel, or WhatsApp cannot deliver the replies — the global banner appears anyway and names the reason; on Home, the channel step of the **Getting started** card tells you. A restriction on your account, such as an expired plan or read-only mode, also always shows.
+
 ## What to do first: recommended order
 
 1. **Confirm your agent** in the wizard and test it in the test chat.
-2. **Connect WhatsApp** (or your main channel). From that moment the agent is assigned and answers there.
+2. **Connect WhatsApp** (or your main channel). From that moment the agent is assigned and answers there; on WhatsApp, confirm the billing time zone if the screen asks for it.
 3. **Send a message from another phone** and confirm both the reply and conversation in **Conversations**.
 4. **Complete the business information and knowledge**: website, documents, policies, FAQs, and the relevant catalog. Also confirm the example prices of your services under **Appointments** → **Services** so the agent can state them.
 5. **Adjust the agent whenever you want**: tone, rules, greeting, tools, and channel assignment. Saving applies the change immediately; test it in the test chat.
@@ -121,7 +126,10 @@ It's a public page that exists from day 0, before you connect any channel, where
 From **Settings → Setup assistant**, or directly at `/admin/setup-wizard`. You can also configure each piece separately from the **AI Agent** and **Channels** menus: the **Getting started** card on Home shows pending essentials and, when that step has a tour, its **Show me where** button.
 
 **Do I have to verify my email before configuring the agent?**
-No. Email verification does not block the wizard or the channel connection; you can complete it whenever the code arrives.
+No. Email verification does not block the wizard or the channel connection; you can complete it whenever the code arrives. It is needed, though, to confirm your WhatsApp billing time zone.
+
+**Why don't I see my trial countdown?**
+Because your account is in its day 0: that notice, the install-app notice, and the Agent health global banner wait until your agent answers its first real customer, or until three days have passed since you created the account. Your trial terms are always in **Administration → Plan & Billing**.
 
 **Can I use the dashboard in another language?**
 Yes: Spanish, English, Portuguese, and French. Change the language from the selector at the top of the dashboard.

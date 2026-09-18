@@ -1,9 +1,9 @@
 ---
 id: herramientas-tipo-negocio
 title: "Herramientas del agente según tu tipo de negocio"
-routes: ["/admin/agent", "/admin/agent/quality"]
+routes: ["/admin/agent", "/admin/agent/quality", "/admin/memberships"]
 roles: ["tenant_admin"]
-keywords: ["herramientas","capacidades","tipo de negocio","subtipo","activar herramientas","herramienta desactivada","configurar agente"]
+keywords: ["herramientas","capacidades","tipo de negocio","subtipo","activar herramientas","herramienta desactivada","configurar agente","precio de ejemplo","confirmar precio","se cotiza","membresias","planes de membresia","gimnasio"]
 ---
 
 # Herramientas del agente según tu tipo de negocio
@@ -28,6 +28,15 @@ El permiso depende del tipo de negocio, la configuración del agente, el plan vi
 Si otro sistema administra las reservas o los pedidos, consultar sus datos no significa que Parallly pueda confirmar una operación en ese sistema. Cuando no exista un camino autorizado y comprobado para escribir, deriva al equipo.
 
 Una herramienta activada está configurada. Una herramienta preparada reúne los requisitos conocidos. Una tarea probada necesita evidencia de su resultado en el perfil, versión y canal correspondientes. Un ejemplo de conversación o una prueba que sólo pide un dato faltante no demuestra que se haya creado una reserva o un pedido.
+
+## Precios que el agente todavía no dice
+
+La receta de tu rubro precarga precios de ejemplo para que no arranques desde cero, y el agente no se los dice a tus clientes hasta que los confirmes. Vale para los servicios (ver **Citas y calendarios**) y, en un gimnasio, también para los **planes de membresía**:
+
+- En **Membresías**, cada plan con precio de ejemplo muestra la pastilla **Precio de ejemplo** y la nota de que el agente no lo dice hasta que lo confirmes. **Confirmar precio** conserva el mismo monto, ya confirmado; **Se cotiza** hace que el agente no diga ningún monto de ese plan y ofrezca que una persona lo cotice.
+- Un plan que muestra **Sin precio** no tiene monto que confirmar: pulsa **Escribir precio**, **Es gratis** o **Se cotiza**.
+- En el formulario del plan eliges **Precio confirmado** (necesita un monto mayor que 0), **Es gratis** o **Se cotiza según el caso**; escribir otro monto también lo confirma. Un plan gratis se muestra como **Gratis** y el agente le dice al cliente que es gratis.
+- Mientras quede alguno sin confirmar, **Salud de agentes** muestra la advertencia no crítica **Precios de ejemplo sin confirmar**; el agente sigue respondiendo.
 
 ## Cómo ayuda Assist
 

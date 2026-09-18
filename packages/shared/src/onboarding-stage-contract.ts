@@ -82,8 +82,59 @@ export function onboardingStageRank(stage: OnboardingStage): number {
  * because the wizard's last button writes it and an owner who finished the
  * wizard without a reply must still see the trial notice eventually.
  */
-export function isOnboardingBeforeLive(stage: unknown): boolean {
-    return isOnboardingStage(stage) && STAGE_RANK[stage] < STAGE_RANK.live;
+export function isOnboardingBeforeLive(stage: unknown, activation?: OnboardingActivationFacts): boolean {
+    if (!activation) return isOnboardingStage(stage) && STAGE_RANK[stage] < STAGE_RANK.live;
+    return isAwaitingFirstReply(stage, activation);
+}
+
+/**
+ * Lo que dice si la cuenta ya vio a su agente responderle a alguien.
+ *
+ * Existe aparte de la etapa porque la etapa es monótona y `completed` tiene más
+ * rango que `live`: el último botón del asistente escribe `completed`, y a
+ * partir de ahí `live` ya no se podía escribir nunca. Una dueña que conectaba
+ * su canal y apretaba "Ir al panel" —el camino que queremos— quedaba para
+ * siempre sin activar, y el silencio del día 0 se levantaba en ese clic, antes
+ * de que su agente le contestara a nadie.
+ */
+export interface OnboardingActivationFacts {
+    /** ISO de la primera respuesta del agente que salió de verdad hacia un cliente. */
+    firstReplyAt?: string | null;
+    /** ISO del alta, para que el día 0 no dure para siempre. */
+    createdAt?: string | null;
+    /** Reloj inyectable para las pruebas. */
+    now?: number;
+}
+
+/**
+ * Cuánto dura como máximo el silencio del día 0 sin una primera respuesta.
+ *
+ * Sin tope, una cuenta que nunca conectó un canal no vería jamás el aviso de
+ * fin de prueba. Con tres días, el día 0 cubre el alta y la conexión —que en
+ * la grabación del 14-sep llevó 48 minutos— y después las alertas vuelven.
+ */
+export const DAY_ZERO_MAX_DAYS = 3;
+
+/**
+ * True mientras la cuenta todavía espera la primera respuesta real de su agente.
+ *
+ * - Una cuenta sin etapa guardada (anterior al contrato) se trata como activa:
+ *   ninguna cuenta vieja pierde sus avisos.
+ * - `live` activa aunque falte la hora (escrita antes de que existiera).
+ * - `completed` SIN primera respuesta sigue en día 0: terminar el asistente no
+ *   es ver al agente responder.
+ * - Pasados `DAY_ZERO_MAX_DAYS` desde el alta, el día 0 termina igual.
+ */
+export function isAwaitingFirstReply(stage: unknown, facts: OnboardingActivationFacts = {}): boolean {
+    if (!isOnboardingStage(stage)) return false;
+    if (stage === 'live') return false;
+    if (facts.firstReplyAt) return false;
+    const created = facts.createdAt ? Date.parse(facts.createdAt) : NaN;
+    if (Number.isFinite(created)) {
+        const now = facts.now ?? Date.now();
+        if (now - created > DAY_ZERO_MAX_DAYS * 24 * 60 * 60 * 1000) return false;
+    }
+    return true;
 }
 
 /**

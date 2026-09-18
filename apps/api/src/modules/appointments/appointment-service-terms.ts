@@ -1,5 +1,5 @@
 import { createHash } from 'crypto';
-import { servicePriceNote, servicePriceStatus, type ServicePriceStatus } from './service-price-status';
+import { customerFacingPrice, servicePriceNote, type ServicePriceStatus } from './service-price-status';
 import { resolvePaymentPolicy } from '../../common/utils/payment-policy.util';
 import { notAgreedSql } from '../conversations/commitment-proposal';
 
@@ -31,8 +31,11 @@ export function appointmentServiceTerms(row: Record<string, any>): AppointmentSe
     // D10: an unconfirmed price is not a term the customer can agree to. Both
     // sides of the terms hash (the tool result and the server gate) read the
     // same row, so zeroing it here keeps them equal and keeps the number out of
-    // every tool result the model sees.
-    const priceConfirmed = servicePriceStatus(row) === 'confirmed';
+    // every tool result the model sees. FX1: a row without an amount reads as
+    // pending too (`customerFacingPrice`); frozen as a confirmed 0 it came back
+    // to the customer as a free service.
+    const priceView = customerFacingPrice(row);
+    const priceConfirmed = priceView.priceStatus === 'confirmed';
     const policy = resolvePaymentPolicy(row, priceConfirmed ? row.price : 0);
     const minutes = (value: unknown) => value == null ? null : Number(value);
     return {
@@ -46,7 +49,7 @@ export function appointmentServiceTerms(row: Record<string, any>): AppointmentSe
         // Provenance travels with the frozen terms so a later reader knows the
         // customer never agreed to a number. Deliberately outside the hash:
         // confirming the same number mid-flow is not a change of terms.
-        ...(row.price_status && row.price_status !== 'confirmed' ? { priceStatus: String(row.price_status) } : {}),
+        ...(priceConfirmed ? {} : { priceStatus: priceView.priceStatus }),
     };
 }
 

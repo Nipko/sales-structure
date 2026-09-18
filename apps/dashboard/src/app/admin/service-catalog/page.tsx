@@ -49,6 +49,7 @@ export default function ServiceCatalogPage() {
             created: ta("toasts.serviceCreated"),
             updated: ta("toasts.serviceUpdated"),
             deleted: ta("toasts.serviceDeleted"),
+            priceMissing: ta("errors.servicePriceMissing"),
         },
     );
 

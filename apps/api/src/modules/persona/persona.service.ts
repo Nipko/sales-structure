@@ -1126,22 +1126,23 @@ export class PersonaService {
     }
 
     /**
-     * Update an existing agent
+     * Switch an agent OFF.
+     *
+     * Deactivation is an immediate safety action in both modes: it takes
+     * nothing from another agent and applies no saved change. Switching ON is
+     * not this method's job, because it puts a configuration in front of
+     * customers: in immediate mode it is a commit
+     * (`AgentDraftService.activate` — revision, audit, connection ownership
+     * guard, cache drop), in reviewed mode it is a publication. A bare
+     * `is_active=true` here skipped all of that, and could put back an agent
+     * whose channel another agent had taken meanwhile, leaving two owners and a
+     * silent channel.
      */
     async updateAgent(tenantId: string, agentId: string, data: { expectedVersion?: number; [key: string]: any }): Promise<any> {
-        if (!data || typeof data.isActive !== 'boolean' || Object.keys(data).some(key => !['isActive', 'expectedVersion'].includes(key)))
+        if (!data || data.isActive !== false || Object.keys(data).some(key => !['isActive', 'expectedVersion'].includes(key)))
             throw new BadRequestException({ error: 'agent_draft_contract_required' });
         if (!Number.isInteger(data.expectedVersion) || Number(data.expectedVersion) < 0)
             throw new BadRequestException({ error: 'agent_version_required' });
-        if (data.isActive === true) {
-            // Switching on. With reviewed changes it belongs to publication (the
-            // revision that starts serving must be the reviewed one); with
-            // immediate changes — the default — the switch is just a switch: the
-            // owner saw "Inactivo" and a toast that sent them nowhere.
-            const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
-            if ((tenant?.settings as any)?.agentReviewMode === 'reviewed')
-                throw new BadRequestException({ error: 'agent_draft_contract_required' });
-        }
         await this.ensureTablesForTenant(tenantId);
         const schemaName = await this.tenantsService.getSchemaName(tenantId);
         const { agent, priorBindings } = await this.prisma.transactionInTenantSchema(schemaName, async query => {
@@ -1150,13 +1151,13 @@ export class PersonaService {
             if (!prior) throw new NotFoundException('Agent not found');
             if (Number(prior.version) !== data.expectedVersion)
                 throw new ConflictException({ error: 'agent_version_conflict', message: 'Agent changed; reload before saving.' });
-            // The switch is immediate either way. It cannot transfer assignments or publish a saved draft.
-            const rows = await query<any[]>('UPDATE agent_personas SET is_active=$2, version=version+1, updated_at=NOW() WHERE id=$1::uuid AND version=$3 RETURNING *', [agentId, data.isActive, data.expectedVersion]);
+            // Disabling is immediate. It cannot transfer assignments or publish a saved draft.
+            const rows = await query<any[]>('UPDATE agent_personas SET is_active=false, version=version+1, updated_at=NOW() WHERE id=$1::uuid AND version=$2 RETURNING *', [agentId, data.expectedVersion]);
             if (!rows[0]) throw new ConflictException({ error: 'agent_version_conflict' });
             return { agent: rows[0], priorBindings: prior.channel_bindings ?? [] };
         });
         await this.invalidatePersonaCaches(tenantId, priorBindings);
-        this.eventEmitter.emit('agent.version.updated', { tenantId, agentId, changed: data.isActive ? 'agent_activated' : 'agent_deactivated' });
+        this.eventEmitter.emit('agent.version.updated', { tenantId, agentId, changed: 'agent_deactivated' });
         return agent;
     }
 

@@ -15,6 +15,7 @@ import { AgentDraftService } from '../persona/agent-draft.service';
 import { AgentConfigurationRevisionStore } from '../persona/agent-configuration-revision';
 import { ensureDraftProposalSchema } from './agent-configuration-proposal-schema';
 import { canonical, proposalHash } from './agent-proposal-digest';
+import { assistApplyRefusal } from './assist-apply-refusal';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 // Shared with the content-creation ledger: "the same reviewed content" has to
@@ -231,6 +232,9 @@ export class AgentConfigurationService {
         if (!UUID.test(proposalId) || !/^[a-f0-9]{64}$/.test(digest)) throw new BadRequestException('An exact reviewed proposal is required');
         const schema = await this.schema(tenantId);
         await new AgentConfigurationRevisionStore(this.prisma).ensure(schema);
+        // The immediate save refuses to leave two active agents on one
+        // connection (`agent_connection_owned_by_other_agent`); Assist relays
+        // that refusal in words the owner can act on (`assistApplyRefusal`).
         const result = await this.prisma.transactionInTenantSchema(schema, async query => {
             const proposals = await query<any[]>('SELECT * FROM agent_config_proposals WHERE id = $1::uuid FOR UPDATE', [proposalId]);
             const proposal = proposals[0];
@@ -280,7 +284,7 @@ export class AgentConfigurationService {
             const applied = await query<any[]>(`UPDATE agent_config_proposals SET status='applied', applied_at=NOW(), applied_by=$2::uuid, applied_version=$3,applied_draft_revision=$4::uuid
                 WHERE id=$1::uuid RETURNING *`, [proposal.id, actor.id, appliedVersion, draft?.savedRevision.id ?? null]);
             return { proposal: applied[0], draft, replay: false };
-        });
+        }).catch((error: unknown) => { throw assistApplyRefusal(error); });
         // A draft that the tenant applies immediately went live inside the
         // transaction above; the cache drop, audit row and notification belong
         // after COMMIT, exactly as a save from the editor.

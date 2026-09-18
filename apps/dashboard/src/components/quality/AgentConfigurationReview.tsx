@@ -54,6 +54,17 @@ export function AppliedDraftEvidence({ verification, currentRevision }: {
     </section>;
 }
 
+/**
+ * Which sentence an apply refusal gets. Only one has its own: an immediate save
+ * that would leave two active agents on one channel is refused
+ * (`agent_connection_owned_by_other_agent`), and the fix is a channel on
+ * another agent — not "prepare a new review", which is what the generic
+ * sentence tells the owner. Everything else keeps the generic sentence.
+ */
+export function applyErrorMessageKey(errorCode?: string | null): 'applyError' | 'applyErrors.connectionOwned' {
+    return errorCode === 'agent_connection_owned_by_other_agent' ? 'applyErrors.connectionOwned' : 'applyError';
+}
+
 /** The displayed values and digest are immutable; changing a value requires a new proposal. */
 export function AgentConfigurationReview({ proposal, onApplied }: {
     proposal: AgentConfigurationProposal; onApplied?: (result: AppliedAgentConfiguration) => void;
@@ -64,7 +75,7 @@ export function AgentConfigurationReview({ proposal, onApplied }: {
     const { role } = useRole();
     const [result, setResult] = useState<AppliedAgentConfiguration | null>(null);
     const [busy, setBusy] = useState(false);
-    const [error, setError] = useState(false);
+    const [error, setError] = useState<ReturnType<typeof applyErrorMessageKey> | null>(null);
     const current = result?.proposal ?? proposal;
     const scoped = ['agent_draft', 'account'].includes(current.targetScope);
     const applied = scoped && current.status === 'applied';
@@ -95,15 +106,15 @@ export function AgentConfigurationReview({ proposal, onApplied }: {
     };
     const apply = async () => {
         if (!activeTenantId || busy || !canApply) return;
-        setBusy(true); setError(false);
+        setBusy(true); setError(null);
         try {
             const response = await api.applyAgentConfiguration(activeTenantId, proposal.id, proposal.digest);
-            if (!response.success || !response.data) throw new Error('apply_unavailable');
+            if (!response.success || !response.data) { setError(applyErrorMessageKey(response.errorCode)); return; }
             setResult(response.data);
             notifyAgentConfigurationApplied(activeTenantId, response.data.proposal.agentId);
             requestQualityHealthRefresh();
             onApplied?.(response.data);
-        } catch { setError(true); } finally { setBusy(false); }
+        } catch { setError('applyError'); } finally { setBusy(false); }
     };
     return <section className="mt-3 rounded-xl border border-indigo-200 bg-white p-3 text-sm dark:border-indigo-700 dark:bg-neutral-900" aria-label={t('reviewTitle')}>
         <h3 className="font-semibold">{t('reviewTitle')}</h3>
@@ -117,7 +128,12 @@ export function AgentConfigurationReview({ proposal, onApplied }: {
                 <div className="min-w-0 rounded-lg bg-indigo-50 p-2 dark:bg-indigo-950"><p className="mb-1 text-xs font-semibold">{t('proposed')}</p>{renderValue(change.value)}</div>
             </div>
         </div>)}
-        {error && <p role="alert" className="mt-3 text-red-600 dark:text-red-400">{t('applyError')}</p>}
+        {error && <div role="alert" className="mt-3 text-red-600 dark:text-red-400">
+            <p>{t(error, { agent: proposal.agentName })}</p>
+            {error === 'applyErrors.connectionOwned' && <a href={`/admin/agent/${proposal.agentId}?tab=persona&focus=channels`}
+                className="mt-2 inline-flex min-h-10 items-center rounded-lg border border-red-300 px-3 py-2 font-medium dark:border-red-800">
+                {t('applyErrors.connectionOwnedAction', { agent: proposal.agentName })}</a>}
+        </div>}
         {applied && <p role="status" className="mt-3 text-emerald-700 dark:text-emerald-400">{proposal.targetScope === 'account' ? t('applied') : tDraft('saved')}</p>}
         {result && <AppliedDraftEvidence verification={result.draftVerification} currentRevision={result.draft?.workspace.draft} />}
         {result?.draft?.workspace.evaluationRevisionId && <a href={`/admin/agent/${proposal.agentId}/test?configurationRevisionId=${encodeURIComponent(result.draft.workspace.evaluationRevisionId)}`}

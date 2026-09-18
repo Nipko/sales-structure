@@ -12,6 +12,7 @@ import { RegionalProfileService } from '../tenants/regional-profile.service';
 import { assertActiveTenantUser } from './tenant-user-scope.util';
 import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
 import { validatePaymentPolicyInput } from '../../common/utils/payment-policy.util';
+import { storedPriceAmount } from './service-price-status';
 
 export type DurationType = 'fixed' | 'flexible' | 'open';
 
@@ -23,7 +24,14 @@ export interface BookableService {
     durationMinutesMax: number | null;
     durationType: DurationType;
     bufferMinutes: number;
-    price: number;
+    /**
+     * `null` = the row has no amount (D17 seeds it that way outside the six
+     * countries with an example, and a service created without a price stores
+     * none). Before FX1 `mapRow` turned the NULL into 0, which is how
+     * "Confirmar precio" slipped past the `price_missing` guard in `update`:
+     * the guard saw a price of 0 and confirmed a free service.
+     */
+    price: number | null;
     /**
      * `null` cuando la fila nació sin moneda conocida (el negocio no declaró
      * país). El tipo lo dice para que ninguna pantalla ni el motor de reservas
@@ -53,42 +61,101 @@ export interface BookableService {
 export type ServicePriceStatus = 'example' | 'confirmed' | 'quote';
 const OWNER_PRICE_STATUSES: readonly ServicePriceStatus[] = ['confirmed', 'quote'];
 
+/** A price the request carries. `undefined` = not sent; `null` or '' = cleared. */
+function hasPriceValue(value: unknown): boolean {
+    return value !== undefined && value !== null && value !== '';
+}
+
 /**
- * What the owner may say about a price: confirmed or quote-only. 'example' is
- * provenance the recipe writes and a person cannot claim. Typing a price is a
- * confirmation on its own.
+ * The amount a row has, as a decision about its price reads it.
+ *
+ * NULL is no amount. So is a 0 under 'example' or 'quote': `membership_plans`
+ * stores its placeholder as 0 (the column is NOT NULL), a quoted service keeps
+ * a 0 that means "no number", and the recipe writes 0 both for things that ARE
+ * free (a trial class) and for things that are not ("Mensualidad de clases
+ * grupales"). Only a 0 the owner confirmed is "free".
+ */
+export function decidablePriceAmount(current?: { priceStatus?: ServicePriceStatus | null; price?: unknown }): number | null {
+    if (!current) return null;
+    const amount = storedPriceAmount(current.price);
+    if (amount === null) return null;
+    return (current.priceStatus ?? 'confirmed') !== 'confirmed' && amount === 0 ? null : amount;
+}
+
+export const SERVICE_PRICE_MISSING_MESSAGE = 'Este servicio todavía no tiene precio. Escribe el monto para confirmarlo; si no se cobra, márcalo como gratis, o como "se cotiza".';
+
+function priceMissing(): never {
+    throw new BadRequestException({ error: 'price_missing', message: SERVICE_PRICE_MISSING_MESSAGE });
+}
+
+/**
+ * What the owner may say about a price: confirmed, quote-only, or free.
+ * 'example' is provenance the recipe writes and a person cannot claim. Typing a
+ * price is a confirmation on its own.
+ *
+ * "Free" is a confirmed price of 0, and since FX1 it is an EXPLICIT choice:
+ * `free: true` ("Es gratis" on the screens), never the side effect of a 0
+ * coming back. The screens send `price` with every save, and a 0 there is the
+ * placeholder the row already had (NULL rendered as an empty field, a quoted
+ * service's 0, the recipe's 0). Before FX1 the service editor confirmed a
+ * quote row's 0 as free while the plan editor refused a deliberate 0 with no
+ * other way to say "free": both now read the same rule.
+ *
+ *   · `free: true` → 'confirmed' at 0 (a number or "se cotiza" with it is a
+ *     contradiction);
+ *   · 'confirmed' needs an amount: the one sent, or the one the row has. NULL
+ *     and a placeholder 0 are none (`price_missing`), and a 0 is refused unless
+ *     the row already is a confirmed 0;
+ *   · a CHANGED number confirms it, except a change to 0, which is not a
+ *     declaration either; the same number coming back with the form is no
+ *     decision ("Usar así" never confirms a price);
+ *   · on a NEW row a typed 0 is the owner's own number: there is no
+ *     placeholder it could be. (The screens send `free: true` anyway.)
  */
 export function resolvePriceStatusInput(
     data: any,
     current?: { priceStatus?: ServicePriceStatus; price?: number | null },
 ): ServicePriceStatus {
-    if (data?.priceStatus !== undefined && data?.priceStatus !== null) {
-        if (!OWNER_PRICE_STATUSES.includes(data.priceStatus)) {
-            throw new BadRequestException('priceStatus must be confirmed or quote');
-        }
-        // No se puede confirmar un precio que no existe.
-        //
-        // D17 siembra las filas SIN monto fuera de los seis países con ejemplo.
-        // "Confirmar precio" sobre una de esas filas conservaba "el mismo
-        // número", que era NULL, y lo guardaba como confirmado: el servicio
-        // pasaba a valer 0 y el agente empezaba a decirle al cliente que es
-        // gratis. El dueño solo tocó un botón que decía "confirmar".
-        const confirmingNothing = data.priceStatus === 'confirmed'
-            && (data?.price === undefined || data?.price === null)
-            && (current?.price === undefined || current?.price === null);
-        if (confirmingNothing) {
+    const requested = data?.priceStatus === undefined || data?.priceStatus === null ? undefined : data.priceStatus;
+    if (requested !== undefined && !OWNER_PRICE_STATUSES.includes(requested)) {
+        throw new BadRequestException('priceStatus must be confirmed or quote');
+    }
+    if (data?.free !== undefined && data?.free !== null && typeof data.free !== 'boolean') {
+        throw new BadRequestException('free must be a boolean');
+    }
+    if (hasPriceValue(data?.price) && (!Number.isFinite(Number(data.price)) || Number(data.price) < 0)) {
+        throw new BadRequestException({ error: 'price_invalid', message: 'El precio tiene que ser un número mayor o igual a cero.' });
+    }
+    if (data?.free === true) {
+        if (requested === 'quote' || (hasPriceValue(data?.price) && Number(data.price) !== 0)) {
             throw new BadRequestException({
-                error: 'price_missing',
-                message: 'Este servicio todavía no tiene precio. Escribe el monto para confirmarlo, o márcalo como "se cotiza".',
+                error: 'price_free_conflict',
+                message: 'Gratis es un precio confirmado de 0: no se combina con un monto ni con "se cotiza".',
             });
         }
-        return data.priceStatus;
+        return 'confirmed';
     }
-    if (data?.price !== undefined && data?.price !== null) {
+    const newAmount = data?.price === undefined ? undefined : storedPriceAmount(data.price);
+    const alreadyFree = !!current && (current.priceStatus ?? 'confirmed') === 'confirmed' && storedPriceAmount(current.price) === 0;
+    const zeroNotDeclared = (amount: number) => amount === 0 && !!current && !alreadyFree;
+
+    if (requested === 'quote') return 'quote';
+    if (requested === 'confirmed') {
+        // No se puede confirmar un precio que no existe. D17 siembra las filas
+        // SIN monto fuera de los seis países con ejemplo, y "Confirmar precio"
+        // sobre una de ellas dejaba al agente diciendo que el servicio es gratis.
+        const amount = newAmount === undefined ? decidablePriceAmount(current) : newAmount;
+        if (amount === null || zeroNotDeclared(amount)) priceMissing();
+        return 'confirmed';
+    }
+    if (newAmount !== undefined && newAmount !== null) {
+        if (!current) return 'confirmed';
         // The editor resends the whole form. Only a CHANGED number is a
-        // decision; the same example amount coming back untouched is not
-        // ("Usar así" never confirms a price).
-        if (!current || Number(data.price) !== Number(current.price ?? 0)) return 'confirmed';
+        // decision; the same amount (or the placeholder) coming back is not.
+        if (newAmount !== (storedPriceAmount(current.price) ?? 0)) {
+            if (zeroNotDeclared(newAmount)) priceMissing();
+            return 'confirmed';
+        }
     }
     return current?.priceStatus ?? 'confirmed';
 }
@@ -185,12 +252,17 @@ export class ServicesService {
         if (createPolicy.error) throw new BadRequestException(createPolicy.error);
         const priceStatus = resolvePriceStatusInput(data);
         assertPaymentPolicyNeedsConfirmedPrice(createPolicy.values.payment_policy ?? 'none', priceStatus);
+        // NULL when no price was given, never 0. The Assist `agenda.service.create`
+        // writer omits the price when the owner did not state one ("never invent
+        // prices"), and `data.price || 0` turned that silence into a free service
+        // the agent offered as such. "Es gratis" is the explicit 0.
+        const price = data?.free === true ? 0 : storedPriceAmount(data?.price);
         try {
             await this.prisma.executeInTenantSchema(schemaName,
                 `INSERT INTO services (id, name, description, duration_minutes, buffer_minutes, price, currency, color, category, max_concurrent, required_fields, duration_type, duration_minutes_max, rebook_after_days, payment_policy, deposit_percent, deposit_amount, price_status, created_at, updated_at)
                  VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13, $14, $15, $16, $17, $18, NOW(), NOW())`,
                 [id, data.name, data.description || null, duration,
-                 buffer, data.price || 0, currency, data.color || '#6c5ce7',
+                 buffer, price, currency, data.color || '#6c5ce7',
                  data.category || null, data.maxConcurrent || 1,
                  JSON.stringify(data.requiredFields || []),
                  durationType, durationMax, data.rebookAfterDays ?? null,
@@ -254,7 +326,15 @@ export class ServicesService {
         }
         const buf = data.bufferMinutes ?? data.buffer;
         if (buf !== undefined) { sets.push(`buffer_minutes = $${idx++}`); params.push(buf); }
-        if (data.price !== undefined) { sets.push(`price = $${idx++}`); params.push(data.price); }
+        // "Es gratis" writes the 0 itself: on a row without an amount there is
+        // no number to keep. An empty field is NULL, never a 0.
+        const sendsPrice = data.free === true || data.price !== undefined;
+        const nextPrice = data.free === true ? 0 : storedPriceAmount(data.price);
+        // Clearing the amount of a confirmed price would leave a service the
+        // agent can no longer price, and the owner would never know: the row
+        // would still read "Precio confirmado".
+        if (sendsPrice && nextPrice === null && nextPriceStatus === 'confirmed' && decidablePriceAmount(current) !== null) priceMissing();
+        if (sendsPrice) { sets.push(`price = $${idx++}`); params.push(nextPrice); }
         // Editing the number confirms it; "Confirmar precio" confirms it without
         // retyping; "Se cotiza" withdraws any number from the agent's mouth.
         if (nextPriceStatus !== current.priceStatus) { sets.push(`price_status = $${idx++}`); params.push(nextPriceStatus); }
@@ -406,7 +486,9 @@ export class ServicesService {
             durationMinutesMax: row.duration_minutes_max || null,
             durationType: row.duration_type || 'fixed',
             bufferMinutes: row.buffer_minutes,
-            price: parseFloat(row.price || '0'),
+            // NULL stays NULL (FX1): a missing amount read as 0 is a free
+            // service, and it is what let "Confirmar precio" confirm nothing.
+            price: storedPriceAmount(row.price),
             currency: row.currency || null,
             color: row.color,
             isActive: row.is_active,

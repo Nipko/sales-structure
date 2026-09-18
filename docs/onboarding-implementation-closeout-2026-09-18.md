@@ -30,13 +30,20 @@ La ayuda de Parallly Assist quedó alineada en español, inglés, portugués y f
 - `7db70d25` — contratos de recetas, ayuda y CI.
 - `bde92d07` — resumen periódico voluntario y límite de WhatsApp.
 
-## Evidencia técnica final
+## Evidencia técnica de la candidata local
 
-- TypeScript de API y dashboard: aprobado.
-- API focal: 4 suites, 133 pruebas aprobadas.
-- Dashboard focal: 11 suites, 81 pruebas aprobadas.
-- JSON de los cuatro idiomas: válido.
-- YAML de ambos workflows: válido.
+- TypeScript: aprobado en shared, API, dashboard, WhatsApp, landing y mobile.
+- ESLint: aprobado en API, dashboard y WhatsApp.
+- Builds: aprobados en shared, API, dashboard, WhatsApp y landing. El dashboard produjo 148 rutas y landing 198 páginas estáticas, con 156 documentos localizados posprocesados.
+- Dashboard completo: 160 suites y 2.081 pruebas aprobadas.
+- API completa ejecutable sin infraestructura: 699 suites y 8.397 pruebas aprobadas. Otras 153 suites y 2.077 pruebas quedaron omitidas por no existir PostgreSQL, PgBouncer ni Redis en este equipo; la candidata de CI debe ejecutarlas y exigir cero omisiones.
+- WhatsApp completo: aprobado.
+- Mobile completo: 34 suites y 405 pruebas aprobadas.
+- Contratos de landing: paridad de 2.360 claves, 80 overlays `es-AR`, estimación de costo de WhatsApp, afirmaciones comerciales, disclosures y evidencia competitiva aprobados.
+- Prisma: `generate` y `validate` aprobados.
+- Inyección de dependencias de Nest: `app.bootstrap.spec.ts` aprobada dentro de la suite completa.
+- Artefactos derivados, inventario de productores outbound y cifras del canario: regenerados y aprobados por sus verificadores oficiales.
+- JSON de los cuatro idiomas y YAML de workflows: válidos.
 - `git diff --check`: aprobado.
 
 La advertencia de navegación que imprime jsdom en `setup-wizard-one-guide.a11y.spec.tsx` corresponde a `window.location.href`; la suite aprueba y no representa un fallo de aplicación.
@@ -47,7 +54,7 @@ Estas actividades son puertas de lanzamiento, no funcionalidades que puedan decl
 
 1. Dos rondas moderadas con dueños, incluidas personas que usan solo celular, interrupción y reanudación, 320 px, teclado y lector de pantalla.
 2. Recorridos reales y fallidos de WhatsApp, Instagram, Messenger, Telegram y chat web con credenciales, permisos y retornos de proveedor válidos.
-3. Verificación en entorno candidato de migraciones, rollback, colas, correo y conservación del estado entre dispositivos.
+3. Ejecutar el workflow `candidate.yml` sobre el SHA exacto para cubrir PostgreSQL 17, PgBouncer en modo transacción, Redis, todas las suites hoy omitidas, migraciones globales y de tenants, reaplicación idempotente, arranque real y rollback. Este host no tiene Docker ni binarios/servicios de PostgreSQL y Redis, por lo que esa evidencia no puede fabricarse localmente.
 4. Medición de primera respuesta útil, primera atención operativa y primer resultado verificable a 7 y 28 días. Las metas de tres y diez minutos siguen siendo hipótesis hasta tener esas cohortes.
 5. Decisión de producto sobre captura revisable por foto/voz y resumen por WhatsApp solo si la investigación demuestra valor y existen consentimiento, costos y entrega seguros.
 

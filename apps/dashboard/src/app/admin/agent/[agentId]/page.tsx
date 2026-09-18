@@ -40,6 +40,7 @@ import { CapabilitiesSection } from "../_components/CapabilitiesSection";
 import { CustomPromptMode } from "../_components/CustomPromptMode";
 import { PendingAgentChangesNotice, pendingAgentChanges } from "../_components/PendingAgentChangesNotice";
 import { AskAssistChange } from "../_components/AskAssistChange";
+import { AgentGuideCards } from "../_components/AgentGuideCards";
 
 // ── Channel metadata ────────────────────────────────────────
 
@@ -1325,6 +1326,8 @@ export default function AgentEditorPage() {
       {canEditAgent && (
         <AskAssistChange agentId={agentId} agentName={config.persona.name || undefined} unsavedChanges={dirty} />
       )}
+
+      <AgentGuideCards agentId={agentId} agentName={config.persona.name || undefined} config={config} onSelectTab={setActiveTab} canAskAssist={canEditAgent} />
 
       {/* ── Prompt mode ── */}
       {mode === "prompt" && (

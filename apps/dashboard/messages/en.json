@@ -5105,6 +5105,13 @@
       "saveFirst": "You have unsaved changes. Save them first, then ask Assist for the change.",
       "appliedInPlace": "Done: the change you accepted in Assist now shows in the editor."
     },
+    "guideCards": {
+      "title": "Review the agent the way you review your business", "description": "Each card opens the real setting that changes its answers.", "askAssist": "Ask Assist for help",
+      "offers": { "title": "What you offer", "summary": "{count, plural, one {# active capability} other {# active capabilities}}", "action": "Review tools", "assistPrompt": "Help me review what this agent offers and which tools should be active. Do not invent services or prices." },
+      "place": { "title": "Where and when you serve", "summary": "Hours and after-hours response", "action": "Review hours", "assistPrompt": "Help me review this agent's hours and after-hours response using the business's real configuration." },
+      "purchase": { "title": "How customers buy or book", "summary": "Instructions, rules, and human handoff", "action": "Review instructions", "assistPrompt": "Help me review how this agent guides a purchase, request, or booking and when it should hand the case to a person." },
+      "questions": { "title": "Frequently asked questions", "summary": "Canonical answers it can reuse", "action": "Review questions", "assistPrompt": "Help me identify which FAQs this agent is missing. Show me the proposal before saving any change." }
+    },
     "moreActions": "More options for {name}",
     "editorBehind": {
       "text": "Your agent changed after you opened this page, and we could not show how it looks now. Reload to see it; you have no unsaved changes.",

@@ -5105,6 +5105,13 @@
       "saveFirst": "Tienes cambios sin guardar. Guárdalos primero y luego pídele el cambio a Assist.",
       "appliedInPlace": "Listo: el cambio que aceptaste en Assist ya aparece en el editor."
     },
+    "guideCards": {
+      "title": "Revisa el agente como revisas tu negocio", "description": "Cada tarjeta abre el dato real que cambia sus respuestas.", "askAssist": "Pedir ayuda a Assist",
+      "offers": { "title": "Qué ofreces", "summary": "{count, plural, one {# capacidad activa} other {# capacidades activas}}", "action": "Revisar herramientas", "assistPrompt": "Ayúdame a revisar qué ofrece este agente y qué herramientas debería tener activas. No inventes servicios ni precios." },
+      "place": { "title": "Dónde y cuándo atiendes", "summary": "Horarios y respuesta fuera de horario", "action": "Revisar horarios", "assistPrompt": "Ayúdame a revisar los horarios y la respuesta fuera de horario de este agente usando la configuración real del negocio." },
+      "purchase": { "title": "Cómo compran o reservan", "summary": "Instrucciones, reglas y traspaso humano", "action": "Revisar instrucciones", "assistPrompt": "Ayúdame a revisar cómo este agente guía una compra, solicitud o reserva y cuándo debe pasar el caso a una persona." },
+      "questions": { "title": "Preguntas frecuentes", "summary": "Respuestas canónicas que puede reutilizar", "action": "Revisar preguntas", "assistPrompt": "Ayúdame a detectar qué preguntas frecuentes le faltan a este agente. Muéstrame la propuesta antes de guardar cualquier cambio." }
+    },
     "moreActions": "Más opciones de {name}",
     "editorBehind": {
       "text": "Tu agente cambió desde que abriste esta página y no pudimos mostrar cómo quedó. Recarga para verlo; no tienes cambios sin guardar.",

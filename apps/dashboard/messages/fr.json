@@ -5105,6 +5105,13 @@
       "saveFirst": "Vous avez des modifications non enregistrées. Enregistrez-les d’abord, puis demandez le changement à Assist.",
       "appliedInPlace": "C’est fait : le changement que vous avez accepté dans Assist apparaît maintenant dans l’éditeur."
     },
+    "guideCards": {
+      "title": "Vérifiez l’agent comme vous vérifiez votre entreprise", "description": "Chaque carte ouvre le réglage réel qui modifie ses réponses.", "askAssist": "Demander l’aide d’Assist",
+      "offers": { "title": "Ce que vous proposez", "summary": "{count, plural, one {# capacité active} other {# capacités actives}}", "action": "Vérifier les outils", "assistPrompt": "Aidez-moi à vérifier ce que propose cet agent et quels outils doivent être actifs. N’inventez ni services ni prix." },
+      "place": { "title": "Où et quand vous répondez", "summary": "Horaires et réponse hors horaires", "action": "Vérifier les horaires", "assistPrompt": "Aidez-moi à vérifier les horaires et la réponse hors horaires de cet agent à partir de la configuration réelle de l’entreprise." },
+      "purchase": { "title": "Comment les clients achètent ou réservent", "summary": "Instructions, règles et transfert humain", "action": "Vérifier les instructions", "assistPrompt": "Aidez-moi à vérifier comment cet agent guide un achat, une demande ou une réservation et quand il doit transférer le cas à une personne." },
+      "questions": { "title": "Questions fréquentes", "summary": "Réponses canoniques qu’il peut réutiliser", "action": "Vérifier les questions", "assistPrompt": "Aidez-moi à repérer les questions fréquentes qui manquent à cet agent. Montrez-moi la proposition avant d’enregistrer un changement." }
+    },
     "moreActions": "Plus d'options pour {name}",
     "editorBehind": {
       "text": "Votre agent a changé depuis l’ouverture de cette page et nous n’avons pas pu afficher ce qui a changé. Rechargez pour le voir ; vous n’avez aucune modification non enregistrée.",

@@ -419,7 +419,9 @@ jobs:
           DATABASE_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_legacy_schema_eval_isolation
           DIRECT_DATABASE_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_legacy_schema_eval_isolation
           PARALLLY_UPGRADE_TEST_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_upgrade_eval_isolation
-          UPGRADE_BASE_REF: main
+          # Actions checks the candidate out detached; the fetched base exists
+          # as the remote-tracking ref, not as a local `main` branch.
+          UPGRADE_BASE_REF: origin/main
         run: |
           node apps/api/scripts/test-tenant-migration.js
           node apps/api/scripts/rehearse-global-upgrade.cjs

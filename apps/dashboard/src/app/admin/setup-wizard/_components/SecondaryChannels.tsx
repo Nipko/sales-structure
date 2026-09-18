@@ -50,6 +50,8 @@ interface Props {
     /** The name the wizard is showing; it wins over what setup-status returned. */
     agentName?: string;
     onConnected?: (details: ConnectedChannelDetails) => void;
+    onConnectStarted?: (channel: SecondaryChannel, route: string) => void;
+    onConnectAbandoned?: (channel: SecondaryChannel, reason: string) => void;
 }
 
 /**
@@ -67,7 +69,7 @@ interface Props {
  */
 export default function SecondaryChannels({
     channels, recommended, planChannels, emailBlocked = false, email = "", channelName,
-    demoLink, agentName, onConnected,
+    demoLink, agentName, onConnected, onConnectStarted, onConnectAbandoned,
 }: Props) {
     const t = useTranslations("setupWizard.connect");
     const tw = useTranslations("setupWizard");
@@ -140,6 +142,7 @@ export default function SecondaryChannels({
     const connectTelegram = async () => {
         if (!botToken.trim() || busy) return;
         if (refuseForEmail("telegram")) return;
+        onConnectStarted?.("telegram", "bot_token");
         setBusy("telegram"); setFailure(null);
         try {
             const result = await api.connectTelegram(botToken.trim());
@@ -161,6 +164,7 @@ export default function SecondaryChannels({
 
     const connectMessenger = () => {
         if (refuseForEmail("messenger")) return;
+        onConnectStarted?.("messenger", "oauth");
         const w = window as any;
         setBusy("messenger"); setFailure(null);
         windowOpenedRef.current = false;
@@ -173,6 +177,10 @@ export default function SecondaryChannels({
             w.FB.login((response: any) => {
                 const token = response?.authResponse?.accessToken;
                 if (!token) {
+                    onConnectAbandoned?.(
+                        "messenger",
+                        windowOpenedRef.current ? "window_cancelled" : "popup_blocked",
+                    );
                     setFailure(wizardConnectFailure(
                         "messenger",
                         windowOpenedRef.current ? META_CONNECT_ERROR.WINDOW_CANCELLED : "popup_blocked",
@@ -216,6 +224,7 @@ export default function SecondaryChannels({
 
     const connectInstagram = () => {
         if (refuseForEmail("instagram")) return;
+        onConnectStarted?.("instagram", "oauth");
         setFailure(null); setBusy("instagram");
         const state = crypto.randomUUID();
         localStorage.setItem("ig_oauth_state", state);
@@ -230,6 +239,7 @@ export default function SecondaryChannels({
         const top = window.screenY + (window.outerHeight - h) / 2;
         const popup = window.open(url, "instagram_oauth", `width=${w},height=${h},left=${left},top=${top},scrollbars=yes`);
         if (!popup) {
+            onConnectAbandoned?.("instagram", "popup_blocked");
             // Not a redirect: it would take her out of the wizard, and the
             // callback reports to a page that would no longer be listening.
             setFailure(wizardConnectFailure("instagram", "popup_blocked"));
@@ -238,7 +248,13 @@ export default function SecondaryChannels({
         }
         // Closed without finishing: release the "connecting" state.
         const poll = setInterval(() => {
-            if (popup.closed) { clearInterval(poll); setBusy((b) => (b === "instagram" ? null : b)); }
+            if (popup.closed) {
+                clearInterval(poll);
+                setBusy((b) => {
+                    if (b === "instagram") onConnectAbandoned?.("instagram", "window_cancelled");
+                    return b === "instagram" ? null : b;
+                });
+            }
         }, 600);
     };
 

@@ -340,7 +340,7 @@ describe('PrismaService tenant schema lifecycle', () => {
                 const file = join(migrationsDir, dir, 'migration.sql');
                 if (!existsSync(file)) continue;
                 for (const [, table, columns] of readFileSync(file, 'utf8')
-                    .matchAll(/CREATE TABLE (?:IF NOT EXISTS )?"?(\w+)"?\s*\(([\s\S]*?)\n\)/g)) {
+                    .matchAll(/CREATE TABLE (?:IF NOT EXISTS )?(?:"?public"?\.)?"?(\w+)"?\s*\(([\s\S]*?)\r?\n\)/g)) {
                     if (hasTenantIdColumn(columns)) migrated.push(table);
                 }
             }

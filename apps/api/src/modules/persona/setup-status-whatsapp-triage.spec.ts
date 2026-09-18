@@ -94,6 +94,7 @@ describe('PUT /persona/:tenantId/whatsapp-triage', () => {
     function harness(initial: Record<string, unknown> = {}) {
         let stored: Record<string, unknown> = { ...initial };
         const updates: string[] = [];
+        const events: unknown[][] = [];
         const tx = {
             $queryRawUnsafe: jest.fn(async (_sql: string, _id: string) => [{ settings: stored }]),
             $executeRawUnsafe: jest.fn(async (_sql: string, _id: string, json: string) => {
@@ -105,9 +106,12 @@ describe('PUT /persona/:tenantId/whatsapp-triage', () => {
         const controller: any = Object.create(PersonaController.prototype);
         Object.assign(controller, {
             logger: { log: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
-            prisma: { $transaction: jest.fn(async (work: any) => work(tx)) },
+            prisma: {
+                $transaction: jest.fn(async (work: any) => work(tx)),
+                $executeRawUnsafe: jest.fn(async (...args: unknown[]) => { events.push(args); return 1; }),
+            },
         });
-        return { controller, tx, updates, stored: () => stored };
+        return { controller, tx, updates, events, stored: () => stored };
     }
 
     it('is written only by the administrator', () => {
@@ -124,6 +128,14 @@ describe('PUT /persona/:tenantId/whatsapp-triage', () => {
         // One locked read-modify-write, on the tenant in the path.
         expect(h.tx.$queryRawUnsafe.mock.calls[0][0]).toContain('FOR UPDATE');
         expect(h.tx.$queryRawUnsafe.mock.calls[0][1]).toBe(TENANT);
+        expect(h.events).toHaveLength(1);
+        expect(h.events[0]).toEqual(expect.arrayContaining([
+            expect.stringContaining('INSERT INTO public.onboarding_events'),
+            TENANT,
+            null,
+            'whatsapp_triage_answered',
+            'whatsapp',
+        ]));
     });
 
     it('clears it with an explicit null', async () => {
@@ -131,6 +143,7 @@ describe('PUT /persona/:tenantId/whatsapp-triage', () => {
         const result = await h.controller.setWhatsAppTriage(TENANT, { answerId: null });
         expect(result.data.whatsappTriage).toBeNull();
         expect(h.stored()).not.toHaveProperty('whatsappTriage');
+        expect(h.events).toEqual([]);
     });
 
     it.each([

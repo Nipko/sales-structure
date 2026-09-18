@@ -706,6 +706,15 @@ export const api = {
 
     getSetupStatus: (tenantId: string) =>
         apiGet(`/persona/${tenantId}/setup-status`),
+    recordOnboardingEvents: (tenantId: string, data: {
+        sessionId: string;
+        events: Array<{
+            event: 'wizard_step_viewed' | 'wizard_step_advanced' | 'channel_connect_started' | 'channel_connect_abandoned' | 'channel_connect_later';
+            step?: 'agent' | 'connect' | 'done' | 'business' | 'test' | 'channel' | 'first_conversations';
+            channelType?: 'whatsapp' | 'instagram' | 'messenger' | 'telegram' | 'web_widget';
+            detail?: string;
+        }>;
+    }) => apiPost(`/persona/${tenantId}/onboarding-events`, data),
 
     // --- Tenants ---
     // Default limit raised from the backend's 20 so super admin views and the
@@ -2273,6 +2282,7 @@ export const api = {
         message: string;
         channelType?: 'whatsapp' | 'instagram' | 'messenger' | 'telegram' | 'web_widget';
         conversationHistory?: Array<{ role: string; content: string }>;
+        options?: { disableTools?: boolean; surface?: 'setup_wizard' | 'agent_editor' };
     }) =>
         apiPost<any>(`/agent-test/${tenantId}/${agentId}`, data),
 

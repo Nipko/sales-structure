@@ -32,6 +32,8 @@ interface WhatsAppConnectPanelProps {
     onAcknowledged?: (readiness: ConnectedReadiness) => void;
     /** The person answered that she cannot connect today, and why. */
     onPostponed?: (reason: "other_provider" | "not_at_hand") => void;
+    onConnectStarted?: (route: WhatsAppConnectRouteId) => void;
+    onConnectAbandoned?: (reason: "cancelled" | "popup_blocked") => void;
     /** Shown under a postponing answer: the agent already answers on its link. */
     meanwhile?: React.ReactNode;
     variant?: "page" | "onboarding";
@@ -43,7 +45,7 @@ const ROUTE_ICONS: Record<WhatsAppConnectRouteId, typeof Layers> = {
     migration: ArrowRightLeft,
 };
 
-export default function WhatsAppConnectPanel({ tenantId, onConnected, onAcknowledged, onPostponed, meanwhile }: WhatsAppConnectPanelProps) {
+export default function WhatsAppConnectPanel({ tenantId, onConnected, onAcknowledged, onPostponed, onConnectStarted, onConnectAbandoned, meanwhile }: WhatsAppConnectPanelProps) {
     const tw = useTranslations("channels.whatsapp");
     const t = useTranslations("setupWizard.connect");
     const { user } = useAuth();
@@ -100,6 +102,8 @@ export default function WhatsAppConnectPanel({ tenantId, onConnected, onAcknowle
                             onConnected?.(payload);
                         }}
                         onError={() => { /* el propio componente muestra el error con su próximo paso */ }}
+                        onStart={() => onConnectStarted?.(activeRoute.id)}
+                        onAbandoned={onConnectAbandoned}
                     />
                 </div>
             </div>

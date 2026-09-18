@@ -10568,7 +10568,28 @@
     "hint": "Stamps are generated automatically: onboarding when setup completes, first message on first inbound, paying when subscription_status is active or past_due.",
     "ttfv": "TTFV (channel)",
     "ttfvHint": "Median signup → first channel connected",
-    "channelCol": "Channel"
+    "channelCol": "Channel",
+    "journey": {
+      "title": "Onboarding outcomes",
+      "hint": "Reach within the signup cohort. Testing and connecting can happen in either order.",
+      "stages": {
+        "signup": "Created an account",
+        "onboarded": "Completed signup",
+        "test_reply": "Saw a test reply",
+        "first_channel": "Connected the first channel",
+        "first_inbound": "Received the first conversation",
+        "first_operational_reply": "Delivered the first operational reply",
+        "first_useful_result": "Achieved the first useful outcome",
+        "paying": "Is paying"
+      },
+      "times": {
+        "testReply": "Time to test reply",
+        "firstOperationalReply": "Time to operational reply",
+        "firstUsefulResult": "Time to useful outcome"
+      },
+      "p90": "p90 {value} · {count, plural, one {# observation} other {# observations}}",
+      "coverageHint": "New events show observed evidence from this release onward; historical milestones continue to use existing timestamps."
+    }
   },
   "verticalAnalytics": {
     "title": "Vertical analytics",

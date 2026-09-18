@@ -10568,7 +10568,28 @@
     "hint": "Marcações geradas automaticamente: onboarding ao completar setup, primeira mensagem ao primeiro inbound, pagando quando subscription_status é active ou past_due.",
     "ttfv": "TTFV (canal)",
     "ttfvHint": "Mediana cadastro → primeiro canal conectado",
-    "channelCol": "Canal"
+    "channelCol": "Canal",
+    "journey": {
+      "title": "Resultados do onboarding",
+      "hint": "Alcance dentro da coorte de cadastros. Testar e conectar podem acontecer em qualquer ordem.",
+      "stages": {
+        "signup": "Criou a conta",
+        "onboarded": "Concluiu o cadastro",
+        "test_reply": "Viu uma resposta de teste",
+        "first_channel": "Conectou o primeiro canal",
+        "first_inbound": "Recebeu a primeira conversa",
+        "first_operational_reply": "Entregou a primeira resposta operacional",
+        "first_useful_result": "Alcançou o primeiro resultado útil",
+        "paying": "Está pagando"
+      },
+      "times": {
+        "testReply": "Até a resposta de teste",
+        "firstOperationalReply": "Até a resposta operacional",
+        "firstUsefulResult": "Até o resultado útil"
+      },
+      "p90": "p90 {value} · {count, plural, one {# observação} other {# observações}}",
+      "coverageHint": "Os novos eventos mostram evidência observada a partir desta versão; os marcos históricos continuam usando os registros existentes."
+    }
   },
   "verticalAnalytics": {
     "title": "Analítica por vertical",

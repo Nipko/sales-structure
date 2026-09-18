@@ -1,4 +1,5 @@
 import { applyChannelConnectedStage, bindDefaultAgentToChannel, recordChannelConnected } from './bind-default-agent.util';
+import { forgetOnboardingEventMemoryForTests } from '../../common/utils/onboarding-event.util';
 
 const tenantId = '11111111-1111-4111-8111-111111111111';
 
@@ -36,6 +37,7 @@ function harness(options: {
         }),
     };
     const prisma: any = {
+        $executeRawUnsafe: jest.fn(async () => 1),
         getTenantSchemaName: jest.fn(async () => (options.schema === undefined ? 'tenant_acme' : options.schema)),
         executeInTenantSchema: jest.fn(async () => {
             order.push('bind');
@@ -105,6 +107,8 @@ describe('bindDefaultAgentToChannel', () => {
 });
 
 describe('recordChannelConnected', () => {
+    beforeEach(() => forgetOnboardingEventMemoryForTests());
+
     it('records the first connection, assigns the agent and advances the stage, in that order', async () => {
         const { prisma, order, settingsWrites } = harness({ settings: { onboardingStage: 'agent_reviewed', language: 'es' } });
 
@@ -164,6 +168,9 @@ describe('recordChannelConnected', () => {
         expect(prisma.tenant.updateMany).toHaveBeenCalled();
         expect(prisma.executeInTenantSchema).not.toHaveBeenCalled();
         expect(settingsWrites).toEqual([{ onboardingStage: 'channel_connected' }]);
+        // The legacy housekeeping remains, but SMS is not an operational
+        // conversational channel and must not enter onboarding analytics.
+        expect(prisma.$executeRawUnsafe).not.toHaveBeenCalled();
     });
 
     /**

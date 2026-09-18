@@ -25,8 +25,7 @@ import {
     type MetaConnectErrorCode,
     type MetaConnectErrorEvidence,
 } from '@parallext/shared';
-import { applyChannelConnectedStage, bindDefaultAgentToChannel } from './bind-default-agent.util';
-import { mutateTenantSettingsAtomic } from '../../common/utils/tenant-settings.util';
+import { recordChannelConnected } from './bind-default-agent.util';
 import { readSignupWarnings } from '../whatsapp/whatsapp-signup-warnings';
 import { buildChannelCertificationMatrix, summariseChannelCertification } from './channel-certification-matrix';
 import { channelCertificationRuntime } from './channel-certification-runtime';
@@ -161,39 +160,8 @@ export class ChannelManagementController {
      * Fire-and-forget: nunca debe romper el flujo de conexión.
      */
     private async markFirstChannelConnected(tenantId: string, channelType?: string): Promise<void> {
-        try {
-            await this.prisma.tenant.updateMany({
-                where: { id: tenantId, firstChannelConnectedAt: null },
-                data: { firstChannelConnectedAt: new Date() },
-            });
-        } catch (e: any) {
-            this.logger.warn(`markFirstChannelConnected failed for ${tenantId}: ${e?.message}`);
-        }
-        if (channelType) await bindDefaultAgentToChannel(this.prisma, tenantId, channelType);
-        // The onboarding stage is the single source of truth for the guidance
-        // surfaces (setup card, resume banner, first-channel tour). Connecting
-        // is exactly the event they wait for, so advance it here — monotonically,
-        // and never breaking the connection flow if the write fails.
-        try {
-            // Read-modify-write under the row lock: a plain read + `tenant.update`
-            // would rewrite the whole settings snapshot and silently drop any
-            // other branch written between the two statements. `tenant-settings-branch`
-            // has an architectural test that rejects exactly that pattern.
-            //
-            // The transformer is the one Embedded Signup uses
-            // (`recordChannelConnected`), so both connect paths agree on the
-            // one case that matters: a tenant with NO stored stage predates the
-            // stage contract, which reads that as "already active". Advancing
-            // it here used to CREATE `channel_connected` for it, and its next
-            // reply then stamped `firstReplyAt` — "activated today" — on an
-            // account that has been answering customers for years. Only a
-            // stored stage moves; the same object back is the no-op signal (no
-            // write, no updated_at churn on every reconnection).
-            await mutateTenantSettingsAtomic(this.prisma, tenantId,
-                (current) => applyChannelConnectedStage(current) as Record<string, unknown>);
-        } catch (e: any) {
-            this.logger.warn(`onboardingStage advance failed for ${tenantId}: ${e?.message}`);
-        }
+        if (!channelType) return;
+        await recordChannelConnected(this.prisma, tenantId, channelType);
     }
 
     /**

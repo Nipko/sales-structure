@@ -5,6 +5,9 @@ import { resolveMirroredDealStatus } from '../pipeline/pipeline-outcome.util';
 import { ensurePrimaryPipeline } from '../../common/utils/primary-pipeline.util';
 
 const TENANT_PUBLIC_PURGE_ORDER = [
+    // What the day-0 funnel measured (Ola 8). Pure analytics about this tenant:
+    // it goes with the tenant, before `users` (its user_id references it).
+    'onboarding_events',
     'llm_spend_reservations', 'evaluation_knowledge_usages',
     'chat_identity_challenges', 'customer_portal_access_challenges', 'platform_notification_outbox', 'push_subscriptions',
     'feature_request_subscribers', 'feature_request_comments',

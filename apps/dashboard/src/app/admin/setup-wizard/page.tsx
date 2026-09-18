@@ -178,6 +178,10 @@ export default function SetupWizardPage() {
     const companyName = user?.tenantName || "";
 
     const [step, setStep] = useState<StepIndex>(0);
+    const telemetrySessionId = useRef<string | null>(null);
+    if (!telemetrySessionId.current && typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        telemetrySessionId.current = crypto.randomUUID();
+    }
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [savedAt, setSavedAt] = useState<number | null>(null);
@@ -260,6 +264,22 @@ export default function SetupWizardPage() {
         setHasUnsavedEdits(value);
     }, []);
     const savingRef = useRef(false);
+
+    const recordJourneyEvent = useCallback((event: Parameters<typeof api.recordOnboardingEvents>[1]['events'][number]) => {
+        if (!tenantId || !telemetrySessionId.current) return;
+        void api.recordOnboardingEvents(tenantId, {
+            sessionId: telemetrySessionId.current,
+            events: [event],
+        }).catch(() => undefined);
+    }, [tenantId]);
+
+    const telemetryStep = (value: StepIndex): 'agent' | 'connect' | 'done' =>
+        value === 0 ? 'agent' : value === 1 ? 'connect' : 'done';
+
+    useEffect(() => {
+        if (loading) return;
+        recordJourneyEvent({ event: 'wizard_step_viewed', step: telemetryStep(step) });
+    }, [loading, recordJourneyEvent, step]);
 
     /**
      * WhatsApp ya estaba conectado ANTES de entrar acá. Deliberadamente no se
@@ -642,8 +662,9 @@ export default function SetupWizardPage() {
             leadWith,
         });
         if (!ok) return;
+        if (leadWith) recordJourneyEvent({ event: 'channel_connect_later', channelType: leadWith });
         setStep(LAST_STEP);
-    }, [saveOrAdvance]);
+    }, [recordJourneyEvent, saveOrAdvance]);
 
     /**
      * Moverse entre pasos, con una regla: a "Listo" sin canal se llega SOLO
@@ -664,9 +685,15 @@ export default function SetupWizardPage() {
         }
         // Un guardado fallido no puede pasar de paso en silencio: el error
         // queda en pantalla y la persona decide.
+        const edited = dirtyRef.current;
         if (target > step && !(await autosave())) return;
+        if (target > step) recordJourneyEvent({
+            event: 'wizard_step_advanced',
+            step: telemetryStep(step),
+            detail: edited ? 'edited' : 'as_is',
+        });
         setStep(target);
-    }, [autosave, channelConnected, connectLater, step]);
+    }, [autosave, channelConnected, connectLater, recordJourneyEvent, step]);
 
     const finish = useCallback(async (options: { openTour?: boolean; destination?: string } = {}) => {
         setSaving(true);
@@ -788,6 +815,12 @@ export default function SetupWizardPage() {
                 setWhatsappPostponedHere(true);
                 void connectLater("whatsapp");
             }}
+            onConnectStarted={(detail) => {
+                void recordJourneyEvent({ event: "channel_connect_started", channelType: "whatsapp", detail });
+            }}
+            onConnectAbandoned={(detail) => {
+                void recordJourneyEvent({ event: "channel_connect_abandoned", channelType: "whatsapp", detail });
+            }}
             meanwhile={meanwhileLine ? (
                 <p className="text-[12px] text-muted-foreground">{meanwhileLine}</p>
             ) : undefined}
@@ -810,6 +843,12 @@ export default function SetupWizardPage() {
                 setChannelConnected(true);
                 setConnectedHere(details);
                 void refreshWorkspace();
+            }}
+            onConnectStarted={(channel, detail) => {
+                void recordJourneyEvent({ event: "channel_connect_started", channelType: channel, detail });
+            }}
+            onConnectAbandoned={(channel, detail) => {
+                void recordJourneyEvent({ event: "channel_connect_abandoned", channelType: channel, detail });
             }}
         />
     ) : null;

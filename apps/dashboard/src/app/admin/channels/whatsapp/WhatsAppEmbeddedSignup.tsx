@@ -35,6 +35,9 @@ interface EmbeddedSignupProps {
   onSuccess: (data: OnboardingResult) => void;
   /** Plain text for a parent banner. The structured failure is rendered here. */
   onError: (error: string) => void;
+  /** Browser-only journey signals; values are bounded tokens, never provider prose. */
+  onStart?: () => void;
+  onAbandoned?: (reason: "cancelled" | "popup_blocked") => void;
 }
 
 interface OnboardingResult {
@@ -115,7 +118,7 @@ export function isKnownWhatsAppWarning(value: string): boolean {
 // ============================================
 // Component
 // ============================================
-export default function WhatsAppEmbeddedSignup({ tenantId, mode = "standard", onSuccess, onError }: EmbeddedSignupProps) {
+export default function WhatsAppEmbeddedSignup({ tenantId, mode = "standard", onSuccess, onError, onStart, onAbandoned }: EmbeddedSignupProps) {
   const tc = useTranslations("common");
   const t = useTranslations("channels.whatsapp");
   const te = useTranslations("channels.whatsapp.errors");
@@ -142,6 +145,8 @@ export default function WhatsAppEmbeddedSignup({ tenantId, mode = "standard", on
   // follows a CANCEL/ERROR be a real authorization and not SDK leftovers.
   const finishSeenRef = useRef(false);
   const onErrorRef = useRef(onError);
+  const onStartRef = useRef(onStart);
+  const onAbandonedRef = useRef(onAbandoned);
   const tRef = useRef(t);
 
   // ---- Meta window watchdog ----
@@ -164,8 +169,10 @@ export default function WhatsAppEmbeddedSignup({ tenantId, mode = "standard", on
 
   useEffect(() => {
     onErrorRef.current = onError;
+    onStartRef.current = onStart;
+    onAbandonedRef.current = onAbandoned;
     tRef.current = t;
-  }, [onError, t]);
+  }, [onAbandoned, onError, onStart, t]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -191,6 +198,7 @@ export default function WhatsAppEmbeddedSignup({ tenantId, mode = "standard", on
    * deliberate abandonment: no failure card, no error, just the button back.
    */
   const cancelLaunch = useCallback(() => {
+    onAbandonedRef.current?.("cancelled");
     clearWindowWatchdog();
     // Meta's window stays open on her screen: we cannot close it. What we can
     // do is swallow the one terminal event it will send when she closes it, so
@@ -245,6 +253,7 @@ export default function WhatsAppEmbeddedSignup({ tenantId, mode = "standard", on
       }
 
       if (embeddedEvent.event === "CANCEL") {
+        onAbandonedRef.current?.("cancelled");
         const details = getEmbeddedSignupErrorDetails(embeddedEvent.data);
         terminalEventRef.current = details ? "error" : "cancel";
         reportFailure(
@@ -525,6 +534,7 @@ export default function WhatsAppEmbeddedSignup({ tenantId, mode = "standard", on
     metaSignalRef.current = false;
     focusLostRef.current = false;
     setFailure(null);
+    onStartRef.current?.();
     setLaunching(true);
     launchingRef.current = true;
 
@@ -541,6 +551,7 @@ export default function WhatsAppEmbeddedSignup({ tenantId, mode = "standard", on
     const windowNeverOpened = () => !focusLostRef.current && !metaSignalRef.current;
     const giveUp = () => {
       if (!launchingRef.current || !windowNeverOpened()) return;
+      onAbandonedRef.current?.("popup_blocked");
       reportFailure({ key: "popupBlocked", retryable: true }, t("facebookSdkLaunchError"));
     };
     // Los dos relojes comparten la MISMA condición a propósito: el corto la
@@ -558,6 +569,7 @@ export default function WhatsAppEmbeddedSignup({ tenantId, mode = "standard", on
       FB.login(handleFBResponse, loginOptions);
     } catch (error) {
       console.error("[EmbeddedSignup] Facebook SDK login failed:", error);
+      onAbandonedRef.current?.("popup_blocked");
       reportFailure({ key: "popupBlocked", retryable: true }, t("facebookSdkLaunchError"));
     }
   };

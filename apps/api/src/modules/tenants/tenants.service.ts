@@ -2009,15 +2009,48 @@ export class TenantsService {
                 signupSource: true,
                 tenant: {
                     select: {
+                        id: true,
                         onboardingCompletedAt: true,
                         firstChannelConnectedAt: true,
                         firstMessageAt: true,
                         subscriptionStatus: true,
+                        settings: true,
                     },
                 },
             },
             orderBy: { createdAt: 'desc' },
         });
+
+        type JourneyEvent = { tenant_id: string; event: string; occurred_at: Date; detail: string | null };
+        let journeyEvents: JourneyEvent[] = [];
+        try {
+            journeyEvents = (await this.prisma.$queryRawUnsafe(
+                `SELECT tenant_id, event, occurred_at, detail
+                   FROM public.onboarding_events
+                  WHERE occurred_at >= $1::timestamptz
+                    AND event IN ('test_chat_first_reply','first_operational_reply','first_useful_result')
+                  ORDER BY occurred_at ASC`,
+                since.toISOString(),
+            )) as JourneyEvent[];
+        } catch (error: any) {
+            // Rolling deploys and local environments may not have the additive
+            // table yet. The established funnel remains available and the new
+            // milestones are reported as unknown rather than breaking admin.
+            this.logger.warn(`Onboarding journey events unavailable: ${error?.message ?? error}`);
+        }
+
+        const firstEvent = new Map<string, JourneyEvent>();
+        for (const event of journeyEvents) {
+            const key = `${event.tenant_id}:${event.event}`;
+            if (!firstEvent.has(key)) firstEvent.set(key, event);
+        }
+        const eventFor = (tenantId: string | undefined, event: string) =>
+            tenantId ? firstEvent.get(`${tenantId}:${event}`) : undefined;
+        const recordedFirstReplyAt = (tenant: any): Date | null => {
+            const value = tenant?.settings?.firstReplyAt;
+            const parsed = typeof value === 'string' ? new Date(value) : null;
+            return parsed && Number.isFinite(parsed.getTime()) ? parsed : null;
+        };
 
         const totalSignups = signups.length;
         const onboardingDone = signups.filter((s: any) => s.tenant?.onboardingCompletedAt).length;
@@ -2026,6 +2059,10 @@ export class TenantsService {
         const paying = signups.filter((s: any) =>
             s.tenant?.subscriptionStatus === 'active' || s.tenant?.subscriptionStatus === 'past_due'
         ).length;
+        const testReply = signups.filter((s: any) => eventFor(s.tenant?.id, 'test_chat_first_reply')).length;
+        const operationalReply = signups.filter((s: any) =>
+            eventFor(s.tenant?.id, 'first_operational_reply') || recordedFirstReplyAt(s.tenant)).length;
+        const usefulResult = signups.filter((s: any) => eventFor(s.tenant?.id, 'first_useful_result')).length;
 
         const bySource = new Map<string, { source: string; signups: number; onboarded: number; channelConnected: number; activated: number; paying: number }>();
         for (const signup of signups as any[]) {
@@ -2053,6 +2090,26 @@ export class TenantsService {
         ttfm.sort((a, b) => a - b);
         const medianTtfmHours = ttfm.length > 0 ? ttfm[Math.floor(ttfm.length / 2)] : null;
         const pct = (a: number, b: number) => b > 0 ? Math.round((a / b) * 1000) / 10 : 0;
+        const elapsedHours = (pick: (signup: any) => Date | null | undefined): number[] => (signups as any[])
+            .map((signup) => {
+                const at = pick(signup);
+                return at && signup.createdAt ? (at.getTime() - signup.createdAt.getTime()) / 3_600_000 : null;
+            })
+            .filter((value): value is number => value !== null && value >= 0)
+            .sort((a, b) => a - b);
+        const percentile = (values: number[], value: number): number | null => {
+            if (values.length === 0) return null;
+            return values[Math.min(values.length - 1, Math.ceil(value * values.length) - 1)];
+        };
+        const milestoneTime = (values: number[]) => ({
+            observed: values.length,
+            medianHours: percentile(values, 0.5),
+            p90Hours: percentile(values, 0.9),
+        });
+        const testTimes = elapsedHours((signup) => eventFor(signup.tenant?.id, 'test_chat_first_reply')?.occurred_at);
+        const operationalTimes = elapsedHours((signup) =>
+            eventFor(signup.tenant?.id, 'first_operational_reply')?.occurred_at ?? recordedFirstReplyAt(signup.tenant));
+        const usefulTimes = elapsedHours((signup) => eventFor(signup.tenant?.id, 'first_useful_result')?.occurred_at);
 
         return {
             window: { since: since.toISOString(), until: new Date().toISOString() },
@@ -2067,6 +2124,27 @@ export class TenantsService {
             medianTimeToFirstChannelHours: medianTtfcHours,
             medianTimeToFirstMessageHours: medianTtfmHours,
             bySource: Array.from(bySource.values()).sort((a, b) => b.signups - a.signups),
+            journey: {
+                stages: [
+                    { key: 'signup', count: totalSignups, shareOfSignups: 100 },
+                    { key: 'onboarded', count: onboardingDone, shareOfSignups: pct(onboardingDone, totalSignups) },
+                    { key: 'test_reply', count: testReply, shareOfSignups: pct(testReply, totalSignups) },
+                    { key: 'first_channel', count: channelConnected, shareOfSignups: pct(channelConnected, totalSignups) },
+                    { key: 'first_inbound', count: firstMessage, shareOfSignups: pct(firstMessage, totalSignups) },
+                    { key: 'first_operational_reply', count: operationalReply, shareOfSignups: pct(operationalReply, totalSignups) },
+                    { key: 'first_useful_result', count: usefulResult, shareOfSignups: pct(usefulResult, totalSignups) },
+                    { key: 'paying', count: paying, shareOfSignups: pct(paying, totalSignups) },
+                ],
+                elapsedTime: {
+                    testReply: milestoneTime(testTimes),
+                    firstOperationalReply: milestoneTime(operationalTimes),
+                    firstUsefulResult: milestoneTime(usefulTimes),
+                },
+                evidenceCoverage: {
+                    operationalReply: pct(operationalReply, totalSignups),
+                    usefulResult: pct(usefulResult, totalSignups),
+                },
+            },
         };
     }
 

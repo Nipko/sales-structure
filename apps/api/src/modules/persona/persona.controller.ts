@@ -31,9 +31,12 @@ import {
     advanceOnboardingStage,
     deriveOnboardingStage,
     isOnboardingStage,
+    onboardingOnceKey,
+    sanitizeOnboardingClientBatch,
 } from '@parallext/shared';
 import type { OnboardingStage } from '@parallext/shared';
 import { RequiresVerifiedEmail } from '../../common/decorators/requires-verified-email.decorator';
+import { recordOnboardingClientEvents, recordOnboardingEvent } from '../../common/utils/onboarding-event.util';
 
 @ApiTags('persona')
 @Controller('persona')
@@ -615,6 +618,16 @@ export class PersonaController {
             templateId: body.templateId,
             selectedChannels,
         });
+        if (channelConnectSkippedAt) void recordOnboardingEvent(this.prisma, {
+            tenantId,
+            event: 'channel_deferred',
+            dedupeKey: onboardingOnceKey('channel_deferred', tenantId),
+        });
+        if (markCompleted) void recordOnboardingEvent(this.prisma, {
+            tenantId,
+            event: 'wizard_completed',
+            dedupeKey: onboardingOnceKey('wizard_completed', tenantId),
+        });
 
         const templateLabel = body.templateId || 'la configuración vigente del agente';
         this.logger.log(
@@ -645,7 +658,33 @@ export class PersonaController {
             }),
         }));
         this.logger.log(`Setup wizard skipped for tenant ${tenantId} (hasAnyChannel=${hasAnyChannel})`);
+        void recordOnboardingEvent(this.prisma, {
+            tenantId,
+            event: 'channel_deferred',
+            dedupeKey: onboardingOnceKey('channel_deferred', tenantId),
+        });
+        void recordOnboardingEvent(this.prisma, {
+            tenantId,
+            event: 'wizard_completed',
+            dedupeKey: onboardingOnceKey('wizard_completed', tenantId),
+        });
         return { success: true };
+    }
+
+    @Post(':tenantId/onboarding-events')
+    @Roles('tenant_admin')
+    @ApiOperation({ summary: 'Record allowlisted onboarding interaction events' })
+    async recordOnboardingEvents(
+        @Param('tenantId') tenantId: string,
+        @Body() body: unknown,
+        @Req() req: any,
+    ) {
+        const batch = sanitizeOnboardingClientBatch(body);
+        if (!batch) throw new BadRequestException({ error: 'invalid_onboarding_events' });
+        const accepted = await recordOnboardingClientEvents(
+            this.prisma, tenantId, req.user?.sub ?? null, batch.sessionId, batch.events,
+        );
+        return { success: true, data: { accepted } };
     }
 
     @Get(':tenantId/setup-status')
@@ -903,6 +942,13 @@ export class PersonaController {
         }
         const next = await mutateTenantSettingsAtomic(this.prisma, tenantId,
             (current) => applyWhatsAppTriage(current, answerId, new Date()));
+        if (answerId !== null) void recordOnboardingEvent(this.prisma, {
+            tenantId,
+            event: 'whatsapp_triage_answered',
+            channelType: 'whatsapp',
+            detail: answerId,
+            dedupeKey: onboardingOnceKey('whatsapp_triage_answered', tenantId, answerId),
+        });
         return { success: true, data: { whatsappTriage: readWhatsAppTriage(next[WHATSAPP_TRIAGE_SETTING_KEY]) } };
     }
 

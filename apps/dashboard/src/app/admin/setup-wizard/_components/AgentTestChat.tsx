@@ -75,7 +75,11 @@ export default function AgentTestChat({ tenantId, agentId, configurationRevision
         setTurns((prev) => [...prev, { role: "user", content: msg }]);
         setSending(true);
         try {
-            const res: any = await api.testAgent(tenantId, agentId, { message: msg, conversationHistory: history, configurationRevisionId, runtimeSessionId: runtimeSessionId.current });
+            const res: any = await api.testAgent(tenantId, agentId, {
+                message: msg, conversationHistory: history, configurationRevisionId,
+                runtimeSessionId: runtimeSessionId.current,
+                options: { surface: 'setup_wizard' },
+            });
             if (scope !== requestScope.current) return;
             if (res?.success && res?.data?.reply) {
                 setTurns((prev) => [...prev, { role: "assistant", content: res.data.reply }]);

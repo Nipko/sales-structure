@@ -30,6 +30,9 @@ export * from './guided-tour-contract';
 // ---- One place that knows where an account is in its setup ----
 export * from './onboarding-stage-contract';
 
+// ---- What the day-0 funnel measures, and the only shapes the panel may send ----
+export * from './onboarding-events';
+
 // ---- Read semantics for agent tools (empty vs stale vs error) ----
 export * from './tool-read-result';
 
@@ -1161,6 +1164,8 @@ export interface TestAgentRequest {
     options?: {
         /** Public endpoint control. Internal eval/sandbox controls are not exposed. */
         disableTools?: boolean;
+        /** Closed vocabulary used only to attribute the first successful test reply. */
+        surface?: 'setup_wizard' | 'agent_editor';
     };
 }
 

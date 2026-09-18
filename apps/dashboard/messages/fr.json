@@ -10568,7 +10568,28 @@
     "hint": "Horodatages générés automatiquement : onboarding quand le setup se termine, premier message au premier inbound, payant quand subscription_status est active ou past_due.",
     "ttfv": "TTFV (canal)",
     "ttfvHint": "Médiane inscription → premier canal connecté",
-    "channelCol": "Canal"
+    "channelCol": "Canal",
+    "journey": {
+      "title": "Résultats de l’onboarding",
+      "hint": "Portée dans la cohorte d’inscriptions. Le test et la connexion peuvent avoir lieu dans n’importe quel ordre.",
+      "stages": {
+        "signup": "A créé son compte",
+        "onboarded": "A terminé l’inscription",
+        "test_reply": "A vu une réponse de test",
+        "first_channel": "A connecté le premier canal",
+        "first_inbound": "A reçu la première conversation",
+        "first_operational_reply": "A livré la première réponse opérationnelle",
+        "first_useful_result": "A obtenu le premier résultat utile",
+        "paying": "Est payant"
+      },
+      "times": {
+        "testReply": "Délai jusqu’à la réponse de test",
+        "firstOperationalReply": "Délai jusqu’à la réponse opérationnelle",
+        "firstUsefulResult": "Délai jusqu’au résultat utile"
+      },
+      "p90": "p90 {value} · {count, plural, one {# observation} other {# observations}}",
+      "coverageHint": "Les nouveaux événements montrent les preuves observées à partir de cette version ; les jalons historiques utilisent toujours les horodatages existants."
+    }
   },
   "verticalAnalytics": {
     "title": "Analytique par verticale",

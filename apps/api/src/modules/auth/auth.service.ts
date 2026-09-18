@@ -45,6 +45,8 @@ import {
     tenantPurgingFenceKey,
 } from '../../common/utils/tenant-lifecycle.util';
 import { welcomeEmail, passwordChangedEmail, newTrustedDeviceEmail } from '../email/email-layouts';
+import { onboardingOnceKey } from '@parallext/shared';
+import { recordOnboardingEvent } from '../../common/utils/onboarding-event.util';
 
 interface SessionData {
     sid: string;
@@ -2483,6 +2485,13 @@ export class AuthService {
                 resource: 'tenant',
                 details: { verticalProvisioningVersion: VERTICAL_PROVISIONING_VERSION, schemaName: effectiveSchemaName },
             },
+        });
+        void recordOnboardingEvent(this.prisma, {
+            tenantId: result.tenant.id,
+            userId: result.user.id,
+            event: 'onboarding_completed',
+            occurredAt: new Date(),
+            dedupeKey: onboardingOnceKey('onboarding_completed', result.tenant.id),
         });
 
         // 8. Update session with tenantId + generate new JWT tokens

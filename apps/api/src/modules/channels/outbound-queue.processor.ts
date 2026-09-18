@@ -264,8 +264,11 @@ export class OutboundQueueProcessor extends WorkerHost {
      * throws: a stage that fails to advance must never cost a delivery its
      * receipt. Fire-and-forget on purpose.
      */
-    private markTenantLive(tenantId: string): void {
-        void recordFirstReply(this.prisma, tenantId, { source: 'dispatch' }).catch(() => undefined);
+    private markTenantLive(tenantId: string, channelType?: string | null): void {
+        void recordFirstReply(this.prisma, tenantId, {
+            source: 'dispatch',
+            channelType: channelType ?? undefined,
+        }).catch(() => undefined);
     }
 
     /**
@@ -721,7 +724,8 @@ export class OutboundQueueProcessor extends WorkerHost {
         // nothing about attending a customer, and neither does a reply a
         // PERSON wrote: an owner answering from the inbox is `reactive` too,
         // and it is not her agent answering (`isAgentAuthoredScope`).
-        if (outcome.kind === 'accepted' && !proactive && isAgentAuthoredScope(scope)) this.markTenantLive(tenantId);
+        if (outcome.kind === 'accepted' && !proactive && isAgentAuthoredScope(scope))
+            this.markTenantLive(tenantId, admitted.row.binding?.channelType);
 
         try {
             if (outcome.kind === 'accepted') {

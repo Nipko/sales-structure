@@ -10568,7 +10568,28 @@
     "hint": "Las marcas se generan automáticamente: onboarding al completar setup, primer mensaje al primer inbound, pagando cuando subscription_status es active o past_due.",
     "ttfv": "TTFV (canal)",
     "ttfvHint": "Mediana signup → primer canal conectado",
-    "channelCol": "Canal"
+    "channelCol": "Canal",
+    "journey": {
+      "title": "Resultados del onboarding",
+      "hint": "Alcance dentro de la cohorte de signups. Probar y conectar pueden ocurrir en cualquier orden.",
+      "stages": {
+        "signup": "Creó su cuenta",
+        "onboarded": "Completó el alta",
+        "test_reply": "Vio una respuesta de prueba",
+        "first_channel": "Conectó su primer canal",
+        "first_inbound": "Recibió la primera conversación",
+        "first_operational_reply": "Entregó la primera respuesta operativa",
+        "first_useful_result": "Logró el primer resultado útil",
+        "paying": "Está pagando"
+      },
+      "times": {
+        "testReply": "Hasta la respuesta de prueba",
+        "firstOperationalReply": "Hasta la respuesta operativa",
+        "firstUsefulResult": "Hasta el resultado útil"
+      },
+      "p90": "p90 {value} · {count, plural, one {# observación} other {# observaciones}}",
+      "coverageHint": "Los eventos nuevos muestran evidencia observada desde esta versión; los hitos históricos siguen usando las marcas existentes."
+    }
   },
   "verticalAnalytics": {
     "title": "Analítica por vertical",

@@ -45,6 +45,15 @@ interface FunnelData {
     medianTimeToFirstChannelHours: number | null;
     medianTimeToFirstMessageHours: number | null;
     bySource: SourceRow[];
+    journey?: {
+        stages: Array<{ key: string; count: number; shareOfSignups: number }>;
+        elapsedTime: Record<"testReply" | "firstOperationalReply" | "firstUsefulResult", {
+            observed: number;
+            medianHours: number | null;
+            p90Hours: number | null;
+        }>;
+        evidenceCoverage: { operationalReply: number; usefulResult: number };
+    };
 }
 
 const RANGE_OPTIONS = [
@@ -232,6 +241,48 @@ export default function FunnelPage() {
                             );
                         })}
                     </div>
+                </div>
+            )}
+
+            {/* The setup is not a strict funnel: testing and connecting may
+                happen in either order. Show cohort reach instead of inventing
+                step-to-step conversion between optional milestones. */}
+            {data?.journey && (
+                <div className="bg-card border border-border rounded-xl p-5 space-y-5">
+                    <div>
+                        <h2 className="text-base font-semibold">{t("journey.title")}</h2>
+                        <p className="text-xs text-muted-foreground mt-0.5">{t("journey.hint")}</p>
+                    </div>
+                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                        {data.journey.stages.map((stage) => (
+                            <div key={stage.key} className="rounded-lg border border-border p-3">
+                                <p className="text-xs text-muted-foreground">{t(`journey.stages.${stage.key}` as any)}</p>
+                                <div className="mt-1 flex items-baseline justify-between gap-2">
+                                    <span className="font-mono text-xl font-bold">{stage.count}</span>
+                                    <span className="font-mono text-xs text-muted-foreground">{stage.shareOfSignups}%</span>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-3">
+                        {([
+                            ["testReply", "testReply"],
+                            ["firstOperationalReply", "firstOperationalReply"],
+                            ["firstUsefulResult", "firstUsefulResult"],
+                        ] as const).map(([key, label]) => {
+                            const metric = data.journey!.elapsedTime[key];
+                            return (
+                                <div key={key} className="rounded-lg bg-muted/30 p-3">
+                                    <p className="text-xs font-medium">{t(`journey.times.${label}` as any)}</p>
+                                    <p className="mt-1 font-mono text-lg font-bold">{formatTtfm(metric.medianHours)}</p>
+                                    <p className="text-[11px] text-muted-foreground">
+                                        {t("journey.p90", { value: formatTtfm(metric.p90Hours), count: metric.observed })}
+                                    </p>
+                                </div>
+                            );
+                        })}
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">{t("journey.coverageHint")}</p>
                 </div>
             )}
 

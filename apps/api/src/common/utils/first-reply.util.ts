@@ -1,7 +1,8 @@
 import { Logger } from '@nestjs/common';
-import { advanceOnboardingStage, isOnboardingStage } from '@parallext/shared';
+import { CERTIFIED_SELF_SERVICE_CHANNELS, advanceOnboardingStage, isOnboardingStage, onboardingOnceKey } from '@parallext/shared';
 import type { PrismaService } from '../../modules/prisma/prisma.service';
 import { mutateTenantSettingsAtomic } from './tenant-settings.util';
+import { recordOnboardingEvent } from './onboarding-event.util';
 
 /**
  * La primera respuesta real del agente, registrada una sola vez.
@@ -65,6 +66,8 @@ export type FirstReplyOutcome =
 export interface FirstReplyOptions {
     /** De dónde salió la respuesta (`dispatch`, `web_widget`), solo para el log. */
     source?: string;
+    /** Operational channel when the delivery boundary knows it. */
+    channelType?: string;
     /** Reloj inyectable para las pruebas. */
     at?: Date;
 }
@@ -137,6 +140,19 @@ export async function recordFirstReply(
         });
         if (changed) {
             logger.log(`First reply recorded for tenant ${tenantId} (${options.source ?? 'unknown'})`);
+            const reportedChannel = options.channelType ?? (options.source === 'web_widget' ? 'web_widget' : null);
+            const channelType = reportedChannel
+                && (CERTIFIED_SELF_SERVICE_CHANNELS as readonly string[]).includes(reportedChannel)
+                ? reportedChannel
+                : null;
+            void recordOnboardingEvent(prisma, {
+                tenantId,
+                event: 'first_operational_reply',
+                channelType,
+                detail: options.source ?? null,
+                occurredAt: options.at,
+                dedupeKey: onboardingOnceKey('first_operational_reply', tenantId),
+            });
         }
         return changed ? 'recorded' : 'already_recorded';
     } catch (error: any) {

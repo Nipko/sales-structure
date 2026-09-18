@@ -1,7 +1,8 @@
 import { Logger } from '@nestjs/common';
-import { CERTIFIED_SELF_SERVICE_CHANNELS, advanceOnboardingStage, isOnboardingStage } from '@parallext/shared';
+import { CERTIFIED_SELF_SERVICE_CHANNELS, advanceOnboardingStage, isOnboardingStage, onboardingOnceKey } from '@parallext/shared';
 import type { PrismaService } from '../prisma/prisma.service';
 import { mutateTenantSettingsAtomic } from '../../common/utils/tenant-settings.util';
+import { recordOnboardingEvent } from '../../common/utils/onboarding-event.util';
 
 const logger = new Logger('BindDefaultAgent');
 
@@ -121,11 +122,15 @@ export async function recordChannelConnected(
     channelType: string,
     options: ChannelConnectionRecordOptions = {},
 ): Promise<ChannelConnectionRecord> {
+    const isOperationalChannel = (CERTIFIED_SELF_SERVICE_CHANNELS as readonly string[]).includes(channelType);
+    const connectedAt = options.connectedAt ?? new Date();
+    let firstConnection = false;
     try {
-        await prisma.tenant.updateMany({
+        const result = await prisma.tenant.updateMany({
             where: { id: tenantId, firstChannelConnectedAt: null },
-            data: { firstChannelConnectedAt: options.connectedAt ?? new Date() },
+            data: { firstChannelConnectedAt: connectedAt },
         });
+        firstConnection = Number(result?.count ?? 0) > 0;
     } catch (e: any) {
         logger.warn(`firstChannelConnectedAt(${channelType}) failed for ${tenantId}: ${e?.message}`);
     }
@@ -137,6 +142,26 @@ export async function recordChannelConnected(
             (current) => applyChannelConnectedStage(current) as Record<string, unknown>);
     } catch (e: any) {
         logger.warn(`onboardingStage advance (${channelType}) failed for ${tenantId}: ${e?.message}`);
+    }
+
+    // SMS is a one-way notification product and Email is an internal inbound
+    // adapter. They may reuse this housekeeping path, but neither belongs in
+    // the self-service conversational activation funnel.
+    if (isOperationalChannel) {
+        void recordOnboardingEvent(prisma, {
+            tenantId,
+            event: 'channel_connected',
+            channelType,
+            occurredAt: connectedAt,
+            dedupeKey: onboardingOnceKey('channel_connected', tenantId, channelType),
+        });
+        if (firstConnection) void recordOnboardingEvent(prisma, {
+            tenantId,
+            event: 'first_channel_connected',
+            channelType,
+            occurredAt: connectedAt,
+            dedupeKey: onboardingOnceKey('first_channel_connected', tenantId),
+        });
     }
 
     return { bound };

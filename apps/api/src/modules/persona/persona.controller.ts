@@ -692,7 +692,7 @@ export class PersonaController {
     async getSetupStatus(@Param('tenantId') tenantId: string) {
         const tenant = await this.prisma.tenant.findUnique({
             where: { id: tenantId },
-            select: { settings: true, schemaName: true, industry: true, createdAt: true },
+            select: { settings: true, schemaName: true, industry: true, createdAt: true, billingEmail: true },
         });
         const settings = (tenant?.settings as any) || {};
         const schema = tenant?.schemaName;
@@ -771,7 +771,11 @@ export class PersonaController {
                 hasPersona = over(checks[0]);
                 hasConversations = over(checks[1]);
                 hasKnowledge = over(checks[2]);
-                hasTeam = over(checks[3], 1);
+                // The owner is already a valid human destination. Requiring a
+                // second active user turned a solo business into an artificial
+                // blocker even though the handoff service sends unassigned
+                // cases to billingEmail or an active tenant_admin.
+                hasTeam = over(checks[3]);
                 hasAutomation = over(checks[4]);
                 hasTemplates = over(checks[5]);
                 hasAnyChannel = over(checks[6]);
@@ -849,6 +853,24 @@ export class PersonaController {
         const demoLink: SetupStatusDemoLink | null = link
             ? { ...link, ...(await this.readDemoLinkAvailability(tenantId)) }
             : null;
+        let handoffRecipient: { label: string; emailVerified: boolean | null; source: 'billing' | 'owner' } | null = null;
+        if (tenant?.billingEmail) {
+            handoffRecipient = { label: tenant.billingEmail, emailVerified: null, source: 'billing' };
+        } else if (typeof (this.prisma as any).user?.findFirst === 'function') {
+            const owner = await this.prisma.user.findFirst({
+                where: { tenantId, role: 'tenant_admin', isActive: true },
+                orderBy: { createdAt: 'asc' },
+                select: { firstName: true, lastName: true, email: true, emailVerified: true },
+            }).catch(() => null);
+            if (owner?.email) {
+                const name = [owner.firstName, owner.lastName].filter(Boolean).join(' ').trim();
+                handoffRecipient = {
+                    label: name ? `${name} · ${owner.email}` : owner.email,
+                    emailVerified: owner.emailVerified === true,
+                    source: 'owner',
+                };
+            }
+        }
 
         return {
             success: true,
@@ -866,6 +888,7 @@ export class PersonaController {
                 hasConversations,
                 hasKnowledge,
                 hasTeam,
+                handoffRecipient,
                 hasAutomation,
                 hasTemplates,
                 hasAnyChannel,

@@ -7172,10 +7172,11 @@
           "doneDescription": "It answers with what you loaded. You can add more whenever you want."
         },
         "team": {
-          "title": "Invite a person",
-          "description": "When the agent cannot solve something, it needs somebody to hand it to.",
-          "doneTitle": "Someone else is already on your team",
-          "doneDescription": "When your agent cannot solve something, it has somebody to hand it to."
+          "title": "Choose who receives pending cases",
+          "description": "We could not find an active person to receive them. You can add one without blocking the rest of setup.",
+          "doneTitle": "Pending cases already have a destination",
+          "doneDescription": "When your agent needs help, the case stays in Inbox and we notify {recipient}.",
+          "recipientFallback": "the account administrator"
         }
       },
       "subtitleLink": "{agentName} already answers through their link: open it below and send a message. {channel} is still pending, and we'll remind you on Home.",
@@ -12643,6 +12644,20 @@
         "later": "You left this for later.",
         "otherProvider": "You noted that your number is with another provider.",
         "notAtHand": "You noted that you didn't have the number at hand."
+      },
+      "firstReply": {
+        "title": "Check {agent}'s first reply",
+        "description": "Setup is ready. Now message it through {channels} from another account or phone to check real service.",
+        "agentFallback": "your agent",
+        "channelFallback": "the connected channel",
+        "stepSend": "1. Send a real question about your business.",
+        "stepWait": "2. Wait for the reply and return here; we check it automatically.",
+        "evidence": "We record that Parallly sent a reply. This does not claim the provider marked it as read.",
+        "notSeen": "We have not seen an operational reply yet. If you already wrote, check the channel and try again.",
+        "check": "Check now",
+        "openInbox": "Open Inbox",
+        "verifiedTitle": "First operational reply verified",
+        "verifiedDescription": "Parallly recorded a reply sent through the channel. You can now follow operations from Home and Inbox."
       }
     },
     "focus": {

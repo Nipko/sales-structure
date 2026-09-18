@@ -31,6 +31,7 @@ export interface DoneStepEssential {
 export interface SetupProgressFacts {
     hasKnowledge?: boolean;
     hasTeam?: boolean;
+    handoffRecipient?: string | null;
 }
 
 /** The day-0 facts setup-status carries beside the stage, as the session names them. */
@@ -52,9 +53,13 @@ function optionalIso(value: unknown): string | null | undefined {
 /** Reads the progress counts from a setup-status response; anything else is "not known". */
 export function readSetupProgressFacts(response: unknown): SetupProgressFacts {
     if (!isRecord(response) || response.success !== true || !isRecord(response.data)) return {};
+    const recipient = isRecord(response.data.handoffRecipient)
+        && typeof response.data.handoffRecipient.label === "string"
+        ? response.data.handoffRecipient.label : null;
     return {
         hasKnowledge: optionalBoolean(response.data.hasKnowledge),
         hasTeam: optionalBoolean(response.data.hasTeam),
+        ...(recipient ? { handoffRecipient: recipient } : {}),
     };
 }
 

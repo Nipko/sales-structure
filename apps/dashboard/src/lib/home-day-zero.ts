@@ -145,8 +145,9 @@ export function channelStepDeferral(
  *   drawing them a moment late. A FAILED read gives the screen back: a day-0
  *   owner whose status request broke gets the ordinary Home, not a page with
  *   nothing but a greeting.
- * - `landing`: `normal` means the card has nothing left (every essential done,
- *   or no essentials at all); then day 0 has nothing to protect.
+ * - `landing`: once the essentials are done, day 0 still belongs to the
+ *   first-reply check. `normal` only gives the screen back after the server
+ *   has observed that reply (which makes `dayZero` false).
  * - `setupIncomplete`: what the card itself reported. `false` = it drew
  *   nothing — every step it can show this person is done, or none of them is
  *   one this role may open (a supervisor cannot open Canales). Hiding the rest
@@ -163,6 +164,6 @@ export function homeCardOwnsScreen(input: {
 }): boolean {
     if (!input.guideOwnsHome || !input.dayZero) return false;
     if (input.setupRead === "unavailable") return false;
-    if (input.setupIncomplete === false) return false;
+    if (input.setupIncomplete === false) return true;
     return input.landing !== "normal";
 }

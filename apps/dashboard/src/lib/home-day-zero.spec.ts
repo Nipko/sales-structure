@@ -154,10 +154,12 @@ describe("homeCardOwnsScreen", () => {
         ["after the first real reply", { dayZero: false }],
         ["for someone without a setup of their own", { guideOwnsHome: false }],
         ["when the setup status could not be read", { setupRead: "unavailable" as const }],
-        ["when the card has nothing left", { landing: "normal" as const, setupIncomplete: false }],
-        ["when the card drew nothing this person may open", { setupIncomplete: false }],
     ])("gives the screen back %s", (_label, override) => {
         expect(homeCardOwnsScreen({ ...base, ...override })).toBe(false);
+    });
+
+    it("keeps the screen for the first-reply check after every setup item is done", () => {
+        expect(homeCardOwnsScreen({ ...base, landing: "normal", setupIncomplete: false })).toBe(true);
     });
 });
 
@@ -172,7 +174,14 @@ describe("the day-0 screens ask with the activation facts", () => {
         const source = read(file);
         // `day-zero-consumers.spec.ts` checks the arguments of every call; this
         // checks that these two screens still make one at all.
-        expect(source).toMatch(/isOnboardingBeforeLive\(user\?\.onboardingStage,\s*\{\s*firstReplyAt:\s*user\?\.firstReplyAt,\s*createdAt:\s*user\?\.tenantCreatedAt,?\s*\}\)/);
+        expect(source).toMatch(/isOnboardingBeforeLive\(user\?\.onboardingStage,/);
+        expect(source).toMatch(/firstReplyAt:/);
+        expect(source).toMatch(/createdAt:\s*user\?\.tenantCreatedAt/);
+    });
+
+    it("Home prefers the fresh setup result over stale session data", () => {
+        const source = read("app/admin/page.tsx");
+        expect(source).toMatch(/firstReplyAt:\s*verifiedReplyAt\s*\?\?\s*setupFacts\?\.firstReplyAt\s*\?\?\s*user\?\.firstReplyAt/);
     });
 
     it("Home no longer draws a second setup guide next to the card", () => {

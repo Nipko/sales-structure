@@ -14,7 +14,12 @@ function status(data: Record<string, unknown>) {
 
 describe("the essentials of 'Listo'", () => {
     it("says done what setup-status counted as done", () => {
-        const facts = readSetupProgressFacts(status({ hasKnowledge: true, hasTeam: true }));
+        const facts = readSetupProgressFacts(status({
+            hasKnowledge: true,
+            hasTeam: true,
+            handoffRecipient: { label: "Ana · ana@example.test", source: "owner" },
+        }));
+        expect(facts.handoffRecipient).toBe("Ana · ana@example.test");
         expect(doneStepEssentials(facts)).toEqual([
             { key: "channel", done: null },
             { key: "knowledge", done: true },

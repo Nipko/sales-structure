@@ -1197,8 +1197,11 @@ export default function SetupWizardPage() {
                                 const connectedTitle = connectedNames.length > 0
                                     ? t("doneStep.essentials.channel.connectedTitleNamed", { channels: joinNames(connectedNames), count: connectedNames.length })
                                     : t("doneStep.essentials.channel.connectedTitle");
+                                const essentialValues = key === "team"
+                                    ? { recipient: progress.handoffRecipient ?? t("doneStep.essentials.team.recipientFallback") }
+                                    : undefined;
                                 const title = key !== "channel"
-                                    ? t(`doneStep.essentials.${key}.${itemDone ? "doneTitle" : "title"}`)
+                                    ? t(`doneStep.essentials.${key}.${itemDone ? "doneTitle" : "title"}`, essentialValues)
                                     : outcome === "pending"
                                         ? t("doneStep.essentials.channel.pendingTitle")
                                         : outcome === "unconfirmed"
@@ -1207,7 +1210,7 @@ export default function SetupWizardPage() {
                                                 ? connectedTitle
                                                 : t("doneStep.essentials.channel.title", { channel: channelLabel(pendingChannel) });
                                 const lines = key !== "channel"
-                                    ? [t(`doneStep.essentials.${key}.${itemDone ? "doneDescription" : "description"}`)]
+                                    ? [t(`doneStep.essentials.${key}.${itemDone ? "doneDescription" : "description"}`, essentialValues)]
                                     : outcome !== "no_channel"
                                         ? channelLines
                                         : [linkAnswers

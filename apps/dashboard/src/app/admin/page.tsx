@@ -59,6 +59,7 @@ import { HelpPanel } from "@/components/ui/help-panel";
 import OnboardingMetricsCard from "./_components/OnboardingMetricsCard";
 import AgentHealthCard from "@/components/quality/AgentHealthCard";
 import InitialSetupCard from "@/components/InitialSetupCard";
+import FirstOperationalReplyCard from "@/components/FirstOperationalReplyCard";
 
 const ICON_MAP: Record<string, any> = {
     Calendar, UserPlus, UserX, MessageSquare, Flame, MapPin, Car,
@@ -194,6 +195,7 @@ export default function AdminDashboard() {
      */
     const [recommendations, setRecommendations] = useState<ChannelRecommendation[] | undefined>(undefined);
     const [setupIncomplete, setSetupIncomplete] = useState<boolean | undefined>(undefined);
+    const [verifiedReplyAt, setVerifiedReplyAt] = useState<string | null>(null);
     const [platformStats, setPlatformStats] = useState({
         totalTenants: 0,
         totalUsers: 0,
@@ -214,6 +216,7 @@ export default function AdminDashboard() {
         setSetupRead("loading");
         setRecommendations(undefined);
         setSetupIncomplete(undefined);
+        setVerifiedReplyAt(null);
 
         async function checkSetupWizard() {
             if (!user?.tenantId || user?.role === "super_admin") return;
@@ -484,7 +487,7 @@ export default function AdminDashboard() {
      * live, and Home used to fill back up the moment she pressed "Ir al panel".
      */
     const dayZero = isOnboardingBeforeLive(user?.onboardingStage, {
-        firstReplyAt: user?.firstReplyAt,
+        firstReplyAt: verifiedReplyAt ?? setupFacts?.firstReplyAt ?? user?.firstReplyAt,
         createdAt: user?.tenantCreatedAt,
     });
     /**
@@ -601,11 +604,21 @@ export default function AdminDashboard() {
                 que la tarjeta de puesta en marcha ya está diciendo con sus pasos. */}
             {canViewAgentHealth && !hideBoard && !guideSilent && <AgentHealthCard />}
             {canViewAgentHealth && !guideSilent && (
-                <InitialSetupCard
-                    channelDeferral={channelDeferral}
-                    channelLead={channelLead}
-                    onProgress={({ total, completed }) => setSetupIncomplete(total > 0 && completed < total)}
-                />
+                <>
+                    <InitialSetupCard
+                        channelDeferral={channelDeferral}
+                        channelLead={channelLead}
+                        onProgress={({ total, completed }) => setSetupIncomplete(total > 0 && completed < total)}
+                    />
+                    {dayZero && setupIncomplete === false && setupFacts && user?.tenantId && (
+                        <FirstOperationalReplyCard
+                            tenantId={user.tenantId}
+                            agentName={setupFacts.defaultAgent?.name}
+                            connectedChannelTypes={setupFacts.connectedChannelTypes}
+                            onVerified={setVerifiedReplyAt}
+                        />
+                    )}
+                </>
             )}
 
             {/* Empty-state guiado (Fase 4) — tenant nuevo sin actividad todavía */}

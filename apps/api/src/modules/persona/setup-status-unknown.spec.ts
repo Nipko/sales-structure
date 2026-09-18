@@ -68,6 +68,9 @@ describe('what setup-status says when a count cannot be read', () => {
         const answer: any = await controller.getSetupStatus(tenantId);
         expect(answer.data.hasAnyChannel).toBe(true);
         expect(answer.data.connectedChannelTypes).toEqual(['whatsapp']);
+        // The one active tenant_admin is already the handoff recipient; a
+        // solo business is not required to invite a second person.
+        expect(answer.data.hasTeam).toBe(true);
     });
 
     it('does not go looking for connected types on a channel count it never read', async () => {

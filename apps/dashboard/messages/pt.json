@@ -7172,10 +7172,11 @@
           "doneDescription": "Ele responde com o que você carregou. Você pode adicionar mais quando quiser."
         },
         "team": {
-          "title": "Convidar uma pessoa",
-          "description": "Quando o agente não conseguir resolver, ele precisa ter para quem passar.",
-          "doneTitle": "Já tem mais alguém na sua equipe",
-          "doneDescription": "Quando o agente não conseguir resolver algo, ele tem para quem passar."
+          "title": "Definir quem recebe os casos pendentes",
+          "description": "Não encontramos uma pessoa ativa para recebê-los. Você pode adicioná-la sem bloquear o restante da configuração.",
+          "doneTitle": "Os casos pendentes já têm destino",
+          "doneDescription": "Quando o agente precisar de ajuda, o caso fica na Caixa de entrada e avisamos {recipient}.",
+          "recipientFallback": "a pessoa administradora"
         }
       },
       "subtitleLink": "{agentName} já responde pelo link: abra aqui embaixo e mande uma mensagem. O {channel} fica pendente e vamos lembrar você no Início.",
@@ -12643,6 +12644,20 @@
         "later": "Você deixou para depois.",
         "otherProvider": "Você anotou que seu número está com outro provedor.",
         "notAtHand": "Você anotou que não estava com o número em mãos."
+      },
+      "firstReply": {
+        "title": "Verifique a primeira resposta de {agent}",
+        "description": "A configuração está pronta. Agora escreva pelo {channels} usando outra conta ou telefone para verificar o atendimento real.",
+        "agentFallback": "seu agente",
+        "channelFallback": "canal conectado",
+        "stepSend": "1. Envie uma pergunta real do seu negócio.",
+        "stepWait": "2. Aguarde a resposta e volte aqui; verificamos automaticamente.",
+        "evidence": "Registramos que a Parallly enviou uma resposta. Isso não afirma que o provedor a marcou como lida.",
+        "notSeen": "Ainda não vemos uma resposta operacional. Se você já escreveu, revise o canal e verifique novamente.",
+        "check": "Verificar agora",
+        "openInbox": "Abrir Caixa de entrada",
+        "verifiedTitle": "Primeira resposta operacional verificada",
+        "verifiedDescription": "A Parallly registrou uma resposta enviada pelo canal. Agora você pode acompanhar a operação no Início e na Caixa de entrada."
       }
     },
     "focus": {

@@ -7172,10 +7172,11 @@
           "doneDescription": "Il répond avec ce que vous avez chargé. Vous pouvez en ajouter quand vous voulez."
         },
         "team": {
-          "title": "Inviter une personne",
-          "description": "Quand l'agent ne peut pas résoudre quelque chose, il doit pouvoir le transmettre à quelqu'un.",
-          "doneTitle": "Quelqu'un d'autre fait déjà partie de votre équipe",
-          "doneDescription": "Quand votre agent ne peut pas résoudre quelque chose, il a quelqu'un à qui le transmettre."
+          "title": "Choisir qui reçoit les cas en attente",
+          "description": "Nous n’avons trouvé aucune personne active pour les recevoir. Vous pouvez en ajouter une sans bloquer le reste de la configuration.",
+          "doneTitle": "Les cas en attente ont déjà une destination",
+          "doneDescription": "Quand votre agent a besoin d’aide, le cas reste dans la boîte de réception et nous prévenons {recipient}.",
+          "recipientFallback": "la personne administratrice"
         }
       },
       "subtitleLink": "{agentName} répond déjà via son lien : ouvrez-le ci-dessous et écrivez-lui. {channel} reste à connecter, et nous vous le rappellerons sur l'Accueil.",
@@ -12643,6 +12644,20 @@
         "later": "Vous l'avez laissé pour plus tard.",
         "otherProvider": "Vous avez noté que votre numéro est chez un autre fournisseur.",
         "notAtHand": "Vous avez noté que vous n'aviez pas le numéro sous la main."
+      },
+      "firstReply": {
+        "title": "Vérifiez la première réponse de {agent}",
+        "description": "La configuration est prête. Écrivez maintenant via {channels} depuis un autre compte ou téléphone pour vérifier le service réel.",
+        "agentFallback": "votre agent",
+        "channelFallback": "le canal connecté",
+        "stepSend": "1. Envoyez une vraie question sur votre activité.",
+        "stepWait": "2. Attendez la réponse puis revenez ici ; nous la vérifions automatiquement.",
+        "evidence": "Nous enregistrons que Parallly a envoyé une réponse. Cela ne signifie pas que le fournisseur l'a marquée comme lue.",
+        "notSeen": "Nous ne voyons pas encore de réponse opérationnelle. Si vous avez déjà écrit, vérifiez le canal puis réessayez.",
+        "check": "Vérifier maintenant",
+        "openInbox": "Ouvrir la boîte de réception",
+        "verifiedTitle": "Première réponse opérationnelle vérifiée",
+        "verifiedDescription": "Parallly a enregistré une réponse envoyée via le canal. Vous pouvez maintenant suivre l'activité depuis l'Accueil et la boîte de réception."
       }
     },
     "focus": {

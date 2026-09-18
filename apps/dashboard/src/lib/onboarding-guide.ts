@@ -95,6 +95,8 @@ export interface SetupStatusFacts {
   defaultAgentTemplateId: string | null;
   /** Tenant timezone, so the wizard stops writing a hardcoded America/Bogota. */
   timezone: string | null;
+  /** First operational reply observed by the server, if one exists. */
+  firstReplyAt: string | null;
   /** The agent's public link; `null` until the API has provisioned one (or on an older API). */
   demoLink: SetupStatusDemoLink | null;
   /**
@@ -187,6 +189,10 @@ export function readSetupStatusFacts(response: unknown): SetupStatusFacts | null
     defaultAgent: readDefaultAgent(data),
     defaultAgentTemplateId: optionalString(data.defaultAgentTemplateId),
     timezone: optionalString(data.timezone),
+    firstReplyAt: (() => {
+      const value = optionalString(data.firstReplyAt);
+      return value && Number.isFinite(Date.parse(value)) ? value : null;
+    })(),
     demoLink: readDemoLink(data.demoLink),
     whatsappTriage: readRecordedTriage(data.whatsappTriage),
   };

@@ -165,6 +165,9 @@ jobs:
           apps/api/src/modules/vertical-contract-matrix/commercial-unit-writers.spec.ts
           apps/api/src/modules/verticals/vertical-product-policy.spec.ts
           apps/api/src/modules/verticals/verticals.controller.spec.ts
+          apps/api/src/modules/verticals/recipe-lint.spec.ts
+          apps/api/src/modules/persona/setup-wizard-non-destructive.spec.ts
+          apps/api/src/modules/copilot/assistant-kb-contract.spec.ts
           apps/api/src/modules/verticals/vertical-builder-contract.spec.ts
           apps/api/src/modules/verticals/vertical-operating-decisions-schema.spec.ts
           apps/api/src/modules/verticals/vertical-migration.service.spec.ts
@@ -372,6 +375,13 @@ jobs:
           apps/dashboard/src/app/admin/channels/whatsapp/whatsapp-channel-rows.spec.ts
           apps/dashboard/src/app/admin/channels/whatsapp/billing-time-zone.spec.ts
           apps/dashboard/src/app/admin/channels/whatsapp/WhatsAppBillingTimeZone.a11y.spec.tsx
+          apps/dashboard/src/app/admin/setup-wizard/setup-recipe.spec.ts
+          apps/dashboard/src/app/admin/setup-wizard/setup-wizard-channel-decision.a11y.spec.tsx
+          apps/dashboard/src/app/admin/setup-wizard/_components/agent-test-chat.a11y.spec.tsx
+          apps/dashboard/src/app/admin/setup-wizard/_components/recipe-setup-cards.a11y.spec.tsx
+          apps/dashboard/src/app/admin/setup-wizard/_components/optional-setup-paths.a11y.spec.tsx
+          apps/dashboard/src/app/admin/agent/_components/agent-guide-cards.a11y.spec.tsx
+          apps/dashboard/src/app/admin/agent/quality/owner-health-summary.spec.ts
 
       # Bloqueante desde ago 2026: el codebase quedó lint-clean (commit 64c46827,
       # 28 errores → 0). Es el único gate automático que atrapa la clase de bug

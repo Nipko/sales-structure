@@ -14,6 +14,37 @@ interface AgentTestChatProps {
 
 type Turn = { role: "user" | "assistant"; content: string };
 
+/** What `POST /agent-test` answers when the plan's AI messages ran out this period. */
+const QUOTA_EXHAUSTED = "ai_message_quota_exceeded";
+
+/**
+ * The one sentence a failed try gets.
+ *
+ * The quota is the only limit worth naming, and only once the server says it
+ * was reached: a first try on a new agent is not the moment to be warned about
+ * spending messages. Before this the raw code reached the owner as the error.
+ */
+export function agentTestErrorKey(response: { error?: unknown; errorCode?: unknown } | null | undefined): "quotaReached" | null {
+    return response?.errorCode === QUOTA_EXHAUSTED || response?.error === QUOTA_EXHAUSTED ? "quotaReached" : null;
+}
+
+/**
+ * The status line above the chat, or nothing.
+ *
+ * Immediate mode — the default — tests what answers customers, and there is
+ * nothing to tell apart: the line used to say "Estás probando la versión
+ * operativa" to an owner who has one agent and no versions. It speaks only
+ * when there is something to say: the change she is typing is not saved yet,
+ * or (reviewed mode) the chat runs the saved draft rather than what answers.
+ */
+export function agentTestStatusKey({ blocked, agentId, configurationRevisionId }: {
+    blocked?: boolean; agentId: string | null; configurationRevisionId?: string;
+}): { namespace: "setupWizard.test" | "agentDraft"; key: string } | null {
+    if (blocked && agentId) return { namespace: "setupWizard.test", key: "saveFirst" };
+    if (!blocked && configurationRevisionId) return { namespace: "agentDraft", key: "testingDraft" };
+    return null;
+}
+
 export default function AgentTestChat({ tenantId, agentId, configurationRevisionId, blocked }: AgentTestChatProps) {
     const t = useTranslations("setupWizard.test");
     const tDraft = useTranslations('agentDraft');
@@ -50,7 +81,8 @@ export default function AgentTestChat({ tenantId, agentId, configurationRevision
                 setTurns((prev) => [...prev, { role: "assistant", content: res.data.reply }]);
                 runtimeSessionId.current = res.data.debug?.runtimeSessionId;
             } else {
-                setError(res?.error || t("error"));
+                const known = agentTestErrorKey(res);
+                setError(known ? t(known) : res?.error || t("error"));
             }
         } catch (e: any) {
             if (scope !== requestScope.current) return;
@@ -59,12 +91,14 @@ export default function AgentTestChat({ tenantId, agentId, configurationRevision
         setSending(false);
     };
 
+    const status = agentTestStatusKey({ blocked, agentId, configurationRevisionId });
+    const statusText = status ? (status.namespace === "agentDraft" ? tDraft(status.key) : t(status.key)) : "";
+
     return (
         <div className="flex flex-col h-[340px] rounded-xl border border-neutral-200 dark:border-white/10 overflow-hidden bg-white dark:bg-white/[0.02]">
-            <p role="status" className="px-3 py-2 text-xs font-medium">{tDraft(blocked ? 'saveBeforeTest' : configurationRevisionId ? 'testingDraft' : 'testingOperational')}</p>
-            <p className="border-b border-amber-200 bg-amber-50 px-3 py-1.5 text-[11px] text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200">
-                {t("limitations")}
-            </p>
+            {/* Always mounted, so a status that appears later is announced;
+                visually present only when it has something to say. */}
+            <p role="status" data-agent-test-status className={statusText ? "px-3 py-2 text-xs font-medium" : "sr-only"}>{statusText}</p>
             <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3">
                 {turns.length === 0 && (
                     <div className="h-full flex flex-col items-center justify-center text-center text-sm text-muted-foreground gap-2 px-4">
@@ -120,6 +154,8 @@ export default function AgentTestChat({ tenantId, agentId, configurationRevision
                         <Send size={14} /> {t("send")}
                     </button>
                 </div>
+                {/* A footnote, not a warning: what a try does not do. */}
+                <p data-agent-test-footnote className="mt-2 text-[11px] text-muted-foreground">{t("limitations")}</p>
             </div>
         </div>
     );

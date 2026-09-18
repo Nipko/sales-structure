@@ -268,14 +268,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, []);
 
     /**
-     * Relee el día 0 con `/auth/me`, que ya devuelve los tres datos.
+     * Relee el día 0 con `/auth/me`, que ya devuelve los tres datos —y el
+     * correo confirmado, porque `/auth/me` es el usuario validado entero.
      *
      * Sin esto el panel se enteraba de la primera respuesta recién en la
      * próxima renovación de token (hasta 10 minutos): la dueña se escribía
      * desde su celular, su agente le contestaba y el panel seguía callado como
      * si nada. No es un sondeo: corre al abrir el panel y al volver a la
      * pestaña, con unos segundos de mínimo entre lecturas, y sólo mientras la
-     * cuenta sigue esperando su primera respuesta.
+     * cuenta sigue esperando su primera respuesta o su correo sin confirmar.
      */
     const lastFactsReadRef = useRef(0);
     const refreshDayZeroFacts = useCallback(async () => {
@@ -296,8 +297,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, [syncOnboardingFacts]);
 
     const inDayZero = isSessionInDayZero(user);
+    // El correo sin confirmar también pide la relectura al volver: el asistente
+    // niega Instagram, Messenger y Telegram mientras la sesión diga `false`, y
+    // quien confirmó desde el celular vuelve a esta pestaña, no la recarga. Sólo
+    // un `false` explícito: una sesión vieja sin el dato no bloquea nada.
+    const emailPending = user?.emailVerified === false;
     useEffect(() => {
-        if (isPublicPage || !inDayZero) return;
+        if (isPublicPage || !(inDayZero || emailPending)) return;
         void refreshDayZeroFacts();
         const onReturn = () => {
             if (document.visibilityState === "visible") void refreshDayZeroFacts();
@@ -308,7 +314,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             window.removeEventListener("focus", onReturn);
             document.removeEventListener("visibilitychange", onReturn);
         };
-    }, [inDayZero, isPublicPage, refreshDayZeroFacts]);
+    }, [inDayZero, emailPending, isPublicPage, refreshDayZeroFacts]);
+
+    /**
+     * Otra pestaña reescribió el usuario guardado —`/verify-email` lo hace al
+     * confirmar el correo—: esta pestaña toma lo que la mezcla permite, sin
+     * esperar una lectura. La mezcla descarta el usuario de otra persona o de
+     * otra cuenta, y un borrado (el cierre de sesión) no es un usuario: de eso
+     * se ocupa el canal de sesión.
+     */
+    useEffect(() => {
+        const onStorage = (event: StorageEvent) => {
+            if (event.key !== "user" || !event.newValue) return;
+            if (event.storageArea && event.storageArea !== window.localStorage) return;
+            try {
+                syncOnboardingFacts(JSON.parse(event.newValue));
+            } catch { /* un valor ilegible no es un dato */ }
+        };
+        window.addEventListener("storage", onStorage);
+        return () => window.removeEventListener("storage", onStorage);
+    }, [syncOnboardingFacts]);
 
     // ── Proactive token refresh ──
     useEffect(() => {

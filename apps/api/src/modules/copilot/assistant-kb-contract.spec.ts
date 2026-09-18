@@ -1118,6 +1118,256 @@ describe('Parallly Assist knowledge-base contract', () => {
     }
   });
 
+  it('names the price check by the panel label in every article that names it, never by its old name', () => {
+    /**
+     * H3 (sep-2026): `services_example_price` also counts services and plans with
+     * no price at all, so "Precios de ejemplo sin confirmar" became "Precios sin
+     * confirmar". Three articles per language name the warning; an owner who
+     * reads one name on screen and another in Assist asks which is which. The
+     * label is read from the dashboard messages and the old one is refused, so
+     * renaming it on either side alone goes red.
+     */
+    const oldLabel: Record<(typeof LOCALES)[number], string> = {
+      es: 'Precios de ejemplo sin confirmar',
+      en: 'Unconfirmed example prices',
+      pt: 'Preços de exemplo sem confirmar',
+      fr: "Prix d'exemple non confirmés",
+    };
+    for (const locale of LOCALES) {
+      const messages = JSON.parse(fs.readFileSync(path.join(dashboardMessagesRoot, `${locale}.json`), 'utf8'));
+      const label: unknown = messages?.agentQuality?.checks?.services_example_price;
+      expect(typeof label).toBe('string');
+      expect(label).not.toBe(oldLabel[locale]);
+      for (const id of ['citas-calendarios', 'centro-calidad-agente', 'herramientas-tipo-negocio']) {
+        const body = byLocale[locale].find((article) => article.id === id)!.body;
+        expect({ locale, id, named: body.includes(`**${label}**`), old: body.includes(`**${oldLabel[locale]}**`) })
+          .toEqual({ locale, id, named: true, old: false });
+      }
+      // Nor anywhere else, as a label: an article outside those three that
+      // quotes the warning would still teach its old name. (The plain words —
+      // "mientras queden precios de ejemplo sin confirmar" — describe the
+      // state and stay; the capitalised label is what an owner looks for.)
+      const stillOld = byLocale[locale]
+        .filter((article) => article.body.includes(oldLabel[locale]))
+        .map((article) => article.id);
+      expect({ locale, stillOld }).toEqual({ locale, stillOld: [] });
+    }
+  });
+
+  it('describes the day-0 wizard, Home and the public link the way the panel shows them now', () => {
+    /**
+     * Ola 7 (sep-2026). The connect step stopped being "Conecta WhatsApp": it
+     * asks where the customers write, orders the channels by the business
+     * recipe, and shows a channel outside the plan as "Incluido desde {plan}"
+     * before any window; Instagram, Messenger and Telegram ask for the
+     * confirmed email before the window too. Home dropped its "Retomar"
+     * banner: the setup card's channel step says "Continuar donde quedaste"
+     * with the reason from the WhatsApp question. The public link is for
+     * trying the agent and showing it, and offers the bio and the website
+     * only when the plan includes the web chat. The help still described the
+     * old wizard in four languages, so the labels are read from the dashboard
+     * messages and the old sentences are refused.
+     */
+    const stale: Record<(typeof LOCALES)[number], RegExp> = {
+      es: /WhatsApp primero|un aviso para retomar|siempre disponible|Las dos líneas para tu página web|cuando actives tu plan|Te recomendamos empezar por \*\*WhatsApp\*\*/i,
+      en: /WhatsApp first|a resume notice|always available|The two lines for your website|once you activate your plan|We recommend starting with \*\*WhatsApp\*\*/i,
+      pt: /WhatsApp primeiro|um aviso para retomar|sempre disponível|As duas linhas para o seu site|quando você ativar seu plano|Recomendamos começar pelo \*\*WhatsApp\*\*/i,
+      fr: /WhatsApp en premier|un avis pour reprendre|toujours disponible|Les deux lignes pour votre site|dès que vous activez votre forfait|Nous vous recommandons de commencer par \*\*WhatsApp\*\*/i,
+    };
+    // "Cambiar plantilla" is not on the day-0 wizard: the help may only name it
+    // together with the first real reply that brings it back.
+    const firstRealReply: Record<(typeof LOCALES)[number], string> = {
+      es: 'primera respuesta real',
+      en: 'first real reply',
+      pt: 'primeira resposta real',
+      fr: 'première vraie réponse',
+    };
+    const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    for (const locale of LOCALES) {
+      const messages = JSON.parse(fs.readFileSync(path.join(dashboardMessagesRoot, `${locale}.json`), 'utf8'));
+      const body = byLocale[locale].find((article) => article.id === 'primeros-pasos')!.body;
+      const includedFrom = String(messages?.setupWizard?.connect?.plan?.includedFrom ?? '');
+      expect(includedFrom).toContain('{plan}');
+      const triage = messages?.channels?.whatsapp?.triage ?? {};
+      const labels: unknown[] = [
+        messages?.setupWizard?.connectStep?.title,
+        includedFrom.replace('{plan}', '').trim(),
+        messages?.emailVerification?.resend,
+        messages?.emailVerification?.enterCode,
+        triage.question,
+        triage.answerOtherProviderTitle,
+        triage.answerNotAtHandTitle,
+        messages?.qualityHealth?.setup?.resume,
+        messages?.setupWizard?.demoLink?.bio,
+        messages?.setupWizard?.demoLink?.website,
+        messages?.setupWizard?.demoLink?.plans,
+        messages?.channels?.demoLink?.always,
+      ];
+      for (const label of labels) {
+        expect(typeof label).toBe('string');
+        expect({ locale, label, named: body.includes(`**${label}**`) }).toEqual({ locale, label, named: true });
+      }
+
+      const changeTemplate = String(messages?.setupWizard?.agentStep?.changeTemplate ?? '');
+      expect(changeTemplate).not.toBe('');
+      const afterFirstReply = new RegExp(`${escape(firstRealReply[locale])}[^.]{0,200}\\*\\*${escape(changeTemplate)}\\*\\*`, 'i');
+      expect({ locale, changeTemplateAfterFirstReply: afterFirstReply.test(body) })
+        .toEqual({ locale, changeTemplateAfterFirstReply: true });
+
+      expect({ locale, stale: body.match(stale[locale])?.[0] ?? null }).toEqual({ locale, stale: null });
+    }
+  });
+
+  it('describes the agent\'s link on the web chat article the way the card and the runtime treat it', () => {
+    /**
+     * F10 (sep-2026): the web chat article still said the link was only for
+     * testing, that it "no usa el cupo de chat web de tu plan", and sent the
+     * owner to an action ("Las dos líneas para tu página web") the card no
+     * longer has. On a plan with the web chat the same link is a real channel
+     * on the plan's quota with handoff; the card offers the bio and the
+     * website. The labels are read from the dashboard messages, so renaming
+     * one on either side goes red here.
+     */
+    const dead: Record<(typeof LOCALES)[number], RegExp> = {
+      es: /Las dos líneas para tu página web|no usa el cupo de chat web/i,
+      en: /The two lines for your website|doesn't use your plan's web chat allowance/i,
+      pt: /As duas linhas para o seu site|não usa o cupo de chat web/i,
+      fr: /Les deux lignes pour votre site|n'utilise pas le quota de chat web/i,
+    };
+    const realChannel: Record<(typeof LOCALES)[number], string> = {
+      es: 'canal real', en: 'real channel', pt: 'canal de verdade', fr: 'vrai canal',
+    };
+    const paused: Record<(typeof LOCALES)[number], RegExp> = {
+      es: /La plataforma puede pausar este enlace de prueba/,
+      en: /The platform can pause this trial link/,
+      pt: /A plataforma pode pausar esse link de teste/,
+      fr: /La plateforme peut mettre ce lien d'essai en pause/,
+    };
+    for (const locale of LOCALES) {
+      const messages = JSON.parse(fs.readFileSync(path.join(dashboardMessagesRoot, `${locale}.json`), 'utf8'));
+      const body = byLocale[locale].find((article) => article.id === 'canales-email-widget')!.body;
+      expect({ locale, dead: body.match(dead[locale])?.[0] ?? null }).toEqual({ locale, dead: null });
+      for (const label of [messages?.setupWizard?.demoLink?.bio, messages?.setupWizard?.demoLink?.website]) {
+        expect(typeof label).toBe('string');
+        expect({ locale, label, named: body.includes(`**${label}**`) }).toEqual({ locale, label, named: true });
+      }
+      expect({ locale, realChannel: body.includes(`**${realChannel[locale]}**`) }).toEqual({ locale, realChannel: true });
+      expect({ locale, paused: paused[locale].test(body) }).toEqual({ locale, paused: true });
+    }
+  });
+
+  it('never tells an owner that testing the agent is free', () => {
+    /**
+     * F16 (sep-2026): the agents article said the test chat runs "sin ...
+     * gastar mensajes". Every reply in the panel's test reserves one of the
+     * plan's AI messages (`AgentTestService` -> `reserveAiMessageCount`), and
+     * the test stops answering when they run out. Assist quoted the old
+     * sentence to owners who then burned their quota believing it was free.
+     */
+    const free: Record<(typeof LOCALES)[number], RegExp> = {
+      es: /gastar mensajes|sin gastar|no consume (?:mensajes|cupo|cuota)|prueba[^.]{0,80}gratis/i,
+      en: /spending messages|without spending|does(?:n't| not) (?:use|consume) (?:messages|quota)|test[^.]{0,80}\bfree\b/i,
+      pt: /gastar mensagens|sem gastar|não consome (?:mensagens|cota)|teste[^.]{0,80}grátis/i,
+      fr: /consommer de messages|sans consommer|sans dépenser|test[^.]{0,80}gratuit/i,
+    };
+    const counts: Record<(typeof LOCALES)[number], string> = {
+      es: 'cada respuesta cuenta para los mensajes de IA de tu plan',
+      en: "count toward your plan's AI messages",
+      pt: 'cada resposta conta para as mensagens de IA do seu plano',
+      fr: 'chaque réponse compte dans les messages IA de votre forfait',
+    };
+    for (const locale of LOCALES) {
+      for (const id of ['agentes-ia', 'probar-agente', 'primeros-pasos']) {
+        const body = byLocale[locale].find((article) => article.id === id)!.body;
+        expect({ locale, id, free: body.match(free[locale])?.[0] ?? null }).toEqual({ locale, id, free: null });
+      }
+      const agents = byLocale[locale].find((article) => article.id === 'agentes-ia')!.body;
+      expect({ locale, counts: agents.includes(counts[locale]) }).toEqual({ locale, counts: true });
+    }
+  });
+
+  it('names every quality status, and the Assist controls in the editor, as the panel does', () => {
+    /**
+     * H3 (sep-2026): two statuses were renamed out of jargon ("piloto",
+     * "revisión"), the Assist review card's button now says what it does in the
+     * default mode ("Guardar y aplicar"), and the editor gained "Dime qué
+     * cambiar". Assist quotes these labels to owners; read from the dashboard
+     * messages so the help cannot keep a name the screen dropped.
+     */
+    for (const locale of LOCALES) {
+      const messages = JSON.parse(fs.readFileSync(path.join(dashboardMessagesRoot, `${locale}.json`), 'utf8'));
+      const quality = byLocale[locale].find((article) => article.id === 'centro-calidad-agente')!.body;
+      const statuses = Object.entries(messages?.agentQuality?.statuses ?? {}) as Array<[string, { title?: unknown }]>;
+      expect(statuses.length).toBe(6);
+      for (const [status, copy] of statuses) {
+        expect(typeof copy.title).toBe('string');
+        expect({ locale, status, named: quality.includes(`**${copy.title}`) }).toEqual({ locale, status, named: true });
+      }
+      const agents = byLocale[locale].find((article) => article.id === 'agentes-ia')!.body;
+      for (const label of [messages?.agentDraft?.saveLive, messages?.agentDraft?.save, messages?.agent?.askAssist?.label]) {
+        expect(typeof label).toBe('string');
+        expect({ locale, label, named: agents.includes(`**${label}**`) }).toEqual({ locale, label, named: true });
+      }
+    }
+  });
+
+  it('describes Agent health with the words the screen shows, never "bloqueo crítico" or "acción crítica"', () => {
+    /**
+     * Ola 7 (sep-2026): the quality banner stopped saying "bloqueo crítico" /
+     * "acción crítica" to owners. The global banner reads "Hay algo importante
+     * que resolver en tus agentes.", the agent editor counts "Queda 1 cosa
+     * importante por resolver." and the Home card "Nada importante por
+     * resolver". The help still sent Assist to quote the retired names, so an
+     * owner was told to look for a "bloqueo crítico" no screen shows. The
+     * labels are read from the dashboard messages: rename one on either side
+     * and this goes red. "Versión operativa" is not refused here: the reviewed
+     * mode still shows it on screen.
+     */
+    const retired: Record<(typeof LOCALES)[number], RegExp> = {
+      es: /bloqueos? cr[ií]tic|acci[oó]n(?:es)? cr[ií]tic/i,
+      en: /critical[- ]blockers?|critical[- ]actions?|critical agent action/i,
+      pt: /bloqueios? cr[ií]tic|\ba[çc][ãa]o cr[ií]tic|\ba[çc][õo]es cr[ií]tic/i,
+      fr: /blocages? critiques?|\bactions? critiques?/i,
+    };
+    expect('aparece como bloqueo crítico en Salud de agentes').toMatch(retired.es);
+    expect('"acciones criticas"').toMatch(retired.es);
+    expect('treats it as a critical agent action').toMatch(retired.en);
+    expect('trata como ação\n  crítica do agente'.replace(/\s+/g, ' ')).toMatch(retired.pt);
+    expect('a avaliação crítica e as recomendações Críticas').not.toMatch(retired.pt);
+    expect('la traite comme une action critique').toMatch(retired.fr);
+    // ICU `{count, plural, one {…} other {…}}` in its "one" form, as the screen shows it for 1.
+    const one = (message: unknown) => String(message ?? '')
+      .replace(/\{count, plural, one \{([^{}]*)\} other \{[^{}]*\}\}/, (_all, form: string) => form.replace('#', '1'));
+
+    for (const locale of LOCALES) {
+      const messages = JSON.parse(fs.readFileSync(path.join(dashboardMessagesRoot, `${locale}.json`), 'utf8'));
+      const health = messages?.qualityHealth ?? {};
+      const checks = messages?.agentQuality?.checks ?? {};
+      const blockers = one(messages?.agentQuality?.banner?.blockers);
+      expect(blockers).toMatch(/\b1\b/);
+      const articles = new Map(byLocale[locale].map((article) => [article.id, article]));
+      const named: Record<string, unknown[]> = {
+        'centro-calidad-agente': [health.bannerCritical, health.bannerAtRisk, health.noPriorityActions, blockers],
+        'primeros-pasos': [health.bannerCritical],
+        'canales-whatsapp': [checks.channel_connection],
+        'agentes-ia': [checks.agent_active, checks.fallback_message, checks.handoff_triggers],
+      };
+      for (const [id, labels] of Object.entries(named)) {
+        const body = articles.get(id)!.body;
+        for (const label of labels) {
+          expect(typeof label).toBe('string');
+          expect({ locale, id, label, named: body.includes(`**${label}**`) }).toEqual({ locale, id, label, named: true });
+        }
+      }
+
+      // Keywords included: Assist retrieves by them, and they are the owner's words too.
+      const offences = byLocale[locale].flatMap((article) => (article.raw.replace(/\s+/g, ' ').match(new RegExp(retired[locale].source, 'gi')) ?? [])
+        .map((hit) => `${path.basename(article.file)}: ${hit}`));
+      expect({ locale, offences }).toEqual({ locale, offences: [] });
+    }
+  });
+
   it('says what the signup warning says about a number Meta did not register', () => {
     /**
      * Ola 6 (sep-2026): Embedded Signup reports a real registration failure as

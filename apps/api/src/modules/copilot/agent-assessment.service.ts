@@ -51,6 +51,89 @@ export function setupTaskStatus(checks: AgentQualityCheck[]): AgentSetupTask['st
     return checks.every(check => check.status === 'not_applicable') ? 'not_applicable' : 'pass';
 }
 
+/**
+ * The channel types a customer can write through, the same set Calidad counts
+ * as connections (`OPERATIONAL_CHANNELS` in agent-quality.service.ts).
+ */
+const OPERATIONAL_CONNECTION_TYPES = ['whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget'];
+
+/**
+ * The channel task of an account with NO connection at all (audit #51).
+ *
+ * The agent is born with no channel assigned, so on a brand-new account
+ * `channel_assignment` is the first check that fails, and the task said
+ * "Asignar un canal conectado" and pointed at the agent editor — to assign a
+ * channel that does not exist, four screens away from the WhatsApp question
+ * that would create one. With zero connections the only true next step is to
+ * connect one, whichever of the two checks reported the gap:
+ * `channel_assignment` (nothing assigned; since Ola 6 it passes as soon as the
+ * default agent answers any connection by fallback, so on the default agent
+ * it only fails with nothing to answer) or `channel_connection` (assigned, but
+ * nothing connected).
+ *
+ * Status and state are untouched: the checks said the truth; what was wrong
+ * was the step they were turned into. `pendingCheckCode` moves to
+ * `channel_connection` because that is the check "connect" repairs, and the
+ * label every surface derives from it (`setupTaskLabelKey`) says so.
+ * Anything else — an unsupported assignment, a connection nobody answers, a
+ * count nobody could read — keeps its own diagnosis.
+ */
+export function connectFirstChannelTask(
+    task: AgentSetupTask,
+    operationalConnections: number | null,
+): AgentSetupTask {
+    if (task.key !== 'channel' || task.status !== 'fail' || operationalConnections !== 0) return task;
+    if (task.pendingCheckCode !== 'channel_assignment' && task.pendingCheckCode !== 'channel_connection') return task;
+    const whatsapp = task.channelType === undefined || task.channelType === 'whatsapp';
+    return {
+        ...task,
+        ...(task.checks.some(check => check.code === 'channel_connection') ? { pendingCheckCode: 'channel_connection' } : {}),
+        // WhatsApp is where most owners start, and its screen opens on the one
+        // question that picks the route. Another preferred channel keeps the
+        // channel list, where that channel's card is.
+        href: whatsapp ? '/admin/channels/whatsapp' : '/admin/channels',
+        tourId: whatsapp ? 'first_channel_whatsapp' : 'connect_channel',
+        channelType: whatsapp ? 'whatsapp' : task.channelType,
+    };
+}
+
+const SETUP_TOUR_CHANNELS = ['whatsapp', 'instagram', 'messenger', 'telegram', 'web_chat'];
+
+/**
+ * The channel the channel task speaks about: the one its tour walks and its
+ * repair screen opens (F17/F6).
+ *
+ * The wizard's order (`settings.setupWizardChannels`) answers "which channel
+ * do I connect FIRST", so it leads only while the account is known to have NO
+ * operational connection. From the first connection on, the agent's own
+ * channels lead and the order is only a fallback. The wizard saves that order
+ * on every stage save, so letting it lead forever told an owner whose
+ * WhatsApp broke to repair Instagram, with the Instagram tour.
+ *
+ * Decided on the connection count, not on "the agent has assignments":
+ *  - a legacy agent was seeded with all five channels, so its assignments say
+ *    nothing about what to connect first; with nothing connected the owner's
+ *    answer in the wizard is still the right first channel;
+ *  - a D16 agent is born with none, and connecting a channel is what assigns
+ *    it (`bindDefaultAgentToChannel`), so once something is connected its
+ *    assignments are the real channels.
+ * A count nobody could read (`null`) is never zero, so it keeps the agent's
+ * channels first, the same rule `connectFirstChannelTask` applies.
+ *
+ * The tour contract names the embedded surface `web_chat`; the runtime
+ * channel list names it `web_widget`. Both spellings come from the one alias
+ * contract rather than from a ternary written here.
+ */
+export function preferredSetupChannel(
+    wizardOrder: readonly string[],
+    assigned: readonly string[],
+    operationalConnections: number | null,
+): AgentSetupTask['channelType'] {
+    const ordered = operationalConnections === 0 ? [...wizardOrder, ...assigned] : [...assigned, ...wizardOrder];
+    return ordered.map(aliasedChannelSpelling)
+        .find(channel => SETUP_TOUR_CHANNELS.includes(channel)) as AgentSetupTask['channelType'];
+}
+
 /** Shared assessment, built from the same capability composer that runs the agent. */
 @Injectable()
 export class AgentAssessmentService {
@@ -169,6 +252,31 @@ export class AgentAssessmentService {
         } catch { return { runs: [], readable: false }; }
     }
 
+    /**
+     * How many connections can carry a customer's message to this tenant at
+     * all, counted like Calidad counts them: active `channel_accounts` of an
+     * operational type plus the business's own active web chats. The public
+     * demo link (`is_demo`) is not a connection. `null` when it could not be
+     * read — which is never "zero", and never turns a task into "connect".
+     */
+    private async operationalConnectionCount(tenantId: string): Promise<number | null> {
+        try {
+            const rows = (await this.prisma.$queryRawUnsafe(
+                `SELECT (SELECT COUNT(*)::int FROM public.channel_accounts
+                          WHERE tenant_id = $1::uuid AND is_active = true
+                            AND channel_type = ANY($2::text[]))
+                      + (SELECT COUNT(*)::int FROM public.widget_configs
+                          WHERE tenant_id = $1::uuid AND is_active = true
+                            AND COALESCE(is_demo, false) = false) AS c`,
+                tenantId, OPERATIONAL_CONNECTION_TYPES,
+            )) as Array<{ c?: unknown }>;
+            const count = Number(rows?.[0]?.c);
+            return Number.isInteger(count) && count >= 0 ? count : null;
+        } catch {
+            return null;
+        }
+    }
+
     async getAssessment(tenantId: string, agentId?: string, attempt = 0): Promise<AgentAssessment> {
         const schema = await this.prisma.getTenantSchemaName(tenantId);
         if (!schema) throw new NotFoundException('Tenant not found');
@@ -188,12 +296,7 @@ export class AgentAssessmentService {
         const config = agent.config_json ?? {};
         const domain = buildDomainContractDraft(industry, subType);
         const assigned = [...new Set<string>([...strings(agent.channels), ...strings(agent.channel_bindings).map(binding => binding.split(':')[0])])];
-        // The tour contract names the embedded surface `web_chat`; the runtime
-        // channel list names it `web_widget`. Both spellings come from the one
-        // alias contract rather than from a ternary written here.
-        const preferredChannel = [...strings(settings.setupWizardChannels), ...assigned].map(aliasedChannelSpelling)
-            .find(channel => ['whatsapp', 'instagram', 'messenger', 'telegram', 'web_chat'].includes(channel)) as AgentSetupTask['channelType'];
-        const [overview, channels] = await Promise.all([
+        const [overview, channels, operationalConnections] = await Promise.all([
             this.quality.getOverview(tenantId, agent.id),
             Promise.all((assigned.length ? assigned : [null]).map(async channelType => {
                 const scope = channelType ? 'assigned' as const : 'preview' as const;
@@ -203,7 +306,10 @@ export class AgentAssessmentService {
                     return { channelType, scope, status: result.contract ? 'known' as const : 'unavailable' as const, contract: result.contract };
                 } catch { return { channelType, scope, status: 'unavailable' as const, contract: null }; }
             })),
+            this.operationalConnectionCount(tenantId),
         ]);
+        // The wizard's order only picks the channel while nothing is connected.
+        const preferredChannel = preferredSetupChannel(strings(settings.setupWizardChannels), assigned, operationalConnections);
         const current = await this.prisma.executeInTenantSchema<any[]>(schema, 'SELECT version FROM agent_personas WHERE id = $1::uuid', [agent.id]);
         if (Number(agent.version) !== overview.agent.version || Number(current[0]?.version) !== overview.agent.version) {
             if (attempt === 0) return this.getAssessment(tenantId, agent.id, 1);
@@ -264,7 +370,7 @@ export class AgentAssessmentService {
             if (key === 'appointments' && relevant.every(check => check.status === 'not_applicable')) continue;
             const taskStatus = setupTaskStatus(relevant);
             const firstPending = relevant.find(check => check.status === taskStatus && ['fail', 'warning', 'unknown'].includes(check.status));
-            tasks.push(withState({ key: key as AgentSetupTask['key'], status: taskStatus, checks: relevant,
+            tasks.push(connectFirstChannelTask(withState({ key: key as AgentSetupTask['key'], status: taskStatus, checks: relevant,
                 ...(firstPending ? { pendingCheckCode: firstPending.code } : {}),
                 ...defaults[key], href: firstPending?.href ?? defaults[key].href,
                 // `whatsapp_delivery` has no tour: its fixes live on the WhatsApp
@@ -274,7 +380,7 @@ export class AgentAssessmentService {
                 tourId: firstPending?.status === 'unknown' || firstPending?.code === 'test_drive_permissions'
                     || firstPending?.code === 'whatsapp_delivery'
                     ? null : findGuidedTourForQualityCode(firstPending?.code, firstPending?.evidence)?.id ?? defaults[key].tourId,
-                ...(key === 'channel' ? { channelType: preferredChannel } : {}) }));
+                ...(key === 'channel' ? { channelType: preferredChannel } : {}) }), operationalConnections));
         }
         const catalog = getVerticalCatalog(industry, subType);
         if (catalog) {

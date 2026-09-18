@@ -151,8 +151,8 @@ export function commitmentReviewResult(family: string, current: CommitmentPropos
         retryable: false,
         requiresConfirmation: true,
         proposal: current,
-        message: 'Los términos cambiaron desde que se los mostraste. Volvé a leer el detalle exacto '
-            + '—recurso, fechas, precio, moneda y condiciones— y pedí una confirmación nueva. '
+        message: 'Los términos cambiaron desde que se los mostraste. Vuelve a leer el detalle exacto '
+            + '—recurso, fechas, precio, moneda y condiciones— y pide una confirmación nueva. '
             + 'No se creó, canceló ni cobró nada.',
     };
 }

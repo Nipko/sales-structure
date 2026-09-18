@@ -1,6 +1,7 @@
 import { WidgetMessageStore } from './widget-message-store.service';
 import { DemoAllowanceService } from '../throttle/demo-allowance.service';
-import { demoDailyCapText, widgetRateLimitedText } from './widget-demo-link';
+import { TenantThrottleService } from '../throttle/tenant-throttle.service';
+import { demoDailyCapText, isTrialLink, widgetRateLimitedText } from './widget-demo-link';
 import { widgetPublicMessage } from './widget-message-protocol';
 import { WsRelayService } from '../redis/ws-relay.service';
 import { Interval } from '@nestjs/schedule';
@@ -52,7 +53,22 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect, 
         @Optional() private readonly messages?: WidgetMessageStore,
         @Optional() private readonly relay?: WsRelayService,
         @Optional() private readonly demoAllowance?: DemoAllowanceService,
+        // Decides, per turn, whether the public link is still a trial (the
+        // plan does not include the web chat) or already a real channel.
+        // Optional for the hand-built harnesses; without it every link turn
+        // stays in the capped trial lane, never the other way around.
+        @Optional() private readonly throttle?: TenantThrottleService,
     ) {}
+
+    /**
+     * D11/D19: the public link ("El enlace de {Nombre}") is a TRIAL only while
+     * the tenant's plan does not include the web chat (`isTrialLink`). Read on
+     * every turn, so a plan change applies to the next message without
+     * reconnecting.
+     */
+    private isTrialLinkTurn(session: any): Promise<boolean> {
+        return isTrialLink(session, this.throttle);
+    }
 
     afterInit():void {
         if (!this.server) return;
@@ -281,9 +297,12 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect, 
         // abuse: the visitor keeps the socket and sees why the chat stopped.
         // The session already proved the tenant may serve this widget (plan or
         // allowance). Here the only demo-specific rule left is the daily cap of
-        // the public page.
+        // the public page — and only while the link is a trial: on a plan that
+        // includes the web chat it is the business's real channel (the one in
+        // its Instagram bio), and the plan's own quota is what bounds it.
         const demo = session.is_demo === true;
-        if (demo) {
+        const trialTurn = await this.isTrialLinkTurn(session);
+        if (trialTurn) {
             const allowance = await this.demoAllowance?.get();
             const daily = await this.rateLimit.consumeDemoDaily({ widgetId: session.widget_id, limit: allowance?.dailyCapPerPage ?? 60 });
             if (!daily.allowed) {
@@ -313,7 +332,7 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect, 
 
         await this.streamAssistantReply(
             client, tenantId, schemaName, conversationId, contactId, data.content,
-            received.messageId, demo,
+            received.messageId, { demo, trialTurn },
         );
     }
 
@@ -332,8 +351,11 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect, 
         contactId: string,
         text: string,
         inboundMessageId?: string,
-        demo = (client as any).widgetSession?.is_demo === true,
+        turn?: { demo: boolean; trialTurn: boolean },
     ): Promise<void> {
+        const session = (client as any).widgetSession;
+        const demo = turn?.demo ?? session?.is_demo === true;
+        const trialTurn = turn?.trialTurn ?? await this.isTrialLinkTurn(session);
         client.emit('widget:typing', { isTyping: true });
         try {
             const receipt = await this.conversations.processWidgetMessage(
@@ -341,12 +363,18 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect, 
                 {
                     inboundMessageId,
                     channelAccountId: (client as any).widgetSession?.widget_id,
-                    // A demo visitor never lands in the human inbox: the page
+                    // A TRIAL visitor never lands in the human inbox: the page
                     // exists to show the agent, not to page the owner's team.
-                    allowHumanHandoff: !demo && hasWidgetCapability(
+                    // On a plan with the web chat the link is the business's
+                    // real channel, and "En este canal todavía no puedo
+                    // transferirte a una persona" would be said to a customer.
+                    allowHumanHandoff: !trialTurn && hasWidgetCapability(
                         (client as any).widgetCapabilities as WidgetCapabilitySnapshot | undefined,
                         'human_handoff',
                     ),
+                    // The widget row's own mark, never the URL. The core
+                    // derives the quota lane from it with the same predicate as
+                    // `isTrialLinkTurn`, and keeps the link out of activation.
                     demo,
                 },
             );

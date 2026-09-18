@@ -24,9 +24,14 @@ Se sua organização precisa integrar e-mail, peça uma avaliação técnica ao 
 
 ### O link do seu agente e o chat web do seu site
 
-O **link do seu agente** (a página pública que você vê no assistente de configuração, com endereço começando em `/w/` seguido de um identificador) serve para testar seu agente e mostrá-lo a alguém antes de conectar qualquer canal. Não é a mesma coisa que o chat web desta tela: não conta como canal conectado e não usa o cupo de chat web do seu plano, mesmo que as conversas que ele recebe apareçam na sua caixa de entrada como qualquer conversa de chat web.
+O **link do seu agente** (a página pública que você vê no assistente de configuração, com endereço começando em `/w/` seguido de um identificador) existe desde o dia 0, antes de conectar qualquer canal. O que ele é depende do seu plano:
 
-O **chat web que você instala no seu site** (o widget desta tela) conta como canal conectado e usa a função de chat web do seu plano. Os dois compartilham a mesma família de código de duas linhas: o que você copia aqui com **Copiar código** é o mesmo tipo de trecho que a ação **As duas linhas para o seu site** gera a partir do link do seu agente, para você enviar a quem cuida do seu site.
+- **Se o seu plano não inclui o chat web**, ele serve para **testar seu agente e mostrá-lo a alguém**: a plataforma paga as mensagens até um limite por conta, cada página tem um teto de mensagens por dia e a conversa nunca passa para uma pessoa. A plataforma pode pausar esse link de teste: enquanto ele está pausado, ou quando o limite se esgota, seu agente não responde por ele.
+- **Se o seu plano inclui o chat web**, esse mesmo link é um **canal de verdade**: atende seus clientes com a cota do seu plano, sem o teto diário do teste, e pode passar a conversa para a sua equipe quando o cliente pede uma pessoa. Então o cartão do link ganha **Colocar na minha bio** e **Colocar no meu site**.
+
+Nos dois casos, as conversas que ele recebe aparecem na sua caixa de entrada como qualquer conversa de chat web, e o link não conta como canal conectado: não se conecta nem se desconecta.
+
+O **chat web que você instala no seu site** (o widget desta tela) conta como canal conectado e usa a função de chat web do seu plano. Para colocá-lo no seu site, copie as duas linhas dele com **Copiar código** e envie para quem cuida do seu site; **Colocar no meu site**, no cartão do link, traz você a esta mesma tela.
 
 ---
 

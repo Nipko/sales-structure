@@ -80,13 +80,13 @@ export const READINESS: Readonly<Partial<Record<VerticalReadinessKey, ReadinessD
     business_identity: {
         table: 'companies',
         where: `is_primary = true AND name IS NOT NULL AND name <> ''`,
-        repair: 'Completá los datos del negocio para que el agente sepa a quién representa.',
+        repair: 'Completa los datos del negocio para que el agente sepa a quién representa.',
         repairRoute: '/admin/settings/business-info',
     },
     faq_content: {
         table: 'faqs',
         where: 'is_published = true',
-        repair: 'Cargá al menos una pregunta frecuente.',
+        repair: 'Carga al menos una pregunta frecuente.',
         repairRoute: '/admin/knowledge/faqs',
     },
     appointment_services: {
@@ -113,43 +113,43 @@ export const READINESS: Readonly<Partial<Record<VerticalReadinessKey, ReadinessD
                   END BETWEEN 1 AND 1440
             )`,
         params: ({ schemaName }) => [schemaName],
-        repair: 'Creá un servicio agendable válido y al menos un horario para un colaborador activo.',
+        repair: 'Crea un servicio agendable válido y al menos un horario para un colaborador activo.',
         repairRoute: '/admin/appointments/config',
     },
     catalog_items: {
         table: 'products',
         where: 'is_available = true',
-        repair: 'Cargá al menos un producto disponible en el catálogo.',
+        repair: 'Carga al menos un producto disponible en el catálogo.',
         repairRoute: '/admin/inventory',
     },
     listings: {
         table: 'real_estate_listings',
         where: `is_active = true AND status = 'available'`,
-        repair: 'Publicá al menos un inmueble disponible.',
+        repair: 'Agrega al menos un inmueble disponible.',
         repairRoute: '/admin/listings',
     },
     menu_items: {
         table: 'menu_items',
         where: 'is_active = true AND is_available = true',
-        repair: 'Cargá el menú: sin platos disponibles el agente no puede tomar pedidos.',
+        repair: 'Carga el menú: sin platos disponibles el agente no puede tomar pedidos.',
         repairRoute: '/admin/menu',
     },
     vehicle_inventory: {
         table: 'vehicles',
         where: `status = 'available'`,
-        repair: 'Cargá al menos un vehículo disponible en el inventario.',
+        repair: 'Carga al menos un vehículo disponible en el inventario.',
         repairRoute: '/admin/vehicles',
     },
     tour_packages: {
         table: 'tour_packages',
         where: 'is_active = true',
-        repair: 'Creá al menos un tour o paquete activo.',
+        repair: 'Crea al menos un tour o paquete activo.',
         repairRoute: '/admin/tours',
     },
     properties: {
         table: 'properties',
         where: 'is_active = true AND night_price IS NOT NULL AND night_price > 0',
-        repair: 'Cargá al menos un alojamiento activo con su tarifa.',
+        repair: 'Carga al menos un alojamiento activo con su tarifa.',
         repairRoute: '/admin/properties',
     },
     courses: {
@@ -161,38 +161,38 @@ export const READINESS: Readonly<Partial<Record<VerticalReadinessKey, ReadinessD
             AND cohort.starts_at <= CURRENT_DATE + INTERVAL '180 days'
             AND cohort.max_capacity >= 1
             AND cohort.available_seats BETWEEN 0 AND cohort.max_capacity`,
-        repair: 'Publicá un curso con un cohorte abierto o con lista de espera dentro de los próximos 180 días.',
+        repair: 'Activa un curso con una cohorte abierta o con lista de espera dentro de los próximos 180 días.',
         repairRoute: '/admin/courses',
     },
     pets: {
         table: 'services',
         where: 'is_active = true',
-        repair: 'Definí los servicios que ofrecés para poder agendarlos.',
+        repair: 'Define los servicios que ofreces para poder agendarlos.',
         repairRoute: '/admin/appointments/config',
     },
     membership_plans: {
         table: 'membership_plans',
         where: 'is_active = true',
-        repair: 'Creá al menos un plan de membresía.',
+        repair: 'Crea al menos un plan de membresía.',
         repairRoute: '/admin/memberships',
     },
     insurance_plans: {
         table: 'insurance_plans',
         where: `is_active = true AND monthly_premium_min IS NOT NULL
             AND monthly_premium_min > 0 AND currency IS NOT NULL AND currency <> ''`,
-        repair: 'Cargá al menos un plan de seguro cotizable.',
+        repair: 'Carga al menos un plan de seguro cotizable.',
         repairRoute: '/admin/insurance',
     },
     service_catalog: {
         table: 'services',
         where: 'is_active = true',
-        repair: 'Definí los servicios que despachás, con su duración y precio.',
+        repair: 'Define los servicios que despachas, con su duración y precio.',
         repairRoute: '/admin/service-catalog',
     },
     photo_sessions: {
         table: 'services',
         where: 'is_active = true',
-        repair: 'Sembrá tus paquetes fotográficos: sin ellos el agente no puede ofrecer nada.',
+        repair: 'Crea tus paquetes fotográficos: sin ellos el agente no puede ofrecer nada.',
         // No `/admin/appointments/config`: un estudio de fotos no tiene Agenda
         // en su menú, así que el CTA de reparación llevaba a una pantalla que
         // el dueño no ve.
@@ -206,7 +206,7 @@ export const READINESS: Readonly<Partial<Record<VerticalReadinessKey, ReadinessD
         where: `is_active = true
             AND translate(lower(category), 'áéíóúü', 'aeiouu') IN ('guarderia', 'hotel')
             AND COALESCE(max_concurrent, 0) >= 1`,
-        repair: 'Configurá el servicio de guardería u hotel con su capacidad simultánea.',
+        repair: 'Configura el servicio de guardería u hotel con su capacidad simultánea.',
         repairRoute: '/admin/service-catalog',
     },
 });

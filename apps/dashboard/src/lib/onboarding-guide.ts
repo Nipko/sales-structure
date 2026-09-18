@@ -4,6 +4,10 @@ import {
   type OnboardingGuide,
   type OnboardingStage,
 } from "@parallext/shared";
+import {
+  readRecordedTriage,
+  type RecordedWhatsAppTriage,
+} from "@/app/admin/channels/whatsapp/whatsapp-triage";
 
 /**
  * Onboarding guidance — the dashboard half of
@@ -40,6 +44,39 @@ export interface SetupStatusDemoLink {
    */
   path: string;
   agentName: string;
+  /**
+   * Whether the agent answers on the link TODAY. On a plan without the web
+   * chat the link is a trial the platform pays, and it stops answering when
+   * the platform switches that trial off or the account used its free
+   * replies. An older API that does not send the field is read as `true`:
+   * that is what the link did when the field did not exist.
+   */
+  answers: boolean;
+  /** Why it does not answer; `null` while it does, or when the API gave no reason. */
+  unavailableReason: SetupStatusDemoLinkUnavailableReason | null;
+}
+
+/** `demoLink.unavailableReason` as setup-status sends it. */
+export type SetupStatusDemoLinkUnavailableReason = "switched_off" | "allowance_used";
+
+const DEMO_LINK_UNAVAILABLE_REASONS: readonly SetupStatusDemoLinkUnavailableReason[] = ["switched_off", "allowance_used"];
+
+/**
+ * What a screen says instead of "{Nombre} ya responde por su enlace", or
+ * `null` when that sentence is true.
+ *
+ * Four screens told the owner the agent answers on its link — the wizard's
+ * "Listo" and connect step, the agent editor and the Channels card — and every
+ * one of them has to stop saying it, and stop offering to open or share the
+ * link, once it no longer answers. `switchedOff` also covers a pause the API
+ * did not explain: "en pausa" is true of both, "ya usó sus respuestas gratis"
+ * only of one.
+ */
+export type DemoLinkPause = "switchedOff" | "allowanceUsed";
+
+export function demoLinkPause(link: SetupStatusDemoLink | null | undefined): DemoLinkPause | null {
+  if (!link || link.answers) return null;
+  return link.unavailableReason === "allowance_used" ? "allowanceUsed" : "switchedOff";
 }
 
 export interface SetupStatusFacts {
@@ -60,6 +97,14 @@ export interface SetupStatusFacts {
   timezone: string | null;
   /** The agent's public link; `null` until the API has provisioned one (or on an older API). */
   demoLink: SetupStatusDemoLink | null;
+  /**
+   * What the owner answered to "¿Dónde vive hoy tu número?", as the account
+   * recorded it (`whatsappTriage: { answerId, recordedAt } | null`). Validated
+   * by the WhatsApp screen's own reader, so the screen that asks and the Home
+   * that reminds cannot disagree about what counts as an answer. `null` = no
+   * answer, an older API, or a value that is not one of today's answers.
+   */
+  whatsappTriage: RecordedWhatsAppTriage | null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -101,7 +146,16 @@ function readDemoLink(value: unknown): SetupStatusDemoLink | null {
   const widgetId = optionalString(value.widgetId);
   const path = optionalString(value.path);
   if (!widgetId || !path || !path.startsWith("/") || path.startsWith("//")) return null;
-  return { widgetId, path, agentName: optionalString(value.agentName) ?? "" };
+  // Only an explicit `false` pauses it: a missing field is an older API.
+  const answers = value.answers !== false;
+  const reason = DEMO_LINK_UNAVAILABLE_REASONS.find((candidate) => candidate === value.unavailableReason) ?? null;
+  return {
+    widgetId,
+    path,
+    agentName: optionalString(value.agentName) ?? "",
+    answers,
+    unavailableReason: answers ? null : reason,
+  };
 }
 
 function readChannelTypes(value: unknown): string[] {
@@ -134,6 +188,7 @@ export function readSetupStatusFacts(response: unknown): SetupStatusFacts | null
     defaultAgentTemplateId: optionalString(data.defaultAgentTemplateId),
     timezone: optionalString(data.timezone),
     demoLink: readDemoLink(data.demoLink),
+    whatsappTriage: readRecordedTriage(data.whatsappTriage),
   };
 }
 

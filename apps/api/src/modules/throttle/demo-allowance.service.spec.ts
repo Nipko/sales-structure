@@ -1,7 +1,11 @@
+import { ServiceUnavailableException } from '@nestjs/common';
 import {
     DEMO_ALLOWANCE_DEFAULTS,
+    DEMO_ALLOWANCE_LIMITS,
     DEMO_ALLOWANCE_SETTINGS_KEY,
+    DEMO_ALLOWANCE_UNREADABLE,
     DemoAllowanceService,
+    validateDemoAllowancePatch,
 } from './demo-allowance.service';
 
 /**
@@ -19,6 +23,8 @@ type BuildOptions = {
     cached?: any;
     prismaFails?: boolean;
     redisFails?: boolean;
+    /** The cache read works but Redis refuses to keep a value. */
+    cacheWriteFails?: boolean;
 };
 
 const build = (opts: BuildOptions = {}) => {
@@ -36,7 +42,10 @@ const build = (opts: BuildOptions = {}) => {
             if (opts.redisFails) throw new Error('redis down');
             return opts.cached ?? null;
         }),
-        setJson: jest.fn(async () => undefined),
+        setJson: jest.fn(async () => {
+            if (opts.cacheWriteFails) throw new Error('redis refused the write');
+            return undefined;
+        }),
     };
     return { service: new DemoAllowanceService(prisma as any, redis as any), prisma, redis };
 };
@@ -149,9 +158,18 @@ describe('DemoAllowanceService', () => {
             expect(redis.setJson).not.toHaveBeenCalled();
         });
 
-        it('never throws when redis fails either', async () => {
-            const { service } = build({ redisFails: true, stored: { messagesPerTenant: 5 } });
-            await expect(service.get()).resolves.toEqual(DEMO_ALLOWANCE_DEFAULTS);
+        it('never throws when redis fails either, and reads the row instead of inventing the defaults', async () => {
+            // An unreachable cache is a miss: the database is the source of
+            // truth. Answering the defaults here switched a platform-disabled
+            // demo back on for as long as Redis was down.
+            const { service, prisma } = build({ redisFails: true, stored: { messagesPerTenant: 5 } });
+            await expect(service.get()).resolves.toEqual({ ...DEMO_ALLOWANCE_DEFAULTS, messagesPerTenant: 5 });
+            expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+        });
+
+        it('keeps a row it read when the cache refuses to store it', async () => {
+            const { service } = build({ cacheWriteFails: true, stored: { enabled: false, messagesPerTenant: 5 } });
+            await expect(service.get()).resolves.toEqual({ ...DEMO_ALLOWANCE_DEFAULTS, enabled: false, messagesPerTenant: 5 });
         });
 
         it('hands out a copy of the defaults, never the shared object', async () => {
@@ -162,7 +180,78 @@ describe('DemoAllowanceService', () => {
         });
     });
 
+    /**
+     * F0: `get()` answers the defaults on any read failure, with nothing to
+     * tell them apart from the real value. The super_admin screen showed them
+     * as the value in force, and a save wrote `enabled: true` back over a
+     * platform that had switched the demo off. The screen reads through this.
+     */
+    describe('getWithSource()', () => {
+        it('says the value is the stored row when there is one', async () => {
+            const { service } = build({ stored: { enabled: false, dailyCapPerPage: 30 } });
+            await expect(service.getWithSource()).resolves.toEqual({
+                allowance: { ...DEMO_ALLOWANCE_DEFAULTS, enabled: false, dailyCapPerPage: 30 },
+                source: 'stored',
+            });
+        });
+
+        it('says the defaults are in force when the database answered with no usable row', async () => {
+            for (const stored of [undefined, 'not json at all', '[1,2]', 'null']) {
+                const { service } = build({ stored });
+                await expect(service.getWithSource()).resolves.toEqual({ allowance: DEMO_ALLOWANCE_DEFAULTS, source: 'default' });
+            }
+        });
+
+        it('says the defaults are only standing in when the database could not be read, and caches nothing', async () => {
+            const { service, redis } = build({ prismaFails: true });
+            const reading = await service.getWithSource();
+            expect(reading).toEqual({ allowance: DEMO_ALLOWANCE_DEFAULTS, source: 'fallback' });
+            expect(redis.setJson).not.toHaveBeenCalled();
+            reading.allowance.enabled = false;
+            expect(DEMO_ALLOWANCE_DEFAULTS.enabled).toBe(true);
+        });
+
+        it('reads the row itself, not a cached copy: the screen shows what is stored', async () => {
+            const { service, prisma } = build({ cached: { messagesPerTenant: 50 }, stored: { messagesPerTenant: 999 } });
+            await expect(service.getWithSource()).resolves.toEqual({
+                allowance: { ...DEMO_ALLOWANCE_DEFAULTS, messagesPerTenant: 999 }, source: 'stored',
+            });
+            expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+        });
+
+        it('does not discard a row it read because the cache write failed', async () => {
+            const { service } = build({ cacheWriteFails: true, stored: { messagesPerTenant: 5 } });
+            await expect(service.getWithSource()).resolves.toEqual({
+                allowance: { ...DEMO_ALLOWANCE_DEFAULTS, messagesPerTenant: 5 }, source: 'stored',
+            });
+        });
+    });
+
     describe('set()', () => {
+        it('refuses to save over a row it could not read, and writes nothing', async () => {
+            // Merging the edit over the stand-in defaults would store
+            // `enabled: true` and the default caps over whatever was there.
+            const { service, prisma, redis } = build({ prismaFails: true });
+            const refusal = await service.set({ dailyCapPerPage: 30 }).catch((error: unknown) => error);
+            expect(refusal).toBeInstanceOf(ServiceUnavailableException);
+            expect((refusal as ServiceUnavailableException).getResponse()).toMatchObject({ error: DEMO_ALLOWANCE_UNREADABLE });
+            expect(prisma.$executeRaw).not.toHaveBeenCalled();
+            expect(redis.setJson).not.toHaveBeenCalled();
+        });
+
+        it('merges the edit over the stored row, not over a cached copy', async () => {
+            const { service, prisma } = build({ cached: { messagesPerTenant: 50 }, stored: { enabled: false, messagesPerTenant: 999 } });
+            const saved = await service.set({ dailyCapPerPage: 30 });
+            expect(saved).toEqual({ enabled: false, messagesPerTenant: 999, dailyCapPerPage: 30 });
+            expect(JSON.parse(templateValues(prisma.$executeRaw.mock.calls[0])[1])).toEqual(saved);
+        });
+
+        it('keeps a save that reached the database when the cache refuses the new value', async () => {
+            const { service, prisma } = build({ cacheWriteFails: true, stored: { enabled: false } });
+            await expect(service.set({ messagesPerTenant: 10 })).resolves.toEqual({ ...DEMO_ALLOWANCE_DEFAULTS, enabled: false, messagesPerTenant: 10 });
+            expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
+        });
+
         it('upserts the merged blob under the onboarding category and refreshes the cache', async () => {
             const { service, prisma, redis } = build({ stored: { enabled: false } });
 
@@ -192,6 +281,49 @@ describe('DemoAllowanceService', () => {
             const { service, prisma } = build();
             prisma.$executeRaw.mockRejectedValueOnce(new Error('db unavailable'));
             await expect(service.set({ messagesPerTenant: 1 })).rejects.toThrow('db unavailable');
+        });
+    });
+
+    /**
+     * The super_admin screen's edits (audit #47). `merge()` keeps the base for
+     * a malformed field, which would let the screen say "guardado" while
+     * nothing changed; an edit is refused whole instead, field by field.
+     */
+    describe('validateDemoAllowancePatch()', () => {
+        it('bounds the numbers the platform pays for', () => {
+            expect(DEMO_ALLOWANCE_LIMITS).toEqual({
+                messagesPerTenant: { min: 0, max: 10_000 },
+                dailyCapPerPage: { min: 1, max: 1_000 },
+            });
+        });
+
+        it('passes a clean edit through, and only the fields it names', () => {
+            expect(validateDemoAllowancePatch({ enabled: false, messagesPerTenant: 0, dailyCapPerPage: 1_000 }))
+                .toEqual({ patch: { enabled: false, messagesPerTenant: 0, dailyCapPerPage: 1_000 }, errors: [] });
+            expect(validateDemoAllowancePatch({ dailyCapPerPage: 30 })).toEqual({ patch: { dailyCapPerPage: 30 }, errors: [] });
+        });
+
+        it.each([
+            ['a string where a switch goes', { enabled: 'false' }, [{ path: 'enabled', constraint: 'boolean' }]],
+            ['a numeric string', { messagesPerTenant: '300' }, [{ path: 'messagesPerTenant', constraint: 'integer' }]],
+            ['a float', { dailyCapPerPage: 1.5 }, [{ path: 'dailyCapPerPage', constraint: 'integer' }]],
+            ['below the floor', { dailyCapPerPage: 0 }, [{ path: 'dailyCapPerPage', constraint: 'min' }]],
+            ['a negative', { messagesPerTenant: -1 }, [{ path: 'messagesPerTenant', constraint: 'min' }]],
+            ['two zeros too many', { messagesPerTenant: 20_000 }, [{ path: 'messagesPerTenant', constraint: 'max' }]],
+            ['a field nobody owns', { ownerPin: '1234' }, [{ path: 'ownerPin', constraint: 'unknown_field' }]],
+            ['nothing at all', {}, [{ path: '', constraint: 'empty' }]],
+            ['not an object', null, [{ path: '', constraint: 'empty' }]],
+        ])('refuses %s', (_label, input, errors) => {
+            expect(validateDemoAllowancePatch(input)).toEqual({ patch: {}, errors });
+        });
+
+        it('refuses the whole edit when one field is wrong, naming each one', () => {
+            const result = validateDemoAllowancePatch({ enabled: true, messagesPerTenant: 50_000, dailyCapPerPage: 'x' });
+            expect(result.patch).toEqual({});
+            expect(result.errors).toEqual([
+                { path: 'messagesPerTenant', constraint: 'max' },
+                { path: 'dailyCapPerPage', constraint: 'integer' },
+            ]);
         });
     });
 });

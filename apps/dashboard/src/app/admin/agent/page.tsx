@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
+import { isOnboardingBeforeLive } from "@parallext/shared";
 import { useTenant } from "@/contexts/TenantContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/lib/api";
@@ -73,8 +74,19 @@ export default function AgentListPage() {
   const tc = useTranslations("common");
   const tHelp = useTranslations("help");
   const { activeTenantId } = useTenant();
-  const { verticalConfig } = useAuth();
+  const { verticalConfig, user } = useAuth();
   const router = useRouter();
+  /**
+   * Day 0: the agent has not answered a real customer yet. This list then
+   * carries at most the setup nudge — the help strip and the "how changes
+   * apply" card are for an account that already runs (owner decision D7).
+   * Asked with the activation facts: with the stage alone, the wizard's
+   * `completed` read as live and all of it came back on "Ir al panel".
+   */
+  const dayZero = isOnboardingBeforeLive(user?.onboardingStage, {
+    firstReplyAt: user?.firstReplyAt,
+    createdAt: user?.tenantCreatedAt,
+  });
 
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -426,15 +438,20 @@ export default function AgentListPage() {
         }
       />
 
-      <HelpPanel
-        title={tHelp("agent.title")}
-        description={tHelp("agent.description")}
-        tips={tHelp.raw("agent.tips") as string[]}
-        mediaKey="agent"
-        tourId="assign_agent_channel"
-      />
+      {!dayZero && (
+        <HelpPanel
+          title={tHelp("agent.title")}
+          description={tHelp("agent.description")}
+          tips={tHelp.raw("agent.tips") as string[]}
+          mediaKey="agent"
+          tourId="assign_agent_channel"
+        />
+      )}
 
-      <AgentReviewModeCard tenantId={activeTenantId} t={t} />
+      {/* Not even mounted during day 0: the card reads its mode on mount, and
+          a choice between "al momento" and "con revisión previa" means nothing
+          to an agent that has not answered anybody yet. */}
+      {!dayZero && <AgentReviewModeCard tenantId={activeTenantId} t={t} />}
 
       <SetupBanner show={needsSetup} onAction={() => {
         const first = agents[0];
@@ -700,9 +717,11 @@ function AgentCard({
           <button
             type="button"
             onClick={onMenuToggle}
+            aria-label={t("moreActions", { name: agent.name || t("unnamedAgent") })}
+            aria-expanded={menuOpen}
             className="px-2 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 text-neutral-500 dark:text-neutral-400 cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
           >
-            <MoreVertical size={16} />
+            <MoreVertical size={16} aria-hidden="true" />
           </button>
           {menuOpen && (
             <>

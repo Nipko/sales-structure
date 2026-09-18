@@ -667,7 +667,7 @@ export class PersonaService {
             throw new BadRequestException({
                 error: 'agent_invalid',
                 fields: [...new Set(invalid)],
-                message: 'Faltan datos obligatorios del agente. Revisá los campos marcados.',
+                message: 'Faltan datos obligatorios del agente. Revisa los campos marcados.',
             });
         }
     }
@@ -1021,7 +1021,7 @@ export class PersonaService {
         if (currentCount >= planFeatures.maxAgents) {
             throw new ForbiddenException({
                 error: 'agent_limit_reached',
-                message: `Tu plan permite hasta ${planFeatures.maxAgents} agente${planFeatures.maxAgents === 1 ? '' : 's'}. Actualizá tu plan para agregar más.`,
+                message: `Tu plan permite hasta ${planFeatures.maxAgents} agente${planFeatures.maxAgents === 1 ? '' : 's'}. Actualiza tu plan para agregar más.`,
                 currentCount,
                 maxAgents: planFeatures.maxAgents,
             });

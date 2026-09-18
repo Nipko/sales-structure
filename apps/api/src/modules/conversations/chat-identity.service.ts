@@ -230,7 +230,7 @@ export class ChatIdentityService {
         });
         if (claim.state!=='claimed') return `identity:${claim.state}`;
 
-        const body = `Tu código de verificación es ${claim.row.code}. Vence en 10 minutos. Si no lo pediste, ignorá este mensaje.`;
+        const body = `Tu código de verificación es ${claim.row.code}. Vence en 10 minutos. Si no lo pediste, ignora este mensaje.`;
         let emailSend: (()=>Promise<string>) | null = null;
         if (claim.row.channel==='email') {
             try {

@@ -5,6 +5,7 @@ import {
     redactReservedTenantSettings,
     RESERVED_TENANT_SETTING_KEYS,
 } from './tenant-settings.util';
+import { WHATSAPP_TRIAGE_SETTING_KEY } from '../../modules/persona/whatsapp-triage.util';
 
 describe('generic tenant settings boundary', () => {
     it('redacts every dedicated branch without mutating the source', () => {
@@ -17,6 +18,18 @@ describe('generic tenant settings boundary', () => {
 
         expect(safe).toEqual({ timezone: 'America/Bogota' });
         for (const key of RESERVED_TENANT_SETTING_KEYS) expect(settings).toHaveProperty(key);
+    });
+
+    it('keeps the WhatsApp answer to its own endpoint: never written or read through the generic contract', () => {
+        // The key its owner (`PUT /persona/:tenantId/whatsapp-triage`) writes.
+        expect(RESERVED_TENANT_SETTING_KEYS).toContain(WHATSAPP_TRIAGE_SETTING_KEY);
+        expect(firstUnsupportedGenericTenantSetting({ whatsappTriage: { answerId: 'not_at_hand' } }))
+            .toBe('whatsappTriage');
+        const safe = redactReservedTenantSettings({
+            timezone: 'America/Bogota',
+            whatsappTriage: { answerId: 'not_at_hand', recordedAt: '2026-09-18T12:00:00.000Z' },
+        }) as Record<string, unknown>;
+        expect(safe).toEqual({ timezone: 'America/Bogota' });
     });
 
     it('allows only the narrow generic localization, hours and quality contract', () => {

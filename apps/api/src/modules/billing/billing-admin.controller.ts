@@ -227,7 +227,7 @@ export class BillingAdminController {
                         error: 'invalid_features',
                         unknownKeys,
                         typeErrors,
-                        message: 'El objeto features contiene claves desconocidas o tipos inválidos. Consultá GET /billing-admin/feature-registry.',
+                        message: 'El objeto features contiene claves desconocidas o tipos inválidos. Consulta GET /billing-admin/feature-registry.',
                     });
                 }
                 mergedFeatures = this.mergeFeatures((existing.features as any) ?? {}, body.features);

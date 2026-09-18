@@ -1719,7 +1719,7 @@ export class ToolExecutionControlService {
                             error: 'commitment_terms_unavailable', family: family.family,
                             persisted: false, retryable: false, requiresConfirmation: true,
                             message: 'No pude releer los términos exactos de lo que se te ofreció. '
-                                + 'Volvé a pedirlos antes de confirmar. No se creó ni se cobró nada.',
+                                + 'Vuelve a pedirlos antes de confirmar. No se creó ni se cobró nada.',
                         },
                 },
             };

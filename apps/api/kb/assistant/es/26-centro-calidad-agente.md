@@ -3,7 +3,7 @@ id: centro-calidad-agente
 title: "Salud de agentes y Centro de calidad"
 routes: ["/admin/agent/quality", "/admin"]
 roles: ["tenant_admin", "tenant_supervisor"]
-keywords: ["salud de agentes", "centro de calidad", "calidad del agente", "preparacion", "calidad probada", "evidencia de produccion", "agente en riesgo", "configuracion incompleta", "acciones criticas", "badge", "posponer", "Parallly Assist", "mejorar agente", "cobertura de canales", "conexion operativa del canal", "mostrarme donde", "recorrido guiado", "barra de contexto", "requiere reautorizar", "esenciales", "siguiente paso", "no esta listo", "whatsapp no entrega", "zona horaria de facturacion", "metodo de pago en meta", "canal que nadie responde", "dia 0", "primer cliente real", "precios de ejemplo sin confirmar"]
+keywords: ["salud de agentes", "centro de calidad", "calidad del agente", "preparacion", "calidad probada", "evidencia de produccion", "agente en riesgo", "configuracion incompleta", "algo importante que resolver", "cosas importantes por resolver", "badge", "posponer", "Parallly Assist", "mejorar agente", "cobertura de canales", "conexion operativa del canal", "mostrarme donde", "recorrido guiado", "barra de contexto", "requiere reautorizar", "esenciales", "siguiente paso", "no esta listo", "whatsapp no entrega", "zona horaria de facturacion", "metodo de pago en meta", "canal que nadie responde", "dia 0", "primer cliente real", "precios de ejemplo sin confirmar", "precios sin confirmar"]
 ---
 
 # Salud de agentes y Centro de calidad
@@ -27,6 +27,11 @@ conexiones o configuración desde **IA y crecimiento → Agente IA**.
   funcionar, el agente no tiene canal asignado, ningún agente atiende ese canal o
   WhatsApp no puede entregar—, el aviso aparece igual y dice el motivo. Puedes **Revisar**,
   **Preguntar a Assist** o **Posponer 24 h**.
+- El aviso dice **Hay algo importante que resolver en tus agentes.** cuando hay una señal
+  crítica abierta, o **Un agente está en riesgo.** En el editor de cada agente, el recuadro
+  de calidad cuenta las comprobaciones críticas que faltan —por ejemplo,
+  **Queda 1 cosa importante por resolver.**— y la tarjeta de Inicio dice cuántas cosas
+  importantes quedan por resolver, o **Nada importante por resolver**.
 - Posponer oculta esa señal temporalmente; no la corrige. Estos avisos viven en el
   dashboard y no envían correo ni notificación push.
 
@@ -40,7 +45,7 @@ conexiones o configuración desde **IA y crecimiento → Agente IA**.
   declaran «no listo» a un agente que ya responde. Por ejemplo, mientras el
   negocio no confirme los precios de ejemplo que trajo la receta de su rubro (servicios
   y, en un gimnasio, planes de membresía), aparece la advertencia no crítica
-  **Precios de ejemplo sin confirmar**: el agente no dice esos precios hasta que se confirman.
+  **Precios sin confirmar**: el agente no dice esos precios hasta que se confirman; también cuenta los servicios y planes que todavía no tienen precio.
 - **Calidad probada:** muestra la evaluación crítica y la simulación más recientes,
   con versión, fecha, umbral y escenarios. Si cambió el agente, la evidencia anterior
   puede quedar desactualizada. Es evidencia automatizada, no una certificación.
@@ -152,11 +157,11 @@ cómo se hace algo que tiene recorrido, la respuesta trae ese botón.
 - **Aún no evaluado:** todavía no hay evidencia suficiente.
 - **Configuración incompleta:** falta un requisito o hay una advertencia de preparación.
 - **Agente en riesgo:** una prueba crítica o una señal real importante exige revisión.
-- **Listo para piloto controlado:** preparación y pruebas permiten un piloto limitado,
+- **Listo para sus primeros clientes:** preparación y pruebas están bien,
   pero aún falta evidencia real suficiente.
 - **Operando con evidencia:** hay configuración, pruebas vigentes y una muestra útil de
   producción.
-- **Revisión requerida:** la evidencia quedó desactualizada o el desempeño reciente se
+- **Necesita tu atención:** la evidencia quedó desactualizada o el desempeño reciente se
   deterioró.
 
 Ningún estado significa que el agente sea perfecto, certifica su operación ni
@@ -213,7 +218,7 @@ añade lo que mejora al agente (misión, conocimiento, horario, citas, catálogo
 pruebas y la evidencia de producción.
 
 **¿Un buen puntaje de simulación basta para dejarlo atender solo?**
-No. Ayuda a reducir riesgo, pero debe revisarse junto con bloqueos críticos, vigencia
+No. Ayuda a reducir riesgo, pero debe revisarse junto con lo que quede por resolver, la vigencia
 de la versión y evidencia real cuando esté disponible.
 
 **¿El sistema aprende y cambia solo con cada conversación?**

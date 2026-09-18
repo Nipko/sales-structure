@@ -5164,7 +5164,7 @@ export class ConversationsService {
         // los datos, o peor, va a prometer generarlo.
         const linkNote = result?.paymentLink
             ? '\nEl enlace de pago se le envía en un mensaje aparte que sale JUSTO DESPUÉS del tuyo: '
-                + 'no lo escribas ni prometas generarlo, sólo decile qué tiene que pagar y que el enlace va enseguida.'
+                + 'no lo escribas ni prometas generarlo, sólo dile qué tiene que pagar y que el enlace va enseguida.'
             : '';
         // La operación se escribió, pero el dueño exige pago para confirmarla y
         // el cupo sigue a la venta. "Realizada" y "confirmada" no son lo mismo:
@@ -5834,10 +5834,15 @@ export class ConversationsService {
                 throw new Error('widget_conversation_scope_mismatch');
             if (conversation.status === 'waiting_human' || conversation.status === 'with_human') return null;
             const plan = await this.throttle.getPlanFeatures(tenantId);
-            // The public link (D11/D19) is paid by the platform ONLY while the
-            // tenant's plan does not include the web chat. The moment it does,
-            // the same link runs on the plan like any other web chat — which is
-            // what makes "cuando el negocio active su plan, el chat sigue" true.
+            // The public link (D11/D19) is a platform-paid TRIAL only while the
+            // tenant's plan does not include the web chat. That is decided per
+            // turn, with the same predicate as `isTrialLink` in
+            // widget-demo-link.ts: a plan change applies to the next message.
+            // Once the plan includes the web chat, the link is a real channel —
+            // this turn runs on the plan's own quota like any other web chat,
+            // with no daily cap of the trial page, and the gateway stops withholding
+            // the handoff to the team (`allowHumanHandoff`). Only a trial turn
+            // spends the platform's demo allowance.
             const demoTurn = options?.demo === true && plan.widget !== true;
             const demoAllowance = demoTurn ? await this.demoAllowance?.get() : null;
             if (demoTurn ? demoAllowance?.enabled === false : plan.widget !== true) return null;

@@ -39,7 +39,7 @@ An agent only works well when the minimum is defined. On save, the editor checks
 - **At least one rule** of behavior.
 - **At least one reason** under **When to hand off to a human**.
 
-If you clear one of those fields to rewrite it, save only once it is complete again: an agent with no fallback message or no handoff reasons shows up as a critical blocker in **Agent health**.
+If you clear one of those fields to rewrite it, save only once it is complete again: an agent with no fallback message or no handoff reasons shows up in **Agent health** as an important thing to fix, under **Unknown-answer response** or **Handoff reasons**.
 
 **If your agent runs in custom-prompt mode**, this list changes. When your account has that feature enabled and the agent uses it, a single text you write replaces the guided personality: **Agent health** marks identity, tone, greeting, fallback message, and rules as **Not applicable**, and requires instead that the prompt is not empty. What **stays mandatory** is at least one reason under **When to hand off to a human**: without it the conversation never reaches a person, whatever the prompt says. If you see “Not applicable” where this guide says “required”, that is why, not a mistake.
 
@@ -72,7 +72,7 @@ Both ship with sensible values; change them only if you know what you are tuning
 
 ## Configure with Parallly Assist
 
-You can ask Assist to review the agent and prepare changes to identity, language, instructions, rules, required information, after-hours behavior, sales/support mode, recommendations, response length, knowledge, and permissions. Assist presents a proposal for review; accepting it applies the change to the agent (or leaves it as a draft if your account uses reviewed mode). Assist never turns the agent on or off. In custom-prompt mode, Assist withholds personality, main-guide, rules, and required-field edits because the custom prompt replaces them. Never send credentials or connection details through chat.
+You can ask Assist to review the agent and prepare changes to identity, language, instructions, rules, required information, after-hours behavior, sales/support mode, recommendations, response length, knowledge, and permissions. Assist presents a proposal for review; pressing **Save and apply** applies the change to the agent (in reviewed mode the button is **Save draft** and it stays a draft). Assist never turns the agent on or off. In the agent editor, the **Tell me what to change** field opens Assist with your request already typed. In custom-prompt mode, Assist withholds personality, main-guide, rules, and required-field edits because the custom prompt replaces them. Never send credentials or connection details through chat.
 
 When you're done, click **Save**. The change applies immediately to the assigned connections and the green toast reads **Saved. Your agent now answers this way.**; the previous version stays in history. If a required field is missing, the editor marks it in red and does not save. Use **Test agent** to see it respond before or after saving. If you leave with unsaved changes, the editor warns you.
 
@@ -82,7 +82,7 @@ When you're done, click **Save**. The change applies immediately to the assigned
 
 ## Active or inactive
 
-The editor header has an **Active / Inactive** switch. An **inactive** agent replies on none of its connections, even when the channel is connected and the schedule says it should. You can deactivate it immediately after confirming, and reactivate it with the same switch: it turns on right away. (In reviewed mode, reactivating goes through reviewing and publishing a version.) **Agent health** flags any inactive agent as a critical blocker, with or without assigned connections.
+The editor header has an **Active / Inactive** switch. An **inactive** agent replies on none of its connections, even when the channel is connected and the schedule says it should. You can deactivate it immediately after confirming, and reactivate it with the same switch: it turns on right away. (In reviewed mode, reactivating goes through reviewing and publishing a version.) **Agent health** counts any inactive agent as an important thing to fix, under **Active agent**, with or without assigned connections.
 
 ## How to set the agent's schedule
 
@@ -107,7 +107,7 @@ The available connection types and capacity appear under **Channels** and **Plan
 
 ## What the "channels without an assigned agent" notice means
 
-If **AI Agent** shows **Channels without an assigned agent**, you have active connections that no agent handles specifically. While an active default agent exists, those messages are answered by its operational version. If there is no active default agent, or two agents have the same connection assigned, nobody answers there: messages arrive but go unanswered, and **Agent health** flags it as critical under **Every connected channel has an agent that replies**.
+If **AI Agent** shows **Channels without an assigned agent**, you have active connections that no agent handles specifically. While an active default agent exists, those messages are answered by that default agent. If there is no active default agent, or two agents have the same connection assigned, nobody answers there: messages arrive but go unanswered, and **Agent health** flags it as critical under **Every connected channel has an agent that replies**.
 
 Click **Assign agent now** to choose which agent handles each connection and deliver a personalized experience.
 
@@ -122,7 +122,7 @@ In the **AI Agent** list, each agent has an actions menu:
 
 ## Test your agent before going live
 
-From **AI Agent → Test agent** you can chat with the agent exactly as it answers today, without affecting real customers, spending messages, or creating bookings. Test it whenever you change personality, rules, tools, or connections.
+From **AI Agent → Test agent** you can chat with the agent exactly as it answers today, without affecting real customers or creating bookings. Each reply does count toward your plan's AI messages; if they run out for the period, the test does not answer either. Test it whenever you change personality, rules, tools, or connections.
 
 ## Frequently asked questions
 

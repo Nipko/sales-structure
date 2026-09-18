@@ -26,7 +26,7 @@ Antes de deixar seu agente de IA conversar com clientes de verdade, vale a pena 
 4. Escreva como se fosse um cliente ("Quais são os preços?", "Vocês têm horário no sábado?") e clique em **Enviar**.
 5. Com **Reiniciar** você apaga a conversa e começa do zero.
 
-O chat de teste é um espaço seguro: não cria contatos, não aparece na sua caixa de entrada e não mexe em nenhuma conversa real. Use-o sempre que mudar a personalidade, as regras ou as informações do negócio, para confirmar que o agente responde do jeito que você espera.
+O chat de teste é um espaço seguro: não cria contatos, não aparece na sua caixa de entrada e não mexe em nenhuma conversa real. O que ele usa, sim, são as mensagens de IA do seu plano: cada resposta do agente, aqui e nas simulações, conta para elas. Use-o sempre que mudar a personalidade, as regras ou as informações do negócio, para confirmar que o agente responde do jeito que você espera.
 
 ## Como executar uma simulação
 

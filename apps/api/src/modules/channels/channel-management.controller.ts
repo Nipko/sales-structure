@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Delete, Body, Param, Req, Logger, UseGuards, BadRequestException, ForbiddenException, GoneException } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Body, Param, Req, Logger, UseGuards, BadRequestException, ForbiddenException, GoneException, ServiceUnavailableException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { ConfigService } from '@nestjs/config';
@@ -6,7 +6,7 @@ import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { WhatsappCryptoService } from '../whatsapp/services/whatsapp-crypto.service';
 import { ChannelTokenService } from './channel-token.service';
-import { TelegramAdapter } from './telegram/telegram.adapter';
+import { TelegramAdapter, TelegramUnreachableError } from './telegram/telegram.adapter';
 import { SmsAdapter } from './sms/sms.adapter';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -51,7 +51,28 @@ const REQUIRED_MESSENGER_SCOPES = ['pages_show_list', 'pages_messaging', 'pages_
  * bare "Error 400" off the screen in the meantime. It is never Meta's text.
  */
 const META_CONNECT_FALLBACK_MESSAGE =
-    'No pudimos conectar la cuenta. Abrí el canal en el panel para ver qué falta y cómo resolverlo.';
+    'No pudimos conectar la cuenta. Abre el canal en el panel para ver qué falta y cómo resolverlo.';
+
+/**
+ * The codes a Telegram connect can refuse with besides the shared ones
+ * (`email_not_verified` from the guard, `channel_not_available` and
+ * `plan_limit_reached` from the plan checks). Telegram answers a bad key with
+ * "Unauthorized"/"Not Found" and a failed webhook with its own English; none
+ * of it reaches the response (the webhook's goes to the log), and the panel
+ * builds its card from the code — the wizard's mapping is
+ * `wizardConnectFailure` in `setup-wizard/connect-channels.ts`.
+ */
+export const TELEGRAM_CONNECT_ERROR = {
+    /** Telegram did not accept the key pasted from @BotFather (`getMe` refused it). */
+    INVALID_BOT_KEY: 'invalid_bot_key',
+    /**
+     * Retryable, and never a verdict that the key is wrong. Two cases, told
+     * apart by the status: 503 — Telegram could not be reached to check the key
+     * at all, so nothing is known about it; 400 — Telegram accepted the key and
+     * then refused to route the bot's messages to us.
+     */
+    UNAVAILABLE: 'telegram_unavailable',
+} as const;
 
 @ApiTags('channel-management')
 @Controller('channels')
@@ -448,7 +469,7 @@ export class ChannelManagementController {
             throw new ForbiddenException({
                 error: 'channel_not_available',
                 channel: channelType,
-                message: `El canal ${channelType} no está disponible en tu plan actual. Actualizá tu plan para conectarlo.`,
+                message: `El canal ${channelType} no está disponible en tu plan actual. Actualiza tu plan para conectarlo.`,
             });
         }
     }
@@ -486,10 +507,32 @@ export class ChannelManagementController {
         const { botToken, displayName } = body;
         if (!botToken) throw new BadRequestException('botToken is required');
 
-        // 1. Validate bot token
-        const botInfo = await this.telegramAdapter.validateBotToken(botToken);
+        // 1. Validate bot token. A typed code, not a sentence: the wizard and
+        // the Telegram page build their card from `error`; `message` is only
+        // what a surface that has not mapped the code yet prints.
+        let botInfo: Awaited<ReturnType<TelegramAdapter['validateBotToken']>>;
+        try {
+            botInfo = await this.telegramAdapter.validateBotToken(botToken);
+        } catch (error) {
+            if (!(error instanceof TelegramUnreachableError)) throw error;
+            // Telegram gave no answer about the key, so this is not
+            // `invalid_bot_key`: that would send her to @BotFather for a key
+            // that may well work. Nothing was stored.
+            this.logger.warn(`Telegram connect for tenant ${tenantId}: ${error.message}`);
+            throw new ServiceUnavailableException({
+                error: TELEGRAM_CONNECT_ERROR.UNAVAILABLE,
+                channel: 'telegram',
+                retryable: true,
+                message: 'No pudimos comunicarnos con Telegram para revisar la clave de tu bot. Vuelve a intentarlo en unos minutos.',
+            });
+        }
         if (!botInfo) {
-            throw new BadRequestException('Token invalido — verifica que el token de @BotFather sea correcto');
+            throw new BadRequestException({
+                error: TELEGRAM_CONNECT_ERROR.INVALID_BOT_KEY,
+                channel: 'telegram',
+                retryable: false,
+                message: 'Telegram no reconoce esa clave. Copia de nuevo la clave completa que te dio @BotFather y vuelve a intentarlo.',
+            });
         }
 
         const accountId = botInfo.username;
@@ -509,8 +552,14 @@ export class ChannelManagementController {
 
         const webhookResult = await this.telegramAdapter.setWebhook(botToken, webhookUrl, webhookSecret);
         if (!webhookResult.ok) {
+            // Telegram's own sentence stays in the log; the owner reads ours.
             this.logger.error(`Failed to set Telegram webhook: ${webhookResult.description}`);
-            throw new BadRequestException(`Error al configurar webhook: ${webhookResult.description}`);
+            throw new BadRequestException({
+                error: TELEGRAM_CONNECT_ERROR.UNAVAILABLE,
+                channel: 'telegram',
+                retryable: true,
+                message: 'Telegram no confirmó la conexión de tu bot. Vuelve a intentarlo en unos minutos.',
+            });
         }
 
         // 3. Encrypt and store token
@@ -622,7 +671,7 @@ export class ChannelManagementController {
         } catch (error: any) {
             if (error?.code === 'connection_ambiguous') {
                 throw new BadRequestException(
-                    'Tienes más de un bot de Telegram conectado: indicá cuál querés probar (accountId)');
+                    'Tienes más de un bot de Telegram conectado: indica cuál quieres probar (accountId)');
             }
             throw new BadRequestException('No hay bot de Telegram conectado');
         }
@@ -1022,7 +1071,7 @@ export class ChannelManagementController {
                         skippedPages: skippedForQuota,
                         limit: Number.isFinite(messengerLimit) ? messengerLimit : null,
                     },
-                    message: `Tu plan permite hasta ${Number.isFinite(messengerLimit) ? messengerLimit : '∞'} página(s) de Messenger. No se conectó ninguna nueva (${skippedForQuota.join(', ')}). Actualizá tu plan o desconectá otra para conectar más.`,
+                    message: `Tu plan permite hasta ${Number.isFinite(messengerLimit) ? messengerLimit : '∞'} página(s) de Messenger. No se conectó ninguna nueva (${skippedForQuota.join(', ')}). Actualiza tu plan o desconecta otra para conectar más.`,
                 });
             }
             if (skippedNoToken.length > 0) {
@@ -1885,7 +1934,7 @@ export class ChannelManagementController {
             case 'messenger':
                 return 'En tu Facebook App, ve a Messenger → Settings → Webhooks y configura la URL y Verify Token. Habilita los campos: messages, messaging_postbacks, messaging_optins.';
             case 'telegram':
-                return '1. Abre @BotFather en Telegram y usa /newbot para crear un bot. 2. Copia el token del bot. 3. Pegalo en el campo Bot Token y haz clic en Conectar. El webhook se configura automaticamente.';
+                return '1. Abre @BotFather en Telegram y usa /newbot para crear un bot. 2. Copia el token del bot. 3. Pégalo en el campo Bot Token y haz clic en Conectar. El webhook se configura automáticamente.';
             default:
                 return 'Configura el webhook en la plataforma del canal con la URL y Verify Token indicados.';
         }

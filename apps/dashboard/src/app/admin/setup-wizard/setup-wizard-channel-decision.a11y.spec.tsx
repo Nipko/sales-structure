@@ -75,6 +75,8 @@ jest.mock("@/components/AnimatedLogo", () => ({ __esModule: true, default: () =>
 jest.mock("@/components/ui/help-panel", () => ({ HelpPanel: () => null }));
 
 const DRAFT_KEY = "parallly:setupwizard:tenant-1";
+/** The connect step is about the channel the customers use, not WhatsApp only. */
+const CONNECT_HEADING = "¿Por dónde te escriben tus clientes?";
 
 function setupStatus(overrides: Record<string, unknown> = {}) {
     return {
@@ -217,7 +219,7 @@ describe("the setup wizard's channel decision", () => {
             await settle();
             expect(heading(screen.container)).toBe("Tu agente");
             await click(button(screen.container, "Siguiente"));
-            expect(heading(screen.container)).toBe("Conecta WhatsApp");
+            expect(heading(screen.container)).toBe(CONNECT_HEADING);
 
             await click(button(screen.container, "Siguiente"));
 
@@ -259,9 +261,53 @@ describe("the setup wizard's channel decision", () => {
             await settle();
             await click(button(screen.container, "Siguiente"));
             await click(button(screen.container, "Siguiente"));
-            expect(heading(screen.container)).toBe("Conecta WhatsApp");
+            expect(heading(screen.container)).toBe(CONNECT_HEADING);
             expect(screen.container.querySelector('[role="alert"]')?.textContent).toContain("No se pudo guardar.");
         } finally { screen.unmount(); warn.mockRestore(); }
+    });
+
+    it.each([
+        ["switched_off", "El enlace de prueba de Sofía está en pausa, así que por ahora no responde."],
+        ["allowance_used", "Sofía ya usó las respuestas gratis de su enlace de prueba, así que ahí no responde más."],
+    ] as const)("with its link paused (%s), never says the agent answers there", async (unavailableReason, paused) => {
+        // F11: the trial link stops when the platform switches it off or the
+        // account used its free replies. "Sofía ya responde por su enlace:
+        // ábrelo aquí abajo" was then a promise of silence.
+        jest.mocked(api.getSetupStatus).mockResolvedValue(setupStatus({
+            demoLink: { widgetId: "widget-1", path: "/w/widget-1", agentName: "Sofía", answers: false, unavailableReason },
+        }) as any);
+        const screen = await renderScreen(<SetupWizardPage />);
+        try {
+            await settle();
+            // The connect step says the pause where it used to say "ya puedes probarla en su enlace".
+            await click(button(screen.container, "Siguiente"));
+            let text = screen.container.textContent ?? "";
+            expect(text).toContain(paused);
+            expect(text).not.toContain("Mientras tanto, ya puedes probar a Sofía en su enlace.");
+
+            await click(button(screen.container, "Siguiente"));
+            expect(heading(screen.container)).toBe("Configuración inicial guardada");
+            text = screen.container.textContent ?? "";
+            expect(text).not.toContain("ya responde por su enlace");
+            expect(text).not.toContain("Por ahora solo le escriben por su enlace");
+            expect(text).toContain("Te esperamos en Inicio para conectar WhatsApp");
+            // With the link paused, "sin un canal no recibe mensajes de nadie" is the truth.
+            expect(screen.container.querySelector('[data-essential="channel"]')?.textContent)
+                .toContain("Sin un canal, tu agente no recibe mensajes de nadie.");
+            expect(await findAccessibilityViolations(screen.container)).toEqual([]);
+        } finally { screen.unmount(); }
+    });
+
+    it("an API that does not say whether the link answers is read as the link answering, as before", async () => {
+        jest.mocked(api.getSetupStatus).mockResolvedValue(setupStatus() as any);
+        const screen = await renderScreen(<SetupWizardPage />);
+        try {
+            await settle();
+            await click(button(screen.container, "Siguiente"));
+            expect(screen.container.textContent).toContain("Mientras tanto, ya puedes probar a Sofía en su enlace.");
+            await click(button(screen.container, "Siguiente"));
+            expect(screen.container.textContent).toContain("Sofía ya responde por su enlace");
+        } finally { screen.unmount(); }
     });
 
     it("without a link to offer, still says the channel is pending instead of connected", async () => {
@@ -284,7 +330,7 @@ describe("the setup wizard's channel decision", () => {
         try {
             await settle();
             await click(button(screen.container, "Siguiente"));
-            expect(heading(screen.container)).toBe("Conecta WhatsApp");
+            expect(heading(screen.container)).toBe(CONNECT_HEADING);
             const state = byTestId(screen.container, "connected-state");
             // The connected row, not the leftover of a replaced number.
             expect(state?.getAttribute("data-number")).toBe("111");
@@ -309,7 +355,8 @@ describe("the setup wizard's channel decision", () => {
             expect(deferralWrites()).toEqual([]);
             const text = screen.container.textContent ?? "";
             expect(text).toContain(ANSWERS);
-            expect(text).toContain("Canal conectado");
+            // Named: "Canal conectado" did not say which one.
+            expect(text).toContain("WhatsApp conectado");
             expect(text).not.toContain("WhatsApp queda pendiente");
             expect(readinessReads()).toBe(0);
             expect(await findAccessibilityViolations(screen.container)).toEqual([]);
@@ -327,7 +374,7 @@ describe("the setup wizard's channel decision", () => {
 
             const text = screen.container.textContent ?? "";
             expect(text).not.toContain(ANSWERS);
-            expect(text).not.toContain("Canal conectado");
+            expect(text).not.toContain("WhatsApp conectado");
             expect(text).toContain(PENDING);
             expect(text).toContain("Terminar de activar WhatsApp");
             // In the order the owner should clear them: the zone stops everything.
@@ -349,7 +396,7 @@ describe("the setup wizard's channel decision", () => {
 
             const text = screen.container.textContent ?? "";
             expect(text).not.toContain(ANSWERS);
-            expect(text).not.toContain("Canal conectado");
+            expect(text).not.toContain("WhatsApp conectado");
             expect(text).toContain(PENDING);
             expect(text).toContain(REGISTRATION_LINE);
             expect(text).toContain(WEBHOOK_LINE);
@@ -473,7 +520,7 @@ describe("the setup wizard's channel decision", () => {
             // Back to confirm the zone: the connected state of the same number,
             // not the route picker (a second Meta signup over it).
             await click(button(screen.container, "Anterior"));
-            expect(heading(screen.container)).toBe("Conecta WhatsApp");
+            expect(heading(screen.container)).toBe(CONNECT_HEADING);
             expect(byTestId(screen.container, "whatsapp-panel")).toBeNull();
             expect(byTestId(screen.container, "connected-state")?.getAttribute("data-number")).toBe("111");
 
@@ -492,7 +539,7 @@ describe("the setup wizard's channel decision", () => {
         const screen = await renderScreen(<SetupWizardPage />);
         try {
             await settle();
-            expect(heading(screen.container)).toBe("Conecta WhatsApp");
+            expect(heading(screen.container)).toBe(CONNECT_HEADING);
         } finally { screen.unmount(); }
     });
 

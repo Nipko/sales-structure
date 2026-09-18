@@ -104,7 +104,7 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
                 `Configuración fiscal desalineada: FACTUS_BASE_URL apunta a ${urlIsSandbox ? 'sandbox' : 'producción'} ` +
                 `pero fiscal.factus_environment dice '${cfg.factusEnvironment || 'sandbox'}'. ` +
                 `Emitir así produciría una factura que no es válida ante la DIAN. ` +
-                `Alineá el secret PROD_FACTUS_BASE_URL con factus_environment antes de facturar.`,
+                `Alinea el secret PROD_FACTUS_BASE_URL con factus_environment antes de facturar.`,
             );
         }
     }

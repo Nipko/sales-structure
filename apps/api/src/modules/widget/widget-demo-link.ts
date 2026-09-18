@@ -5,23 +5,31 @@ import { WIDGET_DEFAULTS } from './widget-defaults';
 
 const logger = new Logger('WidgetDemoLink');
 
-/** Copy the visitor sees on the public page and in the widget, by locale. */
+/**
+ * Copy the visitor sees on the public page and in the widget, by locale.
+ *
+ * Both only ever reach a TRIAL turn: on a plan that includes the web chat the
+ * link is a real channel with no page cap and the plan's own quota message.
+ * So "cuando el negocio active su plan" was false for a business that already
+ * pays a plan without the web chat; what brings the chat back is the web chat
+ * itself, and that is what the visitor is told.
+ */
 const DEMO_PAGE_MESSAGES: Record<string, { dailyCap: string; allowanceExhausted: string }> = {
     es: {
         dailyCap: 'Este enlace de prueba alcanzó su límite de mensajes por hoy. Vuelve mañana.',
-        allowanceExhausted: 'Esta prueba llegó a su tope de mensajes. Cuando el negocio active su plan, el chat sigue.',
+        allowanceExhausted: 'Este chat de prueba llegó a su tope de mensajes. Vuelve a funcionar cuando el negocio active el chat web.',
     },
     en: {
         dailyCap: 'This trial link reached its message limit for today. Come back tomorrow.',
-        allowanceExhausted: 'This trial reached its message cap. Once the business activates its plan, the chat continues.',
+        allowanceExhausted: 'This trial chat reached its message cap. It works again once the business turns on web chat.',
     },
     pt: {
         dailyCap: 'Este link de teste atingiu o limite de mensagens de hoje. Volte amanhã.',
-        allowanceExhausted: 'Este teste chegou ao seu limite de mensagens. Quando o negócio ativar o plano, o chat continua.',
+        allowanceExhausted: 'Este chat de teste chegou ao limite de mensagens. Volta a funcionar quando o negócio ativar o chat web.',
     },
     fr: {
         dailyCap: "Ce lien d'essai a atteint sa limite de messages pour aujourd'hui. Revenez demain.",
-        allowanceExhausted: "Cet essai a atteint son plafond de messages. Quand l'entreprise activera son forfait, le chat continuera.",
+        allowanceExhausted: "Ce chat d'essai a atteint son plafond de messages. Il fonctionnera de nouveau quand l'entreprise activera le chat web.",
     },
 };
 
@@ -45,11 +53,82 @@ export function widgetRateLimitedText(locale?: string | null): string {
     return RATE_LIMITED_TEXT[String(locale || 'es').slice(0, 2)] ?? RATE_LIMITED_TEXT.es;
 }
 
+/**
+ * D11/D19 (audit #61): is this widget, right now, the platform-paid TRIAL?
+ *
+ * Only the public link can be, and only while the tenant's plan does not
+ * include the web chat. The moment it does, the same link is a real channel:
+ * the plan's quota, no daily cap of the trial page, a person when a customer
+ * asks for one, and no "trial" label in front of the business's customers.
+ * The core's quota lane (`processWidgetMessage`: `options.demo && plan.widget
+ * !== true`) is this same predicate.
+ *
+ * A plan that cannot be read, or nobody to read it, answers "trial": a capped
+ * page that says why is recoverable, an uncapped platform-paid one is not.
+ */
+export async function isTrialLink(
+    widget: { is_demo?: unknown; tenant_id?: unknown } | null | undefined,
+    throttle?: { getPlanFeatures(tenantId: string): Promise<{ widget?: unknown }> } | null,
+): Promise<boolean> {
+    if (widget?.is_demo !== true) return false;
+    if (!throttle || typeof widget.tenant_id !== 'string' || !widget.tenant_id) return true;
+    try {
+        return (await throttle.getPlanFeatures(widget.tenant_id)).widget !== true;
+    } catch {
+        return true;
+    }
+}
+
 export interface DemoLink {
     widgetId: string;
     /** Path on the dashboard host; the absolute URL is the caller's origin + path. */
     path: string;
     agentName: string;
+}
+
+/** Why the agent's link does not answer right now (F11). */
+export type DemoLinkUnavailableReason = 'switched_off' | 'allowance_used';
+
+/**
+ * Whether a visitor who writes on the agent's link gets a reply right now.
+ *
+ * `setup-status` used to hand out the link unconditionally, so the wizard,
+ * Channels and the editor said "tu agente ya responde por su enlace" to an
+ * account whose trial the platform had switched off or whose platform-paid
+ * replies were used up. Dashboards that predate these two fields ignore them.
+ */
+export interface DemoLinkAvailability {
+    answers: boolean;
+    /** `null` whenever `answers` is true. */
+    unavailableReason: DemoLinkUnavailableReason | null;
+}
+
+/** The link as `setup-status` returns it: where it is, and whether it answers. */
+export type SetupStatusDemoLink = DemoLink & DemoLinkAvailability;
+
+/**
+ * The runtime's own rule, as a pure function of what could be read (`null` =
+ * the read failed).
+ *
+ * On a plan that includes the web chat the link is a real channel and answers
+ * on the plan's quota: the same predicate as `isTrialLink`. Otherwise it is
+ * the platform-paid trial, and the reply lane (`processWidgetMessage`) answers
+ * only while the allowance is switched on and the lifetime counter
+ * (`demo_msg:{tenantId}`) is below `messagesPerTenant`.
+ *
+ * Anything unknown answers `true`: a blip must not tell an owner their link
+ * went quiet, and the page itself says why when a visitor hits a real limit.
+ */
+export function demoLinkAvailability(input: {
+    planIncludesWebChat: boolean | null;
+    allowance: { enabled: boolean; messagesPerTenant: number } | null;
+    used: number | null;
+}): DemoLinkAvailability {
+    const answering: DemoLinkAvailability = { answers: true, unavailableReason: null };
+    if (input.planIncludesWebChat !== false || !input.allowance) return answering;
+    if (input.allowance.enabled === false) return { answers: false, unavailableReason: 'switched_off' };
+    if (input.used === null || !Number.isFinite(input.used)) return answering;
+    return input.allowance.messagesPerTenant > input.used ? answering : { answers: false, unavailableReason: 'allowance_used' };
 }
 
 export function demoLinkPath(widgetId: string): string {

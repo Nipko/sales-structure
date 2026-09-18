@@ -228,6 +228,7 @@ const NAVIGATION_ROUTE_DEFINITIONS = [
   { id: "platformVerticalAnalytics", pattern: "/admin/vertical-analytics", titleKey: "nav.items.verticalAnalytics", scope: "platform" },
   { id: "platformVerticalAudit", pattern: "/admin/vertical-audit", titleKey: "nav.items.verticalAudit", scope: "platform" },
   { id: "platformCoupons", pattern: "/admin/coupons", titleKey: "nav.items.coupons", scope: "platform" },
+  { id: "platformDemoAllowance", pattern: "/admin/demo-allowance", titleKey: "nav.items.demoAllowance", scope: "platform" },
   { id: "platformPlans", pattern: "/admin/plans", titleKey: "nav.items.plans", scope: "platform" },
   { id: "platformBillingOps", pattern: "/admin/billing-ops", titleKey: "nav.items.billingOps", scope: "platform" },
   { id: "platformSmsPackages", pattern: "/admin/sms-packages", titleKey: "nav.items.smsPackages", scope: "platform" },

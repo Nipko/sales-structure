@@ -298,7 +298,10 @@ describe("the quality bar during day 0", () => {
         const screen = await banner();
         try {
             const alert = screen.container.querySelector('[role="alert"]');
-            expect(alert?.textContent).toContain("Hay una acción crítica que requiere atención.");
+            expect(alert?.textContent).toContain("Hay algo importante que resolver en tus agentes.");
+            // The generic headline is in the owner's words: "acción crítica" was
+            // Appendix A jargon on every screen, not only on day 0.
+            expect(alert?.textContent).not.toMatch(/acci[oó]n cr[ií]tica/i);
         } finally { screen.unmount(); }
     });
 });
@@ -323,7 +326,7 @@ describe("the quality bar after day 0", () => {
             const alert = screen.container.querySelector('[role="alert"]');
             expect(alert?.textContent).toContain("Tu agente no puede contestar por el canal que conectaste.");
             expect(alert?.textContent).toContain("Falta confirmar la zona horaria de facturación de tu número de WhatsApp.");
-            expect(alert?.textContent).not.toContain("Hay una acción crítica que requiere atención.");
+            expect(alert?.textContent).not.toContain("Hay algo importante que resolver en tus agentes.");
             const link = screen.container.querySelector("a");
             expect(link?.getAttribute("href")).toContain("/admin/channels/whatsapp");
             expect(link?.getAttribute("href")).toContain(DELIVERY_SIGNAL_ID);
@@ -347,7 +350,7 @@ describe("the quality bar after day 0", () => {
         const screen = await banner();
         try {
             const alert = screen.container.querySelector('[role="alert"]');
-            expect(alert?.textContent).toContain("Hay una acción crítica que requiere atención.");
+            expect(alert?.textContent).toContain("Hay algo importante que resolver en tus agentes.");
             expect(alert?.textContent).not.toContain("el canal que conectaste");
             expect(screen.container.querySelector("a")?.getAttribute("href")).toContain(DELIVERY_SIGNAL_ID);
         } finally { screen.unmount(); }
@@ -359,7 +362,7 @@ describe("the quality bar after day 0", () => {
         const screen = await banner();
         try {
             const alert = screen.container.querySelector('[role="alert"]');
-            expect(alert?.textContent).toContain("Hay una acción crítica que requiere atención.");
+            expect(alert?.textContent).toContain("Hay algo importante que resolver en tus agentes.");
             expect(alert?.textContent).not.toContain("Falta confirmar la zona horaria");
             expect(screen.container.querySelector("a")?.getAttribute("href")).toContain(SIGNAL_ID);
         } finally { screen.unmount(); }

@@ -39,7 +39,7 @@ Un agente solo atiende bien si tiene lo mínimo definido. Al guardar, el editor 
 - **Al menos una regla** de comportamiento.
 - **Al menos un motivo** en **Cuándo pasar a un humano**.
 
-Si vacías uno de esos campos para reescribirlo, guarda recién cuando esté completo: un agente sin mensaje de respaldo o sin motivos de escalamiento aparece como bloqueo crítico en **Salud de agentes**.
+Si vacías uno de esos campos para reescribirlo, guarda recién cuando esté completo: un agente sin mensaje de respaldo o sin motivos de escalamiento aparece en **Salud de agentes** como una cosa importante por resolver, en **Respuesta cuando no sabe** o en **Motivos de escalamiento**.
 
 **Si tu agente está en modo prompt personalizado**, esta lista cambia. Cuando tu cuenta tiene habilitada esa función y el agente la usa, un único texto que escribes tú reemplaza a la personalidad guiada: **Salud de agentes** marca como **No aplica** la identidad, el tono, el saludo, el mensaje de respaldo y las reglas, y en su lugar exige que ese prompt no esté vacío. Lo que **sigue siendo obligatorio** es al menos un motivo en **Cuándo pasar a un humano**: sin eso la conversación nunca llega a una persona, escribas lo que escribas en el prompt. Si ves “No aplica” donde esta guía dice “obligatorio”, es por eso, no por un error.
 
@@ -72,7 +72,7 @@ Ambas vienen con valores razonables; cámbialas solo si sabes qué estás ajusta
 
 ## Configurar con Parallly Assist
 
-Puedes pedirle a Assist que revise el agente y prepare cambios de identidad, idioma, instrucciones, reglas, campos requeridos, horario fuera de atención, ventas/soporte, recomendaciones, longitud de respuesta, conocimiento y permisos. Assist muestra una propuesta para revisar; al aceptarla, el cambio se aplica al agente (o queda como borrador si tu cuenta usa el modo revisado). Assist nunca enciende ni apaga el agente. Con prompt personalizado, Assist no ofrece cambios de personalidad, guía principal, reglas ni campos requeridos porque ese prompt los reemplaza. Nunca uses el chat para enviar credenciales o conexiones.
+Puedes pedirle a Assist que revise el agente y prepare cambios de identidad, idioma, instrucciones, reglas, campos requeridos, horario fuera de atención, ventas/soporte, recomendaciones, longitud de respuesta, conocimiento y permisos. Assist muestra una propuesta para revisar; al pulsar **Guardar y aplicar**, el cambio se aplica al agente (en el modo revisado el botón es **Guardar borrador** y queda como borrador). Assist nunca enciende ni apaga el agente. En el editor del agente, el campo **Dime qué cambiar** abre Assist con tu pedido ya escrito. Con prompt personalizado, Assist no ofrece cambios de personalidad, guía principal, reglas ni campos requeridos porque ese prompt los reemplaza. Nunca uses el chat para enviar credenciales o conexiones.
 
 Cuando termines, haz clic en **Guardar**. El cambio se aplica al momento en las conexiones asignadas y el aviso verde dice **Guardado. Tu agente ya responde así.**; la versión anterior queda en el historial. Si falta un campo obligatorio, el editor lo marca en rojo y no guarda. Usa **Probar agente** para verlo responder antes o después de guardar. Si sales con cambios sin guardar, el editor te lo advierte.
 
@@ -82,7 +82,7 @@ Cuando termines, haz clic en **Guardar**. El cambio se aplica al momento en las 
 
 ## Activo o inactivo
 
-En la cabecera del editor hay un interruptor **Activo / Inactivo**. Un agente **inactivo** no responde en ninguna de sus conexiones, aunque el canal esté conectado y el horario diga que sí. Puedes desactivarlo de inmediato después de confirmar, y reactivarlo con el mismo interruptor: enciende al momento. (En modo revisado, reactivar pasa por revisar y publicar una versión.) **Salud de agentes** marca como bloqueo crítico todo agente inactivo, tenga o no conexiones asignadas.
+En la cabecera del editor hay un interruptor **Activo / Inactivo**. Un agente **inactivo** no responde en ninguna de sus conexiones, aunque el canal esté conectado y el horario diga que sí. Puedes desactivarlo de inmediato después de confirmar, y reactivarlo con el mismo interruptor: enciende al momento. (En modo revisado, reactivar pasa por revisar y publicar una versión.) **Salud de agentes** cuenta todo agente inactivo como una cosa importante por resolver, en **Agente activo**, tenga o no conexiones asignadas.
 
 ## Cómo definir el horario del agente
 
@@ -107,7 +107,7 @@ La cantidad y el tipo de conexiones disponibles se muestran en **Canales** y **P
 
 ## Qué significa el aviso "canales sin agente asignado"
 
-Si en **Agente IA** ves el aviso **Canales sin agente asignado**, tienes conexiones activas que ningún agente atiende de forma específica. Mientras exista un agente predeterminado activo, esos mensajes los responde su versión operativa. Si no hay un agente predeterminado activo, o si dos agentes tienen asignada la misma conexión, ahí no contesta nadie: los mensajes llegan pero quedan sin respuesta, y **Salud de agentes** lo marca como crítico en **Cada canal conectado tiene un agente que responde**.
+Si en **Agente IA** ves el aviso **Canales sin agente asignado**, tienes conexiones activas que ningún agente atiende de forma específica. Mientras exista un agente predeterminado activo, esos mensajes los responde ese agente predeterminado. Si no hay un agente predeterminado activo, o si dos agentes tienen asignada la misma conexión, ahí no contesta nadie: los mensajes llegan pero quedan sin respuesta, y **Salud de agentes** lo marca como crítico en **Cada canal conectado tiene un agente que responde**.
 
 Haz clic en **Asignar agente ahora** para elegir qué agente atiende cada conexión y dar una experiencia personalizada.
 
@@ -122,7 +122,7 @@ En la lista de **Agente IA**, cada agente tiene un menú de acciones:
 
 ## Prueba tu agente antes de activarlo
 
-Desde el menú **Agente IA → Probar agente** puedes chatear con el agente tal como responde hoy, sin afectar clientes reales, gastar mensajes ni crear reservas. Pruébalo cada vez que cambies personalidad, reglas, herramientas o conexiones.
+Desde el menú **Agente IA → Probar agente** puedes chatear con el agente tal como responde hoy, sin afectar clientes reales ni crear reservas. Eso sí, cada respuesta cuenta para los mensajes de IA de tu plan; si se acaban en el período, la prueba tampoco responde. Pruébalo cada vez que cambies personalidad, reglas, herramientas o conexiones.
 
 ## Preguntas frecuentes
 

@@ -26,7 +26,7 @@ This is the fastest way to see your agent in action:
 4. Type as if you were a customer ("What are your prices?", "Do you have availability on Saturday?") and press **Send**.
 5. **Reset** clears the conversation so you can start from scratch.
 
-The test chat is a safe space: it doesn't create contacts, doesn't show up in your inbox, and doesn't touch any real conversation. Use it every time you change the personality, the rules, or the business information, to confirm the agent responds the way you expect.
+The test chat is a safe space: it doesn't create contacts, doesn't show up in your inbox, and doesn't touch any real conversation. What it does use is your plan's AI messages: each reply from the agent, here and in simulations, counts toward them. Use it every time you change the personality, the rules, or the business information, to confirm the agent responds the way you expect.
 
 ## How to run a simulation
 

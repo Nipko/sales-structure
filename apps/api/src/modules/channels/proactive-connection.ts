@@ -155,7 +155,7 @@ export class ProactiveSendConnection {
     private async raiseConfigurationTask(input: {
         tenantId: string; schemaName: string; channelType: string; purpose: string;
     }, code: string): Promise<void> {
-        const title = `Elegí el número de ${this.channelName(input.channelType)} `
+        const title = `Elige el número de ${this.channelName(input.channelType)} `
             + `para ${input.purpose}`;
         const description = this.explain(input.channelType, input.purpose, code);
         try {
@@ -195,17 +195,17 @@ export class ProactiveSendConnection {
     private explain(channelType: string, purpose: string, code: string): string {
         const channel = this.channelName(channelType);
         if (code === 'connection_ambiguous') {
-            return `Tenés más de un número de ${channel} conectado y ${purpose} no tiene uno `
+            return `Tienes más de un número de ${channel} conectado y ${purpose} no tiene uno `
                 + `asignado, así que no se envió nada: elegir por nuestra cuenta significaría `
                 + `escribirle a tus clientes desde un número que quizá no reconocen, y cobrarlo `
-                + `a una cuenta que quizá no quisiste usar. Entrá a Canales, elegí el número `
-                + `que querés usar para ${purpose} y guardá.`;
+                + `a una cuenta que quizá no quisiste usar. Entra a Canales, elige el número `
+                + `que quieres usar para ${purpose} y guarda.`;
         }
         if (code === 'connection_absent') {
             return `No hay ningún número de ${channel} conectado, así que ${purpose} no puede `
-                + `salir. Conectá uno desde Canales.`;
+                + `salir. Conecta uno desde Canales.`;
         }
         return `El número de ${channel} que usa ${purpose} no está en condiciones de enviar `
-            + `(${code}). Revisalo en Canales: puede necesitar reconectarse.`;
+            + `(${code}). Revísalo en Canales: puede necesitar reconectarse.`;
     }
 }

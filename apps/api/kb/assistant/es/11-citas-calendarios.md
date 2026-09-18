@@ -3,7 +3,7 @@ id: citas-calendarios
 title: "Citas y calendarios"
 routes: ["/admin/appointments", "/admin/settings/public-booking"]
 roles: ["tenant_admin", "tenant_supervisor", "tenant_agent"]
-keywords: ["citas", "agenda", "calendario", "agendar", "reservas", "reservar", "servicios", "disponibilidad", "horarios", "google calendar", "outlook", "recordatorios", "confirmacion de asistencia", "reprogramar", "cancelar cita", "fechas bloqueadas", "link de reunion", "meet", "teams", "booking publico", "pagina de reservas", "cita recurrente", "precio de ejemplo", "confirmar precio", "se cotiza", "precio por confirmar", "precios de ejemplo sin confirmar", "servicio sin monto", "membresias"]
+keywords: ["citas", "agenda", "calendario", "agendar", "reservas", "reservar", "servicios", "disponibilidad", "horarios", "google calendar", "outlook", "recordatorios", "confirmacion de asistencia", "reprogramar", "cancelar cita", "fechas bloqueadas", "link de reunion", "meet", "teams", "booking publico", "pagina de reservas", "cita recurrente", "precio de ejemplo", "confirmar precio", "se cotiza", "precio por confirmar", "precios de ejemplo sin confirmar", "precios sin confirmar", "servicio sin monto", "membresias"]
 ---
 
 # Citas y calendarios
@@ -37,7 +37,7 @@ El agente de IA nunca dice en voz alta un precio de ejemplo ni uno que se cotiza
 - Un servicio sin monto muestra **Sin precio**, con **Escribir precio**, **Es gratis** o **Se cotiza**: no hay monto que confirmar, así que no aparece **Confirmar precio**. Lo mismo pasa con un ejemplo en 0, como una clase de prueba: si de verdad no la cobras, pulsa **Es gratis**.
 - Un servicio marcado **Es gratis** se muestra como **Gratis** y el agente le dice al cliente que es gratis. Dejar el monto vacío nunca lo vuelve gratis.
 - No puedes activar una política de pago (depósito o pago completo) en un servicio gratis ni en uno cuyo precio no esté confirmado.
-- Mientras queden precios de ejemplo sin confirmar, **Salud de agentes** muestra el aviso no crítico **Precios de ejemplo sin confirmar**; no bloquea al agente para responder. En un gimnasio también cuenta los planes de membresía, que se confirman de la misma forma en **Membresías**.
+- Mientras queden precios de ejemplo sin confirmar o servicios sin precio, **Salud de agentes** muestra el aviso no crítico **Precios sin confirmar**; no bloquea al agente para responder. En un gimnasio también cuenta los planes de membresía, que se confirman de la misma forma en **Membresías**.
 - El precio de ejemplo viene **en la moneda de tu país**, no en pesos colombianos. Si tu país es Colombia, México, Argentina, Chile, Perú o Brasil, el servicio nace con un monto de ejemplo redondo en tu moneda; en cualquier otro país nace **sin monto**, con tu moneda puesta, para que escribas el tuyo. Ese monto es solo un orden de magnitud para que la pantalla no arranque vacía: no es una conversión de divisas ni un precio de mercado, y nadie lo dice en voz alta hasta que lo confirmas.
 
 ## Cómo definir tu disponibilidad

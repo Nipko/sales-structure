@@ -3,7 +3,7 @@ id: centro-calidad-agente
 title: "Agent health and Quality center"
 routes: ["/admin/agent/quality", "/admin"]
 roles: ["tenant_admin", "tenant_supervisor"]
-keywords: ["agent health", "quality center", "agent quality", "preparation", "tested quality", "production evidence", "agent at risk", "configuration incomplete", "critical actions", "badge", "snooze", "Parallly Assist", "improve agent", "channel coverage", "operational channel connection", "show me where", "guided tour", "context bar", "needs reauthorisation", "essentials", "next step", "not ready", "whatsapp not delivering", "billing time zone", "payment method in meta", "channel nobody answers", "day 0", "first real customer", "unconfirmed example prices"]
+keywords: ["agent health", "quality center", "agent quality", "preparation", "tested quality", "production evidence", "agent at risk", "configuration incomplete", "something important needs fixing", "important things to fix", "badge", "snooze", "Parallly Assist", "improve agent", "channel coverage", "operational channel connection", "show me where", "guided tour", "context bar", "needs reauthorisation", "essentials", "next step", "not ready", "whatsapp not delivering", "billing time zone", "payment method in meta", "channel nobody answers", "day 0", "first real customer", "unconfirmed example prices", "unconfirmed prices"]
 ---
 
 # Agent health and Quality center
@@ -27,6 +27,11 @@ edit agents, connections, or configuration under **AI & Growth → AI Agent**.
   has no channel assigned, no agent handles that channel, or WhatsApp cannot deliver —
   the banner shows anyway and names the reason. You can **Review**, **Ask
   Assist**, or **Snooze for 24 hours**.
+- The banner says **Something important needs fixing in your agents.** when a Critical
+  signal is open, or **An agent is at risk.** In each agent's editor, the quality box
+  counts the critical checks still failing — for example,
+  **1 important thing is left to fix.** — and the Home card says how many important
+  things are left to fix, or **Nothing important to fix**.
 - Snoozing hides that signal temporarily; it does not fix it. These alerts stay in
   the dashboard and do not send email or push notifications.
 
@@ -40,7 +45,7 @@ edit agents, connections, or configuration under **AI & Growth → AI Agent**.
   they do not mark an agent that already answers as "not ready". For example,
   while the business hasn't confirmed the example prices its industry recipe
   seeded (services and, for a gym, membership plans), it shows the non-critical
-  **Unconfirmed example prices** warning: the agent doesn't state those prices until they are confirmed.
+  **Unconfirmed prices** warning: the agent doesn't state those prices until they are confirmed; it also counts services and plans that have no price yet.
 - **Tested quality:** shows the latest critical evaluation and simulation, including
   version, date, threshold, and scenarios. Earlier evidence can become outdated when
   the agent changes. It is automated evidence, not a certification.
@@ -151,11 +156,11 @@ button.
 - **Not evaluated yet:** there is not enough evidence yet.
 - **Configuration incomplete:** a requirement is missing or preparation has a warning.
 - **Agent at risk:** a critical test or important real signal needs review.
-- **Ready for a controlled pilot:** preparation and tests support limited use, but
+- **Ready for its first customers:** preparation and tests look good, but
   real-world evidence is still insufficient.
 - **Operating with evidence:** configuration, current tests, and a useful production
   sample are available.
-- **Review required:** evidence became outdated or recent performance deteriorated.
+- **Needs your attention:** evidence became outdated or recent performance deteriorated.
 
 No status means the agent is perfect, certifies its operation, or guarantees business
 results.
@@ -209,7 +214,7 @@ health adds what improves the agent (mission, knowledge, hours, appointments,
 catalog), tests, and production evidence.
 
 **Is a strong simulation score enough to let it handle conversations on its own?**
-No. It helps reduce risk, but review it together with critical blockers, version
+No. It helps reduce risk, but review it together with what is left to fix, version
 freshness, and real evidence when available.
 
 **Does the system learn and change itself after every conversation?**

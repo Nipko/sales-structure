@@ -25,8 +25,12 @@ describe('readiness guidance reflects the diagnosis', () => {
       expect(screen.container.textContent).toContain('Verificación de configuración pendiente');
       expect(screen.container.textContent).toContain('No pudimos verificar 1 requisito');
       expect(screen.container.textContent).not.toContain('Falta configurar');
-      expect(screen.container.textContent).not.toContain('bloqueo crítico');
-      expect(screen.container.textContent).toContain('versión operativa');
+      // An unverified requirement is not counted as something left to fix.
+      expect(screen.container.textContent).not.toContain('cosa importante por resolver');
+      // Plain words in both change modes: what it describes is the agent as it
+      // answers today, not a "versión operativa" beside a "borrador".
+      expect(screen.container.textContent).toContain('Esto describe a tu agente tal como responde hoy.');
+      expect(screen.container.textContent).not.toMatch(/versi[oó]n operativa|borrador|evaluaci[oó]n/i);
       const retry = Array.from(screen.container.querySelectorAll('button')).find(button => button.textContent?.includes('Reintentar'))!;
       await act(async () => { retry.click(); });
       expect(api.getAgentQualityOverview).toHaveBeenCalledTimes(2);
@@ -39,7 +43,9 @@ describe('readiness guidance reflects the diagnosis', () => {
     const screen = await renderScreen(<AgentReadinessBanner tenantId="tenant" agentId="agent" />);
     try {
       expect(screen.container.textContent).toContain('Falta configurar');
-      expect(screen.container.textContent).toContain('1 bloqueo crítico');
+      // Counted, in plain words: "bloqueo crítico" was Appendix A jargon everywhere.
+      expect(screen.container.textContent).toContain('Queda 1 cosa importante por resolver');
+      expect(screen.container.textContent).not.toMatch(/bloqueos? cr[ií]ticos?/i);
       expect(screen.container.querySelector('a[href="/admin/knowledge"]')).not.toBeNull();
     } finally { screen.unmount(); }
   });

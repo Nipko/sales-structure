@@ -1,6 +1,6 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { rollUpOperationalState } from '@parallext/shared';
-import { AgentAssessmentService } from './agent-assessment.service';
+import { AgentAssessmentService, connectFirstChannelTask, preferredSetupChannel } from './agent-assessment.service';
 
 const TENANT = '11111111-1111-4111-8111-111111111111';
 const AGENT = '22222222-2222-4222-8222-222222222222';
@@ -357,5 +357,192 @@ describe('shared agent assessment', () => {
             // A leftover divergence would make the assessment accuse a closed gap.
             expect(menu.readinessAudit[0].auditedDivergence).toBeNull();
         });
+    });
+});
+
+/**
+ * Audit #51: on a brand-new account the first step of the setup card read
+ * "Asignar un canal conectado" and pointed at the agent editor. The agent is
+ * born with no channel, so `channel_assignment` is the first failing check —
+ * but there is no connected channel to assign, and the WhatsApp question that
+ * would create one was four screens away. With zero connections the step is
+ * "connect", on the WhatsApp screen, with the first-channel tour.
+ */
+describe('a brand-new account is told to connect, not to assign', () => {
+    const noChannelChecks = (overrides: Record<string, any> = {}) => [
+        { code: 'channel_assignment', status: 'fail', evidence: { assigned: 0, servedByFallback: 0 },
+            href: `/admin/agent/${AGENT}?tab=persona&focus=channels`, ...overrides.channel_assignment },
+        { code: 'operational_channel_scope', status: 'pass', evidence: {}, ...overrides.operational_channel_scope },
+        { code: 'channel_connection', status: 'not_applicable', evidence: { assigned: 0, connected: 0, hasCredentialIssue: false, staleBindings: 0 },
+            href: '/admin/channels', ...overrides.channel_connection },
+        { code: 'channel_coverage', status: 'not_applicable', evidence: {}, ...overrides.channel_coverage },
+        { code: 'channel_unanswered', status: 'not_applicable', evidence: { connected: 0 }, ...overrides.channel_unanswered },
+        { code: 'whatsapp_delivery', status: 'not_applicable', evidence: {}, ...overrides.whatsapp_delivery },
+    ];
+    /** The agent in the harness is assigned whatsapp + telegram; a newborn one has none. */
+    function newborn(connections: number | Error, checks = noChannelChecks(), agentChannels: string[] = []) {
+        const h = harness();
+        h.overview.preparation.dimensions[0].checks = checks as any;
+        const rows = h.prisma.executeInTenantSchema.getMockImplementation()!;
+        h.prisma.executeInTenantSchema.mockImplementation(async (schema: string, sql: string, params: any) => {
+            const result: any = await rows(schema, sql, params);
+            return Array.isArray(result) && result[0]?.channels ? result.map((row: any) => ({ ...row, channels: agentChannels })) : result;
+        });
+        (h.prisma as any).$queryRawUnsafe = jest.fn(async () => {
+            if (connections instanceof Error) throw connections;
+            return [{ c: connections }];
+        });
+        return h;
+    }
+    const channelTask = async (h: ReturnType<typeof harness>) =>
+        (await h.service.getAssessment(TENANT, AGENT)).tasks.find(task => task.key === 'channel')!;
+
+    it('turns "assign" into "connect your first channel" on the WhatsApp screen', async () => {
+        const h = newborn(0);
+        const channel = await channelTask(h);
+        expect(channel).toMatchObject({
+            status: 'fail', state: 'pending',
+            pendingCheckCode: 'channel_connection',
+            href: '/admin/channels/whatsapp', tourId: 'first_channel_whatsapp', channelType: 'whatsapp',
+        });
+        // The checks still say what they said: the diagnosis is not rewritten,
+        // only the step it turns into.
+        expect(channel.checks.find(check => check.code === 'channel_assignment')?.status).toBe('fail');
+        expect(channel.checks.find(check => check.code === 'channel_connection')?.status).toBe('not_applicable');
+    });
+
+    it('counts connections the way Calidad does: channel accounts plus the business\'s own web chats, never the demo link', async () => {
+        const h = newborn(0);
+        await channelTask(h);
+        const [sql, tenantId, types] = ((h.prisma as any).$queryRawUnsafe as jest.Mock).mock.calls[0];
+        expect(tenantId).toBe(TENANT);
+        expect(sql).toContain('FROM public.channel_accounts');
+        expect(sql).toContain('tenant_id = $1::uuid');
+        expect(sql).toContain('is_active = true');
+        expect(sql).toContain('FROM public.widget_configs');
+        expect(sql).toContain('COALESCE(is_demo, false) = false');
+        expect(types).toEqual(['whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget']);
+    });
+
+    it('also routes "connect an assigned channel" there when nothing is connected at all', async () => {
+        const h = newborn(0, noChannelChecks({
+            channel_assignment: { status: 'pass', evidence: { assigned: 1 } },
+            channel_connection: { status: 'fail', evidence: { assigned: 1, connected: 0, hasCredentialIssue: false, staleBindings: 0 } },
+        }));
+        expect(await channelTask(h)).toMatchObject({
+            pendingCheckCode: 'channel_connection', href: '/admin/channels/whatsapp', tourId: 'first_channel_whatsapp',
+        });
+    });
+
+    it('keeps "assign" when a connection exists: then there is something to assign', async () => {
+        const h = newborn(1);
+        expect(await channelTask(h)).toMatchObject({
+            status: 'fail', pendingCheckCode: 'channel_assignment',
+            href: `/admin/agent/${AGENT}?tab=persona&focus=channels`,
+        });
+    });
+
+    it('keeps the diagnosis when the count cannot be read: unreadable is never zero', async () => {
+        const h = newborn(new Error('db down'));
+        const channel = await channelTask(h);
+        expect(channel.pendingCheckCode).toBe('channel_assignment');
+        expect(channel.href).toBe(`/admin/agent/${AGENT}?tab=persona&focus=channels`);
+        expect(channel.tourId).not.toBe('first_channel_whatsapp');
+    });
+
+    it('keeps a different diagnosis of its own: an assignment to an unsupported channel', async () => {
+        const h = newborn(0, noChannelChecks({
+            channel_assignment: { status: 'pass', evidence: { assigned: 1 } },
+            operational_channel_scope: { status: 'fail', evidence: { unsupportedAssignments: 1 }, href: `/admin/agent/${AGENT}?focus=channels` },
+            channel_connection: { status: 'fail', evidence: { assigned: 1, connected: 0 } },
+        }));
+        expect((await channelTask(h)).pendingCheckCode).toBe('operational_channel_scope');
+    });
+
+    it('sends an owner who chose another channel to the channel list, with its tour', async () => {
+        const h = newborn(0);
+        h.prisma.tenant.findUnique.mockResolvedValue({ industry: 'restaurantes',
+            settings: { verticalConfig: { subType: 'casual_dining' }, setupWizardChannels: ['instagram'] } } as any);
+        expect(await channelTask(h)).toMatchObject({
+            pendingCheckCode: 'channel_connection', href: '/admin/channels', tourId: 'connect_channel', channelType: 'instagram',
+        });
+    });
+
+    it('leaves every task other than the channel exactly as it was', () => {
+        const task = { key: 'business', status: 'fail', state: 'pending', checks: [], href: '/admin/settings/business-info',
+            tourId: 'business_identity', dependsOn: [], pendingCheckCode: 'business_identity' } as any;
+        expect(connectFirstChannelTask(task, 0)).toBe(task);
+        const passing = { ...task, key: 'channel', status: 'pass' };
+        expect(connectFirstChannelTask(passing, 0)).toBe(passing);
+    });
+});
+
+/**
+ * F17/F6: the wizard saves the recipe's channel order on every stage save, and
+ * the assessment read it BEFORE the agent's real channels. An owner who
+ * connected WhatsApp and later broke it was sent to repair Instagram, with the
+ * Instagram tour. The order answers "which channel first", so it only leads
+ * while nothing is connected.
+ */
+describe('the channel the channel task speaks about', () => {
+    const brokenConnection = [
+        { code: 'channel_assignment', status: 'pass', evidence: { assigned: 1 } },
+        { code: 'channel_connection', status: 'fail', evidence: { assigned: 1, connected: 0, hasCredentialIssue: true, staleBindings: 0 },
+            href: '/admin/channels' },
+    ];
+    const LEGACY_SEED = ['whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget'];
+    function tenant(connections: number | Error, agentChannels: string[], wizardOrder?: string[], checks: any[] = brokenConnection) {
+        const h = harness();
+        h.overview.preparation.dimensions[0].checks = checks as any;
+        const rows = h.prisma.executeInTenantSchema.getMockImplementation()!;
+        h.prisma.executeInTenantSchema.mockImplementation(async (schema: string, sql: string, params: any) => {
+            const result: any = await rows(schema, sql, params);
+            return Array.isArray(result) && result[0]?.channels ? result.map((row: any) => ({ ...row, channels: agentChannels })) : result;
+        });
+        (h.prisma as any).$queryRawUnsafe = jest.fn(async () => {
+            if (connections instanceof Error) throw connections;
+            return [{ c: connections }];
+        });
+        h.prisma.tenant.findUnique.mockResolvedValue({ industry: 'restaurantes',
+            settings: { verticalConfig: { subType: 'casual_dining' }, ...(wizardOrder ? { setupWizardChannels: wizardOrder } : {}) } } as any);
+        return h;
+    }
+    const channelTask = async (h: ReturnType<typeof harness>) =>
+        (await h.service.getAssessment(TENANT, AGENT)).tasks.find(task => task.key === 'channel')!;
+
+    it('repairs the WhatsApp that broke as WhatsApp, whatever order the wizard saved', async () => {
+        const channel = await channelTask(tenant(1, ['whatsapp'], ['instagram', 'messenger', 'whatsapp']));
+        expect(channel).toMatchObject({ status: 'fail', pendingCheckCode: 'channel_connection', channelType: 'whatsapp' });
+        expect(channel.channelType).not.toBe('instagram');
+    });
+
+    it('keeps an unreadable count on the agent\'s own channels: unreadable is never "nothing connected"', async () => {
+        expect((await channelTask(tenant(new Error('db down'), ['whatsapp'], ['instagram']))).channelType).toBe('whatsapp');
+    });
+
+    it('leaves a legacy agent seeded with five channels as it was: its first channel, once something is connected', async () => {
+        expect((await channelTask(tenant(1, LEGACY_SEED))).channelType).toBe('whatsapp');
+        expect((await channelTask(tenant(2, LEGACY_SEED, ['instagram', 'whatsapp']))).channelType).toBe('whatsapp');
+    });
+
+    it('still lets the wizard pick the FIRST channel of a legacy agent with nothing connected', async () => {
+        // The seed says nothing about what the owner wants to connect first;
+        // the owner's answer in the wizard does.
+        const channel = await channelTask(tenant(0, LEGACY_SEED, ['instagram', 'whatsapp'], [
+            { code: 'channel_assignment', status: 'pass', evidence: { assigned: 5 } },
+            { code: 'channel_connection', status: 'fail', evidence: { assigned: 5, connected: 0, hasCredentialIssue: false, staleBindings: 0 },
+                href: '/admin/channels' },
+        ]));
+        expect(channel).toMatchObject({ channelType: 'instagram', href: '/admin/channels', tourId: 'connect_channel' });
+    });
+
+    it('is decided on the connection count, for a D16 agent born with no channel too', () => {
+        expect(preferredSetupChannel(['instagram', 'whatsapp'], [], 0)).toBe('instagram');
+        expect(preferredSetupChannel(['instagram', 'whatsapp'], ['whatsapp'], 1)).toBe('whatsapp');
+        expect(preferredSetupChannel(['instagram'], ['web_widget'], 1)).toBe('web_chat');
+        // Nothing of the agent's own to speak about: the wizard's order is still a fallback.
+        expect(preferredSetupChannel(['telegram'], [], 1)).toBe('telegram');
+        expect(preferredSetupChannel(['instagram'], ['whatsapp'], null)).toBe('whatsapp');
+        expect(preferredSetupChannel([], ['email'], 1)).toBeUndefined();
     });
 });

@@ -36,7 +36,7 @@ La recette de votre secteur préremplit des prix d’exemple pour que vous ne pa
 - Dans **Adhésions**, chaque forfait au prix d’exemple affiche le badge **Prix d'exemple** et la note indiquant que l’agent ne le mentionne pas tant que vous ne l’avez pas confirmé. **Confirmer le prix** conserve le même montant, désormais confirmé ; **Sur devis** fait que l’agent n’indique aucun montant pour ce forfait et propose qu’une personne établisse un devis.
 - Un forfait qui affiche **Sans prix** n’a aucun montant à confirmer : appuyez sur **Saisir le prix**, **C'est gratuit** ou **Sur devis**.
 - Dans le formulaire du forfait, vous choisissez **Prix confirmé** (il faut un montant supérieur à 0), **C'est gratuit** ou **Sur devis, selon le cas** ; saisir un autre montant le confirme aussi. Un forfait gratuit s’affiche **Gratuit**, et l’agent indique au client qu’il est gratuit.
-- Tant qu’il en reste un non confirmé, **Santé des agents** affiche l’avertissement non critique **Prix d'exemple non confirmés** ; l’agent continue de répondre.
+- Tant qu’il en reste un non confirmé ou sans prix, **Santé des agents** affiche l’avertissement non critique **Prix non confirmés** ; l’agent continue de répondre.
 
 ## Comment Assist vous aide
 

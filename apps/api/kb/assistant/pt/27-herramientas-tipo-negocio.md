@@ -36,7 +36,7 @@ A receita do seu ramo pré-preenche preços de exemplo para você não começar 
 - Em **Matrículas**, cada plano com preço de exemplo mostra o selo **Preço de exemplo** e a nota de que o agente não o menciona até você confirmá-lo. **Confirmar preço** mantém o mesmo valor, já confirmado; **É orçado** faz o agente não dizer nenhum valor daquele plano e oferecer que uma pessoa faça o orçamento.
 - Um plano que mostra **Sem preço** não tem valor a confirmar: toque em **Informar preço**, **É gratuito** ou **É orçado**.
 - No formulário do plano você escolhe **Preço confirmado** (precisa de um valor maior que 0), **É gratuito** ou **Orçado caso a caso**; escrever outro valor também o confirma. Um plano gratuito aparece como **Gratuito**, e o agente diz ao cliente que é gratuito.
-- Enquanto restar algum sem confirmar, a **Saúde dos agentes** mostra o aviso não crítico **Preços de exemplo sem confirmar**; o agente continua respondendo.
+- Enquanto restar algum sem confirmar ou sem preço, a **Saúde dos agentes** mostra o aviso não crítico **Preços sem confirmar**; o agente continua respondendo.
 
 ## Como Assist ajuda
 

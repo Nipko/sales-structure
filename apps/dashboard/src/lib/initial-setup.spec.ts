@@ -3,7 +3,8 @@ import es from '../../messages/es.json';
 import en from '../../messages/en.json';
 import pt from '../../messages/pt.json';
 import fr from '../../messages/fr.json';
-import { essentialSetupItemsFromAssessment, setupTaskLabelKey } from './initial-setup';
+import type { WizardChannel } from '@/app/admin/setup-wizard/connect-channels';
+import { essentialSetupItemsFromAssessment, setupTaskLabelKey, withLeadChannel, type EssentialSetupItem, type FirstChannelLead } from './initial-setup';
 
 const task = (overrides: Partial<AgentSetupTask>): AgentSetupTask => ({
   key: 'channel',
@@ -104,5 +105,99 @@ describe('essential setup projects the server assessment', () => {
     const assessed = task({ status: 'pass', state: 'prepared', checks });
     expect(setupTaskLabelKey(assessed)).toBe('channelActions.ready');
     expect(essentialSetupItemsFromAssessment([assessed], () => true)[0]).toMatchObject({ done: true, labelKey: 'channelActions.ready' });
+  });
+});
+
+describe('the channel step names ONE channel: the server\'s', () => {
+  const everything = () => true;
+  /** An account known to have no connection; Home's own recipe reading as the fallback. */
+  const noChannel = (fallback: WizardChannel | null = null): FirstChannelLead => ({ fallback });
+  /**
+   * The server's step on an account with nothing connected, exactly as
+   * `connectFirstChannelTask` shapes it: WhatsApp (named, or the server's
+   * default) keeps the WhatsApp screen and tour; any other channel the wizard
+   * saved first keeps the channel list and `connect_channel`.
+   */
+  const connectFirst = (channelType: EssentialSetupItem['channelType'] = 'whatsapp', overrides: Partial<EssentialSetupItem> = {}): EssentialSetupItem => ({
+    key: 'channel', done: false, labelKey: 'channelActions.connect', channelType,
+    ...(channelType === 'whatsapp'
+      ? { href: '/admin/channels/whatsapp', tourId: 'first_channel_whatsapp' as const }
+      : { href: '/admin/channels', tourId: 'connect_channel' as const }),
+    ...overrides,
+  });
+  /** The same step when the server could not count the connections and never shaped it. */
+  const unshaped = (overrides: Partial<EssentialSetupItem> = {}): EssentialSetupItem => ({
+    key: 'channel', href: '/admin/channels', done: false, labelKey: 'channelActions.connect', tourId: 'connect_channel', ...overrides,
+  });
+
+  it('names the channel the server carries, opens its own page and walks to its card', () => {
+    // F2: an Instagram-led salon read "Conecta tu primer canal" and landed on
+    // the channel list, because only a WhatsApp step was ever renamed.
+    expect(withLeadChannel(connectFirst('instagram'), noChannel(), everything)).toEqual({
+      key: 'channel', href: '/admin/channels/instagram', done: false, labelKey: 'channelActions.connectLead',
+      leadChannel: 'instagram', tourId: 'connect_channel', channelType: 'instagram',
+    });
+  });
+
+  it('does not let Home\'s own recipe overrule the order the wizard saved', () => {
+    // F4: the saved order says WhatsApp (she chose it); the recipe says
+    // Instagram. The server's word is the one every screen reads.
+    expect(withLeadChannel(connectFirst('whatsapp'), noChannel('instagram'), everything)).toEqual({
+      key: 'channel', href: '/admin/channels/whatsapp', done: false, labelKey: 'channelActions.connectLead',
+      leadChannel: 'whatsapp', tourId: 'first_channel_whatsapp', channelType: 'whatsapp',
+    });
+    expect(withLeadChannel(connectFirst('telegram'), noChannel('instagram'), everything))
+      .toMatchObject({ leadChannel: 'telegram', href: '/admin/channels/telegram' });
+  });
+
+  it('falls back to Home\'s own reading only when the server named no channel', () => {
+    expect(withLeadChannel(unshaped(), noChannel('instagram'), everything)).toEqual({
+      key: 'channel', href: '/admin/channels/instagram', done: false, labelKey: 'channelActions.connectLead',
+      leadChannel: 'instagram', tourId: 'connect_channel', channelType: 'instagram',
+    });
+    expect(withLeadChannel(unshaped(), noChannel('whatsapp'), everything))
+      .toMatchObject({ leadChannel: 'whatsapp', href: '/admin/channels/whatsapp', tourId: 'first_channel_whatsapp' });
+  });
+
+  it('reads "assign" as "connect" too: with nothing connected, connecting is the repair', () => {
+    expect(withLeadChannel(connectFirst('telegram', { labelKey: 'channelActions.assign' }), noChannel(), everything))
+      .toMatchObject({ labelKey: 'channelActions.connectLead', href: '/admin/channels/telegram' });
+  });
+
+  it.each([
+    // "Asignar" on an account WITH a channel means assigning the one she has.
+    ['an account not known to have zero connections', connectFirst('instagram'), null],
+    ['a step the server did not shape and no fallback yet', unshaped(), noChannel(null)],
+    ['a channel this card cannot name', connectFirst('web_chat'), noChannel('instagram')],
+    ['another step', connectFirst('whatsapp', { key: 'business', labelKey: 'items.business' }), noChannel()],
+    ['a finished step', connectFirst('whatsapp', { done: true }), noChannel()],
+    ['a step nobody could verify', connectFirst('whatsapp', { verification: 'unavailable' }), noChannel()],
+    ['a credential to review', connectFirst('whatsapp', { labelKey: 'channelActions.credentials' }), noChannel()],
+    ['a channel nobody answers', connectFirst('whatsapp', { labelKey: 'channelActions.unanswered' }), noChannel()],
+  ] as const)('leaves %s alone', (_label, item, lead) => {
+    expect(withLeadChannel(item, lead, everything)).toBe(item);
+  });
+
+  it('never points somewhere the person may not open', () => {
+    const item = connectFirst('instagram');
+    expect(withLeadChannel(item, noChannel(), href => href !== '/admin/channels/instagram')).toBe(item);
+  });
+
+  it('never decides the step is done', () => {
+    expect(withLeadChannel(connectFirst('messenger'), noChannel(), everything).done).toBe(false);
+  });
+
+  it.each([['es', es], ['en', en], ['pt', pt], ['fr', fr]] as const)('names the channel in %s, and asks for the first one plainly', (_locale, messages) => {
+    const actions = (messages as any).qualityHealth.setup.channelActions;
+    expect(actions.connectLead).toContain('{channel}');
+    // With no connection this is the first thing the owner reads: "your
+    // first channel", not "a channel assigned" to an agent she never set up.
+    expect(actions.connect).not.toMatch(/asignad|assigned|atribu|attribu/i);
+  });
+
+  it('says it with tú in Spanish', () => {
+    const actions = (es as any).qualityHealth.setup.channelActions;
+    expect(actions.connect).toBe('Conecta tu primer canal');
+    expect(actions.connectLead).toBe('Conecta {channel}');
   });
 });

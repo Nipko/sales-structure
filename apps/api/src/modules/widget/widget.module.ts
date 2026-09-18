@@ -8,11 +8,14 @@ import { WidgetPublicController } from './widget-public.controller';
 import { WidgetGateway } from './widget.gateway';
 import { ConversationsModule } from '../conversations/conversations.module';
 import { WidgetRateLimitService } from './widget-rate-limit.service';
+import { DemoAllowanceController } from './demo-allowance.controller';
 
 @Module({
     imports: [ConversationsModule, WidgetDeliveryModule],
     providers: [WidgetService, WidgetTriggersService, WidgetRateLimitService, WidgetGateway],
-    controllers: [WidgetController, WidgetTriggersController, WidgetPublicController],
+    // DemoAllowanceController: the super_admin screen for the platform-paid
+    // allowance of the public link, which is this module's runtime.
+    controllers: [WidgetController, WidgetTriggersController, WidgetPublicController, DemoAllowanceController],
     exports: [WidgetService, WidgetTriggersService],
 })
 export class WidgetModule {}

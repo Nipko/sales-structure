@@ -26,7 +26,7 @@ C'est la façon la plus rapide de voir votre agent en action :
 4. Écrivez comme si vous étiez un client (« Quels sont vos tarifs ? », « Avez-vous des disponibilités samedi ? ») et cliquez sur **Envoyer**.
 5. Avec **Réinitialiser**, vous effacez la conversation et repartez de zéro.
 
-Le chat de test est un espace sûr : il ne crée aucun contact, n'apparaît pas dans votre boîte de réception et ne touche à aucune conversation réelle. Utilisez-le chaque fois que vous modifiez la personnalité, les règles ou les informations de l'entreprise, afin de confirmer que l'agent répond comme prévu.
+Le chat de test est un espace sûr : il ne crée aucun contact, n'apparaît pas dans votre boîte de réception et ne touche à aucune conversation réelle. Il utilise en revanche les messages IA de votre forfait : chaque réponse de l'agent, ici et dans les simulations, compte dans ces messages. Utilisez-le chaque fois que vous modifiez la personnalité, les règles ou les informations de l'entreprise, afin de confirmer que l'agent répond comme prévu.
 
 ## Comment lancer une simulation
 

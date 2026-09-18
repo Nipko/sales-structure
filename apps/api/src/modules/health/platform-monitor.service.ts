@@ -1301,9 +1301,9 @@ export class PlatformMonitorService implements OnModuleInit {
                      de los cuales <b>${indeterminate}</b> quedaron en estado <b>indeterminado</b>: no sabemos si el dinero
                      se movió, y por eso el motor NO los reintenta ni genera otro intento para ese ciclo.<br>
                      <ul style="margin:6px 0 6px 18px;list-style:disc;">${list}</ul>
-                     <b>Solución (manual):</b> buscá cada <code>reference</code> en el proveedor
+                     <b>Solución (manual):</b> busca cada <code>reference</code> en el proveedor
                      (<code>GET /v1/transactions?reference=...</code> en Wompi). Si la transacción existe y está aprobada,
-                     conciliá el intento; si no existe, recién ahí puede reintentarse el ciclo.`,
+                     concilia el intento; si no existe, recién ahí puede reintentarse el ciclo.`,
                     indeterminate,
                 );
                 await this.incidents.resolveByKey('billing:engine:stuck_charges:warning');
@@ -1504,7 +1504,7 @@ export class PlatformMonitorService implements OnModuleInit {
                  <ul style="margin:6px 0 6px 18px;list-style:disc;">${list}</ul>
                  No es una caída: es una lista de trabajo. Una tarjeta vencida rechaza todos los reintentos del dunning
                  y termina en churn silencioso.<br>
-                 <b>Acción:</b> confirmá que el aviso automático de tarjeta por vencer salió, y contactá a los tenants
+                 <b>Acción:</b> confirma que el aviso automático de tarjeta por vencer salió, y contacta a los tenants
                  que ya tienen la tarjeta vencida para que carguen un medio nuevo.`,
                 total,
             );
@@ -1676,7 +1676,7 @@ export class PlatformMonitorService implements OnModuleInit {
                      <b>Solucion:</b> el refresco de Instagram corre a las 6AM (InstagramTokenRefreshService,
                      renueva tokens con <30 dias de vida). Si un token sigue apareciendo aqui, su refresco esta
                      fallando (revisa logs) o el canal necesita re-autorizacion: entra al tenant → Configuracion
-                     → Canales y reconectalo.`,
+                     → Canales y reconéctalo.`,
                     expiring.length,
                 );
             } else {

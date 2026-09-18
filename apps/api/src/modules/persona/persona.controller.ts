@@ -1,6 +1,12 @@
 import { BadRequestException, Controller, Get, Post, Put, Delete, Body, Param, Query, Req, Logger, Optional, UseGuards } from '@nestjs/common';
 import { RedisService } from '../redis/redis.service';
-import { ensureDemoWidget } from '../widget/widget-demo-link';
+import {
+    demoLinkAvailability,
+    ensureDemoWidget,
+    type DemoLinkAvailability,
+    type SetupStatusDemoLink,
+} from '../widget/widget-demo-link';
+import { DemoAllowanceService } from '../throttle/demo-allowance.service';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { PersonaService } from './persona.service';
@@ -15,6 +21,12 @@ import * as yaml from 'js-yaml';
 import { getVerticalCatalog } from '../../common/utils/vertical-catalog.util';
 import { mutateTenantSettingsAtomic } from '../../common/utils/tenant-settings.util';
 import { FIRST_REPLY_SETTING_KEY, isRecordedFirstReply } from '../../common/utils/first-reply.util';
+import {
+    WHATSAPP_TRIAGE_SETTING_KEY,
+    applyWhatsAppTriage,
+    isWhatsAppTriageAnswerId,
+    readWhatsAppTriage,
+} from './whatsapp-triage.util';
 import {
     advanceOnboardingStage,
     deriveOnboardingStage,
@@ -52,7 +64,43 @@ export class PersonaController {
         // as a save. Optional for the same hand-built specs; without it the
         // switch refuses to turn an agent on rather than bypass that commit.
         @Optional() private readonly drafts?: AgentDraftService,
+        // Whether the agent's link answers right now (F11). Optional for the
+        // same hand-built specs; without it the link reports that it answers,
+        // which is what an unknown allowance reports anyway.
+        @Optional() private readonly demoAllowance?: DemoAllowanceService,
     ) {}
+
+    /**
+     * Whether a visitor who writes on the agent's link gets a reply now (F11),
+     * read the way the reply lane decides it: the plan's web chat first (the
+     * `isTrialLink` predicate), then the platform's switch and the lifetime
+     * counter it reserves against (`demo_msg:{tenantId}`, read-only here).
+     *
+     * Never throws, and every read that fails counts as "answers": a blip must
+     * not tell the owner their link went quiet. A stored allowance that could
+     * not be read (`fallback`) is unknown, not the defaults.
+     */
+    private async readDemoLinkAvailability(tenantId: string): Promise<DemoLinkAvailability> {
+        // Each read is an async function, so a missing dependency throws into
+        // the promise and lands here as `null` too.
+        const unknown = <T>(read: () => Promise<T>): Promise<T | null> => read().catch(() => null);
+        const planIncludesWebChat = await unknown(async () =>
+            (await this.throttleService.getPlanFeatures(tenantId))?.widget === true);
+        if (planIncludesWebChat !== false) return demoLinkAvailability({ planIncludesWebChat, allowance: null, used: null });
+        const [allowance, used] = await Promise.all([
+            unknown(async () => {
+                if (!this.demoAllowance) return null;
+                const reading = await this.demoAllowance.getWithSource();
+                return reading.source === 'fallback' ? null : reading.allowance;
+            }),
+            unknown(async () => {
+                const usage = await this.throttleService.getDemoMessageUsage(tenantId);
+                const value = Number(usage?.used);
+                return Number.isFinite(value) ? value : null;
+            }),
+        ]);
+        return demoLinkAvailability({ planIncludesWebChat, allowance, used });
+    }
 
     /**
      * Persona configuration is a write boundary: an ineligible tenant must not
@@ -84,6 +132,25 @@ export class PersonaController {
      * se ignora en vez de romper el guardado: la decisión de diferir vale más
      * que su reloj, y el estado (`channel_deferred`) ya la deja registrada.
      */
+    /**
+     * El orden de canales que manda el asistente, saneado: solo los canales
+     * que el día 0 ofrece, sin repetidos, a lo sumo cinco. Cualquier otra
+     * cosa se descarta en silencio — es una preferencia de presentación, no
+     * algo por lo que valga la pena rechazar el guardado de la etapa.
+     */
+    static readWizardChannelOrder(value: unknown): string[] | null {
+        if (!Array.isArray(value)) return null;
+        const allowed = new Set(['whatsapp', 'instagram', 'messenger', 'telegram', 'web_chat', 'web_widget']);
+        const order: string[] = [];
+        for (const item of value) {
+            if (typeof item !== 'string') continue;
+            const channel = item.trim().toLowerCase();
+            if (allowed.has(channel) && !order.includes(channel)) order.push(channel);
+            if (order.length >= 5) break;
+        }
+        return order.length > 0 ? order : null;
+    }
+
     private normalizeIsoTimestamp(value: unknown): string | null {
         if (typeof value !== 'string' || !value.trim()) return null;
         const parsed = new Date(value.trim());
@@ -180,6 +247,14 @@ export class PersonaController {
             /** Solo se registran cuando el asistente aplicó de verdad una plantilla. */
             templateId?: string | null;
             selectedChannels?: string[] | null;
+            /**
+             * El orden de canales que el asistente le mostró a la dueña (la
+             * receta de su negocio filtrada por su plan). Se guarda en cada
+             * guardado solo-estado, no solo al cerrar: es lo que hace que
+             * "Salud de agentes" y Assist nombren el mismo primer canal que el
+             * asistente e Inicio, también para quien eligió "Conectar después".
+             */
+            channelOrder?: string[] | null;
         },
     ) {
         await mutateTenantSettingsAtomic(this.prisma, tenantId, (current) => {
@@ -195,6 +270,7 @@ export class PersonaController {
                 // guardan igual aunque todavía no se haya cerrado el asistente.
                 ...(input.businessHours ? { businessHours: input.businessHours } : {}),
                 ...(input.channelConnectSkippedAt ? { channelConnectSkippedAt: input.channelConnectSkippedAt } : {}),
+                ...(input.channelOrder && input.channelOrder.length > 0 ? { setupWizardChannels: input.channelOrder } : {}),
                 ...(input.markCompleted ? {
                     setupWizardCompleted: true,
                     ...(input.templateId ? { setupWizardTemplate: input.templateId } : {}),
@@ -290,6 +366,10 @@ export class PersonaController {
                 // Un ping de solo-estado no cierra el asistente salvo que lo pida.
                 markCompleted: body.markCompleted === true,
                 channelConnectSkippedAt: skippedAt,
+                // En este camino `selectedChannels` es SOLO el orden que la
+                // pantalla mostró: nunca asigna canales a ningún agente (eso es
+                // el camino de crear agente, más abajo, y D16 lo dejó vacío).
+                channelOrder: PersonaController.readWizardChannelOrder(body.selectedChannels),
             });
             this.logger.log(`Setup wizard stage advanced for tenant ${tenantId} (stageOnly, stage=${requestedStage || 'none'})`);
             return { success: true, data: { stageOnly: true } };
@@ -723,7 +803,13 @@ export class PersonaController {
 
         // The public link exists for every tenant, including the ones born
         // before D11: the wizard's last step and the channels page read it here.
-        const demoLink = await ensureDemoWidget(this.prisma, tenantId, { agentName: defaultAgent?.name ?? defaultAgentName, redis: this.redis });
+        // With it, whether it answers right now (F11): the screens said "tu
+        // agente ya responde por su enlace" even with the trial switched off by
+        // the platform or its replies used up.
+        const link = await ensureDemoWidget(this.prisma, tenantId, { agentName: defaultAgent?.name ?? defaultAgentName, redis: this.redis });
+        const demoLink: SetupStatusDemoLink | null = link
+            ? { ...link, ...(await this.readDemoLinkAvailability(tenantId)) }
+            : null;
 
         return {
             success: true,
@@ -781,8 +867,43 @@ export class PersonaController {
                 // El huso del tenant: el asistente lo muestra como chip y los
                 // horarios lo necesitan para no asumir Bogotá.
                 timezone: settings.timezone || null,
+                // "¿Dónde vive hoy tu número?" tal como lo respondió el dueño:
+                // `{ answerId, recordedAt } | null`. La pantalla de WhatsApp
+                // prometía "lo dejamos anotado" y lo guardaba solo en el
+                // navegador; Inicio lo lee de acá para cumplir ese recordatorio.
+                whatsappTriage: readWhatsAppTriage(settings[WHATSAPP_TRIAGE_SETTING_KEY]),
             },
         };
+    }
+
+    /**
+     * Anota (o borra, con `answerId: null`) la respuesta a "¿Dónde vive hoy tu
+     * número de WhatsApp?". Solo el administrador conecta canales, así que solo
+     * él la escribe; el resto la lee en `setup-status`.
+     *
+     * El navegador guarda una copia para no volver a preguntar mientras carga,
+     * pero la respuesta que vale es esta: la promesa "lo dejamos anotado y lo
+     * retomas cuando lo tengas" tiene que cumplirse desde otro celular.
+     */
+    @Put(':tenantId/whatsapp-triage')
+    @Roles('tenant_admin')
+    @ApiOperation({ summary: 'Record (or clear with null) where the owner said the WhatsApp number lives today' })
+    async setWhatsAppTriage(
+        @Param('tenantId') tenantId: string,
+        @Body() body: { answerId?: unknown },
+    ) {
+        const answerId = body?.answerId;
+        // `undefined` is not "clear": an empty body is a broken client, and
+        // silently erasing the owner's answer for it would be the worse bug.
+        if (answerId !== null && !isWhatsAppTriageAnswerId(answerId)) {
+            throw new BadRequestException({
+                error: 'whatsapp_triage_answer_invalid',
+                message: 'answerId must be one of the triage answers, or null to clear it',
+            });
+        }
+        const next = await mutateTenantSettingsAtomic(this.prisma, tenantId,
+            (current) => applyWhatsAppTriage(current, answerId, new Date()));
+        return { success: true, data: { whatsappTriage: readWhatsAppTriage(next[WHATSAPP_TRIAGE_SETTING_KEY]) } };
     }
 
     @Get(':tenantId/plan-features')

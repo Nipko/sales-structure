@@ -416,7 +416,7 @@ export class TenantThrottleService {
                 currentCount,
                 maxAllowed: Number.isFinite(max) ? max : null,
                 plan,
-                message: `Tu plan ${plan} permite hasta ${Number.isFinite(max) ? max : '∞'} ${resourceLabel ?? limitKey}. Actualizá tu plan para agregar más.`,
+                message: `Tu plan ${plan} permite hasta ${Number.isFinite(max) ? max : '∞'} ${resourceLabel ?? limitKey}. Actualiza tu plan para agregar más.`,
             });
         }
     }
@@ -468,7 +468,7 @@ export class TenantThrottleService {
                 currentCount,
                 maxAllowed: Number.isFinite(max) ? max : null,
                 plan,
-                message: `Tu plan ${plan} permite hasta ${Number.isFinite(max) ? max : '∞'} cuenta(s) de ${channelType}. Actualizá tu plan o desconectá otra para conectar una nueva.`,
+                message: `Tu plan ${plan} permite hasta ${Number.isFinite(max) ? max : '∞'} cuenta(s) de ${channelType}. Actualiza tu plan o desconecta otra para conectar una nueva.`,
             });
         }
     }

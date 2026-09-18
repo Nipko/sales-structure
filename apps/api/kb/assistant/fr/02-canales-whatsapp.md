@@ -124,8 +124,8 @@ Dans **Canaux**, chaque carte affiche l'état de la connexion :
   existe, mais l'autorisation que Parallly utilise pour envoyer est expirée, révoquée, en
   erreur ou absente. Le numéro peut continuer à recevoir des messages et les réponses ne
   partent pas tant que vous n'avez pas réautorisé depuis **Connecter**. La **Santé des agents** le
-  signale comme connexion opérationnelle affectée et la traite comme une action critique
-  de l'agent.
+  signale dans **Connexion opérationnelle du canal** et le compte parmi les points importants
+  à régler de l'agent.
 - **Déconnecté** — il n'y a pas encore de connexion, ou elle a été interrompue.
 
 En ouvrant **WhatsApp** avec un numéro connecté, vous verrez la carte **Canal Actif** avec le **Numéro**, le **Nom vérifié** et la **Qualité** (la note que Meta attribue à votre numéro selon la manière dont vos clients reçoivent vos messages ; la maintenir « élevée » vous donne de meilleures limites d'envoi). Vous trouverez également la carte **Profil commercial** avec le bouton **Gérer le profil** pour modifier les informations que vos clients voient sur WhatsApp.

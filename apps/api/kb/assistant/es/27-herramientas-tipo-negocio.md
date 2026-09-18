@@ -36,7 +36,7 @@ La receta de tu rubro precarga precios de ejemplo para que no arranques desde ce
 - En **Membresías**, cada plan con precio de ejemplo muestra la pastilla **Precio de ejemplo** y la nota de que el agente no lo dice hasta que lo confirmes. **Confirmar precio** conserva el mismo monto, ya confirmado; **Se cotiza** hace que el agente no diga ningún monto de ese plan y ofrezca que una persona lo cotice.
 - Un plan que muestra **Sin precio** no tiene monto que confirmar: pulsa **Escribir precio**, **Es gratis** o **Se cotiza**.
 - En el formulario del plan eliges **Precio confirmado** (necesita un monto mayor que 0), **Es gratis** o **Se cotiza según el caso**; escribir otro monto también lo confirma. Un plan gratis se muestra como **Gratis** y el agente le dice al cliente que es gratis.
-- Mientras quede alguno sin confirmar, **Salud de agentes** muestra la advertencia no crítica **Precios de ejemplo sin confirmar**; el agente sigue respondiendo.
+- Mientras quede alguno sin confirmar o sin precio, **Salud de agentes** muestra la advertencia no crítica **Precios sin confirmar**; el agente sigue respondiendo.
 
 ## Cómo ayuda Assist
 

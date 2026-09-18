@@ -24,9 +24,14 @@ Si votre organisation a besoin d'une intégration e-mail, demandez une évaluati
 
 ### Le lien de votre agent et le chat web de votre site
 
-Le **lien de votre agent** (la page publique que vous voyez dans l'assistant de configuration, dont l'adresse commence par `/w/` suivi d'un identifiant) sert à tester votre agent et à le montrer à quelqu'un avant de connecter le moindre canal. Ce n'est pas la même chose que le chat web de cet écran : il ne compte pas comme un canal connecté et n'utilise pas le quota de chat web de votre forfait, même si les conversations qu'il reçoit apparaissent dans votre boîte de réception comme n'importe quelle conversation de chat web.
+Le **lien de votre agent** (la page publique que vous voyez dans l'assistant de configuration, dont l'adresse commence par `/w/` suivi d'un identifiant) existe dès le jour 0, avant de connecter le moindre canal. Ce qu'il est dépend de votre forfait :
 
-Le **chat web que vous installez sur votre site** (le widget de cet écran) compte, lui, comme un canal connecté et utilise la fonctionnalité de chat web de votre forfait. Les deux partagent la même famille de code en deux lignes : celui que vous copiez ici avec **Copier le code** est le même type d'extrait que l'action **Les deux lignes pour votre site** génère depuis le lien de votre agent, pour l'envoyer à la personne qui gère votre site.
+- **Si votre forfait n'inclut pas le chat web**, il sert à **essayer votre agent et le montrer à quelqu'un** : la plateforme paie ses messages jusqu'à un quota par compte, chaque page a un plafond de messages par jour et la conversation ne passe jamais à une personne. La plateforme peut mettre ce lien d'essai en pause : tant qu'il est en pause, ou une fois le quota épuisé, votre agent n'y répond pas.
+- **Si votre forfait inclut le chat web**, ce même lien est un **vrai canal** : il sert vos clients avec le quota de votre forfait, sans le plafond quotidien de l'essai, et peut transférer la conversation à votre équipe quand le client demande une personne. La carte du lien ajoute alors **Le mettre dans ma bio** et **Le mettre sur mon site web**.
+
+Dans les deux cas, les conversations qu'il reçoit apparaissent dans votre boîte de réception comme n'importe quelle conversation de chat web, et le lien ne compte pas comme un canal connecté : il ne se connecte ni ne se déconnecte.
+
+Le **chat web que vous installez sur votre site** (le widget de cet écran) compte, lui, comme un canal connecté et utilise la fonctionnalité de chat web de votre forfait. Pour le mettre sur votre site, copiez ses deux lignes avec **Copier le code** et envoyez-les à la personne qui gère votre site ; **Le mettre sur mon site web**, sur la carte du lien, vous ramène à ce même écran.
 
 ---
 

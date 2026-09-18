@@ -120,8 +120,8 @@ In **Channels**, each card shows the connection status:
   the usual green one and, next to it, a red one. The connection exists, but the permission
   Parallly uses to send is expired, revoked, in error, or gone. The number can still
   receive messages and replies do not go out until you authorise again from **Connect**.
-  **Agent health** reports it as an affected operational connection and treats it as a
-  critical agent action.
+  **Agent health** reports it under **Operational channel connection** and counts it as an
+  important thing to fix for the agent.
 - **Disconnected** — there's no connection yet, or it was disconnected.
 
 When you open **WhatsApp** with a connected number, you'll see the **Active Channel** card with the **Number**, the **Verified name**, and the **Quality** (the rating Meta gives your number based on how customers receive your messages; keeping it "high" gets you better sending limits). You'll also find the **Business Profile** card with the **Manage profile** button to edit the information your customers see on WhatsApp.

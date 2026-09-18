@@ -1176,6 +1176,12 @@ export const api = {
         apiPost("/channels/messenger/oauth-connect", { userAccessToken }),
     instagramOAuthConnect: (code: string) =>
         apiPost("/channels/instagram/oauth-connect", { code }),
+    // The envelope, not `api.fetch`: a refused key comes back as
+    // `errorCode: 'invalid_bot_key'` (or `email_not_verified`,
+    // `channel_not_available`, `telegram_unavailable`) for the panel to build
+    // its card from, where `api.fetch` kept only the server's sentence.
+    connectTelegram: (botToken: string) =>
+        apiPost<{ botUsername?: string; botName?: string }>("/channels/telegram/connect", { botToken }),
 
     // --- Users ---
     getUsers: () => apiGet("/auth/users"),

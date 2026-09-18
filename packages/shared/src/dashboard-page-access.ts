@@ -77,6 +77,9 @@ export const DASHBOARD_PAGE_RULES: readonly DashboardPageRule[] = [
     { prefix: "/admin/vertical-analytics", roles: [ROLE_KEYS.SUPER_ADMIN] },
     { prefix: "/admin/vertical-audit", roles: [ROLE_KEYS.SUPER_ADMIN] },
     { prefix: "/admin/coupons", roles: [ROLE_KEYS.SUPER_ADMIN] },
+    // The platform-paid allowance of every account's public link (D19). A cost
+    // of the platform, not of any tenant: never reachable by impersonating.
+    { prefix: "/admin/demo-allowance", roles: [ROLE_KEYS.SUPER_ADMIN] },
     { prefix: "/admin/settings/platform", roles: [ROLE_KEYS.SUPER_ADMIN] },
     { prefix: "/admin/settings/ai-providers", roles: [ROLE_KEYS.SUPER_ADMIN] },
     { prefix: "/admin/settings/ai-config", roles: [ROLE_KEYS.SUPER_ADMIN] },

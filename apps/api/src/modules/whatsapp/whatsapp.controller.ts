@@ -1034,7 +1034,7 @@ export class WhatsappController {
     if (canonical && legacy && canonical !== legacy) {
       throw new BadRequestException(
         'phoneNumberId y fromPhoneNumberId nombran números distintos. `fromPhoneNumberId` '
-        + 'está obsoleto: mandá sólo `phoneNumberId`.');
+        + 'está obsoleto: manda sólo `phoneNumberId`.');
     }
     return canonical || legacy || undefined;
   }

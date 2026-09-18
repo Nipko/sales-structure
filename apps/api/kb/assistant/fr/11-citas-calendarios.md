@@ -3,7 +3,7 @@ id: citas-calendarios
 title: "Rendez-vous et calendriers"
 routes: ["/admin/appointments", "/admin/settings/public-booking"]
 roles: ["tenant_admin", "tenant_supervisor", "tenant_agent"]
-keywords: ["rendez-vous", "agenda", "calendrier", "planifier", "réservations", "réserver", "services", "disponibilité", "horaires", "google calendar", "outlook", "rappels", "confirmation de présence", "reprogrammer", "annuler un rendez-vous", "dates bloquées", "lien de réunion", "meet", "teams", "réservation publique", "page de réservation", "rendez-vous récurrent", "prix d'exemple", "confirmer le prix", "sur devis", "prix à confirmer", "prix d'exemple non confirmés", "service sans montant", "adhésions"]
+keywords: ["rendez-vous", "agenda", "calendrier", "planifier", "réservations", "réserver", "services", "disponibilité", "horaires", "google calendar", "outlook", "rappels", "confirmation de présence", "reprogrammer", "annuler un rendez-vous", "dates bloquées", "lien de réunion", "meet", "teams", "réservation publique", "page de réservation", "rendez-vous récurrent", "prix d'exemple", "confirmer le prix", "sur devis", "prix à confirmer", "prix d'exemple non confirmés", "prix non confirmés", "service sans montant", "adhésions"]
 ---
 
 # Rendez-vous et calendriers
@@ -37,7 +37,7 @@ L'agent IA ne dit jamais à voix haute un prix d'exemple ni un prix sur devis : 
 - Un service sans montant affiche **Sans prix**, avec **Saisir le prix**, **C'est gratuit** ou **Sur devis** : il n'y a aucun montant à confirmer, donc **Confirmer le prix** n'apparaît pas. Il en va de même pour un exemple à 0, comme un cours d'essai : si vous ne le facturez vraiment pas, appuyez sur **C'est gratuit**.
 - Un service marqué **C'est gratuit** s'affiche **Gratuit**, et l'agent indique au client qu'il est gratuit. Laisser le montant vide ne le rend jamais gratuit.
 - Vous ne pouvez pas activer de politique de paiement (acompte ou paiement intégral) sur un service gratuit ni sur un service dont le prix n'est pas confirmé.
-- Tant qu'il reste des prix d'exemple non confirmés, la **Santé des agents** affiche l'avertissement non critique **Prix d'exemple non confirmés** ; cela ne bloque pas l'agent pour répondre. Dans une salle de sport, il compte aussi les forfaits d'adhésion, qui se confirment de la même façon dans **Adhésions**.
+- Tant qu'il reste des prix d'exemple non confirmés ou des services sans prix, la **Santé des agents** affiche l'avertissement non critique **Prix non confirmés** ; cela ne bloque pas l'agent pour répondre. Dans une salle de sport, il compte aussi les forfaits d'adhésion, qui se confirment de la même façon dans **Adhésions**.
 - Le prix d'exemple arrive **dans la devise de votre pays**, pas en pesos colombiens. Si votre pays est la Colombie, le Mexique, l'Argentine, le Chili, le Pérou ou le Brésil, le service naît avec un montant d'exemple arrondi dans votre devise ; dans tout autre pays il naît **sans montant**, avec votre devise déjà en place, pour que vous saisissiez le vôtre. Ce montant n'est qu'un ordre de grandeur pour que l'écran ne démarre pas vide : ce n'est ni une conversion de devises ni un prix de marché, et personne ne l'énonce tant que vous ne l'avez pas confirmé.
 
 ## Comment définir votre disponibilité

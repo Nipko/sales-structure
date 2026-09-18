@@ -23,9 +23,9 @@ export const KB_MSG: Record<'es' | 'en' | 'pt' | 'fr', Record<string, string>> =
 
         // ── URL crawling ──
         'crawl.planRequired':
-            'Tu plan no incluye la importación de URLs. Actualizá a Starter o superior.',
+            'Tu plan no incluye la importación de URLs. Actualiza a Starter o superior.',
         'crawl.limitReached':
-            'Tu plan permite hasta {{limit}} páginas importadas. Actualizá tu plan para agregar más.',
+            'Tu plan permite hasta {{limit}} páginas importadas. Actualiza tu plan para agregar más.',
         'crawl.invalidUrl': 'La URL proporcionada no es válida.',
         'crawl.noContent': 'No se pudo extraer contenido útil de la URL.',
 
@@ -39,7 +39,7 @@ export const KB_MSG: Record<'es' | 'en' | 'pt' | 'fr', Record<string, string>> =
 
         // ── AI article suggestions ──
         'suggestions.noUnanswered': 'No hay queries sin respuesta para analizar.',
-        'suggestions.unavailable': 'No pude generar sugerencias en este momento. Intentá de nuevo más tarde.',
+        'suggestions.unavailable': 'No pude generar sugerencias en este momento. Inténtalo de nuevo más tarde.',
     },
 
     en: {

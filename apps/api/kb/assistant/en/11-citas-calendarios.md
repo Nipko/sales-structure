@@ -3,7 +3,7 @@ id: citas-calendarios
 title: "Appointments and calendars"
 routes: ["/admin/appointments", "/admin/settings/public-booking"]
 roles: ["tenant_admin", "tenant_supervisor", "tenant_agent"]
-keywords: ["appointments", "scheduling", "calendar", "book", "booking", "reservations", "services", "availability", "working hours", "google calendar", "outlook", "reminders", "attendance confirmation", "reschedule", "cancel appointment", "blocked dates", "meeting link", "meet", "teams", "public booking", "booking page", "recurring appointment", "example price", "confirm price", "quoted case by case", "price to be confirmed", "unconfirmed example prices", "service with no amount", "memberships"]
+keywords: ["appointments", "scheduling", "calendar", "book", "booking", "reservations", "services", "availability", "working hours", "google calendar", "outlook", "reminders", "attendance confirmation", "reschedule", "cancel appointment", "blocked dates", "meeting link", "meet", "teams", "public booking", "booking page", "recurring appointment", "example price", "confirm price", "quoted case by case", "price to be confirmed", "unconfirmed example prices", "unconfirmed prices", "service with no amount", "memberships"]
 ---
 
 # Appointments and calendars
@@ -37,7 +37,7 @@ The AI agent never states an example price or a quote-only price out loud: in th
 - A service with no amount shows **No price**, with **Enter price**, **It's free** or **Quoted per case**: there is no amount to confirm, so **Confirm price** doesn't appear. The same goes for an example set at 0, such as a trial class: if you really don't charge for it, press **It's free**.
 - A service marked **It's free** shows as **Free**, and the agent tells customers it's free. Leaving the amount empty never makes it free.
 - You can't turn on a payment policy (deposit or full payment) on a free service or on one whose price isn't confirmed.
-- While any example prices are still unconfirmed, **Agent health** shows the non-critical **Unconfirmed example prices** warning; it doesn't block the agent from answering. For a gym it also counts membership plans, which you confirm the same way under **Memberships**.
+- While any example prices are still unconfirmed or any service has no price, **Agent health** shows the non-critical **Unconfirmed prices** warning; it doesn't block the agent from answering. For a gym it also counts membership plans, which you confirm the same way under **Memberships**.
 - The example price comes **in your country's currency**, not in Colombian pesos. If your country is Colombia, Mexico, Argentina, Chile, Peru or Brazil, the service is created with a round example amount in your currency; in any other country it is created **with no amount** and your currency already set, so you can type your own. That amount is only an order of magnitude so the screen doesn't start empty: it is not a currency conversion and not a market price, and nobody states it out loud until you confirm it.
 
 ## How to set your availability

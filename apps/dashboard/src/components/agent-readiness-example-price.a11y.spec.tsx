@@ -29,8 +29,11 @@ function overview(check: Record<string, unknown>) {
 async function linkFor(check: Record<string, unknown>) {
   jest.mocked(api.getAgentQualityOverview).mockResolvedValue({ success: true, data: overview(check) } as any);
   const screen = await renderScreen(<AgentReadinessBanner tenantId="tenant" agentId="agent" />);
+  // The panel's own label, so a rename of the check ("Precios sin confirmar",
+  // sep-2026) moves this spec with it instead of breaking it.
+  const label: string = require('../../messages/es.json').agentQuality.checks.services_example_price;
   const link = Array.from(screen.container.querySelectorAll('a'))
-    .find(anchor => anchor.textContent?.includes('Precios de ejemplo sin confirmar'));
+    .find(anchor => anchor.textContent?.includes(label));
   return { screen, href: link?.getAttribute('href') ?? null };
 }
 

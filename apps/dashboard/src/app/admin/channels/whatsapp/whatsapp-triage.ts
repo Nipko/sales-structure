@@ -1,3 +1,4 @@
+import { api } from "@/lib/api";
 import type { WhatsAppConnectRouteId } from "./whatsapp-connect-routes";
 
 /**
@@ -131,10 +132,103 @@ export function routeAfterTriage(answer: WhatsAppTriageAnswer): WhatsAppConnectR
 const STORAGE_PREFIX = "parallly_wa_triage_";
 
 /**
- * Remembered per tenant in this browser: coming back to the screen should not
- * ask the same question again. It is a UI preference, not a business fact —
- * the deferral itself is already recorded server-side (channelConnectSkippedAt).
+ * The account's answer lives on the server; this browser keeps a copy.
+ *
+ * The screen promises "lo dejamos anotado y lo retomas cuando lo tengas" and
+ * "te lo vamos a recordar en Inicio". With the answer only in localStorage
+ * that promise held on one device: from the owner's phone, a private window
+ * or after clearing the browser the question came back and Inicio had nothing
+ * to remind her of. So every answer is written to the account
+ * (`PUT /persona/:tenantId/whatsapp-triage`, read back in `setup-status` as
+ * `whatsappTriage: { answerId, recordedAt } | null`), and the local copy only
+ * saves the screen a question while that read is in flight.
  */
+export function whatsAppTriageEndpoint(tenantId: string): string {
+    return `/persona/${encodeURIComponent(tenantId)}/whatsapp-triage`;
+}
+
+/** The account's answer, in the shape `setup-status` exposes it. */
+export interface RecordedWhatsAppTriage {
+    answerId: WhatsAppTriageAnswerId;
+    recordedAt: string;
+}
+
+/**
+ * `setup-status.whatsappTriage`, validated. `null` = the account has no
+ * answer; an id this screen no longer offers, or a malformed value, is no
+ * answer rather than a guess.
+ *
+ * "Malformed" includes a `recordedAt` that does not read as a date. The API
+ * only ever writes an ISO instant, and its own reader
+ * (`readWhatsAppTriage` in `whatsapp-triage.util.ts`) already turns an
+ * unparseable one into "no answer"; the panel applies the same rule, so an
+ * API older than that reader, or a hand-edited row, cannot make Inicio remind
+ * the owner of something she never said — nor hand a later "cuándo lo
+ * dejaste anotado" an "Invalid Date".
+ */
+export function readRecordedTriage(value: unknown): RecordedWhatsAppTriage | null {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    const { answerId, recordedAt } = value as Record<string, unknown>;
+    if (!isWhatsAppTriageAnswerId(answerId) || typeof recordedAt !== "string" || !recordedAt.trim()) return null;
+    if (Number.isNaN(Date.parse(recordedAt))) return null;
+    return { answerId, recordedAt };
+}
+
+/** Per tenant, the last write still on its way: reads wait for it, writes queue behind it. */
+const pendingWrites = new Map<string, Promise<boolean>>();
+
+/**
+ * Writes the answer (or clears it, with `null`) to the account. Never throws:
+ * `false` means it did not reach the server, and the local copy still holds
+ * it for this browser.
+ *
+ * Writes for one tenant go out one after the other. Two quick clicks, or
+ * "Cambiar mi respuesta" followed by a new answer, must land in the order the
+ * person made them — two parallel requests can arrive the other way round and
+ * leave the account with the answer she took back.
+ */
+export function persistTriage(tenantId: string, answerId: WhatsAppTriageAnswerId | null): Promise<boolean> {
+    const previous = pendingWrites.get(tenantId) ?? Promise.resolve(true);
+    const write = previous.then(async () => {
+        try {
+            await api.fetch(whatsAppTriageEndpoint(tenantId), {
+                method: "PUT",
+                body: JSON.stringify({ answerId }),
+            });
+            return true;
+        } catch {
+            return false;
+        }
+    });
+    pendingWrites.set(tenantId, write);
+    void write.then(() => {
+        if (pendingWrites.get(tenantId) === write) pendingWrites.delete(tenantId);
+    });
+    return write;
+}
+
+/**
+ * The account's answer. `undefined` = it could not be read (or the API is
+ * older than the field): the caller keeps what it has instead of treating an
+ * unreadable answer as "she never answered".
+ *
+ * Waits for this browser's own pending write first. Otherwise "Cambiar mi
+ * respuesta" remounts the question, the read overtakes the clearing write, and
+ * the answer she just took back reappears on screen.
+ */
+export async function fetchRecordedTriage(tenantId: string): Promise<RecordedWhatsAppTriage | null | undefined> {
+    await pendingWrites.get(tenantId);
+    try {
+        const response = await api.getSetupStatus(tenantId);
+        const data = response?.success === true ? (response.data as Record<string, unknown> | undefined) : undefined;
+        if (!data || typeof data !== "object" || !("whatsappTriage" in data)) return undefined;
+        return readRecordedTriage(data.whatsappTriage);
+    } catch {
+        return undefined;
+    }
+}
+
+/** This browser's copy of the account's answer. */
 export function readRememberedTriage(tenantId: string | null | undefined): WhatsAppTriageAnswerId | null {
     if (!tenantId || typeof window === "undefined") return null;
     try {
@@ -145,12 +239,25 @@ export function readRememberedTriage(tenantId: string | null | undefined): Whats
     }
 }
 
-export function rememberTriage(tenantId: string | null | undefined, answerId: WhatsAppTriageAnswerId | null): void {
+/** Updates only this browser's copy — used when the server's answer is adopted. */
+export function cacheTriage(tenantId: string | null | undefined, answerId: WhatsAppTriageAnswerId | null): void {
     if (!tenantId || typeof window === "undefined") return;
     try {
         if (answerId) window.localStorage.setItem(STORAGE_PREFIX + tenantId, answerId);
         else window.localStorage.removeItem(STORAGE_PREFIX + tenantId);
     } catch {
-        /* a browser with storage disabled simply asks again */
+        /* a browser with storage disabled keeps only the server's answer */
     }
+}
+
+/**
+ * The person answered (or took the answer back, with `null`): this browser's
+ * copy changes at once, and the account's copy follows in the background.
+ * Every caller — the question itself and the connect panel's "Volver" — goes
+ * through here, so none of them can update one copy and forget the other.
+ */
+export function rememberTriage(tenantId: string | null | undefined, answerId: WhatsAppTriageAnswerId | null): void {
+    if (!tenantId) return;
+    cacheTriage(tenantId, answerId);
+    void persistTriage(tenantId, answerId);
 }

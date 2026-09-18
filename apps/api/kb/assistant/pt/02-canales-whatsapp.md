@@ -120,8 +120,8 @@ Em **Canais**, cada card mostra o status da conexão:
   permissão que o Parallly usa para enviar está vencida, revogada, com erro ou ausente. O
   número pode continuar recebendo mensagens e as respostas não saem até você autorizar de
   novo em **Conectar**.
-  A **Saúde dos agentes** reporta isso como conexão operacional afetada e trata como ação
-  crítica do agente.
+  A **Saúde dos agentes** reporta isso em **Conexão operacional do canal** e conta como
+  uma coisa importante para resolver do agente.
 - **Desconectado** — ainda não há conexão, ou ela foi desfeita.
 
 Ao entrar em **WhatsApp** com um número conectado, você verá o card **Canal Ativo** com o **Número**, o **Nome verificado** e a **Qualidade** (a nota que a Meta dá ao seu número de acordo com a forma como os clientes recebem suas mensagens; mantê-la "alta" garante melhores limites de envio). Você também encontrará o card **Perfil comercial** com o botão **Gerenciar perfil** para editar as informações que seus clientes veem no WhatsApp.

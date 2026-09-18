@@ -88,6 +88,11 @@ export const GUIDED_TOURS: readonly GuidedTourDefinition[] = [
         kbArticleIds: ['agentes-ia'],
     },
     {
+        // The id predates immediate saves and is kept so markers, resumes and
+        // links keep working. What it walks depends on the tenant's change
+        // mode (`GuidedTourStartDetail.reviewMode`): in immediate mode, the
+        // default, it points at the switch that turns the agent on; only in
+        // reviewed mode does it walk save → test → prepare → review → publish.
         id: 'publish_agent_revision',
         route: '/admin/agent',
         minRole: 'tenant_admin',
@@ -201,6 +206,18 @@ export interface GuidedTourStartDetail {
     agentId?: string;
     channelType?: 'whatsapp' | 'instagram' | 'messenger' | 'telegram' | 'web_chat';
     verticalCatalogRoute?: string;
+    /**
+     * How this tenant applies agent changes, for a launcher that already knows
+     * it. None passes it today — the editor's HelpPanel included, which sends
+     * only `tourId`. When it is absent the runner (`ProductTour`) reads the
+     * tenant's mode itself (`GET persona/:tenantId/agent-review-mode`), once,
+     * and only for the tours that change with it
+     * (`resolveGuidedTourReviewMode`). A mode it cannot read — a role that
+     * cannot open the agents screen, a failed request — is the default,
+     * `immediate`: a save goes live and the switch turns the agent on. Only
+     * `reviewed` makes the agent tours talk about drafts and publication.
+     */
+    reviewMode?: 'immediate' | 'reviewed';
 }
 
 /**

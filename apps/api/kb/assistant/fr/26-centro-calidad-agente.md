@@ -3,7 +3,7 @@ id: centro-calidad-agente
 title: "Santé des agents et Centre de qualité"
 routes: ["/admin/agent/quality", "/admin"]
 roles: ["tenant_admin", "tenant_supervisor"]
-keywords: ["sante des agents", "centre de qualite", "qualite de l agent", "preparation", "qualite testee", "preuves de production", "agent a risque", "configuration incomplete", "actions critiques", "badge", "reporter", "Parallly Assist", "ameliorer agent", "couverture des canaux", "connexion operationnelle du canal", "montrez-moi ou", "parcours guide", "barre de contexte", "nouvelle autorisation", "essentiels", "etape suivante", "pas pret", "whatsapp ne livre pas", "fuseau horaire de facturation", "moyen de paiement chez meta", "canal sans reponse", "jour 0", "premier vrai client", "prix d exemple non confirmes"]
+keywords: ["sante des agents", "centre de qualite", "qualite de l agent", "preparation", "qualite testee", "preuves de production", "agent a risque", "configuration incomplete", "quelque chose d important a regler", "points importants a regler", "badge", "reporter", "Parallly Assist", "ameliorer agent", "couverture des canaux", "connexion operationnelle du canal", "montrez-moi ou", "parcours guide", "barre de contexte", "nouvelle autorisation", "essentiels", "etape suivante", "pas pret", "whatsapp ne livre pas", "fuseau horaire de facturation", "moyen de paiement chez meta", "canal sans reponse", "jour 0", "premier vrai client", "prix d exemple non confirmes"]
 ---
 
 # Santé des agents et Centre de qualité
@@ -29,6 +29,11 @@ Agent IA**.
   agent ne prend ce canal en charge ou WhatsApp ne peut pas livrer —, la bannière
   s'affiche quand même et en donne la raison. Vous pouvez
   **Examiner**, **Demander à Assist** ou **Reporter de 24 h**.
+- La bannière dit **Il y a quelque chose d’important à régler dans vos agents.** quand un
+  signal Critique est ouvert, ou **Un agent est à risque.** Dans l'éditeur de chaque agent,
+  l'encadré de qualité compte les vérifications critiques qui échouent — par exemple,
+  **1 point important reste à régler.** — et la carte de l'Accueil indique combien de
+  points importants restent à régler, ou **Rien d'important à régler**.
 - Reporter masque temporairement ce signal, sans le corriger. Ces alertes restent dans
   le dashboard et n'envoient ni e-mail ni notification push.
 
@@ -42,8 +47,8 @@ Agent IA**.
   ou un test non exécuté restent en attente, mais ne déclarent pas « pas prêt » pour un
   agent qui répond déjà. Par exemple, tant que l'entreprise n'a pas confirmé
   les prix d'exemple apportés par la recette de son secteur (services et, dans une salle de
-  sport, forfaits d'adhésion), l'avertissement non critique **Prix d'exemple non confirmés**
-  s'affiche : l'agent n'annonce pas ces prix tant qu'ils ne sont pas confirmés.
+  sport, forfaits d'adhésion), l'avertissement non critique **Prix non confirmés**
+  s'affiche : l'agent n'annonce pas ces prix tant qu'ils ne sont pas confirmés ; il compte aussi les services et forfaits encore sans prix.
 - **Qualité testée :** affiche la dernière évaluation critique et la dernière
   simulation, avec version, date, seuil et scénarios. Les preuves antérieures peuvent
   devenir obsolètes lorsque l'agent change. Il s'agit d'une preuve automatisée, pas
@@ -161,11 +166,11 @@ faire quelque chose qui dispose d'un parcours, la réponse contient ce bouton.
 - **Pas encore évalué :** les preuves sont encore insuffisantes.
 - **Configuration incomplète :** une exigence manque ou la préparation comporte un avertissement.
 - **Agent à risque :** un test critique ou un signal réel important exige une révision.
-- **Prêt pour un pilote contrôlé :** préparation et tests permettent un usage limité,
+- **Prêt pour ses premiers clients :** préparation et tests sont bons,
   mais les preuves réelles restent insuffisantes.
 - **Opérationnel avec des preuves :** configuration, tests à jour et échantillon utile
   de production sont disponibles.
-- **Révision requise :** les preuves sont devenues obsolètes ou les performances
+- **Nécessite votre attention :** les preuves sont devenues obsolètes ou les performances
   récentes se sont dégradées.
 
 Aucun état ne signifie que l'agent est parfait, ne certifie son fonctionnement et ne
@@ -224,7 +229,7 @@ pastille flottante `8/9`. La Santé des agents ajoute ce qui améliore l'agent (
 connaissances, horaires, rendez-vous, catalogue), les tests et les preuves réelles.
 
 **Un bon score de simulation suffit-il pour le laisser s'occuper des clients seul ?**
-Non. Il réduit le risque, mais doit être examiné avec les blocages critiques, la
+Non. Il réduit le risque, mais doit être examiné avec ce qui reste à régler, la
 fraîcheur de la version et les preuves réelles lorsqu'elles sont disponibles.
 
 **Le système apprend-il et se modifie-t-il seul après chaque conversation ?**

@@ -7,6 +7,7 @@ import {
     Headers,
     HttpException,
     HttpStatus,
+    Optional,
     Param,
     Post,
     Req,
@@ -26,6 +27,8 @@ import {
 } from './dto/widget-public.dto';
 import { isWidgetOriginAllowed, resolveWidgetHttpIp } from './widget-security';
 import { WidgetRateLimitService } from './widget-rate-limit.service';
+import { TenantThrottleService } from '../throttle/tenant-throttle.service';
+import { isTrialLink } from './widget-demo-link';
 
 @ApiTags('widget-public')
 @Controller('widget')
@@ -41,6 +44,10 @@ export class WidgetPublicController {
         private readonly widgetService: WidgetService,
         private readonly triggersService: WidgetTriggersService,
         private readonly rateLimit: WidgetRateLimitService,
+        // Says whether the public link is still a trial for its visitors.
+        // Optional for the hand-built harnesses; without it the link reads
+        // as a trial, never the other way around.
+        @Optional() private readonly throttle?: TenantThrottleService,
     ) {}
 
     @Get('loader.js')
@@ -89,7 +96,12 @@ export class WidgetPublicController {
                 preChatFields: config.pre_chat_fields,
                 locale: config.locale,
                 tenantName: config.tenant_name,
+                // `isDemo` is WHICH page this is (the public link, never a
+                // site widget); `isTrial` is what it is TODAY. On a plan with
+                // the web chat the link is the business's real channel, and a
+                // "trial" label would greet its customers from the bio.
                 isDemo: config.is_demo === true,
+                isTrial: await isTrialLink(config, this.throttle),
                 triggers,
             },
         };

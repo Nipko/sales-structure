@@ -82,7 +82,7 @@ export const EMAIL_MSG: Record<'es' | 'en' | 'pt' | 'fr', Record<string, string>
         'invitation.feat3.title': 'CRM integrado',
         'invitation.feat3.desc': 'Contactos, pipeline y seguimiento sin salir de la plataforma.',
         'invitation.expires': 'Este enlace expira el <strong>{{expires}}</strong>.',
-        'invitation.ignore': 'Si no esperabas esta invitación, podés ignorar este correo.',
+        'invitation.ignore': 'Si no esperabas esta invitación, puedes ignorar este correo.',
         'invitation.subject': 'Te invitaron a unirte a {{tenant}} en Parallly',
 
         // ── Welcome team member ──
@@ -97,7 +97,7 @@ export const EMAIL_MSG: Record<'es' | 'en' | 'pt' | 'fr', Record<string, string>
         'teamWelcome.feat4.title': 'CRM y contactos',
         'teamWelcome.feat4.desc': 'Consulta el perfil de cada contacto, historial y notas en un solo lugar.',
         'teamWelcome.cta': 'Ir al Dashboard',
-        'teamWelcome.tip': 'Explora la bandeja de entrada y familiarizate con las herramientas. Si tenés dudas, tu administrador puede ayudarte.',
+        'teamWelcome.tip': 'Explora la bandeja de entrada y familiarízate con las herramientas. Si tienes dudas, tu administrador puede ayudarte.',
         'teamWelcome.subject': 'Bienvenido a {{tenant}}',
 
         // ── Fallback message (agent notification) ──

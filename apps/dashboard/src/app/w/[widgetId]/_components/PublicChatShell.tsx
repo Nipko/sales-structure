@@ -43,6 +43,14 @@ interface PublicWidgetConfig {
   agentName: string;
   tenantName: string;
   isDemo: boolean;
+  /**
+   * Whether the link is, TODAY, the platform-paid trial (`isTrial` on the
+   * public config). `false` only when the API says so: the tenant's plan
+   * includes the web chat and this link is the business's real channel. An
+   * API older than the field says nothing, and nothing reads as trial — the
+   * page it used to be, with the label it always had.
+   */
+  isTrial: boolean;
   /** The tenant's language, when it is one of the four the product speaks. */
   locale: Locale | null;
 }
@@ -121,6 +129,7 @@ async function readPublicConfig(widgetId: string): Promise<ShellState> {
       agentName: asText(data.agentName),
       tenantName: asText(data.tenantName),
       isDemo: true,
+      isTrial: data.isTrial !== false,
       locale: asShellLocale(data.locale),
     },
   };
@@ -252,7 +261,10 @@ function ShellBody({ state, onRetry }: { state: ShellState; onRetry: () => void 
       <header className="shrink-0 border-b border-neutral-200 bg-white">
         <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-3 px-4 py-3">
           <h1 className="truncate text-base font-semibold text-neutral-900">{headline}</h1>
-          {config?.isDemo && (
+          {/* "Página de prueba" only while it is one. On a plan with the web
+              chat this is the business's channel, and the customer who taps
+              it from the bio is not testing anything. */}
+          {config?.isTrial && (
             <span className="shrink-0 rounded-full border border-neutral-200 bg-neutral-100 px-2.5 py-0.5 text-[11px] font-medium text-neutral-600">
               {t("demoBadge")}
             </span>

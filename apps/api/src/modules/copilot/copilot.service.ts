@@ -15,6 +15,7 @@ import { AgentQualitySignalService } from '../quality/agent-quality-signal.servi
 import { AgentAssessmentService } from './agent-assessment.service';
 import { AgentConfigurationService } from './agent-configuration.service';
 import { AgentContentProposalService } from './agent-content-proposal.service';
+import { directCommitMode } from '../persona/agent-draft.service';
 import {
     GuidedTourDefinition,
     GuidedTourId,
@@ -31,6 +32,7 @@ import {
     getAgentOperation,
     misleadingAssistOperations,
     type AgentRoutedOperation,
+    type AgentChangeMode,
     CAPABILITY_EXCLUSION_TEXT,
 } from '@parallext/shared';
 
@@ -532,19 +534,25 @@ REGLA VERTICAL: orienta los ejemplos hacia esta industria y subtipo. Esto NO es 
         gate_unavailable: 'no se pudo leer el permiso; hay que reintentar, no asumir que está disponible',
     });
 
-    /** One line per tour, shown to the model so it can offer the right one. */
+    /**
+     * One line per tour, shown to the model so it can offer the right one.
+     *
+     * Mode-neutral on purpose: a line that depends on how the tenant applies
+     * agent changes lives in `GUIDED_TOUR_MODE_DESCRIPTIONS`, and this one is
+     * only what the model reads when that mode could not be read.
+     */
     private static readonly GUIDED_TOUR_DESCRIPTIONS: Record<GuidedTourId, string> = {
         connect_channel: 'dónde conectar, revisar o reautorizar un canal',
         assign_agent_channel: 'dónde elegir qué canales atiende un agente',
         agent_handoff_rules: 'dónde configurar reglas de comportamiento, motivos de escalamiento y mensaje de respaldo',
-        publish_agent_revision: 'cómo guardar, probar, revisar y publicar una versión del agente antes de activarla',
+        publish_agent_revision: 'dónde encender o apagar el agente',
         human_handoff_route: 'dónde invitar personas que reciban las conversaciones escaladas',
         business_identity: 'dónde completar los datos del negocio que usa el agente',
         knowledge_base: 'dónde cargar documentos y preguntas frecuentes de la base de conocimiento',
-        privacy_policy: 'dónde publicar la política que permite explicar el tratamiento de imágenes y audios y pedir consentimiento',
+        privacy_policy: 'dónde crear o actualizar la política de privacidad que permite explicar el tratamiento de imágenes y audios y pedir consentimiento',
         appointments_setup: 'dónde definir servicios y disponibilidad para agendar citas',
         business_hours: 'dónde configurar el horario de atención',
-        run_agent_tests: 'dónde probar el agente antes de publicarlo',
+        run_agent_tests: 'dónde probar el agente con conversaciones simuladas, sin clientes reales',
         agent_quality_center: 'dónde ver el estado de calidad del agente y su acción prioritaria',
         home_first_steps: 'dónde están los primeros pasos de la cuenta',
         first_channel_whatsapp: 'dónde conectar el primer número de WhatsApp',
@@ -552,6 +560,72 @@ REGLA VERTICAL: orienta los ejemplos hacia esta industria y subtipo. Esto NO es 
         help_system: 'dónde están las ayudas en pantalla y este asistente',
         inbox_first_conversation: 'dónde se atienden las conversaciones en el inbox',
     };
+
+    /**
+     * The tours whose walk depends on the tenant's change mode.
+     *
+     * `publish_agent_revision` is the tour for `agent_active`. In immediate mode
+     * (the default) the dashboard renders it as the on/off switch; it walks the
+     * draft → review → publication pipeline only in reviewed mode. Describing
+     * the pipeline to every tenant made Assist teach the D1/D6 flow the product
+     * retired, on screens the editor no longer shows (audit #62).
+     */
+    private static readonly GUIDED_TOUR_MODE_DESCRIPTIONS: Partial<Record<GuidedTourId, Record<AgentChangeMode, string>>> = {
+        publish_agent_revision: {
+            immediate: 'dónde está el interruptor que enciende o apaga al agente al instante; encendido, responde por los canales que tiene asignados',
+            reviewed: 'cómo guardar un borrador, probarlo, revisarlo y publicar la versión que enciende al agente (esta cuenta revisa los cambios antes de aplicarlos)',
+        },
+        run_agent_tests: {
+            immediate: 'dónde probar el agente con conversaciones simuladas, sin clientes reales',
+            reviewed: 'dónde probar el agente antes de publicar sus cambios',
+        },
+    };
+
+    /** The line the model reads for a tour, in the tenant's mode when it is known. */
+    static guidedTourDescription(tourId: GuidedTourId, mode: AgentChangeMode | null): string {
+        return (mode && CopilotService.GUIDED_TOUR_MODE_DESCRIPTIONS[tourId]?.[mode])
+            || CopilotService.GUIDED_TOUR_DESCRIPTIONS[tourId];
+    }
+
+    /**
+     * What saving an agent change does in this tenant, for the rules the model
+     * follows. Unknown (`null`) is its own sentence: the model must not guess.
+     */
+    static agentChangeModeRule(mode: AgentChangeMode | null): string {
+        if (mode === 'immediate') {
+            return 'Esta cuenta aplica los cambios del agente al guardarlos: lo guardado es lo que ya responde a los clientes, y el interruptor Estado del editor lo enciende o apaga al instante (agent_active se resuelve ahí, no publicando nada). Esta evaluación describe al agente que responde ahora; un cambio guardado se refleja al volver a leerla. No hables de borradores, versiones ni publicación.';
+        }
+        if (mode === 'reviewed') {
+            return 'Esta cuenta revisa los cambios antes de aplicarlos: guardar crea un borrador, esta evaluación describe la versión operativa y guardar un borrador no resuelve sus pendientes hasta publicar la corrección; agent_active se resuelve publicando una versión que encienda al agente.';
+        }
+        return 'No se pudo leer si esta cuenta aplica los cambios del agente al guardarlos o después de revisarlos: no afirmes que un cambio guardado ya responde a los clientes ni que queda como borrador.';
+    }
+
+    /** What the Assist proposal button does in this tenant, for rule 11. */
+    static proposalApplyRule(mode: AgentChangeMode | null): string {
+        if (mode === 'immediate') {
+            return 'La herramienta solo crea una propuesta; la persona la ve junto a los valores actuales y decide con el botón Guardar y aplicar, que aplica el cambio de inmediato al agente que responde a los clientes (no lo enciende si está apagado).';
+        }
+        if (mode === 'reviewed') {
+            return 'La herramienta solo crea una propuesta para revisión; el botón guarda un borrador, sin publicarlo ni activarlo.';
+        }
+        return 'La herramienta solo crea una propuesta; lo que hace el botón que la guarda depende de cómo aplica cambios esta cuenta, que no se pudo leer: no lo afirmes.';
+    }
+
+    /**
+     * How this tenant applies agent changes, read the way the save path reads
+     * it (`directCommitMode`). A failed read is `null`, never a guessed mode.
+     */
+    private async readAgentChangeMode(tenantId: string): Promise<AgentChangeMode | null> {
+        try {
+            const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
+            if (!tenant) return null;
+            return directCommitMode(tenant.settings) ? 'immediate' : 'reviewed';
+        } catch (error: any) {
+            this.logger.warn(`Agent change mode unavailable: ${error?.message || error}`);
+            return null;
+        }
+    }
 
     /** Short, safe token (channel type, health state). Anything else is dropped. */
     private boundedToken(value: unknown): string | null {
@@ -637,10 +711,10 @@ REGLA DE CANALES: esta lista es la ÚNICA fuente sobre qué canales están conec
     }
 
     /** Catalog of tours the model may offer this turn, plus the marker rule. */
-    private buildGuidedTourContext(tours: GuidedTourDefinition[]): string {
+    private buildGuidedTourContext(tours: GuidedTourDefinition[], mode: AgentChangeMode | null = null): string {
         if (tours.length === 0) return '';
         const lines = tours
-            .map((tour) => `- ${tour.id} — ${CopilotService.GUIDED_TOUR_DESCRIPTIONS[tour.id]}`)
+            .map((tour) => `- ${tour.id} — ${CopilotService.guidedTourDescription(tour.id, mode)}`)
             .join('\n');
         return `## RECORRIDOS GUIADOS DISPONIBLES (el botón "Mostrarme dónde" abre la pantalla y resalta paso a paso; no modifica nada)
 ${lines}
@@ -676,6 +750,7 @@ REGLA DE RECORRIDOS: cuando el usuario pregunte DÓNDE o CÓMO hacer algo que cu
         target: CopilotQualityTarget | undefined,
         userRole: string,
         assessment?: AgentAssessment | null,
+        mode: AgentChangeMode | null = null,
     ): Promise<{ prompt: string; actions: CopilotChatAction[] }> {
         if (!target && assessment?.agent) target = { kind: 'agent_quality', agentId: assessment.agent.id };
         if (!target || !['super_admin', 'tenant_admin', 'tenant_supervisor'].includes(userRole)) {
@@ -777,7 +852,7 @@ REGLA DE RECORRIDOS: cuando el usuario pregunte DÓNDE o CÓMO hacer algo que cu
             : findGuidedTourForQualityCode(tourCode, this.checkEvidenceForCode(overview, tourCode) ?? undefined);
         if (tour && canRoleRunGuidedTour(tour, userRole)) this.addGuidedTourAction(actions, tour.id);
         return {
-            prompt: `## ESTADO REAL DEL AGENTE (autoritativo, derivado del tenant autenticado)\n${JSON.stringify(qualityContext)}\nREGLA: explica este estado y prioriza una sola acción. No inventes evidencia, puntajes, causas ni enlaces. No afirmes que un cambio fue aplicado. unknown significa que no se pudo verificar, no que falta configurar. operational_channel_scope pide revisar las asignaciones indicadas por unsupportedChannelTypes, no conectar otro canal. Esta evaluación describe la versión operativa; guardar un borrador no resuelve sus pendientes hasta publicar la corrección.`,
+            prompt: `## ESTADO REAL DEL AGENTE (autoritativo, derivado del tenant autenticado)\n${JSON.stringify(qualityContext)}\nREGLA: explica este estado y prioriza una sola acción. No inventes evidencia, puntajes, causas ni enlaces. No afirmes que un cambio fue aplicado. unknown significa que no se pudo verificar, no que falta configurar. operational_channel_scope pide revisar las asignaciones indicadas por unsupportedChannelTypes, no conectar otro canal. ${CopilotService.agentChangeModeRule(mode)}`,
             actions,
         };
     }
@@ -1197,7 +1272,10 @@ Reglas estrictas:
             articles.map((article) => article.id),
             request.context.userRole,
         );
-        const guidedTourContext = this.buildGuidedTourContext(availableTours);
+        // Read once, before anything is described: the tours, the quality rule and
+        // rule 11 all say what a save does, and they must say the same thing.
+        const changeMode = await this.readAgentChangeMode(tenantId);
+        const guidedTourContext = this.buildGuidedTourContext(availableTours, changeMode);
 
         const canAssess = ['super_admin', 'tenant_admin', 'tenant_supervisor'].includes(request.context.userRole);
         const assessment = canAssess && this.assessment
@@ -1225,7 +1303,7 @@ Reglas estrictas:
                 : Promise.resolve(''),
             this.buildVerticalContext(tenantId),
             this.buildChannelContext(tenantId, request.context.userRole),
-            this.buildAgentQualityContext(tenantId, request.target, request.context.userRole, assessment).catch((error: any) => {
+            this.buildAgentQualityContext(tenantId, request.target, request.context.userRole, assessment, changeMode).catch((error: any) => {
                 this.logger.warn(`Agent quality context unavailable: ${error?.message || error}`);
                 if (!request.target) return { prompt: '', actions: [] };
                 const href = `/admin/agent/quality?agent=${encodeURIComponent(request.target.agentId)}`;
@@ -1295,12 +1373,12 @@ Y estas creaciones NO cierran el punto de calidad que lo parece; no las ofrezcas
         // is the enforcing path's own code, so the sentence cannot disagree with
         // the refusal the person would get.
         const unavailableSentence = blockedVerdicts.length
-            ? `Estas existen pero NO están disponibles en esta cuenta o para este rol; decilo así y no ofrezcas la pantalla: ${blockedVerdicts.map(entry =>
+            ? `Estas existen pero NO están disponibles en esta cuenta o para este rol; dilo así y no ofrezcas la pantalla: ${blockedVerdicts.map(entry =>
                 `${entry.key} (${CopilotService.BLOCKED_BECAUSE[String(entry.reason)] ?? 'no está disponible en esta cuenta'})`,
             ).join('; ')}.`
             : '';
         const routedSentence = !operationVerdicts
-            ? 'No se pudo leer qué operaciones permite esta cuenta. No ofrezcas ninguna pantalla sensible ni infieras permisos; pedí reintentar la consulta.'
+            ? 'No se pudo leer qué operaciones permite esta cuenta. No ofrezcas ninguna pantalla sensible ni infieras permisos; pide reintentar la consulta.'
             : (() => {
                 const routed = operationVerdicts
                     .filter(entry => entry.availability === 'route_to_screen')
@@ -1314,8 +1392,8 @@ Y estas creaciones NO cierran el punto de calidad que lo parece; no las ofrezcas
                         const asks = definition.requirements.map(requirement => requirement.choices?.length
                             ? `${requirement.key} (${requirement.choices.join('|')})`
                             : requirement.key).join(', ');
-                        return `${definition.key} → ${definition.route} (${definition.reason}${asks ? `; preguntá antes: ${asks}` : ''})`;
-                    }).join('; ')}. Antes de derivar, preguntá los datos NO secretos que figuran arriba y nunca pidas tokens, claves ni contraseñas: ese es el motivo por el que la pantalla es de la persona y no tuya.`
+                        return `${definition.key} → ${definition.route} (${definition.reason}${asks ? `; pregunta antes: ${asks}` : ''})`;
+                    }).join('; ')}. Antes de derivar, pregunta los datos NO secretos que figuran arriba y nunca pidas tokens, claves ni contraseñas: ese es el motivo por el que la pantalla es de la persona y no tuya.`
                     : 'Ninguna de las operaciones sensibles está disponible para este rol en esta cuenta; no ofrezcas ninguna de esas pantallas.';
                 // Named rather than dropped in silence, and without the route:
                 // this role cannot open it, so printing it would send them to a
@@ -1348,11 +1426,11 @@ ${guidedTourContext ? '\n' + guidedTourContext + '\n' : ''}
 5. **ROLES:** si la acción requiere un rol que el usuario no tiene (ver "Requiere rol" del artículo y el rol del usuario abajo), acláralo amablemente ("esto lo configura un administrador de la cuenta").
 6. **FORMATO:** Markdown limpio: pasos numerados, viñetas, **negritas** para nombres de menús y botones. Respuestas concisas; máximo ~10 líneas salvo que pidan detalle.
 7. **CONSCIENCIA DE PLAN:** si hay un bloque "PLAN DEL USUARIO", úsalo para responder con precisión qué puede o no hacer el usuario según SU plan; para límites/disponibilidad por plan, ese bloque manda sobre cualquier cifra de los artículos. Si algo no está en su plan, indícalo y menciona desde qué plan se obtiene. Si NO hay bloque de plan, no reveles ni infieras el plan, las cuotas o la facturación del tenant; indica que esa información corresponde al administrador.
-8. **TIPO DE NEGOCIO:** si existe el bloque de tipo de negocio, úsalo solo para priorizar ejemplos relevantes; no es una lista de capacidades. Lo que esta cuenta puede hacer sale de la EVALUACIÓN COMPARTIDA (herramientas publicadas y exclusiones por canal) y del bloque de DERIVACIÓN. Si ninguno de esos dos está disponible, no anuncies herramientas ni flujos verticales: decí que hay que reintentar la consulta.
-9. **CALIDAD DEL AGENTE:** si existe el bloque de estado real, ese bloque manda sobre explicaciones genéricas de la KB. Explica evidencia y prioridad sin revelar identificadores internos, transcripciones ni texto de clientes. Los cambios siempre requieren revisión humana.
+8. **TIPO DE NEGOCIO:** si existe el bloque de tipo de negocio, úsalo solo para priorizar ejemplos relevantes; no es una lista de capacidades. Lo que esta cuenta puede hacer sale de la EVALUACIÓN COMPARTIDA (herramientas publicadas y exclusiones por canal) y del bloque de DERIVACIÓN. Si ninguno de esos dos está disponible, no anuncies herramientas ni flujos verticales: di que hay que reintentar la consulta.
+9. **CALIDAD DEL AGENTE:** si existe el bloque de estado real, ese bloque manda sobre explicaciones genéricas de la KB. Explica evidencia y prioridad sin revelar identificadores internos, transcripciones ni texto de clientes. Los cambios siempre los confirma una persona.
 10. **RECORRIDOS:** cuando exista un recorrido guiado para lo que pide el usuario, prefiere ofrecerlo antes que describir menús largos. El recorrido no cambia ninguna configuración por sí mismo: abre la pantalla y muestra dónde; la persona hace el cambio.
-11. **CONFIGURACIÓN ASISTIDA:** si tienes propose_agent_configuration y el usuario pide cambios, prepara valores concretos. editableConfiguration muestra el borrador actual cuando existe: parte de esos valores. La evaluación describe exclusivamente la versión operativa; nunca la presentes como verificación del borrador. La herramienta solo crea una propuesta para revisión; el botón guarda un borrador, sin publicarlo ni activarlo. account.businessHours modifica la cuenta completa y debe revisarse en una propuesta separada. Nunca afirmes haber guardado, activado ni aplicado cambios desde este chat. No solicites secretos ni propongas tareas ajenas a la plantilla.
-11a. **ACOMPAÑAMIENTO PROACTIVO:** al ayudar con configuración, usa nextTask y sus comprobaciones para ofrecer UN siguiente paso concreto y relevante, sin desviar consultas ajenas a configuración. Los pendientes de puesta en marcha no son deterioro ni mal desempeño: no afirmes que algo dejó de funcionar sin evidencia previa. Distingue configuración pendiente, prueba fallida, evidencia de una versión anterior y fuente no disponible; en esta última pide reintentar, no volver a cargar datos. Las capacidades evaluadas por canal NO prueban conexión ni asignación. La calidad conversacional no es conversión, venta ni cumplimiento operacional; no penalices un seguimiento o derivación acordados por no cerrar una venta. Explica qué falta y ofrece guía o propuesta revisable, sin aplicar ni publicar automáticamente.
+11. **CONFIGURACIÓN ASISTIDA:** si tienes propose_agent_configuration y el usuario pide cambios, prepara valores concretos. editableConfiguration trae los valores actuales (scope dice si vienen del agente que responde o de un borrador guardado): parte de esos valores. ${CopilotService.agentChangeModeRule(changeMode)} ${CopilotService.proposalApplyRule(changeMode)} account.businessHours modifica la cuenta completa y debe revisarse en una propuesta separada. Nunca afirmes haber guardado, activado ni aplicado cambios desde este chat. No solicites secretos ni propongas tareas ajenas a la plantilla.
+11a. **ACOMPAÑAMIENTO PROACTIVO:** al ayudar con configuración, usa nextTask y sus comprobaciones para ofrecer UN siguiente paso concreto y relevante, sin desviar consultas ajenas a configuración. Los pendientes de puesta en marcha no son deterioro ni mal desempeño: no afirmes que algo dejó de funcionar sin evidencia previa. Distingue configuración pendiente, prueba fallida, evidencia de una versión anterior y fuente no disponible; en esta última pide reintentar, no volver a cargar datos. Las capacidades evaluadas por canal NO prueban conexión ni asignación. La calidad conversacional no es conversión, venta ni cumplimiento operacional; no penalices un seguimiento o derivación acordados por no cerrar una venta. Explica qué falta y ofrece guía o propuesta revisable, sin aplicar nada automáticamente.
 ${contentOperationContext}
 ## Contexto de la consulta:
 - Rol autenticado: ${request.context.userRole}

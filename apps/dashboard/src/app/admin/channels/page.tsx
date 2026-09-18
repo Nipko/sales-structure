@@ -3,6 +3,7 @@
 import { asCredentialHealth, CREDENTIAL_HEALTH_RANK,
     type ChannelCredentialHealth } from '@parallext/shared';
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { HelpPanel } from "@/components/ui/help-panel";
 import { LoadFailureNotice } from "@/components/ui/load-failure";
@@ -11,7 +12,7 @@ import { api } from "@/lib/api";
 import { useTenant } from "@/contexts/TenantContext";
 import { usePlanLimits } from "@/hooks/usePlanLimits";
 import { guidedTourAnchorId } from "@/lib/guided-tours";
-import { readSetupStatusFacts, type SetupStatusDemoLink } from "@/lib/onboarding-guide";
+import { demoLinkPause, readSetupStatusFacts, type SetupStatusDemoLink } from "@/lib/onboarding-guide";
 import { buildDemoLinkUrl } from "@/lib/widget-snippet";
 import { cn } from "@/lib/utils";
 import {
@@ -25,6 +26,7 @@ import {
     ArrowRight,
     HelpCircle,
     Link2,
+    Link2Off,
     ExternalLink,
     Copy,
     Check,
@@ -71,7 +73,16 @@ export default function ChannelsOverviewPage() {
     const t = useTranslations('channels');
     const tHelp = useTranslations("help");
     const { activeTenantId } = useTenant();
-    const { getChannelAccountLimit } = usePlanLimits();
+    const { getChannelAccountLimit, features: planFeatures, loading: planLoading } = usePlanLimits();
+    /**
+     * What the public link IS for this plan, decided like the wizard's card
+     * (`DemoLinkCard`) and like the chat decides each turn (`plan.widget`).
+     * With the web chat in the plan it is a real channel; without it, a trial
+     * the platform pays — capped, and no person ever takes over. "Cualquiera
+     * puede escribirle" alone read as the first on every plan. `null` while
+     * the plan is being read: neither story yet.
+     */
+    const linkIsChannel: boolean | null = planLoading ? null : planFeatures.widget === true;
     const router = useRouter();
     const searchParams = useSearchParams();
     /**
@@ -341,10 +352,14 @@ export default function ChannelsOverviewPage() {
                 })}
 
                 {/* The fifth card: the agent's public link. Never "connected"
-                    or "disconnected" — there is nothing to connect. */}
+                    or "disconnected" — there is nothing to connect. But it can
+                    be PAUSED: the trial the platform pays stops when it is
+                    switched off or the account used its free replies, and then
+                    the card says so and offers nothing to open or copy. */}
                 {demoLink && (() => {
                     const name = demoLink.agentName || t('demoLink.agentFallback');
                     const url = buildDemoLinkUrl(demoLink.path);
+                    const pause = demoLinkPause(demoLink);
                     return (
                         <section
                             aria-labelledby="channel-demo-link-title"
@@ -361,19 +376,55 @@ export default function ChannelsOverviewPage() {
                                     <h2 id="channel-demo-link-title" className="text-lg font-semibold m-0 text-foreground">
                                         {t('demoLink.title', { agentName: name })}
                                     </h2>
-                                    <p className="text-xs text-[var(--text-secondary)] mt-1.5 leading-relaxed">
-                                        {t('demoLink.description')}
-                                    </p>
+                                    {pause ? (
+                                        <p className="text-xs text-[var(--text-secondary)] mt-1.5 leading-relaxed">
+                                            {t(`demoLink.paused.${pause}`, { agentName: name })}{" "}
+                                            <Link href="/admin/settings/billing" className="font-semibold text-primary underline underline-offset-2">
+                                                {t('demoLink.plans')}
+                                            </Link>
+                                        </p>
+                                    ) : (
+                                        <>
+                                            {linkIsChannel !== null && (
+                                                <p className="text-xs text-[var(--text-secondary)] mt-1.5 leading-relaxed">
+                                                    {linkIsChannel
+                                                        ? t('demoLink.description')
+                                                        : t('demoLink.descriptionTrial', { agentName: name })}
+                                                </p>
+                                            )}
+                                            {/* On a trial: what a plan with the web chat changes,
+                                                before anybody puts this link where customers use it. */}
+                                            {linkIsChannel === false && (
+                                                <p className="text-xs text-[var(--text-secondary)] mt-1.5 leading-relaxed">
+                                                    {t('demoLink.trialUpgrade')}{" "}
+                                                    <Link href="/admin/settings/billing" className="font-semibold text-primary underline underline-offset-2">
+                                                        {t('demoLink.plans')}
+                                                    </Link>
+                                                </p>
+                                            )}
+                                        </>
+                                    )}
                                 </div>
-                                <div
-                                    data-channel-status="always"
-                                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold border bg-[rgba(108,92,231,0.1)] text-primary border-[rgba(108,92,231,0.2)]"
-                                >
-                                    <Link2 size={14} aria-hidden="true" />
-                                    {t('demoLink.always')}
-                                </div>
-                                <p className="select-all break-all text-center font-mono text-[11px] text-[var(--text-secondary)]">{url}</p>
+                                {pause ? (
+                                    <div
+                                        data-channel-status="paused"
+                                        className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold border bg-amber-50 text-amber-800 border-amber-300 dark:bg-amber-500/10 dark:text-amber-200 dark:border-amber-500/30"
+                                    >
+                                        <Link2Off size={14} aria-hidden="true" />
+                                        {t('demoLink.pausedBadge')}
+                                    </div>
+                                ) : (
+                                    <div
+                                        data-channel-status="always"
+                                        className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold border bg-[rgba(108,92,231,0.1)] text-primary border-[rgba(108,92,231,0.2)]"
+                                    >
+                                        <Link2 size={14} aria-hidden="true" />
+                                        {t('demoLink.always')}
+                                    </div>
+                                )}
+                                {!pause && <p className="select-all break-all text-center font-mono text-[11px] text-[var(--text-secondary)]">{url}</p>}
                             </div>
+                            {!pause && (
                             <div className="px-6 py-3.5 border-t border-border flex items-center justify-center gap-2">
                                 <a
                                     href={url}
@@ -395,6 +446,7 @@ export default function ChannelsOverviewPage() {
                                     {linkCopied ? t('demoLink.copied') : t('demoLink.copy')}
                                 </button>
                             </div>
+                            )}
                         </section>
                     );
                 })()}

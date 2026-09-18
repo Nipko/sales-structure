@@ -185,7 +185,7 @@ export class BillingService {
         }
 
         const plan = await this.prisma.billingPlan.findUnique({ where: { slug: input.planSlug } });
-        if (!plan || !plan.isActive) throw new NotFoundException({ error: 'plan_not_found', planSlug: input.planSlug, message: 'Ese plan ya no está disponible. Elegí otro para continuar.' });
+        if (!plan || !plan.isActive) throw new NotFoundException({ error: 'plan_not_found', planSlug: input.planSlug, message: 'Ese plan ya no está disponible. Elige otro para continuar.' });
 
         if (plan.slug === 'custom' || (plan.features as any)?.salesLed === true) {
             throw new BadRequestException({
@@ -1697,7 +1697,7 @@ export class BillingService {
         if (reserved !== 1) {
             // Otro reembolso entró primero. Mejor negarse que cobrarle de nuevo
             // al proveedor sobre una lectura vieja.
-            throw new BadRequestException({ error: 'refund_conflict', message: 'El pago cambió mientras se procesaba el reembolso. Volvé a intentarlo.' });
+            throw new BadRequestException({ error: 'refund_conflict', message: 'El pago cambió mientras se procesaba el reembolso. Vuelve a intentarlo.' });
         }
 
         let canonicalRefundCharge: any = null;

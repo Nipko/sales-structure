@@ -1,5 +1,6 @@
 import { createElement } from "react";
 import { renderScreen, findAccessibilityViolations, interact } from "@/test/a11y";
+import type { SetupStatusDemoLink } from "@/lib/onboarding-guide";
 import DemoLinkCard from "./DemoLinkCard";
 
 /**
@@ -14,14 +15,31 @@ import DemoLinkCard from "./DemoLinkCard";
  * The load-bearing assertion is the negative one: this card holds the DEMO
  * widget id, so its embed snippet must never reach a clipboard. A real site
  * running on the platform-paid demo widget dies with its allowance.
+ *
+ * What the link is FOR depends on the plan (audit #61): with the web chat in
+ * the plan it is a real channel and the five actions apply; on a trial it is
+ * for trying the agent and showing it to someone, and the card must not sell
+ * it for the Instagram bio nor send people to a web-chat page their plan does
+ * not open.
+ *
+ * And whether it answers TODAY: a trial link the platform switched off, or
+ * one whose free replies are used, is said as paused, with nothing to open,
+ * copy or share.
  */
 
-const DEMO_LINK = { widgetId: "wgt_abc123", path: "/w/wgt_abc123", agentName: "Ana" };
+const DEMO_LINK: SetupStatusDemoLink = {
+    widgetId: "wgt_abc123", path: "/w/wgt_abc123", agentName: "Ana", answers: true, unavailableReason: null,
+};
 const WEB_CHAT_SETTINGS = "/admin/settings/integrations/web-chat";
+
+/** The plan as `usePlanLimits` reports it; each test sets what it needs. */
+let mockPlan: { features: { widget: boolean }; loading: boolean } = { features: { widget: true }, loading: false };
+jest.mock("@/hooks/usePlanLimits", () => ({ usePlanLimits: () => mockPlan }));
 
 let writeText: jest.Mock;
 
 beforeEach(() => {
+    mockPlan = { features: { widget: true }, loading: false };
     writeText = jest.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
 });
@@ -37,7 +55,7 @@ function byText<T extends HTMLElement>(nodes: T[], text: string): T {
 }
 
 describe("the agent's link card, as a screen reader receives it", () => {
-    it("is a named section with three links out and two copy buttons", async () => {
+    it("is a named section with three links out and two copy buttons on a plan with the web chat", async () => {
         const screen = await renderScreen(createElement(DemoLinkCard, { demoLink: DEMO_LINK }));
         try {
             const section = screen.container.querySelector("section");
@@ -122,6 +140,74 @@ describe("the agent's link card, as a screen reader receives it", () => {
             expect(await findAccessibilityViolations(screen.container)).toEqual([]);
         } finally {
             screen.unmount();
+        }
+    });
+
+    it("on a trial, says what the link is for and what a plan with the web chat changes — and sells no bio", async () => {
+        mockPlan = { features: { widget: false }, loading: false };
+        const screen = await renderScreen(createElement(DemoLinkCard, { demoLink: DEMO_LINK }));
+        try {
+            const text = screen.container.textContent ?? "";
+            expect(text).toContain("Es para probar a Ana y mostrárselo a alguien");
+            expect(text).toContain("Con un plan que incluya el chat web, este mismo enlace atiende a tus clientes");
+            expect(text).not.toContain("sirve para probar hoy y para tu bio de Instagram");
+
+            // Open, copy and show it to a partner stay: that is what a trial is for.
+            expect(buttons(screen.container).map((button) => button.textContent?.trim())).toEqual(["Copiar enlace"]);
+            const links = [...screen.container.querySelectorAll("a")] as HTMLAnchorElement[];
+            expect(links.map((link) => link.textContent?.trim())).toEqual(["Abrir", "Mostrárselo a mi socio", "Ver planes"]);
+            // No page the plan does not open, and the way to the plan that does.
+            expect(links.some((link) => link.getAttribute("href") === WEB_CHAT_SETTINGS)).toBe(false);
+            expect(links[2].getAttribute("href")).toBe("/admin/settings/billing");
+            expect(links[2].getAttribute("target")).toBeNull();
+            expect(await findAccessibilityViolations(screen.container)).toEqual([]);
+        } finally {
+            screen.unmount();
+        }
+    });
+
+    it("tells neither story until the plan is read", async () => {
+        mockPlan = { features: { widget: false }, loading: true };
+        const screen = await renderScreen(createElement(DemoLinkCard, { demoLink: DEMO_LINK }));
+        try {
+            const text = screen.container.textContent ?? "";
+            expect(text).not.toContain("bio de Instagram");
+            expect(text).not.toContain("Es para probar a Ana");
+            expect(buttons(screen.container).map((button) => button.textContent?.trim())).toEqual(["Copiar enlace"]);
+            expect(await findAccessibilityViolations(screen.container)).toEqual([]);
+        } finally {
+            screen.unmount();
+        }
+    });
+
+    it.each([
+        ["switched_off", "El enlace de prueba de Ana está en pausa, así que por ahora no responde."],
+        ["allowance_used", "Ana ya usó las respuestas gratis de su enlace de prueba, así que ahí no responde más."],
+    ] as const)("paused (%s): says why, and offers nothing to open, copy or share", async (unavailableReason, sentence) => {
+        // Both plans: a paused link is paused whatever the plan says it is for.
+        for (const widget of [true, false]) {
+            mockPlan = { features: { widget }, loading: false };
+            const screen = await renderScreen(createElement(DemoLinkCard, {
+                demoLink: { ...DEMO_LINK, answers: false, unavailableReason },
+            }));
+            try {
+                const section = screen.container.querySelector("section");
+                const title = document.getElementById(section?.getAttribute("aria-labelledby") as string);
+                expect(title?.textContent).toBe("El enlace de Ana");
+                const text = screen.container.textContent ?? "";
+                expect(text).toContain(sentence);
+                expect(text).toContain("conecta un canal o elige un plan con el chat web");
+                // Nothing that treats it as working.
+                expect(buttons(screen.container)).toEqual([]);
+                const links = [...screen.container.querySelectorAll("a")] as HTMLAnchorElement[];
+                expect(links.map((link) => [link.textContent?.trim(), link.getAttribute("href")]))
+                    .toEqual([["Ver planes", "/admin/settings/billing"]]);
+                expect(text).not.toContain("http://localhost/w/wgt_abc123");
+                expect(text).not.toMatch(/Abrir|Copiar enlace|Mostrárselo|bio/);
+                expect(await findAccessibilityViolations(screen.container)).toEqual([]);
+            } finally {
+                screen.unmount();
+            }
         }
     });
 

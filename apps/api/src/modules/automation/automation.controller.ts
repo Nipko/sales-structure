@@ -39,7 +39,7 @@ export class AutomationController {
             throw new ForbiddenException({
                 error: 'feature_not_available',
                 feature: 'httpRequestAction',
-                message: 'La acción de solicitud HTTP no está disponible en tu plan actual. Actualizá tu plan para usarla.',
+                message: 'La acción de solicitud HTTP no está disponible en tu plan actual. Actualiza tu plan para usarla.',
             });
         }
     }

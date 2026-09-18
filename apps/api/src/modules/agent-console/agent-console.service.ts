@@ -602,7 +602,7 @@ export class AgentConsoleService {
             // The effect exists and will be delivered; only the row this method
             // wanted to hand back could not be read. Never a second send.
             throw new BadRequestException(
-                'La respuesta quedó registrada pero no se pudo leer; recargá la conversación.');
+                'La respuesta quedó registrada pero no se pudo leer; recarga la conversación.');
         }
         if (input.presentation) {
             // The console timeline renders an attachment from `metadata.mediaUrl`

@@ -50,7 +50,7 @@ export class FeatureGuard implements CanActivate {
             throw new ForbiddenException({
                 error: 'feature_not_available',
                 feature: featureKey,
-                message: 'Tu plan actual no incluye esta funcionalidad. Actualizá tu plan para acceder.',
+                message: 'Tu plan actual no incluye esta funcionalidad. Actualiza tu plan para acceder.',
             });
         }
 

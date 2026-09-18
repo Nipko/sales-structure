@@ -24,9 +24,14 @@ Si tu organización necesita integrar correo, solicita una evaluación técnica 
 
 ### El enlace de tu agente y el chat web de tu página
 
-**El enlace de tu agente** (la página pública que ves en el asistente de configuración, con dirección que empieza en `/w/` seguida de un identificador) sirve para probar tu agente y mostrárselo a alguien antes de conectar ningún canal. No es lo mismo que el chat web de esta pantalla: no cuenta como canal conectado y no usa el cupo de chat web de tu plan, aunque las conversaciones que recibe aparecen en tu bandeja de entrada como cualquier conversación de chat web.
+**El enlace de tu agente** (la página pública que ves en el asistente de configuración, con dirección que empieza en `/w/` seguida de un identificador) existe desde el día 0, antes de conectar ningún canal. Lo que es depende de tu plan:
 
-El **chat web que instalas en tu sitio** (el widget de esta pantalla) sí cuenta como canal conectado y usa la función de chat web de tu plan. Ambos comparten la misma familia de código de dos líneas: el que copias aquí con **Copiar código** es el mismo tipo de fragmento que la acción **Las dos líneas para tu página web** genera desde el enlace de tu agente, para enviárselo a quien administra tu sitio.
+- **Si tu plan no incluye el chat web**, sirve para **probar a tu agente y mostrárselo a alguien**: la plataforma paga sus mensajes hasta un cupo por cuenta, cada página tiene un tope de mensajes por día y la conversación nunca pasa a una persona. La plataforma puede pausar este enlace de prueba: mientras está en pausa, o cuando se agota el cupo, tu agente no responde por él.
+- **Si tu plan incluye el chat web**, ese mismo enlace es un **canal real**: atiende a tus clientes con la cuota de tu plan, sin el tope diario de la prueba, y puede pasarle la conversación a tu equipo cuando el cliente pide una persona. Entonces la tarjeta del enlace suma **Ponerlo en mi bio** y **Ponerlo en mi página web**.
+
+En los dos casos las conversaciones que recibe aparecen en tu bandeja de entrada como cualquier conversación de chat web, y el enlace no cuenta como canal conectado: no se conecta ni se desconecta.
+
+El **chat web que instalas en tu sitio** (el widget de esta pantalla) sí cuenta como canal conectado y usa la función de chat web de tu plan. Para ponerlo en tu sitio, copia sus dos líneas con **Copiar código** y envíaselas a quien administra tu página; **Ponerlo en mi página web**, en la tarjeta del enlace, te trae a esta misma pantalla.
 
 ---
 

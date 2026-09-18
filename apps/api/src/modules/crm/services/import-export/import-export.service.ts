@@ -173,8 +173,8 @@ export class ImportExportService {
                     errors.push(phoneRegion
                         ? `Fila ${i + 1}: Teléfono inválido o formato no reconocido (${rawPhone})`
                         : `Fila ${i + 1}: el teléfono (${rawPhone}) no trae código de país y el negocio `
-                            + 'no tiene país declarado. Escribilo en formato internacional (+57…) o '
-                            + 'declará el país en Configuración.');
+                            + 'no tiene país declarado. Escríbelo en formato internacional (+57…) o '
+                            + 'declara el país en Configuración.');
                     skipped++;
                     continue;
                 }
@@ -293,7 +293,7 @@ export class ImportExportService {
                     imported++;
                 } else {
                     if (Number.isFinite(maxContacts) && liveContactCount >= maxContacts) {
-                        errors.push(`Fila ${i + 1}: se alcanzó el límite de contactos del plan (${maxContacts}). Actualizá tu plan para importar más.`);
+                        errors.push(`Fila ${i + 1}: se alcanzó el límite de contactos del plan (${maxContacts}). Actualiza tu plan para importar más.`);
                         skipped++;
                         continue;
                     }

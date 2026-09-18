@@ -3,7 +3,7 @@ id: citas-calendarios
 title: "Agendamentos e calendários"
 routes: ["/admin/appointments", "/admin/settings/public-booking"]
 roles: ["tenant_admin", "tenant_supervisor", "tenant_agent"]
-keywords: ["agendamentos", "agenda", "calendário", "agendar", "reservas", "reservar", "serviços", "disponibilidade", "horários", "google calendar", "outlook", "lembretes", "confirmação de presença", "reagendar", "cancelar agendamento", "datas bloqueadas", "link de reunião", "meet", "teams", "reserva pública", "página de reservas", "agendamento recorrente", "preço de exemplo", "confirmar preço", "sob consulta", "preço a confirmar", "precos de exemplo sem confirmar", "servico sem valor", "matriculas"]
+keywords: ["agendamentos", "agenda", "calendário", "agendar", "reservas", "reservar", "serviços", "disponibilidade", "horários", "google calendar", "outlook", "lembretes", "confirmação de presença", "reagendar", "cancelar agendamento", "datas bloqueadas", "link de reunião", "meet", "teams", "reserva pública", "página de reservas", "agendamento recorrente", "preço de exemplo", "confirmar preço", "sob consulta", "preço a confirmar", "precos de exemplo sem confirmar", "precos sem confirmar", "servico sem valor", "matriculas"]
 ---
 
 # Agendamentos e calendários
@@ -37,7 +37,7 @@ O agente de IA nunca diz em voz alta um preço de exemplo nem um que está sob c
 - Um serviço sem valor mostra **Sem preço**, com **Informar preço**, **É gratuito** ou **É orçado**: não há valor a confirmar, então **Confirmar preço** não aparece. O mesmo vale para um exemplo em 0, como uma aula experimental: se você realmente não cobra por ela, toque em **É gratuito**.
 - Um serviço marcado como **É gratuito** aparece como **Gratuito**, e o agente diz ao cliente que é gratuito. Deixar o valor vazio nunca o torna gratuito.
 - Você não pode ativar uma política de pagamento (sinal ou pagamento total) num serviço gratuito nem num serviço cujo preço não esteja confirmado.
-- Enquanto restarem preços de exemplo sem confirmar, a **Saúde dos agentes** mostra o aviso não crítico **Preços de exemplo sem confirmar**; isso não impede o agente de responder. Numa academia, conta também os planos de matrícula, que se confirmam do mesmo jeito em **Matrículas**.
+- Enquanto restarem preços de exemplo sem confirmar ou serviços sem preço, a **Saúde dos agentes** mostra o aviso não crítico **Preços sem confirmar**; isso não impede o agente de responder. Numa academia, conta também os planos de matrícula, que se confirmam do mesmo jeito em **Matrículas**.
 - O preço de exemplo vem **na moeda do seu país**, não em pesos colombianos. Se o seu país for Colômbia, México, Argentina, Chile, Peru ou Brasil, o serviço nasce com um valor de exemplo redondo na sua moeda; em qualquer outro país nasce **sem valor**, já com a sua moeda, para você escrever o seu. Esse valor é só uma ordem de grandeza para a tela não começar vazia: não é conversão de câmbio nem preço de mercado, e ninguém o diz em voz alta até você confirmar.
 
 ## Como definir sua disponibilidade

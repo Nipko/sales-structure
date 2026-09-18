@@ -17,6 +17,22 @@ const METHOD_BY_KIND: Readonly<Record<MediaKind, string>> = Object.freeze({
 });
 
 /**
+ * Telegram could not be asked about a bot key: the network failed, the call
+ * timed out, or Telegram answered with a server error or a rate limit.
+ *
+ * Not a verdict on the key. `validateBotToken` used to fold this into the same
+ * `null` as a key Telegram refused, so a dropped connection reached the owner
+ * as "Telegram no reconoce esa clave" and sent her back to @BotFather for a key
+ * that worked. A refused key is still `null`; this is thrown instead.
+ */
+export class TelegramUnreachableError extends Error {
+    constructor(readonly detail: string) {
+        super(`Telegram could not be reached to check the bot key: ${detail}`);
+        this.name = 'TelegramUnreachableError';
+    }
+}
+
+/**
  * Telegram Bot API Adapter
  *
  * Handles incoming messages via Telegram Bot API.
@@ -300,24 +316,42 @@ export class TelegramAdapter implements IChannelAdapter, StrictDispatchTransport
 
     /**
      * Validate bot token by calling getMe.
-     * Returns bot info if valid, null otherwise.
+     *
+     * Returns the bot when Telegram accepts the key and `null` when Telegram
+     * answers and refuses it (401 Unauthorized, 404 Not Found: not a bot it
+     * knows). When Telegram cannot give an answer at all — network error,
+     * timeout, 5xx, 429 or a body that is not its JSON — it throws
+     * `TelegramUnreachableError`: that says nothing about the key.
      */
     async validateBotToken(botToken: string): Promise<{ id: number; username: string; firstName: string } | null> {
+        const url = `${this.apiUrl}/bot${botToken}/getMe`;
+        let response: Response;
         try {
-            const url = `${this.apiUrl}/bot${botToken}/getMe`;
-            const response = await fetch(url);
-            const data = await response.json() as any;
-
-            if (!data.ok) return null;
-
-            return {
-                id: data.result.id,
-                username: data.result.username,
-                firstName: data.result.first_name,
-            };
-        } catch {
-            return null;
+            response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+        } catch (error: any) {
+            // Never the URL or the request: they carry the key.
+            throw new TelegramUnreachableError(error?.name === 'TimeoutError' ? 'timeout'
+                : String(error?.cause?.code || error?.code || error?.name || 'network error'));
         }
+        if (response.status >= 500 || response.status === 429) {
+            throw new TelegramUnreachableError(`HTTP ${response.status}`);
+        }
+        let data: any;
+        try {
+            data = await response.json();
+        } catch {
+            throw new TelegramUnreachableError(`HTTP ${response.status} with an unreadable body`);
+        }
+        if (!data || typeof data.ok !== 'boolean') {
+            throw new TelegramUnreachableError(`HTTP ${response.status} without a Bot API answer`);
+        }
+        if (!data.ok || !data.result) return null;
+
+        return {
+            id: data.result.id,
+            username: data.result.username,
+            firstName: data.result.first_name,
+        };
     }
 
     /**

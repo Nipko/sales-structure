@@ -87,6 +87,48 @@ describe("mergeOnboardingSessionFacts", () => {
         // Only the three facts move; the rest of the session stays as it was.
         expect(Object.keys(merged).sort()).toEqual(Object.keys(baseUser).sort());
     });
+
+    /**
+     * The confirmed email, as the wizard reads it to offer Instagram,
+     * Messenger and Telegram (`emailBlocksConnect`).
+     *
+     * It was written at login and by /verify-email only. An owner who confirmed
+     * in another tab, or from the code on her phone, stayed refused by the
+     * wizard until a full reload, while `/auth/me` had been saying `true` all
+     * along — the merge dropped it.
+     */
+    describe("emailVerified", () => {
+        const unverified = { ...baseUser, emailVerified: false };
+
+        it("takes a confirmation the server reports", () => {
+            const merged = mergeOnboardingSessionFacts(unverified, {
+                id: "user-1", tenantId: "tenant-1", emailVerified: true, onboardingStage: "agent_reviewed",
+            });
+            expect(merged.emailVerified).toBe(true);
+            expect(merged).not.toBe(unverified);
+        });
+
+        it("never closes it again from a missing or unreadable field", () => {
+            const verified = { ...baseUser, emailVerified: true };
+            // The token refresh does not carry it: absent is not "unconfirmed".
+            expect(mergeOnboardingSessionFacts(verified, { onboardingStage: "agent_reviewed" })).toBe(verified);
+            expect(mergeOnboardingSessionFacts(verified, { emailVerified: undefined })).toBe(verified);
+            expect(mergeOnboardingSessionFacts(verified, { emailVerified: "yes" })).toBe(verified);
+            // Only upward: the server refuses a connect it must refuse, and that
+            // refusal has its own card; the session never re-closes the wizard.
+            expect(mergeOnboardingSessionFacts(verified, { emailVerified: false })).toBe(verified);
+            // And an unconfirmed session stays unconfirmed on a payload without it.
+            expect(mergeOnboardingSessionFacts(unverified, { onboardingStage: "channel_connected" }).emailVerified).toBe(false);
+        });
+
+        it("does not take another person's confirmation, even in the same account", () => {
+            // Another tab's stored user is someone else once a different login
+            // landed there; the tenant alone does not say so.
+            expect(mergeOnboardingSessionFacts(unverified, {
+                id: "user-2", tenantId: "tenant-1", emailVerified: true,
+            })).toBe(unverified);
+        });
+    });
 });
 
 describe("isSessionInDayZero", () => {

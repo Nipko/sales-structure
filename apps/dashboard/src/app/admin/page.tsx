@@ -26,12 +26,10 @@ import Link from "next/link";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import {
-    GUIDED_TOUR_START_EVENT,
+    isOnboardingBeforeLive,
     resolveVerticalCapabilityManifest,
-    type GuidedTourStartDetail,
     type OnboardingGuide,
 } from "@parallext/shared";
-import { guidedTourAnchorId } from "@/lib/guided-tours";
 import {
     UNKNOWN_ONBOARDING_GUIDE,
     isOnboardingGuideKnown,
@@ -40,6 +38,16 @@ import {
     type SetupStatusFacts,
 } from "@/lib/onboarding-guide";
 import { publishOnboardingLanding } from "@/lib/onboarding-guide-signal";
+import {
+    homeCardOwnsScreen,
+    homeLeadChannel,
+    setupChannelDeferral,
+} from "@/lib/home-day-zero";
+import {
+    readPlanChannels,
+    readRecipeRecommendations,
+    type ChannelRecommendation,
+} from "./setup-wizard/connect-channels";
 import { useTranslations, useLocale } from "next-intl";
 import { useVerticalTerms } from "@/hooks/useVerticalTerms";
 import { useRole } from "@/hooks/useRole";
@@ -86,11 +94,10 @@ function formatTimeAgo(dateStr: string): string {
 }
 
 export default function AdminDashboard() {
-    const { user, verticalConfig } = useAuth();
-    const { canAccess, canManageChannels, role, isSuperAdmin, impersonating } = useRole();
+    const { user, verticalConfig, planFeatures } = useAuth();
+    const { canAccess, role, isSuperAdmin, impersonating } = useRole();
     const t = useTranslations("dashboard");
     const tc = useTranslations("common");
-    const tSetup = useTranslations("setupWizard");
     const tVw = useTranslations("verticalWelcome");
     const tHelp = useTranslations("help");
     const vt = useVerticalTerms();
@@ -178,6 +185,14 @@ export default function AdminDashboard() {
     // Una sola guía por pantalla. `null` = todavía no se sabe: mostrar un aviso y
     // retirarlo medio segundo después es peor que mostrarlo un momento más tarde.
     const [setupFacts, setSetupFacts] = useState<SetupStatusFacts | null>(null);
+    /** Whether the setup-status read is still in flight, came back, or failed. */
+    const [setupRead, setSetupRead] = useState<"loading" | "ready" | "unavailable">("loading");
+    /**
+     * The business recipe's channel recommendations, read only for an account
+     * with nothing connected: Home names the channel the wizard led with.
+     * `undefined` = not read (yet, or not needed); `[]` = no recipe.
+     */
+    const [recommendations, setRecommendations] = useState<ChannelRecommendation[] | undefined>(undefined);
     const [setupIncomplete, setSetupIncomplete] = useState<boolean | undefined>(undefined);
     const [platformStats, setPlatformStats] = useState({
         totalTenants: 0,
@@ -196,6 +211,8 @@ export default function AdminDashboard() {
         let cancelled = false;
         // Cambió el tenant (o el rol): lo que sabíamos del anterior no vale acá.
         setSetupFacts(null);
+        setSetupRead("loading");
+        setRecommendations(undefined);
         setSetupIncomplete(undefined);
 
         async function checkSetupWizard() {
@@ -227,8 +244,12 @@ export default function AdminDashboard() {
                 // Una lectura fallida no cambia nada: sin datos no se inventa
                 // una etapa ni se manda a nadie al asistente. La guía se queda en
                 // `unknown` y la pantalla no dibuja ninguna guía.
-                if (!facts) return;
+                if (!facts) {
+                    setSetupRead("unavailable");
+                    return;
+                }
                 setSetupFacts(facts);
+                setSetupRead("ready");
 
                 const guide = resolveDashboardOnboardingGuide({ facts, role: user.role });
                 if (guide.redirect && canConfigureAgent && !recentlyBounced) {
@@ -236,12 +257,29 @@ export default function AdminDashboard() {
                         sessionStorage.setItem(justBouncedKey, String(Date.now()));
                     } catch { /* el rebote es mejor sin memoria que no ocurrir */ }
                     window.location.href = guide.redirect;
+                    return;
                 }
-            } catch { /* proceed to dashboard */ }
+
+                // Nothing connected yet: the card's channel step names the
+                // channel the wizard led with, read from the same recipe. Only
+                // the admin sees that step (Canales is hers). A failed read is
+                // the wizard's default order, never an error.
+                if (canConfigureAgent && !facts.hasAnyChannel) {
+                    let recipe: unknown = null;
+                    try {
+                        recipe = await api.fetch(`/verticals/${user.tenantId}/recipe?lang=${encodeURIComponent(locale)}`);
+                    } catch { /* no recipe: WhatsApp first, as in the wizard */ }
+                    if (!cancelled) setRecommendations(readRecipeRecommendations(recipe, locale));
+                }
+            } catch {
+                // Proceed to the dashboard — the ordinary one: a read that
+                // failed must not leave a day-0 owner looking at a blank Home.
+                if (!cancelled) setSetupRead("unavailable");
+            }
         }
         checkSetupWizard();
         return () => { cancelled = true; };
-    }, [user?.tenantId, user?.role]);
+    }, [user?.tenantId, user?.role, locale]);
 
     useEffect(() => {
         async function loadPlatformStats() {
@@ -345,7 +383,6 @@ export default function AdminDashboard() {
                 const total = dashResult.data.modelUsage.reduce((s: number, m: any) => s + (m.requests || m.count || 0), 0) || 1;
                 setModelUsage(dashResult.data.modelUsage.map((m: any, i: number) => ({
                     model: m.model || m.llm_model || t('unknown'),
-                    tier: m.tier || t('tierN', { n: i + 1 }),
                     requests: m.requests || m.count || 0,
                     pct: Math.round(((m.requests || m.count || 0) / total) * 100),
                     colorClass: modelBarColors[i % modelBarColors.length],
@@ -440,9 +477,73 @@ export default function AdminDashboard() {
     /** La lectura no volvió (o falló): no se dibuja NINGUNA guía de puesta en marcha. */
     const guideSilent = guideOwnsHome && !guideKnown;
     const setupCardOnly = guideOwnsHome && guideKnown && guide.landing === "setup_card_only";
-    // One guide, not two: the setup card's next item IS "conectar un canal",
-    // with the same CTA and the same tour. The amber banner said it again above.
-    const SHOW_CONNECT_BANNER = false;
+    /**
+     * Day 0: the account is still waiting for its agent's first real reply.
+     * Asked with the activation facts, never with the stage alone — the
+     * wizard's last button writes `completed`, which the stage alone reads as
+     * live, and Home used to fill back up the moment she pressed "Ir al panel".
+     */
+    const dayZero = isOnboardingBeforeLive(user?.onboardingStage, {
+        firstReplyAt: user?.firstReplyAt,
+        createdAt: user?.tenantCreatedAt,
+    });
+    /**
+     * The setup card is the screen (owner decision D7): no KPIs, no help strip,
+     * no agent health, no empty activity feed or AI usage, no empty agenda,
+     * while day 0 lasts and the card still has something left to say.
+     */
+    const cardOwnsScreen = homeCardOwnsScreen({
+        guideOwnsHome,
+        dayZero,
+        setupRead,
+        landing: guide.landing,
+        setupIncomplete,
+    });
+    /** A board of zeros is not help on an account that cannot receive a message yet. */
+    const hideBoard = setupCardOnly || cardOwnsScreen;
+    /**
+     * "Uso de IA hoy" only with numbers to show. Its counts come from the
+     * `model_used` analytics event, and no turn emits that event today
+     * (`AnalyticsService.trackEvent` is never called with it), so the card
+     * could only ever say "Tu agente todavía no usó la IA hoy" — on the day
+     * the agent answered a hundred customers. Hidden rather than wrong; it
+     * comes back by itself the day a producer sends the event.
+     */
+    const showAiUsage = modelUsage.length > 0;
+    /**
+     * The channel left for later, said on the card's own channel step. There
+     * is no second banner for it any more: the indigo "Retomar" said the same
+     * thing as the card, pointing somewhere else. Only for the admin, who is
+     * the one who deferred it.
+     */
+    const channelDeferral = setupFacts && user?.role === "tenant_admin"
+        ? setupChannelDeferral({
+            hasAnyChannel: setupFacts.hasAnyChannel,
+            stage: setupFacts.stage,
+            channelConnectSkippedAt: setupFacts.channelConnectSkippedAt,
+            setupWizardSkipped: setupFacts.setupWizardSkipped,
+            triage: setupFacts.whatsappTriage,
+        })
+        : null;
+    /**
+     * The channel the card's step names on an account with nothing connected.
+     * The server's step carries it (the first channel of the order the wizard
+     * saved), so "Listo", this card, "Salud de agentes" and Assist say the same
+     * one; Home's own recipe + plan reading is only the fallback for a step
+     * that arrives without it (`withLeadChannel`). Only for the admin, the one
+     * who sees the channel step, and only when setup-status says there is no
+     * connection at all.
+     */
+    const channelLead = setupFacts && user?.role === "tenant_admin" && setupFacts.hasAnyChannel === false
+        ? {
+            fallback: homeLeadChannel({
+                hasAnyChannel: setupFacts.hasAnyChannel,
+                recommendations,
+                planChannels: readPlanChannels(planFeatures),
+                deferral: channelDeferral,
+            }),
+        }
+        : null;
 
     // Única publicación de la señal: el aviso rojo de calidad y la burbuja del
     // asistente se callan cuando la puesta en marcha es dueña de la pantalla.
@@ -453,12 +554,6 @@ export default function AdminDashboard() {
         publishOnboardingLanding(publishedLanding);
     }, [publishedLanding]);
 
-    const startPrimaryTour = () => {
-        if (!guide.primaryTourId) return;
-        const detail: GuidedTourStartDetail = { tourId: guide.primaryTourId };
-        window.dispatchEvent(new CustomEvent(GUIDED_TOUR_START_EVENT, { detail }));
-    };
-
     // Empty-state: tenant sin actividad real todavía (ya cargó datos pero todo en cero).
     // Muestra un hero guiado en vez de un panel de puros ceros. Se calla mientras
     // la puesta en marcha no tiene ni un canal: tres tarjetas de "explorá" sobre
@@ -466,7 +561,7 @@ export default function AdminDashboard() {
     // The hero needs both reads: "nothing has happened yet" is not something an
     // unread activity feed can establish.
     const isEmptyTenant = user?.role !== "super_admin" && isLive && detailsState === "ready" && activity.length === 0
-        && !setupCardOnly && !guideSilent
+        && !setupCardOnly && !guideSilent && !cardOwnsScreen
         && (overview.messagesProcessed ?? 0) === 0 && (overview.leadsToday ?? 0) === 0;
     const emptyActions = [
         { href: "/admin/channels/whatsapp", icon: MessageSquare, tk: "test", iconBg: "bg-emerald-500/10", iconText: "text-emerald-500" },
@@ -476,51 +571,6 @@ export default function AdminDashboard() {
 
     return (
         <div className="animate-in">
-            {setupCardOnly && canManageChannels && SHOW_CONNECT_BANNER && (
-                <div className="mb-6 rounded-xl border border-amber-300 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 p-4 flex flex-col gap-3 sm:flex-row sm:items-center">
-                    <div className="w-9 h-9 rounded-lg bg-amber-100 dark:bg-amber-500/20 flex items-center justify-center shrink-0">
-                        <MessageSquare size={18} className="text-amber-600 dark:text-amber-400" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">{tSetup("connectBannerTitle")}</p>
-                        <p className="text-xs text-amber-700 dark:text-amber-400/80 mt-0.5">{tSetup("connectBannerDesc")}</p>
-                    </div>
-                    <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center">
-                        <Link href="/admin/channels/whatsapp" className="inline-flex w-full items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-amber-600 hover:bg-amber-700 text-white dark:bg-amber-500 dark:hover:bg-amber-600 dark:text-neutral-900 transition-colors sm:w-auto">
-                            {tSetup("connectBannerCta")} <ArrowUpRight size={14} />
-                        </Link>
-                        {guide.primaryTourId && (
-                            <button
-                                type="button"
-                                onClick={startPrimaryTour}
-                                className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold text-amber-800 transition-colors hover:bg-amber-100 dark:text-amber-300 dark:hover:bg-amber-500/10 sm:w-auto"
-                            >
-                                {tSetup("connectBannerShowMe")}
-                            </button>
-                        )}
-                    </div>
-                </div>
-            )}
-            {/* Retomar el asistente guiado. Antes se ocultaba justo cuando faltaba un
-                canal — es decir, exactamente cuando hacía falta: quien apretaba
-                "Saltar" y no conectaba nada quedaba sin ninguna vía de vuelta. */}
-            {!guideSilent && guide.showResumeBanner && canAccess("/admin/setup-wizard") && (
-                <div
-                    id={guidedTourAnchorId("resume-setup")}
-                    className="mb-6 rounded-xl border border-indigo-300 dark:border-indigo-500/30 bg-indigo-50 dark:bg-indigo-500/10 p-4 flex flex-col gap-3 sm:flex-row sm:items-center"
-                >
-                    <div className="w-9 h-9 rounded-lg bg-indigo-100 dark:bg-indigo-500/20 flex items-center justify-center shrink-0">
-                        <Sparkles size={18} className="text-indigo-600 dark:text-indigo-400" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-indigo-800 dark:text-indigo-300">{tSetup("resumeBannerTitle")}</p>
-                        <p className="text-xs text-indigo-700 dark:text-indigo-400/80 mt-0.5">{tSetup("resumeBannerDesc")}</p>
-                    </div>
-                    <Link href="/admin/setup-wizard" className="inline-flex w-full shrink-0 items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition-colors sm:w-auto">
-                        {tSetup("resumeBannerCta")} <ArrowUpRight size={14} />
-                    </Link>
-                </div>
-            )}
             {/* Header */}
             <div className="mb-8 flex items-center justify-between">
                 <div>
@@ -537,7 +587,7 @@ export default function AdminDashboard() {
             </div>
 
             {/* KPI tips over a board of zeros are not help; the card is the help. */}
-            {!setupCardOnly && (
+            {!hideBoard && (
                 <HelpPanel
                     title={tHelp("dashboard.title")}
                     description={tHelp("dashboard.description")}
@@ -546,12 +596,14 @@ export default function AdminDashboard() {
                 />
             )}
 
-            {/* Salud de agentes aparece recién cuando hay un canal: sobre una cuenta
-                recién creada sólo repetiría, en rojo, lo que la tarjeta de puesta en
-                marcha ya está diciendo con sus pasos. */}
-            {canViewAgentHealth && !setupCardOnly && !guideSilent && <AgentHealthCard />}
+            {/* Salud de agentes aparece recién cuando hay un canal y, en el día 0,
+                cuando la tarjeta ya no tiene pasos: antes sólo repetiría, en rojo, lo
+                que la tarjeta de puesta en marcha ya está diciendo con sus pasos. */}
+            {canViewAgentHealth && !hideBoard && !guideSilent && <AgentHealthCard />}
             {canViewAgentHealth && !guideSilent && (
                 <InitialSetupCard
+                    channelDeferral={channelDeferral}
+                    channelLead={channelLead}
                     onProgress={({ total, completed }) => setSetupIncomplete(total > 0 && completed < total)}
                 />
             )}
@@ -710,8 +762,10 @@ export default function AdminDashboard() {
                 </div>
             )}
 
-            {/* Stats Grid */}
-            <div className={cn("mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 animate-stagger", setupCardOnly && "hidden")}>
+            {/* Stats Grid — not drawn at all while the card owns Home: a `hidden`
+                grid of zeros is still four cards in the page. */}
+            {!hideBoard && (
+            <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 animate-stagger">
                 {statConfig.map((stat: any) => {
                     const Icon = stat.icon;
                     const rawValue = overview[stat.key];
@@ -759,9 +813,10 @@ export default function AdminDashboard() {
                     );
                 })}
             </div>
+            )}
 
-            {/* Vertical Home View */}
-            {user?.role !== 'super_admin' && APPOINTMENT_INDUSTRIES.includes(vt.industry) && (
+            {/* Vertical Home View — an empty agenda is one more box on day 0. */}
+            {user?.role !== 'super_admin' && !cardOwnsScreen && APPOINTMENT_INDUSTRIES.includes(vt.industry) && (
                 <div className="mb-8 rounded-xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900 overflow-hidden">
                     <div className="px-6 py-4 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -800,7 +855,7 @@ export default function AdminDashboard() {
                 </div>
             )}
 
-            {user?.role !== 'super_admin' && PIPELINE_INDUSTRIES.includes(vt.industry) && (
+            {user?.role !== 'super_admin' && !cardOwnsScreen && PIPELINE_INDUSTRIES.includes(vt.industry) && (
                 <div className="mb-8 rounded-xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900 overflow-hidden">
                     <div className="px-6 py-4 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -848,8 +903,13 @@ export default function AdminDashboard() {
                 </div>
             )}
 
-            {/* Two Column Layout */}
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            {/* Two Column Layout — "Sin actividad reciente" and an empty AI usage
+                on an account that has not answered anybody yet are two more
+                boxes to read, not information. Without the AI usage card the
+                activity takes the whole row instead of leaving half of it
+                empty. */}
+            {!cardOwnsScreen && (
+            <div className={cn("grid grid-cols-1 gap-6", showAiUsage && "lg:grid-cols-2")}>
                 {/* Recent Activity */}
                 <Card className="border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900 hover-lift">
                     <CardHeader>
@@ -896,26 +956,30 @@ export default function AdminDashboard() {
                     </CardContent>
                 </Card>
 
-                {/* LLM Model Usage */}
+                {/* AI usage today. It used to be "Uso de modelos" with a "(Tier N)"
+                    that was only the row's position in the list, and a promise —
+                    "el router ahorra ~42% usando Tier 3-4" — that no number here
+                    backed. Said in plain words, and only what is true: the router
+                    weighs each conversation and keeps the most capable models for
+                    when the sale needs them. And only with numbers to show (see
+                    `showAiUsage`). */}
+                {showAiUsage && (
                 <Card className="border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900 hover-lift">
                     <CardHeader>
                         <CardTitle className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
-                            {t("modelUsage")}
+                            {t("aiUsage.title")}
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
                         <div className="flex flex-col gap-4">
-                            {modelUsage.length > 0 ? modelUsage.map((model) => (
+                            {modelUsage.map((model) => (
                                 <div key={model.model}>
                                     <div className="mb-1.5 flex items-center justify-between">
                                         <span className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
-                                            {model.model}{" "}
-                                            <span className="text-[11px] text-neutral-500 dark:text-neutral-400">
-                                                ({model.tier})
-                                            </span>
+                                            {model.model}
                                         </span>
                                         <span className="text-xs text-neutral-500 dark:text-neutral-400">
-                                            {model.requests} req · {model.pct}%
+                                            {t("aiUsage.count", { count: model.requests, pct: model.pct })}
                                         </span>
                                     </div>
                                     <div className="h-1.5 overflow-hidden rounded-full bg-neutral-100 dark:bg-neutral-800">
@@ -925,23 +989,17 @@ export default function AdminDashboard() {
                                         />
                                     </div>
                                 </div>
-                            )) : detailsState === "unavailable" ? (
-                                <LoadFailureNotice onRetry={() => { void loadOverview(); }} />
-                            ) : (
-                                <div className="py-5 text-center text-xs text-neutral-500 dark:text-neutral-400">
-                                    {t('noModelUsage')}
-                                </div>
-                            )}
+                            ))}
                         </div>
-                        <div className="mt-5 flex items-center justify-between rounded-lg bg-neutral-50 p-3 dark:bg-neutral-800">
-                            <span className="flex items-center gap-1.5 text-xs text-neutral-500 dark:text-neutral-400">
-                                <TrendingUp size={14} />
-                                {t('routerSavings')}
-                            </span>
-                        </div>
+                        <p className="mt-5 flex items-center gap-1.5 rounded-lg bg-neutral-50 p-3 text-xs text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">
+                            <TrendingUp size={14} aria-hidden="true" className="shrink-0" />
+                            {t("aiUsage.note")}
+                        </p>
                     </CardContent>
                 </Card>
+                )}
             </div>
+            )}
         </div>
     );
 }

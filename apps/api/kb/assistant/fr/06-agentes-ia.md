@@ -39,7 +39,7 @@ Un agent ne fonctionne bien que si le minimum est défini. À l'enregistrement, 
 - **Au moins une règle** de comportement.
 - **Au moins un motif** dans **Quand passer à un humain**.
 
-Si vous videz l'un de ces champs pour le réécrire, enregistrez seulement une fois qu'il est complet : un agent sans message de repli ou sans motifs de transfert apparaît comme blocage critique dans la **Santé des agents**.
+Si vous videz l'un de ces champs pour le réécrire, enregistrez seulement une fois qu'il est complet : un agent sans message de repli ou sans motifs de transfert apparaît dans la **Santé des agents** comme un point important à régler, dans **Réponse en cas d'incertitude** ou **Motifs de transfert**.
 
 **Si votre agent tourne en mode prompt personnalisé**, cette liste change. Lorsque votre compte dispose de cette fonction et que l'agent l'utilise, un texte unique que vous rédigez remplace la personnalité guidée : la **Santé des agents** marque l'identité, le ton, le message d'accueil, le message de repli et les règles comme **Non applicable**, et exige à la place que ce prompt ne soit pas vide. Ce qui **reste obligatoire**, c'est au moins un motif dans **Quand passer à un humain** : sans lui la conversation n'atteint jamais une personne, quoi que dise le prompt. Si vous voyez « Non applicable » là où ce guide dit « obligatoire », c'est pour cette raison, pas à cause d'une erreur.
 
@@ -72,7 +72,7 @@ Les deux arrivent avec des valeurs raisonnables ; ne les changez que si vous sav
 
 ## Configurer avec Parallly Assist
 
-Vous pouvez demander à Assist d'examiner l'agent et de préparer des changements d'identité, de langue, d'instructions, de règles, d'informations requises, de comportement hors horaires, de vente/assistance, de recommandations, de longueur de réponse, de connaissances et d'autorisations. Assist présente une proposition à vérifier ; l'accepter applique le changement à l'agent (ou le laisse en brouillon si votre compte utilise le mode révisé). Assist n'active ni ne désactive jamais l'agent. En mode prompt personnalisé, Assist ne propose pas de modifier la personnalité, la consigne principale, les règles ni les champs requis, car le prompt les remplace. N'envoyez jamais d'identifiants ou de connexions dans le chat.
+Vous pouvez demander à Assist d'examiner l'agent et de préparer des changements d'identité, de langue, d'instructions, de règles, d'informations requises, de comportement hors horaires, de vente/assistance, de recommandations, de longueur de réponse, de connaissances et d'autorisations. Assist présente une proposition à vérifier ; appuyer sur **Enregistrer et appliquer** applique le changement à l'agent (qui reste en brouillon, avec le bouton **Enregistrer le brouillon**, en mode révisé). Assist n'active ni ne désactive jamais l'agent. Dans l'éditeur de l'agent, le champ **Dites-moi quoi changer** ouvre Assist avec votre demande déjà écrite. En mode prompt personnalisé, Assist ne propose pas de modifier la personnalité, la consigne principale, les règles ni les champs requis, car le prompt les remplace. N'envoyez jamais d'identifiants ou de connexions dans le chat.
 
 Quand vous avez terminé, cliquez sur **Enregistrer**. Le changement s'applique aussitôt sur les connexions affectées et l'avis vert affiche **Enregistré. Votre agent répond désormais ainsi.** ; la version précédente reste dans l'historique. Si un champ obligatoire manque, l'éditeur le marque en rouge et n'enregistre pas. Utilisez **Tester l'agent** pour le voir répondre avant ou après l'enregistrement. Si vous quittez avec des modifications non enregistrées, l'éditeur vous prévient.
 
@@ -82,7 +82,7 @@ Quand vous avez terminé, cliquez sur **Enregistrer**. Le changement s'applique 
 
 ## Actif ou inactif
 
-L'en-tête de l'éditeur comporte un interrupteur **Actif / Inactif**. Un agent **inactif** ne répond sur aucune de ses connexions, même si le canal est connecté et que les horaires disent le contraire. Vous pouvez le désactiver immédiatement après confirmation, et le réactiver avec le même interrupteur : il s'active aussitôt. (En mode révisé, la réactivation passe par l'examen et la publication d'une version.) La **Santé des agents** signale comme blocage critique tout agent inactif, avec ou sans connexions assignées.
+L'en-tête de l'éditeur comporte un interrupteur **Actif / Inactif**. Un agent **inactif** ne répond sur aucune de ses connexions, même si le canal est connecté et que les horaires disent le contraire. Vous pouvez le désactiver immédiatement après confirmation, et le réactiver avec le même interrupteur : il s'active aussitôt. (En mode révisé, la réactivation passe par l'examen et la publication d'une version.) La **Santé des agents** compte tout agent inactif comme un point important à régler, dans **Agent actif**, avec ou sans connexions assignées.
 
 ## Comment définir les horaires de l'agent
 
@@ -107,7 +107,7 @@ Les types de connexion disponibles et leur capacité figurent dans **Canaux** et
 
 ## Que signifie l'avis « canaux sans agent assigné »
 
-Si **Agent IA** affiche **Canaux sans agent assigné**, vous avez des connexions actives qu'aucun agent ne prend en charge de façon spécifique. Tant qu'un agent par défaut actif existe, sa version opérationnelle traite ces messages. S'il n'y a pas d'agent par défaut actif, ou si deux agents ont la même connexion affectée, personne n'y répond : les messages arrivent mais restent sans réponse, et **Santé des agents** le signale comme critique dans **Chaque canal connecté a un agent qui répond**.
+Si **Agent IA** affiche **Canaux sans agent assigné**, vous avez des connexions actives qu'aucun agent ne prend en charge de façon spécifique. Tant qu'un agent par défaut actif existe, c'est cet agent par défaut qui traite ces messages. S'il n'y a pas d'agent par défaut actif, ou si deux agents ont la même connexion affectée, personne n'y répond : les messages arrivent mais restent sans réponse, et **Santé des agents** le signale comme critique dans **Chaque canal connecté a un agent qui répond**.
 
 Cliquez sur **Assigner un agent maintenant** pour choisir quel agent prend en charge chaque connexion et offrir une expérience personnalisée.
 
@@ -122,7 +122,7 @@ Dans la liste **Agent IA**, chaque agent dispose d'un menu d'actions :
 
 ## Testez votre agent avant de l'activer
 
-Dans **Agent IA → Tester l'agent**, vous pouvez discuter avec l'agent tel qu'il répond aujourd'hui, sans affecter de vrais clients, consommer de messages ni créer de réservations. Testez-le après tout changement de personnalité, règles, outils ou connexions.
+Dans **Agent IA → Tester l'agent**, vous pouvez discuter avec l'agent tel qu'il répond aujourd'hui, sans affecter de vrais clients ni créer de réservations. En revanche, chaque réponse compte dans les messages IA de votre forfait ; s'ils sont épuisés pour la période, le test ne répond pas non plus. Testez-le après tout changement de personnalité, règles, outils ou connexions.
 
 ## Questions fréquentes
 

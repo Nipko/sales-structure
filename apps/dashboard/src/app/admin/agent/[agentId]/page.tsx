@@ -4,7 +4,12 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslations } from "next-intl";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useTenant } from "@/contexts/TenantContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { useRole } from "@/hooks/useRole";
 import { api } from "@/lib/api";
+import { reviewModeFromWorkspace } from "@/lib/agent-review-mode";
+import { isSessionInDayZero } from "@/lib/onboarding-session-facts";
+import { demoLinkPause, readSetupStatusFacts, type DemoLinkPause } from "@/lib/onboarding-guide";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import {
@@ -34,6 +39,7 @@ import { ScheduleCard } from "../_components/ScheduleCard";
 import { CapabilitiesSection } from "../_components/CapabilitiesSection";
 import { CustomPromptMode } from "../_components/CustomPromptMode";
 import { PendingAgentChangesNotice, pendingAgentChanges } from "../_components/PendingAgentChangesNotice";
+import { AskAssistChange } from "../_components/AskAssistChange";
 
 // ── Channel metadata ────────────────────────────────────────
 
@@ -211,6 +217,37 @@ function connectionHolders(agents: AgentData[], selfId: string, channels: string
       || bindings.some(binding => agent.channel_bindings?.includes(binding))));
 }
 
+/** Everything the editor is built from, read together. */
+interface EditorRead {
+  state: AgentConfigurationWorkspace;
+  agents: AgentData[];
+  accounts: ChannelAccountLite[];
+  overviewAvailable: boolean;
+}
+
+/**
+ * The one read the editor is built from: the agent, who holds which channel,
+ * and what is connected. On open, and again in place when Assist applies a
+ * change to this agent. Throws without the agent or the agent list: an editor
+ * built without them would offer a save the API has to refuse.
+ */
+async function readEditor(tenantId: string, agentId: string): Promise<EditorRead> {
+  const [agentRes, agentsRes, overviewRes]: any[] = await Promise.all([
+    api.getAgentConfiguration(tenantId, agentId),
+    api.listAgents(tenantId),
+    api.fetch('/channels/overview').catch(() => null),
+  ]);
+  if (!agentRes?.success || !agentRes.data
+    || !agentsRes?.success || !Array.isArray(agentsRes.data)) {
+    throw new Error('agent_editor_authority_unavailable');
+  }
+  const overviewAvailable = channelOverviewIsAuthoritative(overviewRes);
+  const accounts: ChannelAccountLite[] = overviewAvailable
+    ? overviewRes.data.map((a: any) => ({ channelType: a.channelType, accountId: a.accountId, displayName: a.displayName }))
+    : [];
+  return { state: agentRes.data, agents: agentsRes.data, accounts, overviewAvailable };
+}
+
 // ── Component ────────────────────────────────────────────────
 
 export default function AgentEditorPage() {
@@ -224,6 +261,14 @@ export default function AgentEditorPage() {
   const tRegressions = useTranslations("qualityRegressions");
   const tPublications = useTranslations("agentPublications");
   const { activeTenantId } = useTenant();
+  const { user } = useAuth();
+  const { canEditAgent } = useRole();
+  // Day 0 (until the agent's first real reply) the guided setup is the one
+  // guide on screen. The quality passport named "1 bloqueo crítico" above an
+  // amber box that said the same thing about channels — two guides for one
+  // fact, and neither true about the agent's own link (audit #55). The channel
+  // box stays, because it explains why there are no channels to tick.
+  const dayZero = isSessionInDayZero(user);
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -252,6 +297,9 @@ export default function AgentEditorPage() {
   const [loadFailed, setLoadFailed] = useState(false);
   const [saving, setSaving] = useState(false);
   const [externalChange, setExternalChange] = useState(false);
+  // Assist's change was re-read into the form (see "Assist applied a change"
+  // below); one quiet line says so until her next edit.
+  const [assistApplied, setAssistApplied] = useState(false);
   const [loadedVersion, setLoadedVersion] = useState<number | null>(null);
   // A toast has a tone. Deciding the colour by grepping the text for "Error"
   // painted "Faltan datos obligatorios para guardar" green with a check mark.
@@ -280,61 +328,41 @@ export default function AgentEditorPage() {
   });
 
   // ── Load agent data ────────────────────────────────────────
-  useEffect(() => {
-    const changed = (event: Event) => {
-      const detail = (event as CustomEvent).detail;
-      if (detail?.tenantId === activeTenantId && detail?.agentId === agentId) setExternalChange(true);
-    };
-    window.addEventListener(AGENT_CONFIGURATION_APPLIED_EVENT, changed);
-    return () => window.removeEventListener(AGENT_CONFIGURATION_APPLIED_EVENT, changed);
-  }, [activeTenantId, agentId]);
+
+  /** Puts a read on screen: the form, the workspace a save goes against, who holds which channel. */
+  function showEditor({ state, agents, accounts: accts, overviewAvailable }: EditorRead): AgentDraftBody {
+    setAccounts(accts);
+    setChannelOverviewAvailable(overviewAvailable);
+    setWorkspace(state);
+    // Immediate mode opens on the live agent even with old changes
+    // stored; see `formBodyFor`.
+    const data = formBodyFor(state, "live");
+    setLoadedVersion(state.operational.version);
+    const form = formFromBody(data, accts, overviewAvailable);
+    if (searchParams.get('draftDefault') === '1') form.isDefault = true;
+    hydrateForm(form);
+    // The `agent_active` quality check reads the COLUMN, not
+    // `config_json.isActive`; the hero must show the same truth.
+    setIsActive(state.operational.body.isActive);
+    setAllAgents(agents);
+    return data;
+  }
 
   useEffect(() => {
     if (!activeTenantId || !agentId) return;
     setLoading(true);
     setLoadFailed(false);
     setChannelOverviewAvailable(false);
-    setLoadedVersion(null); setExternalChange(false);
+    setLoadedVersion(null); setExternalChange(false); setAssistApplied(false);
     setWorkspace(null); saveAttempt.current = null;
     setPendingView("live"); setPendingBusy(null); setDiscardFailed(false); discardRequest.current = null;
     let cancelled = false;
 
-    Promise.all([
-      api.getAgentConfiguration(activeTenantId, agentId),
-      api.listAgents(activeTenantId),
-      api.fetch('/channels/overview').catch(() => null),
-    ])
-      .then(([agentRes, agentsRes, overviewRes]: any[]) => {
+    readEditor(activeTenantId, agentId)
+      .then((read) => {
         if (cancelled) return;
-        if (!agentRes?.success || !agentRes.data
-          || !agentsRes?.success || !Array.isArray(agentsRes.data)) {
-          throw new Error('agent_editor_authority_unavailable');
-        }
-        const overviewAvailable = channelOverviewIsAuthoritative(overviewRes);
-        const accts: ChannelAccountLite[] = overviewAvailable
-          ? overviewRes.data.map((a: any) => ({ channelType: a.channelType, accountId: a.accountId, displayName: a.displayName }))
-          : [];
-        setAccounts(accts);
-        setChannelOverviewAvailable(overviewAvailable);
-
-        if (agentRes?.success && agentRes.data) {
-          const state: AgentConfigurationWorkspace = agentRes.data;
-          setWorkspace(state);
-          // Immediate mode opens on the live agent even with old changes
-          // stored; see `formBodyFor`.
-          const data = formBodyFor(state, "live");
-          setLoadedVersion(state.operational.version);
-          const form = formFromBody(data, accts, overviewAvailable);
-          if (searchParams.get('draftDefault') === '1') form.isDefault = true;
-          hydrateForm(form);
-          if (searchParams.get('draftDefault') === '1' && !data.isDefault) setToast(tDraft('defaultNeedsSave'));
-          // The `agent_active` quality check reads the COLUMN, not
-          // `config_json.isActive`; the hero must show the same truth.
-          setIsActive(state.operational.body.isActive);
-        }
-        if (agentsRes?.success && Array.isArray(agentsRes.data)) {
-          setAllAgents(agentsRes.data);
-        }
+        const data = showEditor(read);
+        if (searchParams.get('draftDefault') === '1' && !data.isDefault) setToast(tDraft(read.state.directCommit ? 'defaultNeedsSaveLive' : 'defaultNeedsSave'));
         setLoadFailed(false);
       })
       .catch(() => { if (!cancelled) setLoadFailed(true); })
@@ -389,6 +417,16 @@ export default function AgentEditorPage() {
   // away after a save that had silently failed. Track dirtiness and guard both
   // the browser's unload and in-app links until the next successful save.
   const dirtyRef = useRef(false);
+  // The same fact as state, for what the page shows: "Dime qué cambiar" waits
+  // while there are unsaved edits, and a ref alone would not redraw it. Every
+  // edit goes through here, so an in-place re-read (below) can trust it.
+  const [dirty, setDirtyState] = useState(false);
+  const setDirty = useCallback((value: boolean) => {
+    dirtyRef.current = value;
+    setDirtyState(value);
+    // Her next edit is newer than the change Assist applied: that line is done.
+    if (value) setAssistApplied(false);
+  }, []);
   useEffect(() => {
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
       if (!dirtyRef.current) return;
@@ -402,7 +440,7 @@ export default function AgentEditorPage() {
       const href = anchor.getAttribute("href") || "";
       if (!href.startsWith("/") || href.startsWith(`/admin/agent/${agentId}`)) return;
       if (!window.confirm(t("unsavedLeaveConfirm"))) { event.preventDefault(); event.stopPropagation(); }
-      else dirtyRef.current = false;
+      else setDirty(false);
     };
     window.addEventListener("beforeunload", onBeforeUnload);
     document.addEventListener("click", onLinkClick, true);
@@ -410,12 +448,54 @@ export default function AgentEditorPage() {
       window.removeEventListener("beforeunload", onBeforeUnload);
       document.removeEventListener("click", onLinkClick, true);
     };
-  }, [agentId, t]);
+  }, [agentId, t, setDirty]);
+
+  // ── Assist applied a change to this agent ──────────────────
+  //
+  // With nothing unsaved, the editor re-reads the agent where it stands (the
+  // same read as on load) and says the change is in. It used to raise "La
+  // configuración cambió" and switch Save off, with "Descartar lo que
+  // escribiste y recargar" as the only way out — over nothing written. With
+  // unsaved edits the alert stays: a re-read would erase them. "Dime qué
+  // cambiar" does not send in that state, so she only meets it when a change
+  // arrives from somewhere else.
+  useEffect(() => {
+    if (!activeTenantId || !agentId) return;
+    let cancelled = false;
+    let reads = 0;
+    const changed = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      if (detail?.tenantId !== activeTenantId || detail?.agentId !== agentId) return;
+      if (dirtyRef.current) { setExternalChange(true); return; }
+      const read = ++reads;
+      readEditor(activeTenantId, agentId)
+        .then((result) => {
+          if (cancelled || read !== reads) return;
+          // She started writing while it was on its way: her edits win, and
+          // the alert says the stored agent moved underneath them.
+          if (dirtyRef.current) { setExternalChange(true); return; }
+          saveAttempt.current = null;
+          setPendingView("live");
+          setFieldErrors({});
+          showEditor(result);
+          setExternalChange(false);
+          setAssistApplied(true);
+          setQualityRefreshKey((current) => current + 1);
+        })
+        // It could not show the new state: the page says it is behind.
+        .catch(() => { if (!cancelled && read === reads) setExternalChange(true); });
+    };
+    window.addEventListener(AGENT_CONFIGURATION_APPLIED_EVENT, changed);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(AGENT_CONFIGURATION_APPLIED_EVENT, changed);
+    };
+  }, [activeTenantId, agentId]);
 
   const updateConfig = useCallback((updates: Partial<PersonaConfig>) => {
-    dirtyRef.current = true;
+    setDirty(true);
     setConfig(prev => deepMerge(prev, updates));
-  }, []);
+  }, [setDirty]);
 
   function hydrateForm(form: EditorForm) {
     setConfig(form.config);
@@ -471,13 +551,14 @@ export default function AgentEditorPage() {
   }
 
   function toggleChannel(channel: string) {
-    dirtyRef.current = true;
+    setDirty(true);
     setAssignedChannels(prev =>
       prev.includes(channel) ? prev.filter(c => c !== channel) : [...prev, channel]
     );
   }
 
   function toggleBinding(key: string) {
+    setDirty(true);
     setAssignedBindings(prev =>
       prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
     );
@@ -512,6 +593,24 @@ export default function AgentEditorPage() {
     accounts, channels: assignedChannels, bindings: assignedBindings,
     overviewAvailable: channelOverviewAvailable, supportedTypes: CHANNEL_ORDER,
   });
+
+  /**
+   * Whether the agent's public link is paused, for the one sentence that
+   * mentions it: "Mientras tanto, cualquiera puede escribirle a tu agente
+   * desde su enlace" under "Todavía no conectaste un canal". Read only while
+   * that box is on screen. `null` = it answers, or nobody could tell — the
+   * sentence it had before, as an API without the field means.
+   */
+  const noChannelConnected = channelOverviewAvailable && connectedChannelTypes.length === 0;
+  const [linkPause, setLinkPause] = useState<DemoLinkPause | null>(null);
+  useEffect(() => {
+    if (!activeTenantId || !noChannelConnected) return;
+    let current = true;
+    api.getSetupStatus(activeTenantId)
+      .then((res) => { if (current) setLinkPause(demoLinkPause(readSetupStatusFacts(res)?.demoLink)); })
+      .catch(() => { /* unread: the sentence it had */ });
+    return () => { current = false; };
+  }, [activeTenantId, noChannelConnected]);
 
   // ── Deep link: ?tab=<id>&focus=<field> ─────────────────────
   //
@@ -696,7 +795,7 @@ export default function AgentEditorPage() {
           : saved.savedRevision.id === saved.workspace.draft?.id;
         if (!savedIsCurrent) setExternalChange(true);
         saveAttempt.current = null;
-        dirtyRef.current = false;
+        setDirty(false);
         setPendingView("live");
         setToast(tDraft(saved.workspace.directCommit ? 'savedLive' : 'saved'));
         // The other agent gave the channel away: the line has nothing left to say.
@@ -745,7 +844,7 @@ export default function AgentEditorPage() {
       hydrateForm(form);
       setPendingView("draft");
       setFieldErrors({});
-      dirtyRef.current = true;
+      setDirty(true);
       // One click, and she has not seen these changes: nothing here promised
       // to take a channel from another agent. If they claim one, the save is
       // refused, the form stays on them with the line under the channels, and
@@ -781,7 +880,7 @@ export default function AgentEditorPage() {
       if (pendingView === "draft") {
         hydrateForm(formFromBody(result.data.operational.body, accounts, channelOverviewAvailable));
         setFieldErrors({});
-        dirtyRef.current = false;
+        setDirty(false);
       }
       setPendingView("live");
       setToast(tPending("discarded"));
@@ -826,6 +925,7 @@ export default function AgentEditorPage() {
   }
 
   function applyTemplate(template: any) {
+    setDirty(true);
     const tplConfig = template.config_json || {};
     const agentName = config.persona.name;
     const agentLang = config.language;
@@ -843,7 +943,7 @@ export default function AgentEditorPage() {
   async function handleSetDefault() {
     if (!activeTenantId) return;
     if (externalChange || loadedVersion === null) { setToast(tConfiguration('editorChanged'), "error"); return; }
-    setIsDefault(true); setToast(tDraft('defaultNeedsSave'));
+    setIsDefault(true); setDirty(true); setToast(tDraft(workspace?.directCommit ? 'defaultNeedsSaveLive' : 'defaultNeedsSave'));
     setMenuOpen(false);
   }
 
@@ -924,10 +1024,18 @@ export default function AgentEditorPage() {
           onDiscard={() => void discardPendingChanges()}
         />
       )}
+      {/* The stored agent moved under this page. With edits nobody saved, a
+          reload costs them and the button says so; without any (a re-read
+          that failed, a switch refused as out of date) it is only a reload. */}
       {externalChange && <div role="alert" className="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">
-        <p>{tConfiguration('editorChanged')}</p>
-        <button type="button" onClick={() => window.location.reload()} className="mt-2 min-h-10 rounded-lg border border-current px-3 py-2">{tConfiguration('reloadEditor')}</button>
+        <p>{dirty ? tConfiguration('editorChanged') : t('editorBehind.text')}</p>
+        <button type="button" onClick={() => window.location.reload()} className="mt-2 min-h-10 rounded-lg border border-current px-3 py-2">{dirty ? tConfiguration('reloadEditor') : t('editorBehind.reload')}</button>
       </div>}
+      {assistApplied && !externalChange && (
+        <p role="status" data-assist-applied className="mb-4 flex items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-100">
+          <CheckCircle size={16} aria-hidden="true" className="flex-shrink-0" /> {t('askAssist.appliedInPlace')}
+        </p>
+      )}
       <PageHeader
         icon={Bot}
         title={config.persona.name || t("title")}
@@ -935,7 +1043,7 @@ export default function AgentEditorPage() {
         breadcrumbs={
           <button
             type="button"
-            onClick={() => { if (!dirtyRef.current || window.confirm(t("unsavedLeaveConfirm"))) { dirtyRef.current = false; router.push("/admin/agent"); } }}
+            onClick={() => { if (!dirtyRef.current || window.confirm(t("unsavedLeaveConfirm"))) { setDirty(false); router.push("/admin/agent"); } }}
             className="inline-flex items-center gap-1 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 cursor-pointer transition-colors"
           >
             <ArrowLeft size={14} /> {t("backToAgents")}
@@ -1004,15 +1112,20 @@ export default function AgentEditorPage() {
         }
       />
 
-      <HelpPanel
-        title={th("agentEditor.title")}
-        description={th("agentEditor.description")}
-        tips={th.raw("agentEditor.tips") as string[]}
-        tourId="agent_handoff_rules"
-      />
+      {/* Day 0: like the wizard, no help strip over the editor — the guided
+          setup is the one guide, and "Dime qué cambiar" below is the way to
+          ask. It comes back with the rest once the agent has answered. */}
+      {!dayZero && (
+        <HelpPanel
+          title={th("agentEditor.title")}
+          description={th("agentEditor.description")}
+          tips={th.raw("agentEditor.tips") as string[]}
+          tourId="agent_handoff_rules"
+        />
+      )}
 
-      {/* ── Resumen persistente del pasaporte de calidad ── */}
-      <AgentReadinessBanner tenantId={activeTenantId} agentId={agentId} refreshKey={qualityRefreshKey} />
+      {/* ── Resumen persistente del pasaporte de calidad (after day 0; see `dayZero`) ── */}
+      {!dayZero && <AgentReadinessBanner tenantId={activeTenantId} agentId={agentId} refreshKey={qualityRefreshKey} />}
 
       {/* ── Agent profile hero + channels ── */}
       <div ref={heroRef} className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5 mb-6">
@@ -1110,9 +1223,11 @@ export default function AgentEditorPage() {
                       </Link>
                     )}
                     <button type="button" className="min-h-8 rounded-md px-2 font-semibold underline"
-                      onClick={() => issue.kind === 'channel'
-                        ? setAssignedChannels(current => current.filter(value => value !== issue.value))
-                        : setAssignedBindings(current => current.filter(value => value !== issue.value))}>
+                      onClick={() => {
+                        setDirty(true);
+                        if (issue.kind === 'channel') setAssignedChannels(current => current.filter(value => value !== issue.value));
+                        else setAssignedBindings(current => current.filter(value => value !== issue.value));
+                      }}>
                       {t("assignmentReview.remove")}
                     </button>
                   </li>
@@ -1129,7 +1244,9 @@ export default function AgentEditorPage() {
           ) : connectedChannelTypes.length === 0 ? (
             <div className="rounded-lg border border-dashed border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-500/10 p-4">
               <p className="text-sm font-medium text-amber-800 dark:text-amber-200">{t("noConnectedChannels")}</p>
-              <p className="text-xs text-amber-700 dark:text-amber-300/80 mt-1">{t("noConnectedChannelsHint")}</p>
+              <p className="text-xs text-amber-700 dark:text-amber-300/80 mt-1">
+                {linkPause ? t(`noConnectedChannelsHintPaused.${linkPause}`) : t("noConnectedChannelsHint")}
+              </p>
               <Link
                 href="/admin/channels"
                 className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold no-underline transition-colors"
@@ -1202,14 +1319,21 @@ export default function AgentEditorPage() {
         </div>
       </div>
 
+      {/* ── "Dime qué cambiar": the editor's one way to ask for a change in
+          words. Deliberately a single quiet line, not a card: during day 0
+          the guided setup is the guide, and this must not become a second. ── */}
+      {canEditAgent && (
+        <AskAssistChange agentId={agentId} agentName={config.persona.name || undefined} unsavedChanges={dirty} />
+      )}
+
       {/* ── Prompt mode ── */}
       {mode === "prompt" && (
         <CustomPromptMode
           customPrompt={customPrompt}
-          onChangePrompt={setCustomPrompt}
+          onChangePrompt={(value) => { setDirty(true); setCustomPrompt(value); }}
           saving={saving}
           onSave={handleSave}
-          saveLabel={tDraft('save')}
+          saveLabel={workspace?.directCommit ? tc("save") : tDraft('save')}
           savingLabel={tc("saving")}
         />
       )}
@@ -1237,6 +1361,7 @@ export default function AgentEditorPage() {
               config={config}
               onChange={updateConfig}
               apptReadiness={apptReadiness}
+              reviewMode={reviewModeFromWorkspace(workspace)}
             />
           </div>
         )}

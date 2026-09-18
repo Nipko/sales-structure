@@ -144,6 +144,42 @@ describe('PersonaController setup wizard — avanzar sin destruir', () => {
         expect(written[0].channelConnectSkippedAt).toBe('2026-09-04T12:00:00.000Z');
     });
 
+    it('el orden de canales del asistente queda guardado en un guardado solo-estado, sin asignar nada', async () => {
+        const { controller, personaService, written } = makeController({ settings: {} });
+
+        await controller.applyTemplate(
+            tenantId,
+            {
+                stageOnly: true,
+                stage: 'channel_deferred',
+                channelConnectSkippedAt: '2026-09-18T12:00:00.000Z',
+                selectedChannels: ['instagram', 'whatsapp', 'messenger', 'telegram'],
+            } as any,
+            req,
+        );
+
+        // "Salud de agentes" y Assist leen el primer canal de acá.
+        expect(written[0].setupWizardChannels).toEqual(['instagram', 'whatsapp', 'messenger', 'telegram']);
+        // Sin cerrar el asistente y sin tocar a ningún agente.
+        expect(written[0].setupWizardCompleted).toBeUndefined();
+        expect(personaService.updateAgent).not.toHaveBeenCalled();
+        expect(personaService.createAgent).not.toHaveBeenCalled();
+        expect(personaService.listAgents).not.toHaveBeenCalled();
+    });
+
+    it('el orden de canales se sanea: fuera lo desconocido, sin repetidos, tope cinco', async () => {
+        expect(PersonaController.readWizardChannelOrder(
+            [' Instagram ', 'whatsapp', 'instagram', 'fax', 42, 'messenger', 'telegram', 'web_chat', 'web_widget'],
+        )).toEqual(['instagram', 'whatsapp', 'messenger', 'telegram', 'web_chat']);
+        expect(PersonaController.readWizardChannelOrder('whatsapp')).toBeNull();
+        expect(PersonaController.readWizardChannelOrder(['fax'])).toBeNull();
+
+        // Una lista vacía o inválida no borra el orden que ya estaba guardado.
+        const { controller, written } = makeController({ settings: { setupWizardChannels: ['instagram'] } });
+        await controller.applyTemplate(tenantId, { stageOnly: true, stage: 'agent_reviewed', selectedChannels: [] } as any, req);
+        expect(written[0].setupWizardChannels).toEqual(['instagram']);
+    });
+
     it.each([
         { customizations: { agentName: 'Ana' } },
         { templateId: 'tpl_sales', customizations: { agentName: 'Ana' } },

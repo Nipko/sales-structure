@@ -8,8 +8,10 @@ import PublicChatShell, { WIDGET_HOST_ID } from "./PublicChatShell";
  *
  * The chat itself is mounted by the platform loader, which jsdom never fetches;
  * what this checks is the frame the page owns — the headline that names whose
- * agent this is, the "test page" pill, the region the loader fills, the credit
- * link — and the two states the loader cannot reach: a link that does not
+ * agent this is, the "test page" pill (only while the link IS the trial: an API
+ * without `isTrial` still reads as one, and `READY` below is that API), the
+ * region the loader fills, the credit link — and the two states the loader
+ * cannot reach: a link that does not
  * exist, and a config that could not be read. Also the wiring the loader
  * depends on: the global set before the script, the script added once.
  *
@@ -92,6 +94,34 @@ describe("the agent's public page, as a visitor receives it", () => {
             expect(credit.getAttribute("rel")).toBe("noopener noreferrer");
             expect(credit.textContent).toBe("Hecho con Parallly");
 
+            expect(await findAccessibilityViolations(screen.container)).toEqual([]);
+        } finally {
+            screen.unmount();
+        }
+    });
+
+    it("marks the test page while the link is the trial", async () => {
+        useFetch(respondWith(200, { ...READY, data: { ...READY.data, isTrial: true } }));
+        const screen = await renderScreen(createElement(PublicChatShell, { widgetId: "wgt_abc123" }));
+        try {
+            await settle();
+            expect(screen.container.querySelector("header")?.textContent).toContain("Página de prueba");
+        } finally {
+            screen.unmount();
+        }
+    });
+
+    it("says nothing about a test to the customers of a plan with the web chat", async () => {
+        // Same page, same demo widget; the plan made it the business's real
+        // channel. Whoever taps it from the Instagram bio is a customer.
+        useFetch(respondWith(200, { ...READY, data: { ...READY.data, isTrial: false } }));
+        const screen = await renderScreen(createElement(PublicChatShell, { widgetId: "wgt_abc123" }));
+        try {
+            await settle();
+            expect(screen.container.querySelector("h1")?.textContent).toBe("Ana · Café Central");
+            expect(screen.container.textContent).not.toMatch(/prueba/i);
+            // Still the chat: only the label went away.
+            expect(screen.container.querySelector(`#${WIDGET_HOST_ID}`)).not.toBeNull();
             expect(await findAccessibilityViolations(screen.container)).toEqual([]);
         } finally {
             screen.unmount();

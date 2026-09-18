@@ -538,7 +538,7 @@ export class ChannelManagerService {
                 outboxIntentId: intent?.id,
                 writeStatus: intent?.suppressed ? 'suppressed' : 'unavailable',
                 message: `Las reservas de "${result.listing.name}" viven en ${result.listingProvider}. `
-                    + 'Creala allá y se sincroniza sola; una reserva creada acá no bloquearía '
+                    + 'Créala allá y se sincroniza sola; una reserva creada acá no bloquearía '
                     + 'las fechas en el canal y el alojamiento se vendería dos veces.',
             });
         }

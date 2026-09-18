@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { ArrowRight, Check, ChevronLeft, Smartphone, Timer } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { guidedTourAnchorId } from "@/lib/guided-tours";
 import {
     WHATSAPP_TRIAGE_ANSWERS,
+    cacheTriage,
+    fetchRecordedTriage,
     getWhatsAppTriageAnswer,
     rememberTriage,
     whatsAppTriageKey,
@@ -26,7 +28,7 @@ export interface WhatsAppTriageProps {
      * answer that is not true.
      */
     onShowAllRoutes?: () => void;
-    /** Rendered under the outcome: "mientras tanto {Nombre} ya atiende por su enlace". */
+    /** Rendered under the outcome: "mientras tanto ya puedes probar a {Nombre} en su enlace". */
     meanwhile?: React.ReactNode;
     initialAnswerId?: WhatsAppTriageAnswerId | null;
 }
@@ -47,8 +49,27 @@ export default function WhatsAppTriage({ tenantId, onRoute, onLater, onShowAllRo
     const t = useTranslations("channels.whatsapp.triage");
     const [answerId, setAnswerId] = useState<WhatsAppTriageAnswerId | null>(initialAnswerId);
     const answer = getWhatsAppTriageAnswer(answerId);
+    /** Once the person has pressed something here, what she did wins over any read. */
+    const touched = useRef(false);
+
+    // The account's answer, not only this browser's. `initialAnswerId` is the
+    // local copy, shown at once; the answer she gave from another device, or
+    // before clearing this browser, arrives here and replaces it. A read that
+    // fails changes nothing: an unreadable answer is not "she never answered".
+    useEffect(() => {
+        if (!tenantId) return;
+        let cancelled = false;
+        void fetchRecordedTriage(tenantId).then((recorded) => {
+            if (cancelled || touched.current || recorded === undefined) return;
+            const next = recorded?.answerId ?? null;
+            cacheTriage(tenantId, next);
+            setAnswerId(next);
+        });
+        return () => { cancelled = true; };
+    }, [tenantId]);
 
     function choose(next: WhatsAppTriageAnswer) {
+        touched.current = true;
         setAnswerId(next.id);
         rememberTriage(tenantId, next.id);
     }
@@ -93,7 +114,7 @@ export default function WhatsAppTriage({ tenantId, onRoute, onLater, onShowAllRo
         <div id={guidedTourAnchorId("whatsapp-prerequisites")}>
             <button
                 type="button"
-                onClick={() => { setAnswerId(null); rememberTriage(tenantId, null); }}
+                onClick={() => { touched.current = true; setAnswerId(null); rememberTriage(tenantId, null); }}
                 className="mb-4 inline-flex cursor-pointer items-center gap-1 text-[13px] text-muted-foreground hover:text-foreground"
             >
                 <ChevronLeft size={14} /> {t("changeAnswer")}

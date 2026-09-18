@@ -26,7 +26,7 @@ Es la forma más rápida de ver a tu agente en acción:
 4. Escribe como si fueras un cliente ("¿Qué precios manejan?", "¿Tienen disponibilidad el sábado?") y pulsa **Enviar**.
 5. Con **Reiniciar** borras la conversación y empiezas de cero.
 
-El chat de prueba es un espacio seguro: no crea contactos, no aparece en tu bandeja de entrada y no toca ninguna conversación real. Úsalo cada vez que cambies la personalidad, las reglas o la información del negocio, para confirmar que el agente responde como esperas.
+El chat de prueba es un espacio seguro: no crea contactos, no aparece en tu bandeja de entrada y no toca ninguna conversación real. Lo que sí usa son los mensajes de IA de tu plan: cada respuesta del agente, aquí y en las simulaciones, cuenta para ellos. Úsalo cada vez que cambies la personalidad, las reglas o la información del negocio, para confirmar que el agente responde como esperas.
 
 ## Cómo ejecutar una simulación
 

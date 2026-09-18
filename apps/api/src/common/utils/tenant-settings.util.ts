@@ -58,6 +58,13 @@ export const RESERVED_TENANT_SETTING_KEYS = [
     // 'reviewed' (cada guardado es un borrador que pasa por evaluación, revisión
     // y publicación). Lo escribe sólo `persona.controller` (agent-review-mode).
     'agentReviewMode',
+    // "¿Dónde vive hoy tu número de WhatsApp?" (D12). Valida la respuesta contra
+    // la lista cerrada y guarda cuándo se dio por primera vez; un PATCH genérico
+    // podría escribir un valor que ninguna pantalla ofrece, o borrar el motivo
+    // que Inicio anota junto a "Continuar donde quedaste". Su dueño es
+    // `persona.controller` (`PUT /persona/:tenantId/whatsapp-triage`, con
+    // `whatsapp-triage.util.ts`); se lee sólo en `setup-status`.
+    'whatsappTriage',
 ] as const;
 
 /**

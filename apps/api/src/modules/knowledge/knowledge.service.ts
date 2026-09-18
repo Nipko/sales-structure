@@ -897,7 +897,7 @@ export class KnowledgeService {
                 tenantId,
                 executionContext,
                 withSourceAuthority:sourceAuthority?invoke=>sourceAuthority(invoke,response=>response.usage):undefined,
-                systemPrompt: 'Sos un reranker. Devolvé SOLO un JSON array de índices (enteros) ordenados por relevancia a la consulta, el más relevante primero. Sin texto extra.',
+                systemPrompt: 'Eres un reranker. Devuelve SOLO un JSON array de índices (enteros) ordenados por relevancia a la consulta, el más relevante primero. Sin texto extra.',
                 messages: [{ role: 'user', content: `Consulta: ${query}\n\nFragmentos:\n${list}` }],
             });
             const order: any = JSON.parse((resp.content || '[]').replace(/```json?/gi, '').replace(/```/g, '').trim());

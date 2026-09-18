@@ -277,7 +277,7 @@ const DEFAULT_TEMPLATES: Omit<EmailTemplate, 'id' | 'language' | 'createdAt' | '
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
 <tr><td style="padding:32px;">
 <p style="margin:0 0 4px;font-size:16px;color:#1f2937;">Hola <strong>{{customer_name}}</strong>,</p>
-<p style="margin:0 0 24px;font-size:14px;color:#6b7280;line-height:1.6;">Tu prueba gratuita del plan <strong>{{plan_name}}</strong> termino. Podes ver tu informacion pero el bot, los canales y las automatizaciones estan pausados.</p>
+<p style="margin:0 0 24px;font-size:14px;color:#6b7280;line-height:1.6;">Tu prueba gratuita del plan <strong>{{plan_name}}</strong> termino. Puedes ver tu informacion pero el bot, los canales y las automatizaciones estan pausados.</p>
 <p style="margin:0 0 16px;font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:1px;">Esto es lo que estas perdiendo ahora mismo</p>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
 <tr><td style="padding:8px 0;vertical-align:middle;width:28px;"><span style="color:#ef4444;font-size:16px;">&#10007;</span></td>

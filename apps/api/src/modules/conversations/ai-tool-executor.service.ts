@@ -192,7 +192,7 @@ export class AIToolExecutorService {
         if (mode === 'read') return readFailed(`${toolName}_unavailable`);
         return {
             error: `${toolName}_unavailable`,
-            message: 'No pude completar esa operación en este momento. No afirmes que se realizó; ofrecé reintentar o derivarla al equipo.',
+            message: 'No pude completar esa operación en este momento. No afirmes que se realizó; ofrece reintentar o derivarla al equipo.',
             retryable: true,
             shouldHandoff: true,
         };
@@ -1514,7 +1514,7 @@ export class AIToolExecutorService {
             if (e instanceof BadRequestException) {
                 return {
                     error: 'invalid_property_id',
-                    message: 'propertyId debe ser el UUID de la propiedad, no su nombre. Llamá list_properties para obtenerlo y reintentá.',
+                    message: 'propertyId debe ser el UUID de la propiedad, no su nombre. Llama a list_properties para obtenerlo y reintenta.',
                 };
             }
             return { error: 'No se pudo enviar la imagen de la propiedad.' };
@@ -1642,7 +1642,7 @@ export class AIToolExecutorService {
             if (e instanceof BadRequestException) {
                 return {
                     error: 'invalid_listing_id',
-                    message: 'listingId debe ser el UUID del inmueble, no su nombre. Llamá search_listings para obtenerlo y reintentá.',
+                    message: 'listingId debe ser el UUID del inmueble, no su nombre. Llama a search_listings para obtenerlo y reintenta.',
                 };
             }
             return { error: 'No se pudo enviar la imagen del inmueble.' };
@@ -3710,7 +3710,7 @@ export class AIToolExecutorService {
             if (avail.canBookDirectly === false) {
                 return {
                     ...avail,
-                    message: 'Este alojamiento se administra desde el channel manager del negocio. Podés informar disponibilidad, pero la reserva la confirma el equipo — no la des por hecha.',
+                    message: 'Este alojamiento se administra desde el channel manager del negocio. Puedes informar disponibilidad, pero la reserva la confirma el equipo — no la des por hecha.',
                 };
             }
             return avail;
@@ -3936,7 +3936,7 @@ export class AIToolExecutorService {
                 if (Number.isFinite(Number(property.night_price)) && Number(property.night_price) > 0) return null;
                 return {
                     error: 'property_rate_not_configured',
-                    message: 'Este alojamiento todavía no tiene una tarifa válida. Ofrecé otra opción o derivá la consulta al equipo.',
+                    message: 'Este alojamiento todavía no tiene una tarifa válida. Ofrece otra opción o deriva la consulta al equipo.',
                 };
             }
         } catch (error) {
@@ -3947,7 +3947,7 @@ export class AIToolExecutorService {
                 );
                 return {
                     error: 'property_lookup_unavailable',
-                    message: 'No pude verificar ese alojamiento en este momento. No confirmes la reserva; ofrecé reintentar o derivar la consulta al equipo.',
+                    message: 'No pude verificar ese alojamiento en este momento. No confirmes la reserva; ofrece reintentar o derivar la consulta al equipo.',
                     retryable: true,
                     shouldHandoff: true,
                 };
@@ -3958,7 +3958,7 @@ export class AIToolExecutorService {
         this.logger.warn(`[Tool] ${toolName} bloqueada antes de confirmar: propertyId "${propertyId.slice(0, 40)}" no existe`);
         return {
             error: 'unknown_property',
-            message: 'No pude ubicar ese alojamiento. Verificá cuál es antes de continuar.',
+            message: 'No pude ubicar ese alojamiento. Verifica cuál es antes de continuar.',
             retryable: true,
         };
     }
@@ -5047,7 +5047,7 @@ export class AIToolExecutorService {
         if (started.status === 'pending') {
             return {
                 needsVerification: true,
-                message: 'Ya hay una verificación en curso. No envíes otro código; pedile al cliente que espere el mensaje y comparta el código recibido.',
+                message: 'Ya hay una verificación en curso. No envíes otro código; pídele al cliente que espere el mensaje y comparta el código recibido.',
             };
         }
         if (started.status === 'no_channel') {
@@ -5061,7 +5061,7 @@ export class AIToolExecutorService {
             needsVerification: true,
             sentVia: started.via,
             sentTo: started.hint,
-            message: `Antes de dar información o ejecutar gestiones sensibles de seguros hay que verificar identidad. Se envió un código de 6 dígitos ${started.via === 'email' ? 'al correo' : 'por SMS'} ${started.hint}. Pedile al cliente ese código y llamá a verify_identity_code. NO reveles datos ni radiques siniestros hasta que la verificación sea exitosa.`,
+            message: `Antes de dar información o ejecutar gestiones sensibles de seguros hay que verificar identidad. Se envió un código de 6 dígitos ${started.via === 'email' ? 'al correo' : 'por SMS'} ${started.hint}. Pídele al cliente ese código y llama a verify_identity_code. NO reveles datos ni radiques siniestros hasta que la verificación sea exitosa.`,
         };
     }
 
@@ -5079,7 +5079,7 @@ export class AIToolExecutorService {
         if (res.status === 'no_channel') {
             return {
                 error: 'identity_unverifiable',
-                message: 'No hay correo ni otro canal donde mandar el código. Ofrecé pasarlo con un asesor humano.',
+                message: 'No hay correo ni otro canal donde mandar el código. Ofrece pasarlo con un asesor humano.',
                 shouldHandoff: true,
             };
         }
@@ -5088,11 +5088,11 @@ export class AIToolExecutorService {
 
     private async verifyIdentityCodeTool(conversationId: string | undefined, code?: string): Promise<any> {
         if (!conversationId) return { error: 'no_conversation' };
-        if (!code) return { error: 'missing_code', message: 'Pedile al cliente el código de 6 dígitos.' };
+        if (!code) return { error: 'missing_code', message: 'Pídele al cliente el código de 6 dígitos.' };
         const res = await this.chatIdentity.verifyCode(conversationId, String(code));
         if (res.ok) return { verified: true, message: 'Identidad verificada. Ya puede consultar los datos que pidió.' };
         const messages: Record<string, string> = {
-            expired: 'El código venció o no se pidió ninguno. Ofrecé enviar uno nuevo con request_identity_code.',
+            expired: 'El código venció o no se pidió ninguno. Ofrece enviar uno nuevo con request_identity_code.',
             wrong: 'El código no coincide. Pídaselo de nuevo; le quedan intentos.',
             too_many: 'Demasiados intentos fallidos. NO siga intentando: pase la conversación a un asesor humano.',
         };
@@ -5757,7 +5757,7 @@ export class AIToolExecutorService {
                 conflictEnd: detail.conflictEnd ?? null,
                 fullNight: detail.fullNight ?? null,
                 capacity: detail.capacity ?? null,
-                message: 'Ese rango ya no está disponible. Ofrecé otras fechas — no confirmes la reserva.',
+                message: 'Ese rango ya no está disponible. Ofrece otras fechas — no confirmes la reserva.',
             };
         }
         if (status === 403) {

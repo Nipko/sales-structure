@@ -3,13 +3,14 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import {
     ChevronRight, ChevronLeft, Check, Sparkles, Loader2,
     Plug, PartyPopper, LogOut, ArrowRight, Clock, Compass, AlertTriangle,
 } from "lucide-react";
 import {
     GUIDED_TOUR_START_EVENT,
+    isOnboardingBeforeLive,
     type GuidedTourStartDetail,
     type AgentConfigurationWorkspace,
 } from "@parallext/shared";
@@ -17,10 +18,12 @@ import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/lib/api";
 import { guidedTourAnchorId } from "@/lib/guided-tours";
 import {
+    demoLinkPause,
     readSetupStatusFacts,
     type SetupStatusDefaultAgent,
     type SetupStatusDemoLink,
 } from "@/lib/onboarding-guide";
+import { isDeferringWhatsAppTriageAnswer } from "@/lib/home-day-zero";
 import AnimatedLogo from "@/components/AnimatedLogo";
 import { prepareDraftSave, type DraftSaveAttempt } from '@/lib/agent-draft-save';
 import { HelpPanel } from "@/components/ui/help-panel";
@@ -36,6 +39,29 @@ import {
     settledReadiness,
 } from "./done-step-channel";
 import SecondaryChannels from "./_components/SecondaryChannels";
+import { ConnectedChannelSuccess } from "./_components/ConnectedChannelSuccess";
+import {
+    WIZARD_CHANNELS,
+    emailBlocksConnect,
+    isChannelInPlan,
+    isSecondaryChannel,
+    isWizardChannel,
+    leadChannel,
+    orderWizardChannels,
+    readPlanChannels,
+    readRecipeRecommendations,
+    wizardChannelOrderToSave,
+    type ChannelRecommendation,
+    type ConnectedChannelDetails,
+    type WizardChannel,
+} from "./connect-channels";
+import {
+    doneStepEssentials,
+    readSetupActivationFacts,
+    readSetupProgressFacts,
+    type SetupActivationFacts,
+    type SetupProgressFacts,
+} from "./done-step-essentials";
 import AgentTestChat from "./_components/AgentTestChat";
 import DemoLinkCard from "./_components/DemoLinkCard";
 import {
@@ -53,7 +79,14 @@ import {
  * could send themselves the message that proves it works.
  *
  * The three steps left are the three things that actually have to happen:
- * confirm the agent we prepared, connect WhatsApp, and know what comes next.
+ * confirm the agent we prepared, connect the channel the customers already
+ * write through, and know what comes next.
+ *
+ * During day 0 (`isOnboardingBeforeLive`) the step IS the guide: no help strip
+ * about how the wizard works, no "Mostrarme dónde" tour, no link out to the
+ * expert editor. Six surfaces at once is how the 14-sep recording lost 48
+ * minutes; after the first real reply the wizard is a tool again and gets them
+ * back.
  * Leaving is allowed at every point and loses nothing: the agent autosaves on
  * blur, and "Conectar después" is recorded so Home can offer it again.
  */
@@ -102,6 +135,13 @@ type WizardSavePayload = {
     stage?: WizardStage;
     channelConnectSkippedAt?: string;
     stageOnly?: boolean;
+    /**
+     * The channels in the order the connect step offers them. Only on the
+     * `stageOnly` path: on the create-the-agent path the server takes this
+     * same field as the new agent's channel assignments. Left out when the
+     * plan's channels are not known (`wizardChannelOrderToSave`).
+     */
+    selectedChannels?: WizardChannel[];
 };
 
 const saveWizard = api.applySetupTemplate as unknown as (
@@ -131,7 +171,8 @@ export default function SetupWizardPage() {
     const tHelp = useTranslations("help");
     const tCommon = useTranslations("common");
     const tDraft = useTranslations('agentDraft');
-    const { user } = useAuth();
+    const { user, planFeatures } = useAuth();
+    const locale = useLocale();
     const router = useRouter();
     const tenantId = user?.tenantId;
     const companyName = user?.tenantName || "";
@@ -156,6 +197,22 @@ export default function SetupWizardPage() {
      * it on day 0; this page never creates one, it only hands it out.
      */
     const [demoLink, setDemoLink] = useState<SetupStatusDemoLink | null>(null);
+    /** Where this business should start, from its recipe. Empty = default order. */
+    const [recommendations, setRecommendations] = useState<ChannelRecommendation[]>([]);
+    /**
+     * Her answer to "¿Dónde vive hoy tu número?" as the account recorded it
+     * (`setupStatus.whatsappTriage`), and whether she answered it HERE with a
+     * reason that leaves WhatsApp for later. Either way she chose WhatsApp:
+     * see `whatsappChosen`.
+     */
+    const [recordedTriageAnswer, setRecordedTriageAnswer] = useState<string | null>(null);
+    const [whatsappPostponedHere, setWhatsappPostponedHere] = useState(false);
+    /** What "Listo" can say is already done. `undefined` fields = not known. */
+    const [progress, setProgress] = useState<SetupProgressFacts>({});
+    /** The day-0 facts as setup-status reads them now, fresher than the session's. */
+    const [activation, setActivation] = useState<SetupActivationFacts>({});
+    /** Instagram, Messenger or Telegram connected in this session, with what it said about itself. */
+    const [connectedHere, setConnectedHere] = useState<ConnectedChannelDetails | null>(null);
     /** El nombre con el que el enlace presenta al agente: lo tipeado gana. */
     const linkAgentName = agentName.trim() || demoLink?.agentName || t("demoLink.agentFallback");
     /** El número que se conectó EN ESTA SESIÓN, tal como lo devolvió el alta. */
@@ -222,9 +279,16 @@ export default function SetupWizardPage() {
         Promise.all([
             api.getSetupStatus(tenantId).catch(() => null),
             api.getPersonaTemplates(tenantId).catch(() => null),
-        ]).then(async ([statusRes, templatesRes]) => {
+            // The recipe orders the channels. Read with the rest so the connect
+            // step never reshuffles under the person's finger; a failure is the
+            // default order, never an error.
+            api.fetch(`/verticals/${tenantId}/recipe?lang=${encodeURIComponent(locale)}`).catch(() => null),
+        ]).then(async ([statusRes, templatesRes, recipeRes]) => {
             if (cancelled) return;
             const facts = readSetupStatusFacts(statusRes);
+            setRecommendations(readRecipeRecommendations(recipeRes, locale));
+            setProgress(readSetupProgressFacts(statusRes));
+            setActivation(readSetupActivationFacts(statusRes));
             const templates: any[] = (templatesRes as any)?.success ? ((templatesRes as any).data || []) : [];
 
             // La UNICA plantilla que se usa es la que el tenant realmente tiene.
@@ -277,6 +341,7 @@ export default function SetupWizardPage() {
             if (facts?.hasAnyChannel) setChannelConnected(true);
             setConnectedTypes(facts?.connectedChannelTypes ?? []);
             setDemoLink(facts?.demoLink ?? null);
+            setRecordedTriageAnswer(facts?.whatsappTriage?.answerId ?? null);
 
             // El borrador devuelve el paso Y lo que se estaba escribiendo. Solo
             // pisa al servidor cuando difiere: si lo hace, queda marcado como
@@ -308,7 +373,7 @@ export default function SetupWizardPage() {
         }).catch(() => { if (!cancelled) setLoading(false); });
 
         return () => { cancelled = true; };
-    }, [companyName, draftKey, tenantId, tDraft]);
+    }, [companyName, draftKey, locale, tenantId, tDraft]);
 
     useEffect(() => {
         if (!draftKey || loading) return;
@@ -367,7 +432,43 @@ export default function SetupWizardPage() {
         markCompleted?: boolean;
         stage?: WizardStage;
         channelConnectSkippedAt?: string;
+        /**
+         * The channel she chose in this very action, before the state that
+         * remembers it has been drawn: the WhatsApp answer that postpones it
+         * saves in the same click.
+         */
+        leadWith?: WizardChannel;
     }
+
+    /**
+     * She chose WhatsApp and left it for later: she answered the WhatsApp
+     * question with "con otro proveedor" or "no lo tengo a mano" — here, or
+     * before (the account recorded it). The recipe may lead with Instagram,
+     * but the channel she is waiting on is WhatsApp, so "Listo" names it and
+     * the order this page saves puts it first — which is what the server's
+     * setup step, "Salud de agentes", Assist and Inicio's reminder (whose note
+     * repeats that same answer) read. Only while nothing is connected.
+     */
+    const whatsappChosen = !channelConnected
+        && (whatsappPostponedHere || isDeferringWhatsAppTriageAnswer(recordedTriageAnswer));
+
+    /**
+     * The channels as the connect step offers them: the recipe's order, only
+     * those the plan lets her connect — the same `orderWizardChannels` and
+     * `isChannelInPlan` the step renders with, so the first one is the channel
+     * the step leads with (or WhatsApp, once she chose it). It rides on every
+     * progress save (leaving the connect step, "Conectar después", finishing)
+     * instead of a request of its own, for the server to keep as
+     * `setupWizardChannels`: that is where "Salud de agentes" and Assist read
+     * which channel to connect first, and with it empty they told a beauty
+     * salon "WhatsApp" while this step and Inicio led with Instagram. With the
+     * plan not known it is left out (`wizardChannelOrderToSave`).
+     */
+    const channelOrderToSave = useCallback((leadWith?: WizardChannel) => wizardChannelOrderToSave({
+        recommendations,
+        planChannels: readPlanChannels(planFeatures),
+        first: leadWith ?? (whatsappChosen ? "whatsapp" : null),
+    }), [planFeatures, recommendations, whatsappChosen]);
 
     /**
      * El único punto de escritura del asistente. Devuelve si REALMENTE se
@@ -407,12 +508,16 @@ export default function SetupWizardPage() {
      * comportamiento, sus disparadores de traspaso, sus temas prohibidos, su
      * RAG, su mensaje de respaldo y sus horarios. Sin decírselo.
      */
-    const advanceStage = useCallback((options: WizardProgress = {}) => postWizard({
-        stageOnly: true,
-        stage: options.stage,
-        markCompleted: options.markCompleted === true,
-        channelConnectSkippedAt: options.channelConnectSkippedAt,
-    }), [postWizard]);
+    const advanceStage = useCallback((options: WizardProgress = {}) => {
+        const order = channelOrderToSave(options.leadWith);
+        return postWizard({
+            stageOnly: true,
+            stage: options.stage,
+            markCompleted: options.markCompleted === true,
+            channelConnectSkippedAt: options.channelConnectSkippedAt,
+            ...(order ? { selectedChannels: order } : {}),
+        });
+    }, [channelOrderToSave, postWizard]);
 
     /**
      * Connecting a channel binds the agent and bumps its version on the server.
@@ -530,10 +635,11 @@ export default function SetupWizardPage() {
         return () => window.removeEventListener("keydown", onKeyDown);
     }, [exit, step, whatsappAlreadyConnected]);
 
-    const connectLater = useCallback(async () => {
+    const connectLater = useCallback(async (leadWith?: WizardChannel) => {
         const ok = await saveOrAdvance({
             stage: "channel_deferred",
             channelConnectSkippedAt: new Date().toISOString(),
+            leadWith,
         });
         if (!ok) return;
         setStep(LAST_STEP);
@@ -587,6 +693,60 @@ export default function SetupWizardPage() {
         void goToStep(LAST_STEP);
     }, [goToStep]);
 
+    /**
+     * Day 0: the account is still waiting for its agent's first real reply.
+     * setup-status is read on every open and wins over the session's copy; a
+     * first reply either side knows about ends it (it is never undone).
+     */
+    const dayZero = isOnboardingBeforeLive(activation.stage ?? user?.onboardingStage, {
+        firstReplyAt: activation.firstReplyAt ?? user?.firstReplyAt ?? null,
+        createdAt: activation.tenantCreatedAt ?? user?.tenantCreatedAt ?? null,
+    });
+
+    const channelLabel = (channel: WizardChannel) => t(`connect.channel_${channel}`);
+    const joinNames = (names: string[]) => {
+        try { return new Intl.ListFormat(locale, { style: "long", type: "conjunction" }).format(names); }
+        catch { return names.join(", "); }
+    };
+    const planChannels = readPlanChannels(planFeatures);
+    const channelOrder = orderWizardChannels(recommendations);
+    /** The channel the step leads with: the recipe's first one the plan includes. */
+    const lead = leadChannel(channelOrder, planChannels);
+    /** The channel "Listo" says is pending: the one she chose, else the one the step led with. */
+    const pendingChannel: WizardChannel = whatsappChosen ? "whatsapp" : lead;
+    /**
+     * Whether the agent answers on its link today. Every "ya responde por su
+     * enlace" and every offer to open it waits on this: a paused trial link
+     * is not somewhere to send her.
+     */
+    const linkPause = demoLinkPause(demoLink);
+    const linkAnswers = demoLink !== null && linkPause === null;
+    const meanwhileLine = demoLink
+        ? (linkPause
+            ? t(`demoLink.paused.${linkPause}`, { agentName: linkAgentName })
+            : t("demoLink.meanwhile", { agentName: linkAgentName }))
+        : null;
+    const secondaryOrder = channelOrder.filter(isSecondaryChannel);
+    const firstRecommendation = recommendations[0] ?? null;
+    const firstRecommendationInPlan = firstRecommendation ? isChannelInPlan(firstRecommendation.channel, planChannels) : false;
+
+    /**
+     * A channel other than WhatsApp that is connected — here, or before the
+     * wizard opened. It gets its own victory instead of the WhatsApp question
+     * staying on screen as if nothing had happened.
+     */
+    const serverOtherChannel = connectedTypes.find(isSecondaryChannel);
+    const otherConnected: ConnectedChannelDetails | null = connectedHere
+        ?? (serverOtherChannel ? { channel: serverOtherChannel, label: null, href: null } : null);
+    const showOtherConnected = !showConnectedState && whatsappHere === null && otherConnected !== null;
+
+    /** Every channel connected so far, by name, for "Listo". */
+    const connectedNames = WIZARD_CHANNELS.filter((channel) => (
+        connectedTypes.filter(isWizardChannel).includes(channel)
+        || (channel === "whatsapp" && whatsappHere !== null)
+        || connectedHere?.channel === channel
+    )).map(channelLabel);
+
     const channelOutcome = doneStepChannel({ channelConnected, whatsapp: whatsappInPlay, readiness: whatsappReadiness });
     /** What the channel item of "Listo" says, once there is a channel. */
     const channelLines: string[] = channelOutcome.kind === "pending"
@@ -607,6 +767,52 @@ export default function SetupWizardPage() {
         const detail: GuidedTourStartDetail = { tourId: "first_channel_whatsapp" };
         window.dispatchEvent(new CustomEvent(GUIDED_TOUR_START_EVENT, { detail }));
     };
+
+    const whatsappPanel = tenantId ? (
+        <WhatsAppConnectPanel
+            tenantId={tenantId}
+            variant="onboarding"
+            onConnected={(data) => {
+                setChannelConnected(true);
+                setWhatsappHere(data);
+                setWhatsappReadiness(undefined);
+                void refreshWorkspace();
+            }}
+            onAcknowledged={acknowledgeWhatsapp}
+            // Quien contesta que su número está con otro proveedor, o que no
+            // lo tiene a mano, no se queda sin salida: se apunta el "después"
+            // y el agente sigue atendiendo por su enlace mientras tanto (si el
+            // enlace responde; si no, se dice que está en pausa). Eligió
+            // WhatsApp: el orden que se guarda lo pone primero.
+            onPostponed={() => {
+                setWhatsappPostponedHere(true);
+                void connectLater("whatsapp");
+            }}
+            meanwhile={meanwhileLine ? (
+                <p className="text-[12px] text-muted-foreground">{meanwhileLine}</p>
+            ) : undefined}
+        />
+    ) : null;
+
+    const secondaryChannels = tenantId ? (
+        <SecondaryChannels
+            tenantId={tenantId}
+            channels={secondaryOrder}
+            recommended={firstRecommendationInPlan ? firstRecommendation?.channel ?? null : null}
+            planChannels={planChannels}
+            emailBlocked={emailBlocksConnect(user)}
+            email={user?.email ?? ""}
+            channelName={channelLabel}
+            // "Abrir el enlace de {Nombre}" only while it answers.
+            demoLink={linkAnswers ? demoLink : null}
+            agentName={agentName}
+            onConnected={(details) => {
+                setChannelConnected(true);
+                setConnectedHere(details);
+                void refreshWorkspace();
+            }}
+        />
+    ) : null;
 
     if (loading) {
         return (
@@ -639,11 +845,15 @@ export default function SetupWizardPage() {
                 </button>
             </div>
 
-            <HelpPanel
-                title={tHelp("setupWizard.title")}
-                description={tHelp("setupWizard.description")}
-                tips={tHelp.raw("setupWizard.tips") as string[]}
-            />
+            {/* Day 0: the step is the guide. A strip explaining the wizard on
+                top of the wizard was one of the six voices of the recording. */}
+            {!dayZero && (
+                <HelpPanel
+                    title={tHelp("setupWizard.title")}
+                    description={tHelp("setupWizard.description")}
+                    tips={tHelp.raw("setupWizard.tips") as string[]}
+                />
+            )}
 
             {/* Un guardado rechazado se ve. Antes se perdía en la consola. */}
             {error && (
@@ -736,13 +946,18 @@ export default function SetupWizardPage() {
                                 </div>
 
                                 {/* La grilla de plantillas se mudó al editor: acá sólo se
-                                    confirma lo que el alta ya dedujo del rubro. */}
-                                <Link
-                                    href="/admin/agent"
-                                    className="inline-flex items-center gap-1.5 text-[13px] font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
-                                >
-                                    {t("agentStep.changeTemplate")} <ArrowRight size={13} />
-                                </Link>
+                                    confirma lo que el alta ya dedujo del rubro. En el día 0
+                                    no se ofrece la salida al editor experto: ahí esperan
+                                    cinco superficies más, y este paso ya dice qué cambiar
+                                    (el nombre, el saludo) y deja probarlo al lado. */}
+                                {!dayZero && (
+                                    <Link
+                                        href="/admin/agent"
+                                        className="inline-flex items-center gap-1.5 text-[13px] font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
+                                    >
+                                        {t("agentStep.changeTemplate")} <ArrowRight size={13} aria-hidden="true" />
+                                    </Link>
+                                )}
                             </div>
 
                             {tenantId && (
@@ -758,7 +973,7 @@ export default function SetupWizardPage() {
                     </div>
                 )}
 
-                {/* ── Paso 2: Conectá WhatsApp ── */}
+                {/* ── Paso 2: El canal por el que te escriben ── */}
                 {step === 1 && tenantId && (
                     <div id={guidedTourAnchorId("setup-connect")} className="mx-auto max-w-lg">
                         <h2 className="mb-1 text-xl font-semibold text-foreground">{t("connectStep.title")}</h2>
@@ -796,69 +1011,102 @@ export default function SetupWizardPage() {
                                     {t("connect.otherChannels")} <ArrowRight size={13} aria-hidden="true" />
                                 </Link>
                             </div>
+                        ) : showOtherConnected && otherConnected ? (
+                            // Instagram, Messenger o Telegram conectados: su
+                            // propia victoria, y la pregunta de WhatsApp se va.
+                            <div className="space-y-3">
+                                <ConnectedChannelSuccess
+                                    connected={otherConnected}
+                                    channelName={channelLabel(otherConnected.channel)}
+                                    onContinue={() => void goToStep(LAST_STEP)}
+                                />
+                                <Link
+                                    href="/admin/channels"
+                                    className="inline-flex items-center gap-1.5 text-[13px] font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
+                                >
+                                    {t("connect.otherChannels")} <ArrowRight size={13} aria-hidden="true" />
+                                </Link>
+                            </div>
                         ) : (
                             <>
-                                <WhatsAppConnectPanel
-                                    tenantId={tenantId}
-                                    variant="onboarding"
-                                    onConnected={(data) => {
-                                        setChannelConnected(true);
-                                        setWhatsappHere(data);
-                                        setWhatsappReadiness(undefined);
-                                        void refreshWorkspace();
-                                    }}
-                                    onAcknowledged={acknowledgeWhatsapp}
-                                    // Quien contesta que su número está con otro proveedor, o que no
-                                    // lo tiene a mano, no se queda sin salida: se apunta el "después"
-                                    // y el agente sigue atendiendo por su enlace mientras tanto.
-                                    onPostponed={() => { void connectLater(); }}
-                                    meanwhile={demoLink ? (
-                                        <p className="text-[12px] text-muted-foreground">
-                                            {t("demoLink.meanwhile", { agentName: linkAgentName })}
+                                {/* Por dónde le conviene empezar a ESTE negocio,
+                                    y por qué: la receta ya lo sabía. Sin receta
+                                    no se dice nada y WhatsApp va primero. */}
+                                {firstRecommendation && (
+                                    <div
+                                        data-recommended-channel={firstRecommendation.channel}
+                                        className="mb-5 rounded-xl border border-indigo-200 bg-indigo-50/60 p-3 dark:border-indigo-500/30 dark:bg-indigo-500/5"
+                                    >
+                                        <p className="text-[13px] font-semibold text-foreground">
+                                            {firstRecommendationInPlan
+                                                ? t("connectStep.recommendedTitle", { channel: channelLabel(firstRecommendation.channel) })
+                                                : t("connectStep.recommendedLockedTitle", { channel: channelLabel(firstRecommendation.channel) })}
                                         </p>
-                                    ) : undefined}
-                                />
-
-                                {!channelConnected && (
-                                    <>
-                                        <div className="mt-7">
-                                            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                                                {t("connect.otherChannels")}
+                                        {firstRecommendation.why && (
+                                            <p className="mt-0.5 text-[12px] leading-relaxed text-muted-foreground">{firstRecommendation.why}</p>
+                                        )}
+                                        {!firstRecommendationInPlan && (
+                                            <p className="mt-1 text-[12px] leading-relaxed text-muted-foreground">
+                                                {t("connectStep.recommendedLockedMeanwhile", { channel: channelLabel(lead) })}
                                             </p>
-                                            <SecondaryChannels
-                                                tenantId={tenantId}
-                                                demoLink={demoLink}
-                                                agentName={agentName}
-                                                onConnected={() => { setChannelConnected(true); void refreshWorkspace(); }}
-                                            />
-                                        </div>
+                                        )}
+                                    </div>
+                                )}
 
-                                        <div className="mt-7 rounded-xl border border-neutral-200 bg-neutral-50 p-4 dark:border-white/10 dark:bg-white/[0.03]">
-                                            <p className="text-[13px] font-medium text-foreground">{t("connectStep.laterTitle")}</p>
-                                            <p className="mt-0.5 text-[12px] text-muted-foreground">{t("connectStep.laterHint")}</p>
-                                            {demoLink && (
-                                                <p className="mt-0.5 text-[12px] text-muted-foreground">
-                                                    {t("demoLink.meanwhile", { agentName: linkAgentName })}
+                                {lead === "whatsapp" ? (
+                                    <>
+                                        {whatsappPanel}
+                                        {!channelConnected && (
+                                            <div className="mt-7">
+                                                <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                                    {t("connect.otherChannels")}
+                                                </p>
+                                                {secondaryChannels}
+                                            </div>
+                                        )}
+                                    </>
+                                ) : (
+                                    <>
+                                        {!channelConnected && secondaryChannels}
+                                        <div className={channelConnected ? undefined : "mt-7"}>
+                                            {!channelConnected && (
+                                                <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                                    {t("connect.orWhatsapp")}
                                                 </p>
                                             )}
-                                            <div className="mt-3 flex flex-wrap items-center gap-2">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => void connectLater()}
-                                                    className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-300 px-3 py-2 text-[13px] font-semibold text-foreground transition-colors hover:bg-neutral-100 dark:border-white/10 dark:hover:bg-white/5 cursor-pointer"
-                                                >
-                                                    <Clock size={13} /> {t("connect.connectLater")}
-                                                </button>
+                                            {whatsappPanel}
+                                        </div>
+                                    </>
+                                )}
+
+                                {!channelConnected && (
+                                    <div className="mt-7 rounded-xl border border-neutral-200 bg-neutral-50 p-4 dark:border-white/10 dark:bg-white/[0.03]">
+                                        <p className="text-[13px] font-medium text-foreground">{t("connectStep.laterTitle")}</p>
+                                        <p className="mt-0.5 text-[12px] text-muted-foreground">{t("connectStep.laterHint")}</p>
+                                        {meanwhileLine && (
+                                            <p className="mt-0.5 text-[12px] text-muted-foreground">{meanwhileLine}</p>
+                                        )}
+                                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => void connectLater()}
+                                                className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-300 px-3 py-2 text-[13px] font-semibold text-foreground transition-colors hover:bg-neutral-100 dark:border-white/10 dark:hover:bg-white/5 cursor-pointer"
+                                            >
+                                                <Clock size={13} aria-hidden="true" /> {t("connect.connectLater")}
+                                            </button>
+                                            {/* The tour is a second guide on top of this step;
+                                                it waits for after the first real reply. */}
+                                            {!dayZero && (
                                                 <button
                                                     type="button"
                                                     onClick={showConnectTour}
                                                     className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[13px] font-semibold text-indigo-600 transition-colors hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-500/10 cursor-pointer"
                                                 >
-                                                    <Compass size={13} /> {t("connectStep.showMe")}
+                                                    <Compass size={13} aria-hidden="true" /> {t("connectStep.showMe")}
                                                 </button>
-                                            </div>
+                                            )}
                                         </div>
-                                    </>
+                                    </div>
                                 )}
                             </>
                         )}
@@ -879,55 +1127,74 @@ export default function SetupWizardPage() {
                             {channelOutcome.kind === "checking" && t("doneStep.subtitleChecking")}
                             {channelOutcome.kind === "pending" && t("doneStep.subtitlePending")}
                             {channelOutcome.kind === "unconfirmed" && t("doneStep.subtitleUnconfirmed")}
-                            {channelOutcome.kind === "no_channel" && (demoLink
-                                ? t("doneStep.subtitleLink", { agentName: linkAgentName })
-                                : t("doneStep.subtitleDeferred"))}
+                            {channelOutcome.kind === "no_channel" && (linkAnswers
+                                ? t("doneStep.subtitleLink", { agentName: linkAgentName, channel: channelLabel(pendingChannel) })
+                                : t("doneStep.subtitleDeferred", { channel: channelLabel(pendingChannel) }))}
                         </p>
 
                         {/* The one thing that works today, channel or no channel:
-                            the agent's public link, to try now and to share. */}
-                        {demoLink && (
+                            the agent's public link, to try now and to share.
+                            Paused, the card says so instead — and only while
+                            it is her way to see the agent, with no channel. */}
+                        {demoLink && (linkAnswers || channelOutcome.kind === "no_channel") && (
                             <div className="mb-6">
                                 <DemoLinkCard demoLink={demoLink} agentName={agentName} />
                             </div>
                         )}
 
+                        {/* What is done is said as done, and a count nobody could
+                            read is left out: the list used to be the same three
+                            chores for everybody, numbered as pending, even for
+                            an owner who had already done two of them. */}
                         <ol className="space-y-2">
-                            {(["channel", "knowledge", "team"] as const).map((key, index) => {
+                            {doneStepEssentials(progress).map(({ key, done }, index) => {
                                 // The channel item is done (said as done), being
                                 // checked, pending with what is missing, or not
                                 // connected; "sin un canal no recibe mensajes de
                                 // nadie" is false once the agent has its link.
                                 const outcome = key === "channel" ? channelOutcome.kind : null;
-                                const channelDone = outcome === "answering";
+                                const itemDone = key === "channel" ? outcome === "answering" : done === true;
                                 const channelStuck = outcome === "pending" || outcome === "unconfirmed";
-                                const title = outcome === "pending"
-                                    ? t("doneStep.essentials.channel.pendingTitle")
-                                    : outcome === "unconfirmed"
-                                        ? t("doneStep.essentials.channel.unconfirmedTitle")
-                                        : outcome === "answering" || outcome === "checking"
-                                            ? t("doneStep.essentials.channel.connectedTitle")
-                                            : t(`doneStep.essentials.${key}.title`);
-                                const lines = outcome && outcome !== "no_channel"
-                                    ? channelLines
-                                    : [key === "channel" && demoLink
-                                        ? t("doneStep.essentials.channel.descriptionWithLink")
-                                        : t(`doneStep.essentials.${key}.description`)];
+                                const connectedTitle = connectedNames.length > 0
+                                    ? t("doneStep.essentials.channel.connectedTitleNamed", { channels: joinNames(connectedNames), count: connectedNames.length })
+                                    : t("doneStep.essentials.channel.connectedTitle");
+                                const title = key !== "channel"
+                                    ? t(`doneStep.essentials.${key}.${itemDone ? "doneTitle" : "title"}`)
+                                    : outcome === "pending"
+                                        ? t("doneStep.essentials.channel.pendingTitle")
+                                        : outcome === "unconfirmed"
+                                            ? t("doneStep.essentials.channel.unconfirmedTitle")
+                                            : outcome === "answering" || outcome === "checking"
+                                                ? connectedTitle
+                                                : t("doneStep.essentials.channel.title", { channel: channelLabel(pendingChannel) });
+                                const lines = key !== "channel"
+                                    ? [t(`doneStep.essentials.${key}.${itemDone ? "doneDescription" : "description"}`)]
+                                    : outcome !== "no_channel"
+                                        ? channelLines
+                                        : [linkAnswers
+                                            ? t("doneStep.essentials.channel.descriptionWithLink", { channel: channelLabel(pendingChannel) })
+                                            : t("doneStep.essentials.channel.description")];
                                 return (
-                                    <li key={key} data-channel-item={outcome ?? undefined} className={`flex items-start gap-3 rounded-xl border p-4 ${channelStuck
-                                        ? "border-amber-300 bg-amber-50 dark:border-amber-500/30 dark:bg-amber-500/10"
-                                        : "border-neutral-200 bg-neutral-50 dark:border-white/10 dark:bg-white/[0.03]"}`}>
-                                        <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white ${channelDone ? "bg-emerald-500" : channelStuck ? "bg-amber-600" : "bg-indigo-500"}`}>
-                                            {channelDone
-                                                ? <Check size={12} aria-hidden="true" />
+                                    <li key={key} data-essential={key} data-done={itemDone ? "true" : "false"} data-channel-item={outcome ?? undefined}
+                                        className={`flex items-start gap-3 rounded-xl border p-4 ${channelStuck
+                                            ? "border-amber-300 bg-amber-50 dark:border-amber-500/30 dark:bg-amber-500/10"
+                                            : "border-neutral-200 bg-neutral-50 dark:border-white/10 dark:bg-white/[0.03]"}`}>
+                                        <span aria-hidden="true" className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white ${itemDone ? "bg-emerald-500" : channelStuck ? "bg-amber-600" : "bg-indigo-500"}`}>
+                                            {itemDone
+                                                ? <Check size={12} />
                                                 : channelStuck
-                                                    ? <AlertTriangle size={12} aria-hidden="true" />
+                                                    ? <AlertTriangle size={12} />
                                                     : outcome === "checking"
-                                                        ? <Loader2 size={12} aria-hidden="true" className="animate-spin" />
+                                                        ? <Loader2 size={12} className="animate-spin" />
                                                         : index + 1}
                                         </span>
                                         <div className="min-w-0">
-                                            <p className="text-[13px] font-semibold text-foreground">{title}</p>
+                                            <p className="text-[13px] font-semibold text-foreground">
+                                                {outcome !== "checking" && (
+                                                    <span className="sr-only">{t(itemDone ? "doneStep.itemDone" : "doneStep.itemPending")}: </span>
+                                                )}
+                                                {title}
+                                            </p>
                                             {lines.map((line) => (
                                                 <p key={line} className="mt-0.5 text-[12px] text-muted-foreground">{line}</p>
                                             ))}

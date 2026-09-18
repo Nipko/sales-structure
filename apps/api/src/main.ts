@@ -137,7 +137,7 @@ async function bootstrap() {
             // para los clientes viejos que solo leen ese campo.
             exceptionFactory: (errors: ValidationError[]) => new BadRequestException({
                 error: 'validation_failed',
-                message: 'Revisá los datos: hay campos incompletos o con formato inválido.',
+                message: 'Revisa los datos: hay campos incompletos o con formato inválido.',
                 fields: flattenValidationErrors(errors),
             }),
         }),

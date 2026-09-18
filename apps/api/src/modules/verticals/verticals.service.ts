@@ -2401,7 +2401,7 @@ export class VerticalsService {
                         fr: 'Y a-t-il une réduction pour les enfants?',
                     },
                     answer: {
-                        es: 'Las tarifas para niños dependen del paquete y de la edad. Contame cuántos van y qué edades tienen, y te confirmo el precio exacto.',
+                        es: 'Las tarifas para niños dependen del paquete y de la edad. Cuéntame cuántos van y qué edades tienen, y te confirmo el precio exacto.',
                         en: 'Child rates depend on the package and the age. Tell me how many children and their ages, and I\'ll confirm the exact price.',
                         pt: 'As tarifas para crianças dependem do pacote e da idade. Me diga quantas vão e as idades, e confirmo o preço exato.',
                         fr: 'Les tarifs enfants dépendent du forfait et de l\'âge. Dites-moi combien d\'enfants et leurs âges, et je vous confirme le prix exact.',
@@ -2416,7 +2416,7 @@ export class VerticalsService {
                         fr: 'Dans quelles langues le tour est-il offert?',
                     },
                     answer: {
-                        es: 'Depende del tour y de la disponibilidad de guías. Decime qué idioma preferís y te confirmo si lo tenemos para la fecha que buscás.',
+                        es: 'Depende del tour y de la disponibilidad de guías. Dime qué idioma prefieres y te confirmo si lo tenemos para la fecha que buscas.',
                         en: 'It depends on the tour and guide availability. Tell me your preferred language and I\'ll confirm whether we have it for your date.',
                         pt: 'Depende do passeio e da disponibilidade de guias. Me diga o idioma que prefere e confirmo se temos para a sua data.',
                         fr: 'Cela dépend du tour et de la disponibilité des guides. Dites-moi la langue que vous préférez et je vous confirme pour votre date.',
@@ -2431,7 +2431,7 @@ export class VerticalsService {
                         fr: 'Quelle est la politique d\'annulation?',
                     },
                     answer: {
-                        es: 'Tenemos condiciones de cancelación según cuánto falte para la salida. Contame la fecha de tu reserva y te confirmo exactamente cómo aplica en tu caso.',
+                        es: 'Tenemos condiciones de cancelación según cuánto falte para la salida. Cuéntame la fecha de tu reserva y te confirmo exactamente cómo aplica en tu caso.',
                         en: 'Cancellation terms depend on how far ahead of departure you cancel. Tell me your booking date and I\'ll confirm exactly how it applies to you.',
                         pt: 'As condições de cancelamento dependem de quanto falta para a saída. Me diga a data da sua reserva e confirmo exatamente como se aplica.',
                         fr: 'Les conditions d\'annulation dépendent du délai avant le départ. Dites-moi la date de votre réservation et je vous confirme ce qui s\'applique.',
@@ -2498,7 +2498,7 @@ export class VerticalsService {
                         fr: 'Combien coûte un détartrage?',
                     },
                     answer: {
-                        es: 'El costo varía según el tipo de limpieza (rutinaria o profunda). Te lo confirmamos en la valoración previa. ¿Querés que te agende una?',
+                        es: 'El costo varía según el tipo de limpieza (rutinaria o profunda). Te lo confirmamos en la valoración previa. ¿Quieres que te agende una?',
                         en: 'The cost depends on the type of cleaning (routine or deep). We\'ll confirm it at the initial assessment. Want me to book you one?',
                         pt: 'O custo varia conforme o tipo de limpeza (rotina ou profunda). Confirmamos na avaliação prévia. Quer que eu agende uma?',
                         fr: 'Le coût dépend du type de nettoyage (routine ou profond). Nous le confirmons lors de l\'évaluation. Voulez-vous que je vous en réserve une ?',
@@ -2513,7 +2513,7 @@ export class VerticalsService {
                         fr: 'Comment gérez-vous la peur du dentiste ou la douleur?',
                     },
                     answer: {
-                        es: 'Es una preocupación muy común y la tenemos en cuenta. Las opciones de manejo del dolor y de la ansiedad las evalúa la profesional según tu caso — agendá una valoración y lo conversan.',
+                        es: 'Es una preocupación muy común y la tenemos en cuenta. Las opciones de manejo del dolor y de la ansiedad las evalúa la profesional según tu caso — agenda una valoración y lo conversan.',
                         en: 'It\'s a very common concern and we take it seriously. Pain and anxiety management options are assessed case by case — book an assessment and you can discuss it.',
                         pt: 'É uma preocupação muito comum e levamos a sério. As opções de manejo da dor e da ansiedade são avaliadas caso a caso — agende uma avaliação para conversar.',
                         fr: 'C\'est une préoccupation très courante et nous en tenons compte. Les options de gestion de la douleur et de l\'anxiété s\'évaluent au cas par cas — réservez une évaluation pour en parler.',
@@ -2543,7 +2543,7 @@ export class VerticalsService {
                         fr: 'Traitez-vous les urgences dentaires?',
                     },
                     answer: {
-                        es: 'Si tenés dolor intenso, un golpe o sangrado abundante, te conecto YA con la clínica para que lo vean cuanto antes. No esperes a que pase.',
+                        es: 'Si tienes dolor intenso, un golpe o sangrado abundante, te conecto YA con la clínica para que lo vean cuanto antes. No esperes a que pase.',
                         en: 'If you have severe pain, an injury or heavy bleeding, I\'ll connect you with the clinic right now so they can see you as soon as possible. Don\'t wait it out.',
                         pt: 'Se você está com dor intensa, uma pancada ou sangramento abundante, conecto você AGORA com a clínica para atenderem o quanto antes. Não espere passar.',
                         fr: 'Si vous avez une douleur intense, un choc ou un saignement abondant, je vous mets en relation avec la clinique tout de suite. N\'attendez pas que ça passe.',
@@ -2580,7 +2580,7 @@ export class VerticalsService {
                         fr: 'Avez-vous des options de financement / prêt hypothécaire?',
                     },
                     answer: {
-                        es: 'La financiación depende de cada propiedad y de tu perfil. Contame el rango de precio y la zona que te interesa, y reviso qué opciones aplican en tu caso.',
+                        es: 'La financiación depende de cada propiedad y de tu perfil. Cuéntame el rango de precio y la zona que te interesa, y reviso qué opciones aplican en tu caso.',
                         en: 'Financing depends on the property and your profile. Tell me your price range and the area you\'re after, and I\'ll check which options apply.',
                         pt: 'O financiamento depende de cada imóvel e do seu perfil. Me diga a faixa de preço e a região, e verifico quais opções se aplicam.',
                         fr: 'Le financement dépend du bien et de votre profil. Dites-moi votre budget et le quartier, et je vérifie les options possibles.',

@@ -36,7 +36,7 @@ Your industry recipe pre-fills example prices so you don't start from zero, and 
 - Under **Memberships**, each plan with an example price shows the **Example price** pill and a note that the agent won't mention it until you confirm it. **Confirm price** keeps the same amount, now confirmed; **Quoted per case** makes the agent state no amount for that plan and offer to have a person quote it.
 - A plan that shows **No price** has no amount to confirm: press **Enter price**, **It's free** or **Quoted per case**.
 - In the plan form you pick **Confirmed price** (needs an amount above 0), **It's free** or **Quoted case by case**; typing a different amount also confirms it. A free plan shows as **Free**, and the agent tells customers it's free.
-- While any is still unconfirmed, **Agent health** shows the non-critical **Unconfirmed example prices** warning; the agent keeps answering.
+- While any is still unconfirmed or has no price, **Agent health** shows the non-critical **Unconfirmed prices** warning; the agent keeps answering.
 
 ## How Assist helps
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useId } from "react";
 import { api } from "@/lib/api";
 import { useTenant } from "@/contexts/TenantContext";
 import { usePlanLimits } from "@/hooks/usePlanLimits";
@@ -24,6 +24,9 @@ import {
 import { DisconnectChannelModal } from "@/components/ui/disconnect-channel-modal";
 import { HelpPanel } from "@/components/ui/help-panel";
 import { LoadFailureNotice } from "@/components/ui/load-failure";
+import { ConnectFailureCard } from "../_components/ConnectFailureCard";
+import type { ChannelConnectFailure } from "../_components/connect-errors";
+import { TELEGRAM_PAGE_ERRORS_NAMESPACE, telegramConnectFailure } from "./telegram-connect-failure";
 
 const BRAND = "#0088cc";
 
@@ -33,6 +36,7 @@ export default function TelegramSetupPage() {
     const t = useTranslations("channels");
     const tc = useTranslations("common");
     const tHelp = useTranslations("help");
+    const keyInputId = useId();
 
     const [status, setStatus] = useState<any>(null);
     const [statusUnavailable, setStatusUnavailable] = useState(false);
@@ -43,7 +47,8 @@ export default function TelegramSetupPage() {
     const [testing, setTesting] = useState(false);
     const [disconnecting, setDisconnecting] = useState(false);
     const [testResult, setTestResult] = useState<{ ok: boolean; text: string } | null>(null);
-    const [error, setError] = useState("");
+    /** A refused connection, as the one card it becomes. Never the server's sentence. */
+    const [failure, setFailure] = useState<ChannelConnectFailure | null>(null);
     const [warning, setWarning] = useState("");
     const [step, setStep] = useState(1);
     const [showDisconnectModal, setShowDisconnectModal] = useState(false);
@@ -69,21 +74,28 @@ export default function TelegramSetupPage() {
     useEffect(() => { loadStatus(); }, [activeTenantId]);
 
     const handleConnect = async () => {
-        if (!botToken.trim()) return;
+        const key = botToken.trim();
+        if (!key || connecting) return;
         setConnecting(true);
-        setError("");
+        setFailure(null);
         try {
-            const res = await api.fetch("/channels/telegram/connect", {
-                method: "POST",
-                body: JSON.stringify({ botToken }),
-            });
-            await loadStatus();
-            setStep(3);
-            setBotToken("");
-            setForceSetup(false);
-        } catch (err: any) {
-            const msg = err?.message || err?.data?.message || tc("connectionError");
-            setError(msg);
+            // The envelope, not `api.fetch`: `api.fetch` kept only the server's
+            // sentence — Telegram's own "Unauthorized" reached the screen. The
+            // refusal's code (`errorCode`) picks the card, the same way the
+            // wizard does; the sentence beside it only goes to the console.
+            const result = await api.connectTelegram(key);
+            if (result?.success) {
+                await loadStatus();
+                setStep(3);
+                setBotToken("");
+                setForceSetup(false);
+                return;
+            }
+            console.warn("[channels/telegram] connect refused:", result?.errorCode ?? result?.error);
+            setFailure(telegramConnectFailure(result));
+        } catch (err) {
+            console.warn("[channels/telegram] connect failed:", err);
+            setFailure(telegramConnectFailure(null));
         } finally {
             setConnecting(false);
         }
@@ -113,7 +125,7 @@ export default function TelegramSetupPage() {
             });
             setTestResult({ ok: true, text: t("telegram.testSuccess") });
         } catch {
-            setTestResult({ ok: false, text: t("telegram.testFailed") || "Test failed — check your bot token" });
+            setTestResult({ ok: false, text: t("telegram.testFailed") });
         } finally {
             setTesting(false);
         }
@@ -185,7 +197,7 @@ export default function TelegramSetupPage() {
                         <AlertCircle size={16} className="flex-shrink-0 mt-0.5" />
                         <div className="flex-1">{warning}</div>
                         <button onClick={() => setWarning("")} className="text-xs hover:underline bg-transparent border-none cursor-pointer text-amber-700 dark:text-amber-400 flex-shrink-0">
-                            {tc("dismiss") || "Cerrar"}
+                            {tc("dismiss")}
                         </button>
                     </div>
                 )}
@@ -436,7 +448,7 @@ export default function TelegramSetupPage() {
                 </div>
             )}
 
-            {/* Step 2: Paste Token */}
+            {/* Step 2: paste the bot's key — "clave del bot", the wizard's word */}
             {step === 2 && (
                 <div className="rounded-xl border border-border bg-[var(--bg-secondary)] overflow-hidden">
                     <div className="p-8">
@@ -454,16 +466,18 @@ export default function TelegramSetupPage() {
                             </div>
                         </div>
 
-                        {/* Token Input */}
+                        {/* The key @BotFather gave her. Telegram's own screens call it
+                            a token; this page, like the wizard, never does. */}
                         <div className="mb-4">
-                            <label className="text-[13px] font-semibold mb-2 block text-foreground">
-                                Bot Token
+                            <label htmlFor={keyInputId} className="text-[13px] font-semibold mb-2 block text-foreground">
+                                {t("telegram.keyLabel")}
                             </label>
                             <input
+                                id={keyInputId}
                                 type="password"
                                 value={botToken}
-                                onChange={(e) => { setBotToken(e.target.value); setError(""); }}
-                                placeholder="1234567890:AAHfiqksKZ8WmR2zMn..."
+                                onChange={(e) => { setBotToken(e.target.value); setFailure(null); }}
+                                placeholder={t("telegram.keyPlaceholder")}
                                 autoFocus
                                 className="w-full px-4 py-3 rounded-xl border border-border bg-[var(--bg-tertiary)] text-foreground text-sm font-mono outline-none focus:border-sky-500 transition-colors"
                             />
@@ -472,18 +486,21 @@ export default function TelegramSetupPage() {
                             </p>
                         </div>
 
-                        {/* Error */}
-                        {error && (
-                            <div className="flex items-center gap-2 p-3 rounded-lg mb-4 bg-[rgba(255,71,87,0.1)] text-[var(--danger)] text-sm border border-[rgba(255,71,87,0.2)]">
-                                <AlertCircle size={16} className="flex-shrink-0" />
-                                {error}
+                        {/* One card per refusal: what happened, what to do, at most one control. */}
+                        {failure && (
+                            <div data-connect-failure={`telegram:${failure.key}`}>
+                                <ConnectFailureCard
+                                    namespace={TELEGRAM_PAGE_ERRORS_NAMESPACE}
+                                    failure={failure}
+                                    onRetry={() => { void handleConnect(); }}
+                                />
                             </div>
                         )}
 
                         {/* Actions */}
                         <div className="flex gap-3">
                             <button
-                                onClick={() => { setStep(1); setError(""); }}
+                                onClick={() => { setStep(1); setFailure(null); }}
                                 className="px-5 py-3 rounded-xl border border-border bg-transparent text-foreground text-sm font-semibold cursor-pointer hover:bg-[var(--bg-tertiary)] transition-colors"
                             >
                                 {t("telegram.back")}

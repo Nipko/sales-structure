@@ -6876,6 +6876,14 @@
       "purchase": { "title": "Comment les clients achètent ou réservent", "why": "Cela définit la prochaine étape guidée par l’agent.", "empty": "Le parcours d’achat doit encore être configuré.", "note": "Vous pourrez modifier ce parcours lorsque votre activité évoluera.", "change": "Vérifier le parcours", "mode": { "appointment": "Prise de rendez-vous", "class": "Réservation de cours", "table": "Réservation de table", "order": "Commande", "quote": "Demande de devis", "inform": "Information et contact" } },
       "questions": { "title": "Questions fréquentes", "why": "Cela apporte des réponses cohérentes aux questions récurrentes.", "progress": "{ready} réponses sur {total} sont prêtes", "pending": "Complétez {count} réponses avec les données réelles de votre entreprise.", "complete": "Les réponses initiales sont prêtes à être vérifiées.", "change": "Vérifier les questions" }
     },
+    "optionalPaths": {
+      "title": "Facultatif : enrichissez-le après le premier test",
+      "subtitle": "Rien de ceci ne bloque la mise en service. Ouvrez chaque outil dans un autre onglet et ne publiez que ce que vous avez vérifié.",
+      "knowledge": { "title": "Ajouter des documents", "description": "Ajoutez du texte ou des fichiers contenant du texte lisible à la Base de connaissances et vérifiez le contenu extrait avant publication." },
+      "learning": { "title": "Vérifier les conversations", "description": "Transformez des exemples de conversations déjà présentes dans Parallly en apprentissage, avec vérification et approbation humaines." },
+      "simulation": { "title": "Simuler des clients", "description": "Testez plusieurs profils clients et scénarios avant d'exposer les changements à de vraies conversations." },
+      "unsupported": "Les photos, les fichiers audio et les conversations stockées uniquement chez un autre fournisseur ne sont pas importés ici. Utilisez du texte lisible ou des conversations déjà présentes dans Parallly."
+    },
     "discover": {
       "title": "Découvrez ce que vous pouvez faire",
       "subtitle": "Voici les outils pour votre entreprise. Configurez-les quand vous voulez.",

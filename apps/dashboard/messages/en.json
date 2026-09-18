@@ -6876,6 +6876,14 @@
       "purchase": { "title": "How customers buy or book", "why": "It defines the next step the agent will guide.", "empty": "The purchase journey still needs configuration.", "note": "You can change this journey when your operation changes.", "change": "Review the journey", "mode": { "appointment": "Book an appointment", "class": "Book a class", "table": "Book a table", "order": "Place an order", "quote": "Request a quote", "inform": "Information and contact" } },
       "questions": { "title": "Frequently asked questions", "why": "It gives consistent answers to recurring questions.", "progress": "{ready} of {total} answers are ready", "pending": "Complete {count} answers with real details from your business.", "complete": "The initial answers are ready for review.", "change": "Review questions" }
     },
+    "optionalPaths": {
+      "title": "Optional: teach it more after the first test",
+      "subtitle": "None of this blocks launch. Open each tool in another tab and publish only what you review.",
+      "knowledge": { "title": "Add documents", "description": "Upload text or files with readable text to the Knowledge Base and review the extracted content before publishing." },
+      "learning": { "title": "Review conversations", "description": "Turn examples from conversations already in Parallly into learning, with human review and approval." },
+      "simulation": { "title": "Simulate customers", "description": "Test several customer profiles and scenarios before exposing changes to real conversations." },
+      "unsupported": "Photos, audio, and conversations stored only with another provider cannot be imported here. Use readable text or conversations already in Parallly."
+    },
     "discover": {
       "title": "Discover what you can do",
       "subtitle": "These are the tools for your business. Set them up whenever you want.",

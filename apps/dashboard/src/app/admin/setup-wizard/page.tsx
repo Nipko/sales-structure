@@ -65,6 +65,7 @@ import {
 import AgentTestChat from "./_components/AgentTestChat";
 import DemoLinkCard from "./_components/DemoLinkCard";
 import RecipeSetupCards from "./_components/RecipeSetupCards";
+import OptionalSetupPaths from "./_components/OptionalSetupPaths";
 import { readSetupRecipe, type SetupRecipe } from "./setup-recipe";
 import {
     PRODUCT_TOUR_PENDING_KEY,
@@ -1316,6 +1317,8 @@ export default function SetupWizardPage() {
                                 );
                             })}
                         </ol>
+
+                        <OptionalSetupPaths agentId={workspace?.agentId ?? null} />
 
                         <div className="mt-6 flex flex-col gap-2 sm:flex-row">
                             <button

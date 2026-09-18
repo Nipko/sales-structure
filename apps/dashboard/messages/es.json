@@ -6876,6 +6876,14 @@
       "purchase": { "title": "Cómo compran o reservan", "why": "Define el siguiente paso que guiará el agente.", "empty": "El recorrido de compra todavía necesita configuración.", "note": "Podrás cambiar este recorrido cuando cambie tu operación.", "change": "Revisar el recorrido", "mode": { "appointment": "Reserva de cita", "class": "Reserva de clase", "table": "Reserva de mesa", "order": "Pedido", "quote": "Cotización", "inform": "Información y contacto" } },
       "questions": { "title": "Preguntas frecuentes", "why": "Da respuestas consistentes a las dudas que más se repiten.", "progress": "{ready} de {total} respuestas están listas", "pending": "Completa {count} respuestas con datos reales de tu negocio.", "complete": "Las respuestas iniciales están listas para revisar.", "change": "Revisar preguntas" }
     },
+    "optionalPaths": {
+      "title": "Opcional: enséñale más después de la primera prueba",
+      "subtitle": "Nada de esto bloquea la puesta en marcha. Abre cada herramienta en otra pestaña y publica solo lo que revises.",
+      "knowledge": { "title": "Agregar documentos", "description": "Carga texto o archivos con texto legible en la Base de conocimiento y revisa lo extraído antes de publicarlo." },
+      "learning": { "title": "Revisar conversaciones", "description": "Convierte ejemplos de conversaciones que ya están en Parallly en aprendizaje, con revisión y aprobación humana." },
+      "simulation": { "title": "Simular clientes", "description": "Prueba varios perfiles de cliente y escenarios antes de exponer cambios a conversaciones reales." },
+      "unsupported": "Las fotos, audios y conversaciones alojadas solo en otro proveedor no se importan desde aquí. Usa texto legible o conversaciones que ya estén en Parallly."
+    },
     "discover": {
       "title": "Descubre lo que puedes hacer",
       "subtitle": "Estas son las herramientas para tu negocio. Configúralas cuando quieras.",

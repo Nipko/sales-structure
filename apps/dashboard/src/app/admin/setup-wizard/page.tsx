@@ -136,6 +136,7 @@ type WizardSavePayload = {
     markCompleted?: boolean;
     stage?: WizardStage;
     channelConnectSkippedAt?: string;
+    deferredChannel?: WizardChannel;
     stageOnly?: boolean;
     /**
      * The channels in the order the connect step offers them. Only on the
@@ -467,6 +468,7 @@ export default function SetupWizardPage() {
          * saves in the same click.
          */
         leadWith?: WizardChannel;
+        deferredChannel?: WizardChannel;
     }
 
     /**
@@ -544,6 +546,7 @@ export default function SetupWizardPage() {
             stage: options.stage,
             markCompleted: options.markCompleted === true,
             channelConnectSkippedAt: options.channelConnectSkippedAt,
+            deferredChannel: options.deferredChannel,
             ...(order ? { selectedChannels: order } : {}),
         });
     }, [channelOrderToSave, postWizard]);
@@ -591,6 +594,7 @@ export default function SetupWizardPage() {
         markCompleted: options.markCompleted === true,
         stage: options.stage,
         channelConnectSkippedAt: options.channelConnectSkippedAt,
+        deferredChannel: options.deferredChannel,
         });
     }, [agentName, greeting, postWizard, templateId, tenantId, advanceStage, tDraft]);
 
@@ -697,15 +701,17 @@ export default function SetupWizardPage() {
     }, [exit, step, whatsappAlreadyConnected]);
 
     const connectLater = useCallback(async (leadWith?: WizardChannel) => {
+        const deferredChannel = leadWith ?? channelOrderToSave()?.[0];
         const ok = await saveOrAdvance({
             stage: "channel_deferred",
             channelConnectSkippedAt: new Date().toISOString(),
             leadWith,
+            deferredChannel,
         });
         if (!ok) return;
-        if (leadWith) recordJourneyEvent({ event: 'channel_connect_later', channelType: leadWith });
+        if (deferredChannel) recordJourneyEvent({ event: 'channel_connect_later', channelType: deferredChannel });
         setStep(LAST_STEP);
-    }, [recordJourneyEvent, saveOrAdvance]);
+    }, [channelOrderToSave, recordJourneyEvent, saveOrAdvance]);
 
     /**
      * Moverse entre pasos, con una regla: a "Listo" sin canal se llega SOLO

@@ -135,6 +135,7 @@ describe('PersonaController setup wizard — avanzar sin destruir', () => {
                 stageOnly: true,
                 stage: 'channel_deferred',
                 channelConnectSkippedAt: '2026-09-04T12:00:00.000Z',
+                deferredChannel: 'whatsapp',
             } as any,
             req,
         );
@@ -142,6 +143,7 @@ describe('PersonaController setup wizard — avanzar sin destruir', () => {
         expect(personaService.updateAgent).not.toHaveBeenCalled();
         expect(written[0].onboardingStage).toBe('channel_deferred');
         expect(written[0].channelConnectSkippedAt).toBe('2026-09-04T12:00:00.000Z');
+        expect(written[0].setupWizardChannelDeferrals).toEqual({ whatsapp: '2026-09-04T12:00:00.000Z' });
     });
 
     it('el orden de canales del asistente queda guardado en un guardado solo-estado, sin asignar nada', async () => {
@@ -178,6 +180,23 @@ describe('PersonaController setup wizard — avanzar sin destruir', () => {
         const { controller, written } = makeController({ settings: { setupWizardChannels: ['instagram'] } });
         await controller.applyTemplate(tenantId, { stageOnly: true, stage: 'agent_reviewed', selectedChannels: [] } as any, req);
         expect(written[0].setupWizardChannels).toEqual(['instagram']);
+    });
+
+    it('conserva decisiones independientes al aplazar más de un canal', async () => {
+        const { controller, written } = makeController({
+            settings: { setupWizardChannelDeferrals: { whatsapp: '2026-09-17T10:00:00.000Z' } },
+        });
+        await controller.applyTemplate(tenantId, {
+            stageOnly: true,
+            stage: 'channel_deferred',
+            channelConnectSkippedAt: '2026-09-18T12:00:00.000Z',
+            deferredChannel: 'instagram',
+        } as any, req);
+        expect(written[0].setupWizardChannelDeferrals).toEqual({
+            whatsapp: '2026-09-17T10:00:00.000Z',
+            instagram: '2026-09-18T12:00:00.000Z',
+        });
+        expect(PersonaController.readWizardDeferredChannel('fax')).toBeNull();
     });
 
     it.each([

@@ -699,7 +699,7 @@ export const api = {
 
     // markCompleted:false guarda el agente sin cerrar el asistente (autoguardado del
     // paso "Personalizar", para que el chat de prueba use el agente real).
-    applySetupTemplate: (tenantId: string, data: { templateId: string; customizations?: any; selectedChannels?: string[]; markCompleted?: boolean }) =>
+    applySetupTemplate: (tenantId: string, data: { templateId?: string; customizations?: any; selectedChannels?: string[]; deferredChannel?: string; channelConnectSkippedAt?: string; stage?: string; stageOnly?: boolean; markCompleted?: boolean }) =>
         apiPost(`/persona/${tenantId}/setup-wizard`, data),
     skipSetupWizard: (tenantId: string) =>
         apiPost(`/persona/${tenantId}/setup-wizard/skip`, {}),

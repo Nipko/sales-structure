@@ -158,6 +158,12 @@ export class PersonaController {
         return order.length > 0 ? order : null;
     }
 
+    static readWizardDeferredChannel(value: unknown): string | null {
+        if (typeof value !== 'string') return null;
+        const channel = value.trim().toLowerCase();
+        return ['whatsapp', 'instagram', 'messenger', 'telegram'].includes(channel) ? channel : null;
+    }
+
     private normalizeIsoTimestamp(value: unknown): string | null {
         if (typeof value !== 'string' || !value.trim()) return null;
         const parsed = new Date(value.trim());
@@ -262,6 +268,8 @@ export class PersonaController {
              * asistente e Inicio, también para quien eligió "Conectar después".
              */
             channelOrder?: string[] | null;
+            /** Canal concreto que la persona decidió retomar después. */
+            deferredChannel?: string | null;
         },
     ) {
         await mutateTenantSettingsAtomic(this.prisma, tenantId, (current) => {
@@ -271,6 +279,10 @@ export class PersonaController {
             for (const candidate of input.stages) {
                 onboardingStage = advanceOnboardingStage(onboardingStage, candidate);
             }
+            const priorDeferrals = current.setupWizardChannelDeferrals
+                && typeof current.setupWizardChannelDeferrals === 'object'
+                && !Array.isArray(current.setupWizardChannelDeferrals)
+                ? current.setupWizardChannelDeferrals : {};
             return {
                 ...current,
                 // Los horarios son configuración del tenant, no del wizard: se
@@ -278,6 +290,12 @@ export class PersonaController {
                 ...(input.businessHours ? { businessHours: input.businessHours } : {}),
                 ...(input.channelConnectSkippedAt ? { channelConnectSkippedAt: input.channelConnectSkippedAt } : {}),
                 ...(input.channelOrder && input.channelOrder.length > 0 ? { setupWizardChannels: input.channelOrder } : {}),
+                ...(input.deferredChannel && input.channelConnectSkippedAt ? {
+                    setupWizardChannelDeferrals: {
+                        ...priorDeferrals,
+                        [input.deferredChannel]: input.channelConnectSkippedAt,
+                    },
+                } : {}),
                 ...(input.markCompleted ? {
                     setupWizardCompleted: true,
                     ...(input.templateId ? { setupWizardTemplate: input.templateId } : {}),
@@ -346,6 +364,8 @@ export class PersonaController {
             templateId?: string;
             customizations?: any;
             selectedChannels?: string[];
+            /** Canal concreto elegido para retomarlo después. */
+            deferredChannel?: string;
             markCompleted?: boolean;
             /** Estado de puesta en marcha que declara el asistente (solo avanza). */
             stage?: string;
@@ -362,6 +382,7 @@ export class PersonaController {
         const skippedAt = this.normalizeIsoTimestamp(
             body.customizations?.channelConnectSkippedAt ?? (body as any).channelConnectSkippedAt,
         );
+        const deferredChannel = PersonaController.readWizardDeferredChannel(body.deferredChannel);
 
         // Camino solo-estado: ni plantilla, ni configuración, ni canales.
         if (body.stageOnly === true) {
@@ -377,6 +398,7 @@ export class PersonaController {
                 // pantalla mostró: nunca asigna canales a ningún agente (eso es
                 // el camino de crear agente, más abajo, y D16 lo dejó vacío).
                 channelOrder: PersonaController.readWizardChannelOrder(body.selectedChannels),
+                deferredChannel,
             });
             this.logger.log(`Setup wizard stage advanced for tenant ${tenantId} (stageOnly, stage=${requestedStage || 'none'})`);
             return { success: true, data: { stageOnly: true } };
@@ -621,11 +643,13 @@ export class PersonaController {
             businessHours,
             templateId: body.templateId,
             selectedChannels,
+            deferredChannel,
         });
         if (channelConnectSkippedAt) void recordOnboardingEvent(this.prisma, {
             tenantId,
             event: 'channel_deferred',
-            dedupeKey: onboardingOnceKey('channel_deferred', tenantId),
+            detail: deferredChannel ?? undefined,
+            dedupeKey: onboardingOnceKey('channel_deferred', tenantId, deferredChannel ?? 'unspecified'),
         });
         if (markCompleted) void recordOnboardingEvent(this.prisma, {
             tenantId,
@@ -925,6 +949,7 @@ export class PersonaController {
                 setupWizardSkipped: settings.setupWizardSkipped || false,
                 setupWizardTemplate: settings.setupWizardTemplate || null,
                 setupWizardChannels: settings.setupWizardChannels || [],
+                setupWizardChannelDeferrals: settings.setupWizardChannelDeferrals || {},
                 hasPersona,
                 hasConversations,
                 hasKnowledge,

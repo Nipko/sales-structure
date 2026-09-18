@@ -358,7 +358,9 @@ jobs:
           # The bases every suite's variable names. The per-worker copies are made
           # by jest.global-setup.ts; these are the ones it copies FROM and the one
           # PgBouncer is pointed at.
-          for db in parallly_eval_isolation parallly_knowledge_eval_isolation parallly_migration_eval_isolation; do
+          for db in parallly_eval_isolation parallly_knowledge_eval_isolation parallly_migration_eval_isolation \
+                    parallly_plan_economics_eval_isolation parallly_legacy_schema_eval_isolation \
+                    parallly_upgrade_eval_isolation; do
             psql "${BASE_PG}/postgres" -v ON_ERROR_STOP=1 -c "CREATE DATABASE \"${db}\" TEMPLATE template0"
             psql "${BASE_PG}/${db}" -v ON_ERROR_STOP=1 \
               -c 'CREATE EXTENSION IF NOT EXISTS "uuid-ossp"' \
@@ -395,6 +397,32 @@ jobs:
           DATABASE_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_eval_isolation
           DIRECT_DATABASE_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_eval_isolation
         run: npx prisma generate --schema=apps/api/prisma/schema.prisma
+
+      # Two suites require the real global schema rather than the deliberately
+      # small additive fixture used by the shared worker databases. Provision
+      # their own disposable databases so they run without weakening that
+      # isolation or depending on another spec's execution order.
+      - name: Provision full-schema evaluation databases
+        run: |
+          set -eu
+          for db in parallly_plan_economics_eval_isolation parallly_legacy_schema_eval_isolation; do
+            DATABASE_URL="${BASE_PG}/${db}" DIRECT_DATABASE_URL="${BASE_PG}/${db}" \
+              npx prisma migrate deploy --schema=apps/api/prisma/schema.prisma
+          done
+          DATABASE_URL="${BASE_PG}/parallly_plan_economics_eval_isolation" \
+            DIRECT_DATABASE_URL="${BASE_PG}/parallly_plan_economics_eval_isolation" \
+            node apps/api/prisma/seed-billing-plans.js
+
+      - name: Global and tenant migration rehearsals
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_legacy_schema_eval_isolation
+          DIRECT_DATABASE_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_legacy_schema_eval_isolation
+          PARALLLY_UPGRADE_TEST_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_upgrade_eval_isolation
+          UPGRADE_BASE_REF: main
+        run: |
+          node apps/api/scripts/test-tenant-migration.js
+          node apps/api/scripts/rehearse-global-upgrade.cjs
 
       # The same gate the production build depends on, run here so a candidate
       # cannot be built out of a tree that would not have been allowed to merge.
@@ -457,6 +485,8 @@ jobs:
           LEARNING_EVIDENCE_TEST_DATABASE_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_knowledge_eval_isolation
           PARALLLY_PGBOUNCER_TEST_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:6432/parallly_eval_isolation?pgbouncer=true
           PARALLLY_PGBOUNCER_DIRECT_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_eval_isolation
+          PLAN_ECONOMICS_TEST_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_plan_economics_eval_isolation
+          LEGACY_SCHEMA_TEST_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_legacy_schema_eval_isolation
           DISPATCH_QUEUE_TEST_REDIS_URL: redis://127.0.0.1:6379
           PARALLLY_SAMPLING_REDIS_URL: redis://127.0.0.1:6379
           RUN_PIPELINE_OWNERSHIP_PG_TESTS: '1'
@@ -515,6 +545,21 @@ jobs:
           npm run build --workspace=@parallext/whatsapp
           npm run build --workspace=@parallext/dashboard
           npm run build --workspace=landing
+
+      - name: Compiled API boots against the candidate stack
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_legacy_schema_eval_isolation
+          DIRECT_DATABASE_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_legacy_schema_eval_isolation
+          REDIS_HOST: 127.0.0.1
+          REDIS_PORT: '6379'
+          JWT_SECRET: candidate-ci-only
+          JWT_REFRESH_SECRET: candidate-ci-only-refresh
+          INTERNAL_JWT_SECRET: candidate-ci-only-internal
+          INTERNAL_API_KEY: candidate-ci-only-internal-key
+          ENCRYPTION_KEY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          OPENAI_API_KEY: sk-candidate-ci-only
+        run: node apps/api/dist/boot-check.js
 
       # ── The browser journeys ──────────────────────────────────────────────
       #

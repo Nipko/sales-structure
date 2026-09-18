@@ -293,7 +293,8 @@ const ready = !!databaseUrl && !!redisUrl;
             `CREATE TABLE IF NOT EXISTS public.platform_settings(
                 key TEXT PRIMARY KEY, value TEXT, updated_at TIMESTAMPTZ DEFAULT NOW())`);
         await client.$executeRawUnsafe(
-            'INSERT INTO public.tenants(id,schema_name,is_active,settings) VALUES($1::uuid,$2,true,\'{}\'::jsonb)',
+            `INSERT INTO public.tenants(id,schema_name,is_active,settings)
+             VALUES($1::uuid,$2,true,'{"onboardingStage":"completed"}'::jsonb)`,
             tenantId, schema);
         await client.$executeRawUnsafe(`CREATE SCHEMA "${schema}"`);
 
@@ -671,6 +672,15 @@ const ready = !!databaseUrl && !!redisUrl;
 
             // LEG 2 + 3 — the inbound queue, its processor, and the turn.
             await settleQueues();
+            await until('the first operational reply activation to be durable', async () => {
+                const rows = await client.$queryRawUnsafe(
+                    `SELECT settings->>'firstReplyAt' AS first_reply_at
+                       FROM public.tenants WHERE id=$1::uuid`, tenantId) as any[];
+                const events = await client.$queryRawUnsafe(
+                    `SELECT count(*)::int AS count FROM public.onboarding_events
+                      WHERE tenant_id=$1::uuid AND event='first_operational_reply'`, tenantId) as any[];
+                return Boolean(rows[0]?.first_reply_at) && Number(events[0]?.count) === 1;
+            });
             const inboundMessageId = await inboundMessageIdFor(wamid);
             const ledger = await ledgerRow(inboundMessageId);
             expect(ledger).toMatchObject({ state: 'settled', delivery_route: 'durable', attempts: 1 });

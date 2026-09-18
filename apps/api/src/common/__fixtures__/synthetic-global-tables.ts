@@ -29,6 +29,10 @@ const TENANT_COLUMNS: ReadonlyArray<[string, string]> = [
     ['industry', 'TEXT'],
     ['settings', "JSONB DEFAULT '{}'::jsonb"],
     ['operating_country', 'VARCHAR(2)'],
+    // The onboarding activation writer updates this alongside `settings`, just
+    // like the real Prisma Tenant model. Omitting it made successful end-to-end
+    // replies look green while silently failing to persist `firstReplyAt`.
+    ['updated_at', 'TIMESTAMPTZ DEFAULT NOW()'],
 ];
 
 /** Columnas de `public.users` que alguna suite lee. */
@@ -232,6 +236,20 @@ const CHAT_IDENTITY_CHALLENGE_COLUMNS: ReadonlyArray<[string, string]> = [
     ['updated_at', 'TIMESTAMPTZ DEFAULT NOW()'],
 ];
 
+/** Activation telemetry written by the same successful reply path exercised by E2E suites. */
+const ONBOARDING_EVENT_COLUMNS: ReadonlyArray<[string, string]> = [
+    ['tenant_id', 'UUID NOT NULL'],
+    ['user_id', 'UUID'],
+    ['event', 'VARCHAR(48) NOT NULL'],
+    ['channel_type', 'VARCHAR(32)'],
+    ['step', 'VARCHAR(32)'],
+    ['detail', 'VARCHAR(64)'],
+    ['source', "VARCHAR(16) NOT NULL DEFAULT 'server'"],
+    ['session_id', 'UUID'],
+    ['dedupe_key', 'TEXT'],
+    ['occurred_at', 'TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp()'],
+];
+
 async function ensure(
     exec: Exec,
     table: string,
@@ -268,6 +286,9 @@ export async function ensureSyntheticGlobalTables(exec: Exec): Promise<void> {
         { generatedId: true });
     await ensure(exec, 'chat_identity_challenges', CHAT_IDENTITY_CHALLENGE_COLUMNS,
         { generatedId: true });
+    await ensure(exec, 'onboarding_events', ONBOARDING_EVENT_COLUMNS, { generatedId: true });
+    await exec(`CREATE UNIQUE INDEX IF NOT EXISTS synthetic_onboarding_events_dedupe_key
+        ON public.onboarding_events(dedupe_key) WHERE dedupe_key IS NOT NULL`);
     await ensure(exec, 'audit_logs', AUDIT_LOG_COLUMNS, { generatedId: true });
     await ensure(exec, 'billing_plans', BILLING_PLAN_COLUMNS, { generatedId: true });
     await exec('CREATE UNIQUE INDEX IF NOT EXISTS synthetic_billing_plans_slug_key ON public.billing_plans(slug)');

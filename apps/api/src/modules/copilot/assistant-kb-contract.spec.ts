@@ -527,7 +527,11 @@ describe('Parallly Assist knowledge-base contract', () => {
       expect(normalizedBody).toContain(label.toLocaleLowerCase(locale));
     }
     expect(normalizedBody).toMatch(/\b20\b/);
-    expect(normalizedBody).toMatch(/\b76\b/);
+    // 80 perfiles canónicos: los cuatro de academias entraron el 17-sep y el
+    // artículo se quedó diciendo 76. El spec seguía verde mientras el asistente
+    // le daba un número equivocado a los tenants — un pin escrito a mano solo
+    // fija el momento en que se escribió, no el contrato del que sale.
+    expect(normalizedBody).toMatch(/\b80\b/);
     expect(normalizedBody).toMatch(/\b18\b/);
   });
 

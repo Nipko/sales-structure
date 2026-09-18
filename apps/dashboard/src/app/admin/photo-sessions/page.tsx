@@ -16,6 +16,7 @@ import { SkeletonCards } from "@/components/ui/skeleton-loader";
 import { EmptyState } from "@/components/ui/empty-state";
 import { HelpPanel } from "@/components/ui/help-panel";
 import { formatLocalTimestamp } from "@/lib/local-timestamp";
+import { formatMoney } from "@/lib/format-money";
 
 interface SessionRow {
     id: string;
@@ -218,7 +219,7 @@ export default function PhotoSessionsPage() {
                                         <div className="text-right flex-shrink-0">
                                             <div className="text-xs text-neutral-500 dark:text-neutral-400">{t("col.price")}</div>
                                             <div className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-                                                {s.currency} {Number(s.price).toLocaleString()}
+                                                {formatMoney(s.price, s.currency)}
                                             </div>
                                         </div>
                                     )}

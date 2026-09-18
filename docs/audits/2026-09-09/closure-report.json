@@ -1,12 +1,12 @@
 {
   "version": 1,
-  "revision": "0113f68de490541a6833d112818b78bff0dbc6c6",
-  "generatedAt": "2026-09-17T04:17:27.771Z",
+  "revision": "a12f1503536862d0775488499be21b0768e407c2",
+  "generatedAt": "2026-09-17T23:35:45.696Z",
   "finished": false,
   "counts": {
-    "aceptada": 26,
+    "aceptada": 25,
     "bloqueada": 27,
-    "abierta": 0,
+    "abierta": 1,
     "diferida": 1
   },
   "provenance": {
@@ -26,8 +26,8 @@
     "8": "aprobación de responsables legal y financiero sobre contratos y copy comercial"
   },
   "authorities": {
-    "profiles": 76,
-    "tasks": 420,
+    "profiles": 80,
+    "tasks": 444,
     "certifiedProfiles": 0,
     "termsFamilies": 18,
     "unboundCommand": [],
@@ -44,7 +44,7 @@
     "chargeableOutsideGate": 0,
     "chargeableOffDurableLane": 0,
     "chargeableOffDurableByLane": {},
-    "censusArtefactStale": false,
+    "censusArtefactStale": true,
     "proactivePolicies": [
       "appointment_reminder",
       "attendance_check",
@@ -205,7 +205,7 @@
       "status": "bloqueada",
       "provenance": "derived",
       "artefact": null,
-      "evidence": "Contratos MCP y dependencias base implementados. El ejecutor está cableado a servicio, cola y endpoint, y se ensaya sin proveedor; la cobertura por tarea la decide una corrida real: 0 perfiles certificados de 76.",
+      "evidence": "Contratos MCP y dependencias base implementados. El ejecutor está cableado a servicio, cola y endpoint, y se ensaya sin proveedor; la cobertura por tarea la decide una corrida real: 0 perfiles certificados de 80.",
       "commits": [],
       "deferral": null
     },
@@ -263,7 +263,7 @@
       "status": "aceptada",
       "provenance": "derived",
       "artefact": null,
-      "evidence": "76 perfiles, 420 tareas, 146 que comprometen al negocio, y cero tareas sin caso positivo propio o sin verificador fuera de las 5 declaradas: `file_claim` en las cinco subtipos de seguros existe para probar que el escalón de identidad la rechaza, así que no hay efecto que verificar y un \"positivo\" sería el agente haciendo lo que no debe. Certificar estas tareas es H1.",
+      "evidence": "80 perfiles, 444 tareas, 158 que comprometen al negocio, y cero tareas sin caso positivo propio o sin verificador fuera de las 5 declaradas: `file_claim` en las cinco subtipos de seguros existe para probar que el escalón de identidad la rechaza, así que no hay efecto que verificar y un \"positivo\" sería el agente haciendo lo que no debe. Certificar estas tareas es H1.",
       "commits": [],
       "deferral": null
     },
@@ -446,10 +446,10 @@
     },
     {
       "id": "M0",
-      "open": 0,
-      "openLabel": "",
+      "open": 1,
+      "openLabel": "el censo versionado no corresponde a este HEAD",
       "gates": [],
-      "status": "aceptada",
+      "status": "abierta",
       "provenance": "derived",
       "artefact": null,
       "evidence": "Censo derivado del árbol: 32 call sites, 29 cobrables, 0 fuera de la autoridad económica. El inventario de efectos declara 68 productores y 16 con al menos una propiedad en `none`. La condición es que el artefacto versionado se regenere desde el mismo HEAD, no que alguien lo haya leído.",
@@ -683,7 +683,7 @@
     {
       "id": "T5",
       "open": 0,
-      "openLabel": "0 tareas sin verificador sobre 420 (5 son negativos de step-up `file_claim`, que no llevan positivo por diseño)",
+      "openLabel": "0 tareas sin verificador sobre 444 (5 son negativos de step-up `file_claim`, que no llevan positivo por diseño)",
       "gates": [
         1,
         4
@@ -691,7 +691,7 @@
       "status": "bloqueada",
       "provenance": "derived",
       "artefact": null,
-      "evidence": "Universo canónico conservado: 76 perfiles, 420 tareas, 146 que comprometen al negocio. La verificación determinista local es lo que esta fila mide; la certificación por canal y modelo real sigue en cero (0/76) y es gate externo, no trabajo local.",
+      "evidence": "Universo canónico conservado: 80 perfiles, 444 tareas, 158 que comprometen al negocio. La verificación determinista local es lo que esta fila mide; la certificación por canal y modelo real sigue en cero (0/76) y es gate externo, no trabajo local.",
       "commits": [],
       "deferral": null
     },
@@ -715,7 +715,7 @@
       "status": "aceptada",
       "provenance": "derived",
       "artefact": null,
-      "evidence": "Derivado de `native-backlog.ts`: 54 perfiles build/hybrid comercializables y 260 alertas comprueban writers, capacidad atómica, lecturas vivas, superficies y CTA, seguridad, SOR, pagos y evaluaciones. Una alerta interna reabre esta fila aunque el inventario estático de tools siga completo.",
+      "evidence": "Derivado de `native-backlog.ts`: 58 perfiles build/hybrid comercializables y 276 alertas comprueban writers, capacidad atómica, lecturas vivas, superficies y CTA, seguridad, SOR, pagos y evaluaciones. Una alerta interna reabre esta fila aunque el inventario estático de tools siga completo.",
       "commits": [],
       "deferral": null
     },

@@ -66,7 +66,7 @@ export class ToursController {
         @Body() body: any,
     ) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
-        const data = await this.toursService.updatePackage(schemaName, packageId, body);
+        const data = await this.toursService.updatePackage(schemaName, packageId, body, tenantId);
         return { success: true, data };
     }
 

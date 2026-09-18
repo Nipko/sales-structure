@@ -12,6 +12,20 @@ function harness(existing: any[] = [], result: any = {}) {
     (engine as any).collectMissingInfo(state, 'es');
     return { engine: engine as any, executor, state, prisma, redis };
 }
+/**
+ * Un importe escrito como lo escribe cada idioma (D17).
+ *
+ * Estas aserciones decían `100000 COP`: el motor imprimía el número crudo o lo
+ * agrupaba siempre `es-CO`. Un precio mexicano confirmado salía con separadores
+ * colombianos, y el mismo importe cambiaba de aspecto entre la propuesta y el
+ * aviso de pago. Se afirma el separador de cada idioma; en francés se afirma
+ * que hay *un espacio*, porque su ancho exacto depende de la versión de ICU.
+ */
+const grouped = (lang: string, digits: string) => {
+    const sep: Record<string, string> = { es: '\\.', pt: '\\.', en: ',', fr: '\\s' };
+    return new RegExp(digits.replace(/\B(?=(\d{3})+(?!\d))/g, `§`).split('§').join(sep[lang] ?? '\\.') + ' COP');
+};
+
 describe('booking engine communicates persisted outcome', () => {
     it.each(['es', 'en', 'pt', 'fr'])('renews changed terms without discarding collected fields or reusing the old button (%s)', async lang => {
         const current = appointmentServiceTerms({ id: 'service', name: 'Consulta', price: 150000, currency: 'COP', duration_minutes: 30, payment_policy: 'deposit', deposit_percent: 40 });
@@ -19,21 +33,21 @@ describe('booking engine communicates persisted outcome', () => {
         const outcome = await h.engine.createBooking('tenant_test', 'tenant', 'contact', h.state, lang, 'conversation', authorityFor('create_appointment'), 'confirm_yes');
         expect(outcome.state).toMatchObject({ step: 'confirm', customerName: 'Ana', customerEmail: 'ana@example.test', date: '2027-01-01', time: '10:00' });
         expect(outcome.state.confirmationId).not.toBe(oldButton);
-        expect(outcome.text).toContain('150000 COP'); expect(outcome.text).toContain('60000 COP');
+        expect(outcome.text).toMatch(grouped(lang, '150000')); expect(outcome.text).toMatch(grouped(lang, '60000'));
         expect(outcome.text).not.toContain('appointment_terms_changed');
         expect(h.redis.del).toHaveBeenCalledWith('booking:services:tenant');
         expect(h.executor.execute).toHaveBeenCalledTimes(1);
     });
     it.each(['es', 'en', 'pt', 'fr'])('discloses the price and deposit before confirmation in %s', lang => {
         const h = harness(); const proposal = h.engine.collectMissingInfo(h.state, lang);
-        expect(proposal.text).toContain('100000 COP');
-        expect(proposal.text).toContain('30000 COP');
-        expect(proposal.buttonMessage.body).toContain('30000 COP');
+        expect(proposal.text).toMatch(grouped(lang, '100000'));
+        expect(proposal.text).toMatch(grouped(lang, '30000'));
+        expect(proposal.buttonMessage.body).toMatch(grouped(lang, '30000'));
     });
     it.each(['es', 'en', 'pt', 'fr'])('does not call a payment hold confirmed in %s', async lang => {
         const h = harness([], { success: true, appointment: { id: 'apt', status: 'pending_payment', awaitingPayment: true, amountDueToConfirm: 30000, currency: 'COP', payableReference: 'appointment:apt' } });
         const outcome = await h.engine.createBooking('tenant_test', 'tenant', 'contact', h.state, lang, 'conversation', authorityFor('create_appointment'), 'confirm_yes');
-        expect(outcome.text).toContain('30000 COP');
+        expect(outcome.text).toMatch(grouped(lang, '30000'));
         expect(outcome.text).not.toMatch(/Cita confirmada|Appointment confirmed|Agendamento confirmado|Rendez-vous confirmé|invite sent|Invitación enviada/i);
         expect(outcome.state).toMatchObject({ appointmentStatus: 'pending_payment', payableReference: 'appointment:apt' });
     });

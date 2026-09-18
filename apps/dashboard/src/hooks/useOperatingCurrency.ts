@@ -34,7 +34,15 @@ export function useOperatingCurrency(): string | null {
             try {
                 const res: any = await api.getRegionalProfile(tenantId);
                 if (!cancelled && res?.success) {
-                    setCurrency(res.data?.operatingCurrency?.value || null);
+                    const resolved = res.data?.operatingCurrency;
+                    // `fallback` significa "nadie lo dijo, así que asumimos
+                    // Colombia". El servidor ya dejó de escribir esa moneda en
+                    // la base por eso mismo; la pantalla tiene que hacer lo
+                    // mismo o el dueño ve COP justo en las filas que el backend
+                    // guardó sin moneda, y cree que ya está elegida.
+                    const guessed = resolved?.source === 'fallback'
+                        || (resolved?.source === 'derived' && res.data?.operatingCountry?.source === 'fallback');
+                    setCurrency(guessed ? null : (resolved?.value || null));
                 }
             } catch {
                 // Sin respuesta no se inventa una moneda: la pantalla deja el

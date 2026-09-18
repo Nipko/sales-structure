@@ -19,6 +19,8 @@ import { VerticalAuditController } from './vertical-audit.controller';
 import { VerticalTaxonomyInventoryService } from './vertical-taxonomy-inventory.service';
 import { VerticalIntegrationsModule } from '../vertical-integrations/vertical-integrations.module';
 import { AppointmentCommandsModule } from '../appointments/appointment-commands.module';
+import { AIModule } from '../ai/ai.module';
+import { OtroRecipeService } from './otro-recipe.service';
 
 @Module({
     // TenantsModule aporta el resolutor regional: el perfil efectivo tiene que
@@ -33,6 +35,10 @@ import { AppointmentCommandsModule } from '../appointments/appointment-commands.
         VerticalIntegrationsModule,
         forwardRef(() => TenantsModule),
         AppointmentCommandsModule,
+        // D9: la receta de un negocio que no encaja en las 18 industrias la
+        // escribe el modelo. AIModule no es global y solo importa SettingsModule,
+        // asi que no hay ciclo que envolver en forwardRef.
+        AIModule,
     ],
     controllers: [
         VerticalsController,
@@ -50,6 +56,7 @@ import { AppointmentCommandsModule } from '../appointments/appointment-commands.
         TemporalCapacityContractService,
         VerticalMigrationService,
         VerticalTaxonomyInventoryService,
+        OtroRecipeService,
         ServiceRequestListener,
     ],
     exports: [
@@ -62,6 +69,7 @@ import { AppointmentCommandsModule } from '../appointments/appointment-commands.
         TemporalCapacityContractService,
         VerticalMigrationService,
         VerticalTaxonomyInventoryService,
+        OtroRecipeService,
     ],
 })
 export class VerticalsModule {}

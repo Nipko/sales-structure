@@ -31,7 +31,7 @@ interface Plan {
     description?: string;
     duration_days: number;
     price: number;
-    currency: string;
+    currency: string | null;
     class_credits_per_period?: number;
     personal_training_credits: number;
     guest_passes: number;
@@ -604,7 +604,11 @@ function PlanFormModal({
             description: form.description || undefined,
             durationDays: parseInt(form.durationDays, 10),
             price: parseFloat(form.price),
-            currency: form.currency,
+            // Cuando el negocio no declaro donde opera, el hook contesta
+            // honestamente "no se" y aca NO se manda nada: el API resuelve o
+            // deja NULL. Mandar "" era peor que no mandar, porque del otro
+            // lado la cadena vacia volvia a ser COP.
+            currency: form.currency || undefined,
             classCreditsPerPeriod: form.classCreditsPerPeriod ? parseInt(form.classCreditsPerPeriod, 10) : null,
             personalTrainingCredits: parseInt(form.personalTrainingCredits, 10),
             guestPasses: parseInt(form.guestPasses, 10),

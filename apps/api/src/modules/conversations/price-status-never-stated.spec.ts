@@ -23,11 +23,27 @@ function engine(result: any = {}) {
     return new BookingEngineService(prisma as any, redis as any, executor as any) as any;
 }
 
+/**
+ * 80.000 escrito como lo escribe cada idioma (D17).
+ *
+ * Antes TODO precio salía agrupado `es-CO`, así que esta tabla era una sola
+ * celda repetida cuatro veces y la prueba no podía notar que un cliente que
+ * habla inglés leía separadores colombianos. En francés el separador es un
+ * espacio estrecho que cambia de código según la versión de ICU: se afirma que
+ * es *un espacio*, no cuál.
+ */
+const EIGHTY_THOUSAND: Record<string, RegExp> = {
+    es: /80\.000 COP/,
+    pt: /80\.000 COP/,
+    en: /80,000 COP/,
+    fr: /80\s000 COP/,
+};
+
 describe('the booking engine lists and confirms without inventing a number', () => {
     it.each(['es', 'en', 'pt', 'fr'])('the service list states only the confirmed price (%s)', lang => {
         const state: BookingState = { step: 'select_service', services: [CONFIRMED, EXAMPLE, QUOTE] } as any;
         const text: string = engine().showServices(state, lang).text;
-        expect(text).toContain('80.000 COP');
+        expect(text).toMatch(EIGHTY_THOUSAND[lang]);
         expect(text).not.toContain('40.000');
         expect(text).not.toContain('40000');
         expect(text).toMatch(/por confirmar|to be confirmed|a confirmar|à confirmer/i);
@@ -40,9 +56,12 @@ describe('the booking engine lists and confirms without inventing a number', () 
         expect(proposal.text).not.toMatch(/\b0 COP\b/);
         expect(proposal.text).toMatch(/por confirmar|to be confirmed|a confirmar|à confirmer/i);
     });
-    it('a confirmed price still reads as before', () => {
+    it('a confirmed price is still stated, and grouped like the list that offered it', () => {
         const state: BookingState = { step: 'confirm', serviceId: 'a', serviceName: 'Consulta', date: '2027-01-01', time: '10:00', customerName: 'Ana', customerEmail: 'ana@example.test', services: [CONFIRMED] } as any;
-        expect(engine().collectMissingInfo(state, 'es').text).toContain('80000 COP');
+        // El resumen que se CONFIRMA y el listado que se ofreció agrupan igual:
+        // dos formatos para la misma cifra en la misma conversación es lo que se
+        // discute después.
+        expect(engine().collectMissingInfo(state, 'es').text).toMatch(EIGHTY_THOUSAND.es);
     });
     it('a change of terms mid-flow re-proposes "por confirmar", never "Precio: 0 COP"', async () => {
         // The executor answers appointment_terms_changed with the fresh terms of

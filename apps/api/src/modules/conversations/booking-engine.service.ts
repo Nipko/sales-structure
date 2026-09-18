@@ -53,7 +53,7 @@ export interface BookingTurnContext {
 /** Booking engine messages in 4 languages */
 const MESSAGES: Record<string, Record<string, string | string[]>> = {
     es: {
-        bookingPrice: "Precio: {amount} {currency}",
+        bookingPrice: "Precio: {amount}",
         servicePriceExample: "precio por confirmar",
         servicePriceQuote: "se cotiza según el caso",
         bookingPriceToConfirm: "Precio: por confirmar con el negocio",
@@ -61,9 +61,9 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         bookingDuration: 'Duración reservada: {minutes} minutos',
         bookingLocation: 'Lugar: {location}',
         bookingOnline: 'En línea',
-        bookingPaymentDue: "Pago para confirmar: {amount} {currency}",
+        bookingPaymentDue: "Pago para confirmar: {amount}",
         bookingPending: "La solicitud de cita para {service} el {date} a las {time} quedó registrada y pendiente de confirmación.",
-        bookingAwaitingPayment: "La cita para {service} el {date} a las {time} está pendiente del pago de {amount} {currency}. El horario se retiene temporalmente; la confirmación llegará cuando se acredite el pago.",
+        bookingAwaitingPayment: "La cita para {service} el {date} a las {time} está pendiente del pago de {amount}. El horario se retiene temporalmente; la confirmación llegará cuando se acredite el pago.",
         serviceSelected: [
             '{service} seleccionado. ¿Qué fecha te queda bien?',
             '¡Excelente elección! Reservaremos {service}. ¿Qué día te gustaría agendar?',
@@ -112,7 +112,7 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         flowCta: 'Agendar',
     },
     en: {
-        bookingPrice: "Price: {amount} {currency}",
+        bookingPrice: "Price: {amount}",
         servicePriceExample: "price to be confirmed",
         servicePriceQuote: "quoted case by case",
         bookingPriceToConfirm: "Price: to be confirmed by the business",
@@ -120,9 +120,9 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         bookingDuration: 'Reserved duration: {minutes} minutes',
         bookingLocation: 'Location: {location}',
         bookingOnline: 'Online',
-        bookingPaymentDue: "Payment to confirm: {amount} {currency}",
+        bookingPaymentDue: "Payment to confirm: {amount}",
         bookingPending: "Your appointment request for {service} on {date} at {time} was recorded and is awaiting confirmation.",
-        bookingAwaitingPayment: "Your appointment for {service} on {date} at {time} is awaiting payment of {amount} {currency}. The slot is held temporarily; confirmation follows verified payment.",
+        bookingAwaitingPayment: "Your appointment for {service} on {date} at {time} is awaiting payment of {amount}. The slot is held temporarily; confirmation follows verified payment.",
         serviceSelected: '{service} selected. What date works for you?',
         switchedService: 'Switched to {service}. What date works for you?',
         cancelled: 'No problem! Is there anything else I can help you with?',
@@ -152,7 +152,7 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         flowCta: 'Book',
     },
     pt: {
-        bookingPrice: "Preço: {amount} {currency}",
+        bookingPrice: "Preço: {amount}",
         servicePriceExample: "preço a confirmar",
         servicePriceQuote: "sob orçamento",
         bookingPriceToConfirm: "Preço: a confirmar com o negócio",
@@ -160,9 +160,9 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         bookingDuration: 'Duração reservada: {minutes} minutos',
         bookingLocation: 'Local: {location}',
         bookingOnline: 'Online',
-        bookingPaymentDue: "Pagamento para confirmar: {amount} {currency}",
+        bookingPaymentDue: "Pagamento para confirmar: {amount}",
         bookingPending: "A solicitação de agendamento de {service} em {date} às {time} foi registrada e aguarda confirmação.",
-        bookingAwaitingPayment: "O agendamento de {service} em {date} às {time} aguarda o pagamento de {amount} {currency}. O horário fica reservado temporariamente; a confirmação ocorre após a aprovação do pagamento.",
+        bookingAwaitingPayment: "O agendamento de {service} em {date} às {time} aguarda o pagamento de {amount}. O horário fica reservado temporariamente; a confirmação ocorre após a aprovação do pagamento.",
         serviceSelected: '{service} selecionado. Qual data funciona para você?',
         switchedService: 'Mudamos para {service}. Qual data funciona para você?',
         cancelled: 'Sem problema! Posso ajudar com mais alguma coisa?',
@@ -192,7 +192,7 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         flowCta: 'Agendar',
     },
     fr: {
-        bookingPrice: "Prix : {amount} {currency}",
+        bookingPrice: "Prix : {amount}",
         servicePriceExample: "prix à confirmer",
         servicePriceQuote: "sur devis",
         bookingPriceToConfirm: "Prix : à confirmer par l'entreprise",
@@ -200,9 +200,9 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         bookingDuration: 'Durée réservée : {minutes} minutes',
         bookingLocation: 'Lieu : {location}',
         bookingOnline: 'En ligne',
-        bookingPaymentDue: "Paiement pour confirmer : {amount} {currency}",
+        bookingPaymentDue: "Paiement pour confirmer : {amount}",
         bookingPending: "Votre demande de rendez-vous pour {service} le {date} à {time} est enregistrée et attend une confirmation.",
-        bookingAwaitingPayment: "Le rendez-vous pour {service} le {date} à {time} attend le paiement de {amount} {currency}. Le créneau est retenu temporairement ; la confirmation suivra le paiement vérifié.",
+        bookingAwaitingPayment: "Le rendez-vous pour {service} le {date} à {time} attend le paiement de {amount}. Le créneau est retenu temporairement ; la confirmation suivra le paiement vérifié.",
         serviceSelected: '{service} sélectionné. Quelle date vous convient ?',
         switchedService: 'Changé pour {service}. Quelle date vous convient ?',
         cancelled: 'Pas de problème ! Puis-je vous aider avec autre chose ?',
@@ -254,6 +254,60 @@ function msg(lang: string, key: string, vars: Record<string, string> = {}): stri
 }
 
 /**
+ * Un importe agrupado como lo escribe quien lo está leyendo.
+ *
+ * Estaba fijo en `es-CO`, así que un precio mexicano confirmado en MXN salía
+ * con los separadores colombianos: el número y su moneda contaban dos historias
+ * distintas en la misma línea. La agrupación sigue al idioma de la
+ * conversación, que es el único dato de locale que este motor tiene en la mano
+ * (el mismo que alimenta `msg()`).
+ *
+ * `useGrouping: 'always'` es necesario: el CLDR del `es` genérico no agrupa
+ * números de cuatro dígitos (`minimumGroupingDigits = 2`), así que 1500 saldría
+ * "1500" y se lee como un código, no como un precio. El cast existe porque la
+ * lib de TS de este target todavía tipa `useGrouping` como booleano.
+ */
+const PRICE_GROUPING_OPTIONS = {
+    maximumFractionDigits: 2,
+    useGrouping: 'always',
+} as unknown as Intl.NumberFormatOptions;
+
+export function formatPriceAmount(lang: string, value: unknown): string {
+    // `Number(null)` y `Number('')` valen 0, y un 0 en una línea de precio dice
+    // "gratis". Ausencia de número no es cero: es no tener nada que decir.
+    if (value === null || value === undefined || value === '') return '';
+    const amount = Number(value);
+    if (!Number.isFinite(amount)) return '';
+    const langCode = (lang || 'es').substring(0, 2).toLowerCase();
+    const locale = MESSAGES[langCode] ? langCode : 'es';
+    try {
+        return new Intl.NumberFormat(locale, PRICE_GROUPING_OPTIONS).format(amount);
+    } catch {
+        // Un ICU recortado no puede tumbar una reserva: el número crudo es
+        // menos legible pero sigue siendo el número correcto.
+        return String(amount);
+    }
+}
+
+/**
+ * "80.000 MXN", o "80.000" a secas cuando la fila no tiene moneda.
+ *
+ * Sin moneda no se inventa una: una fila sembrada antes de que el negocio
+ * declarara su país nace con `currency` en NULL, y concatenarlo produciría
+ * "80.000 null" — o, peor, un código de otro país si alguien "rellenara" el
+ * hueco. El número desnudo es incómodo; el número con la moneda equivocada es
+ * una cifra que el cliente puede terminar pagando.
+ */
+export function formatPriceWithCurrency(lang: string, value: unknown, currency?: string | null): string {
+    const amount = formatPriceAmount(lang, value);
+    if (!amount) return '';
+    const code = typeof currency === 'string' && /^[A-Za-z]{3}$/.test(currency.trim())
+        ? currency.trim().toUpperCase()
+        : '';
+    return code ? `${amount} ${code}` : amount;
+}
+
+/**
  * Tool errors the booking flow can NOT recover from by itself:
  *  - `appointments_not_configured` → the tenant never loaded availability_slots,
  *    so every date will come back empty (ai-tool-executor.service.ts).
@@ -266,7 +320,7 @@ const UNRECOVERABLE_TOOL_ERRORS = new Set(['appointments_not_configured', 'tool_
 export interface BookingState {
     missionId?: string;
     step: 'idle' | 'show_services' | 'ask_date' | 'show_slots' | 'ask_name' | 'ask_email' | 'confirm' | 'booked' | 'waiting_flow';
-    services?: Array<{ id: string; name: string; durationMinutes: number; durationMinutesMax?: number; durationType?: string; price: number | null; currency: string; priceStatus?: 'example' | 'confirmed' | 'quote'; requiresPaymentToConfirm?: boolean; amountDueToConfirm?: number | null; appointmentTerms?: AppointmentServiceTerms }>;
+    services?: Array<{ id: string; name: string; durationMinutes: number; durationMinutesMax?: number; durationType?: string; price: number | null; currency: string | null; priceStatus?: 'example' | 'confirmed' | 'quote'; requiresPaymentToConfirm?: boolean; amountDueToConfirm?: number | null; appointmentTerms?: AppointmentServiceTerms }>;
     serviceId?: string;
     serviceName?: string;
     date?: string;
@@ -1060,7 +1114,7 @@ export class BookingEngineService {
             // D10: an example or quote-only price is words, never a number.
             const priceLabel = s.priceStatus && s.priceStatus !== 'confirmed'
                 ? ` - ${msg(lang, s.priceStatus === 'quote' ? 'servicePriceQuote' : 'servicePriceExample')}`
-                : (Number(s.price) > 0 ? ` - ${Number(s.price).toLocaleString('es-CO')} ${s.currency}` : '');
+                : (Number(s.price) > 0 ? ` - ${formatPriceWithCurrency(lang, s.price, s.currency)}` : '');
             return `${i + 1}. ${s.name}${durLabel}${priceLabel}`;
         }).join('\n');
         return {
@@ -1137,10 +1191,19 @@ export class BookingEngineService {
         // el cliente pueda corregirlo antes de que la cita exista.
         const withStaff = state.staffName ? `\n${sl.with}: ${state.staffName}` : '';
         const service = state.services?.find(s => s.id === state.serviceId);
+        // Mismo formateo que el listado: la línea que el cliente CONFIRMA no
+        // puede agrupar los miles distinto que la que leyó al elegir. Cuando la
+        // fila no tiene número (o no tiene moneda que decir), el resumen dice
+        // "por confirmar" en vez de imprimir un hueco.
+        const confirmedPrice = service && (!service.priceStatus || service.priceStatus === 'confirmed')
+            ? formatPriceWithCurrency(lang, service.price, service.currency)
+            : '';
         const priceSummary = !service ? ''
             : service.priceStatus && service.priceStatus !== 'confirmed'
                 ? '\n' + msg(lang, service.priceStatus === 'quote' ? 'bookingPriceQuote' : 'bookingPriceToConfirm')
-                : '\n' + msg(lang, 'bookingPrice', { amount: String(service.price), currency: service.currency });
+                : confirmedPrice
+                    ? '\n' + msg(lang, 'bookingPrice', { amount: confirmedPrice })
+                    : '\n' + msg(lang, 'bookingPriceToConfirm');
         const terms = service?.appointmentTerms;
         const duration = terms?.durationType === 'flexible' ? terms.durationMinutesMax || terms.durationMinutes : terms?.durationMinutes;
         const durationSummary = duration ? '\n' + msg(lang, 'bookingDuration', { minutes: String(duration) }) : '';
@@ -1154,7 +1217,13 @@ export class BookingEngineService {
             state.confirmationHash = termsHash;
             state.confirmationIssuedAt = new Date().toISOString();
         }
-        const dueSummary = service?.requiresPaymentToConfirm ? '\n' + msg(lang, 'bookingPaymentDue', { amount: String(service.amountDueToConfirm ?? service.price), currency: service.currency }) : '';
+        // El monto que el cliente va a PAGAR usa el mismo formateo que el que
+        // leyó: dos agrupaciones distintas para la misma cifra en la misma
+        // pantalla es cómo se discute una seña después.
+        const dueAmount = service?.requiresPaymentToConfirm
+            ? formatPriceWithCurrency(lang, service.amountDueToConfirm ?? service.price, service.currency)
+            : '';
+        const dueSummary = dueAmount ? '\n' + msg(lang, 'bookingPaymentDue', { amount: dueAmount }) : '';
         const summary = `${state.serviceName} ${sl.on} ${state.date} ${sl.at} ${state.time}${withStaff}\n${sl.name}: ${state.customerName}\n${sl.email}: ${state.customerEmail}${durationSummary}${locationSummary}${priceSummary}${dueSummary}`;
         return {
             handled: true, state,
@@ -1269,7 +1338,10 @@ export class BookingEngineService {
                 : appointment.status === 'confirmed' ? 'booked' : 'bookingPending', {
                 service: state.serviceName || '', date: state.date || '', time: state.time || '',
                 name: state.customerName || '', email: state.customerEmail || '',
-                amount: String(appointment.amountDueToConfirm ?? ''), currency: appointment.currency || '',
+                // Mismo formateo que la propuesta que el cliente acaba de leer:
+                // el importe a pagar no puede cambiar de aspecto entre la
+                // pantalla donde lo aceptó y la que le dice cuánto pagar.
+                amount: formatPriceWithCurrency(lang, appointment.amountDueToConfirm, appointment.currency),
             }),
         };
     }

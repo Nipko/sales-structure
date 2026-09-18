@@ -112,7 +112,7 @@ export const APPOINTMENT_TOOLS: ToolDefinition[] = [
  */
 export interface BookingState {
     step: 'idle' | 'has_services' | 'has_service' | 'has_date' | 'has_slots' | 'has_time' | 'collecting_info' | 'confirmed';
-    services?: Array<{ id: string; name: string; duration: number; price: number; currency: string }>;
+    services?: Array<{ id: string; name: string; duration: number; price: number; currency: string | null }>;
     serviceId?: string;
     serviceName?: string;
     date?: string;
@@ -132,7 +132,7 @@ export function buildBookingPrompt(state: BookingState, customerProfile: { name?
 
     // Inject what we already know
     if (state.services?.length) {
-        lines.push(`\nServices available: ${state.services.map(s => `"${s.name}" (${s.duration}min, $${s.price} ${s.currency}, id:${s.id})`).join(', ')}`);
+        lines.push(`\nServices available: ${state.services.map(s => `"${s.name}" (${s.duration}min, $${s.price}${s.currency ? ` ${s.currency}` : ''}, id:${s.id})`).join(', ')}`);
     }
     if (state.serviceName) lines.push(`Selected service: ${state.serviceName} (id: ${state.serviceId})`);
     if (state.date) lines.push(`Selected date: ${state.date}`);

@@ -4,9 +4,10 @@ import { Injectable, Logger, BadRequestException, NotFoundException } from '@nes
 import { PrismaService } from '../prisma/prisma.service';
 import { OperationConfirmationService } from '../email-templates/operation-confirmation.service';
 import {
-    normalizeCurrencyCode,
     optionalPositiveIntegerUnit,
 } from '../../common/utils/commercial-units.util';
+import { resolveWriteCurrency, type OperatingCurrencySource } from '../../common/utils/write-currency.util';
+import { RegionalProfileService } from '../tenants/regional-profile.service';
 import {
     assertOptionalContactId,
     requireTenantContact,
@@ -35,7 +36,18 @@ export class EducationService {
         private readonly prisma: PrismaService,
         /** The enrolment receipt `education.emailConfirmations` governs. */
         private readonly confirmations?: OperationConfirmationService,
+        /**
+         * D17 — de dónde sale la moneda de un curso. Opcional en la FIRMA sólo
+         * para los fixtures que construyen este servicio a mano; sin
+         * `@Optional()`, Nest sigue exigiendo el proveedor global.
+         */
+        private readonly regional?: RegionalProfileService,
     ) {}
+
+    /** D17: explícito → moneda operativa del negocio → NULL. */
+    private writeCurrency(requested: unknown, tenantId?: string): Promise<string | null> {
+        return resolveWriteCurrency(requested, tenantId, this.regional as OperatingCurrencySource | undefined);
+    }
 
     /** One factory, so the dashboard and the agent cannot disagree about receipts. */
     private commands(): EducationEnrollmentCommands {
@@ -65,11 +77,11 @@ export class EducationService {
         return rows[0] || null;
     }
 
-    async createCourse(schemaName: string, data: any): Promise<any> {
+    async createCourse(schemaName: string, data: any, tenantId?: string): Promise<any> {
         if (!data.name) throw new BadRequestException('name is required');
         const durationHours = optionalPositiveIntegerUnit(data.durationHours, 'durationHours');
         const durationWeeks = optionalPositiveIntegerUnit(data.durationWeeks, 'durationWeeks');
-        const currency = normalizeCurrencyCode(data.currency);
+        const currency = await this.writeCurrency(data.currency, tenantId);
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `INSERT INTO courses (
@@ -90,7 +102,7 @@ export class EducationService {
         return rows[0];
     }
 
-    async updateCourse(schemaName: string, id: string, data: any): Promise<any> {
+    async updateCourse(schemaName: string, id: string, data: any, tenantId?: string): Promise<any> {
         if (data.durationHours !== undefined && data.durationHours !== null) {
             data = { ...data, durationHours: optionalPositiveIntegerUnit(data.durationHours, 'durationHours') };
         }
@@ -98,7 +110,7 @@ export class EducationService {
             data = { ...data, durationWeeks: optionalPositiveIntegerUnit(data.durationWeeks, 'durationWeeks') };
         }
         if (data.currency !== undefined) {
-            data = { ...data, currency: normalizeCurrencyCode(data.currency) };
+            data = { ...data, currency: await this.writeCurrency(data.currency, tenantId) };
         }
         const fields: string[] = [];
         const values: any[] = [];

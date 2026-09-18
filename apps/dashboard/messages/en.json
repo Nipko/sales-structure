@@ -3096,7 +3096,6 @@
     "bufferTooltip": "Rest time between one appointment and the next. For example, 10 min to prepare the space.",
     "noBuffer": "No time between appointments",
     "nMinutes": "{n} minutes",
-    "currency": "USD",
     "priceStatus": {
       "label": "Price status",
       "confirmed": "Confirmed price",
@@ -13814,7 +13813,6 @@
       "extras": "Requested extras",
       "depositAmount": "Deposit",
       "depositCurrency": "Currency",
-      "currencyHint": "USD",
       "depositStatus": "Deposit status",
       "depositEvidence": "Receipt or reference",
       "deposit_pending": "Agreed",

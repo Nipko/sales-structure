@@ -2702,6 +2702,13 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."membership_plans" (
 );
 CREATE INDEX IF NOT EXISTS "idx_membership_plans_active" ON "{{SCHEMA_NAME}}"."membership_plans" ("is_active", "sort_order") WHERE "is_active" = true;
 
+-- D17 (sep-2026): de donde salio el precio de este plan, igual que en
+-- `services.price_status`. Los planes sembrados nacen 'example' y el agente no
+-- los dice como un hecho hasta que el dueno los confirma. DEFAULT 'confirmed'
+-- porque toda fila anterior a esta columna la escribio una persona.
+ALTER TABLE "{{SCHEMA_NAME}}"."membership_plans" ADD COLUMN IF NOT EXISTS "price_status" VARCHAR(16) DEFAULT 'confirmed';
+CREATE INDEX IF NOT EXISTS "idx_membership_plans_active" ON "{{SCHEMA_NAME}}"."membership_plans" ("is_active", "sort_order") WHERE "is_active" = true;
+
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."members" (
     "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
     "contact_id" UUID NOT NULL,

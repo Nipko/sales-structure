@@ -22,6 +22,7 @@ import {
 import { HelpPanel } from "@/components/ui/help-panel";
 import { BulkImportModal } from "@/components/BulkImportModal";
 import { useOperatingCurrency } from "@/hooks/useOperatingCurrency";
+import { formatMoney } from "@/lib/format-money";
 
 interface Category {
     id: string;
@@ -38,7 +39,7 @@ interface MenuItem {
     name: string;
     description?: string;
     price: number;
-    currency: string;
+    currency: string | null;
     image_url?: string;
     allergens: string[];
     tags: string[];
@@ -300,7 +301,7 @@ export default function MenuPage() {
                                             <div className="flex items-center gap-2 flex-wrap">
                                                 <span className="font-medium">{item.name}</span>
                                                 <span className="text-sm font-mono">
-                                                    {Number(item.price).toLocaleString()} {item.currency}
+                                                    {formatMoney(item.price, item.currency)}
                                                 </span>
                                                 {!item.is_available && (
                                                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-600 font-medium">
@@ -439,7 +440,11 @@ function ItemFormModal({
             description: form.description || undefined,
             categoryId: form.categoryId || undefined,
             price: parseFloat(form.price),
-            currency: form.currency,
+            // Cuando el negocio no declaro donde opera, el hook contesta
+            // honestamente "no se" y aca NO se manda nada: el API resuelve o
+            // deja NULL. Mandar "" era peor que no mandar, porque del otro
+            // lado la cadena vacia volvia a ser COP.
+            currency: form.currency || undefined,
             prepTimeMinutes: form.prepTimeMinutes ? parseInt(form.prepTimeMinutes, 10) : undefined,
             tags: form.tags,
             allergens: form.allergens,

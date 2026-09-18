@@ -339,6 +339,9 @@ describe('AI tool schema and runtime alignment', () => {
             // Sin arriendo de evaluación: este turno es producción y su aviso
             // al fotógrafo tiene que salir.
             { sandboxNamespace: undefined },
+            // D17: el tenant llega hasta el escritor para que la moneda de la
+            // sesión salga del negocio y no del default 'COP' de la columna.
+            tenantId,
         );
         expect(harness.prisma.executeInTenantSchema).not.toHaveBeenCalled();
         expect(harness.eventEmitter.emit).not.toHaveBeenCalled();

@@ -5,22 +5,22 @@ Generado por `docs/audits/2026-09-09/generate-closure-state.cjs`. **Ningún núm
 programa que sí se escribieron a mano envejecieron —el 32/10 de la matriz, el `complete` de canales,
 «otras salidas», «faltan términos en otras familias»—, y ése es exactamente el motivo.
 
-Revisión: `c1d11a95a7fdb0e8f5826d531553a157f68b4300`. Sin base de datos, sin modelo, sin proveedor, sin tenant.
+Revisión: `a12f1503536862d0775488499be21b0768e407c2`. Sin base de datos, sin modelo, sin proveedor, sin tenant.
 
 ## Matriz de tareas
 
 | Perfiles | Tareas | Comprometen al negocio | Sin positivo verificable | Sin verificador | Certificados |
 |---:|---:|---:|---:|---:|---:|
-| 76 | 420 | 146 | 5 | 5 | 0 |
+| 80 | 444 | 158 | 5 | 5 | 0 |
 
 ## Lo que costaría certificar el catálogo
 
 Un modelo (`gpt-4.1-mini`), 5 canales, 4 idiomas, k=1:
 
-- **93.320** casos requeridos
-- **260.620** llamadas al modelo (derivadas de los mensajes de cliente de cada escenario)
-- techo **US$950.20** con un límite declarado de 8000 tokens de entrada y 1000 de salida por turno
-- **434 h** de tiempo de modelo
+- **98.840** casos requeridos
+- **277.820** llamadas al modelo (derivadas de los mensajes de cliente de cada escenario)
+- techo **US$1015.00** con un límite declarado de 8000 tokens de entrada y 1000 de salida por turno
+- **463 h** de tiempo de modelo
 - rechazos del plan: —
 
 ## Certificación de canales

@@ -38,9 +38,26 @@ describe('the owner decides what a price is', () => {
     });
     it('accepts confirmed or quote, never a claim of "example"', () => {
         expect(resolvePriceStatusInput({ priceStatus: 'quote' })).toBe('quote');
-        expect(resolvePriceStatusInput({ priceStatus: 'confirmed' }, { priceStatus: 'example' })).toBe('confirmed');
+        expect(resolvePriceStatusInput({ priceStatus: 'confirmed' }, { priceStatus: 'example', price: 50000 })).toBe('confirmed');
         expect(() => resolvePriceStatusInput({ priceStatus: 'example' })).toThrow(BadRequestException);
         expect(() => resolvePriceStatusInput({ priceStatus: 'anything' })).toThrow(BadRequestException);
+    });
+
+    it('refuses to confirm a price that does not exist', () => {
+        // D17 siembra la fila SIN monto fuera de los seis países con ejemplo.
+        // "Confirmar precio" conservaba "el mismo número" —que era ninguno— y
+        // lo guardaba como confirmado: el servicio pasaba a valer 0 y el agente
+        // empezaba a decirle al cliente que es gratis. El dueño solo tocó un
+        // botón que decía confirmar.
+        expect(() => resolvePriceStatusInput({ priceStatus: 'confirmed' }, { priceStatus: 'example', price: null }))
+            .toThrow(BadRequestException);
+        // Escribir el monto sí confirma, que es el camino que la pantalla ofrece.
+        expect(resolvePriceStatusInput({ priceStatus: 'confirmed', price: 90000 }, { priceStatus: 'example', price: null }))
+            .toBe('confirmed');
+        // Y "se cotiza" sigue disponible: es la respuesta correcta cuando no
+        // hay un número que poner.
+        expect(resolvePriceStatusInput({ priceStatus: 'quote' }, { priceStatus: 'example', price: null }))
+            .toBe('quote');
     });
 });
 

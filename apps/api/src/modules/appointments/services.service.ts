@@ -4,10 +4,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { randomUUID } from 'crypto';
 import {
-    normalizeCurrencyCode,
+    optionalCurrencyCode,
     optionalPositiveIntegerUnit,
     requirePositiveIntegerUnit,
 } from '../../common/utils/commercial-units.util';
+import { RegionalProfileService } from '../tenants/regional-profile.service';
 import { assertActiveTenantUser } from './tenant-user-scope.util';
 import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
 import { validatePaymentPolicyInput } from '../../common/utils/payment-policy.util';
@@ -23,7 +24,12 @@ export interface BookableService {
     durationType: DurationType;
     bufferMinutes: number;
     price: number;
-    currency: string;
+    /**
+     * `null` cuando la fila nació sin moneda conocida (el negocio no declaró
+     * país). El tipo lo dice para que ninguna pantalla ni el motor de reservas
+     * la concatene a ciegas y termine mostrando "80.000 null".
+     */
+    currency: string | null;
     color: string;
     isActive: boolean;
     sortOrder: number;
@@ -52,10 +58,29 @@ const OWNER_PRICE_STATUSES: readonly ServicePriceStatus[] = ['confirmed', 'quote
  * provenance the recipe writes and a person cannot claim. Typing a price is a
  * confirmation on its own.
  */
-export function resolvePriceStatusInput(data: any, current?: { priceStatus?: ServicePriceStatus; price?: number }): ServicePriceStatus {
+export function resolvePriceStatusInput(
+    data: any,
+    current?: { priceStatus?: ServicePriceStatus; price?: number | null },
+): ServicePriceStatus {
     if (data?.priceStatus !== undefined && data?.priceStatus !== null) {
         if (!OWNER_PRICE_STATUSES.includes(data.priceStatus)) {
             throw new BadRequestException('priceStatus must be confirmed or quote');
+        }
+        // No se puede confirmar un precio que no existe.
+        //
+        // D17 siembra las filas SIN monto fuera de los seis países con ejemplo.
+        // "Confirmar precio" sobre una de esas filas conservaba "el mismo
+        // número", que era NULL, y lo guardaba como confirmado: el servicio
+        // pasaba a valer 0 y el agente empezaba a decirle al cliente que es
+        // gratis. El dueño solo tocó un botón que decía "confirmar".
+        const confirmingNothing = data.priceStatus === 'confirmed'
+            && (data?.price === undefined || data?.price === null)
+            && (current?.price === undefined || current?.price === null);
+        if (confirmingNothing) {
+            throw new BadRequestException({
+                error: 'price_missing',
+                message: 'Este servicio todavía no tiene precio. Escribe el monto para confirmarlo, o márcalo como "se cotiza".',
+            });
         }
         return data.priceStatus;
     }
@@ -91,7 +116,31 @@ export class ServicesService {
         private prisma: PrismaService,
         private redis: RedisService,
         @Optional() private readonly events?: EventEmitter2,
+        // Opcional como `events`: tres specs construyen este servicio a mano y
+        // el perfil regional no es necesario para leer. Cuando falta, la moneda
+        // queda en NULL en vez de caer a un país.
+        @Optional() private readonly regional?: RegionalProfileService,
     ) {}
+
+    /**
+     * La moneda con la que se escribe una fila de `services`.
+     *
+     * Orden: lo que el llamador mandó explícito → la moneda operativa del
+     * negocio → NULL. No hay cuarto escalón. El modal del panel no manda
+     * moneda (nunca la mandó), así que hasta ahora TODO servicio creado a mano
+     * se guardaba en COP viniera de donde viniera el dueño.
+     *
+     * NULL es deliberado y no es lo mismo que omitir la columna: `currency`
+     * tiene `DEFAULT 'COP'`, así que dejar de pasar el parámetro reabriría la
+     * misma puerta. Pasar NULL explícito deja la celda vacía, que es lo que
+     * sabemos.
+     */
+    private async resolveWriteCurrency(requested: unknown, tenantId?: string): Promise<string | null> {
+        const explicit = optionalCurrencyCode(requested);
+        if (explicit) return explicit;
+        if (!tenantId || !this.regional) return null;
+        return this.regional.operatingCurrencyFor(tenantId);
+    }
 
     async list(schemaName: string, activeOnly = false): Promise<BookableService[]> {
         let sql = `SELECT * FROM services`;
@@ -131,7 +180,7 @@ export class ServicesService {
         if (durationMax !== null && durationMax < duration) {
             throw new BadRequestException('durationMinutesMax must be greater than or equal to durationMinutes');
         }
-        const currency = normalizeCurrencyCode(data.currency);
+        const currency = await this.resolveWriteCurrency(data.currency, tenantId);
         const createPolicy = validatePaymentPolicyInput(data as any);
         if (createPolicy.error) throw new BadRequestException(createPolicy.error);
         const priceStatus = resolvePriceStatusInput(data);
@@ -211,7 +260,7 @@ export class ServicesService {
         if (nextPriceStatus !== current.priceStatus) { sets.push(`price_status = $${idx++}`); params.push(nextPriceStatus); }
         if (data.currency !== undefined) {
             sets.push(`currency = $${idx++}`);
-            params.push(normalizeCurrencyCode(data.currency));
+            params.push(await this.resolveWriteCurrency(data.currency, tenantId));
         }
         if (data.color !== undefined) { sets.push(`color = $${idx++}`); params.push(data.color); }
         const active = data.isActive ?? data.active;
@@ -358,7 +407,7 @@ export class ServicesService {
             durationType: row.duration_type || 'fixed',
             bufferMinutes: row.buffer_minutes,
             price: parseFloat(row.price || '0'),
-            currency: row.currency,
+            currency: row.currency || null,
             color: row.color,
             isActive: row.is_active,
             sortOrder: row.sort_order,

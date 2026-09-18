@@ -85,6 +85,20 @@ const ISO_4217_MINOR_UNIT_EXPONENTS: Readonly<Record<string, 0 | 2 | 3 | 4>> = O
  * Currency and duration values cross several vertical tables. Keep their
  * syntactic validation in one place so every writer applies the same rules
  * without guessing a tenant's commercial currency or converting prices.
+ *
+ * CUIDADO CON EL `fallback = 'COP'`.
+ *
+ * Ese default NO es una validación: es una decisión comercial tomada por la
+ * firma de una función. Todo escritor que llame `normalizeCurrencyCode(x)` sin
+ * pasar moneda le estampa pesos colombianos a la fila, aunque el negocio esté
+ * en México — y el modal de servicios del panel no manda moneda nunca. La
+ * moneda equivocada es peor que ninguna: viaja al agente, que se la dice al
+ * cliente, sin conversión y sin que nadie la haya elegido.
+ *
+ * Donde HAY un tenant a mano, la moneda se resuelve (perfil regional) y, si no
+ * se puede, se escribe NULL: usá `optionalCurrencyCode` para eso. El default
+ * sigue acá sólo para los llamadores que aún no fueron migrados; cada uno que
+ * se migra es uno menos.
  */
 export function normalizeCurrencyCode(value: unknown, fallback = 'COP'): string {
     const candidate = typeof value === 'string' && value.trim()
@@ -94,6 +108,23 @@ export function normalizeCurrencyCode(value: unknown, fallback = 'COP'): string 
         throw new BadRequestException('currency must be a three-letter uppercase code');
     }
     return candidate;
+}
+
+/**
+ * La moneda que el escritor recibió, o `null` — nunca una inventada.
+ *
+ * Valida con la misma regla que `normalizeCurrencyCode` cuando viene algo, y
+ * devuelve `null` cuando no viene nada (`undefined`, `null` o cadena vacía).
+ * `null` es una respuesta legítima: las columnas de moneda de los esquemas de
+ * tenant son nullables, y dejar la celda vacía dice "todavía no se sabe", que
+ * es exactamente lo que pasa, en vez de afirmar un país.
+ */
+export function optionalCurrencyCode(value: unknown): string | null {
+    if (value === undefined || value === null) return null;
+    if (typeof value === 'string' && !value.trim()) return null;
+    // Sin fallback: un valor presente pero mal formado es un error del
+    // llamador, no una oportunidad para elegir moneda por él.
+    return normalizeCurrencyCode(value, '');
 }
 
 /**

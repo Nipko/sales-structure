@@ -8,6 +8,7 @@ import {
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { createHash, randomUUID } from 'crypto';
 import {
+    recipeSeedPrice,
     resolveVerticalCapabilityManifest,
     type TenantVerticalConfig,
 } from '@parallext/shared';
@@ -117,7 +118,13 @@ export class VerticalMigrationService {
         const target = this.resolveTarget(targetIndustry, targetSubType);
         const tenant = await this.prisma.tenant.findUnique({
             where: { id: tenantId },
-            select: { industry: true, language: true, schemaName: true, settings: true },
+            select: {
+                industry: true, language: true, schemaName: true, settings: true,
+                // D17: la moneda de lo que se siembre sale del pais del negocio.
+                // Lo declarado gana sobre lo facturado; si no hay ninguno de los
+                // dos la fila nace sin monto y el dueno escribe el suyo.
+                operatingCountry: true, billingCountry: true,
+            },
         });
         if (!tenant) throw new NotFoundException('Tenant not found');
         const settings: any = tenant.settings || {};
@@ -130,7 +137,8 @@ export class VerticalMigrationService {
         }
 
         const language = this.languageKey(tenant.language);
-        const targetSeeds = this.targetSeeds(target, language);
+        const country = tenant.operatingCountry || tenant.billingCountry || null;
+        const targetSeeds = this.targetSeeds(target, language, country);
         const { existing, inventory } = await this.readPreviewState(
             tenant.schemaName,
             tenantId,
@@ -591,9 +599,12 @@ export class VerticalMigrationService {
         return Object.fromEntries(Object.entries(row).map(([key, value]) => [key, Number(value || 0)]));
     }
 
-    private targetSeeds(identity: VerticalIdentity, language: string): TargetSeedSet {
+    private targetSeeds(identity: VerticalIdentity, language: string, country?: string | null): TargetSeedSet {
         const definition = withResolvedVerticalPipeline(
-            getVerticalDefinition(identity.industry),
+            // Con el subtipo: sin el, cambiar un tenant a `education/academia_baile`
+            // le sembraba las FAQ genericas de educacion y no las de la academia.
+            // La linea de abajo ya leia el subtipo, esta lo perdia.
+            getVerticalDefinition(identity.industry, identity.subType),
             identity.subType,
         );
         const agenda = resolveVerticalAgendaSeedContract(definition, identity.subType);
@@ -615,18 +626,28 @@ export class VerticalMigrationService {
                 category: faq.category,
                 isPublished: true,
             })),
-            services: agenda.agendaAllowed
-                ? agenda.services.map((service, sortOrder) => ({
-                    name: service.name[language] || service.name.es,
-                    description: service.description[language] || service.description.es,
-                    durationMinutes: service.durationMinutes,
-                    price: String(service.price),
-                    currency: service.currency,
-                    category: service.category,
-                    durationType: service.durationType || 'fixed',
-                    isActive: true,
-                    sortOrder,
-                }))
+            // `serviceCatalogAllowed`, no `agendaAllowed`: son dos cosas
+            // distintas y el alta usa esta. Con la condicion anterior, los siete
+            // servicios del hogar, los dos de pet_services y los cuatro de
+            // fotografia — que siembran catalogo SIN agenda — se quedaban con
+            // cero servicios al cambiar de vertical, mientras que un alta nueva
+            // en el mismo subtipo recibia su lista completa.
+            services: agenda.serviceCatalogAllowed
+                ? agenda.services.map((service, sortOrder) => {
+                    const seeded = recipeSeedPrice(service.price, country);
+                    return {
+                        name: service.name[language] || service.name.es,
+                        description: service.description[language] || service.description.es,
+                        durationMinutes: service.durationMinutes,
+                        price: seeded.price === null ? null : String(seeded.price),
+                        currency: seeded.currency,
+                        category: service.category,
+                        durationType: service.durationType || 'fixed',
+                        priceStatus: service.priceStatus === 'quote' ? 'quote' : 'example',
+                        isActive: true,
+                        sortOrder,
+                    };
+                })
                 : [],
         };
     }
@@ -670,10 +691,11 @@ export class VerticalMigrationService {
                 `INSERT INTO services
                     (name, description, duration_minutes, price, currency, category,
                      is_active, sort_order, duration_type, price_status)
-                 VALUES ($1, $2, $3, $4, $5, $6, true, $7, $8, 'example')
+                 VALUES ($1, $2, $3, $4, $5, $6, true, $7, $8, $9)
                  ON CONFLICT (name) DO NOTHING RETURNING id`,
                 [service.name, service.description, service.durationMinutes, service.price,
-                    service.currency, service.category, service.sortOrder, service.durationType],
+                    service.currency, service.category, service.sortOrder, service.durationType,
+                    service.priceStatus === 'quote' ? 'quote' : 'example'],
             );
             if (rows?.[0]) inserted.services.push({ id: rows[0].id, fingerprint: this.hash(service) });
         }
@@ -737,7 +759,9 @@ export class VerticalMigrationService {
     }
 
     private targetConfig(identity: VerticalIdentity): TenantVerticalConfig {
-        const definition = getVerticalDefinition(identity.industry);
+        // Igual que arriba: la terminologia del subtipo tambien se perdia, asi
+        // que la academia quedaba hablando de "estudiantes" y no de "alumnos".
+        const definition = getVerticalDefinition(identity.industry, identity.subType);
         const manifest = resolveVerticalCapabilityManifest(identity.industry, identity.subType);
         const bookingEnabled = definition.bookingEnabled
             && manifest.capabilities.includes('appointment_booking');

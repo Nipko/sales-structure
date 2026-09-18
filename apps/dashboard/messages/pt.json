@@ -3096,7 +3096,6 @@
     "bufferTooltip": "Tempo de descanso entre um agendamento e o próximo. Por exemplo, 10 min para preparar o espaço.",
     "noBuffer": "Sem tempo entre agendamentos",
     "nMinutes": "{n} minutos",
-    "currency": "BRL",
     "priceStatus": {
       "label": "Status do preço",
       "confirmed": "Preço confirmado",
@@ -13814,7 +13813,6 @@
       "extras": "Extras solicitados",
       "depositAmount": "Caução",
       "depositCurrency": "Moeda",
-      "currencyHint": "BRL",
       "depositStatus": "Estado da caução",
       "depositEvidence": "Comprovante ou referência",
       "deposit_pending": "Acordada",

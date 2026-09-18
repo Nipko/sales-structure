@@ -8,9 +8,10 @@ import {
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import {
-    normalizeCurrencyCode,
     optionalPositiveIntegerUnit,
 } from '../../common/utils/commercial-units.util';
+import { resolveWriteCurrency, type OperatingCurrencySource } from '../../common/utils/write-currency.util';
+import { RegionalProfileService } from '../tenants/regional-profile.service';
 import {
     assertOptionalContactId,
     requireTenantContact,
@@ -80,7 +81,18 @@ export class PhotographyService {
          * nothing else, produce this email.
          */
         private readonly confirmations?: OperationConfirmationService,
+        /**
+         * D17 — de dónde sale la moneda de una sesión. Opcional en la FIRMA
+         * sólo para los fixtures que construyen este servicio a mano; sin
+         * `@Optional()`, Nest sigue exigiendo el proveedor global.
+         */
+        private readonly regional?: RegionalProfileService,
     ) {}
+
+    /** D17: explícito → moneda operativa del negocio → NULL. */
+    private writeCurrency(requested: unknown, tenantId?: string): Promise<string | null> {
+        return resolveWriteCurrency(requested, tenantId, this.regional as OperatingCurrencySource | undefined);
+    }
 
     /**
      * The receipt for a session that is actually scheduled.
@@ -216,10 +228,11 @@ export class PhotographyService {
         schemaName: string,
         data: any,
         execution: { sandboxNamespace?: EvalNamespaceLease } = {},
+        tenantId?: string,
     ): Promise<any> {
         if (!data.sessionType) throw new BadRequestException('sessionType is required');
         const durationMinutes = optionalPositiveIntegerUnit(data.durationMinutes, 'durationMinutes');
-        const currency = normalizeCurrencyCode(data.currency);
+        const currency = await this.writeCurrency(data.currency, tenantId);
         const contactId = assertOptionalContactId(data.contactId);
         const status = this.assertStatus(data.status ?? 'scheduled');
         if (status === 'scheduled' && !data.scheduledAt) {
@@ -328,7 +341,7 @@ export class PhotographyService {
         return serializeLocalTimestampFields(session, PHOTO_LOCAL_TIMESTAMPS);
     }
 
-    async update(schemaName: string, id: string, data: any): Promise<any> {
+    async update(schemaName: string, id: string, data: any, tenantId?: string): Promise<any> {
         if (data.status !== undefined) {
             data = { ...data, status: this.assertStatus(data.status) };
         }
@@ -339,7 +352,7 @@ export class PhotographyService {
             };
         }
         if (data.currency !== undefined) {
-            data = { ...data, currency: normalizeCurrencyCode(data.currency) };
+            data = { ...data, currency: await this.writeCurrency(data.currency, tenantId) };
         }
         const fields: string[] = [];
         const values: any[] = [];

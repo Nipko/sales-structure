@@ -181,6 +181,37 @@ export class RegionalProfileService {
         }
     }
 
+    /**
+     * La moneda en la que este negocio cobra — o `null`.
+     *
+     * Misma regla que `phoneRegionFor`, por la misma razón. El perfil SIEMPRE
+     * contesta algo con tal de seguir, y cuando no sabe contesta la moneda del
+     * país de fallback, que es COP. Un escritor que tome ese valor y lo estampe
+     * en la fila de un servicio mexicano habría hecho exactamente lo que hacía
+     * el `fallback = 'COP'` de `normalizeCurrencyCode`, sólo que ahora con la
+     * apariencia de haberlo consultado.
+     *
+     * Por eso `fallback` sale como `null`, y `derived` de un país que a su vez
+     * es fallback también: una moneda deducida de "no sabemos dónde opera" no
+     * sabe más que el "no sabemos". Con `null`, el llamador escribe NULL en la
+     * columna y el dueño ve la celda vacía, que es la verdad.
+     */
+    async operatingCurrencyFor(tenantId: string): Promise<string | null> {
+        try {
+            const profile = await this.resolve(tenantId);
+            const currency = profile.operatingCurrency;
+            if (!currency || currency.source === 'fallback') return null;
+            if (currency.source === 'derived'
+                && profile.operatingCountry?.source === 'fallback') {
+                return null;
+            }
+            return currency.value || null;
+        } catch (error: any) {
+            this.logger.warn(`[Regional] operatingCurrency unavailable for ${tenantId}: ${error?.message}`);
+            return null;
+        }
+    }
+
     private async build(tenantId: string, strict = false): Promise<TenantRegionalProfileV1> {
         let tenant: any;
         try {

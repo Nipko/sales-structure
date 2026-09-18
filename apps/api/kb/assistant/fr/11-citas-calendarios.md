@@ -36,6 +36,7 @@ L'agent IA ne dit jamais à voix haute un prix d'exemple ni un prix sur devis : 
 - Dans **Rendez-vous** → onglet **Services**, chaque service au prix d'exemple affiche le badge **Prix d'exemple** avec les boutons **Confirmer le prix** (conserve le même montant, désormais confirmé) ou **Sur devis**. Modifier le prix depuis le formulaire du service le confirme aussi.
 - Vous ne pouvez pas activer de politique de paiement (acompte ou paiement intégral) sur un service dont le prix n'est pas confirmé.
 - Tant qu'il reste des services au prix d'exemple, la **Santé des agents** affiche un rappel non critique ; cela ne bloque pas l'agent pour répondre.
+- Le prix d'exemple arrive **dans la devise de votre pays**, pas en pesos colombiens. Si votre pays est la Colombie, le Mexique, l'Argentine, le Chili, le Pérou ou le Brésil, le service naît avec un montant d'exemple arrondi dans votre devise ; dans tout autre pays il naît **sans montant**, avec votre devise déjà en place, pour que vous saisissiez le vôtre. Ce montant n'est qu'un ordre de grandeur pour que l'écran ne démarre pas vide : ce n'est ni une conversion de devises ni un prix de marché, et personne ne l'énonce tant que vous ne l'avez pas confirmé.
 
 ## Comment définir votre disponibilité
 

@@ -41,6 +41,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { useServiceCatalog } from "@/hooks/useServiceCatalog";
+import { useOperatingCurrency } from "@/hooks/useOperatingCurrency";
 import { io, type Socket } from "socket.io-client";
 
 /* ------------------------------------------------------------------ */
@@ -112,6 +113,8 @@ export default function AppointmentsPage() {
   const locale = useLocale();
   const dateLocale = locale === "pt" ? "pt-BR" : locale === "fr" ? "fr-FR" : locale === "en" ? "en-US" : "es-MX";
   const { activeTenantId } = useTenant();
+  // La moneda sale del perfil regional del negocio, no del idioma del panel.
+  const operatingCurrency = useOperatingCurrency();
   const router = useRouter();
   const searchParams = useSearchParams();
   // roles.ts:162 le da esta página a los cuatro roles porque el agente agenda
@@ -1016,6 +1019,7 @@ export default function AppointmentsPage() {
             onDeleteService={handleDeleteService}
             onToggleActive={handleToggleServiceActive}
             onPriceStatusChange={handleSetServicePriceStatus}
+            currency={operatingCurrency}
           />
         )}
 
@@ -1090,6 +1094,7 @@ export default function AppointmentsPage() {
           saving={savingService}
           onSave={handleSaveService}
           onClose={() => setShowServiceModal(false)}
+          currency={operatingCurrency}
         />
       )}
 

@@ -3096,7 +3096,6 @@
     "bufferTooltip": "Tiempo de descanso entre una cita y la siguiente. Por ejemplo, 10 min para preparar el espacio.",
     "noBuffer": "Sin tiempo entre citas",
     "nMinutes": "{n} minutos",
-    "currency": "COP",
     "priceStatus": {
       "label": "Estado del precio",
       "confirmed": "Precio confirmado",
@@ -13814,7 +13813,6 @@
       "extras": "Extras solicitados",
       "depositAmount": "Depósito",
       "depositCurrency": "Moneda",
-      "currencyHint": "COP",
       "depositStatus": "Estado del depósito",
       "depositEvidence": "Comprobante o referencia",
       "deposit_pending": "Acordado",

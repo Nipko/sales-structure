@@ -5,6 +5,8 @@ import {
     normalizeCurrencyCode,
     optionalPositiveIntegerUnit,
 } from '../../common/utils/commercial-units.util';
+import { resolveWriteCurrency, type OperatingCurrencySource } from '../../common/utils/write-currency.util';
+import { RegionalProfileService } from '../tenants/regional-profile.service';
 import {
     assertOptionalContactId,
     requireTenantContact,
@@ -57,7 +59,18 @@ export class RestaurantsService {
          * customer's receipt.
          */
         private readonly confirmations?: OperationConfirmationService,
+        /**
+         * D17 — de dónde sale la moneda de un plato y de un pedido. Opcional
+         * en la FIRMA sólo para los fixtures que construyen este servicio a
+         * mano; sin `@Optional()`, Nest sigue exigiendo el proveedor global.
+         */
+        private readonly regional?: RegionalProfileService,
     ) {}
+
+    /** D17: explícito → moneda operativa del negocio → NULL. */
+    private writeCurrency(requested: unknown, tenantId?: string): Promise<string | null> {
+        return resolveWriteCurrency(requested, tenantId, this.regional as OperatingCurrencySource | undefined);
+    }
 
     // ── Categories ────────────────────────────────────────────────
 
@@ -170,10 +183,10 @@ export class RestaurantsService {
         prepTimeMinutes?: number;
         calories?: number;
         sortOrder?: number;
-    }): Promise<any> {
+    }, tenantId?: string): Promise<any> {
         if (!data.name) throw new BadRequestException('name is required');
         if (data.price === undefined || data.price < 0) throw new BadRequestException('price must be >= 0');
-        const currency = normalizeCurrencyCode(data.currency);
+        const currency = await this.writeCurrency(data.currency, tenantId);
         const prepTimeMinutes = optionalPositiveIntegerUnit(data.prepTimeMinutes, 'prepTimeMinutes');
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
@@ -200,7 +213,7 @@ export class RestaurantsService {
         return rows[0];
     }
 
-    async updateItem(schemaName: string, id: string, data: any): Promise<any> {
+    async updateItem(schemaName: string, id: string, data: any, tenantId?: string): Promise<any> {
         if (data.prepTimeMinutes !== undefined && data.prepTimeMinutes !== null) {
             data = {
                 ...data,
@@ -208,7 +221,7 @@ export class RestaurantsService {
             };
         }
         if (data.currency !== undefined) {
-            data = { ...data, currency: normalizeCurrencyCode(data.currency) };
+            data = { ...data, currency: await this.writeCurrency(data.currency, tenantId) };
         }
         const fields: string[] = [];
         const values: any[] = [];
@@ -396,13 +409,15 @@ export class RestaurantsService {
         deliveryAddress?: string;
         deliveryNotes?: string;
         tableNumber?: string;
-        currency?: string;
+        // D17: `null` es una respuesta legitima — el plato o el negocio todavia
+        // no tienen moneda declarada — y llega hasta aca desde el menú.
+        currency?: string | null;
         items: Array<{
             menuItemId?: string;
             name: string;
             quantity: number;
             unitPrice: number;
-            currency?: string;
+            currency?: string | null;
             prepTimeMinutes?: number | null;
             modifiers?: any[];
             specialInstructions?: string;
@@ -419,7 +434,8 @@ export class RestaurantsService {
      * notificación push al dueño del restaurante, y un pedido simulado no
      * puede mandarlo a la cocina.
      */
-    execution: { sandboxNamespace?: EvalNamespaceLease } = {}): Promise<any> {
+    execution: { sandboxNamespace?: EvalNamespaceLease } = {},
+    tenantId?: string): Promise<any> {
         if (!data.items?.length) throw new BadRequestException('Order must have at least one item');
         if (data.orderType === 'delivery' && !data.deliveryAddress) {
             throw new BadRequestException('deliveryAddress is required for delivery orders');
@@ -430,7 +446,7 @@ export class RestaurantsService {
         const deliveryFee = data.deliveryFee || 0;
         const discount = data.discount || 0;
         const total = Math.max(0, subtotal + deliveryFee - discount);
-        const normalizeCurrency = (value?: string) => value?.trim()
+        const normalizeCurrency = (value?: string | null) => value?.trim()
             ? normalizeCurrencyCode(value)
             : null;
         const currencies = new Set([
@@ -440,7 +456,11 @@ export class RestaurantsService {
         if (currencies.size > 1) {
             throw new BadRequestException('All order items must use the same currency');
         }
-        const currency = [...currencies][0] || 'COP';
+        // D17: el pedido hereda la moneda de sus ítems; si ninguno la trae —porque
+        // el menú nació sin país declarado— se resuelve la del negocio, y si
+        // tampoco se sabe queda NULL. `food_orders.currency` tiene DEFAULT 'COP',
+        // así que el NULL tiene que ser explícito.
+        const currency = [...currencies][0] || await this.writeCurrency(undefined, tenantId);
         const estimatedMinutes = await this.calculateEstimatedMinutes(schemaName, data.orderType, data.items);
 
         // Header, line items and the read-back share one tenant-scoped database
@@ -551,7 +571,8 @@ export class RestaurantsService {
      */
     private async confirmOrder(schemaName: string, order: any): Promise<void> {
         if (String(order?.status ?? '') !== 'received') return;
-        const currency = String(order.currency || 'COP');
+        // D17: idem. Sin moneda el recibo muestra el número solo.
+        const currency = order.currency ? String(order.currency) : null;
         const minutes = Number(order.estimated_delivery_minutes);
         await this.confirmations?.send({
             schemaName,

@@ -92,6 +92,10 @@ export * from './email-verification-policy';
 export * from './intent-workflow-contract';
 export * from './provider-resource-binding';
 
+// ---- La receta del negocio: lo que el dia 0 prellena y de donde sale ----
+export * from './business-recipe';
+export * from './recipe-example-amounts';
+
 export type MessageContentType = 'text' | 'image' | 'audio' | 'video' | 'document' | 'location' | 'sticker' | 'reaction';
 
 export type MessageDirection = 'inbound' | 'outbound';
@@ -1263,11 +1267,33 @@ export interface VerticalServiceDefinition {
     name: LocalizedString;
     description: LocalizedString;
     durationMinutes: number;
+    /**
+     * REFERENCIA en pesos colombianos, no un precio.
+     *
+     * Es el orden de magnitud con el que se calcula el monto de ejemplo del
+     * pais del negocio (`recipeExampleAmount`). Fuera de los seis paises con
+     * ejemplo, la fila se siembra sin monto y la tarjeta muestra `[precio]`.
+     */
     price: number;
+    /**
+     * La moneda de la REFERENCIA. La fila sembrada lleva la del pais del
+     * negocio, que casi nunca es esta.
+     */
     currency: string;
     category: string;
     /** 'open' = day-level availability (multi-day stays, full-day sessions); default 'fixed' slots. */
     durationType?: 'fixed' | 'open';
+    /**
+     * Que significa `price: 0`.
+     *
+     * 'example' — todavia no hay monto; el dueno lo confirma.
+     * 'quote'   — el negocio lo cotiza caso por caso y no hay numero que dar.
+     *
+     * Antes las dos cosas eran el mismo cero, y la visita de plomeria (que se
+     * cotiza) y la clase de prueba (cuyo precio nadie confirmo) salian con el
+     * mismo texto al cliente. El lint exige declararlo cuando el precio es 0.
+     */
+    priceStatus?: 'example' | 'quote';
 }
 
 export interface VerticalAgentDefinition {
@@ -1318,6 +1344,16 @@ export interface VerticalDefinition {
     dashboard: { kpis: VerticalKpiDefinition[] };
     bookingEnabled: boolean;
     deferred?: boolean;
+    /**
+     * La capa nueva de la receta (D9/D13): modo de compra, instrucciones,
+     * que hace cuando no sabe, motivos visibles de pase a una persona, las 5
+     * preguntas canonicas, canales recomendados con su porque, 3 preguntas de
+     * prueba y 3 ejemplos de conversacion.
+     *
+     * Opcional a proposito: una industria sin receta escrita no rompe nada,
+     * sale en el reporte de cobertura del lint.
+     */
+    recipe?: import('./business-recipe').VerticalRecipeExtras;
 }
 
 export interface TenantVerticalConfig {

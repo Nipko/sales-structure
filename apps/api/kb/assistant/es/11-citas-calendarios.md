@@ -36,6 +36,7 @@ El agente de IA nunca dice en voz alta un precio de ejemplo ni uno que se cotiza
 - En **Citas** → pestaña **Servicios disponibles**, cada servicio con precio de ejemplo muestra la pastilla **Precio de ejemplo** con los botones **Confirmar precio** (conserva el mismo número, ya confirmado) o **Se cotiza**. Editar el precio desde el formulario del servicio también lo confirma.
 - No puedes activar una política de pago (depósito o pago completo) en un servicio cuyo precio no esté confirmado.
 - Mientras queden servicios con precio de ejemplo, **Salud de agentes** muestra un aviso no crítico para recordártelo; no bloquea al agente para responder.
+- El precio de ejemplo viene **en la moneda de tu país**, no en pesos colombianos. Si tu país es Colombia, México, Argentina, Chile, Perú o Brasil, el servicio nace con un monto de ejemplo redondo en tu moneda; en cualquier otro país nace **sin monto**, con tu moneda puesta, para que escribas el tuyo. Ese monto es solo un orden de magnitud para que la pantalla no arranque vacía: no es una conversión de divisas ni un precio de mercado, y nadie lo dice en voz alta hasta que lo confirmas.
 
 ## Cómo definir tu disponibilidad
 

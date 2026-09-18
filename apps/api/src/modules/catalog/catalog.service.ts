@@ -1,15 +1,31 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import {
-    normalizeCurrencyCode,
     optionalPositiveIntegerUnit,
 } from '../../common/utils/commercial-units.util';
+import { resolveWriteCurrency, type OperatingCurrencySource } from '../../common/utils/write-currency.util';
+import { RegionalProfileService } from '../tenants/regional-profile.service';
 
 @Injectable()
 export class CatalogService {
     private readonly logger = new Logger(CatalogService.name);
 
-    constructor(private readonly prisma: PrismaService) {}
+    constructor(
+        private readonly prisma: PrismaService,
+        /**
+         * Opcional en la FIRMA únicamente, para que los fixtures que construyen
+         * este servicio a mano sigan compilando. Sin `@Optional()`, Nest exige
+         * el proveedor: `RegionalProfileModule` es global y si un día dejara de
+         * estarlo, el arranque falla en vez de escribir NULL para todos y
+         * parecer que ningún negocio declaró su país.
+         */
+        private readonly regional?: RegionalProfileService,
+    ) {}
+
+    /** D17: explícito → moneda operativa del negocio → NULL. */
+    private writeCurrency(requested: unknown, tenantId?: string): Promise<string | null> {
+        return resolveWriteCurrency(requested, tenantId, this.regional as OperatingCurrencySource | undefined);
+    }
 
     // ─── Courses ──────────────────────────────────────────────────────────────
 
@@ -29,12 +45,12 @@ export class CatalogService {
         return rows[0] || null;
     }
 
-    async createCourse(schemaName: string, data: any) {
+    async createCourse(schemaName: string, data: any, tenantId?: string) {
         const durationHours = optionalPositiveIntegerUnit(
             data.duration_hours ?? data.durationHours,
             'durationHours',
         );
-        const currency = normalizeCurrencyCode(data.currency);
+        const currency = await this.writeCurrency(data.currency, tenantId);
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `INSERT INTO courses (code, name, slug, description, price, currency, duration_hours, modality, brochure_url, is_active)
@@ -55,14 +71,18 @@ export class CatalogService {
         return rows[0];
     }
 
-    async updateCourse(schemaName: string, id: string, data: any) {
+    async updateCourse(schemaName: string, id: string, data: any, tenantId?: string) {
         const durationInput = data.duration_hours ?? data.durationHours;
         const durationHours = durationInput === undefined
             ? undefined
             : optionalPositiveIntegerUnit(durationInput, 'durationHours');
+        // El UPDATE es por `COALESCE`, así que un NULL acá significa "dejá lo
+        // que había" y no "vaciá la celda". Es la única lectura posible con esa
+        // forma de SQL, y sigue siendo lo correcto: no se sabe la moneda, así
+        // que no se escribe ninguna — mucho menos COP.
         const currency = data.currency === undefined
             ? undefined
-            : normalizeCurrencyCode(data.currency);
+            : await this.writeCurrency(data.currency, tenantId);
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `UPDATE courses

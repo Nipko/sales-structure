@@ -95,7 +95,7 @@ export class RestaurantsController {
     @Roles('tenant_admin', 'tenant_supervisor')
     async createItem(@Param('tenantId') tenantId: string, @Body() body: any) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
-        const data = await this.service.createItem(schemaName, body);
+        const data = await this.service.createItem(schemaName, body, tenantId);
         return { success: true, data };
     }
 
@@ -107,7 +107,7 @@ export class RestaurantsController {
         @Body() body: any,
     ) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
-        const data = await this.service.updateItem(schemaName, id, body);
+        const data = await this.service.updateItem(schemaName, id, body, tenantId);
         return { success: true, data };
     }
 
@@ -148,7 +148,7 @@ export class RestaurantsController {
     @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async createOrder(@Param('tenantId') tenantId: string, @Body() body: any) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
-        const data = await this.service.createOrder(schemaName, body);
+        const data = await this.service.createOrder(schemaName, body, {}, tenantId);
         return { success: true, data };
     }
 
@@ -205,7 +205,7 @@ export class RestaurantsController {
     @ApiOperation({ summary: "Bulk-import menu items from a parsed CSV/XLSX" })
     async bulkImportItems(@Param('tenantId') tenantId: string, @Body() body: { rows?: any[] }) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
-        const data = await bulkImportRows(body?.rows, row => this.service.createItem(schemaName, row));
+        const data = await bulkImportRows(body?.rows, row => this.service.createItem(schemaName, row, tenantId));
         return { success: true, data };
     }
 }

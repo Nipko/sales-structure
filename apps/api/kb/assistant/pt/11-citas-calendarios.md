@@ -36,6 +36,7 @@ O agente de IA nunca diz em voz alta um preço de exemplo nem um que está sob c
 - Em **Agendamentos** → aba **Serviços**, cada serviço com preço de exemplo mostra o selo **Preço de exemplo** com os botões **Confirmar preço** (mantém o mesmo número, já confirmado) ou **Sob consulta**. Editar o preço no formulário do serviço também o confirma.
 - Você não pode ativar uma política de pagamento (sinal ou pagamento total) num serviço cujo preço não esteja confirmado.
 - Enquanto restarem serviços com preço de exemplo, a **Saúde dos agentes** mostra um aviso não crítico para lembrar você; isso não impede o agente de responder.
+- O preço de exemplo vem **na moeda do seu país**, não em pesos colombianos. Se o seu país for Colômbia, México, Argentina, Chile, Peru ou Brasil, o serviço nasce com um valor de exemplo redondo na sua moeda; em qualquer outro país nasce **sem valor**, já com a sua moeda, para você escrever o seu. Esse valor é só uma ordem de grandeza para a tela não começar vazia: não é conversão de câmbio nem preço de mercado, e ninguém o diz em voz alta até você confirmar.
 
 ## Como definir sua disponibilidade
 

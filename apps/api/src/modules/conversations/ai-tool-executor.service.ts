@@ -965,7 +965,7 @@ export class AIToolExecutorService {
                     return this.getPromotions(schemaName);
 
                 case 'place_order':
-                    return this.placeOrder(schemaName, contactId, conversationId, args, canonicalSandbox);
+                    return this.placeOrder(schemaName, contactId, conversationId, args, canonicalSandbox, tenantId);
 
                 case 'cancel_order':
                     return this.cancelOrder(schemaName, contactId, args.orderId, args.reason);
@@ -1064,7 +1064,7 @@ export class AIToolExecutorService {
                     return this.checkHomeServiceAvailabilityTool(schemaName, args);
 
                 case 'create_service_request':
-                    return this.createServiceRequestTool(schemaName, contactId, conversationId, args, canonicalSandbox);
+                    return this.createServiceRequestTool(schemaName, contactId, conversationId, args, canonicalSandbox, tenantId);
 
                 case 'check_request_status':
                     return this.checkServiceRequestStatusTool(schemaName, contactId, args);
@@ -1073,7 +1073,7 @@ export class AIToolExecutorService {
                     return this.listMyServiceRequestsTool(schemaName, contactId, args?.onlyOpen !== false);
 
                 case 'cancel_service_request':
-                    return this.cancelServiceRequest(schemaName, contactId, args.requestId, args.reason);
+                    return this.cancelServiceRequest(schemaName, contactId, args.requestId, args.reason, tenantId);
 
                 // ── Tier 3 tools — pet services & photography ─────
                 // These use the existing services + appointments engine
@@ -1144,7 +1144,7 @@ export class AIToolExecutorService {
                     return this.checkDateAvailabilityTool(schemaName, args);
 
                 case 'request_photo_quote':
-                    return this.requestPhotoQuoteTool(schemaName, contactId, conversationId, args, canonicalSandbox);
+                    return this.requestPhotoQuoteTool(schemaName, contactId, conversationId, args, canonicalSandbox, tenantId);
 
                 case 'cancel_photo_session':
                     return this.cancelPhotoSession(schemaName, contactId, args.sessionId, args.reason);
@@ -1429,7 +1429,7 @@ export class AIToolExecutorService {
                     description: p.description,
                     category: p.category,
                     price: Number(p.price || 0),
-                    currency: p.currency || 'COP',
+                    currency: p.currency || null,
                     stock: p.stock ?? null,
                     isAvailable: !!p.is_available,
                     // Un producto de venta bajo fórmula se sigue mostrando: el
@@ -1464,7 +1464,7 @@ export class AIToolExecutorService {
                     description: p.description,
                     category: p.category,
                     price: Number(p.price || 0),
-                    currency: p.currency || 'COP',
+                    currency: p.currency || null,
                     stock: p.stock ?? null,
                     isAvailable: !!p.is_available,
                     requiresPrescription: !!p.requires_prescription,
@@ -2739,7 +2739,7 @@ export class AIToolExecutorService {
                     durationMinutesMax: s.duration_minutes_max || null,
                     durationType: s.duration_type || 'fixed',
                     price: confirmed ? Number(s.price || 0) : null,
-                    currency: s.currency || 'COP',
+                    currency: s.currency || null,
                     priceStatus,
                     ...(confirmed ? {} : { priceNote: servicePriceNote(priceStatus) }),
                     // Los flags dicen QUÉ pasa; la nota dice CÓMO proceder.
@@ -3329,7 +3329,7 @@ export class AIToolExecutorService {
         descriptionParts.push('');
         const priceStr = servicePriceStatus(svc) !== 'confirmed'
             ? (servicePriceStatus(svc) === 'quote' ? 'se cotiza según el caso' : 'precio por confirmar')
-            : (svc.price ? `${Number(svc.price).toLocaleString()} ${svc.currency || 'COP'}` : 'N/A');
+            : (svc.price ? [Number(svc.price).toLocaleString(), svc.currency].filter(Boolean).join(' ') : 'N/A');
         descriptionParts.push(`Service: ${svc.name} (${priceStr})`);
         descriptionParts.push(`Duration: ${svc.duration_minutes} min`);
         for (const label of subject.labels) descriptionParts.push(label);
@@ -4063,7 +4063,7 @@ export class AIToolExecutorService {
                     durationType: p.duration_type,
                     durationValue: p.duration_value,
                     price: Number(p.price || 0),
-                    currency: p.currency || 'COP',
+                    currency: p.currency || null,
                     destination: p.destination,
                     languages: p.languages || [],
                     seatsLeft: p.available_seats ?? null,
@@ -4536,6 +4536,7 @@ export class AIToolExecutorService {
         conversationId: string | undefined,
         args: any,
         namespace?: EvalNamespaceLease,
+        tenantId?: string,
     ): Promise<any> {
         try {
             if (!Array.isArray(args.items) || args.items.length === 0) {
@@ -4556,7 +4557,10 @@ export class AIToolExecutorService {
             const priceMap: Record<string, {
                 price: number;
                 name: string;
-                currency: string;
+                // D17: un plato puede no tener moneda todavia. `null` viaja
+                // hasta el escritor, que resuelve la del negocio; rellenar con
+                // 'COP' aca la fijaria antes de que nadie pueda resolverla.
+                currency: string | null;
                 prepTimeMinutes?: number;
             }> = {};
             if (validIds.length) {
@@ -4569,7 +4573,7 @@ export class AIToolExecutorService {
                     priceMap[r.id] = {
                         price: Number(r.price),
                         name: r.name,
-                        currency: r.currency || 'COP',
+                        currency: r.currency || null,
                         prepTimeMinutes: r.prep_time_minutes == null
                             ? undefined
                             : Number(r.prep_time_minutes),
@@ -4582,7 +4586,7 @@ export class AIToolExecutorService {
                 name: string;
                 quantity: number;
                 unitPrice: number;
-                currency: string;
+                currency: string | null;
                 prepTimeMinutes?: number;
                 specialInstructions?: string;
             }> = [];
@@ -4616,7 +4620,7 @@ export class AIToolExecutorService {
                 items: resolvedItems,
                 paymentMethod: args.paymentMethod,
                 notes: args.notes,
-            }, { sandboxNamespace: namespace });
+            }, { sandboxNamespace: namespace }, tenantId);
 
             return {
                 orderId: order.id,
@@ -4635,7 +4639,9 @@ export class AIToolExecutorService {
                     ? null
                     : `${Number(order.estimated_delivery_minutes)} minutos`,
                 estimatedDeliveryAt: order.estimated_delivery_at || null,
-                message: `Order created successfully. Total: ${Number(order.total || 0).toLocaleString()} ${order.currency}`,
+                // Sin moneda va el numero solo: `1.500 null` es lo que el
+                // agente le termina diciendo al cliente.
+                message: `Order created successfully. Total: ${[Number(order.total || 0).toLocaleString(), order.currency].filter(Boolean).join(' ')}`,
             };
         } catch (e: any) {
             return this.safeToolFailure('place_order', e, 'write');
@@ -4649,19 +4655,30 @@ export class AIToolExecutorService {
             const plans = await this.gymsService.listPlans(schemaName, false);
             if (!plans.length) return { plans: [], message: 'No plans available.' };
             return {
-                plans: plans.map(p => ({
+                plans: plans.map(p => {
+                    // Mismo contrato que los servicios (D10): el numero viaja
+                    // solo si el negocio lo confirmo. Los planes sembrados son
+                    // un ejemplo de la receta, y desde D17 estan en la moneda
+                    // del pais — o sea que se leen como un precio real. Decir
+                    // "la mensualidad son $180.000" de un monto que el dueno
+                    // nunca miro es exactamente lo que D10 vino a cerrar.
+                    const status = servicePriceStatus(p as { price_status?: unknown });
+                    return {
                     id: p.id,
                     name: p.name,
                     description: p.description,
                     durationDays: p.duration_days,
-                    price: Number(p.price),
-                    currency: p.currency,
+                    price: status === 'confirmed' ? Number(p.price) : undefined,
+                    priceStatus: status,
+                    priceNote: servicePriceNote(status),
+                    currency: status === 'confirmed' ? p.currency : undefined,
                     classCredits: p.class_credits_per_period,
                     personalTrainingCredits: p.personal_training_credits,
                     guestPasses: p.guest_passes,
                     freezeAllowanceDays: p.freeze_allowance_days,
                     perks: p.perks || [],
-                })),
+                    };
+                }),
             };
         } catch (e: any) {
             return this.safeToolFailure('get_membership_plans', e, 'read');
@@ -5171,6 +5188,7 @@ export class AIToolExecutorService {
         conversationId: string | undefined,
         args: any,
         namespace?: EvalNamespaceLease,
+        tenantId?: string,
     ): Promise<any> {
         try {
             const request = await this.homeServicesService.createRequest(schemaName, {
@@ -5189,7 +5207,7 @@ export class AIToolExecutorService {
                 serviceId: args.serviceId,
                 scheduledAt: args.scheduledAt,
                 status: args.serviceId && args.scheduledAt ? 'scheduled' : 'pending',
-            }, { sandboxNamespace: namespace });
+            }, { sandboxNamespace: namespace }, tenantId);
             return {
                 requestId: request.id,
                 status: request.status,
@@ -6420,7 +6438,7 @@ export class AIToolExecutorService {
 
     // ── Home Services management handlers ────────────────────────────
 
-    private async cancelServiceRequest(schema: string, contactId: string, requestId: string, reason?: string): Promise<any> {
+    private async cancelServiceRequest(schema: string, contactId: string, requestId: string, reason?: string, tenantId?: string): Promise<any> {
         try {
             const request = await this.homeServicesService.getRequestById(schema, requestId);
             if (!request) return { error: 'Service request not found' };
@@ -6434,7 +6452,7 @@ export class AIToolExecutorService {
             await this.homeServicesService.updateRequest(schema, requestId, {
                 status: 'cancelled',
                 notes: (request.notes || '') + (reason ? `\n[Cancelled: ${reason}]` : '\n[Cancelled by customer]'),
-            });
+            }, tenantId);
 
             return { success: true, message: 'Service request cancelled successfully' };
         } catch (e: any) {
@@ -6537,6 +6555,7 @@ export class AIToolExecutorService {
         conversationId: string | undefined,
         args: any,
         namespace?: EvalNamespaceLease,
+        tenantId?: string,
     ): Promise<any> {
         try {
             if (!args?.date || !args?.customerName) {
@@ -6558,7 +6577,7 @@ export class AIToolExecutorService {
                 location: args.location || null,
                 notes: args.specialRequests || null,
                 status: 'requested',
-            }, { sandboxNamespace: namespace });
+            }, { sandboxNamespace: namespace }, tenantId);
             const sessionId = session?.id;
             if (!sessionId) {
                 this.logger.warn('Photo session insert returned no id');

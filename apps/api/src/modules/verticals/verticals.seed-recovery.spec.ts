@@ -117,6 +117,7 @@ describe('VerticalsService seed recovery contracts', () => {
         function buildMembershipHarness(initialNames: string[]) {
             let committedPlans = initialNames.map((name, index) => ({ name, sort_order: index + 1 }));
             const insertedParams: any[][] = [];
+            const insertSql: string[] = [];
             const transactionInTenantSchema = jest.fn(async (_schema: string, callback: any) => {
                 const workingPlans = committedPlans.map((plan) => ({ ...plan }));
                 const query = jest.fn(async (sql: string, params: any[] = []) => {
@@ -128,6 +129,7 @@ describe('VerticalsService seed recovery contracts', () => {
                     }
                     if (sql.includes('INSERT INTO membership_plans')) {
                         insertedParams.push([...params]);
+                        insertSql.push(String(sql));
                         workingPlans.push({ name: params[0], sort_order: params[8] });
                         return [];
                     }
@@ -145,6 +147,7 @@ describe('VerticalsService seed recovery contracts', () => {
             return {
                 service,
                 insertedParams,
+                insertSql,
                 names: () => committedPlans.map(({ name }) => name),
                 transactionInTenantSchema,
             };
@@ -153,22 +156,58 @@ describe('VerticalsService seed recovery contracts', () => {
         it('fills only the missing canonical plan from a cross-language canonical subset', async () => {
             const harness = buildMembershipHarness(['Mensual', 'Annual']);
 
-            await (harness.service as any).seedMembershipPlans(schemaName, 'en');
+            // D17: el gimnasio es chileno, así que el plan nace en pesos
+            // chilenos. El monto de la receta es una REFERENCIA en pesos
+            // colombianos y se traduce; antes los tres planes salían en COP y
+            // el dueño tenía que corregirlos uno por uno.
+            await (harness.service as any).seedMembershipPlans(schemaName, 'en', undefined, 'CL');
 
             expect(harness.transactionInTenantSchema).toHaveBeenCalledTimes(1);
             expect(harness.names()).toEqual(['Mensual', 'Annual', 'Quarterly']);
             expect(harness.insertedParams).toHaveLength(1);
-            expect(harness.insertedParams[0]).toEqual([
-                'Quarterly',
-                'Three months with unlimited classes and 15 freeze days',
-                90,
-                390000,
-                null,
-                1,
-                3,
-                15,
-                2,
-            ]);
+            const [name, description, durationDays, price, credits, personal, guests, freeze, order, currency]
+                = harness.insertedParams[0];
+            expect([name, description, durationDays, credits, personal, guests, freeze, order])
+                .toEqual(['Quarterly', 'Three months with unlimited classes and 15 freeze days', 90, null, 1, 3, 15, 2]);
+            expect(currency).toBe('CLP');
+            expect(price).toBeGreaterThan(0);
+            expect(price).toBeLessThan(390000);
+        });
+
+        it('un gimnasio de un país sin monto de ejemplo nace en cero, nunca en NULL', async () => {
+            // `membership_plans.price` es NOT NULL (en `services` NO lo es), así
+            // que un NULL acá reventaba el alta ENTERA: la transacción del
+            // bootstrap se caía y con ella el embudo, la persona, las FAQ, los
+            // servicios y la disponibilidad. El cero no se lee como "gratis"
+            // porque la fila nace marcada como ejemplo.
+            const harness = buildMembershipHarness(['Mensual', 'Annual']);
+
+            await (harness.service as any).seedMembershipPlans(schemaName, 'es', undefined, 'UY');
+
+            const params = harness.insertedParams[0];
+            expect(params[3]).toBe(0);
+            expect(params[9]).toBe('UYU');
+        });
+
+        it('nunca escribe NULL en el precio, sepa o no el país', async () => {
+            for (const country of [undefined, null, 'UY', 'CO', 'MX']) {
+                const harness = buildMembershipHarness([]);
+                await (harness.service as any).seedMembershipPlans(schemaName, 'es', undefined, country);
+                for (const params of harness.insertedParams) {
+                    expect(params[3]).not.toBeNull();
+                    expect(typeof params[3]).toBe('number');
+                }
+            }
+        });
+
+        it('marca el plan sembrado como ejemplo, para que el agente no lo diga como un hecho', async () => {
+            const harness = buildMembershipHarness([]);
+            await (harness.service as any).seedMembershipPlans(schemaName, 'es', undefined, 'CO');
+            expect(harness.insertSql).not.toHaveLength(0);
+            for (const sql of harness.insertSql) {
+                expect(sql).toContain('price_status');
+                expect(sql).toContain("'example'");
+            }
         });
 
         it('does not append defaults when the tenant has any custom membership configuration', async () => {

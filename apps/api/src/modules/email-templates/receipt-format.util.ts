@@ -20,12 +20,25 @@ export function escapeReceiptHtml(value: unknown): string {
  *
  * An unrecognised currency code is not worth losing a receipt over, so the
  * fallback prints the number and the code rather than throwing.
+ *
+ * SIN moneda (D17) imprime el número desnudo. Las filas comerciales pueden
+ * nacer con `currency` en NULL —el negocio todavía no declaró su país— y las
+ * dos salidas alternativas son peores: `${amount} ` deja un espacio colgando al
+ * final del renglón del recibo, y rellenar con 'COP' afirma una moneda que
+ * nadie eligió en un documento que el cliente guarda.
  */
-export function receiptMoney(amount: number, currency: string): string {
+export function receiptMoney(amount: number, currency?: string | null): string {
+    const code = String(currency ?? '').trim().toUpperCase();
+    if (!/^[A-Z]{3}$/.test(code)) {
+        return new Intl.NumberFormat('es-CO', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        }).format(amount);
+    }
     try {
-        return new Intl.NumberFormat('es-CO', { style: 'currency', currency }).format(amount);
+        return new Intl.NumberFormat('es-CO', { style: 'currency', currency: code }).format(amount);
     } catch {
-        return `${amount.toFixed(2)} ${currency}`;
+        return `${amount.toFixed(2)} ${code}`;
     }
 }
 

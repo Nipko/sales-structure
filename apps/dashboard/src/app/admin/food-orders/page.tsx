@@ -18,6 +18,7 @@ import {
     UtensilsCrossed, Bike, Store, X, AlertCircle, Truck, Check,
 } from "lucide-react";
 import { HelpPanel } from "@/components/ui/help-panel";
+import { formatMoney } from "@/lib/format-money";
 
 interface OrderItem {
     id: string;
@@ -41,7 +42,7 @@ interface FoodOrder {
     delivery_fee: number;
     discount: number;
     total: number;
-    currency: string;
+    currency: string | null;
     payment_method?: string;
     payment_status: string;
     status: "received" | "preparing" | "ready" | "delivered" | "cancelled";
@@ -232,7 +233,7 @@ export default function FoodOrdersPage() {
                                         </div>
                                         <div className="flex items-center justify-between mt-2 pt-2 border-t border-border/50">
                                             <span className="text-sm font-bold font-mono">
-                                                {Number(order.total).toLocaleString()} {order.currency}
+                                                {formatMoney(order.total, order.currency)}
                                             </span>
                                             {status !== "delivered" && (
                                                 <button
@@ -345,7 +346,7 @@ function OrderDetailModal({
                                         )}
                                     </div>
                                     <div className="font-mono text-sm">
-                                        {Number(item.subtotal).toLocaleString()} {order.currency}
+                                        {formatMoney(item.subtotal, order.currency)}
                                     </div>
                                 </div>
                             ))}
@@ -367,7 +368,7 @@ function OrderDetailModal({
                             </div>
                         )}
                         <div className="flex justify-between font-bold text-base border-t border-border pt-1">
-                            <span>{t("total")}</span><span>{Number(order.total).toLocaleString()} {order.currency}</span>
+                            <span>{t("total")}</span><span>{formatMoney(order.total, order.currency)}</span>
                         </div>
                     </div>
 

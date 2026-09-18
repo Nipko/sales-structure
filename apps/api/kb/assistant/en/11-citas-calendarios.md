@@ -36,6 +36,7 @@ The AI agent never states an example price or a quote-only price out loud: in th
 - Under **Appointments** → **Services** tab, each service with an example price shows the **Example price** pill with the **Confirm price** (keeps the same number, now confirmed) or **Quoted** buttons. Editing the price from the service form also confirms it.
 - You can't turn on a payment policy (deposit or full payment) on a service whose price isn't confirmed.
 - While any services still have an example price, **Agent health** shows a non-critical reminder; it doesn't block the agent from answering.
+- The example price comes **in your country's currency**, not in Colombian pesos. If your country is Colombia, Mexico, Argentina, Chile, Peru or Brazil, the service is created with a round example amount in your currency; in any other country it is created **with no amount** and your currency already set, so you can type your own. That amount is only an order of magnitude so the screen doesn't start empty: it is not a currency conversion and not a market price, and nobody states it out loud until you confirm it.
 
 ## How to set your availability
 

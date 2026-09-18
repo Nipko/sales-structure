@@ -3096,7 +3096,6 @@
     "bufferTooltip": "Temps de repos entre un rendez-vous et le suivant. Par exemple, 10 min pour préparer l'espace.",
     "noBuffer": "Pas de temps entre rendez-vous",
     "nMinutes": "{n} minutes",
-    "currency": "EUR",
     "priceStatus": {
       "label": "Statut du prix",
       "confirmed": "Prix confirmé",
@@ -13814,7 +13813,6 @@
       "extras": "Options demandées",
       "depositAmount": "Caution",
       "depositCurrency": "Devise",
-      "currencyHint": "EUR",
       "depositStatus": "État de la caution",
       "depositEvidence": "Justificatif ou référence",
       "deposit_pending": "Convenue",

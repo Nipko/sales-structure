@@ -5,6 +5,7 @@ import { useTranslations, useLocale } from "next-intl";
 import { cn } from "@/lib/utils";
 import { guidedTourAnchorId } from "@/lib/guided-tours";
 import { api } from "@/lib/api";
+import { formatMoney } from "@/lib/format-money";
 import {
     Plus, Pencil, Trash2, Timer, DollarSign, Clock, Search,
     CheckCircle2, XCircle, Tag, Users, ChevronDown, X, UserPlus, Infinity,
@@ -43,6 +44,13 @@ interface ServicesTabProps {
     onToggleActive: (svc: Service) => void;
     /** Confirma un precio de ejemplo tal cual, o lo pasa a "se cotiza", sin abrir el editor. */
     onPriceStatusChange?: (svc: Service, status: Exclude<PriceStatus, "example">) => void | Promise<void>;
+    /**
+     * La moneda del negocio (`useOperatingCurrency()` en la página). El precio
+     * llevaba un `$` fijo delante y ninguna moneda detrás: un negocio brasileño
+     * veía `$80.000` sobre una fila guardada en BRL. Sin moneda conocida,
+     * `formatMoney` deja el número desnudo en vez de inventar un símbolo.
+     */
+    currency?: string | null;
 }
 
 function Toggle({ enabled, label, onChange }: { enabled: boolean; label: string; onChange: () => void }) {
@@ -59,7 +67,7 @@ function Toggle({ enabled, label, onChange }: { enabled: boolean; label: string;
 
 export default function ServicesTab({
     services, loading, activeTenantId, onCreateService, onEditService, onDeleteService, onToggleActive,
-    onPriceStatusChange,
+    onPriceStatusChange, currency,
 }: ServicesTabProps) {
     const t = useTranslations("appointments");
     const tc = useTranslations("common");
@@ -266,7 +274,7 @@ export default function ServicesTab({
                                         <>
                                             {svc.price > 0 && (
                                                 <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-neutral-50 dark:bg-neutral-800 text-muted-foreground text-xs font-medium">
-                                                    <DollarSign size={12} /> ${svc.price.toLocaleString(numLocale)}
+                                                    <DollarSign size={12} /> {formatMoney(svc.price, currency, { locale: numLocale })}
                                                 </span>
                                             )}
                                             {svc.priceStatus === "example" && (

@@ -8,7 +8,7 @@ keywords: ["industry", "vertical", "business profile", "waitlist", "event planni
 
 # Tools and modules for your industry
 
-The **Operations** section is resolved from capabilities and subtype, not only the industry name. The contract contains 20 industries and 76 canonical business profiles; 18 industries currently have at least one selectable profile. Event planning and construction remain registered to preserve their identity and product evolution, but their current profiles are waitlisted and are not offered during new-account setup.
+The **Operations** section is resolved from capabilities and subtype, not only the industry name. The contract contains 20 industries and 80 canonical business profiles; 18 industries currently have at least one selectable profile. Event planning and construction remain registered to preserve their identity and product evolution, but their current profiles are waitlisted and are not offered during new-account setup.
 
 Industries with a current offer are healthcare, fashion and beauty, real estate, restaurants, automotive, tourism, education, finance, professional services, retail, technology, veterinary, fitness, insurance, home services, pet services, photography, and other.
 
@@ -19,3 +19,11 @@ Industries with a current offer are healthcare, fashion and beauty, real estate,
 - Veterinary uses appointments and pets; fitness uses memberships and classes; insurance uses insurance operations; home services uses service requests; pet services uses pets and, for boarding, resources; photography uses sessions.
 
 Not every business in a profile receives every module: effective capabilities, subtype, role, and account configuration control visibility. Selecting a profile does not certify professional or regulatory compliance. If something is missing, an administrator should review **Settings → Business information** and **Plan & Billing** before contacting support.
+
+### Your industry's recipe
+
+Everything that appears already written when you turn on an industry comes from a **recipe**: the agent's name and greeting, the frequently asked questions, the services with their example price, the vocabulary of the trade, and the reasons the agent hands a conversation to a person. Every recipe has two levels: the industry's, and a sub-type layer with what changes (a dance academy on top of education, for example).
+
+A recipe **never invents a fact about your business**. It does not know your address, your phone, your payment methods or how many hours ahead someone can cancel. Where that fact would go it leaves a space like `[dirección]` or `[precio]` for you to fill. An invented fact that sounds plausible is worse than an empty space: the space is visible and gets filled; the invention goes out over WhatsApp.
+
+If you chose **Other** because your business fits no industry, the platform writes your recipe from the description you gave at signup. It is generated in the background and shows up the next time you come in. If that description changes, the recipe is written again. It never replaces anything you edited yourself.

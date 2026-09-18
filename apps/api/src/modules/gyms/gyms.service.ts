@@ -5,9 +5,10 @@ import { PrismaService } from '../prisma/prisma.service';
 import { OperationConfirmationService } from '../email-templates/operation-confirmation.service';
 import { normalizePhoneE164 } from '../../common/utils/phone.util';
 import {
-    normalizeCurrencyCode,
     requirePositiveIntegerUnit,
 } from '../../common/utils/commercial-units.util';
+import { resolveWriteCurrency, type OperatingCurrencySource } from '../../common/utils/write-currency.util';
+import { RegionalProfileService } from '../tenants/regional-profile.service';
 
 /**
  * Gyms / Fitness vertical service.
@@ -43,7 +44,18 @@ export class GymsService {
          * outbox); it is not duplicated here.
          */
         private readonly confirmations?: OperationConfirmationService,
+        /**
+         * D17 — de dónde sale la moneda de un plan. Opcional en la FIRMA sólo
+         * para los fixtures que construyen este servicio a mano; sin
+         * `@Optional()`, Nest sigue exigiendo el proveedor global.
+         */
+        private readonly regional?: RegionalProfileService,
     ) {}
+
+    /** D17: explícito → moneda operativa del negocio → NULL. */
+    private writeCurrency(requested: unknown, tenantId?: string): Promise<string | null> {
+        return resolveWriteCurrency(requested, tenantId, this.regional as OperatingCurrencySource | undefined);
+    }
 
     // ── Plans ─────────────────────────────────────────────────────
 
@@ -66,12 +78,12 @@ export class GymsService {
         guestPasses?: number;
         freezeAllowanceDays?: number;
         perks?: string[];
-    }): Promise<any> {
+    }, tenantId?: string): Promise<any> {
         if (!data.name || data.durationDays === undefined || data.durationDays === null) {
             throw new BadRequestException('name and durationDays are required');
         }
         const durationDays = requirePositiveIntegerUnit(data.durationDays, 'durationDays');
-        const currency = normalizeCurrencyCode(data.currency);
+        const currency = await this.writeCurrency(data.currency, tenantId);
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `INSERT INTO membership_plans (
@@ -93,12 +105,12 @@ export class GymsService {
         return rows[0];
     }
 
-    async updatePlan(schemaName: string, id: string, data: any): Promise<any> {
+    async updatePlan(schemaName: string, id: string, data: any, tenantId?: string): Promise<any> {
         if (data.durationDays !== undefined) {
             data = { ...data, durationDays: requirePositiveIntegerUnit(data.durationDays, 'durationDays') };
         }
         if (data.currency !== undefined) {
-            data = { ...data, currency: normalizeCurrencyCode(data.currency) };
+            data = { ...data, currency: await this.writeCurrency(data.currency, tenantId) };
         }
         const fields: string[] = [];
         const values: any[] = [];

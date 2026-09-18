@@ -2,7 +2,8 @@ import { BadRequestException, ConflictException, Injectable, Logger, NotFoundExc
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
-import { normalizeCurrencyCode } from '../../common/utils/commercial-units.util';
+import { resolveWriteCurrency, type OperatingCurrencySource } from '../../common/utils/write-currency.util';
+import { RegionalProfileService } from '../tenants/regional-profile.service';
 import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
 import { catalogCents, CATALOG_UUID } from '../orders/catalog-order-contract';
 
@@ -18,7 +19,12 @@ export interface Product {
     category: string;
     price: number;
     cost: number;
-    currency: string;
+    /**
+     * `null` cuando la fila nació sin moneda conocida (el negocio no declaró
+     * país). El tipo lo dice para que ninguna pantalla la concatene a ciegas y
+     * termine mostrando "80.000 null".
+     */
+    currency: string | null;
     stock: number | null;
     minStock: number;
     maxStock: number;
@@ -80,7 +86,18 @@ export class InventoryService {
         private prisma: PrismaService,
         private redis: RedisService,
         @Optional() private readonly events?: EventEmitter2,
+        /**
+         * D17 — de dónde sale la moneda de un producto. Opcional en la FIRMA
+         * sólo para los fixtures que construyen este servicio a mano; sin
+         * `@Optional()`, Nest sigue exigiendo el proveedor global.
+         */
+        private readonly regional?: RegionalProfileService,
     ) { }
+
+    /** D17: explícito → moneda operativa del negocio → NULL. */
+    private writeCurrency(requested: unknown, tenantId?: string): Promise<string | null> {
+        return resolveWriteCurrency(requested, tenantId, this.regional as OperatingCurrencySource | undefined);
+    }
 
     /**
      * Get full inventory overview for a tenant
@@ -167,7 +184,7 @@ export class InventoryService {
         if (!schema) throw new Error('Tenant schema not found');
 
         await this.ensureInventoryTables(schema);
-        const currency = normalizeCurrencyCode(data.currency);
+        const currency = await this.writeCurrency(data.currency, tenantId);
 
         const result = await this.prisma.executeInTenantSchema<any[]>(
             schema,
@@ -212,7 +229,7 @@ export class InventoryService {
         if (data.price !== undefined) { setClauses.push(`price = $${paramIndex++}`); values.push(data.price); }
         if (data.currency !== undefined) {
             setClauses.push(`currency = $${paramIndex++}`);
-            values.push(normalizeCurrencyCode(data.currency));
+            values.push(await this.writeCurrency(data.currency, tenantId));
         }
         if (data.isActive !== undefined) { setClauses.push(`is_available = $${paramIndex++}`); values.push(data.isActive); }
         if (data.requiresPrescription !== undefined) {
@@ -323,7 +340,9 @@ export class InventoryService {
             category: p.category_name || p.category || 'Sin categoría',
             price: parseFloat(p.price) || 0,
             cost: parseFloat(meta.cost) || 0,
-            currency: p.currency || '',
+            // `null`, no `''`: la celda vacía significa "no se sabe la moneda",
+            // y una cadena vacía la disfraza de dato presente.
+            currency: p.currency || null,
             stock: p.stock === null || p.stock === undefined ? null : Number(p.stock),
             minStock: parseInt(meta.min_stock) || 5,
             maxStock: parseInt(meta.max_stock) || 1000,

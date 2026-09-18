@@ -279,6 +279,10 @@ describe('AIToolExecutorService vertical safety contracts', () => {
             // Sin arriendo de evaluación: este turno es producción y su aviso
             // al restaurante tiene que salir.
             { sandboxNamespace: undefined },
+            // D17: el tenant llega hasta el escritor. El pedido hereda la moneda
+            // de sus ítems, y cuando el menú no la tiene, la del negocio — nunca
+            // el 'COP' que la columna pone por su cuenta.
+            tenantId,
         );
         expect(result).toMatchObject({
             currency: 'MXN',

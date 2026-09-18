@@ -46,7 +46,7 @@ export class EducationController {
     @Roles('tenant_admin', 'tenant_supervisor')
     async createCourse(@Param('tenantId') tenantId: string, @Body() body: any) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
-        const data = await this.service.createCourse(schemaName, body);
+        const data = await this.service.createCourse(schemaName, body, tenantId);
         return { success: true, data };
     }
 
@@ -54,7 +54,7 @@ export class EducationController {
     @Roles('tenant_admin', 'tenant_supervisor')
     async updateCourse(@Param('tenantId') tenantId: string, @Param('id') id: string, @Body() body: any) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
-        const data = await this.service.updateCourse(schemaName, id, body);
+        const data = await this.service.updateCourse(schemaName, id, body, tenantId);
         return { success: true, data };
     }
 
@@ -139,7 +139,7 @@ export class EducationController {
     @ApiOperation({ summary: "Bulk-import courses from a parsed CSV/XLSX" })
     async bulkImportCourses(@Param('tenantId') tenantId: string, @Body() body: { rows?: any[] }) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
-        const data = await bulkImportRows(body?.rows, row => this.service.createCourse(schemaName, row));
+        const data = await bulkImportRows(body?.rows, row => this.service.createCourse(schemaName, row, tenantId));
         return { success: true, data };
     }
 }

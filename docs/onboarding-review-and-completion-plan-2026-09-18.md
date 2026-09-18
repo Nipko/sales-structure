@@ -1,6 +1,6 @@
 # Revisión del onboarding y plan de cierre — 18 de septiembre de 2026
 
-Estado: diagnóstico y propuesta antes de continuar la implementación. Esta revisión no modifica código, no aplica migraciones y no despliega.
+Estado histórico: diagnóstico y propuesta previos a la implementación. El trabajo posterior y sus límites de lanzamiento están registrados en el [cierre de implementación del 18 de septiembre](onboarding-implementation-closeout-2026-09-18.md). No se ha desplegado.
 
 Actualización de producto posterior, en la misma fecha: la [propuesta de experiencia v2 con investigación](onboarding-experience-plan-v2-2026-09.md) revisa el objetivo, recorrido, métricas y orden de validación. Este documento sigue siendo el diagnóstico del repositorio; su secuencia técnica debe leerse junto con v2, que antepone probar la experiencia con dueños a ampliar el editor por tarjetas. No implica aprobación o implementación de las enmiendas.
 

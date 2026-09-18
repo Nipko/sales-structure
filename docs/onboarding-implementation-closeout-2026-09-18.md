@@ -29,6 +29,7 @@ La ayuda de Parallly Assist quedó alineada en español, inglés, portugués y f
 - `e69c4cc9` — entradas opcionales verificables.
 - `7db70d25` — contratos de recetas, ayuda y CI.
 - `bde92d07` — resumen periódico voluntario y límite de WhatsApp.
+- `b5716d66` — candidata sin pruebas omitidas, migraciones y arranque real.
 
 ## Evidencia técnica de la candidata local
 
@@ -36,12 +37,18 @@ La ayuda de Parallly Assist quedó alineada en español, inglés, portugués y f
 - ESLint: aprobado en API, dashboard y WhatsApp.
 - Builds: aprobados en shared, API, dashboard, WhatsApp y landing. El dashboard produjo 148 rutas y landing 198 páginas estáticas, con 156 documentos localizados posprocesados.
 - Dashboard completo: 160 suites y 2.081 pruebas aprobadas.
-- API completa ejecutable sin infraestructura: 699 suites y 8.397 pruebas aprobadas. Otras 153 suites y 2.077 pruebas quedaron omitidas por no existir PostgreSQL, PgBouncer ni Redis en este equipo; la candidata de CI debe ejecutarlas y exigir cero omisiones.
+- API completa sobre la pila local de WSL: 852 suites y 10.474 pruebas aprobadas, 0 fallos, 0 omitidas y 0 pendientes. El reporte JSON fue verificado con `assert-no-skipped-tests.cjs`.
 - WhatsApp completo: aprobado.
 - Mobile completo: 34 suites y 405 pruebas aprobadas.
 - Contratos de landing: paridad de 2.360 claves, 80 overlays `es-AR`, estimación de costo de WhatsApp, afirmaciones comerciales, disclosures y evidencia competitiva aprobados.
 - Prisma: `generate` y `validate` aprobados.
 - Inyección de dependencias de Nest: `app.bootstrap.spec.ts` aprobada dentro de la suite completa.
+- Infraestructura: PostgreSQL 17.11 con `uuid-ossp` y `vector`, PgBouncer 1.25.2 en modo `transaction` y Valkey 8.1 con política `noeviction`, comprobados desde WSL Docker. La suite usó bases separadas por worker y las mismas familias de variables que `candidate.yml`.
+- Economía LLM y reparación de schemas legacy: las 15 pruebas que el workflow dejaba omitidas ahora tienen bases desechables de esquema completo; la corrida enfocada aprobó 49/49 y la corrida completa las incluyó sin omisiones.
+- Activación: el recorrido real webhook → BullMQ → conversación → outbox → transporte → PostgreSQL prueba que la primera respuesta persiste `settings.firstReplyAt` y un único evento `first_operational_reply`.
+- Migraciones de tenants: aprobadas la aplicación, la reaplicación idempotente y el rollback íntegro ante una violación controlada. Migración global: base reconstruida desde `main`, 96 → 97 migraciones, ninguna incompleta y evidencia previa preservada.
+- Arranque compilado: `apps/api/dist/boot-check.js` completó `NestFactory.create`, el grafo de DI y `onModuleInit` contra PostgreSQL y Valkey reales.
+- `candidate.yml` ahora aprovisiona las bases de economía/legacy/upgrade, ejecuta ambos ensayos de migración, habilita todas las suites API y arranca el binario compilado antes de permitir la publicación de imágenes.
 - Artefactos derivados, inventario de productores outbound y cifras del canario: regenerados y aprobados por sus verificadores oficiales.
 - JSON de los cuatro idiomas y YAML de workflows: válidos.
 - `git diff --check`: aprobado.
@@ -54,7 +61,7 @@ Estas actividades son puertas de lanzamiento, no funcionalidades que puedan decl
 
 1. Dos rondas moderadas con dueños, incluidas personas que usan solo celular, interrupción y reanudación, 320 px, teclado y lector de pantalla.
 2. Recorridos reales y fallidos de WhatsApp, Instagram, Messenger, Telegram y chat web con credenciales, permisos y retornos de proveedor válidos.
-3. Ejecutar el workflow `candidate.yml` sobre el SHA exacto para cubrir PostgreSQL 17, PgBouncer en modo transacción, Redis, todas las suites hoy omitidas, migraciones globales y de tenants, reaplicación idempotente, arranque real y rollback. Este host no tiene Docker ni binarios/servicios de PostgreSQL y Redis, por lo que esa evidencia no puede fabricarse localmente.
+3. Ejecutar el workflow remoto `candidate.yml` sobre el SHA exacto. La misma puerta ya quedó reproducida localmente en WSL Docker —PostgreSQL 17, PgBouncer transaccional, Valkey sin eviction, cero pruebas omitidas, migraciones, reaplicación, rollback y arranque compilado—; falta el registro independiente de GitHub Actions y, si se autoriza, la publicación de las cinco imágenes por digest. Esto no bloquea la implementación, pero sí la promoción de una candidata distribuible.
 4. Medición de primera respuesta útil, primera atención operativa y primer resultado verificable a 7 y 28 días. Las metas de tres y diez minutos siguen siendo hipótesis hasta tener esas cohortes.
 5. Decisión de producto sobre captura revisable por foto/voz y resumen por WhatsApp solo si la investigación demuestra valor y existen consentimiento, costos y entrega seguros.
 

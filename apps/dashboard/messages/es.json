@@ -12746,6 +12746,14 @@
   "agentQuality": {
     "title": "Centro de calidad del agente",
     "subtitle": "Descubre qué falta configurar, qué ya fue probado y qué está ocurriendo en conversaciones reales.",
+    "ownerQuestions": {
+      "title": "Las cuatro preguntas sobre tu agente", "description": "Primero responde lo que necesitas para decidir; debajo puedes abrir la evidencia técnica.",
+      "attending": { "title": "¿Está atendiendo y dónde?", "confirmed": "La atención operativa está comprobada", "attention": "Hay un canal que necesita atención", "unverified": "Aún no pudimos comprobar todos los canales", "detail": "Conectar una cuenta y poder responder por ella son hechos distintos." },
+      "capabilities": { "title": "¿Qué sabe y qué puede hacer?", "answer": "{passed} de {applicable} controles comprobados", "detail": "Abre el detalle para distinguir información, acciones y límites por capacidad." },
+      "results": { "title": "¿Qué está consiguiendo?", "none": "Aún no hay actividad real atribuible", "insufficient": "Hay {count} casos; todavía no alcanzan una señal útil", "observed": "Hay {count} casos con evidencia observable", "detail": "La falta de tráfico no es una falla y una conversación no prueba por sí sola una venta o resolución." },
+      "next": { "title": "¿Qué me conviene hacer ahora?", "detail": "Se prioriza una mejora por evidencia e impacto, sin convertirla en una nota global." },
+      "viewChannels": "Ver canales y comprobaciones", "viewCapabilities": "Ver capacidades", "viewResults": "Ver evidencia y prioridades", "doNext": "Abrir siguiente acción"
+    },
     "loading": "Analizando la evidencia disponible…",
     "statusLabel": "Estado actual",
     "agentInactive": "Agente inactivo",

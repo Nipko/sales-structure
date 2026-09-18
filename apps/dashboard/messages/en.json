@@ -12746,6 +12746,14 @@
   "agentQuality": {
     "title": "Agent quality center",
     "subtitle": "See what still needs configuration, what has been tested, and what is happening in real conversations.",
+    "ownerQuestions": {
+      "title": "Four questions about your agent", "description": "Start with what you need to decide; open the technical evidence below when needed.",
+      "attending": { "title": "Is it serving customers, and where?", "confirmed": "Operational service is verified", "attention": "A channel needs attention", "unverified": "We could not verify every channel yet", "detail": "Connecting an account and being able to reply through it are separate facts." },
+      "capabilities": { "title": "What does it know and what can it do?", "answer": "{passed} of {applicable} checks verified", "detail": "Open the detail to separate information, actions, and limits by capability." },
+      "results": { "title": "What is it achieving?", "none": "No attributable real activity yet", "insufficient": "There are {count} cases; not enough for a useful signal yet", "observed": "There are {count} cases with observable evidence", "detail": "No traffic is not a failure, and one conversation alone does not prove a sale or resolution." },
+      "next": { "title": "What should I do next?", "detail": "One improvement is prioritized by evidence and impact, without turning it into a global score." },
+      "viewChannels": "View channels and checks", "viewCapabilities": "View capabilities", "viewResults": "View evidence and priorities", "doNext": "Open next action"
+    },
     "loading": "Analyzing available evidence…",
     "statusLabel": "Current status",
     "agentInactive": "Inactive agent",

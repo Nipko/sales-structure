@@ -12746,6 +12746,14 @@
   "agentQuality": {
     "title": "Centro de qualidade do agente",
     "subtitle": "Veja o que falta configurar, o que já foi testado e o que ocorre em conversas reais.",
+    "ownerQuestions": {
+      "title": "Quatro perguntas sobre o seu agente", "description": "Comece pelo que precisa para decidir; abra as evidências técnicas abaixo quando necessário.",
+      "attending": { "title": "Ele está atendendo e onde?", "confirmed": "O atendimento operacional foi comprovado", "attention": "Há um canal que precisa de atenção", "unverified": "Ainda não foi possível comprovar todos os canais", "detail": "Conectar uma conta e conseguir responder por ela são fatos diferentes." },
+      "capabilities": { "title": "O que ele sabe e pode fazer?", "answer": "{passed} de {applicable} controles comprovados", "detail": "Abra os detalhes para separar informações, ações e limites por capacidade." },
+      "results": { "title": "O que ele está conseguindo?", "none": "Ainda não há atividade real atribuível", "insufficient": "Há {count} casos; ainda não bastam para um sinal útil", "observed": "Há {count} casos com evidência observável", "detail": "Falta de tráfego não é uma falha, e uma conversa sozinha não prova venda ou resolução." },
+      "next": { "title": "O que devo fazer agora?", "detail": "Uma melhoria é priorizada por evidência e impacto, sem virar uma nota global." },
+      "viewChannels": "Ver canais e verificações", "viewCapabilities": "Ver capacidades", "viewResults": "Ver evidências e prioridades", "doNext": "Abrir próxima ação"
+    },
     "loading": "Analisando as evidências disponíveis…",
     "statusLabel": "Estado atual",
     "agentInactive": "Agente inativo",

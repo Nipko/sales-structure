@@ -12746,6 +12746,14 @@
   "agentQuality": {
     "title": "Centre de qualité de l'agent",
     "subtitle": "Identifiez ce qu'il reste à configurer, ce qui a été testé et ce qui se passe dans les conversations réelles.",
+    "ownerQuestions": {
+      "title": "Quatre questions sur votre agent", "description": "Commencez par les éléments utiles à vos décisions ; ouvrez ensuite les preuves techniques si nécessaire.",
+      "attending": { "title": "Répond-il aux clients et où ?", "confirmed": "Le service opérationnel est vérifié", "attention": "Un canal nécessite votre attention", "unverified": "Tous les canaux ne sont pas encore vérifiés", "detail": "Connecter un compte et pouvoir y répondre sont deux faits distincts." },
+      "capabilities": { "title": "Que sait-il et que peut-il faire ?", "answer": "{passed} contrôles vérifiés sur {applicable}", "detail": "Ouvrez le détail pour distinguer les informations, les actions et les limites de chaque capacité." },
+      "results": { "title": "Quels résultats obtient-il ?", "none": "Aucune activité réelle attribuable pour le moment", "insufficient": "Il y a {count} cas ; ils ne suffisent pas encore pour un signal utile", "observed": "Il y a {count} cas avec des preuves observables", "detail": "L’absence de trafic n’est pas une panne et une conversation seule ne prouve ni vente ni résolution." },
+      "next": { "title": "Que dois-je faire maintenant ?", "detail": "Une amélioration est priorisée selon les preuves et l’impact, sans devenir une note globale." },
+      "viewChannels": "Voir les canaux et contrôles", "viewCapabilities": "Voir les capacités", "viewResults": "Voir les preuves et priorités", "doNext": "Ouvrir l’action suivante"
+    },
     "loading": "Analyse des preuves disponibles…",
     "statusLabel": "État actuel",
     "agentInactive": "Agent inactif",

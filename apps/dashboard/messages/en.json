@@ -6871,15 +6871,15 @@
       "subtitle": "Review it in plain language. You can use it as is and complete the details only you know.",
       "useAsIs": "Use this foundation",
       "applied": "Foundation applied",
-      "offers": { "title": "What you offer", "why": "It helps recommend the right option.", "empty": "There are no prepared services for this business type yet.", "examplePrices": "Example prices are not published as real prices: confirm them in Services.", "quotePrices": "The agent will ask for the details needed before quoting.", "change": "Review services" },
+      "offers": { "title": "What you offer", "why": "It helps recommend the right option.", "empty": "There are no prepared services for this business type yet.", "examplePrices": "Customers do not see example prices as real prices: confirm them in Services.", "quotePrices": "The agent will ask for the details needed before quoting.", "change": "Review services" },
       "place": { "title": "Where and when you serve", "why": "It avoids promising service outside your hours or in the wrong place.", "prepared": "A starting schedule is ready for review.", "pending": "Business hours still need to be defined.", "note": "Confirm your address, service area, and hours before serving customers.", "change": "Review business and hours" },
       "purchase": { "title": "How customers buy or book", "why": "It defines the next step the agent will guide.", "empty": "The purchase journey still needs configuration.", "note": "You can change this journey when your operation changes.", "change": "Review the journey", "mode": { "appointment": "Book an appointment", "class": "Book a class", "table": "Book a table", "order": "Place an order", "quote": "Request a quote", "inform": "Information and contact" } },
       "questions": { "title": "Frequently asked questions", "why": "It gives consistent answers to recurring questions.", "progress": "{ready} of {total} answers are ready", "pending": "Complete {count} answers with real details from your business.", "complete": "The initial answers are ready for review.", "change": "Review questions" }
     },
     "optionalPaths": {
       "title": "Optional: teach it more after the first test",
-      "subtitle": "None of this blocks launch. Open each tool in another tab and publish only what you review.",
-      "knowledge": { "title": "Add documents", "description": "Upload text or files with readable text to the Knowledge Base and review the extracted content before publishing." },
+      "subtitle": "None of this blocks launch. Open each tool in another tab and use only what you confirm.",
+      "knowledge": { "title": "Add documents", "description": "Upload text or files with readable text to the Knowledge Base and confirm the extracted content before using it." },
       "learning": { "title": "Review conversations", "description": "Turn examples from conversations already in Parallly into learning, with human review and approval." },
       "simulation": { "title": "Simulate customers", "description": "Test several customer profiles and scenarios before exposing changes to real conversations." },
       "unsupported": "Photos, audio, and conversations stored only with another provider cannot be imported here. Use readable text or conversations already in Parallly."

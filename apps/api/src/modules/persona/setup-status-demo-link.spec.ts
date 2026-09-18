@@ -13,6 +13,7 @@ describe('setup-status: whether the agent\'s link answers right now', () => {
 
     function harness(options: {
         planWidget?: boolean | Error;
+        usageMode?: 'trial' | 'operational';
         allowance?: { enabled: boolean; messagesPerTenant: number; dailyCapPerPage?: number };
         source?: 'stored' | 'default' | 'fallback';
         used?: number | Error;
@@ -47,7 +48,10 @@ describe('setup-status: whether the agent\'s link answers right now', () => {
                 $queryRawUnsafe: jest.fn(async (sql: string) => {
                     if (sql.includes('FROM public.widget_configs')) {
                         if (options.noLink) throw new Error('widget table unavailable');
-                        return [{ widget_id: 'wgt_0a1b2c3d4e5f', agent_name: 'Luna', locale: 'es' }];
+                        return [{
+                            widget_id: 'wgt_0a1b2c3d4e5f', agent_name: 'Luna', locale: 'es',
+                            usage_mode: options.usageMode ?? 'trial',
+                        }];
                     }
                     if (sql.includes('agent_personas') && sql.includes('is_default')) {
                         return [{ id: '22222222-2222-4222-8222-222222222222', name: 'Luna', template_id: null, config_json: {} }];
@@ -64,14 +68,14 @@ describe('setup-status: whether the agent\'s link answers right now', () => {
     it('keeps the link itself and adds the two fields', async () => {
         expect(await demoLinkOf(harness({ used: 3 }))).toEqual({
             widgetId: 'wgt_0a1b2c3d4e5f', path: '/w/wgt_0a1b2c3d4e5f', agentName: 'Luna',
-            answers: true, unavailableReason: null,
+            usageMode: 'trial', answers: true, unavailableReason: null,
         });
     });
 
-    it('answers on a plan that includes the web chat, whatever the trial allowance says', async () => {
-        const h = harness({ planWidget: true, allowance: { enabled: false, messagesPerTenant: 0 }, used: 999 });
-        expect(await demoLinkOf(h)).toMatchObject({ answers: true, unavailableReason: null });
-        // A real channel is bounded by the plan, not by the trial: nothing else to read.
+    it('answers in operational mode on a plan that includes web chat, whatever the trial allowance says', async () => {
+        const h = harness({ usageMode: 'operational', planWidget: true, allowance: { enabled: false, messagesPerTenant: 0 }, used: 999 });
+        expect(await demoLinkOf(h)).toMatchObject({ usageMode: 'operational', answers: true, unavailableReason: null });
+        // An operational link is bounded by the plan, not by the trial: nothing else to read.
         expect(h.demoAllowance.getWithSource).not.toHaveBeenCalled();
         expect(h.throttleService.getDemoMessageUsage).not.toHaveBeenCalled();
     });
@@ -98,7 +102,7 @@ describe('setup-status: whether the agent\'s link answers right now', () => {
     });
 
     it.each([
-        ['the plan cannot be read', { planWidget: new Error('redis down'), allowance: { enabled: false, messagesPerTenant: 0 } }],
+        ['the plan cannot be read', { usageMode: 'operational' as const, planWidget: new Error('redis down'), allowance: { enabled: false, messagesPerTenant: 0 } }],
         ['the stored allowance cannot be read', { source: 'fallback' as const, allowance: { enabled: false, messagesPerTenant: 0 } }],
         ['the counter cannot be read', { used: new Error('redis down'), allowance: { enabled: true, messagesPerTenant: 0 } }],
         ['the allowance service is not there', { withoutAllowanceService: true }],

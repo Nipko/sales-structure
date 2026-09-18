@@ -412,7 +412,8 @@ describe("Home in day 0 without a channel", () => {
         try {
             expect(screen.container.querySelector('[aria-labelledby="initial-setup-card-title"]')).toBeNull();
             expect(homeSurfaces(screen.container).length).toBeGreaterThan(0);
-            expect(screen.container.textContent).toContain("Actividad reciente");
+            expect(screen.container.textContent).toContain("Comprueba la primera respuesta");
+            expect(screen.container.textContent).toContain("Abrir Inbox");
         } finally { screen.unmount(); }
     });
 
@@ -451,13 +452,15 @@ describe("Home in day 0 with a channel", () => {
         } finally { screen.unmount(); }
     });
 
-    it("gives the screen back once the card has nothing left to say", async () => {
+    it("keeps the first-reply proof as the only guide after setup is complete", async () => {
         jest.mocked(api.getAgentAssessment).mockResolvedValue(assessment("pass", "pass") as any);
         const screen = await renderHome();
         try {
             const text = screen.container.textContent ?? "";
-            expect(text).toContain("Actividad reciente");
-            expect(text).toContain("Uso de IA hoy");
+            expect(text).toContain("Comprueba la primera respuesta");
+            expect(text).toContain("WhatsApp");
+            expect(text).not.toContain("Actividad reciente");
+            expect(text).not.toContain("Uso de IA hoy");
         } finally { screen.unmount(); }
     });
 });

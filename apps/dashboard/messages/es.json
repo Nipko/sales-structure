@@ -6878,9 +6878,9 @@
     },
     "optionalPaths": {
       "title": "Opcional: enséñale más después de la primera prueba",
-      "subtitle": "Nada de esto bloquea la puesta en marcha. Abre cada herramienta en otra pestaña y publica solo lo que revises.",
-      "knowledge": { "title": "Agregar documentos", "description": "Carga texto o archivos con texto legible en la Base de conocimiento y revisa lo extraído antes de publicarlo." },
-      "learning": { "title": "Revisar conversaciones", "description": "Convierte ejemplos de conversaciones que ya están en Parallly en aprendizaje, con revisión y aprobación humana." },
+      "subtitle": "Nada de esto bloquea la puesta en marcha. Abre cada herramienta en otra pestaña y usa solo lo que confirmes.",
+      "knowledge": { "title": "Agregar documentos", "description": "Carga texto o archivos con texto legible en la Base de conocimiento y confirma lo extraído antes de usarlo." },
+      "learning": { "title": "Revisar conversaciones", "description": "Convierte ejemplos de conversaciones que ya están en Parallly en aprendizaje, siempre con confirmación humana." },
       "simulation": { "title": "Simular clientes", "description": "Prueba varios perfiles de cliente y escenarios antes de exponer cambios a conversaciones reales." },
       "unsupported": "Las fotos, audios y conversaciones alojadas solo en otro proveedor no se importan desde aquí. Usa texto legible o conversaciones que ya estén en Parallly."
     },

@@ -6871,16 +6871,16 @@
       "subtitle": "Revise-a em linguagem simples. Você pode usá-la como está e completar os dados que só você conhece.",
       "useAsIs": "Usar esta base",
       "applied": "Base aplicada",
-      "offers": { "title": "O que você oferece", "why": "Ajuda a recomendar a opção certa.", "empty": "Ainda não há serviços preparados para este tipo de negócio.", "examplePrices": "Os preços de exemplo não são publicados como reais: confirme-os em Serviços.", "quotePrices": "O agente pedirá os dados necessários antes de cotar.", "change": "Revisar serviços" },
+      "offers": { "title": "O que você oferece", "why": "Ajuda a recomendar a opção certa.", "empty": "Ainda não há serviços preparados para este tipo de negócio.", "examplePrices": "Os clientes não veem preços de exemplo como reais: confirme-os em Serviços.", "quotePrices": "O agente pedirá os dados necessários antes de cotar.", "change": "Revisar serviços" },
       "place": { "title": "Onde e quando atende", "why": "Evita prometer atendimento fora do horário ou no lugar errado.", "prepared": "Há um horário inicial preparado para revisar.", "pending": "Ainda falta definir o horário de atendimento.", "note": "Confirme endereço, área de cobertura e horários antes de atender clientes.", "change": "Revisar negócio e horários" },
       "purchase": { "title": "Como compram ou reservam", "why": "Define o próximo passo que o agente orientará.", "empty": "A jornada de compra ainda precisa de configuração.", "note": "Você poderá mudar esta jornada quando sua operação mudar.", "change": "Revisar a jornada", "mode": { "appointment": "Reserva de horário", "class": "Reserva de aula", "table": "Reserva de mesa", "order": "Pedido", "quote": "Orçamento", "inform": "Informação e contato" } },
-      "questions": { "title": "Perguntas frequentes", "why": "Oferece respostas consistentes às dúvidas mais comuns.", "progress": "{ready} de {total} respostas estão prontas", "pending": "Complete {count} respostas com dados reais do seu negócio.", "complete": "As respostas iniciais estão prontas para revisão.", "change": "Revisar perguntas" }
+      "questions": { "title": "Perguntas frequentes", "why": "Oferece respostas consistentes às dúvidas mais comuns.", "progress": "{ready} de {total} respostas estão prontas", "pending": "Complete {count} respostas com dados reais do seu negócio.", "complete": "As respostas iniciais estão prontas para confirmar.", "change": "Revisar perguntas" }
     },
     "optionalPaths": {
       "title": "Opcional: ensine mais depois do primeiro teste",
-      "subtitle": "Nada disso bloqueia a ativação. Abra cada ferramenta em outra aba e publique apenas o que revisar.",
-      "knowledge": { "title": "Adicionar documentos", "description": "Envie texto ou arquivos com texto legível para a Base de conhecimento e revise o conteúdo extraído antes de publicar." },
-      "learning": { "title": "Revisar conversas", "description": "Transforme exemplos de conversas que já estão no Parallly em aprendizado, com revisão e aprovação humana." },
+      "subtitle": "Nada disso bloqueia a ativação. Abra cada ferramenta em outra aba e use apenas o que confirmar.",
+      "knowledge": { "title": "Adicionar documentos", "description": "Envie texto ou arquivos com texto legível para a Base de conhecimento e confirme o conteúdo extraído antes de usá-lo." },
+      "learning": { "title": "Revisar conversas", "description": "Transforme exemplos de conversas que já estão no Parallly em aprendizado, sempre com confirmação humana." },
       "simulation": { "title": "Simular clientes", "description": "Teste vários perfis de clientes e cenários antes de expor mudanças a conversas reais." },
       "unsupported": "Fotos, áudios e conversas armazenadas apenas em outro provedor não são importados aqui. Use texto legível ou conversas que já estejam no Parallly."
     },

@@ -106,7 +106,7 @@ describe('the durable lane records the first reply', () => {
         const h = harness();
         await expect(h.processor.process(h.job)).resolves.toBe('dispatch:sent:wamid.OK');
         expect(recordFirstReplyMock).toHaveBeenCalledTimes(1);
-        expect(recordFirstReplyMock).toHaveBeenCalledWith(h.prisma, tenantId, { source: 'dispatch' });
+        expect(recordFirstReplyMock).toHaveBeenCalledWith(h.prisma, tenantId, { source: 'dispatch', channelType: 'whatsapp' });
     });
 
     it('a proactive send (campaign, reminder) proves nothing about attending a customer', async () => {
@@ -135,14 +135,14 @@ describe('the durable lane records the first reply', () => {
         const h = harness({ settleSentThrows: true });
         await expect(h.processor.process(h.job)).resolves.toBe('dispatch:sent:wamid.OK');
         expect(recordFirstReplyMock).toHaveBeenCalledTimes(1);
-        expect(recordFirstReplyMock).toHaveBeenCalledWith(h.prisma, tenantId, { source: 'dispatch' });
+        expect(recordFirstReplyMock).toHaveBeenCalledWith(h.prisma, tenantId, { source: 'dispatch', channelType: 'whatsapp' });
     });
 
     it('an accepted reply whose outcome could not be written down still activates the account', async () => {
         const h = harness({ settleSentThrows: true, lateAcceptance: null });
         await expect(h.processor.process(h.job)).resolves.toBe('dispatch:outcome_unrecorded:accepted');
         expect(recordFirstReplyMock).toHaveBeenCalledTimes(1);
-        expect(recordFirstReplyMock).toHaveBeenCalledWith(h.prisma, tenantId, { source: 'dispatch' });
+        expect(recordFirstReplyMock).toHaveBeenCalledWith(h.prisma, tenantId, { source: 'dispatch', channelType: 'whatsapp' });
     });
 
     it('a proactive send stays out of it on those paths too', async () => {

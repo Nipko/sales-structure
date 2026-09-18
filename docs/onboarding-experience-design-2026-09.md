@@ -1,8 +1,10 @@
 # La experiencia de configuración guiada — diseño objetivo (septiembre 2026, v1.1)
 
+> **Actualización del 18-sep-2026:** conservar este documento como diseño base e historia de decisiones. La [propuesta v2 investigada](onboarding-experience-plan-v2-2026-09.md) plantea cambios de recorrido, confirmación de hechos, activación y medición; todavía no se declara implementada ni validada con usuarios. Para lo construido y pendiente consultar la [auditoría técnica](onboarding-review-and-completion-plan-2026-09-18.md). Las reglas de seis pasos, diez minutos universales, cero avisos y rojo solo para regresiones se revisan explícitamente en v2.
+
 > **Qué es este documento.** El diseño completo de la experiencia que queremos que viva cualquier persona sin conocimientos técnicos al configurar su agente en Parallly: el día 0 (onboarding), el después (mejorar y cambiar cosas) y el panel de salud. No es una lista de arreglos: es la experiencia nueva. La evidencia de por qué la actual no sirve está en `docs/onboarding-diagnosis-2026-09.md`; aquí se usa solo cuando explica una decisión.
 > **Alcance.** Los cinco canales conversacionales (WhatsApp, Instagram, Messenger, Telegram y el chat web) en pie de igualdad; las 18 industrias y sus subtipos como fuente de ejemplos y sugerencias; escritorio y celular.
-> **Estado.** Diseño para decidir. Nada construido. **v1.1** incorpora la revisión adversarial de tres lentes (dueña sin conocimientos, factibilidad sobre el código real, contenido por rubro): 33 huecos, de los cuales 4 eran bloqueantes y están resueltos en el texto; el detalle está en `docs/onboarding-diagnosis-2026-09-workdir/design_review_*.md` y el resumen en §12.
+> **Estado histórico al redactar v1.1.** Diseño previo a su implementación. Posteriormente se construyeron partes de las olas 1–7 y comenzó la 8; el estado actual está en la auditoría enlazada arriba. **v1.1** incorporó la revisión adversarial de tres lentes (dueña sin conocimientos, factibilidad sobre el código real, contenido por rubro): 33 huecos, de los cuales 4 eran bloqueantes y quedaron resueltos en el diseño; el detalle está en `docs/onboarding-diagnosis-2026-09-workdir/design_review_*.md` y el resumen en §12.
 
 ---
 

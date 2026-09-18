@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import type { VerticalRecipeExtras } from '@parallext/shared';
 import { PURCHASE_MODES, RECIPE_BLANKS, RECIPE_FAMILIES, RECIPE_SHAPE } from '@parallext/shared';
@@ -426,7 +427,6 @@ export class OtroRecipeService {
     }
 
     private hash(value: string): string {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        return require('crypto').createHash('sha256').update(value.trim()).digest('hex').slice(0, 32);
+        return createHash('sha256').update(value.trim()).digest('hex').slice(0, 32);
     }
 }

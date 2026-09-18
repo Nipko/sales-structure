@@ -3,6 +3,8 @@ import { RedisService } from '../redis/redis.service';
 import {
     demoLinkAvailability,
     ensureDemoWidget,
+    setDemoLinkUsageMode,
+    type DemoLinkUsageMode,
     type DemoLinkAvailability,
     type SetupStatusDemoLink,
 } from '../widget/widget-demo-link';
@@ -37,6 +39,7 @@ import {
 import type { OnboardingStage } from '@parallext/shared';
 import { RequiresVerifiedEmail } from '../../common/decorators/requires-verified-email.decorator';
 import { recordOnboardingClientEvents, recordOnboardingEvent } from '../../common/utils/onboarding-event.util';
+import { recordChannelConnected } from '../channels/bind-default-agent.util';
 
 @ApiTags('persona')
 @Controller('persona')
@@ -83,13 +86,14 @@ export class PersonaController {
      * not tell the owner their link went quiet. A stored allowance that could
      * not be read (`fallback`) is unknown, not the defaults.
      */
-    private async readDemoLinkAvailability(tenantId: string): Promise<DemoLinkAvailability> {
+    private async readDemoLinkAvailability(tenantId: string, usageMode: DemoLinkUsageMode): Promise<DemoLinkAvailability> {
         // Each read is an async function, so a missing dependency throws into
         // the promise and lands here as `null` too.
         const unknown = <T>(read: () => Promise<T>): Promise<T | null> => read().catch(() => null);
         const planIncludesWebChat = await unknown(async () =>
             (await this.throttleService.getPlanFeatures(tenantId))?.widget === true);
-        if (planIncludesWebChat !== false) return demoLinkAvailability({ planIncludesWebChat, allowance: null, used: null });
+        if (usageMode === 'operational')
+            return demoLinkAvailability({ usageMode, planIncludesWebChat, allowance: null, used: null });
         const [allowance, used] = await Promise.all([
             unknown(async () => {
                 if (!this.demoAllowance) return null;
@@ -102,7 +106,7 @@ export class PersonaController {
                 return Number.isFinite(value) ? value : null;
             }),
         ]);
-        return demoLinkAvailability({ planIncludesWebChat, allowance, used });
+        return demoLinkAvailability({ usageMode, planIncludesWebChat, allowance, used });
     }
 
     /**
@@ -687,6 +691,34 @@ export class PersonaController {
         return { success: true, data: { accepted } };
     }
 
+    @Post(':tenantId/demo-link/usage-mode')
+    @Roles('tenant_admin')
+    @ApiOperation({ summary: 'Choose whether the stable public link is a capped trial or an operational web-chat channel' })
+    async setDemoLinkMode(
+        @Param('tenantId') tenantId: string,
+        @Body() body: { usageMode?: unknown },
+    ) {
+        const usageMode = body?.usageMode;
+        if (usageMode !== 'trial' && usageMode !== 'operational')
+            throw new BadRequestException({ error: 'invalid_demo_link_usage_mode' });
+        if (usageMode === 'operational') {
+            const features = await this.throttleService.getPlanFeatures(tenantId);
+            if (features?.widget !== true)
+                throw new BadRequestException({ error: 'web_widget_plan_required' });
+        }
+        await ensureDemoWidget(this.prisma, tenantId, { redis: this.redis });
+        const link = await setDemoLinkUsageMode(this.prisma, tenantId, usageMode);
+        if (!link) throw new BadRequestException({ error: 'demo_link_unavailable' });
+        await this.redis?.del(`widget:config:${link.widgetId}`).catch(() => undefined);
+        if (usageMode === 'operational') {
+            await recordChannelConnected(this.prisma, tenantId, 'web_widget');
+        }
+        return {
+            success: true,
+            data: { ...link, ...(await this.readDemoLinkAvailability(tenantId, usageMode)) },
+        };
+    }
+
     @Get(':tenantId/setup-status')
     @ApiOperation({ summary: 'Get setup wizard completion status + onboarding checklist data' })
     async getSetupStatus(@Param('tenantId') tenantId: string) {
@@ -851,8 +883,17 @@ export class PersonaController {
         // the platform or its replies used up.
         const link = await ensureDemoWidget(this.prisma, tenantId, { agentName: defaultAgent?.name ?? defaultAgentName, redis: this.redis });
         const demoLink: SetupStatusDemoLink | null = link
-            ? { ...link, ...(await this.readDemoLinkAvailability(tenantId)) }
+            ? { ...link, ...(await this.readDemoLinkAvailability(tenantId, link.usageMode)) }
             : null;
+        const operationalDemoConfirmed = demoLink?.usageMode === 'operational'
+            ? await Promise.resolve().then(() => this.throttleService.getPlanFeatures(tenantId))
+                .then(features => features?.widget === true)
+                .catch(() => false)
+            : false;
+        if (operationalDemoConfirmed && demoLink?.answers) {
+            hasAnyChannel = true;
+            if (!connectedChannelTypes.includes('web_widget')) connectedChannelTypes.push('web_widget');
+        }
         let handoffRecipient: { label: string; emailVerified: boolean | null; source: 'billing' | 'owner' } | null = null;
         if (tenant?.billingEmail) {
             handoffRecipient = { label: tenant.billingEmail, emailVerified: null, source: 'billing' };

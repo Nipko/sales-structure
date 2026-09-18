@@ -54,29 +54,22 @@ export function widgetRateLimitedText(locale?: string | null): string {
 }
 
 /**
- * D11/D19 (audit #61): is this widget, right now, the platform-paid TRIAL?
+ * Is this turn on the platform-paid trial lane?
  *
- * Only the public link can be, and only while the tenant's plan does not
- * include the web chat. The moment it does, the same link is a real channel:
- * the plan's quota, no daily cap of the trial page, a person when a customer
- * asks for one, and no "trial" label in front of the business's customers.
- * The core's quota lane (`processWidgetMessage`: `options.demo && plan.widget
- * !== true`) is this same predicate.
- *
- * A plan that cannot be read, or nobody to read it, answers "trial": a capped
- * page that says why is recoverable, an uncapped platform-paid one is not.
+ * The purpose is persisted. Buying or changing a plan never silently turns a
+ * link the owner was testing into a customer-facing channel. Old rows and old
+ * cached configs safely remain trials.
  */
+export type DemoLinkUsageMode = 'trial' | 'operational';
+
 export async function isTrialLink(
-    widget: { is_demo?: unknown; tenant_id?: unknown } | null | undefined,
-    throttle?: { getPlanFeatures(tenantId: string): Promise<{ widget?: unknown }> } | null,
+    widget: { is_demo?: unknown; usage_mode?: unknown } | null | undefined,
+    _throttle?: { getPlanFeatures(tenantId: string): Promise<{ widget?: unknown }> } | null,
 ): Promise<boolean> {
     if (widget?.is_demo !== true) return false;
-    if (!throttle || typeof widget.tenant_id !== 'string' || !widget.tenant_id) return true;
-    try {
-        return (await throttle.getPlanFeatures(widget.tenant_id)).widget !== true;
-    } catch {
-        return true;
-    }
+    // Old rows and old cached configs have no mode. They remain trials until
+    // the owner explicitly chooses to use the link with customers.
+    return widget.usage_mode !== 'operational';
 }
 
 export interface DemoLink {
@@ -84,10 +77,11 @@ export interface DemoLink {
     /** Path on the dashboard host; the absolute URL is the caller's origin + path. */
     path: string;
     agentName: string;
+    usageMode: DemoLinkUsageMode;
 }
 
 /** Why the agent's link does not answer right now (F11). */
-export type DemoLinkUnavailableReason = 'switched_off' | 'allowance_used';
+export type DemoLinkUnavailableReason = 'switched_off' | 'allowance_used' | 'plan_required';
 
 /**
  * Whether a visitor who writes on the agent's link gets a reply right now.
@@ -120,12 +114,17 @@ export type SetupStatusDemoLink = DemoLink & DemoLinkAvailability;
  * went quiet, and the page itself says why when a visitor hits a real limit.
  */
 export function demoLinkAvailability(input: {
+    usageMode: DemoLinkUsageMode;
     planIncludesWebChat: boolean | null;
     allowance: { enabled: boolean; messagesPerTenant: number } | null;
     used: number | null;
 }): DemoLinkAvailability {
     const answering: DemoLinkAvailability = { answers: true, unavailableReason: null };
-    if (input.planIncludesWebChat !== false || !input.allowance) return answering;
+    if (input.usageMode === 'operational') {
+        if (input.planIncludesWebChat === false) return { answers: false, unavailableReason: 'plan_required' };
+        return answering;
+    }
+    if (!input.allowance) return answering;
     if (input.allowance.enabled === false) return { answers: false, unavailableReason: 'switched_off' };
     if (input.used === null || !Number.isFinite(input.used)) return answering;
     return input.allowance.messagesPerTenant > input.used ? answering : { answers: false, unavailableReason: 'allowance_used' };
@@ -135,15 +134,36 @@ export function demoLinkPath(widgetId: string): string {
     return `/w/${widgetId}`;
 }
 
+/** Persist the owner's choice without replacing the stable public URL. */
+export async function setDemoLinkUsageMode(
+    prisma: PrismaService,
+    tenantId: string,
+    usageMode: DemoLinkUsageMode,
+): Promise<DemoLink | null> {
+    const rows = await prisma.$queryRawUnsafe(
+        `UPDATE public.widget_configs
+            SET usage_mode = $2, updated_at = NOW()
+          WHERE tenant_id = $1::uuid AND is_demo = true AND is_active = true
+          RETURNING widget_id, agent_name, usage_mode`,
+        tenantId, usageMode,
+    );
+    const row = Array.isArray(rows) ? (rows as any[])[0] : null;
+    return row?.widget_id ? {
+        widgetId: String(row.widget_id),
+        path: demoLinkPath(String(row.widget_id)),
+        agentName: String(row.agent_name || ''),
+        usageMode: row.usage_mode === 'operational' ? 'operational' : 'trial',
+    } : null;
+}
+
 /**
  * "El enlace de {Nombre}" (D11): the one public page where anyone can talk to
  * the tenant's agent, born at day 0 on top of the web chat widget.
  *
- * It lives ONLY in public.widget_configs with is_demo = true. On purpose it
- * is not a channel_accounts row, is not bound to the agent, and is skipped by
- * the readers that define "canal conectado": a demo is a place to show the
- * agent to a partner while Meta takes days, never an activation. The default
- * agent already answers web_widget without a binding (serving-persona).
+ * It lives only in public.widget_configs with is_demo = true. It begins in
+ * trial mode and does not count as a connection. If the owner explicitly
+ * chooses operational mode, the stable URL becomes a real web-chat channel;
+ * that transition is handled by the authenticated endpoint, not here.
  *
  * Idempotent (one demo widget per tenant) and never throws: a failed
  * provisioning must not break a signup nor a setup-status read; the next
@@ -156,7 +176,7 @@ export async function ensureDemoWidget(
 ): Promise<DemoLink | null> {
     try {
         const existing = await prisma.$queryRawUnsafe<any[]>(
-            `SELECT widget_id, agent_name, locale
+            `SELECT widget_id, agent_name, locale, COALESCE(usage_mode, 'trial') AS usage_mode
                FROM public.widget_configs
               WHERE tenant_id = $1::uuid AND is_demo = true AND is_active = true
               ORDER BY created_at ASC
@@ -179,9 +199,9 @@ export async function ensureDemoWidget(
                 ).catch(() => null);
                 // The public config is cached for 5 minutes by widget id.
                 await options.redis?.del(`widget:config:${String(found.widget_id)}`).catch(() => {});
-                return { widgetId: String(found.widget_id), path: demoLinkPath(String(found.widget_id)), agentName: wanted };
+                return { widgetId: String(found.widget_id), path: demoLinkPath(String(found.widget_id)), agentName: wanted, usageMode: found.usage_mode === 'operational' ? 'operational' : 'trial' };
             }
-            return { widgetId: String(found.widget_id), path: demoLinkPath(String(found.widget_id)), agentName: String(found.agent_name || '') };
+            return { widgetId: String(found.widget_id), path: demoLinkPath(String(found.widget_id)), agentName: String(found.agent_name || ''), usageMode: found.usage_mode === 'operational' ? 'operational' : 'trial' };
         }
 
         const tenantRows = await prisma.$queryRawUnsafe<any[]>(
@@ -204,8 +224,8 @@ export async function ensureDemoWidget(
         // racing the signup, cannot create two demo links.
         const inserted = await prisma.$queryRawUnsafe<any[]>(
             `INSERT INTO public.widget_configs
-                (tenant_id, widget_id, name, agent_name, welcome_message, pre_chat_enabled, pre_chat_fields, allowed_domains, locale, is_demo)
-             SELECT $1::uuid, $2, $3, $4, $5, false, '[]'::jsonb, '{}'::text[], $6, true
+                (tenant_id, widget_id, name, agent_name, welcome_message, pre_chat_enabled, pre_chat_fields, allowed_domains, locale, is_demo, usage_mode)
+             SELECT $1::uuid, $2, $3, $4, $5, false, '[]'::jsonb, '{}'::text[], $6, true, 'trial'
               WHERE NOT EXISTS (SELECT 1 FROM public.widget_configs WHERE tenant_id = $1::uuid AND is_demo = true AND is_active = true)
              RETURNING widget_id, agent_name`,
             tenantId, widgetId, demoLinkName(agentName, locale), agentName, defaults.welcomeMessage, locale,
@@ -216,16 +236,16 @@ export async function ensureDemoWidget(
             return [] as any[];
         });
         const row = Array.isArray(inserted) ? inserted[0] : null;
-        if (row?.widget_id) return { widgetId: String(row.widget_id), path: demoLinkPath(String(row.widget_id)), agentName: String(row.agent_name || agentName) };
+        if (row?.widget_id) return { widgetId: String(row.widget_id), path: demoLinkPath(String(row.widget_id)), agentName: String(row.agent_name || agentName), usageMode: 'trial' };
         // Lost the race (the partial unique index turned the second insert into
         // a 23505, or the NOT EXISTS saw the committed row): read the winner.
         const again = await prisma.$queryRawUnsafe<any[]>(
-            `SELECT widget_id, agent_name FROM public.widget_configs
+            `SELECT widget_id, agent_name, COALESCE(usage_mode, 'trial') AS usage_mode FROM public.widget_configs
               WHERE tenant_id = $1::uuid AND is_demo = true AND is_active = true ORDER BY created_at ASC LIMIT 1`,
             tenantId,
         );
         const other = Array.isArray(again) ? again[0] : null;
-        return other?.widget_id ? { widgetId: String(other.widget_id), path: demoLinkPath(String(other.widget_id)), agentName: String(other.agent_name || agentName) } : null;
+        return other?.widget_id ? { widgetId: String(other.widget_id), path: demoLinkPath(String(other.widget_id)), agentName: String(other.agent_name || agentName), usageMode: other.usage_mode === 'operational' ? 'operational' : 'trial' } : null;
     } catch (error: any) {
         logger.warn(`ensureDemoWidget failed for ${tenantId}: ${error?.message}`);
         return null;

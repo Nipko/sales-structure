@@ -706,6 +706,8 @@ export const api = {
 
     getSetupStatus: (tenantId: string) =>
         apiGet(`/persona/${tenantId}/setup-status`),
+    setDemoLinkUsageMode: (tenantId: string, usageMode: 'trial' | 'operational') =>
+        apiPost(`/persona/${tenantId}/demo-link/usage-mode`, { usageMode }),
     recordOnboardingEvents: (tenantId: string, data: {
         sessionId: string;
         events: Array<{

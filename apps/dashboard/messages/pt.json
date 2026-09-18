@@ -4566,10 +4566,15 @@
       "agentFallback": "seu agente",
       "descriptionTrial": "Serve para testar {agentName} e mostrar para alguém: responde até um limite de mensagens e não passa a conversa para uma pessoa.",
       "trialUpgrade": "Com um plano que inclua o chat web, este link atende seus clientes sem esse limite e pode passar a conversa para a sua equipe.",
+      "useWithCustomers": "Usar para atender clientes",
+      "useAsTrial": "Deixar apenas como teste",
+      "changingMode": "Salvando…",
+      "modeError": "Não foi possível alterar o uso do link. Tente novamente.",
       "plans": "Ver planos",
       "paused": {
         "switchedOff": "O link de teste de {agentName} está pausado, então por enquanto não responde. Para que atenda, conecte um canal ou escolha um plano com o chat web.",
-        "allowanceUsed": "{agentName} já usou as respostas grátis do link de teste, então não responde mais por lá. Para que continue atendendo, conecte um canal ou escolha um plano com o chat web."
+        "allowanceUsed": "{agentName} já usou as respostas grátis do link de teste, então não responde mais por lá. Para que continue atendendo, conecte um canal ou escolha um plano com o chat web.",
+        "planRequired": "Este link estava atendendo clientes, mas o plano atual não inclui mais chat web. Escolha um plano compatível ou deixe-o apenas como teste."
       },
       "pausedBadge": "Pausado"
     }
@@ -7204,10 +7209,16 @@
       "agentFallback": "seu agente",
       "whyTrial": "Serve para testar {agentName} e mostrar para alguém: responde até um limite de mensagens e não passa a conversa para uma pessoa.",
       "trialUpgrade": "Com um plano que inclua o chat web, este mesmo link atende seus clientes sem esse limite e pode passar a conversa para a sua equipe; aí ele já serve para a bio do seu Instagram e o seu site.",
+      "useWithCustomers": "Usar para atender clientes",
+      "useAsTrial": "Deixar apenas como teste",
+      "activateExplanation": "Seu plano permite usar este mesmo link com clientes. Ao ativá-lo, as mensagens contam no seu plano e podem ser transferidas para uma pessoa.",
+      "operationalExplanation": "Este link está atendendo clientes: usa as mensagens do seu plano e permite transferir a conversa para uma pessoa.",
+      "modeError": "Não foi possível alterar o uso do link. Tente novamente.",
       "plans": "Ver planos",
       "paused": {
         "switchedOff": "O link de teste de {agentName} está pausado, então por enquanto não responde. Para que atenda, conecte um canal ou escolha um plano com o chat web.",
-        "allowanceUsed": "{agentName} já usou as respostas grátis do link de teste, então não responde mais por lá. Para que continue atendendo, conecte um canal ou escolha um plano com o chat web."
+        "allowanceUsed": "{agentName} já usou as respostas grátis do link de teste, então não responde mais por lá. Para que continue atendendo, conecte um canal ou escolha um plano com o chat web.",
+        "planRequired": "Este link estava atendendo clientes, mas o plano atual não inclui mais chat web. Escolha um plano compatível ou deixe-o apenas como teste."
       }
     }
   },

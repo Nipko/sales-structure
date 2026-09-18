@@ -291,7 +291,7 @@ describe('ConversationsService widget containment', () => {
             },
         });
         (service as any).demoAllowance = { get: jest.fn().mockResolvedValue({ enabled: true, messagesPerTenant: 200, dailyCapPerPage: 60 }) };
-        const text = await collect(service.processWidgetMessage('10000000-0000-4000-8000-000000000001', 'tenant_1', '20000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000003', 'hello', { inboundMessageId: '40000000-0000-4000-8000-000000000004', channelAccountId: 'widget', demo: true }));
+        const text = await collect(service.processWidgetMessage('10000000-0000-4000-8000-000000000001', 'tenant_1', '20000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000003', 'hello', { inboundMessageId: '40000000-0000-4000-8000-000000000004', channelAccountId: 'widget', trialTurn: true }));
         expect(text).toBe('safe reply');
         expect(reserveDemoMessageCount).toHaveBeenCalledWith('10000000-0000-4000-8000-000000000001', 'web_widget:40000000-0000-4000-8000-000000000004', 200);
         expect(commitDemoMessageCount).toHaveBeenCalledTimes(1);
@@ -307,20 +307,19 @@ describe('ConversationsService widget containment', () => {
             },
         });
         (service as any).demoAllowance = { get: jest.fn().mockResolvedValue({ enabled: true, messagesPerTenant: 200, dailyCapPerPage: 60 }) };
-        const text = await collect(service.processWidgetMessage('10000000-0000-4000-8000-000000000001', 'tenant_1', '20000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000003', 'hello', { inboundMessageId: '40000000-0000-4000-8000-000000000004', channelAccountId: 'widget', demo: true }));
+        const text = await collect(service.processWidgetMessage('10000000-0000-4000-8000-000000000001', 'tenant_1', '20000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000003', 'hello', { inboundMessageId: '40000000-0000-4000-8000-000000000004', channelAccountId: 'widget', trialTurn: true }));
         expect(text).toMatch(/message cap|tope de mensajes/i);
         expect((service as any).generateResponse).not.toHaveBeenCalled();
         (service as any).demoAllowance = { get: jest.fn().mockResolvedValue({ enabled: false, messagesPerTenant: 0, dailyCapPerPage: 1 }) };
-        await expect(service.processWidgetMessage('10000000-0000-4000-8000-000000000001', 'tenant_1', '20000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000003', 'hello', { inboundMessageId: '50000000-0000-4000-8000-000000000005', channelAccountId: 'widget', demo: true })).resolves.toBeNull();
+        await expect(service.processWidgetMessage('10000000-0000-4000-8000-000000000001', 'tenant_1', '20000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000003', 'hello', { inboundMessageId: '50000000-0000-4000-8000-000000000005', channelAccountId: 'widget', trialTurn: true })).resolves.toBeNull();
     });
-    // The promise the cap text makes ("cuando el negocio active su plan, el chat
-    // sigue") has to be true: with the web chat in the plan, the same link runs
-    // on the plan quota and the platform stops paying.
-    it('the same link falls through to the plan lane once the plan includes the web chat', async () => {
+    // The same stable URL enters the plan lane only after the owner explicitly
+    // chooses operational mode; buying a plan alone does not repurpose it.
+    it('the same link uses the plan lane after the owner makes it operational', async () => {
         const reserveDemoMessageCount = jest.fn();
         const { service, throttle } = makeService({ throttle: { reserveDemoMessageCount, releaseDemoMessageCount: jest.fn() } });
         (service as any).demoAllowance = { get: jest.fn().mockResolvedValue({ enabled: true, messagesPerTenant: 0, dailyCapPerPage: 60 }) };
-        const text = await collect(service.processWidgetMessage('10000000-0000-4000-8000-000000000001', 'tenant_1', '20000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000003', 'hello', { inboundMessageId: '40000000-0000-4000-8000-000000000004', channelAccountId: 'widget', demo: true }));
+        const text = await collect(service.processWidgetMessage('10000000-0000-4000-8000-000000000001', 'tenant_1', '20000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000003', 'hello', { inboundMessageId: '40000000-0000-4000-8000-000000000004', channelAccountId: 'widget', trialTurn: false }));
         expect(text).toBe('safe reply');
         expect(reserveDemoMessageCount).not.toHaveBeenCalled();
         expect(throttle.reserveAiMessageCount).toHaveBeenCalledWith('10000000-0000-4000-8000-000000000001', 'web_widget:40000000-0000-4000-8000-000000000004', 10);
@@ -472,17 +471,16 @@ describe('ConversationsService widget containment', () => {
             });
             (service as any).demoAllowance = { get: jest.fn().mockResolvedValue({ enabled: true, messagesPerTenant: 200, dailyCapPerPage: 60 }) };
             // The visitor got a real answer from the model…
-            expect(await collect(turn(service, { demo: true }))).toBe('safe reply');
+            expect(await collect(turn(service, { trialTurn: true }))).toBe('safe reply');
             // …and still is not a customer.
             expect(recordFirstReplyMock).not.toHaveBeenCalled();
         });
 
-        it('the demo link never activates either once the plan includes the web chat', async () => {
-            // `demoTurn` is false here (the plan pays), but the page is still the demo.
-            const { service, throttle } = makeService();
-            expect(await collect(turn(service, { demo: true }))).toBe('safe reply');
+        it('an explicitly operational public link activates like any real web chat', async () => {
+            const { service, throttle, prisma } = makeService();
+            expect(await collect(turn(service, { trialTurn: false }))).toBe('safe reply');
             expect(throttle.commitAiMessageCount).toHaveBeenCalledTimes(1);
-            expect(recordFirstReplyMock).not.toHaveBeenCalled();
+            expect(recordFirstReplyMock).toHaveBeenCalledWith(prisma, tenant, { source: 'web_widget' });
         });
 
         it('a canned sentence is not the agent answering anybody', async () => {

@@ -216,7 +216,7 @@ export class WidgetService implements OnModuleInit {
         page?: string;
         resumeToken?: string;
     }): Promise<{ sessionId: string; token: string }> {
-        if (!await this.isTenantWidgetRuntimeAvailable(widgetConfig?.tenant_id, 'write', widgetConfig?.is_demo === true)) {
+        if (!await this.isTenantWidgetRuntimeAvailable(widgetConfig?.tenant_id, 'write', widgetConfig?.is_demo === true, widgetConfig?.usage_mode)) {
             throw new ForbiddenException({ error: 'subscription_unavailable' });
         }
         if (data.resumeToken) {
@@ -258,7 +258,7 @@ export class WidgetService implements OnModuleInit {
             }
             const rows: any[] = await this.prisma.$queryRawUnsafe(
                 `SELECT ws.*, wc.tenant_id, wc.widget_id, wc.allowed_domains,
-                        wc.is_active AS widget_is_active, wc.is_demo, wc.locale AS widget_locale
+                        wc.is_active AS widget_is_active, wc.is_demo, wc.usage_mode, wc.locale AS widget_locale
                  FROM public.widget_sessions ws
                  JOIN public.widget_configs wc ON wc.id = ws.widget_config_id AND wc.tenant_id = ws.tenant_id
                  WHERE ws.id = $1::uuid
@@ -275,7 +275,7 @@ export class WidgetService implements OnModuleInit {
                 this.logger.warn(`[Widget] token claim mismatch for session ${decoded.sessionId}`);
                 return null;
             }
-            if (!await this.isTenantWidgetRuntimeAvailable(row.tenant_id, 'read', row.is_demo === true)) return null;
+            if (!await this.isTenantWidgetRuntimeAvailable(row.tenant_id, 'read', row.is_demo === true, row.usage_mode)) return null;
             return row;
         } catch {
             return null;
@@ -293,7 +293,7 @@ export class WidgetService implements OnModuleInit {
             config.id, config.tenant_id, config.widget_id,
         );
         if (!active?.length) return false;
-        return this.isTenantWidgetRuntimeAvailable(config.tenant_id, 'read', config.is_demo === true);
+        return this.isTenantWidgetRuntimeAvailable(config.tenant_id, 'read', config.is_demo === true, config.usage_mode);
     }
 
     /**
@@ -306,13 +306,14 @@ export class WidgetService implements OnModuleInit {
         tenantId: string,
         mode: SubscriptionAccessMode = 'read',
         demo = false,
+        usageMode?: unknown,
     ): Promise<boolean> {
         if (!await resolveReadyTenantContext(this.prisma, this.redis, tenantId)) return false;
         const entitlement = await resolveTenantSubscriptionAccess(this.prisma, tenantId, mode);
         if (!entitlement.allowed) return false;
         // The allowance only ADDS a lane. A tenant whose plan includes the web
         // chat keeps its widget even if the platform switches the demo off.
-        if (demo && (await this.demoAllowance?.get())?.enabled !== false) return true;
+        if (demo && usageMode !== 'operational' && (await this.demoAllowance?.get())?.enabled !== false) return true;
         const features = await this.throttle.getPlanFeatures(tenantId);
         return features.widget === true;
     }

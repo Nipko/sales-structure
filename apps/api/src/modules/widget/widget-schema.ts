@@ -29,6 +29,15 @@ export async function ensureWidgetSchema(prisma: PrismaClient): Promise<void> {
         // connected channel and its traffic is paid by the platform up to a
         // cap. Additive so the template can run on every start.
         await tx.$queryRawUnsafe(`ALTER TABLE public.widget_configs ADD COLUMN IF NOT EXISTS is_demo BOOLEAN NOT NULL DEFAULT false`);
+        // The public link changes purpose only after an explicit owner action.
+        // Existing demo links stay trials; regular embedded widgets are always
+        // operational. The statements stay separate for PgBouncer transaction mode.
+        await tx.$queryRawUnsafe(`ALTER TABLE public.widget_configs ADD COLUMN IF NOT EXISTS usage_mode TEXT`);
+        await tx.$queryRawUnsafe(`UPDATE public.widget_configs
+            SET usage_mode = CASE WHEN is_demo = true THEN 'trial' ELSE 'operational' END
+            WHERE usage_mode IS NULL`);
+        await tx.$queryRawUnsafe(`ALTER TABLE public.widget_configs ALTER COLUMN usage_mode SET DEFAULT 'operational'`);
+        await tx.$queryRawUnsafe(`ALTER TABLE public.widget_configs ALTER COLUMN usage_mode SET NOT NULL`);
         // One public link per tenant is an invariant, not a hope: two concurrent
         // provisionings both see NOT EXISTS under READ COMMITTED, and the loser
         // must fail with 23505 instead of minting a second link.

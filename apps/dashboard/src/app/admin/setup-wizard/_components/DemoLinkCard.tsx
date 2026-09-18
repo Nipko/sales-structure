@@ -3,10 +3,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { Check, Copy, ExternalLink, Globe, Instagram, Link2, Link2Off, Share2 } from "lucide-react";
+import { Check, Copy, ExternalLink, Globe, Instagram, Link2, Link2Off, Loader2, Share2 } from "lucide-react";
 import { buildDemoLinkUrl } from "@/lib/widget-snippet";
 import { demoLinkPause, type SetupStatusDemoLink } from "@/lib/onboarding-guide";
 import { usePlanLimits } from "@/hooks/usePlanLimits";
+import { useTenant } from "@/contexts/TenantContext";
+import { api } from "@/lib/api";
 
 /**
  * "El enlace de {Nombre}" inside the wizard's last step.
@@ -73,14 +75,19 @@ async function copyText(text: string): Promise<boolean> {
 
 export default function DemoLinkCard({ demoLink, agentName }: Props) {
     const t = useTranslations("setupWizard");
-    const name = (agentName ?? "").trim() || demoLink.agentName || t("demoLink.agentFallback");
-    const url = buildDemoLinkUrl(demoLink.path);
+    const { activeTenantId } = useTenant();
+    const [currentLink, setCurrentLink] = useState(demoLink);
+    useEffect(() => setCurrentLink(demoLink), [demoLink]);
+    const name = (agentName ?? "").trim() || currentLink.agentName || t("demoLink.agentFallback");
+    const url = buildDemoLinkUrl(currentLink.path);
     const { features, loading } = usePlanLimits();
-    /** `null` while the plan is being read: no promise either way yet. */
-    const isChannel: boolean | null = loading ? null : features.widget === true;
+    const planCanOperate: boolean | null = loading ? null : features.widget === true;
+    const isChannel = currentLink.usageMode === "operational";
 
     const [copied, setCopied] = useState<CopyTarget | null>(null);
     const [hint, setHint] = useState<"bio" | "failed" | null>(null);
+    const [changingMode, setChangingMode] = useState(false);
+    const [modeError, setModeError] = useState(false);
     const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
     useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
 
@@ -93,7 +100,28 @@ export default function DemoLinkCard({ demoLink, agentName }: Props) {
         timer.current = setTimeout(() => setCopied(null), COPIED_FOR_MS);
     }, []);
 
-    const pause = demoLinkPause(demoLink);
+    const changeMode = useCallback(async (usageMode: "trial" | "operational") => {
+        if (!activeTenantId || changingMode) return;
+        setChangingMode(true);
+        setModeError(false);
+        try {
+            const response = await api.setDemoLinkUsageMode(activeTenantId, usageMode);
+            const next = (response as any)?.data ?? response;
+            setCurrentLink((previous) => ({
+                ...previous,
+                ...next,
+                usageMode,
+                answers: next?.answers !== false,
+                unavailableReason: next?.answers === false ? next?.unavailableReason ?? null : null,
+            }));
+        } catch {
+            setModeError(true);
+        } finally {
+            setChangingMode(false);
+        }
+    }, [activeTenantId, changingMode]);
+
+    const pause = demoLinkPause(currentLink);
     if (pause) {
         return (
             <section
@@ -115,6 +143,13 @@ export default function DemoLinkCard({ demoLink, agentName }: Props) {
                         <Link href={PLANS_PATH} className="mt-2 inline-flex text-[12px] font-semibold text-amber-900 underline underline-offset-2 dark:text-amber-200">
                             {t("demoLink.plans")}
                         </Link>
+                        {currentLink.usageMode === "operational" && (
+                            <button type="button" disabled={changingMode} onClick={() => void changeMode("trial")}
+                                className="ml-3 mt-2 inline-flex items-center gap-1 text-[12px] font-semibold text-amber-900 underline underline-offset-2 disabled:opacity-50 dark:text-amber-200">
+                                {changingMode && <Loader2 size={12} className="animate-spin" aria-hidden="true" />}
+                                {t("demoLink.useAsTrial")}
+                            </button>
+                        )}
                     </div>
                 </div>
             </section>
@@ -139,11 +174,9 @@ export default function DemoLinkCard({ demoLink, agentName }: Props) {
                     <h3 id="setup-demo-link-title" className="text-[14px] font-semibold text-foreground">
                         {t("demoLink.title", { agentName: name })}
                     </h3>
-                    {isChannel !== null && (
-                        <p className="mt-0.5 text-[12px] text-muted-foreground">
-                            {isChannel ? t("demoLink.why") : t("demoLink.whyTrial", { agentName: name })}
-                        </p>
-                    )}
+                    <p className="mt-0.5 text-[12px] text-muted-foreground">
+                        {isChannel ? t("demoLink.why") : t("demoLink.whyTrial", { agentName: name })}
+                    </p>
                     <p className="mt-2 select-all break-all font-mono text-[12px] text-indigo-700 dark:text-indigo-300">{url}</p>
                 </div>
             </div>
@@ -194,9 +227,23 @@ export default function DemoLinkCard({ demoLink, agentName }: Props) {
             {/* Always on screen: it says what that page is for, before the click. */}
             {isChannel && <p className="mt-2 text-[12px] text-muted-foreground">{t("demoLink.websiteHint")}</p>}
 
+            {planCanOperate === true && (
+                <div className="mt-3 rounded-lg border border-indigo-200 bg-white/70 p-3 text-[12px] dark:border-indigo-500/20 dark:bg-black/10">
+                    <p className="text-foreground">
+                        {isChannel ? t("demoLink.operationalExplanation") : t("demoLink.activateExplanation")}
+                    </p>
+                    <button type="button" disabled={changingMode || !activeTenantId}
+                        onClick={() => void changeMode(isChannel ? "trial" : "operational")}
+                        className="mt-2 inline-flex min-h-8 items-center gap-1.5 rounded-lg bg-indigo-600 px-3 font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">
+                        {changingMode && <Loader2 size={12} className="animate-spin" aria-hidden="true" />}
+                        {t(isChannel ? "demoLink.useAsTrial" : "demoLink.useWithCustomers")}
+                    </button>
+                </div>
+            )}
+
             {/* On a trial: what a plan with the web chat changes, said before
                 anybody puts this link where customers will use it. */}
-            {isChannel === false && (
+            {!isChannel && planCanOperate === false && (
                 <p className="mt-2 text-[12px] text-muted-foreground">
                     {t("demoLink.trialUpgrade")}{" "}
                     <Link href={PLANS_PATH} className="font-semibold text-indigo-700 underline underline-offset-2 dark:text-indigo-300">
@@ -209,6 +256,7 @@ export default function DemoLinkCard({ demoLink, agentName }: Props) {
             <p role="status" aria-live="polite" className="mt-1 min-h-[1rem] text-[12px] text-muted-foreground">
                 {hint === "bio" && t("demoLink.bioHint")}
                 {hint === "failed" && t("demoLink.copyFailed")}
+                {modeError && t("demoLink.modeError")}
             </p>
         </section>
     );

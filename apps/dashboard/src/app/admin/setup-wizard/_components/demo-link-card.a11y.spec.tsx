@@ -28,13 +28,15 @@ import DemoLinkCard from "./DemoLinkCard";
  */
 
 const DEMO_LINK: SetupStatusDemoLink = {
-    widgetId: "wgt_abc123", path: "/w/wgt_abc123", agentName: "Ana", answers: true, unavailableReason: null,
+    widgetId: "wgt_abc123", path: "/w/wgt_abc123", agentName: "Ana", usageMode: "operational", answers: true, unavailableReason: null,
 };
 const WEB_CHAT_SETTINGS = "/admin/settings/integrations/web-chat";
 
 /** The plan as `usePlanLimits` reports it; each test sets what it needs. */
 let mockPlan: { features: { widget: boolean }; loading: boolean } = { features: { widget: true }, loading: false };
 jest.mock("@/hooks/usePlanLimits", () => ({ usePlanLimits: () => mockPlan }));
+jest.mock("@/contexts/TenantContext", () => ({ useTenant: () => ({ activeTenantId: "tenant-1" }) }));
+jest.mock("@/lib/api", () => ({ api: { setDemoLinkUsageMode: jest.fn() } }));
 
 let writeText: jest.Mock;
 
@@ -77,7 +79,7 @@ describe("the agent's link card, as a screen reader receives it", () => {
             expect(share.searchParams.get("text")).toBe("Mira cómo responde Ana: http://localhost/w/wgt_abc123");
 
             expect(buttons(screen.container).map((button) => button.textContent?.trim()))
-                .toEqual(["Copiar enlace", "Ponerlo en mi bio"]);
+                .toEqual(["Copiar enlace", "Ponerlo en mi bio", "Dejar solo como prueba"]);
             expect(await findAccessibilityViolations(screen.container)).toEqual([]);
         } finally {
             screen.unmount();
@@ -103,7 +105,7 @@ describe("the agent's link card, as a screen reader receives it", () => {
         const screen = await renderScreen(createElement(DemoLinkCard, { demoLink: DEMO_LINK }));
         try {
             // Everything a person can press, pressed.
-            for (const button of buttons(screen.container)) {
+            for (const button of buttons(screen.container).filter((button) => !button.textContent?.includes("Dejar solo como prueba"))) {
                 await interact(() => button.click());
             }
             const copies = writeText.mock.calls.map(([text]) => String(text));
@@ -145,7 +147,7 @@ describe("the agent's link card, as a screen reader receives it", () => {
 
     it("on a trial, says what the link is for and what a plan with the web chat changes — and sells no bio", async () => {
         mockPlan = { features: { widget: false }, loading: false };
-        const screen = await renderScreen(createElement(DemoLinkCard, { demoLink: DEMO_LINK }));
+        const screen = await renderScreen(createElement(DemoLinkCard, { demoLink: { ...DEMO_LINK, usageMode: "trial" } }));
         try {
             const text = screen.container.textContent ?? "";
             expect(text).toContain("Es para probar a Ana y mostrárselo a alguien");
@@ -166,14 +168,14 @@ describe("the agent's link card, as a screen reader receives it", () => {
         }
     });
 
-    it("tells neither story until the plan is read", async () => {
+    it("keeps explaining the persisted purpose while the plan is read", async () => {
         mockPlan = { features: { widget: false }, loading: true };
         const screen = await renderScreen(createElement(DemoLinkCard, { demoLink: DEMO_LINK }));
         try {
             const text = screen.container.textContent ?? "";
-            expect(text).not.toContain("bio de Instagram");
+            expect(text).toContain("sirve para probar hoy y para tu bio de Instagram");
             expect(text).not.toContain("Es para probar a Ana");
-            expect(buttons(screen.container).map((button) => button.textContent?.trim())).toEqual(["Copiar enlace"]);
+            expect(buttons(screen.container).map((button) => button.textContent?.trim())).toEqual(["Copiar enlace", "Ponerlo en mi bio"]);
             expect(await findAccessibilityViolations(screen.container)).toEqual([]);
         } finally {
             screen.unmount();
@@ -188,7 +190,7 @@ describe("the agent's link card, as a screen reader receives it", () => {
         for (const widget of [true, false]) {
             mockPlan = { features: { widget }, loading: false };
             const screen = await renderScreen(createElement(DemoLinkCard, {
-                demoLink: { ...DEMO_LINK, answers: false, unavailableReason },
+                demoLink: { ...DEMO_LINK, usageMode: "trial", answers: false, unavailableReason },
             }));
             try {
                 const section = screen.container.querySelector("section");

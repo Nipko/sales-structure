@@ -27,6 +27,10 @@ describe('what setup-status says when a count cannot be read', () => {
                 getTenantSchemaName: jest.fn().mockResolvedValue('tenant_demo'),
                 $queryRawUnsafe: jest.fn(async (sql: string) => behaviour(sql)),
             },
+            throttleService: {
+                getPlanFeatures: jest.fn().mockResolvedValue({ widget: true }),
+                getDemoMessageUsage: jest.fn().mockResolvedValue({ used: 0 }),
+            },
         });
         return controller;
     }
@@ -71,6 +75,21 @@ describe('what setup-status says when a count cannot be read', () => {
         // The one active tenant_admin is already the handoff recipient; a
         // solo business is not required to invite a second person.
         expect(answer.data.hasTeam).toBe(true);
+    });
+
+    it('counts the public link only after the owner made it operational', async () => {
+        const controller = harness(sql => {
+            if (sql.includes('FROM channel_accounts') && sql.includes('COUNT')) return rows(0);
+            if (sql.includes('FROM public.widget_configs') && sql.includes('is_demo = true')) return [{
+                widget_id: 'wgt_public', agent_name: 'Ana', locale: 'es', usage_mode: 'operational',
+            }];
+            if (sql.includes('agent_personas') && sql.includes('COUNT')) return rows(1);
+            return rows(0);
+        });
+        const answer: any = await controller.getSetupStatus(tenantId);
+        expect(answer.data.demoLink).toMatchObject({ usageMode: 'operational', answers: true });
+        expect(answer.data.hasAnyChannel).toBe(true);
+        expect(answer.data.connectedChannelTypes).toContain('web_widget');
     });
 
     it('does not go looking for connected types on a channel count it never read', async () => {

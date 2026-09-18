@@ -23,6 +23,7 @@ jest.mock("@/lib/api", () => ({
     api: {
         fetch: jest.fn(),
         getSetupStatus: jest.fn(),
+        setDemoLinkUsageMode: jest.fn(),
     },
 }));
 jest.mock("@/contexts/TenantContext", () => ({ useTenant: () => ({ activeTenantId: "tenant-1" }) }));
@@ -39,7 +40,7 @@ jest.mock("@/components/ui/help-panel", () => ({ HelpPanel: () => null }));
 function setupStatus(link: Record<string, unknown> = {}) {
     return {
         success: true,
-        data: { demoLink: { widgetId: "wgt_abc", path: "/w/wgt_abc", agentName: "Sofía", ...link } },
+        data: { demoLink: { widgetId: "wgt_abc", path: "/w/wgt_abc", agentName: "Sofía", usageMode: "trial", ...link } },
     };
 }
 
@@ -74,6 +75,7 @@ describe("the public link on the channels page", () => {
 
     it("with the web chat in the plan, is a channel and says nothing about a cap", async () => {
         mockPlan = { features: { widget: true }, loading: false };
+        jest.mocked(api.getSetupStatus).mockResolvedValue(setupStatus({ usageMode: "operational" }) as never);
         const { screen, card } = await renderLinkCard();
         try {
             const text = card.textContent ?? "";
@@ -83,13 +85,13 @@ describe("the public link on the channels page", () => {
         } finally { screen.unmount(); }
     });
 
-    it("tells neither story while the plan is being read", async () => {
+    it("keeps explaining the saved trial purpose while the plan is being read", async () => {
         mockPlan = { features: { widget: false }, loading: true };
         const { screen, card } = await renderLinkCard();
         try {
             const text = card.textContent ?? "";
             expect(text).not.toContain("Cualquiera puede escribirle");
-            expect(text).not.toContain("Es para probar");
+            expect(text).toContain("Es para probar");
             expect(text).not.toContain("Ver planes");
             // The link itself is still there to open and copy.
             expect(text).toContain("/w/wgt_abc");
@@ -114,7 +116,8 @@ describe("the public link on the channels page", () => {
                 expect(text).toContain("En pausa");
                 expect(text).not.toMatch(/Cualquiera puede escribirle|Es para probar|Nada que conectar|\/w\/wgt_abc/);
                 expect(card.querySelector('[data-channel-status="paused"]')).not.toBeNull();
-                expect(card.querySelectorAll("button")).toHaveLength(0);
+                expect(Array.from(card.querySelectorAll("button")).map((button) => button.textContent?.trim()))
+                    .toEqual(widget ? ["Usar para atender clientes"] : []);
                 expect(Array.from(card.querySelectorAll("a")).map((a) => [a.textContent, a.getAttribute("href")]))
                     .toEqual([["Ver planes", "/admin/settings/billing"]]);
                 expect(await findAccessibilityViolations(screen.container)).toEqual([]);

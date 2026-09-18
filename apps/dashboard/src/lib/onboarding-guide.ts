@@ -44,6 +44,8 @@ export interface SetupStatusDemoLink {
    */
   path: string;
   agentName: string;
+  /** Purpose explicitly chosen by the owner; legacy payloads remain trials. */
+  usageMode: "trial" | "operational";
   /**
    * Whether the agent answers on the link TODAY. On a plan without the web
    * chat the link is a trial the platform pays, and it stops answering when
@@ -57,9 +59,9 @@ export interface SetupStatusDemoLink {
 }
 
 /** `demoLink.unavailableReason` as setup-status sends it. */
-export type SetupStatusDemoLinkUnavailableReason = "switched_off" | "allowance_used";
+export type SetupStatusDemoLinkUnavailableReason = "switched_off" | "allowance_used" | "plan_required";
 
-const DEMO_LINK_UNAVAILABLE_REASONS: readonly SetupStatusDemoLinkUnavailableReason[] = ["switched_off", "allowance_used"];
+const DEMO_LINK_UNAVAILABLE_REASONS: readonly SetupStatusDemoLinkUnavailableReason[] = ["switched_off", "allowance_used", "plan_required"];
 
 /**
  * What a screen says instead of "{Nombre} ya responde por su enlace", or
@@ -72,10 +74,11 @@ const DEMO_LINK_UNAVAILABLE_REASONS: readonly SetupStatusDemoLinkUnavailableReas
  * did not explain: "en pausa" is true of both, "ya usó sus respuestas gratis"
  * only of one.
  */
-export type DemoLinkPause = "switchedOff" | "allowanceUsed";
+export type DemoLinkPause = "switchedOff" | "allowanceUsed" | "planRequired";
 
 export function demoLinkPause(link: SetupStatusDemoLink | null | undefined): DemoLinkPause | null {
   if (!link || link.answers) return null;
+  if (link.unavailableReason === "plan_required") return "planRequired";
   return link.unavailableReason === "allowance_used" ? "allowanceUsed" : "switchedOff";
 }
 
@@ -155,6 +158,7 @@ function readDemoLink(value: unknown): SetupStatusDemoLink | null {
     widgetId,
     path,
     agentName: optionalString(value.agentName) ?? "",
+    usageMode: value.usageMode === "operational" ? "operational" : "trial",
     answers,
     unavailableReason: answers ? null : reason,
   };

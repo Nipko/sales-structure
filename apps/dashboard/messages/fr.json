@@ -4566,10 +4566,15 @@
       "agentFallback": "votre agent",
       "descriptionTrial": "Il sert à essayer {agentName} et à le montrer à quelqu'un : il répond jusqu'à un plafond de messages et ne transfère pas la conversation à une personne.",
       "trialUpgrade": "Avec un forfait qui inclut le chat web, ce lien sert vos clients sans ce plafond et peut transférer la conversation à votre équipe.",
+      "useWithCustomers": "Utiliser avec les clients",
+      "useAsTrial": "Garder uniquement en essai",
+      "changingMode": "Enregistrement…",
+      "modeError": "Impossible de modifier l'utilisation du lien. Réessayez.",
       "plans": "Voir les forfaits",
       "paused": {
         "switchedOff": "Le lien d'essai de {agentName} est en pause : pour l'instant, il ne répond pas. Pour qu'il réponde, connectez un canal ou choisissez un forfait avec le chat web.",
-        "allowanceUsed": "{agentName} a déjà utilisé les réponses gratuites de son lien d'essai : il n'y répond plus. Pour qu'il continue de répondre, connectez un canal ou choisissez un forfait avec le chat web."
+        "allowanceUsed": "{agentName} a déjà utilisé les réponses gratuites de son lien d'essai : il n'y répond plus. Pour qu'il continue de répondre, connectez un canal ou choisissez un forfait avec le chat web.",
+        "planRequired": "Ce lien répondait aux clients, mais le forfait actuel n'inclut plus le chat web. Choisissez un forfait compatible ou gardez-le uniquement en essai."
       },
       "pausedBadge": "En pause"
     }
@@ -7204,10 +7209,16 @@
       "agentFallback": "votre agent",
       "whyTrial": "Il sert à essayer {agentName} et à le montrer à quelqu'un : il répond jusqu'à un plafond de messages et ne transfère pas la conversation à une personne.",
       "trialUpgrade": "Avec un forfait qui inclut le chat web, ce même lien sert vos clients sans ce plafond et peut transférer la conversation à votre équipe ; il est alors prêt pour votre bio Instagram et votre site web.",
+      "useWithCustomers": "Utiliser avec les clients",
+      "useAsTrial": "Garder uniquement en essai",
+      "activateExplanation": "Votre forfait permet d'utiliser ce même lien avec les clients. Une fois activé, ses messages sont décomptés du forfait et peuvent être transférés à une personne.",
+      "operationalExplanation": "Ce lien répond aux clients : il utilise les messages de votre forfait et peut transférer la conversation à une personne.",
+      "modeError": "Impossible de modifier l'utilisation du lien. Réessayez.",
       "plans": "Voir les forfaits",
       "paused": {
         "switchedOff": "Le lien d'essai de {agentName} est en pause : pour l'instant, il ne répond pas. Pour qu'il réponde, connectez un canal ou choisissez un forfait avec le chat web.",
-        "allowanceUsed": "{agentName} a déjà utilisé les réponses gratuites de son lien d'essai : il n'y répond plus. Pour qu'il continue de répondre, connectez un canal ou choisissez un forfait avec le chat web."
+        "allowanceUsed": "{agentName} a déjà utilisé les réponses gratuites de son lien d'essai : il n'y répond plus. Pour qu'il continue de répondre, connectez un canal ou choisissez un forfait avec le chat web.",
+        "planRequired": "Ce lien répondait aux clients, mais le forfait actuel n'inclut plus le chat web. Choisissez un forfait compatible ou gardez-le uniquement en essai."
       }
     }
   },

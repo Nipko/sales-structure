@@ -4566,10 +4566,15 @@
       "agentFallback": "your agent",
       "descriptionTrial": "It is for trying {agentName} and showing it to someone: it replies up to a message cap and does not hand the conversation to a person.",
       "trialUpgrade": "With a plan that includes web chat, this link serves your customers without that cap and can hand the conversation to your team.",
+      "useWithCustomers": "Use with customers",
+      "useAsTrial": "Keep as trial only",
+      "changingMode": "Saving…",
+      "modeError": "We could not change how this link is used. Try again.",
       "plans": "See plans",
       "paused": {
         "switchedOff": "{agentName}'s trial link is paused, so it isn't answering for now. To have it answer, connect a channel or choose a plan with web chat.",
-        "allowanceUsed": "{agentName} already used the free replies on its trial link, so it no longer answers there. To keep it answering, connect a channel or choose a plan with web chat."
+        "allowanceUsed": "{agentName} already used the free replies on its trial link, so it no longer answers there. To keep it answering, connect a channel or choose a plan with web chat.",
+        "planRequired": "This link was serving customers, but the current plan no longer includes web chat. Choose a compatible plan or keep it as a trial only."
       },
       "pausedBadge": "Paused"
     }
@@ -7204,10 +7209,16 @@
       "agentFallback": "your agent",
       "whyTrial": "It is for trying {agentName} and showing it to someone: it replies up to a message cap and does not hand the conversation to a person.",
       "trialUpgrade": "With a plan that includes web chat, this same link serves your customers without that cap and can hand the conversation to your team; then it is ready for your Instagram bio and your website.",
+      "useWithCustomers": "Use with customers",
+      "useAsTrial": "Keep as trial only",
+      "activateExplanation": "Your plan lets you use this same link with customers. Once activated, its messages count toward your plan and can be handed to a person.",
+      "operationalExplanation": "This link is serving customers: it uses your plan messages and can hand the conversation to a person.",
+      "modeError": "We could not change how this link is used. Try again.",
       "plans": "See plans",
       "paused": {
         "switchedOff": "{agentName}'s trial link is paused, so it isn't answering for now. To have it answer, connect a channel or choose a plan with web chat.",
-        "allowanceUsed": "{agentName} already used the free replies on its trial link, so it no longer answers there. To keep it answering, connect a channel or choose a plan with web chat."
+        "allowanceUsed": "{agentName} already used the free replies on its trial link, so it no longer answers there. To keep it answering, connect a channel or choose a plan with web chat.",
+        "planRequired": "This link was serving customers, but the current plan no longer includes web chat. Choose a compatible plan or keep it as a trial only."
       }
     }
   },

@@ -82,7 +82,7 @@ export default function ChannelsOverviewPage() {
      * puede escribirle" alone read as the first on every plan. `null` while
      * the plan is being read: neither story yet.
      */
-    const linkIsChannel: boolean | null = planLoading ? null : planFeatures.widget === true;
+    const planCanOperate: boolean | null = planLoading ? null : planFeatures.widget === true;
     const router = useRouter();
     const searchParams = useSearchParams();
     /**
@@ -114,6 +114,27 @@ export default function ChannelsOverviewPage() {
      */
     const [demoLink, setDemoLink] = useState<SetupStatusDemoLink | null>(null);
     const [linkCopied, setLinkCopied] = useState(false);
+    const [linkModeChanging, setLinkModeChanging] = useState(false);
+    const [linkModeError, setLinkModeError] = useState(false);
+
+    const changeDemoLinkMode = async (usageMode: "trial" | "operational") => {
+        if (!activeTenantId || linkModeChanging) return;
+        setLinkModeChanging(true);
+        setLinkModeError(false);
+        try {
+            const response = await api.setDemoLinkUsageMode(activeTenantId, usageMode);
+            const next = (response as any)?.data ?? response;
+            setDemoLink((previous) => previous ? {
+                ...previous, ...next, usageMode,
+                answers: next?.answers !== false,
+                unavailableReason: next?.answers === false ? next?.unavailableReason ?? null : null,
+            } : previous);
+        } catch {
+            setLinkModeError(true);
+        } finally {
+            setLinkModeChanging(false);
+        }
+    };
 
     useEffect(() => {
         if (!activeTenantId) { setDemoLink(null); return; }
@@ -360,6 +381,7 @@ export default function ChannelsOverviewPage() {
                     const name = demoLink.agentName || t('demoLink.agentFallback');
                     const url = buildDemoLinkUrl(demoLink.path);
                     const pause = demoLinkPause(demoLink);
+                    const linkIsChannel = demoLink.usageMode === 'operational';
                     return (
                         <section
                             aria-labelledby="channel-demo-link-title"
@@ -385,16 +407,14 @@ export default function ChannelsOverviewPage() {
                                         </p>
                                     ) : (
                                         <>
-                                            {linkIsChannel !== null && (
-                                                <p className="text-xs text-[var(--text-secondary)] mt-1.5 leading-relaxed">
-                                                    {linkIsChannel
-                                                        ? t('demoLink.description')
-                                                        : t('demoLink.descriptionTrial', { agentName: name })}
-                                                </p>
-                                            )}
+                                            <p className="text-xs text-[var(--text-secondary)] mt-1.5 leading-relaxed">
+                                                {linkIsChannel
+                                                    ? t('demoLink.description')
+                                                    : t('demoLink.descriptionTrial', { agentName: name })}
+                                            </p>
                                             {/* On a trial: what a plan with the web chat changes,
                                                 before anybody puts this link where customers use it. */}
-                                            {linkIsChannel === false && (
+                                            {!linkIsChannel && planCanOperate === false && (
                                                 <p className="text-xs text-[var(--text-secondary)] mt-1.5 leading-relaxed">
                                                     {t('demoLink.trialUpgrade')}{" "}
                                                     <Link href="/admin/settings/billing" className="font-semibold text-primary underline underline-offset-2">
@@ -423,6 +443,14 @@ export default function ChannelsOverviewPage() {
                                     </div>
                                 )}
                                 {!pause && <p className="select-all break-all text-center font-mono text-[11px] text-[var(--text-secondary)]">{url}</p>}
+                                {(planCanOperate === true || linkIsChannel) && (
+                                    <button type="button" disabled={linkModeChanging}
+                                        onClick={() => void changeDemoLinkMode(linkIsChannel ? 'trial' : 'operational')}
+                                        className="rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">
+                                        {linkModeChanging ? t('demoLink.changingMode') : t(linkIsChannel ? 'demoLink.useAsTrial' : 'demoLink.useWithCustomers')}
+                                    </button>
+                                )}
+                                {linkModeError && <p role="status" className="text-xs text-red-700 dark:text-red-300">{t('demoLink.modeError')}</p>}
                             </div>
                             {!pause && (
                             <div className="px-6 py-3.5 border-t border-border flex items-center justify-center gap-2">

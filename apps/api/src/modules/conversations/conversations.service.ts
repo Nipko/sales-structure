@@ -5774,7 +5774,7 @@ export class ConversationsService {
         conversationId: string,
         contactId: string,
         text: string,
-        options?: { allowHumanHandoff?: boolean; channelAccountId?: string; inboundMessageId?: string; demo?: boolean },
+        options?: { allowHumanHandoff?: boolean; channelAccountId?: string; inboundMessageId?: string; trialTurn?: boolean },
     ): Promise<WidgetAgentReplyReceipt | null> {
         const inboundMessageId = options?.inboundMessageId;
         if (!inboundMessageId || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(inboundMessageId))
@@ -5834,16 +5834,10 @@ export class ConversationsService {
                 throw new Error('widget_conversation_scope_mismatch');
             if (conversation.status === 'waiting_human' || conversation.status === 'with_human') return null;
             const plan = await this.throttle.getPlanFeatures(tenantId);
-            // The public link (D11/D19) is a platform-paid TRIAL only while the
-            // tenant's plan does not include the web chat. That is decided per
-            // turn, with the same predicate as `isTrialLink` in
-            // widget-demo-link.ts: a plan change applies to the next message.
-            // Once the plan includes the web chat, the link is a real channel —
-            // this turn runs on the plan's own quota like any other web chat,
-            // with no daily cap of the trial page, and the gateway stops withholding
-            // the handoff to the team (`allowHumanHandoff`). Only a trial turn
-            // spends the platform's demo allowance.
-            const demoTurn = options?.demo === true && plan.widget !== true;
+            // The gateway passes the semantic mode read from the persisted
+            // widget config. A plan change cannot silently turn a trial link
+            // into a customer channel; the owner must choose operational mode.
+            const demoTurn = options?.trialTurn === true;
             const demoAllowance = demoTurn ? await this.demoAllowance?.get() : null;
             if (demoTurn ? demoAllowance?.enabled === false : plan.widget !== true) return null;
             const concurrentReceipt = await this.widgetAgentReplies.lookup(tenantId, binding);
@@ -5951,7 +5945,7 @@ export class ConversationsService {
                 { conversationId, contactId, inboundMessageId });
             if (handoff) {
                 try {
-                    return this.activateOnWidgetReply(tenantId, options?.demo === true, modelAnswered,
+                    return this.activateOnWidgetReply(tenantId, demoTurn, modelAnswered,
                         await this.widgetAgentReplies.commitHandoffNotice({ tenantId, schemaName, ...binding,
                             operationalScope, learningFootprints: [...replyProvenance.getFootprints()],
                             precedingText: reply?.trim() ? reply : undefined }));
@@ -5963,7 +5957,7 @@ export class ConversationsService {
                 }
             }
             if (!reply?.trim()) return null;
-            return this.activateOnWidgetReply(tenantId, options?.demo === true, modelAnswered,
+            return this.activateOnWidgetReply(tenantId, demoTurn, modelAnswered,
                 await this.widgetAgentReplies.commit({ tenantId, schemaName, ...binding,
                     operationalScope, learningFootprints: [...replyProvenance.getFootprints()], text: reply }));
         } finally {
@@ -5987,18 +5981,17 @@ export class ConversationsService {
      * never activated at all. Stored is delivered here: the visitor's socket and
      * every reconnect read exactly that row.
      *
-     * Never for the demo link. A widget row with `is_demo = true` is the
-     * platform-paid page the owner shows people; its visitor is not a customer,
-     * whichever lane (allowance or plan) paid for the turn. The mark comes from
-     * the gateway, which reads it from the widget row itself, never from the URL
-     * the visitor sent. Fire-and-forget: `recordFirstReply` never throws, and
-     * the reply must not wait for a settings write.
+     * Never for a trial turn. The same stable public URL can become operational
+     * only after the owner chooses that mode; then its plan-paid reply is real
+     * activation. The gateway reads the mode from the widget row, never from
+     * visitor input. Fire-and-forget: `recordFirstReply` never throws, and the
+     * reply must not wait for a settings write.
      */
     private activateOnWidgetReply(
-        tenantId: string, demo: boolean, modelAnswered: boolean,
+        tenantId: string, trialTurn: boolean, modelAnswered: boolean,
         receipt: WidgetAgentReplyReceipt | null,
     ): WidgetAgentReplyReceipt | null {
-        if (!demo && modelAnswered && receipt?.status === 'stored' && receipt.messages.length > 0)
+        if (!trialTurn && modelAnswered && receipt?.status === 'stored' && receipt.messages.length > 0)
             void recordFirstReply(this.prisma, tenantId, { source: 'web_widget' }).catch(() => undefined);
         return receipt;
     }

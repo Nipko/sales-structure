@@ -4566,10 +4566,15 @@
       "agentFallback": "tu agente",
       "descriptionTrial": "Es para probar a {agentName} y mostrárselo a alguien: responde hasta un tope de mensajes y no pasa la conversación a una persona.",
       "trialUpgrade": "Con un plan que incluya el chat web, este enlace atiende a tus clientes sin ese tope y puede pasarle la conversación a tu equipo.",
+      "useWithCustomers": "Usar para atender clientes",
+      "useAsTrial": "Dejar solo como prueba",
+      "changingMode": "Guardando…",
+      "modeError": "No pudimos cambiar el uso del enlace. Inténtalo de nuevo.",
       "plans": "Ver planes",
       "paused": {
         "switchedOff": "El enlace de prueba de {agentName} está en pausa, así que por ahora no responde. Para que atienda, conecta un canal o elige un plan con el chat web.",
-        "allowanceUsed": "{agentName} ya usó las respuestas gratis de su enlace de prueba, así que ahí no responde más. Para que siga atendiendo, conecta un canal o elige un plan con el chat web."
+        "allowanceUsed": "{agentName} ya usó las respuestas gratis de su enlace de prueba, así que ahí no responde más. Para que siga atendiendo, conecta un canal o elige un plan con el chat web.",
+        "planRequired": "Este enlace estaba atendiendo clientes, pero el plan actual ya no incluye chat web. Elige un plan compatible o déjalo solo como prueba."
       },
       "pausedBadge": "En pausa"
     }
@@ -7204,10 +7209,16 @@
       "agentFallback": "tu agente",
       "whyTrial": "Es para probar a {agentName} y mostrárselo a alguien: responde hasta un tope de mensajes y no pasa la conversación a una persona.",
       "trialUpgrade": "Con un plan que incluya el chat web, este mismo enlace atiende a tus clientes sin ese tope y puede pasarle la conversación a tu equipo; ahí ya sirve para tu bio de Instagram y tu página web.",
+      "useWithCustomers": "Usar para atender clientes",
+      "useAsTrial": "Dejar solo como prueba",
+      "activateExplanation": "Tu plan permite usar este mismo enlace con clientes. Al activarlo, sus mensajes cuentan en tu plan y pueden pasar a una persona.",
+      "operationalExplanation": "Este enlace está atendiendo clientes: usa los mensajes de tu plan y permite pasar la conversación a una persona.",
+      "modeError": "No pudimos cambiar el uso del enlace. Inténtalo de nuevo.",
       "plans": "Ver planes",
       "paused": {
         "switchedOff": "El enlace de prueba de {agentName} está en pausa, así que por ahora no responde. Para que atienda, conecta un canal o elige un plan con el chat web.",
-        "allowanceUsed": "{agentName} ya usó las respuestas gratis de su enlace de prueba, así que ahí no responde más. Para que siga atendiendo, conecta un canal o elige un plan con el chat web."
+        "allowanceUsed": "{agentName} ya usó las respuestas gratis de su enlace de prueba, así que ahí no responde más. Para que siga atendiendo, conecta un canal o elige un plan con el chat web.",
+        "planRequired": "Este enlace estaba atendiendo clientes, pero el plan actual ya no incluye chat web. Elige un plan compatible o déjalo solo como prueba."
       }
     }
   },

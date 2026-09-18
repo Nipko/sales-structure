@@ -111,7 +111,7 @@ describe("readSetupStatusFacts", () => {
       });
 
       expect(facts?.demoLink).toEqual({
-        widgetId: "wgt_abc", path: "/w/wgt_abc", agentName: "Ana", answers: true, unavailableReason: null,
+        widgetId: "wgt_abc", path: "/w/wgt_abc", agentName: "Ana", usageMode: "trial", answers: true, unavailableReason: null,
       });
     });
 
@@ -122,7 +122,7 @@ describe("readSetupStatusFacts", () => {
       });
 
       expect(facts?.demoLink).toEqual({
-        widgetId: "wgt_abc", path: "/w/wgt_abc", agentName: "", answers: true, unavailableReason: null,
+        widgetId: "wgt_abc", path: "/w/wgt_abc", agentName: "", usageMode: "trial", answers: true, unavailableReason: null,
       });
     });
 

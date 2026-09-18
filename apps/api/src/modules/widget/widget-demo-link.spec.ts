@@ -30,7 +30,7 @@ describe('the demo link is provisioned once and never breaks its caller', () => 
     it('reuses the existing demo widget', async () => {
         const db = prisma({ existing: [{ widget_id: 'wgt_existing0001', agent_name: 'Valentina' }] });
         const link = await ensureDemoWidget(db as any, TENANT);
-        expect(link).toEqual({ widgetId: 'wgt_existing0001', path: '/w/wgt_existing0001', agentName: 'Valentina' });
+        expect(link).toEqual({ widgetId: 'wgt_existing0001', path: '/w/wgt_existing0001', agentName: 'Valentina', usageMode: 'trial' });
         expect(db.calls.some(([sql]) => sql.startsWith('INSERT'))).toBe(false);
     });
     it('follows the agent when the owner renames it, and drops the cached config', async () => {
@@ -39,7 +39,7 @@ describe('the demo link is provisioned once and never breaks its caller', () => 
         const db = prisma({ existing: [{ widget_id: 'wgt_existing0001', agent_name: 'Asistente', locale: 'es' }] });
         const redis = { del: jest.fn().mockResolvedValue(1) };
         const link = await ensureDemoWidget(db as any, TENANT, { agentName: ' Valentina ', redis });
-        expect(link).toEqual({ widgetId: 'wgt_existing0001', path: '/w/wgt_existing0001', agentName: 'Valentina' });
+        expect(link).toEqual({ widgetId: 'wgt_existing0001', path: '/w/wgt_existing0001', agentName: 'Valentina', usageMode: 'trial' });
         const update = db.calls.find(([sql]) => sql.startsWith('UPDATE public.widget_configs'))!;
         expect(update[1]).toEqual(['wgt_existing0001', 'Valentina', 'El enlace de Valentina']);
         expect(redis.del).toHaveBeenCalledWith('widget:config:wgt_existing0001');
@@ -192,7 +192,7 @@ describe('the gateway keeps a capped demo visitor connected and out of the human
         await gateway.handleMessage(socket(), { content: 'hola' } as any);
         expect(conversations.processWidgetMessage).toHaveBeenCalledWith(
             'tenant-1', 'tenant_1', 'c1', 'k1', 'hola',
-            expect.objectContaining({ demo: true, allowHumanHandoff: false, channelAccountId: 'wgt_demo' }),
+            expect.objectContaining({ trialTurn: true, allowHumanHandoff: false, channelAccountId: 'wgt_demo' }),
         );
     });
     it('says the abuse ceiling in the widget language instead of English', async () => {
@@ -217,11 +217,7 @@ describe('the gateway keeps a capped demo visitor connected and out of the human
     });
 });
 
-describe('the link is a trial only while the plan has no web chat (audit #61)', () => {
-    // Sold for the Instagram bio, the link behaved as a demo on EVERY plan: a
-    // paying business's customers hit the page's daily cap and read "En este
-    // canal todavía no puedo transferirte a una persona". The lane is decided
-    // per turn from the plan, exactly like the quota lane in the core.
+describe('the link follows the owner-selected usage mode', () => {
     function socket(): any {
         return {
             handshake: { auth: { token: 'token-1' }, query: {}, headers: { origin: 'https://admin.parallly-chat.cloud' }, address: '203.0.113.10' },
@@ -258,10 +254,10 @@ describe('the link is a trial only while the plan has no web chat (audit #61)', 
     }
 
     it('on a plan with the web chat: no page cap, a person when asked, and the widget row still marked', async () => {
-        const { gateway, rateLimit, conversations, throttle } = makeGateway({ widget: true });
+        const { gateway, rateLimit, conversations, throttle } = makeGateway({ widget: true }, { usage_mode: 'operational' });
         const client = socket();
         await gateway.handleMessage(client, { content: 'quiero hablar con una persona' } as any);
-        expect(throttle!.getPlanFeatures).toHaveBeenCalledWith('tenant-1');
+        expect(throttle!.getPlanFeatures).not.toHaveBeenCalled();
         // The daily cap is the trial page's, never a paying business's channel.
         expect(rateLimit.consumeDemoDaily).not.toHaveBeenCalled();
         expect(client.emit).not.toHaveBeenCalledWith('widget:error', expect.objectContaining({ code: 'demo_daily_cap' }));
@@ -269,12 +265,12 @@ describe('the link is a trial only while the plan has no web chat (audit #61)', 
             'tenant-1', 'tenant_1', 'c1', 'k1', 'quiero hablar con una persona',
             // `demo` stays the row's own mark: the core derives the plan's quota
             // lane from it with the same predicate, and keeps it out of activation.
-            expect.objectContaining({ demo: true, allowHumanHandoff: true, channelAccountId: 'wgt_demo' }),
+            expect.objectContaining({ trialTurn: false, allowHumanHandoff: true, channelAccountId: 'wgt_demo' }),
         );
     });
 
-    it('on a plan without the web chat: still the capped trial, and nobody is paged', async () => {
-        const { gateway, rateLimit, conversations } = makeGateway({ widget: false });
+    it('trial mode stays capped even if the plan includes web chat', async () => {
+        const { gateway, rateLimit, conversations } = makeGateway({ widget: true }, { usage_mode: 'trial' });
         const client = socket();
         await gateway.handleMessage(client, { content: 'hola' } as any);
         expect(rateLimit.consumeDemoDaily).toHaveBeenCalledWith({ widgetId: 'wgt_demo', limit: 60 });
@@ -284,12 +280,11 @@ describe('the link is a trial only while the plan has no web chat (audit #61)', 
         rateLimit.consumeDemoDaily.mockResolvedValue({ allowed: true, retryAfterSeconds: 0 });
         await gateway.handleMessage(socket(), { content: 'hola' } as any);
         expect(conversations.processWidgetMessage).toHaveBeenCalledWith(
-            'tenant-1', 'tenant_1', 'c1', 'k1', 'hola', expect.objectContaining({ demo: true, allowHumanHandoff: false }),
+            'tenant-1', 'tenant_1', 'c1', 'k1', 'hola', expect.objectContaining({ trialTurn: true, allowHumanHandoff: false }),
         );
     });
 
-    it('keeps the trial lane when the plan cannot be read, or nobody can read it', async () => {
-        // A capped page that says why is recoverable; an uncapped platform-paid one is not.
+    it('keeps the legacy trial lane without needing the plan reader', async () => {
         for (const plan of [new Error('redis down'), null]) {
             const { gateway, rateLimit } = makeGateway(plan);
             await gateway.handleMessage(socket(), { content: 'hola' } as any);
@@ -303,19 +298,19 @@ describe('the link is a trial only while the plan has no web chat (audit #61)', 
         expect(throttle!.getPlanFeatures).not.toHaveBeenCalled();
         expect(rateLimit.consumeDemoDaily).not.toHaveBeenCalled();
         expect(conversations.processWidgetMessage).toHaveBeenCalledWith(
-            'tenant-1', 'tenant_1', 'c1', 'k1', 'hola', expect.objectContaining({ demo: false, allowHumanHandoff: true }),
+            'tenant-1', 'tenant_1', 'c1', 'k1', 'hola', expect.objectContaining({ trialTurn: false, allowHumanHandoff: true }),
         );
     });
 
-    it('decides the lane again when a reconnect regenerates an unanswered turn', async () => {
-        for (const [plan, handoff] of [[{ widget: true }, true], [{ widget: false }, false]] as const) {
-            const { gateway, conversations } = makeGateway(plan);
+    it('decides the persisted lane again when a reconnect regenerates an unanswered turn', async () => {
+        for (const [usageMode, handoff] of [['operational', true], ['trial', false]] as const) {
+            const { gateway, conversations } = makeGateway({ widget: true });
             const client = socket();
-            client.widgetSession = { id: 'session-1', tenant_id: 'tenant-1', widget_id: 'wgt_demo', is_demo: true };
+            client.widgetSession = { id: 'session-1', tenant_id: 'tenant-1', widget_id: 'wgt_demo', is_demo: true, usage_mode: usageMode };
             client.widgetCapabilities = { formalChannel: true, capabilities: ['human_handoff'] };
             await (gateway as any).streamAssistantReply(client, 'tenant-1', 'tenant_1', 'c1', 'k1', 'hola', '44444444-4444-4444-8444-444444444444');
             expect(conversations.processWidgetMessage).toHaveBeenCalledWith(
-                'tenant-1', 'tenant_1', 'c1', 'k1', 'hola', expect.objectContaining({ demo: true, allowHumanHandoff: handoff }),
+                'tenant-1', 'tenant_1', 'c1', 'k1', 'hola', expect.objectContaining({ trialTurn: !handoff, allowHumanHandoff: handoff }),
             );
         }
     });
@@ -328,25 +323,25 @@ describe('the link is a trial only while the plan has no web chat (audit #61)', 
     });
 });
 
-describe('one predicate says whether the link is a trial today', () => {
+describe('one persisted choice says whether the link is a trial', () => {
     const plan = (widget: unknown) => ({ getPlanFeatures: jest.fn().mockResolvedValue({ widget }) });
 
-    it('is a trial only for the public link on a plan without the web chat', async () => {
-        const link = { is_demo: true, tenant_id: 'tenant-1' };
+    it('does not silently change purpose when the plan changes', async () => {
+        const link = { is_demo: true, usage_mode: 'trial' };
         await expect(isTrialLink(link, plan(false))).resolves.toBe(true);
-        await expect(isTrialLink(link, plan(undefined))).resolves.toBe(true);
-        await expect(isTrialLink(link, plan(true))).resolves.toBe(false);
+        await expect(isTrialLink(link, plan(true))).resolves.toBe(true);
+        await expect(isTrialLink({ ...link, usage_mode: 'operational' }, plan(true))).resolves.toBe(false);
     });
 
     it('never calls the business\'s own web chat a trial, and never reads a plan for it', async () => {
         const throttle = plan(false);
-        await expect(isTrialLink({ is_demo: false, tenant_id: 'tenant-1' }, throttle)).resolves.toBe(false);
+        await expect(isTrialLink({ is_demo: false }, throttle)).resolves.toBe(false);
         await expect(isTrialLink(null, throttle)).resolves.toBe(false);
         expect(throttle.getPlanFeatures).not.toHaveBeenCalled();
     });
 
-    it('stays a trial when the plan cannot be read, or nobody can read it', async () => {
-        const link = { is_demo: true, tenant_id: 'tenant-1' };
+    it('keeps legacy rows in the safe trial mode', async () => {
+        const link = { is_demo: true };
         await expect(isTrialLink(link, { getPlanFeatures: jest.fn().mockRejectedValue(new Error('down')) })).resolves.toBe(true);
         await expect(isTrialLink(link, undefined)).resolves.toBe(true);
         await expect(isTrialLink({ is_demo: true }, plan(true))).resolves.toBe(true);
@@ -361,14 +356,14 @@ describe('the public page learns whether to call itself a trial', () => {
         const triggers = { getTriggersForWidget: jest.fn().mockResolvedValue([]) };
         return new WidgetPublicController(widgetService as any, triggers as any, {} as any, throttle as any);
     }
-    const link = { id: 'cfg-1', widget_id: 'wgt_demo', tenant_id: 'tenant-1', allowed_domains: [], is_demo: true };
+    const link = { id: 'cfg-1', widget_id: 'wgt_demo', tenant_id: 'tenant-1', allowed_domains: [], is_demo: true, usage_mode: 'trial' };
     const origin = 'https://admin.parallly-chat.cloud';
 
-    it('says trial while the plan has no web chat, and not once it does', async () => {
+    it('uses the explicit mode rather than changing with the plan', async () => {
         const trial: any = await controller(link, { getPlanFeatures: jest.fn().mockResolvedValue({ widget: false }) })
             .getConfig({ widgetId: 'wgt_demo' } as any, origin);
         expect(trial.data).toMatchObject({ isDemo: true, isTrial: true });
-        const channel: any = await controller(link, { getPlanFeatures: jest.fn().mockResolvedValue({ widget: true }) })
+        const channel: any = await controller({ ...link, usage_mode: 'operational' }, { getPlanFeatures: jest.fn().mockResolvedValue({ widget: true }) })
             .getConfig({ widgetId: 'wgt_demo' } as any, origin);
         expect(channel.data).toMatchObject({ isDemo: true, isTrial: false });
     });
@@ -390,29 +385,34 @@ describe('the public page learns whether to call itself a trial', () => {
 describe("whether the agent's link answers right now", () => {
     const on = { enabled: true, messagesPerTenant: 200 };
 
-    it('answers as a real channel when the plan includes the web chat, whatever the trial says', () => {
-        expect(demoLinkAvailability({ planIncludesWebChat: true, allowance: { enabled: false, messagesPerTenant: 0 }, used: 500 }))
+    it('answers as an operational channel when its chosen mode is entitled', () => {
+        expect(demoLinkAvailability({ usageMode: 'operational', planIncludesWebChat: true, allowance: { enabled: false, messagesPerTenant: 0 }, used: 500 }))
             .toEqual({ answers: true, unavailableReason: null });
     });
 
+    it('does not silently fall back to trial after an operational link loses its entitlement', () => {
+        expect(demoLinkAvailability({ usageMode: 'operational', planIncludesWebChat: false, allowance: on, used: 0 }))
+            .toEqual({ answers: false, unavailableReason: 'plan_required' });
+    });
+
     it('does not answer a trial the platform switched off', () => {
-        expect(demoLinkAvailability({ planIncludesWebChat: false, allowance: { ...on, enabled: false }, used: 0 }))
+        expect(demoLinkAvailability({ usageMode: 'trial', planIncludesWebChat: true, allowance: { ...on, enabled: false }, used: 0 }))
             .toEqual({ answers: false, unavailableReason: 'switched_off' });
     });
 
     it('stops at the allowance exactly where the reply lane stops', () => {
         // The lane reserves while `current < quota`.
-        expect(demoLinkAvailability({ planIncludesWebChat: false, allowance: on, used: 199 }).answers).toBe(true);
-        expect(demoLinkAvailability({ planIncludesWebChat: false, allowance: on, used: 200 }))
+        expect(demoLinkAvailability({ usageMode: 'trial', planIncludesWebChat: true, allowance: on, used: 199 }).answers).toBe(true);
+        expect(demoLinkAvailability({ usageMode: 'trial', planIncludesWebChat: true, allowance: on, used: 200 }))
             .toEqual({ answers: false, unavailableReason: 'allowance_used' });
     });
 
     it('answers whenever something could not be read', () => {
         for (const input of [
-            { planIncludesWebChat: null, allowance: { ...on, enabled: false }, used: 999 },
-            { planIncludesWebChat: false, allowance: null, used: 999 },
-            { planIncludesWebChat: false, allowance: on, used: null },
-            { planIncludesWebChat: false, allowance: on, used: Number.NaN },
+            { usageMode: 'operational' as const, planIncludesWebChat: null, allowance: { ...on, enabled: false }, used: 999 },
+            { usageMode: 'trial' as const, planIncludesWebChat: false, allowance: null, used: 999 },
+            { usageMode: 'trial' as const, planIncludesWebChat: false, allowance: on, used: null },
+            { usageMode: 'trial' as const, planIncludesWebChat: false, allowance: on, used: Number.NaN },
         ]) {
             expect(demoLinkAvailability(input)).toEqual({ answers: true, unavailableReason: null });
         }

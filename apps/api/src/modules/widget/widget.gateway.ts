@@ -372,10 +372,10 @@ export class WidgetGateway implements OnGatewayConnection, OnGatewayDisconnect, 
                         (client as any).widgetCapabilities as WidgetCapabilitySnapshot | undefined,
                         'human_handoff',
                     ),
-                    // The widget row's own mark, never the URL. The core
-                    // derives the quota lane from it with the same predicate as
-                    // `isTrialLinkTurn`, and keeps the link out of activation.
-                    demo,
+                    // Semantic mode, persisted by the owner's explicit choice.
+                    // The core uses it for quota and activation as well, so all
+                    // three outcomes agree on whether this was a trial.
+                    trialTurn,
                 },
             );
             // Text and private provenance were committed together by the core.

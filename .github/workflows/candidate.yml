@@ -444,6 +444,13 @@ jobs:
           (cd apps/whatsapp && npx eslint "src/**/*.ts" --quiet)
       # ── Generated artefacts must still reflect the code ───────────────────
       #
+      # The canary planner is loaded from API TypeScript, and that source imports
+      # the workspace package through its runtime entry point. A clean checkout
+      # has no packages/shared/dist yet, so build that dependency before any
+      # source-backed artefact checker executes.
+      - name: Build shared runtime dependency
+        run: npm run build --workspace=@parallext/shared
+
       # Every one of these is checked in AND produced by a script, and the only
       # thing keeping the two equal is somebody remembering to run the
       # generator. That already failed once: the closure artefacts each

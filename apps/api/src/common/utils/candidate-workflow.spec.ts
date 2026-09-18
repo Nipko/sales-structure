@@ -139,6 +139,16 @@ describe('how much power each job is given', () => {
 describe('what the candidate has to survive before its images exist', () => {
     const verifyRun = runLines('verify').join('\n');
 
+    it('builds the shared runtime before a source-backed artefact checker loads it', () => {
+        const verifySteps = steps('verify');
+        const sharedBuild = verifySteps.findIndex(step => step.name === 'Build shared runtime dependency');
+        const artefacts = verifySteps.findIndex(step => step.name === 'Generated artefacts match their sources');
+        expect(sharedBuild).toBeGreaterThan(-1);
+        expect(String(verifySteps[sharedBuild].run))
+            .toContain('npm run build --workspace=@parallext/shared');
+        expect(artefacts).toBeGreaterThan(sharedBuild);
+    });
+
     it('brings up PostgreSQL 17, and asserts it is 17', () => {
         expect(WORKFLOW.jobs.verify.services.postgres.image).toBe('pgvector/pgvector:pg17');
         // Configured is not proven. A service that silently came up as 16 would

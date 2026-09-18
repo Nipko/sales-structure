@@ -5,10 +5,10 @@ el estado sale de ella: con una condición local sin cumplir la fila está `abie
 cumplida y un gate externo nombrado está `bloqueada`; sólo sin condición y sin gate está `aceptada`.
 Cerrar un hueco cambia esta tabla cambiando el código, y reabrirlo la cambia de vuelta.
 
-Revisión: `e95b789947a6b1a89caf9abc9b75857917c2751e`.
+Revisión: `e1fcd184f3c071145f6a969a031804ecad4ad6f6`.
 
-**El programa no está terminado.** 25 filas aceptadas, 27 bloqueadas por un
-gate externo concreto, 1 abiertas y 1 diferidas por decisión
+**El programa no está terminado.** 26 filas aceptadas, 27 bloqueadas por un
+gate externo concreto, 0 abiertas y 1 diferidas por decisión
 explícita de alcance; 0 perfiles certificados
 de 80.
 
@@ -56,7 +56,7 @@ Ese barrido corre dos veces: sobre las filas recién construidas y otra vez sobr
 | H1 | **bloqueada** por gate 2 | corrida (`docs/audits/2026-09-09/certification-manifest.md`) | — | Ejecutor durable construido: 3 tablas, arriendo con `clock_timestamp()`, resultado escrito una sola vez, reintento como intento nuevo, presupuesto y deadline verificados antes de entregar trabajo, invalidación por definición de escenario y por autoridad del agente, y el reporte alimentado desde esas filas. El manifiesto de costo por modelo está calculado. Ejecutarlo necesita una credencial y un techo de gasto autorizado. | `e1ac3943` `4ec45699` |
 | H2 | **bloqueada** por gate 2 | **declaración** | — | Regresiones desde QA y ledger, linaje, identidad de misión y denominadores implementados; un resultado desconocido conserva ese estado y no se inventa tasa. Sus denominadores se llenan con la corrida de H1. | — |
 | H3 | **bloqueada** por gate 4 y 1 y 3 | corrida (`docs/audits/2026-09-09/adversarial-validation.md`) | — | Harness local construido: corpus generado y estratificado desde el catálogo con verificadores de resultado, sujetos sintéticos ejecutados, 3 tablas de intentos y revisión ciega, y una negativa a enunciar comparación cuando falta el otro sujeto. Correr una alternativa necesita su cuenta. | `aaf41d62` |
-| M0 | **abierta** | contador | el censo versionado no corresponde a este HEAD | Censo derivado del árbol: 32 call sites, 29 cobrables, 0 fuera de la autoridad económica. El inventario de efectos declara 68 productores y 16 con al menos una propiedad en `none`. La condición es que el artefacto versionado se regenere desde el mismo HEAD, no que alguien lo haya leído. | — |
+| M0 | **aceptada** | contador | — | Censo derivado del árbol: 32 call sites, 29 cobrables, 0 fuera de la autoridad económica. El inventario de efectos declara 68 productores y 16 con al menos una propiedad en `none`. La condición es que el artefacto versionado se regenere desde el mismo HEAD, no que alguien lo haya leído. | — |
 | M1 | **bloqueada** por gate 1 y 4 | contador | — | Remitente, pagador y credencial salen del resolver único; la unión de autoridades cubre agente servido, 9 políticas proactivas (appointment_reminder, attendance_check, appointment_notification, appointment_cancellation, drip_step, nurturing_followup, broadcast_message, automation_rule_action, recall_reminder) y operador humano con 4 roles. BSUID, la procedencia del token BISU y el control del hilo frente al agente de Meta ya están en el código y probados: un remitente sin teléfono se contesta en vez de descartarse, un token del portafolio del proveedor se rechaza en vez de firmar el envío de un tenant, y el control del hilo es durable y se recupera solo. Lo que falta es una cuenta real: ninguna de esas transiciones vio todavía un traspaso de verdad, y por eso la coexistencia va detrás de un interruptor apagado. El contador de esta fila mide otra cosa —productores de mensajería sin autoridad o sin idempotencia— y sigue siendo lo que la mantiene abierta. | — |
 | M2 | **bloqueada** por gate 4 | contador | — | Tarifas versionadas `meta-ratecards-2026@ddb62cc8458b94a3` con 4 tarjetas, 5 categorías que Meta cobra por separado y 1000 entregas de servicio gratuitas por número y mes calendario. La categoría aprobada y la ventana de servicio se leen de la base del tenant antes de admitir. Lo que falta es una cuenta real: tarifa aplicada por Meta al entregar y conciliación contra factura. | — |
 | M3 | **aceptada** | contador | — | Autoridad económica transaccional con 5 alcances (number_month, account, business, contact, task), reserva antes del efecto y liquidación contra el recibo. Cero productores cobrables fuera del gate en este HEAD: lo verifica el censo, no esta frase. | — |

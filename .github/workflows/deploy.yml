@@ -382,6 +382,7 @@ jobs:
           apps/dashboard/src/app/admin/setup-wizard/_components/optional-setup-paths.a11y.spec.tsx
           apps/dashboard/src/app/admin/agent/_components/agent-guide-cards.a11y.spec.tsx
           apps/dashboard/src/app/admin/agent/quality/owner-health-summary.spec.ts
+          apps/dashboard/src/app/admin/agent/quality/weekly-summary-choice.a11y.spec.tsx
 
       # Bloqueante desde ago 2026: el codebase quedó lint-clean (commit 64c46827,
       # 28 errores → 0). Es el único gate automático que atrapa la clase de bug

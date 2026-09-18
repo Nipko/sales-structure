@@ -12769,6 +12769,7 @@
       "next": { "title": "O que devo fazer agora?", "detail": "Uma melhoria é priorizada por evidência e impacto, sem virar uma nota global." },
       "viewChannels": "Ver canais e verificações", "viewCapabilities": "Ver capacidades", "viewResults": "Ver evidências e prioridades", "doNext": "Abrir próxima ação"
     },
+    "weeklySummary": { "title": "Receba um resumo por e-mail", "description": "Você pode escolher um relatório semanal ou mensal com as métricas e tendências disponíveis. Abrir as configurações não faz a assinatura nem adiciona destinatários.", "whatsappBoundary": "O resumo pelo WhatsApp ainda não está disponível: primeiro exige consentimento, controle de custos e entrega verificável.", "action": "Escolher frequência e destinatários" },
     "loading": "Analisando as evidências disponíveis…",
     "statusLabel": "Estado atual",
     "agentInactive": "Agente inativo",

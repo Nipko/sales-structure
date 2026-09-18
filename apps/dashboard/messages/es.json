@@ -12769,6 +12769,7 @@
       "next": { "title": "¿Qué me conviene hacer ahora?", "detail": "Se prioriza una mejora por evidencia e impacto, sin convertirla en una nota global." },
       "viewChannels": "Ver canales y comprobaciones", "viewCapabilities": "Ver capacidades", "viewResults": "Ver evidencia y prioridades", "doNext": "Abrir siguiente acción"
     },
+    "weeklySummary": { "title": "Recibe un resumen por correo", "description": "Puedes elegir un reporte semanal o mensual con las métricas y tendencias disponibles. Abrir la configuración no te suscribe ni agrega destinatarios.", "whatsappBoundary": "El resumen por WhatsApp todavía no está disponible: antes requiere consentimiento, costos y entrega verificable.", "action": "Elegir frecuencia y destinatarios" },
     "loading": "Analizando la evidencia disponible…",
     "statusLabel": "Estado actual",
     "agentInactive": "Agente inactivo",

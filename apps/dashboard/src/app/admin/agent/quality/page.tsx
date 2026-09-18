@@ -40,6 +40,7 @@ import { QUALITY_HEALTH_REFRESH_EVENT, requestQualityHealthRefresh } from "@/lib
 import { safeQualityHref } from "@/lib/quality-health";
 import { useQualityCodeLabel } from "@/lib/quality-labels";
 import { buildOwnerHealthSummary } from "./owner-health-summary";
+import { WeeklySummaryChoice } from "./WeeklySummaryChoice";
 
 interface AgentOption { id: string; name: string; is_default: boolean; is_active: boolean }
 
@@ -211,6 +212,8 @@ export default function AgentQualityPage() {
         <OwnerQuestionCard icon={MessageSquareWarning} title={t("ownerQuestions.results.title")} answer={t(`ownerQuestions.results.${ownerSummary.outcomes}`, { count: ownerSummary.sampleSize, minimum: ownerSummary.minimumSample })} detail={t("ownerQuestions.results.detail")} href="#quality-actions" action={t("ownerQuestions.viewResults")} />
         <OwnerQuestionCard icon={Lightbulb} title={t("ownerQuestions.next.title")} answer={ownerSummary.nextRecommendationCode ? translatedCode("recommendations", ownerSummary.nextRecommendationCode) : t(`nextMilestone.${overview.nextMilestone}`)} detail={t("ownerQuestions.next.detail")} href={ownerSummary.nextRecommendationHref ? safeAdminHref(ownerSummary.nextRecommendationHref) : "#quality-actions"} action={t("ownerQuestions.doNext")} />
       </div></section>}
+
+      {canAccess("/admin/settings/alerts") && <WeeklySummaryChoice />}
 
       <section aria-labelledby="quality-layers"><div className="mb-3"><h2 id="quality-layers" className="text-base font-semibold text-foreground">{t("layers.title")}</h2><p className="mt-1 text-sm text-muted-foreground">{t("layers.description")}</p></div><div className="grid gap-4 lg:grid-cols-3">
         <PillarCard icon={ClipboardCheck} title={t("pillars.preparation.title")} description={t("pillars.preparation.description")} status={overview.preparation.status} statusLabel={t(`pillarStatuses.${overview.preparation.status}`)}><p className="text-2xl font-semibold text-foreground">{overview.preparation.passed}/{overview.preparation.applicable}</p><p className="text-xs text-muted-foreground">{t("pillars.preparation.passedChecks")}</p>{overview.preparation.criticalBlockers.length > 0 && <p className="mt-3 flex items-start gap-1.5 text-xs font-medium text-red-600 dark:text-red-400"><AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" />{t("pillars.preparation.blockers", { count: overview.preparation.criticalBlockers.length })}</p>}</PillarCard>

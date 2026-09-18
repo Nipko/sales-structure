@@ -12769,6 +12769,7 @@
       "next": { "title": "Que dois-je faire maintenant ?", "detail": "Une amélioration est priorisée selon les preuves et l’impact, sans devenir une note globale." },
       "viewChannels": "Voir les canaux et contrôles", "viewCapabilities": "Voir les capacités", "viewResults": "Voir les preuves et priorités", "doNext": "Ouvrir l’action suivante"
     },
+    "weeklySummary": { "title": "Recevez un récapitulatif par e-mail", "description": "Vous pouvez choisir un rapport hebdomadaire ou mensuel avec les métriques et tendances disponibles. Ouvrir les paramètres ne vous inscrit pas et n’ajoute aucun destinataire.", "whatsappBoundary": "Le récapitulatif WhatsApp n’est pas encore disponible : il exige d’abord le consentement, la maîtrise des coûts et une livraison vérifiable.", "action": "Choisir la fréquence et les destinataires" },
     "loading": "Analyse des preuves disponibles…",
     "statusLabel": "État actuel",
     "agentInactive": "Agent inactif",

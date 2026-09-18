@@ -12769,6 +12769,7 @@
       "next": { "title": "What should I do next?", "detail": "One improvement is prioritized by evidence and impact, without turning it into a global score." },
       "viewChannels": "View channels and checks", "viewCapabilities": "View capabilities", "viewResults": "View evidence and priorities", "doNext": "Open next action"
     },
+    "weeklySummary": { "title": "Receive an email summary", "description": "You can choose a weekly or monthly report with the available metrics and trends. Opening settings does not subscribe you or add recipients.", "whatsappBoundary": "The WhatsApp summary is not available yet: it first requires consent, cost controls, and verifiable delivery.", "action": "Choose frequency and recipients" },
     "loading": "Analyzing available evidence…",
     "statusLabel": "Current status",
     "agentInactive": "Inactive agent",

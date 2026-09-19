@@ -527,13 +527,14 @@ jobs:
           JWT_SECRET: candidate-ci-only
           JWT_REFRESH_SECRET: candidate-ci-only-refresh
           INTERNAL_JWT_SECRET: candidate-ci-only-internal
+          NODE_OPTIONS: --max-old-space-size=6144
         # `tsc` cannot see a missing provider; this is the only thing that can.
         # Judged by its own report for the same reason as the other two: it is a
         # Jest run, so "no bootstrap spec matched the pattern" would otherwise
         # exit 0 and read as "the dependency graph resolves".
         run: |
           set -o pipefail
-          npm run test:bootstrap --workspace=@parallext/api -- --ci \
+          npm run test:bootstrap --workspace=@parallext/api -- --ci --runInBand \
             --json --outputFile "${GITHUB_WORKSPACE}/bootstrap-jest.json" || true
           node infra/scripts/assert-no-skipped-tests.cjs \
             --report "${GITHUB_WORKSPACE}/bootstrap-jest.json" --label "DI bootstrap"

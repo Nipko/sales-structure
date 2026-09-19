@@ -301,15 +301,19 @@ export function fundingFromPause(row: WhatsappNumberPause): FundingReadinessStat
 /**
  * Minor units to something a person reads, in THEIR locale.
  *
- * `Intl` is given the currency rather than a hard-coded divisor because minor
- * units are not always hundredths — and a WhatsApp rate in a currency with no
- * decimal places, divided by a hundred, would be displayed as one per cent of
- * itself.
+ * The stored WhatsApp rate-card exponent takes precedence for COP; `Intl`
+ * supplies the exponent for other currencies. Minor units are not always
+ * hundredths, and ICU's preferred display precision can differ from the
+ * exponent used to store a charge.
  */
 export function formatMinor(minor: number, currency: string, locale: string): string {
     try {
-        const digits = new Intl.NumberFormat(locale, { style: 'currency', currency })
-            .resolvedOptions().maximumFractionDigits ?? 2;
+        // The WhatsApp rate card stores COP in hundredths (CURRENCY_MINOR_EXPONENT.COP = 2).
+        // Some Node/ICU versions format COP with zero decimals; using that display
+        // preference as the storage exponent would inflate the bill 100 times.
+        const digits = currency.toUpperCase() === 'COP' ? 2
+            : new Intl.NumberFormat(locale, { style: 'currency', currency })
+                .resolvedOptions().maximumFractionDigits ?? 2;
         return new Intl.NumberFormat(locale, { style: 'currency', currency })
             .format(minor / 10 ** digits);
     } catch {

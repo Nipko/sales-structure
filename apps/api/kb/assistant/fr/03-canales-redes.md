@@ -3,7 +3,7 @@ id: canales-redes
 title: "Connecter Instagram, Messenger et Telegram"
 routes: ["/admin/channels", "/admin/channels/instagram", "/admin/channels/messenger", "/admin/channels/telegram"]
 roles: ["tenant_admin"]
-keywords: ["instagram", "messenger", "telegram", "facebook", "connecter canal", "connecter instagram", "connecter messenger", "connecter telegram", "reconnecter", "token expire", "jeton expire", "bot", "botfather", "messages prives", "dm", "deconnecter canal", "compte business", "plusieurs comptes", "limite de comptes", "page facebook", "reseaux sociaux"]
+keywords: ["instagram", "messenger", "telegram", "facebook", "connecter canal", "connecter instagram", "connecter messenger", "connecter telegram", "reconnecter", "token expire", "jeton expire", "bot", "botfather", "messages prives", "dm", "deconnecter canal", "compte business", "plusieurs comptes", "limite de comptes", "page facebook", "reseaux sociaux", "compte non professionnel", "pas administrateur de la page", "reessayer seulement si utile"]
 ---
 
 # Connecter Instagram, Messenger et Telegram
@@ -45,6 +45,12 @@ L'autorisation que Meta accorde à Parallly pour votre compte Instagram **dure 6
 3. Cliquez sur **Connecter avec Facebook**. La fenêtre de connexion Facebook s'ouvrira.
 4. Connectez-vous, **sélectionnez la page Facebook** de votre entreprise et accordez les autorisations de messagerie demandées.
 5. C'est fait : vous verrez votre **Page connectée** et les messages Messenger commenceront à arriver dans votre boîte de réception.
+
+## Avant d'ouvrir la fenêtre : une question qui ne vous bloque jamais
+
+Avant de connecter Instagram ou Messenger, l'écran pose une question autodéclarée — pour Instagram, « Votre compte Instagram est-il professionnel ? » ; pour Messenger, « Pouvez-vous publier sur la page Facebook de votre entreprise ? » — avec trois réponses : **Oui**, **Non** et **Je ne sais pas**. Personne ne la vérifie de notre côté, donc votre réponse ne **bloque jamais** le bouton de connexion : si vous répondez « Non » ou « Je ne sais pas », vous voyez les mêmes étapes pour le résoudre ou le découvrir, mais vous pouvez quand même essayer de vous connecter.
+
+Si la connexion échoue, l'écran ne répète plus le message de Meta : il vous dit quoi faire selon votre situation. Les plus fréquentes sont un compte Instagram **non professionnel**, Facebook **sans page**, ne pas être **administrateur** de cette page, des **autorisations manquantes** pendant la connexion, la **fenêtre fermée** avant la fin, et avoir atteint la **limite de votre forfait**. Le bouton **Réessayer** n'apparaît que lorsque réessayer peut vraiment aider — par exemple après avoir fermé la fenêtre par erreur ou après avoir accepté les autorisations qui manquaient — jamais face à un mur qu'une seconde tentative ne change pas, comme un compte qui reste non professionnel ou une page où vous n'êtes pas administrateur.
 
 ## Comment connecter Telegram
 

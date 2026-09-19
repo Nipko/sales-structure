@@ -561,7 +561,7 @@ export class FeatureRequestsService {
                     {
                         role: 'system',
                         content:
-                            'Sos un PM. Te paso 3 frases que distintos clientes dijeron en chat sugiriendo una feature. Devolvé un JSON con {"title": <título corto en español, máx 60 chars>, "description": <descripción 1-2 frases en español>}. NO incluyas markdown, solo JSON puro.',
+                            'Eres un PM. Te paso 3 frases que distintos clientes dijeron en chat sugiriendo una feature. Devuelve un JSON con {"title": <título corto en español, máx 60 chars>, "description": <descripción 1-2 frases en español>}. NO incluyas markdown, solo JSON puro.',
                     },
                     { role: 'user', content: sampleText },
                 ],

@@ -135,6 +135,7 @@ describe('PersonaController setup wizard — avanzar sin destruir', () => {
                 stageOnly: true,
                 stage: 'channel_deferred',
                 channelConnectSkippedAt: '2026-09-04T12:00:00.000Z',
+                deferredChannel: 'whatsapp',
             } as any,
             req,
         );
@@ -142,6 +143,60 @@ describe('PersonaController setup wizard — avanzar sin destruir', () => {
         expect(personaService.updateAgent).not.toHaveBeenCalled();
         expect(written[0].onboardingStage).toBe('channel_deferred');
         expect(written[0].channelConnectSkippedAt).toBe('2026-09-04T12:00:00.000Z');
+        expect(written[0].setupWizardChannelDeferrals).toEqual({ whatsapp: '2026-09-04T12:00:00.000Z' });
+    });
+
+    it('el orden de canales del asistente queda guardado en un guardado solo-estado, sin asignar nada', async () => {
+        const { controller, personaService, written } = makeController({ settings: {} });
+
+        await controller.applyTemplate(
+            tenantId,
+            {
+                stageOnly: true,
+                stage: 'channel_deferred',
+                channelConnectSkippedAt: '2026-09-18T12:00:00.000Z',
+                selectedChannels: ['instagram', 'whatsapp', 'messenger', 'telegram'],
+            } as any,
+            req,
+        );
+
+        // "Salud de agentes" y Assist leen el primer canal de acá.
+        expect(written[0].setupWizardChannels).toEqual(['instagram', 'whatsapp', 'messenger', 'telegram']);
+        // Sin cerrar el asistente y sin tocar a ningún agente.
+        expect(written[0].setupWizardCompleted).toBeUndefined();
+        expect(personaService.updateAgent).not.toHaveBeenCalled();
+        expect(personaService.createAgent).not.toHaveBeenCalled();
+        expect(personaService.listAgents).not.toHaveBeenCalled();
+    });
+
+    it('el orden de canales se sanea: fuera lo desconocido, sin repetidos, tope cinco', async () => {
+        expect(PersonaController.readWizardChannelOrder(
+            [' Instagram ', 'whatsapp', 'instagram', 'fax', 42, 'messenger', 'telegram', 'web_chat', 'web_widget'],
+        )).toEqual(['instagram', 'whatsapp', 'messenger', 'telegram', 'web_chat']);
+        expect(PersonaController.readWizardChannelOrder('whatsapp')).toBeNull();
+        expect(PersonaController.readWizardChannelOrder(['fax'])).toBeNull();
+
+        // Una lista vacía o inválida no borra el orden que ya estaba guardado.
+        const { controller, written } = makeController({ settings: { setupWizardChannels: ['instagram'] } });
+        await controller.applyTemplate(tenantId, { stageOnly: true, stage: 'agent_reviewed', selectedChannels: [] } as any, req);
+        expect(written[0].setupWizardChannels).toEqual(['instagram']);
+    });
+
+    it('conserva decisiones independientes al aplazar más de un canal', async () => {
+        const { controller, written } = makeController({
+            settings: { setupWizardChannelDeferrals: { whatsapp: '2026-09-17T10:00:00.000Z' } },
+        });
+        await controller.applyTemplate(tenantId, {
+            stageOnly: true,
+            stage: 'channel_deferred',
+            channelConnectSkippedAt: '2026-09-18T12:00:00.000Z',
+            deferredChannel: 'instagram',
+        } as any, req);
+        expect(written[0].setupWizardChannelDeferrals).toEqual({
+            whatsapp: '2026-09-17T10:00:00.000Z',
+            instagram: '2026-09-18T12:00:00.000Z',
+        });
+        expect(PersonaController.readWizardDeferredChannel('fax')).toBeNull();
     });
 
     it.each([
@@ -172,7 +227,9 @@ describe('PersonaController setup wizard — avanzar sin destruir', () => {
         // Sin agente durable, el respaldo legado SÍ es lo que lee el runtime.
         expect(personaService.savePersonaFromYaml).toHaveBeenCalledTimes(1);
         const [, payload] = personaService.createAgent.mock.calls[0];
-        expect(payload.channels).toEqual(['whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget']);
+        // Nace sin asignaciones (D16, sep-2026): como predeterminado ya atiende
+        // todo, y la asignación real la hace la conexión del primer canal.
+        expect(payload.channels).toEqual([]);
         // El marcador de plantilla se sustituye, nunca se guarda crudo.
         expect(payload.configJson.persona.greeting).toBe('¡Hola! Soy Ana de Clínica Norte.');
     });

@@ -64,7 +64,7 @@ export class AuthThrottleGuard implements CanActivate {
                     // lee alguien que está intentando entrar a su cuenta, no un
                     // integrador.
                     error: 'too_many_attempts',
-                    message: 'Demasiados intentos. Esperá un momento y volvé a intentar.',
+                    message: 'Demasiados intentos. Espera un momento y vuelve a intentarlo.',
                     retryAfter: windowSeconds,
                 },
                 HttpStatus.TOO_MANY_REQUESTS,

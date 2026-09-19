@@ -1,5 +1,6 @@
 import {
   UNKNOWN_ONBOARDING_GUIDE,
+  demoLinkPause,
   isOnboardingGuideKnown,
   resolveLoginRedirect,
   readSetupStatusFacts,
@@ -74,6 +75,107 @@ describe("readSetupStatusFacts", () => {
     const facts = readSetupStatusFacts({ success: true, data: { hasAnyChannel: true } });
 
     expect(facts?.connectedChannelTypes).toEqual([]);
+  });
+
+  describe("la respuesta a «¿Dónde vive hoy tu número?»", () => {
+    const RECORDED = "2026-09-17T15:00:00.000Z";
+
+    it("la lee tal cual la anotó la cuenta", () => {
+      const facts = readSetupStatusFacts({
+        success: true,
+        data: { whatsappTriage: { answerId: "other_provider", recordedAt: RECORDED } },
+      });
+
+      expect(facts?.whatsappTriage).toEqual({ answerId: "other_provider", recordedAt: RECORDED });
+    });
+
+    it.each([
+      ["un API viejo que no la manda", {}],
+      ["null", { whatsappTriage: null }],
+      // Una respuesta que la pantalla de WhatsApp ya no ofrece no es una razón
+      // que Inicio pueda repetir: la misma regla que usa esa pantalla.
+      ["una respuesta que la pantalla no ofrece", { whatsappTriage: { answerId: "maybe", recordedAt: RECORDED } }],
+      ["sin respuesta", { whatsappTriage: { answerId: " ", recordedAt: RECORDED } }],
+      ["sin fecha", { whatsappTriage: { answerId: "not_at_hand" } }],
+      ["un texto suelto", { whatsappTriage: "not_at_hand" }],
+    ])("%s no es una respuesta: null", (_label, data) => {
+      expect(readSetupStatusFacts({ success: true, data })?.whatsappTriage).toBeNull();
+    });
+  });
+
+  describe("el enlace público del agente", () => {
+    it("lo lee tal cual lo manda el servidor", () => {
+      const facts = readSetupStatusFacts({
+        success: true,
+        data: { demoLink: { widgetId: "wgt_abc", path: "/w/wgt_abc", agentName: "Ana" } },
+      });
+
+      expect(facts?.demoLink).toEqual({
+        widgetId: "wgt_abc", path: "/w/wgt_abc", agentName: "Ana", usageMode: "trial", answers: true, unavailableReason: null,
+      });
+    });
+
+    it("sin nombre del agente sigue siendo un enlace: el nombre lo pone la pantalla", () => {
+      const facts = readSetupStatusFacts({
+        success: true,
+        data: { demoLink: { widgetId: "wgt_abc", path: "/w/wgt_abc" } },
+      });
+
+      expect(facts?.demoLink).toEqual({
+        widgetId: "wgt_abc", path: "/w/wgt_abc", agentName: "", usageMode: "trial", answers: true, unavailableReason: null,
+      });
+    });
+
+    describe("si hoy responde", () => {
+      const read = (extra: Record<string, unknown>) => readSetupStatusFacts({
+        success: true,
+        data: { demoLink: { widgetId: "wgt_abc", path: "/w/wgt_abc", agentName: "Ana", ...extra } },
+      })?.demoLink ?? null;
+
+      it.each([
+        ["la prueba apagada", "switched_off", "switchedOff"],
+        ["las respuestas gratis ya usadas", "allowance_used", "allowanceUsed"],
+      ] as const)("dice la pausa con su motivo: %s", (_label, unavailableReason, pause) => {
+        const link = read({ answers: false, unavailableReason });
+        expect(link).toMatchObject({ answers: false, unavailableReason });
+        expect(demoLinkPause(link)).toBe(pause);
+      });
+
+      it("una pausa sin motivo conocido se dice como pausa, nunca como que responde", () => {
+        const link = read({ answers: false, unavailableReason: "otra_cosa" });
+        expect(link).toMatchObject({ answers: false, unavailableReason: null });
+        expect(demoLinkPause(link)).toBe("switchedOff");
+      });
+
+      it.each([
+        ["un API viejo que no manda el campo", {}],
+        ["un enlace que responde", { answers: true, unavailableReason: null }],
+        // Un motivo sin `answers: false` no pausa nada: manda el booleano.
+        ["un motivo suelto", { unavailableReason: "allowance_used" }],
+        ["un valor que no es booleano", { answers: "false" }],
+      ])("%s: responde", (_label, extra) => {
+        const link = read(extra);
+        expect(link).toMatchObject({ answers: true, unavailableReason: null });
+        expect(demoLinkPause(link)).toBeNull();
+      });
+
+      it("sin enlace no hay pausa que decir", () => {
+        expect(demoLinkPause(null)).toBeNull();
+      });
+    });
+
+    it.each([
+      ["un API viejo que no lo manda", {}],
+      ["null", { demoLink: null }],
+      ["sin path", { demoLink: { widgetId: "wgt_abc" } }],
+      ["sin widgetId", { demoLink: { path: "/w/wgt_abc" } }],
+      // `${origin}${path}` tiene que quedarse en este origen: una URL completa o
+      // una protocolo-relativa mandaría a la persona a otro sitio.
+      ["una URL completa", { demoLink: { widgetId: "wgt_abc", path: "https://evil.test/w/x" } }],
+      ["una ruta protocolo-relativa", { demoLink: { widgetId: "wgt_abc", path: "//evil.test/w/x" } }],
+    ])("%s no es un enlace: null", (_label, data) => {
+      expect(readSetupStatusFacts({ success: true, data })?.demoLink).toBeNull();
+    });
   });
 });
 

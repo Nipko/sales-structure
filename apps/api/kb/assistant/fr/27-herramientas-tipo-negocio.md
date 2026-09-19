@@ -1,9 +1,9 @@
 ---
 id: herramientas-tipo-negocio
 title: "Outils de l’agent selon votre type d’activité"
-routes: ["/admin/agent", "/admin/agent/quality"]
+routes: ["/admin/agent", "/admin/agent/quality", "/admin/memberships"]
 roles: ["tenant_admin"]
-keywords: ["outils","capacités","type d’activité","sous-type","activer les outils","outil désactivé","configurer agent"]
+keywords: ["outils","capacités","type d’activité","sous-type","activer les outils","outil désactivé","configurer agent","prix d’exemple","confirmer le prix","sur devis","adhésions","forfaits d’adhésion","salle de sport"]
 ---
 
 # Outils de l’agent selon votre type d’activité
@@ -28,6 +28,15 @@ L’autorisation dépend du type d’activité, de la configuration de l’agent
 Si un autre système gère les réservations ou commandes, lire ses données ne signifie pas que Parallly peut y confirmer une opération. Transmettez à l’équipe lorsqu’aucun parcours d’écriture autorisé et vérifié n’existe.
 
 Un outil activé est configuré. Un outil prêt satisfait aux exigences connues. Une tâche testée nécessite une preuve du résultat pour le profil, la version et le canal concernés. Un exemple ou un test qui demande seulement une information manquante ne prouve pas la création d’une réservation ou commande.
+
+## Les prix que l’agent n’annonce pas encore
+
+La recette de votre secteur préremplit des prix d’exemple pour que vous ne partiez pas de zéro, et l’agent ne les annonce pas à vos clients tant que vous ne les avez pas confirmés. Cela vaut pour les services (voir **Rendez-vous et calendriers**) et, dans une salle de sport, aussi pour les **forfaits d’adhésion** :
+
+- Dans **Adhésions**, chaque forfait au prix d’exemple affiche le badge **Prix d'exemple** et la note indiquant que l’agent ne le mentionne pas tant que vous ne l’avez pas confirmé. **Confirmer le prix** conserve le même montant, désormais confirmé ; **Sur devis** fait que l’agent n’indique aucun montant pour ce forfait et propose qu’une personne établisse un devis.
+- Un forfait qui affiche **Sans prix** n’a aucun montant à confirmer : appuyez sur **Saisir le prix**, **C'est gratuit** ou **Sur devis**.
+- Dans le formulaire du forfait, vous choisissez **Prix confirmé** (il faut un montant supérieur à 0), **C'est gratuit** ou **Sur devis, selon le cas** ; saisir un autre montant le confirme aussi. Un forfait gratuit s’affiche **Gratuit**, et l’agent indique au client qu’il est gratuit.
+- Tant qu’il en reste un non confirmé ou sans prix, **Santé des agents** affiche l’avertissement non critique **Prix non confirmés** ; l’agent continue de répondre.
 
 ## Comment Assist vous aide
 

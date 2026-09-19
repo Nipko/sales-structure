@@ -28,6 +28,23 @@ describe('PrismaService tenant schema lifecycle', () => {
         return { service, tenant, queryRaw, executeRaw };
     }
 
+    it('allows tenant queries to wait for a pooled connection under load', async () => {
+        const service = Object.create(PrismaService.prototype) as PrismaService;
+        const tx = {
+            $executeRawUnsafe: jest.fn().mockResolvedValue(0),
+            $queryRawUnsafe: jest.fn().mockResolvedValue([{ ok: 1 }]),
+        };
+        const transaction = jest.fn(async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx));
+        Object.defineProperty(service, '$transaction', { value: transaction, configurable: true });
+
+        await service.executeInTenantSchema('tenant_acme', 'SELECT 1');
+        expect(transaction).toHaveBeenLastCalledWith(expect.any(Function), { timeout: 15000, maxWait: 10000 });
+
+        await service.transactionInTenantSchema('tenant_acme', query => query('SELECT 1'),
+            { timeout: 5000, maxWait: 3000 });
+        expect(transaction).toHaveBeenLastCalledWith(expect.any(Function), { timeout: 5000, maxWait: 3000 });
+    });
+
     it('never reuses a stale slug-based schema when provisioning a new tenant', async () => {
         const { service, tenant, queryRaw, executeRaw } = makeService(tenantIdA);
         const staleSchemaName = 'tenant_same_slug';
@@ -340,7 +357,7 @@ describe('PrismaService tenant schema lifecycle', () => {
                 const file = join(migrationsDir, dir, 'migration.sql');
                 if (!existsSync(file)) continue;
                 for (const [, table, columns] of readFileSync(file, 'utf8')
-                    .matchAll(/CREATE TABLE (?:IF NOT EXISTS )?"?(\w+)"?\s*\(([\s\S]*?)\n\)/g)) {
+                    .matchAll(/CREATE TABLE (?:IF NOT EXISTS )?(?:"?public"?\.)?"?(\w+)"?\s*\(([\s\S]*?)\r?\n\)/g)) {
                     if (hasTenantIdColumn(columns)) migrated.push(table);
                 }
             }

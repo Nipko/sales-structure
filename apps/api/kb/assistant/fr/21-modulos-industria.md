@@ -8,7 +8,7 @@ keywords: ["secteur", "vertical", "profil d'entreprise", "liste d'attente", "org
 
 # Outils et modules selon votre secteur
 
-La section **Opérations** est déterminée par les capacités et le sous-type, pas uniquement par le nom du secteur. Le contrat contient 20 secteurs et 76 profils d'entreprise canoniques ; 18 secteurs disposent actuellement d'au moins un profil sélectionnable. L'organisation d'événements et la construction restent enregistrées pour préserver leur identité et l'évolution du produit, mais leurs profils actuels sont sur liste d'attente et ne sont pas proposés lors de la création d'un compte.
+La section **Opérations** est déterminée par les capacités et le sous-type, pas uniquement par le nom du secteur. Le contrat contient 20 secteurs et 80 profils d'entreprise canoniques ; 18 secteurs disposent actuellement d'au moins un profil sélectionnable. L'organisation d'événements et la construction restent enregistrées pour préserver leur identité et l'évolution du produit, mais leurs profils actuels sont sur liste d'attente et ne sont pas proposés lors de la création d'un compte.
 
 Les secteurs actuellement proposés sont la santé, la mode et beauté, l'immobilier, les restaurants, l'automobile, le tourisme, l'éducation, la finance, les services professionnels, le commerce de détail, la technologie, le vétérinaire, le fitness, les assurances, les services à domicile, les services animaliers, la photographie et autre.
 
@@ -19,3 +19,9 @@ Les secteurs actuellement proposés sont la santé, la mode et beauté, l'immobi
 - Le vétérinaire utilise rendez-vous et animaux ; le fitness, adhésions et cours ; les assurances, opérations d'assurance ; les services à domicile, demandes ; les services animaliers, animaux et, pour la garde, ressources ; la photographie, séances.
 
 Tous les modules ne sont pas attribués à chaque entreprise d'un profil : capacités effectives, sous-type, rôle et compte contrôlent la visibilité. Le choix d'un profil ne certifie aucune conformité professionnelle ou réglementaire. Si un outil manque, un administrateur doit vérifier **Paramètres → Informations de l'entreprise** et **Forfait et facturation** avant de contacter le support.
+
+### La recette de votre secteur
+
+Tout ce qui apparaît déjà rédigé quand vous activez un secteur vient d'une **recette** : le nom et le message d'accueil de l'agent, les questions fréquentes, les prestations avec leur prix d'exemple, le vocabulaire du métier et les raisons pour lesquelles l'agent passe la conversation à une personne. Chaque recette a deux niveaux : celle du secteur, et une couche par sous-type avec ce qui change (une école de danse par-dessus l'enseignement, par exemple).
+
+Une recette **n'invente jamais une donnée de votre entreprise**. Elle ne connaît ni votre adresse, ni votre téléphone, ni vos moyens de paiement, ni le délai d'annulation. À la place de cette donnée elle laisse un espace comme `[dirección]` ou `[precio]` que vous remplissez. Une donnée inventée qui sonne juste est pire qu'un espace vide : l'espace se voit et se remplit ; l'invention part sur WhatsApp.

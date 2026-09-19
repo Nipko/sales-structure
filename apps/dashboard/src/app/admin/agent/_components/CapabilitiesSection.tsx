@@ -16,12 +16,19 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
 import { api, type TenantPaymentsConfig } from "@/lib/api";
 import { resolveAgentToolAvailability } from "@/lib/agent-tool-availability";
+import { agentReviewModeCopyKey, withinNamespace, type AgentReviewModeReading } from "@/lib/agent-review-mode";
 import type { PersonaConfig } from "../_types";
 
 interface CapabilitiesSectionProps {
   config: PersonaConfig;
   onChange: (updates: Partial<PersonaConfig>) => void;
   apptReadiness: { services: number; slots: number; loaded: boolean };
+  /**
+   * How a save reaches this agent. The line above the switches said "changes
+   * apply when published" to every tenant; in the default mode they apply on
+   * Save. Absent reads as unknown, whose sentence is true in both modes.
+   */
+  reviewMode?: AgentReviewModeReading;
 }
 
 type ToolKey = keyof NonNullable<PersonaConfig["tools"]>;
@@ -72,7 +79,7 @@ function paymentRailStatus(cfg: TenantPaymentsConfig | null): PaymentRailStatus 
   return oneStepLeft ? "pending" : "missing";
 }
 
-export function CapabilitiesSection({ config, onChange, apptReadiness }: CapabilitiesSectionProps) {
+export function CapabilitiesSection({ config, onChange, apptReadiness, reviewMode = "unknown" }: CapabilitiesSectionProps) {
   const tNavigation = useTranslations('agentToolNavigation');
   const tSetup = useTranslations("qualityHealth.setup");
   const t = useTranslations("agent.capabilities");
@@ -168,7 +175,7 @@ export function CapabilitiesSection({ config, onChange, apptReadiness }: Capabil
 
   return (
     <div className="space-y-4">
-      <p className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-sm text-neutral-600 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300">{tNavigation('editorScope')}</p>
+      <p className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-sm text-neutral-600 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300">{tNavigation(withinNamespace(agentReviewModeCopyKey('toolEditorScope', reviewMode), 'agentToolNavigation'))}</p>
       {(!verticalConfig || isVerticalConfigLoading || availability.faqs.reason === "profile_unknown") && (
         <p role="status" className="text-sm text-amber-700 dark:text-amber-300">{t("toolAvailabilityState.profile_unknown")}</p>
       )}

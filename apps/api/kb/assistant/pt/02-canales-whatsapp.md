@@ -3,7 +3,7 @@ id: canales-whatsapp
 title: "Conectar o WhatsApp"
 routes: ["/admin/channels", "/admin/channels/whatsapp", "/admin/channels/whatsapp/templates"]
 roles: ["tenant_admin"]
-keywords: ["whatsapp", "conectar whatsapp", "numero de whatsapp", "whatsapp business", "coexistencia", "app do whatsapp", "migrar numero", "templates", "modelos", "modelo whatsapp", "sincronizar conversas", "historico de conversas", "codigo qr", "verificacao", "meta", "facebook", "desconectar whatsapp", "janela de 24 horas", "varias contas", "segundo numero", "exige reautorizar", "popup bloqueado", "conexao com avisos", "negocio nao verificado", "cobranca da meta", "meta cobra", "custo do whatsapp", "forma de pagamento", "cartao na meta", "mensagens de servico", "mil mensagens gratis", "teto de gasto", "envio pausado", "parou de responder", "1 de outubro", "fatura da meta"]
+keywords: ["whatsapp", "conectar whatsapp", "numero de whatsapp", "whatsapp business", "coexistencia", "app do whatsapp", "migrar numero", "templates", "modelos", "modelo whatsapp", "sincronizar conversas", "historico de conversas", "codigo qr", "verificacao", "meta", "facebook", "desconectar whatsapp", "janela de 24 horas", "varias contas", "segundo numero", "exige reautorizar", "popup bloqueado", "conexao com avisos", "negocio nao verificado", "cobranca da meta", "meta cobra", "custo do whatsapp", "forma de pagamento", "cartao na meta", "mensagens de servico", "mil mensagens gratis", "teto de gasto", "envio pausado", "parou de responder", "1 de outubro", "fatura da meta", "onde esta seu numero", "qual opcao e a minha", "numero com outro provedor", "fuso horario de cobranca", "teste seu agente", "conectado mas nao responde", "meio de pagamento na meta", "verificar na meta"]
 ---
 
 # Conectar o WhatsApp
@@ -21,18 +21,22 @@ O WhatsApp é o canal principal do Parallly: ao conectá-lo, seu agente de IA co
 
 1. Na barra lateral, seção **Administração**, entre em **Canais**.
 2. No card do **WhatsApp**, clique em **Conectar**.
-3. Antes das rotas aparece **"Antes de conectar o WhatsApp"**: uma lista curta com o número, o acesso ao código de verificação dele e a conta do Facebook. Marque os três itens e clique em **Continuar**; até confirmar, o botão diz **Confirme os itens para continuar**. É um lembrete, não uma validação: nada dos seus dados é conferido ali. A mesma etapa aparece no assistente **Conheça o seu agente** e na tela do **WhatsApp**.
-4. Você verá a tela **"Escolha seu método de conexão"** com três rotas:
-   - **WhatsApp Business App** (etiqueta **Coexistência**, marcada **Recomendado**, ~20 min) — se você já usa o app WhatsApp Business no seu celular e quer mantê-lo junto com suas conversas. É a rota que sugerimos; veja a próxima seção.
-   - **Número novo** (~5 min) — para um número que nunca foi usado no WhatsApp. É o caminho mais rápido se você vai estrear uma linha.
-   - **Migrar de outro provedor** (~15 min) — se você já usa o WhatsApp com outra plataforma (Wati, 360dialog, Twilio, etc.) e quer trazer seu número sem ficar fora do ar.
-5. Escolha seu método e clique em **Conectar com Facebook**. Uma janela da Meta será aberta.
+3. Antes de abrir qualquer janela, fazemos uma única pergunta: **"Onde está hoje o seu número de WhatsApp?"**. Cada resposta pede o seu:
+   - **No app WhatsApp Business de um celular** — coexistência: o número continua no seu celular, você escaneia um código QR pelo app e precisa abri-lo pelo menos a cada 14 dias para a conexão continuar ativa.
+   - **No WhatsApp normal do meu celular** — primeiro você passa para o WhatsApp Business (grátis, mantém seu número e suas conversas) e volta a esta tela.
+   - **É um número novo ou sem WhatsApp** — cadastro direto com a Meta: é preciso o número, o código de verificação dele e uma conta do Facebook.
+   - **Outro provedor já usa esse número** — um número só pode estar com um provedor por vez: peça ao provedor atual para desligar a verificação em duas etapas do número; isso depende deles e costuma levar de algumas horas a alguns dias.
+   - **Não está comigo agora** — fica anotado e a gente lembra você no **Início**.
+
+   A primeira resposta é a rota de coexistência, com o detalhe completo na seção seguinte. Nas duas últimas, nenhuma janela da Meta é aberta ainda: enquanto isso, seu agente continua respondendo pelo link do seu agente.
+4. Ao responder, você vê quanto tempo isso toma de **você** para concluir essa rota e, quando a resposta abre uma rota, o resumo dela: o essencial primeiro, com o detalhe completo em **"Ver mais detalhes"**. Os avisos que importam — a janela de 24 horas para autorizar o histórico, o PIN de duas etapas antes de migrar — ficam sempre visíveis, nunca escondidos ali. Clique em **Conectar com Facebook** para abrir a janela da Meta.
+5. Enquanto a janela estiver aberta, um texto na tela diz o que fazer ali; se você travar ou mudar de ideia, o link **Cancelar e voltar** te leva de volta a esta tela sem perder o que você já respondeu.
 6. Faça login com sua conta do Facebook e selecione (ou crie) seu portfólio do Meta Business.
 7. Selecione ou adicione sua conta do WhatsApp Business e o número de telefone.
 8. Verifique o número com um **código por SMS ou chamada de voz** e aprove as permissões.
-9. Você acompanhará o progresso na tela: **Autorização → Conectando número → Ativando WhatsApp**. Ao terminar, aparece "Conexão bem-sucedida!" e seu agente já responde nesse número.
+9. Você acompanhará o progresso na tela: **Autorização → Conectando número → Ativando WhatsApp**, até "Conexão bem-sucedida!". Conectado ainda não é respondendo: antes, confira o fuso horário e o meio de pagamento (veja **Antes de seu agente responder**, mais abaixo).
 
-> Dica: assim que conectar, a tela mostra o card **"Teste seu agente"** com o seu número. Mande um WhatsApp de outro celular e veja como ele responde.
+> Dica: depois de conectar aparece o card **Teste seu agente** com o seu número: mande uma mensagem de outro celular e veja como ele responde. Se ainda falta confirmar o fuso horário, o assistente lembra você nesse card em vez de oferecer **Abrir WhatsApp**. Se ele não responder, confira três coisas: que o fuso horário de cobrança esteja confirmado, que sua conta do WhatsApp tenha um meio de pagamento na Meta e que seu agente não esteja pausado.
 
 ### Se a janela da Meta não aparecer
 
@@ -58,14 +62,25 @@ tela não mostra um sucesso limpo: aparece um **card âmbar** com os avisos. Os 
 - **Assinatura do webhook falhou** — o Parallly não ficou inscrito nas mensagens recebidas
   desse número, então o agente pode não receber nada. Tente conectar de novo e, se
   repetir, fale com o suporte.
-- **Registro do número pendente** — a Meta terminou de registrar o número depois do resto
-  da conexão. Costuma se resolver sozinho em alguns minutos; volte à tela e confirme que o
-  número ficou ativo.
+- **Registro do número pendente** — a Meta não concluiu o registro do número para enviar
+  mensagens. Enquanto não for concluído, nenhuma mensagem sai dele, então seu agente não
+  consegue responder por esse número, e não se resolve sozinho: escreva para o
+  [suporte](https://parallly-chat.cloud/support) e nós o concluímos com você.
 - **Não conseguimos trazer seus modelos** — a sincronização de modelos falhou. A conexão
   funciona do mesmo jeito; sincronize de novo em **Modelos** quando quiser.
 
 Leia o aviso antes de dar a instalação por concluída: o card âmbar significa "conectado,
-mas confira isto", não "tudo pronto".
+mas confira isto", não "tudo pronto". Se for o seu primeiro canal, o agente padrão fica
+atribuído a ele e responde por ali assim que nada o impedir (veja a seção seguinte).
+
+### Antes de seu agente responder: fuso horário e meio de pagamento
+
+O número ficar conectado não significa que seu agente já pode responder por ali. Duas coisas que não dependem da conexão decidem se as respostas dele saem, e ao conectar pelo assistente **Conheça o seu agente** a tela mostra as duas nesta ordem:
+
+1. **O fuso horário de cobrança do número.** A Meta data cada cobrança no fuso horário da sua conta do WhatsApp e, enquanto o número não o tiver, nenhuma resposta do seu agente sai por ali. Se faltar, a tela pede o fuso com o do seu negócio já selecionado: se for o mesmo, confirme com um toque. Para confirmar, seu e-mail precisa estar verificado.
+2. **O meio de pagamento na Meta.** O card **Meio de pagamento na Meta** verifica com a Meta e diz se está pronto, se falta, se a Meta não aceita cobranças da sua conta ou se não foi possível confirmar. Se precisar, **Adicionar meio de pagamento na Meta** abre as ferramentas da Meta e, depois de adicionar, **Já adicionei: verificar** pergunta de novo.
+
+Só quando o fuso horário está confirmado e o meio de pagamento não impede a entrega, a tela diz **Conectado!** e que seu agente já responde por ali. Nada disso trava você: dá para apertar **Continuar** e terminar depois em **Canais → WhatsApp**, onde cada número mostra seu **Fuso horário de cobrança do WhatsApp** e o card **Financiamento da sua conta do WhatsApp** tem **Verificar na Meta**. Se algo disso impedir as respostas, a **Saúde dos agentes** também avisa.
 
 ## Modo coexistência: mantenha seu app WhatsApp Business
 
@@ -99,14 +114,14 @@ Requisitos: app WhatsApp Business atualizado (versão 2.24.17 ou superior), núm
 
 Em **Canais**, cada card mostra o status da conexão:
 
-- **Conectado** — o número está ativo e o agente responde.
+- **Conectado** — o número está ativo. Para o agente responder também são necessários o fuso horário de faturamento confirmado e, a partir de 1º de outubro de 2026, uma forma de pagamento na sua conta do WhatsApp Business na Meta.
 - **Conectado** + **Reconectar: credenciais expiradas** — o card mostra as duas etiquetas
   ao mesmo tempo: a verde de sempre e, ao lado, uma vermelha. A conexão existe, mas a
   permissão que o Parallly usa para enviar está vencida, revogada, com erro ou ausente. O
   número pode continuar recebendo mensagens e as respostas não saem até você autorizar de
   novo em **Conectar**.
-  A **Saúde dos agentes** reporta isso como conexão operacional afetada e trata como ação
-  crítica do agente.
+  A **Saúde dos agentes** reporta isso em **Conexão operacional do canal** e conta como
+  uma coisa importante para resolver do agente.
 - **Desconectado** — ainda não há conexão, ou ela foi desfeita.
 
 Ao entrar em **WhatsApp** com um número conectado, você verá o card **Canal Ativo** com o **Número**, o **Nome verificado** e a **Qualidade** (a nota que a Meta dá ao seu número de acordo com a forma como os clientes recebem suas mensagens; mantê-la "alta" garante melhores limites de envio). Você também encontrará o card **Perfil comercial** com o botão **Gerenciar perfil** para editar as informações que seus clientes veem no WhatsApp.
@@ -211,6 +226,9 @@ Cada conexão é independente: tem seu próprio agente de IA (você o atribui no
 **Posso continuar usando o WhatsApp Business no meu celular?**
 Sim, com o modo **Coexistência**: a IA responde pelo Parallly e você mantém o app. Só lembre de abri-lo pelo menos a cada 14 dias.
 
+**Como sei qual das cinco opções é a minha?**
+Repare em onde você responde hoje aos seus clientes: se é o app verde do WhatsApp Business no celular, é a primeira opção, e se é o WhatsApp de sempre, é a segunda. Se o número é novo ou ainda não tem WhatsApp, ou se hoje outra plataforma responde por ele, são a terceira e a quarta opção; e se por enquanto você não tem o número à mão, a quinta deixa você retomar depois. Na dúvida, escolha o que descreve onde o número está **hoje**, não para onde você pretende levá-lo: a tela seguinte mostra exatamente o que você precisa antes de decidir de vez.
+
 **Perco minhas conversas anteriores ao conectar?**
 Não, se você conectar por coexistência: são sincronizados até 6 meses de conversas de texto e seus contatos. Se migrar de outro provedor, o histórico desse provedor não é transferido.
 
@@ -241,4 +259,4 @@ Hoje não. A cobrança por mensagem de serviço que começa em 1º de outubro de
 Ficou alguma dúvida? Fale com a gente no [suporte](https://parallly-chat.cloud/support).
 
 
-Para contas existentes: abra https://business.facebook.com/wa/manage/home/, selecione a WABA indicada em Canais → WhatsApp e adicione uma forma de pagamento em Visão geral / pagamentos. Não reconecte os números. Volte ao painel e selecione Verificar na Meta. Estado desconhecido não significa ausência de cartão; um método associado não garante saldo. A política detalhada da Meta mantém a franquia mensal de serviço sem financiamento e pode bloquear as entregas seguintes. Configure o pagamento antes de esgotar a franquia.
+Para contas existentes: abra https://business.facebook.com/wa/manage/home/, selecione a WABA indicada em Canais → WhatsApp e adicione uma forma de pagamento em Visão geral / pagamentos. Não reconecte os números. Volte ao painel e selecione Verificar na Meta. Estado desconhecido não significa ausência de cartão; um método associado não garante saldo. A Meta informa que, se a conta não tiver forma de pagamento até 30 de setembro de 2026, deixa de entregar as mensagens de serviço a partir de 1º de outubro. Ela não publica que as 1.000 gratuitas do mês continuem saindo sem cartão, então não conte com isso: adicione a forma de pagamento antes de 30 de setembro.

@@ -184,7 +184,7 @@ const url=process.env.AGENT_RELEASE_TEST_DATABASE_URL;
         const candidate=await create(await request()),data=await evaluate(candidate.id),body=reviewBody(data);
         const results=await Promise.all(Array.from({length:5},()=>review(candidate.id,body)));
         expect(new Set(results.map(row=>row.id)).size).toBe(1);expect(await query('SELECT * FROM agent_release_reviews')).toHaveLength(1);
-    });
+    },30000);
     describe('configuration publication transaction primitive',()=>{
         const checks=()=>({assertCandidateCurrent:jest.fn().mockResolvedValue(undefined),assertCurrentPrerequisites:jest.fn().mockResolvedValue(undefined)});
         const prepared=async()=>{

@@ -25,6 +25,9 @@ import {
 import { DisconnectChannelModal } from "@/components/ui/disconnect-channel-modal";
 import { HelpPanel } from "@/components/ui/help-panel";
 import { LoadFailureNotice } from "@/components/ui/load-failure";
+import { ConnectFailureCard } from "../_components/ConnectFailureCard";
+import { ConnectTriage } from "../_components/ConnectTriage";
+import { connectFailureForCode, type ChannelConnectFailure } from "../_components/connect-errors";
 
 const BRAND_COLOR = "#E4405F";
 const INSTAGRAM_APP_ID = process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID || "1472258884595741";
@@ -72,6 +75,8 @@ export default function InstagramSetupPage() {
     const [disconnecting, setDisconnecting] = useState(false);
     const [copied, setCopied] = useState("");
     const [message, setMessage] = useState({ type: "", text: "" });
+    // A failed connection is a card with ONE action, never a sentence Meta wrote.
+    const [failure, setFailure] = useState<ChannelConnectFailure | null>(null);
     const [showDisconnectModal, setShowDisconnectModal] = useState(false);
 
     const loadData = useCallback(async () => {
@@ -108,10 +113,15 @@ export default function InstagramSetupPage() {
         channel.onmessage = (event) => {
             if (event.data?.type === "ig_oauth_success") {
                 setMessage({ type: "success", text: t("instagram.connectSuccess") });
+                setFailure(null);
                 setConnecting(false);
                 loadData();
             } else if (event.data?.type === "ig_oauth_error") {
-                setMessage({ type: "error", text: event.data.message || t("instagram.connectFailed") });
+                // The window sends a CODE. It used to send prose — Meta's own
+                // `error_description`, or "Missing authorization code" — which
+                // arrived untranslated and with nothing to press.
+                setMessage({ type: "", text: "" });
+                setFailure(connectFailureForCode("instagram", event.data.code));
                 setConnecting(false);
             }
         };
@@ -124,6 +134,7 @@ export default function InstagramSetupPage() {
 
         setConnecting(true);
         setMessage({ type: "", text: "" });
+        setFailure(null);
 
         const params = new URLSearchParams({
             enable_fb_login: "0",
@@ -148,8 +159,15 @@ export default function InstagramSetupPage() {
         );
 
         if (!popup) {
-            // Popup blocked — fall back to same-window redirect
-            window.location.href = url;
+            // The fallback here used to be a same-window redirect, which cannot
+            // work: the callback screen reports its result over a
+            // BroadcastChannel this page is listening on and then closes itself.
+            // Navigate away and there is nobody listening and no window to
+            // close — the person lands on a bare callback page and the
+            // connection looks lost. A card with the one fix (allow pop-ups) is
+            // the honest answer, and it is the same one WhatsApp gives.
+            setFailure(connectFailureForCode("instagram", "popup_blocked"));
+            setConnecting(false);
         }
     };
 
@@ -169,7 +187,9 @@ export default function InstagramSetupPage() {
             }
             await loadData();
         } catch (err: any) {
-            setMessage({ type: "error", text: err.message || tc("connectionError") });
+            // The thrown text is ours to debug, not theirs to read.
+            console.error("Failed to disconnect Instagram", err);
+            setMessage({ type: "error", text: tc("connectionError") });
         } finally {
             setDisconnecting(false);
         }
@@ -195,7 +215,10 @@ export default function InstagramSetupPage() {
         try {
             const res = await api.disconnectChannelAccount("instagram", accountId);
             if (res?.success) await loadData();
-            else setMessage({ type: "error", text: (res as any)?.error || tc("connectionError") });
+            else {
+                console.error("Failed to disconnect Instagram account", (res as any)?.error);
+                setMessage({ type: "error", text: tc("connectionError") });
+            }
         } catch { setMessage({ type: "error", text: tc("connectionError") }); }
     };
 
@@ -282,6 +305,15 @@ export default function InstagramSetupPage() {
                 </div>
             )}
 
+            {/* A failed connection: what happened, and the one thing to do. */}
+            {failure && (
+                <ConnectFailureCard
+                    namespace="channels.instagram.errors"
+                    failure={failure}
+                    onRetry={handleOAuthConnect}
+                />
+            )}
+
             {/* Token expired/error banner */}
             {isConnected && hasTokenError && (
                 <div className="p-4 rounded-xl mb-6 text-sm border bg-[rgba(255,170,0,0.1)] text-[var(--warning)] border-[rgba(255,170,0,0.2)] flex items-center justify-between">
@@ -310,9 +342,13 @@ export default function InstagramSetupPage() {
                         </h2>
                     </div>
                     <div className="p-6">
-                        <p className="text-sm text-[var(--text-secondary)] mb-6">
+                        <p className="text-sm text-[var(--text-secondary)] mb-5">
                             {t("instagram.connectDesc")}
                         </p>
+                        {/* Asked BEFORE Meta's window, because Meta's refusal
+                            arrives after the minutes are already spent. It is a
+                            hint, not a gate: the button below never changes. */}
+                        <ConnectTriage namespace="channels.instagram.triage" name="instagram-triage" />
                         <button
                             onClick={handleOAuthConnect}
                             disabled={connecting}

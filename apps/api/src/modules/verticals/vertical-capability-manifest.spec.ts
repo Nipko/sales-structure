@@ -91,9 +91,9 @@ describe('VerticalCapabilityManifest v3 contract', () => {
         }
 
         const configurations = listVerticalCapabilityConfigurations();
-        expect(subtypeCount).toBe(75);
-        expect(configurations).toHaveLength(76);
-        expect(configurations.filter(({ subtype }) => subtype !== null)).toHaveLength(75);
+        expect(subtypeCount).toBe(79);
+        expect(configurations).toHaveLength(80);
+        expect(configurations.filter(({ subtype }) => subtype !== null)).toHaveLength(79);
         expect(configurations.filter(({ subtype }) => subtype === null)).toEqual([
             expect.objectContaining({ industry: 'otro', subtype: null }),
         ]);
@@ -104,7 +104,7 @@ describe('VerticalCapabilityManifest v3 contract', () => {
     it('resolves every catalogued pair exactly once with unique operational values', () => {
         const configurations = listVerticalCapabilityConfigurations();
         const keys = configurations.map(({ industry, subtype }) => `${industry}/${subtype || '-'}`);
-        expect(new Set(keys).size).toBe(76);
+        expect(new Set(keys).size).toBe(80);
 
         for (const configuration of configurations) {
             expect(resolveVerticalCapabilityManifest(

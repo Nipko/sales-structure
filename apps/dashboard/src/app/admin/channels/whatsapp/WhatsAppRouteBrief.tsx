@@ -48,6 +48,11 @@ export default function WhatsAppRouteBrief({
                 </p>
             </div>
 
+            <details className="group">
+                <summary className={cn(pad, "cursor-pointer list-none border-b border-border text-[12px] font-medium text-[var(--text-secondary)] hover:text-foreground")}>
+                    {tb("more")}
+                </summary>
+
             {route.detail === "sync" && (
                 <>
                     <div className={cn(pad, "border-b border-border")}>
@@ -153,6 +158,10 @@ export default function WhatsAppRouteBrief({
                 </div>
             </div>
 
+            </details>
+
+            {/* Los avisos NO se pliegan: la ventana de 24 h y el PIN de dos pasos
+                muerden después de cerrar la ventana de Meta, cuando ya es tarde. */}
             {route.warningKeys.length > 0 && (
                 <div className={cn(pad, "flex flex-col gap-2.5")}>
                     {route.warningKeys.map((key) => (

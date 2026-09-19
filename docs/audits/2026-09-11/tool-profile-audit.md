@@ -1,8 +1,8 @@
 # Matriz estructural de herramientas por tipo de negocio
 
-Origen: `0113f68de490541a6833d112818b78bff0dbc6c6`. Fuentes y hashes completos en [JSON](./tool-profile-audit.json).
+Origen: `e1fcd184f3c071145f6a969a031804ecad4ad6f6`. Fuentes y hashes completos en [JSON](./tool-profile-audit.json).
 
-20 verticales; 76 tipos de negocio; 123 herramientas estáticas; 26 familias nativas; 420 tareas (146 transaccionales).
+20 verticales; 80 tipos de negocio; 123 herramientas estáticas; 26 familias nativas; 444 tareas (158 transaccionales).
 
 Este censo comprueba correspondencias de código. No ejecuta herramientas ni modelos, no consulta tenants y no certifica resultados comerciales. MCP dinámico no pertenece al censo estático. La ausencia de evidencia cargada no prueba que una cuenta nunca se haya probado.
 
@@ -15,7 +15,11 @@ Rutas declaradas ocultas: 0. Páginas inexistentes: 0. Herramientas sin definici
 | automotriz/repuestos | catalog_item | faqs, catalog | 7 | hybrid |
 | automotriz/taller | repair_order | faqs, appointments, repairOrders | 9 | hybrid |
 | construccion/contratista_general | lead | faqs | 3 | hybrid |
+| education/academia_baile | course | faqs, appointments, education | 6 | build |
+| education/academia_musica | course | faqs, appointments, education | 6 | build |
+| education/autoescuela | course | faqs, appointments, education | 6 | build |
 | education/capacitacion | course | faqs, appointments, education | 6 | build |
+| education/clases_particulares | course | faqs, appointments, education | 6 | build |
 | education/idiomas | course | faqs, appointments, education | 6 | build |
 | education/online | course | faqs, appointments, education | 6 | hybrid |
 | education/universitaria | course | faqs, appointments, education | 6 | integrate |

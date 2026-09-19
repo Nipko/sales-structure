@@ -15,13 +15,22 @@
  *    fees, cancellation windows, warranties, response times, prices). Seed FAQs invite the
  *    customer to ask instead of inventing the answer.
  *  - EXCEPTION — `agent.handoffTriggers` is NOT display text: `handoff.service.ts` matches
- *    each trigger with `text.includes(trigger.toLowerCase())` against the raw customer
- *    message, WITHOUT stripping diacritics. They are deliberately left unaccented so they
- *    still match the "urgencia medica" people actually type on a phone keyboard. Do not
- *    "fix" them here. (Service names are safe to accent: the booking engine normalizes
- *    NFD before matching.)
+ *    each trigger as a SUBSTRING of the customer's message. Both sides are accent-stripped
+ *    (`normalizeForIntent`), so an unaccented trigger catches the accented spelling too.
+ *    Keep them unaccented anyway: it is the canonical form here and an accented duplicate
+ *    is dead weight. What they must NOT be is a label — the phrase has to be what a person
+ *    types ("dolor intenso"), not what the panel shows ("Dolor intenso o una urgencia").
+ *    The owner-facing label lives in `recipe.handoffReasons`, paired with the trigger that
+ *    makes it true; the lint refuses a label whose trigger does not exist.
+ *    (Service names are safe to accent: the booking engine normalizes NFD before matching.)
  */
 import { VerticalDefinition } from '@parallext/shared';
+import { MODA_BELLEZA_RECIPE } from './recipes/moda_belleza.recipe';
+import { SALUD_RECIPE } from './recipes/salud.recipe';
+import { RESTAURANTES_RECIPE } from './recipes/restaurantes.recipe';
+import { RETAIL_RECIPE } from './recipes/retail.recipe';
+import { EDUCATION_RECIPE } from './recipes/education.recipe';
+import { SERVICIOS_HOGAR_RECIPE } from './recipes/servicios_hogar.recipe';
 
 // ─────────────────────────────────────────────────────────
 // 1. SALUD (Healthcare)
@@ -252,8 +261,8 @@ const INMOBILIARIA: VerticalDefinition = {
         { question: { es: '¿Qué documentos necesito?', en: 'What documents do I need?', pt: 'Quais documentos preciso?', fr: 'Quels documents sont nécessaires?' }, answer: { es: 'Depende de si compras o arriendas y de la entidad que participe. Cuéntame cuál es tu caso y un asesor te pasa la lista exacta de documentos.', en: 'It depends on whether you are buying or renting and on the institution involved. Tell me your case and an advisor will send you the exact list.', pt: 'Depende se você compra ou aluga e da instituição envolvida. Me conte seu caso e um consultor envia a lista exata.', fr: 'Cela dépend si vous achetez ou louez et de l\'organisme concerné. Dites-moi votre cas et un conseiller vous enverra la liste exacte.' }, category: 'documentos' },
     ],
     services: [
-        { name: { es: 'Visita guiada', en: 'Guided viewing', pt: 'Visita guiada', fr: 'Visite guidée' }, description: { es: 'Recorrido por la propiedad con asesor', en: 'Property tour with advisor', pt: 'Visita ao imóvel com consultor', fr: 'Visite du bien avec conseiller' }, durationMinutes: 60, price: 0, currency: 'COP', category: 'visitas' },
-        { name: { es: 'Asesoría hipotecaria', en: 'Mortgage consultation', pt: 'Assessoria de financiamento', fr: 'Conseil hypothécaire' }, description: { es: 'Orientación sobre crédito y financiación', en: 'Guidance on credit and financing', pt: 'Orientação sobre crédito e financiamento', fr: 'Orientation sur crédit et financement' }, durationMinutes: 45, price: 0, currency: 'COP', category: 'asesoria' },
+        { name: { es: 'Visita guiada', en: 'Guided viewing', pt: 'Visita guiada', fr: 'Visite guidée' }, description: { es: 'Recorrido por la propiedad con asesor', en: 'Property tour with advisor', pt: 'Visita ao imóvel com consultor', fr: 'Visite du bien avec conseiller' }, durationMinutes: 60, price: 0, currency: 'COP', priceStatus: 'example', category: 'visitas' },
+        { name: { es: 'Asesoría hipotecaria', en: 'Mortgage consultation', pt: 'Assessoria de financiamento', fr: 'Conseil hypothécaire' }, description: { es: 'Orientación sobre crédito y financiación', en: 'Guidance on credit and financing', pt: 'Orientação sobre crédito e financiamento', fr: 'Orientation sur crédit et financement' }, durationMinutes: 45, price: 0, currency: 'COP', priceStatus: 'example', category: 'asesoria' },
         { name: { es: 'Avalúo comercial', en: 'Commercial appraisal', pt: 'Avaliação comercial', fr: 'Évaluation commerciale' }, description: { es: 'Valoración profesional del inmueble', en: 'Professional property valuation', pt: 'Avaliação profissional do imóvel', fr: 'Évaluation professionnelle du bien' }, durationMinutes: 120, price: 200000, currency: 'COP', category: 'valuacion' },
     ],
     businessHours: {
@@ -305,7 +314,13 @@ const RESTAURANTES: VerticalDefinition = {
         greeting: { es: '¡Hola! Soy Luca, asistente del restaurante. ¿Te gustaría hacer una reserva o ver nuestro menú?', en: 'Hi! I\'m Luca, the restaurant assistant. Would you like to make a reservation or see our menu?', pt: 'Olá! Sou Luca, assistente do restaurante. Gostaria de fazer uma reserva ou ver nosso cardápio?', fr: 'Bonjour! Je suis Luca, assistant du restaurant. Souhaitez-vous réserver ou voir notre menu?' },
         rules: { es: 'Ofrece el menú del día y promociones. Confirma alergias alimentarias. Para grupos mayores a 8 personas, escala al equipo.', en: 'Offer daily menu and promotions. Confirm food allergies. For groups over 8, escalate to team.', pt: 'Ofereça o menu do dia e promoções. Confirme alergias alimentares.', fr: 'Proposez le menu du jour et promotions. Confirmez les allergies alimentaires.' },
         forbiddenTopics: { es: 'Información nutricional médica|Garantizar alérgenos al 100%|Precios de proveedores|Recetas de cocina', en: 'Medical nutritional info|Guarantee allergens 100%|Supplier prices|Kitchen recipes', pt: 'Informação nutricional médica|Garantir alérgenos|Preços de fornecedores', fr: 'Info nutritionnelle médicale|Garantir allergènes|Prix fournisseurs' },
-        handoffTriggers: { es: 'grupo mayor a 8|evento privado|queja alimentaria|intoxicacion|facturacion especial', en: 'group over 8|private event|food complaint|food poisoning|special billing', pt: 'grupo maior que 8|evento privado|reclamacao alimentar', fr: 'groupe de plus de 8|evenement prive|plainte alimentaire' },
+        // `alergia` / `alergico` se agregaron el 17-sep: la industria no tenia
+        // ninguno de los dos, asi que un cliente escribiendo "soy alergico al
+        // mani, el pad thai tiene?" nunca llegaba a una persona — el agente le
+        // contestaba del menu, que es exactamente lo que las reglas de esta
+        // vertical le prohiben garantizar. `intoxicacion` solo atrapa el caso
+        // cuando ya pasó.
+        handoffTriggers: { es: 'grupo mayor a 8|evento privado|queja alimentaria|intoxicacion|alergia|alergico|facturacion especial', en: 'group over 8|private event|food complaint|food poisoning|allergy|allergic|special billing', pt: 'grupo maior que 8|evento privado|reclamacao alimentar|alergia|alergico', fr: 'groupe de plus de 8|evenement prive|plainte alimentaire|allergie|allergique' },
     },
     pipeline: {
         stages: [
@@ -324,9 +339,9 @@ const RESTAURANTES: VerticalDefinition = {
         { question: { es: '¿Cuál es el precio promedio por persona?', en: 'What is the average price per person?', pt: 'Qual é o preço médio por pessoa?', fr: 'Quel est le prix moyen par personne?' }, answer: { es: 'Depende de lo que pidas. Escribe "menú" y te muestro la carta con los precios vigentes.', en: 'It depends on your order. Write "menu" and I will show you the card with current prices.', pt: 'Depende do que você pedir. Escreva "cardápio" e mostro os preços vigentes.', fr: 'Cela dépend de votre commande. Écrivez "menu" et je vous montre la carte avec les prix en vigueur.' }, category: 'precios' },
     ],
     services: [
-        { name: { es: 'Reserva mesa 2-4', en: 'Table 2-4', pt: 'Mesa 2-4', fr: 'Table 2-4' }, description: { es: 'Reserva para 2 a 4 personas', en: 'Reservation for 2 to 4 people', pt: 'Reserva para 2 a 4 pessoas', fr: 'Réservation pour 2 à 4 personnes' }, durationMinutes: 90, price: 0, currency: 'COP', category: 'reservas' },
-        { name: { es: 'Reserva grupo 5-8', en: 'Group 5-8', pt: 'Grupo 5-8', fr: 'Groupe 5-8' }, description: { es: 'Reserva para grupo de 5 a 8 personas', en: 'Reservation for group of 5 to 8', pt: 'Reserva para grupo de 5 a 8 pessoas', fr: 'Réservation pour groupe de 5 à 8' }, durationMinutes: 120, price: 0, currency: 'COP', category: 'reservas' },
-        { name: { es: 'Evento privado', en: 'Private event', pt: 'Evento privado', fr: 'Événement privé' }, description: { es: 'Evento privado con menú especial', en: 'Private event with special menu', pt: 'Evento privado com menu especial', fr: 'Événement privé avec menu spécial' }, durationMinutes: 240, price: 0, currency: 'COP', category: 'eventos' },
+        { name: { es: 'Reserva mesa 2-4', en: 'Table 2-4', pt: 'Mesa 2-4', fr: 'Table 2-4' }, description: { es: 'Reserva para 2 a 4 personas', en: 'Reservation for 2 to 4 people', pt: 'Reserva para 2 a 4 pessoas', fr: 'Réservation pour 2 à 4 personnes' }, durationMinutes: 90, price: 0, currency: 'COP', priceStatus: 'example', category: 'reservas' },
+        { name: { es: 'Reserva grupo 5-8', en: 'Group 5-8', pt: 'Grupo 5-8', fr: 'Groupe 5-8' }, description: { es: 'Reserva para grupo de 5 a 8 personas', en: 'Reservation for group of 5 to 8', pt: 'Reserva para grupo de 5 a 8 pessoas', fr: 'Réservation pour groupe de 5 à 8' }, durationMinutes: 120, price: 0, currency: 'COP', priceStatus: 'example', category: 'reservas' },
+        { name: { es: 'Evento privado', en: 'Private event', pt: 'Evento privado', fr: 'Événement privé' }, description: { es: 'Evento privado con menú especial', en: 'Private event with special menu', pt: 'Evento privado com menu especial', fr: 'Événement privé avec menu spécial' }, durationMinutes: 240, price: 0, currency: 'COP', priceStatus: 'quote', category: 'eventos' },
     ],
     businessHours: {
         schedule: { mon: '11:00-23:00', tue: '11:00-23:00', wed: '11:00-23:00', thu: '11:00-23:00', fri: '11:00-00:00', sat: '11:00-00:00', sun: '11:00-22:00' },
@@ -403,9 +418,9 @@ const AUTOMOTRIZ: VerticalDefinition = {
         { question: { es: '¿Qué garantía ofrecen?', en: 'What warranty do you offer?', pt: 'Que garantia oferecem?', fr: 'Quelle garantie proposez-vous?' }, answer: { es: 'La garantía depende del vehículo y de si es nuevo o usado. Dime cuál te interesa y te confirmo exactamente qué cubre.', en: 'The warranty depends on the vehicle and whether it is new or used. Tell me which one you are looking at and I will confirm exactly what it covers.', pt: 'A garantia depende do veículo e de ser novo ou usado. Me diga qual te interessa e confirmo o que cobre.', fr: 'La garantie dépend du véhicule et s\'il est neuf ou d\'occasion. Dites-moi lequel vous intéresse et je vous confirme sa couverture.' }, category: 'garantia' },
     ],
     services: [
-        { name: { es: 'Prueba de manejo', en: 'Test drive', pt: 'Test drive', fr: 'Essai routier' }, description: { es: 'Prueba de manejo del vehículo de tu interés', en: 'Test drive the vehicle of your interest', pt: 'Test drive do veículo de seu interesse', fr: 'Essai du véhicule de votre choix' }, durationMinutes: 30, price: 0, currency: 'COP', category: 'ventas' },
+        { name: { es: 'Prueba de manejo', en: 'Test drive', pt: 'Test drive', fr: 'Essai routier' }, description: { es: 'Prueba de manejo del vehículo de tu interés', en: 'Test drive the vehicle of your interest', pt: 'Test drive do veículo de seu interesse', fr: 'Essai du véhicule de votre choix' }, durationMinutes: 30, price: 0, currency: 'COP', priceStatus: 'example', category: 'ventas' },
         { name: { es: 'Revisión mecánica', en: 'Mechanical inspection', pt: 'Revisão mecânica', fr: 'Inspection mécanique' }, description: { es: 'Revisión general del estado del vehículo', en: 'General vehicle condition inspection', pt: 'Revisão geral do estado do veículo', fr: 'Inspection générale du véhicule' }, durationMinutes: 60, price: 80000, currency: 'COP', category: 'taller' },
-        { name: { es: 'Cotización personalizada', en: 'Custom quote', pt: 'Cotação personalizada', fr: 'Devis personnalisé' }, description: { es: 'Cotización detallada con opciones de financiación', en: 'Detailed quote with financing options', pt: 'Cotação detalhada com opções de financiamento', fr: 'Devis détaillé avec options de financement' }, durationMinutes: 45, price: 0, currency: 'COP', category: 'ventas' },
+        { name: { es: 'Cotización personalizada', en: 'Custom quote', pt: 'Cotação personalizada', fr: 'Devis personnalisé' }, description: { es: 'Cotización detallada con opciones de financiación', en: 'Detailed quote with financing options', pt: 'Cotação detalhada com opções de financiamento', fr: 'Devis détaillé avec options de financement' }, durationMinutes: 45, price: 0, currency: 'COP', priceStatus: 'quote', category: 'ventas' },
     ],
     businessHours: {
         schedule: { mon: '08:00-18:00', tue: '08:00-18:00', wed: '08:00-18:00', thu: '08:00-18:00', fri: '08:00-18:00', sat: '09:00-15:00' },
@@ -487,6 +502,10 @@ const EDUCATION: VerticalDefinition = {
         { key: 'universitaria', label: { es: 'Universidad / Instituto', en: 'University / College', pt: 'Universidade / Instituto', fr: 'Université / Institut' } },
         { key: 'online', label: { es: 'Cursos online', en: 'Online courses', pt: 'Cursos online', fr: 'Cours en ligne' } },
         { key: 'capacitacion', label: { es: 'Capacitación empresarial', en: 'Corporate training', pt: 'Treinamento empresarial', fr: 'Formation entreprise' } },
+        { key: 'academia_baile', label: { es: 'Academia de baile', en: 'Dance academy', pt: 'Academia de dança', fr: 'École de danse' } },
+        { key: 'academia_musica', label: { es: 'Academia de música o arte', en: 'Music or art academy', pt: 'Academia de música ou arte', fr: 'École de musique ou d\'art' } },
+        { key: 'clases_particulares', label: { es: 'Clases particulares y tutorías', en: 'Private lessons and tutoring', pt: 'Aulas particulares e tutoria', fr: 'Cours particuliers et tutorat' } },
+        { key: 'autoescuela', label: { es: 'Autoescuela', en: 'Driving school', pt: 'Autoescola', fr: 'Auto-école' } },
     ],
     terminology: { customerNoun: { es: 'estudiante', en: 'student', pt: 'estudante', fr: 'étudiant' }, customerNounPlural: { es: 'estudiantes', en: 'students', pt: 'estudantes', fr: 'étudiants' }, transactionNoun: { es: 'matrícula', en: 'enrollment', pt: 'matrícula', fr: 'inscription' }, serviceNoun: { es: 'curso', en: 'course', pt: 'curso', fr: 'cours' }, pipelineNoun: { es: 'inscripciones', en: 'enrollments', pt: 'inscrições', fr: 'inscriptions' } },
     agent: { name: { es: 'Pablo', en: 'Pablo', pt: 'Paulo', fr: 'Paul' }, role: { es: 'Asesor académico', en: 'Academic advisor', pt: 'Orientador acadêmico', fr: 'Conseiller académique' }, tone: 'encouraging', formality: 'semi-formal', greeting: { es: '¡Hola! Soy Pablo, asesor académico. ¿En qué programa o curso estás interesado?', en: 'Hi! I\'m Pablo, your academic advisor. What program or course interests you?', pt: 'Olá! Sou Paulo, orientador acadêmico. Qual programa ou curso te interessa?', fr: 'Bonjour! Je suis Paul, conseiller académique. Quel programme vous intéresse?' }, rules: { es: 'Informa sobre programas, horarios y costos. Ofrece test de nivel si aplica. Nunca prometas becas sin autorización.', en: 'Inform about programs, schedules and costs. Offer placement test. Never promise scholarships.', pt: 'Informe sobre programas, horários e custos. Ofereça teste de nível.', fr: 'Informez sur les programmes, horaires et coûts. Proposez un test de niveau.' }, forbiddenTopics: { es: 'Calificaciones de otros estudiantes|Contenido de exámenes|Becas no autorizadas|Credenciales falsas', en: 'Other students grades|Exam content|Unauthorized scholarships|False credentials', pt: 'Notas de outros estudantes|Conteúdo de provas|Bolsas não autorizadas', fr: 'Notes d\'autres étudiants|Contenu d\'examens|Bourses non autorisées' }, handoffTriggers: { es: 'solicitud de beca|homologacion|queja academica|reembolso|convalidacion', en: 'scholarship request|credit transfer|academic complaint|refund', pt: 'solicitacao de bolsa|transferencia|reclamacao', fr: 'demande de bourse|transfert|plainte academique' } },
@@ -506,9 +525,9 @@ const EDUCATION: VerticalDefinition = {
         { question: { es: '¿Ofrecen certificación?', en: 'Do you offer certification?', pt: 'Oferecem certificação?', fr: 'Proposez-vous une certification?' }, answer: { es: 'Cuéntame qué programa te interesa y te confirmo qué certificado entrega y con qué alcance.', en: 'Tell me which program you are interested in and I will confirm which certificate it awards and its scope.', pt: 'Me diga qual programa te interessa e confirmo qual certificado entrega e com que alcance.', fr: 'Dites-moi quel programme vous intéresse et je vous confirme quel certificat il délivre.' }, category: 'certificacion' },
     ],
     services: [
-        { name: { es: 'Clase de prueba', en: 'Trial class', pt: 'Aula experimental', fr: 'Cours d\'essai' }, description: { es: 'Clase de prueba gratuita', en: 'Free trial class', pt: 'Aula experimental gratuita', fr: 'Cours d\'essai gratuit' }, durationMinutes: 60, price: 0, currency: 'COP', category: 'prueba' },
+        { name: { es: 'Clase de prueba', en: 'Trial class', pt: 'Aula experimental', fr: 'Cours d\'essai' }, description: { es: 'Clase de prueba gratuita', en: 'Free trial class', pt: 'Aula experimental gratuita', fr: 'Cours d\'essai gratuit' }, durationMinutes: 60, price: 0, currency: 'COP', priceStatus: 'example', category: 'prueba' },
         { name: { es: 'Tutoría personalizada', en: 'Personal tutoring', pt: 'Tutoria personalizada', fr: 'Tutorat personnalisé' }, description: { es: 'Sesión de tutoría individual', en: 'Individual tutoring session', pt: 'Sessão de tutoria individual', fr: 'Séance de tutorat individuel' }, durationMinutes: 60, price: 80000, currency: 'COP', category: 'tutoria' },
-        { name: { es: 'Test de nivel', en: 'Placement test', pt: 'Teste de nível', fr: 'Test de niveau' }, description: { es: 'Evaluación de nivel para ubicación', en: 'Level assessment for placement', pt: 'Avaliação de nível para classificação', fr: 'Évaluation de niveau pour le placement' }, durationMinutes: 30, price: 0, currency: 'COP', category: 'evaluacion' },
+        { name: { es: 'Test de nivel', en: 'Placement test', pt: 'Teste de nível', fr: 'Test de niveau' }, description: { es: 'Evaluación de nivel para ubicación', en: 'Level assessment for placement', pt: 'Avaliação de nível para classificação', fr: 'Évaluation de niveau pour le placement' }, durationMinutes: 30, price: 0, currency: 'COP', priceStatus: 'example', category: 'evaluacion' },
     ],
     businessHours: { schedule: { mon: '07:00-20:00', tue: '07:00-20:00', wed: '07:00-20:00', thu: '07:00-20:00', fri: '07:00-20:00', sat: '08:00-14:00' }, afterHoursMessage: { es: 'Estamos fuera de horario. Te responderemos al iniciar la jornada.', en: 'We are closed. We\'ll respond when we open.', pt: 'Estamos fora do horário.', fr: 'Nous sommes fermés.' } },
     sidebar: { labelOverrides: { crm: { es: 'Estudiantes', en: 'Students', pt: 'Estudantes', fr: 'Étudiants' }, pipeline: { es: 'Oportunidades', en: 'Opportunities', pt: 'Oportunidades', fr: 'Opportunités' } }, hiddenItems: [] },
@@ -527,7 +546,7 @@ function createGenericVertical(industry: string, config: Partial<VerticalDefinit
         industry,
         subTypes: [],
         terminology: { customerNoun: { es: 'cliente', en: 'customer', pt: 'cliente', fr: 'client' }, customerNounPlural: { es: 'clientes', en: 'customers', pt: 'clientes', fr: 'clients' }, transactionNoun: { es: 'venta', en: 'sale', pt: 'venda', fr: 'vente' }, serviceNoun: { es: 'servicio', en: 'service', pt: 'serviço', fr: 'service' }, pipelineNoun: { es: 'ventas', en: 'sales', pt: 'vendas', fr: 'ventes' } },
-        agent: { name: { es: 'Asistente', en: 'Assistant', pt: 'Assistente', fr: 'Assistant' }, role: { es: 'Asistente virtual de atención al cliente', en: 'Virtual customer service assistant', pt: 'Assistente virtual de atendimento', fr: 'Assistant virtuel service client' }, tone: 'professional', formality: 'semi-formal', greeting: { es: '¡Hola! ¿En qué puedo ayudarte hoy?', en: 'Hello! How can I help you today?', pt: 'Olá! Como posso ajudar?', fr: 'Bonjour! Comment puis-je vous aider?' }, rules: { es: 'Responde de forma profesional y concisa. Si el cliente quiere una reunión, tomá sus datos y avisá que alguien del equipo la coordina.', en: 'Respond professionally and concisely. If the customer wants a meeting, take their details and say someone from the team will arrange it.', pt: 'Responda profissionalmente. Se o cliente quiser uma reunião, colete os dados e avise que alguém da equipe vai agendar.', fr: 'Répondez professionnellement. Si le client veut un rendez-vous, prenez ses coordonnées et indiquez qu\'un membre de l\'équipe le fixera.' }, forbiddenTopics: { es: 'Información confidencial|Datos personales de terceros|Garantías no autorizadas', en: 'Confidential information|Third-party personal data|Unauthorized guarantees', pt: 'Informações confidenciais|Dados pessoais de terceiros|Garantias não autorizadas', fr: 'Informations confidentielles|Données personnelles de tiers|Garanties non autorisées' }, handoffTriggers: { es: 'queja formal|reclamo formal|solicitud de reembolso|quiero mi dinero|hablar con un humano|hablar con una persona', en: 'formal complaint|refund request|speak to a human|talk to a person|want my money back', pt: 'reclamacao formal|reembolso|falar com um humano|falar com uma pessoa', fr: 'plainte formelle|remboursement|parler a un humain|parler a une personne' } },
+        agent: { name: { es: 'Asistente', en: 'Assistant', pt: 'Assistente', fr: 'Assistant' }, role: { es: 'Asistente virtual de atención al cliente', en: 'Virtual customer service assistant', pt: 'Assistente virtual de atendimento', fr: 'Assistant virtuel service client' }, tone: 'professional', formality: 'semi-formal', greeting: { es: '¡Hola! ¿En qué puedo ayudarte hoy?', en: 'Hello! How can I help you today?', pt: 'Olá! Como posso ajudar?', fr: 'Bonjour! Comment puis-je vous aider?' }, rules: { es: 'Responde de forma profesional y cercana. Si el cliente quiere una reunión, toma sus datos y avisa que alguien del equipo la coordina.', en: 'Respond professionally and concisely. If the customer wants a meeting, take their details and say someone from the team will arrange it.', pt: 'Responda profissionalmente. Se o cliente quiser uma reunião, colete os dados e avise que alguém da equipe vai agendar.', fr: 'Répondez professionnellement. Si le client veut un rendez-vous, prenez ses coordonnées et indiquez qu\'un membre de l\'équipe le fixera.' }, forbiddenTopics: { es: 'Información confidencial|Datos personales de terceros|Garantías no autorizadas', en: 'Confidential information|Third-party personal data|Unauthorized guarantees', pt: 'Informações confidenciais|Dados pessoais de terceiros|Garantias não autorizadas', fr: 'Informations confidentielles|Données personnelles de tiers|Garanties non autorisées' }, handoffTriggers: { es: 'queja formal|reclamo formal|solicitud de reembolso|quiero mi dinero|hablar con un humano|hablar con una persona', en: 'formal complaint|refund request|speak to a human|talk to a person|want my money back', pt: 'reclamacao formal|reembolso|falar com um humano|falar com uma pessoa', fr: 'plainte formelle|remboursement|parler a un humain|parler a une personne' } },
         pipeline: { stages: [
             { name: { es: 'Nuevo', en: 'New', pt: 'Novo', fr: 'Nouveau' }, slug: 'nuevo', color: '#3498db', probability: 10, isTerminal: false, transitionRules: [] },
             { name: { es: 'Contactado', en: 'Contacted', pt: 'Contatado', fr: 'Contacté' }, slug: 'contactado', color: '#f39c12', probability: 25, isTerminal: false, transitionRules: [{ type: 'phone_required' }] },
@@ -609,7 +628,7 @@ const FINANZAS = createGenericVertical('finanzas', {
         { question: { es: '¿Es seguro enviar mis datos por aquí?', en: 'Is it safe to send my data here?', pt: 'É seguro enviar meus dados por aqui?', fr: 'Est-il sûr d\'envoyer mes données ici?' }, answer: { es: 'Por este canal solo pedimos datos de contacto. Nunca te vamos a pedir claves, número completo de tarjeta ni acceso a tus cuentas: si alguien lo hace en nuestro nombre, no somos nosotros.', en: 'We only ask for contact details here. We will never ask for passwords, full card numbers or access to your accounts: if someone does so in our name, it is not us.', pt: 'Por este canal pedimos apenas dados de contato. Nunca pediremos senhas, número completo do cartão nem acesso às suas contas.', fr: 'Nous ne demandons ici que vos coordonnées. Nous ne demanderons jamais de mots de passe, de numéro de carte complet ni d\'accès à vos comptes.' }, category: 'seguridad' },
     ],
     services: [
-        { name: { es: 'Asesoría gratuita', en: 'Free consultation', pt: 'Consultoria gratuita', fr: 'Consultation gratuite' }, description: { es: 'Orientación financiera inicial', en: 'Initial financial guidance', pt: 'Orientação financeira inicial', fr: 'Orientation financière initiale' }, durationMinutes: 30, price: 0, currency: 'COP', category: 'asesoria' },
+        { name: { es: 'Asesoría gratuita', en: 'Free consultation', pt: 'Consultoria gratuita', fr: 'Consultation gratuite' }, description: { es: 'Orientación financiera inicial', en: 'Initial financial guidance', pt: 'Orientação financeira inicial', fr: 'Orientation financière initiale' }, durationMinutes: 30, price: 0, currency: 'COP', priceStatus: 'example', category: 'asesoria' },
     ],
 });
 
@@ -748,13 +767,13 @@ const TECHNOLOGY = createGenericVertical('technology', {
     faqs: [
         { question: { es: '¿Cuánto cuesta?', en: 'How much does it cost?', pt: 'Quanto custa?', fr: 'Combien ça coûte?' }, answer: { es: 'El precio depende del alcance y del tamaño del equipo. Cuéntame qué necesitan resolver y cuántas personas lo van a usar, y armamos una propuesta concreta.', en: 'Pricing depends on scope and team size. Tell me what you need to solve and how many people will use it, and we will put together a concrete proposal.', pt: 'O preço depende do escopo e do tamanho da equipe. Conte o que precisam resolver e quantas pessoas vão usar, e montamos uma proposta concreta.', fr: 'Le prix dépend du périmètre et de la taille de l\'équipe. Dites-moi ce que vous devez résoudre et combien de personnes l\'utiliseront, et nous préparerons une proposition concrète.' }, category: 'precio' },
         { question: { es: '¿Puedo ver una demo?', en: 'Can I see a demo?', pt: 'Posso ver uma demo?', fr: 'Puis-je voir une démo?' }, answer: { es: 'Sí. Te agendo una demo con el equipo comercial: dura unos 45 minutos y la adaptan a tu caso. ¿Qué día y hora te sirven?', en: 'Yes. I can book a demo with the sales team: it takes about 45 minutes and they tailor it to your case. What day and time work for you?', pt: 'Sim. Agendo uma demo com o time comercial: leva cerca de 45 minutos e é adaptada ao seu caso. Que dia e horário funcionam?', fr: 'Oui. Je peux planifier une démo avec l\'équipe commerciale: environ 45 minutes, adaptée à votre cas. Quel jour et quelle heure vous conviennent?' }, category: 'demo' },
-        { question: { es: '¿Se integra con lo que ya usamos?', en: 'Does it integrate with our current tools?', pt: 'Integra com o que já usamos?', fr: 'S\'intègre-t-il à nos outils actuels?' }, answer: { es: 'Decime qué herramientas usan hoy y lo verifico con el equipo técnico. Es mejor confirmarlo antes de avanzar que prometerlo y descubrirlo después.', en: 'Tell me which tools you use today and I will verify it with the technical team. Better to confirm before moving forward than to promise and find out later.', pt: 'Me diga quais ferramentas usam hoje e verifico com o time técnico. É melhor confirmar antes de avançar do que prometer e descobrir depois.', fr: 'Dites-moi quels outils vous utilisez aujourd\'hui et je le vérifie avec l\'équipe technique. Mieux vaut confirmer avant d\'avancer que promettre et le découvrir ensuite.' }, category: 'integraciones' },
+        { question: { es: '¿Se integra con lo que ya usamos?', en: 'Does it integrate with our current tools?', pt: 'Integra com o que já usamos?', fr: 'S\'intègre-t-il à nos outils actuels?' }, answer: { es: 'Dime qué herramientas usan hoy y lo verifico con el equipo técnico. Es mejor confirmarlo antes de avanzar que prometerlo y descubrirlo después.', en: 'Tell me which tools you use today and I will verify it with the technical team. Better to confirm before moving forward than to promise and find out later.', pt: 'Me diga quais ferramentas usam hoje e verifico com o time técnico. É melhor confirmar antes de avançar do que prometer e descobrir depois.', fr: 'Dites-moi quels outils vous utilisez aujourd\'hui et je le vérifie avec l\'équipe technique. Mieux vaut confirmer avant d\'avancer que promettre et le découvrir ensuite.' }, category: 'integraciones' },
         { question: { es: '¿Cuánto tarda la implementación?', en: 'How long does implementation take?', pt: 'Quanto tempo leva a implementação?', fr: 'Combien de temps prend la mise en place?' }, answer: { es: 'Depende de cuántos sistemas haya que conectar y de la migración de datos. En la demo te damos un cronograma estimado según tu caso.', en: 'It depends on how many systems must be connected and on data migration. In the demo we give you an estimated timeline for your case.', pt: 'Depende de quantos sistemas conectar e da migração de dados. Na demo damos um cronograma estimado para o seu caso.', fr: 'Cela dépend du nombre de systèmes à connecter et de la migration des données. Lors de la démo, nous vous donnons un calendrier estimé.' }, category: 'implementacion' },
         { question: { es: '¿Qué soporte incluye?', en: 'What support is included?', pt: 'Qual suporte está incluído?', fr: 'Quel support est inclus?' }, answer: { es: 'El nivel de soporte y los tiempos de respuesta varían según el plan contratado. Te confirmo por escrito qué incluye el que estás mirando; no puedo comprometer un SLA por chat.', en: 'Support level and response times vary by plan. I will confirm in writing what the plan you are considering includes; I cannot commit to an SLA over chat.', pt: 'O nível de suporte e os tempos de resposta variam conforme o plano. Confirmo por escrito o que inclui o plano que está avaliando; não posso comprometer um SLA por chat.', fr: 'Le niveau de support et les délais varient selon le forfait. Je vous confirmerai par écrit ce qu\'inclut celui que vous envisagez; je ne peux pas engager de SLA par chat.' }, category: 'soporte' },
         { question: { es: '¿Dónde quedan alojados los datos?', en: 'Where is our data hosted?', pt: 'Onde ficam hospedados os dados?', fr: 'Où sont hébergées les données?' }, answer: { es: 'Te paso la ficha técnica con la región de alojamiento, el cifrado y las certificaciones. Si necesitan revisarla con su área de seguridad, la enviamos por correo.', en: 'I can send you the technical sheet with hosting region, encryption and certifications. If your security team needs to review it, we will email it over.', pt: 'Envio a ficha técnica com região de hospedagem, criptografia e certificações. Se a área de segurança precisar revisar, mandamos por e-mail.', fr: 'Je vous transmets la fiche technique avec la région d\'hébergement, le chiffrement et les certifications. Si votre équipe sécurité doit l\'examiner, nous l\'envoyons par e-mail.' }, category: 'seguridad' },
     ],
     services: [
-        { name: { es: 'Demo personalizada', en: 'Custom demo', pt: 'Demo personalizada', fr: 'Démo personnalisée' }, description: { es: 'Demostración de la solución', en: 'Solution demonstration', pt: 'Demonstração da solução', fr: 'Démonstration de la solution' }, durationMinutes: 45, price: 0, currency: 'COP', category: 'demos' },
+        { name: { es: 'Demo personalizada', en: 'Custom demo', pt: 'Demo personalizada', fr: 'Démo personnalisée' }, description: { es: 'Demostración de la solución', en: 'Solution demonstration', pt: 'Demonstração da solução', fr: 'Démonstration de la solution' }, durationMinutes: 45, price: 0, currency: 'COP', priceStatus: 'example', category: 'demos' },
     ],
 });
 
@@ -1183,7 +1202,7 @@ const GIMNASIOS: VerticalDefinition = {
         // cliente podía "agendar" su membresía para el martes a las 4. Una
         // membresía es un `membership_plan` (tabla propia, duración en días,
         // créditos), que es lo que lee get_membership_plans.
-        { name: { es: 'Trial 1 día', en: '1-day trial', pt: 'Trial 1 dia', fr: 'Essai 1 jour' }, description: { es: 'Prueba el gym por un día sin compromiso', en: 'Try the gym for one day, no commitment', pt: 'Experimente por um dia', fr: 'Essai sans engagement' }, durationMinutes: 60, price: 0, currency: 'COP', category: 'trial' },
+        { name: { es: 'Trial 1 día', en: '1-day trial', pt: 'Trial 1 dia', fr: 'Essai 1 jour' }, description: { es: 'Prueba el gym por un día sin compromiso', en: 'Try the gym for one day, no commitment', pt: 'Experimente por um dia', fr: 'Essai sans engagement' }, durationMinutes: 60, price: 0, currency: 'COP', priceStatus: 'example', category: 'trial' },
         { name: { es: 'Personal Training (sesión)', en: 'Personal training (session)', pt: 'Personal training (sessão)', fr: 'Coaching personnel (séance)' }, description: { es: 'Sesión individual con entrenador certificado', en: 'One-on-one session with certified trainer', pt: 'Sessão individual', fr: 'Séance individuelle' }, durationMinutes: 60, price: 80000, currency: 'COP', category: 'personal_training' },
     ],
     businessHours: {
@@ -1296,9 +1315,23 @@ const VETERINARIA: VerticalDefinition = {
     bookingEnabled: true,
 };
 
-const OTRO = createGenericVertical('otro', {});
+/**
+ * A partial agent over a generic vertical. `createGenericVertical` merges a full
+ * `agent`; this is the small door for the three industries that shipped with
+ * the placeholder "Asistente" — the wizard then greeted a new owner with
+ * "Preparamos a Asistente", which reads as "we prepared nothing".
+ */
+function withAgent(definition: VerticalDefinition, agent: Partial<VerticalDefinition['agent']>): VerticalDefinition {
+    return { ...definition, agent: { ...definition.agent, ...agent } };
+}
 
-const EVENT_PLANNING = createGenericVertical('event_planning', {
+const OTRO = withAgent(createGenericVertical('otro', {}), {
+    name: { es: 'Andrea', en: 'Andrea', pt: 'Andrea', fr: 'Andrea' },
+    role: { es: 'Asistente del negocio', en: 'Business assistant', pt: 'Assistente do negócio', fr: 'Assistante de l\'entreprise' },
+    greeting: { es: '¡Hola! Soy Andrea. Cuéntame qué buscas y te ayudo.', en: 'Hi! I am Andrea. Tell me what you are looking for and I will help.', pt: 'Olá! Sou a Andrea. Me conte o que procura e eu ajudo.', fr: 'Bonjour ! Je suis Andrea. Dites-moi ce que vous cherchez et je vous aide.' },
+});
+
+const EVENT_PLANNING = withAgent(createGenericVertical('event_planning', {
     subTypes: [
         { key: 'weddings', label: { es: 'Planeación de bodas', en: 'Wedding planning', pt: 'Planejamento de casamentos', fr: 'Organisation de mariages' } },
     ],
@@ -1309,9 +1342,13 @@ const EVENT_PLANNING = createGenericVertical('event_planning', {
         serviceNoun: { es: 'planeación', en: 'planning service', pt: 'planejamento', fr: 'organisation' },
         pipelineNoun: { es: 'eventos', en: 'events', pt: 'eventos', fr: 'événements' },
     },
+}), {
+    name: { es: 'Camila', en: 'Camila', pt: 'Camila', fr: 'Camila' },
+    role: { es: 'Coordinadora de eventos', en: 'Event coordinator', pt: 'Coordenadora de eventos', fr: 'Coordinatrice d\'événements' },
+    greeting: { es: '¡Hola! Soy Camila. ¿Qué evento estás planeando y para cuándo?', en: 'Hi! I am Camila. What event are you planning, and when?', pt: 'Olá! Sou a Camila. Que evento você está planejando e para quando?', fr: 'Bonjour ! Je suis Camila. Quel événement préparez-vous, et pour quand ?' },
 });
 
-const CONSTRUCCION = createGenericVertical('construccion', {
+const CONSTRUCCION = withAgent(createGenericVertical('construccion', {
     subTypes: [
         { key: 'contratista_general', label: { es: 'Contratista general', en: 'General contractor', pt: 'Empreiteiro geral', fr: 'Entrepreneur général' } },
     ],
@@ -1322,28 +1359,58 @@ const CONSTRUCCION = createGenericVertical('construccion', {
         serviceNoun: { es: 'servicio de construcción', en: 'construction service', pt: 'serviço de construção', fr: 'service de construction' },
         pipelineNoun: { es: 'proyectos', en: 'projects', pt: 'projetos', fr: 'projets' },
     },
+}), {
+    name: { es: 'Andrés', en: 'Andrés', pt: 'André', fr: 'André' },
+    role: { es: 'Asesor de proyectos', en: 'Project advisor', pt: 'Consultor de projetos', fr: 'Conseiller projets' },
+    greeting: { es: '¡Hola! Soy Andrés. Cuéntame qué obra o reforma tienes en mente y te oriento.', en: 'Hi! I am Andrés. Tell me about the project or renovation you have in mind and I will guide you.', pt: 'Olá! Sou o André. Me conte qual obra ou reforma tem em mente e eu oriento.', fr: 'Bonjour ! Je suis André. Parlez-moi du chantier ou de la rénovation que vous envisagez et je vous oriente.' },
 });
 
 // ─────────────────────────────────────────────────────────
 // REGISTRY — The single lookup map
 // ─────────────────────────────────────────────────────────
 
+/**
+ * D13 (sep-2026) — la capa de receta, por industria.
+ *
+ * Vive fuera de las definiciones y no dentro de ellas por dos razones: cada
+ * receta es un archivo de varios cientos de líneas en cuatro idiomas, y una
+ * industria sin receta escrita tiene que seguir funcionando exactamente igual
+ * que antes. Lo que falta sale en el reporte de cobertura del lint
+ * (`recipe-lint.ts`), no como una definición rota.
+ *
+ * Las seis de acá son las de más demanda del mercado. Las otras catorce nacen
+ * con la definición base hasta que se escriban.
+ */
+const INDUSTRY_RECIPES: Readonly<Record<string, NonNullable<VerticalDefinition['recipe']>>> = {
+    moda_belleza: MODA_BELLEZA_RECIPE,
+    salud: SALUD_RECIPE,
+    restaurantes: RESTAURANTES_RECIPE,
+    retail: RETAIL_RECIPE,
+    education: EDUCATION_RECIPE,
+    servicios_hogar: SERVICIOS_HOGAR_RECIPE,
+};
+
+function withRecipe(definition: VerticalDefinition): VerticalDefinition {
+    const recipe = INDUSTRY_RECIPES[definition.industry];
+    return recipe ? { ...definition, recipe } : definition;
+}
+
 export const VERTICAL_REGISTRY: Record<string, VerticalDefinition> = {
-    salud: SALUD,
-    moda_belleza: MODA_BELLEZA,
+    salud: withRecipe(SALUD),
+    moda_belleza: withRecipe(MODA_BELLEZA),
     inmobiliaria: INMOBILIARIA,
-    restaurantes: RESTAURANTES,
+    restaurantes: withRecipe(RESTAURANTES),
     automotriz: AUTOMOTRIZ,
     turismo: TURISMO,
-    education: EDUCATION,
+    education: withRecipe(EDUCATION),
     finanzas: FINANZAS,
     servicios_profesionales: SERVICIOS_PROFESIONALES,
-    retail: RETAIL,
+    retail: withRecipe(RETAIL),
     technology: TECHNOLOGY,
     veterinaria: VETERINARIA,
     gimnasios: GIMNASIOS,
     seguros: SEGUROS,
-    servicios_hogar: SERVICIOS_HOGAR,
+    servicios_hogar: withRecipe(SERVICIOS_HOGAR),
     pet_services: PET_SERVICES,
     fotografia: FOTOGRAFIA,
     event_planning: EVENT_PLANNING,
@@ -1351,10 +1418,148 @@ export const VERTICAL_REGISTRY: Record<string, VerticalDefinition> = {
     otro: OTRO,
 };
 
-export function getVerticalDefinition(industry: string): VerticalDefinition {
+/**
+ * What changes for a subtype, on top of its industry: the agent's name and
+ * voice, the questions customers really ask and what is on offer. A subtype
+ * without an overlay is the industry recipe with a different label, which is
+ * what every subtype was until sep-2026 — a dance academy got "Pablo, asesor
+ * académico" asking about admission requirements. Only the fields listed here
+ * are overridden; everything else (pipeline, KPIs, hours, sidebar) is inherited.
+ *
+ * Content rule, same as the file header: never state a policy or a price the
+ * owner has not confirmed. Answers invite the customer to ask, and the owner
+ * fills the real data in the guided setup.
+ */
+type VerticalRecipeOverlay = Partial<Pick<VerticalDefinition, 'faqs' | 'services' | 'terminology'>> & {
+    agent?: Partial<VerticalDefinition['agent']>;
+    /**
+     * La capa nueva de la receta (D9/D13). Se mezcla campo por campo sobre la
+     * de la industria, asi que un subtipo puede cambiar solo sus 5 preguntas y
+     * heredar el resto.
+     */
+    recipe?: Partial<NonNullable<VerticalDefinition['recipe']>>;
+};
+
+const ACADEMY_SERVICES: VerticalDefinition['services'] = [
+    { name: { es: 'Clase de prueba', en: 'Trial class', pt: 'Aula experimental', fr: 'Cours d\'essai' }, description: { es: 'Primera clase para conocer la academia', en: 'First class to get to know the academy', pt: 'Primeira aula para conhecer a academia', fr: 'Premier cours pour découvrir l\'école' }, durationMinutes: 60, price: 0, currency: 'COP', priceStatus: 'example', category: 'clases' },
+    { name: { es: 'Mensualidad de clases grupales', en: 'Monthly group classes', pt: 'Mensalidade de aulas em grupo', fr: 'Abonnement mensuel cours collectifs' }, description: { es: 'Clases grupales durante un mes', en: 'Group classes for one month', pt: 'Aulas em grupo durante um mês', fr: 'Cours collectifs pendant un mois' }, durationMinutes: 60, price: 0, currency: 'COP', priceStatus: 'example', category: 'clases' },
+    { name: { es: 'Clase personalizada', en: 'Private class', pt: 'Aula particular', fr: 'Cours particulier' }, description: { es: 'Clase individual con un profesor', en: 'One-to-one class with a teacher', pt: 'Aula individual com um professor', fr: 'Cours individuel avec un professeur' }, durationMinutes: 60, price: 0, currency: 'COP', priceStatus: 'example', category: 'clases' },
+];
+
+const ACADEMY_FAQS: VerticalDefinition['faqs'] = [
+    { question: { es: '¿Cuánto cuestan las clases?', en: 'How much are the classes?', pt: 'Quanto custam as aulas?', fr: 'Combien coûtent les cours ?' }, answer: { es: 'Depende del tipo de clase y de la frecuencia. Cuéntame qué te interesa y te confirmo el valor. ¿Quieres reservar una clase de prueba?', en: 'It depends on the type of class and how often. Tell me what you are interested in and I will confirm the price. Would you like to book a trial class?', pt: 'Depende do tipo de aula e da frequência. Me conte o que te interessa e confirmo o valor. Quer reservar uma aula experimental?', fr: 'Cela dépend du type de cours et de la fréquence. Dites-moi ce qui vous intéresse et je vous confirme le tarif. Voulez-vous réserver un cours d\'essai ?' }, category: 'precios' },
+    { question: { es: '¿Dónde quedan?', en: 'Where are you located?', pt: 'Onde ficam?', fr: 'Où êtes-vous situés ?' }, answer: { es: 'Con gusto te comparto la dirección de la sede y cómo llegar. Escríbeme y te la confirmo.', en: 'Happy to share the address and directions. Write to me and I will confirm them.', pt: 'Com prazer compartilho o endereço e como chegar. Me escreva e confirmo.', fr: 'Je vous communique volontiers l\'adresse et l\'itinéraire. Écrivez-moi et je vous les confirme.' }, category: 'ubicacion' },
+    { question: { es: '¿Qué horarios tienen?', en: 'What are your schedules?', pt: 'Quais são os horários?', fr: 'Quels sont vos horaires ?' }, answer: { es: 'Cuéntame qué te interesa aprender y qué días te sirven, y te digo las clases disponibles.', en: 'Tell me what you want to learn and which days work for you, and I will tell you the available classes.', pt: 'Me conte o que quer aprender e quais dias te servem, e te digo as aulas disponíveis.', fr: 'Dites-moi ce que vous voulez apprendre et quels jours vous conviennent, et je vous indique les cours disponibles.' }, category: 'horarios' },
+    { question: { es: '¿Hay clases para niños?', en: 'Are there classes for children?', pt: 'Tem aulas para crianças?', fr: 'Y a-t-il des cours pour enfants ?' }, answer: { es: 'Cuéntame la edad y te confirmo si tenemos grupo y en qué horario.', en: 'Tell me the age and I will confirm whether we have a group and at what time.', pt: 'Me conte a idade e confirmo se temos turma e em qual horário.', fr: 'Indiquez-moi l\'âge et je vous confirme si nous avons un groupe et à quel horaire.' }, category: 'clases' },
+    { question: { es: '¿Qué necesito llevar a la primera clase?', en: 'What do I need to bring to the first class?', pt: 'O que preciso levar na primeira aula?', fr: 'Que dois-je apporter au premier cours ?' }, answer: { es: 'Ropa cómoda y ganas de aprender. Si tu clase necesita algo más, te lo confirmo antes.', en: 'Comfortable clothes and the will to learn. If your class needs anything else, I will confirm it beforehand.', pt: 'Roupa confortável e vontade de aprender. Se a sua aula precisar de algo mais, confirmo antes.', fr: 'Une tenue confortable et l\'envie d\'apprendre. Si votre cours nécessite autre chose, je vous le confirme avant.' }, category: 'clases' },
+];
+
+const ACADEMY_TERMINOLOGY: VerticalDefinition['terminology'] = {
+    customerNoun: { es: 'alumno', en: 'student', pt: 'aluno', fr: 'élève' },
+    customerNounPlural: { es: 'alumnos', en: 'students', pt: 'alunos', fr: 'élèves' },
+    transactionNoun: { es: 'inscripción', en: 'enrollment', pt: 'matrícula', fr: 'inscription' },
+    serviceNoun: { es: 'clase', en: 'class', pt: 'aula', fr: 'cours' },
+    pipelineNoun: { es: 'inscripciones', en: 'enrollments', pt: 'matrículas', fr: 'inscriptions' },
+};
+
+// handoffTriggers are unaccented substring matchers, not display text (see the file header).
+const ACADEMY_HANDOFF = { es: 'inscribirme|quiero inscribirme|pagar|descuento|beca|evento privado|show|lesion|me lastime|queja|reclamo|hablar con una persona', en: 'sign me up|enroll|pay|discount|scholarship|private event|show|injury|complaint|talk to a person', pt: 'me inscrever|quero me inscrever|pagar|desconto|bolsa|evento privado|show|lesao|reclamacao|falar com uma pessoa', fr: 'm inscrire|payer|reduction|bourse|evenement prive|spectacle|blessure|plainte|parler a une personne' };
+
+/**
+ * Los motivos VISIBLES de pase a una persona de una academia.
+ *
+ * Existen aparte porque las academias reemplazan `handoffTriggers` por
+ * `ACADEMY_HANDOFF`, y los motivos de la industria — matrícula, homologación de
+ * materias, baja del curso — hablan de una universidad, no de una academia de
+ * baile. Heredarlos convertía cada ficha en una promesa que el motor no cumple:
+ * la pantalla decía "si piden homologación paso a una persona" y el runtime
+ * nunca pasaba, porque esa palabra no está entre los disparadores.
+ *
+ * Cada motivo de acá tiene su disparador en ACADEMY_HANDOFF. El lint de recetas
+ * lo verifica; los disparadores siguen sin tilde porque el motor los compara
+ * contra el texto crudo del cliente sin normalizar.
+ */
+const ACADEMY_HANDOFF_REASONS: NonNullable<VerticalDefinition['recipe']>['handoffReasons'] = [
+    { trigger: 'quiero inscribirme', text: { es: 'Quiere inscribirse y pagar ya', en: 'Wants to enroll and pay now', pt: 'Quer se inscrever e pagar agora', fr: 'Veut s’inscrire et payer maintenant' } },
+    { trigger: 'beca', text: { es: 'Pide descuento o beca', en: 'Asks for a discount or a scholarship', pt: 'Pede desconto ou bolsa', fr: 'Demande une réduction ou une bourse' } },
+    { trigger: 'evento privado', text: { es: 'Evento privado o show', en: 'Private event or show', pt: 'Evento privado ou show', fr: 'Événement privé ou spectacle' } },
+    { trigger: 'lesion', text: { es: 'Lesión o condición médica', en: 'Injury or medical condition', pt: 'Lesão ou condição médica', fr: 'Blessure ou condition médicale' } },
+    { trigger: 'queja', text: { es: 'Queja o reclamo', en: 'Complaint', pt: 'Queixa ou reclamação', fr: 'Plainte ou réclamation' } },
+];
+
+const SUBTYPE_RECIPE_OVERLAYS: Readonly<Record<string, VerticalRecipeOverlay>> = {
+    'education/academia_baile': {
+        agent: {
+            name: { es: 'Valentina', en: 'Valentina', pt: 'Valentina', fr: 'Valentina' },
+            role: { es: 'Asesora de clases', en: 'Class advisor', pt: 'Consultora de aulas', fr: 'Conseillère cours' },
+            tone: 'friendly', formality: 'casual',
+            greeting: { es: '¡Hola! Soy Valentina. ¿Buscas clases para ti, para tu pareja o para un niño?', en: 'Hi! I am Valentina. Are you looking for classes for yourself, for a couple or for a child?', pt: 'Olá! Sou a Valentina. Procura aulas para você, para o casal ou para uma criança?', fr: 'Bonjour ! Je suis Valentina. Vous cherchez des cours pour vous, pour votre couple ou pour un enfant ?' },
+            rules: { es: 'Pregunta qué ritmo o estilo le interesa y qué nivel tiene antes de recomendar una clase.|Confirma los horarios y precios con los datos del negocio; si no los tienes, ofrece confirmarlos.|Lleva la conversación a reservar una clase de prueba.', en: 'Ask which style and level they have before recommending a class.|Confirm schedules and prices from the business data; if you do not have them, offer to confirm.|Guide the conversation towards booking a trial class.', pt: 'Pergunte qual ritmo ou estilo interessa e qual o nível antes de recomendar uma aula.|Confirme horários e preços com os dados do negócio; se não os tiver, ofereça confirmar.|Leve a conversa para reservar uma aula experimental.', fr: 'Demandez quel style et quel niveau avant de recommander un cours.|Confirmez horaires et tarifs avec les données de l\'entreprise ; sinon proposez de les confirmer.|Amenez la conversation vers la réservation d\'un cours d\'essai.' },
+            handoffTriggers: ACADEMY_HANDOFF,
+        },
+        recipe: { handoffReasons: ACADEMY_HANDOFF_REASONS },
+        faqs: ACADEMY_FAQS,
+        services: ACADEMY_SERVICES,
+        terminology: ACADEMY_TERMINOLOGY,
+    },
+    'education/academia_musica': {
+        agent: {
+            name: { es: 'Camila', en: 'Camila', pt: 'Camila', fr: 'Camila' },
+            role: { es: 'Asesora de clases', en: 'Class advisor', pt: 'Consultora de aulas', fr: 'Conseillère cours' },
+            tone: 'friendly', formality: 'casual',
+            greeting: { es: '¡Hola! Soy Camila. ¿Qué instrumento o disciplina te gustaría aprender, y para quién es la clase?', en: 'Hi! I am Camila. Which instrument or discipline would you like to learn, and who is the class for?', pt: 'Olá! Sou a Camila. Qual instrumento ou disciplina gostaria de aprender, e para quem é a aula?', fr: 'Bonjour ! Je suis Camila. Quel instrument ou quelle discipline souhaitez-vous apprendre, et pour qui est le cours ?' },
+            handoffTriggers: ACADEMY_HANDOFF,
+        },
+        recipe: { handoffReasons: ACADEMY_HANDOFF_REASONS },
+        faqs: ACADEMY_FAQS,
+        services: ACADEMY_SERVICES,
+        terminology: ACADEMY_TERMINOLOGY,
+    },
+    'education/clases_particulares': {
+        agent: {
+            role: { es: 'Tutor', en: 'Tutor', pt: 'Tutor', fr: 'Tuteur' },
+            handoffTriggers: ACADEMY_HANDOFF,
+        },
+        recipe: { handoffReasons: ACADEMY_HANDOFF_REASONS },
+        faqs: ACADEMY_FAQS,
+        services: ACADEMY_SERVICES,
+        terminology: ACADEMY_TERMINOLOGY,
+    },
+    'education/autoescuela': {
+        agent: {
+            name: { es: 'Andrés', en: 'Andrés', pt: 'André', fr: 'André' },
+            role: { es: 'Asesor de cursos', en: 'Course advisor', pt: 'Consultor de cursos', fr: 'Conseiller formations' },
+            greeting: { es: '¡Hola! Soy Andrés. ¿Buscas curso para carro, moto o ambos?', en: 'Hi! I am Andrés. Are you looking for a car course, a motorcycle course or both?', pt: 'Olá! Sou o André. Procura curso para carro, moto ou os dois?', fr: 'Bonjour ! Je suis André. Vous cherchez une formation voiture, moto ou les deux ?' },
+            handoffTriggers: ACADEMY_HANDOFF,
+        },
+        recipe: { handoffReasons: ACADEMY_HANDOFF_REASONS },
+        services: ACADEMY_SERVICES,
+        terminology: ACADEMY_TERMINOLOGY,
+    },
+};
+
+export function getSubtypeRecipeOverlay(industry: string, subType?: string | null): VerticalRecipeOverlay | null {
+    if (!subType) return null;
+    return SUBTYPE_RECIPE_OVERLAYS[`${industry}/${subType}`] ?? null;
+}
+
+export function getVerticalDefinition(industry: string, subType?: string | null): VerticalDefinition {
     const definition = VERTICAL_REGISTRY[industry];
     if (!definition) {
         throw new Error(`Unknown vertical definition: ${industry}`);
     }
-    return definition;
+    const overlay = getSubtypeRecipeOverlay(industry, subType);
+    if (!overlay) return definition;
+    return {
+        ...definition,
+        ...(overlay.faqs ? { faqs: overlay.faqs } : {}),
+        ...(overlay.services ? { services: overlay.services } : {}),
+        ...(overlay.terminology ? { terminology: { ...definition.terminology, ...overlay.terminology } } : {}),
+        agent: { ...definition.agent, ...(overlay.agent ?? {}) },
+        // Campo por campo, como la terminologia: una academia que solo cambia
+        // sus preguntas no tiene que volver a escribir los canales ni el tono.
+        ...(definition.recipe || overlay.recipe
+            ? { recipe: { ...(definition.recipe ?? {}), ...(overlay.recipe ?? {}) } }
+            : {}),
+    };
 }

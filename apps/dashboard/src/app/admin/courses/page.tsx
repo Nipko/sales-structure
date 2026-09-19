@@ -33,7 +33,7 @@ interface Course {
     duration_hours?: number;
     duration_weeks?: number;
     price: number;
-    currency: string;
+    currency: string | null;
     certification?: string;
     is_active: boolean;
 }
@@ -458,7 +458,11 @@ function CourseFormModal({ course, onClose, onSaved, onError }: { course: Course
             durationHours: form.durationHours ? parseInt(form.durationHours, 10) : undefined,
             durationWeeks: form.durationWeeks ? parseInt(form.durationWeeks, 10) : undefined,
             price: form.price ? parseFloat(form.price) : 0,
-            currency: form.currency,
+            // Cuando el negocio no declaro donde opera, el hook contesta
+            // honestamente "no se" y aca NO se manda nada: el API resuelve o
+            // deja NULL. Mandar "" era peor que no mandar, porque del otro
+            // lado la cadena vacia volvia a ser COP.
+            currency: form.currency || undefined,
             certification: form.certification || undefined,
         };
         try {

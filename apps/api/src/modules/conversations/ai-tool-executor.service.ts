@@ -1,4 +1,5 @@
 import { withRuntimeSchemaLock } from '../../common/utils/runtime-schema-lock';
+import { customerFacingPrice, servicePriceNote, servicePriceStatus } from '../appointments/service-price-status';
 import { enrollmentTermsHash, enrollmentTermsReviewResult } from '../education/enrollment-terms';
 import { LLMSourceAuthorityUnavailable } from '../ai/interfaces/llm-source-authority';
 import { appointmentVehicleId, vehicleAppointmentTerms, vehicleAppointmentBusyIntervals, VehicleAppointmentError, type VehicleAppointmentTerms } from '../appointments/vehicle-appointment-capacity';
@@ -191,7 +192,7 @@ export class AIToolExecutorService {
         if (mode === 'read') return readFailed(`${toolName}_unavailable`);
         return {
             error: `${toolName}_unavailable`,
-            message: 'No pude completar esa operación en este momento. No afirmes que se realizó; ofrecé reintentar o derivarla al equipo.',
+            message: 'No pude completar esa operación en este momento. No afirmes que se realizó; ofrece reintentar o derivarla al equipo.',
             retryable: true,
             shouldHandoff: true,
         };
@@ -964,7 +965,7 @@ export class AIToolExecutorService {
                     return this.getPromotions(schemaName);
 
                 case 'place_order':
-                    return this.placeOrder(schemaName, contactId, conversationId, args, canonicalSandbox);
+                    return this.placeOrder(schemaName, contactId, conversationId, args, canonicalSandbox, tenantId);
 
                 case 'cancel_order':
                     return this.cancelOrder(schemaName, contactId, args.orderId, args.reason);
@@ -1063,7 +1064,7 @@ export class AIToolExecutorService {
                     return this.checkHomeServiceAvailabilityTool(schemaName, args);
 
                 case 'create_service_request':
-                    return this.createServiceRequestTool(schemaName, contactId, conversationId, args, canonicalSandbox);
+                    return this.createServiceRequestTool(schemaName, contactId, conversationId, args, canonicalSandbox, tenantId);
 
                 case 'check_request_status':
                     return this.checkServiceRequestStatusTool(schemaName, contactId, args);
@@ -1072,7 +1073,7 @@ export class AIToolExecutorService {
                     return this.listMyServiceRequestsTool(schemaName, contactId, args?.onlyOpen !== false);
 
                 case 'cancel_service_request':
-                    return this.cancelServiceRequest(schemaName, contactId, args.requestId, args.reason);
+                    return this.cancelServiceRequest(schemaName, contactId, args.requestId, args.reason, tenantId);
 
                 // ── Tier 3 tools — pet services & photography ─────
                 // These use the existing services + appointments engine
@@ -1143,7 +1144,7 @@ export class AIToolExecutorService {
                     return this.checkDateAvailabilityTool(schemaName, args);
 
                 case 'request_photo_quote':
-                    return this.requestPhotoQuoteTool(schemaName, contactId, conversationId, args, canonicalSandbox);
+                    return this.requestPhotoQuoteTool(schemaName, contactId, conversationId, args, canonicalSandbox, tenantId);
 
                 case 'cancel_photo_session':
                     return this.cancelPhotoSession(schemaName, contactId, args.sessionId, args.reason);
@@ -1428,7 +1429,7 @@ export class AIToolExecutorService {
                     description: p.description,
                     category: p.category,
                     price: Number(p.price || 0),
-                    currency: p.currency || 'COP',
+                    currency: p.currency || null,
                     stock: p.stock ?? null,
                     isAvailable: !!p.is_available,
                     // Un producto de venta bajo fórmula se sigue mostrando: el
@@ -1463,7 +1464,7 @@ export class AIToolExecutorService {
                     description: p.description,
                     category: p.category,
                     price: Number(p.price || 0),
-                    currency: p.currency || 'COP',
+                    currency: p.currency || null,
                     stock: p.stock ?? null,
                     isAvailable: !!p.is_available,
                     requiresPrescription: !!p.requires_prescription,
@@ -1513,7 +1514,7 @@ export class AIToolExecutorService {
             if (e instanceof BadRequestException) {
                 return {
                     error: 'invalid_property_id',
-                    message: 'propertyId debe ser el UUID de la propiedad, no su nombre. Llamá list_properties para obtenerlo y reintentá.',
+                    message: 'propertyId debe ser el UUID de la propiedad, no su nombre. Llama a list_properties para obtenerlo y reintenta.',
                 };
             }
             return { error: 'No se pudo enviar la imagen de la propiedad.' };
@@ -1641,7 +1642,7 @@ export class AIToolExecutorService {
             if (e instanceof BadRequestException) {
                 return {
                     error: 'invalid_listing_id',
-                    message: 'listingId debe ser el UUID del inmueble, no su nombre. Llamá search_listings para obtenerlo y reintentá.',
+                    message: 'listingId debe ser el UUID del inmueble, no su nombre. Llama a search_listings para obtenerlo y reintenta.',
                 };
             }
             return { error: 'No se pudo enviar la imagen del inmueble.' };
@@ -2710,7 +2711,7 @@ export class AIToolExecutorService {
     private async listServices(schema: string): Promise<any> {
         const rows: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT id, name, description, duration_minutes, buffer_minutes, price, currency, is_active, duration_type, duration_minutes_max,
-                    payment_policy, deposit_percent, deposit_amount, location_type, location_address, meeting_link
+                    payment_policy, deposit_percent, deposit_amount, location_type, location_address, meeting_link, price_status
              FROM "${schema}".services WHERE is_active = true AND (is_public IS NULL OR is_public = true)
              ORDER BY sort_order, name`,
         );
@@ -2724,6 +2725,14 @@ export class AIToolExecutorService {
                 // enteraba de que había que cobrar DESPUÉS de crear la cita —
                 // justo el orden invertido que este trabajo vino a arreglar.
                 const policy = resolvePaymentPolicy(s, s.price);
+                // D10: a recipe price nobody confirmed, or a quote-only service,
+                // has NO number for the model. Removing the amount (not just
+                // flagging it) is what keeps the claims guardrail from treating
+                // it as a trusted fact. FX1: neither does a row without an
+                // amount — `Number(s.price || 0)` handed the model a free
+                // service next to `priceStatus: 'confirmed'`.
+                const { priceStatus, price } = customerFacingPrice(s);
+                const confirmed = priceStatus === 'confirmed';
                 return {
                     id: s.id,
                     name: s.name,
@@ -2731,13 +2740,15 @@ export class AIToolExecutorService {
                     durationMinutes: s.duration_minutes,
                     durationMinutesMax: s.duration_minutes_max || null,
                     durationType: s.duration_type || 'fixed',
-                    price: Number(s.price || 0),
-                    currency: s.currency || 'COP',
+                    price,
+                    currency: s.currency || null,
+                    priceStatus,
+                    ...(confirmed ? {} : { priceNote: servicePriceNote(priceStatus) }),
                     // Los flags dicen QUÉ pasa; la nota dice CÓMO proceder.
-                    requiresPaymentToConfirm: policy.requiresPayment,
-                    amountDueToConfirm: policy.dueAmount,
-                    paymentChoice: policy.customerChooses ? 'deposit_or_full' : undefined,
-                    paymentNote: describePaymentPolicy(policy),
+                    requiresPaymentToConfirm: confirmed && policy.requiresPayment,
+                    amountDueToConfirm: confirmed ? policy.dueAmount : null,
+                    paymentChoice: confirmed && policy.customerChooses ? 'deposit_or_full' : undefined,
+                    paymentNote: confirmed ? describePaymentPolicy(policy) : undefined,
                     appointmentTerms: appointmentServiceTerms(s),
                 };
             }),
@@ -3265,7 +3276,7 @@ export class AIToolExecutorService {
         // inválido → tool_failed. El check de disponibilidad ya la aceptaba
         // (b9bd6332), pero la reserva en sí seguía rota.
         const svcRows: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT id, name, duration_minutes, duration_type, duration_minutes_max, price, currency, location_type, location_address, meeting_link FROM "${schema}".services WHERE id = $1::uuid AND is_active = true`,
+            `SELECT id, name, duration_minutes, duration_type, duration_minutes_max, price, currency, location_type, location_address, meeting_link, price_status FROM "${schema}".services WHERE id = $1::uuid AND is_active = true`,
             args.serviceId,
         );
         if (!svcRows.length) return { error: 'Service not found' };
@@ -3318,7 +3329,9 @@ export class AIToolExecutorService {
         if (args.customerEmail) descriptionParts.push(`Email: ${args.customerEmail}`);
         if (args.customerPhone) descriptionParts.push(`Phone: ${args.customerPhone}`);
         descriptionParts.push('');
-        const priceStr = svc.price ? `${Number(svc.price).toLocaleString()} ${svc.currency || 'COP'}` : 'N/A';
+        const priceStr = servicePriceStatus(svc) !== 'confirmed'
+            ? (servicePriceStatus(svc) === 'quote' ? 'se cotiza según el caso' : 'precio por confirmar')
+            : (svc.price ? [Number(svc.price).toLocaleString(), svc.currency].filter(Boolean).join(' ') : 'N/A');
         descriptionParts.push(`Service: ${svc.name} (${priceStr})`);
         descriptionParts.push(`Duration: ${svc.duration_minutes} min`);
         for (const label of subject.labels) descriptionParts.push(label);
@@ -3697,7 +3710,7 @@ export class AIToolExecutorService {
             if (avail.canBookDirectly === false) {
                 return {
                     ...avail,
-                    message: 'Este alojamiento se administra desde el channel manager del negocio. Podés informar disponibilidad, pero la reserva la confirma el equipo — no la des por hecha.',
+                    message: 'Este alojamiento se administra desde el channel manager del negocio. Puedes informar disponibilidad, pero la reserva la confirma el equipo — no la des por hecha.',
                 };
             }
             return avail;
@@ -3923,7 +3936,7 @@ export class AIToolExecutorService {
                 if (Number.isFinite(Number(property.night_price)) && Number(property.night_price) > 0) return null;
                 return {
                     error: 'property_rate_not_configured',
-                    message: 'Este alojamiento todavía no tiene una tarifa válida. Ofrecé otra opción o derivá la consulta al equipo.',
+                    message: 'Este alojamiento todavía no tiene una tarifa válida. Ofrece otra opción o deriva la consulta al equipo.',
                 };
             }
         } catch (error) {
@@ -3934,7 +3947,7 @@ export class AIToolExecutorService {
                 );
                 return {
                     error: 'property_lookup_unavailable',
-                    message: 'No pude verificar ese alojamiento en este momento. No confirmes la reserva; ofrecé reintentar o derivar la consulta al equipo.',
+                    message: 'No pude verificar ese alojamiento en este momento. No confirmes la reserva; ofrece reintentar o derivar la consulta al equipo.',
                     retryable: true,
                     shouldHandoff: true,
                 };
@@ -3945,7 +3958,7 @@ export class AIToolExecutorService {
         this.logger.warn(`[Tool] ${toolName} bloqueada antes de confirmar: propertyId "${propertyId.slice(0, 40)}" no existe`);
         return {
             error: 'unknown_property',
-            message: 'No pude ubicar ese alojamiento. Verificá cuál es antes de continuar.',
+            message: 'No pude ubicar ese alojamiento. Verifica cuál es antes de continuar.',
             retryable: true,
         };
     }
@@ -4052,7 +4065,7 @@ export class AIToolExecutorService {
                     durationType: p.duration_type,
                     durationValue: p.duration_value,
                     price: Number(p.price || 0),
-                    currency: p.currency || 'COP',
+                    currency: p.currency || null,
                     destination: p.destination,
                     languages: p.languages || [],
                     seatsLeft: p.available_seats ?? null,
@@ -4525,6 +4538,7 @@ export class AIToolExecutorService {
         conversationId: string | undefined,
         args: any,
         namespace?: EvalNamespaceLease,
+        tenantId?: string,
     ): Promise<any> {
         try {
             if (!Array.isArray(args.items) || args.items.length === 0) {
@@ -4545,7 +4559,10 @@ export class AIToolExecutorService {
             const priceMap: Record<string, {
                 price: number;
                 name: string;
-                currency: string;
+                // D17: un plato puede no tener moneda todavia. `null` viaja
+                // hasta el escritor, que resuelve la del negocio; rellenar con
+                // 'COP' aca la fijaria antes de que nadie pueda resolverla.
+                currency: string | null;
                 prepTimeMinutes?: number;
             }> = {};
             if (validIds.length) {
@@ -4558,7 +4575,7 @@ export class AIToolExecutorService {
                     priceMap[r.id] = {
                         price: Number(r.price),
                         name: r.name,
-                        currency: r.currency || 'COP',
+                        currency: r.currency || null,
                         prepTimeMinutes: r.prep_time_minutes == null
                             ? undefined
                             : Number(r.prep_time_minutes),
@@ -4571,7 +4588,7 @@ export class AIToolExecutorService {
                 name: string;
                 quantity: number;
                 unitPrice: number;
-                currency: string;
+                currency: string | null;
                 prepTimeMinutes?: number;
                 specialInstructions?: string;
             }> = [];
@@ -4605,7 +4622,7 @@ export class AIToolExecutorService {
                 items: resolvedItems,
                 paymentMethod: args.paymentMethod,
                 notes: args.notes,
-            }, { sandboxNamespace: namespace });
+            }, { sandboxNamespace: namespace }, tenantId);
 
             return {
                 orderId: order.id,
@@ -4624,7 +4641,9 @@ export class AIToolExecutorService {
                     ? null
                     : `${Number(order.estimated_delivery_minutes)} minutos`,
                 estimatedDeliveryAt: order.estimated_delivery_at || null,
-                message: `Order created successfully. Total: ${Number(order.total || 0).toLocaleString()} ${order.currency}`,
+                // Sin moneda va el numero solo: `1.500 null` es lo que el
+                // agente le termina diciendo al cliente.
+                message: `Order created successfully. Total: ${[Number(order.total || 0).toLocaleString(), order.currency].filter(Boolean).join(' ')}`,
             };
         } catch (e: any) {
             return this.safeToolFailure('place_order', e, 'write');
@@ -4638,19 +4657,32 @@ export class AIToolExecutorService {
             const plans = await this.gymsService.listPlans(schemaName, false);
             if (!plans.length) return { plans: [], message: 'No plans available.' };
             return {
-                plans: plans.map(p => ({
+                plans: plans.map(p => {
+                    // Mismo contrato que los servicios (D10): el numero viaja
+                    // solo si el negocio lo confirmo. Los planes sembrados son
+                    // un ejemplo de la receta, y desde D17 estan en la moneda
+                    // del pais — o sea que se leen como un precio real. Decir
+                    // "la mensualidad son $180.000" de un monto que el dueno
+                    // nunca miro es exactamente lo que D10 vino a cerrar.
+                    // FX1: the same reading as list_services. A confirmed 0 is
+                    // a plan the owner declared free ("Es gratis").
+                    const { priceStatus: status, price } = customerFacingPrice(p as { price?: unknown; price_status?: unknown });
+                    return {
                     id: p.id,
                     name: p.name,
                     description: p.description,
                     durationDays: p.duration_days,
-                    price: Number(p.price),
-                    currency: p.currency,
+                    price: price ?? undefined,
+                    priceStatus: status,
+                    priceNote: servicePriceNote(status),
+                    currency: status === 'confirmed' ? p.currency : undefined,
                     classCredits: p.class_credits_per_period,
                     personalTrainingCredits: p.personal_training_credits,
                     guestPasses: p.guest_passes,
                     freezeAllowanceDays: p.freeze_allowance_days,
                     perks: p.perks || [],
-                })),
+                    };
+                }),
             };
         } catch (e: any) {
             return this.safeToolFailure('get_membership_plans', e, 'read');
@@ -5015,7 +5047,7 @@ export class AIToolExecutorService {
         if (started.status === 'pending') {
             return {
                 needsVerification: true,
-                message: 'Ya hay una verificación en curso. No envíes otro código; pedile al cliente que espere el mensaje y comparta el código recibido.',
+                message: 'Ya hay una verificación en curso. No envíes otro código; pídele al cliente que espere el mensaje y comparta el código recibido.',
             };
         }
         if (started.status === 'no_channel') {
@@ -5029,7 +5061,7 @@ export class AIToolExecutorService {
             needsVerification: true,
             sentVia: started.via,
             sentTo: started.hint,
-            message: `Antes de dar información o ejecutar gestiones sensibles de seguros hay que verificar identidad. Se envió un código de 6 dígitos ${started.via === 'email' ? 'al correo' : 'por SMS'} ${started.hint}. Pedile al cliente ese código y llamá a verify_identity_code. NO reveles datos ni radiques siniestros hasta que la verificación sea exitosa.`,
+            message: `Antes de dar información o ejecutar gestiones sensibles de seguros hay que verificar identidad. Se envió un código de 6 dígitos ${started.via === 'email' ? 'al correo' : 'por SMS'} ${started.hint}. Pídele al cliente ese código y llama a verify_identity_code. NO reveles datos ni radiques siniestros hasta que la verificación sea exitosa.`,
         };
     }
 
@@ -5047,7 +5079,7 @@ export class AIToolExecutorService {
         if (res.status === 'no_channel') {
             return {
                 error: 'identity_unverifiable',
-                message: 'No hay correo ni otro canal donde mandar el código. Ofrecé pasarlo con un asesor humano.',
+                message: 'No hay correo ni otro canal donde mandar el código. Ofrece pasarlo con un asesor humano.',
                 shouldHandoff: true,
             };
         }
@@ -5056,11 +5088,11 @@ export class AIToolExecutorService {
 
     private async verifyIdentityCodeTool(conversationId: string | undefined, code?: string): Promise<any> {
         if (!conversationId) return { error: 'no_conversation' };
-        if (!code) return { error: 'missing_code', message: 'Pedile al cliente el código de 6 dígitos.' };
+        if (!code) return { error: 'missing_code', message: 'Pídele al cliente el código de 6 dígitos.' };
         const res = await this.chatIdentity.verifyCode(conversationId, String(code));
         if (res.ok) return { verified: true, message: 'Identidad verificada. Ya puede consultar los datos que pidió.' };
         const messages: Record<string, string> = {
-            expired: 'El código venció o no se pidió ninguno. Ofrecé enviar uno nuevo con request_identity_code.',
+            expired: 'El código venció o no se pidió ninguno. Ofrece enviar uno nuevo con request_identity_code.',
             wrong: 'El código no coincide. Pídaselo de nuevo; le quedan intentos.',
             too_many: 'Demasiados intentos fallidos. NO siga intentando: pase la conversación a un asesor humano.',
         };
@@ -5160,6 +5192,7 @@ export class AIToolExecutorService {
         conversationId: string | undefined,
         args: any,
         namespace?: EvalNamespaceLease,
+        tenantId?: string,
     ): Promise<any> {
         try {
             const request = await this.homeServicesService.createRequest(schemaName, {
@@ -5178,7 +5211,7 @@ export class AIToolExecutorService {
                 serviceId: args.serviceId,
                 scheduledAt: args.scheduledAt,
                 status: args.serviceId && args.scheduledAt ? 'scheduled' : 'pending',
-            }, { sandboxNamespace: namespace });
+            }, { sandboxNamespace: namespace }, tenantId);
             return {
                 requestId: request.id,
                 status: request.status,
@@ -5345,7 +5378,7 @@ export class AIToolExecutorService {
         try {
             const services = await this.prisma.executeInTenantSchema<any[]>(
                 schemaName,
-                `SELECT id, name, description, duration_minutes, price, currency, category
+                `SELECT id, name, description, duration_minutes, price, currency, category, price_status
                  FROM services WHERE is_active = true
                  ORDER BY category, name`,
             );
@@ -5356,15 +5389,21 @@ export class AIToolExecutorService {
             }
             return readOk({
                 count: services.length,
-                services: services.map(s => ({
-                    id: s.id,
-                    name: s.name,
-                    description: s.description,
-                    durationMinutes: s.duration_minutes,
-                    price: Number(s.price || 0),
-                    currency: s.currency,
-                    category: s.category,
-                })),
+                services: services.map(s => {
+                    // FX1: a row without an amount is "no price", never 0.
+                    const { priceStatus, price } = customerFacingPrice(s);
+                    return {
+                        id: s.id,
+                        name: s.name,
+                        description: s.description,
+                        durationMinutes: s.duration_minutes,
+                        price,
+                        currency: s.currency,
+                        category: s.category,
+                        priceStatus,
+                        ...(priceStatus === 'confirmed' ? {} : { priceNote: servicePriceNote(priceStatus) }),
+                    };
+                }),
             });
         } catch (e: any) {
             this.logger.warn(`[Tool] list services failed: ${e.message}`);
@@ -5718,7 +5757,7 @@ export class AIToolExecutorService {
                 conflictEnd: detail.conflictEnd ?? null,
                 fullNight: detail.fullNight ?? null,
                 capacity: detail.capacity ?? null,
-                message: 'Ese rango ya no está disponible. Ofrecé otras fechas — no confirmes la reserva.',
+                message: 'Ese rango ya no está disponible. Ofrece otras fechas — no confirmes la reserva.',
             };
         }
         if (status === 403) {
@@ -6404,7 +6443,7 @@ export class AIToolExecutorService {
 
     // ── Home Services management handlers ────────────────────────────
 
-    private async cancelServiceRequest(schema: string, contactId: string, requestId: string, reason?: string): Promise<any> {
+    private async cancelServiceRequest(schema: string, contactId: string, requestId: string, reason?: string, tenantId?: string): Promise<any> {
         try {
             const request = await this.homeServicesService.getRequestById(schema, requestId);
             if (!request) return { error: 'Service request not found' };
@@ -6418,7 +6457,7 @@ export class AIToolExecutorService {
             await this.homeServicesService.updateRequest(schema, requestId, {
                 status: 'cancelled',
                 notes: (request.notes || '') + (reason ? `\n[Cancelled: ${reason}]` : '\n[Cancelled by customer]'),
-            });
+            }, tenantId);
 
             return { success: true, message: 'Service request cancelled successfully' };
         } catch (e: any) {
@@ -6521,6 +6560,7 @@ export class AIToolExecutorService {
         conversationId: string | undefined,
         args: any,
         namespace?: EvalNamespaceLease,
+        tenantId?: string,
     ): Promise<any> {
         try {
             if (!args?.date || !args?.customerName) {
@@ -6542,7 +6582,7 @@ export class AIToolExecutorService {
                 location: args.location || null,
                 notes: args.specialRequests || null,
                 status: 'requested',
-            }, { sandboxNamespace: namespace });
+            }, { sandboxNamespace: namespace }, tenantId);
             const sessionId = session?.id;
             if (!sessionId) {
                 this.logger.warn('Photo session insert returned no id');

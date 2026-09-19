@@ -3,7 +3,7 @@ id: canales-email-widget
 title: "Chat web e estado da integração de Email"
 routes: ["/admin/channels", "/admin/channels/email", "/admin/settings/integrations/web-chat", "/admin/settings/integrations/web-chat/triggers"]
 roles: ["tenant_admin"]
-keywords: ["email", "e-mail", "estado do canal de email", "widget", "chat web", "chat no meu site", "chat na minha pagina", "balao de chat", "codigo de incorporacao", "instalar widget", "gatilhos", "gatilhos proativos", "mensagem de boas-vindas", "formulario pre-chat"]
+keywords: ["email", "e-mail", "estado do canal de email", "widget", "chat web", "chat no meu site", "chat na minha pagina", "balao de chat", "codigo de incorporacao", "instalar widget", "gatilhos", "gatilhos proativos", "mensagem de boas-vindas", "formulario pre-chat", "link do seu agente", "codigo de duas linhas"]
 ---
 
 # Chat web e estado da integração de Email
@@ -21,6 +21,17 @@ A tela informa se o chat web e os gatilhos proativos estão habilitados e quanto
 Email existe como adaptador técnico e entrada interna para integrações gerenciadas, mas **ainda não é um canal conversacional certificado nem configurável por autosserviço**. A página **Canais → Email** não tem atualmente o contrato de API necessário para salvar configurações por tenant. Não insira credenciais nem suponha que essa tela torne o canal operacional.
 
 Se sua organização precisa integrar e-mail, peça uma avaliação técnica ao suporte. Até que o fluxo seja implementado e certificado de ponta a ponta, a Parallly Assist não deve prometer conexão, envio, recebimento na caixa de conversas nem respostas automáticas por Email.
+
+### O link do seu agente e o chat web do seu site
+
+O **link do seu agente** (a página pública que você vê no assistente de configuração, com endereço começando em `/w/` seguido de um identificador) existe desde o dia 0, antes de conectar qualquer canal. O que ele é depende do seu plano:
+
+- **Se o seu plano não inclui o chat web**, ele serve para **testar seu agente e mostrá-lo a alguém**: a plataforma paga as mensagens até um limite por conta, cada página tem um teto de mensagens por dia e a conversa nunca passa para uma pessoa. A plataforma pode pausar esse link de teste: enquanto ele está pausado, ou quando o limite se esgota, seu agente não responde por ele.
+- **Se o seu plano inclui o chat web**, esse mesmo link é um **canal de verdade**: atende seus clientes com a cota do seu plano, sem o teto diário do teste, e pode passar a conversa para a sua equipe quando o cliente pede uma pessoa. Então o cartão do link ganha **Colocar na minha bio** e **Colocar no meu site**.
+
+Nos dois casos, as conversas que ele recebe aparecem na sua caixa de entrada como qualquer conversa de chat web, e o link não conta como canal conectado: não se conecta nem se desconecta.
+
+O **chat web que você instala no seu site** (o widget desta tela) conta como canal conectado e usa a função de chat web do seu plano. Para colocá-lo no seu site, copie as duas linhas dele com **Copiar código** e envie para quem cuida do seu site; **Colocar no meu site**, no cartão do link, traz você a esta mesma tela.
 
 ---
 

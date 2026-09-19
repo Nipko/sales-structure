@@ -1,4 +1,5 @@
 import {
+  isOwnerChangeRequest,
   parseQualityAssistantDetail,
   qualityAssistantTarget,
 } from "./quality-assistant-contract";
@@ -37,5 +38,16 @@ describe("quality assistant event boundary", () => {
     expect(parseQualityAssistantDetail({ agentId: AGENT_ID, href: "https://evil.test" })?.href).toBeUndefined();
     expect(parseQualityAssistantDetail({ agentId: AGENT_ID, href: "/administrator" })?.href).toBeUndefined();
     expect(parseQualityAssistantDetail({ agentId: AGENT_ID, href: "/admin/../secrets" })?.href).toBeUndefined();
+  });
+
+  it("tells the owner's own change request apart from a quality signal", () => {
+    // "Dime qué cambiar" sends her words; nothing about it is a health signal.
+    const request = parseQualityAssistantDetail({ agentId: AGENT_ID, prompt: "que salude más corto", send: true });
+    expect(isOwnerChangeRequest(request!)).toBe(true);
+    // A quality surface suggests a prompt but never sends it for her.
+    const signal = parseQualityAssistantDetail({ agentId: AGENT_ID, signalId: SIGNAL_ID, severity: "high", prompt: "¿Qué falla?" });
+    expect(isOwnerChangeRequest(signal!)).toBe(false);
+    // Only a strict `true` counts, the same rule that decides whether it is sent.
+    expect(isOwnerChangeRequest(parseQualityAssistantDetail({ agentId: AGENT_ID, prompt: "x", send: "true" })!)).toBe(false);
   });
 });

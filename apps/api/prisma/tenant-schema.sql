@@ -1774,6 +1774,340 @@ ALTER TABLE "{{SCHEMA_NAME}}"."services" ADD COLUMN IF NOT EXISTS "duration_minu
 -- (`rebooking.due`) lo lee por servicio y cae a su ventana genérica si está NULL.
 ALTER TABLE "{{SCHEMA_NAME}}"."services" ADD COLUMN IF NOT EXISTS "rebook_after_days" INTEGER;
 
+-- De dónde salió el precio (D10, sep-2026): 'example' lo sembró la receta del
+-- rubro y nadie lo confirmó; 'confirmed' lo escribió o confirmó el dueño (0 =
+-- gratis, y solo si lo dijo con «Es gratis»); 'quote' se cotiza según el caso.
+-- El agente solo dice precios 'confirmed' que tienen monto. Sin CHECK a
+-- propósito: ADD CONSTRAINT no tiene IF NOT EXISTS y esta plantilla corre en
+-- cada deploy.
+--
+-- SIN DEFAULT a propósito (FX1, sep-2026). Todo el código actual declara el
+-- estado al escribir (la siembra 'example'/'quote'; las pantallas del dueño,
+-- Assist y los planes del gimnasio 'confirmed'/'quote'), y todo lector trata
+-- NULL como 'confirmed'. Un NULL es entonces una fila que escribió código que
+-- no conocía la columna: entre ellas la siembra vieja, con precios de
+-- referencia en COP que el agente decía como un hecho. El bloque GENERADO de
+-- abajo las repara en CADA deploy, así que repara también las que escriben los
+-- contenedores viejos de un deploy que falló después de migrar. La primera
+-- versión corría una sola vez, al crear la columna con un default
+-- 'confirmed', y esas filas quedaban confirmadas para siempre. Por qué es
+-- seguro repetirlo y qué residual acepta: el propio bloque y
+-- src/modules/verticals/seeded-price-backfill.ts. No editar a mano: lo regenera
+-- `WRITE_SEEDED_PRICE_BACKFILL=1 npx jest seeded-price-backfill.spec` y la
+-- prueba falla si deja de coincidir con el registro.
+-- >>> GENERATED seeded-price-backfill:services (seeded-price-backfill.ts) - do not edit by hand
+-- Repara, en cada deploy, los precios que sembró código que no conocía
+-- price_status. La columna NO tiene default: NULL es una fila escrita por
+-- ese código (antes del primer deploy, o por los contenedores viejos de un
+-- deploy fallido o en curso). Todo lo que escribe el código actual declara
+-- su estado y nunca se vuelve a leer acá, así que correr esto de nuevo no
+-- deshace ninguna confirmación del dueño.
+-- Solo toca filas sin estado cuyo par nombre/precio sembró la receta, en
+-- COP y nunca editadas (updated_at = created_at).
+-- Residual aceptado: un servicio o plan que el dueño creó a mano con ese
+-- código viejo, idéntico a uno sembrado y nunca editado, no se distingue
+-- de la semilla y pasa a ejemplo. El agente dice "te confirman el precio"
+-- hasta que el dueño lo confirme con un clic. Lo contrario dejaría todos
+-- los precios inventados diciéndose como confirmados.
+ALTER TABLE "{{SCHEMA_NAME}}"."services" ADD COLUMN IF NOT EXISTS "price_status" VARCHAR(16);
+ALTER TABLE "{{SCHEMA_NAME}}"."services" ALTER COLUMN "price_status" DROP DEFAULT;
+UPDATE "{{SCHEMA_NAME}}"."services" AS target
+   SET "price_status" = seed.status
+  FROM (VALUES
+            ('1-day trial', 0, 'example'),
+            ('Abonnement mensuel cours collectifs', 0, 'example'),
+            ('Anteprojeto', 500000, 'example'),
+            ('Anteproyecto', 500000, 'example'),
+            ('Asesoria especializada', 200000, 'example'),
+            ('Asesoria gratuita', 0, 'example'),
+            ('Asesoria hipotecaria', 0, 'example'),
+            ('Asesoría contable mensual', 400000, 'example'),
+            ('Asesoría especializada', 200000, 'example'),
+            ('Asesoría gratuita', 0, 'example'),
+            ('Asesoría hipotecaria', 0, 'example'),
+            ('Assessoria contábil mensal', 400000, 'example'),
+            ('Assessoria de financiamento', 0, 'example'),
+            ('Assessoria especializada', 200000, 'example'),
+            ('Audit d''infrastructure', 0, 'example'),
+            ('Aula experimental', 0, 'example'),
+            ('Aula particular', 0, 'example'),
+            ('Avaliacao comercial', 200000, 'example'),
+            ('Avaliação comercial', 200000, 'example'),
+            ('Avaluo comercial', 200000, 'example'),
+            ('Avalúo comercial', 200000, 'example'),
+            ('Avant-projet', 500000, 'example'),
+            ('Bain + coupe (petit)', 60000, 'example'),
+            ('Bain et toilettage', 80000, 'example'),
+            ('Banho + tosa (pequeno)', 60000, 'example'),
+            ('Banho e tosa', 80000, 'example'),
+            ('Bath + cut (small dog)', 60000, 'example'),
+            ('Bathing and grooming', 80000, 'example'),
+            ('Bañado y peluqueria', 80000, 'example'),
+            ('Baño + corte (perro pequeño)', 60000, 'example'),
+            ('Baño y peluquería', 80000, 'example'),
+            ('Boda completa', 3500000, 'example'),
+            ('Book profesional', 600000, 'example'),
+            ('Book professionnel', 600000, 'example'),
+            ('Book profissional', 600000, 'example'),
+            ('Casamento completo', 3500000, 'example'),
+            ('Celebración social', 900000, 'example'),
+            ('Celebração social', 900000, 'example'),
+            ('Ceremonia civil', 1200000, 'example'),
+            ('Cerimônia civil', 1200000, 'example'),
+            ('Civil ceremony', 1200000, 'example'),
+            ('Clase de prueba', 0, 'example'),
+            ('Clase personalizada', 0, 'example'),
+            ('Cleaning service', 0, 'quote'),
+            ('Coaching personnel (seance)', 80000, 'example'),
+            ('Coaching personnel (séance)', 80000, 'example'),
+            ('Color & treatment', 120000, 'example'),
+            ('Color y tratamiento', 120000, 'example'),
+            ('Coloracao e tratamento', 120000, 'example'),
+            ('Coloration et traitement', 120000, 'example'),
+            ('Coloração e tratamento', 120000, 'example'),
+            ('Commercial appraisal', 200000, 'example'),
+            ('Conseil hypothecaire', 0, 'example'),
+            ('Conseil hypothécaire', 0, 'example'),
+            ('Conseil specialise', 200000, 'example'),
+            ('Conseil spécialisé', 200000, 'example'),
+            ('Consulta de retorno', 50000, 'example'),
+            ('Consulta especializada', 120000, 'example'),
+            ('Consulta general', 60000, 'example'),
+            ('Consulta general', 80000, 'example'),
+            ('Consulta geral', 60000, 'example'),
+            ('Consulta geral', 80000, 'example'),
+            ('Consulta inicial', 100000, 'example'),
+            ('Consultation generale', 60000, 'example'),
+            ('Consultation generale', 80000, 'example'),
+            ('Consultation gratuite', 0, 'example'),
+            ('Consultation générale', 60000, 'example'),
+            ('Consultation générale', 80000, 'example'),
+            ('Consultation initiale', 100000, 'example'),
+            ('Consultation specialisee', 120000, 'example'),
+            ('Consultation spécialisée', 120000, 'example'),
+            ('Consulting session', 350000, 'example'),
+            ('Consultoria gratuita', 0, 'example'),
+            ('Control y seguimiento', 50000, 'example'),
+            ('Corporate event', 1200000, 'example'),
+            ('Corte e estilo', 40000, 'example'),
+            ('Corte y estilo', 40000, 'example'),
+            ('Cotacao personalizada', 0, 'quote'),
+            ('Cotação personalizada', 0, 'quote'),
+            ('Cotizacion personalizada', 0, 'quote'),
+            ('Cotización personalizada', 0, 'quote'),
+            ('Coupe et coiffure', 40000, 'example'),
+            ('Cours d''essai', 0, 'example'),
+            ('Cours particulier', 0, 'example'),
+            ('Creche diária', 50000, 'example'),
+            ('Custom demo', 0, 'example'),
+            ('Custom quote', 0, 'quote'),
+            ('Cut & style', 40000, 'example'),
+            ('Célébration', 900000, 'example'),
+            ('Cérémonie civile', 1200000, 'example'),
+            ('Day care', 50000, 'example'),
+            ('Declaración de renta', 250000, 'example'),
+            ('Declaração de renda', 250000, 'example'),
+            ('Demo personalizada', 0, 'example'),
+            ('Demo personnalisee', 0, 'example'),
+            ('Desparasitacion', 35000, 'example'),
+            ('Desparasitación', 35000, 'example'),
+            ('Devis personnalise', 0, 'quote'),
+            ('Devis personnalisé', 0, 'quote'),
+            ('Deworming', 35000, 'example'),
+            ('Diagnostic initial', 0, 'example'),
+            ('Diagnóstico de infraestructura', 0, 'example'),
+            ('Diagnóstico de infraestrutura', 0, 'example'),
+            ('Diagnóstico inicial', 0, 'example'),
+            ('Déclaration de revenus', 250000, 'example'),
+            ('Démo personnalisée', 0, 'example'),
+            ('E-commerce product', 800000, 'example'),
+            ('Electrical visit', 0, 'quote'),
+            ('Engagement shoot', 600000, 'example'),
+            ('Entrega agendada', 0, 'example'),
+            ('Entrega programada', 0, 'example'),
+            ('Essai 1 jour', 0, 'example'),
+            ('Essai routier', 0, 'example'),
+            ('Evaluation commerciale', 200000, 'example'),
+            ('Evenement prive', 0, 'quote'),
+            ('Evento corporativo', 1200000, 'example'),
+            ('Evento privado', 0, 'quote'),
+            ('Excursao meio dia', 150000, 'example'),
+            ('Excursion demi-journee', 150000, 'example'),
+            ('Excursion demi-journée', 150000, 'example'),
+            ('Excursion medio dia', 150000, 'example'),
+            ('Excursión medio día', 150000, 'example'),
+            ('Excursão meio dia', 150000, 'example'),
+            ('Family session', 350000, 'example'),
+            ('First meeting', 0, 'example'),
+            ('Follow-up visit', 50000, 'example'),
+            ('Forfait mensuel', 150000, 'example'),
+            ('Forfait week-end', 800000, 'example'),
+            ('Free consultation', 0, 'example'),
+            ('Full day tour', 300000, 'example'),
+            ('Full wedding', 3500000, 'example'),
+            ('Gardening service', 0, 'quote'),
+            ('Garderie journée', 50000, 'example'),
+            ('General consultation', 60000, 'example'),
+            ('General consultation', 80000, 'example'),
+            ('Group 5-8', 0, 'example'),
+            ('Groupe 5-8', 0, 'example'),
+            ('Grupo 5-8', 0, 'example'),
+            ('Guardería diurna', 50000, 'example'),
+            ('Guided viewing', 0, 'example'),
+            ('Half day excursion', 150000, 'example'),
+            ('Hotel — diária', 80000, 'example'),
+            ('Hotel — noche', 80000, 'example'),
+            ('Hotel — overnight', 80000, 'example'),
+            ('Hôtel — nuit', 80000, 'example'),
+            ('Income tax return', 250000, 'example'),
+            ('Individual portrait', 200000, 'example'),
+            ('Infrastructure assessment', 0, 'example'),
+            ('Initial assessment', 0, 'example'),
+            ('Initial consultation', 100000, 'example'),
+            ('Inspection mecanique', 80000, 'example'),
+            ('Inspection mécanique', 80000, 'example'),
+            ('Instalación o montaje', 0, 'example'),
+            ('Instalação ou montagem', 0, 'example'),
+            ('Installation or assembly', 0, 'example'),
+            ('Installation ou montage', 0, 'example'),
+            ('Livraison programmée', 0, 'example'),
+            ('Locksmith visit', 0, 'quote'),
+            ('Manicure & pedicure', 50000, 'example'),
+            ('Manicure e pedicure', 50000, 'example'),
+            ('Manicure y pedicure', 50000, 'example'),
+            ('Manucure et pedicure', 50000, 'example'),
+            ('Manucure et pédicure', 50000, 'example'),
+            ('Mariage complet', 3500000, 'example'),
+            ('Measurement visit', 0, 'quote'),
+            ('Mechanical inspection', 80000, 'example'),
+            ('Mensalidade de aulas em grupo', 0, 'example'),
+            ('Mensualidad de clases grupales', 0, 'example'),
+            ('Mesa 2-4', 0, 'example'),
+            ('Monthly accounting service', 400000, 'example'),
+            ('Monthly group classes', 0, 'example'),
+            ('Monthly plan', 150000, 'example'),
+            ('Mortgage consultation', 0, 'example'),
+            ('Pacote fim de semana', 800000, 'example'),
+            ('Paquete fin de semana', 800000, 'example'),
+            ('Personal Training (sesión)', 80000, 'example'),
+            ('Personal training (sessao)', 80000, 'example'),
+            ('Personal training (session)', 80000, 'example'),
+            ('Personal training (sessão)', 80000, 'example'),
+            ('Personal tutoring', 80000, 'example'),
+            ('Pest-control visit', 0, 'quote'),
+            ('Placement test', 0, 'example'),
+            ('Plan Mensual', 150000, 'example'),
+            ('Plano mensal', 150000, 'example'),
+            ('Plumbing visit', 0, 'quote'),
+            ('Portrait individuel', 200000, 'example'),
+            ('Preboda', 600000, 'example'),
+            ('Preliminary design', 500000, 'example'),
+            ('Premier rendez-vous', 0, 'example'),
+            ('Primeira reunião', 0, 'example'),
+            ('Primera reunión', 0, 'example'),
+            ('Private class', 0, 'example'),
+            ('Private event', 0, 'quote'),
+            ('Product e-commerce', 800000, 'example'),
+            ('Product with model', 1200000, 'example'),
+            ('Producto con modelo', 1200000, 'example'),
+            ('Producto e-commerce', 800000, 'example'),
+            ('Produit avec mannequin', 1200000, 'example'),
+            ('Produit e-commerce', 800000, 'example'),
+            ('Produto com modelo', 1200000, 'example'),
+            ('Produto e-commerce', 800000, 'example'),
+            ('Professional book', 600000, 'example'),
+            ('Prueba de manejo', 0, 'example'),
+            ('Pré-wedding', 600000, 'example'),
+            ('Requirements meeting', 0, 'example'),
+            ('Reserva grupo 5-8', 0, 'example'),
+            ('Reserva mesa 2-4', 0, 'example'),
+            ('Retrato individual', 200000, 'example'),
+            ('Reunião de levantamento', 0, 'example'),
+            ('Reunión de relevamiento', 0, 'example'),
+            ('Revisao mecanica', 80000, 'example'),
+            ('Revision mecanica', 80000, 'example'),
+            ('Revisión mecánica', 80000, 'example'),
+            ('Revisão mecânica', 80000, 'example'),
+            ('Réunion de cadrage', 0, 'example'),
+            ('Scheduled delivery', 0, 'example'),
+            ('Service de jardinage', 0, 'quote'),
+            ('Service de nettoyage', 0, 'quote'),
+            ('Servicio de jardinería', 0, 'quote'),
+            ('Servicio de limpieza', 0, 'quote'),
+            ('Serviço de jardinagem', 0, 'quote'),
+            ('Serviço de limpeza', 0, 'quote'),
+            ('Sesión de consultoría', 350000, 'example'),
+            ('Sesión familiar', 350000, 'example'),
+            ('Sessão de consultoria', 350000, 'example'),
+            ('Sessão familiar', 350000, 'example'),
+            ('Site visit', 200000, 'example'),
+            ('Social celebration', 900000, 'example'),
+            ('Specialist consultation', 120000, 'example'),
+            ('Specialized advisory', 200000, 'example'),
+            ('Suivi comptable mensuel', 400000, 'example'),
+            ('Séance de conseil', 350000, 'example'),
+            ('Séance engagement', 600000, 'example'),
+            ('Séance famille', 350000, 'example'),
+            ('Table 2-4', 0, 'example'),
+            ('Test de niveau', 0, 'example'),
+            ('Test de nivel', 0, 'example'),
+            ('Test drive', 0, 'example'),
+            ('Teste de nivel', 0, 'example'),
+            ('Teste de nível', 0, 'example'),
+            ('Tour dia completo', 300000, 'example'),
+            ('Tour dia inteiro', 300000, 'example'),
+            ('Tour día completo', 300000, 'example'),
+            ('Tour journee complete', 300000, 'example'),
+            ('Tour journée complète', 300000, 'example'),
+            ('Trial 1 dia', 0, 'example'),
+            ('Trial 1 día', 0, 'example'),
+            ('Trial class', 0, 'example'),
+            ('Tutorat personnalise', 80000, 'example'),
+            ('Tutorat personnalisé', 80000, 'example'),
+            ('Tutoria personalizada', 80000, 'example'),
+            ('Tutoría personalizada', 80000, 'example'),
+            ('Vaccination', 50000, 'example'),
+            ('Vacinacao', 50000, 'example'),
+            ('Vacinação', 50000, 'example'),
+            ('Vacunacion', 50000, 'example'),
+            ('Vacunación', 50000, 'example'),
+            ('Vermifugacao', 35000, 'example'),
+            ('Vermifugation', 35000, 'example'),
+            ('Vermifugação', 35000, 'example'),
+            ('Visita a obra', 200000, 'example'),
+            ('Visita de cerrajería', 0, 'quote'),
+            ('Visita de chaveiro', 0, 'quote'),
+            ('Visita de dedetização', 0, 'quote'),
+            ('Visita de encanamento', 0, 'quote'),
+            ('Visita de fumigación', 0, 'quote'),
+            ('Visita de medición', 0, 'quote'),
+            ('Visita de medição', 0, 'quote'),
+            ('Visita de plomería', 0, 'quote'),
+            ('Visita eléctrica', 0, 'quote'),
+            ('Visita elétrica', 0, 'quote'),
+            ('Visita guiada', 0, 'example'),
+            ('Visita à obra', 200000, 'example'),
+            ('Visite de chantier', 200000, 'example'),
+            ('Visite de désinsectisation', 0, 'quote'),
+            ('Visite de métrage', 0, 'quote'),
+            ('Visite de plomberie', 0, 'quote'),
+            ('Visite de serrurerie', 0, 'quote'),
+            ('Visite de suivi', 50000, 'example'),
+            ('Visite guidee', 0, 'example'),
+            ('Visite guidée', 0, 'example'),
+            ('Visite électrique', 0, 'quote'),
+            ('Weekend package', 800000, 'example'),
+            ('Évaluation commerciale', 200000, 'example'),
+            ('Événement corporate', 1200000, 'example'),
+            ('Événement privé', 0, 'quote')
+          ) AS seed(name, price, status)
+ WHERE target."price_status" IS NULL
+   AND target."name" = seed.name
+   AND target."price" = seed.price::numeric
+   AND target."currency" = 'COP'
+   AND target."updated_at" = target."created_at";
+-- <<< GENERATED seeded-price-backfill:services
+
 -- ---- Service Staff Assignment (many-to-many) ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."service_staff" (
     "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
@@ -2692,6 +3026,54 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."membership_plans" (
     "updated_at" TIMESTAMP DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS "idx_membership_plans_active" ON "{{SCHEMA_NAME}}"."membership_plans" ("is_active", "sort_order") WHERE "is_active" = true;
+
+-- D17 (sep-2026): de donde salio el precio de este plan, igual que en
+-- `services.price_status`. Los planes sembrados nacen 'example' y el agente no
+-- los dice como un hecho hasta que el dueno los confirma (GymsService escribe
+-- 'confirmed' al corregir el precio, al confirmarlo o con «Es gratis», y
+-- 'quote').
+--
+-- Sin default, igual que en `services` (FX1): desde jul-2026 la siembra de
+-- gimnasios ya insertaba Mensual, Trimestral y Anual con precios de referencia
+-- en COP y sin estado. El bloque GENERADO de abajo los repara en cada deploy,
+-- solo si siguen sin estado e intactos (updated_at = created_at). Ver
+-- seeded-price-backfill.ts.
+-- >>> GENERATED seeded-price-backfill:membership_plans (seeded-price-backfill.ts) - do not edit by hand
+-- Repara, en cada deploy, los precios que sembró código que no conocía
+-- price_status. La columna NO tiene default: NULL es una fila escrita por
+-- ese código (antes del primer deploy, o por los contenedores viejos de un
+-- deploy fallido o en curso). Todo lo que escribe el código actual declara
+-- su estado y nunca se vuelve a leer acá, así que correr esto de nuevo no
+-- deshace ninguna confirmación del dueño.
+-- Solo toca filas sin estado cuyo par nombre/precio sembró la receta, en
+-- COP y nunca editadas (updated_at = created_at).
+-- Residual aceptado: un servicio o plan que el dueño creó a mano con ese
+-- código viejo, idéntico a uno sembrado y nunca editado, no se distingue
+-- de la semilla y pasa a ejemplo. El agente dice "te confirman el precio"
+-- hasta que el dueño lo confirme con un clic. Lo contrario dejaría todos
+-- los precios inventados diciéndose como confirmados.
+ALTER TABLE "{{SCHEMA_NAME}}"."membership_plans" ADD COLUMN IF NOT EXISTS "price_status" VARCHAR(16);
+ALTER TABLE "{{SCHEMA_NAME}}"."membership_plans" ALTER COLUMN "price_status" DROP DEFAULT;
+UPDATE "{{SCHEMA_NAME}}"."membership_plans" AS target
+   SET "price_status" = seed.status
+  FROM (VALUES
+            ('Annual', 1320000, 'example'),
+            ('Annuel', 1320000, 'example'),
+            ('Anual', 1320000, 'example'),
+            ('Mensal', 150000, 'example'),
+            ('Mensual', 150000, 'example'),
+            ('Mensuel', 150000, 'example'),
+            ('Monthly', 150000, 'example'),
+            ('Quarterly', 390000, 'example'),
+            ('Trimestral', 390000, 'example'),
+            ('Trimestriel', 390000, 'example')
+          ) AS seed(name, price, status)
+ WHERE target."price_status" IS NULL
+   AND target."name" = seed.name
+   AND target."price" = seed.price::numeric
+   AND target."currency" = 'COP'
+   AND target."updated_at" = target."created_at";
+-- <<< GENERATED seeded-price-backfill:membership_plans
 
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."members" (
     "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
@@ -3822,6 +4204,14 @@ CREATE INDEX IF NOT EXISTS idx_agent_quality_signals_attention
     ON "{{SCHEMA_NAME}}"."agent_quality_signals"(state, severity, last_seen_at DESC);
 CREATE INDEX IF NOT EXISTS idx_agent_quality_signals_agent_version
     ON "{{SCHEMA_NAME}}"."agent_quality_signals"(agent_id, agent_config_version, state);
+-- Detail of a signal (Ola 6, sep-2026): the status of the check behind it
+-- ('fail' vs 'unknown' = could not check), and which credential or WhatsApp
+-- delivery problem it is. Closed vocabularies, validated in
+-- agent-quality-signal.service.ts. Nullable and additive: a row written before
+-- them reads as "not known".
+ALTER TABLE "{{SCHEMA_NAME}}"."agent_quality_signals" ADD COLUMN IF NOT EXISTS check_status VARCHAR(20);
+ALTER TABLE "{{SCHEMA_NAME}}"."agent_quality_signals" ADD COLUMN IF NOT EXISTS credential_issue VARCHAR(40);
+ALTER TABLE "{{SCHEMA_NAME}}"."agent_quality_signals" ADD COLUMN IF NOT EXISTS delivery_issue VARCHAR(40);
 
 -- ---- Simulation + eval gate ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."simulation_runs" (

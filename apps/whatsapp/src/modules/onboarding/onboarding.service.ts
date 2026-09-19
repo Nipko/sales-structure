@@ -35,12 +35,173 @@ import {
   isServerResumableFailure,
 } from '../../common/enums/onboarding-error.enum';
 import { disconnectedCoveragePhoneIds, liveCoverageWabaIds } from './live-coverage-wabas';
+import {
+  WHATSAPP_SIGNUP_WARNING_CODES,
+  whatsAppSignupWarningCodes,
+  type WhatsAppSignupWarningCode,
+} from '@parallext/shared';
 import * as crypto from 'crypto';
 
 interface RequestUser {
   sub: string;
   role: string;
   tenantId?: string;
+}
+
+// ═══ THE BILLING FACTS META GAVE US, WRITTEN WHERE THE MONEY ENGINE READS THEM ═══
+//
+// The API's spend admission refuses every WhatsApp send with `timezone_missing`
+// while `channel_accounts.waba_timezone` is NULL — in `observe` AND in
+// `enforce` — and the normal dispatch always passes that gate. The manual
+// connection (apps/api WhatsappConnectionService.saveConnection) keeps Meta's
+// `timezone_id` and currency as evidence on the row; Embedded Signup, the road
+// the dashboard actually uses, wrote neither, so its numbers were born mute.
+//
+// What Meta returns is `timezone_id`: an INTEGER from Facebook's own table, not
+// an IANA zone, and the platform deliberately ships no table from memory
+// (apps/api waba-timezone-authority.ts). So this writes exactly what is known
+// and nothing more:
+//
+//   · `metadata.metaTimezoneId` — Meta's numeric id, as evidence, so a person's
+//     one-field confirmation can later carry to every number reporting it.
+//   · `waba_timezone` — only when another number of the SAME tenant, on the
+//     SAME WABA, reporting the SAME numeric id already has a confirmed zone
+//     (`same_waba_same_id`, the authority's second kind of evidence: Meta's
+//     zone belongs to the WABA, so this reads one fact twice). Otherwise NULL,
+//     logged, and left to the owner's confirmation. Never a default.
+//   · a zone ALREADY on a reconnected row survives only while this connection
+//     is the account it was confirmed for — same WABA, same Meta id
+//     (`zoneStillConfirmedFor`). Reconnected to another WABA, or Meta now
+//     reporting another id, it is cleared rather than kept beside the new
+//     account's ids, where it would read as confirmed for them and be carried
+//     to that account's next number. For the same reason a sibling whose zone
+//     evidence names another account is never a donor.
+//   · `metadata.billingCurrencyEvidence` — Meta's billing currency with its
+//     source and date (`meta_waba`), the shape the currency authority accepts.
+//
+// TWIN: apps/api waba-timezone-authority.ts `resolveZone` (inheritance rule)
+// and waba-currency-authority.ts `currencyFromMeta` (evidence shape). Change
+// both.
+
+/**
+ * The CHECK `channel_accounts_waba_timezone_iana` (migration
+ * 20260910120000_add_whatsapp_spend_ledger), verbatim: a value that fails it
+ * would abort the routing write this runs inside, so nothing that fails it is
+ * ever offered to the column.
+ */
+const WABA_TIMEZONE_CHECK = /^(UTC|[A-Za-z][A-Za-z0-9+_-]*(\/[A-Za-z0-9+_.-]+)+)$/;
+const CURRENCY_CODE = /^[A-Z]{3}$/;
+
+/** An IANA zone the column accepts AND the runtime can format with, or null. */
+export function usableBillingZone(candidate: unknown): string | null {
+  const zone = String(candidate ?? '').trim();
+  if (!zone || !WABA_TIMEZONE_CHECK.test(zone)) return null;
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: zone });
+    return zone;
+  } catch {
+    return null;
+  }
+}
+
+/** Meta's numeric `timezone_id` as reported, or null. Never a zone. */
+export function metaTimezoneIdOf(waba: Pick<WabaInfo, 'timezoneId'> | null | undefined): string | null {
+  const id = String(waba?.timezoneId ?? '').trim();
+  return id ? id : null;
+}
+
+/** Twin of apps/api `currencyFromMeta`: a code with its source and date, or null. */
+export function billingCurrencyEvidenceFromMeta(currency: unknown, wabaId: string, now: Date = new Date()): {
+  currency: string; source: 'meta_waba'; observedAt: string; wabaId: string;
+} | null {
+  const code = String(currency ?? '').trim().toUpperCase();
+  if (!CURRENCY_CODE.test(code)) return null;
+  return { currency: code, source: 'meta_waba', observedAt: now.toISOString(), wabaId };
+}
+
+/** Meta's numeric id in one spelling (`"12"`, `12` and `" 12 "` are one id), or null. */
+function normalizeTimezoneId(value: unknown): string | null {
+  const raw = String(value ?? '').trim();
+  if (!raw) return null;
+  const numeric = Number(raw);
+  return Number.isFinite(numeric) ? String(numeric) : raw;
+}
+
+/**
+ * The WhatsApp Business Account and Meta timezone id a row's zone was
+ * confirmed FOR: the ones its evidence names, and — for a zone with no
+ * evidence, or evidence that predates those fields — the ones the row itself
+ * recorded. `null` = not known, which is never read as a change.
+ */
+export function zoneConfirmedFor(metadata: unknown): { wabaId: string | null; timezoneId: string | null } {
+  const row = (metadata && typeof metadata === 'object' ? metadata : {}) as Record<string, unknown>;
+  const evidence = (row.wabaTimezoneEvidence && typeof row.wabaTimezoneEvidence === 'object'
+    ? row.wabaTimezoneEvidence : {}) as Record<string, unknown>;
+  const wabaId = String(evidence.wabaId ?? '').trim() || String(row.wabaId ?? '').trim();
+  return {
+    wabaId: wabaId || null,
+    timezoneId: normalizeTimezoneId(evidence.timezoneId) ?? normalizeTimezoneId(row.metaTimezoneId),
+  };
+}
+
+/**
+ * Whether a zone confirmed for `confirmed` still answers for `account`.
+ *
+ * Meta's zone belongs to the WABA, and its numeric id is the WABA's own
+ * report of it: a different WABA, or the same WABA now reporting a different
+ * id, is an account nobody confirmed this zone for. What is unknown on either
+ * side (no evidence, no id reported this time) is not a change.
+ */
+export function zoneStillConfirmedFor(
+  confirmed: { wabaId: string | null; timezoneId: string | null },
+  account: { wabaId: string | null; timezoneId: unknown },
+): boolean {
+  if (confirmed.wabaId && account.wabaId && confirmed.wabaId !== account.wabaId) return false;
+  const reported = normalizeTimezoneId(account.timezoneId);
+  return !(confirmed.timezoneId && reported && confirmed.timezoneId !== reported);
+}
+
+export interface BillingZoneSibling {
+  accountId: string;
+  wabaTimezone: string | null;
+  metadata: unknown;
+}
+
+export type BillingZoneDecision =
+  | { kind: 'inherited'; zone: string; from: string }
+  | { kind: 'meta_no_timezone' }
+  | { kind: 'unconfirmed_timezone_id' }
+  | { kind: 'contradictory'; zones: string[] };
+
+/**
+ * The zone a newly connected number may be born with, given the tenant's other
+ * WhatsApp numbers. Twin of `resolveZone` for a number with no zone of its own.
+ */
+export function decideBillingZone(
+  target: { accountId: string; wabaId: string; timezoneId: string | null },
+  siblings: readonly BillingZoneSibling[],
+): BillingZoneDecision {
+  if (!target.timezoneId) return { kind: 'meta_no_timezone' };
+  const family = siblings.filter((sibling) => {
+    const metadata = (sibling.metadata ?? {}) as Record<string, unknown>;
+    return sibling.accountId !== target.accountId
+      && !!target.wabaId && metadata.wabaId === target.wabaId
+      && String(metadata.metaTimezoneId ?? '') === target.timezoneId
+      && usableBillingZone(sibling.wabaTimezone) !== null
+      // A zone whose evidence names another WABA or another Meta id was
+      // confirmed for an account this row is no longer on (it was kept across
+      // a reconnect): carrying it would be passing on a zone nobody confirmed.
+      && zoneStillConfirmedFor(zoneConfirmedFor(metadata), {
+        wabaId: String(metadata.wabaId ?? '') || null, timezoneId: metadata.metaTimezoneId,
+      });
+  });
+  const zones = [...new Set(family.map((sibling) => usableBillingZone(sibling.wabaTimezone) as string))].sort();
+  if (zones.length > 1) return { kind: 'contradictory', zones };
+  if (zones.length === 1) {
+    const donor = family.find((sibling) => usableBillingZone(sibling.wabaTimezone) === zones[0])!;
+    return { kind: 'inherited', zone: zones[0], from: donor.accountId };
+  }
+  return { kind: 'unconfirmed_timezone_id' };
 }
 
 /**
@@ -134,13 +295,117 @@ const normalizedRotationState = (rotationState: unknown): string =>
  * enteraba semanas después de que su negocio nunca se verificó o de que los
  * webhooks no quedaron suscritos. Con códigos, el panel traduce cada
  * advertencia y dice qué hacer.
+ *
+ * El catálogo vive en @parallext/shared (`WHATSAPP_SIGNUP_WARNING_CODES`)
+ * porque la API también lo lee: devuelve la última advertencia persistida de
+ * cada número en `GET /channels/whatsapp/status`, y una lista propia en cada
+ * servicio dejaba caer en silencio el código que uno escribiera y el otro no
+ * conociera.
  */
-export const WHATSAPP_ONBOARDING_WARNING_CODES = [
-  'webhook_subscription_failed',
-  'business_not_verified',
-] as const;
+export const WHATSAPP_ONBOARDING_WARNING_CODES = WHATSAPP_SIGNUP_WARNING_CODES;
 
-export type WhatsappOnboardingWarningCode = typeof WHATSAPP_ONBOARDING_WARNING_CODES[number];
+export type WhatsappOnboardingWarningCode = WhatsAppSignupWarningCode;
+
+// ═══ STEP 8: A NUMBER META DID NOT REGISTER CANNOT SEND ═══
+//
+// Step 8 used to swallow every registration error as "may already be
+// registered". Some are — and some are a number that will never send a word:
+// Meta refused it, and the owner read "Conectado". The error alone cannot tell
+// the two apart: Meta documents no "already registered" code for
+// `POST /{phone-number-id}/register`, and a two-step PIN that no longer
+// matches (133005) comes back the same whether the number is registered today
+// or was deregistered last week. What does tell them apart is Meta's own
+// reading of the number: "business phone numbers must have a status of
+// connected in order to send and receive messages via the API". So:
+//
+//   · registration answered success          → registered;
+//   · it failed, and Meta reads CONNECTED (or a quality state only a
+//     registered number can be in)           → already registered, fine;
+//   · it failed, and Meta reads anything else, or nothing could be read
+//                                            → not registered: the signup
+//     finishes with `phone_registration_deferred`, and the panel says the
+//     agent cannot answer on it. Unknown is never read as registered.
+//
+// Meta's error code is kept as evidence (logs, audit) and says only WHICH kind
+// of failure it was. Nothing re-registers the number afterwards, so even a
+// "try later" code leaves it unregistered until somebody acts.
+
+/**
+ * Graph codes Meta's reference answers with "wait, then try again" on
+ * registration: 133004 server temporarily unavailable, 133008/133009 two-step
+ * PIN guessed too often / too fast, 133015 number recently deleted, 133016
+ * register/deregister rate limit. Plus the platform's throttling codes.
+ */
+const REGISTRATION_RETRY_LATER_CODES: ReadonlySet<number> = new Set([
+  133004, 133008, 133009, 133015, 133016, 4, 17, 32, 613, 130429,
+]);
+
+/**
+ * Meta's phone statuses that exist only for a number already registered on the
+ * platform: CONNECTED (sends), and the quality / throughput states Meta puts a
+ * registered number in (FLAGGED, RESTRICTED, RATE_LIMITED). Those constrain
+ * what it sends and have their own surfaces; none of them is a registration
+ * problem. PENDING, DISCONNECTED, UNVERIFIED, DELETED, BANNED, MIGRATED,
+ * UNKNOWN — or no status at all — are not a registered number.
+ */
+const REGISTERED_PHONE_STATUSES: ReadonlySet<string> = new Set(['CONNECTED', 'FLAGGED', 'RESTRICTED', 'RATE_LIMITED']);
+
+/** What Meta said when a Graph call failed, from a MetaApiError or a raw Axios error. */
+export interface MetaGraphErrorFacts {
+  httpStatus: number | null;
+  code: number | null;
+  subcode: number | null;
+  message: string | null;
+}
+
+function numberOrNull(value: unknown): number | null {
+  const parsed = Number(value);
+  return value !== null && value !== undefined && value !== '' && Number.isFinite(parsed) ? parsed : null;
+}
+
+export function metaGraphErrorFacts(error: unknown): MetaGraphErrorFacts | null {
+  if (!error || typeof error !== 'object') return null;
+  const source = (error as any).originalError ?? error;
+  const graph = source?.response?.data?.error;
+  return {
+    httpStatus: numberOrNull(source?.response?.status),
+    code: numberOrNull(graph?.code),
+    subcode: numberOrNull(graph?.error_subcode),
+    message: typeof graph?.message === 'string' ? graph.message
+      : typeof (error as any).message === 'string' ? (error as any).message : null,
+  };
+}
+
+export type PhoneRegistrationOutcome =
+  | { kind: 'registered' }
+  | { kind: 'already_registered'; phoneStatus: string; graph: MetaGraphErrorFacts | null }
+  | {
+    kind: 'not_registered';
+    /** Meta's reading of the number, or null when it could not be read. */
+    phoneStatus: string | null;
+    graph: MetaGraphErrorFacts | null;
+    /** Meta's code says to wait and retry. Nothing retries it by itself. */
+    retryLater: boolean;
+  };
+
+/** What step 8 established about the number. See the section above. */
+export function classifyPhoneRegistration(input: {
+  /** `registerPhoneNumber` resolved with `true` (Meta answered `success: true`). */
+  registered: boolean;
+  /** What it threw, when it threw. */
+  error?: unknown;
+  /** Meta's `status` for this phone number, as last read. */
+  phoneStatus?: unknown;
+}): PhoneRegistrationOutcome {
+  if (input.registered) return { kind: 'registered' };
+  const graph = input.error === undefined ? null : metaGraphErrorFacts(input.error);
+  const status = typeof input.phoneStatus === 'string' && input.phoneStatus.trim()
+    ? input.phoneStatus.trim().toUpperCase() : null;
+  if (status && REGISTERED_PHONE_STATUSES.has(status)) return { kind: 'already_registered', phoneStatus: status, graph };
+  const retryLater = !!graph && ((graph.code !== null && REGISTRATION_RETRY_LATER_CODES.has(graph.code))
+    || (graph.httpStatus !== null && (graph.httpStatus === 429 || graph.httpStatus >= 500)));
+  return { kind: 'not_registered', phoneStatus: status, graph, retryLater };
+}
 
 @Injectable()
 export class OnboardingService {
@@ -412,14 +677,13 @@ export class OnboardingService {
       }
 
       // ---- 8. Register phone number (required for new numbers) ----
+      // Never fatal: the connection is still worth finishing. But a number
+      // Meta did not register cannot send, so that ends as a warning the
+      // panel shows (`phone_registration_deferred`), not as a log line.
       this.logger.log(`[Onboarding][${onboardingId}] Step 8: Registering phone number ${primaryPhone.id} with Meta`);
-      try {
-        await this.metaGraph.registerPhoneNumber(primaryPhone.id, longLivedToken);
-        this.logger.log(`[Onboarding][${onboardingId}] Phone number registered successfully`);
-      } catch (regError: any) {
-        // Phone may already be registered — this is not fatal
-        this.logger.warn(`[Onboarding][${onboardingId}] Phone registration returned error (may already be registered): ${regError.message}`);
-      }
+      const phoneRegistration = await this.registerPhoneForCloudApi(
+        onboardingId, primaryPhone, wabaId, longLivedToken,
+      );
 
       await this.prisma.whatsappOnboarding.update({
         where: { id: onboardingId },
@@ -525,7 +789,7 @@ export class OnboardingService {
       );
 
       this.logger.log(`[Onboarding][${onboardingId}] Step 11: Registering channel_account for webhook routing`);
-      await this.registerChannelAccount(tenantId, primaryPhone, wabaId, businessId);
+      await this.registerChannelAccount(tenantId, primaryPhone, wabaId, businessId, waba);
 
       // ---- 12. Suscribir webhook ----
       await this.updateStatus(onboardingId, OnboardingStatus.WEBHOOK_VALIDATION_IN_PROGRESS);
@@ -599,6 +863,11 @@ export class OnboardingService {
       // ---- 15. Marcar completado ----
       const warnings: string[] = [];
       const warningCodes: WhatsappOnboardingWarningCode[] = [];
+      // First: while it stands nothing is sent from the number, whatever else holds.
+      if (phoneRegistration.kind === 'not_registered') {
+        warnings.push('Meta no registró el número en la API de WhatsApp — no puede enviar mensajes hasta completarlo');
+        warningCodes.push('phone_registration_deferred');
+      }
       if (!webhookSuccess) {
         warnings.push('La suscripción de webhooks pudo haber fallado — verificar manualmente');
         warningCodes.push('webhook_subscription_failed');
@@ -653,13 +922,20 @@ export class OnboardingService {
           wabaSource,
           businessVerified,
           businessVerificationStatus,
+          // Ids, statuses and Meta's code — never the token.
+          phoneRegistration: {
+            outcome: phoneRegistration.kind,
+            phoneStatus: phoneRegistration.kind === 'registered' ? null : phoneRegistration.phoneStatus,
+            graphCode: phoneRegistration.kind === 'registered' ? null : phoneRegistration.graph?.code ?? null,
+            graphSubcode: phoneRegistration.kind === 'registered' ? null : phoneRegistration.graph?.subcode ?? null,
+          },
           warnings,
         },
       });
 
       // Agent Quality lives in the API process. Notify it only after routing,
       // credentials and the onboarding terminal state are durably committed.
-      await this.notifyAgentQualityChannelUpdated(tenantId);
+      await this.notifyAgentQualityChannelUpdated(tenantId, primaryPhone.id);
 
       this.logger.log(`[Onboarding][${onboardingId}] ${finalStatus} for tenant=${tenantId}${warnings.length ? ' (warnings: ' + warnings.join('; ') + ')' : ''}`);
 
@@ -668,6 +944,59 @@ export class OnboardingService {
     } catch (error: any) {
       return this.handleOnboardingFailure(error, onboardingId, tenantId, userId);
     }
+  }
+
+  /**
+   * Step 8: register the number for the Cloud API, and say what that
+   * established (`classifyPhoneRegistration`).
+   *
+   * Never throws. When the registration did not answer success, Meta is asked
+   * once more how it reads the number now; the reading from step 7 stands in
+   * when that fails, because a refused registration changes nothing about it.
+   */
+  private async registerPhoneForCloudApi(
+    onboardingId: string,
+    phone: { id: string; status?: unknown },
+    wabaId: string,
+    accessToken: string,
+  ): Promise<PhoneRegistrationOutcome> {
+    let registered = false;
+    let error: unknown;
+    try {
+      registered = (await this.metaGraph.registerPhoneNumber(phone.id, accessToken)) === true;
+    } catch (registrationError) {
+      error = registrationError;
+    }
+    if (registered) {
+      this.logger.log(`[Onboarding][${onboardingId}] Phone number registered successfully`);
+      return { kind: 'registered' };
+    }
+
+    let phoneStatus: unknown = phone?.status;
+    try {
+      const phones = await this.metaGraph.getPhoneNumbersForWaba(wabaId, accessToken);
+      const current = (phones || []).find((candidate: any) => candidate?.id === phone.id);
+      if (current?.status) phoneStatus = current.status;
+    } catch (readError: any) {
+      this.logger.warn(`[Onboarding][${onboardingId}] Could not re-read phone ${phone.id} after its registration `
+        + `failed (${readError?.message}); judging by the reading from step 7 (status=${String(phone?.status ?? 'none')})`);
+    }
+
+    const outcome = classifyPhoneRegistration({ registered, error, phoneStatus });
+    const graph = outcome.kind === 'registered' ? null : outcome.graph;
+    const cause = error === undefined
+      ? 'Meta did not answer success'
+      : `Meta error code=${graph?.code ?? 'none'} subcode=${graph?.subcode ?? 'none'} `
+        + `http=${graph?.httpStatus ?? 'none'}: ${graph?.message ?? 'no message'}`;
+    if (outcome.kind === 'already_registered') {
+      this.logger.log(`[Onboarding][${onboardingId}] Registration of ${phone.id} was refused (${cause}), `
+        + `but Meta reads the number as ${outcome.phoneStatus}: it is already registered`);
+    } else if (outcome.kind === 'not_registered') {
+      this.logger.warn(`[Onboarding][${onboardingId}] Phone ${phone.id} is NOT registered for the Cloud API (${cause}; `
+        + `Meta reads status=${outcome.phoneStatus ?? 'unknown'}${outcome.retryLater ? '; Meta asks to retry later' : ''}): `
+        + 'it cannot send, and the signup finishes with phone_registration_deferred');
+    }
+    return outcome;
   }
 
   /**
@@ -1425,7 +1754,16 @@ export class OnboardingService {
     }
   }
 
-  private async notifyAgentQualityChannelUpdated(tenantId: string): Promise<void> {
+  /**
+   * Tell the API a WhatsApp number was connected here.
+   *
+   * The API records the connection on this call — first-connection instant,
+   * the default agent's assignment to WhatsApp, the onboarding stage — because
+   * this service writes `channel_accounts` itself and none of the API's connect
+   * paths runs for Embedded Signup. The API re-reads the row before recording,
+   * so the number is sent only to narrow that read to the one just connected.
+   */
+  private async notifyAgentQualityChannelUpdated(tenantId: string, accountId?: string): Promise<void> {
     const apiUrl = this.config.get<string>('API_INTERNAL_URL') || 'http://api:3000/api/v1';
     const internalKey =
       this.config.get<string>('INTERNAL_API_KEY') || this.config.get<string>('INTERNAL_JWT_SECRET');
@@ -1435,7 +1773,7 @@ export class OnboardingService {
       const response = await fetchFn(`${apiUrl}/internal/agent-quality-channel-updated`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-internal-key': internalKey },
-        body: JSON.stringify({ tenantId }),
+        body: JSON.stringify({ tenantId, channelType: 'whatsapp', ...(accountId ? { accountId } : {}) }),
       });
       if (!response.ok) {
         this.logger.warn(`Agent Quality channel notification returned ${response.status}`);
@@ -1448,8 +1786,19 @@ export class OnboardingService {
 
   /**
    * Registrar en channel_accounts público para routing de webhooks
+   *
+   * Also the one write that carries what the money engine needs to let this
+   * number answer at all: Meta's time zone evidence (and the zone itself when
+   * it can be established without guessing) and Meta's billing currency. See
+   * the section above `decideBillingZone` for why the zone is so often NULL.
    */
-  private async registerChannelAccount(tenantId: string, phone: any, wabaId: string, businessId?: string) {
+  private async registerChannelAccount(
+    tenantId: string,
+    phone: any,
+    wabaId: string,
+    businessId?: string,
+    waba?: Pick<WabaInfo, 'timezoneId' | 'currency'> | null,
+  ) {
     // Upsert — actualiza si ya existe
     const existing = await this.prisma.channelAccount.findFirst({
       where: {
@@ -1457,6 +1806,8 @@ export class OnboardingService {
         accountId: phone.id,
       },
     });
+
+    const billing = await this.resolveBillingFacts(tenantId, phone.id, wabaId, waba ?? null, existing);
 
     if (existing) {
       await this.prisma.channelAccount.update({
@@ -1466,6 +1817,9 @@ export class OnboardingService {
           displayName: phone.verifiedName || phone.displayPhoneNumber,
           accessToken: 'encrypted_ref', // No en texto plano
           isActive: true,
+          // `undefined` leaves the column as it is; `null` clears a zone that
+          // was confirmed for another account (see `resolveBillingFacts`).
+          ...(billing.wabaTimezone !== undefined ? { wabaTimezone: billing.wabaTimezone } : {}),
           metadata: {
             ...((existing.metadata as Record<string, unknown>) || {}),
             displayPhoneNumber: phone.displayPhoneNumber,
@@ -1474,7 +1828,8 @@ export class OnboardingService {
             wabaId,
             businessId: businessId || null,
             source: 'embedded_signup',
-          },
+            ...billing.metadata,
+          } as any,
         },
       });
     } else {
@@ -1486,6 +1841,7 @@ export class OnboardingService {
           displayName: phone.verifiedName || phone.displayPhoneNumber,
           accessToken: 'encrypted_ref',
           isActive: true,
+          ...(billing.wabaTimezone ? { wabaTimezone: billing.wabaTimezone } : {}),
           metadata: {
             displayPhoneNumber: phone.displayPhoneNumber,
             qualityRating: phone.qualityRating,
@@ -1493,12 +1849,106 @@ export class OnboardingService {
             wabaId,
             businessId: businessId || null,
             source: 'embedded_signup',
-          },
+            ...billing.metadata,
+          } as any,
         },
       });
     }
 
     this.logger.log(`Channel account registered for phone: ${phone.id}`);
+  }
+
+  /**
+   * What this connection can say about billing, without inventing anything.
+   *
+   * Best effort by construction: the routing row it feeds is CRITICAL (without
+   * it no inbound message reaches this tenant), so a failed sibling read costs
+   * the inherited zone and nothing else.
+   */
+  private async resolveBillingFacts(
+    tenantId: string,
+    phoneId: string,
+    wabaId: string,
+    waba: Pick<WabaInfo, 'timezoneId' | 'currency'> | null,
+    existing: { wabaTimezone?: string | null; metadata?: unknown } | null,
+  ): Promise<{
+    /** `undefined` = leave the column alone; a zone = write it; `null` = clear it. */
+    wabaTimezone: string | null | undefined;
+    metadata: Record<string, unknown>;
+  }> {
+    const metadata: Record<string, unknown> = {};
+    const previous = (existing?.metadata && typeof existing.metadata === 'object'
+      ? existing.metadata : {}) as Record<string, unknown>;
+    const timezoneId = metaTimezoneIdOf(waba);
+    if (timezoneId) {
+      metadata.metaTimezoneId = timezoneId;
+    } else if (previous.metaTimezoneId != null && previous.wabaId && previous.wabaId !== wabaId) {
+      // Meta's id is a report ABOUT a WABA. Moved to another WABA that reported
+      // none, the old id would claim the new WABA reports it — and pair with
+      // any zone later confirmed on this row as if it were that account's.
+      metadata.metaTimezoneId = null;
+    }
+    const currency = billingCurrencyEvidenceFromMeta(waba?.currency, wabaId);
+    if (currency) metadata.billingCurrencyEvidence = currency;
+
+    // A zone already on the row was confirmed by a person, or carried from
+    // one, for a specific account: a WABA and the timezone id Meta reported
+    // for it. While this connection is that same account it is never
+    // overwritten from here. A reconnect to ANOTHER account — another WABA, or
+    // the same WABA now reporting another id — is different: this write
+    // replaces `wabaId` and `metaTimezoneId` with the new account's, and a zone
+    // kept beside them would read as confirmed FOR it, and be carried to the
+    // next number on it as `same_waba_same_id`. So it is cleared, and the new
+    // account gets only what can be established for it below.
+    const ownZone = existing ? usableBillingZone(existing.wabaTimezone) : null;
+    let supersededZone: string | null = null;
+    if (ownZone) {
+      const confirmed = zoneConfirmedFor(previous);
+      if (zoneStillConfirmedFor(confirmed, { wabaId, timezoneId })) return { wabaTimezone: undefined, metadata };
+      supersededZone = ownZone;
+      metadata.wabaTimezoneEvidence = null;
+      this.logger.warn(`[Billing zone] phone=${phoneId} no longer keeps ${ownZone}: it was confirmed for `
+        + `WABA ${confirmed.wabaId ?? 'unknown'} / Meta timezone_id=${confirmed.timezoneId ?? 'unknown'}, `
+        + `and this connection is WABA ${wabaId} / timezone_id=${timezoneId ?? 'none'}`);
+    }
+
+    let siblings: BillingZoneSibling[] = [];
+    if (timezoneId) {
+      try {
+        siblings = await this.prisma.channelAccount.findMany({
+          where: { tenantId, channelType: 'whatsapp', wabaTimezone: { not: null } },
+          select: { accountId: true, wabaTimezone: true, metadata: true },
+        });
+      } catch (error: any) {
+        this.logger.warn(`[Billing zone] could not read the other numbers of tenant=${tenantId}: ${error?.message}`);
+      }
+    }
+
+    const decision = decideBillingZone({ accountId: phoneId, wabaId, timezoneId }, siblings);
+    if (decision.kind === 'inherited') {
+      metadata.wabaTimezoneEvidence = {
+        source: 'same_waba_same_id', at: new Date().toISOString(),
+        timezoneId: Number(timezoneId) || null, wabaId, from: decision.from,
+      };
+      this.logger.log(`[Billing zone] phone=${phoneId} billed in ${decision.zone}, carried from ${decision.from} `
+        + `(same WABA ${wabaId}, same Meta timezone_id=${timezoneId})`);
+      return { wabaTimezone: decision.zone, metadata };
+    }
+
+    const consequence = 'waba_timezone stays NULL, and every reply from this number is refused '
+      + '(timezone_missing) until the owner confirms the zone';
+    if (decision.kind === 'meta_no_timezone') {
+      this.logger.warn(`[Billing zone] Meta reported no timezone_id for WABA ${wabaId} (phone=${phoneId}): ${consequence}`);
+    } else if (decision.kind === 'contradictory') {
+      this.logger.warn(`[Billing zone] numbers on WABA ${wabaId} disagree about the zone (${decision.zones.join(', ')}); `
+        + `phone=${phoneId} inherits none: ${consequence}`);
+    } else {
+      this.logger.warn(`[Billing zone] Meta reports timezone_id=${timezoneId} for WABA ${wabaId} (phone=${phoneId}), `
+        + `a numeric Facebook id and not a zone, and no number on this WABA has confirmed it: ${consequence}`);
+    }
+    // Clear only what this write superseded; a column that was already NULL
+    // is left alone.
+    return { wabaTimezone: supersededZone ? null : undefined, metadata };
   }
 
   /**
@@ -2073,12 +2523,7 @@ export class OnboardingService {
    */
   private extractWarningCodes(exchangePayload: unknown): WhatsappOnboardingWarningCode[] {
     if (!exchangePayload || typeof exchangePayload !== 'object' || Array.isArray(exchangePayload)) return [];
-    const stored = (exchangePayload as Record<string, unknown>).warnings;
-    if (!Array.isArray(stored)) return [];
-    const known = new Set<string>(WHATSAPP_ONBOARDING_WARNING_CODES);
-    return stored.filter((code): code is WhatsappOnboardingWarningCode => (
-      typeof code === 'string' && known.has(code)
-    ));
+    return whatsAppSignupWarningCodes((exchangePayload as Record<string, unknown>).warnings);
   }
 
   private formatOnboardingResponse(onboarding: any) {

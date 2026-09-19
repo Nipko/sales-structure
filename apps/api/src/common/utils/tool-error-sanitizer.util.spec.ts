@@ -25,7 +25,7 @@ describe('lo que el modelo puede leer de una herramienta que falló', () => {
     });
 
     it('conserva un mensaje escrito para el cliente', () => {
-        const message = 'No pude ubicar ese alojamiento. Verificá cuál es antes de continuar.';
+        const message = 'No pude ubicar ese alojamiento. Verifica cuál es antes de continuar.';
 
         const out = sanitizeToolResultForModel({ error: 'unknown_property', message });
 

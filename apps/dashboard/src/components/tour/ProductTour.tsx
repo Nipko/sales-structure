@@ -35,13 +35,17 @@ import {
     guidedTourEntryRoute,
     planGuidedTourRun,
     readGuidedTourResume,
+    resolveGuidedTourReviewMode,
     saveGuidedTourResume,
     shouldRunGuidedTourInPlace,
     type GuidedTourConditionProbe,
     type GuidedTourContext as GuidedTourStepContext,
+    type GuidedTourReviewMode,
     type GuidedTourRunPlan,
     type GuidedTourStepDefinition,
 } from "@/lib/guided-tours";
+import { api } from "@/lib/api";
+import { reviewModeFromResponse } from "@/lib/agent-review-mode";
 import { resolveNavigationDisplayLabel } from "@/lib/navigation-contract";
 import {
     PRODUCT_TOUR_PENDING_KEY,
@@ -222,6 +226,20 @@ async function prepareStep(step: Pick<PreparedStep, "selector" | "prepareSelecto
     }
     await waitForAnchorsToSettle([step.selector], { timeoutMs: 2_000, quietMs: 120 });
     return isAnchorPresent(step.selector);
+}
+
+/**
+ * The tenant's change mode, for a run whose launcher did not know it.
+ *
+ * `GET persona/:tenantId/agent-review-mode` is an admin's endpoint, so it is
+ * only asked by someone who can open the agents screen; anyone else, and any
+ * failure, gets `null` — the default mode, which is what the tour showed
+ * before it knew there was a choice.
+ */
+async function readTenantReviewMode(tenantId: string | null, canRead: boolean): Promise<GuidedTourReviewMode | null> {
+    if (!tenantId || !canRead) return null;
+    const reading = reviewModeFromResponse(await api.getAgentReviewMode(tenantId));
+    return reading === "unknown" ? null : reading;
 }
 
 function hasOpenTourForm(): boolean {
@@ -766,9 +784,10 @@ export function GuidedTourRunner({ tours }: { tours: GuidedTourRegistry }) {
     // El listener se registra UNA vez: `useRole()` devuelve un objeto nuevo en
     // cada render, así que ponerlo en las dependencias re-suscribía el evento
     // constantemente y podía perder un despacho justo en el medio.
-    const latestRef = useRef({ role, capabilities, pathname, setContext, setPlan, startOnborda, router, tRoot, tTour, showNotice });
+    const tenantId = user?.tenantId ?? null;
+    const latestRef = useRef({ role, capabilities, pathname, setContext, setPlan, startOnborda, router, tRoot, tTour, showNotice, tenantId });
     useEffect(() => {
-        latestRef.current = { role, capabilities, pathname, setContext, setPlan, startOnborda, router, tRoot, tTour, showNotice };
+        latestRef.current = { role, capabilities, pathname, setContext, setPlan, startOnborda, router, tRoot, tTour, showNotice, tenantId };
     });
 
     // ── Guardián en vivo: ningún paso puede quedar apuntando a la nada ──
@@ -813,7 +832,7 @@ export function GuidedTourRunner({ tours }: { tours: GuidedTourRegistry }) {
      * la pestaña no es evidencia de nada sobre la pantalla de ahora.
      */
     const startGuidedRun = useCallback((
-        detail: { tourId?: unknown; agentId?: unknown; channelType?: unknown; verticalCatalogRoute?: unknown } | undefined,
+        detail: { tourId?: unknown; agentId?: unknown; channelType?: unknown; verticalCatalogRoute?: unknown; reviewMode?: unknown } | undefined,
         options: { resumeAt?: number } = {},
     ) => {
         const runtime = latestRef.current;
@@ -826,18 +845,14 @@ export function GuidedTourRunner({ tours }: { tours: GuidedTourRegistry }) {
         if (capability && !runtime.capabilities[capability]) return;
 
         const agentId = typeof detail.agentId === "string" && detail.agentId ? detail.agentId : null;
-        const stepContext: GuidedTourStepContext = {
+        const baseContext: GuidedTourStepContext = {
             agentId,
             channelType: typeof detail.channelType === "string" ? detail.channelType : null,
             verticalCatalogRoute: typeof detail.verticalCatalogRoute === "string" ? detail.verticalCatalogRoute : null,
         };
-        runtime.setContext(stepContext);
-
-        const definitions = getGuidedTourStepDefinitions(tourId, stepContext);
-        if (definitions.length === 0) return;
-        const selectors = definitions.map((definition) => definition.selector);
+        // Dónde estaba la persona al pedirlo, no dónde esté cuando llegue el
+        // modo: leerlo es asíncrono y ella puede haberse movido mientras tanto.
         const originRoute = runtime.pathname;
-        const entryRoute = guidedTourEntryRoute(tourId, stepContext);
         // Dentro del asistente de puesta en marcha el recorrido corre donde
         // está la persona: pedir ayuda no puede significar que te expulsen
         // del formulario a medio llenar.
@@ -853,6 +868,22 @@ export function GuidedTourRunner({ tours }: { tours: GuidedTourRegistry }) {
         };
 
         void (async () => {
+            // El modo en que el negocio aplica los cambios decide qué recorre un
+            // recorrido del agente: el interruptor, o el borrador y su
+            // publicación; "al guardar… de inmediato", o no. Quien lo lanza lo
+            // pasa si lo sabe; si no, se lee acá, una vez, y sólo para los
+            // recorridos que cambian con él. Retomar trae el que ya se usó.
+            const reviewMode = await resolveGuidedTourReviewMode(tourId, baseContext, detail.reviewMode,
+                () => readTenantReviewMode(runtime.tenantId, runtime.capabilities.canAccess("/admin/agent")));
+            if (runId !== runRef.current) return;
+            const stepContext: GuidedTourStepContext = { ...baseContext, reviewMode };
+            runtime.setContext(stepContext);
+
+            const definitions = getGuidedTourStepDefinitions(tourId, stepContext);
+            if (definitions.length === 0) return;
+            const selectors = definitions.map((definition) => definition.selector);
+            const entryRoute = guidedTourEntryRoute(tourId, stepContext);
+
             // Retomar NO vuelve a la ruta de entrada: la recarga ya dejó a la
             // persona en la pantalla donde estaba el paso, y empujarla al
             // principio del recorrido sería perder exactamente lo que se guardó.

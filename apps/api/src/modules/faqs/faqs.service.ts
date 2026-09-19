@@ -9,6 +9,8 @@ import type { ServiceExecutionContext } from '../../common/types/execution-conte
 import { persistenceDisabled } from '../../common/types/execution-context';
 import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
 import { structuredKnowledgeRelation, type StructuredKnowledgeCapture } from '../evaluation-revision/evaluation-structured-knowledge';
+import { onboardingOnceKey } from '@parallext/shared';
+import { recordOnboardingEvent } from '../../common/utils/onboarding-event.util';
 
 /**
  * Plegado de diacríticos para la búsqueda de FAQs.
@@ -153,6 +155,14 @@ export class FaqsService {
         }
         await this.invalidateCache(tenantId);
         this.emitQualityDependency(tenantId);
+        if (input.category === 'onboarding_correction') {
+            void recordOnboardingEvent(this.prisma, {
+                tenantId,
+                event: 'test_correction_saved',
+                detail: 'faq',
+                dedupeKey: onboardingOnceKey('test_correction_saved', tenantId, rows[0].id),
+            });
+        }
         return this.rowToFaq(rows[0]);
     }
 

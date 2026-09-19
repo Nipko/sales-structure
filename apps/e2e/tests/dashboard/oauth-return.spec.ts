@@ -12,6 +12,12 @@ import { hermeticDashboard, ok, signIn, type HermeticState } from "../../fixture
  * own handling of the four shapes of return, and the redirect URI the config
  * publishes already points at this local route, so nothing has to leave.
  *
+ * Since D12 (sep-2026) the window never repeats Meta's wording. Meta's
+ * `error_description` is English prose in all four locales, and it blamed the
+ * person with nothing to press. What travels now is a CODE, and what the person
+ * reads is one card with one action, in their own language. These tests pin
+ * that: Meta's sentence must NOT reach the screen.
+ *
  * The fourth shape — the exchange that never answers — is the one that had no
  * handling at all. The popup span on a spinner forever: no message, no retry,
  * no hint that it could be closed, and the screen that opened it waiting for a
@@ -86,21 +92,25 @@ test.describe("la vuelta de la autorización de Instagram", () => {
     expect(await page.evaluate(() => window.localStorage.getItem("ig_oauth_state"))).toBeNull();
   });
 
-  test("un error de Meta se muestra tal cual, sin canjear nada", async ({ page }) => {
+  test("un error de Meta se vuelve una tarjeta con una acción, sin canjear nada", async ({ page }) => {
     await collectBroadcasts(page);
     await seedOAuthState(page, STATE);
     const state = await openCallback(
       page,
-      "?error=server_error&error_description=La%20aplicaci%C3%B3n%20no%20est%C3%A1%20disponible",
+      "?error=server_error&error_description=The%20app%20is%20not%20available%20right%20now",
     );
 
-    await expect(page.getByText("Error al conectar Instagram. Intenta de nuevo.")).toBeVisible();
-    await expect(page.getByText("La aplicación no está disponible")).toBeVisible();
+    await expect(page.getByText("No pudimos conectar ahora mismo")).toBeVisible();
+    await expect(page.getByText("Fue algo temporal. Vuelve a intentar en unos minutos.")).toBeVisible();
+    // La frase de Meta —en inglés, y sin nada que la persona pueda hacer con
+    // ella— se queda en la consola. Es exactamente lo que D12 sacó de pantalla.
+    await expect(page.getByText(/not available right now/)).toHaveCount(0);
     // Sin código no hay nada que canjear, y llamar igual sería un intento con
     // las manos vacías que el API tendría que rechazar.
     expect(state.observed.filter((path) => path.includes("oauth-connect"))).toEqual([]);
+    // A la pantalla de atrás viaja un código, no una oración.
     await expect.poll(() => broadcasts(page)).toEqual([
-      { type: "ig_oauth_error", message: "La aplicación no está disponible" },
+      { type: "ig_oauth_error", code: "meta_connect_unavailable" },
     ]);
   });
 
@@ -112,11 +122,15 @@ test.describe("la vuelta de la autorización de Instagram", () => {
       "?error=access_denied&error_reason=user_denied&error_description=Permisos%20no%20otorgados",
     );
 
-    await expect(page.getByText("Permisos no otorgados")).toBeVisible();
+    // Una cancelación se dice como tal: "quedó a medias", nunca "falló".
+    await expect(page.getByText("La conexión quedó a medias")).toBeVisible();
+    await expect(page.getByText("Permisos no otorgados")).toHaveCount(0);
     expect(state.observed.filter((path) => path.includes("oauth-connect"))).toEqual([]);
     // La ventana se cierra igual: quedarse abierta después de una cancelación
     // deliberada es pedirle a la persona que cierre dos veces lo mismo.
-    await expect.poll(() => broadcasts(page)).toHaveLength(1);
+    await expect.poll(() => broadcasts(page)).toEqual([
+      { type: "ig_oauth_error", code: "meta_connect_window_cancelled" },
+    ]);
   });
 
   test("un state que no coincide se rechaza antes de canjear el código", async ({ page }) => {
@@ -126,7 +140,10 @@ test.describe("la vuelta de la autorización de Instagram", () => {
     await seedOAuthState(page, "otro-state");
     const state = await openCallback(page, `?code=auth-code-123&state=${STATE}`);
 
-    await expect(page.getByText(/CSRF/)).toBeVisible();
+    // La persona que lee esto no montó ningún ataque y no puede hacer nada con
+    // la palabra "CSRF": lo que recibe es la única acción que sirve.
+    await expect(page.getByText("Esta ventana no es la que abriste")).toBeVisible();
+    await expect(page.getByText(/CSRF/)).toHaveCount(0);
     expect(state.observed.filter((path) => path.includes("oauth-connect"))).toEqual([]);
   });
 
@@ -148,10 +165,10 @@ test.describe("la vuelta de la autorización de Instagram", () => {
     await page.clock.runFor(21_000);
 
     await expect(page.getByText(/No pudimos confirmar la conexión a tiempo/)).toBeVisible();
-    // Y lo que se le dice a la pantalla de atrás es lo mismo que se le muestra
-    // a la persona: un error con el motivo, no un silencio.
+    // Y la pantalla de atrás recibe el mismo motivo que se le muestra a la
+    // persona, como código: un error con nombre, no un silencio.
     await expect.poll(() => broadcasts(page)).toEqual([
-      { type: "ig_oauth_error", message: expect.stringContaining("No pudimos confirmar") },
+      { type: "ig_oauth_error", code: "timeout" },
     ]);
     expect(state.productionRequests).toEqual([]);
   });

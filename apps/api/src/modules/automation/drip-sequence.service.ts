@@ -880,10 +880,10 @@ export class DripSequenceService {
                 task: 'conversation',
                 messages: [{
                     role: 'user',
-                    content: `Escribí un mensaje de PRIMER CONTACTO (prospección) breve, cálido y natural para ` +
+                    content: `Escribe un mensaje de PRIMER CONTACTO (prospección) breve, cálido y natural para ` +
                         `${name ? `un cliente llamado${name}` : 'un posible cliente'}.${angleLine} ` +
-                        `Presentate de parte del negocio, generá interés en 1-2 líneas y terminá con una pregunta abierta y sin presión. ` +
-                        `No inventes datos, precios ni promociones que no te dieron. Escribí el mensaje en ${langName}. Devolvé SOLO el mensaje.`,
+                        `Preséntate de parte del negocio, genera interés en 1-2 líneas y termina con una pregunta abierta y sin presión. ` +
+                        `No inventes datos, precios ni promociones que no te dieron. Escribe el mensaje en ${langName}. Devuelve SOLO el mensaje.`,
                 }],
                 systemPrompt: this.personaService.buildSystemPrompt(persona),
                 temperature: 0.8,

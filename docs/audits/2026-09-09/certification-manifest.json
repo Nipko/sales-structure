@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "revision": "c1d11a95a7fdb0e8f5826d531553a157f68b4300",
+  "revision": "e95b789947a6b1a89caf9abc9b75857917c2751e",
   "generatedFrom": [
     "modules/simulation/certification-plan.ts",
     "modules/simulation/certification-ledger.ts",
@@ -8,7 +8,7 @@
   ],
   "gate": "llm_credentials_and_budget",
   "scope": {
-    "profiles": 76,
+    "profiles": 80,
     "languages": [
       "es",
       "en",
@@ -36,66 +36,66 @@
       "provider": "openai",
       "tier": "tier_2_standard",
       "envVar": "OPENAI_API_KEY",
-      "requiredCases": 93320,
-      "modelCalls": 260620,
-      "maxCostUsdCents": 44980,
-      "maxHours": 434,
-      "planHash": "d2a1679c77823678de056bab9940eb6f5be083f742aab71b2635ef1a9b914f8a"
+      "requiredCases": 98840,
+      "modelCalls": 277820,
+      "maxCostUsdCents": 47940,
+      "maxHours": 463,
+      "planHash": "7293fdfd01ab0d41390878d36d51c7fd084bf43472da2423a423e1356259d3ca"
     },
     {
       "model": "grok-4-1-fast-non-reasoning",
       "provider": "xai",
       "tier": "tier_2_standard",
       "envVar": "XAI_API_KEY",
-      "requiredCases": 93320,
-      "modelCalls": 260620,
-      "maxCostUsdCents": 50040,
-      "maxHours": 434,
-      "planHash": "1507d9f508870a2dfe7f4c3c027a15a915047223ca44612525a56afceef096a1"
+      "requiredCases": 98840,
+      "modelCalls": 277820,
+      "maxCostUsdCents": 53400,
+      "maxHours": 463,
+      "planHash": "9969a48f2fa80f2512c24c2e34d967b013ddd0a35cbd2916ccfa13c92129b40f"
     },
     {
       "model": "deepseek-chat",
       "provider": "deepseek",
       "tier": "tier_4_budget",
       "envVar": "DEEPSEEK_API_KEY",
-      "requiredCases": 93320,
-      "modelCalls": 260620,
-      "maxCostUsdCents": 69220,
-      "maxHours": 434,
-      "planHash": "77ad341e1445b7edce1c76f53d803c8d06606dcd4fc26c6f0de73b6d9afd1aef"
+      "requiredCases": 98840,
+      "modelCalls": 277820,
+      "maxCostUsdCents": 73860,
+      "maxHours": 463,
+      "planHash": "5c4b5258b8ce484069f7b8543dd5db5099a4c1f821a0831edfab51bc1cfeb5b1"
     },
     {
       "model": "gpt-4.1-mini",
       "provider": "openai",
       "tier": "tier_2_standard",
       "envVar": "OPENAI_API_KEY",
-      "requiredCases": 93320,
-      "modelCalls": 260620,
-      "maxCostUsdCents": 95020,
-      "maxHours": 434,
-      "planHash": "e0040181d350950a7dc3af60dea4144cb9c98df6ef56668bad6e71d4819e56a1"
+      "requiredCases": 98840,
+      "modelCalls": 277820,
+      "maxCostUsdCents": 101500,
+      "maxHours": 463,
+      "planHash": "6e63d6c1160e6e1773172b297fc688bcf621ff439ba1ef96771247cbb585b9b8"
     },
     {
       "model": "gpt-4o",
       "provider": "openai",
       "tier": "tier_1_premium",
       "envVar": "OPENAI_API_KEY",
-      "requiredCases": 93320,
-      "modelCalls": 260620,
-      "maxCostUsdCents": 516760,
-      "maxHours": 434,
-      "planHash": "1b752c6c09b2f4032d286612b8b6c5dcacea314b9d25644fd4415e67e75620d1"
+      "requiredCases": 98840,
+      "modelCalls": 277820,
+      "maxCostUsdCents": 552680,
+      "maxHours": 463,
+      "planHash": "277cfa86712fa8ee3ab8da4fbfd93e3be87ce40103f3141df5038bbf4e37a0b4"
     },
     {
       "model": "claude-sonnet-4-6",
       "provider": "anthropic",
       "tier": "tier_1_premium",
       "envVar": "ANTHROPIC_API_KEY",
-      "requiredCases": 93320,
-      "modelCalls": 260620,
-      "maxCostUsdCents": 667100,
-      "maxHours": 434,
-      "planHash": "9b854ec527e7e21537aad0b43bd19dfdbb20c168be5fbef84b86786877bcec71"
+      "requiredCases": 98840,
+      "modelCalls": 277820,
+      "maxCostUsdCents": 713500,
+      "maxHours": 463,
+      "planHash": "03e2e8aea63e00fa6dad11706578e0ba7cd4fdb4827c012b473772aeda591809"
     }
   ],
   "excludedModels": [

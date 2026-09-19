@@ -23,11 +23,14 @@ import { PageHeader } from "@/components/ui/page-header";
 import ServicesTab from "@/components/appointments/ServicesTab";
 import ServiceModal from "@/components/appointments/ServiceModal";
 import { useServiceCatalog } from "@/hooks/useServiceCatalog";
+import { useOperatingCurrency } from "@/hooks/useOperatingCurrency";
 
 export default function ServiceCatalogPage() {
     const t = useTranslations("serviceCatalog");
     const ta = useTranslations("appointments");
     const { activeTenantId } = useTenant();
+    // La moneda sale del perfil regional del negocio, no del idioma del panel.
+    const operatingCurrency = useOperatingCurrency();
     const [toast, setToast] = useState<string | null>(null);
 
     const {
@@ -35,6 +38,7 @@ export default function ServiceCatalogPage() {
         editingService, serviceForm, setServiceForm, savingService,
         loadServices, openCreateServiceModal, openEditServiceModal,
         handleSaveService, handleDeleteService, handleToggleServiceActive,
+        handleSetServicePriceStatus,
     } = useServiceCatalog(
         activeTenantId,
         (message) => { setToast(message); setTimeout(() => setToast(null), 3000); },
@@ -45,6 +49,7 @@ export default function ServiceCatalogPage() {
             created: ta("toasts.serviceCreated"),
             updated: ta("toasts.serviceUpdated"),
             deleted: ta("toasts.serviceDeleted"),
+            priceMissing: ta("errors.servicePriceMissing"),
         },
     );
 
@@ -74,6 +79,8 @@ export default function ServiceCatalogPage() {
                 onEditService={openEditServiceModal}
                 onDeleteService={handleDeleteService}
                 onToggleActive={handleToggleServiceActive}
+                onPriceStatusChange={handleSetServicePriceStatus}
+                currency={operatingCurrency}
             />
 
             {showServiceModal && (
@@ -84,6 +91,7 @@ export default function ServiceCatalogPage() {
                     saving={savingService}
                     onSave={handleSaveService}
                     onClose={() => setShowServiceModal(false)}
+                    currency={operatingCurrency}
                 />
             )}
 

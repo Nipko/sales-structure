@@ -2,10 +2,15 @@
 
 import { useState } from "react";
 import { useTranslations } from "next-intl";
-import { Layers, Sparkles, ArrowRightLeft, ChevronLeft, Check, ArrowRight, AlertTriangle, MessageSquare } from "lucide-react";
-import WhatsAppEmbeddedSignup, { isKnownWhatsAppWarning } from "./WhatsAppEmbeddedSignup";
-import WhatsAppPrerequisites from "./WhatsAppPrerequisites";
+import { Layers, Sparkles, ArrowRightLeft, ChevronLeft, ArrowRight } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import WhatsAppEmbeddedSignup from "./WhatsAppEmbeddedSignup";
+import WhatsAppTriage from "./WhatsAppTriage";
 import WhatsAppRouteBrief from "./WhatsAppRouteBrief";
+import WhatsAppConnectedState from "./WhatsAppConnectedState";
+import { readRememberedTriage, rememberTriage, routeAfterTriage } from "./whatsapp-triage";
+import { billingZoneAccess } from "./billing-time-zone";
+import type { ConnectedReadiness, WhatsAppConnectedPayload } from "./connected-readiness";
 import {
     WHATSAPP_CONNECT_ROUTES,
     getWhatsAppConnectRoute,
@@ -14,16 +19,23 @@ import {
 } from "./whatsapp-connect-routes";
 import { guidedTourAnchorId } from "@/lib/guided-tours";
 
-export interface WhatsAppConnectedPayload {
-    displayPhoneNumber?: string;
-    warnings?: string[];
-}
+export type { WhatsAppConnectedPayload } from "./connected-readiness";
 
 interface WhatsAppConnectPanelProps {
     tenantId: string;
     onConnected?: (data: WhatsAppConnectedPayload) => void;
-    /** Fired when the person acknowledges the connected state (wizard advance). */
-    onAcknowledged?: () => void;
+    /**
+     * Fired when the person acknowledges the connected state (wizard advance).
+     * Carries whether the agent can answer yet and what is still pending, so
+     * the next screen does not promise replies that cannot go out.
+     */
+    onAcknowledged?: (readiness: ConnectedReadiness) => void;
+    /** The person answered that she cannot connect today, and why. */
+    onPostponed?: (reason: "other_provider" | "not_at_hand") => void;
+    onConnectStarted?: (route: WhatsAppConnectRouteId) => void;
+    onConnectAbandoned?: (reason: "cancelled" | "popup_blocked") => void;
+    /** Shown under a postponing answer: the agent already answers on its link. */
+    meanwhile?: React.ReactNode;
     variant?: "page" | "onboarding";
 }
 
@@ -33,83 +45,27 @@ const ROUTE_ICONS: Record<WhatsAppConnectRouteId, typeof Layers> = {
     migration: ArrowRightLeft,
 };
 
-export default function WhatsAppConnectPanel({ tenantId, onConnected, onAcknowledged }: WhatsAppConnectPanelProps) {
+export default function WhatsAppConnectPanel({ tenantId, onConnected, onAcknowledged, onPostponed, onConnectStarted, onConnectAbandoned, meanwhile }: WhatsAppConnectPanelProps) {
     const tw = useTranslations("channels.whatsapp");
-    const twn = useTranslations("channels.whatsapp.warnings");
     const t = useTranslations("setupWizard.connect");
+    const { user } = useAuth();
     const [route, setRoute] = useState<WhatsAppConnectRouteId | null>(null);
-    const [prereqsOk, setPrereqsOk] = useState(false);
     const [connected, setConnected] = useState<WhatsAppConnectedPayload | null>(null);
 
     if (connected) {
-        const warnings = connected.warnings ?? [];
-        const digits = (connected.displayPhoneNumber || "").replace(/[^0-9]/g, "");
+        // "Conectado" is not "answering": the billing time zone and the payment
+        // method on the WhatsApp account decide whether replies go out. The
+        // connected state asks for the first, explains the second, and says
+        // "tu agente ya responde" only when neither is known to stop it.
         return (
-            <div className="space-y-3">
-                {warnings.length > 0 ? (
-                    <div className="rounded-xl border border-amber-300 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 p-5">
-                        <div className="flex items-start gap-2.5">
-                            <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
-                            <div className="min-w-0 flex-1">
-                                <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">{twn("title")}</p>
-                                <p className="mt-0.5 text-xs text-amber-800 dark:text-amber-300">{twn("subtitle")}</p>
-                                <ul className="mt-3 space-y-2">
-                                    {warnings.map((warning) => (
-                                        <li key={warning} className="text-[12px] leading-relaxed text-amber-800 dark:text-amber-300">
-                                            • {isKnownWhatsAppWarning(warning) ? twn(`codes.${warning}`) : warning}
-                                        </li>
-                                    ))}
-                                </ul>
-                            </div>
-                        </div>
-                    </div>
-                ) : (
-                    <div className="rounded-xl border border-emerald-300 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/10 p-5 text-center">
-                        <div className="w-12 h-12 mx-auto rounded-full bg-emerald-500 text-white flex items-center justify-center mb-3">
-                            <Check size={24} />
-                        </div>
-                        <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">{t("connected")}</p>
-                        <p className="text-xs text-emerald-700 dark:text-emerald-400/80 mt-1">
-                            {t("connectedDesc", { phone: connected.displayPhoneNumber || "" })}
-                        </p>
-                    </div>
-                )}
-
-                {/* El cierre del bucle: mandarse un mensaje y verlo responder. Antes el
-                    asistente avanzaba solo a los 1,4 s y esta prueba nunca ocurría. */}
-                <div
-                    id={guidedTourAnchorId("whatsapp-test")}
-                    className="rounded-xl border border-emerald-200 dark:border-emerald-500/25 bg-white dark:bg-white/[0.04] p-4 flex flex-col gap-3 sm:flex-row sm:items-center"
-                >
-                    <div className="w-9 h-9 rounded-lg bg-emerald-500 text-white flex items-center justify-center shrink-0">
-                        <MessageSquare size={18} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-foreground">{tw("testAgentTitle")}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">{tw("testAgentDesc", { number: connected.displayPhoneNumber || "" })}</p>
-                    </div>
-                    {digits && (
-                        <a
-                            href={`https://wa.me/${digits}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="shrink-0 inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 text-white transition-colors"
-                        >
-                            {tw("testAgentCta")} <ArrowRight size={14} />
-                        </a>
-                    )}
-                </div>
-
-                {onAcknowledged && (
-                    <button
-                        type="button"
-                        onClick={onAcknowledged}
-                        className="w-full inline-flex items-center justify-center gap-1.5 rounded-xl bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-indigo-700 cursor-pointer"
-                    >
-                        {t("continue")} <ArrowRight size={16} />
-                    </button>
-                )}
-            </div>
+            <WhatsAppConnectedState
+                connected={connected}
+                access={billingZoneAccess(user)}
+                // The Meta check is admin-only on the server; nobody else gets a
+                // button that refuses after being pressed.
+                canCheckFunding={user?.role === "super_admin" || user?.role === "tenant_admin"}
+                onAcknowledged={onAcknowledged}
+            />
         );
     }
 
@@ -119,7 +75,7 @@ export default function WhatsAppConnectPanel({ tenantId, onConnected, onAcknowle
         return (
             <div>
                 <button
-                    onClick={() => setRoute(null)}
+                    onClick={() => { setRoute(null); rememberTriage(tenantId, null); }}
                     className="inline-flex items-center gap-1 text-[13px] text-muted-foreground hover:text-foreground mb-4 cursor-pointer"
                 >
                     <ChevronLeft size={14} /> {t("back")}
@@ -134,28 +90,44 @@ export default function WhatsAppConnectPanel({ tenantId, onConnected, onAcknowle
                         tenantId={tenantId}
                         mode={activeRoute.mode}
                         onSuccess={(data) => {
-                            const payload = {
+                            const payload: WhatsAppConnectedPayload = {
                                 displayPhoneNumber: data.displayPhoneNumber,
+                                // Which number to read the zone and the payment
+                                // method of; without it the connected state has
+                                // to guess from the display number.
+                                phoneNumberId: data.phoneNumberId,
                                 warnings: data.warnings ?? [],
                             };
                             setConnected(payload);
                             onConnected?.(payload);
                         }}
                         onError={() => { /* el propio componente muestra el error con su próximo paso */ }}
+                        onStart={() => onConnectStarted?.(activeRoute.id)}
+                        onAbandoned={onConnectAbandoned}
                     />
                 </div>
             </div>
         );
     }
 
-    // Gate suave: confirmar prerrequisitos antes de ver las rutas (reduce abandono en el popup de Meta).
-    if (!prereqsOk) {
-        return <WhatsAppPrerequisites onContinue={() => setPrereqsOk(true)} />;
-    }
-
+    // Una pregunta decide la ruta. El checklist anterior no verificaba nada y
+    // sus tres ítems se leían como tres requisitos obligatorios.
     return (
         <div>
-            <div className="flex items-center gap-3 mb-4 pb-4 border-b border-neutral-200 dark:border-white/10">
+            <WhatsAppTriage
+                tenantId={tenantId}
+                initialAnswerId={readRememberedTriage(tenantId)}
+                meanwhile={meanwhile}
+                onRoute={(answer) => setRoute(routeAfterTriage(answer))}
+                onLater={(answer) => {
+                    if (answer.outcome.kind === "later") onPostponed?.(answer.outcome.reason);
+                }}
+            />
+            <details className="mt-4 group">
+                <summary className="cursor-pointer list-none text-[12px] text-muted-foreground hover:text-foreground">
+                    {tw("triage.allRoutes")}
+                </summary>
+            <div className="flex items-center gap-3 mt-4 mb-4 pb-4 border-b border-neutral-200 dark:border-white/10">
                 <div className="w-11 h-11 rounded-xl bg-[#25D366] flex items-center justify-center shrink-0 shadow-[0_4px_14px_rgba(37,211,102,0.35)]">
                     <WhatsAppGlyph className="w-6 h-6 text-white" />
                 </div>
@@ -190,6 +162,7 @@ export default function WhatsAppConnectPanel({ tenantId, onConnected, onAcknowle
                 );
             })}
             </div>
+            </details>
         </div>
     );
 }

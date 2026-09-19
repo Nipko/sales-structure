@@ -1,5 +1,6 @@
 "use client";
 
+import { isOnboardingBeforeLive } from "@parallext/shared";
 import {
   useCallback,
   useEffect,
@@ -32,6 +33,7 @@ import {
   HELP_CHAT_MESSAGE_MAX_LENGTH,
 } from "@/lib/help-assistant-contract";
 import {
+  isOwnerChangeRequest,
   parseQualityAssistantDetail,
   qualityAssistantTarget,
   QUALITY_ASSIST_EVENT,
@@ -146,6 +148,16 @@ function TenantHelpAssistant() {
   const t = useTranslations("helpAssistant");
   const locale = useLocale();
   const pathname = usePathname();
+  // The guided setup owns the screen until the first real reply, so the mascot
+  // is not drawn at all during day 0 (D7-A) — on any screen, not only the
+  // wizard. Assist itself stays reachable: the sheet below is still mounted,
+  // and the explicit ways in (the sidebar's "Ayuda", the editor's "Dime qué
+  // cambiar", the quality surfaces, the return leg of a handoff) all open it
+  // through the events this component listens to.
+  const beforeLive = isOnboardingBeforeLive(user?.onboardingStage, {
+    firstReplyAt: user?.firstReplyAt,
+    createdAt: user?.tenantCreatedAt,
+  });
   const router = useRouter();
   const searchParams = useSearchParams();
   const {
@@ -166,6 +178,13 @@ function TenantHelpAssistant() {
   const [isSending, setIsSending] = useState(false);
   const [qualityTarget, setQualityTarget] = useState<QualityAssistantTarget>();
   const [qualityDetail, setQualityDetail] = useState<QualityAssistantOpenDetail>();
+  /**
+   * The owner's own words, to be sent as soon as the context they belong to is
+   * in place. Held as state rather than sent from the event handler because
+   * the handler resets the chat and the target in the same breath, and the
+   * send has to read the reset ones — not the conversation it just replaced.
+   */
+  const [pendingSend, setPendingSend] = useState<string | null>(null);
   // Señal publicada por `/admin`: nadie más vuelve a pedir `setup-status`.
   const setupCardIsTheGuide = isSetupCardTheActiveGuide(useSyncExternalStore(
     subscribeOnboardingLanding,
@@ -180,6 +199,7 @@ function TenantHelpAssistant() {
     setIsSending(false);
     setMessages([{ role: "assistant", content: t("announce.body") }]);
     setChatInput("");
+    setPendingSend(null);
     setQualityTarget(undefined);
     setQualityDetail(undefined);
   }, [t]);
@@ -200,7 +220,7 @@ function TenantHelpAssistant() {
     // Mientras la tarjeta de puesta en marcha es la guía activa, la burbuja que
     // saluda sola es una guía más encima de las otras. No se marca como
     // anunciada: cuando la cuenta arranca de verdad, el saludo sigue disponible.
-    if (setupCardIsTheGuide) {
+    if (setupCardIsTheGuide || beforeLive) {
       setIntro("done");
       return;
     }
@@ -238,7 +258,7 @@ function TenantHelpAssistant() {
     }
 
     return () => timers.forEach(clearTimeout);
-  }, [setupCardIsTheGuide]);
+  }, [setupCardIsTheGuide, beforeLive]);
 
   useEffect(() => {
     try {
@@ -297,9 +317,16 @@ function TenantHelpAssistant() {
       setIsSending(false);
       setIntro("done");
       setMessages([{ role: "assistant", content: t("announce.body") }]);
-      setQualityDetail(detail);
+      // The health notice describes a quality signal. Her own change request
+      // is not one: it still targets this agent, without the amber box.
+      setQualityDetail(isOwnerChangeRequest(detail) ? undefined : detail);
       setQualityTarget(qualityAssistantTarget(detail));
-      setChatInput(detail.prompt || (detail.agentName
+      // "Dime qué cambiar": she already wrote the request, so it goes out as
+      // her message instead of waiting for a second Enter on her own words.
+      // Anything the panel suggests on her behalf is only typed, as before.
+      const sendNow = detail.send === true && Boolean(detail.prompt?.trim());
+      setPendingSend(sendNow ? detail.prompt! : null);
+      setChatInput(sendNow ? "" : detail.prompt || (detail.agentName
         ? t("chat.quality.selectedAgent", { agent: detail.agentName })
         : t("chat.quality.explainPrompt")));
       setOpen(true);
@@ -323,7 +350,7 @@ function TenantHelpAssistant() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isSending]);
 
-  const sendMessage = async (rawText: string) => {
+  const sendMessage = useCallback(async (rawText: string) => {
     const text = rawText.trim().slice(0, HELP_CHAT_MESSAGE_MAX_LENGTH);
     if (!text || isSending) return;
 
@@ -366,7 +393,16 @@ function TenantHelpAssistant() {
     } finally {
       if (requestEpoch === requestEpochRef.current) setIsSending(false);
     }
-  };
+  }, [isSending, locale, messages, pathname, qualityTarget, t]);
+
+  // A request the owner wrote elsewhere goes through `sendMessage` like one
+  // typed here — same trim, same length cap, same "one at a time" guard — once
+  // the render that installed its context has happened.
+  useEffect(() => {
+    if (pendingSend === null) return;
+    setPendingSend(null);
+    void sendMessage(pendingSend);
+  }, [pendingSend, sendMessage]);
 
   const renderFormattedText = (text: string) => text.split("\n").map((line, lineIndex) => {
     const trimmed = line.trim();
@@ -448,7 +484,11 @@ function TenantHelpAssistant() {
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
-      <SheetTrigger asChild>
+      {/* No mascot until the account is live (D7-A). Only the launcher goes:
+          the sheet stays, so every explicit way in still opens Assist — which
+          on the wizard it did not, because this used to return nothing there
+          and the sidebar's "Ayuda" opened a sheet that was never drawn. */}
+      {!beforeLive && <SheetTrigger asChild>
         <button
           type="button"
           id={guidedTourAnchorId("assistant")}
@@ -500,7 +540,7 @@ function TenantHelpAssistant() {
             <ParalllyAssistant size={74} state={introMoving ? "wave" : "idle"} />
           </span>
         </button>
-      </SheetTrigger>
+      </SheetTrigger>}
 
       <SheetContent
         side="right"

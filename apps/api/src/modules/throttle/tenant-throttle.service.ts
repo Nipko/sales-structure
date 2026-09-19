@@ -416,7 +416,7 @@ export class TenantThrottleService {
                 currentCount,
                 maxAllowed: Number.isFinite(max) ? max : null,
                 plan,
-                message: `Tu plan ${plan} permite hasta ${Number.isFinite(max) ? max : '∞'} ${resourceLabel ?? limitKey}. Actualizá tu plan para agregar más.`,
+                message: `Tu plan ${plan} permite hasta ${Number.isFinite(max) ? max : '∞'} ${resourceLabel ?? limitKey}. Actualiza tu plan para agregar más.`,
             });
         }
     }
@@ -468,7 +468,7 @@ export class TenantThrottleService {
                 currentCount,
                 maxAllowed: Number.isFinite(max) ? max : null,
                 plan,
-                message: `Tu plan ${plan} permite hasta ${Number.isFinite(max) ? max : '∞'} cuenta(s) de ${channelType}. Actualizá tu plan o desconectá otra para conectar una nueva.`,
+                message: `Tu plan ${plan} permite hasta ${Number.isFinite(max) ? max : '∞'} cuenta(s) de ${channelType}. Actualiza tu plan o desconecta otra para conectar una nueva.`,
             });
         }
     }
@@ -581,6 +581,104 @@ export class TenantThrottleService {
         const { used, limit } = await this.getAiMessageUsage(tenantId);
         if (!Number.isFinite(limit)) return true;
         return used < (limit as number);
+    }
+
+    // ── Platform-paid demo replies (D19) ───────────────────────────
+
+    /**
+     * Lifetime counter of platform-paid demo replies for one tenant.
+     *
+     * Deliberately NO month segment and NO TTL: the allowance is "the first N
+     * replies on the demo link, ever", not a monthly quota. Redis runs with
+     * `noeviction`, so the key is never dropped under memory pressure; only a
+     * Redis flush resets it, and for a free demo allowance that is acceptable
+     * (worst case the platform gives one tenant a second allowance; nobody is
+     * charged and no plan quota is touched).
+     */
+    private demoMessageCountKey(tenantId: string): string {
+        return `demo_msg:${tenantId}`;
+    }
+
+    /** Effect marker: 'held' while the reply is being generated, 'committed' once it is a fact. */
+    private demoMessageReservationKey(tenantId: string, effectId: string): string {
+        const effectHash = createHash('sha256').update(effectId).digest('hex');
+        return `demo_msg:reservation:${tenantId}:${effectHash}`;
+    }
+
+    /**
+     * Reserve one platform-paid demo reply for a stable effect (one inbound
+     * message on the tenant's public demo link).
+     *
+     * Same contract and Lua shape as `reserveAiMessageCount`: the limit
+     * decision and the increment are one Redis operation, and a retry of the
+     * same effect adopts its existing marker instead of consuming a second
+     * reply. `limit` is supplied by the caller (DemoAllowanceService's
+     * `messagesPerTenant`, or a per-tenant override); a non-finite limit means
+     * unlimited. Never reads or writes `ai_msg:*`: a demo reply is not a plan
+     * message and must not move the plan quota either way.
+     */
+    async reserveDemoMessageCount(
+        tenantId: string,
+        effectId: string,
+        limit: number,
+    ): Promise<{ allowed: boolean; count: number; adopted: boolean }> {
+        const countKey = this.demoMessageCountKey(tenantId);
+        const reservationKey = this.demoMessageReservationKey(tenantId, effectId);
+        const ttl = 35 * 24 * 60 * 60;
+        const finiteLimit = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : -1;
+        const result = await this.redis.getClient().eval(
+            `local marker = redis.call('GET', KEYS[2])
+             local current = tonumber(redis.call('GET', KEYS[1]) or '0')
+             if marker then return {1, current, 1} end
+             local quota = tonumber(ARGV[1])
+             if quota >= 0 and current >= quota then return {0, current, 0} end
+             current = redis.call('INCR', KEYS[1])
+             redis.call('SET', KEYS[2], 'held', 'EX', tonumber(ARGV[2]))
+             return {1, current, 0}`,
+            2, countKey, reservationKey, String(finiteLimit), String(ttl),
+        ) as [number, number, number];
+        return { allowed: result[0] === 1, count: Number(result[1]), adopted: result[2] === 1 };
+    }
+
+    /** The demo reply is now an accounted fact; retries keep adopting it. */
+    async commitDemoMessageCount(tenantId: string, effectId: string): Promise<void> {
+        const reservationKey = this.demoMessageReservationKey(tenantId, effectId);
+        const ttl = 35 * 24 * 60 * 60;
+        await this.redis.getClient().eval(
+            `if redis.call('EXISTS', KEYS[1]) == 1 then
+                 redis.call('SET', KEYS[1], 'committed', 'EX', tonumber(ARGV[1]))
+                 return 1
+             end
+             return 0`,
+            1, reservationKey, String(ttl),
+        );
+    }
+
+    /** Release only a still-held demo reservation; a committed retry is immutable. */
+    async releaseDemoMessageCount(tenantId: string, effectId: string): Promise<void> {
+        const reservationKey = this.demoMessageReservationKey(tenantId, effectId);
+        const countKey = this.demoMessageCountKey(tenantId);
+        await this.redis.getClient().eval(
+            `if redis.call('GET', KEYS[1]) ~= 'held' then return 0 end
+             redis.call('DEL', KEYS[1])
+             local current = tonumber(redis.call('GET', KEYS[2]) or '0')
+             if current > 0 then redis.call('DECR', KEYS[2]) end
+             return 1`,
+            2, reservationKey, countKey,
+        );
+    }
+
+    /**
+     * Lifetime platform-paid demo replies consumed by a tenant. The limit is
+     * not this service's to know (it comes from DemoAllowanceService or an
+     * override), so it is `null` unless the caller passes one to echo back.
+     */
+    async getDemoMessageUsage(
+        tenantId: string,
+        limit?: number,
+    ): Promise<{ used: number; limit: number | null }> {
+        const used = Number((await this.redis.get(this.demoMessageCountKey(tenantId))) || 0);
+        return { used, limit: typeof limit === 'number' && Number.isFinite(limit) ? limit : null };
     }
 
     // ── LLM cost circuit breaker ───────────────────────────────────

@@ -55,12 +55,12 @@ describe('VerticalsController tenant isolation', () => {
             version: VERTICAL_IDENTIFIER_CONTRACT_VERSION,
             contract: 'vertical-identifiers',
             count: 20,
-            subtypeCount: 80,
-            configurationCount: 81,
+            subtypeCount: 84,
+            configurationCount: 85,
             canonicalIndustryCount: 20,
-            canonicalConfigurationCount: 76,
-            canonicalProfileCount: 76,
-            resolvableProfileCount: 81,
+            canonicalConfigurationCount: 80,
+            canonicalProfileCount: 80,
+            resolvableProfileCount: 85,
             aliases: VERTICAL_INDUSTRY_ALIASES,
         });
         expect(result.meta.aliases.educacion).toBe('education');
@@ -81,7 +81,7 @@ describe('VerticalsController tenant isolation', () => {
         const result = await controller.getDefinitions();
 
         // Los 80 ids del payload incluyen destinos y compatibilidad legacy.
-        expect(result.meta.subtypeCount).toBe(80);
+        expect(result.meta.subtypeCount).toBe(84);
         for (const blocked of listBlockedSubtypeProfiles()) {
             const id = `${blocked.industry}/${blocked.subtype}`;
             expect(result.meta.availability[id]).toBe('legacy_only');
@@ -116,7 +116,7 @@ describe('VerticalsController tenant isolation', () => {
 
         const result = controller.getCertificationCatalog('co');
 
-        expect(result.data.entries).toHaveLength(81);
+        expect(result.data.entries).toHaveLength(85);
         expect(result.data.entries.every(entry => entry.market.operatingCountry === 'CO'))
             .toBe(true);
         expect(new Set(result.data.entries.map(entry => entry.version))).toEqual(new Set([1]));
@@ -152,6 +152,44 @@ describe('VerticalsController tenant isolation', () => {
         });
         expect(service.resolveCapabilityManifest).toHaveBeenCalledWith('turismo', 'hotel');
     });
+
+    it.each(['es', 'en', 'pt', 'fr'])(
+        'presents the registry recipe setup in %s without publishing example prices',
+        async (locale) => {
+            const service = {
+                getVerticalConfig: jest.fn().mockResolvedValue({
+                    industry: 'restaurantes',
+                    subType: 'comida_rapida',
+                }),
+            };
+            const controller = new VerticalsController(service as any, {} as any, {} as any);
+
+            const response = await controller.getRecipe('tenant-id', locale);
+            const data = response.data as any;
+
+            expect(data).toMatchObject({
+                industry: 'restaurantes',
+                subType: 'comida_rapida',
+                locale,
+                source: 'registry',
+            });
+            expect(data.setup.services.length).toBeGreaterThan(0);
+            expect(data.setup.services.every((service: any) => (
+                typeof service.name === 'string'
+                && service.name.trim().length > 0
+                && ['example', 'quote'].includes(service.priceState)
+            ))).toBe(true);
+            expect(Object.keys(data.setup.businessHours).length).toBeGreaterThan(0);
+
+            // Seed prices help build a catalogue, but the owner has not
+            // confirmed them yet. The day-zero presentation may label their
+            // state; it must not expose an amount as a real customer price.
+            for (const service of data.setup.services) {
+                expect(service).not.toHaveProperty('price');
+                expect(service).not.toHaveProperty('priceAmount');
+            }
+        },
+    );
 
     it('serves subtype pipeline presets only after the current manifest is published', async () => {
         const service = {

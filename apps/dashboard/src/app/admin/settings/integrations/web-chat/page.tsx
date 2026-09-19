@@ -11,8 +11,7 @@ import {
 import { HelpPanel } from "@/components/ui/help-panel";
 import Link from "next/link";
 import { guidedTourAnchorId } from "@/lib/guided-tours";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
+import { buildWidgetSnippet } from "@/lib/widget-snippet";
 
 interface WidgetConfig {
     id: string;
@@ -81,8 +80,9 @@ export default function WebChatWidgetPage() {
     };
 
     const copySnippet = async (widget: WidgetConfig) => {
-        const snippet = `<script>\n  window.__paralllyWidget = { widgetId: '${widget.widget_id}' };\n</script>\n<script async src="${API_URL}/widget/loader.js"></script>`;
-        await navigator.clipboard.writeText(snippet);
+        // The same two lines the setup wizard hands out: one builder, so the
+        // snippet a site pasted last year still matches the one copied today.
+        await navigator.clipboard.writeText(buildWidgetSnippet(widget.widget_id));
         setSnippetCopied(widget.id);
         setTimeout(() => setSnippetCopied(null), 2000);
     };

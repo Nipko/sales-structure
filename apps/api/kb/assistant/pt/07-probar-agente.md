@@ -1,12 +1,12 @@
 ---
 id: probar-agente
-title: "Testar seu agente antes de publicar"
+title: "Testar seu agente"
 routes: ["/admin/agent", "/admin/agent/simulation", "/admin/procedures"]
 roles: ["tenant_admin"]
 keywords: ["testar agente", "simulacao", "simular conversa", "chat de teste", "cenarios", "sinteticos", "historicos", "linha de base", "regressao", "pontuacao", "qualidade do agente", "avaliar agente", "procedimentos", "sop", "procedimento operacional", "compilar passos", "palavras de ativacao", "fluxo passo a passo", "testar bot", "antes de publicar"]
 ---
 
-# Testar seu agente antes de publicar
+# Testar seu agente
 
 Antes de deixar seu agente de IA conversar com clientes de verdade, vale a pena conferir como ele responde. A Parallly te dá três ferramentas para isso:
 
@@ -26,7 +26,7 @@ Antes de deixar seu agente de IA conversar com clientes de verdade, vale a pena 
 4. Escreva como se fosse um cliente ("Quais são os preços?", "Vocês têm horário no sábado?") e clique em **Enviar**.
 5. Com **Reiniciar** você apaga a conversa e começa do zero.
 
-O chat de teste é um espaço seguro: não cria contatos, não aparece na sua caixa de entrada e não mexe em nenhuma conversa real. Use-o sempre que mudar a personalidade, as regras ou as informações do negócio, para confirmar que o agente responde do jeito que você espera.
+O chat de teste é um espaço seguro: não cria contatos, não aparece na sua caixa de entrada e não mexe em nenhuma conversa real. O que ele usa, sim, são as mensagens de IA do seu plano: cada resposta do agente, aqui e nas simulações, conta para elas. Use-o sempre que mudar a personalidade, as regras ou as informações do negócio, para confirmar que o agente responde do jeito que você espera.
 
 ## Como executar uma simulação
 
@@ -55,7 +55,7 @@ Ao abrir uma simulação concluída você verá:
 - **Regressões** — se você escolheu uma linha de base, verá **Regressão detectada** quando alguma resposta piorou em relação à execução anterior, ou **Sem regressões** se tudo se manteve ou melhorou.
 - **Tabela de cenários** — clique em qualquer cenário para ver a **transcrição** completa (cliente vs. agente) e os **problemas** que o avaliador encontrou naquela conversa.
 
-**Recomendação:** rode uma simulação sempre que mudar a personalidade, as regras, a base de conhecimento ou os procedimentos do seu agente, e compare com a linha de base anterior. Assim você publica mudanças com evidência, não no achismo.
+**Recomendação:** rode uma simulação sempre que mudar a personalidade, as regras, a base de conhecimento ou os procedimentos do seu agente, e compare com a linha de base anterior. Assim você faz mudanças com evidência, não no achismo.
 
 ## Como criar um procedimento (SOP)
 
@@ -91,7 +91,7 @@ Os procedimentos ensinam seu agente a executar processos do seu negócio **passo
 Não. Tudo acontece em um ambiente isolado: não são criados agendamentos, pedidos, descontos nem conversas reais, e nenhuma mensagem sai pelos seus canais conectados.
 
 **Qual é a diferença entre o chat de teste e a simulação?**
-No chat de teste é você conversando com o agente: ideal para revisões rápidas e pontuais. A simulação roda dezenas de conversas variadas com avaliação automática: ideal antes de publicar mudanças importantes.
+No chat de teste é você conversando com o agente: ideal para revisões rápidas e pontuais. A simulação roda dezenas de conversas variadas com avaliação automática: ideal antes de fazer mudanças importantes.
 
 **O que é a "linha de base" e para que serve?**
 É uma simulação anterior que você usa como ponto de comparação. Ao reutilizar os mesmos cenários, a Parallly consegue dizer se uma mudança que você fez **piorou** alguma resposta que antes saía bem (uma "regressão").
@@ -100,7 +100,7 @@ No chat de teste é você conversando com o agente: ideal para revisões rápida
 Abra os cenários marcados, leia a transcrição e os problemas encontrados, ajuste a configuração do agente (personalidade, regras, conhecimento ou procedimentos) e rode a simulação de novo comparando com a mesma linha de base.
 
 **Uma boa pontuação garante que o agente é perfeito?**
-Não, mas reduz muito o risco. Como referência: 8 ou mais é um bom resultado; entre 5 e 8, vale revisar os cenários com pontuação mais baixa; abaixo de 5, revise a configuração antes de publicar.
+Não, mas reduz muito o risco. Como referência: 8 ou mais é um bom resultado; entre 5 e 8, vale revisar os cenários com pontuação mais baixa; abaixo de 5, revise a configuração antes de deixá-lo atender sozinho.
 
 **Quem pode usar essas ferramentas?**
 Somente o papel de **administrador**. Se você não vê essas opções no menu e precisa delas, peça acesso ao administrador da sua conta. Dúvidas? Escreva para a gente em https://parallly-chat.cloud/support

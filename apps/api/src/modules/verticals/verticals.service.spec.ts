@@ -70,8 +70,8 @@ describe('selectQuotaAwareVerticalDefaults', () => {
             });
         }
 
-        expect(configurations).toHaveLength(76);
-        expect(configurations.filter(({ subType }) => subType !== null)).toHaveLength(75);
+        expect(configurations).toHaveLength(80);
+        expect(configurations.filter(({ subType }) => subType !== null)).toHaveLength(79);
         expect(configurations).toContainEqual(expect.objectContaining({ industry: 'otro', subType: null }));
 
         for (const configuration of configurations) {

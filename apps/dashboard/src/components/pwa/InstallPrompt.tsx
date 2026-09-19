@@ -1,5 +1,7 @@
 "use client";
 
+import { isOnboardingBeforeLive } from "@parallext/shared";
+import { useAuth } from "@/contexts/AuthContext";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useTranslations } from "next-intl";
 import { Download, X } from "lucide-react";
@@ -83,12 +85,19 @@ export function InstallPrompt() {
         }
     }, []);
 
+    const { user } = useAuth();
     const handleDismiss = useCallback(() => {
         snooze(DISMISS_SNOOZE_MS);
         setDismissed(true);
     }, []);
 
+    // Nothing interrupts the guided setup: the install box sat over the wizard,
+    // the setup card and the save button for a whole 41-minute recording.
     if (isStandalone || !canInstall || dismissed) return null;
+    if (isOnboardingBeforeLive(user?.onboardingStage, {
+        firstReplyAt: user?.firstReplyAt,
+        createdAt: user?.tenantCreatedAt,
+    })) return null;
 
     return (
         <div
@@ -109,7 +118,7 @@ export function InstallPrompt() {
                 maxWidth: 400,
             }}
         >
-            <Download size={20} style={{ color: "#6c5ce7", flexShrink: 0 }} />
+            <Download size={20} aria-hidden="true" style={{ color: "#6c5ce7", flexShrink: 0 }} />
             <div style={{ flex: 1 }}>
                 <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "#e8e8f0" }}>
                     {t("installTitle")}
@@ -119,6 +128,7 @@ export function InstallPrompt() {
                 </p>
             </div>
             <button
+                type="button"
                 onClick={handleInstall}
                 style={{
                     padding: "8px 16px",
@@ -136,10 +146,12 @@ export function InstallPrompt() {
                 {t("install")}
             </button>
             <button
+                type="button"
                 onClick={handleDismiss}
+                aria-label={t("dismiss")}
                 style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}
             >
-                <X size={16} style={{ color: "#9898b0" }} />
+                <X size={16} aria-hidden="true" style={{ color: "#9898b0" }} />
             </button>
         </div>
     );

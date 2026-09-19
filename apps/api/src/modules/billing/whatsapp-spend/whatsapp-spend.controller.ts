@@ -1,7 +1,9 @@
 import { TenantGuard } from '../../../common/guards/tenant.guard';
 import {
-    BadRequestException, Body, Controller, Get, Param, Post, Query, Request, UseGuards,
+    BadRequestException, Body, Controller, Get, Optional, Param, Post, Query, Request, UseGuards,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../../quality/agent-quality-events';
 import { AuthGuard } from '@nestjs/passport';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RolesGuard } from '../../../common/guards/roles.guard';
@@ -19,7 +21,7 @@ import { FREE_SERVICE_MESSAGES_PER_NUMBER_MONTH } from './free-allowance';
 import { AccountPauseStore, PauseStateUnavailable } from '../../channels/account-pause-store';
 import { describePause, isPaused } from '../../channels/account-send-pause';
 import {
-    deliveryReadiness, neverAsked, readFundingFromRefusal, FUNDING_READINESS_STATES,
+    deliveryReadiness, neverAsked, readFundingFromPause, readStoredFunding, FUNDING_READINESS_STATES,
     type FundingReadiness,
 } from '../../channels/whatsapp-funding-readiness';
 import { WhatsappSendAdmissionService } from './whatsapp-send-admission.service';
@@ -56,6 +58,8 @@ export class WhatsappSpendController {
         private readonly spend: WhatsappSpendService,
         private readonly pauses: AccountPauseStore,
         private readonly admission: WhatsappSendAdmissionService,
+        // Optional: the route suites build this controller positionally.
+        @Optional() private readonly events?: EventEmitter2,
     ) {}
 
     /** The effective guardrail mode and the defaults this build will seed. */
@@ -135,6 +139,12 @@ export class WhatsappSpendController {
             return { before, after: mode };
         });
         await this.admission.cacheEnforcement(tenantId, mode);
+        // Under `enforce` an unestablished billing currency stops every send,
+        // which Salud de agentes reports (`whatsapp_delivery`). Best effort: the
+        // mode is already committed, and a lost event waits for the cron.
+        try {
+            this.events?.emit(AGENT_QUALITY_DEPENDENCIES_UPDATED, { tenantId, source: 'tenant_settings' });
+        } catch { /* the six-hourly reconcile picks it up */ }
         return { success: true, data: transition };
     }
 
@@ -312,26 +322,16 @@ export class WhatsappSpendController {
             select: { accountId: true, displayName: true, metadata: true },
         });
         const numbers = await Promise.all(accounts.map(async account => {
-            let reading: FundingReadiness = neverAsked();
             const metadata = (account as any).metadata ?? {};
-            const saved = metadata.fundingReadiness;
-            const checked = new Date(saved?.checkedAt ?? '').getTime();
-            if (saved?.wabaId && saved.wabaId === metadata.wabaId && Number.isFinite(checked)
-                && checked <= Date.now() && Date.now() - checked < 86400000
-                && ['attached','absent','unknown','restricted'].includes(saved.state)) {
-                reading = { state: saved.state, source: 'graph_account_read', checkedAt: new Date(checked),
-                    actionable: ['absent','restricted'].includes(saved.state), detail: 'Stored Meta funding reading' };
-            }
+            // The same reader the quality check uses (`whatsapp_delivery`), so
+            // this screen and the agent-health alert agree on what is stored.
+            let reading: FundingReadiness = readStoredFunding(metadata) ?? neverAsked();
             try {
                 const pause = await this.pauses.current(tenantId, account.accountId);
                 // A pause Meta caused for payment eligibility IS evidence about
                 // funding, and it is the strongest we have: a refusal on a real
                 // send outranks any reading of a configuration field.
-                const observed = isPaused(pause)
-                    ? readFundingFromRefusal(
-                        { errorCode: pause!.code, detail: pause!.detail },
-                        new Date(pause!.lastSeen))
-                    : null;
+                const observed = isPaused(pause) ? readFundingFromPause(pause) : null;
                 if (observed) reading = observed;
             } catch (error) {
                 // Unreadable is not healthy, and it is not "no card" either.

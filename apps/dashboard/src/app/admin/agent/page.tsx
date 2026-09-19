@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
+import { isOnboardingBeforeLive } from "@parallext/shared";
 import { useTenant } from "@/contexts/TenantContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/lib/api";
@@ -73,8 +74,19 @@ export default function AgentListPage() {
   const tc = useTranslations("common");
   const tHelp = useTranslations("help");
   const { activeTenantId } = useTenant();
-  const { verticalConfig } = useAuth();
+  const { verticalConfig, user } = useAuth();
   const router = useRouter();
+  /**
+   * Day 0: the agent has not answered a real customer yet. This list then
+   * carries at most the setup nudge — the help strip and the "how changes
+   * apply" card are for an account that already runs (owner decision D7).
+   * Asked with the activation facts: with the stage alone, the wizard's
+   * `completed` read as live and all of it came back on "Ir al panel".
+   */
+  const dayZero = isOnboardingBeforeLive(user?.onboardingStage, {
+    firstReplyAt: user?.firstReplyAt,
+    createdAt: user?.tenantCreatedAt,
+  });
 
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -426,13 +438,20 @@ export default function AgentListPage() {
         }
       />
 
-      <HelpPanel
-        title={tHelp("agent.title")}
-        description={tHelp("agent.description")}
-        tips={tHelp.raw("agent.tips") as string[]}
-        mediaKey="agent"
-        tourId="assign_agent_channel"
-      />
+      {!dayZero && (
+        <HelpPanel
+          title={tHelp("agent.title")}
+          description={tHelp("agent.description")}
+          tips={tHelp.raw("agent.tips") as string[]}
+          mediaKey="agent"
+          tourId="assign_agent_channel"
+        />
+      )}
+
+      {/* Not even mounted during day 0: the card reads its mode on mount, and
+          a choice between "al momento" and "con revisión previa" means nothing
+          to an agent that has not answered anybody yet. */}
+      {!dayZero && <AgentReviewModeCard tenantId={activeTenantId} t={t} />}
 
       <SetupBanner show={needsSetup} onAction={() => {
         const first = agents[0];
@@ -698,9 +717,11 @@ function AgentCard({
           <button
             type="button"
             onClick={onMenuToggle}
+            aria-label={t("moreActions", { name: agent.name || t("unnamedAgent") })}
+            aria-expanded={menuOpen}
             className="px-2 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 text-neutral-500 dark:text-neutral-400 cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
           >
-            <MoreVertical size={16} />
+            <MoreVertical size={16} aria-hidden="true" />
           </button>
           {menuOpen && (
             <>
@@ -949,5 +970,55 @@ function TemplateCard({ template, onSelect, onDelete, t }: TemplateCardProps) {
         {t("useTemplate")}
       </button>
     </div>
+  );
+}
+
+/**
+ * Owner decision D1/D15 (sep-2026): a save applies at once by default. An
+ * account that wants every change approved first opts into the reviewed mode
+ * here; the editor then shows drafts, candidates and publication again.
+ */
+function AgentReviewModeCard({ tenantId, t }: { tenantId: string | null; t: ReturnType<typeof useTranslations> }) {
+  const [mode, setMode] = useState<"immediate" | "reviewed" | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!tenantId) return;
+    let cancelled = false;
+    api.getAgentReviewMode(tenantId).then(res => {
+      if (!cancelled && res.success && res.data) setMode(res.data.mode === "reviewed" ? "reviewed" : "immediate");
+    }).catch(() => { /* the card simply stays hidden */ });
+    return () => { cancelled = true; };
+  }, [tenantId]);
+  if (!tenantId || !mode) return null;
+  const change = async (next: "immediate" | "reviewed") => {
+    if (next === mode || busy) return;
+    setBusy(true);
+    try {
+      const res = await api.setAgentReviewMode(tenantId, next);
+      if (res.success) setMode(next);
+    } finally { setBusy(false); }
+  };
+  return (
+    <details className="mb-4 rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm dark:border-neutral-800 dark:bg-neutral-900">
+      <summary className="cursor-pointer list-none font-medium text-neutral-800 dark:text-neutral-200">
+        {t("reviewMode.title")}
+        <span className="ml-2 text-xs font-normal text-neutral-500">{t(mode === "reviewed" ? "reviewMode.reviewedLabel" : "reviewMode.immediateLabel")}</span>
+      </summary>
+      <p className="mt-2 text-xs text-neutral-500 dark:text-neutral-400">{t("reviewMode.description")}</p>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        {(["immediate", "reviewed"] as const).map(option => (
+          <label key={option} className={cn(
+            "flex cursor-pointer items-start gap-2 rounded-lg border p-3",
+            mode === option ? "border-indigo-400 bg-indigo-50/60 dark:border-indigo-500/60 dark:bg-indigo-500/10" : "border-neutral-200 dark:border-neutral-700"
+          )}>
+            <input type="radio" name="agent-review-mode" className="mt-0.5" checked={mode === option} disabled={busy} onChange={() => void change(option)} />
+            <span>
+              <span className="block font-medium text-neutral-800 dark:text-neutral-200">{t(`reviewMode.${option}Label`)}</span>
+              <span className="block text-xs text-neutral-500 dark:text-neutral-400">{t(`reviewMode.${option}Desc`)}</span>
+            </span>
+          </label>
+        ))}
+      </div>
+    </details>
   );
 }

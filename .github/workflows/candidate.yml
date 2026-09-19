@@ -286,7 +286,7 @@ jobs:
           DB_USER: postgres
           DB_PASSWORD: candidate_ci_only
           DB_NAME: parallly_eval_isolation
-          AUTH_TYPE: md5
+          AUTH_TYPE: scram-sha-256
           POOL_MODE: transaction
           ADMIN_USERS: postgres
           MAX_CLIENT_CONN: "200"
@@ -300,7 +300,7 @@ jobs:
       valkey:
         image: valkey/valkey:8.1-alpine
         ports:
-          - 6379:6379
+          - 55440:6379
         options: >-
           --health-cmd "valkey-cli ping"
           --health-interval 5s
@@ -310,7 +310,7 @@ jobs:
     env:
       PGPASSWORD: candidate_ci_only
       BASE_PG: postgresql://postgres:candidate_ci_only@127.0.0.1:5432
-      BASE_VALKEY: redis://127.0.0.1:6379
+      BASE_VALKEY: redis://127.0.0.1:55440
 
     steps:
       - uses: actions/checkout@v4
@@ -358,7 +358,9 @@ jobs:
           # The bases every suite's variable names. The per-worker copies are made
           # by jest.global-setup.ts; these are the ones it copies FROM and the one
           # PgBouncer is pointed at.
-          for db in parallly_eval_isolation parallly_knowledge_eval_isolation parallly_migration_eval_isolation; do
+          for db in parallly_eval_isolation parallly_knowledge_eval_isolation parallly_migration_eval_isolation \
+                    parallly_plan_economics_eval_isolation parallly_legacy_schema_eval_isolation \
+                    parallly_upgrade_eval_isolation; do
             psql "${BASE_PG}/postgres" -v ON_ERROR_STOP=1 -c "CREATE DATABASE \"${db}\" TEMPLATE template0"
             psql "${BASE_PG}/${db}" -v ON_ERROR_STOP=1 \
               -c 'CREATE EXTENSION IF NOT EXISTS "uuid-ossp"' \
@@ -372,6 +374,10 @@ jobs:
             echo "::error::PgBouncer is not in transaction mode (got '${POOL_MODE:-nothing}')"
             exit 1
           fi
+          # SHOW CONFIG only authenticates to PgBouncer's admin database. Prove
+          # the configured password can also open a PostgreSQL server session.
+          psql "postgresql://postgres:candidate_ci_only@127.0.0.1:6432/parallly_eval_isolation" \
+            -v ON_ERROR_STOP=1 -Atc 'SELECT 1' | grep -qx 1
 
           # A service container carries no command line, so the policy is set and
           # then read back. Reading it back is the part that matters: it proves
@@ -396,6 +402,34 @@ jobs:
           DIRECT_DATABASE_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_eval_isolation
         run: npx prisma generate --schema=apps/api/prisma/schema.prisma
 
+      # Two suites require the real global schema rather than the deliberately
+      # small additive fixture used by the shared worker databases. Provision
+      # their own disposable databases so they run without weakening that
+      # isolation or depending on another spec's execution order.
+      - name: Provision full-schema evaluation databases
+        run: |
+          set -eu
+          for db in parallly_plan_economics_eval_isolation parallly_legacy_schema_eval_isolation; do
+            DATABASE_URL="${BASE_PG}/${db}" DIRECT_DATABASE_URL="${BASE_PG}/${db}" \
+              npx prisma migrate deploy --schema=apps/api/prisma/schema.prisma
+          done
+          DATABASE_URL="${BASE_PG}/parallly_plan_economics_eval_isolation" \
+            DIRECT_DATABASE_URL="${BASE_PG}/parallly_plan_economics_eval_isolation" \
+            node apps/api/prisma/seed-billing-plans.js
+
+      - name: Global and tenant migration rehearsals
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_legacy_schema_eval_isolation
+          DIRECT_DATABASE_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_legacy_schema_eval_isolation
+          PARALLLY_UPGRADE_TEST_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_upgrade_eval_isolation
+          # Actions checks the candidate out detached; the fetched base exists
+          # as the remote-tracking ref, not as a local `main` branch.
+          UPGRADE_BASE_REF: origin/main
+        run: |
+          node apps/api/scripts/test-tenant-migration.js
+          node apps/api/scripts/rehearse-global-upgrade.cjs
+
       # The same gate the production build depends on, run here so a candidate
       # cannot be built out of a tree that would not have been allowed to merge.
       # Five projects: the shared package plus the four applications whose source
@@ -414,6 +448,13 @@ jobs:
           (cd apps/whatsapp && npx eslint "src/**/*.ts" --quiet)
       # ── Generated artefacts must still reflect the code ───────────────────
       #
+      # The canary planner is loaded from API TypeScript, and that source imports
+      # the workspace package through its runtime entry point. A clean checkout
+      # has no packages/shared/dist yet, so build that dependency before any
+      # source-backed artefact checker executes.
+      - name: Build shared runtime dependency
+        run: npm run build --workspace=@parallext/shared
+
       # Every one of these is checked in AND produced by a script, and the only
       # thing keeping the two equal is somebody remembering to run the
       # generator. That already failed once: the closure artefacts each
@@ -457,34 +498,43 @@ jobs:
           LEARNING_EVIDENCE_TEST_DATABASE_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_knowledge_eval_isolation
           PARALLLY_PGBOUNCER_TEST_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:6432/parallly_eval_isolation?pgbouncer=true
           PARALLLY_PGBOUNCER_DIRECT_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_eval_isolation
-          DISPATCH_QUEUE_TEST_REDIS_URL: redis://127.0.0.1:6379
-          PARALLLY_SAMPLING_REDIS_URL: redis://127.0.0.1:6379
+          PLAN_ECONOMICS_TEST_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_plan_economics_eval_isolation
+          LEGACY_SCHEMA_TEST_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_legacy_schema_eval_isolation
+          DISPATCH_QUEUE_TEST_REDIS_URL: redis://127.0.0.1:55440
+          PARALLLY_SAMPLING_REDIS_URL: redis://127.0.0.1:55440
           RUN_PIPELINE_OWNERSHIP_PG_TESTS: '1'
           JWT_SECRET: candidate-ci-only
           JWT_REFRESH_SECRET: candidate-ci-only-refresh
           INTERNAL_JWT_SECRET: candidate-ci-only-internal
+          MEDIA_STORAGE_PATH: ${{ runner.temp }}/candidate-media
           NODE_OPTIONS: --max-old-space-size=6144
         run: |
           set -o pipefail
-          # `|| true` on purpose: the exit code is not the check. The report is,
-          # and a run that failed AND skipped should say both.
-          npx jest --config apps/api/jest.config.js --ci --maxWorkers=2 \
-            --json --outputFile "${GITHUB_WORKSPACE}/api-jest.json" || true
-          node infra/scripts/assert-no-skipped-tests.cjs \
-            --report "${GITHUB_WORKSPACE}/api-jest.json" --label "API suite"
+          # A single in-band process reached the 6 GB heap limit inside shard 1.
+          # Keep one database-owning worker and recycle it after each test file
+          # whenever its used heap exceeds 5 GB. The reports cover all tests.
+          for shard in 1 2 3 4; do
+            report="${GITHUB_WORKSPACE}/api-shard-${shard}.json"
+            npx jest --config apps/api/jest.config.js --ci --maxWorkers=1 \
+              --workerIdleMemoryLimit=5GB \
+              --shard="${shard}/4" --json --outputFile "${report}" || true
+            node infra/scripts/assert-no-skipped-tests.cjs \
+              --report "${report}" --label "API suite shard ${shard}/4"
+          done
 
       - name: NestJS dependency injection really resolves
         env:
           JWT_SECRET: candidate-ci-only
           JWT_REFRESH_SECRET: candidate-ci-only-refresh
           INTERNAL_JWT_SECRET: candidate-ci-only-internal
+          NODE_OPTIONS: --max-old-space-size=6144
         # `tsc` cannot see a missing provider; this is the only thing that can.
         # Judged by its own report for the same reason as the other two: it is a
         # Jest run, so "no bootstrap spec matched the pattern" would otherwise
         # exit 0 and read as "the dependency graph resolves".
         run: |
           set -o pipefail
-          npm run test:bootstrap --workspace=@parallext/api -- --ci \
+          npm run test:bootstrap --workspace=@parallext/api -- --ci --runInBand \
             --json --outputFile "${GITHUB_WORKSPACE}/bootstrap-jest.json" || true
           node infra/scripts/assert-no-skipped-tests.cjs \
             --report "${GITHUB_WORKSPACE}/bootstrap-jest.json" --label "DI bootstrap"
@@ -515,6 +565,21 @@ jobs:
           npm run build --workspace=@parallext/whatsapp
           npm run build --workspace=@parallext/dashboard
           npm run build --workspace=landing
+
+      - name: Compiled API boots against the candidate stack
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_legacy_schema_eval_isolation
+          DIRECT_DATABASE_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_legacy_schema_eval_isolation
+          REDIS_HOST: 127.0.0.1
+          REDIS_PORT: '55440'
+          JWT_SECRET: candidate-ci-only
+          JWT_REFRESH_SECRET: candidate-ci-only-refresh
+          INTERNAL_JWT_SECRET: candidate-ci-only-internal
+          INTERNAL_API_KEY: candidate-ci-only-internal-key
+          ENCRYPTION_KEY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          OPENAI_API_KEY: sk-candidate-ci-only
+        run: node apps/api/dist/boot-check.js
 
       # ── The browser journeys ──────────────────────────────────────────────
       #

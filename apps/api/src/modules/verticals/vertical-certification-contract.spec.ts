@@ -6,9 +6,9 @@ import {
 
 describe('CTR-01 shared certification snapshot', () => {
     it('covers the 76 canonical profiles and 81 resolvable identities', () => {
-        expect(listVerticalCertificationSnapshots()).toHaveLength(76);
-        expect(listVerticalCertificationSnapshots({ includeLegacy: true })).toHaveLength(81);
-        expect(new Set(listVerticalCertificationSnapshots().map(entry => entry.profileId)).size).toBe(76);
+        expect(listVerticalCertificationSnapshots()).toHaveLength(80);
+        expect(listVerticalCertificationSnapshots({ includeLegacy: true })).toHaveLength(85);
+        expect(new Set(listVerticalCertificationSnapshots().map(entry => entry.profileId)).size).toBe(80);
     });
 
     it('keeps availability, country and provider as separate auditable axes', () => {

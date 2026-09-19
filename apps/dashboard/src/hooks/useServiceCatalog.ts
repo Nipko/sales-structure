@@ -18,8 +18,23 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
-import type { Service } from "@/components/appointments/shared";
+import type { PriceStatus, Service } from "@/components/appointments/shared";
 import { readPaymentPolicy } from "@/components/payments/payment-policy-fields";
+import {
+    initialServicePriceForm,
+    readServiceAmount,
+    readServicePriceStatus,
+    servicePriceAmount,
+    servicePriceChoicePayload,
+    servicePriceFormPayload,
+    servicePriceFormProblem,
+    type ServicePriceChoice,
+    type ServicePriceFormStatus,
+} from "@/components/appointments/service-price";
+
+/** What the owner can press: confirmed or quote. "example" is what a recipe wrote, never a choice. */
+export type EditablePriceStatus = Exclude<PriceStatus, "example">;
+export type { ServicePriceChoice };
 
 export interface ServiceFormState {
     name: string;
@@ -27,7 +42,13 @@ export interface ServiceFormState {
     durationMax: number | null;
     durationType: "fixed" | "flexible" | "open";
     buffer: number;
-    price: number;
+    /** `null` = empty field, no amount. Never sent as 0 (FX1). */
+    price: number | null;
+    /**
+     * The owner's decision in this form: `confirmed`, `free` ("Es gratis") or
+     * `quote`. `example` = none yet, and saving keeps the row's mark.
+     */
+    priceStatus: ServicePriceFormStatus;
     color: string;
     category: string;
     maxConcurrent: number;
@@ -47,7 +68,8 @@ const EMPTY_FORM: ServiceFormState = {
     durationMax: null,
     durationType: "fixed",
     buffer: 0,
-    price: 0,
+    price: null,
+    priceStatus: "confirmed",
     color: "#6c5ce7",
     category: "",
     maxConcurrent: 1,
@@ -68,6 +90,24 @@ export interface ServiceCatalogMessages {
     created: string;
     updated: string;
     deleted: string;
+    /** "Confirmar precio" sobre un servicio que no tiene monto (`price_missing`). */
+    priceMissing: string;
+}
+
+/**
+ * El texto de un rechazo al cambiar el estado del precio de un servicio.
+ *
+ * `price_missing` llega con un `message` en español armado por el servidor: en
+ * un panel en inglés, portugués o francés salía tal cual. Se traduce por su
+ * código, igual que los planes de membresía (`planPriceErrorKey`). Cualquier
+ * otro rechazo conserva el texto del servidor, o el genérico si no trae.
+ */
+export function servicePriceStatusErrorMessage(
+    response: { error?: string; errorCode?: string } | null | undefined,
+    messages: Pick<ServiceCatalogMessages, "priceMissing" | "updateError">,
+): string {
+    if (response?.errorCode === "price_missing") return messages.priceMissing;
+    return response?.error || messages.updateError;
 }
 
 export function useServiceCatalog(
@@ -106,7 +146,11 @@ export function useServiceCatalog(
                     durationMax: s.durationMinutesMax || s.durationMax || null,
                     durationType: s.durationType || s.duration_type || "fixed",
                     buffer: s.bufferMinutes || s.buffer || 0,
-                    price: parseFloat(s.price || 0),
+                    // NULL stays NULL (FX1): read as 0, a service seeded without
+                    // an amount looked like a price to confirm, and confirming
+                    // it told customers it was free.
+                    price: readServiceAmount(s.price),
+                    priceStatus: readServicePriceStatus(s.priceStatus ?? s.price_status),
                     color: s.color || "#6c5ce7",
                     active: s.isActive ?? s.active ?? true,
                     category: s.category || null,
@@ -136,7 +180,12 @@ export function useServiceCatalog(
             durationMax: svc.durationMax || null,
             durationType: svc.durationType || "fixed",
             buffer: svc.buffer,
-            price: svc.price,
+            // "Usar así" nunca confirma un precio: un ejemplo sigue siendo un
+            // ejemplo hasta que el dueño pulsa una opción o escribe otro
+            // número. Un marcador (sin monto, o el 0 de un ejemplo o de "se
+            // cotiza") abre como campo vacío, y un 0 confirmado abre como
+            // "Es gratis". Guardar sin tocarlo no decide nada.
+            ...initialServicePriceForm(svc),
             color: svc.color,
             category: svc.category || "",
             maxConcurrent: svc.maxConcurrent || 1,
@@ -153,17 +202,31 @@ export function useServiceCatalog(
 
     const handleSaveService = useCallback(async () => {
         if (!activeTenantId || !serviceForm.name) return;
+        // The editor disables Save too; this is the same rule for any other path.
+        if (servicePriceFormProblem(serviceForm)) return;
         setSavingService(true);
         try {
-            const payload = {
+            const payload: Record<string, unknown> = {
                 ...serviceForm,
                 durationMinutesMax: serviceForm.durationMax,
             };
+            // The price travels only as a decision (FX1): "Es gratis" as
+            // `free: true`, never an empty field sent as 0; an untouched
+            // example sends nothing and the server keeps the mark.
+            delete payload.price;
+            delete payload.priceStatus;
+            Object.assign(payload, servicePriceFormPayload(
+                serviceForm,
+                editingService ? servicePriceAmount(editingService) : null,
+            ));
             const response: any = editingService
                 ? await api.updateService(activeTenantId, editingService.id, payload)
                 : await api.createService(activeTenantId, payload);
             if (!response?.success) {
-                notifyRef.current(response?.error || messagesRef.current.saveError);
+                notifyRef.current(servicePriceStatusErrorMessage(response, {
+                    priceMissing: messagesRef.current.priceMissing,
+                    updateError: messagesRef.current.saveError,
+                }));
                 setSavingService(false);
                 return;
             }
@@ -197,6 +260,26 @@ export function useServiceCatalog(
         }
     }, [activeTenantId, loadServices]);
 
+    /**
+     * Sin abrir el editor: confirma el precio de ejemplo tal cual está (se
+     * manda solo `priceStatus` y el servidor conserva el número), lo declara
+     * gratis (`free: true`, explícito: FX1) o lo pasa a "se cotiza".
+     */
+    const handleSetServicePriceStatus = useCallback(async (svc: Service, choice: ServicePriceChoice) => {
+        if (!activeTenantId) return;
+        try {
+            const response: any = await api.updateService(activeTenantId, svc.id, servicePriceChoicePayload(choice));
+            if (!response?.success) {
+                notifyRef.current(servicePriceStatusErrorMessage(response, messagesRef.current));
+                return;
+            }
+            notifyRef.current(messagesRef.current.updated);
+            loadServices();
+        } catch {
+            notifyRef.current(messagesRef.current.updateError);
+        }
+    }, [activeTenantId, loadServices]);
+
     return {
         services,
         loadingServices,
@@ -212,5 +295,6 @@ export function useServiceCatalog(
         handleSaveService,
         handleDeleteService,
         handleToggleServiceActive,
+        handleSetServicePriceStatus,
     };
 }

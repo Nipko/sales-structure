@@ -228,7 +228,7 @@ export function describePaymentPolicy(policy: ResolvedPaymentPolicy): string | u
     // La retención es una promesa concreta que el sistema SÍ cumple, así que hay
     // que decirla: es lo que convierte "pagá y ojalá quede" en "te lo guardo".
     // Y es lo que justifica la urgencia sin inventar presión de venta.
-    const hold = ` Decile que le guardamos el cupo ${minutes} minutos mientras paga, y que pasado ese rato `
+    const hold = ` Dile que le guardamos el cupo ${minutes} minutos mientras paga, y que pasado ese rato `
         + `vuelve a quedar disponible para otros.`;
     const notYet = ' No lo des por confirmado hasta que el pago esté acreditado.';
 

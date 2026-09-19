@@ -55,10 +55,10 @@ describe('computing whether a profile has been shown to do its work', () => {
 
     it('answers no_evidence for every profile when nothing has been executed', () => {
         const report = certifyProfiles({ scope, evidence: [] });
-        expect(report.summary.profiles).toBe(76);
+        expect(report.summary.profiles).toBe(80);
         expect(report.summary.certified).toBe(0);
         expect(report.summary.notCertified).toBe(0);
-        expect(report.summary.withoutEvidence).toBe(76);
+        expect(report.summary.withoutEvidence).toBe(80);
         // Not "failed": nobody looked. Flattening the two is what a boolean does.
         expect(report.profiles.every(profile => profile.state === 'no_evidence')).toBe(true);
         expect(report.summary.requiredCases).toBeGreaterThan(0);
@@ -183,7 +183,7 @@ describe('computing whether a profile has been shown to do its work', () => {
         // and every model a profile is meant to serve multiplies it, which is
         // the point — a run on one proves nothing about the others.
         const report = certifyProfiles({ scope, evidence: [] });
-        expect(report.summary.profiles).toBe(76);
+        expect(report.summary.profiles).toBe(80);
 
         // Independent oracle: walk the authored packs directly instead of
         // asking requiredScenarios(), the helper used by certifyProfiles().
@@ -196,7 +196,7 @@ describe('computing whether a profile has been shown to do its work', () => {
                     languageTotal + new Set(composeSubtypeEvalPack({ industry, subtype, language })
                         .map(scenario => scenario.key)).size, 0);
             }, 0);
-        expect(expectedPerChannel).toBe(18_664);
+        expect(expectedPerChannel).toBe(19_768);
         expect(report.summary.requiredCases).toBe(expectedPerChannel);
         expect(certifyProfiles({
             scope: { channels: ['web_widget', 'whatsapp'], models: scope.models }, evidence: [],

@@ -1,7 +1,8 @@
 "use client";
 
+import { useId } from "react";
 import { useTranslations } from "next-intl";
-import { AlertTriangle, ArrowRight } from "lucide-react";
+import { ArrowRight, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface SetupBannerProps {
@@ -9,27 +10,36 @@ interface SetupBannerProps {
   onAction: () => void;
 }
 
+/**
+ * The one nudge the agents list keeps during day 0: "your agent still speaks
+ * like the template". It is unfinished setup, not something that broke — so it
+ * reads as a guide (indigo, the setup card's colour) and not as a warning
+ * (amber triangle), which is reserved for things that stopped working
+ * (owner decision D3).
+ */
 export function SetupBanner({ show, onAction }: SetupBannerProps) {
   const t = useTranslations("agent");
+  const titleId = useId();
 
   if (!show) return null;
 
   return (
-    <div
+    <section
+      aria-labelledby={titleId}
       className={cn(
-        "rounded-xl border border-amber-300 dark:border-amber-500/30",
-        "bg-amber-50 dark:bg-amber-500/10 p-4 mb-6"
+        "rounded-xl border border-indigo-200 dark:border-indigo-500/20",
+        "bg-indigo-50/60 dark:bg-indigo-500/[0.07] p-4 mb-6"
       )}
     >
       <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
-        <div className="w-9 h-9 rounded-lg bg-amber-100 dark:bg-amber-500/20 flex items-center justify-center shrink-0">
-          <AlertTriangle size={18} className="text-amber-600 dark:text-amber-400" />
+        <div className="w-9 h-9 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0">
+          <Sparkles size={18} aria-hidden="true" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+          <h2 id={titleId} className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
             {t("setupBannerTitle")}
-          </p>
-          <p className="text-xs text-amber-700 dark:text-amber-400/80 mt-0.5">
+          </h2>
+          <p className="text-xs text-neutral-600 dark:text-neutral-400 mt-0.5">
             {t("setupBannerDesc")}
           </p>
         </div>
@@ -38,14 +48,14 @@ export function SetupBanner({ show, onAction }: SetupBannerProps) {
           onClick={onAction}
           className={cn(
             "shrink-0 px-4 py-2 rounded-lg text-sm font-semibold",
-            "bg-amber-600 hover:bg-amber-700 text-white",
-            "dark:bg-amber-500 dark:hover:bg-amber-600 dark:text-neutral-900",
+            "bg-indigo-600 hover:bg-indigo-700 text-white",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2",
             "flex w-full cursor-pointer items-center justify-center gap-1.5 transition-colors sm:w-auto"
           )}
         >
-          {t("configureNow")} <ArrowRight size={14} />
+          {t("configureNow")} <ArrowRight size={14} aria-hidden="true" />
         </button>
       </div>
-    </div>
+    </section>
   );
 }

@@ -3,7 +3,7 @@ id: agentes-ia
 title: "Agentes de IA: criar e configurar"
 routes: ["/admin/agent", "/admin/agent/simulation"]
 roles: ["tenant_admin"]
-keywords: ["agente", "agentes de ia", "bot", "chatbot", "assistente virtual", "criar agente", "modelo", "personalidade", "instruções", "tom", "horário do agente", "atribuir canal", "conexão", "duplicar agente", "agente padrão", "limite de agentes", "canais sem agente", "testar agente", "regras", "temas proibidos", "campos obrigatorios", "quando passar para um humano", "mensagem de apoio", "ativo inativo", "avancado", "assist", "instruções principais", "vendas e suporte", "rascunho do agente"]
+keywords: ["agente", "agentes de ia", "bot", "chatbot", "assistente virtual", "criar agente", "modelo", "personalidade", "instruções", "tom", "horário do agente", "atribuir canal", "conexão", "duplicar agente", "agente padrão", "limite de agentes", "canais sem agente", "testar agente", "regras", "temas proibidos", "campos obrigatorios", "quando passar para um humano", "mensagem de apoio", "ativo inativo", "avancado", "assist", "instruções principais", "vendas e suporte", "rascunho do agente", "salvar", "mudancas imediatas", "modo revisado", "ja responde", "alteracoes anteriores", "alteracoes nao aplicadas", "descartar alteracoes", "canal que ninguem responde"]
 ---
 
 # Agentes de IA: criar e configurar
@@ -27,7 +27,7 @@ Seu agente de IA é o "vendedor virtual" que responde aos seus clientes no Whats
 4. Clique em **Usar este** no modelo escolhido.
 5. Escreva o **Nome do agente** se quiser um próprio (por exemplo, Sofia ou Max); se deixar vazio, é usado o nome do modelo.
 
-O agente é criado para revisão e o editor abre. Ao criá-lo por esta tela, ele ainda não é o padrão nem atende conexões: personalize, salve o rascunho, teste e publique primeiro.
+O agente é criado e o editor abre. Ao criá-lo por esta tela, ele ainda não é o padrão nem atende conexões: personalize, marque em **Atribuição de canais** as conexões que ele vai atender e salve; a partir desse momento ele responde por ali.
 
 ## O que o editor exige para salvar
 
@@ -39,7 +39,7 @@ Um agente só atende bem com o mínimo definido. Ao salvar, o editor confere e a
 - **Pelo menos uma regra** de comportamento.
 - **Pelo menos um motivo** em **Quando passar para um humano**.
 
-Se você esvaziar um desses campos para reescrevê-lo, salve só quando estiver completo: um agente sem mensagem de apoio ou sem motivos de transferência aparece como bloqueio crítico na **Saúde dos agentes**.
+Se você esvaziar um desses campos para reescrevê-lo, salve só quando estiver completo: um agente sem mensagem de apoio ou sem motivos de transferência aparece na **Saúde dos agentes** como uma coisa importante para resolver, em **Resposta quando não sabe** ou em **Motivos de transferência**.
 
 **Se o seu agente estiver no modo prompt personalizado**, esta lista muda. Quando a sua conta tem esse recurso habilitado e o agente o usa, um único texto escrito por você substitui a personalidade guiada: a **Saúde dos agentes** marca identidade, tom, saudação, mensagem de apoio e regras como **Não se aplica** e passa a exigir que esse prompt não esteja vazio. O que **continua obrigatório** é pelo menos um motivo em **Quando passar para um humano**: sem isso a conversa nunca chega a uma pessoa, escreva o que escrever no prompt. Se você vir “Não se aplica” onde este guia diz “obrigatório”, é por isso, não por um erro.
 
@@ -72,19 +72,23 @@ As duas vêm com valores razoáveis; mude só se souber o que está ajustando.
 
 ## Configurar com o Parallly Assist
 
-Você pode pedir ao Assist que revise o agente e prepare mudanças de identidade, idioma, instruções, regras, dados obrigatórios, comportamento fora do horário, vendas/suporte, recomendações, tamanho da resposta, conhecimento e permissões. O Assist mostra uma proposta para revisão; ao aceitar, salva um **rascunho**, sem publicar nem ativar o agente. No modo prompt personalizado, o Assist não oferece mudanças de personalidade, orientação principal, regras ou campos obrigatórios porque o prompt os substitui. Nunca envie credenciais ou conexões pelo chat.
+Você pode pedir ao Assist que revise o agente e prepare mudanças de identidade, idioma, instruções, regras, dados obrigatórios, comportamento fora do horário, vendas/suporte, recomendações, tamanho da resposta, conhecimento e permissões. O Assist mostra uma proposta para revisão; ao tocar em **Salvar e aplicar**, a mudança é aplicada ao agente (no modo revisado o botão é **Salvar rascunho** e ela fica como rascunho). O Assist nunca liga nem desliga o agente. No editor do agente, o campo **Diga o que mudar** abre o Assist com o seu pedido já escrito. No modo prompt personalizado, o Assist não oferece mudanças de personalidade, orientação principal, regras ou campos obrigatórios porque o prompt os substitui. Nunca envie credenciais ou conexões pelo chat.
 
-Quando terminar, clique em **Salvar rascunho**. Salvar preserva as edições para revisão, mas não altera a versão que atende clientes. Use **Testar agente** com o rascunho; depois abra **Revisar uma versão**, prepare e aprove o candidato e entre em **Publicar e ver histórico** para publicá-lo. Somente a publicação torna operacionais a configuração, as conexões e a condição de agente padrão do rascunho.
+Quando terminar, clique em **Salvar**. A mudança é aplicada na hora nas conexões atribuídas e o aviso verde diz **Salvo. Seu agente já responde assim.**; a versão anterior fica no histórico. Se faltar um campo obrigatório, o editor o marca em vermelho e não salva. Use **Testar agente** para ver como ele responde antes ou depois de salvar. Se você sair com mudanças não salvas, o editor avisa.
+
+**Modo revisado (opcional).** As equipes que preferem aprovar cada mudança antes que ela chegue aos clientes podem ativar o modo revisado para a conta. Nesse caso o botão diz **Salvar rascunho**, aparecem as seções **Revisar uma versão** e **Publicar e ver histórico**, e a mudança atende clientes somente depois de revisar e publicar essa versão. Por padrão, a conta está no modo imediato.
+
+**Alterações anteriores que ainda não foram aplicadas.** Se você salvou alterações com o fluxo antigo de rascunho e revisão e elas nunca foram aplicadas, o editor mostra no topo **Você tem alterações anteriores que ainda não foram aplicadas**. O formulário mostra o que seu agente usa hoje: escolha **Aplicar essas alterações** para que ele comece a usá-las (são salvas como qualquer alteração; se faltar um campo obrigatório, o editor marca) ou **Descartar essas alterações** para deixá-lo como está. Se você salvar sem aplicá-las, elas são descartadas e o que você vê é salvo. Se o seu agente mudou depois (por exemplo, você o ligou, conectou um canal ou aceitou uma proposta do Assist), o aviso diz que elas não podem mais ser aplicadas: descarte-as para poder salvar de novo.
 
 ## Ativo ou inativo
 
-No cabeçalho do editor há um interruptor **Ativo / Inativo**. Um agente **inativo** não responde em nenhuma das suas conexões, mesmo com o canal conectado e o horário dizendo que sim. Você pode desativá-lo imediatamente após confirmar. Reativar exige revisar e publicar uma versão; o interruptor aponta para essa revisão e não o liga sozinho. A **Saúde dos agentes** marca como bloqueio crítico qualquer agente inativo, com ou sem conexões atribuídas.
+No cabeçalho do editor há um interruptor **Ativo / Inativo**. Um agente **inativo** não responde em nenhuma das suas conexões, mesmo com o canal conectado e o horário dizendo que sim. Você pode desativá-lo imediatamente após confirmar, e reativá-lo com o mesmo interruptor: liga na hora. (No modo revisado, reativar passa por revisar e publicar uma versão.) A **Saúde dos agentes** conta qualquer agente inativo como uma coisa importante para resolver, em **Agente ativo**, com ou sem conexões atribuídas.
 
 ## Como definir o horário do agente
 
 1. Configure os dias, faixas e fuso de toda a conta em **Configurações → Horário comercial**.
 2. No editor do agente, abra **Horário** para revisar esse calendário e decidir se a IA continua respondendo fora dele.
-3. Se desativar a IA fora do horário, escreva a mensagem específica desse agente e salve o rascunho.
+3. Se desativar a IA fora do horário, escreva a mensagem específica desse agente e salve.
 
 O horário comercial pertence ao tenant e é compartilhado entre seus agentes; cada agente decide apenas o próprio comportamento fora dele.
 
@@ -95,13 +99,15 @@ A regra é simples: **um agente de IA por conexão**. Uma conexão é cada conta
 1. No editor do agente, vá em **Atribuição de canais**.
 2. Marque as conexões que este agente vai atender. Você verá cada conta com seu nome e número, não o canal genérico.
 3. Se a conexão já estava atribuída a outro agente, o editor avisa que ela **será reatribuída** do agente anterior.
-4. Clique em **Salvar rascunho**, teste essa revisão e publique. A reatribuição ocorre ao publicar, não ao salvar.
+4. Clique em **Salvar**. A reatribuição ocorre ao salvar. Se uma conexão marcada ainda não estiver conectada, sua linha mostra **Conectar**, que leva à tela desse canal.
+
+Quando você conecta seu **primeiro canal**, ele é atribuído apenas ao agente padrão (se for o único ativo); não é preciso voltar ao editor. Com vários agentes ativos, a atribuição é sua.
 
 A quantidade e os tipos de conexão disponíveis aparecem em **Canais** e **Plano e faturamento**.
 
 ## O que significa o aviso "canais sem agente atribuído"
 
-Se **Agente IA** mostrar **Canais sem agente atribuído**, você tem conexões ativas que nenhum agente atende de forma específica. Enquanto houver um agente padrão ativo, essas mensagens serão respondidas pela versão operacional dele.
+Se **Agente IA** mostrar **Canais sem agente atribuído**, você tem conexões ativas que nenhum agente atende de forma específica. Enquanto houver um agente padrão ativo, essas mensagens serão respondidas por esse agente padrão. Se não houver um agente padrão ativo, ou se dois agentes tiverem a mesma conexão atribuída, ninguém responde ali: as mensagens chegam, mas ficam sem resposta, e a **Saúde dos agentes** marca isso como crítico em **Cada canal conectado tem um agente que responde**.
 
 Clique em **Atribuir agente agora** para escolher qual agente atende cada conexão e oferecer uma experiência personalizada.
 
@@ -110,13 +116,13 @@ Clique em **Atribuir agente agora** para escolher qual agente atende cada conex�
 Na lista de **Agente IA**, cada agente tem um menu de ações:
 
 - **Duplicar** — cria uma cópia exata, ideal para experimentar sem mexer no agente que já está funcionando.
-- **Salvar como modelo** — copia a versão operacional para um modelo reutilizável quando o recurso está habilitado. Se houver rascunho, publique-o primeiro se quiser incluí-lo.
-- **Definir como padrão** — propõe essa condição no rascunho; ele só atende conexões sem atribuição depois que a revisão for publicada.
-- **Excluir** — retira o agente de uso, desativando-o e liberando suas conexões, mas preserva o registro. O agente padrão não pode ser retirado até que outro padrão seja publicado.
+- **Salvar como modelo** — copia a configuração atual para um modelo reutilizável quando o recurso está habilitado.
+- **Definir como padrão** — transforma-o no agente que responde as conexões sem atribuição, na hora.
+- **Excluir** — retira o agente de uso, desativando-o e liberando suas conexões, mas preserva o registro. O agente padrão não pode ser retirado até que outro seja definido como padrão.
 
 ## Teste seu agente antes de ativá-lo
 
-Em **Agente IA → Testar agente**, você pode conversar com a versão operacional ou com o rascunho salvo, sem afetar clientes reais. Teste o rascunho sempre que mudar personalidade, regras, ferramentas ou conexões; depois prepare, aprove e publique essa revisão.
+Em **Agente IA → Testar agente**, você pode conversar com o agente do jeito que ele responde hoje, sem afetar clientes reais nem criar reservas. Mas cada resposta conta para as mensagens de IA do seu plano; se elas acabarem no período, o teste também não responde. Teste sempre que mudar personalidade, regras, ferramentas ou conexões.
 
 ## Perguntas frequentes
 
@@ -124,13 +130,13 @@ Em **Agente IA → Testar agente**, você pode conversar com a versão operacion
 Sim, quando sua conta tiver capacidade. Crie um com o modelo **Consultor de Vendas** e outro com **Agente de Suporte**, e atribua cada um à conexão correspondente.
 
 **O que acontece se eu conectar um canal e não atribuir um agente?**
-Responde o seu agente padrão. Você verá o aviso de canais sem atribuição em **Agente IA** para corrigir com um clique.
+Responde o seu agente padrão, se estiver ativo; se não, ninguém responde nesse canal e a **Saúde dos agentes** avisa. Você verá o aviso de canais sem atribuição em **Agente IA** para corrigir com um clique.
 
 **O agente pode responder por SMS?**
 Não. O SMS no Parallly não é um canal de conversa: é usado apenas para notificações de saída com créditos (1 crédito = 1 segmento). As superfícies de conversa em autosserviço são WhatsApp, Instagram, Messenger, Telegram e chat web. Email mantém um adaptador inbound interno, mas não uma configuração de autosserviço certificada.
 
 **Mudei as instruções e o agente continua igual, o que eu verifico?**
-Confirme que salvou e testou o rascunho e publicou o candidato aprovado. Depois verifique se a versão operacional atribui essa conexão ao mesmo agente; salvar o rascunho sozinho não altera as respostas aos clientes.
+Confirme que o salvamento terminou com o aviso verde **Salvo. Seu agente já responde assim.**; se faltava um campo obrigatório, o editor o marca em vermelho e não salva. Depois verifique se essa conexão está atribuída a este agente e não a outro, e se o agente está **Ativo**. No modo revisado, também é preciso revisar e publicar a versão.
 
 **Como adiciono mais agentes ou mais números?**
 A tela mostra a capacidade disponível para agentes e conexões. Confira as opções atuais em **Administração → Plano e faturamento**, ou escreva para a gente em https://parallly-chat.cloud/support se precisar de outra capacidade.

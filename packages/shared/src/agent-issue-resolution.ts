@@ -59,6 +59,31 @@ export const AGENT_ISSUE_CLEARANCE = [
 ] as const;
 export type AgentIssueClearance = typeof AGENT_ISSUE_CLEARANCE[number];
 
+/**
+ * How the tenant applies a saved change to its agent.
+ *
+ * `immediate` is the default (owner decisions D1/D15, sep-2026): a save IS the
+ * agent that answers, and the on/off switch in the editor turns it on or off.
+ * `reviewed` is the optional advanced mode (`tenant.settings.agentReviewMode`):
+ * a save is a draft that goes live through test, review and publication, and
+ * the switch refuses to turn the agent on. The dashboard reads it from
+ * `AgentConfigurationWorkspace.directCommit`; the API from the tenant settings.
+ */
+export const AGENT_CHANGE_MODES = ['immediate', 'reviewed'] as const;
+export type AgentChangeMode = typeof AGENT_CHANGE_MODES[number];
+
+/** What resolves a code in one change mode, when the two modes differ. */
+export interface AgentIssueModeResolution {
+    /**
+     * The control the person ends on, by name. The dashboard's tour for the
+     * code points at it in that mode; a spec there ties the two together.
+     */
+    readonly control: string;
+    readonly clears: AgentIssueClearance;
+    /** Required whenever `clears` is anything but `closes`, as for the row itself. */
+    readonly note?: string;
+}
+
 export interface AgentIssueResolution {
     /** A quality check code, a pillar recommendation code, or a production issue code. */
     readonly code: string;
@@ -76,6 +101,16 @@ export interface AgentIssueResolution {
     readonly misleadingOperation?: { readonly operation: AgentOperationKey; readonly because: string };
     /** Required whenever `clears` is anything but `closes`: what is still left to do. */
     readonly note?: string;
+    /**
+     * Present only where the answer depends on the tenant's change mode. Both
+     * modes are required, and the row's own `clears`/`note` must be the
+     * `immediate` ones — the default mode is what a caller that does not know
+     * the mode gets. `agent_active` is why this exists: its tour taught the
+     * draft → candidate → review → publication walk to tenants whose editor
+     * hides every one of those screens, while the one switch that turns their
+     * agent on had no anchor.
+     */
+    readonly byMode?: Readonly<Record<AgentChangeMode, AgentIssueModeResolution>>;
 }
 
 /**
@@ -91,9 +126,25 @@ export type AgentQualityIssueCode = typeof AGENT_QUALITY_ISSUE_CODES[number];
 
 const entry = (row: AgentIssueResolution): AgentIssueResolution => Object.freeze(row);
 
+/** The default mode's answer for `agent_active`, stated once for the row and its `byMode.immediate`. */
+const AGENT_SWITCH_NOTE = 'The on/off switch in the agent editor turns the agent on at once, provided its required fields '
+    + 'are complete and no other active agent serves its channels. The tour points at that switch.';
+
 export const AGENT_ISSUE_RESOLUTIONS: readonly AgentIssueResolution[] = Object.freeze([
     // ── Alcance del negocio ──────────────────────────────────────────────────
-    entry({ code: 'agent_active', kind: 'guided_tour', tourId: 'publish_agent_revision', clears: 'closes' }),
+    entry({
+        code: 'agent_active', kind: 'guided_tour', tourId: 'publish_agent_revision', clears: 'closes',
+        note: AGENT_SWITCH_NOTE,
+        byMode: {
+            immediate: { control: 'agent_switch', clears: 'closes', note: AGENT_SWITCH_NOTE },
+            reviewed: {
+                control: 'agent_publication', clears: 'needs_person',
+                note: 'The switch refuses to turn the agent on in reviewed mode: activation travels with a published '
+                    + 'version. The tour walks save, test, prepare, review and publish, where the person decides '
+                    + 'whether the published version also switches the agent on.',
+            },
+        },
+    }),
     entry({ code: 'persona_identity', kind: 'guided_tour', tourId: 'agent_handoff_rules', clears: 'closes' }),
     entry({ code: 'business_identity', kind: 'guided_tour', tourId: 'business_identity', clears: 'closes' }),
     entry({ code: 'business_contact', kind: 'guided_tour', tourId: 'business_identity', clears: 'closes' }),
@@ -159,10 +210,33 @@ export const AGENT_ISSUE_RESOLUTIONS: readonly AgentIssueResolution[] = Object.f
         tourId: 'connect_channel', clears: 'closes',
     }),
     entry({
+        code: 'channel_unanswered', kind: 'guided_tour', tourId: 'assign_agent_channel', clears: 'closes',
+        note: 'A connection no active agent answers: no default agent to fall back on, and no agent assigned to it '
+            + 'by type or by account (or two agents claim it and the pipeline refuses to pick). Assigning it to an '
+            + 'agent, or making one the default, closes it.',
+    }),
+    entry({
+        code: 'whatsapp_delivery', kind: 'screen', clears: 'needs_person',
+        note: 'The send admission refuses every message from the number. A billing time zone is one field on the '
+            + 'WhatsApp screen and closes it at once. A payment method is added in Meta, not here: after that the '
+            + 'owner resumes the paused number (or re-checks funding) on the same screen. An unestablished currency '
+            + 'under enforced spend protection needs a reconnect, or protection back in observe.',
+    }),
+    entry({
         code: 'tool_appointments', kind: 'assist_operation', operation: 'agenda.service.create',
         tourId: 'appointments_setup', clears: 'needs_person',
         note: 'Assist can add the service; the check also needs availability, and saving a week replaces the whole '
             + 'set rather than adding a row, so a person does that on the agenda screen.',
+    }),
+    entry({
+        code: 'services_example_price', kind: 'screen', clears: 'closes',
+        note: 'Recipe-seeded services, and a gym\'s membership plans, keep the example price until the owner confirms '
+            + 'it: the agent never states an unconfirmed amount. A service or plan with no price at all counts too: '
+            + 'the agent tells the customer it is to be confirmed until the owner writes a price, marks it free or '
+            + 'quoted case by case. Non-critical: booking works meanwhile, and the check never reaches readiness. No '
+            + 'tour on purpose: the screen is Citas for agenda verticals, the service catalogue for the ones that seed '
+            + 'services without an agenda, and /admin/memberships when only a gym\'s membership plans are pending (an '
+            + 'example price or no price), so the check carries the right href instead.',
     }),
     entry({ code: 'tool_vehicles', kind: 'screen', clears: 'closes' }),
     entry({ code: 'tool_vehicle_rentals', kind: 'screen', clears: 'closes' }),
@@ -317,19 +391,32 @@ const BY_CODE = new Map<string, AgentIssueResolution>(
  * Exact match first, so `fix_failed_eval` — a recommendation code that happens
  * to start with the recommendation prefix — resolves to itself rather than to a
  * check called `failed_eval` that does not exist.
+ *
+ * `mode` is the tenant's change mode. A row that depends on it comes back with
+ * that mode's `clears` and `note`; without a mode, the default (`immediate`)
+ * applies, which is what the row itself already says.
  */
-export function resolutionForIssueCode(code: unknown): AgentIssueResolution | null {
+export function resolutionForIssueCode(code: unknown, mode: AgentChangeMode = 'immediate'): AgentIssueResolution | null {
     if (typeof code !== 'string' || !code.trim()) return null;
     const normalized = code.trim().toLowerCase();
-    const exact = BY_CODE.get(normalized);
-    if (exact) return exact;
-    for (const prefix of ['fix_', 'investigate_']) {
-        if (normalized.startsWith(prefix)) {
-            const inner = BY_CODE.get(normalized.slice(prefix.length));
-            if (inner) return inner;
+    const found = BY_CODE.get(normalized) ?? (() => {
+        for (const prefix of ['fix_', 'investigate_']) {
+            if (normalized.startsWith(prefix)) {
+                const inner = BY_CODE.get(normalized.slice(prefix.length));
+                if (inner) return inner;
+            }
         }
-    }
-    return null;
+        return undefined;
+    })();
+    if (!found) return null;
+    const moded = found.byMode?.[mode];
+    return moded ? Object.freeze({ ...found, clears: moded.clears, note: moded.note }) : found;
+}
+
+/** The control that resolves `code` in `mode`, when the answer depends on the mode. */
+export function issueResolutionControl(code: unknown, mode: AgentChangeMode = 'immediate'): string | null {
+    const row = resolutionForIssueCode(code, mode);
+    return row?.byMode?.[mode]?.control ?? null;
 }
 
 /** Codes whose resolution is an Assist operation the person can apply from the chat. */
@@ -360,14 +447,17 @@ export function misleadingAssistOperations(): ReadonlyArray<{ code: string; oper
  * contract, a non-`closes` row with nothing said about what is left.
  *
  * Exported so both the shared unit test and the API coverage spec judge the
- * table the same way, and so a reader can run it.
+ * table the same way, and so a reader can run it. `table` exists so a spec can
+ * prove a defect is caught on a doctored copy; everything else passes nothing.
  */
-export function agentIssueResolutionDefects(): readonly string[] {
+export function agentIssueResolutionDefects(
+    table: readonly AgentIssueResolution[] = AGENT_ISSUE_RESOLUTIONS,
+): readonly string[] {
     const executable = new Set<string>(AGENT_EXECUTABLE_OPERATIONS);
     const routed = new Set<string>(AGENT_ROUTED_OPERATIONS);
     const defects: string[] = [];
     const seen = new Set<string>();
-    for (const resolution of AGENT_ISSUE_RESOLUTIONS) {
+    for (const resolution of table) {
         if (seen.has(resolution.code)) defects.push(`${resolution.code}: declared twice`);
         seen.add(resolution.code);
         if (resolution.kind === 'assist_operation' && !executable.has(resolution.operation ?? '')) {
@@ -395,6 +485,26 @@ export function agentIssueResolutionDefects(): readonly string[] {
         if (resolution.misleadingOperation
             && !executable.has(resolution.misleadingOperation.operation)) {
             defects.push(`${resolution.code}: misleadingOperation names ${resolution.misleadingOperation.operation}, which is not executable`);
+        }
+        if (resolution.byMode) {
+            for (const mode of AGENT_CHANGE_MODES) {
+                const moded = resolution.byMode[mode];
+                if (!moded || !moded.control.trim()) {
+                    defects.push(`${resolution.code}: byMode.${mode} names no control`);
+                    continue;
+                }
+                if (moded.clears !== 'closes' && !(moded.note ?? '').trim()) {
+                    defects.push(`${resolution.code}: byMode.${mode} ${moded.clears} without saying what is left to do`);
+                }
+            }
+            // The row is what a caller without a mode reads; it has to be the default mode's answer.
+            const fallback = resolution.byMode.immediate;
+            if (fallback && (resolution.clears !== fallback.clears || (resolution.note ?? '') !== (fallback.note ?? ''))) {
+                defects.push(`${resolution.code}: the row disagrees with byMode.immediate, the default mode`);
+            }
+            if (resolution.byMode.immediate?.control === resolution.byMode.reviewed?.control) {
+                defects.push(`${resolution.code}: byMode names the same control in both modes; drop byMode`);
+            }
         }
     }
     return Object.freeze(defects);

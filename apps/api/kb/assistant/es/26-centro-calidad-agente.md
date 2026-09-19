@@ -3,7 +3,7 @@ id: centro-calidad-agente
 title: "Salud de agentes y Centro de calidad"
 routes: ["/admin/agent/quality", "/admin"]
 roles: ["tenant_admin", "tenant_supervisor"]
-keywords: ["salud de agentes", "centro de calidad", "calidad del agente", "preparacion", "calidad probada", "evidencia de produccion", "agente en riesgo", "configuracion incompleta", "acciones criticas", "badge", "posponer", "Parallly Assist", "mejorar agente", "cobertura de canales", "conexion operativa del canal", "mostrarme donde", "recorrido guiado", "barra de contexto", "requiere reautorizar"]
+keywords: ["salud de agentes", "centro de calidad", "calidad del agente", "preparacion", "calidad probada", "evidencia de produccion", "agente en riesgo", "configuracion incompleta", "algo importante que resolver", "cosas importantes por resolver", "badge", "posponer", "Parallly Assist", "mejorar agente", "cobertura de canales", "conexion operativa del canal", "mostrarme donde", "recorrido guiado", "barra de contexto", "requiere reautorizar", "esenciales", "siguiente paso", "no esta listo", "whatsapp no entrega", "zona horaria de facturacion", "metodo de pago en meta", "canal que nadie responde", "dia 0", "primer cliente real", "precios de ejemplo sin confirmar", "precios sin confirmar"]
 ---
 
 # Salud de agentes y Centro de calidad
@@ -20,7 +20,18 @@ conexiones o configuración desde **IA y crecimiento → Agente IA**.
 - El badge de **Insights → Salud de agentes** suma solamente señales **Críticas y
   Altas abiertas**. Es un conteo de atención, no un puntaje.
 - El aviso global aparece solo ante una señal crítica abierta o un estado **Agente en
-  riesgo**. Puedes **Revisar**, **Preguntar a Assist** o **Posponer 24 h**.
+  riesgo**, y sólo después de que el agente le responde a su primer cliente real (o tres
+  días después de crear la cuenta, lo que pase primero); terminar el asistente de
+  configuración no adelanta ese momento. Mientras tanto la tarjeta de Inicio es la guía,
+  con una excepción: si un canal que conectaste no puede responder —la conexión dejó de
+  funcionar, el agente no tiene canal asignado, ningún agente atiende ese canal o
+  WhatsApp no puede entregar—, el aviso aparece igual y dice el motivo. Puedes **Revisar**,
+  **Preguntar a Assist** o **Posponer 24 h**.
+- El aviso dice **Hay algo importante que resolver en tus agentes.** cuando hay una señal
+  crítica abierta, o **Un agente está en riesgo.** En el editor de cada agente, el recuadro
+  de calidad cuenta las comprobaciones críticas que faltan —por ejemplo,
+  **Queda 1 cosa importante por resolver.**— y la tarjeta de Inicio dice cuántas cosas
+  importantes quedan por resolver, o **Nada importante por resolver**.
 - Posponer oculta esa señal temporalmente; no la corrige. Estos avisos viven en el
   dashboard y no envían correo ni notificación push.
 
@@ -28,7 +39,13 @@ conexiones o configuración desde **IA y crecimiento → Agente IA**.
 
 - **Preparación:** revisa negocio y alcance, conocimiento, conversación y marca,
   acciones, seguridad y handoff, y robustez operativa. Una capacidad fuera del
-  alcance puede aparecer como **No aplica** y no reduce el resultado.
+  alcance puede aparecer como **No aplica** y no reduce el resultado. El estado general
+  lo deciden los **esenciales** (canal, agente, negocio, equipo) y cualquier problema
+  real; una misión sin ajustar o una prueba sin correr quedan como pendientes, pero no
+  declaran «no listo» a un agente que ya responde. Por ejemplo, mientras el
+  negocio no confirme los precios de ejemplo que trajo la receta de su rubro (servicios
+  y, en un gimnasio, planes de membresía), aparece la advertencia no crítica
+  **Precios sin confirmar**: el agente no dice esos precios hasta que se confirman; también cuenta los servicios y planes que todavía no tienen precio.
 - **Calidad probada:** muestra la evaluación crítica y la simulación más recientes,
   con versión, fecha, umbral y escenarios. Si cambió el agente, la evidencia anterior
   puede quedar desactualizada. Es evidencia automatizada, no una certificación.
@@ -38,7 +55,7 @@ conexiones o configuración desde **IA y crecimiento → Agente IA**.
   insuficiente**, no un cero.
 
 La evidencia histórica que no identifica de forma inequívoca al agente no se asigna
-retroactivamente. Por eso una versión recién publicada puede necesitar nuevas
+retroactivamente. Por eso una versión recién guardada puede necesitar nuevas
 interacciones antes de mostrar una señal de producción útil.
 
 ## Qué verifica "Conexión operativa del canal"
@@ -71,6 +88,40 @@ solo canales certificados — WhatsApp, Instagram, Messenger, Telegram o el chat
 Un vínculo que apunta a una cuenta que ya no existe (por ejemplo, el número se reconectó
 y cambió de identificador) cuenta como asignación sin conexión: se corrige volviendo a
 marcar la cuenta vigente en el editor del agente.
+
+## Canales que nadie contesta y WhatsApp que no entrega
+
+Dos controles críticos de **Preparación** explican a un agente que no contesta aunque el
+canal figure conectado:
+
+- **Cada canal conectado tiene un agente que responde**. Revisa cada conexión activa del
+  negocio con la misma regla que usa Parallly al recibir un mensaje: primero el agente
+  asignado a esa cuenta, después el asignado a ese tipo de canal y, si no hay ninguno, el
+  agente predeterminado. Falla cuando un canal conectado no tiene quién le conteste (nadie
+  lo tiene asignado y no hay un agente predeterminado activo) o cuando dos agentes lo
+  reclaman a la vez: Parallly no elige por ti y no contesta ninguno. Los mensajes llegan,
+  pero quedan sin respuesta. Aparece una sola vez, en el agente predeterminado (o, si no
+  hay, en el activo más antiguo). Se corrige en el editor del agente: asigna ese canal a un
+  solo agente o marca uno como predeterminado; **Mostrarme dónde** te señala el lugar.
+- **WhatsApp puede entregar las respuestas**. Para cada número de WhatsApp que atiende el
+  agente, mira lo mismo que Parallly revisa antes de enviar una respuesta. Falla —y ninguna
+  respuesta sale por ese número— cuando falta la **zona horaria de facturación** del
+  número; cuando Meta **no acepta cobros** de la cuenta de WhatsApp; cuando la cuenta **no
+  tiene método de pago** en Meta, desde el 1 de octubre de 2026 (antes de esa fecha es una
+  advertencia, no un bloqueo); o cuando no se sabe en qué **moneda** cobra Meta y tienes
+  activa la **Protección de gasto** (con **Sólo observar**, el valor inicial, eso no frena
+  nada y no se reporta).
+
+Para el segundo, **Revisar** lleva a **Canales → WhatsApp**: la zona horaria se confirma
+ahí mismo y las respuestas vuelven a salir; el método de pago se agrega en las herramientas
+de Meta y, si el número quedó pausado, después tocas **Reanudar envíos** o **Comprobar en
+Meta**; la moneda se resuelve reconectando el número o volviendo la protección de gasto a
+**Sólo observar**. No tiene recorrido guiado, y **Canales** es una pantalla del
+administrador: Supervisor ve el control, pero la corrección es del Admin.
+
+Cuando fallan, los dos aparecen en **Salud de agentes**, en el paso del canal de la tarjeta
+**Puesta en marcha** y en el aviso global, incluso antes de la primera respuesta real: son
+justo el motivo de un agente que no contesta.
 
 ## Qué pasa al hacer clic en Revisar
 
@@ -106,11 +157,11 @@ cómo se hace algo que tiene recorrido, la respuesta trae ese botón.
 - **Aún no evaluado:** todavía no hay evidencia suficiente.
 - **Configuración incompleta:** falta un requisito o hay una advertencia de preparación.
 - **Agente en riesgo:** una prueba crítica o una señal real importante exige revisión.
-- **Listo para piloto controlado:** preparación y pruebas permiten un piloto limitado,
+- **Listo para sus primeros clientes:** preparación y pruebas están bien,
   pero aún falta evidencia real suficiente.
 - **Operando con evidencia:** hay configuración, pruebas vigentes y una muestra útil de
   producción.
-- **Revisión requerida:** la evidencia quedó desactualizada o el desempeño reciente se
+- **Necesita tu atención:** la evidencia quedó desactualizada o el desempeño reciente se
   deterioró.
 
 Ningún estado significa que el agente sea perfecto, certifica su operación ni
@@ -160,12 +211,14 @@ en vez de afirmar que no tienes canales conectados.
 ## Preguntas frecuentes
 
 **¿El checklist de configuración es lo mismo que el Centro de calidad?**
-No. La tarjeta **Puesta en marcha** de Inicio muestra solo pasos esenciales disponibles
-para tu plan, rol e industria y desaparece al completarlos. Reemplaza la antigua
-pastilla flotante `8/9`. Salud de agentes añade pruebas y evidencia de producción.
+No. La tarjeta **Puesta en marcha** de Inicio muestra solo los cuatro esenciales (canal,
+agente, negocio y equipo) disponibles para tu plan y rol, señala el **Siguiente** paso y
+desaparece al completarlos. Reemplaza la antigua pastilla flotante `8/9`. Salud de agentes
+añade lo que mejora al agente (misión, conocimiento, horario, citas, catálogo), las
+pruebas y la evidencia de producción.
 
-**¿Un buen puntaje de simulación basta para publicar?**
-No. Ayuda a reducir riesgo, pero debe revisarse junto con bloqueos críticos, vigencia
+**¿Un buen puntaje de simulación basta para dejarlo atender solo?**
+No. Ayuda a reducir riesgo, pero debe revisarse junto con lo que quede por resolver, la vigencia
 de la versión y evidencia real cuando esté disponible.
 
 **¿El sistema aprende y cambia solo con cada conversación?**

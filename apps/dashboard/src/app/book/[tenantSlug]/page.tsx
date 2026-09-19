@@ -10,7 +10,8 @@ import {
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
 
-interface Service { id: string; name: string; description: string | null; durationMinutes: number; price: number; currency: string; color: string; }
+/** `priceStatus` distinto de `confirmed` = nunca se muestra el número (D10). Sin el campo, se trata como confirmado. */
+interface Service { id: string; name: string; description: string | null; durationMinutes: number; price: number; priceStatus?: "example" | "confirmed" | "quote"; currency: string; color: string; }
 interface Slot { start: string; end: string; display: string; }
 type Step = "services" | "date" | "time" | "info" | "confirmed";
 
@@ -165,7 +166,9 @@ export default function PublicBookingPage() {
                     {svc.description && <p className="text-sm text-neutral-500 mt-0.5 truncate">{svc.description}</p>}
                     <div className="flex items-center gap-3 mt-2 text-xs text-neutral-400">
                       <span className="flex items-center gap-1"><Clock size={12} /> {svc.durationMinutes} {t("min")}</span>
-                      {svc.price > 0 && <span>${svc.price.toLocaleString()}</span>}
+                      {svc.priceStatus === "example" ? <span>{t("priceToConfirm")}</span>
+                        : svc.priceStatus === "quote" ? <span>{t("priceOnQuote")}</span>
+                        : svc.price > 0 && <span>${svc.price.toLocaleString()}</span>}
                     </div>
                   </div>
                   <ChevronRight size={18} className="text-neutral-300 group-hover:text-indigo-400 transition-colors" />

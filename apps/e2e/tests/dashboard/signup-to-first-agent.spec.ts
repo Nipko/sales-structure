@@ -60,6 +60,9 @@ const publicRoutes = (): ApiRoutes => ({
     },
   }),
   "auth/activity-ping": ok({ ok: true }),
+  // AuthContext refreshes the current user when the onboarding screen opens.
+  // Keep the tenantless identity that this public-wizard fixture seeded.
+  "auth/me": ok(NEW_USER),
   // The catalogue the fourth step renders. Every field the card reads is here
   // on purpose: the plan columns are NOT NULL in the schema, so a fixture
   // missing one would be testing a shape the API cannot produce — and the card

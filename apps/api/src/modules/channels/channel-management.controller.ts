@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Delete, Body, Param, Req, Logger, UseGuards, BadRequestException, ForbiddenException, GoneException } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Body, Param, Req, Logger, UseGuards, BadRequestException, ForbiddenException, GoneException, ServiceUnavailableException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { ConfigService } from '@nestjs/config';
@@ -6,7 +6,7 @@ import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { WhatsappCryptoService } from '../whatsapp/services/whatsapp-crypto.service';
 import { ChannelTokenService } from './channel-token.service';
-import { TelegramAdapter } from './telegram/telegram.adapter';
+import { TelegramAdapter, TelegramUnreachableError } from './telegram/telegram.adapter';
 import { SmsAdapter } from './sms/sms.adapter';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -16,8 +16,17 @@ import { RedisService } from '../redis/redis.service';
 import { personaChannelCacheKeys } from '../../common/utils/persona-cache.util';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
-import { CERTIFIED_SELF_SERVICE_CHANNELS, advanceOnboardingStage } from '@parallext/shared';
-import { mutateTenantSettingsAtomic } from '../../common/utils/tenant-settings.util';
+import {
+    CERTIFIED_SELF_SERVICE_CHANNELS,
+    META_CONNECT_ERROR,
+    isRetryableMetaConnectError,
+    type MetaConnectChannel,
+    type MetaConnectErrorBody,
+    type MetaConnectErrorCode,
+    type MetaConnectErrorEvidence,
+} from '@parallext/shared';
+import { recordChannelConnected } from './bind-default-agent.util';
+import { readSignupWarnings } from '../whatsapp/whatsapp-signup-warnings';
 import { buildChannelCertificationMatrix, summariseChannelCertification } from './channel-certification-matrix';
 import { channelCertificationRuntime } from './channel-certification-runtime';
 import { RequiresVerifiedEmail } from '../../common/decorators/requires-verified-email.decorator';
@@ -28,6 +37,41 @@ import {
     resolveCredentialHealth,
     type ChannelCredentialRecord,
 } from '@parallext/shared';
+
+/**
+ * Scopes a Messenger connection cannot work without. Kept next to the handler
+ * that asks for them so the diagnostic and the login dialog cannot drift.
+ */
+const REQUIRED_MESSENGER_SCOPES = ['pages_show_list', 'pages_messaging', 'pages_manage_metadata'];
+
+/**
+ * Last-resort copy for a surface that has not mapped the code yet. The panel
+ * renders its own sentence and its own button from `error`; this only keeps a
+ * bare "Error 400" off the screen in the meantime. It is never Meta's text.
+ */
+const META_CONNECT_FALLBACK_MESSAGE =
+    'No pudimos conectar la cuenta. Abre el canal en el panel para ver qué falta y cómo resolverlo.';
+
+/**
+ * The codes a Telegram connect can refuse with besides the shared ones
+ * (`email_not_verified` from the guard, `channel_not_available` and
+ * `plan_limit_reached` from the plan checks). Telegram answers a bad key with
+ * "Unauthorized"/"Not Found" and a failed webhook with its own English; none
+ * of it reaches the response (the webhook's goes to the log), and the panel
+ * builds its card from the code — the wizard's mapping is
+ * `wizardConnectFailure` in `setup-wizard/connect-channels.ts`.
+ */
+export const TELEGRAM_CONNECT_ERROR = {
+    /** Telegram did not accept the key pasted from @BotFather (`getMe` refused it). */
+    INVALID_BOT_KEY: 'invalid_bot_key',
+    /**
+     * Retryable, and never a verdict that the key is wrong. Two cases, told
+     * apart by the status: 503 — Telegram could not be reached to check the key
+     * at all, so nothing is known about it; 400 — Telegram accepted the key and
+     * then refused to route the bot's messages to us.
+     */
+    UNAVAILABLE: 'telegram_unavailable',
+} as const;
 
 @ApiTags('channel-management')
 @Controller('channels')
@@ -48,6 +92,57 @@ export class ChannelManagementController {
         private events: EventEmitter2,
     ) {}
 
+    /**
+     * The single failure envelope of the two Meta connect handlers.
+     *
+     * Before this, a failed connection answered with prose — and when Meta was
+     * the one refusing, with Meta's own prose. The person read something like
+     * "Page listing failed: (#200) ..." and had nothing to do with it. From
+     * here on the body names WHAT happened (`error`), whether opening Meta's
+     * window again is a real next step (`retryable`, decided by the shared
+     * helper so the panel and the server cannot disagree) and the facts the
+     * panel needs to write the instruction (`evidence`). Meta's `error.message`
+     * and `error_description` stay in the server log, where support can read
+     * them, and never reach the response.
+     */
+    private metaConnectFailure(
+        channel: MetaConnectChannel,
+        code: MetaConnectErrorCode,
+        evidence?: MetaConnectErrorEvidence,
+    ): BadRequestException | ForbiddenException {
+        const hasEvidence = !!evidence && Object.keys(evidence).length > 0;
+        const body: MetaConnectErrorBody = {
+            error: code,
+            channel,
+            retryable: isRetryableMetaConnectError(code),
+            ...(hasEvidence ? { evidence } : {}),
+            message: META_CONNECT_FALLBACK_MESSAGE,
+        };
+        return code === META_CONNECT_ERROR.PLAN_LIMIT
+            ? new ForbiddenException(body)
+            : new BadRequestException(body);
+    }
+
+    /** Scopes a Messenger login needs and this token does not carry. */
+    private missingMessengerScopes(grantedScopes: string[]): string[] {
+        return REQUIRED_MESSENGER_SCOPES.filter((scope) => !grantedScopes.includes(scope));
+    }
+
+    /**
+     * `TenantThrottleService.enforceChannelAccountLimit` predates the typed
+     * connect envelope and answers without `retryable`. The panel reads that
+     * flag to decide whether to offer another attempt, and a plan wall is never
+     * fixed by one, so stamp it here instead of letting it arrive undefined and
+     * be read as "unknown, maybe try again".
+     */
+    private withPlanLimitRetryable(e: unknown): unknown {
+        const response = typeof (e as any)?.getResponse === 'function' ? (e as any).getResponse() : null;
+        if (!response || typeof response !== 'object' || Array.isArray(response)) return e;
+        const body = response as Record<string, unknown>;
+        if (body.error !== META_CONNECT_ERROR.PLAN_LIMIT || 'retryable' in body) return e;
+        return new ForbiddenException({ ...body, retryable: false });
+    }
+
     private rejectRetiredSms(operation: 'connect' | 'test'): void {
         throw new GoneException({
             error: 'sms_product_retired',
@@ -64,34 +159,9 @@ export class ChannelManagementController {
      * el primer connect escribe, así sobrevive a reconexiones/desconexiones.
      * Fire-and-forget: nunca debe romper el flujo de conexión.
      */
-    private async markFirstChannelConnected(tenantId: string): Promise<void> {
-        try {
-            await this.prisma.tenant.updateMany({
-                where: { id: tenantId, firstChannelConnectedAt: null },
-                data: { firstChannelConnectedAt: new Date() },
-            });
-        } catch (e: any) {
-            this.logger.warn(`markFirstChannelConnected failed for ${tenantId}: ${e?.message}`);
-        }
-        // The onboarding stage is the single source of truth for the guidance
-        // surfaces (setup card, resume banner, first-channel tour). Connecting
-        // is exactly the event they wait for, so advance it here — monotonically,
-        // and never breaking the connection flow if the write fails.
-        try {
-            // Read-modify-write under the row lock: a plain read + `tenant.update`
-            // would rewrite the whole settings snapshot and silently drop any
-            // other branch written between the two statements. `tenant-settings-branch`
-            // has an architectural test that rejects exactly that pattern.
-            await mutateTenantSettingsAtomic(this.prisma, tenantId, (current) => {
-                const stage = advanceOnboardingStage(current.onboardingStage, 'channel_connected');
-                // Returning the same object is the transformer's no-op signal:
-                // no write, no updated_at churn on every reconnection.
-                if (current.onboardingStage === stage) return current as Record<string, unknown>;
-                return { ...current, onboardingStage: stage };
-            });
-        } catch (e: any) {
-            this.logger.warn(`onboardingStage advance failed for ${tenantId}: ${e?.message}`);
-        }
+    private async markFirstChannelConnected(tenantId: string, channelType?: string): Promise<void> {
+        if (!channelType) return;
+        await recordChannelConnected(this.prisma, tenantId, channelType);
     }
 
     /**
@@ -136,7 +206,8 @@ export class ChannelManagementController {
         const widgets = await this.prisma.$queryRawUnsafe(
             `SELECT widget_id AS account_id, name
                FROM public.widget_configs
-              WHERE tenant_id = $1::uuid AND is_active = true`,
+              WHERE tenant_id = $1::uuid AND is_active = true
+                AND COALESCE(is_demo, false) = false`,
             tenantId,
         ).catch(() => {
             widgetLookupAvailable = false;
@@ -304,6 +375,21 @@ export class ChannelManagementController {
             where: { tenantId, channelType, isActive: true },
         });
 
+        // What the Embedded Signup of each WhatsApp number left open
+        // (webhook not subscribed, number not registered…). Persisted on the
+        // onboarding row, and until now only ever seen by the screen that ran
+        // that signup. `undefined` for other channels (the field is absent),
+        // `null` per number when it could not be read — never `[]`, which says
+        // "nothing is open".
+        const signupWarnings = channelType === 'whatsapp'
+            ? await readSignupWarnings(this.prisma, tenantId, accounts, (error: any) => this.logger.warn(
+                `Signup warnings not readable for tenant ${tenantId}: ${error?.message}`))
+            : undefined;
+        const withSignupWarnings = (accountId: string) => (signupWarnings === undefined ? {} : {
+            signupWarnings: signupWarnings === null ? null : signupWarnings.get(accountId)?.codes ?? [],
+            signupWarningsAt: signupWarnings === null ? null : signupWarnings.get(accountId)?.recordedAt ?? null,
+        });
+
         // Get token expiration for Instagram
         let tokenExpiresAt: Date | null = null;
         if (channelType === 'instagram' && accounts.length > 0) {
@@ -322,11 +408,13 @@ export class ChannelManagementController {
                     displayName: accounts[0].displayName,
                     metadata: accounts[0].metadata,
                     channelType: accounts[0].channelType,
+                    ...withSignupWarnings(accounts[0].accountId),
                 } : null,
                 accounts: accounts.map((a: any) => ({
                     accountId: a.accountId,
                     displayName: a.displayName,
                     metadata: a.metadata,
+                    ...withSignupWarnings(a.accountId),
                 })),
                 tokenExpiresAt,
             },
@@ -349,7 +437,7 @@ export class ChannelManagementController {
             throw new ForbiddenException({
                 error: 'channel_not_available',
                 channel: channelType,
-                message: `El canal ${channelType} no está disponible en tu plan actual. Actualizá tu plan para conectarlo.`,
+                message: `El canal ${channelType} no está disponible en tu plan actual. Actualiza tu plan para conectarlo.`,
             });
         }
     }
@@ -365,7 +453,11 @@ export class ChannelManagementController {
         const existingActive = await this.prisma.channelAccount.count({
             where: { tenantId, channelType, isActive: true, accountId: { notIn: excludeAccountIds } },
         });
-        await this.throttle.enforceChannelAccountLimit(tenantId, channelType, existingActive);
+        try {
+            await this.throttle.enforceChannelAccountLimit(tenantId, channelType, existingActive);
+        } catch (e: unknown) {
+            throw this.withPlanLimitRetryable(e);
+        }
     }
 
     @Post('telegram/connect')
@@ -383,10 +475,32 @@ export class ChannelManagementController {
         const { botToken, displayName } = body;
         if (!botToken) throw new BadRequestException('botToken is required');
 
-        // 1. Validate bot token
-        const botInfo = await this.telegramAdapter.validateBotToken(botToken);
+        // 1. Validate bot token. A typed code, not a sentence: the wizard and
+        // the Telegram page build their card from `error`; `message` is only
+        // what a surface that has not mapped the code yet prints.
+        let botInfo: Awaited<ReturnType<TelegramAdapter['validateBotToken']>>;
+        try {
+            botInfo = await this.telegramAdapter.validateBotToken(botToken);
+        } catch (error) {
+            if (!(error instanceof TelegramUnreachableError)) throw error;
+            // Telegram gave no answer about the key, so this is not
+            // `invalid_bot_key`: that would send her to @BotFather for a key
+            // that may well work. Nothing was stored.
+            this.logger.warn(`Telegram connect for tenant ${tenantId}: ${error.message}`);
+            throw new ServiceUnavailableException({
+                error: TELEGRAM_CONNECT_ERROR.UNAVAILABLE,
+                channel: 'telegram',
+                retryable: true,
+                message: 'No pudimos comunicarnos con Telegram para revisar la clave de tu bot. Vuelve a intentarlo en unos minutos.',
+            });
+        }
         if (!botInfo) {
-            throw new BadRequestException('Token invalido — verifica que el token de @BotFather sea correcto');
+            throw new BadRequestException({
+                error: TELEGRAM_CONNECT_ERROR.INVALID_BOT_KEY,
+                channel: 'telegram',
+                retryable: false,
+                message: 'Telegram no reconoce esa clave. Copia de nuevo la clave completa que te dio @BotFather y vuelve a intentarlo.',
+            });
         }
 
         const accountId = botInfo.username;
@@ -406,8 +520,14 @@ export class ChannelManagementController {
 
         const webhookResult = await this.telegramAdapter.setWebhook(botToken, webhookUrl, webhookSecret);
         if (!webhookResult.ok) {
+            // Telegram's own sentence stays in the log; the owner reads ours.
             this.logger.error(`Failed to set Telegram webhook: ${webhookResult.description}`);
-            throw new BadRequestException(`Error al configurar webhook: ${webhookResult.description}`);
+            throw new BadRequestException({
+                error: TELEGRAM_CONNECT_ERROR.UNAVAILABLE,
+                channel: 'telegram',
+                retryable: true,
+                message: 'Telegram no confirmó la conexión de tu bot. Vuelve a intentarlo en unos minutos.',
+            });
         }
 
         // 3. Encrypt and store token
@@ -456,7 +576,7 @@ export class ChannelManagementController {
             });
         }
 
-        void this.markFirstChannelConnected(tenantId);
+        void this.markFirstChannelConnected(tenantId, 'telegram');
 
         // 4. Store encrypted credential
         const existingCred = await this.prisma.whatsappCredential.findFirst({
@@ -519,7 +639,7 @@ export class ChannelManagementController {
         } catch (error: any) {
             if (error?.code === 'connection_ambiguous') {
                 throw new BadRequestException(
-                    'Tienes más de un bot de Telegram conectado: indicá cuál querés probar (accountId)');
+                    'Tienes más de un bot de Telegram conectado: indica cuál quieres probar (accountId)');
             }
             throw new BadRequestException('No hay bot de Telegram conectado');
         }
@@ -626,7 +746,10 @@ export class ChannelManagementController {
         await this.assertChannelAllowed(tenantId, 'messenger');
 
         const userAccessToken = body.userAccessToken;
-        if (!userAccessToken) throw new BadRequestException('User access token is required');
+        // FB.login() answers without an authResponse when the person closes the
+        // dialog or refuses it, so "no token" is not a malformed request: it is
+        // a window that was cancelled, and reopening it IS the next step.
+        if (!userAccessToken) throw this.metaConnectFailure('messenger', META_CONNECT_ERROR.WINDOW_CANCELLED);
 
         const graphVersion = this.configService.get<string>('META_GRAPH_VERSION', 'v21.0');
 
@@ -678,7 +801,7 @@ export class ChannelManagementController {
 
                 if (!tokenData.is_valid) {
                     this.logger.error(`Messenger OAuth: token is NOT valid for tenant ${tenantId}`);
-                    throw new BadRequestException('Facebook token is invalid. Please try connecting again.');
+                    throw this.metaConnectFailure('messenger', META_CONNECT_ERROR.TOKEN_EXCHANGE_FAILED);
                 }
             }
         } catch (e: any) {
@@ -716,8 +839,17 @@ export class ChannelManagementController {
             this.logger.log(`Messenger OAuth: /me/accounts page for tenant ${tenantId}: ${JSON.stringify({ data: (pagesData.data || []).map((p: any) => ({ id: p.id, name: p.name, tasks: p.tasks, has_access_token: !!p.access_token })), paging: pagesData.paging, error: pagesData.error })}`);
 
             if (pagesData.error) {
+                // Meta's own sentence stays here, in the log, where support can
+                // read it. What the person gets is a code and an action.
                 this.logger.error(`Messenger OAuth: /me/accounts error for tenant ${tenantId}: ${JSON.stringify(pagesData.error)}`);
-                throw new BadRequestException(`Page listing failed: ${pagesData.error.message}`);
+                const missingScopes = this.missingMessengerScopes(grantedScopes);
+                if (missingScopes.length > 0 || declinedPerms.length > 0) {
+                    throw this.metaConnectFailure('messenger', META_CONNECT_ERROR.PERMISSIONS_MISSING, {
+                        missingScopes,
+                        declinedScopes: declinedPerms,
+                    });
+                }
+                throw this.metaConnectFailure('messenger', META_CONNECT_ERROR.UNAVAILABLE);
             }
 
             allPages.push(...(pagesData.data || []));
@@ -740,16 +872,28 @@ export class ChannelManagementController {
         });
 
         if (pages.length === 0) {
-            const missingPerms = ['pages_show_list', 'pages_messaging', 'pages_manage_metadata']
-                .filter(p => !grantedScopes.includes(p));
-            const diagParts: string[] = [];
-            if (missingPerms.length > 0) diagParts.push(`missing permissions: ${missingPerms.join(', ')}`);
-            if (declinedPerms.length > 0) diagParts.push(`declined by user: ${declinedPerms.join(', ')}`);
-            if (allPages.length === 0 && missingPerms.length === 0) diagParts.push('token has permissions but /me/accounts returned 0 pages — verify the Facebook user is admin of at least one Page');
-            const diagMsg = diagParts.length > 0 ? ` Diagnostic: ${diagParts.join('. ')}.` : '';
-
+            const missingScopes = this.missingMessengerScopes(grantedScopes);
             this.logger.error(`Messenger OAuth: 0 eligible pages for tenant ${tenantId}. allPages=${allPages.length}, scopes=[${grantedScopes.join(', ')}], declined=[${declinedPerms.join(', ')}]`);
-            throw new BadRequestException(`No Facebook pages found.${diagMsg} Ensure the Facebook account manages at least one Page, that pages_show_list permission was granted in the login dialog, and that all required pages were selected.`);
+
+            // Three different walls used to share one paragraph that named all
+            // three at once. They have different next steps, so they answer
+            // with different codes — and the scope names travel as evidence so
+            // the panel can point at the exact switch in Meta's dialog.
+            if (missingScopes.length > 0 || declinedPerms.length > 0) {
+                throw this.metaConnectFailure('messenger', META_CONNECT_ERROR.PERMISSIONS_MISSING, {
+                    missingScopes,
+                    declinedScopes: declinedPerms,
+                });
+            }
+            if (allPages.length === 0) {
+                throw this.metaConnectFailure('messenger', META_CONNECT_ERROR.NO_PAGE);
+            }
+            // The scopes are there and pages exist, but none came back with
+            // MESSAGING or MANAGE: whoever authorized is not an administrator
+            // of the page they picked.
+            throw this.metaConnectFailure('messenger', META_CONNECT_ERROR.NOT_PAGE_ADMIN, {
+                pageCount: allPages.length,
+            });
         }
 
         // Enforce the plan's per-type account limit. Existing pages reconnect
@@ -766,12 +910,17 @@ export class ChannelManagementController {
             ? Math.max(0, messengerLimit - existingActiveIds.size)
             : Number.POSITIVE_INFINITY;
         const skippedForQuota: string[] = [];
+        // Meta listed the page but handed us no page token for it. That is not
+        // a transient miss: the authorization does not carry administration of
+        // that page, and it has to be answered as such if nothing connects.
+        const skippedNoToken: string[] = [];
 
         // Step 3: For each page, subscribe webhook and store
         const connected: { id: string; name: string; picture?: string }[] = [];
         for (const page of pages) {
             try {
                 if (!page.access_token) {
+                    skippedNoToken.push(page.name || page.id);
                     this.logger.warn(`Messenger OAuth: page ${page.id} (${page.name}) skipped — no access_token (insufficient permissions)`);
                     continue;
                 }
@@ -844,7 +993,7 @@ export class ChannelManagementController {
                     });
                 }
 
-                void this.markFirstChannelConnected(tenantId);
+                void this.markFirstChannelConnected(tenantId, 'messenger');
 
                 // Store encrypted credential (messenger_token per tenant)
                 const existingCred = await this.prisma.whatsappCredential.findFirst({
@@ -876,14 +1025,31 @@ export class ChannelManagementController {
 
         if (connected.length === 0) {
             if (skippedForQuota.length > 0) {
+                // The plan wall keeps the body it already answered with — the
+                // panel and the billing surfaces read those fields — and only
+                // gains the flag and the facts the new envelope carries. The
+                // sentence is ours, written for the owner, not Meta's.
                 throw new ForbiddenException({
-                    error: 'plan_limit_reached',
+                    error: META_CONNECT_ERROR.PLAN_LIMIT,
+                    channel: 'messenger',
+                    retryable: isRetryableMetaConnectError(META_CONNECT_ERROR.PLAN_LIMIT),
                     limitKey: 'maxChannelAccounts',
                     channelType: 'messenger',
-                    message: `Tu plan permite hasta ${Number.isFinite(messengerLimit) ? messengerLimit : '∞'} página(s) de Messenger. No se conectó ninguna nueva (${skippedForQuota.join(', ')}). Actualizá tu plan o desconectá otra para conectar más.`,
+                    evidence: {
+                        skippedPages: skippedForQuota,
+                        limit: Number.isFinite(messengerLimit) ? messengerLimit : null,
+                    },
+                    message: `Tu plan permite hasta ${Number.isFinite(messengerLimit) ? messengerLimit : '∞'} página(s) de Messenger. No se conectó ninguna nueva (${skippedForQuota.join(', ')}). Actualiza tu plan o desconecta otra para conectar más.`,
                 });
             }
-            throw new BadRequestException('Failed to connect any Facebook page');
+            if (skippedNoToken.length > 0) {
+                throw this.metaConnectFailure('messenger', META_CONNECT_ERROR.NOT_PAGE_ADMIN, {
+                    pagesWithoutToken: skippedNoToken.length,
+                });
+            }
+            throw this.metaConnectFailure('messenger', META_CONNECT_ERROR.UNAVAILABLE, {
+                pageCount: pages.length,
+            });
         }
 
         // Invalidate cached token so next message uses the fresh one.
@@ -1002,7 +1168,10 @@ export class ChannelManagementController {
         await this.assertChannelAllowed(tenantId, 'instagram');
 
         const code = body.code;
-        if (!code) throw new BadRequestException('OAuth code is required');
+        // The callback lands without a code when the person closes Meta's
+        // window or denies it. Nothing is wrong with the account: opening the
+        // window again is exactly what is left to do.
+        if (!code) throw this.metaConnectFailure('instagram', META_CONNECT_ERROR.WINDOW_CANCELLED);
 
         const graphVersion = this.configService.get<string>('META_GRAPH_VERSION', 'v21.0');
 
@@ -1027,9 +1196,11 @@ export class ChannelManagementController {
 
         if (!shortToken) {
             const { access_token: _s, ...safeShort } = shortData;
-            this.logger.warn(`Instagram short-lived token exchange failed (HTTP ${shortRes.status}): ${JSON.stringify(safeShort)}`);
-            const igError = safeShort.error_message || safeShort.error?.message || safeShort.error || 'Unknown';
-            throw new BadRequestException(`Instagram token exchange failed: ${igError}`);
+            // Meta's `error_message` / `error.message` is logged with the tenant
+            // id and goes no further: it named things the owner cannot act on
+            // and, forwarded to the screen, it was the wall in the recording.
+            this.logger.warn(`Instagram short-lived token exchange failed for tenant ${tenantId} (HTTP ${shortRes.status}): ${JSON.stringify(safeShort)}`);
+            throw this.metaConnectFailure('instagram', META_CONNECT_ERROR.TOKEN_EXCHANGE_FAILED);
         }
 
         // Step 2: Exchange short-lived → long-lived (60 days)
@@ -1044,8 +1215,8 @@ export class ChannelManagementController {
         const longData = await longRes.json() as any;
         if (!longData.access_token) {
             const { access_token: _l, ...safeLong } = longData;
-            this.logger.warn(`Instagram long-lived token exchange failed: ${JSON.stringify(safeLong)}`);
-            throw new BadRequestException('Instagram long-lived token exchange failed');
+            this.logger.warn(`Instagram long-lived token exchange failed for tenant ${tenantId}: ${JSON.stringify(safeLong)}`);
+            throw this.metaConnectFailure('instagram', META_CONNECT_ERROR.TOKEN_EXCHANGE_FAILED);
         }
 
         const longLivedToken: string = longData.access_token;
@@ -1061,11 +1232,41 @@ export class ChannelManagementController {
         );
         const profile = await profileRes.json() as any;
 
+        // A personal Instagram account cannot receive business messages, so no
+        // amount of retrying connects it. The next step is turning the account
+        // professional in Instagram — a different action, and therefore a
+        // different code. Only an explicit PERSONAL blocks: when Meta omits the
+        // field we do not invent a verdict about the account.
+        const declaredAccountType = typeof profile?.account_type === 'string' ? profile.account_type : '';
+        if (declaredAccountType.toUpperCase() === 'PERSONAL') {
+            this.logger.warn(`Instagram OAuth: tenant ${tenantId} authorized a personal account (account_type=${declaredAccountType})`);
+            throw this.metaConnectFailure('instagram', META_CONNECT_ERROR.ACCOUNT_NOT_PROFESSIONAL, {
+                accountType: declaredAccountType,
+            });
+        }
+
         // Step 4: Encrypt and store
         const encrypted = this.cryptoService.encryptToken(longLivedToken);
         // Use the IG-scoped user ID from profile (matches webhook entry.id)
         // profile.user_id or profile.id is the IGSID, while shortData.user_id is app-scoped
         const igScopedId = String(profile.user_id || profile.id || igUserId);
+
+        // Two silences that look alike and must not share an answer. If Meta
+        // failed to answer at all we cannot name a cause, so it is `unavailable`
+        // and trying again is fair. If Meta answered fine and still named no
+        // account id, there is no professional Instagram account behind what
+        // was authorized — a wall, not a retry. Either way nothing is written:
+        // storing a channel account with an empty accountId would collapse
+        // every unknown sender onto one row, the same shape of damage as
+        // coercing a contactId to ''.
+        if (profile?.error) {
+            this.logger.warn(`Instagram OAuth: profile read failed for tenant ${tenantId}: ${JSON.stringify(profile.error)}`);
+            if (!igScopedId) throw this.metaConnectFailure('instagram', META_CONNECT_ERROR.UNAVAILABLE);
+        } else if (!igScopedId) {
+            this.logger.warn(`Instagram OAuth: Meta resolved no professional Instagram account for tenant ${tenantId}`);
+            throw this.metaConnectFailure('instagram', META_CONNECT_ERROR.NO_INSTAGRAM_BUSINESS_ACCOUNT);
+        }
+
         const displayName = profile.username ? `@${profile.username}` : profile.name || igScopedId;
         const pictureUrl = profile.profile_picture_url || null;
 
@@ -1125,7 +1326,7 @@ export class ChannelManagementController {
             });
         }
 
-        void this.markFirstChannelConnected(tenantId);
+        void this.markFirstChannelConnected(tenantId, 'instagram');
 
         // Store encrypted credential with expiration
         const existingCred = await this.prisma.whatsappCredential.findFirst({
@@ -1346,7 +1547,7 @@ export class ChannelManagementController {
             await this.prisma.channelAccount.create({ data: channelData });
         }
 
-        void this.markFirstChannelConnected(tenantId);
+        void this.markFirstChannelConnected(tenantId, 'sms');
 
         // 5. Store encrypted credential
         const existingCred = await this.prisma.whatsappCredential.findFirst({
@@ -1552,7 +1753,7 @@ export class ChannelManagementController {
             });
         }
 
-        void this.markFirstChannelConnected(tenantId);
+        void this.markFirstChannelConnected(tenantId, channelType);
 
         // Store encrypted credential (reuse whatsapp_credentials table for all channels)
         const existingCred = await this.prisma.whatsappCredential.findFirst({
@@ -1701,7 +1902,7 @@ export class ChannelManagementController {
             case 'messenger':
                 return 'En tu Facebook App, ve a Messenger → Settings → Webhooks y configura la URL y Verify Token. Habilita los campos: messages, messaging_postbacks, messaging_optins.';
             case 'telegram':
-                return '1. Abre @BotFather en Telegram y usa /newbot para crear un bot. 2. Copia el token del bot. 3. Pegalo en el campo Bot Token y haz clic en Conectar. El webhook se configura automaticamente.';
+                return '1. Abre @BotFather en Telegram y usa /newbot para crear un bot. 2. Copia el token del bot. 3. Pégalo en el campo Bot Token y haz clic en Conectar. El webhook se configura automáticamente.';
             default:
                 return 'Configura el webhook en la plataforma del canal con la URL y Verify Token indicados.';
         }

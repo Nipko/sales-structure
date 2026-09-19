@@ -112,7 +112,12 @@ export function resolveZone(target: NumberZone, siblings: readonly NumberZone[],
         sibling.channelAccountId !== target.channelAccountId
         && sibling.wabaId && target.wabaId && sibling.wabaId === target.wabaId
         && sibling.timezoneId === target.timezoneId
-        && usableZone(sibling.zone, now));
+        && usableZone(sibling.zone, now)
+        // A zone whose evidence names another WABA or another Meta id was
+        // confirmed for an account the donor is no longer on (kept across a
+        // reconnect): carrying it would be passing on a zone nobody confirmed
+        // for this one.
+        && evidenceNamesItsAccount(sibling));
 
     const distinct = [...new Set(family.map(sibling => usableZone(sibling.zone, now)!))];
     if (distinct.length > 1) return { kind: 'contradictory', zones: distinct.sort() };
@@ -126,6 +131,144 @@ export function resolveZone(target: NumberZone, siblings: readonly NumberZone[],
         };
     }
     return { kind: 'unmapped', reason: 'no_confirmation_for_this_id' };
+}
+
+// ═══ A ZONE BELONGS TO THE ACCOUNT IT WAS CONFIRMED FOR ═══
+//
+// A zone is confirmed — by a person, or carried from one — for a specific
+// account: a WABA and the numeric id Meta reported for it. A reconnect that
+// rewrites `metadata.wabaId` / `metadata.metaTimezoneId` to ANOTHER account and
+// keeps the column makes the old zone read as confirmed for the new one, and
+// `same_waba_same_id` then carries it to that account's next number. So:
+//
+//   · a reconnect keeps the zone only while it is the same account
+//     (`zoneStillConfirmedFor`), and otherwise clears it;
+//   · a number whose zone evidence names another account is never a donor
+//     (`evidenceNamesItsAccount`), in `resolveZone` and in the propagation of
+//     a confirmation.
+//
+// TWIN: apps/whatsapp onboarding.service.ts (`zoneConfirmedFor`,
+// `zoneStillConfirmedFor`, `resolveBillingFacts`) — the Embedded Signup path.
+// Change both.
+
+/** Meta's numeric id in one spelling (`"12"`, `12` and `" 12 "` are one id), or null. */
+export function normalizeMetaTimezoneId(value: unknown): string | null {
+    const raw = String(value ?? '').trim();
+    if (!raw) return null;
+    const numeric = Number(raw);
+    return Number.isFinite(numeric) ? String(numeric) : raw;
+}
+
+function textOrNull(value: unknown): string | null {
+    const text = String(value ?? '').trim();
+    return text ? text : null;
+}
+
+/**
+ * The WhatsApp Business Account and Meta timezone id a row's zone was
+ * confirmed FOR: the ones its evidence names, and — for a zone with no
+ * evidence, or evidence that predates those fields — the ones the row itself
+ * recorded. `null` = not known, which is never read as a change.
+ */
+export function zoneConfirmedFor(metadata: unknown): { wabaId: string | null; timezoneId: string | null } {
+    const row = (metadata && typeof metadata === 'object' ? metadata : {}) as Record<string, unknown>;
+    const evidence = (row.wabaTimezoneEvidence && typeof row.wabaTimezoneEvidence === 'object'
+        ? row.wabaTimezoneEvidence : {}) as Record<string, unknown>;
+    return {
+        wabaId: textOrNull(evidence.wabaId) ?? textOrNull(row.wabaId),
+        timezoneId: normalizeMetaTimezoneId(evidence.timezoneId) ?? normalizeMetaTimezoneId(row.metaTimezoneId),
+    };
+}
+
+/**
+ * Whether a zone confirmed for `confirmed` still answers for `account`.
+ *
+ * A different WABA, or the same WABA now reporting a different id, is an
+ * account nobody confirmed this zone for. What is unknown on either side (no
+ * evidence, no id reported this time) is not a change.
+ */
+export function zoneStillConfirmedFor(
+    confirmed: { wabaId: string | null; timezoneId: unknown },
+    account: { wabaId: string | null; timezoneId: unknown },
+): boolean {
+    const confirmedWaba = textOrNull(confirmed.wabaId);
+    const accountWaba = textOrNull(account.wabaId);
+    if (confirmedWaba && accountWaba && confirmedWaba !== accountWaba) return false;
+    const confirmedId = normalizeMetaTimezoneId(confirmed.timezoneId);
+    const reportedId = normalizeMetaTimezoneId(account.timezoneId);
+    return !(confirmedId && reportedId && confirmedId !== reportedId);
+}
+
+/** Whether a number's zone evidence names the account the number is on now. */
+export function evidenceNamesItsAccount(number: NumberZone): boolean {
+    if (!number.evidence) return true;
+    return zoneStillConfirmedFor(
+        { wabaId: number.evidence.wabaId ?? null, timezoneId: number.evidence.timezoneId },
+        { wabaId: number.wabaId, timezoneId: number.timezoneId },
+    );
+}
+
+/** What a (re)connection writes about the billing zone. */
+export interface ConnectionZoneDecision {
+    /** `undefined` = leave the column as it is; a zone = write it; `null` = clear it. */
+    readonly wabaTimezone: string | null | undefined;
+    /** Keys to merge into `channel_accounts.metadata`; a `null` value clears that key. */
+    readonly metadata: Readonly<Record<string, unknown>>;
+    /** The zone a reconnect to another account dropped, for the log. */
+    readonly superseded: string | null;
+    /** What the tenant's other numbers could say for the new account, when asked. */
+    readonly resolution: ZoneResolution | null;
+}
+
+/**
+ * The billing zone a connected (or reconnected) number is left with.
+ *
+ * `existing` is the row as it was before this connection (null for a new
+ * one); `account` is what this connection is — its WABA and the id Meta
+ * reported now, when it reported one; `siblings` are the tenant's numbers that
+ * could donate a zone. Twin of the Embedded Signup's `resolveBillingFacts`.
+ */
+export function zoneOnConnection(input: {
+    readonly existing: { readonly zone: string | null; readonly metadata: unknown } | null;
+    readonly account: { readonly channelAccountId: string; readonly wabaId: string; readonly timezoneId: unknown };
+    readonly siblings: readonly NumberZone[];
+    readonly now?: Date;
+}): ConnectionZoneDecision {
+    const now = input.now ?? new Date();
+    const { account } = input;
+    const metadata: Record<string, unknown> = {};
+    const previous = (input.existing?.metadata && typeof input.existing.metadata === 'object'
+        ? input.existing.metadata : {}) as Record<string, unknown>;
+    const reported = normalizeMetaTimezoneId(account.timezoneId);
+    const previousWaba = textOrNull(previous.wabaId);
+    if (!reported && previous.metaTimezoneId != null && previousWaba && previousWaba !== account.wabaId) {
+        // Meta's id is a report ABOUT a WABA. Moved to another WABA that
+        // reported none, the old id would claim the new WABA reports it.
+        metadata.metaTimezoneId = null;
+    }
+
+    const own = input.existing ? usableZone(input.existing.zone, now) : null;
+    let superseded: string | null = null;
+    if (own) {
+        if (zoneStillConfirmedFor(zoneConfirmedFor(previous), { wabaId: account.wabaId, timezoneId: reported })) {
+            return { wabaTimezone: undefined, metadata, superseded: null, resolution: null };
+        }
+        superseded = own;
+        metadata.wabaTimezoneEvidence = null;
+    }
+
+    if (reported) {
+        const resolution = resolveZone({
+            channelAccountId: account.channelAccountId, wabaId: account.wabaId,
+            timezoneId: Number(reported) || null, zone: null, evidence: null,
+        }, input.siblings, now);
+        if (resolution.kind === 'inherited') {
+            metadata.wabaTimezoneEvidence = resolution.evidence;
+            return { wabaTimezone: resolution.zone, metadata, superseded, resolution };
+        }
+        return { wabaTimezone: superseded ? null : undefined, metadata, superseded, resolution };
+    }
+    return { wabaTimezone: superseded ? null : undefined, metadata, superseded, resolution: null };
 }
 
 /**

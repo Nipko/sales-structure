@@ -8,6 +8,7 @@ import { VerticalsService } from './verticals.service';
 import { OperatingCurrencyService } from './operating-currency.service';
 import { VerticalMigrationService } from './vertical-migration.service';
 import { VerticalTaxonomyInventoryService } from './vertical-taxonomy-inventory.service';
+import { OtroRecipeService } from './otro-recipe.service';
 import { CurrentUser } from '../../common/decorators/tenant.decorator';
 import { VERTICAL_REGISTRY, getVerticalDefinition } from './vertical-definitions';
 import { resolveVerticalPipelineStages } from './vertical-pipeline-contract';
@@ -31,6 +32,19 @@ import {
     VERTICAL_MANIFEST_INDUSTRIES,
 } from '@parallext/shared';
 
+function recipeSetupPresentation(definition: ReturnType<typeof getVerticalDefinition>, locale: string) {
+    const text = (value: Record<string, string> | undefined): string =>
+        String(value?.[locale] || value?.es || '').trim();
+    return {
+        services: definition.services.map((service) => ({
+            name: text(service.name),
+            durationMinutes: service.durationMinutes,
+            priceState: service.priceStatus === 'quote' ? 'quote' : 'example',
+        })),
+        businessHours: definition.businessHours.schedule,
+    };
+}
+
 @ApiTags('verticals')
 @Controller('verticals')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
@@ -41,7 +55,73 @@ export class VerticalsController {
         private readonly operatingCurrency: OperatingCurrencyService,
         private readonly verticalMigrations: VerticalMigrationService,
         @Optional() private readonly taxonomyInventory?: VerticalTaxonomyInventoryService,
+        @Optional() private readonly otroRecipe?: OtroRecipeService,
     ) {}
+
+    /**
+     * La receta del negocio: lo que el dia 0 prellena y de donde sale.
+     *
+     * Devuelve la receta de la industria compuesta con la capa de su subtipo,
+     * ya en el idioma del panel. Para un negocio de "Otro", devuelve la que el
+     * modelo escribio a partir de su descripcion (D9) y, si todavia no existe,
+     * arranca esa generacion sin esperarla: la pantalla se pinta con lo
+     * generico de inmediato y la siguiente lectura trae la propia.
+     *
+     * `recipe` puede venir vacio. Una industria sin receta escrita no es un
+     * error: es el estado en el que estaban las 20 hasta esta ola, y el lint
+     * reporta la cobertura en vez de fingir que esta completa.
+     */
+    @Get(':tenantId/recipe')
+    @UseGuards(TenantGuard)
+    @ApiOperation({ summary: 'Get the business recipe that pre-fills day 0' })
+    async getRecipe(
+        @Param('tenantId') tenantId: string,
+        @Query('lang') lang?: string,
+    ) {
+        const config = await this.verticalsService.getVerticalConfig(tenantId);
+        const industry = config?.industry;
+        if (!industry) {
+            return { success: true, data: { industry: null, subType: null, source: 'none', recipe: null } };
+        }
+        const locale = (lang || 'es').split('-')[0];
+        const definition = getVerticalDefinition(industry, config?.subType ?? null);
+
+        // "Otro" no tiene receta de industria porque no es una industria: es la
+        // ausencia de una. Por eso es el unico caso donde la escribe el modelo.
+        if (industry === 'otro' && this.otroRecipe) {
+            const generated = await this.otroRecipe.read(tenantId);
+            // Se arranca SIEMPRE, no solo cuando falta. `generate` corta solo
+            // si la descripción del negocio no cambió, y el enfriamiento evita
+            // repetir una llamada pagada. Con la versión anterior, un dueño que
+            // corregía su descripción seguía viendo la receta vieja para
+            // siempre — y la ayuda le decía, en cuatro idiomas, que cambiarla
+            // la vuelve a escribir.
+            this.otroRecipe.kickOff(tenantId, locale);
+            if (generated?.recipe) {
+                return {
+                    success: true,
+                    data: {
+                        industry, subType: config?.subType ?? null, locale,
+                        source: 'generated', generatedAt: generated.generatedAt,
+                        recipe: generated.recipe,
+                        setup: recipeSetupPresentation(definition, locale),
+                    },
+                };
+            }
+        }
+
+        return {
+            success: true,
+            data: {
+                industry,
+                subType: config?.subType ?? null,
+                locale,
+                source: definition.recipe ? 'registry' : 'none',
+                recipe: definition.recipe ?? null,
+                setup: recipeSetupPresentation(definition, locale),
+            },
+        };
+    }
 
     @Get('definitions/all')
     @ApiOperation({ summary: 'Get all canonical vertical definitions (for subtype selectors)' })
@@ -203,7 +283,7 @@ export class VerticalsController {
         if (!config || !config.industry) {
             return { success: true, data: [] };
         }
-        const definition = getVerticalDefinition(config.industry);
+        const definition = getVerticalDefinition(config.industry, config.subType ?? null);
         const hasPublishedCurrentManifest = config.manifestVersion === VERTICAL_CAPABILITY_MANIFEST_VERSION
             && Array.isArray(config.effectiveCapabilities);
         return {

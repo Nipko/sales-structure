@@ -4,6 +4,7 @@ import { useTranslations, useLocale } from "next-intl";
 import { cn } from "@/lib/utils";
 import { Tag, X, Save, MapPin, Video, Globe, Clock, Timer, Infinity } from "lucide-react";
 import { Service, DURATION_PRESETS, SERVICE_COLORS, type DurationType } from "./shared";
+import { servicePriceFormProblem, type ServicePriceFormStatus } from "./service-price";
 import {
   PaymentPolicyFields,
   type PaymentPolicyMode,
@@ -15,7 +16,14 @@ interface ServiceForm {
   durationMax: number | null;
   durationType: DurationType;
   buffer: number;
-  price: number;
+  /** `null` = campo vacío: no hay monto. Nunca se manda como 0 (FX1). */
+  price: number | null;
+  /**
+   * La decisión del dueño sobre el precio: `confirmed`, `free` ("Es gratis")
+   * o `quote`. `example` = todavía no decidió en este formulario, y guardar
+   * conserva lo que la fila tenía.
+   */
+  priceStatus: ServicePriceFormStatus;
   color: string;
   category: string;
   maxConcurrent: number;
@@ -38,14 +46,43 @@ interface ServiceModalProps {
   saving: boolean;
   onSave: () => void;
   onClose: () => void;
+  /**
+   * La moneda en la que este negocio cobra, resuelta por la página con
+   * `useOperatingCurrency()`. Acá venía de `t('currency')`, es decir del
+   * IDIOMA del panel: un dueño colombiano que ponía el panel en inglés veía
+   * "USD" al lado de un precio guardado en COP. La moneda es un hecho del
+   * negocio, no una traducción. `null`/ausente = todavía no se sabe, y
+   * entonces no se muestra ninguna: un código inventado es una cifra falsa.
+   */
+  currency?: string | null;
 }
 
 export default function ServiceModal({
-  form, onChange, editingService, saving, onSave, onClose,
+  form, onChange, editingService, saving, onSave, onClose, currency,
 }: ServiceModalProps) {
   const t = useTranslations("appointments");
   const locale = useLocale();
   const numLocale = locale === "pt" ? "pt-BR" : locale === "fr" ? "fr-FR" : locale === "en" ? "en-US" : undefined;
+  // El número que trae un servicio sembrado por el rubro no lo escribió el
+  // dueño: sigue siendo ejemplo hasta que pulse "Precio confirmado" o escriba
+  // otro número. Sin precio confirmado no hay anticipo posible.
+  //
+  // FX1: gratis es una elección propia ("Es gratis"), no un campo vacío. El
+  // formulario mandaba el campo vacío como 0, y "Precio confirmado" sobre un
+  // servicio sin monto (o que se cotiza) lo dejaba gratis para el agente.
+  const isExamplePrice = form.priceStatus === "example";
+  const priceQuoted = form.priceStatus === "quote";
+  const priceFree = form.priceStatus === "free";
+  const priceUnconfirmed = form.priceStatus !== "confirmed";
+  const priceProblem = servicePriceFormProblem(form);
+  const priceHint = priceProblem
+    ? t('priceStatus.confirmNeedsAmount')
+    : priceFree
+      ? t('priceStatus.freeHint')
+      : isExamplePrice
+        ? (form.price === null ? t('priceStatus.missingHint') : t('priceStatus.exampleHint'))
+        : null;
+  const priceLocked = priceQuoted || priceFree;
 
   return (
     <div
@@ -211,32 +248,89 @@ export default function ServiceModal({
                 <input
                   type="text"
                   inputMode="numeric"
-                  value={form.price > 0 ? form.price.toLocaleString(numLocale) : ''}
+                  aria-label={t('price')}
+                  aria-invalid={priceProblem ? true : undefined}
+                  aria-describedby={priceHint ? "service-price-status-hint" : undefined}
+                  disabled={priceLocked}
+                  value={priceLocked || form.price === null ? '' : form.price.toLocaleString(numLocale)}
                   onChange={(e) => {
                     const raw = e.target.value.replace(/[^0-9]/g, '');
-                    onChange({ ...form, price: raw ? Number(raw) : 0 });
+                    onChange({ ...form, price: raw ? Number(raw) : null });
                   }}
-                  placeholder="0"
-                  className="w-full px-3 pl-7 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  placeholder={priceLocked ? '—' : undefined}
+                  className="w-full px-3 pl-7 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50"
                 />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-neutral-400">{t('currency')}</span>
+                {currency && (
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-neutral-400">{currency}</span>
+                )}
               </div>
             </div>
+          </div>
+
+          {/* Estado del precio (D10). Un precio de ejemplo del rubro no se
+              dice hasta que el dueño lo confirme, y guardar lo confirma. "Se
+              cotiza" es que nunca se dice un número; sin número no hay
+              anticipo posible, por eso elegirlo vuelve la política a "sin pago". */}
+          <div>
+            <span id="service-price-status-label" className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
+              {t('priceStatus.label')}
+            </span>
+            <div role="group" aria-labelledby="service-price-status-label" aria-describedby={priceHint ? "service-price-status-hint" : undefined} className="flex flex-wrap gap-2">
+              {(['confirmed', 'free', 'quote'] as const).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  aria-pressed={form.priceStatus === value}
+                  onClick={() => onChange(
+                    // Sin número que cobrar (se cotiza) o con un 0 (gratis) no
+                    // hay anticipo posible: la política vuelve a "sin pago".
+                    value === 'confirmed'
+                      ? { ...form, priceStatus: 'confirmed' }
+                      : { ...form, priceStatus: value, paymentPolicy: 'none', depositPercent: null, depositAmount: null },
+                  )}
+                  className={cn(
+                    "flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium cursor-pointer border transition-colors",
+                    form.priceStatus === value
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-neutral-50 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-700"
+                  )}
+                >
+                  {t(`priceStatus.${value}`)}
+                </button>
+              ))}
+            </div>
+            {priceHint && (
+              <p
+                id="service-price-status-hint"
+                className={cn(
+                  "text-xs mt-2",
+                  priceProblem || isExamplePrice ? "text-amber-600 dark:text-amber-400" : "text-neutral-500 dark:text-neutral-400",
+                )}
+              >
+                {priceHint}
+              </p>
+            )}
           </div>
 
           {/* Cómo se confirma: va pegado al precio porque el anticipo se
               calcula sobre él, y porque es la decisión que cambia lo que el
               agente le puede decir al cliente. */}
-          <PaymentPolicyFields
-            value={{
-              paymentPolicy: form.paymentPolicy,
-              depositPercent: form.depositPercent,
-              depositAmount: form.depositAmount,
-            }}
-            onChange={(next) => onChange({ ...form, ...next })}
-            currencySymbol="$"
-            inputCls="w-full px-3 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-          />
+          <div className="space-y-2">
+            {priceUnconfirmed && !priceFree && (
+              <p className="text-xs text-neutral-500 dark:text-neutral-400">{t('priceStatus.paymentLocked')}</p>
+            )}
+            <PaymentPolicyFields
+              value={{
+                paymentPolicy: form.paymentPolicy,
+                depositPercent: form.depositPercent,
+                depositAmount: form.depositAmount,
+              }}
+              onChange={(next) => onChange({ ...form, ...next })}
+              disabled={priceUnconfirmed}
+              currencySymbol="$"
+              inputCls="w-full px-3 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+            />
+          </div>
 
           {/* Color picker */}
           <div>
@@ -408,7 +502,7 @@ export default function ServiceModal({
           </button>
           <button
             onClick={onSave}
-            disabled={saving || !form.name}
+            disabled={saving || !form.name || !!priceProblem}
             className="flex items-center gap-2 px-5 py-2.5 rounded-xl border-none bg-primary text-primary-foreground font-semibold text-sm cursor-pointer disabled:opacity-50 hover:opacity-90 transition-opacity"
           >
             <Save size={16} />

@@ -55,8 +55,8 @@ describe('owner controls through the production capability composer', () => {
     beforeEach(() => jest.spyOn(Logger.prototype, 'debug').mockImplementation(() => undefined));
     afterEach(() => jest.restoreAllMocks());
     it('covers each canonical business profile without merging subtype siblings', () => {
-        expect(profiles).toHaveLength(76);
-        expect(new Set(profiles).size).toBe(76);
+        expect(profiles).toHaveLength(80);
+        expect(new Set(profiles).size).toBe(80);
     });
 
     it.each(profiles)('%s cannot publish provider tools when every family is disabled', async profileId => {

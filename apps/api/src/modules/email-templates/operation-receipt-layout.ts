@@ -149,7 +149,7 @@ const COPY: Record<Language, Record<OperationReceiptKind, ReceiptCopy>> = {
                 payment_method: 'Forma de pago',
             },
             totalLabel: 'Total',
-            note: 'Este correo confirma que recibimos el pedido, no que ya fue entregado ni cobrado. Si algo no coincide, respondenos por el mismo chat antes de que salga de la cocina.',
+            note: 'Este correo confirma que recibimos el pedido, no que ya fue entregado ni cobrado. Si algo no coincide, respóndenos por el mismo chat antes de que salga de la cocina.',
             footer: '¡Buen provecho! — {{company_name}}',
         },
         repair_order: {
@@ -197,7 +197,7 @@ const COPY: Record<Language, Record<OperationReceiptKind, ReceiptCopy>> = {
                 check_in: 'Ingreso',
                 check_out: 'Salida',
             },
-            note: 'Por favor traé el carnet de vacunas al día, el alimento habitual y cualquier medicación con sus indicaciones. Sin el carnet no podemos recibir a tu mascota.',
+            note: 'Por favor trae el carnet de vacunas al día, el alimento habitual y cualquier medicación con sus indicaciones. Sin el carnet no podemos recibir a tu mascota.',
             footer: 'La vamos a cuidar como en casa — {{company_name}}',
         },
     },

@@ -17,6 +17,7 @@ import { AccountPauseStore } from './account-pause-store';
 import { ChannelTokenService } from './channel-token.service';
 import { RedisService } from '../redis/redis.service';
 import { OutboundMessage, isScopedAddressKey } from '@parallext/shared';
+import { recordFirstReply } from '../../common/utils/first-reply.util';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { TenantNotificationSmsService } from '../sms-credits/tenant-notification-sms.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -35,6 +36,42 @@ export const pendingJobsKey = (tenantId: string) => `outbound:pending:${tenantId
 
 /** Two identifiers, never a payload or a recipient: the outbox row is the record. */
 export interface DispatchJobReference { tenantId: string; dispatchId: string }
+
+/**
+ * ═══ WHICH DISPATCH ROWS ARE THE AGENT ANSWERING ═══
+ *
+ * A durable dispatch row carries the authority it was prepared under in
+ * `operational_scope.kind`, and the outbox accepts exactly four
+ * (`DISPATCH_AUTHORITY_KINDS` in proactive-dispatch.service.ts, each checked
+ * again at admission in agent-dispatch-outbox.store.ts):
+ *
+ *   · `agent`            — a durable agent persona at a version (the AI turn, and
+ *                          the payment-outcome notice it speaks for itself);
+ *   · `legacy`           — the pre-agent persona of a tenant that never had a
+ *                          durable agent. Still the agent answering;
+ *   · `proactive_policy` — a reminder, drip step or campaign under a policy. No
+ *                          persona wrote it and it answers nobody;
+ *   · `human_operator`   — a PERSON: the owner or an agent in the inbox
+ *                          (`agent_console`), or a machine holding the tenant's
+ *                          API key (`tenant_api`). It is `reactive` whenever the
+ *                          thread has an inbound — which is exactly why
+ *                          `disposition` alone could not tell it apart.
+ *
+ * Only the first two are "the agent answered a real customer", the activation
+ * contract (`recordFirstReply`, `isAwaitingFirstReply`). An owner answering by
+ * hand on day 0 ended the day-0 silence while her agent had still never
+ * replied to anybody — the exact state the silence exists to keep visible.
+ *
+ * Anything that is not a recognisable scope reads as NOT agent-authored: a row
+ * we cannot attribute never activates an account.
+ */
+export const AGENT_AUTHORED_SCOPE_KINDS: readonly string[] = Object.freeze(['agent', 'legacy']);
+
+export function isAgentAuthoredScope(scope: unknown): boolean {
+    if (!scope || typeof scope !== 'object' || Array.isArray(scope)) return false;
+    const kind = (scope as { kind?: unknown }).kind;
+    return typeof kind === 'string' && AGENT_AUTHORED_SCOPE_KINDS.includes(kind);
+}
 
 /**
  * A reply that lives in the database, named by two ids.
@@ -213,6 +250,25 @@ export class OutboundQueueProcessor extends WorkerHost {
      */
     private sentMarkerKey(jobId: string | undefined): string {
         return `outbound:sent:${jobId}`;
+    }
+
+    /**
+     * The first reply the AGENT sent that reached a real customer activates the
+     * account. The caller decides which rows count (`isAgentAuthoredScope`);
+     * this only writes.
+     *
+     * One writer for every channel (`recordFirstReply`): it stamps
+     * `settings.firstReplyAt` once — first write wins — and moves the stage to
+     * `live` in the same row lock. It keeps its own in-process memory, so the
+     * settings row is not re-read on every delivered reply, and it never
+     * throws: a stage that fails to advance must never cost a delivery its
+     * receipt. Fire-and-forget on purpose.
+     */
+    private markTenantLive(tenantId: string, channelType?: string | null): void {
+        void recordFirstReply(this.prisma, tenantId, {
+            source: 'dispatch',
+            channelType: channelType ?? undefined,
+        }).catch(() => undefined);
     }
 
     /**
@@ -655,6 +711,22 @@ export class OutboundQueueProcessor extends WorkerHost {
                 { error: { code: String((outcome as any).errorCode).replace(/^\D*/, '') } });
         }
 
+        // ── THE PROVIDER'S ANSWER IS THE ACTIVATION, NOT OUR BOOKKEEPING ────
+        //
+        // A reply inside a real conversation reached the provider: the account
+        // is live from this moment, whatever the setup card still lists as
+        // polish. Marked HERE, on the provider's answer, and not after the
+        // `sent` settle below: that settle can throw after Meta accepted, and
+        // both endings of that — the late-acceptance recovery that closes the
+        // row as `sent`, and `outcome_unrecorded` — are replies the customer
+        // received. Marking only on the happy settle left those first replies
+        // without an activation. Proactive sends (campaigns, reminders) prove
+        // nothing about attending a customer, and neither does a reply a
+        // PERSON wrote: an owner answering from the inbox is `reactive` too,
+        // and it is not her agent answering (`isAgentAuthoredScope`).
+        if (outcome.kind === 'accepted' && !proactive && isAgentAuthoredScope(scope))
+            this.markTenantLive(tenantId, admitted.row.binding?.channelType);
+
         try {
             if (outcome.kind === 'accepted') {
                 // Accepted is not priced. The exposure stays until a status
@@ -664,6 +736,7 @@ export class OutboundQueueProcessor extends WorkerHost {
                     .catch(() => undefined);
                 await this.dispatchOutbox.settle(tenantId, dispatchId, admitted.leaseToken,
                     { kind: 'sent', receipt: outcome.receipt });
+                // Activation was already marked on the provider's answer, above.
                 // Chain the next effect only now that this one actually arrived.
                 // Order is enforced here, not by a delay somebody guessed.
                 await this.chainNext(tenantId, dispatchId);

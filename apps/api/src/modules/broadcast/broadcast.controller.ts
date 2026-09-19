@@ -65,7 +65,7 @@ export class BroadcastController {
                     limitKey: 'abTestBroadcasts',
                     resource: 'A/B testing de broadcasts',
                     plan,
-                    message: `Tu plan ${plan} no incluye A/B testing para broadcasts. Actualizá tu plan.`,
+                    message: `Tu plan ${plan} no incluye A/B testing para broadcasts. Actualiza tu plan.`,
                 });
             }
         }
@@ -143,7 +143,7 @@ export class BroadcastController {
                 limitKey: 'abTestBroadcasts',
                 resource: 'A/B testing de broadcasts',
                 plan,
-                message: `Tu plan ${plan} no incluye A/B testing para broadcasts. Actualizá tu plan.`,
+                message: `Tu plan ${plan} no incluye A/B testing para broadcasts. Actualiza tu plan.`,
             });
         }
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);

@@ -42,6 +42,24 @@ export interface GuidedTourContext {
   agentId?: string | null;
   /** Vertical catalogue route for tenants whose knowledge lives in a catalogue. */
   verticalCatalogRoute?: string | null;
+  /**
+   * How the tenant applies agent changes. Anything but `"reviewed"` is the
+   * default, immediate mode: a save is live and the switch turns the agent on,
+   * so no step may talk about drafts, candidates or publication.
+   */
+  reviewMode?: GuidedTourReviewMode | null;
+}
+
+export type GuidedTourReviewMode = "immediate" | "reviewed";
+
+/** Both modes, for everything that must hold whichever one the tenant chose. */
+export const GUIDED_TOUR_REVIEW_MODES: readonly GuidedTourReviewMode[] = ["immediate", "reviewed"];
+
+const isReviewed = (context: GuidedTourContext): boolean => context.reviewMode === "reviewed";
+
+/** A change mode the product has, or `null` — never a guess at one. */
+export function parseGuidedTourReviewMode(value: unknown): GuidedTourReviewMode | null {
+  return (GUIDED_TOUR_REVIEW_MODES as readonly unknown[]).includes(value) ? value as GuidedTourReviewMode : null;
 }
 
 /**
@@ -160,7 +178,8 @@ const STEP_DEFINITIONS: Record<GuidedTourId, StepFactory> = {
     // were never readable by anything but an eye.
     { selector: guidedTourSelector("agent-channels"), route: agentRoute(context), key: "channels", icon: "🔗", side: "top", prepareSelector: '[data-tab-id="persona"]',
       completedWhen: { kind: "present", selector: `${guidedTourSelector("agent-channels")} [aria-pressed="true"]` } },
-    { selector: guidedTourSelector("agent-save"), key: "save", icon: "💾", side: "top" },
+    // Immediate mode saves what answers customers; only reviewed mode saves a draft.
+    { selector: guidedTourSelector("agent-save"), key: isReviewed(context) ? "saveReviewed" : "save", icon: "💾", side: "top" },
   ],
   agent_handoff_rules: (context) => [
     { selector: guidedTourSelector("agent-name"), route: agentRoute(context), key: "name", icon: "🪪", side: "bottom", prepareSelector: '[data-tab-id="persona"]', completedWhen: { kind: "filled", all: true } },
@@ -168,14 +187,32 @@ const STEP_DEFINITIONS: Record<GuidedTourId, StepFactory> = {
     { selector: guidedTourSelector("agent-fallback"), key: "fallback", icon: "🛟", side: "bottom", prepareSelector: '[data-tab-id="persona"]', completedWhen: { kind: "filled" } },
     { selector: guidedTourSelector("agent-rules"), key: "rules", icon: "📏", side: "top", prepareSelector: '[data-tab-id="instructions"]', completedWhen: { kind: "filled", within: "input" } },
     { selector: guidedTourSelector("agent-handoff-triggers"), key: "handoff", icon: "🙋", side: "top", prepareSelector: '[data-tab-id="instructions"]', completedWhen: { kind: "filled", within: "input" } },
-    { selector: guidedTourSelector("agent-save"), key: "save", icon: "💾", side: "top" },
+    { selector: guidedTourSelector("agent-save"), key: isReviewed(context) ? "saveReviewed" : "save", icon: "💾", side: "top" },
   ],
-  publish_agent_revision: (context) => [
+  /**
+   * What turns an inactive agent on — which is the `agent_active` check's
+   * resolution, and depends on the mode (see `AGENT_ISSUE_RESOLUTIONS`).
+   *
+   * Immediate mode, the default: the switch in the editor's hero IS the answer.
+   * The pipeline below lives on screens that editor does not even link to in
+   * this mode, and walking a new owner through "draft, candidate, review,
+   * publish" to turn on an agent a switch turns on was the retired D1/D6
+   * pipeline still being taught (audit #62). The second step is the channels
+   * because the switch's own confirmation says it answers only there.
+   */
+  publish_agent_revision: (context) => isReviewed(context) ? [
     { selector: guidedTourSelector("agent-save"), route: agentRoute(context), key: "draft", icon: "💾", side: "top" },
     { selector: guidedTourSelector("agent-test-configuration"), route: agentWorkspaceRoute(context, "test"), key: "test", icon: "🧪", side: "bottom" },
     { selector: guidedTourSelector("agent-release-prepare"), route: agentWorkspaceRoute(context, "releases"), key: "prepare", icon: "📋", side: "top" },
     { selector: guidedTourSelector("agent-release-review"), key: "review", icon: "✅", side: "top", optional: true },
     { selector: guidedTourSelector("agent-publication-publish"), route: agentWorkspaceRoute(context, "publications"), key: "publish", icon: "🚀", side: "top" },
+  ] : [
+    // `role="switch"` carries `aria-checked`, the same state a screen reader
+    // announces; the green colour was never readable by anything but an eye.
+    { selector: guidedTourSelector("agent-active"), route: agentRoute(context), key: "switch", icon: "🟢", side: "bottom",
+      completedWhen: { kind: "present", selector: `${guidedTourSelector("agent-active")} [role="switch"][aria-checked="true"]` } },
+    { selector: guidedTourSelector("agent-channels"), key: "channels", icon: "🔗", side: "top",
+      completedWhen: { kind: "present", selector: `${guidedTourSelector("agent-channels")} [aria-pressed="true"]` } },
   ],
   human_handoff_route: () => [
     { selector: sidebarTourSelector("users"), route: "/admin/users", key: "menu", icon: "👥", side: "right" },
@@ -230,11 +267,18 @@ const STEP_DEFINITIONS: Record<GuidedTourId, StepFactory> = {
   ],
 
   // ── Part II: onboarding, first channel and the help system ──────────────
+  /**
+   * The last two steps are optional because day 0 hides what they point at:
+   * Home drops its help panel while the card still has steps, and the Assist
+   * launcher is not drawn until the account is live (D7-A). A required step
+   * with no anchor stopped the run on "no está disponible"; an optional one
+   * is left out of the plan, so the tour only shows what is on screen.
+   */
   home_first_steps: () => [
     { selector: guidedTourSelector("setup-card"), route: "/admin", key: "card", icon: "🚀", side: "bottom" },
     { selector: guidedTourSelector("setup-next"), key: "next", icon: "👉", side: "bottom" },
-    { selector: guidedTourSelector("help-panel"), key: "help", icon: "💡", side: "bottom" },
-    { selector: guidedTourSelector("assistant"), key: "assistant", icon: "🙋", side: "left" },
+    { selector: guidedTourSelector("help-panel"), key: "help", icon: "💡", side: "bottom", optional: true },
+    { selector: guidedTourSelector("assistant"), key: "assistant", icon: "🙋", side: "left", optional: true },
   ],
   /**
    * El orden es el que recorre la persona, no el del archivo: primero el
@@ -252,8 +296,18 @@ const STEP_DEFINITIONS: Record<GuidedTourId, StepFactory> = {
     { selector: guidedTourSelector("whatsapp-connect"), key: "connect", icon: "🔵", side: "top" },
     { selector: guidedTourSelector("whatsapp-test"), key: "test", icon: "🎉", side: "bottom" },
   ],
+  /**
+   * Starts on the setup card's next step, the one element Home draws whenever
+   * there is something left to resume. It used to start on the card's
+   * "Continuar donde quedaste" link, which exists only on a channel left for
+   * later: an owner who skipped the wizard and then connected a channel got
+   * "este recorrido no está disponible". With a deferral, that link is inside
+   * this same step; without one, its "Continuar" is. The copy says what both
+   * do — take her straight to what is left — and the last step promises the
+   * reminder Home really shows (the card), not a way back into the wizard.
+   */
   resume_setup_wizard: () => [
-    { selector: guidedTourSelector("resume-setup"), route: "/admin", key: "entry", icon: "↩️", side: "bottom" },
+    { selector: guidedTourSelector("setup-next"), route: "/admin", key: "entry", icon: "↩️", side: "bottom" },
     { selector: guidedTourSelector("setup-steps"), route: "/admin/setup-wizard", key: "steps", icon: "🧭", side: "bottom" },
     { selector: guidedTourSelector("setup-connect"), key: "connect", icon: "🔌", side: "top" },
   ],
@@ -280,8 +334,9 @@ const STEP_DEFINITIONS: Record<GuidedTourId, StepFactory> = {
  */
 export const GUIDED_TOUR_ANCHOR_NAMES: readonly string[] = Array.from(
   new Set(
-    GUIDED_TOUR_IDS.flatMap((id) =>
-      STEP_DEFINITIONS[id]({ agentId: "00000000-0000-4000-8000-000000000000" })
+    // Both change modes: an anchor only the reviewed pipeline uses still has to exist.
+    GUIDED_TOUR_IDS.flatMap((id) => GUIDED_TOUR_REVIEW_MODES.flatMap((reviewMode) =>
+      STEP_DEFINITIONS[id]({ agentId: "00000000-0000-4000-8000-000000000000", reviewMode }))
         .flatMap((step) => [
           step.selector,
           ...(step.completedWhen?.kind === "present" ? [step.completedWhen.selector] : []),
@@ -303,6 +358,51 @@ export function getGuidedTourStepDefinitions(
   context: GuidedTourContext = {},
 ): GuidedTourStepDefinition[] {
   return STEP_DEFINITIONS[tourId](context);
+}
+
+/**
+ * Whether a tour walks a different path, or says different words, in each
+ * change mode.
+ *
+ * Computed from the step definitions rather than listed, so a tour that grows
+ * a mode-specific step is covered the day it does: only these tours need the
+ * tenant's mode before they start, and every other one starts without asking.
+ */
+export function guidedTourDependsOnReviewMode(
+  tourId: GuidedTourId,
+  context: GuidedTourContext = {},
+): boolean {
+  const walk = (reviewMode: GuidedTourReviewMode) => JSON.stringify(
+    getGuidedTourStepDefinitions(tourId, { ...context, reviewMode })
+      .map((step) => [step.key, step.selector, step.route ?? null]),
+  );
+  return walk("immediate") !== walk("reviewed");
+}
+
+/**
+ * The change mode a run uses.
+ *
+ * The launcher's, when it knew it (the editor does). Otherwise, only for a tour
+ * whose steps depend on it, the tenant's mode as read now: most launchers — a
+ * help panel, the setup card, Assist — have no business learning it, and
+ * starting the run without it gave a reviewed-mode tenant the default mode's
+ * switch and "al guardar… de inmediato". A read that fails, or a role that
+ * cannot read it, leaves `null`: the default mode's copy, the same as before.
+ */
+export async function resolveGuidedTourReviewMode(
+  tourId: GuidedTourId,
+  context: GuidedTourContext,
+  requested: unknown,
+  readTenantMode: () => Promise<GuidedTourReviewMode | null>,
+): Promise<GuidedTourReviewMode | null> {
+  const known = parseGuidedTourReviewMode(requested);
+  if (known) return known;
+  if (!guidedTourDependsOnReviewMode(tourId, context)) return null;
+  try {
+    return parseGuidedTourReviewMode(await readTenantMode());
+  } catch {
+    return null;
+  }
 }
 
 /** The route a step runs on, resolving the "inherit from the previous step" rule. */
@@ -457,15 +557,33 @@ export function buildGuidedTourSteps(
   });
 }
 
-/** i18n keys every tour needs, for the parity test across the four locales. */
-export function guidedTourMessageKeys(): string[] {
-  return GUIDED_TOUR_IDS.flatMap((id) =>
-    getGuidedTourStepDefinitions(id, { agentId: "00000000-0000-4000-8000-000000000000" })
+/**
+ * i18n keys every tour needs, for the parity test across the four locales.
+ *
+ * Without a mode, the keys of BOTH modes: the reviewed pipeline's copy has to
+ * exist even though a tenant in the default mode never reads it.
+ */
+export function guidedTourMessageKeys(reviewMode?: GuidedTourReviewMode): string[] {
+  const modes = reviewMode ? [reviewMode] : GUIDED_TOUR_REVIEW_MODES;
+  return Array.from(new Set(GUIDED_TOUR_IDS.flatMap((id) => modes.flatMap((mode) =>
+    getGuidedTourStepDefinitions(id, { agentId: "00000000-0000-4000-8000-000000000000", reviewMode: mode })
       .flatMap((step) => [
         `guidedTours.${id}.steps.${step.key}.title`,
         `guidedTours.${id}.steps.${step.key}.content`,
-      ]),
-  );
+      ])))));
+}
+
+/**
+ * Tour copy that ONLY a tenant in reviewed mode can ever read.
+ *
+ * Reviewed mode is the advanced mode, where "borrador" and "publicar" are the
+ * names of real screens, so this is the one part of `guidedTours.*` the day-0
+ * jargon check leaves alone. Computed from the step definitions, not listed:
+ * a key the default mode also renders can never end up here.
+ */
+export function guidedTourReviewedOnlyMessageKeys(): string[] {
+  const immediate = new Set(guidedTourMessageKeys("immediate"));
+  return guidedTourMessageKeys("reviewed").filter((key) => !immediate.has(key));
 }
 
 /**
@@ -501,8 +619,10 @@ export interface GuidedTourResumeRecord {
 function isPlainContext(value: unknown): value is GuidedTourContext {
   if (value === null || typeof value !== "object") return false;
   return Object.entries(value as Record<string, unknown>).every(
-    ([key, entry]) => ["channelType", "agentId", "verticalCatalogRoute"].includes(key)
-      && (entry === null || typeof entry === "string"),
+    ([key, entry]) => ["channelType", "agentId", "verticalCatalogRoute", "reviewMode"].includes(key)
+      && (entry === null || typeof entry === "string")
+      // A mode the product does not have would pick the reviewed copy by accident.
+      && (key !== "reviewMode" || entry === null || (GUIDED_TOUR_REVIEW_MODES as readonly unknown[]).includes(entry)),
   );
 }
 

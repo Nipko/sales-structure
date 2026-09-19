@@ -5,12 +5,12 @@ el estado sale de ella: con una condición local sin cumplir la fila está `abie
 cumplida y un gate externo nombrado está `bloqueada`; sólo sin condición y sin gate está `aceptada`.
 Cerrar un hueco cambia esta tabla cambiando el código, y reabrirlo la cambia de vuelta.
 
-Revisión: `0113f68de490541a6833d112818b78bff0dbc6c6`.
+Revisión: `e1fcd184f3c071145f6a969a031804ecad4ad6f6`.
 
 **El programa no está terminado.** 26 filas aceptadas, 27 bloqueadas por un
 gate externo concreto, 0 abiertas y 1 diferidas por decisión
 explícita de alcance; 0 perfiles certificados
-de 76.
+de 80.
 
 Sin contradicciones en las 54 filas: a cada una se le recalculó el estado a partir de sus propias condiciones, ninguna fila abierta deja de decir qué falta, ningún gate nombrado falta de la lista, ninguna cifra quedó sin resolver y todo artefacto citado existe.
 
@@ -39,11 +39,11 @@ Ese barrido corre dos veces: sobre las filas recién construidas y otra vez sobr
 | B2 | **aceptada** | contador | — | Las 18 familias del registro tienen writer canónico auditado, con id de inbound compartido con el runtime y el ledger. Cero bloqueadas. | — |
 | C1 | **bloqueada** por gate 1 | **declaración** | — | Árbitro, dueño por puerto, consentimiento por misión, corrección y reanudación probados en los cuatro idiomas del contrato (es/en/pt/fr). | — |
 | C2 | **aceptada** | contador | — | Ciclos de agenda y de mascotas con recibos atómicos comprobados. El cierre de esta fila es el mismo que el de A1. | — |
-| C3 | **bloqueada** por gate 2 | contador | — | Contratos MCP y dependencias base implementados. El ejecutor está cableado a servicio, cola y endpoint, y se ensaya sin proveedor; la cobertura por tarea la decide una corrida real: 0 perfiles certificados de 76. | — |
+| C3 | **bloqueada** por gate 2 | contador | — | Contratos MCP y dependencias base implementados. El ejecutor está cableado a servicio, cola y endpoint, y se ensaya sin proveedor; la cobertura por tarea la decide una corrida real: 0 perfiles certificados de 80. | — |
 | D1 | **bloqueada** por gate 3 | **declaración** | — | Muestreo, revisión humana con CAS y anotaciones RAG implementados. No se certifica veracidad global y el propio informe lo dice; una revisión de muestra necesita personas. | — |
 | D2 | **bloqueada** por gate 2 | contador | — | 17 casos etiquetados que cubren los 4 idiomas y los 7 desafíos declarados, con umbrales barridos y números publicados en `docs/runbooks/rag-quality-and-slo.md`. Lo que queda no es local: el entailment semántico necesita el modelo real, así que la fila pasa de abierta a bloqueada por el gate de LLM en vez de aceptarse con la mitad medida. | `f2a6a2e8` `7a9e7c18` `71387107` |
 | D3 | **bloqueada** por gate 3 | **declaración** | — | Atribución observable y diagnóstico técnico probados. No equivalen a veracidad ni a entailment, y el informe lo dice. | — |
-| E1 | **aceptada** | contador | — | 76 perfiles, 420 tareas, 146 que comprometen al negocio, y cero tareas sin caso positivo propio o sin verificador fuera de las 5 declaradas: `file_claim` en las cinco subtipos de seguros existe para probar que el escalón de identidad la rechaza, así que no hay efecto que verificar y un "positivo" sería el agente haciendo lo que no debe. Certificar estas tareas es H1. | — |
+| E1 | **aceptada** | contador | — | 80 perfiles, 444 tareas, 158 que comprometen al negocio, y cero tareas sin caso positivo propio o sin verificador fuera de las 5 declaradas: `file_claim` en las cinco subtipos de seguros existe para probar que el escalón de identidad la rechaza, así que no hay efecto que verificar y un "positivo" sería el agente haciendo lo que no debe. Certificar estas tareas es H1. | — |
 | E2 | **aceptada** | contador | — | 30 de 34 grupos son comerciales y 19 tienen su autoridad congelada entera. Las 11 restantes descansan únicamente en los 3 relojes aceptados con motivo escrito (wall_clock, CURRENT_DATE, readonly_channel_manager_ownership_projection), ninguno de los cuales se puede capturar: lo que los cierra es que el resultado viaje con el instante en que se tomó. La mitad concurrente la prueba `commercial-authority.postgres.spec.ts` contra PostgreSQL real, con dos tenants y dos workers. | `33dd2487` |
 | E3 | **bloqueada** por gate 5 y 1 | **declaración** | — | Outbox durable obligatorio, transporte estricto, recuperación, reconciliación con actor y evidencia, pantalla de operador y alerta real. El ajuste heredado dispatch.normalOutbox sólo delimita la evidencia del canario; no puede devolver una respuesta al carril eliminado. | — |
 | F1 | **bloqueada** por gate 2 | contador | — | Assessment común implementado y probado; su cierre es una corrida real de certificación, cuyo ejecutor ya existe y se ensaya sin proveedor. | — |
@@ -74,9 +74,9 @@ Ese barrido corre dos veces: sobre las filas recién construidas y otra vez sobr
 | T2 | **aceptada** | contador | — | Derivado de cada entrada no nula de `READINESS_PREDICATE_AUTHORITY`. Cada readiness cita el predicado que su herramienta evalúa y el registro se reduce únicamente cuando la corrección aterriza junto con su prueba. | — |
 | T3 | **aceptada** | contador | — | Leído de la llamada, no de un comentario: the assessment passes a scope to intentEvidence. Sin scope el lector no puede reconocer evidencia producida bajo la configuración actual, y un agente probado se ve igual que uno que nadie probó. | — |
 | T4 | **aceptada** | contador | — | Derivado de `DISCOVERY_ORDER` contra la tabla por elemento del tour. Un elemento que aparece en el panel y no en el recorrido es una pantalla a la que se manda al dueño sin decirle para qué sirve, qué datos necesita, qué puede confirmar ni qué cuesta. | — |
-| T5 | **bloqueada** por gate 1 y 4 | contador | — | Universo canónico conservado: 76 perfiles, 420 tareas, 146 que comprometen al negocio. La verificación determinista local es lo que esta fila mide; la certificación por canal y modelo real sigue en cero (0/76) y es gate externo, no trabajo local. | — |
+| T5 | **bloqueada** por gate 1 y 4 | contador | — | Universo canónico conservado: 80 perfiles, 444 tareas, 158 que comprometen al negocio. La verificación determinista local es lo que esta fila mide; la certificación por canal y modelo real sigue en cero (0/76) y es gate externo, no trabajo local. | — |
 | T6 | **aceptada** | contador | — | Derivado del AST de `copilot.service.ts`: Assist inyecta `AgentContentProposalService`, consulta `listOperations`, deriva de sus veredictos la lista ejecutable y no vuelve a leer `effectiveCapabilities` como una autoridad paralela. | — |
-| T8 | **aceptada** | contador | — | Derivado de `native-backlog.ts`: 54 perfiles build/hybrid comercializables y 260 alertas comprueban writers, capacidad atómica, lecturas vivas, superficies y CTA, seguridad, SOR, pagos y evaluaciones. Una alerta interna reabre esta fila aunque el inventario estático de tools siga completo. | — |
+| T8 | **aceptada** | contador | — | Derivado de `native-backlog.ts`: 58 perfiles build/hybrid comercializables y 276 alertas comprueban writers, capacidad atómica, lecturas vivas, superficies y CTA, seguridad, SOR, pagos y evaluaciones. Una alerta interna reabre esta fila aunque el inventario estático de tools siga completo. | — |
 | T7 | **aceptada** | contador | — | El programa de herramientas entra al gate oficial por UNA autoridad compartida: `verify-artifacts.cjs` ejecuta `generate-tool-profile-audit --check` junto con los otros generadores, y `candidate`, `deploy` y `vertical-quality` llaman a ese verificador en vez de llevar cada uno su propia lista. El artefacto de herramientas quedó stale sin impedir un cierre precisamente porque no estaba ahí. Que el gate se pone rojo ante una fuente modificada lo demuestra una prueba que cambia una fuente auditada y captura la transición, no la afirmación de que el árbol está al día. Las seis filas T1–T6 y T8 se derivan de lecturas del código, nunca de prosa ni de la existencia de un test. | — |
 | L0 | **aceptada** | contador | — | La autoridad comercial está en registros versionados y seis verificadores independientes; el build público ejecuta el conjunto completo. | — |
 | L1 | **aceptada** | contador | — | Planes, capacidades, tarifas de WhatsApp y decisiones pendientes salen de fuentes versionadas; no se completan con cifras de diseño. | — |
@@ -96,8 +96,8 @@ Ese barrido corre dos veces: sobre las filas recién construidas y otra vez sobr
 
 | Autoridad | Valor |
 |---|---:|
-| Perfiles del catálogo | 76 |
-| Tareas | 420 |
+| Perfiles del catálogo | 80 |
+| Tareas | 444 |
 | Perfiles certificados | 0 |
 | Tareas sin positivo o sin verificador, fuera de las declaradas | 0 |
 | Familias con términos inventariadas | 18 |

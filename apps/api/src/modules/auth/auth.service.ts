@@ -1,4 +1,5 @@
 import { Injectable, UnauthorizedException, ConflictException, NotFoundException, BadRequestException, ForbiddenException, Logger, Optional } from '@nestjs/common';
+import { ensureDemoWidget } from '../widget/widget-demo-link';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
@@ -34,6 +35,7 @@ import {
 } from '../verticals/vertical-identifiers';
 import { LockOwnershipLostError, OwnedLockLease } from '../../common/utils/owned-lock.util';
 import { mergeTenantSettingsAtomic } from '../../common/utils/tenant-settings.util';
+import { FIRST_REPLY_SETTING_KEY, isRecordedFirstReply } from '../../common/utils/first-reply.util';
 import { sanitizeSignupAttribution } from '../../common/utils/signup-attribution.util';
 import {
     resolveReadyTenantContext,
@@ -43,6 +45,8 @@ import {
     tenantPurgingFenceKey,
 } from '../../common/utils/tenant-lifecycle.util';
 import { welcomeEmail, passwordChangedEmail, newTrustedDeviceEmail } from '../email/email-layouts';
+import { onboardingOnceKey } from '@parallext/shared';
+import { recordOnboardingEvent } from '../../common/utils/onboarding-event.util';
 
 interface SessionData {
     sid: string;
@@ -70,6 +74,40 @@ const EXCHANGE_CODE_TTL = 60; // 60s — one-time code for OAuth redirect token 
 const BACKUP_CODE_COUNT = 10;
 const DEVICE_TRUST_TTL_DAYS = 30;
 const MAX_TRUSTED_DEVICES = 10;
+
+/**
+ * Lo que decide si la cuenta sigue en su día 0. Viaja en cada payload de
+ * sesión junto a `onboardingStage` y sale de la misma fila del tenant.
+ */
+export interface OnboardingSessionFacts {
+    onboardingStage: OnboardingStage | undefined;
+    /** ISO de la primera respuesta real del agente; `null` = todavía ninguna. */
+    firstReplyAt: string | null | undefined;
+    /** ISO del alta del tenant. */
+    tenantCreatedAt: string | null | undefined;
+    /**
+     * True when the tenant has at least one ACTIVE row in `channel_accounts`:
+     * the same fact the stage is derived from, so the two cannot disagree.
+     * The panel uses it to prove a channel exists instead of guessing it
+     * from a landing signal. `false` = read and there is none; `undefined`
+     * = could not be established. A web chat widget lives in
+     * `widget_configs`, not here, so a widget-only account reads `false`.
+     */
+    hasAnyChannel: boolean | undefined;
+}
+
+const UNKNOWN_ONBOARDING_FACTS: OnboardingSessionFacts = Object.freeze({
+    onboardingStage: undefined,
+    firstReplyAt: undefined,
+    tenantCreatedAt: undefined,
+    hasAnyChannel: undefined,
+});
+
+function isoOrNull(value: unknown): string | null {
+    if (value instanceof Date) return Number.isFinite(value.getTime()) ? value.toISOString() : null;
+    if (typeof value === 'string' && Number.isFinite(Date.parse(value))) return new Date(value).toISOString();
+    return null;
+}
 
 @Injectable()
 export class AuthService {
@@ -125,13 +163,36 @@ export class AuthService {
     async resolveOnboardingStageForTenant(
         tenantId?: string | null,
     ): Promise<OnboardingStage | undefined> {
-        if (!tenantId) return undefined;
+        return (await this.resolveOnboardingFactsForTenant(tenantId)).onboardingStage;
+    }
+
+    /**
+     * Everything the dashboard needs to decide whether the account is still in
+     * its day 0, read from ONE row so the three facts cannot disagree.
+     *
+     * The stage alone stopped being enough: it is monotonic and `completed`
+     * outranks `live`, so the wizard's last button ("Ir al panel") made `live`
+     * unwritable and lifted the day-0 silence before the agent had answered
+     * anybody. Activation now travels as `firstReplyAt` (written only by
+     * `recordFirstReply`), and `tenantCreatedAt` bounds the day 0 so an account
+     * that never connects still sees its trial notice eventually. The panel
+     * passes both to `isOnboardingBeforeLive(stage, { firstReplyAt, createdAt })`.
+     *
+     * `undefined` everywhere = could not be established (same rule as the
+     * stage). `firstReplyAt: null` = the row was read and carries none. The
+     * creation date always travels with a stage: without it the shared contract
+     * cannot end the day 0 of a tenant that never replies.
+     */
+    async resolveOnboardingFactsForTenant(
+        tenantId?: string | null,
+    ): Promise<OnboardingSessionFacts> {
+        if (!tenantId) return { ...UNKNOWN_ONBOARDING_FACTS };
         try {
             const tenant = await this.prisma.tenant.findUnique({
                 where: { id: tenantId },
-                select: { settings: true, schemaName: true },
+                select: { settings: true, schemaName: true, createdAt: true },
             });
-            if (!tenant) return undefined;
+            if (!tenant) return { ...UNKNOWN_ONBOARDING_FACTS };
             const settings = (tenant.settings as any) || {};
 
             const channelRows = (await this.prisma.$queryRawUnsafe(
@@ -148,19 +209,25 @@ export class AuthService {
                 hasAgent = Number(agentRows?.[0]?.c || 0) > 0;
             }
 
-            return deriveOnboardingStage({
-                stage: settings.onboardingStage,
+            const firstReplyAt = settings[FIRST_REPLY_SETTING_KEY];
+            return {
+                onboardingStage: deriveOnboardingStage({
+                    stage: settings.onboardingStage,
+                    hasAnyChannel,
+                    setupWizardCompleted: settings.setupWizardCompleted === true,
+                    setupWizardSkipped: settings.setupWizardSkipped === true,
+                    hasAgent,
+                    channelConnectSkippedAt: settings.channelConnectSkippedAt ?? null,
+                }),
+                firstReplyAt: isRecordedFirstReply(firstReplyAt) ? firstReplyAt : null,
+                tenantCreatedAt: isoOrNull(tenant.createdAt),
                 hasAnyChannel,
-                setupWizardCompleted: settings.setupWizardCompleted === true,
-                setupWizardSkipped: settings.setupWizardSkipped === true,
-                hasAgent,
-                channelConnectSkippedAt: settings.channelConnectSkippedAt ?? null,
-            });
+            };
         } catch (error: any) {
             this.logger.warn(
                 `Could not resolve onboarding stage for tenant ${tenantId}: ${error?.message || error}`,
             );
-            return undefined;
+            return { ...UNKNOWN_ONBOARDING_FACTS };
         }
     }
 
@@ -594,7 +661,7 @@ export class AuthService {
         // este campo el panel no recibía ninguna y caía en `account_created`,
         // que manda al asistente de configuración: un tenant de dos años con
         // WhatsApp conectado veía "conocé a tu agente" en cada entrada.
-        const onboardingStage = await this.resolveOnboardingStageForTenant(readyTenantId);
+        const { onboardingStage, firstReplyAt, tenantCreatedAt, hasAnyChannel } = await this.resolveOnboardingFactsForTenant(readyTenantId);
 
         return {
             requires2FA: false,
@@ -619,6 +686,11 @@ export class AuthService {
                 // `undefined` = no se pudo establecer. El panel lo lee como
                 // "sin evidencia" y NO manda a nadie al asistente.
                 onboardingStage,
+                // La activación: la primera respuesta real del agente y el alta,
+                // que acota el día 0. Ver resolveOnboardingFactsForTenant.
+                firstReplyAt,
+                tenantCreatedAt,
+                hasAnyChannel,
             },
         };
     }
@@ -682,8 +754,8 @@ export class AuthService {
             // La etapa viaja con cada renovación: el usuario guardado en el
             // panel se escribió en el login y una sesión larga lo deja viejo.
             // `undefined` = no se pudo establecer, y el panel no infiere nada.
-            const onboardingStage = await this.resolveOnboardingStageForTenant(readyTenantId);
-            return { accessToken, refreshToken: newRefresh, onboardingStage };
+            const { onboardingStage, firstReplyAt, tenantCreatedAt, hasAnyChannel } = await this.resolveOnboardingFactsForTenant(readyTenantId);
+            return { accessToken, refreshToken: newRefresh, onboardingStage, firstReplyAt, tenantCreatedAt, hasAnyChannel };
         }
 
         // Check if this token exists in Redis (not revoked)
@@ -746,9 +818,9 @@ export class AuthService {
 
         // Ver arriba: la etapa acompaña a la renovación para que el panel no
         // siga leyendo la que se guardó el día del login.
-        const onboardingStage = await this.resolveOnboardingStageForTenant(readyTenantId);
+        const { onboardingStage, firstReplyAt, tenantCreatedAt, hasAnyChannel } = await this.resolveOnboardingFactsForTenant(readyTenantId);
 
-        return { accessToken, refreshToken: newRefresh, onboardingStage };
+        return { accessToken, refreshToken: newRefresh, onboardingStage, firstReplyAt, tenantCreatedAt, hasAnyChannel };
     }
 
     /**
@@ -984,7 +1056,7 @@ export class AuthService {
         // este campo el panel no recibía ninguna y caía en `account_created`,
         // que manda al asistente de configuración: un tenant de dos años con
         // WhatsApp conectado veía "conocé a tu agente" en cada entrada.
-        const onboardingStage = await this.resolveOnboardingStageForTenant(readyTenantId);
+        const { onboardingStage, firstReplyAt, tenantCreatedAt, hasAnyChannel } = await this.resolveOnboardingFactsForTenant(readyTenantId);
 
         return {
             requires2FA: false,
@@ -1009,6 +1081,11 @@ export class AuthService {
                 // `undefined` = no se pudo establecer. El panel lo lee como
                 // "sin evidencia" y NO manda a nadie al asistente.
                 onboardingStage,
+                // La activación: la primera respuesta real del agente y el alta,
+                // que acota el día 0. Ver resolveOnboardingFactsForTenant.
+                firstReplyAt,
+                tenantCreatedAt,
+                hasAnyChannel,
             },
         };
     }
@@ -1105,7 +1182,7 @@ export class AuthService {
         // este campo el panel no recibía ninguna y caía en `account_created`,
         // que manda al asistente de configuración: un tenant de dos años con
         // WhatsApp conectado veía "conocé a tu agente" en cada entrada.
-        const onboardingStage = await this.resolveOnboardingStageForTenant(readyTenantId);
+        const { onboardingStage, firstReplyAt, tenantCreatedAt, hasAnyChannel } = await this.resolveOnboardingFactsForTenant(readyTenantId);
 
         return {
             requires2FA: false,
@@ -1126,6 +1203,11 @@ export class AuthService {
                 // `undefined` = no se pudo establecer. El panel lo lee como
                 // "sin evidencia" y NO manda a nadie al asistente.
                 onboardingStage,
+                // La activación: la primera respuesta real del agente y el alta,
+                // que acota el día 0. Ver resolveOnboardingFactsForTenant.
+                firstReplyAt,
+                tenantCreatedAt,
+                hasAnyChannel,
             },
         };
     }
@@ -1549,7 +1631,7 @@ export class AuthService {
         // este campo el panel no recibía ninguna y caía en `account_created`,
         // que manda al asistente de configuración: un tenant de dos años con
         // WhatsApp conectado veía "conocé a tu agente" en cada entrada.
-        const onboardingStage = await this.resolveOnboardingStageForTenant(readyTenantId);
+        const { onboardingStage, firstReplyAt, tenantCreatedAt, hasAnyChannel } = await this.resolveOnboardingFactsForTenant(readyTenantId);
 
         let deviceTrustToken: string | undefined;
         if (trustDevice && deviceInfo) {
@@ -1579,6 +1661,11 @@ export class AuthService {
                 // `undefined` = no se pudo establecer. El panel lo lee como
                 // "sin evidencia" y NO manda a nadie al asistente.
                 onboardingStage,
+                // La activación: la primera respuesta real del agente y el alta,
+                // que acota el día 0. Ver resolveOnboardingFactsForTenant.
+                firstReplyAt,
+                tenantCreatedAt,
+                hasAnyChannel,
             },
         };
     }
@@ -2011,6 +2098,8 @@ export class AuthService {
                 selection.industry,
                 selection.subType || undefined,
             );
+            await assertLockOwned();
+            await ensureDemoWidget(this.prisma, existingTenantId);
             const businessDraft = canonicalSettings.businessInfoDraft || {};
             await assertLockOwned();
             await this.businessInfoService.upsertPrimary(existingTenantId, {
@@ -2078,6 +2167,7 @@ export class AuthService {
                 role: user.role as UserRole,
                 tenantId: existingTenantId,
             }, { sid: existingSid });
+            const onboarding = await this.resolveOnboardingFactsForTenant(existingTenantId);
 
             return {
                 accessToken,
@@ -2094,7 +2184,10 @@ export class AuthService {
                     // Un alta reintentada sobre un tenant que ya existía es una
                     // sesión como cualquier otra: sin el estado, el panel vuelve
                     // a adivinar en qué punto está la cuenta.
-                    onboardingStage: await this.resolveOnboardingStageForTenant(existingTenantId),
+                    onboardingStage: onboarding.onboardingStage,
+                    firstReplyAt: onboarding.firstReplyAt,
+                    tenantCreatedAt: onboarding.tenantCreatedAt,
+                    hasAnyChannel: onboarding.hasAnyChannel,
                 },
                 verticalConfig,
                 coupon: couponResult,
@@ -2315,6 +2408,10 @@ export class AuthService {
             industry,
             subType || undefined,
         );
+        // 5.5. "El enlace de {Nombre}" (D11): the public page where the owner
+        // can show the agent today. Idempotent and never fatal.
+        await assertLockOwned();
+        await ensureDemoWidget(this.prisma, result.tenant.id, { locale: tenantLangCode });
 
         // 6. Business Identity es parte del readiness del agente: sin ella
         // <turn.business> queda vacío. Es crítica y el draft durable permite
@@ -2389,6 +2486,13 @@ export class AuthService {
                 details: { verticalProvisioningVersion: VERTICAL_PROVISIONING_VERSION, schemaName: effectiveSchemaName },
             },
         });
+        void recordOnboardingEvent(this.prisma, {
+            tenantId: result.tenant.id,
+            userId: result.user.id,
+            event: 'onboarding_completed',
+            occurredAt: new Date(),
+            dedupeKey: onboardingOnceKey('onboarding_completed', result.tenant.id),
+        });
 
         // 8. Update session with tenantId + generate new JWT tokens
         await assertLockOwned();
@@ -2426,6 +2530,12 @@ export class AuthService {
                 // El tenant se acaba de crear con esta etapa exacta: el puente
                 // /onboarding → asistente se apoya en un hecho, no en un default.
                 onboardingStage: initialOnboardingStage,
+                // Recién nacido: nadie le respondió todavía, y el día 0 empieza
+                // ahora.
+                firstReplyAt: null,
+                tenantCreatedAt: isoOrNull(result.tenant?.createdAt),
+                // Nothing is connected in the same request that creates the tenant.
+                hasAnyChannel: false,
             },
             verticalConfig,
             coupon: couponResult,
@@ -2641,6 +2751,7 @@ export class AuthService {
         this.logger.log(
             `Impersonation started: super_admin ${superAdmin.email} → tenant ${tenant.slug} (session ${tokenId}, reason: ${access.reason})`,
         );
+        const onboarding = await this.resolveOnboardingFactsForTenant(readyTenantId);
 
         return {
             accessToken,
@@ -2663,7 +2774,10 @@ export class AuthService {
                 // Impersonando se ve el panel del tenant: sin el estado, el
                 // operador podría ser enviado al asistente de bienvenida de una
                 // cuenta que hace meses terminó de configurarse.
-                onboardingStage: await this.resolveOnboardingStageForTenant(readyTenantId),
+                onboardingStage: onboarding.onboardingStage,
+                firstReplyAt: onboarding.firstReplyAt,
+                tenantCreatedAt: onboarding.tenantCreatedAt,
+                hasAnyChannel: onboarding.hasAnyChannel,
             },
         };
     }

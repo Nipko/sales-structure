@@ -152,6 +152,7 @@ Detalles de las plantillas: se resuelve la plantilla aprobada (`whatsapp_templat
 **Tabla `services`:**
 - `id`, `name`, `description`, `duration_minutes` (DEFAULT 30), `buffer_minutes` (DEFAULT 0)
 - `price` DECIMAL(15,2), `currency` VARCHAR(10) DEFAULT `'COP'`, `color`, `is_active`, `sort_order`, `metadata`
+- `price_status` VARCHAR(16) DEFAULT `'confirmed'` (sep-2026, D10): `example` = lo sembró la receta del rubro y nadie lo confirmó; `confirmed` = lo escribió o confirmó el dueño (0 = gratis); `quote` = se cotiza según el caso. Solo un precio `confirmed` se dice al cliente: `list_services`, `list_pet_services`/`list_photo_packages`, el motor de reservas (lista, resumen de confirmación, Flow de WhatsApp), `<available_services>` del prompt y `appointmentPriceSql` devuelven `null`/"por confirmar" para los demás. Editar el precio o pulsar **Confirmar precio** lo confirma; **Se cotiza** lo pasa a `quote`; una política de pago distinta de `none` exige precio confirmado (`price_not_confirmed`). Salud de agentes muestra `services_example_price` (no crítico) mientras queden ejemplos
 - `category`, `location_type` (`in_person`/`online`/`hybrid`, DEFAULT `in_person`), `max_concurrent`, `required_fields` JSONB (DEFAULT `["name","phone"]`)
 - `is_public` BOOLEAN (reservable en la página pública), `meeting_link`, `location_address`
 - `duration_type` (`fixed`/`flexible`/`open`), `duration_minutes_max`
@@ -198,7 +199,7 @@ Búsqueda por servicio/contacto/agente, filtros de estado con contadores, rango 
 
 ### Servicios
 
-Búsqueda y filtro (Todos/Activos/Inactivos), cards con franja de color, badges de duración/precio, toggle activo, panel expandible de asignación de staff (con badge de staff principal).
+Búsqueda y filtro (Todos/Activos/Inactivos), cards con franja de color, badges de duración/precio, toggle activo, panel expandible de asignación de staff (con badge de staff principal). Un servicio sembrado por la receta muestra la píldora **Precio de ejemplo** con **Confirmar precio** (conserva el número) y **Se cotiza**; el formulario tiene el control **Estado del precio** y bloquea la política de pago mientras el precio no esté confirmado.
 
 ### Configuración — 5 cards (`ConfigTab.tsx`)
 

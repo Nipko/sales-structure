@@ -13,6 +13,7 @@ import {
   stripQualityFocus,
   subscribeFocusedQualitySignal,
   withQualityFocus,
+  withoutSnoozedSignal,
 } from "./quality-health";
 
 const SIGNAL_ID = "3f2504e0-4f89-41d3-9a0c-0305e82c3301";
@@ -63,6 +64,37 @@ describe("quality health presentation rules", () => {
     expect(shouldBootstrapQualitySummary(summary({
       worstStatus: "not_evaluated", agentsTotal: 1, evaluatedAgents: 1,
     }), 0, now)).toBe(false);
+  });
+});
+
+describe("a snooze clears the snoozed signal before the server answers", () => {
+  const action = (signalId: string, code: string) => ({
+    signalId, agentId: "a1", agentName: "Ventas", code,
+    severity: "critical" as const, href: "/admin/channels/whatsapp", evidenceCount: 1,
+  });
+  const top = action("top-signal", "fix_business_identity");
+  const delivery = action("delivery-signal", "fix_whatsapp_delivery");
+
+  it("clears the delivery action the banner may be showing, not only the top one", () => {
+    const next = withoutSnoozedSignal(summary({ topAction: top, deliveryAction: delivery }), "delivery-signal");
+    expect(next.deliveryAction).toBeUndefined();
+    expect(next.topAction).toEqual(top);
+  });
+
+  it("clears both when the same signal is the top and the delivery action", () => {
+    const next = withoutSnoozedSignal(summary({ topAction: delivery, deliveryAction: delivery }), "delivery-signal");
+    expect(next.topAction).toBeUndefined();
+    expect(next.deliveryAction).toBeUndefined();
+  });
+
+  it("still clears the top action, and returns the same summary when nothing matches", () => {
+    expect(withoutSnoozedSignal(summary({ topAction: top, deliveryAction: delivery }), "top-signal"))
+      .toMatchObject({ topAction: undefined, deliveryAction: delivery });
+    const untouched = summary({ topAction: top, deliveryAction: delivery });
+    expect(withoutSnoozedSignal(untouched, "another-signal")).toBe(untouched);
+    // A summary from before `deliveryAction` existed.
+    const legacy = summary({ topAction: top });
+    expect(withoutSnoozedSignal(legacy, "delivery-signal")).toBe(legacy);
   });
 });
 

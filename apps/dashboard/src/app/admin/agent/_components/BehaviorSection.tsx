@@ -97,16 +97,17 @@ export function BehaviorSection({ config, onChange, errors = {}, focusField = nu
         </div>
       </section>
 
-      {/* ── Safety Guardrails ── */}
-      <section>
-        <h4 className="text-[13px] font-semibold text-red-600 dark:text-red-400 mb-2 flex items-center gap-1.5">
+      {/* ── Safety Guardrails: always on, folded. A red list of abuse and
+          terrorism under the first empty box read as work to do. ── */}
+      <details className="group">
+        <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[13px] font-semibold text-neutral-600 dark:text-neutral-300">
           <Lock size={14} /> {t("safetyGuardrails")}
-        </h4>
-        <div className="bg-red-50 dark:bg-red-500/5 border border-red-200 dark:border-red-500/20 rounded-lg p-3">
-          <p className="text-[11px] text-red-600 dark:text-red-400/80 mb-2">{t("safetyGuardrailsDesc")}</p>
+        </summary>
+        <div className="mt-2 rounded-lg border border-neutral-200 bg-neutral-50 p-3 dark:border-neutral-700 dark:bg-neutral-900/60">
+          <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mb-2">{t("safetyGuardrailsDesc")}</p>
           <div className="flex flex-col gap-1">
             {UNIVERSAL_FORBIDDEN_TOPICS.map(topic => (
-              <div key={topic.key} className="flex items-center gap-2 text-[12px] text-red-700 dark:text-red-300/90">
+              <div key={topic.key} className="flex items-center gap-2 text-[12px] text-neutral-600 dark:text-neutral-300">
                 <Lock size={10} className="shrink-0 opacity-50" />
                 {/* Localized: these were hardcoded to Spanish, so a Brazilian or
                     French tenant read the platform guardrails in Spanish. */}
@@ -115,7 +116,7 @@ export function BehaviorSection({ config, onChange, errors = {}, focusField = nu
             ))}
           </div>
         </div>
-      </section>
+      </details>
 
       {/* ── Structured Rules ── */}
       <section>

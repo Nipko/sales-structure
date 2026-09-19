@@ -1,4 +1,5 @@
-import { Body, Controller, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Optional, Param, Post, UseGuards } from '@nestjs/common';
+import { onboardingOnceKey } from '@parallext/shared';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
@@ -7,11 +8,16 @@ import { AgentTestService } from './agent-test.service';
 import { AgentTestRequestDto } from './dto/agent-test-request.dto';
 import { AgentTestRateLimitGuard } from './agent-test-rate-limit.guard';
 import { AgentTestRequestGuard } from './agent-test-request.guard';
+import { PrismaService } from '../prisma/prisma.service';
+import { recordOnboardingEvent } from '../../common/utils/onboarding-event.util';
 
 @Controller('agent-test')
 @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
 export class AgentTestController {
-    constructor(private readonly service: AgentTestService) {}
+    constructor(
+        private readonly service: AgentTestService,
+        @Optional() private readonly prisma?: PrismaService,
+    ) {}
 
     /**
      * Run a single message through the operational turn core with isolated session state.
@@ -34,6 +40,15 @@ export class AgentTestController {
         const result = await this.service.test(tenantId, agentId, request, {
             disableTools: options?.disableTools,
         });
+        if (this.prisma && result?.reply) {
+            const surface = options?.surface ?? 'agent_editor';
+            void recordOnboardingEvent(this.prisma, {
+                tenantId,
+                event: 'test_chat_first_reply',
+                detail: surface,
+                dedupeKey: onboardingOnceKey('test_chat_first_reply', tenantId, surface),
+            });
+        }
         return { success: true, data: result };
     }
 }

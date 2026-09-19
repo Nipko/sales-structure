@@ -12,6 +12,7 @@ import {
     Compass, Plus, Clock, MapPin, Users, X, Tag,
 } from "lucide-react";
 import { useOperatingCurrency } from "@/hooks/useOperatingCurrency";
+import { formatMoney } from "@/lib/format-money";
 
 const TOURS_API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud/api/v1";
 function resolveMediaUrl(url: string): string {
@@ -28,7 +29,7 @@ interface TourPackage {
     duration_type: "hours" | "days";
     duration_value: number;
     price: number;
-    currency: string;
+    currency: string | null;
     max_capacity: number;
     destination?: string;
     languages: string[];
@@ -147,7 +148,7 @@ export default function ToursPage() {
                                         <Users size={12} /> {p.max_capacity}
                                     </span>
                                     <span className="font-semibold text-indigo-600 dark:text-indigo-400">
-                                        {p.currency} {Number(p.price).toLocaleString()}
+                                        {formatMoney(p.price, p.currency)}
                                     </span>
                                 </div>
                             </div>
@@ -209,7 +210,11 @@ function CreatePackageModal({
         setSaving(true);
         setError(null);
         try {
-            const res = await api.createTourPackage(tenantId, form);
+            // Cuando el negocio no declaro donde opera, el hook contesta
+            // honestamente "no se" y aca NO se manda nada: el API resuelve o
+            // deja NULL. Mandar "" era peor que no mandar, porque del otro
+            // lado la cadena vacia volvia a ser COP.
+            const res = await api.createTourPackage(tenantId, { ...form, currency: form.currency || undefined });
             if (res.success) onCreated();
             else setError(res.error || tc("errorSaving"));
         } catch (err: any) {

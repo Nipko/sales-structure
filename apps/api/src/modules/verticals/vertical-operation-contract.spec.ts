@@ -11,7 +11,7 @@ describe('CTR-02 operation contracts', () => {
             const [industry, subtype] = id.split('/');
             return buildVerticalOperationContract(industry, subtype);
         });
-        expect(contracts).toHaveLength(76);
+        expect(contracts).toHaveLength(80);
         expect(contracts.every(contract => contract.version === VERTICAL_OPERATION_CONTRACT_VERSION)).toBe(true);
 
         const actionGaps = contracts.flatMap(contract => contract.actions.flatMap(action => (

@@ -13,8 +13,8 @@ describe('VerticalAuditController', () => {
 
         expect(result.success).toBe(true);
         expect(result.data.generatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
-        expect(result.data.entries).toHaveLength(54);
-        expect(result.data.generatedFrom.profiles).toBe(54);
+        expect(result.data.entries).toHaveLength(58);
+        expect(result.data.generatedFrom.profiles).toBe(58);
         expect(result.data.generatedFrom.alerts).toBeGreaterThan(0);
         expect(result.data.internalGates.verified + result.data.internalGates.open)
             .toBeGreaterThan(0);
@@ -24,17 +24,17 @@ describe('VerticalAuditController', () => {
             decision: expect.any(Number),
             expert: expect.any(Number),
         }));
-        expect(result.data.certification.entries).toHaveLength(81);
+        expect(result.data.certification.entries).toHaveLength(85);
         expect(result.data.certification.version).toBe(1);
         expect(result.data.toolControls.version).toBe(1);
         expect(result.data.toolControls.entries.length).toBeGreaterThan(0);
         expect(result.data.toolControls.entries.flatMap(entry => entry.gaps)).toEqual([]);
         expect(result.data.authoring.version).toBe(1);
-        expect(result.data.authoring.entries).toHaveLength(81);
+        expect(result.data.authoring.entries).toHaveLength(85);
         expect(result.data.authoring.markets).toHaveLength(17);
         expect(result.data.authoring.summary).toEqual(expect.objectContaining({
-            total: 81,
-            mechanicallyComplete: 81,
+            total: 85,
+            mechanicallyComplete: 85,
             legacy: 5,
         }));
     });

@@ -397,7 +397,10 @@ export class OperationalNoticeService {
             let emailTemplate:any;
             if (notice.kind==='order.confirmed') {
                 const items=await query<any[]>('SELECT product_name,quantity,total_price FROM order_items WHERE order_id=$1::uuid ORDER BY product_id,id',[notice.entity_id]);
-                const currency=String(facts.currency || 'COP');
+                // D17: un pedido puede no tener moneda (el negocio no declaró país).
+                // `receiptMoney` imprime el número desnudo; rellenar con COP afirmaría
+                // una moneda que nadie eligió en un documento que el cliente guarda.
+                const currency=facts.currency ? String(facts.currency) : null;
                 emailTemplate={slug:'order_confirmation',language,variables:{customer_name:customerName||'Cliente',order_id:String(facts.id),
                     order_items_html:items.map(item=>`<p style="margin:4px 0;font-size:14px;">${escapeReceiptHtml(item.product_name)} &times; ${escapeReceiptHtml(item.quantity)} — ${escapeReceiptHtml(receiptMoney(Number(item.total_price),currency))}</p>`).join(''),
                     order_total:receiptMoney(Number(facts.total_amount),currency),payment_method:String(facts.metadata?.payment_method || 'cash')}};
@@ -405,11 +408,11 @@ export class OperationalNoticeService {
                 slug:'tour_booking_confirmation',language,variables:{guest_name:facts.guest_name||'Huésped',
                     package_name:facts.name||'',departure_date:facts.departure_date_text||'',departure_time:facts.departure_time||'',
                     party_size:String(facts.party_size||0),adults:String(facts.adults||0),children:String(facts.children||0),
-                    total_price:String(facts.total_price||0),currency:facts.currency||'COP',departure_location:facts.departure_location||''},
+                    total_price:String(facts.total_price||0),currency:facts.currency||'',departure_location:facts.departure_location||''},
             }:{
                 slug:'property_booking_confirmation',language,variables:{guest_name:facts.guest_name||'Huésped',
                     property_name:facts.name||'',check_in:facts.check_in_text||'',check_out:facts.check_out_text||'',
-                    nights:String(facts.nights||0),total_price:String(facts.total_price||0),currency:facts.currency||'COP',
+                    nights:String(facts.nights||0),total_price:String(facts.total_price||0),currency:facts.currency||'',
                     check_in_instructions:facts.check_in_instructions||''},
             };
             return {route:'email',email,conversationId:facts.conversation_id||null,emailTemplate,text:''};

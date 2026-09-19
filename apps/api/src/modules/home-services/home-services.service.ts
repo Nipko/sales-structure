@@ -8,9 +8,10 @@ import {
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import {
-    normalizeCurrencyCode,
     optionalPositiveIntegerUnit,
 } from '../../common/utils/commercial-units.util';
+import { resolveWriteCurrency, type OperatingCurrencySource } from '../../common/utils/write-currency.util';
+import { RegionalProfileService } from '../tenants/regional-profile.service';
 import {
     assertOptionalContactId,
     requireTenantContact,
@@ -52,7 +53,18 @@ export class HomeServicesService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly eventEmitter: EventEmitter2,
+        /**
+         * D17 — de dónde sale la moneda de un presupuesto. Opcional en la
+         * FIRMA sólo para los fixtures que construyen este servicio a mano; sin
+         * `@Optional()`, Nest sigue exigiendo el proveedor global.
+         */
+        private readonly regional?: RegionalProfileService,
     ) {}
+
+    /** D17: explícito → moneda operativa del negocio → NULL. */
+    private writeCurrency(requested: unknown, tenantId?: string): Promise<string | null> {
+        return resolveWriteCurrency(requested, tenantId, this.regional as OperatingCurrencySource | undefined);
+    }
 
     async listCapacityServices(schemaName: string): Promise<Array<{
         id: string;
@@ -151,6 +163,7 @@ export class HomeServicesService {
         schemaName: string,
         data: any,
         execution: { sandboxNamespace?: EvalNamespaceLease } = {},
+        tenantId?: string,
     ): Promise<any> {
         if (!data.serviceType) throw new BadRequestException('serviceType is required');
         const scheduledAt = data.scheduledAt === undefined || data.scheduledAt === null
@@ -167,7 +180,7 @@ export class HomeServicesService {
             data.estimatedDurationMinutes,
             'estimatedDurationMinutes',
         );
-        const currency = normalizeCurrencyCode(data.currency);
+        const currency = await this.writeCurrency(data.currency, tenantId);
         const contactId = assertOptionalContactId(data.contactId);
         const durableEmergency = !execution.sandboxNamespace
             && data.urgency === 'emergencia'
@@ -260,7 +273,7 @@ export class HomeServicesService {
         return serializeLocalTimestampFields(request, HOME_SERVICE_LOCAL_TIMESTAMPS);
     }
 
-    async updateRequest(schemaName: string, id: string, data: any): Promise<any> {
+    async updateRequest(schemaName: string, id: string, data: any, tenantId?: string): Promise<any> {
         if (data.estimatedDurationMinutes !== undefined && data.estimatedDurationMinutes !== null) {
             data = {
                 ...data,
@@ -271,7 +284,7 @@ export class HomeServicesService {
             };
         }
         if (data.currency !== undefined) {
-            data = { ...data, currency: normalizeCurrencyCode(data.currency) };
+            data = { ...data, currency: await this.writeCurrency(data.currency, tenantId) };
         }
         if (data.scheduledAt !== undefined && data.scheduledAt !== null) {
             data = { ...data, scheduledAt: this.validateScheduledAt(data.scheduledAt) };

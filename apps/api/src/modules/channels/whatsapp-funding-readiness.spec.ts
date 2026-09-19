@@ -1,6 +1,7 @@
 import {
     readFundingFromGraph, readFundingFromRefusal, neverAsked, moreAuthoritative,
     deliveryReadiness, FUNDING_READINESS_STATES, PAYMENT_ELIGIBILITY_CODES,
+    readFundingFromPause, readStoredFunding, STORED_FUNDING_MAX_AGE_MS,
 } from './whatsapp-funding-readiness';
 
 /**
@@ -239,5 +240,73 @@ describe('whether a number can still be charged after 1 October', () => {
             expect(reading.detail.length).toBeGreaterThan(30);
             expect(reading.detail.startsWith(reading.state)).toBe(true);
         }
+    });
+
+    /**
+     * The stored reading and the pause, read ONCE for the funding-readiness
+     * endpoint and for the `whatsapp_delivery` quality check (Ola 6), so the
+     * two cannot disagree about the same number.
+     */
+    describe('reading what check-funding stored', () => {
+        const NOW = new Date('2026-09-17T15:00:00.000Z');
+        const stored = (over: Record<string, unknown> = {}) => ({
+            wabaId: 'waba-1',
+            fundingReadiness: { state: 'absent', source: 'graph_account_read', checkedAt: '2026-09-17T12:00:00.000Z', wabaId: 'waba-1', ...over },
+        });
+
+        it('returns a fresh reading about the WABA the number belongs to now', () => {
+            expect(readStoredFunding(stored(), NOW)).toMatchObject({
+                state: 'absent', source: 'graph_account_read', actionable: true, checkedAt: new Date('2026-09-17T12:00:00.000Z'),
+            });
+            expect(readStoredFunding(stored({ state: 'attached' }), NOW)).toMatchObject({ state: 'attached', actionable: false });
+        });
+
+        it('ignores what is not evidence any more: old, from another WABA, from the future, or malformed', () => {
+            const dayOld = new Date(NOW.getTime() - STORED_FUNDING_MAX_AGE_MS).toISOString();
+            for (const metadata of [
+                // A day-old "there is a card", "Meta said no" or "could not
+                // tell" is a snapshot that may no longer hold.
+                stored({ state: 'attached', checkedAt: dayOld }),
+                stored({ state: 'restricted', checkedAt: dayOld }),
+                stored({ state: 'unknown', checkedAt: dayOld }),
+                { ...stored(), wabaId: 'waba-2' },
+                stored({ checkedAt: '2026-09-18T00:00:00.000Z' }),
+                stored({ state: 'not_checked' }),
+                stored({ checkedAt: 'yesterday' }),
+                { wabaId: 'waba-1' },
+                null,
+            ]) {
+                expect(readStoredFunding(metadata, NOW)).toBeNull();
+            }
+        });
+
+        /**
+         * An established absence (a Graph answer that explicitly carried no
+         * funding id) used to expire with everything else after 24 hours: the
+         * owner checked, nothing changed, and a day later `whatsapp_delivery`
+         * went back to pass — right before the 1-oct deadline. Before 1-oct
+         * Meta delivers service messages without a card, so no send can
+         * re-establish the absence; only the check can, and what it found
+         * stands until a newer reading says otherwise.
+         */
+        it('keeps an established absence until a newer reading replaces it', () => {
+            const weekOld = new Date(NOW.getTime() - 7 * STORED_FUNDING_MAX_AGE_MS).toISOString();
+            expect(readStoredFunding(stored({ checkedAt: weekOld }), NOW)).toMatchObject({
+                state: 'absent', actionable: true, checkedAt: new Date(weekOld),
+            });
+            // The newer reading is what check-funding writes over it.
+            expect(readStoredFunding(stored({ state: 'attached', checkedAt: '2026-09-17T14:00:00.000Z' }), NOW))
+                .toMatchObject({ state: 'attached' });
+            // Still only about the WABA the number is on now, and never from the future.
+            expect(readStoredFunding({ ...stored({ checkedAt: weekOld }), wabaId: 'waba-2' }, NOW)).toBeNull();
+            expect(readStoredFunding(stored({ checkedAt: '2026-09-18T00:00:00.000Z' }), NOW)).toBeNull();
+        });
+
+        it('turns a 131042 pause into `restricted`, and any other pause into no funding evidence', () => {
+            const pause = { code: 131042, detail: 'payment', lastSeen: '2026-09-17T09:00:00.000Z' };
+            expect(readFundingFromPause(pause)).toMatchObject({ state: 'restricted', source: 'provider_refusal' });
+            expect(readFundingFromPause({ ...pause, code: null })).toBeNull();
+            expect(readFundingFromPause(null)).toBeNull();
+        });
     });
 });

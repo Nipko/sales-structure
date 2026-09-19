@@ -35,7 +35,7 @@ export class GymsController {
     @Roles('tenant_admin', 'tenant_supervisor')
     async createPlan(@Param('tenantId') tenantId: string, @Body() body: any) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
-        const data = await this.service.createPlan(schemaName, body);
+        const data = await this.service.createPlan(schemaName, body, tenantId);
         return { success: true, data };
     }
 
@@ -43,7 +43,7 @@ export class GymsController {
     @Roles('tenant_admin', 'tenant_supervisor')
     async updatePlan(@Param('tenantId') tenantId: string, @Param('id') id: string, @Body() body: any) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
-        const data = await this.service.updatePlan(schemaName, id, body);
+        const data = await this.service.updatePlan(schemaName, id, body, tenantId);
         return { success: true, data };
     }
 

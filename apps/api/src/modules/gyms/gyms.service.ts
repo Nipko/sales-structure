@@ -5,9 +5,77 @@ import { PrismaService } from '../prisma/prisma.service';
 import { OperationConfirmationService } from '../email-templates/operation-confirmation.service';
 import { normalizePhoneE164 } from '../../common/utils/phone.util';
 import {
-    normalizeCurrencyCode,
     requirePositiveIntegerUnit,
 } from '../../common/utils/commercial-units.util';
+import { resolveWriteCurrency, type OperatingCurrencySource } from '../../common/utils/write-currency.util';
+import { RegionalProfileService } from '../tenants/regional-profile.service';
+import { resolvePriceStatusInput } from '../appointments/services.service';
+import { servicePriceStatus, storedPriceAmount, type ServicePriceStatus } from '../appointments/service-price-status';
+
+function hasPriceValue(value: unknown): boolean {
+    return value !== undefined && value !== null && value !== '';
+}
+
+/**
+ * The price status an owner's write leaves on a plan: the services rule
+ * (`resolvePriceStatusInput`), the same function, applied to plans.
+ *
+ *   · a CHANGED price is a confirmation;
+ *   · the same price coming back with the rest of the form is not ("Usar así"
+ *     never confirms anything), and neither is the placeholder 0 coming back;
+ *   · the owner may send `priceStatus` 'confirmed' or 'quote', never 'example',
+ *     which is provenance only the seed writes;
+ *   · a price that does not exist cannot be confirmed. `membership_plans.price`
+ *     is `NOT NULL DEFAULT 0` (tenant-schema.sql), so where D17 has no example
+ *     amount the seed writes 0 + 'example', and "se cotiza" stores 0 + 'quote':
+ *     placeholders, not "free" (`decidablePriceAmount` reads them as no amount);
+ *   · FX1: a free plan is an EXPLICIT choice, `free: true` ("Es gratis"),
+ *     exactly like a free service. Before, a deliberate 0 on a placeholder was
+ *     refused as `price_missing` and there was no other way to say "free".
+ */
+export function resolvePlanPriceStatus(
+    data: any,
+    current?: { price?: unknown; price_status?: unknown },
+): ServicePriceStatus {
+    const row = current ? { priceStatus: servicePriceStatus(current), price: storedPriceAmount(current.price) } : undefined;
+    try {
+        return resolvePriceStatusInput(data, row);
+    } catch (error) {
+        const response = error instanceof BadRequestException ? error.getResponse() : null;
+        if (response && typeof response === 'object' && (response as { error?: unknown }).error === 'price_missing') {
+            throw new BadRequestException({
+                error: 'price_missing',
+                message: 'Este plan todavía no tiene precio. Escribe el monto para confirmarlo; si no se cobra, márcalo como gratis, o como "se cotiza".',
+            });
+        }
+        throw error;
+    }
+}
+
+/**
+ * The amount a plan row stores. `price` is NOT NULL, so a plan the business
+ * quotes case by case keeps 0 (never shown: its status is 'quote'), and any
+ * other plan needs a real, non-negative number.
+ */
+function planPriceToStore(value: unknown, status: ServicePriceStatus): number {
+    if (!hasPriceValue(value)) {
+        if (status === 'quote') return 0;
+        throw new BadRequestException({
+            error: 'price_required',
+            message: 'Escribe el precio del plan, o márcalo como "se cotiza".',
+        });
+    }
+    const amount = Number(value);
+    if (!Number.isFinite(amount) || amount < 0) {
+        throw new BadRequestException({ error: 'price_invalid', message: 'El precio del plan tiene que ser un número mayor o igual a cero.' });
+    }
+    return amount;
+}
+
+/** Every plan row the API returns says where its price stands. */
+function withPlanPriceStatus<T extends Record<string, any> | null | undefined>(row: T): T {
+    return row ? { ...row, price_status: servicePriceStatus(row) } : row;
+}
 
 /**
  * Gyms / Fitness vertical service.
@@ -43,62 +111,102 @@ export class GymsService {
          * outbox); it is not duplicated here.
          */
         private readonly confirmations?: OperationConfirmationService,
+        /**
+         * D17 — de dónde sale la moneda de un plan. Opcional en la FIRMA sólo
+         * para los fixtures que construyen este servicio a mano; sin
+         * `@Optional()`, Nest sigue exigiendo el proveedor global.
+         */
+        private readonly regional?: RegionalProfileService,
     ) {}
+
+    /** D17: explícito → moneda operativa del negocio → NULL. */
+    private writeCurrency(requested: unknown, tenantId?: string): Promise<string | null> {
+        return resolveWriteCurrency(requested, tenantId, this.regional as OperatingCurrencySource | undefined);
+    }
 
     // ── Plans ─────────────────────────────────────────────────────
 
     async listPlans(schemaName: string, includeInactive = false): Promise<any[]> {
         const where = includeInactive ? '' : 'WHERE is_active = true';
-        return this.prisma.executeInTenantSchema<any[]>(
+        const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `SELECT * FROM membership_plans ${where} ORDER BY sort_order, price`,
         );
+        return (rows || []).map((row) => withPlanPriceStatus(row));
     }
 
     async createPlan(schemaName: string, data: {
         name: string;
         description?: string;
         durationDays: number;
-        price: number;
+        price?: number | null;
+        /** 'confirmed' or 'quote'. Typing a price already confirms it. */
+        priceStatus?: ServicePriceStatus;
+        /** "Es gratis": a confirmed price of 0, said explicitly (FX1). */
+        free?: boolean;
         currency?: string;
         classCreditsPerPeriod?: number;
         personalTrainingCredits?: number;
         guestPasses?: number;
         freezeAllowanceDays?: number;
         perks?: string[];
-    }): Promise<any> {
+    }, tenantId?: string): Promise<any> {
         if (!data.name || data.durationDays === undefined || data.durationDays === null) {
             throw new BadRequestException('name and durationDays are required');
         }
         const durationDays = requirePositiveIntegerUnit(data.durationDays, 'durationDays');
-        const currency = normalizeCurrencyCode(data.currency);
+        // A plan the owner creates is theirs: its price is confirmed as typed,
+        // free ("Es gratis" writes the 0), or 'quote'. Written explicitly,
+        // never left to the column default (the column has none).
+        const priceStatus = resolvePlanPriceStatus(data);
+        const price = planPriceToStore(data.free === true ? 0 : data.price, priceStatus);
+        const currency = await this.writeCurrency(data.currency, tenantId);
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `INSERT INTO membership_plans (
                 name, description, duration_days, price, currency,
                 class_credits_per_period, personal_training_credits, guest_passes,
-                freeze_allowance_days, perks
-             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)
+                freeze_allowance_days, perks, price_status
+             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11)
              RETURNING *`,
             [
                 data.name, data.description || null, durationDays,
-                data.price, currency,
+                price, currency,
                 data.classCreditsPerPeriod ?? null,
                 data.personalTrainingCredits ?? 0,
                 data.guestPasses ?? 0,
                 data.freezeAllowanceDays ?? 0,
                 JSON.stringify(data.perks || []),
+                priceStatus,
             ],
         );
-        return rows[0];
+        return withPlanPriceStatus(rows[0]);
     }
 
-    async updatePlan(schemaName: string, id: string, data: any): Promise<any> {
+    async updatePlan(schemaName: string, id: string, data: any, tenantId?: string): Promise<any> {
+        const currentRows = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT price, price_status FROM membership_plans WHERE id = $1::uuid`,
+            [id],
+        );
+        const current = currentRows?.[0];
+        if (!current) throw new NotFoundException('Plan not found');
+        const currentStatus = servicePriceStatus(current);
+        // Correcting the monthly price confirms it; "Confirmar precio" confirms
+        // it without retyping; "Se cotiza" withdraws the number from the agent.
+        // Without this the owner saved the right amount and the agent kept
+        // refusing to say it, forever.
+        const nextStatus = resolvePlanPriceStatus(data, current);
+        // "Es gratis" writes the 0 itself, in the same statement as the status.
+        if (data?.free === true) data = { ...data, price: 0 };
+        if ('price' in data) {
+            data = { ...data, price: planPriceToStore(data.price, nextStatus) };
+        }
         if (data.durationDays !== undefined) {
             data = { ...data, durationDays: requirePositiveIntegerUnit(data.durationDays, 'durationDays') };
         }
         if (data.currency !== undefined) {
-            data = { ...data, currency: normalizeCurrencyCode(data.currency) };
+            data = { ...data, currency: await this.writeCurrency(data.currency, tenantId) };
         }
         const fields: string[] = [];
         const values: any[] = [];
@@ -124,7 +232,15 @@ export class GymsService {
                 i++;
             }
         }
+        if (nextStatus !== currentStatus) {
+            fields.push(`price_status = $${i}`);
+            values.push(nextStatus);
+            i++;
+        }
         if (!fields.length) return null;
+        // Always, in the same statement as the status: `updated_at = created_at`
+        // is how the seeded-price backfill (tenant-schema.sql,
+        // verticals/seeded-price-backfill.ts) tells a row nobody touched.
         fields.push(`updated_at = NOW()`);
         values.push(id);
         const rows = await this.prisma.executeInTenantSchema<any[]>(
@@ -133,7 +249,7 @@ export class GymsService {
             values,
         );
         if (!rows.length) throw new NotFoundException('Plan not found');
-        return rows[0];
+        return withPlanPriceStatus(rows[0]);
     }
 
     async deletePlan(schemaName: string, id: string): Promise<void> {

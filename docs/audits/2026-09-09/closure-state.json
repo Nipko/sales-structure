@@ -1,5 +1,5 @@
 {
-  "revision": "c1d11a95a7fdb0e8f5826d531553a157f68b4300",
+  "revision": "e95b789947a6b1a89caf9abc9b75857917c2751e",
   "generatedFrom": [
     "modules/simulation/task-competence-matrix.ts",
     "modules/simulation/certification-plan.ts",
@@ -8,16 +8,16 @@
     "modules/conversations/terms-binding-inventory.ts"
   ],
   "taskMatrix": {
-    "profiles": 76,
-    "tasks": 420,
-    "committingTasks": 146,
+    "profiles": 80,
+    "tasks": 444,
+    "committingTasks": 158,
     "tasksMissingPositiveCases": 5,
     "tasksMissingVerifiers": 5,
     "unregisteredTools": [],
     "certifiedProfiles": 0
   },
   "certificationPlan": {
-    "profiles": 76,
+    "profiles": 80,
     "languages": [
       "en",
       "es",
@@ -39,10 +39,10 @@
       "inputPerTurn": 8000,
       "outputPerTurn": 1000
     },
-    "requiredCases": 93320,
-    "modelCalls": 260620,
-    "maxCostUsdCents": 95020,
-    "maxSeconds": 1563720,
+    "requiredCases": 98840,
+    "modelCalls": 277820,
+    "maxCostUsdCents": 101500,
+    "maxSeconds": 1666920,
     "refusals": []
   },
   "channelCertification": {

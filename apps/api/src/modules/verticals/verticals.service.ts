@@ -24,6 +24,7 @@ import {
     buildDomainContractDraft,
     PROVIDER_API_VERSIONS,
     resolveVerticalCertificationSnapshot,
+    recipeSeedPrice,
     type ProviderCertificationContext,
 } from '@parallext/shared';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
@@ -257,6 +258,7 @@ const SUBTYPE_BOOTSTRAP_BY_INDUSTRY: Record<string, Record<string, SubtypeBootst
                     durationMinutes: 120,
                     price: 0,
                     currency: 'COP',
+                    priceStatus: 'example',
                     category: 'entrega',
                 },
                 {
@@ -265,6 +267,7 @@ const SUBTYPE_BOOTSTRAP_BY_INDUSTRY: Record<string, Record<string, SubtypeBootst
                     durationMinutes: 180,
                     price: 0,
                     currency: 'COP',
+                    priceStatus: 'example',
                     category: 'instalacion',
                 },
             ],
@@ -285,31 +288,31 @@ const SUBTYPE_BOOTSTRAP_BY_INDUSTRY: Record<string, Record<string, SubtypeBootst
         // address, technician and lifecycle), never through generic citas.
         plomeria: {
             skipAgenda: true, seedServicesWithoutAgenda: true,
-            services: [{ name: { es: 'Visita de plomería', en: 'Plumbing visit', pt: 'Visita de encanamento', fr: 'Visite de plomberie' }, description: { es: 'Diagnóstico y atención en sitio', en: 'On-site assessment and service', pt: 'Avaliação e atendimento no local', fr: 'Diagnostic et intervention sur place' }, durationMinutes: 90, price: 0, currency: 'COP', category: 'plomeria' }],
+            services: [{ name: { es: 'Visita de plomería', en: 'Plumbing visit', pt: 'Visita de encanamento', fr: 'Visite de plomberie' }, description: { es: 'Diagnóstico y atención en sitio', en: 'On-site assessment and service', pt: 'Avaliação e atendimento no local', fr: 'Diagnostic et intervention sur place' }, durationMinutes: 90, price: 0, currency: 'COP', priceStatus: 'quote', category: 'plomeria' }],
         },
         electricidad: {
             skipAgenda: true, seedServicesWithoutAgenda: true,
-            services: [{ name: { es: 'Visita eléctrica', en: 'Electrical visit', pt: 'Visita elétrica', fr: 'Visite électrique' }, description: { es: 'Diagnóstico y atención en sitio', en: 'On-site assessment and service', pt: 'Avaliação e atendimento no local', fr: 'Diagnostic et intervention sur place' }, durationMinutes: 90, price: 0, currency: 'COP', category: 'electricidad' }],
+            services: [{ name: { es: 'Visita eléctrica', en: 'Electrical visit', pt: 'Visita elétrica', fr: 'Visite électrique' }, description: { es: 'Diagnóstico y atención en sitio', en: 'On-site assessment and service', pt: 'Avaliação e atendimento no local', fr: 'Diagnostic et intervention sur place' }, durationMinutes: 90, price: 0, currency: 'COP', priceStatus: 'quote', category: 'electricidad' }],
         },
         fumigacion: {
             skipAgenda: true, seedServicesWithoutAgenda: true,
-            services: [{ name: { es: 'Visita de fumigación', en: 'Pest-control visit', pt: 'Visita de dedetização', fr: 'Visite de désinsectisation' }, description: { es: 'Evaluación y tratamiento en sitio', en: 'On-site assessment and treatment', pt: 'Avaliação e tratamento no local', fr: 'Évaluation et traitement sur place' }, durationMinutes: 120, price: 0, currency: 'COP', category: 'fumigacion' }],
+            services: [{ name: { es: 'Visita de fumigación', en: 'Pest-control visit', pt: 'Visita de dedetização', fr: 'Visite de désinsectisation' }, description: { es: 'Evaluación y tratamiento en sitio', en: 'On-site assessment and treatment', pt: 'Avaliação e tratamento no local', fr: 'Évaluation et traitement sur place' }, durationMinutes: 120, price: 0, currency: 'COP', priceStatus: 'quote', category: 'fumigacion' }],
         },
         limpieza: {
             skipAgenda: true, seedServicesWithoutAgenda: true,
-            services: [{ name: { es: 'Servicio de limpieza', en: 'Cleaning service', pt: 'Serviço de limpeza', fr: 'Service de nettoyage' }, description: { es: 'Bloque operativo de limpieza en sitio', en: 'On-site cleaning service window', pt: 'Janela operacional de limpeza no local', fr: 'Créneau de nettoyage sur place' }, durationMinutes: 180, price: 0, currency: 'COP', category: 'limpieza' }],
+            services: [{ name: { es: 'Servicio de limpieza', en: 'Cleaning service', pt: 'Serviço de limpeza', fr: 'Service de nettoyage' }, description: { es: 'Bloque operativo de limpieza en sitio', en: 'On-site cleaning service window', pt: 'Janela operacional de limpeza no local', fr: 'Créneau de nettoyage sur place' }, durationMinutes: 180, price: 0, currency: 'COP', priceStatus: 'quote', category: 'limpieza' }],
         },
         jardineria: {
             skipAgenda: true, seedServicesWithoutAgenda: true,
-            services: [{ name: { es: 'Servicio de jardinería', en: 'Gardening service', pt: 'Serviço de jardinagem', fr: 'Service de jardinage' }, description: { es: 'Visita de mantenimiento o diagnóstico', en: 'Maintenance or assessment visit', pt: 'Visita de manutenção ou avaliação', fr: 'Visite d’entretien ou de diagnostic' }, durationMinutes: 180, price: 0, currency: 'COP', category: 'jardineria' }],
+            services: [{ name: { es: 'Servicio de jardinería', en: 'Gardening service', pt: 'Serviço de jardinagem', fr: 'Service de jardinage' }, description: { es: 'Visita de mantenimiento o diagnóstico', en: 'Maintenance or assessment visit', pt: 'Visita de manutenção ou avaliação', fr: 'Visite d’entretien ou de diagnostic' }, durationMinutes: 180, price: 0, currency: 'COP', priceStatus: 'quote', category: 'jardineria' }],
         },
         cerrajeria: {
             skipAgenda: true, seedServicesWithoutAgenda: true,
-            services: [{ name: { es: 'Visita de cerrajería', en: 'Locksmith visit', pt: 'Visita de chaveiro', fr: 'Visite de serrurerie' }, description: { es: 'Atención de cerradura en sitio', en: 'On-site lock service', pt: 'Atendimento de fechadura no local', fr: 'Intervention de serrurerie sur place' }, durationMinutes: 60, price: 0, currency: 'COP', category: 'cerrajeria' }],
+            services: [{ name: { es: 'Visita de cerrajería', en: 'Locksmith visit', pt: 'Visita de chaveiro', fr: 'Visite de serrurerie' }, description: { es: 'Atención de cerradura en sitio', en: 'On-site lock service', pt: 'Atendimento de fechadura no local', fr: 'Intervention de serrurerie sur place' }, durationMinutes: 60, price: 0, currency: 'COP', priceStatus: 'quote', category: 'cerrajeria' }],
         },
         pintura: {
             skipAgenda: true, seedServicesWithoutAgenda: true,
-            services: [{ name: { es: 'Visita de medición', en: 'Measurement visit', pt: 'Visita de medição', fr: 'Visite de métrage' }, description: { es: 'Medición y evaluación previa a la cotización', en: 'Measurement and assessment before quoting', pt: 'Medição e avaliação antes da cotação', fr: 'Mesure et évaluation avant devis' }, durationMinutes: 90, price: 0, currency: 'COP', category: 'pintura' }],
+            services: [{ name: { es: 'Visita de medición', en: 'Measurement visit', pt: 'Visita de medição', fr: 'Visite de métrage' }, description: { es: 'Medición y evaluación previa a la cotización', en: 'Measurement and assessment before quoting', pt: 'Medição e avaliação antes da cotação', fr: 'Mesure et évaluation avant devis' }, durationMinutes: 90, price: 0, currency: 'COP', priceStatus: 'quote', category: 'pintura' }],
         },
     },
     pet_services: {
@@ -347,19 +350,19 @@ const SUBTYPE_BOOTSTRAP_BY_INDUSTRY: Record<string, Record<string, SubtypeBootst
             services: [
                 { name: { es: 'Declaración de renta', en: 'Income tax return', pt: 'Declaração de renda', fr: 'Déclaration de revenus' }, description: { es: 'Preparación y presentación de la declaración anual', en: 'Preparation and filing of the annual return', pt: 'Preparação e envio da declaração anual', fr: 'Préparation et dépôt de la déclaration annuelle' }, durationMinutes: 60, price: 250000, currency: 'COP', category: 'tributario' },
                 { name: { es: 'Asesoría contable mensual', en: 'Monthly accounting service', pt: 'Assessoria contábil mensal', fr: 'Suivi comptable mensuel' }, description: { es: 'Contabilidad y obligaciones del mes', en: 'Monthly bookkeeping and filings', pt: 'Contabilidade e obrigações do mês', fr: 'Comptabilité et obligations du mois' }, durationMinutes: 60, price: 400000, currency: 'COP', category: 'contable' },
-                { name: { es: 'Primera reunión', en: 'First meeting', pt: 'Primeira reunião', fr: 'Premier rendez-vous' }, description: { es: 'Diagnóstico inicial sin compromiso', en: 'Initial assessment, no obligation', pt: 'Diagnóstico inicial sem compromisso', fr: 'Diagnostic initial sans engagement' }, durationMinutes: 30, price: 0, currency: 'COP', category: 'consulta' },
+                { name: { es: 'Primera reunión', en: 'First meeting', pt: 'Primeira reunião', fr: 'Premier rendez-vous' }, description: { es: 'Diagnóstico inicial sin compromiso', en: 'Initial assessment, no obligation', pt: 'Diagnóstico inicial sem compromisso', fr: 'Diagnostic initial sans engagement' }, durationMinutes: 30, price: 0, currency: 'COP', priceStatus: 'example', category: 'consulta' },
             ],
         },
         arquitectos: {
             services: [
                 { name: { es: 'Visita a obra', en: 'Site visit', pt: 'Visita à obra', fr: 'Visite de chantier' }, description: { es: 'Relevamiento en el lugar', en: 'On-site survey', pt: 'Levantamento no local', fr: 'Relevé sur place' }, durationMinutes: 90, price: 200000, currency: 'COP', category: 'relevamiento' },
                 { name: { es: 'Anteproyecto', en: 'Preliminary design', pt: 'Anteprojeto', fr: 'Avant-projet' }, description: { es: 'Propuesta inicial de diseño', en: 'Initial design proposal', pt: 'Proposta inicial de projeto', fr: 'Proposition de conception initiale' }, durationMinutes: 60, price: 500000, currency: 'COP', category: 'diseno' },
-                { name: { es: 'Primera reunión', en: 'First meeting', pt: 'Primeira reunião', fr: 'Premier rendez-vous' }, description: { es: 'Conversación inicial sobre el proyecto', en: 'Initial conversation about the project', pt: 'Conversa inicial sobre o projeto', fr: 'Premier échange sur le projet' }, durationMinutes: 45, price: 0, currency: 'COP', category: 'consulta' },
+                { name: { es: 'Primera reunión', en: 'First meeting', pt: 'Primeira reunião', fr: 'Premier rendez-vous' }, description: { es: 'Conversación inicial sobre el proyecto', en: 'Initial conversation about the project', pt: 'Conversa inicial sobre o projeto', fr: 'Premier échange sur le projet' }, durationMinutes: 45, price: 0, currency: 'COP', priceStatus: 'example', category: 'consulta' },
             ],
         },
         consultores: {
             services: [
-                { name: { es: 'Diagnóstico inicial', en: 'Initial assessment', pt: 'Diagnóstico inicial', fr: 'Diagnostic initial' }, description: { es: 'Relevamiento de la situación actual', en: 'Review of the current situation', pt: 'Levantamento da situação atual', fr: 'Analyse de la situation actuelle' }, durationMinutes: 60, price: 0, currency: 'COP', category: 'consulta' },
+                { name: { es: 'Diagnóstico inicial', en: 'Initial assessment', pt: 'Diagnóstico inicial', fr: 'Diagnostic initial' }, description: { es: 'Relevamiento de la situación actual', en: 'Review of the current situation', pt: 'Levantamento da situação atual', fr: 'Analyse de la situation actuelle' }, durationMinutes: 60, price: 0, currency: 'COP', priceStatus: 'example', category: 'consulta' },
                 { name: { es: 'Sesión de consultoría', en: 'Consulting session', pt: 'Sessão de consultoria', fr: 'Séance de conseil' }, description: { es: 'Trabajo sobre un tema puntual', en: 'Work on a specific topic', pt: 'Trabalho sobre um tema específico', fr: 'Travail sur un sujet précis' }, durationMinutes: 90, price: 350000, currency: 'COP', category: 'consultoria' },
             ],
         },
@@ -421,12 +424,12 @@ const SUBTYPE_BOOTSTRAP_BY_INDUSTRY: Record<string, Record<string, SubtypeBootst
         // Desarrollo y consultoría no "demuestran" nada: relevan.
         desarrollo: {
             services: [
-                { name: { es: 'Reunión de relevamiento', en: 'Requirements meeting', pt: 'Reunião de levantamento', fr: 'Réunion de cadrage' }, description: { es: 'Entender qué hay que construir', en: 'Understand what needs to be built', pt: 'Entender o que precisa ser construído', fr: 'Comprendre ce qui doit être construit' }, durationMinutes: 60, price: 0, currency: 'COP', category: 'discovery' },
+                { name: { es: 'Reunión de relevamiento', en: 'Requirements meeting', pt: 'Reunião de levantamento', fr: 'Réunion de cadrage' }, description: { es: 'Entender qué hay que construir', en: 'Understand what needs to be built', pt: 'Entender o que precisa ser construído', fr: 'Comprendre ce qui doit être construit' }, durationMinutes: 60, price: 0, currency: 'COP', priceStatus: 'example', category: 'discovery' },
             ],
         },
         consultoria_ti: {
             services: [
-                { name: { es: 'Diagnóstico de infraestructura', en: 'Infrastructure assessment', pt: 'Diagnóstico de infraestrutura', fr: 'Audit d\'infrastructure' }, description: { es: 'Revisión del estado actual', en: 'Review of the current setup', pt: 'Revisão do estado atual', fr: 'Revue de l\'existant' }, durationMinutes: 60, price: 0, currency: 'COP', category: 'discovery' },
+                { name: { es: 'Diagnóstico de infraestructura', en: 'Infrastructure assessment', pt: 'Diagnóstico de infraestrutura', fr: 'Audit d\'infrastructure' }, description: { es: 'Revisión del estado actual', en: 'Review of the current setup', pt: 'Revisão do estado atual', fr: 'Revue de l\'existant' }, durationMinutes: 60, price: 0, currency: 'COP', priceStatus: 'example', category: 'discovery' },
             ],
         },
     },
@@ -630,6 +633,26 @@ export class VerticalsService {
     }
 
     /**
+     * D17: el pais del negocio, cuando lo sabemos de verdad.
+     *
+     * `RegionalProfileService` siempre devuelve un pais: si no hay nada
+     * declarado cae a Colombia y marca la fuente como `fallback`. Sembrar
+     * montos con ese valor seria exactamente el defecto que D17 arregla — un
+     * mexicano abriendo su catalogo en pesos colombianos — asi que un pais de
+     * relleno se trata como "no lo se" y la receta nace con `[precio]`.
+     *
+     * Nunca lanza: un perfil regional que no resuelve no puede impedir que un
+     * tenant se aprovisione.
+     */
+    private async resolveSeedCountry(tenantId: string): Promise<string | null> {
+        if (!this.regionalProfile) return null;
+        const profile = await this.regionalProfile.resolve(tenantId).catch(() => null);
+        const country = profile?.operatingCountry;
+        if (!country?.value || country.source === 'fallback') return null;
+        return country.value;
+    }
+
+    /**
      * Bootstrap all vertical-specific defaults for a new tenant.
      * Called once during onboarding after schema + default agent are created.
      */
@@ -647,7 +670,7 @@ export class VerticalsService {
         industry = canonicalSelection.industry;
         subType = canonicalSelection.subType;
         const definition = withResolvedVerticalPipeline(
-            getVerticalDefinition(industry),
+            getVerticalDefinition(industry, subType),
             subType,
         );
         // Resolve up front so an unknown industry/subtype cannot be provisioned
@@ -718,6 +741,9 @@ export class VerticalsService {
             const schemaName = await this.prisma.getTenantSchemaName(tenantId);
             const plan = await this.throttle.getTenantPlan(tenantId);
             const features = await this.throttle.getPlanFeatures(tenantId);
+            // Fuera de la transaccion a proposito: es una lectura de tablas
+            // globales y no tiene por que correr dentro del schema del tenant.
+            const seedCountry = await this.resolveSeedCountry(tenantId);
             const bootstrapMode = resolveSubtypeBootstrap(industry, subType);
             const agendaSeed = resolveVerticalAgendaSeedContract(definition, subType);
             const agendaAllowed = agendaSeed.agendaAllowed;
@@ -851,6 +877,7 @@ export class VerticalsService {
                             { ...definition, services: selectedServices },
                             l,
                             query,
+                            seedCountry,
                         );
                     }
                     if (effectiveBooking) {
@@ -873,6 +900,7 @@ export class VerticalsService {
                         l,
                         bootstrapMode,
                         query,
+                        seedCountry,
                     ));
                 await this.runProvisioningStep(
                     provisioningState,
@@ -1138,6 +1166,7 @@ export class VerticalsService {
         lang: string,
         bootstrapMode?: SubtypeBootstrap,
         executor?: TenantQueryExecutor,
+        country?: string | null,
     ): Promise<void> {
         for (const tool of bootstrapMode?.extraTools || []) {
             await this.enableSimpleTool(schemaName, tool, executor);
@@ -1184,7 +1213,7 @@ export class VerticalsService {
             await this.enableSimpleTool(schemaName, tool, executor);
         }
         if (industry === 'gimnasios') {
-            await this.seedMembershipPlans(schemaName, lang, executor);
+            await this.seedMembershipPlans(schemaName, lang, executor, country);
         }
     }
 
@@ -1413,8 +1442,14 @@ export class VerticalsService {
             throw new BadRequestException('El tenant no tiene una industria configurada.');
         }
 
-        const definition = getVerticalDefinition(industry);
+        // Con el subtipo, no sin el: `getVerticalDefinition(industry)` a secas
+        // devuelve la receta generica de la industria, asi que la academia de
+        // baile que pedia su contenido faltante recibia las FAQ de educacion y
+        // no las suyas. El contrato de agenda de abajo ya leia el subtipo; esta
+        // linea era la unica que lo perdia.
+        const definition = getVerticalDefinition(industry, config?.subType ?? null);
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        const seedCountry = await this.resolveSeedCountry(tenantId);
 
         await this.seedFaqs(schemaName, definition, lang);
 
@@ -1440,7 +1475,7 @@ export class VerticalsService {
         );
         const servicesToSeed = quotaDefaults.services;
         if (seedsServices && servicesToSeed.length > 0) {
-            await this.seedServices(schemaName, { ...definition, services: servicesToSeed }, lang);
+            await this.seedServices(schemaName, { ...definition, services: servicesToSeed }, lang, undefined, seedCountry);
         }
 
         this.logger.log(`Reseeded vertical content for tenant ${tenantId} (${industry})`);
@@ -1481,7 +1516,9 @@ export class VerticalsService {
                     'existing',
                 );
                 if (canonical.industry !== config.industry || canonical.subType !== (config.subType ?? null)) {
-                    const definition = getVerticalDefinition(canonical.industry);
+                    // Con el subtipo: la capa de receta redefine la terminologia,
+                    // y sin el la academia volvia a hablar de "estudiantes".
+                    const definition = getVerticalDefinition(canonical.industry, canonical.subType);
                     config = {
                         ...config,
                         industry: canonical.industry,
@@ -1540,7 +1577,7 @@ export class VerticalsService {
                 };
                 mayPublishCurrentManifest = false;
             }
-            const definition = getVerticalDefinition(canonical.industry);
+            const definition = getVerticalDefinition(canonical.industry, canonical.subType);
             const resolved = this.resolveCapabilityManifest(
                 canonical.industry,
                 canonical.subType,
@@ -1920,7 +1957,7 @@ export class VerticalsService {
 
             const persona = {
                 ...existingPersona,
-                name: this.orFallback(existingPersona.name, pick(agentDef.name)),
+                name: this.nameOrFallback(existingPersona.name, pick(agentDef.name)),
                 role: this.orFallback(existingPersona.role, pick(agentDef.role)),
                 greeting: this.orFallback(existingPersona.greeting, pick(agentDef.greeting)),
                 personality: {
@@ -1999,6 +2036,17 @@ export class VerticalsService {
         return typeof current === 'string' && current.trim().length > 0 ? current : fallback;
     }
 
+    /**
+     * "Asistente" es el nombre de relleno de la plantilla genérica, no un
+     * nombre que el dueño eligió: para el parche vertical cuenta como hueco, así
+     * que el nombre humano de la industria o del subtipo sí llega al agente.
+     * Cualquier otro nombre se respeta (RELLENA HUECOS, no pisa).
+     */
+    private nameOrFallback(current: any, fallback: string): string {
+        const placeholder = typeof current === 'string' && /^(asistente|assistant|assistente)$/i.test(current.trim());
+        return this.orFallback(placeholder ? '' : current, fallback);
+    }
+
     /** 'a|b|c' → ['a','b','c'] (formato del registry para listas). */
     private splitDefinitionList(raw: string): string[] {
         if (!raw) return [];
@@ -2050,11 +2098,26 @@ export class VerticalsService {
         }
     }
 
+    /**
+     * D17: la fila nace en la moneda del negocio.
+     *
+     * `svc.price` es una REFERENCIA en pesos colombianos, no un precio. Para
+     * los seis paises con ejemplo se traduce a un monto redondo de su moneda;
+     * para cualquier otro la fila nace SIN monto, con la moneda del pais
+     * puesta, y la tarjeta muestra `[precio]`. Un numero en la moneda
+     * equivocada es peor que ningun numero: el dueno tiene que borrarlo antes
+     * de escribir el suyo, y mientras tanto es lo que ve en su catalogo.
+     *
+     * D10 sigue mandando: todo lo sembrado nace `example` (o `quote` cuando la
+     * receta declara que ese servicio se cotiza), asi que ninguno de estos
+     * numeros llega jamas a un cliente sin que el dueno lo confirme.
+     */
     private async seedServices(
         schemaName: string,
         definition: VerticalDefinition,
         lang: string,
         executor?: TenantQueryExecutor,
+        country?: string | null,
     ): Promise<void> {
         try {
             await this.withTenantQuery(schemaName, executor, async (query) => {
@@ -2064,11 +2127,16 @@ export class VerticalsService {
                     const name = svc.name[lang] || svc.name['es'];
                     const description = svc.description[lang] || svc.description['es'];
                     const translatedNames = [...new Set(Object.values(svc.name).filter(Boolean))];
+                    const seeded = recipeSeedPrice(svc.price, country);
+                    // Un servicio que el negocio cotiza caso por caso no tiene
+                    // monto que confirmar: decir "precio pendiente" de una
+                    // visita de plomeria es prometer un numero que no existe.
+                    const priceStatus = svc.priceStatus === 'quote' ? 'quote' : 'example';
                     await query(
                         `INSERT INTO services
                             (name, description, duration_minutes, price, currency, category,
-                             is_active, sort_order, duration_type)
-                         SELECT $1, $2, $3, $4, $5, $6, true, $7, $8
+                             is_active, sort_order, duration_type, price_status)
+                         SELECT $1, $2, $3, $4, $5, $6, true, $7, $8, $10
                           WHERE NOT EXISTS (
                               SELECT 1 FROM services WHERE name = ANY($9::text[])
                           )
@@ -2077,14 +2145,15 @@ export class VerticalsService {
                             name,
                             description,
                             svc.durationMinutes,
-                            svc.price,
-                            svc.currency,
+                            seeded.price,
+                            seeded.currency,
                             svc.category,
                             i,
                             // 'open' = disponibilidad por DÍA (checkAvailabilityOpen), para
                             // servicios que no caben en la ventana diaria de slots.
                             svc.durationType || 'fixed',
                             translatedNames,
+                            priceStatus,
                         ],
                     );
                 }
@@ -2332,7 +2401,7 @@ export class VerticalsService {
                         fr: 'Y a-t-il une réduction pour les enfants?',
                     },
                     answer: {
-                        es: 'Las tarifas para niños dependen del paquete y de la edad. Contame cuántos van y qué edades tienen, y te confirmo el precio exacto.',
+                        es: 'Las tarifas para niños dependen del paquete y de la edad. Cuéntame cuántos van y qué edades tienen, y te confirmo el precio exacto.',
                         en: 'Child rates depend on the package and the age. Tell me how many children and their ages, and I\'ll confirm the exact price.',
                         pt: 'As tarifas para crianças dependem do pacote e da idade. Me diga quantas vão e as idades, e confirmo o preço exato.',
                         fr: 'Les tarifs enfants dépendent du forfait et de l\'âge. Dites-moi combien d\'enfants et leurs âges, et je vous confirme le prix exact.',
@@ -2347,7 +2416,7 @@ export class VerticalsService {
                         fr: 'Dans quelles langues le tour est-il offert?',
                     },
                     answer: {
-                        es: 'Depende del tour y de la disponibilidad de guías. Decime qué idioma preferís y te confirmo si lo tenemos para la fecha que buscás.',
+                        es: 'Depende del tour y de la disponibilidad de guías. Dime qué idioma prefieres y te confirmo si lo tenemos para la fecha que buscas.',
                         en: 'It depends on the tour and guide availability. Tell me your preferred language and I\'ll confirm whether we have it for your date.',
                         pt: 'Depende do passeio e da disponibilidade de guias. Me diga o idioma que prefere e confirmo se temos para a sua data.',
                         fr: 'Cela dépend du tour et de la disponibilité des guides. Dites-moi la langue que vous préférez et je vous confirme pour votre date.',
@@ -2362,7 +2431,7 @@ export class VerticalsService {
                         fr: 'Quelle est la politique d\'annulation?',
                     },
                     answer: {
-                        es: 'Tenemos condiciones de cancelación según cuánto falte para la salida. Contame la fecha de tu reserva y te confirmo exactamente cómo aplica en tu caso.',
+                        es: 'Tenemos condiciones de cancelación según cuánto falte para la salida. Cuéntame la fecha de tu reserva y te confirmo exactamente cómo aplica en tu caso.',
                         en: 'Cancellation terms depend on how far ahead of departure you cancel. Tell me your booking date and I\'ll confirm exactly how it applies to you.',
                         pt: 'As condições de cancelamento dependem de quanto falta para a saída. Me diga a data da sua reserva e confirmo exatamente como se aplica.',
                         fr: 'Les conditions d\'annulation dépendent du délai avant le départ. Dites-moi la date de votre réservation et je vous confirme ce qui s\'applique.',
@@ -2429,7 +2498,7 @@ export class VerticalsService {
                         fr: 'Combien coûte un détartrage?',
                     },
                     answer: {
-                        es: 'El costo varía según el tipo de limpieza (rutinaria o profunda). Te lo confirmamos en la valoración previa. ¿Querés que te agende una?',
+                        es: 'El costo varía según el tipo de limpieza (rutinaria o profunda). Te lo confirmamos en la valoración previa. ¿Quieres que te agende una?',
                         en: 'The cost depends on the type of cleaning (routine or deep). We\'ll confirm it at the initial assessment. Want me to book you one?',
                         pt: 'O custo varia conforme o tipo de limpeza (rotina ou profunda). Confirmamos na avaliação prévia. Quer que eu agende uma?',
                         fr: 'Le coût dépend du type de nettoyage (routine ou profond). Nous le confirmons lors de l\'évaluation. Voulez-vous que je vous en réserve une ?',
@@ -2444,7 +2513,7 @@ export class VerticalsService {
                         fr: 'Comment gérez-vous la peur du dentiste ou la douleur?',
                     },
                     answer: {
-                        es: 'Es una preocupación muy común y la tenemos en cuenta. Las opciones de manejo del dolor y de la ansiedad las evalúa la profesional según tu caso — agendá una valoración y lo conversan.',
+                        es: 'Es una preocupación muy común y la tenemos en cuenta. Las opciones de manejo del dolor y de la ansiedad las evalúa la profesional según tu caso — agenda una valoración y lo conversan.',
                         en: 'It\'s a very common concern and we take it seriously. Pain and anxiety management options are assessed case by case — book an assessment and you can discuss it.',
                         pt: 'É uma preocupação muito comum e levamos a sério. As opções de manejo da dor e da ansiedade são avaliadas caso a caso — agende uma avaliação para conversar.',
                         fr: 'C\'est une préoccupation très courante et nous en tenons compte. Les options de gestion de la douleur et de l\'anxiété s\'évaluent au cas par cas — réservez une évaluation pour en parler.',
@@ -2474,7 +2543,7 @@ export class VerticalsService {
                         fr: 'Traitez-vous les urgences dentaires?',
                     },
                     answer: {
-                        es: 'Si tenés dolor intenso, un golpe o sangrado abundante, te conecto YA con la clínica para que lo vean cuanto antes. No esperes a que pase.',
+                        es: 'Si tienes dolor intenso, un golpe o sangrado abundante, te conecto YA con la clínica para que lo vean cuanto antes. No esperes a que pase.',
                         en: 'If you have severe pain, an injury or heavy bleeding, I\'ll connect you with the clinic right now so they can see you as soon as possible. Don\'t wait it out.',
                         pt: 'Se você está com dor intensa, uma pancada ou sangramento abundante, conecto você AGORA com a clínica para atenderem o quanto antes. Não espere passar.',
                         fr: 'Si vous avez une douleur intense, un choc ou un saignement abondant, je vous mets en relation avec la clinique tout de suite. N\'attendez pas que ça passe.',
@@ -2511,7 +2580,7 @@ export class VerticalsService {
                         fr: 'Avez-vous des options de financement / prêt hypothécaire?',
                     },
                     answer: {
-                        es: 'La financiación depende de cada propiedad y de tu perfil. Contame el rango de precio y la zona que te interesa, y reviso qué opciones aplican en tu caso.',
+                        es: 'La financiación depende de cada propiedad y de tu perfil. Cuéntame el rango de precio y la zona que te interesa, y reviso qué opciones aplican en tu caso.',
                         en: 'Financing depends on the property and your profile. Tell me your price range and the area you\'re after, and I\'ll check which options apply.',
                         pt: 'O financiamento depende de cada imóvel e do seu perfil. Me diga a faixa de preço e a região, e verifico quais opções se aplicam.',
                         fr: 'Le financement dépend du bien et de votre profil. Dites-moi votre budget et le quartier, et je vérifie les options possibles.',
@@ -2821,6 +2890,7 @@ export class VerticalsService {
         schemaName: string,
         lang: string,
         executor?: TenantQueryExecutor,
+        country?: string | null,
     ): Promise<void> {
         try {
             const L = (loc: Record<string, string>) => loc[lang] || loc.es;
@@ -2876,14 +2946,25 @@ export class VerticalsService {
                 for (let index = 0; index < PLANS.length; index++) {
                     if (existingPlanIndexes.has(index)) continue;
                     const p = PLANS[index];
+                    // Mismo criterio que los servicios: el precio del plan es
+                    // una referencia, no una tarifa. Un gimnasio chileno abria
+                    // "Mensual 150.000 COP" y tenia que corregir las tres.
+                    const seeded = recipeSeedPrice(p.price, country);
+                    // `price` es NOT NULL en esta tabla (en `services` NO lo es),
+                    // asi que fuera de los seis paises con monto de ejemplo va un
+                    // cero — y `price_status = 'example'` es lo que impide que
+                    // ese cero se lea como "membresia gratis". Un NULL aca
+                    // reventaba el alta entera de todo gimnasio cuyo pais no
+                    // tuviera ejemplo, incluido el caso mas comun: el que
+                    // todavia no declaro pais.
                     await query(
                         `INSERT INTO membership_plans
                             (name, description, duration_days, price, currency,
                              class_credits_per_period, personal_training_credits,
-                             guest_passes, freeze_allowance_days, sort_order)
-                         VALUES ($1, $2, $3, $4, 'COP', $5, $6, $7, $8, $9)`,
-                        [L(p.name), L(p.description), p.durationDays, p.price,
-                            p.credits, p.pt, p.guests, p.freeze, p.order],
+                             guest_passes, freeze_allowance_days, sort_order, price_status)
+                         VALUES ($1, $2, $3, $4, $10, $5, $6, $7, $8, $9, 'example')`,
+                        [L(p.name), L(p.description), p.durationDays, seeded.price ?? 0,
+                            p.credits, p.pt, p.guests, p.freeze, p.order, seeded.currency],
                     );
                     inserted++;
                 }

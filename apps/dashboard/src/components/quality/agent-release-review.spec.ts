@@ -27,7 +27,7 @@ const candidate = (): AgentReleaseDetail => ({ id: 'candidate', agentId: 'agent'
             fields: [{ key: 'greeting', value: 'Captured greeting' }, { key: 'toolsEnabled', value: ['appointments'] }, { key: 'rules', value: ['Use confirmed facts'] }],
             baseFields: [{ key: 'greeting', value: 'Before greeting' }], changes: [{ key: 'greeting', before: 'Before greeting', after: 'Captured greeting' }] },
         samples: [{ hash: 'd'.repeat(64), channel: 'web_widget', language: 'es', scenario: 'required-case', transcript: [{ role: 'user', content: 'Test question' }, { role: 'assistant', content: '<script>unsafe()</script> Actual generated reply' }] }] } });
-const workspace = (): AgentConfigurationWorkspace => ({ agentId: 'agent', operational: { version: 7, hash: 'a'.repeat(64), body: {} as any },
+const workspace = (): AgentConfigurationWorkspace => ({ agentId: 'agent', directCommit: false, operational: { version: 7, hash: 'a'.repeat(64), body: {} as any },
     draft: { id: 'draft', currentBase: true } as any, evaluationRevisionId: 'draft' });
 
 describe('reviewing release evidence without publishing', () => {

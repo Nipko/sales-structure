@@ -20,18 +20,18 @@ describe('vertical contract/static matrix', () => {
         expect(new Set(locales).size).toBe(locales.length);
     });
 
-    it('executes 76 canonical + 7 legacy profiles × 4 locales × 5 plans', () => {
+    it('executes 80 canonical + 7 legacy profiles × 4 locales × 5 plans', () => {
         const report = runVerticalContractMatrix();
 
         expect(report.layer).toBe(VERTICAL_CONTRACT_LAYER);
         expect(report.bootstrapCertified).toBe(false);
         expect(report.sources.productPolicyVersion).toBe(1);
-        expect(report.dimensions).toEqual({ configurations: 83, locales: 4, plans: 5 });
-        expect(report.scenarios).toHaveLength(1_660);
-        expect(new Set(report.scenarios.map((scenario) => scenario.id)).size).toBe(1_660);
+        expect(report.dimensions).toEqual({ configurations: 87, locales: 4, plans: 5 });
+        expect(report.scenarios).toHaveLength(1_740);
+        expect(new Set(report.scenarios.map((scenario) => scenario.id)).size).toBe(1_740);
         expect(report.summary).toEqual({
-            scenarios: 1_660,
-            passed: 1_660,
+            scenarios: 1_740,
+            passed: 1_740,
             failed: 0,
             failureCount: 0,
         });

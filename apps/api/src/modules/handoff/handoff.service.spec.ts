@@ -259,3 +259,38 @@ describe('HandoffService canonical auto-assignment event', () => {
         expect(h.events.emit).not.toHaveBeenCalledWith('conversation.assigned', expect.anything());
     });
 });
+
+/**
+ * D13 (sep-2026): una ficha de "paso a una persona" solo vale si el motor la
+ * cumple. Al emparejar los motivos visibles con sus disparadores apareció que
+ * un disparador CON tilde no podía coincidir nunca: el mensaje del cliente ya
+ * llegaba sin tildes y el disparador no, así que los dos no se encontraban.
+ * El dueño veía su regla en pantalla, escrita, sin hacer nada.
+ */
+describe('custom handoff triggers match however the word is spelled', () => {
+    const service: any = Object.create(HandoffService.prototype);
+    const conversation = { metadata: {} };
+
+    function config(triggers: string[]) {
+        return { behavior: { handoffTriggers: triggers } } as any;
+    }
+
+    it('fires on an accented trigger the owner typed in the editor', () => {
+        expect(service.shouldHandoff('creo que hubo electrocución', conversation, config(['electrocución'])))
+            .toBe('custom_trigger:electrocución');
+    });
+
+    it('still fires on the unaccented trigger the recipes seed', () => {
+        expect(service.shouldHandoff('hubo una electrocucion', conversation, config(['electrocucion'])))
+            .toBe('custom_trigger:electrocucion');
+    });
+
+    it('catches the accented spelling a phone keyboard produces', () => {
+        expect(service.shouldHandoff('pido la homologación de materias', conversation, config(['homologacion'])))
+            .toBe('custom_trigger:homologacion');
+    });
+
+    it('does not invent a match out of an empty trigger', () => {
+        expect(service.shouldHandoff('hola, quiero info', conversation, config(['   ']))).toBeNull();
+    });
+});

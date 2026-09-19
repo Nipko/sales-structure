@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import type { AgentQualityOverview } from "@parallext/shared";
+import type { AgentQualityCheck, AgentQualityOverview } from "@parallext/shared";
 import { AlertTriangle, ArrowRight, CheckCircle2, CircleDashed, Gauge, RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -16,11 +16,27 @@ interface Props {
 }
 
 /**
+ * Where pending prices are fixed when the check carries no `href` (an API
+ * older than the plans half). The check counts example amounts to confirm and
+ * rows with no amount at all, each for services and for a gym's membership
+ * plans; the API picks Membresías when only plans are pending, of either kind,
+ * and this reads the same four numbers. Services live in Citas; sending a gym
+ * whose only pending prices are plans there lands on a list with nothing to do.
+ */
+function examplePriceTarget(check?: AgentQualityCheck | null): string {
+  const evidence: Record<string, unknown> = check?.evidence ?? {};
+  const services = (Number(evidence.examplePriceServices) || 0) + (Number(evidence.noPriceServices) || 0);
+  const plans = (Number(evidence.examplePricePlans) || 0) + (Number(evidence.noPricePlans) || 0);
+  return services === 0 && plans > 0 ? "/admin/memberships" : "/admin/appointments";
+}
+
+/**
  * Where a person actually fixes each critical check. Anything not listed here
  * falls back to the quality center, which explains the check in full — never to
  * a page that cannot resolve it (that mismatch is the defect this replaces).
+ * The check's own `href` always wins; this is only for when it has none.
  */
-const BLOCKER_TARGETS: Record<string, (agentId: string) => string> = {
+const BLOCKER_TARGETS: Record<string, (agentId: string, check?: AgentQualityCheck | null) => string> = {
   agent_active: (id) => `/admin/agent/${id}?focus=active`,
   persona_identity: (id) => `/admin/agent/${id}?tab=persona&focus=name`,
   agent_language: (id) => `/admin/agent/${id}?tab=persona&focus=name`,
@@ -50,6 +66,7 @@ const BLOCKER_TARGETS: Record<string, (agentId: string) => string> = {
   tool_policies: () => "/admin/settings/policies",
   media_privacy_policy: () => "/admin/settings/policies?type=privacy",
   tool_appointments: () => "/admin/appointments",
+  services_example_price: (_id, check) => examplePriceTarget(check),
   tool_vehicles: () => "/admin/vehicles",
   test_drive_permissions: (id) => `/admin/agent/${id}`,
   test_drive_service: () => "/admin/appointments",
@@ -122,7 +139,7 @@ export function AgentReadinessBanner({ tenantId, agentId, refreshKey = 0 }: Prop
   const namedBlockers = missing.slice(0, 3).map(({ code, check }) => ({
     code,
     label: t.has(`checks.${code}`) ? t(`checks.${code}`) : t("checks.unknown"),
-    href: check?.href ?? (BLOCKER_TARGETS[code] ?? (() => href))(agentId),
+    href: check?.href || (BLOCKER_TARGETS[code] ?? (() => href))(agentId, check),
     unsupportedTypes: code === 'operational_channel_scope' ? check?.evidence?.unsupportedChannelTypes : null,
   }));
   const extraBlockers = blockers - namedBlockers.length;

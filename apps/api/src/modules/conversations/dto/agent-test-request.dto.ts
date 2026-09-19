@@ -55,6 +55,10 @@ export class AgentTestRequestOptionsDto {
     @ValidateIf((_object, value) => value !== undefined)
     @IsBoolean()
     disableTools?: boolean;
+
+    @ValidateIf((_object, value) => value !== undefined)
+    @IsIn(['setup_wizard', 'agent_editor'])
+    surface?: 'setup_wizard' | 'agent_editor';
 }
 
 /**

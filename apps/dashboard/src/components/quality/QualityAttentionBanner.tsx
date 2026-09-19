@@ -1,5 +1,13 @@
 "use client";
 
+import {
+  AGENT_QUALITY_DELIVERY_FAILURE_CODES,
+  WHATSAPP_DELIVERY_BLOCK_REASONS,
+  isOnboardingBeforeLive,
+  type AgentQualityAttentionAction,
+  type AgentQualityAttentionSummary,
+} from "@parallext/shared";
+import { useAuth } from "@/contexts/AuthContext";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -19,6 +27,7 @@ import {
   getOnboardingLandingSignal,
   isOnboardingGuidanceOwningHome,
   subscribeOnboardingLanding,
+  type OnboardingLandingSignal,
 } from "@/lib/onboarding-guide-signal";
 import {
   getFocusedQualitySignal,
@@ -29,6 +38,151 @@ import {
   withQualityFocus,
 } from "@/lib/quality-health";
 
+/**
+ * The signals that mean "the agent cannot answer through a channel this
+ * account connected" — the shared list the API also picks `deliveryAction`
+ * from: the connection cannot send, a connected channel has no agent answering
+ * it, or WhatsApp refuses every reply. (An agent with no channel assigned is
+ * not one of them: the default agent answers what nobody claims.)
+ *
+ * Before a channel exists they are just unfinished setup: the setup card asks
+ * for exactly that, step by step. After one exists they are the reason the
+ * agent is silent, and hiding them is how the day 0 ended with WhatsApp
+ * "connected" and nobody answering.
+ */
+const DELIVERY_FAILURES: ReadonlySet<string> = new Set(AGENT_QUALITY_DELIVERY_FAILURE_CODES);
+
+const DELIVERY_REASONS: ReadonlySet<string> = new Set(WHATSAPP_DELIVERY_BLOCK_REASONS);
+
+/** What the banner reads from the session to decide whether a channel exists. */
+export interface DayZeroChannelFacts {
+  /** Active channel connections, from the same count the stage is derived from. `undefined` = not known. */
+  hasAnyChannel?: unknown;
+  onboardingStage?: unknown;
+}
+
+/**
+ * Whether this account provably has a channel.
+ *
+ * `hasAnyChannel` is the server's own fact and travels with the session. Only
+ * a POSITIVE fact proves anything, from any source: the stage (the wizard's
+ * last button writes `completed`, which outranks `channel_connected`, so it
+ * loses that proof on the usual path) and Home's published landing (fresher
+ * than a session read at login, right after a connection) still count. A
+ * `false` or a missing fact never vetoes another source's `true`.
+ */
+export function isChannelProvenForDayZero(
+  facts: DayZeroChannelFacts | null | undefined,
+  landing: OnboardingLandingSignal,
+): boolean {
+  return facts?.hasAnyChannel === true
+    || facts?.onboardingStage === "channel_connected"
+    || landing === "setup_card_and_health"
+    || landing === "normal";
+}
+
+/**
+ * True when this action says a channel cannot deliver, and that was CHECKED:
+ * a critical signal from the shared delivery list whose check failed.
+ *
+ * A check that could not be RUN (`checkStatus: 'unknown'` — a lookup failed)
+ * is also `critical` on a critical check, but it is not evidence that anything
+ * is broken, so it never jumps ahead of anything. A signal stored before the
+ * status travelled has none, and keeps counting as it always did.
+ */
+function isCheckedDeliveryFailure(
+  action: Pick<AgentQualityAttentionAction, "code" | "severity" | "checkStatus"> | undefined,
+): boolean {
+  if (!action) return false;
+  if (action.severity !== "critical" || !DELIVERY_FAILURES.has(action.code)) return false;
+  return action.checkStatus === undefined || action.checkStatus === "fail";
+}
+
+/**
+ * True when a day-0 account must see this action anyway: a checked delivery
+ * failure over a proven channel. Every other quality nag waits for the first
+ * real reply.
+ */
+export function isDayZeroDeliveryFailure(
+  action: Pick<AgentQualityAttentionAction, "code" | "severity" | "checkStatus"> | undefined,
+  channelProven: boolean,
+): boolean {
+  return channelProven && isCheckedDeliveryFailure(action);
+}
+
+/**
+ * The delivery failure the bar puts first, day 0 or not.
+ *
+ * `deliveryAction` first: `topAction` is one row ordered by severity and
+ * recency, so a silent channel can sit behind an unrelated critical. `topAction`
+ * is still read for a summary from before `deliveryAction` existed.
+ */
+function deliveryFailureAction(
+  summary: Pick<AgentQualityAttentionSummary, "topAction" | "deliveryAction"> | null | undefined,
+): AgentQualityAttentionAction | undefined {
+  for (const candidate of [summary?.deliveryAction, summary?.topAction]) {
+    if (isCheckedDeliveryFailure(candidate)) return candidate;
+  }
+  return undefined;
+}
+
+/** The action a day-0 account sees, if any: a delivery failure over a proven channel. */
+export function dayZeroDeliveryAction(
+  summary: Pick<AgentQualityAttentionSummary, "topAction" | "deliveryAction"> | null | undefined,
+  channelProven: boolean,
+): AgentQualityAttentionAction | undefined {
+  return channelProven ? deliveryFailureAction(summary) : undefined;
+}
+
+export type QualityBannerHeadline =
+  | "bannerAtRisk"
+  | "bannerCritical"
+  | "bannerDeliveryFailure"
+  | "bannerChannelUnanswered";
+
+/** What the bar says: which action, its headline, and the one-line reason when the signal names one. */
+export interface QualityBannerContent {
+  action: AgentQualityAttentionAction;
+  headline: QualityBannerHeadline;
+  reasonKey: string | null;
+}
+
+/**
+ * What the red bar shows, if anything.
+ *
+ * A checked delivery failure leads whenever there is one — during day 0 AND
+ * after it. Day 0 ends at the first real reply or, for an agent that never
+ * answered anybody, at the 3-day cap; going back to `topAction` there let an
+ * unrelated critical (a missing business description) stand in front of the
+ * one alert that explains why nobody gets an answer, under a generic headline.
+ *
+ * The specific headline ("tu agente no puede contestar por el canal que
+ * conectaste") needs a proven channel. Day 0 without one is unfinished setup
+ * and stays quiet; after day 0 the failure still leads, in the generic words,
+ * because a channel assigned and never connected is not "the one you connected".
+ */
+export function qualityBannerContent(
+  summary: AgentQualityAttentionSummary | null | undefined,
+  context: { dayZero: boolean; channelProven: boolean },
+): QualityBannerContent | null {
+  const generic: QualityBannerHeadline = summary?.worstStatus === "at_risk" ? "bannerAtRisk" : "bannerCritical";
+  const delivery = deliveryFailureAction(summary);
+  if (delivery && (context.channelProven || !context.dayZero)) {
+    const headline: QualityBannerHeadline = !context.channelProven
+      ? generic
+      : delivery.code === "fix_channel_unanswered" ? "bannerChannelUnanswered" : "bannerDeliveryFailure";
+    return { action: delivery, headline, reasonKey: deliveryReasonKey(delivery) };
+  }
+  if (context.dayZero || !summary?.topAction || !shouldShowQualityAttentionBanner(summary)) return null;
+  return { action: summary.topAction, headline: generic, reasonKey: null };
+}
+
+/** The i18n key of the one-line reason a WhatsApp delivery failure carries, if it names one. */
+export function deliveryReasonKey(action: Pick<AgentQualityAttentionAction, "code" | "deliveryIssue">): string | null {
+  if (action.code !== "fix_whatsapp_delivery" || !action.deliveryIssue) return null;
+  return DELIVERY_REASONS.has(action.deliveryIssue) ? `bannerDeliveryReason.${action.deliveryIssue}` : null;
+}
+
 export default function QualityAttentionBanner() {
   const t = useTranslations("qualityHealth");
   const pathname = usePathname();
@@ -37,6 +191,13 @@ export default function QualityAttentionBanner() {
   const canLaunchTour = canEditAgent && canManageChannels;
   const [tourSuppressedPath, setTourSuppressedPath] = useState<string | null>(null);
   const [snoozing, setSnoozing] = useState(false);
+  // The context clears the snoozed signal from `topAction` and
+  // `deliveryAction` while the snooze is in flight; this bar also hides the
+  // action it showed on its own, so it never depends on which of the two the
+  // context cleared. By the time the snooze settles the context has re-read
+  // the summary: a snoozed signal is gone from it, a refused snooze brings the
+  // alert back.
+  const [snoozingSignalId, setSnoozingSignalId] = useState<string | null>(null);
   // The context bar on the destination screen explains the SAME signal with
   // more detail. Two red bars saying it read as two separate problems.
   const focusedSignalId = useSyncExternalStore(
@@ -75,8 +236,21 @@ export default function QualityAttentionBanner() {
     };
   }, [canLaunchTour, pathname]);
 
-  const topAction = summary?.topAction;
-  if (!topAction || !shouldShowQualityAttentionBanner(summary)) return null;
+  const { user: authUser } = useAuth();
+  // Before the first real reply almost every "critical" is unfinished setup,
+  // and the setup card already says it without the red. The exception is the
+  // one alert that explains a silent agent: a channel the account connected
+  // that cannot deliver. That one comes through; the rest return once the
+  // agent has answered somebody.
+  const dayZero = isOnboardingBeforeLive(authUser?.onboardingStage, {
+    firstReplyAt: authUser?.firstReplyAt,
+    createdAt: authUser?.tenantCreatedAt,
+  });
+  const channelProven = isChannelProvenForDayZero(authUser, onboardingLanding);
+  const content = qualityBannerContent(summary, { dayZero, channelProven });
+  if (!content) return null;
+  const { action: topAction, headline, reasonKey } = content;
+  if (snoozingSignalId === topAction.signalId) return null;
   if (pathname === "/admin/setup-wizard" || pathname.startsWith("/admin/agent/quality")) return null;
   if (pathname === "/admin" && isOnboardingGuidanceOwningHome(onboardingLanding)) return null;
   if (tourSuppressedPath === pathname) return null;
@@ -92,9 +266,15 @@ export default function QualityAttentionBanner() {
   });
 
   const handleSnooze = async () => {
+    const signalId = topAction.signalId;
     setSnoozing(true);
-    await snoozeSignal(topAction.signalId, 24);
-    setSnoozing(false);
+    setSnoozingSignalId(signalId);
+    try {
+      await snoozeSignal(signalId, 24);
+    } finally {
+      setSnoozingSignalId(null);
+      setSnoozing(false);
+    }
   };
 
   return (
@@ -103,7 +283,10 @@ export default function QualityAttentionBanner() {
         <div className="flex min-w-0 flex-1 items-start gap-2">
           <AlertOctagon size={17} className="mt-0.5 shrink-0 text-red-600 dark:text-red-400" aria-hidden="true" />
           <p className="min-w-0 text-sm">
-            <span className="font-semibold">{t(summary?.worstStatus === "at_risk" ? "bannerAtRisk" : "bannerCritical")}</span>{" "}
+            {/* A channel that cannot deliver leads, day 0 or not: say that,
+                and why when the signal knows, not a generic "critical action". */}
+            <span className="font-semibold">{t(headline)}</span>{" "}
+            {reasonKey && <span>{t(reasonKey)}{" "}</span>}
             <span className="text-red-800/85 dark:text-red-200/85">{t("bannerAgent", { agent: topAction.agentName })}</span>
           </p>
         </div>

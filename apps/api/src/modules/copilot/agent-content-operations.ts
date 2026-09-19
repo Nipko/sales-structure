@@ -154,7 +154,7 @@ export const AGENT_CONTENT_OPERATION_HANDLERS: {
                 ...(input.currency === undefined ? {} : { currency: input.currency }),
                 ...(input.durationHours === undefined ? {} : { duration_hours: input.durationHours }),
                 ...(input.modality === undefined ? {} : { modality: input.modality }),
-            });
+            }, context.tenantId);
             return { id: row.id, label: row.name };
         },
         read: async (context, id) => {

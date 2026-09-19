@@ -3,7 +3,7 @@ id: canales-email-widget
 title: "Chat web et état de l'intégration Email"
 routes: ["/admin/channels", "/admin/channels/email", "/admin/settings/integrations/web-chat", "/admin/settings/integrations/web-chat/triggers"]
 roles: ["tenant_admin"]
-keywords: ["email", "e-mail", "etat du canal email", "widget", "chat web", "chat sur mon site", "chat sur ma page", "bulle de chat", "code d'integration", "installer widget", "declencheurs", "declencheurs proactifs", "message de bienvenue", "formulaire pre-chat"]
+keywords: ["email", "e-mail", "etat du canal email", "widget", "chat web", "chat sur mon site", "chat sur ma page", "bulle de chat", "code d'integration", "installer widget", "declencheurs", "declencheurs proactifs", "message de bienvenue", "formulaire pre-chat", "lien de votre agent", "code en deux lignes"]
 ---
 
 # Chat web et état de l'intégration Email
@@ -21,6 +21,17 @@ L'écran indique si le chat web et les déclencheurs proactifs sont activés et 
 Email existe comme adaptateur technique et point d'entrée interne pour des intégrations administrées, mais **ce n'est pas encore un canal conversationnel certifié ni configurable en libre-service**. La page **Canaux → Email** ne dispose actuellement pas du contrat d'API nécessaire pour enregistrer une configuration par tenant. Ne saisissez pas d'identifiants et ne considérez pas que cet écran rend le canal opérationnel.
 
 Si votre organisation a besoin d'une intégration e-mail, demandez une évaluation technique au support. Tant que le flux n'est pas implémenté et certifié de bout en bout, Parallly Assist ne doit promettre ni connexion, ni envoi, ni réception dans la boîte de conversations, ni réponses automatiques par Email.
+
+### Le lien de votre agent et le chat web de votre site
+
+Le **lien de votre agent** (la page publique que vous voyez dans l'assistant de configuration, dont l'adresse commence par `/w/` suivi d'un identifiant) existe dès le jour 0, avant de connecter le moindre canal. Ce qu'il est dépend de votre forfait :
+
+- **Si votre forfait n'inclut pas le chat web**, il sert à **essayer votre agent et le montrer à quelqu'un** : la plateforme paie ses messages jusqu'à un quota par compte, chaque page a un plafond de messages par jour et la conversation ne passe jamais à une personne. La plateforme peut mettre ce lien d'essai en pause : tant qu'il est en pause, ou une fois le quota épuisé, votre agent n'y répond pas.
+- **Si votre forfait inclut le chat web**, ce même lien est un **vrai canal** : il sert vos clients avec le quota de votre forfait, sans le plafond quotidien de l'essai, et peut transférer la conversation à votre équipe quand le client demande une personne. La carte du lien ajoute alors **Le mettre dans ma bio** et **Le mettre sur mon site web**.
+
+Dans les deux cas, les conversations qu'il reçoit apparaissent dans votre boîte de réception comme n'importe quelle conversation de chat web, et le lien ne compte pas comme un canal connecté : il ne se connecte ni ne se déconnecte.
+
+Le **chat web que vous installez sur votre site** (le widget de cet écran) compte, lui, comme un canal connecté et utilise la fonctionnalité de chat web de votre forfait. Pour le mettre sur votre site, copiez ses deux lignes avec **Copier le code** et envoyez-les à la personne qui gère votre site ; **Le mettre sur mon site web**, sur la carte du lien, vous ramène à ce même écran.
 
 ---
 

@@ -8,15 +8,19 @@ import { Cron } from '@nestjs/schedule';
 import { OnEvent } from '@nestjs/event-emitter';
 import { createHash } from 'crypto';
 import type {
+    AgentQualityAttentionAction,
     AgentQualityAttentionSummary,
+    AgentQualityCheckStatus,
     AgentQualityDimension,
     AgentQualityOverview,
     AgentQualityPillar,
     AgentQualitySeverity,
     AgentQualitySignal,
+    AgentQualitySignalDetail,
     AgentQualitySignalState,
     AgentQualityStatus,
 } from '@parallext/shared';
+import { AGENT_QUALITY_DELIVERY_FAILURE_CODES, WHATSAPP_DELIVERY_BLOCK_REASONS } from '@parallext/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { CronLockService } from '../redis/cron-lock.service';
@@ -83,6 +87,12 @@ const QUALITY_ACTION_PREFIXES = [
     '/admin/service-requests',
 ] as const;
 
+// What a signal may say beyond its code, each from a closed vocabulary: a value
+// outside it is dropped rather than stored, so nothing free-form reaches a row.
+const SIGNAL_CHECK_STATUSES = new Set<AgentQualityCheckStatus>(['pass', 'warning', 'fail', 'unknown', 'not_applicable']);
+const SIGNAL_CREDENTIAL_ISSUES = new Set<string>(['expiring', 'unknown', 'missing', 'error', 'revoked', 'expired', 'multiple']);
+const SIGNAL_DELIVERY_ISSUES = new Set<string>([...WHATSAPP_DELIVERY_BLOCK_REASONS, 'multiple']);
+
 type SafeRecommendation = {
     code: string;
     severity: AgentQualitySeverity;
@@ -90,6 +100,9 @@ type SafeRecommendation = {
     dimension: AgentQualityDimension;
     href: string;
     evidenceCount: number;
+    checkStatus: AgentQualityCheckStatus | null;
+    credentialIssue: string | null;
+    deliveryIssue: string | null;
 };
 
 @Injectable()
@@ -104,7 +117,9 @@ export class AgentQualitySignalService {
     ) {}
 
     private tablesCacheKey(schemaName: string): string {
-        return `agent_quality_attention_tables:v2:${schemaName}`;
+        // v3: the signal detail columns. A schema marked ready under v2 was
+        // marked before they existed, and the insert below names them.
+        return `agent_quality_attention_tables:v3:${schemaName}`;
     }
 
     private summaryCacheKey(tenantId: string): string {
@@ -184,6 +199,11 @@ export class AgentQualitySignalService {
                 ON agent_quality_signals(state, severity, last_seen_at DESC)`,
             `CREATE INDEX IF NOT EXISTS idx_agent_quality_signals_agent_version
                 ON agent_quality_signals(agent_id, agent_config_version, state)`,
+            // Additive and nullable (expand only): a row written before them
+            // reads as "not known", and code that predates them never names them.
+            `ALTER TABLE agent_quality_signals ADD COLUMN IF NOT EXISTS check_status VARCHAR(20)`,
+            `ALTER TABLE agent_quality_signals ADD COLUMN IF NOT EXISTS credential_issue VARCHAR(40)`,
+            `ALTER TABLE agent_quality_signals ADD COLUMN IF NOT EXISTS delivery_issue VARCHAR(40)`,
             `UPDATE agent_quality_signals s SET state='superseded',superseded_at=NOW()
                 WHERE s.code='improve_verified_resolution' AND s.state IN ('open','acknowledged','snoozed')
                   AND NOT EXISTS (SELECT 1 FROM agent_quality_snapshots a WHERE a.agent_id=s.agent_id
@@ -392,7 +412,7 @@ export class AgentQualitySignalService {
         const topRows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `SELECT s.id, s.agent_id, ap.name AS agent_name, s.code, s.severity,
-                    s.href, s.evidence_count
+                    s.href, s.evidence_count, s.check_status, s.credential_issue, s.delivery_issue
                FROM agent_quality_signals s
                JOIN agent_personas ap ON ap.id = s.agent_id
               WHERE s.state = 'open'
@@ -405,6 +425,27 @@ export class AgentQualitySignalService {
             [],
         );
         const top = topRows[0];
+        // The delivery failure, found on its own: `topAction` is one row by
+        // severity and recency, and an unrelated critical that the day-0 banner
+        // hides could otherwise stand in front of the one alert that explains a
+        // silent agent. A failed check outranks one that could not be run.
+        const deliveryRows = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT s.id, s.agent_id, ap.name AS agent_name, s.code, s.severity,
+                    s.href, s.evidence_count, s.check_status, s.credential_issue, s.delivery_issue
+               FROM agent_quality_signals s
+               JOIN agent_personas ap ON ap.id = s.agent_id
+              WHERE s.state = 'open'
+                AND ap.is_active = true
+                AND s.agent_config_version = COALESCE(ap.version, 1)
+                AND s.severity = 'critical'
+                AND s.code = ANY($1::text[])
+           ORDER BY CASE WHEN s.check_status = 'fail' THEN 0 ELSE 1 END,
+                    s.last_seen_at DESC, s.id ASC
+              LIMIT 1`,
+            [[...AGENT_QUALITY_DELIVERY_FAILURE_CODES]],
+        );
+        const delivery = deliveryRows[0];
         const summary: AgentQualityAttentionSummary = {
             generatedAt: new Date().toISOString(),
             worstStatus: this.worstStatus(agents.map((agent) => agent.status)),
@@ -414,17 +455,8 @@ export class AgentQualitySignalService {
             openCritical,
             openHigh,
             attentionCount: openCritical + openHigh,
-            ...(top ? {
-                topAction: {
-                    signalId: String(top.id),
-                    agentId: String(top.agent_id),
-                    agentName: String(top.agent_name || ''),
-                    code: String(top.code),
-                    severity: top.severity as AgentQualitySeverity,
-                    href: this.safeHref(top.href),
-                    evidenceCount: Number(top.evidence_count) || 0,
-                },
-            } : {}),
+            ...(top ? { topAction: this.toAttentionAction(top) } : {}),
+            ...(delivery ? { deliveryAction: this.toAttentionAction(delivery) } : {}),
             agents,
         };
         await this.redis.setJson(this.summaryCacheKey(tenantId), summary, SUMMARY_CACHE_TTL_SECONDS)
@@ -756,14 +788,18 @@ export class AgentQualitySignalService {
                 await query(
                     `INSERT INTO agent_quality_signals
                         (agent_id, agent_config_version, code, severity, pillar, dimension,
-                         state, href, evidence_count, fingerprint)
-                     VALUES ($1::uuid, $2, $3, $4, $5, $6, 'open', $7, $8, $9)
+                         state, href, evidence_count, fingerprint,
+                         check_status, credential_issue, delivery_issue)
+                     VALUES ($1::uuid, $2, $3, $4, $5, $6, 'open', $7, $8, $9, $10, $11, $12)
                      ON CONFLICT (fingerprint) DO UPDATE SET
                         severity = EXCLUDED.severity,
                         pillar = EXCLUDED.pillar,
                         dimension = EXCLUDED.dimension,
                         href = EXCLUDED.href,
                         evidence_count = EXCLUDED.evidence_count,
+                        check_status = EXCLUDED.check_status,
+                        credential_issue = EXCLUDED.credential_issue,
+                        delivery_issue = EXCLUDED.delivery_issue,
                         occurrence_count = CASE
                             WHEN agent_quality_signals.evidence_count IS DISTINCT FROM EXCLUDED.evidence_count
                               OR agent_quality_signals.severity IS DISTINCT FROM EXCLUDED.severity
@@ -816,6 +852,9 @@ export class AgentQualitySignalService {
                         recommendation.href,
                         recommendation.evidenceCount,
                         fingerprint,
+                        recommendation.checkStatus,
+                        recommendation.credentialIssue,
+                        recommendation.deliveryIssue,
                     ],
                 );
             }
@@ -992,6 +1031,38 @@ export class AgentQualitySignalService {
             occurrenceCount: Number(row.occurrence_count) || 1,
             ...(row.acknowledged_at ? { acknowledgedAt: this.iso(row.acknowledged_at) } : {}),
             ...(row.snoozed_until ? { snoozedUntil: this.iso(row.snoozed_until) } : {}),
+            ...this.signalDetail(row),
+        };
+    }
+
+    private toAttentionAction(row: any): AgentQualityAttentionAction {
+        return {
+            signalId: String(row.id),
+            agentId: String(row.agent_id),
+            agentName: String(row.agent_name || ''),
+            code: String(row.code),
+            severity: row.severity as AgentQualitySeverity,
+            href: this.safeHref(row.href),
+            evidenceCount: Number(row.evidence_count) || 0,
+            // Lets the banner tell "failed" from "could not check", and name
+            // what failed, without a second request.
+            ...this.signalDetail(row),
+        };
+    }
+
+    /**
+     * The optional detail of a stored signal, re-validated on the way out: a
+     * row written by older code has none of it, and a value outside the
+     * vocabulary is dropped instead of reaching the panel.
+     */
+    private signalDetail(row: any): AgentQualitySignalDetail {
+        const checkStatus = SIGNAL_CHECK_STATUSES.has(row?.check_status) ? row.check_status as AgentQualityCheckStatus : null;
+        const credentialIssue = SIGNAL_CREDENTIAL_ISSUES.has(row?.credential_issue) ? row.credential_issue : null;
+        const deliveryIssue = SIGNAL_DELIVERY_ISSUES.has(row?.delivery_issue) ? row.delivery_issue : null;
+        return {
+            ...(checkStatus ? { checkStatus } : {}),
+            ...(credentialIssue ? { credentialIssue } : {}),
+            ...(deliveryIssue ? { deliveryIssue } : {}),
         };
     }
 
@@ -1001,6 +1072,7 @@ export class AgentQualitySignalService {
         if (!SIGNAL_SEVERITIES.has(recommendation.severity)
             || !SIGNAL_PILLARS.has(recommendation.pillar)
             || !SIGNAL_DIMENSIONS.has(recommendation.dimension)) return null;
+        const params = recommendation.params ?? {};
         return {
             code,
             severity: recommendation.severity,
@@ -1008,6 +1080,14 @@ export class AgentQualitySignalService {
             dimension: recommendation.dimension,
             href: this.safeHref(recommendation.href),
             evidenceCount: Math.max(0, Math.min(1_000_000, Math.floor(Number(recommendation.evidenceCount) || 0))),
+            checkStatus: recommendation.checkStatus && SIGNAL_CHECK_STATUSES.has(recommendation.checkStatus)
+                ? recommendation.checkStatus : null,
+            // Only the checks that carry them. `reason` is a generic evidence
+            // key, so it is read for the one code whose vocabulary it is.
+            credentialIssue: code === 'fix_channel_connection' && SIGNAL_CREDENTIAL_ISSUES.has(String(params.credentialIssue))
+                ? String(params.credentialIssue) : null,
+            deliveryIssue: code === 'fix_whatsapp_delivery' && SIGNAL_DELIVERY_ISSUES.has(String(params.reason))
+                ? String(params.reason) : null,
         };
     }
 

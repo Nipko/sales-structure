@@ -3,7 +3,7 @@ id: centro-calidad-agente
 title: "Agent health and Quality center"
 routes: ["/admin/agent/quality", "/admin"]
 roles: ["tenant_admin", "tenant_supervisor"]
-keywords: ["agent health", "quality center", "agent quality", "preparation", "tested quality", "production evidence", "agent at risk", "configuration incomplete", "critical actions", "badge", "snooze", "Parallly Assist", "improve agent", "channel coverage", "operational channel connection", "show me where", "guided tour", "context bar", "needs reauthorisation"]
+keywords: ["agent health", "quality center", "agent quality", "preparation", "tested quality", "production evidence", "agent at risk", "configuration incomplete", "something important needs fixing", "important things to fix", "badge", "snooze", "Parallly Assist", "improve agent", "channel coverage", "operational channel connection", "show me where", "guided tour", "context bar", "needs reauthorisation", "essentials", "next step", "not ready", "whatsapp not delivering", "billing time zone", "payment method in meta", "channel nobody answers", "day 0", "first real customer", "unconfirmed example prices", "unconfirmed prices"]
 ---
 
 # Agent health and Quality center
@@ -20,7 +20,18 @@ edit agents, connections, or configuration under **AI & Growth → AI Agent**.
 - The **Insights → Agent health** badge counts only open **Critical and High**
   signals. It is an attention count, not a score.
 - The global banner appears only for an open Critical signal or an **Agent at risk**
-  status. You can **Review**, **Ask Assist**, or **Snooze for 24 hours**.
+  status, and only after the agent answers its first real customer (or three days after
+  the account was created, whichever comes first); finishing the setup wizard does not
+  bring that moment forward. Until then the Home card is the guide, with one exception:
+  if a channel you connected cannot answer — the connection stopped working, the agent
+  has no channel assigned, no agent handles that channel, or WhatsApp cannot deliver —
+  the banner shows anyway and names the reason. You can **Review**, **Ask
+  Assist**, or **Snooze for 24 hours**.
+- The banner says **Something important needs fixing in your agents.** when a Critical
+  signal is open, or **An agent is at risk.** In each agent's editor, the quality box
+  counts the critical checks still failing — for example,
+  **1 important thing is left to fix.** — and the Home card says how many important
+  things are left to fix, or **Nothing important to fix**.
 - Snoozing hides that signal temporarily; it does not fix it. These alerts stay in
   the dashboard and do not send email or push notifications.
 
@@ -28,7 +39,13 @@ edit agents, connections, or configuration under **AI & Growth → AI Agent**.
 
 - **Preparation:** checks business and scope, knowledge, conversation and brand,
   actions, safety and handoff, and operational robustness. A capability outside the
-  agent's scope can be **Not applicable** and does not lower the result.
+  agent's scope can be **Not applicable** and does not lower the result. The overall
+  status is decided by the **essentials** (channel, agent, business, team) and any
+  real problem; an unfinished mission or a test that hasn't run stay as pending, but
+  they do not mark an agent that already answers as "not ready". For example,
+  while the business hasn't confirmed the example prices its industry recipe
+  seeded (services and, for a gym, membership plans), it shows the non-critical
+  **Unconfirmed prices** warning: the agent doesn't state those prices until they are confirmed; it also counts services and plans that have no price yet.
 - **Tested quality:** shows the latest critical evaluation and simulation, including
   version, date, threshold, and scenarios. Earlier evidence can become outdated when
   the agent changes. It is automated evidence, not a certification.
@@ -38,7 +55,7 @@ edit agents, connections, or configuration under **AI & Growth → AI Agent**.
   **Insufficient evidence**, not zero.
 
 Historical evidence that does not identify the agent unambiguously is not assigned
-retroactively. A newly published version may therefore need new interactions before
+retroactively. A newly saved version may therefore need new interactions before
 it has a useful production signal.
 
 ## What "Operational channel connection" actually checks
@@ -70,6 +87,39 @@ Instagram, Messenger, Telegram, or the web chat.
 A binding that points at an account that no longer exists (for example, the number was
 reconnected and its identifier changed) counts as an assignment without a connection:
 tick the current account again in the agent editor to fix it.
+
+## Channels nobody answers and WhatsApp that can't deliver
+
+Two critical **Preparation** checks explain an agent that doesn't answer even though the
+channel shows as connected:
+
+- **Every connected channel has an agent that replies**. It goes through every active
+  connection of the business with the same rule Parallly uses when a message arrives:
+  first the agent assigned to that account, then the one assigned to that channel type
+  and, if there is none, the default agent. It fails when a connected channel has nobody
+  to answer it (no agent has it assigned and there is no active default agent) or when two
+  agents claim it at once: Parallly doesn't choose for you, and neither answers. Messages
+  arrive but go unanswered. It appears only once, on the default agent (or, if there is
+  none, on the oldest active one). You fix it in the agent editor: assign that channel to a
+  single agent or make one the default; **Show me where** points to the spot.
+- **WhatsApp can deliver replies**. For each WhatsApp number the agent answers, it looks at
+  what Parallly checks before sending a reply. It fails — and no reply goes out from that
+  number — when the number's **billing time zone** is missing; when Meta **won't charge**
+  the WhatsApp account; when the account **has no payment method** in Meta, from 1 October
+  2026 (before that date it is a warning, not a block); or when the **currency** Meta bills
+  in is unknown and **Spend protection** is on (in **Observe only**, the initial setting, it
+  stops nothing and is not reported).
+
+For the second one, **Review** takes you to **Channels → WhatsApp**: the time zone is
+confirmed right there and replies go out again; the payment method is added in Meta's
+tools and then, if the number was paused, you press **Resume sending** or **Check with
+Meta**; the currency is solved by reconnecting the number or setting spend protection
+back to **Observe only**. It has no guided tour, and **Channels** is an admin screen: a
+Supervisor sees the check, but the fix belongs to the Admin.
+
+When they fail, both show in **Agent health**, in the channel step of the **Getting
+started** card, and in the global banner, even before the first real reply: they are
+exactly why an agent doesn't answer.
 
 ## What happens when you click Review
 
@@ -106,11 +156,11 @@ button.
 - **Not evaluated yet:** there is not enough evidence yet.
 - **Configuration incomplete:** a requirement is missing or preparation has a warning.
 - **Agent at risk:** a critical test or important real signal needs review.
-- **Ready for a controlled pilot:** preparation and tests support limited use, but
+- **Ready for its first customers:** preparation and tests look good, but
   real-world evidence is still insufficient.
 - **Operating with evidence:** configuration, current tests, and a useful production
   sample are available.
-- **Review required:** evidence became outdated or recent performance deteriorated.
+- **Needs your attention:** evidence became outdated or recent performance deteriorated.
 
 No status means the agent is perfect, certifies its operation, or guarantees business
 results.
@@ -157,12 +207,14 @@ claiming that you have no connected channels.
 ## Frequently asked questions
 
 **Is the setup checklist the same as the Quality center?**
-No. The **Getting started** card on Home shows only essential steps available for
-your plan, role, and industry and disappears when they are complete. It replaces the
-old floating `8/9` pill. Agent health adds repeatable tests and production evidence.
+No. The **Getting started** card on Home shows only the four essentials (channel,
+agent, business, and team) available for your plan and role, flags the **Next** step,
+and disappears when they are complete. It replaces the old floating `8/9` pill. Agent
+health adds what improves the agent (mission, knowledge, hours, appointments,
+catalog), tests, and production evidence.
 
-**Is a strong simulation score enough to publish?**
-No. It helps reduce risk, but review it together with critical blockers, version
+**Is a strong simulation score enough to let it handle conversations on its own?**
+No. It helps reduce risk, but review it together with what is left to fix, version
 freshness, and real evidence when available.
 
 **Does the system learn and change itself after every conversation?**

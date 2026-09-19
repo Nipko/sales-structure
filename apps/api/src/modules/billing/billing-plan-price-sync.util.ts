@@ -144,7 +144,7 @@ export function reconcilePlanPriceSync(input: ReconcilePlanPriceSyncInput): {
             issues.push({
                 path: `priceLocalOverrides.${rawCountry}`,
                 code: 'duplicate_country',
-                message: `El país ${country} aparece más de una vez con distinta capitalización. Enviá una sola clave ${country}.`,
+                message: `El país ${country} aparece más de una vez con distinta capitalización. Envía una sola clave ${country}.`,
             });
             continue;
         }

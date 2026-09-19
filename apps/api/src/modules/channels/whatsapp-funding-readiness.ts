@@ -2,8 +2,13 @@
  * ═══ IS THIS NUMBER READY TO KEEP DELIVERING AFTER 1 OCTOBER? ═══
  *
  * From 1 October 2026 Meta charges the business's own WhatsApp account per
- * delivered service message, and an account with no payment method attached
- * can exhaust its monthly service allowance; paid deliveries then require funding.
+ * delivered service message. Meta's own notice is a date, not a budget: a
+ * WhatsApp Business account with no payment method on file by 30 September
+ * 2026 stops having its service messages delivered as of 1 October 2026. It
+ * does NOT say that the 1,000 free service deliveries per number and month
+ * keep flowing without one, so nothing here may assume a card-less account
+ * "still has its allowance" — see docs/whatsapp-meta-pricing-2026-10.md
+ * (section 2, "Las reglas, con su fecha", and section 6).
  *
  * The engine already handles that AFTER the fact: error 131042 on a send, or on
  * a webhook after an HTTP 200, pauses the account's billable producers and
@@ -39,7 +44,25 @@
  *     funding under a Tech Provider token — not a guess encoded as a rule. Until
  *     then the screen says "we could not establish it", which is true, and the
  *     deadline copy tells the owner to add the method regardless;
-
+ *
+ *     RE-CHECKED 17-sep-2026 (Ola 6), because the panel reported exactly this:
+ *     a WABA with no card reads `unknown`. The behaviour is confirmed and kept.
+ *     What the code proves: `WhatsappConnectionService.checkFunding` asks for
+ *     `?fields=id,primary_funding_id` and discards any 200 whose `id` is not
+ *     this WABA, so by the time a body reaches this function the token CAN
+ *     read the node — the ambiguity is only the one field. What Meta's
+ *     reference says: the WhatsApp Business Account node lists
+ *     `primary_funding_id` as a numeric string ("Primary funding ID for the
+ *     WhatsApp Business Account paid service") under the node's own
+ *     permissions, and says nothing about how "no funding source" is
+ *     represented. An explicit `null` or `""` is therefore the only answer that
+ *     is evidence of absence; an omitted key is either "none" or "not shown to
+ *     a partner token", and Graph gives no marker to tell them apart. Mapping
+ *     omission to `absent` would send every tenant whose card Meta simply does
+ *     not show us to add one they already have. Consequence downstream: the
+ *     `whatsapp_delivery` quality check raises `funding_absent` only from an
+ *     established `absent`, never from `unknown`;
+ *
  *   · `attached` is not solvency. A card can be attached and declined, expired
  *     or over its limit, and Meta will still say it is attached. So `attached`
  *     is never treated as "this will work", only as "the thing that is missing
@@ -250,6 +273,67 @@ export function readFundingFromRefusal(input: {
         detail: detailOf('restricted', `Meta rechazó un envío por elegibilidad de pago (${code})`
             + `${input.detail ? `: ${String(input.detail).slice(0, 200)}` : ''}`),
     });
+}
+
+/**
+ * How long a stored Graph reading stays evidence. Older than this it is
+ * `not_checked` — except an established absence, which never ages out (see
+ * `readStoredFunding`).
+ */
+export const STORED_FUNDING_MAX_AGE_MS = 86_400_000;
+
+/**
+ * The reading `check-funding` stored on the account, when it is still evidence.
+ *
+ * One reader for every consumer — the funding-readiness endpoint and the
+ * quality check — so they cannot disagree about which stored answer counts. It
+ * counts only when it is about the WABA the number belongs to NOW (a reconnect
+ * to another WABA makes it someone else's answer), is not dated in the future,
+ * and names a state a Graph read can produce. Anything else is `null`: nothing
+ * established, which the caller reads as `not_checked`, never as `absent`.
+ *
+ * AGE. `attached`, `unknown` and `restricted` are snapshots of something that
+ * changes on its own — a card is removed, Meta answers next time, an
+ * eligibility problem is resolved in Meta's own screens — so after a day they
+ * stop counting. A `restricted` that still holds re-establishes itself: the
+ * next real send is refused with 131042 and pauses the number, and a live
+ * pause outranks every stored reading.
+ *
+ * `absent` does not age out. It is an explicit answer from Meta ("this account
+ * has no payment method"), and before `FUNDING_REQUIRED_FROM` nothing at
+ * runtime can re-establish it: Meta still delivers service messages without a
+ * card, so no send is ever refused for it. Expiring it turned an owner's own
+ * check into a 24-hour warning — the delivery check went back to pass with
+ * nothing changed, days before the deadline. It stands until a NEWER reading
+ * replaces it (the next `check-funding` writes over it) or the number moves to
+ * another WABA.
+ */
+export function readStoredFunding(metadata: unknown, now: Date = new Date()): FundingReadiness | null {
+    const meta = (metadata && typeof metadata === 'object' ? metadata : {}) as Record<string, any>;
+    const saved = meta.fundingReadiness;
+    if (!saved || typeof saved !== 'object') return null;
+    const checked = new Date(saved.checkedAt ?? '').getTime();
+    const expired = saved.state !== 'absent' && now.getTime() - checked >= STORED_FUNDING_MAX_AGE_MS;
+    if (!saved.wabaId || saved.wabaId !== meta.wabaId || !Number.isFinite(checked)
+        || checked > now.getTime() || expired
+        || !['attached', 'absent', 'unknown', 'restricted'].includes(saved.state)) return null;
+    return {
+        state: saved.state, source: 'graph_account_read', checkedAt: new Date(checked),
+        actionable: ['absent', 'restricted'].includes(saved.state), detail: 'Stored Meta funding reading',
+    };
+}
+
+/**
+ * What a send pause says about funding: the pause is Meta refusing a real send,
+ * so a 131042 behind it is `restricted`. Any other code returns `null` here —
+ * the pause still stops every send (the admission refuses `account_paused`
+ * whatever the code), it just is not evidence about the card.
+ */
+export function readFundingFromPause(pause: {
+    readonly code: number | null; readonly detail: string; readonly lastSeen: string;
+} | null | undefined): FundingReadiness | null {
+    if (!pause) return null;
+    return readFundingFromRefusal({ errorCode: pause.code, detail: pause.detail }, new Date(pause.lastSeen));
 }
 
 /** The state of a number nobody has asked about yet. */

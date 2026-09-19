@@ -382,10 +382,13 @@ const url = process.env.AGENT_RELEASE_TEST_DATABASE_URL;
                 max_ai_messages=EXCLUDED.max_ai_messages,features=EXCLUDED.features
             RETURNING id`, planId);
         const canonicalPlanId = planRows[0].id;
+        // This walk is the REVIEWED flow (draft → review → publication). Since
+        // immediate changes became the default (D1/D15) the account has to opt
+        // in, or every save below would already be live.
         for (const [id, name] of [[tenantId, schema], [otherTenantId, otherSchema]] as const) {
             await client.$executeRawUnsafe(
                 `INSERT INTO public.tenants(id,schema_name,is_active,is_internal,plan,industry,settings)
-                 VALUES($1::uuid,$2,true,false,'publication_walk','education','{"verticalConfig":{"industry":"education","subType":"capacitacion"}}'::jsonb)`, id, name);
+                 VALUES($1::uuid,$2,true,false,'publication_walk','education','{"verticalConfig":{"industry":"education","subType":"capacitacion"},"agentReviewMode":"reviewed"}'::jsonb)`, id, name);
             await client.$executeRawUnsafe(`INSERT INTO public.billing_subscriptions(
                 tenant_id,plan_id,status,provider,cancel_at_period_end)
                 VALUES($1::uuid,$2::uuid,'active','mock',false)

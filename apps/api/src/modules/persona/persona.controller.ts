@@ -1,7 +1,18 @@
-import { BadRequestException, Controller, Get, Post, Put, Delete, Body, Param, Query, Req, Logger, UseGuards } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Post, Put, Delete, Body, Param, Query, Req, Logger, Optional, UseGuards } from '@nestjs/common';
+import { RedisService } from '../redis/redis.service';
+import {
+    demoLinkAvailability,
+    ensureDemoWidget,
+    setDemoLinkUsageMode,
+    type DemoLinkUsageMode,
+    type DemoLinkAvailability,
+    type SetupStatusDemoLink,
+} from '../widget/widget-demo-link';
+import { DemoAllowanceService } from '../throttle/demo-allowance.service';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { PersonaService } from './persona.service';
+import { AgentDraftService } from './agent-draft.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
@@ -11,13 +22,24 @@ import { PERSONA_TEMPLATES } from './templates';
 import * as yaml from 'js-yaml';
 import { getVerticalCatalog } from '../../common/utils/vertical-catalog.util';
 import { mutateTenantSettingsAtomic } from '../../common/utils/tenant-settings.util';
+import { FIRST_REPLY_SETTING_KEY, isRecordedFirstReply } from '../../common/utils/first-reply.util';
+import {
+    WHATSAPP_TRIAGE_SETTING_KEY,
+    applyWhatsAppTriage,
+    isWhatsAppTriageAnswerId,
+    readWhatsAppTriage,
+} from './whatsapp-triage.util';
 import {
     advanceOnboardingStage,
     deriveOnboardingStage,
     isOnboardingStage,
+    onboardingOnceKey,
+    sanitizeOnboardingClientBatch,
 } from '@parallext/shared';
 import type { OnboardingStage } from '@parallext/shared';
 import { RequiresVerifiedEmail } from '../../common/decorators/requires-verified-email.decorator';
+import { recordOnboardingClientEvents, recordOnboardingEvent } from '../../common/utils/onboarding-event.util';
+import { recordChannelConnected } from '../channels/bind-default-agent.util';
 
 @ApiTags('persona')
 @Controller('persona')
@@ -41,7 +63,51 @@ export class PersonaController {
         private readonly personaService: PersonaService,
         private readonly prisma: PrismaService,
         private readonly throttleService: TenantThrottleService,
+        // Optional so the specs that build this controller by hand keep working;
+        // without it the public link's cached name refreshes on its own TTL.
+        @Optional() private readonly redis?: RedisService,
+        // The editor's switch turning an agent on goes through the same commit
+        // as a save. Optional for the same hand-built specs; without it the
+        // switch refuses to turn an agent on rather than bypass that commit.
+        @Optional() private readonly drafts?: AgentDraftService,
+        // Whether the agent's link answers right now (F11). Optional for the
+        // same hand-built specs; without it the link reports that it answers,
+        // which is what an unknown allowance reports anyway.
+        @Optional() private readonly demoAllowance?: DemoAllowanceService,
     ) {}
+
+    /**
+     * Whether a visitor who writes on the agent's link gets a reply now (F11),
+     * read the way the reply lane decides it: the plan's web chat first (the
+     * `isTrialLink` predicate), then the platform's switch and the lifetime
+     * counter it reserves against (`demo_msg:{tenantId}`, read-only here).
+     *
+     * Never throws, and every read that fails counts as "answers": a blip must
+     * not tell the owner their link went quiet. A stored allowance that could
+     * not be read (`fallback`) is unknown, not the defaults.
+     */
+    private async readDemoLinkAvailability(tenantId: string, usageMode: DemoLinkUsageMode): Promise<DemoLinkAvailability> {
+        // Each read is an async function, so a missing dependency throws into
+        // the promise and lands here as `null` too.
+        const unknown = <T>(read: () => Promise<T>): Promise<T | null> => read().catch(() => null);
+        const planIncludesWebChat = await unknown(async () =>
+            (await this.throttleService.getPlanFeatures(tenantId))?.widget === true);
+        if (usageMode === 'operational')
+            return demoLinkAvailability({ usageMode, planIncludesWebChat, allowance: null, used: null });
+        const [allowance, used] = await Promise.all([
+            unknown(async () => {
+                if (!this.demoAllowance) return null;
+                const reading = await this.demoAllowance.getWithSource();
+                return reading.source === 'fallback' ? null : reading.allowance;
+            }),
+            unknown(async () => {
+                const usage = await this.throttleService.getDemoMessageUsage(tenantId);
+                const value = Number(usage?.used);
+                return Number.isFinite(value) ? value : null;
+            }),
+        ]);
+        return demoLinkAvailability({ usageMode, planIncludesWebChat, allowance, used });
+    }
 
     /**
      * Persona configuration is a write boundary: an ineligible tenant must not
@@ -73,6 +139,31 @@ export class PersonaController {
      * se ignora en vez de romper el guardado: la decisión de diferir vale más
      * que su reloj, y el estado (`channel_deferred`) ya la deja registrada.
      */
+    /**
+     * El orden de canales que manda el asistente, saneado: solo los canales
+     * que el día 0 ofrece, sin repetidos, a lo sumo cinco. Cualquier otra
+     * cosa se descarta en silencio — es una preferencia de presentación, no
+     * algo por lo que valga la pena rechazar el guardado de la etapa.
+     */
+    static readWizardChannelOrder(value: unknown): string[] | null {
+        if (!Array.isArray(value)) return null;
+        const allowed = new Set(['whatsapp', 'instagram', 'messenger', 'telegram', 'web_chat', 'web_widget']);
+        const order: string[] = [];
+        for (const item of value) {
+            if (typeof item !== 'string') continue;
+            const channel = item.trim().toLowerCase();
+            if (allowed.has(channel) && !order.includes(channel)) order.push(channel);
+            if (order.length >= 5) break;
+        }
+        return order.length > 0 ? order : null;
+    }
+
+    static readWizardDeferredChannel(value: unknown): string | null {
+        if (typeof value !== 'string') return null;
+        const channel = value.trim().toLowerCase();
+        return ['whatsapp', 'instagram', 'messenger', 'telegram'].includes(channel) ? channel : null;
+    }
+
     private normalizeIsoTimestamp(value: unknown): string | null {
         if (typeof value !== 'string' || !value.trim()) return null;
         const parsed = new Date(value.trim());
@@ -169,6 +260,16 @@ export class PersonaController {
             /** Solo se registran cuando el asistente aplicó de verdad una plantilla. */
             templateId?: string | null;
             selectedChannels?: string[] | null;
+            /**
+             * El orden de canales que el asistente le mostró a la dueña (la
+             * receta de su negocio filtrada por su plan). Se guarda en cada
+             * guardado solo-estado, no solo al cerrar: es lo que hace que
+             * "Salud de agentes" y Assist nombren el mismo primer canal que el
+             * asistente e Inicio, también para quien eligió "Conectar después".
+             */
+            channelOrder?: string[] | null;
+            /** Canal concreto que la persona decidió retomar después. */
+            deferredChannel?: string | null;
         },
     ) {
         await mutateTenantSettingsAtomic(this.prisma, tenantId, (current) => {
@@ -178,12 +279,23 @@ export class PersonaController {
             for (const candidate of input.stages) {
                 onboardingStage = advanceOnboardingStage(onboardingStage, candidate);
             }
+            const priorDeferrals = current.setupWizardChannelDeferrals
+                && typeof current.setupWizardChannelDeferrals === 'object'
+                && !Array.isArray(current.setupWizardChannelDeferrals)
+                ? current.setupWizardChannelDeferrals : {};
             return {
                 ...current,
                 // Los horarios son configuración del tenant, no del wizard: se
                 // guardan igual aunque todavía no se haya cerrado el asistente.
                 ...(input.businessHours ? { businessHours: input.businessHours } : {}),
                 ...(input.channelConnectSkippedAt ? { channelConnectSkippedAt: input.channelConnectSkippedAt } : {}),
+                ...(input.channelOrder && input.channelOrder.length > 0 ? { setupWizardChannels: input.channelOrder } : {}),
+                ...(input.deferredChannel && input.channelConnectSkippedAt ? {
+                    setupWizardChannelDeferrals: {
+                        ...priorDeferrals,
+                        [input.deferredChannel]: input.channelConnectSkippedAt,
+                    },
+                } : {}),
                 ...(input.markCompleted ? {
                     setupWizardCompleted: true,
                     ...(input.templateId ? { setupWizardTemplate: input.templateId } : {}),
@@ -193,6 +305,41 @@ export class PersonaController {
                 ...(onboardingStage ? { onboardingStage } : {}),
             };
         });
+    }
+
+    /**
+     * Cómo se aplican los cambios del agente en este tenant.
+     *
+     * `immediate` (por defecto): cada guardado llega al agente que atiende —
+     * "cambiar es tocar y guardar". `reviewed`: cada guardado es un borrador que
+     * pasa por evaluación, revisión y publicación (el flujo del 7-sep, ahora
+     * opcional). Sólo el administrador lo cambia; es una preferencia del
+     * negocio, no del agente.
+     */
+    @Get(':tenantId/agent-review-mode')
+    @Roles('tenant_admin')
+    @ApiOperation({ summary: 'How agent saves apply for this account: immediately (default) or after review and publication' })
+    async getAgentReviewMode(@Param('tenantId') tenantId: string) {
+        const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
+        const mode = (tenant?.settings as any)?.agentReviewMode === 'reviewed' ? 'reviewed' : 'immediate';
+        return { success: true, data: { mode } };
+    }
+
+    @Post(':tenantId/agent-review-mode')
+    @Roles('tenant_admin')
+    @ApiOperation({ summary: 'Choose whether agent saves apply immediately (default) or go through review and publication' })
+    async setAgentReviewMode(
+        @Param('tenantId') tenantId: string,
+        @Body() body: { mode?: string },
+    ) {
+        const mode = body?.mode;
+        if (mode !== 'immediate' && mode !== 'reviewed') {
+            throw new BadRequestException({ error: 'agent_review_mode_invalid', message: 'mode must be immediate or reviewed' });
+        }
+        await mutateTenantSettingsAtomic(this.prisma, tenantId, (current) => (
+            current.agentReviewMode === mode ? (current as Record<string, unknown>) : { ...current, agentReviewMode: mode }
+        ));
+        return { success: true, data: { mode } };
     }
 
     @Post(':tenantId/setup-wizard')
@@ -217,6 +364,8 @@ export class PersonaController {
             templateId?: string;
             customizations?: any;
             selectedChannels?: string[];
+            /** Canal concreto elegido para retomarlo después. */
+            deferredChannel?: string;
             markCompleted?: boolean;
             /** Estado de puesta en marcha que declara el asistente (solo avanza). */
             stage?: string;
@@ -233,6 +382,7 @@ export class PersonaController {
         const skippedAt = this.normalizeIsoTimestamp(
             body.customizations?.channelConnectSkippedAt ?? (body as any).channelConnectSkippedAt,
         );
+        const deferredChannel = PersonaController.readWizardDeferredChannel(body.deferredChannel);
 
         // Camino solo-estado: ni plantilla, ni configuración, ni canales.
         if (body.stageOnly === true) {
@@ -244,6 +394,11 @@ export class PersonaController {
                 // Un ping de solo-estado no cierra el asistente salvo que lo pida.
                 markCompleted: body.markCompleted === true,
                 channelConnectSkippedAt: skippedAt,
+                // En este camino `selectedChannels` es SOLO el orden que la
+                // pantalla mostró: nunca asigna canales a ningún agente (eso es
+                // el camino de crear agente, más abajo, y D16 lo dejó vacío).
+                channelOrder: PersonaController.readWizardChannelOrder(body.selectedChannels),
+                deferredChannel,
             });
             this.logger.log(`Setup wizard stage advanced for tenant ${tenantId} (stageOnly, stage=${requestedStage || 'none'})`);
             return { success: true, data: { stageOnly: true } };
@@ -430,14 +585,13 @@ export class PersonaController {
         if (defaultAgent) {
             throw new BadRequestException({ error: 'agent_draft_contract_required' });
         } else {
-            // Agente NUEVO: acá sí hay que decidir dónde atiende. Los cinco
-            // tipos solo se siembran cuando el tenant no tiene ningún otro
-            // agente; con otros agentes vivos, quedarse con lo que el emisor
-            // eligió evita robarles sus canales.
+            // Agente NUEVO: acá sí hay que decidir dónde atiende. Sin otros
+            // agentes vivos nace sin asignaciones: como agente por defecto
+            // atiende todo, y cada conexión lo vincula cuando ocurre. Con otros
+            // agentes vivos, quedarse con lo que el emisor eligió evita robarles
+            // sus canales.
             const channelsForNewAgent = selectedChannels
-                ?? (agents.length === 0
-                    ? ['whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget']
-                    : undefined);
+                ?? (agents.length === 0 ? [] : undefined);
             // Sin agente durable, `persona_config` SÍ es lo que lee el runtime.
             const yamlContent = yaml.dump(config, { lineWidth: -1 });
             await this.personaService.savePersonaFromYaml(tenantId, yamlContent, createdBy);
@@ -489,6 +643,18 @@ export class PersonaController {
             businessHours,
             templateId: body.templateId,
             selectedChannels,
+            deferredChannel,
+        });
+        if (channelConnectSkippedAt) void recordOnboardingEvent(this.prisma, {
+            tenantId,
+            event: 'channel_deferred',
+            detail: deferredChannel ?? undefined,
+            dedupeKey: onboardingOnceKey('channel_deferred', tenantId, deferredChannel ?? 'unspecified'),
+        });
+        if (markCompleted) void recordOnboardingEvent(this.prisma, {
+            tenantId,
+            event: 'wizard_completed',
+            dedupeKey: onboardingOnceKey('wizard_completed', tenantId),
         });
 
         const templateLabel = body.templateId || 'la configuración vigente del agente';
@@ -520,7 +686,61 @@ export class PersonaController {
             }),
         }));
         this.logger.log(`Setup wizard skipped for tenant ${tenantId} (hasAnyChannel=${hasAnyChannel})`);
+        void recordOnboardingEvent(this.prisma, {
+            tenantId,
+            event: 'channel_deferred',
+            dedupeKey: onboardingOnceKey('channel_deferred', tenantId),
+        });
+        void recordOnboardingEvent(this.prisma, {
+            tenantId,
+            event: 'wizard_completed',
+            dedupeKey: onboardingOnceKey('wizard_completed', tenantId),
+        });
         return { success: true };
+    }
+
+    @Post(':tenantId/onboarding-events')
+    @Roles('tenant_admin')
+    @ApiOperation({ summary: 'Record allowlisted onboarding interaction events' })
+    async recordOnboardingEvents(
+        @Param('tenantId') tenantId: string,
+        @Body() body: unknown,
+        @Req() req: any,
+    ) {
+        const batch = sanitizeOnboardingClientBatch(body);
+        if (!batch) throw new BadRequestException({ error: 'invalid_onboarding_events' });
+        const accepted = await recordOnboardingClientEvents(
+            this.prisma, tenantId, req.user?.sub ?? null, batch.sessionId, batch.events,
+        );
+        return { success: true, data: { accepted } };
+    }
+
+    @Post(':tenantId/demo-link/usage-mode')
+    @Roles('tenant_admin')
+    @ApiOperation({ summary: 'Choose whether the stable public link is a capped trial or an operational web-chat channel' })
+    async setDemoLinkMode(
+        @Param('tenantId') tenantId: string,
+        @Body() body: { usageMode?: unknown },
+    ) {
+        const usageMode = body?.usageMode;
+        if (usageMode !== 'trial' && usageMode !== 'operational')
+            throw new BadRequestException({ error: 'invalid_demo_link_usage_mode' });
+        if (usageMode === 'operational') {
+            const features = await this.throttleService.getPlanFeatures(tenantId);
+            if (features?.widget !== true)
+                throw new BadRequestException({ error: 'web_widget_plan_required' });
+        }
+        await ensureDemoWidget(this.prisma, tenantId, { redis: this.redis });
+        const link = await setDemoLinkUsageMode(this.prisma, tenantId, usageMode);
+        if (!link) throw new BadRequestException({ error: 'demo_link_unavailable' });
+        await this.redis?.del(`widget:config:${link.widgetId}`).catch(() => undefined);
+        if (usageMode === 'operational') {
+            await recordChannelConnected(this.prisma, tenantId, 'web_widget');
+        }
+        return {
+            success: true,
+            data: { ...link, ...(await this.readDemoLinkAvailability(tenantId, usageMode)) },
+        };
     }
 
     @Get(':tenantId/setup-status')
@@ -528,7 +748,7 @@ export class PersonaController {
     async getSetupStatus(@Param('tenantId') tenantId: string) {
         const tenant = await this.prisma.tenant.findUnique({
             where: { id: tenantId },
-            select: { settings: true, schemaName: true, industry: true },
+            select: { settings: true, schemaName: true, industry: true, createdAt: true, billingEmail: true },
         });
         const settings = (tenant?.settings as any) || {};
         const schema = tenant?.schemaName;
@@ -607,7 +827,11 @@ export class PersonaController {
                 hasPersona = over(checks[0]);
                 hasConversations = over(checks[1]);
                 hasKnowledge = over(checks[2]);
-                hasTeam = over(checks[3], 1);
+                // The owner is already a valid human destination. Requiring a
+                // second active user turned a solo business into an artificial
+                // blocker even though the handoff service sends unassigned
+                // cases to billingEmail or an active tenant_admin.
+                hasTeam = over(checks[3]);
                 hasAutomation = over(checks[4]);
                 hasTemplates = over(checks[5]);
                 hasAnyChannel = over(checks[6]);
@@ -676,9 +900,47 @@ export class PersonaController {
             }
         }
 
+        // The public link exists for every tenant, including the ones born
+        // before D11: the wizard's last step and the channels page read it here.
+        // With it, whether it answers right now (F11): the screens said "tu
+        // agente ya responde por su enlace" even with the trial switched off by
+        // the platform or its replies used up.
+        const link = await ensureDemoWidget(this.prisma, tenantId, { agentName: defaultAgent?.name ?? defaultAgentName, redis: this.redis });
+        const demoLink: SetupStatusDemoLink | null = link
+            ? { ...link, ...(await this.readDemoLinkAvailability(tenantId, link.usageMode)) }
+            : null;
+        const operationalDemoConfirmed = demoLink?.usageMode === 'operational'
+            ? await Promise.resolve().then(() => this.throttleService.getPlanFeatures(tenantId))
+                .then(features => features?.widget === true)
+                .catch(() => false)
+            : false;
+        if (operationalDemoConfirmed && demoLink?.answers) {
+            hasAnyChannel = true;
+            if (!connectedChannelTypes.includes('web_widget')) connectedChannelTypes.push('web_widget');
+        }
+        let handoffRecipient: { label: string; emailVerified: boolean | null; source: 'billing' | 'owner' } | null = null;
+        if (tenant?.billingEmail) {
+            handoffRecipient = { label: tenant.billingEmail, emailVerified: null, source: 'billing' };
+        } else if (typeof (this.prisma as any).user?.findFirst === 'function') {
+            const owner = await this.prisma.user.findFirst({
+                where: { tenantId, role: 'tenant_admin', isActive: true },
+                orderBy: { createdAt: 'asc' },
+                select: { firstName: true, lastName: true, email: true, emailVerified: true },
+            }).catch(() => null);
+            if (owner?.email) {
+                const name = [owner.firstName, owner.lastName].filter(Boolean).join(' ').trim();
+                handoffRecipient = {
+                    label: name ? `${name} · ${owner.email}` : owner.email,
+                    emailVerified: owner.emailVerified === true,
+                    source: 'owner',
+                };
+            }
+        }
+
         return {
             success: true,
             data: {
+                demoLink,
                 setupWizardCompleted: settings.setupWizardCompleted || false,
                 // "Saltar" también marca completed (para no reabrir el bucle de
                 // redirect), así que sin este flag no había forma de distinguir a quien
@@ -687,10 +949,12 @@ export class PersonaController {
                 setupWizardSkipped: settings.setupWizardSkipped || false,
                 setupWizardTemplate: settings.setupWizardTemplate || null,
                 setupWizardChannels: settings.setupWizardChannels || [],
+                setupWizardChannelDeferrals: settings.setupWizardChannelDeferrals || {},
                 hasPersona,
                 hasConversations,
                 hasKnowledge,
                 hasTeam,
+                handoffRecipient,
                 hasAutomation,
                 hasTemplates,
                 hasAnyChannel,
@@ -717,11 +981,64 @@ export class PersonaController {
                     channelConnectSkippedAt: settings.channelConnectSkippedAt ?? null,
                 }),
                 channelConnectSkippedAt: settings.channelConnectSkippedAt || null,
+                // La activación, junto a la etapa y con los mismos nombres que
+                // el payload de sesión. La etapa es monótona y `completed` le
+                // gana a `live`, así que "ya le respondió a alguien" viaja
+                // aparte: `firstReplyAt` lo escribe solo `recordFirstReply`, en
+                // la primera respuesta real (nunca la del enlace de prueba), y
+                // el alta acota el día 0. El panel los pasa a
+                // `isOnboardingBeforeLive(stage, { firstReplyAt, createdAt })`.
+                firstReplyAt: isRecordedFirstReply(settings[FIRST_REPLY_SETTING_KEY])
+                    ? settings[FIRST_REPLY_SETTING_KEY] : null,
+                tenantCreatedAt: tenant?.createdAt instanceof Date && Number.isFinite(tenant.createdAt.getTime())
+                    ? tenant.createdAt.toISOString() : null,
                 // El huso del tenant: el asistente lo muestra como chip y los
                 // horarios lo necesitan para no asumir Bogotá.
                 timezone: settings.timezone || null,
+                // "¿Dónde vive hoy tu número?" tal como lo respondió el dueño:
+                // `{ answerId, recordedAt } | null`. La pantalla de WhatsApp
+                // prometía "lo dejamos anotado" y lo guardaba solo en el
+                // navegador; Inicio lo lee de acá para cumplir ese recordatorio.
+                whatsappTriage: readWhatsAppTriage(settings[WHATSAPP_TRIAGE_SETTING_KEY]),
             },
         };
+    }
+
+    /**
+     * Anota (o borra, con `answerId: null`) la respuesta a "¿Dónde vive hoy tu
+     * número de WhatsApp?". Solo el administrador conecta canales, así que solo
+     * él la escribe; el resto la lee en `setup-status`.
+     *
+     * El navegador guarda una copia para no volver a preguntar mientras carga,
+     * pero la respuesta que vale es esta: la promesa "lo dejamos anotado y lo
+     * retomas cuando lo tengas" tiene que cumplirse desde otro celular.
+     */
+    @Put(':tenantId/whatsapp-triage')
+    @Roles('tenant_admin')
+    @ApiOperation({ summary: 'Record (or clear with null) where the owner said the WhatsApp number lives today' })
+    async setWhatsAppTriage(
+        @Param('tenantId') tenantId: string,
+        @Body() body: { answerId?: unknown },
+    ) {
+        const answerId = body?.answerId;
+        // `undefined` is not "clear": an empty body is a broken client, and
+        // silently erasing the owner's answer for it would be the worse bug.
+        if (answerId !== null && !isWhatsAppTriageAnswerId(answerId)) {
+            throw new BadRequestException({
+                error: 'whatsapp_triage_answer_invalid',
+                message: 'answerId must be one of the triage answers, or null to clear it',
+            });
+        }
+        const next = await mutateTenantSettingsAtomic(this.prisma, tenantId,
+            (current) => applyWhatsAppTriage(current, answerId, new Date()));
+        if (answerId !== null) void recordOnboardingEvent(this.prisma, {
+            tenantId,
+            event: 'whatsapp_triage_answered',
+            channelType: 'whatsapp',
+            detail: answerId,
+            dedupeKey: onboardingOnceKey('whatsapp_triage_answered', tenantId, answerId),
+        });
+        return { success: true, data: { whatsappTriage: readWhatsAppTriage(next[WHATSAPP_TRIAGE_SETTING_KEY]) } };
     }
 
     @Get(':tenantId/plan-features')
@@ -802,12 +1119,24 @@ export class PersonaController {
     @Roles('tenant_admin')
     @RequiresVerifiedEmail('activate_agent')
     @ApiOperation({ summary: 'Update an existing agent persona' })
-    async updateAgent(@Param('tenantId') tenantId: string, @Param('agentId') agentId: string, @Body() body: any) {
+    async updateAgent(@Param('tenantId') tenantId: string, @Param('agentId') agentId: string, @Body() body: any, @Req() req?: any) {
         if (!body || !Number.isInteger(body.expectedVersion) || body.expectedVersion < 0) {
             throw new BadRequestException({ error: 'agent_version_required', message: 'Reload the agent before saving.' });
         }
-        if (body.isActive !== false || Object.keys(body).some(key => !['isActive', 'expectedVersion'].includes(key)))
+        if (typeof body.isActive !== 'boolean' || Object.keys(body).some(key => !['isActive', 'expectedVersion'].includes(key)))
             throw new BadRequestException({ error: 'agent_draft_contract_required' });
+        // The switch, ON. With immediate changes (the default) it is a commit:
+        // the one a save makes, audited, cache-invalidating and guarded so two
+        // agents never serve one connection. With reviewed changes the service
+        // refuses it (`agent_draft_contract_required`): publication switches on.
+        // Refusing it here in both modes left an owner who switched her only
+        // agent off unable to switch it back on, and every channel unanswered.
+        if (body.isActive === true) {
+            if (!this.drafts) throw new BadRequestException({ error: 'agent_draft_contract_required' });
+            const activated = await this.drafts.activate(tenantId, agentId, body.expectedVersion,
+                { id: req?.user?.sub ?? req?.user?.id, role: req?.user?.role });
+            return { success: true, data: activated };
+        }
         const paymentEntitlementError = await this.rejectUnavailableCustomerPayments(tenantId, body.configJson);
         if (paymentEntitlementError) return paymentEntitlementError;
 

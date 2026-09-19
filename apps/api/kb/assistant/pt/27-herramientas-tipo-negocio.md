@@ -1,9 +1,9 @@
 ---
 id: herramientas-tipo-negocio
 title: "Ferramentas do agente por tipo de negócio"
-routes: ["/admin/agent", "/admin/agent/quality"]
+routes: ["/admin/agent", "/admin/agent/quality", "/admin/memberships"]
 roles: ["tenant_admin"]
-keywords: ["ferramentas","capacidades","tipo de negócio","subtipo","ativar ferramentas","ferramenta desativada","configurar agente"]
+keywords: ["ferramentas","capacidades","tipo de negócio","subtipo","ativar ferramentas","ferramenta desativada","configurar agente","preço de exemplo","confirmar preço","é orçado","matrículas","planos de matrícula","academia"]
 ---
 
 # Ferramentas do agente por tipo de negócio
@@ -28,6 +28,15 @@ A permissão depende do tipo de negócio, da configuração do agente, do plano 
 Se outro sistema administra reservas ou pedidos, consultar seus dados não significa que Parallly possa confirmar operações nele. Encaminhe à equipe quando não houver um caminho autorizado e comprovado para gravar.
 
 Uma ferramenta ativada está configurada. Uma ferramenta preparada atende aos requisitos conhecidos. Uma tarefa testada precisa de evidência do resultado no perfil, versão e canal correspondentes. Um exemplo ou um teste que apenas solicita dados ausentes não prova a criação de uma reserva ou pedido.
+
+## Preços que o agente ainda não diz
+
+A receita do seu ramo pré-preenche preços de exemplo para você não começar do zero, e o agente não os diz aos seus clientes até você confirmá-los. Vale para os serviços (veja **Agendamentos e calendários**) e, numa academia, também para os **planos de matrícula**:
+
+- Em **Matrículas**, cada plano com preço de exemplo mostra o selo **Preço de exemplo** e a nota de que o agente não o menciona até você confirmá-lo. **Confirmar preço** mantém o mesmo valor, já confirmado; **É orçado** faz o agente não dizer nenhum valor daquele plano e oferecer que uma pessoa faça o orçamento.
+- Um plano que mostra **Sem preço** não tem valor a confirmar: toque em **Informar preço**, **É gratuito** ou **É orçado**.
+- No formulário do plano você escolhe **Preço confirmado** (precisa de um valor maior que 0), **É gratuito** ou **Orçado caso a caso**; escrever outro valor também o confirma. Um plano gratuito aparece como **Gratuito**, e o agente diz ao cliente que é gratuito.
+- Enquanto restar algum sem confirmar ou sem preço, a **Saúde dos agentes** mostra o aviso não crítico **Preços sem confirmar**; o agente continua respondendo.
 
 ## Como Assist ajuda
 

@@ -26,6 +26,7 @@ import {
 } from '../channels/channel-delivery-status';
 import { WhatsappSpendService } from '../billing/whatsapp-spend/whatsapp-spend.service';
 import { DISPATCH_PROVIDER_STATUSES } from '../channels/agent-dispatch-outbox';
+import { recordChannelConnected } from '../channels/bind-default-agent.util';
 
 /**
  * Internal endpoints — callable only by trusted internal microservices via
@@ -250,21 +251,88 @@ export class InternalController {
     return { applied: result.applied, reason: result.reason };
   }
 
-  /** Cross-process bridge used after WhatsApp Embedded Signup commits. */
+  /**
+   * Cross-process bridge used after WhatsApp Embedded Signup commits.
+   *
+   * Embedded Signup runs in the `whatsapp` service and writes `channel_accounts`
+   * itself, so none of the API's connect paths ever ran for the connection the
+   * dashboard actually uses. This bridge only emitted a quality event, and the
+   * result was the 14-sep recording: WhatsApp "conectado", the default agent
+   * (born with no channels) never assigned to it, `channel_assignment` still a
+   * critical failure and the setup card still asking to "asignar un canal".
+   *
+   * So the connection is recorded here — first-connection instant, default
+   * agent assignment, onboarding stage — BEFORE the quality event, so the
+   * reconcile it triggers reads the assignment instead of the state before it.
+   *
+   * Never fails because of that: the number is already connected when this is
+   * called, and a 5xx here would only be logged by the caller.
+   */
   @Post('agent-quality-channel-updated')
   async agentQualityChannelUpdated(
     @Req() request: { user?: { isInternalService?: boolean } },
-    @Body() body: { tenantId: string },
+    @Body() body: { tenantId: string; channelType?: string; accountId?: string },
   ) {
     // Keep a handler-level assertion as defense in depth in case guard wiring
     // changes in the future.
     this.assertInternalService(request);
     this.assertTenantId(body?.tenantId);
+    await this.recordEmbeddedSignupConnection(body.tenantId, body);
     this.events.emit(AGENT_QUALITY_DEPENDENCIES_UPDATED, {
       tenantId: body.tenantId,
       source: 'channel_credential',
     });
     return { accepted: true };
+  }
+
+  /**
+   * Record a WhatsApp connection the `whatsapp` service just committed.
+   *
+   * "Now connected" is READ, never taken on the caller's word: the bridge is
+   * also a generic "something about a channel changed" signal, and binding an
+   * agent to a number that is not live would be the platform claiming a
+   * connection nobody has. An active `channel_accounts` row is the same fact
+   * setup-status counts as "a channel exists".
+   *
+   * `channelType` absent means an older `whatsapp` build that posts only the
+   * tenant id; this bridge has only ever carried WhatsApp, so that is what it
+   * means. Anything else is not this bridge's to record.
+   */
+  private async recordEmbeddedSignupConnection(
+    tenantId: string,
+    body: { channelType?: unknown; accountId?: unknown },
+  ): Promise<void> {
+    try {
+      const channelType = typeof body?.channelType === 'string' && body.channelType.trim()
+        ? body.channelType.trim()
+        : 'whatsapp';
+      if (channelType !== 'whatsapp') return;
+      const accountId = typeof body?.accountId === 'string' && body.accountId.trim()
+        ? body.accountId.trim()
+        : null;
+      const live = await this.prisma.channelAccount.findFirst({
+        where: {
+          tenantId,
+          channelType: 'whatsapp',
+          isActive: true,
+          ...(accountId ? { accountId } : {}),
+        },
+        select: { id: true },
+      });
+      if (!live) {
+        this.logger.warn(`[ESU] No active WhatsApp connection for tenant=${tenantId}`
+          + `${accountId ? ` account=${accountId}` : ''}; nothing recorded`);
+        return;
+      }
+      const { bound } = await recordChannelConnected(this.prisma, tenantId, 'whatsapp');
+      this.logger.log(`[ESU] WhatsApp connection recorded for tenant=${tenantId}`
+        + (bound ? ' (default agent assigned)' : ''));
+    } catch (error: any) {
+      // `recordChannelConnected` does not throw; the read above can. Either
+      // way the connection already exists and the next one repairs this.
+      this.logger.warn(`[ESU] Could not record the WhatsApp connection for tenant=${tenantId}: `
+        + `${error?.message}`);
+    }
   }
 
   private assertInternalService(request: { user?: { isInternalService?: boolean } }): void {

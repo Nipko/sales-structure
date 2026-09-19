@@ -2,10 +2,10 @@
   "version": 1,
   "evidenceKind": "structural_only",
   "sourceHashEncoding": "utf8-lf",
-  "sourceRevision": "0113f68de490541a6833d112818b78bff0dbc6c6",
+  "sourceRevision": "e1fcd184f3c071145f6a969a031804ecad4ad6f6",
   "summary": {
     "verticals": 20,
-    "profiles": 76,
+    "profiles": 80,
     "staticTools": 123,
     "nativeFamilies": 26,
     "configurationFamilies": 27,
@@ -14,8 +14,8 @@
       "vertical": 81,
       "provider": 4
     },
-    "tasks": 420,
-    "committingTasks": 146,
+    "tasks": 444,
+    "committingTasks": 158,
     "toolsWithoutDefinition": [],
     "toolsWithoutExecutorBranch": [],
     "toolsWithoutPolicy": [],
@@ -26,9 +26,9 @@
     "unmappedDeclaredRoutes": [],
     "missingPages": [],
     "taskCoverage": {
-      "profiles": 76,
-      "tasks": 420,
-      "committingTasks": 146,
+      "profiles": 80,
+      "tasks": 444,
+      "committingTasks": 158,
       "tasksMissingPositiveCases": 5,
       "tasksMissingVerifiers": 5,
       "unregisteredTools": [],
@@ -39,10 +39,10 @@
     "apps/api/src/common/conversation/intent-normalizer.ts": "0f58a2e4a8a3d6dad75db81e108f8a9877c8d276b008d989787c113bd98d1eba",
     "apps/api/src/modules/conversations/agent-test-tool-policy.ts": "853761eaec7980869ba07a6d7ecd36853b654dfa2cd3be88720a1732454912a9",
     "apps/api/src/modules/conversations/agent-tool-registry.ts": "eb0d07f5a197dc167a3b52aba549b60f47743f0244d7437921dbb22772f28c0a",
-    "apps/api/src/modules/conversations/ai-tool-executor.service.ts": "e4bac9b938d28f64dce7b6cecfc74fc00ace3bbf9cac3e45f6df22f72ef970bb",
+    "apps/api/src/modules/conversations/ai-tool-executor.service.ts": "6e7f73951c79d808689f8dd708f43e79b8f22e380d3aa49c0cab98e0bb6ebcd9",
     "apps/api/src/modules/conversations/tool-policy-registry.ts": "6df5643daa47901af534374c69c4625a0710173c7b6271504925dcffdf751a13",
     "apps/api/src/modules/conversations/tool-task-dependencies.ts": "6cd3988fd8377d8156a9dff7eae6659aead26e8054ddf953f92352e36ebff653",
-    "apps/api/src/modules/conversations/tools/appointment-tools.ts": "7cb1cab12f52e4fbeba0ba08918f7542d7525f603a214f2dfda45f1f1c053f8a",
+    "apps/api/src/modules/conversations/tools/appointment-tools.ts": "89603d0d63ec7b9bb5d68e759052b742062c00994969e72130ba56eb58fbd154",
     "apps/api/src/modules/conversations/tools/catalog-tools.ts": "ac7d28de7de56b08be261bcca30332e7bea41ed4e45c0085ac5e722de4dfc2c8",
     "apps/api/src/modules/conversations/tools/crm-tools.ts": "5d3d63f2d36534df23fbdf6dbbaeeddd46d292e8a8081cdf389c024253698778",
     "apps/api/src/modules/conversations/tools/crm-write-tools.ts": "8aeccc97ba010effd5b126557e5f69f0d1b511621c8aafc33b96f42e7191e09c",
@@ -69,52 +69,56 @@
     "apps/api/src/modules/simulation/agent-release-policy.ts": "5409d5a30bff70f541863848709b16daa0f6be24aea04ebe2eecf646ab2cdcde",
     "apps/api/src/modules/simulation/isolated-eval-namespace.ts": "4b43f8ec67e6246ff502130f546d7c86023bab8a3ef897e955566a8409bee672",
     "apps/api/src/modules/simulation/task-competence-matrix.ts": "225c9d64a8b9b63c0d5a7e4d73aa36b9e410628d22a1140e44b349a4f7fe355b",
-    "apps/dashboard/src/lib/navigation-contract.ts": "c97d27f96d1427a4dfd95d22e2eb8591b8cf22423d2971b969b7896d495d8550",
+    "apps/dashboard/src/lib/navigation-contract.ts": "2b3fa24711e3c12b224f9aa6f703592209099189c9434a4b331aabc9aec3bff7",
     "apps/dashboard/src/lib/vertical-dashboard-resolver.ts": "e9f02c8e104f4c8fbb7a902763a8f1161869e29337fcbfddf344684ef51c7f0f",
     "docs/audits/2026-09-11/generate-tool-profile-audit.cjs": "1a774208f5e46b5a94e7eac9c1208d20f6a42daba7aa4e51ef52b3b938577099",
     "packages/shared/src/active-object-deep-link.ts": "738a7f5f1180bcfec4e8d9dc1cb424515419e4001dfbf1e82bd6a4802fd7003b",
-    "packages/shared/src/agent-assessment-contract.ts": "00c4c09c9b7ec99a2ff4358d132d1c58a4a1de01bf112a5526f98595a31f52e6",
+    "packages/shared/src/agent-assessment-contract.ts": "fe333fdd43763b06b0727add8a7e1e232d0f2a84cb53180b9b95e2ad2431c488",
     "packages/shared/src/agent-configuration-contract.ts": "73663da28d6daacaf21ce6bde753b3907bfbec58e0a381e52f4ce1b95a489eac",
-    "packages/shared/src/agent-draft-contract.ts": "4586a4d8e67644786682c9288151e4c231ad22c1a40874ed4c64f732688266da",
-    "packages/shared/src/agent-issue-resolution.ts": "30d49e1be4e80768037ba352f9333acbb52d645e2130e5a042b95d8036fa9e43",
+    "packages/shared/src/agent-draft-contract.ts": "1771a5f000b2476e4f6251b6b7c8027afe225afc4f5f224197b19d3f2e2cdcab",
+    "packages/shared/src/agent-issue-resolution.ts": "b1782194fba5ed44e64a3a7d4a0553c4979f5e30717953d7df308026305e3581",
     "packages/shared/src/agent-operation-contract.ts": "bda213ef6091b3f380535091eead6d1387b8faee03a6e9977178c83aae05773e",
     "packages/shared/src/agent-operational-state.ts": "871ca0612550203bac6fe95faaa7195386adc8ee5ab3e2a31d19dcf24a5271e5",
-    "packages/shared/src/agent-quality-contract.ts": "15d6cc332e0a035730216e64769c73ce76a0064e20770658f18738534dec98e7",
+    "packages/shared/src/agent-quality-contract.ts": "f6bfae6af179606b25fb96ac557e531ee6315e7834ffd43f19274d025f9239d8",
     "packages/shared/src/agent-release-subject.ts": "d4a332996626b443191480e5280321313c20c59079601f9b7ccfe8699ba43589",
     "packages/shared/src/agent-skillset-policy.ts": "1a2988fcf723f80a8911956e0bf5fb1a690fb1067fd1fbea053325fcd9b3d3f8",
     "packages/shared/src/automation-trigger-contract.ts": "d05f67738d8a9f7350fdbef0cfe368c5ef5d728a7231b2766c93e7630bc8ead5",
+    "packages/shared/src/business-recipe.ts": "786a8a46963298c727b9cb5630b2c62a8db647db330d8a74c5484249cf94eb3f",
     "packages/shared/src/canonical-task-eval-pack.ts": "236cff00de78a97c70b13025cb582775700ee70fc820349dceef2dbcd731ca8b",
     "packages/shared/src/catalog-task-eval-pack.ts": "e68d7759640246d8967044a28c51ec3e61a44644a2adc74b0ad4faca375317fc",
     "packages/shared/src/channel-credential-health.ts": "60816dd3b62ca363781f28c7d00d33b246965c5b995875806575bcd94a9c07dd",
     "packages/shared/src/channel-policy.ts": "08217ee740ed4500edf75db816296a0906afeb1096541a4f0c49404f5480fcf1",
     "packages/shared/src/country-language-pack.ts": "fd22dd3077cfad6fc7ccb76172320a7a1f8bb7e758254d0dda1a6a0d542802b4",
     "packages/shared/src/crm-task-eval-pack.ts": "59f48ad5f3534319e7ba7aeff18a936cd8da8d8a2715d81365fc53a65e557f42",
-    "packages/shared/src/dashboard-page-access.ts": "2dabaf76e5ad13138460915bd99185698698b3cdb5cb14cf925603b9a228fb20",
+    "packages/shared/src/dashboard-page-access.ts": "01c1fc48f2775ab669b0a09cad7f4206ce92583d7daa4d72637c3474ad49756c",
     "packages/shared/src/dispatch-pilot-scope.ts": "2e3be92cf35089c9cdbba54f7bdff5ebddf8efd2f66ced2406ce2fed746a1208",
     "packages/shared/src/effective-capability-contract.ts": "09c5b2e0b629d8ec9a90960e228bdd99e3e02df8cefd3d7a2793e27184b6122d",
     "packages/shared/src/email-verification-policy.ts": "65ec4e669d3e43fc3fbba597eb8a60ce3d0ffec8f30a1725ba298d34bd49c178",
     "packages/shared/src/eval-phrase.ts": "b8b346f5bf1d46a7d3769eafa43e67ec31e9033ea4bb6304c16e9cee3875c980",
-    "packages/shared/src/guided-tour-contract.ts": "42905092055a92500b496bf26edd91583ef3e347f7d66b449ab636192f32400a",
-    "packages/shared/src/index.ts": "68183786efc94fc0aca494d9b02a8dbcbe47bfe4a96290781295c656d2f8f05c",
+    "packages/shared/src/guided-tour-contract.ts": "7177982d23321663f328a7bf4c3c57d5d85f5b6ca5fa1277193f9d59fb0267cc",
+    "packages/shared/src/index.ts": "d890367e9ba6cbd8f3bc93538c16e666825d3edc58ba94d8d96b290bbe9ac99e",
     "packages/shared/src/insurance-task-eval-pack.ts": "c54d37a631f2419857d57cddba631d6fffbb46e18e078237a4d171ab02d25af9",
     "packages/shared/src/integration-scaffolding.ts": "3b830967a82db77a4ea5253a3102cd68103eb595f2059d54bfb487b4c1e77d33",
     "packages/shared/src/intent-workflow-contract.ts": "d9ba194c34cf4ed0a61fb852ce91b68b910a07d3bfdaf92106a8bbb14196dd2a",
+    "packages/shared/src/meta-connect-errors.ts": "a8f169f58c29fc98f0b1b7eae6800400c0de2599bf9bab9f639299dc8ff4c027",
     "packages/shared/src/navigation-plan-gate.ts": "3f658d1c24e1e77b3c41f431adf53b2f95322d20849f840a724e76030a32e167",
     "packages/shared/src/navigation-semantics.ts": "3939a79bb722716b9dc6629b81912cc4ac886d78d5421e6eba17d7e256acf39d",
     "packages/shared/src/navigation-surface-kind.ts": "586af7066cd57ff6601d834afc2c2877b8fd2e7b7525fd1f037a50ac9e6a3550",
     "packages/shared/src/navigation-telemetry.ts": "375b89677ba1218e39cf8e6193d29fe85660808418c278df6867ad4826412054",
-    "packages/shared/src/onboarding-stage-contract.ts": "1251823e2715a1017f462cbf7c3d01719119f2a0126ed55ab4e3555e656b8b82",
-    "packages/shared/src/operation-task-eval-pack.ts": "8ef75cd053603d4174e5d2e28ebe617e29ee01c114b138acfe44098c5b9da8ed",
+    "packages/shared/src/onboarding-events.ts": "9d1fe8f1cfaaa6c9d35526277661f065c36dacc77b764782303fb66603cd249b",
+    "packages/shared/src/onboarding-stage-contract.ts": "daf4eee6270d6422e40cff8d1467fefe5f69547b1c7a682c38cabd7bb480cb80",
+    "packages/shared/src/operation-task-eval-pack.ts": "2c7c08867dd6eca35b889cc269b44e5150206d6ae1163346bb4629d50e6a042f",
     "packages/shared/src/outbound-message-contract.ts": "4bb303bf085583a36b8872e5aba311169e2bea124f59b8452ba8147590c0664b",
     "packages/shared/src/pet-task-eval-pack.ts": "a9d07ebcaaae42e78952cbc290655087eada53136275fb5a4c7ec94fa34ae97d",
     "packages/shared/src/provider-integration-policy.ts": "ea94ffa87ba2c5968c424db4d84e4701356a9138958e2fc960941b2ab310b689",
     "packages/shared/src/provider-resource-binding.ts": "4185cdafad0d03cdc353d54de1470d42a4f688bddcf6d4258ed054547a234ad5",
+    "packages/shared/src/recipe-example-amounts.ts": "2574b043959bc86be55bd1eb3438834ed74ad964a6a4eda6cb02c98adc36026d",
     "packages/shared/src/repair-task-eval-pack.ts": "15b9eb261e74e7a0b7a9b77b1963a7b8921b59f8f43dec337517808e0972c018",
     "packages/shared/src/resource-rental-details.ts": "922d21fc5a2a39874d429ce8892be5bd7d6e06485d688b9ac96421b7451cb231",
     "packages/shared/src/runtime-config-compatibility.ts": "f4697c404e018fa645ad2cf9dc1323dbb4465c5aad6b2fa2bb81a338d61c6469",
     "packages/shared/src/subtype-eval-derivation.ts": "229cc4f86f489817b3fcbaa529a4f8ddc784d7538662aaead2be6fe5a37f44e0",
     "packages/shared/src/subtype-eval-pack.ts": "c3064aa9f3bfa96b6650107ec09c59cb911c7ba088a331d8b12882598ecac4e3",
-    "packages/shared/src/subtype-experience-profile.ts": "ad99fae11e7f7cf551e1ff4a4cc94a14318084a4332c0c5663a95c31f9affa33",
+    "packages/shared/src/subtype-experience-profile.ts": "8b9ddf35847218bcdcab0dadf5141821366328cf3f6d70596561130491878ee5",
     "packages/shared/src/subtype-taxonomy-migration.ts": "27634396788204c1f975435ac133ef4f8db1e42069f11d8c53b82b5bf000f4f1",
     "packages/shared/src/subtype-terminology.ts": "3804ac61b21f512239e0efe38979c252711b59d52c09bb6f0b8e9029109501f2",
     "packages/shared/src/system-of-record-policy.ts": "7d6d2be5e3ab345c2c476d505dcfcd7e9c2cd9a1b31a5b8e529778118a7328db",
@@ -124,13 +128,14 @@
     "packages/shared/src/vehicle-task-eval-pack.ts": "d57fe85e5fb8ea1d81d8480933077753c80b078b5a989383873fca36f812dfa0",
     "packages/shared/src/vertical-authoring-package.ts": "e03798b6bb73d952335c6a20b247f2bc90780a56a409845e6ed4227e45adb017",
     "packages/shared/src/vertical-builder-contract.ts": "6b0cadc40de0060010e35001c0b2db674fe59b6d5ce4b7d489873a7661d62c55",
-    "packages/shared/src/vertical-capability-manifest.ts": "2c2efb6b8434e1624668828d27e71616a065092e6b590875c5374d6c81b77deb",
+    "packages/shared/src/vertical-capability-manifest.ts": "0133d0d8a4ee28911a840e5c4068ab5f6ab83dd877f9f2431a0b54982579304e",
     "packages/shared/src/vertical-certification-contract.ts": "3a062cf0e9d930e506975b3dbc5b7c4b56df6f3bba621b050db4d25d6f327c28",
     "packages/shared/src/vertical-domain-contract.ts": "740ef5df309632e73535258c3076e327ab6c4d2f754f1c76031178e6c230dcaa",
     "packages/shared/src/vertical-operation-contract.ts": "17a76884978832eba5a226584fb7cd7cb962d0d71cacd08b1e20a66ae2253a4e",
     "packages/shared/src/vertical-product-policy.ts": "9c906d33eb6dad1af604dd6b9b5ac954630692dc34c170169ba8322de7e05a19",
     "packages/shared/src/vertical-prompt-localization.ts": "e2c4a351e988f1d3eaaa36f549ba41d1aa23dd60b2f41b97d371eeb976ac429b",
-    "packages/shared/src/whatsapp-channel-identity.ts": "0ec7f55eeb1a0e7b5bd537a94c063f1873be6d94406450a8a289fc3fed989643"
+    "packages/shared/src/whatsapp-channel-identity.ts": "0ec7f55eeb1a0e7b5bd537a94c063f1873be6d94406450a8a289fc3fed989643",
+    "packages/shared/src/whatsapp-signup-warnings.ts": "7fb5fb31137279b11bc4534d16fb5fb851a08ca3c850c0e1d5997a0993b19bd3"
   },
   "profiles": [
     {
@@ -940,9 +945,713 @@
       "executionEvidence": "not_loaded"
     },
     {
+      "id": "education/academia_baile",
+      "industry": "education",
+      "subtype": "academia_baile",
+      "strategy": "build",
+      "availability": "selectable",
+      "primaryObject": "course",
+      "capabilities": [
+        "crm_pipeline",
+        "faq_search",
+        "appointment_booking",
+        "course_enrollment"
+      ],
+      "toolGroups": [
+        "faqs",
+        "appointments",
+        "education"
+      ],
+      "readiness": [
+        "business_identity",
+        "pipeline",
+        "faq_content",
+        "appointment_services",
+        "courses"
+      ],
+      "routes": [
+        {
+          "route": "/admin/inbox",
+          "item": null,
+          "navigationId": "inbox",
+          "pageExists": true,
+          "visible": true
+        },
+        {
+          "route": "/admin/contacts",
+          "item": null,
+          "navigationId": "contacts",
+          "pageExists": true,
+          "visible": true
+        },
+        {
+          "route": "/admin/pipeline",
+          "item": null,
+          "navigationId": "pipeline",
+          "pageExists": true,
+          "visible": true
+        },
+        {
+          "route": "/admin/appointments",
+          "item": "appointments",
+          "navigationId": "appointments",
+          "pageExists": true,
+          "visible": true
+        },
+        {
+          "route": "/admin/courses",
+          "item": "courses",
+          "navigationId": "courses",
+          "pageExists": true,
+          "visible": true
+        }
+      ],
+      "toolsByGroup": [
+        {
+          "group": "faqs",
+          "tools": [
+            "search_faqs"
+          ],
+          "readiness": "faq_content",
+          "planFeature": null
+        },
+        {
+          "group": "appointments",
+          "tools": [
+            "list_services",
+            "check_availability",
+            "create_appointment",
+            "cancel_appointment",
+            "list_customer_appointments",
+            "send_booking_link",
+            "reschedule_appointment",
+            "get_appointment_details"
+          ],
+          "readiness": "appointment_services",
+          "planFeature": null
+        },
+        {
+          "group": "education",
+          "tools": [
+            "get_courses",
+            "get_course_schedule",
+            "enroll_student",
+            "get_placement_test_link",
+            "cancel_enrollment",
+            "list_my_enrollments"
+          ],
+          "readiness": "courses",
+          "planFeature": null
+        }
+      ],
+      "tasks": [
+        {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "ask_question",
+          "commits": false,
+          "tools": [
+            "search_faqs",
+            "search_knowledge_base"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "book_appointment",
+          "commits": true,
+          "tools": [
+            "list_services",
+            "check_availability",
+            "create_appointment"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "cancel_appointment",
+          "commits": true,
+          "tools": [
+            "list_customer_appointments",
+            "cancel_appointment",
+            "get_appointment_details"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "enrol_student",
+          "commits": true,
+          "tools": [
+            "get_courses",
+            "get_course_schedule",
+            "enroll_student"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        }
+      ],
+      "executionEvidence": "not_loaded"
+    },
+    {
+      "id": "education/academia_musica",
+      "industry": "education",
+      "subtype": "academia_musica",
+      "strategy": "build",
+      "availability": "selectable",
+      "primaryObject": "course",
+      "capabilities": [
+        "crm_pipeline",
+        "faq_search",
+        "appointment_booking",
+        "course_enrollment"
+      ],
+      "toolGroups": [
+        "faqs",
+        "appointments",
+        "education"
+      ],
+      "readiness": [
+        "business_identity",
+        "pipeline",
+        "faq_content",
+        "appointment_services",
+        "courses"
+      ],
+      "routes": [
+        {
+          "route": "/admin/inbox",
+          "item": null,
+          "navigationId": "inbox",
+          "pageExists": true,
+          "visible": true
+        },
+        {
+          "route": "/admin/contacts",
+          "item": null,
+          "navigationId": "contacts",
+          "pageExists": true,
+          "visible": true
+        },
+        {
+          "route": "/admin/pipeline",
+          "item": null,
+          "navigationId": "pipeline",
+          "pageExists": true,
+          "visible": true
+        },
+        {
+          "route": "/admin/appointments",
+          "item": "appointments",
+          "navigationId": "appointments",
+          "pageExists": true,
+          "visible": true
+        },
+        {
+          "route": "/admin/courses",
+          "item": "courses",
+          "navigationId": "courses",
+          "pageExists": true,
+          "visible": true
+        }
+      ],
+      "toolsByGroup": [
+        {
+          "group": "faqs",
+          "tools": [
+            "search_faqs"
+          ],
+          "readiness": "faq_content",
+          "planFeature": null
+        },
+        {
+          "group": "appointments",
+          "tools": [
+            "list_services",
+            "check_availability",
+            "create_appointment",
+            "cancel_appointment",
+            "list_customer_appointments",
+            "send_booking_link",
+            "reschedule_appointment",
+            "get_appointment_details"
+          ],
+          "readiness": "appointment_services",
+          "planFeature": null
+        },
+        {
+          "group": "education",
+          "tools": [
+            "get_courses",
+            "get_course_schedule",
+            "enroll_student",
+            "get_placement_test_link",
+            "cancel_enrollment",
+            "list_my_enrollments"
+          ],
+          "readiness": "courses",
+          "planFeature": null
+        }
+      ],
+      "tasks": [
+        {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "ask_question",
+          "commits": false,
+          "tools": [
+            "search_faqs",
+            "search_knowledge_base"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "book_appointment",
+          "commits": true,
+          "tools": [
+            "list_services",
+            "check_availability",
+            "create_appointment"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "cancel_appointment",
+          "commits": true,
+          "tools": [
+            "list_customer_appointments",
+            "cancel_appointment",
+            "get_appointment_details"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "enrol_student",
+          "commits": true,
+          "tools": [
+            "get_courses",
+            "get_course_schedule",
+            "enroll_student"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        }
+      ],
+      "executionEvidence": "not_loaded"
+    },
+    {
+      "id": "education/autoescuela",
+      "industry": "education",
+      "subtype": "autoescuela",
+      "strategy": "build",
+      "availability": "selectable",
+      "primaryObject": "course",
+      "capabilities": [
+        "crm_pipeline",
+        "faq_search",
+        "appointment_booking",
+        "course_enrollment"
+      ],
+      "toolGroups": [
+        "faqs",
+        "appointments",
+        "education"
+      ],
+      "readiness": [
+        "business_identity",
+        "pipeline",
+        "faq_content",
+        "appointment_services",
+        "courses"
+      ],
+      "routes": [
+        {
+          "route": "/admin/inbox",
+          "item": null,
+          "navigationId": "inbox",
+          "pageExists": true,
+          "visible": true
+        },
+        {
+          "route": "/admin/contacts",
+          "item": null,
+          "navigationId": "contacts",
+          "pageExists": true,
+          "visible": true
+        },
+        {
+          "route": "/admin/pipeline",
+          "item": null,
+          "navigationId": "pipeline",
+          "pageExists": true,
+          "visible": true
+        },
+        {
+          "route": "/admin/appointments",
+          "item": "appointments",
+          "navigationId": "appointments",
+          "pageExists": true,
+          "visible": true
+        },
+        {
+          "route": "/admin/courses",
+          "item": "courses",
+          "navigationId": "courses",
+          "pageExists": true,
+          "visible": true
+        }
+      ],
+      "toolsByGroup": [
+        {
+          "group": "faqs",
+          "tools": [
+            "search_faqs"
+          ],
+          "readiness": "faq_content",
+          "planFeature": null
+        },
+        {
+          "group": "appointments",
+          "tools": [
+            "list_services",
+            "check_availability",
+            "create_appointment",
+            "cancel_appointment",
+            "list_customer_appointments",
+            "send_booking_link",
+            "reschedule_appointment",
+            "get_appointment_details"
+          ],
+          "readiness": "appointment_services",
+          "planFeature": null
+        },
+        {
+          "group": "education",
+          "tools": [
+            "get_courses",
+            "get_course_schedule",
+            "enroll_student",
+            "get_placement_test_link",
+            "cancel_enrollment",
+            "list_my_enrollments"
+          ],
+          "readiness": "courses",
+          "planFeature": null
+        }
+      ],
+      "tasks": [
+        {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "ask_question",
+          "commits": false,
+          "tools": [
+            "search_faqs",
+            "search_knowledge_base"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "book_appointment",
+          "commits": true,
+          "tools": [
+            "list_services",
+            "check_availability",
+            "create_appointment"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "cancel_appointment",
+          "commits": true,
+          "tools": [
+            "list_customer_appointments",
+            "cancel_appointment",
+            "get_appointment_details"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "enrol_student",
+          "commits": true,
+          "tools": [
+            "get_courses",
+            "get_course_schedule",
+            "enroll_student"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        }
+      ],
+      "executionEvidence": "not_loaded"
+    },
+    {
       "id": "education/capacitacion",
       "industry": "education",
       "subtype": "capacitacion",
+      "strategy": "build",
+      "availability": "selectable",
+      "primaryObject": "course",
+      "capabilities": [
+        "crm_pipeline",
+        "faq_search",
+        "appointment_booking",
+        "course_enrollment"
+      ],
+      "toolGroups": [
+        "faqs",
+        "appointments",
+        "education"
+      ],
+      "readiness": [
+        "business_identity",
+        "pipeline",
+        "faq_content",
+        "appointment_services",
+        "courses"
+      ],
+      "routes": [
+        {
+          "route": "/admin/inbox",
+          "item": null,
+          "navigationId": "inbox",
+          "pageExists": true,
+          "visible": true
+        },
+        {
+          "route": "/admin/contacts",
+          "item": null,
+          "navigationId": "contacts",
+          "pageExists": true,
+          "visible": true
+        },
+        {
+          "route": "/admin/pipeline",
+          "item": null,
+          "navigationId": "pipeline",
+          "pageExists": true,
+          "visible": true
+        },
+        {
+          "route": "/admin/appointments",
+          "item": "appointments",
+          "navigationId": "appointments",
+          "pageExists": true,
+          "visible": true
+        },
+        {
+          "route": "/admin/courses",
+          "item": "courses",
+          "navigationId": "courses",
+          "pageExists": true,
+          "visible": true
+        }
+      ],
+      "toolsByGroup": [
+        {
+          "group": "faqs",
+          "tools": [
+            "search_faqs"
+          ],
+          "readiness": "faq_content",
+          "planFeature": null
+        },
+        {
+          "group": "appointments",
+          "tools": [
+            "list_services",
+            "check_availability",
+            "create_appointment",
+            "cancel_appointment",
+            "list_customer_appointments",
+            "send_booking_link",
+            "reschedule_appointment",
+            "get_appointment_details"
+          ],
+          "readiness": "appointment_services",
+          "planFeature": null
+        },
+        {
+          "group": "education",
+          "tools": [
+            "get_courses",
+            "get_course_schedule",
+            "enroll_student",
+            "get_placement_test_link",
+            "cancel_enrollment",
+            "list_my_enrollments"
+          ],
+          "readiness": "courses",
+          "planFeature": null
+        }
+      ],
+      "tasks": [
+        {
+          "key": "capture_interest",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "record_contact_interest",
+            "create_crm_opportunity"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "request_follow_up",
+          "commits": false,
+          "tools": [
+            "get_customer_context",
+            "ensure_crm_lead",
+            "create_follow_up_task"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "ask_question",
+          "commits": false,
+          "tools": [
+            "search_faqs",
+            "search_knowledge_base"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "book_appointment",
+          "commits": true,
+          "tools": [
+            "list_services",
+            "check_availability",
+            "create_appointment"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "cancel_appointment",
+          "commits": true,
+          "tools": [
+            "list_customer_appointments",
+            "cancel_appointment",
+            "get_appointment_details"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        },
+        {
+          "key": "enrol_student",
+          "commits": true,
+          "tools": [
+            "get_courses",
+            "get_course_schedule",
+            "enroll_student"
+          ],
+          "gaps": [
+            "profile_execution_evidence_missing"
+          ]
+        }
+      ],
+      "executionEvidence": "not_loaded"
+    },
+    {
+      "id": "education/clases_particulares",
+      "industry": "education",
+      "subtype": "clases_particulares",
       "strategy": "build",
       "availability": "selectable",
       "primaryObject": "course",
@@ -12303,7 +13012,11 @@
       "declaredTasks": [
         "automotriz/concesionario:cancel_appointment",
         "automotriz/taller:cancel_appointment",
+        "education/academia_baile:cancel_appointment",
+        "education/academia_musica:cancel_appointment",
+        "education/autoescuela:cancel_appointment",
         "education/capacitacion:cancel_appointment",
+        "education/clases_particulares:cancel_appointment",
         "education/idiomas:cancel_appointment",
         "education/online:cancel_appointment",
         "education/universitaria:cancel_appointment",
@@ -12714,7 +13427,11 @@
         "automotriz/concesionario:book_appointment",
         "automotriz/concesionario:schedule_test_drive",
         "automotriz/taller:book_appointment",
+        "education/academia_baile:book_appointment",
+        "education/academia_musica:book_appointment",
+        "education/autoescuela:book_appointment",
         "education/capacitacion:book_appointment",
+        "education/clases_particulares:book_appointment",
         "education/idiomas:book_appointment",
         "education/online:book_appointment",
         "education/universitaria:book_appointment",
@@ -13134,7 +13851,11 @@
       "declaredTasks": [
         "automotriz/concesionario:book_appointment",
         "automotriz/taller:book_appointment",
+        "education/academia_baile:book_appointment",
+        "education/academia_musica:book_appointment",
+        "education/autoescuela:book_appointment",
         "education/capacitacion:book_appointment",
+        "education/clases_particulares:book_appointment",
         "education/idiomas:book_appointment",
         "education/online:book_appointment",
         "education/universitaria:book_appointment",
@@ -13204,7 +13925,11 @@
         "automotriz/repuestos:capture_interest",
         "automotriz/taller:capture_interest",
         "construccion/contratista_general:capture_interest",
+        "education/academia_baile:capture_interest",
+        "education/academia_musica:capture_interest",
+        "education/autoescuela:capture_interest",
         "education/capacitacion:capture_interest",
+        "education/clases_particulares:capture_interest",
         "education/idiomas:capture_interest",
         "education/online:capture_interest",
         "education/universitaria:capture_interest",
@@ -13308,7 +14033,11 @@
         "automotriz/repuestos:request_follow_up",
         "automotriz/taller:request_follow_up",
         "construccion/contratista_general:request_follow_up",
+        "education/academia_baile:request_follow_up",
+        "education/academia_musica:request_follow_up",
+        "education/autoescuela:request_follow_up",
         "education/capacitacion:request_follow_up",
+        "education/clases_particulares:request_follow_up",
         "education/idiomas:request_follow_up",
         "education/online:request_follow_up",
         "education/universitaria:request_follow_up",
@@ -13631,7 +14360,11 @@
       ],
       "asynchronous": false,
       "declaredTasks": [
+        "education/academia_baile:enrol_student",
+        "education/academia_musica:enrol_student",
+        "education/autoescuela:enrol_student",
         "education/capacitacion:enrol_student",
+        "education/clases_particulares:enrol_student",
         "education/idiomas:enrol_student",
         "education/online:enrol_student",
         "education/universitaria:enrol_student"
@@ -13673,8 +14406,16 @@
         "automotriz/taller:request_follow_up",
         "construccion/contratista_general:capture_interest",
         "construccion/contratista_general:request_follow_up",
+        "education/academia_baile:capture_interest",
+        "education/academia_baile:request_follow_up",
+        "education/academia_musica:capture_interest",
+        "education/academia_musica:request_follow_up",
+        "education/autoescuela:capture_interest",
+        "education/autoescuela:request_follow_up",
         "education/capacitacion:capture_interest",
         "education/capacitacion:request_follow_up",
+        "education/clases_particulares:capture_interest",
+        "education/clases_particulares:request_follow_up",
         "education/idiomas:capture_interest",
         "education/idiomas:request_follow_up",
         "education/online:capture_interest",
@@ -13908,7 +14649,11 @@
       "declaredTasks": [
         "automotriz/concesionario:cancel_appointment",
         "automotriz/taller:cancel_appointment",
+        "education/academia_baile:cancel_appointment",
+        "education/academia_musica:cancel_appointment",
+        "education/autoescuela:cancel_appointment",
         "education/capacitacion:cancel_appointment",
+        "education/clases_particulares:cancel_appointment",
         "education/idiomas:cancel_appointment",
         "education/online:cancel_appointment",
         "education/universitaria:cancel_appointment",
@@ -14110,7 +14855,11 @@
       ],
       "asynchronous": false,
       "declaredTasks": [
+        "education/academia_baile:enrol_student",
+        "education/academia_musica:enrol_student",
+        "education/autoescuela:enrol_student",
         "education/capacitacion:enrol_student",
+        "education/clases_particulares:enrol_student",
         "education/idiomas:enrol_student",
         "education/online:enrol_student",
         "education/universitaria:enrol_student"
@@ -14142,7 +14891,11 @@
       ],
       "asynchronous": false,
       "declaredTasks": [
+        "education/academia_baile:enrol_student",
+        "education/academia_musica:enrol_student",
+        "education/autoescuela:enrol_student",
         "education/capacitacion:enrol_student",
+        "education/clases_particulares:enrol_student",
         "education/idiomas:enrol_student",
         "education/online:enrol_student",
         "education/universitaria:enrol_student"
@@ -14184,8 +14937,16 @@
         "automotriz/taller:request_follow_up",
         "construccion/contratista_general:capture_interest",
         "construccion/contratista_general:request_follow_up",
+        "education/academia_baile:capture_interest",
+        "education/academia_baile:request_follow_up",
+        "education/academia_musica:capture_interest",
+        "education/academia_musica:request_follow_up",
+        "education/autoescuela:capture_interest",
+        "education/autoescuela:request_follow_up",
         "education/capacitacion:capture_interest",
         "education/capacitacion:request_follow_up",
+        "education/clases_particulares:capture_interest",
+        "education/clases_particulares:request_follow_up",
         "education/idiomas:capture_interest",
         "education/idiomas:request_follow_up",
         "education/online:capture_interest",
@@ -15056,7 +15817,11 @@
       "declaredTasks": [
         "automotriz/concesionario:cancel_appointment",
         "automotriz/taller:cancel_appointment",
+        "education/academia_baile:cancel_appointment",
+        "education/academia_musica:cancel_appointment",
+        "education/autoescuela:cancel_appointment",
         "education/capacitacion:cancel_appointment",
+        "education/clases_particulares:cancel_appointment",
         "education/idiomas:cancel_appointment",
         "education/online:cancel_appointment",
         "education/universitaria:cancel_appointment",
@@ -15612,7 +16377,11 @@
         "automotriz/concesionario:book_appointment",
         "automotriz/concesionario:schedule_test_drive",
         "automotriz/taller:book_appointment",
+        "education/academia_baile:book_appointment",
+        "education/academia_musica:book_appointment",
+        "education/autoescuela:book_appointment",
         "education/capacitacion:book_appointment",
+        "education/clases_particulares:book_appointment",
         "education/idiomas:book_appointment",
         "education/online:book_appointment",
         "education/universitaria:book_appointment",
@@ -15865,7 +16634,11 @@
         "automotriz/repuestos:capture_interest",
         "automotriz/taller:capture_interest",
         "construccion/contratista_general:capture_interest",
+        "education/academia_baile:capture_interest",
+        "education/academia_musica:capture_interest",
+        "education/autoescuela:capture_interest",
         "education/capacitacion:capture_interest",
+        "education/clases_particulares:capture_interest",
         "education/idiomas:capture_interest",
         "education/online:capture_interest",
         "education/universitaria:capture_interest",
@@ -16159,7 +16932,11 @@
         "automotriz/repuestos:ask_question",
         "automotriz/taller:ask_question",
         "construccion/contratista_general:ask_question",
+        "education/academia_baile:ask_question",
+        "education/academia_musica:ask_question",
+        "education/autoescuela:ask_question",
         "education/capacitacion:ask_question",
+        "education/clases_particulares:ask_question",
         "education/idiomas:ask_question",
         "education/online:ask_question",
         "education/universitaria:ask_question",
@@ -16263,7 +17040,11 @@
         "automotriz/repuestos:ask_question",
         "automotriz/taller:ask_question",
         "construccion/contratista_general:ask_question",
+        "education/academia_baile:ask_question",
+        "education/academia_musica:ask_question",
+        "education/autoescuela:ask_question",
         "education/capacitacion:ask_question",
+        "education/clases_particulares:ask_question",
         "education/idiomas:ask_question",
         "education/online:ask_question",
         "education/universitaria:ask_question",

@@ -14,7 +14,7 @@ jest.mock('next/navigation', () => ({ usePathname: () => '/admin/appointments' }
 jest.mock('@/contexts/TenantContext', () => ({ useTenant: () => ({ activeTenantId: mockTenant }) }));
 jest.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { id: 'user', role: mockRole, tenantId: mockAuthTenant === undefined ? mockTenant : mockAuthTenant } }) }));
 jest.mock('@/hooks/useRole', () => ({ useRole: () => ({ canAccess: (href: string) => href !== '/admin/agent' || mockManage }) }));
-jest.mock('@/lib/api', () => ({ api: { getAgentToolConfigurationSummary: jest.fn() } }));
+jest.mock('@/lib/api', () => ({ api: { getAgentToolConfigurationSummary: jest.fn(), getAgentReviewMode: jest.fn() } }));
 
 function summary(activeEnabledAgents = 0, pausedEnabledAgents = 0): AgentToolConfigurationSummary {
   return { source: 'operational', totalAgents: 2, families: Object.fromEntries(AGENT_CONFIG_TOOL_FAMILIES.map(family =>
@@ -60,7 +60,9 @@ describe('manual module tool status', () => {
       expect(description.getAttribute('aria-hidden')).toBe('true');
       expect(description.textContent).toBe('IA desactivada');
       expect(screen.container.textContent).toContain('Puedes seguir utilizándolo manualmente');
-      expect(screen.container.textContent).toContain('no el borrador');
+      // Until someone opens "Cómo funciona", the sentence true in both change modes.
+      expect(screen.container.textContent).toContain('Las herramientas de cada agente se cambian en su editor.');
+      expect(screen.container.textContent).not.toContain('borrador');
       const manual = Array.from(screen.container.querySelectorAll('button')).find(button => button.textContent === 'Crear cita manual')!;
       expect(manual.disabled).toBe(false);
       expect(await findAccessibilityViolations(screen.container)).toEqual([]);
@@ -102,6 +104,57 @@ describe('manual module tool status', () => {
       expect(screen.container.querySelector('nav')?.textContent).not.toContain('IA configurada');
     } finally { screen.unmount(); }
   });
+  describe("how a change reaches the AI, in the tenant's change mode", () => {
+    async function openScope(screen: Awaited<ReturnType<typeof renderScreen>>) {
+      const details = screen.container.querySelector('aside details') as HTMLDetailsElement;
+      await interact(() => { details.open = true; details.dispatchEvent(new Event('toggle')); });
+      await interact(() => {});
+      return details;
+    }
+
+    it('reads the mode only when "Cómo funciona" is opened, and says a save applies at once in immediate mode', async () => {
+      jest.mocked(api.getAgentToolConfigurationSummary).mockResolvedValue(ok());
+      jest.mocked(api.getAgentReviewMode).mockResolvedValue({ success: true, data: { mode: 'immediate' } } as any);
+      const screen = await renderScreen(<Harness />);
+      try {
+        expect(api.getAgentReviewMode).not.toHaveBeenCalled();
+        const details = await openScope(screen);
+        expect(api.getAgentReviewMode).toHaveBeenCalledWith('tenant-a');
+        expect(details.textContent).toContain('el cambio se aplica de inmediato');
+        expect(details.textContent).not.toMatch(/borrador|publicaci/);
+        expect(await findAccessibilityViolations(screen.container)).toEqual([]);
+      } finally { screen.unmount(); }
+    });
+
+    it('keeps the draft and publication sentence for a tenant in reviewed mode', async () => {
+      jest.mocked(api.getAgentToolConfigurationSummary).mockResolvedValue(ok());
+      jest.mocked(api.getAgentReviewMode).mockResolvedValue({ success: true, data: { mode: 'reviewed' } } as any);
+      const screen = await renderScreen(<Harness />);
+      try {
+        const details = await openScope(screen);
+        expect(details.textContent).toContain('guarda el borrador y completa su publicación');
+      } finally { screen.unmount(); }
+    });
+
+    it('says neither when the mode cannot be read, and never asks for a role that cannot read it', async () => {
+      jest.mocked(api.getAgentToolConfigurationSummary).mockResolvedValue(ok());
+      jest.mocked(api.getAgentReviewMode).mockResolvedValue({ success: false } as any);
+      const failed = await renderScreen(<Harness />);
+      try {
+        const details = await openScope(failed);
+        expect(details.textContent).toContain('Las herramientas de cada agente se cambian en su editor.');
+        expect(details.textContent).not.toMatch(/borrador|de inmediato/);
+      } finally { failed.unmount(); }
+      jest.mocked(api.getAgentReviewMode).mockClear();
+      mockManage = false;
+      const supervisor = await renderScreen(<Harness />);
+      try {
+        await openScope(supervisor);
+        expect(api.getAgentReviewMode).not.toHaveBeenCalled();
+      } finally { supervisor.unmount(); }
+    });
+  });
+
   it('does not offer agent management to a role that cannot access it', async () => {
     mockManage = false;
     jest.mocked(api.getAgentToolConfigurationSummary).mockResolvedValue(ok());

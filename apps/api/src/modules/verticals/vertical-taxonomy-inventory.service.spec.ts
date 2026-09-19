@@ -39,9 +39,9 @@ describe('VerticalTaxonomyInventoryService', () => {
             applySupported: false,
             targetCatalog: {
                 industryCount: 20,
-                canonicalConfigurationCount: 76,
-                canonicalProfileCount: 76,
-                resolvableProfileCount: 81,
+                canonicalConfigurationCount: 80,
+                canonicalProfileCount: 80,
+                resolvableProfileCount: 85,
             },
             scanned: 3,
             affected: 2,

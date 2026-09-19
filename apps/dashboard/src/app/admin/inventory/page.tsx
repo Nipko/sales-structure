@@ -9,16 +9,40 @@ import { api } from "@/lib/api";
 import { DataSourceBadge } from "@/hooks/useApiData";
 import { cn } from "@/lib/utils";
 import { useTranslations } from "next-intl";
+import { formatMoney } from "@/lib/format-money";
+import { useOperatingCurrency } from "@/hooks/useOperatingCurrency";
 import {
     Package, Search, Plus, AlertTriangle, TrendingUp, TrendingDown, ArrowUpDown, Tag, Box, BarChart3, X, Check, Minus,
 } from "lucide-react";
 
-interface Product { id: string; name: string; sku: string; description: string; category: string; price: number; cost: number; currency: string; stock: number; minStock: number; maxStock: number; unit: string; imageUrl: string | null; isActive: boolean; requiresPrescription?: boolean; tags: string[]; createdAt: string; updatedAt: string; }
+interface Product { id: string; name: string; sku: string; description: string; category: string; price: number; cost: number; currency: string | null; stock: number; minStock: number; maxStock: number; unit: string; imageUrl: string | null; isActive: boolean; requiresPrescription?: boolean; tags: string[]; createdAt: string; updatedAt: string; }
 interface Category { id: string; name: string; color: string; productCount: number; }
 interface StockMovement { id: string; productId: string; productName: string; type: "in" | "out" | "adjustment"; quantity: number; previousStock: number; newStock: number; reason: string; createdAt: string; createdBy: string; }
 interface InventoryOverview { totalProducts: number; activeProducts: number; totalValue: number; lowStockAlerts: number; outOfStockCount: number; categories: Category[]; products: Product[]; recentMovements: StockMovement[]; }
 
-const formatCurrency = (n: number) => new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", minimumFractionDigits: 0 }).format(n);
+/**
+ * El importe se muestra en la moneda de SU fila.
+ *
+ * Estaba fijo en USD e ignoraba `product.currency`, que el API ya devuelve:
+ * una farmacia colombiana con productos en COP leía sus precios como dólares
+ * —tres órdenes de magnitud— en la tabla y en el KPI de valor de inventario.
+ * Sin moneda en la fila, `formatMoney` deja el número desnudo en vez de
+ * elegir un país por el dueño.
+ */
+const formatCurrency = (n: number, currency?: string | null) => formatMoney(n, currency);
+
+/**
+ * La moneda del inventario ENTERO, o `null` si no es una sola.
+ *
+ * `totalValue` es una suma de filas que pueden estar en monedas distintas.
+ * Ponerle un símbolo a esa suma sería afirmar una conversión que nadie hizo y
+ * para la que no hay tipo de cambio. Con una sola moneda presente la suma es
+ * legítima y lleva su código; con varias (o ninguna) sale como número solo.
+ */
+const singleCurrency = (products: Product[]): string | null => {
+    const codes = new Set(products.map((p) => (p.currency || "").trim().toUpperCase()).filter(Boolean));
+    return codes.size === 1 ? [...codes][0] : null;
+};
 const formatDate = (s: string) => { try { return new Date(s).toLocaleDateString(undefined, { day: "2-digit", month: "short" }); } catch { return s; } };
 const stockStatusKey = (p: Product) => p.stock === 0 ? "outOfStock" : (p.stock <= p.minStock ? "lowStock" : "available");
 const stockStatusColor = (p: Product) => {
@@ -62,6 +86,8 @@ export default function InventoryPage() {
         return matchSearch && matchCategory;
     });
 
+    const inventoryCurrency = singleCurrency(data.products);
+
     const margin = data.products.length > 0 ? ((data.products.reduce((s, p) => s + (p.price - p.cost) * p.stock, 0) / data.totalValue) * 100).toFixed(1) : "0";
 
     return (
@@ -86,7 +112,7 @@ export default function InventoryPage() {
             <div className="grid grid-cols-5 gap-4 mb-6">
                 {[
                     { key: "totalProducts", label: t("kpi.totalProducts"), value: data.totalProducts, icon: Package, color: "#6c5ce7", sub: t("kpi.activeCount", { count: data.activeProducts }) },
-                    { key: "inventoryValue", label: t("kpi.inventoryValue"), value: formatCurrency(data.totalValue), icon: BarChart3, color: "#00b4d8", sub: t("kpi.marginAbout", { pct: margin }) },
+                    { key: "inventoryValue", label: t("kpi.inventoryValue"), value: formatCurrency(data.totalValue, inventoryCurrency), icon: BarChart3, color: "#00b4d8", sub: t("kpi.marginAbout", { pct: margin }) },
                     { key: "lowStock", label: t("kpi.lowStock"), value: data.lowStockAlerts, icon: AlertTriangle, color: "#ffa502", sub: t("kpi.needRestocking") },
                     { key: "outOfStock", label: t("kpi.outOfStock"), value: data.outOfStockCount, icon: Box, color: "#ff4757", sub: tc("noData") },
                     { key: "categories", label: t("kpi.categories"), value: data.categories.length, icon: Tag, color: "#2ecc71", sub: t("kpi.skuCount", { count: data.products.length }) },
@@ -156,7 +182,7 @@ export default function InventoryPage() {
                                             </td>
                                             <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{product.sku}</td>
                                             <td className="px-4 py-3"><span className="px-2.5 py-1 rounded-lg bg-muted text-xs font-medium">{product.category}</span></td>
-                                            <td className="px-4 py-3 font-semibold text-primary">{formatCurrency(product.price)}</td>
+                                            <td className="px-4 py-3 font-semibold text-primary">{formatCurrency(product.price, product.currency)}</td>
                                             <td className="px-4 py-3"><span className="font-semibold text-base">{product.stock}</span><span className="text-[11px] text-muted-foreground ml-1">{product.unit}</span></td>
                                             <td className="px-4 py-3"><span className="px-2.5 py-1 rounded-lg text-xs font-semibold" style={{ background: s.bg, color: s.color }}>{t(`stockStatus.${stockStatusKey(product)}`)}</span></td>
                                             <td className="px-4 py-3">
@@ -205,6 +231,7 @@ export default function InventoryPage() {
 function CreateProductModal({ onClose, categories, tenantId, onCreated }: { onClose: () => void; categories: Category[]; tenantId: string; onCreated: () => void }) {
     const tc = useTranslations("common");
     const t = useTranslations("inventory");
+    const operatingCurrency = useOperatingCurrency();
     const [form, setForm] = useState({ name: "", sku: "", description: "", categoryId: "", price: "", cost: "", stock: "", unit: "unit" });
     const [requiresPrescription, setRequiresPrescription] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -212,7 +239,12 @@ function CreateProductModal({ onClose, categories, tenantId, onCreated }: { onCl
     const handleSubmit = async () => {
         if (!form.name || !form.sku || !form.price) return;
         setSaving(true);
-        await api.createInventoryProduct(tenantId, { name: form.name, sku: form.sku, description: form.description, categoryId: form.categoryId || undefined, price: parseFloat(form.price), cost: parseFloat(form.cost) || 0, stock: parseInt(form.stock) || 0, unit: form.unit, requiresPrescription });
+        await api.createInventoryProduct(tenantId, { name: form.name, sku: form.sku, description: form.description, categoryId: form.categoryId || undefined, price: parseFloat(form.price), cost: parseFloat(form.cost) || 0, stock: parseInt(form.stock) || 0, unit: form.unit, requiresPrescription,
+            // El modal no mandaba moneda NUNCA, y del otro lado el default era
+            // COP: cada producto que un dueno cargaba a mano quedaba en pesos
+            // colombianos estuviera donde estuviera. Se manda la del negocio, y
+            // si no se sabe no se manda nada (el API escribe NULL).
+            currency: operatingCurrency || undefined });
         onCreated();
     };
 

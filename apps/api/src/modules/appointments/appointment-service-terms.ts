@@ -1,4 +1,5 @@
 import { createHash } from 'crypto';
+import { customerFacingPrice, servicePriceNote, type ServicePriceStatus } from './service-price-status';
 import { resolvePaymentPolicy } from '../../common/utils/payment-policy.util';
 import { notAgreedSql } from '../conversations/commitment-proposal';
 
@@ -19,22 +20,36 @@ export interface AppointmentServiceTerms {
     requiresPayment: boolean;
     amountDue: number | null;
     customerChooses: boolean;
+    /** Present only when the price was not confirmed at booking time ('example' | 'quote'). */
+    priceStatus?: string;
 }
 
-export const APPOINTMENT_SERVICE_TERMS_COLUMNS = 'id, name, price, currency, duration_type, duration_minutes, duration_minutes_max, location_type, location_address, meeting_link, payment_policy, deposit_percent, deposit_amount';
+export const APPOINTMENT_SERVICE_TERMS_COLUMNS = 'id, name, price, currency, duration_type, duration_minutes, duration_minutes_max, location_type, location_address, meeting_link, payment_policy, deposit_percent, deposit_amount, price_status';
 
 export function appointmentServiceTerms(row: Record<string, any>): AppointmentServiceTerms {
     if (row.price != null && (!Number.isFinite(Number(row.price)) || Number(row.price) < 0)) throw new Error('appointment_service_terms_unavailable');
-    const policy = resolvePaymentPolicy(row, row.price);
+    // D10: an unconfirmed price is not a term the customer can agree to. Both
+    // sides of the terms hash (the tool result and the server gate) read the
+    // same row, so zeroing it here keeps them equal and keeps the number out of
+    // every tool result the model sees. FX1: a row without an amount reads as
+    // pending too (`customerFacingPrice`); frozen as a confirmed 0 it came back
+    // to the customer as a free service.
+    const priceView = customerFacingPrice(row);
+    const priceConfirmed = priceView.priceStatus === 'confirmed';
+    const policy = resolvePaymentPolicy(row, priceConfirmed ? row.price : 0);
     const minutes = (value: unknown) => value == null ? null : Number(value);
     return {
         version: 1, serviceId: String(row.id), name: String(row.name ?? ''),
-        price: policy.totalAmount, currency: String(row.currency || 'COP').trim().toUpperCase(),
+        price: priceConfirmed ? policy.totalAmount : 0, currency: String(row.currency || 'COP').trim().toUpperCase(),
         durationType: String(row.duration_type || 'fixed'), durationMinutes: minutes(row.duration_minutes),
         durationMinutesMax: minutes(row.duration_minutes_max), locationType: String(row.location_type || 'in_person'),
         locationAddress: row.location_address || null, meetingLinkHash: row.meeting_link ? createHash('sha256').update(String(row.meeting_link)).digest('hex') : null,
         paymentPolicy: policy.mode, requiresPayment: policy.requiresPayment, amountDue: policy.dueAmount,
         customerChooses: policy.customerChooses,
+        // Provenance travels with the frozen terms so a later reader knows the
+        // customer never agreed to a number. Deliberately outside the hash:
+        // confirming the same number mid-flow is not a change of terms.
+        ...(priceConfirmed ? {} : { priceStatus: priceView.priceStatus }),
     };
 }
 
@@ -75,7 +90,13 @@ export function assertAppointmentServiceTerms(expected: unknown, row: Record<str
 export function appointmentTermsReviewResult(terms: AppointmentServiceTerms, error = 'appointment_terms_changed'): Record<string, unknown> {
     return { error, persisted: false, retryable: false, requiresConfirmation: true,
         message: 'Review the current service, price, payment terms, duration and location with the customer and request a new confirmation. No appointment was created.',
-        service: { id: terms.serviceId, name: terms.name, price: terms.price, currency: terms.currency,
+        // The engine adopts this object as the service and the model reads it:
+        // an unconfirmed price must look exactly as list_services shows it
+        // (no number, a status, an instruction), or the re-issued proposal
+        // would say "Precio: 0 COP" for a price nobody set.
+        service: { id: terms.serviceId, name: terms.name, price: terms.priceStatus ? null : terms.price, currency: terms.currency,
+            priceStatus: (terms.priceStatus ?? 'confirmed') as ServicePriceStatus,
+            ...(terms.priceStatus ? { priceNote: servicePriceNote(terms.priceStatus as ServicePriceStatus) } : {}),
             durationType: terms.durationType, durationMinutes: terms.durationMinutes, durationMinutesMax: terms.durationMinutesMax,
             requiresPaymentToConfirm: terms.requiresPayment, amountDueToConfirm: terms.amountDue, appointmentTerms: terms } };
 }
@@ -175,7 +196,16 @@ export function appointmentPriceSql(appointment = 'target', service = 'service')
     // has even less business dying on a malformed row than the till does. An
     // unreadable stored term is not a term, so it falls back to the catalogue,
     // which is exactly what a legacy row already does.
-    return `(CASE WHEN ${appointmentAgreedTermsSql(appointment)} THEN btrim(${appointment}.metadata->'serviceTerms'->>'price')::numeric ELSE ${service}.price END)`;
+    // A price the business never confirmed is not a price: neither the frozen
+    // terms nor the catalogue may surface a number for it (D10).
+    // Terms frozen while the price was unconfirmed carry `priceStatus`: the
+    // customer agreed to "por confirmar", never to a number, so confirming the
+    // catalogue later does not retroactively price that appointment.
+    // Agreed terms always win over the catalogue: a number the customer agreed
+    // to while it was confirmed stays theirs even if the owner later marks the
+    // service quote-only. Only an appointment with no agreed terms follows the
+    // catalogue's current status.
+    return `(CASE WHEN ${appointmentAgreedTermsSql(appointment)} AND (${appointment}.metadata->'serviceTerms'->>'priceStatus') IS NOT NULL THEN NULL WHEN ${appointmentAgreedTermsSql(appointment)} THEN btrim(${appointment}.metadata->'serviceTerms'->>'price')::numeric WHEN COALESCE(${service}.price_status, 'confirmed') <> 'confirmed' THEN NULL ELSE ${service}.price END)`;
 }
 export function appointmentCurrencySql(appointment = 'target', service = 'service'): string {
     if (![appointment, service].every(alias => /^[a-z_]+$/.test(alias))) throw new Error('invalid_sql_alias');

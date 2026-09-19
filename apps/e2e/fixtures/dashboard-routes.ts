@@ -32,6 +32,11 @@ export const dashboardShell = (tenantId = TENANT): ApiRoutes => ({
   // page to /login — which reads in a report as "the dashboard redirected" and
   // is really "the fixture forgot the refresh".
   "auth/refresh": ok({ accessToken: "e2e.access.token", refreshToken: "e2e.refresh.token" }),
+  // Ola 6: mientras la cuenta espera la primera respuesta de su agente, el
+  // panel relee el día 0 al abrir y al volver a la pestaña. Una respuesta sin
+  // datos nuevos deja la sesión exactamente como la sembró cada prueba: el
+  // merge nunca borra un dato conocido con uno ausente.
+  "auth/me": ok({}),
   "auth/tenant/timezone": ok({ timezone: "America/Bogota" }),
   "platform-status": ok({ incidents: [], status: "operational" }),
   "system-updates": ok([]),
@@ -58,6 +63,13 @@ export const dashboardShell = (tenantId = TENANT): ApiRoutes => ({
   [`persona/${tenantId}/setup-status`]: ok({ complete: true, steps: [] }),
   [`persona/${tenantId}/agents`]: ok([]),
   [`persona/${tenantId}/tool-configuration-summary`]: ok(disabledAgentTools()),
+  // Assist's review card (shell-level: the assistant lives in the layout) reads
+  // how this account applies agent changes before it says what its button does.
+  // Immediate is the product default, and so the honest minimal answer.
+  [`persona/${tenantId}/agent-review-mode`]: ok({ mode: "immediate" }),
+  // The onboarding guide records durable progress from the authenticated shell.
+  // It is a declared write, not a request that should escape the hermetic suite.
+  [`persona/${tenantId}/onboarding-events`]: ok({ recorded: true }),
   [`verticals/${tenantId}`]: ok({ industry: "servicios", subType: "generico", config: {} }),
   "verticals/definitions/all": ok([]),
   [`business-info/${tenantId}`]: ok({ name: "Negocio de prueba", timezone: "America/Bogota" }),
@@ -75,6 +87,11 @@ export const dashboardShell = (tenantId = TENANT): ApiRoutes => ({
   "channels/overview": ok({ channels: [] }),
   // The setup wizard, which `/admin` routes on to while onboarding is open.
   "persona/templates": ok([]),
+  // The business recipe orders the wizard's channels. Without this entry the
+  // call still resolves — `verticals/<tenant>` is a prefix of it — but with the
+  // vertical's config as its body, which only works by accident. No recipe is
+  // the honest minimal answer: WhatsApp first, nothing recommended.
+  [`verticals/${tenantId}/recipe`]: ok({ industry: null, subType: null, source: "none", recipe: null }),
   [`copilot/assessment/${tenantId}`]: ok({ blockers: [], recommendations: [], ready: false }),
   // An agent lands in the console rather than on the dashboard, so their shell
   // is a different set of calls — all of them tenant-scoped, which is the point

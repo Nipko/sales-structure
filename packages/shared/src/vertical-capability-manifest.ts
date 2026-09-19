@@ -734,7 +734,7 @@ export const VERTICAL_CAPABILITY_MANIFEST: VerticalCapabilityManifest = {
     },
     education: {
         industry: 'education',
-        subtypes: ['idiomas', 'universitaria', 'online', 'capacitacion'],
+        subtypes: ['idiomas', 'universitaria', 'online', 'capacitacion', 'academia_baile', 'academia_musica', 'clases_particulares', 'autoescuela'],
         profile: profile({
             capabilities: ['appointment_booking', 'course_enrollment'],
             toolGroups: ['appointments', 'education'],

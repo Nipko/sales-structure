@@ -611,6 +611,78 @@ const PROFILES = Object.freeze({
         auditConfidence: 'A',
         exclusions: ['LMS propio', 'decision de admision'],
     },
+    'education/academia_baile': {
+        industry: 'education',
+        subtype: 'academia_baile',
+        strategy: 'build',
+        wave: 2,
+        scope: 'operacion_ligera',
+        alerts: ['CAP', 'PAY', 'SOR', 'E2E'],
+        benchmark: 'Teachworks',
+        primaryGap: 'Ritmos/niveles, horarios de clase, clase de prueba y mensualidades',
+        // Added sep-2026 for the guided onboarding: the dance academy of the
+        // 14-sep recording fell into "otro". Inherits the education engine
+        // (class booking + courses); readiness/demand carry the idiomas audit
+        // as the closest measured sibling, not a measurement of its own.
+        auditedReadiness: 43,
+        auditedDemand: 76,
+        auditConfidence: 'C',
+        exclusions: ['LMS propio', 'decision de admision'],
+    },
+    'education/academia_musica': {
+        industry: 'education',
+        subtype: 'academia_musica',
+        strategy: 'build',
+        wave: 2,
+        scope: 'operacion_ligera',
+        alerts: ['CAP', 'PAY', 'SOR', 'E2E'],
+        benchmark: 'Teachworks',
+        primaryGap: 'Instrumentos/disciplinas, niveles, clase de prueba y mensualidades',
+        // Added sep-2026 for the guided onboarding: the dance academy of the
+        // 14-sep recording fell into "otro". Inherits the education engine
+        // (class booking + courses); readiness/demand carry the idiomas audit
+        // as the closest measured sibling, not a measurement of its own.
+        auditedReadiness: 43,
+        auditedDemand: 76,
+        auditConfidence: 'C',
+        exclusions: ['LMS propio', 'decision de admision'],
+    },
+    'education/clases_particulares': {
+        industry: 'education',
+        subtype: 'clases_particulares',
+        strategy: 'build',
+        wave: 2,
+        scope: 'operacion_ligera',
+        alerts: ['CAP', 'PAY', 'SOR', 'E2E'],
+        benchmark: 'Teachworks',
+        primaryGap: 'Materias, disponibilidad del tutor, clase de prueba y paquetes',
+        // Added sep-2026 for the guided onboarding: the dance academy of the
+        // 14-sep recording fell into "otro". Inherits the education engine
+        // (class booking + courses); readiness/demand carry the idiomas audit
+        // as the closest measured sibling, not a measurement of its own.
+        auditedReadiness: 43,
+        auditedDemand: 76,
+        auditConfidence: 'C',
+        exclusions: ['LMS propio', 'decision de admision'],
+    },
+    'education/autoescuela': {
+        industry: 'education',
+        subtype: 'autoescuela',
+        strategy: 'build',
+        wave: 2,
+        scope: 'operacion_ligera',
+        alerts: ['CAP', 'PAY', 'SOR', 'E2E'],
+        benchmark: 'Teachworks',
+        primaryGap: 'Categorias de licencia, clases practicas, agenda de vehiculo y pagos',
+        // Added sep-2026 for the guided onboarding: the dance academy of the
+        // 14-sep recording fell into "otro". Inherits the education engine
+        // (class booking + courses); readiness/demand carry the idiomas audit
+        // as the closest measured sibling, not a measurement of its own.
+        auditedReadiness: 43,
+        auditedDemand: 76,
+        auditConfidence: 'C',
+        exclusions: ['LMS propio', 'decision de admision'],
+    },
     'education/universitaria': {
         industry: 'education',
         subtype: 'universitaria',

@@ -3,7 +3,7 @@ id: canales-email-widget
 title: "Web chat and Email integration status"
 routes: ["/admin/channels", "/admin/channels/email", "/admin/settings/integrations/web-chat", "/admin/settings/integrations/web-chat/triggers"]
 roles: ["tenant_admin"]
-keywords: ["email", "email channel status", "widget", "web chat", "chat on my website", "chat on my site", "chat bubble", "embed code", "install widget", "triggers", "proactive triggers", "welcome message", "pre-chat form"]
+keywords: ["email", "email channel status", "widget", "web chat", "chat on my website", "chat on my site", "chat bubble", "embed code", "install widget", "triggers", "proactive triggers", "welcome message", "pre-chat form", "agent link", "two-line code"]
 ---
 
 # Web chat and Email integration status
@@ -21,6 +21,17 @@ The screen shows whether web chat and proactive triggers are enabled and how muc
 Email exists as a technical adapter and internal inbound surface for managed integrations, but it is **not yet a certified conversational channel or available for self-service configuration**. The **Channels → Email** page currently lacks the API contract required to save per-tenant settings. Do not enter credentials or assume that this screen makes the channel operational.
 
 If your organization needs an email integration, ask support for a technical assessment. Until the flow is implemented and certified end to end, Parallly Assist must not promise connection, sending, inbox delivery, or automatic AI replies over Email.
+
+### Your agent's link and your website's web chat
+
+**Your agent's link** (the public page you see in the setup wizard, with an address starting with `/w/` followed by an identifier) exists from day 0, before you connect any channel. What it is depends on your plan:
+
+- **If your plan does not include web chat**, it is for **trying your agent and showing it to someone**: the platform pays for its messages up to a per-account allowance, each page has a daily message cap, and the conversation never goes to a person. The platform can pause this trial link: while it is paused, or once the allowance is used up, your agent does not answer on it.
+- **If your plan includes web chat**, that same link is a **real channel**: it serves your customers on your plan's quota, without the trial's daily cap, and can hand the conversation to your team when the customer asks for a person. The link's card then adds **Put it in my bio** and **Put it on my website**.
+
+Either way, the conversations it receives show up in your inbox like any other web chat conversation, and the link does not count as a connected channel: it is never connected or disconnected.
+
+The **web chat you install on your site** (the widget on this screen) does count as a connected channel and does use your plan's web chat feature. To put it on your site, copy its two lines with **Copy code** and send them to whoever manages your website; **Put it on my website**, on the link's card, brings you to this same screen.
 
 ---
 

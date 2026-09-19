@@ -667,7 +667,7 @@ export class PersonaService {
             throw new BadRequestException({
                 error: 'agent_invalid',
                 fields: [...new Set(invalid)],
-                message: 'Faltan datos obligatorios del agente. Revisá los campos marcados.',
+                message: 'Faltan datos obligatorios del agente. Revisa los campos marcados.',
             });
         }
     }
@@ -1021,7 +1021,7 @@ export class PersonaService {
         if (currentCount >= planFeatures.maxAgents) {
             throw new ForbiddenException({
                 error: 'agent_limit_reached',
-                message: `Tu plan permite hasta ${planFeatures.maxAgents} agente${planFeatures.maxAgents === 1 ? '' : 's'}. Actualizá tu plan para agregar más.`,
+                message: `Tu plan permite hasta ${planFeatures.maxAgents} agente${planFeatures.maxAgents === 1 ? '' : 's'}. Actualiza tu plan para agregar más.`,
                 currentCount,
                 maxAgents: planFeatures.maxAgents,
             });
@@ -1126,7 +1126,17 @@ export class PersonaService {
     }
 
     /**
-     * Update an existing agent
+     * Switch an agent OFF.
+     *
+     * Deactivation is an immediate safety action in both modes: it takes
+     * nothing from another agent and applies no saved change. Switching ON is
+     * not this method's job, because it puts a configuration in front of
+     * customers: in immediate mode it is a commit
+     * (`AgentDraftService.activate` — revision, audit, connection ownership
+     * guard, cache drop), in reviewed mode it is a publication. A bare
+     * `is_active=true` here skipped all of that, and could put back an agent
+     * whose channel another agent had taken meanwhile, leaving two owners and a
+     * silent channel.
      */
     async updateAgent(tenantId: string, agentId: string, data: { expectedVersion?: number; [key: string]: any }): Promise<any> {
         if (!data || data.isActive !== false || Object.keys(data).some(key => !['isActive', 'expectedVersion'].includes(key)))
@@ -3139,7 +3149,12 @@ export class PersonaService {
                 template.name,
                 template.id,
                 JSON.stringify(configJson),
-                ['whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget'],
+                // No channel is assigned at birth. The default agent serves every
+                // channel anyway (serving-persona: `is_default=true`), and each
+                // connection binds it explicitly when it happens. Seeding the five
+                // types put five "asignado, pero sin una conexión activa" warnings
+                // and five "Quitar" buttons above the form of a brand-new account.
+                [],
                 createdBy || 'onboarding',
             );
             this.logger.log(`Default agent "${template.name}" created for tenant ${tenantId} (goals: ${goals.join(', ')})`);

@@ -43,7 +43,7 @@ export class CatalogController {
     @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Create a new course' })
     async createCourse(@Param('tenantId') tenantId: string, @Body() payload: any) {
-        const result = await this.catalogService.createCourse(await this.schemaFor(tenantId), payload);
+        const result = await this.catalogService.createCourse(await this.schemaFor(tenantId), payload, tenantId);
         this.emitQualityDependency(tenantId);
         return result;
     }
@@ -52,7 +52,7 @@ export class CatalogController {
     @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Update a course' })
     async updateCourse(@Param('tenantId') tenantId: string, @Param('id') id: string, @Body() payload: any) {
-        const result = await this.catalogService.updateCourse(await this.schemaFor(tenantId), id, payload);
+        const result = await this.catalogService.updateCourse(await this.schemaFor(tenantId), id, payload, tenantId);
         this.emitQualityDependency(tenantId);
         return result;
     }

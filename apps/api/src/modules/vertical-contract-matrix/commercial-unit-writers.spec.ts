@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import {
     normalizeCurrencyCode,
+    optionalCurrencyCode,
     optionalPositiveIntegerUnit,
     requirePositiveIntegerUnit,
 } from '../../common/utils/commercial-units.util';
@@ -16,8 +17,22 @@ import { ToursService } from '../tours/tours.service';
 describe('commercial unit validators', () => {
     it('normalizes configured currency without selecting or converting it', () => {
         expect(normalizeCurrencyCode(' mxn ')).toBe('MXN');
+        // Este COP es el default histórico de la firma, y es exactamente el que
+        // los escritores con tenant a la vista ya no usan: ver `optionalCurrencyCode`.
         expect(normalizeCurrencyCode(undefined)).toBe('COP');
         expect(() => normalizeCurrencyCode('peso')).toThrow(BadRequestException);
+    });
+
+    it('answers "no currency" instead of choosing Colombia when nobody said one', () => {
+        expect(optionalCurrencyCode(undefined)).toBeNull();
+        expect(optionalCurrencyCode(null)).toBeNull();
+        expect(optionalCurrencyCode('')).toBeNull();
+        expect(optionalCurrencyCode('   ')).toBeNull();
+        // Presente y válida: se respeta tal cual, sin convertir.
+        expect(optionalCurrencyCode(' mxn ')).toBe('MXN');
+        // Presente y rota: es un error del llamador, no una excusa para elegir.
+        expect(() => optionalCurrencyCode('peso')).toThrow(BadRequestException);
+        expect(() => optionalCurrencyCode(57)).toThrow(BadRequestException);
     });
 
     it('accepts only positive integer duration units while preserving unknown as null', () => {

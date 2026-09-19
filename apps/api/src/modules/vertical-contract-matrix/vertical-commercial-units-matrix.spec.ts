@@ -18,12 +18,12 @@ describe('vertical commercial-units contract/static matrix', () => {
         expect(matrix.bootstrapCertified).toBe(false);
         expect(matrix.dimensions).toEqual({
             industries: 20,
-            subtypes: 75,
-            operationalConfigurations: 76,
+            subtypes: 79,
+            operationalConfigurations: 80,
         });
         expect(matrix.industries).toHaveLength(20);
-        expect(matrix.configurations).toHaveLength(76);
-        expect(matrix.configurations.filter((row) => row.subtype !== null)).toHaveLength(75);
+        expect(matrix.configurations).toHaveLength(80);
+        expect(matrix.configurations.filter((row) => row.subtype !== null)).toHaveLength(79);
         expect(matrix.failures).toEqual([]);
     });
 
@@ -86,6 +86,13 @@ describe('vertical commercial-units contract/static matrix', () => {
                     'tenant_contract',
                     { ...definition, services: contract.services },
                     'es',
+                    undefined,
+                    // D17: el negocio es mexicano. La duración y el tipo pasan
+                    // tal cual, pero la moneda ya NO: el `currency: 'COP'` de la
+                    // definición es una referencia, y la fila nace en la moneda
+                    // del país. Antes, un mexicano abría su catálogo en pesos
+                    // colombianos y tenía que corregir cada fila a mano.
+                    'MX',
                 );
                 const insertCalls = prisma.$queryRawUnsafe.mock.calls.filter(
                     ([sql]) => String(sql).includes('INSERT INTO services'),
@@ -94,8 +101,11 @@ describe('vertical commercial-units contract/static matrix', () => {
                 contract.services.forEach((service, index) => {
                     const args = insertCalls[index];
                     expect(args[3]).toBe(service.durationMinutes);
-                    expect(args[5]).toBe(service.currency);
+                    expect(args[5]).toBe('MXN');
                     expect(args[8]).toBe(service.durationType || 'fixed');
+                    // La referencia sigue en pesos colombianos en el registro:
+                    // es el orden de magnitud del que sale el ejemplo local.
+                    expect(service.currency).toBe('COP');
                 });
             }
         }

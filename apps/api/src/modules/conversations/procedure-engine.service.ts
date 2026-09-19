@@ -593,7 +593,7 @@ export class ProcedureEngineService {
                     return {
                         handled: true,
                         completed: false,
-                        text: 'Esta parte del procedimiento necesita una herramienta que este agente no tiene habilitada. Pasá la conversación a una persona del equipo.',
+                        text: 'Esta parte del procedimiento necesita una herramienta que este agente no tiene habilitada. Pasa la conversación a una persona del equipo.',
                         // El motivo tipado viaja en la escalada. Sin esto, "el
                         // dueño apagó la tool", "el perfil está bloqueado" y "el
                         // paso nombra una tool de otra familia" llegaban a la
@@ -624,7 +624,7 @@ export class ProcedureEngineService {
                         handled: true,
                         completed: false,
                         text: rendered.invalid.length
-                            ? 'Alguno de los datos que me diste no tiene el formato que necesito. Pedile al cliente que lo confirme antes de seguir.'
+                            ? 'Alguno de los datos que me diste no tiene el formato que necesito. Pídele al cliente que lo confirme antes de seguir.'
                             : 'Me falta un dato para completar este paso. Pídaselo al cliente antes de seguir.',
                         procedureName: procedure.name,
                     };

@@ -43,7 +43,7 @@ export class HomeServicesController {
     @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async create(@Param('tenantId') tenantId: string, @Body() body: any) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
-        const data = await this.service.createRequest(schemaName, body);
+        const data = await this.service.createRequest(schemaName, body, {}, tenantId);
         return { success: true, data };
     }
 
@@ -51,7 +51,7 @@ export class HomeServicesController {
     @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async update(@Param('tenantId') tenantId: string, @Param('id') id: string, @Body() body: any) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
-        const data = await this.service.updateRequest(schemaName, id, body);
+        const data = await this.service.updateRequest(schemaName, id, body, tenantId);
         return { success: true, data };
     }
 }

@@ -3,9 +3,10 @@ import { PrismaService } from '../prisma/prisma.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { EmailTemplatesService } from '../email-templates/email-templates.service';
 import {
-    normalizeCurrencyCode,
     requirePositiveIntegerUnit,
 } from '../../common/utils/commercial-units.util';
+import { resolveWriteCurrency, type OperatingCurrencySource } from '../../common/utils/write-currency.util';
+import { RegionalProfileService } from '../tenants/regional-profile.service';
 import {
     assertOptionalContactId,
     requireTenantContact,
@@ -36,7 +37,18 @@ export class ToursService {
         private readonly prisma: PrismaService,
         private readonly throttle: TenantThrottleService,
         private readonly _emailTemplates: EmailTemplatesService,
+        /**
+         * D17 — de dónde sale la moneda de un paquete. Opcional en la FIRMA
+         * sólo para los fixtures que construyen este servicio a mano; sin
+         * `@Optional()`, Nest sigue exigiendo el proveedor global.
+         */
+        private readonly regional?: RegionalProfileService,
     ) {}
+
+    /** D17: explícito → moneda operativa del negocio → NULL. */
+    private writeCurrency(requested: unknown, tenantId?: string): Promise<string | null> {
+        return resolveWriteCurrency(requested, tenantId, this.regional as OperatingCurrencySource | undefined);
+    }
 
     // ── Packages CRUD ──────────────────────────────────────────────
 
@@ -72,7 +84,7 @@ export class ToursService {
         }
         const durationType = data.durationType || 'hours';
         const durationValue = requirePositiveIntegerUnit(data.durationValue ?? 1, 'durationValue');
-        const currency = normalizeCurrencyCode(data.currency);
+        const currency = await this.writeCurrency(data.currency, tenantId);
 
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
@@ -104,7 +116,7 @@ export class ToursService {
         return rows?.[0];
     }
 
-    async updatePackage(schemaName: string, packageId: string, data: any): Promise<any> {
+    async updatePackage(schemaName: string, packageId: string, data: any, tenantId?: string): Promise<any> {
         if (data.durationType !== undefined && !['hours', 'days'].includes(data.durationType)) {
             throw new BadRequestException('durationType must be hours or days');
         }
@@ -112,7 +124,7 @@ export class ToursService {
             data = { ...data, durationValue: requirePositiveIntegerUnit(data.durationValue, 'durationValue') };
         }
         if (data.currency !== undefined) {
-            data = { ...data, currency: normalizeCurrencyCode(data.currency) };
+            data = { ...data, currency: await this.writeCurrency(data.currency, tenantId) };
         }
         const sets: string[] = [];
         const params: any[] = [];
@@ -432,7 +444,10 @@ export class ToursService {
                     data.guestName || null, data.guestEmail || null, data.guestPhone || null,
                     data.departureDate, data.departureTime || null,
                     partySize, adults, children,
-                    unitPrice, totalPrice, pkg.currency || 'COP',
+                    // D17: la reserva hereda la moneda del paquete, incluida su
+                    // ausencia. `tour_bookings.currency` tiene DEFAULT 'COP', asi
+                    // que el NULL tiene que viajar explicito.
+                    unitPrice, totalPrice, pkg.currency || null,
                     data.language || 'es', data.specialRequests || null,
                     status, amountDue, holdExpiresAt,
                 ],

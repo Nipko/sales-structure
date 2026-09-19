@@ -1,12 +1,12 @@
 ---
 id: probar-agente
-title: "Tester votre agent avant de le publier"
+title: "Tester votre agent"
 routes: ["/admin/agent", "/admin/agent/simulation", "/admin/procedures"]
 roles: ["tenant_admin"]
 keywords: ["tester agent", "simulation", "simuler conversation", "chat de test", "scenarios", "synthetiques", "historiques", "reference", "regression", "score", "qualite de l'agent", "evaluer agent", "procedures", "sop", "procedure operationnelle", "compiler etapes", "mots declencheurs", "flux etape par etape", "tester le bot", "avant publication"]
 ---
 
-# Tester votre agent avant de le publier
+# Tester votre agent
 
 Avant de laisser votre agent IA discuter avec de vrais clients, il vaut mieux vérifier comment il répond. Parallly met à votre disposition trois outils pour cela :
 
@@ -26,7 +26,7 @@ C'est la façon la plus rapide de voir votre agent en action :
 4. Écrivez comme si vous étiez un client (« Quels sont vos tarifs ? », « Avez-vous des disponibilités samedi ? ») et cliquez sur **Envoyer**.
 5. Avec **Réinitialiser**, vous effacez la conversation et repartez de zéro.
 
-Le chat de test est un espace sûr : il ne crée aucun contact, n'apparaît pas dans votre boîte de réception et ne touche à aucune conversation réelle. Utilisez-le chaque fois que vous modifiez la personnalité, les règles ou les informations de l'entreprise, afin de confirmer que l'agent répond comme prévu.
+Le chat de test est un espace sûr : il ne crée aucun contact, n'apparaît pas dans votre boîte de réception et ne touche à aucune conversation réelle. Il utilise en revanche les messages IA de votre forfait : chaque réponse de l'agent, ici et dans les simulations, compte dans ces messages. Utilisez-le chaque fois que vous modifiez la personnalité, les règles ou les informations de l'entreprise, afin de confirmer que l'agent répond comme prévu.
 
 ## Comment lancer une simulation
 
@@ -55,7 +55,7 @@ En ouvrant une simulation terminée, vous verrez :
 - **Régressions** — si vous avez choisi une référence, vous verrez **Régression détectée** lorsqu'une réponse s'est dégradée par rapport à l'exécution précédente, ou **Aucune régression** si tout s'est maintenu ou amélioré.
 - **Tableau des scénarios** — cliquez sur n'importe quel scénario pour voir la **transcription** complète (client vs. agent) et les **problèmes** que l'évaluateur a détectés dans cette conversation.
 
-**Recommandation :** lancez une simulation chaque fois que vous modifiez la personnalité, les règles, la base de connaissances ou les procédures de votre agent, et comparez-la à la référence précédente. Ainsi, vous publiez vos changements avec des preuves, pas avec de l'intuition.
+**Recommandation :** lancez une simulation chaque fois que vous modifiez la personnalité, les règles, la base de connaissances ou les procédures de votre agent, et comparez-la à la référence précédente. Ainsi, vous faites vos changements avec des preuves, pas avec de l'intuition.
 
 ## Comment créer une procédure (SOP)
 
@@ -91,7 +91,7 @@ Les procédures apprennent à votre agent à exécuter les processus de votre en
 Non. Tout se passe dans un environnement isolé : aucun rendez-vous, commande, remise ni conversation réels ne sont créés, et aucun message ne part vers vos canaux connectés.
 
 **Quelle est la différence entre le chat de test et la simulation ?**
-Le chat de test, c'est vous qui conversez avec l'agent : idéal pour des vérifications rapides et ponctuelles. La simulation exécute des dizaines de conversations variées avec une notation automatique : idéale avant de publier des changements importants.
+Le chat de test, c'est vous qui conversez avec l'agent : idéal pour des vérifications rapides et ponctuelles. La simulation exécute des dizaines de conversations variées avec une notation automatique : idéale avant de faire des changements importants.
 
 **Qu'est-ce que la « référence » et à quoi sert-elle ?**
 C'est une simulation antérieure que vous utilisez comme point de comparaison. En réutilisant ses mêmes scénarios, Parallly peut vous dire si un changement que vous avez fait a **dégradé** une réponse qui sortait bien auparavant (une « régression »).
@@ -100,7 +100,7 @@ C'est une simulation antérieure que vous utilisez comme point de comparaison. E
 Ouvrez les scénarios signalés, lisez la transcription et les problèmes détectés, ajustez la configuration de l'agent (personnalité, règles, connaissance ou procédures) et relancez la simulation en comparant avec la même référence.
 
 **Un bon score garantit-il que l'agent est parfait ?**
-Non, mais il réduit fortement le risque. À titre de repère : 8 ou plus est un bon résultat ; entre 5 et 8, il convient d'examiner les scénarios les moins bien notés ; en dessous de 5, révisez la configuration avant de publier.
+Non, mais il réduit fortement le risque. À titre de repère : 8 ou plus est un bon résultat ; entre 5 et 8, il convient d'examiner les scénarios les moins bien notés ; en dessous de 5, révisez la configuration avant de le laisser s'occuper des clients seul.
 
 **Qui peut utiliser ces outils ?**
 Seul le rôle **administrateur**. Si vous ne voyez pas ces options dans le menu et que vous en avez besoin, demandez l'accès à l'administrateur de votre compte. Des questions ? Écrivez-nous sur https://parallly-chat.cloud/support

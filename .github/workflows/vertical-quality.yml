@@ -197,6 +197,9 @@ jobs:
           apps/api/src/modules/push/push.service.spec.ts
           apps/api/src/modules/push/push.service.expo-bounds.spec.ts
           apps/api/src/modules/persona/onboarding-persona-resolver.spec.ts
+          apps/api/src/modules/persona/setup-wizard-non-destructive.spec.ts
+          apps/api/src/modules/verticals/recipe-lint.spec.ts
+          apps/api/src/modules/copilot/assistant-kb-contract.spec.ts
           apps/api/src/modules/automation/automation.service.spec.ts
           --json --outputFile artifacts/vertical-focal-jest.json
       - name: Convert API focal evidence to JUnit
@@ -312,6 +315,14 @@ jobs:
           apps/dashboard/src/lib/integration-outbox-review.contract.spec.ts
           apps/dashboard/src/lib/signup-attribution.spec.ts
           apps/dashboard/src/components/appointments/contact-selection.spec.ts
+          apps/dashboard/src/app/admin/setup-wizard/setup-recipe.spec.ts
+          apps/dashboard/src/app/admin/setup-wizard/setup-wizard-channel-decision.a11y.spec.tsx
+          apps/dashboard/src/app/admin/setup-wizard/_components/agent-test-chat.a11y.spec.tsx
+          apps/dashboard/src/app/admin/setup-wizard/_components/recipe-setup-cards.a11y.spec.tsx
+          apps/dashboard/src/app/admin/setup-wizard/_components/optional-setup-paths.a11y.spec.tsx
+          apps/dashboard/src/app/admin/agent/_components/agent-guide-cards.a11y.spec.tsx
+          apps/dashboard/src/app/admin/agent/quality/owner-health-summary.spec.ts
+          apps/dashboard/src/app/admin/agent/quality/weekly-summary-choice.a11y.spec.tsx
           --json --outputFile artifacts/dashboard-vertical-jest.json
       - name: Mobile vertical regression
         run: npm test --prefix apps/mobile -- --runInBand

@@ -30,18 +30,18 @@ import { staticToolsForAgentConfig } from '../conversations/agent-tool-registry'
  * propio plan registra.
  */
 
-const CANONICAL_PROFILE_COUNT = 76;
+const CANONICAL_PROFILE_COUNT = 80;
 
 describe('conteos canónicos', () => {
-    it('hay 20 verticales, 76 configuraciones canónicas y 81 ids resolubles', () => {
+    it('hay 20 verticales, 80 configuraciones canónicas y 85 ids resolubles', () => {
         expect(VERTICAL_MANIFEST_INDUSTRIES).toHaveLength(20);
 
         const ids = listCanonicalSubtypeExperienceProfileIds();
         expect(ids).toHaveLength(CANONICAL_PROFILE_COUNT);
-        expect(listSubtypeExperienceProfileIds()).toHaveLength(81);
+        expect(listSubtypeExperienceProfileIds()).toHaveLength(85);
 
         const withSubtype = ids.filter(id => !id.endsWith('/__none__'));
-        expect(withSubtype).toHaveLength(75);
+        expect(withSubtype).toHaveLength(79);
         expect(ids.filter(id => id.endsWith('/__none__'))).toEqual(['otro/__none__']);
     });
 

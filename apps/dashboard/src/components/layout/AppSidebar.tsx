@@ -78,6 +78,7 @@ import {
   LayoutDashboard,
   LifeBuoy,
   Lightbulb,
+  Link2,
   Lock,
   Megaphone,
   MessageSquare,
@@ -409,6 +410,8 @@ const platformSections: NavSectionDef[] = [
       { labelKey: "billingOps", href: "/admin/billing-ops", icon: CreditCard, accent: "text-emerald-500 dark:text-emerald-400" },
       { labelKey: "plans", href: "/admin/plans", icon: Layers },
       { labelKey: "coupons", href: "/admin/coupons", icon: Tag },
+      // What the platform pays on every account's public link (D19).
+      { labelKey: "demoAllowance", href: "/admin/demo-allowance", icon: Link2 },
       { labelKey: "smsPackages", href: "/admin/sms-packages", icon: MessageSquare, accent: "text-indigo-500 dark:text-indigo-400" },
     ],
   },

@@ -193,13 +193,18 @@ const DISTRACTORS = 300;
         const answerable = RETRIEVAL_CASES.filter(row => row.expected.kind === 'answer');
         let empty = 0;
         let failed = 0;
+        const errors: string[] = [];
         const work = Array.from({ length: CONCURRENT_SEARCHERS * 2 }, (_, worker) => {
             const question = answerable[worker % answerable.length];
             return metrics.time('search_saturated', async () => {
                 try {
                     const hits = await search(tenant.tenantId, question.query, question.language);
                     if (!hits.length) empty += 1;
-                } catch { failed += 1; }
+                } catch (error) {
+                    failed += 1;
+                    const failure = error as { code?: string; message?: string };
+                    errors.push(`${failure.code ?? 'unknown'}: ${failure.message ?? String(error)}`);
+                }
             });
         });
         await Promise.all(work);
@@ -207,7 +212,7 @@ const DISTRACTORS = 300;
         // load it must never be how a failure presents itself, because a
         // customer cannot tell "we have nothing on that" from "the database was
         // busy" — and neither can the agent.
-        expect({ empty, failed }).toEqual({ empty: 0, failed: 0 });
+        expect({ empty, failed, errors }).toEqual({ empty: 0, failed: 0, errors: [] });
         metrics.count('saturated_searches', CONCURRENT_SEARCHERS * 2);
     });
 

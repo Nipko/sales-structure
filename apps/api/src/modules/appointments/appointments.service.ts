@@ -1,4 +1,5 @@
 import type { EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
+import { servicePriceStatus } from './service-price-status';
 import { evaluationNamespaceTimezone } from '../simulation/eval-temporal-context';
 import { assertServedAgentAuthority, type ServedAgentAuthority } from '../persona/served-agent-authority';
 import { Injectable, Logger, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
@@ -402,7 +403,10 @@ export class AppointmentsService {
                 // cliente paga. El estado se pasa explícito porque el default
                 // de la columna es 'pending', que significa otra cosa —
                 // "agendada, falta que el negocio la confirme"— y sí ocupa.
-                policy = resolvePaymentPolicy(service, service?.price);
+                // Same projection as the frozen terms: an unconfirmed price is 0
+                // here too, so status/hold/amount_due can never disagree with what
+                // the customer was told (D10).
+                policy = resolvePaymentPolicy(service, servicePriceStatus(service as { price_status?: unknown }) === 'confirmed' ? service?.price : 0);
                 currency = String(service.currency || 'COP');
                 const status = policy.requiresPayment ? PENDING_PAYMENT_STATUS
                     : execution.confirmWithoutPayment ? 'confirmed' : 'pending';

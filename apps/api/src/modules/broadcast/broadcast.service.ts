@@ -453,8 +453,8 @@ export class BroadcastService {
             // costs a month of unbounded sending nobody notices.
             throw new BadRequestException(
                 'Este número de WhatsApp no tiene zona horaria de facturación configurada, '
-                + 'así que no se puede fijar el tope de gasto de la campaña. Configurala en '
-                + 'Canales y volvé a lanzarla.');
+                + 'así que no se puede fijar el tope de gasto de la campaña. Configúrala en '
+                + 'Canales y vuelve a lanzarla.');
         }
         return month;
     }

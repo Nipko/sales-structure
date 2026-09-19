@@ -1050,7 +1050,7 @@ producer({
             authority: durable('the `nurturing_followup` policy is revalidated inside the transaction '
                 + 'that grants the lease, and its revision carries the time of the last INBOUND '
                 + 'message — so a customer answering between preparing the nudge and sending it '
-                + 'suppresses it. "¿Seguís ahí?" one minute after somebody wrote is the thing this '
+                + 'suppresses it. "¿Sigues ahí?" one minute after somebody wrote is the thing this '
                 + 'producer most needed stopping'),
             idempotency: durable('the origin is derived from the conversation and which attempt this '
                 + 'is, so a second cron pass finds the same row. `hasNurturingSentToday` stopped '

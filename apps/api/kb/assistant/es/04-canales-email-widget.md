@@ -3,7 +3,7 @@ id: canales-email-widget
 title: "Chat web y estado de la integración de Email"
 routes: ["/admin/channels", "/admin/channels/email", "/admin/settings/integrations/web-chat", "/admin/settings/integrations/web-chat/triggers"]
 roles: ["tenant_admin"]
-keywords: ["email", "correo", "estado del canal email", "widget", "chat web", "web chat", "chat en mi sitio", "chat en mi pagina", "burbuja de chat", "codigo de insercion", "instalar widget", "triggers", "mensaje de bienvenida", "formulario pre-chat"]
+keywords: ["email", "correo", "estado del canal email", "widget", "chat web", "web chat", "chat en mi sitio", "chat en mi pagina", "burbuja de chat", "codigo de insercion", "instalar widget", "triggers", "mensaje de bienvenida", "formulario pre-chat", "enlace de tu agente", "codigo de dos lineas"]
 ---
 
 # Chat web y estado de la integración de Email
@@ -21,6 +21,17 @@ La pantalla indica si el chat web y los disparadores proactivos están habilitad
 Email existe como adaptador técnico y entrada interna para integraciones administradas, pero **todavía no es un canal conversacional certificado ni configurable en autoservicio**. La página **Canales → Email** no cuenta actualmente con el contrato de API necesario para guardar una configuración por tenant. No ingreses credenciales ni asumas que esa pantalla deja el canal operativo.
 
 Si tu organización necesita integrar correo, solicita una evaluación técnica a soporte. Hasta que el flujo sea implementado y certificado de extremo a extremo, Parallly Assist no debe prometer conexión, envío, recepción en el inbox ni respuestas automáticas por Email.
+
+### El enlace de tu agente y el chat web de tu página
+
+**El enlace de tu agente** (la página pública que ves en el asistente de configuración, con dirección que empieza en `/w/` seguida de un identificador) existe desde el día 0, antes de conectar ningún canal. Lo que es depende de tu plan:
+
+- **Si tu plan no incluye el chat web**, sirve para **probar a tu agente y mostrárselo a alguien**: la plataforma paga sus mensajes hasta un cupo por cuenta, cada página tiene un tope de mensajes por día y la conversación nunca pasa a una persona. La plataforma puede pausar este enlace de prueba: mientras está en pausa, o cuando se agota el cupo, tu agente no responde por él.
+- **Si tu plan incluye el chat web**, ese mismo enlace es un **canal real**: atiende a tus clientes con la cuota de tu plan, sin el tope diario de la prueba, y puede pasarle la conversación a tu equipo cuando el cliente pide una persona. Entonces la tarjeta del enlace suma **Ponerlo en mi bio** y **Ponerlo en mi página web**.
+
+En los dos casos las conversaciones que recibe aparecen en tu bandeja de entrada como cualquier conversación de chat web, y el enlace no cuenta como canal conectado: no se conecta ni se desconecta.
+
+El **chat web que instalas en tu sitio** (el widget de esta pantalla) sí cuenta como canal conectado y usa la función de chat web de tu plan. Para ponerlo en tu sitio, copia sus dos líneas con **Copiar código** y envíaselas a quien administra tu página; **Ponerlo en mi página web**, en la tarjeta del enlace, te trae a esta misma pantalla.
 
 ---
 

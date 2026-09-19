@@ -47,12 +47,35 @@ export function originHostname(origin: string | undefined): string | null {
  * A public widget request must always carry a syntactically valid browser Origin.
  * An empty allowlist means "any valid web origin", never "missing Origin".
  */
+/**
+ * The dashboard host serves "El enlace de {Nombre}" (/w/{widgetId}), so it is
+ * admitted for THAT widget whatever the owner put in allowed_domains.
+ *
+ * Only for that one. Admitting it for every widget would turn a site widget
+ * restricted to shop.example.com into a page anyone can open — or iframe —
+ * from the platform's own origin. A missing Origin is still rejected: the rule
+ * widens the allowlist, never the requirement of a browser origin.
+ */
+export function platformWidgetHostnames(env: NodeJS.ProcessEnv = process.env): string[] {
+    const hosts = new Set<string>(['admin.parallly-chat.cloud']);
+    // Only outside production: in production the dashboard is never on localhost,
+    // and admitting it there would let any local page embed any public link.
+    if ((env.NODE_ENV || 'development') !== 'production') hosts.add('localhost');
+    for (const key of ['DASHBOARD_URL', 'NEXT_PUBLIC_DASHBOARD_URL']) {
+        const host = configuredHostname(env[key] || '');
+        if (host) hosts.add(host);
+    }
+    return [...hosts];
+}
+
 export function isWidgetOriginAllowed(
     origin: string | undefined,
     allowedDomains: unknown,
+    options?: { platformHosted?: boolean },
 ): boolean {
     const hostname = originHostname(origin);
     if (!hostname) return false;
+    if (options?.platformHosted === true && platformWidgetHostnames().includes(hostname)) return true;
 
     const domains = Array.isArray(allowedDomains)
         ? allowedDomains

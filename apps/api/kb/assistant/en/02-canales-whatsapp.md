@@ -3,7 +3,7 @@ id: canales-whatsapp
 title: "Connect WhatsApp"
 routes: ["/admin/channels", "/admin/channels/whatsapp", "/admin/channels/whatsapp/templates"]
 roles: ["tenant_admin"]
-keywords: ["whatsapp", "connect whatsapp", "whatsapp number", "whatsapp business", "coexistence", "whatsapp app", "migrate number", "templates", "whatsapp template", "sync chats", "chat history", "qr code", "verification", "meta", "facebook", "disconnect whatsapp", "24 hour window", "multiple accounts", "second number", "needs reauthorisation", "popup blocked", "connection with warnings", "business not verified", "meta charges", "whatsapp cost", "payment method", "card on meta", "service messages", "free service messages", "spend ceiling", "sending paused", "stopped replying", "1 october", "meta invoice", "who charges"]
+keywords: ["whatsapp", "connect whatsapp", "whatsapp number", "whatsapp business", "coexistence", "whatsapp app", "migrate number", "templates", "whatsapp template", "sync chats", "chat history", "qr code", "verification", "meta", "facebook", "disconnect whatsapp", "24 hour window", "multiple accounts", "second number", "needs reauthorisation", "popup blocked", "connection with warnings", "business not verified", "meta charges", "whatsapp cost", "payment method", "card on meta", "service messages", "free service messages", "spend ceiling", "sending paused", "stopped replying", "1 october", "meta invoice", "who charges", "where does your number live", "which option is mine", "number with another provider", "billing time zone", "test your agent", "connected but not answering", "payment method in meta", "check with meta"]
 ---
 
 # Connect WhatsApp
@@ -21,18 +21,22 @@ WhatsApp is Parallly's main channel: once connected, your AI agent starts receiv
 
 1. In the sidebar, under **Administration**, go to **Channels**.
 2. On the **WhatsApp** card, click **Connect**.
-3. Before the routes appear you get **"Before you connect WhatsApp"**: a short list with the number, access to its verification code, and the Facebook account. Tick the three items and click **Continue**; until you do, the button reads **Confirm the items to continue**. It is a reminder, not a validation: nothing about your data is checked there. The same step appears in the **Meet your agent** wizard and on the **WhatsApp** screen.
-4. You'll see the **"Choose your connection method"** screen with three routes:
-   - **WhatsApp Business App** (tagged **Coexistence**, marked **Recommended**, ~20 min) — if you already use the WhatsApp Business app on your phone and want to keep it along with your chats. This is the route we suggest; see the next section.
-   - **New number** (~5 min) — for a number that has never been used on WhatsApp. This is the fastest path when you are starting a new line.
-   - **Migrate from another provider** (~15 min) — if you already use WhatsApp with another platform (Wati, 360dialog, Twilio, etc.) and want to bring your number over with zero downtime.
-5. Pick your method and click **Connect with Facebook**. A Meta window opens.
+3. Before any window opens, we ask you a single question: **"Where does your number live today?"**. Each answer needs its own thing:
+   - **On the WhatsApp Business app on a phone** — coexistence: the number stays on your phone, you scan a QR code from the app, and you have to open it at least every 14 days to keep the connection alive.
+   - **On my regular WhatsApp** — you move it to WhatsApp Business first (free, keeps your number and chats), then come back to this screen.
+   - **A new number, or one with no WhatsApp** — a direct sign-up with Meta: you need the number, its verification code, and a Facebook account.
+   - **Another provider already has it** — a number can only be with one provider at a time: ask your current provider to turn off two-step verification on the number; that permission is theirs to give and usually takes anywhere from a few hours to a few days.
+   - **I don't have it at hand right now** — it gets noted and we remind you on **Home**.
+
+   The first answer is the coexistence route, covered in full in the next section. The last two do not open a Meta window yet: meanwhile your agent keeps answering on your agent's link.
+4. When you answer, you see how long it takes **you** to finish that route, and, when the answer opens a route, its summary: the essentials first, with the full detail under **"See more details"**. The warnings that matter — the 24-hour window to authorize history, the two-step PIN before migrating — stay visible at all times, never hidden there. Click **Connect with Facebook** to open the Meta window.
+5. While the window is open, on-screen text tells you what to do there; if you get stuck or change your mind, the **Cancel and go back** link returns you to this screen without losing what you already answered.
 6. Log in with your Facebook account and select (or create) your Meta Business portfolio.
 7. Select or add your WhatsApp Business account and phone number.
 8. Verify the number with a **code sent by SMS or voice call** and approve the permissions.
-9. You'll see the progress on screen: **Authorization → Connecting number → Activating WhatsApp**. When it finishes, "Connection successful!" appears and your agent is already answering on that number.
+9. You'll see the progress on screen: **Authorization → Connecting number → Activating WhatsApp**, until "Connection successful!". Connected is not yet answering: first check the time zone and the payment method (see **Before your agent answers**, below).
 
-> Tip: as soon as you connect, the screen shows the **"Test your agent"** card with your number. Send it a WhatsApp message from another phone and watch it reply.
+> Tip: after you connect, the **Test your agent** card appears with your number: message it from another phone and watch it reply. If the time zone still needs confirming, the wizard reminds you on that card instead of offering **Open WhatsApp**. If it doesn't answer, check three things: the billing time zone is confirmed, your WhatsApp account has a payment method in Meta, and your agent isn't paused.
 
 ### If the Meta window does not appear
 
@@ -59,14 +63,25 @@ common ones:
 - **Webhook subscription failed** — Parallly was not subscribed to that number's incoming
   messages, so the agent may receive nothing. Retry the connection and, if it happens
   again, contact support.
-- **Number registration still pending** — Meta finished registering the number later than
-  the rest of the connection. It usually resolves itself within minutes; come back to the
-  screen and confirm the number went active.
+- **Number registration still pending** — Meta did not finish registering the number to
+  send messages. Until it is complete no message can go out from it, so your agent can't
+  answer on that number, and it won't resolve by itself: write to
+  [support](https://parallly-chat.cloud/support) and we'll finish it with you.
 - **We could not fetch your templates** — template synchronisation failed. The connection
   still works; sync them again from **Templates** whenever you want.
 
 Read the warning before you consider setup finished: the amber card means "connected, but
-check this", not "all set".
+check this", not "all set". If this is your first channel, the default agent gets assigned to
+it and starts answering there as soon as nothing stops it (see the next section).
+
+### Before your agent answers: time zone and payment method
+
+A connected number does not mean your agent can already answer there. Two things that don't depend on the connection decide whether its replies go out, and when you connect from the **Meet your agent** wizard the screen shows them in this order:
+
+1. **The number's billing time zone.** Meta dates every charge in your WhatsApp account's time zone and, while the number has none, no reply from your agent goes out there. If it is missing, the screen asks for it with your business's time zone already selected: if it is the same, confirm it with one tap. To confirm it, your email must be verified.
+2. **The payment method in Meta.** The **Payment method in Meta** card checks it with Meta and tells you whether it is done, missing, refused because Meta won't charge your account, or couldn't be confirmed. If needed, **Add a payment method in Meta** opens Meta's tools and, once you've added it, **I've added it: check again** asks again.
+
+Only when the time zone is confirmed and the payment method doesn't stop delivery does the screen say **Connected!** and that your agent already answers there. None of this holds you back: you can press **Continue** and finish later in **Channels → WhatsApp**, where each number shows its **WhatsApp billing time zone** and the **Funding your WhatsApp account** card has **Check with Meta**. If any of this stops replies, **Agent health** tells you too.
 
 ## Coexistence mode: keep your WhatsApp Business app
 
@@ -100,13 +115,13 @@ Requirements: an up-to-date WhatsApp Business app (version 2.24.17 or higher), a
 
 In **Channels**, each card shows the connection status:
 
-- **Connected** — the number is active and the agent is replying.
+- **Connected** — the number is active. For the agent to reply it also needs a confirmed billing time zone and, from October 1, 2026, a payment method on your WhatsApp Business account in Meta.
 - **Connected** + **Reconnect: credentials expired** — the card shows both badges at once:
   the usual green one and, next to it, a red one. The connection exists, but the permission
   Parallly uses to send is expired, revoked, in error, or gone. The number can still
   receive messages and replies do not go out until you authorise again from **Connect**.
-  **Agent health** reports it as an affected operational connection and treats it as a
-  critical agent action.
+  **Agent health** reports it under **Operational channel connection** and counts it as an
+  important thing to fix for the agent.
 - **Disconnected** — there's no connection yet, or it was disconnected.
 
 When you open **WhatsApp** with a connected number, you'll see the **Active Channel** card with the **Number**, the **Verified name**, and the **Quality** (the rating Meta gives your number based on how customers receive your messages; keeping it "high" gets you better sending limits). You'll also find the **Business Profile** card with the **Manage profile** button to edit the information your customers see on WhatsApp.
@@ -211,6 +226,9 @@ Each connection is independent: it has its own AI agent (you assign it in the ag
 **Can I keep using WhatsApp Business on my phone?**
 Yes, with **Coexistence** mode: the AI replies from Parallly and you keep the app. Just remember to open it at least every 14 days.
 
+**How do I know which of the five options is mine?**
+Look at where you answer your customers today: if it's the green WhatsApp Business app on your phone, that's the first option, and if it's your regular WhatsApp, it's the second. If the number is new or doesn't have WhatsApp yet, or if another platform answers on it today, those are the third and fourth options; and if you simply don't have the number at hand right now, the fifth lets you pick it up later. When in doubt, choose whichever describes where the number lives **today**, not where you plan to take it: the next screen shows you exactly what you need before you fully decide.
+
 **Do I lose my previous chats when connecting?**
 No, if you connect via coexistence: up to 6 months of text chats and your contacts get synced. If you migrate from another provider, that provider's history is not transferred.
 
@@ -241,4 +259,4 @@ Not today. The per-service-message charge starting on 1 October 2026 is WhatsApp
 Still have questions? Write to us at [support](https://parallly-chat.cloud/support).
 
 
-For existing accounts: open https://business.facebook.com/wa/manage/home/, select the WABA listed under Channels → WhatsApp and add a payment method in Overview / payments. Do not reconnect the numbers. Return to the dashboard and select Check with Meta. Unknown does not mean no card; an attached method does not guarantee funds. Meta’s detailed policy preserves the monthly service allowance without funding and may block subsequent deliveries. Configure payment before exhausting that allowance.
+For existing accounts: open https://business.facebook.com/wa/manage/home/, select the WABA listed under Channels → WhatsApp and add a payment method in Overview / payments. Do not reconnect the numbers. Return to the dashboard and select Check with Meta. Unknown does not mean no card; an attached method does not guarantee funds. Meta states that if the account has no payment method on file by September 30, 2026, it stops delivering service messages from October 1. It does not publish that the 1,000 free messages of the month keep going out without a card, so do not count on it: add the payment method before September 30.

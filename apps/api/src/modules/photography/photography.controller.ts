@@ -56,7 +56,7 @@ export class PhotographyController {
         @Body() body: any,
     ) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
-        const data = await this.service.create(schemaName, body);
+        const data = await this.service.create(schemaName, body, {}, tenantId);
         return { success: true, data };
     }
 
@@ -69,7 +69,7 @@ export class PhotographyController {
         @Body() body: any,
     ) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
-        const data = await this.service.update(schemaName, sessionId, body);
+        const data = await this.service.update(schemaName, sessionId, body, tenantId);
         return { success: true, data };
     }
 

@@ -699,13 +699,24 @@ export const api = {
 
     // markCompleted:false guarda el agente sin cerrar el asistente (autoguardado del
     // paso "Personalizar", para que el chat de prueba use el agente real).
-    applySetupTemplate: (tenantId: string, data: { templateId: string; customizations?: any; selectedChannels?: string[]; markCompleted?: boolean }) =>
+    applySetupTemplate: (tenantId: string, data: { templateId?: string; customizations?: any; selectedChannels?: string[]; deferredChannel?: string; channelConnectSkippedAt?: string; stage?: string; stageOnly?: boolean; markCompleted?: boolean }) =>
         apiPost(`/persona/${tenantId}/setup-wizard`, data),
     skipSetupWizard: (tenantId: string) =>
         apiPost(`/persona/${tenantId}/setup-wizard/skip`, {}),
 
     getSetupStatus: (tenantId: string) =>
         apiGet(`/persona/${tenantId}/setup-status`),
+    setDemoLinkUsageMode: (tenantId: string, usageMode: 'trial' | 'operational') =>
+        apiPost(`/persona/${tenantId}/demo-link/usage-mode`, { usageMode }),
+    recordOnboardingEvents: (tenantId: string, data: {
+        sessionId: string;
+        events: Array<{
+            event: 'wizard_step_viewed' | 'wizard_step_advanced' | 'channel_connect_started' | 'channel_connect_abandoned' | 'channel_connect_later';
+            step?: 'agent' | 'connect' | 'done' | 'business' | 'test' | 'channel' | 'first_conversations';
+            channelType?: 'whatsapp' | 'instagram' | 'messenger' | 'telegram' | 'web_widget';
+            detail?: string;
+        }>;
+    }) => apiPost(`/persona/${tenantId}/onboarding-events`, data),
 
     // --- Tenants ---
     // Default limit raised from the backend's 20 so super admin views and the
@@ -913,6 +924,9 @@ export const api = {
     getAgent: (tenantId: string, agentId: string) => apiGet(`/persona/${tenantId}/agents/${agentId}`),
     getAgentConfiguration: (tenantId: string, agentId: string) => apiGet<AgentConfigurationWorkspace>(`/persona/${tenantId}/agents/${agentId}/configuration`),
     saveAgentDraft: (tenantId: string, agentId: string, data: SaveAgentDraftRequest) => apiPut<SavedAgentDraft>(`/persona/${tenantId}/agents/${agentId}/configuration/draft`, data),
+    /** `immediate` (default): saves reach the serving agent at once. `reviewed`: saves are drafts that go through review and publication. */
+    getAgentReviewMode: (tenantId: string) => apiGet<{ mode: "immediate" | "reviewed" }>(`/persona/${tenantId}/agent-review-mode`),
+    setAgentReviewMode: (tenantId: string, mode: "immediate" | "reviewed") => apiPost<{ mode: string }>(`/persona/${tenantId}/agent-review-mode`, { mode }),
     discardAgentDraft: (tenantId: string, agentId: string, data: DiscardAgentDraftRequest) => apiPost<AgentConfigurationWorkspace>(`/persona/${tenantId}/agents/${agentId}/configuration/draft/discard`, data),
     createAgent: (tenantId: string, data: any) => apiPost(`/persona/${tenantId}/agents`, data),
     updateAgent: (tenantId: string, agentId: string, data: any) => apiPut(`/persona/${tenantId}/agents/${agentId}`, data),
@@ -1173,6 +1187,12 @@ export const api = {
         apiPost("/channels/messenger/oauth-connect", { userAccessToken }),
     instagramOAuthConnect: (code: string) =>
         apiPost("/channels/instagram/oauth-connect", { code }),
+    // The envelope, not `api.fetch`: a refused key comes back as
+    // `errorCode: 'invalid_bot_key'` (or `email_not_verified`,
+    // `channel_not_available`, `telegram_unavailable`) for the panel to build
+    // its card from, where `api.fetch` kept only the server's sentence.
+    connectTelegram: (botToken: string) =>
+        apiPost<{ botUsername?: string; botName?: string }>("/channels/telegram/connect", { botToken }),
 
     // --- Users ---
     getUsers: () => apiGet("/auth/users"),
@@ -2264,6 +2284,7 @@ export const api = {
         message: string;
         channelType?: 'whatsapp' | 'instagram' | 'messenger' | 'telegram' | 'web_widget';
         conversationHistory?: Array<{ role: string; content: string }>;
+        options?: { disableTools?: boolean; surface?: 'setup_wizard' | 'agent_editor' };
     }) =>
         apiPost<any>(`/agent-test/${tenantId}/${agentId}`, data),
 
@@ -2849,6 +2870,9 @@ function readFieldErrors(json: any): ApiFieldError[] | undefined {
     const raw = json?.fields;
     if (!Array.isArray(raw)) return undefined;
     const fields = raw
+        // `agent_invalid` sends its fields as plain paths ("behavior.rules");
+        // `validation_failed` sends objects. Both are field lists.
+        .map((entry: any) => (typeof entry === "string" ? { path: entry } : entry))
         .filter((entry: any) => entry && typeof entry === "object" && typeof entry.path === "string")
         .slice(0, 50)
         .map((entry: any) => ({

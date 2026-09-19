@@ -15,7 +15,13 @@ import { useTenant } from "@/contexts/TenantContext";
 import { useRole } from "@/hooks/useRole";
 import { api } from "@/lib/api";
 import { guidedTourAnchorId } from "@/lib/guided-tours";
-import { essentialSetupItemsFromAssessment, type EssentialSetupItem } from "@/lib/initial-setup";
+import {
+  essentialSetupItemsFromAssessment,
+  withLeadChannel,
+  type EssentialSetupItem,
+  type FirstChannelLead,
+} from "@/lib/initial-setup";
+import { channelStepDeferral, type SetupChannelDeferral } from "@/lib/home-day-zero";
 import { canAccessDashboardNavigationPath } from "@/lib/navigation-access";
 import { QUALITY_HEALTH_REFRESH_EVENT } from "@/lib/quality-health-events";
 
@@ -26,15 +32,50 @@ import { QUALITY_HEALTH_REFRESH_EVENT } from "@/lib/quality-health-events";
  * the screen; **Mostrarme dónde** opens the same screen and walks them to the
  * exact control. The second one exists because "go to Settings → Business
  * hours" is a sentence a hairdresser has no reason to be able to follow.
+ *
+ * It is also the ONLY way back to a channel the owner left for later. Home
+ * used to add an indigo "Retomar" banner for that, pointing at the wizard,
+ * while this card's channel step pointed at the channel screen: the same
+ * sentence twice, with two destinations. The deferral now lives here, on the
+ * step it is about — "Continuar donde quedaste", with the reason the owner
+ * gave when she answered the WhatsApp question, because that screen promised
+ * "lo dejamos anotado".
+ *
+ * And the channel step names ONE channel: the one the server's step carries,
+ * which is the first of the order the setup wizard saved. "Listo" says
+ * "{Instagram} queda pendiente y te lo recordamos en Inicio"; this card is
+ * that reminder, so on an account with nothing connected it says "Conecta
+ * Instagram" and opens Instagram — the same channel "Salud de agentes" and
+ * Assist name.
+ *
+ * "Recorrido: retomar la configuración" (`resume_setup_wizard`) starts on
+ * this card's next step (`setup-next`): that element exists whenever the
+ * card has a step left, with or without a deferral, and with one it holds
+ * the "Continuar donde quedaste" link.
  */
 export default function InitialSetupCard({
   onProgress,
+  channelDeferral = null,
+  channelLead = null,
 }: {
   /** Reports completion upward so `/admin` can decide which guide to show. */
   onProgress?: (progress: { total: number; completed: number }) => void;
+  /**
+   * The channel was left for later, and why. Only applied to a channel step
+   * that is still pending: a connected channel has nothing to resume.
+   */
+  channelDeferral?: SetupChannelDeferral | null;
+  /**
+   * Set only for an account known to have no connection at all: the channel
+   * step then names the server's channel (or `fallback`, when the server named
+   * none). `null` = not that account, or not known: the step keeps the
+   * server's own wording and destination.
+   */
+  channelLead?: FirstChannelLead | null;
 } = {}) {
   const t = useTranslations("qualityHealth.setup");
   const tq = useTranslations("agentQuality");
+  const tWizard = useTranslations("setupWizard");
   const { verticalConfig } = useAuth();
   const { activeTenantId: tenantId } = useTenant();
   const { role, impersonating } = useRole();
@@ -83,6 +124,9 @@ export default function InitialSetupCard({
     return () => { loadRevision.current += 1; window.removeEventListener(QUALITY_HEALTH_REFRESH_EVENT, refresh); };
   }, [load]);
 
+  // Applied at render, not in `load`: the lead arrives with its own read and
+  // must not trigger a second assessment request.
+  const shownItems = items.map((item) => withLeadChannel(item, channelLead, canAccess));
   const completed = items.filter((item) => item.done).length;
 
   // Held in a ref so an inline callback from the parent cannot turn this into a
@@ -104,7 +148,7 @@ export default function InitialSetupCard({
   if (!tenantId || !eligible) return null;
   if (!loading && !error && (items.length === 0 || completed === items.length)) return null;
 
-  const firstPending = items.find((item) => !item.done);
+  const firstPending = shownItems.find((item) => !item.done);
 
   return (
     <section
@@ -135,24 +179,34 @@ export default function InitialSetupCard({
               </button>
             </div>
           ) : (
-            <ol className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-              {items.map((item) => {
+            <ol className="mt-4 grid gap-2">
+              {shownItems.map((item) => {
                 const isNext = firstPending?.key === item.key;
                 const tour = item.tourId ? getGuidedTour(item.tourId) : null;
                 const canShowMe = Boolean(tour) && canRoleRunGuidedTour(tour!, role);
+                // Said on the step whose channel it is about (`channelStepDeferral`).
+                const deferral = item.key === "channel" && !item.done
+                  ? channelStepDeferral(item.channelType, channelDeferral)
+                  : null;
                 return (
                   <li
                     key={item.key}
-                    className="flex min-h-14 flex-col gap-2 rounded-lg border border-indigo-100 bg-white/90 p-3 dark:border-indigo-500/15 dark:bg-neutral-900/60 sm:flex-row sm:items-center sm:gap-2.5"
+                    className={isNext
+                      ? "flex min-h-14 flex-col gap-2 rounded-lg border-2 border-indigo-400 bg-white p-3 shadow-sm dark:border-indigo-400/60 dark:bg-neutral-900 sm:flex-row sm:items-center sm:gap-2.5"
+                      : "flex min-h-14 flex-col gap-2 rounded-lg border border-indigo-100 bg-white/90 p-3 dark:border-indigo-500/15 dark:bg-neutral-900/60 sm:flex-row sm:items-center sm:gap-2.5"}
                   >
                     <div className="flex min-w-0 flex-1 items-center gap-2.5">
                       {item.done && !item.notApplicable
                         ? <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white"><Check size={14} aria-hidden="true" /></span>
                         : <Circle size={22} className="shrink-0 text-indigo-300 dark:text-indigo-500" aria-hidden="true" />}
                       <span className="min-w-0 flex-1 text-sm font-medium text-neutral-800 dark:text-neutral-200">
-                        {t(item.labelKey)}
+                        {isNext && <span className="mr-2 inline-flex rounded-full bg-indigo-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">{t("nextBadge")}</span>}
+                        {item.leadChannel
+                          ? t(item.labelKey, { channel: tWizard(`connect.channel_${item.leadChannel}`) })
+                          : t(item.labelKey)}
                         {item.verification === "unavailable" && <span className="block text-xs font-normal">{t("verificationUnavailable")}</span>}
                         {item.notApplicable && <span className="block text-xs font-normal">{tq("checkStatuses.not_applicable")}</span>}
+                        {deferral && <span className="block text-xs font-normal">{t(DEFERRAL_REASON_KEYS[deferral.reason])}</span>}
                         {item.key !== 'channel' && item.pendingCheck && !item.verification && tq.has(`checks.${item.pendingCheck.code}`)
                           && <span className="block text-xs font-normal">{t("pendingReason", { check: tq(`checks.${item.pendingCheck.code}`) })}</span>}
                       </span>
@@ -164,8 +218,11 @@ export default function InitialSetupCard({
                       >
                         {item.verification ? <button type="button" onClick={() => void load()} className="inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-xs font-semibold text-indigo-700 dark:text-indigo-300">
                           <RotateCw size={12} aria-hidden="true" /> {t("retry")}
-                        </button> : <Link href={item.href} className="inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:text-indigo-300 dark:hover:bg-indigo-500/10">
-                          {t("continue")} <ArrowRight size={12} aria-hidden="true" />
+                        </button> : <Link
+                          href={deferral?.href ?? item.href}
+                          className="inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:text-indigo-300 dark:hover:bg-indigo-500/10"
+                        >
+                          {t(deferral ? "resume" : "continue")} <ArrowRight size={12} aria-hidden="true" />
                         </Link>}
                         {canShowMe && !item.verification && (
                           <button
@@ -188,3 +245,10 @@ export default function InitialSetupCard({
     </section>
   );
 }
+
+/** What the channel step says about a deferral, per reason. */
+const DEFERRAL_REASON_KEYS: Record<SetupChannelDeferral["reason"], string> = {
+  later: "deferred.later",
+  other_provider: "deferred.otherProvider",
+  not_at_hand: "deferred.notAtHand",
+};

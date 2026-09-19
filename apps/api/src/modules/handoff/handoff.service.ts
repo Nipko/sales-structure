@@ -233,8 +233,17 @@ export class HandoffService {
         }
 
         // 6. Custom triggers from persona config
+        //
+        // Both sides are accent-stripped. The message already was; the trigger
+        // was not, so a trigger WITH an accent could never fire — the owner
+        // typed "electrocución" in the editor, the message arrived folded to
+        // "electrocucion", and the two never met. The tenant had no way to know:
+        // the rule was there, on screen, doing nothing. Folding both sides only
+        // ever adds matches, and it is what the seeded triggers already assume
+        // by being written without accents.
         for (const trigger of triggers) {
-            if (text.includes(trigger.toLowerCase())) {
+            const needle = normalizeForIntent(trigger);
+            if (needle && text.includes(needle)) {
                 return `custom_trigger:${trigger}`;
             }
         }

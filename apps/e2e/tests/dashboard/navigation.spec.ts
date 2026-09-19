@@ -219,6 +219,14 @@ async function bootstrapTenantAdmin(
       return;
     }
 
+    if (method === "POST" && path === "/auth/me") {
+      await fulfillSuccess(route, {
+        ...tenantAdmin,
+        emailVerified: options.emailVerified ?? true,
+      });
+      return;
+    }
+
     if (
       method === "POST" &&
       path === `/persona/${TENANT_ID}/onboarding-events`

@@ -36,7 +36,14 @@ export function receiptMoney(amount: number, currency?: string | null): string {
         }).format(amount);
     }
     try {
-        return new Intl.NumberFormat('es-CO', { style: 'currency', currency: code }).format(amount);
+        const options = new Intl.NumberFormat('es-CO', { style: 'currency', currency: code }).resolvedOptions();
+        // Catalog amounts are stored with two decimal places. Some runtimes
+        // default COP to zero and would print a stored 24.70 as 25.
+        const digits = Math.max(options.maximumFractionDigits ?? 0, Number.isInteger(amount) ? 0 : 2);
+        return new Intl.NumberFormat('es-CO', {
+            style: 'currency', currency: code,
+            minimumFractionDigits: digits, maximumFractionDigits: digits,
+        }).format(amount);
     } catch {
         return `${amount.toFixed(2)} ${code}`;
     }

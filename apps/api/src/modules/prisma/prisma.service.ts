@@ -186,7 +186,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     /**
      * Execute a query in a specific tenant schema
      */
-    async executeInTenantSchema<T>(schemaName: string, query: string, params: any[] = [], options?: { timeout?: number }): Promise<T> {
+    async executeInTenantSchema<T>(schemaName: string, query: string, params: any[] = [], options?: { timeout?: number; maxWait?: number }): Promise<T> {
         this.validateSchemaName(schemaName);
 
         const sanitizedParams = this.sanitizeParams(query, params);
@@ -197,7 +197,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
             await tx.$executeRawUnsafe(`SET LOCAL search_path TO "${schemaName}", public`);
             if (isRuntimeSchemaDdl(query)) await acquireRuntimeSchemaLock(tx, schemaName);
             return tx.$queryRawUnsafe(query, ...sanitizedParams) as Promise<T>;
-        }, { timeout: options?.timeout ?? 15000 });
+        }, { timeout: options?.timeout ?? 15000, maxWait: options?.maxWait ?? 10000 });
     }
 
     /**
@@ -211,7 +211,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     async transactionInTenantSchema<T>(
         schemaName: string,
         callback: (query: <R = any[]>(sql: string, params?: any[]) => Promise<R>) => Promise<T>,
-        options?: { timeout?: number; schemaLock?: boolean },
+        options?: { timeout?: number; maxWait?: number; schemaLock?: boolean },
     ): Promise<T> {
         this.validateSchemaName(schemaName);
         return this.$transaction(async (tx: any) => {
@@ -232,7 +232,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
                 return tx.$queryRawUnsafe(sql, ...sanitizedParams) as Promise<R>;
             };
             return callback(query);
-        }, { timeout: options?.timeout ?? 15000 });
+        }, { timeout: options?.timeout ?? 15000, maxWait: options?.maxWait ?? 10000 });
     }
 
     /**

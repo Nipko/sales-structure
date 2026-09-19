@@ -219,6 +219,14 @@ async function bootstrapTenantAdmin(
       return;
     }
 
+    if (
+      method === "POST" &&
+      path === `/persona/${TENANT_ID}/onboarding-events`
+    ) {
+      await fulfillSuccess(route, { recorded: true });
+      return;
+    }
+
     // Telemetría de navegación del shell.
     //
     // El emisor se agregó con el rediseño de navegación y esta lista no se

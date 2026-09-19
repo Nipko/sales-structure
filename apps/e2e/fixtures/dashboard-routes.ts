@@ -67,6 +67,9 @@ export const dashboardShell = (tenantId = TENANT): ApiRoutes => ({
   // how this account applies agent changes before it says what its button does.
   // Immediate is the product default, and so the honest minimal answer.
   [`persona/${tenantId}/agent-review-mode`]: ok({ mode: "immediate" }),
+  // The onboarding guide records durable progress from the authenticated shell.
+  // It is a declared write, not a request that should escape the hermetic suite.
+  [`persona/${tenantId}/onboarding-events`]: ok({ recorded: true }),
   [`verticals/${tenantId}`]: ok({ industry: "servicios", subType: "generico", config: {} }),
   "verticals/definitions/all": ok([]),
   [`business-info/${tenantId}`]: ok({ name: "Negocio de prueba", timezone: "America/Bogota" }),

@@ -300,7 +300,7 @@ jobs:
       valkey:
         image: valkey/valkey:8.1-alpine
         ports:
-          - 6379:6379
+          - 55440:6379
         options: >-
           --health-cmd "valkey-cli ping"
           --health-interval 5s
@@ -310,7 +310,7 @@ jobs:
     env:
       PGPASSWORD: candidate_ci_only
       BASE_PG: postgresql://postgres:candidate_ci_only@127.0.0.1:5432
-      BASE_VALKEY: redis://127.0.0.1:6379
+      BASE_VALKEY: redis://127.0.0.1:55440
 
     steps:
       - uses: actions/checkout@v4
@@ -500,8 +500,8 @@ jobs:
           PARALLLY_PGBOUNCER_DIRECT_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_eval_isolation
           PLAN_ECONOMICS_TEST_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_plan_economics_eval_isolation
           LEGACY_SCHEMA_TEST_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_legacy_schema_eval_isolation
-          DISPATCH_QUEUE_TEST_REDIS_URL: redis://127.0.0.1:6379
-          PARALLLY_SAMPLING_REDIS_URL: redis://127.0.0.1:6379
+          DISPATCH_QUEUE_TEST_REDIS_URL: redis://127.0.0.1:55440
+          PARALLLY_SAMPLING_REDIS_URL: redis://127.0.0.1:55440
           RUN_PIPELINE_OWNERSHIP_PG_TESTS: '1'
           JWT_SECRET: candidate-ci-only
           JWT_REFRESH_SECRET: candidate-ci-only-refresh
@@ -571,7 +571,7 @@ jobs:
           DATABASE_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_legacy_schema_eval_isolation
           DIRECT_DATABASE_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_legacy_schema_eval_isolation
           REDIS_HOST: 127.0.0.1
-          REDIS_PORT: '6379'
+          REDIS_PORT: '55440'
           JWT_SECRET: candidate-ci-only
           JWT_REFRESH_SECRET: candidate-ci-only-refresh
           INTERNAL_JWT_SECRET: candidate-ci-only-internal

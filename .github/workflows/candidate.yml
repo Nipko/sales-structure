@@ -506,12 +506,13 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=6144
         run: |
           set -o pipefail
-          # Recycle the Jest process between shards. Two 6 GB workers can exhaust
-          # the 7 GB hosted runner and leave the suite without output or a report.
-          # Each shard is checked independently, so failures and skips still block.
+          # A single in-band process reached the 6 GB heap limit inside shard 1.
+          # Keep one database-owning worker and recycle it after each test file
+          # whenever its used heap exceeds 5 GB. The reports cover all tests.
           for shard in 1 2 3 4; do
             report="${GITHUB_WORKSPACE}/api-shard-${shard}.json"
-            npx jest --config apps/api/jest.config.js --ci --runInBand \
+            npx jest --config apps/api/jest.config.js --ci --maxWorkers=1 \
+              --workerIdleMemoryLimit=5GB \
               --shard="${shard}/4" --json --outputFile "${report}" || true
             node infra/scripts/assert-no-skipped-tests.cjs \
               --report "${report}" --label "API suite shard ${shard}/4"

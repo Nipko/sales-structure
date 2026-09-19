@@ -286,7 +286,7 @@ jobs:
           DB_USER: postgres
           DB_PASSWORD: candidate_ci_only
           DB_NAME: parallly_eval_isolation
-          AUTH_TYPE: md5
+          AUTH_TYPE: scram-sha-256
           POOL_MODE: transaction
           ADMIN_USERS: postgres
           MAX_CLIENT_CONN: "200"
@@ -374,6 +374,10 @@ jobs:
             echo "::error::PgBouncer is not in transaction mode (got '${POOL_MODE:-nothing}')"
             exit 1
           fi
+          # SHOW CONFIG only authenticates to PgBouncer's admin database. Prove
+          # the configured password can also open a PostgreSQL server session.
+          psql "postgresql://postgres:candidate_ci_only@127.0.0.1:6432/parallly_eval_isolation" \
+            -v ON_ERROR_STOP=1 -Atc 'SELECT 1' | grep -qx 1
 
           # A service container carries no command line, so the policy is set and
           # then read back. Reading it back is the part that matters: it proves

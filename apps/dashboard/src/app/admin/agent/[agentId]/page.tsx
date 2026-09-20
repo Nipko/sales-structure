@@ -633,7 +633,7 @@ export default function AgentEditorPage() {
   useEffect(() => {
     if (loading || activeTab !== "tools") return;
     const tool = searchParams.get("tool");
-    if (tool !== "restaurants" && tool !== "appointments") return;
+    if (!tool || !["restaurants", "appointments", "education", "homeServices", "ecommerce"].includes(tool)) return;
     const raf = window.requestAnimationFrame(() => {
       document.querySelector<HTMLElement>(`[data-tool-family="${tool}"]`)
         ?.scrollIntoView({ behavior: "smooth", block: "center" });

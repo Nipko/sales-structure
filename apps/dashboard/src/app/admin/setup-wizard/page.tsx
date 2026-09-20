@@ -175,7 +175,7 @@ export default function SetupWizardPage() {
     const tHelp = useTranslations("help");
     const tCommon = useTranslations("common");
     const tDraft = useTranslations('agentDraft');
-    const { user, planFeatures } = useAuth();
+    const { user, planFeatures, verticalConfig } = useAuth();
     const locale = useLocale();
     const router = useRouter();
     const tenantId = user?.tenantId;
@@ -998,6 +998,7 @@ export default function SetupWizardPage() {
                             <RecipeSetupCards
                                 recipe={recipe}
                                 agentId={workspace?.agentId ?? null}
+                                verticalConfig={verticalConfig}
                                 applied={recipeApplied}
                                 applying={applyingRecipe}
                                 onApply={() => void applyPreparedRecipe()}

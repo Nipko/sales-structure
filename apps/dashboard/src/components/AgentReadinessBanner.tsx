@@ -27,7 +27,7 @@ function examplePriceTarget(check?: AgentQualityCheck | null): string {
   const evidence: Record<string, unknown> = check?.evidence ?? {};
   const services = (Number(evidence.examplePriceServices) || 0) + (Number(evidence.noPriceServices) || 0);
   const plans = (Number(evidence.examplePricePlans) || 0) + (Number(evidence.noPricePlans) || 0);
-  return services === 0 && plans > 0 ? "/admin/memberships" : "/admin/appointments";
+  return services === 0 && plans > 0 ? "/admin/memberships" : "/admin/appointments?tab=services";
 }
 
 /**
@@ -65,12 +65,12 @@ const BLOCKER_TARGETS: Record<string, (agentId: string, check?: AgentQualityChec
   tool_faqs: () => "/admin/knowledge/faqs",
   tool_policies: () => "/admin/settings/policies",
   media_privacy_policy: () => "/admin/settings/policies?type=privacy",
-  tool_appointments: () => "/admin/appointments",
+  tool_appointments: () => "/admin/appointments?tab=config",
   services_example_price: (_id, check) => examplePriceTarget(check),
   tool_vehicles: () => "/admin/vehicles",
   test_drive_permissions: (id) => `/admin/agent/${id}`,
-  test_drive_service: () => "/admin/appointments",
-  test_drive_staff: () => "/admin/appointments",
+  test_drive_service: () => "/admin/appointments?tab=services",
+  test_drive_staff: () => "/admin/appointments?tab=config",
 };
 
 const STATUS_STYLES: Record<AgentQualityOverview["status"], string> = {

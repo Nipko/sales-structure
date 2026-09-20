@@ -1071,9 +1071,9 @@ export class AgentQualityService {
         }
     }
 
-    private servicesScreenHref(industry: string | null): '/admin/appointments' | '/admin/service-catalog' {
+    private servicesScreenHref(industry: string | null): '/admin/appointments?tab=services' | '/admin/service-catalog' {
         const routes: readonly string[] | undefined = industry ? (VERTICAL_CAPABILITY_MANIFEST as any)[industry]?.profile?.routes : undefined;
-        return !routes || routes.includes('/admin/appointments') ? '/admin/appointments' : '/admin/service-catalog';
+        return !routes || routes.includes('/admin/appointments') ? '/admin/appointments?tab=services' : '/admin/service-catalog';
     }
 
     private buildPreparation(agent: AgentRow, tenant: TenantContext, facts: ReadinessFacts): AgentQualityPreparationPillar {
@@ -1432,7 +1432,7 @@ export class AgentQualityService {
                 fundingRequiredFrom: deliveryReasons.includes('funding_absent') ? FUNDING_REQUIRED_FROM : null,
             },
         });
-        add({ code: 'tool_appointments', dimension: 'actions_outcomes', status: this.optionalToolStatus(tools.appointments, facts.services > 0 && facts.availabilitySlots > 0), critical: tools.appointments?.enabled === true, weight: 5, href: '/admin/appointments', evidence: { enabled: tools.appointments?.enabled === true, services: facts.services, availabilitySlots: facts.availabilitySlots } });
+        add({ code: 'tool_appointments', dimension: 'actions_outcomes', status: this.optionalToolStatus(tools.appointments, facts.services > 0 && facts.availabilitySlots > 0), critical: tools.appointments?.enabled === true, weight: 5, href: facts.services === 0 ? '/admin/appointments?tab=services' : '/admin/appointments?tab=config', evidence: { enabled: tools.appointments?.enabled === true, services: facts.services, availabilitySlots: facts.availabilitySlots } });
         // A recipe seeds services — and, for gyms, membership plans — with an
         // example price. The agent never states an unconfirmed amount, so until
         // the owner confirms them it cannot say what anything costs — worth a
@@ -1478,9 +1478,9 @@ export class AgentQualityService {
         add({ code: 'test_drive_permissions', dimension: 'actions_outcomes', status: wantsTestDrives ? status(tools.appointments?.enabled === true && tools.appointments?.canBook !== false) : 'not_applicable',
             critical: wantsTestDrives, weight: 3, href: `/admin/agent/${agent.id}`, evidence: { appointmentsEnabled: tools.appointments?.enabled === true, canBook: tools.appointments?.canBook !== false } });
         add({ code: 'test_drive_service', dimension: 'actions_outcomes', status: wantsTestDrives ? status(facts.testDriveServices > 0) : 'not_applicable',
-            critical: wantsTestDrives, weight: 3, href: '/admin/appointments', evidence: { compatibleServices: facts.testDriveServices } });
+            critical: wantsTestDrives, weight: 3, href: '/admin/appointments?tab=services', evidence: { compatibleServices: facts.testDriveServices } });
         add({ code: 'test_drive_staff', dimension: 'actions_outcomes', status: wantsTestDrives ? status(facts.testDriveSlots > 0) : 'not_applicable',
-            critical: wantsTestDrives, weight: 3, href: '/admin/appointments', evidence: { compatibleAvailability: facts.testDriveSlots } });
+            critical: wantsTestDrives, weight: 3, href: '/admin/appointments?tab=config', evidence: { compatibleAvailability: facts.testDriveSlots } });
         add({ code: 'tool_catalog', dimension: 'actions_outcomes', status: this.optionalToolStatus(tools.catalog, facts.products > 0), critical: tools.catalog?.enabled === true, weight: 4, href: '/admin/inventory', evidence: { enabled: tools.catalog?.enabled === true, products: facts.products } });
         add({ code: 'tool_ecommerce', dimension: 'actions_outcomes', status: this.optionalToolStatus(tools.ecommerce, facts.products > 0), critical: tools.ecommerce?.enabled === true, weight: 4, href: '/admin/inventory', evidence: { enabled: tools.ecommerce?.enabled === true, products: facts.products } });
         add({ code: 'tool_orders', dimension: 'actions_outcomes', status: tools.orders?.enabled === true ? 'pass' : 'not_applicable', critical: false, weight: 2, href: '/admin/orders', evidence: { enabled: tools.orders?.enabled === true, existingOrders: facts.orders } });

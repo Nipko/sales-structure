@@ -4,21 +4,24 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { Check, Clock3, HelpCircle, Loader2, MapPin, ShoppingBag } from "lucide-react";
 import type { SetupRecipe } from "../setup-recipe";
+import type { DashboardVerticalConfigLike } from "@/lib/vertical-dashboard-resolver";
+import { recipeOfferHref, recipePurchaseTool } from "../recipe-navigation";
 
-export default function RecipeSetupCards({ recipe, agentId, applied, applying, onApply }: {
+export default function RecipeSetupCards({ recipe, agentId, verticalConfig, applied, applying, onApply }: {
     recipe: SetupRecipe;
     agentId: string | null;
+    verticalConfig: DashboardVerticalConfigLike | null;
     applied: boolean;
     applying: boolean;
     onApply: () => void;
 }) {
     const t = useTranslations("setupWizard.recipeCards");
     const completeQuestions = recipe.questions.filter((question) => question.complete).length;
-    const purchaseTool = recipe.purchaseModes.includes("table")
-        ? "restaurants"
-        : recipe.purchaseModes.includes("appointment") ? "appointments" : null;
+    const purchaseTool = recipePurchaseTool(recipe, verticalConfig);
     const purchaseHref = agentId
-        ? `/admin/agent/${encodeURIComponent(agentId)}?tab=tools${purchaseTool ? `&tool=${purchaseTool}` : ""}`
+        ? purchaseTool
+            ? `/admin/agent/${encodeURIComponent(agentId)}?tab=tools&tool=${purchaseTool}`
+            : `/admin/agent/${encodeURIComponent(agentId)}?tab=instructions`
         : "/admin/agent";
     const cards = [
         {
@@ -27,8 +30,9 @@ export default function RecipeSetupCards({ recipe, agentId, applied, applying, o
             body: recipe.services.length
                 ? recipe.services.slice(0, 4).map((service) => `${service.name}${service.durationMinutes ? ` · ${service.durationMinutes} min` : ""}`).join(" · ")
                 : t("offers.empty"),
-            note: recipe.services.some((service) => service.priceState === "example") ? t("offers.examplePrices") : t("offers.quotePrices"),
-            href: "/admin/appointments?tab=services", action: t("offers.change"),
+            note: !recipe.services.length ? t("offers.configure")
+                : recipe.services.some((service) => service.priceState === "example") ? t("offers.examplePrices") : t("offers.quotePrices"),
+            href: recipeOfferHref(recipe, verticalConfig), action: t("offers.change"),
         },
         {
             key: "place", Icon: MapPin,
@@ -53,7 +57,7 @@ export default function RecipeSetupCards({ recipe, agentId, applied, applying, o
             note: recipe.questions.some((question) => !question.complete)
                 ? t("questions.pending", { count: recipe.questions.filter((question) => !question.complete).length })
                 : t("questions.complete"),
-            href: "/admin/knowledge?tab=faqs", action: t("questions.change"),
+            href: "/admin/knowledge/faqs", action: t("questions.change"),
         },
     ];
 
@@ -87,6 +91,9 @@ export default function RecipeSetupCards({ recipe, agentId, applied, applying, o
                         <Link href={href} className="mt-3 inline-flex text-xs font-semibold text-indigo-700 underline underline-offset-2 dark:text-indigo-300">
                             {action}
                         </Link>
+                        {key === "place" && <Link href="/admin/settings/business-info" className="ml-4 mt-3 inline-flex text-xs font-semibold text-indigo-700 underline underline-offset-2 dark:text-indigo-300">
+                            {t("place.businessInfoAction")}
+                        </Link>}
                     </article>
                 ))}
             </div>

@@ -1,13 +1,12 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import * as PDFDocument from 'pdfkit';
 import { PrismaService } from '../prisma/prisma.service';
+import { FiscalConfigService } from '../fiscal/fiscal-config.service';
 
 /**
- * Invoice PDF generator — produces a clean B2B receipt for a successful
- * BillingPayment. Streams the PDF as a Buffer so the controller can pipe
- * it straight to the HTTP response (no disk write needed yet — when fiscal
- * integration arrives we'll persist to /data/invoices/ and update
- * BillingPayment.invoicePdfUrl).
+ * Payment receipt PDF generator for a successful BillingPayment. The fiscal
+ * module separately issues the jurisdiction-specific sales document; this
+ * downloadable receipt must not claim to be that document.
  *
  * Currency formatting respects the payment's currency code. Amounts in DB
  * are stored in cents (amountCents) and divided by 100 for display.
@@ -16,7 +15,7 @@ import { PrismaService } from '../prisma/prisma.service';
 export class InvoiceGeneratorService {
     private readonly logger = new Logger(InvoiceGeneratorService.name);
 
-    constructor(private readonly prisma: PrismaService) {}
+    constructor(private readonly prisma: PrismaService, private readonly fiscalConfig: FiscalConfigService) {}
 
     async generate(tenantId: string, paymentId: string): Promise<Buffer> {
         const payment = await this.prisma.billingPayment.findUnique({
@@ -58,6 +57,9 @@ export class InvoiceGeneratorService {
         const planName = payment.subscription?.plan?.name || 'Subscription';
         const tenantName = tenant?.name || 'Customer';
         const tenantEmail = tenant?.billingEmail || '';
+        const cfg = await this.fiscalConfig.getConfig();
+        const stripePayment = payment.provider === 'stripe';
+        const issuer = stripePayment ? cfg.usIssuer : cfg.coIssuer;
 
         return this.renderPdf({
             invoiceNumber: payment.invoiceNumber || `INV-${payment.id.slice(0, 8).toUpperCase()}`,
@@ -72,6 +74,10 @@ export class InvoiceGeneratorService {
             customerName: tenantName,
             customerEmail: tenantEmail,
             customerCountry: tenant?.billingCountry || null,
+            issuerName: issuer.legalName || (stripePayment ? 'Parallext LLC' : 'Parallly'),
+            issuerTaxId: stripePayment ? cfg.usIssuer.taxId || null : cfg.coIssuer.nit || null,
+            issuerAddress: issuer.address || null,
+            issuerEmail: issuer.email || null,
         });
     }
 
@@ -88,6 +94,10 @@ export class InvoiceGeneratorService {
         customerName: string;
         customerEmail: string;
         customerCountry: string | null;
+        issuerName: string;
+        issuerTaxId: string | null;
+        issuerAddress: string | null;
+        issuerEmail: string | null;
     }): Promise<Buffer> {
         return new Promise((resolve, reject) => {
             try {
@@ -105,11 +115,13 @@ export class InvoiceGeneratorService {
                 // Header
                 doc.fillColor(accent).fontSize(28).font('Helvetica-Bold').text('Parallly', 50, 55);
                 doc.fillColor(muted).fontSize(10).font('Helvetica')
-                    .text('parallly-chat.cloud', 50, 88)
-                    .text('it.executive@parallext.com', 50, 102);
+                    .text(data.issuerName, 50, 88)
+                    .text(data.issuerEmail || 'parallly-chat.cloud', 50, 102);
+                if (data.issuerTaxId) doc.text(`Tax ID: ${data.issuerTaxId}`, 50, 116);
+                if (data.issuerAddress) doc.text(data.issuerAddress, 50, 130, { width: 280 });
 
                 doc.fillColor(dark).fontSize(22).font('Helvetica-Bold')
-                    .text('INVOICE', 400, 55, { align: 'right', width: 145 });
+                    .text('PAYMENT RECEIPT', 360, 55, { align: 'right', width: 185 });
                 doc.fillColor(muted).fontSize(10).font('Helvetica')
                     .text(`# ${data.invoiceNumber}`, 400, 86, { align: 'right', width: 145 })
                     .text(this.formatDate(data.issuedAt), 400, 100, { align: 'right', width: 145 });
@@ -165,7 +177,7 @@ export class InvoiceGeneratorService {
                 const footerY = 720;
                 doc.fillColor(muted).fontSize(9).font('Helvetica')
                     .text(
-                        'Thank you for using Parallly. For questions about this invoice, contact it.executive@parallext.com.',
+                        `Thank you for using Parallly. For questions about this receipt, contact ${data.issuerEmail || 'it.executive@parallext.com'}.`,
                         50, footerY, { align: 'center', width: 495 },
                     )
                     .text(

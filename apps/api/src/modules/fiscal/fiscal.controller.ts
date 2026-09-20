@@ -272,8 +272,11 @@ export class FiscalController {
         // Acquirer fallback for the branded PDF when the invoice snapshot is empty
         // (created before the tenant completed its fiscal profile) — use the tenant's
         // current fiscal data instead of defaulting to "Consumidor Final".
-        const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
-        const acquirerFallback = (tenant?.settings as any)?.fiscalData || null;
+        const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true, name: true, billingEmail: true } });
+        const acquirerFallback = {
+            businessName: tenant?.name, email: tenant?.billingEmail,
+            ...((tenant?.settings as any)?.fiscalData || {}),
+        };
 
         // Nota crédito: número de la factura de venta afectada, para referenciarla.
         let relatedInvoiceNumber: string | null = null;
@@ -317,6 +320,7 @@ export class FiscalController {
     ): Promise<void> {
         const inv = await this.prisma.fiscalInvoice.findFirst({ where: { id, tenantId } });
         if (!inv) throw new NotFoundException({ error: 'invoice_not_found' });
+        if (inv.provider !== 'factus') throw new NotFoundException({ error: 'xml_unavailable' });
         let buffer = this.storage.read(tenantId, inv.id, 'xml');
         if (!buffer && inv.provider === 'factus' && inv.invoiceNumber) {
             buffer = await this.factus.downloadXml(inv.invoiceNumber).catch(() => null);

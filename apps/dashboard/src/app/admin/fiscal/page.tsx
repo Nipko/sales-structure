@@ -361,7 +361,7 @@ export default function FiscalAdminPage() {
                                                     {inv.status === "issued" && (
                                                         <>
                                                             <button title={t("pdfBranded")} onClick={() => api.downloadFiscalInvoice(inv.tenantId, inv.id, "pdf", "branded")} className="text-teal-500 hover:text-teal-700"><Receipt size={15} /></button>
-                                                            <button title={t("xml")} onClick={() => api.downloadFiscalInvoice(inv.tenantId, inv.id, "xml")} className="text-neutral-400 hover:text-neutral-700"><FileCode size={15} /></button>
+                                                            {inv.provider === "factus" && <button title={t("xml")} onClick={() => api.downloadFiscalInvoice(inv.tenantId, inv.id, "xml")} className="text-neutral-400 hover:text-neutral-700"><FileCode size={15} /></button>}
                                                         </>
                                                     )}
                                                     {(inv.status === "failed" || inv.status === "pending") && (

@@ -65,8 +65,8 @@ describe('FiscalInvoiceService — pagos que NO son una venta', () => {
         };
         const config = { getConfig: jest.fn().mockResolvedValue({ mode: opts.fiscalMode ?? 'CO_LOCAL', usIssuer: opts.usIssuer }) };
         const actualFactory = new FiscalProviderFactory({ name: 'factus' } as any, { name: 'us_remote' } as any);
-        const factory = { resolve: jest.fn().mockImplementation((mode, country) => opts.providerName
-            ? { name: opts.providerName } : actualFactory.resolve(mode, country)) };
+        const factory = { resolve: jest.fn().mockImplementation((mode, country, rail) => opts.providerName
+            ? { name: opts.providerName } : actualFactory.resolve(mode, country, rail)) };
         const queue = { add: jest.fn().mockResolvedValue(undefined) };
         const redis = { get: jest.fn().mockResolvedValue(null) };
 
@@ -205,14 +205,41 @@ describe('FiscalInvoiceService — pagos que NO son una venta', () => {
     it('keeps an international Stripe payment outside Factus after a tenant changes to Colombia', async () => {
         const h = makeHarness({
             paymentProvider: 'stripe', billingCountry: 'CO', billingCountryAtPayment: 'MX',
-            railEnvironment: 'production',
+            railEnvironment: 'production', useActualReadiness: true,
         });
         await h.service.onPaymentSucceeded(event as any);
-        expect(h.factory.resolve).toHaveBeenCalledWith('CO_LOCAL', 'MX');
+        expect(h.factory.resolve).toHaveBeenCalledWith('CO_LOCAL', 'MX', 'stripe');
         expect(h.created[0]).toMatchObject({
-            status: 'blocked_config', provider: 'unresolved',
-            failureReason: 'international_fiscal_issuer_not_configured',
+            status: 'blocked_config', provider: 'us_remote',
+            failureReason: 'fiscal_provider_not_ready',
         });
+        expect(h.queue.add).not.toHaveBeenCalled();
+    });
+
+    it('routes a Stripe payment to the configured LLC in CO_LOCAL while Colombian payments keep Factus', async () => {
+        const issuer = { legalName: 'Parallext LLC', taxId: 'test-issuer' };
+        const stripe = makeHarness({
+            paymentProvider: 'stripe', billingCountry: 'CO', billingCountryAtPayment: 'US',
+            railEnvironment: 'production', useActualReadiness: true, usIssuer: issuer,
+        });
+        await stripe.service.onPaymentSucceeded(event as any);
+        expect(stripe.created[0]).toMatchObject({ status: 'pending', provider: 'us_remote' });
+        expect(stripe.queue.add).toHaveBeenCalledTimes(1);
+
+        const wompi = makeHarness({
+            billingCountry: 'CO', billingCountryAtPayment: 'CO', railEnvironment: 'production',
+        });
+        await wompi.service.onPaymentSucceeded(event as any);
+        expect(wompi.created[0]).toMatchObject({ status: 'pending', provider: 'factus' });
+    });
+
+    it('does not assign the LLC to a legacy non-Colombian payment from another rail', async () => {
+        const h = makeHarness({
+            paymentProvider: 'mercadopago', billingCountry: 'MX', billingCountryAtPayment: 'MX',
+            railEnvironment: 'production', usIssuer: { legalName: 'Parallext LLC', taxId: 'test-issuer' },
+        });
+        await h.service.onPaymentSucceeded(event as any);
+        expect(h.created[0]).toMatchObject({ status: 'blocked_config', provider: 'unresolved' });
         expect(h.queue.add).not.toHaveBeenCalled();
     });
 

@@ -67,6 +67,7 @@ const publicRoutes = (): ApiRoutes => ({
   // on purpose: the plan columns are NOT NULL in the schema, so a fixture
   // missing one would be testing a shape the API cannot produce — and the card
   // would print `NaN` where a number belongs.
+  "billing/public/market": ok({ country: "CO", provider: "wompi", source: "edge", supportedCountries: ["CO", "US"] }),
   "billing/public/plans": ok([{
     id: "plan-emprendedor",
     slug: "emprendedor",

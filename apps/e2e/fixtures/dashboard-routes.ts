@@ -75,6 +75,7 @@ export const dashboardShell = (tenantId = TENANT): ApiRoutes => ({
   [`business-info/${tenantId}`]: ok({ name: "Negocio de prueba", timezone: "America/Bogota" }),
   [`billing/${tenantId}/subscription`]: ok({ status: "active", plan: { slug: "pro" } }),
   [`billing/${tenantId}/restriction-status`]: ok({ restricted: false, level: "none" }),
+  "billing/public/market": ok({ country: "CO", provider: "wompi", source: "edge", supportedCountries: ["CO", "US"] }),
   "billing/public/plans": ok([]),
   [`fiscal/${tenantId}/data`]: ok({ required: false, complete: true }),
   [`quality/${tenantId}/attention-summary`]: ok({ total: 0, items: [] }),

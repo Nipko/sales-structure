@@ -61,7 +61,7 @@
     "footerDataDeletion": "Delete data",
     "footerBrandDesc": "Service, sales and follow-up in one platform. Set it up for your business with guidance from Parallly Assist.",
     "footerMetaIntegration": "Channels connected through Meta APIs",
-    "footerPaymentIntegration": "Subscriptions processed by Wompi (Grupo Bancolombia)",
+    "footerPaymentIntegration": "Subscriptions processed by Wompi in Colombia and Stripe outside Colombia",
     "footerMadeBy": "Built by Parallext in Bogotá, Colombia",
     "footerCopyright": "© {year} Parallly. All rights reserved.",
     "menuAriaLabel": "Menu",
@@ -232,7 +232,7 @@
     "metaTitle": "Meta channels",
     "metaDesc": "Connection through the WhatsApp Business, Instagram and Messenger APIs",
     "mpTitle": "Payment integration",
-    "mpDesc": "Wompi (Grupo Bancolombia) processes the subscriptions: the card details go from your browser to Wompi, and what our database keeps is a reference with the brand, the last four digits and the expiry.",
+    "mpDesc": "Your subscription covers the platform and your plan’s AI capacity. Wompi in Colombia and Stripe outside Colombia processes the payment; Parallly does not store full card details or security codes. Availability is confirmed when you select a plan.",
     "latamTitle": "Made in Latin America",
     "latamDesc": "Interface in Spanish, English, Portuguese and French, with local pricing where available.",
     "encTitle": "Business data isolation",
@@ -748,7 +748,7 @@
     "faqQ3": "Are there hidden fees?",
     "faqA3": "Not from us: AI limits do not trigger automatic overage charges; once reached, that automation pauses and upgrade options are shown. There are charges outside the plan that are not ours: from 1 October 2026, Meta bills your own WhatsApp Business account for the messages it delivers — service messages, and also marketing, utility and authentication templates — with the payment method you add on Meta. Third-party services or optional packages are quoted separately.",
     "faqQ4": "Do you accept local currency payments?",
-    "faqA4": "Select your country to see the available currency. If there is no current local rate, the catalog shows the amount in USD before checkout.",
+    "faqA4": "In Colombia, subscriptions are charged in COP through Wompi. In other supported countries, they are charged in USD through Stripe. Confirm your country to see the applicable price before checkout.",
     "faqQ5": "Is there an annual payment discount?",
     "faqA5": "When annual billing is available, its full price is shown before checkout. If it saves money versus twelve monthly payments, the percentage is shown too; the annual total is charged upfront.",
     "faqQ6": "Can I change my subscription?",
@@ -919,7 +919,7 @@
       "Dedicated priority support"
     ],
     "perMonth": "/mo",
-    "currencyHint": "Select your country to see the current currency and price. If no local rate is available, the amount is shown in USD.",
+    "currencyHint": "Colombia shows the COP price; other supported countries show the international USD price. You can correct the detected country before continuing.",
     "transparencyTitle": "Honest pricing, no surprises",
     "transparencyAiIncluded": "Limits and features visible for each plan",
     "transparencyWhatsapp": "Price and currency retrieved from the current catalog",
@@ -962,7 +962,7 @@
     "q2": "How does the AI work?",
     "a2": "You configure business information, your catalog, FAQs and rules. AI consults those sources to prepare its replies. You can test them, adjust instructions and decide when your team should step in.",
     "q3": "Is it secure? What about my data?",
-    "a3": "Each company’s data is isolated in its own schema and access uses authentication and roles. Wompi (Grupo Bancolombia) processes card data. See the privacy policy for the applicable treatment.",
+    "a3": "Each business has isolated data and access protected by authentication and roles. Wompi in Colombia and Stripe outside Colombia processes subscription payments. See the privacy policy for details on data handling.",
     "q4": "How do I stay in control of the AI?",
     "a4": "You define its sources, instructions and the cases it should pass to a person. Before publishing, you can test and review its replies. If a customer requests a person or a handoff rule is triggered, the conversation goes to the team with context, provided human support is enabled. AI needs supervision and can make mistakes.",
     "q5": "How long does setup take?",
@@ -1394,7 +1394,7 @@
     "sectionSubtitle": "Selling on WhatsApp with Parallly means three separate charges from three separate companies. None of them replaces another.",
     "subscriptionTitle": "Your Parallly subscription",
     "subscriptionWho": "Your business pays Parallly",
-    "subscriptionBody": "It covers the platform and the AI capacity of the plan you choose. The card is tokenised with Wompi from your browser; our server keeps a payment reference and partial details to manage authorised charges, not the full number or the security code.",
+    "subscriptionBody": "Your subscription covers the platform and your plan’s AI capacity. Wompi in Colombia and Stripe outside Colombia processes the payment; Parallly does not store full card details or security codes. Availability is confirmed when you select a plan.",
     "subscriptionNote": "This card does not set up or pay anything at Meta.",
     "whatsappDeliveryTitle": "The messages WhatsApp delivers",
     "whatsappDeliveryWho": "Your business pays Meta",
@@ -1461,7 +1461,7 @@
     "faqQ1": "Who pays Meta for my WhatsApp messages?",
     "faqA1": "Your business does. Meta issues the charge against your own WhatsApp Business account, using the payment method you add there. That money never passes through Parallly and is not part of your plan.",
     "faqQ2": "Can my subscription card pay Meta?",
-    "faqA2": "No. The subscription card is tokenised with Wompi and only covers Parallly's charges. Meta billing is set up on Meta's page and lives in its own record.",
+    "faqA2": "No. Wompi in Colombia and Stripe outside Colombia only processes your Parallly subscription. Meta’s payment method is configured and held by Meta. Payments from your customers use your business’s own credentials.",
     "faqQ3": "Do the 1,000 free messages include the AI's replies?",
     "faqA3": "Yes, when they are service messages: Meta counts by category, not by who wrote them. It is 1,000 service deliveries per number per calendar month; they do not cover templates, do not roll over, and are not an allowance per country.",
     "faqQ4": "What happens if that account has no payment method?",
@@ -2745,6 +2745,19 @@
       "title": "Stay on top of what comes next.",
       "description": "View appointments and coordinate the actions available for your business. Each teammate works with the access allowed by their role.",
       "imageAlt": "Parallly Android schedule with a sample appointment"
+    }
+  },
+  "subscriptionPayment": {
+    "chooseCountry": "Select your billing country",
+    "providerUnknown": "Wompi in Colombia and Stripe outside Colombia",
+    "footer": "Subscriptions processed by {provider}",
+    "body": "Your subscription covers the platform and your plan’s AI capacity. {provider} processes the payment; Parallly does not store full card details or security codes. Availability is confirmed when you select a plan.",
+    "security": "Each business has isolated data and access protected by authentication and roles. {provider} processes subscription payments. See the privacy policy for details on data handling.",
+    "metaSeparation": "No. {provider} only processes your Parallly subscription. Meta’s payment method is configured and held by Meta. Payments from your customers use your business’s own credentials.",
+    "countryHint": {
+      "wompi": "Colombia: subscriptions through Wompi in COP. Colombian electronic invoicing is managed separately in Fiscal billing.",
+      "stripe": "Outside Colombia: subscriptions through Stripe in USD. Signup does not request a Colombian DIAN profile. Confirm your billing country before continuing.",
+      "unknown": "Select your country to see prices: Wompi in Colombia and Stripe in the other available countries. Your browser language does not determine your country."
     }
   }
 }

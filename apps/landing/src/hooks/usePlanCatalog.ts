@@ -2,26 +2,25 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
-  detectPricingCountry,
   fetchPlans,
   type ApiPlan,
-  type PricingCountry,
 } from "../lib/api";
+import { useBillingMarket } from "../components/BillingMarketProvider";
 
-export type PlanCatalogStatus = "loading" | "ready" | "empty" | "error";
+export type PlanCatalogStatus = "loading" | "country_required" | "ready" | "empty" | "error";
 
 export function usePlanCatalog() {
-  const [country, setCountry] = useState<PricingCountry | null>(null);
+  const { country, countries, setCountry, loading: marketLoading } = useBillingMarket();
   const [plans, setPlans] = useState<ApiPlan[]>([]);
   const [status, setStatus] = useState<PlanCatalogStatus>("loading");
   const [requestVersion, setRequestVersion] = useState(0);
 
   useEffect(() => {
-    setCountry(detectPricingCountry());
-  }, []);
-
-  useEffect(() => {
-    if (!country) return;
+    if (!country) {
+      setPlans([]);
+      setStatus(marketLoading ? "loading" : "country_required");
+      return;
+    }
 
     const controller = new AbortController();
     setPlans([]);
@@ -43,9 +42,9 @@ export function usePlanCatalog() {
       });
 
     return () => controller.abort();
-  }, [country, requestVersion]);
+  }, [country, requestVersion, marketLoading]);
 
   const retry = useCallback(() => setRequestVersion((version) => version + 1), []);
 
-  return { country, setCountry, plans, status, retry };
+  return { country, countries, setCountry, plans, status, retry };
 }

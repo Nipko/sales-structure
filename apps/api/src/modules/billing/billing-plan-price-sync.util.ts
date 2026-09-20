@@ -63,7 +63,7 @@ function canonicalizeExistingOverrides(value: unknown): JsonRecord {
 
     for (const [rawCountry, rawOverride] of entries) {
         const country = normalizeBillingCountry(rawCountry);
-        if (!country || !isBillingCountry(country) || !isRecord(rawOverride)) {
+        if (!country || (!isBillingCountry(country) && country !== 'USD') || !isRecord(rawOverride)) {
             output[rawCountry] = rawOverride;
             continue;
         }
@@ -132,7 +132,7 @@ export function reconcilePlanPriceSync(input: ReconcilePlanPriceSyncInput): {
 
     for (const [rawCountry, rawOverride] of Object.entries(input.incomingOverrides ?? {})) {
         const country = normalizeBillingCountry(rawCountry);
-        if (!country || !isBillingCountry(country)) {
+        if (!country || (!isBillingCountry(country) && country !== 'USD')) {
             issues.push({
                 path: `priceLocalOverrides.${rawCountry}`,
                 code: 'unsupported_country',
@@ -161,7 +161,8 @@ export function reconcilePlanPriceSync(input: ReconcilePlanPriceSyncInput): {
 
     for (const [country, incomingCountry] of normalizedIncoming) {
         const path = `priceLocalOverrides.${country}`;
-        const expectedCurrency = BILLING_CURRENCY_BY_COUNTRY[country as keyof typeof BILLING_CURRENCY_BY_COUNTRY];
+        const expectedCurrency = country === 'USD' ? 'USD'
+            : BILLING_CURRENCY_BY_COUNTRY[country as keyof typeof BILLING_CURRENCY_BY_COUNTRY];
         const allowedCountryKeys = new Set([
             'currency', 'amountCents', 'annual',
             // Provider id + fingerprint are accepted for backwards-compatible

@@ -9,11 +9,11 @@ import { FiscalMode, IFiscalInvoiceProvider } from './interfaces/fiscal-provider
  *
  *   - US_REMOTE → UsRemoteAdapter for everyone (LLC issues; no DIAN FEV).
  *   - CO_LOCAL  → FactusAdapter for CO tenants (DIAN FEV); null for the rest
- *                 (no fiscal document issued for non-Colombian customers while
- *                 the Colombian entity is the issuer).
+ *                 (international fiscal issuance is not configured by this
+ *                 mode; the service records a durable blocked_config decision).
  *
- * Returning null is a valid outcome meaning "nothing to issue here" — the
- * service skips fiscal issuance for that payment.
+ * Returning null means routing needs explicit issuer configuration. It makes
+ * no determination about the seller's legal obligations outside Colombia.
  */
 @Injectable()
 export class FiscalProviderFactory {
@@ -29,11 +29,11 @@ export class FiscalProviderFactory {
             return this.usRemote;
         }
         // CO_LOCAL (hybrid, default)
-        if ((billingCountry || '').toUpperCase() === 'CO') {
+        if ((billingCountry || '').trim().toUpperCase() === 'CO') {
             return this.factus;
         }
         this.logger.debug(
-            `No fiscal provider for billingCountry=${billingCountry ?? 'null'} in mode CO_LOCAL — skipping issuance`,
+            `No fiscal provider for billingCountry=${billingCountry ?? 'null'} in mode CO_LOCAL — issuer configuration required`,
         );
         return null;
     }

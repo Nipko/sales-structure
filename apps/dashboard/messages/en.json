@@ -6031,7 +6031,7 @@
     "strandedMandate": "{tenant} was deleted, but {provider} still holds a charging mandate we cannot cancel from here. Cancel it at the provider by hand or the customer may keep being charged. It is recorded in the platform audit log."
   },
   "onboarding": {
-    "paidPlanAfterSignup": "The {plan} plan requires a payment method. We first create the account without paid access, then take you to Billing to authorize a card, Nequi or Bancolombia Button. The plan activates only after Wompi approves the process.",
+    "paidPlanAfterSignup": "The {plan} plan requires a payment method. We first create your account without paid access, then you will continue securely with {provider}. Access is granted only after the provider confirms.",
     "billingHandoffError": "The account was created, but the selected plan's checkout intent was not returned. Open Settings → Billing or contact support; we did not silently switch you to another plan.",
     "step1Title": "Your company",
     "step1Subtitle": "Tell us about your business",
@@ -6058,7 +6058,7 @@
     "planTitle": "Choose your plan",
     "planSubtitle": "Review the current catalog and choose the plan that best fits your company.",
     "billingCountry": "Billing country",
-    "billingCountryHint": "We use this country to show the currency and validate available billing cycles.",
+    "billingCountryHint": "Confirm your business’s billing country. Detected location is a suggestion; language does not determine the country.",
     "planStarterNote": "You can change or cancel anytime from Settings > Billing.",
     "planContactSales": "Custom activation with our sales team",
     "contactSalesHint": "Need a custom plan or billing in another country?",
@@ -6513,7 +6513,10 @@
         "title": "That's all for now",
         "body": "Everything else is optional and you can fill it in later from the panel."
       }
-    }
+    },
+    "billingCountryChoose": "Select your billing country",
+    "billingWompiHint": "Colombia: subscription through Wompi in COP. Colombian electronic invoicing details are completed in Fiscal billing when applicable.",
+    "billingStripeHint": "Outside Colombia: subscription through Stripe in USD. You will complete payment on Stripe; a Colombian DIAN profile is not requested."
   },
   "analytics": {
     "title": "Analytics",
@@ -7550,7 +7553,9 @@
   "paymentForm": {
     "loading": "Loading the payment form...",
     "configError": "We couldn't load the payment settings. Reload the page or contact support.",
-    "unsupportedProvider": "The {provider} payment provider has no form in the dashboard yet. Contact support to complete the payment."
+    "unsupportedProvider": "The {provider} payment provider has no form in the dashboard yet. Contact support to complete the payment.",
+    "stripeHostedHint": "You will continue on Stripe’s secure page to authorize payment or manage your subscription. Card details are entered on Stripe.",
+    "stripeContinue": "Continue with Stripe"
   },
   "wompiForm": {
     "loading": "Loading the secure form...",
@@ -7607,6 +7612,12 @@
     }
   },
   "billingPage": {
+    "legacyProviderMismatch": "This account retains a previous {provider} configuration that does not match its billing country. Contact support before activating the plan so charges are not created in two providers.",
+    "stripeTrialEndingSoon": "Your trial ends in less than 48 hours. To preserve the remaining days, complete Stripe checkout when the trial ends.",
+    "stripeTrialUnsupported": "This trial duration is not available on Stripe. Contact support to review the plan.",
+    "stripeCheckoutProcessing": "Stripe has received this checkout and we are awaiting confirmation. Refresh the status in a few moments.",
+    "stripePriceUnavailable": "This billing cycle does not yet have a configured Stripe price. Choose another cycle or contact support.",
+    "stripeRefreshStatus": "Refresh status",
     "paymentMethodsTitle": "Payment methods",
     "paymentMethodsHint": "This is what we charge your subscription to. The default one is used on every renewal.",
     "paymentMethodsEmpty": "You have no saved payment method yet.",
@@ -7653,8 +7664,8 @@
     "modalUpgradeTitle": "Activate plan",
     "modalUpgradeSubtitle": "Save your card to activate the {name} plan. You won't be charged until the trial ends.",
     "modalUpgradeTrialSubtitle": "Authorize a method for the {name} plan. Nothing is charged today: the charge is scheduled for {date}, when your trial ends.",
-    "modalUpgradeStartsTrialSubtitle": "Authorize a method for the {name} plan. Once Wompi approves it, your {days}-day trial begins; the first charge is due when it ends.",
-    "modalUpgradeImmediateSubtitle": "Authorize a method for the {name} plan. We will process the charge now and activate the plan only after Wompi approves it.",
+    "modalUpgradeStartsTrialSubtitle": "Authorize a payment method for {name}. Your {days}-day trial starts when the provider confirms authorization; the first charge follows the trial.",
+    "modalUpgradeImmediateSubtitle": "Authorize a payment method for {name}. We will process the charge now; the plan activates only when the provider confirms payment.",
     "modalUpgradeSubmit": "Activate plan",
     "modalChangeCardTitle": "Change card",
     "modalChangeCardSubmit": "Save new card",
@@ -7806,7 +7817,11 @@
     "limitReached": "You've reached the limit of {limit} {resource} on your current plan ({current}/{limit}).",
     "upgradePlan": "Upgrade plan",
     "cancel": "Cancel",
-    "aiSpendingPolicy": "Included replies are subject to the plan’s monthly AI spending limit. Long conversations, tools and advanced models consume more budget: AI may pause before the reply quota is exhausted. WhatsApp messages are paid separately to Meta."
+    "aiSpendingPolicy": "Included replies are subject to the plan’s monthly AI spending limit. Long conversations, tools and advanced models consume more budget: AI may pause before the reply quota is exhausted. WhatsApp messages are paid separately to Meta.",
+    "stripeManage": "Manage in Stripe",
+    "stripeManagedHint": "Payment methods and international subscription changes are managed in Stripe’s secure portal.",
+    "stripeReturnCancelled": "You left Stripe without completing the process. You can try again.",
+    "stripeReturnPending": "You returned from Stripe. Subscription status updates after confirmation from the provider; returning to this page does not confirm a payment."
   },
   "couponsPage": {
     "title": "Promo coupons",
@@ -11730,7 +11745,7 @@
       "providers": "Providers"
     },
     "providers": {
-      "scopeNote": "Switching the operator only affects new sign-ups: live subscriptions keep billing through the provider they were created with.",
+      "scopeNote": "Subscription rule: Colombia uses Wompi; other available countries use Stripe. Enabling or disabling a provider does not migrate existing subscriptions.",
       "enabledTitle": "Enabled providers",
       "enabledDesc": "Kill switch per provider. Turning one off does not stop charges, webhooks or reconciliation for subscriptions that already live there.",
       "enabled": "On",
@@ -11755,8 +11770,9 @@
       "credentialsMissing": "Credentials missing",
       "webhookConfigured": "Webhook secret set",
       "webhookMissing": "Webhook secret missing",
-      "routingTitle": "Provider per country",
-      "routingDesc": "Sets which operator bills each country. Applied when a new subscription is created.",
+      "stripeSecretsHint": "Stripe keys are loaded as deployment secrets. This panel shows their status and enables the provider for new subscriptions.",
+      "routingTitle": "Provider by billing country",
+      "routingDesc": "This rule is fixed. Existing subscriptions keep their provider; the switches control availability for new signups.",
       "routingCountry": "Country",
       "routingProvider": "Provider",
       "routingRestOfWorld": "Rest of the world",
@@ -11802,9 +11818,14 @@
     "active": "Active",
     "inactive": "Inactive",
     "planName": "Plan name",
-    "priceRef": "Reference price (USD)",
-    "pricingCountry": "Pricing country and currency",
-    "pricingCountryHint": "Select the market to view or edit. Each country uses its canonical currency.",
+    "priceRef": "International monthly price (USD)",
+    "priceCoMonthly": "Colombia · monthly (COP, Wompi)",
+    "priceCoAnnual": "Colombia · full year (COP, Wompi)",
+    "priceUsdMonthly": "Rest of the world · monthly (USD, Stripe)",
+    "priceUsdAnnual": "Rest of the world · full year (USD, Stripe)",
+    "internationalUsd": "International: Stripe in USD",
+    "pricingCountry": "Subscription prices by market",
+    "pricingCountryHint": "Set COP for Colombia and USD for other supported countries. Each amount is independent; annual is the full year charge and is offered only when configured.",
     "priceLocal": "Monthly price {country} ({currency})",
     "localPriceHint": "Monthly amount in {currency}. E.g. 129,900",
     "priceLocalAnnual": "Annual price {country} ({currency})",
@@ -15414,7 +15435,7 @@
   },
   "whatsappFunding": {
     "title": "Funding your WhatsApp account",
-    "separation": "Meta bills WhatsApp directly to your business. Your Parallly subscription is paid separately through Wompi. We do not copy cards between services: Meta card details are entered and remain with Meta.",
+    "separation": "Meta charges WhatsApp directly to your business. The Parallly subscription is paid separately: Wompi in Colombia and Stripe outside Colombia. Cards are not copied between services: Meta’s card is entered and held by Meta.",
     "step1": "Open WhatsApp Manager and sign in as a business administrator.",
     "step2": "Select the WhatsApp account (WABA) shown below. From Overview, open payment settings and add a payment method.",
     "step3": "Return here and check the account. No need to reconnect numbers or change your Parallly card.",

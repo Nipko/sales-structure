@@ -4,6 +4,7 @@ import { motion, useReducedMotion } from "motion/react";
 import { useTranslations } from "next-intl";
 import { Icon } from "../ui/Icon";
 import { PAYMENT_PARTIES } from "../../data/payment-model";
+import { useSubscriptionPaymentText } from "../../hooks/useSubscriptionPaymentText";
 
 /**
  * The three payments, side by side, each one naming its own payee.
@@ -29,6 +30,7 @@ const PARTY_ACCENT = {
 
 export function ThreePaymentsPanel({ headingLevel = "h2" }: { headingLevel?: "h2" | "h3" }) {
   const t = useTranslations("payments");
+  const payment = useSubscriptionPaymentText();
   const reduceMotion = useReducedMotion();
   const Heading = headingLevel;
 
@@ -70,7 +72,7 @@ export function ThreePaymentsPanel({ headingLevel = "h2" }: { headingLevel?: "h2
               {t(`${party.i18nKey}Who`)}
             </p>
             <p className="mt-3 flex-1 text-sm leading-relaxed text-text-secondary">
-              {t(`${party.i18nKey}Body`)}
+              {party.id === "subscription" ? payment.body : t(`${party.i18nKey}Body`)}
             </p>
 
             <p className="mt-5 flex items-start gap-2 border-t border-border/70 pt-3 text-xs leading-relaxed text-text-primary">

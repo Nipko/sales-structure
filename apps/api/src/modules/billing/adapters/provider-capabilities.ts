@@ -1,4 +1,5 @@
 import { PaymentProviderName } from '../types/provider-types';
+import { SUPPORTED_BILLING_COUNTRIES } from '../../../common/utils/billing-country.util';
 
 /**
  * Payment source kinds a provider can charge without the customer present
@@ -96,30 +97,17 @@ export const STRIPE_CAPABILITIES: ProviderCapabilities = {
     storedPaymentSources: true,
     planCatalog: true,
     changePlanInPlace: true,
-    pauseResume: true,
+    pauseResume: false,
     nativeProration: true,
     refunds: 'full',
     asyncSettlement: false,
     currencies: [],
     unattendedMethods: ['provider_native', 'card'],
     requiresAcceptanceTokens: false,
-    /**
-     * Explicit allowlist, NOT an empty "unrestricted" list: Stripe does not
-     * operate in Colombia (in LatAm only Brazil and Mexico), and an empty list
-     * would let the router send Colombian tenants there. Extend as we open
-     * markets — the operating countries of the entity we bill through.
-     */
-    countries: [
-        // LatAm — the only two Stripe supports
-        'BR', 'MX',
-        // North America
-        'US', 'CA',
-        // Europe
-        'GB', 'IE', 'ES', 'PT', 'FR', 'DE', 'IT', 'NL', 'BE', 'AT', 'CH',
-        'SE', 'NO', 'DK', 'FI', 'PL', 'CZ', 'RO', 'GR', 'LU',
-        // APAC
-        'AU', 'NZ', 'JP', 'SG', 'HK', 'MY',
-    ],
+    // This is the CUSTOMER market policy, not the merchant-account country
+    // list. Stripe validates the merchant/account and each payment separately.
+    // Colombia stays on Wompi; every other recognized customer country uses Stripe.
+    countries: SUPPORTED_BILLING_COUNTRIES.filter((country) => country !== 'CO'),
 };
 
 /**

@@ -25,6 +25,7 @@ interface PaymentFormProps {
     country?: string;
     /** Stored-source path (Wompi): the API already persisted the method. */
     onSourceSaved: (source: { id: string; status: PaymentSourceStatus }) => void;
+    onHostedCheckout?: () => void;
     submitting?: boolean;
     submitLabel?: string;
     /** Config the page already resolved; avoids a second request. */
@@ -42,6 +43,7 @@ export default function PaymentForm({
     tenantId,
     country,
     onSourceSaved,
+    onHostedCheckout,
     submitting = false,
     submitLabel,
     config: providedConfig = null,
@@ -91,6 +93,18 @@ export default function PaymentForm({
         return (
             <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300">
                 <AlertTriangle size={16} className="mt-0.5 shrink-0" /> {t("configError")}
+            </div>
+        );
+    }
+
+    if (config.provider === "stripe" && onHostedCheckout) {
+        return (
+            <div className="space-y-4">
+                <p className="text-sm text-neutral-600 dark:text-neutral-400">{t("stripeHostedHint")}</p>
+                <button type="button" onClick={onHostedCheckout} disabled={submitting}
+                    className="w-full rounded-lg bg-indigo-600 px-4 py-3 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50">
+                    {submitting ? t("loading") : t("stripeContinue")}
+                </button>
             </div>
         );
     }

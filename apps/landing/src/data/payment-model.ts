@@ -4,7 +4,7 @@
  * A business that starts with Parallly ends up inside three separate money
  * relationships, and only ONE of them is with us:
  *
- *   1. subscription       business  → Parallly   (card tokenised by Wompi)
+ *   1. subscription       business  → Parallly   (Wompi in Colombia; Stripe elsewhere)
  *   2. whatsappDelivery   business  → Meta       (its OWN WhatsApp Business
  *                                                 account, its own card, added
  *                                                 on Meta's own surface)
@@ -47,12 +47,13 @@ export const PAYMENT_PARTIES: readonly PaymentParty[] = Object.freeze([
     id: "subscription",
     i18nKey: "subscription",
     methodEnteredAt: "parallly",
-    // We keep a payment source reference, brand, last four and expiry — never
-    // the PAN or the CVC, which go from the browser straight to Wompi.
+    // Colombian cards go from the browser to Wompi; international checkout
+    // runs on Stripe. Parallly stores references, never a full card or CVC.
     parallelyVisibility: "authorized_charges",
     evidence: Object.freeze([
       "apps/api/src/modules/billing/recurring/payment-source.service.ts",
       "apps/api/src/modules/billing/adapters/wompi.adapter.ts",
+      "apps/api/src/modules/billing/stripe-billing.service.ts",
     ]),
   }),
   Object.freeze({

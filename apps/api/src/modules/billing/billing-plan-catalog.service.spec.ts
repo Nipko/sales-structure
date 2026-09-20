@@ -1,5 +1,5 @@
 import { BillingPlanCatalogService, normalizeBillingCountry } from './billing-plan-catalog.service';
-import { MERCADOPAGO_CAPABILITIES, WOMPI_CAPABILITIES } from './adapters/provider-capabilities';
+import { MERCADOPAGO_CAPABILITIES, WOMPI_CAPABILITIES, STRIPE_CAPABILITIES } from './adapters/provider-capabilities';
 
 describe('BillingPlanCatalogService', () => {
     const basePlan = {
@@ -20,19 +20,13 @@ describe('BillingPlanCatalogService', () => {
             billingPlan: { findMany: jest.fn().mockResolvedValue(plans) },
             exchangeRate: { findFirst: jest.fn().mockResolvedValue(fx) },
         };
-        // Routing resolves to a REMOTE-CATALOG provider (Stripe by name) so
-        // these cases keep exercising the synced-id + fingerprint rules. Las
-        // capacidades del mock siguen siendo las del catálogo remoto clásico
-        // (países LatAm incluidos) — el nombre solo importa para el gate de
-        // credenciales, y 'mercadopago' está retirado: jamás configurado.
+        // A mock remote-catalog provider exercises legacy fingerprint handling.
+        // Real Stripe uses the canonical USD price through hosted Checkout below.
         const routing = {
-            resolveForNewSubscription: jest.fn().mockResolvedValue({ provider: 'stripe', level: 'country', substituted: false }),
+            resolveForNewSubscription: jest.fn().mockResolvedValue({ provider: 'mock', level: 'country', substituted: false }),
         };
         const providerFactory = {
             capabilitiesOf: () => MERCADOPAGO_CAPABILITIES,
-            // Stripe no tiene servicio de credenciales propio: su gate de
-            // "configurado" es isRegistered, así que el flag del harness entra
-            // por acá.
             isRegistered: () => providerConfigured,
         };
         return {
@@ -336,6 +330,37 @@ describe('BillingPlanCatalogService', () => {
         expect(plan.features).not.toHaveProperty('rateLimits');
         expect(plan.features).not.toHaveProperty('llmBudgetCents');
         expect(plan.features.mediaProcessing).not.toHaveProperty('dailyBudgetCentsUsd');
+    });
+
+    describe('Stripe hosted USD catalog', () => {
+        function stripeService(configured: boolean, overrides: any = {}) {
+            const prisma = {
+                billingPlan: { findMany: jest.fn().mockResolvedValue([{ ...basePlan, priceUsdCents: 6900, priceLocalOverrides: overrides }]) },
+                exchangeRate: { findFirst: jest.fn().mockResolvedValue({ rate: 999 }) },
+            };
+            return new BillingPlanCatalogService(prisma as any,
+                { resolveForNewSubscription: jest.fn().mockResolvedValue({ provider: 'stripe' }) } as any,
+                { capabilitiesOf: () => STRIPE_CAPABILITIES, isRegistered: () => true } as any,
+                { isConfigured: () => true } as any, { isConfigured: configured } as any);
+        }
+
+        it.each(['US', 'MX', 'PE', 'ES'])('quotes and enables the same USD monthly contract in %s', async country => {
+            const [plan] = await stripeService(true, { MX: { currency: 'MXN', amountCents: 12345 } }).listActivePlans(country);
+            expect(plan).toMatchObject({ paymentProvider: 'stripe', displayCurrency: 'USD', displayPriceCents: 6900,
+                monthlyAvailable: true, annualAvailable: false, checkoutMode: 'self_serve' });
+        });
+        it('does not treat a registered adapter as configured credentials', async () => {
+            const [plan] = await stripeService(false).listActivePlans('US');
+            expect(plan).toMatchObject({ monthlyAvailable: false, signupAvailable: false, providerConfigured: false });
+        });
+        it('publishes only the configured USD annual contract', async () => {
+            const [plan] = await stripeService(true, { USD: { currency: 'USD', annual: { amountCents: 74520 } } }).listActivePlans('MX');
+            expect(plan).toMatchObject({ annualAvailable: true, displayPriceAnnualCents: 74520, annualDiscountPct: 10 });
+        });
+        it('does not permit an unknown country to sign up using a free trial', async () => {
+            const [plan] = await stripeService(true).listActivePlans('ZZ');
+            expect(plan.signupAvailable).toBe(false);
+        });
     });
 
     describe('bajo un operador sin catálogo remoto', () => {

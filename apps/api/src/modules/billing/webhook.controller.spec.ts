@@ -70,6 +70,7 @@ describe('BillingWebhookController', () => {
         );
 
         await expect(controller.receive('stripe', {}, {
+            rawBody: Buffer.from('{}'),
             body: {},
             query: { 'data.id': { nested: 'invalid' } },
         } as any)).rejects.toMatchObject({ status: 401 });

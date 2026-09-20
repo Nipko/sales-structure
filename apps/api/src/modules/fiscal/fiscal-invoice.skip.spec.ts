@@ -1,4 +1,5 @@
 import { FiscalInvoiceService } from './fiscal-invoice.service';
+import { FiscalProviderFactory } from './fiscal-provider.factory';
 
 /**
  * Un consecutivo DIAN es finito y se paga, y una factura de venta AFIRMA que
@@ -19,6 +20,10 @@ describe('FiscalInvoiceService — pagos que NO son una venta', () => {
         fiscalMode?: 'CO_LOCAL' | 'US_REMOTE';
         providerName?: 'factus' | 'us_remote';
         useActualReadiness?: boolean;
+        billingCountry?: string;
+        billingCountryAtPayment?: string | null;
+        paymentProvider?: string;
+        usIssuer?: { legalName: string; taxId: string };
     } = {}) {
         const created: any[] = [];
         const tx = {
@@ -34,7 +39,7 @@ describe('FiscalInvoiceService — pagos que NO son una venta', () => {
             $transaction: jest.fn().mockImplementation(async (cb: (c: any) => unknown) => cb(tx)),
             tenant: {
                 findUnique: jest.fn().mockResolvedValue({
-                    billingCountry: 'CO',
+                    billingCountry: opts.billingCountry ?? 'CO',
                     settings: {},
                     isInternal: opts.isInternal ?? false,
                 }),
@@ -44,7 +49,11 @@ describe('FiscalInvoiceService — pagos que NO son una venta', () => {
                     id: 'pay-1',
                     amountCents: opts.amountCents ?? 120_000,
                     currency: 'COP',
+                    provider: opts.paymentProvider ?? 'wompi',
                     metadata: {
+                        ...(opts.billingCountryAtPayment === undefined ? {} : {
+                            billingCountryAtPayment: opts.billingCountryAtPayment,
+                        }),
                         ...(opts.railEnvironment ? { railEnvironment: opts.railEnvironment } : {}),
                         ...(opts.tenantInternalAtPayment === undefined
                             ? {}
@@ -54,8 +63,10 @@ describe('FiscalInvoiceService — pagos que NO son una venta', () => {
             },
             fiscalInvoice: { findUnique: jest.fn().mockResolvedValue(null) },
         };
-        const config = { getConfig: jest.fn().mockResolvedValue({ mode: opts.fiscalMode ?? 'CO_LOCAL' }) };
-        const factory = { resolve: jest.fn().mockReturnValue({ name: opts.providerName ?? 'factus' }) };
+        const config = { getConfig: jest.fn().mockResolvedValue({ mode: opts.fiscalMode ?? 'CO_LOCAL', usIssuer: opts.usIssuer }) };
+        const actualFactory = new FiscalProviderFactory({ name: 'factus' } as any, { name: 'us_remote' } as any);
+        const factory = { resolve: jest.fn().mockImplementation((mode, country) => opts.providerName
+            ? { name: opts.providerName } : actualFactory.resolve(mode, country)) };
         const queue = { add: jest.fn().mockResolvedValue(undefined) };
         const redis = { get: jest.fn().mockResolvedValue(null) };
 
@@ -69,7 +80,7 @@ describe('FiscalInvoiceService — pagos que NO son una venta', () => {
                 (_provider: string, _cfg: unknown, railEnvironment?: string) => railEnvironment === 'production',
             );
         }
-        return { service, prisma, queue, created };
+        return { service, prisma, queue, created, factory };
     }
 
     const event = {
@@ -190,6 +201,52 @@ describe('FiscalInvoiceService — pagos que NO son una venta', () => {
             currency: 'COP',
         });
     });
+
+    it('keeps an international Stripe payment outside Factus after a tenant changes to Colombia', async () => {
+        const h = makeHarness({
+            paymentProvider: 'stripe', billingCountry: 'CO', billingCountryAtPayment: 'MX',
+            railEnvironment: 'production',
+        });
+        await h.service.onPaymentSucceeded(event as any);
+        expect(h.factory.resolve).toHaveBeenCalledWith('CO_LOCAL', 'MX');
+        expect(h.created[0]).toMatchObject({
+            status: 'blocked_config', provider: 'unresolved',
+            failureReason: 'international_fiscal_issuer_not_configured',
+        });
+        expect(h.queue.add).not.toHaveBeenCalled();
+    });
+
+    it.each([undefined, null, 'CO', 'ZZZ'])('does not guess a fiscal country for Stripe snapshot %s', async (country) => {
+        const h = makeHarness({
+            paymentProvider: 'stripe', billingCountry: 'CO', billingCountryAtPayment: country,
+            railEnvironment: 'production',
+        });
+        await h.service.onPaymentSucceeded(event as any);
+        expect(h.created[0].status).toBe('blocked_config');
+        expect(h.factory.resolve).not.toHaveBeenCalled();
+        expect(h.queue.add).not.toHaveBeenCalled();
+    });
+
+    it('preserves Colombian issuance from the historical payment country', async () => {
+        const h = makeHarness({
+            billingCountry: 'MX', billingCountryAtPayment: 'CO', railEnvironment: 'production',
+        });
+        await h.service.onPaymentSucceeded(event as any);
+        expect(h.created[0]).toMatchObject({ status: 'pending', provider: 'factus' });
+        expect(h.queue.add).toHaveBeenCalled();
+    });
+
+    it.each([false, true])('requires an identified remote issuer (configured: %s)', async (configured) => {
+        const h = makeHarness({
+            paymentProvider: 'stripe', billingCountryAtPayment: 'MX',
+            railEnvironment: 'production', fiscalMode: 'US_REMOTE', useActualReadiness: true,
+            ...(configured ? { usIssuer: { legalName: 'Example LLC', taxId: 'test-issuer' } } : {}),
+        });
+        await h.service.onPaymentSucceeded(event as any);
+        expect(h.created[0].status).toBe(configured ? 'pending' : 'blocked_config');
+        expect(h.created[0].provider).toBe('us_remote');
+        expect(h.queue.add).toHaveBeenCalledTimes(configured ? 1 : 0);
+    });
 });
 
 describe('FiscalInvoiceService — reconciliación de bloqueos', () => {
@@ -266,7 +323,8 @@ describe('FiscalInvoiceService — reconciliación de bloqueos', () => {
 
         const blockedQuery = queryRaw.mock.calls.find(([sql]) => String(sql).includes("WHERE f.status = 'blocked_config'"));
         expect(blockedQuery?.[0]).toContain("p.metadata->>'railEnvironment' = 'production'");
-        expect(blockedQuery?.[0]).toContain("UPPER(COALESCE(t.billing_country, '')) = 'CO'");
-        expect(blockedQuery?.slice(1)).toEqual(['CO_LOCAL', true]);
+        expect(blockedQuery?.[0]).toContain("WHEN p.metadata ? 'billingCountryAtPayment'");
+        expect(blockedQuery?.[0]).toContain("p.provider <> 'stripe'");
+        expect(blockedQuery?.slice(1)).toEqual(['CO_LOCAL', true, true]);
     });
 });

@@ -873,21 +873,52 @@ export class OffboardingService {
                 message: 'La suscripción debe recuperar standing por el flujo de cobro antes de reactivar el tenant.',
             });
         }
-        const paidCycle = await db.billingChargeAttempt.findFirst({
-            where: {
-                subscriptionId: sub.id,
-                status: 'succeeded',
-                purpose: { in: ['initial', 'renewal'] },
-                periodEnd: { gt: now },
-            },
-            select: { id: true },
-        });
+        const paidCycle = sub.provider === 'stripe' && sub.engine === 'provider'
+            ? await this.hasPaidStripePeriod(db, tenantId, sub)
+            : await db.billingChargeAttempt.findFirst({
+                where: {
+                    subscriptionId: sub.id,
+                    status: 'succeeded',
+                    purpose: { in: ['initial', 'renewal'] },
+                    periodEnd: { gt: now },
+                },
+                select: { id: true },
+            });
         if (!paidCycle) {
             throw new ConflictException({
                 error: 'billing_reactivation_requires_standing',
                 message: 'No existe un ciclo vigente respaldado por un cobro aprobado.',
             });
         }
+    }
+
+    /** Native Stripe invoices prove their own period; they never create Wompi attempts. */
+    private async hasPaidStripePeriod(db: any, tenantId: string, sub: any): Promise<boolean> {
+        if (!sub.providerSubscriptionId || !sub.currentPeriodStart || !sub.currentPeriodEnd) return false;
+        const start = sub.currentPeriodStart.getTime();
+        const end = sub.currentPeriodEnd.getTime();
+        if (!Number.isFinite(start) || !Number.isFinite(end) || start >= end) return false;
+        const invoices = await db.billingPayment.findMany({
+            where: {
+                tenantId, subscriptionId: sub.id, provider: 'stripe', status: 'succeeded', amountCents: { gt: 0 },
+                OR: [
+                    { metadata: { path: ['invoiceBillingReason'], equals: 'subscription_create' } },
+                    { metadata: { path: ['invoiceBillingReason'], equals: 'subscription_cycle' } },
+                ],
+            },
+            select: { amountCents: true, metadata: true },
+        });
+        return invoices.some((invoice: any) => {
+            const data = invoice.metadata ?? {};
+            const invoiceStart = Date.parse(data.invoicePeriodStart ?? '');
+            const invoiceEnd = Date.parse(data.invoicePeriodEnd ?? '');
+            return data.invoiceSubscriptionId === sub.providerSubscriptionId
+                && ['subscription_create', 'subscription_cycle'].includes(data.invoiceBillingReason)
+                && Number.isFinite(invoiceStart) && Number.isFinite(invoiceEnd)
+                && invoiceStart <= start && invoiceEnd >= end
+                && invoice.amountCents > 0
+                && Number(data.refundedAmountCents ?? 0) < invoice.amountCents;
+        });
     }
 
     /**
@@ -909,6 +940,13 @@ export class OffboardingService {
             });
         }
 
+        const sub = await this.prisma.billingSubscription.findUnique({ where: { tenantId } });
+        if (sub?.provider === 'stripe' && sub.providerSubscriptionId) {
+            throw new ConflictException({
+                error: 'stripe_trial_extension_requires_provider',
+                message: 'La prueba activa de Stripe debe modificarse en Stripe y sincronizarse antes de extender el acceso.',
+            });
+        }
         const currentTrialEnd = tenant.trialEndsAt || new Date();
         const baseDate = currentTrialEnd > new Date() ? currentTrialEnd : new Date();
         const newTrialEndsAt = new Date(baseDate.getTime() + days * 86_400_000);
@@ -916,7 +954,6 @@ export class OffboardingService {
         // Update dependent billing state first; tenant activation is the final
         // runtime-ready commit after this best-effort synchronization.
         try {
-            const sub = await this.prisma.billingSubscription.findUnique({ where: { tenantId } });
             if (sub) {
                 await assertOwned();
                 await this.prisma.billingSubscription.update({

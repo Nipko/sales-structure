@@ -5,6 +5,7 @@ import { motion } from "motion/react";
 import { useTranslations } from "next-intl";
 import { Section } from "../ui/Section";
 import { Icon } from "../ui/Icon";
+import { useSubscriptionPaymentText } from "../../hooks/useSubscriptionPaymentText";
 
 interface TrustItem {
   key: string;
@@ -20,6 +21,7 @@ interface TrustItem {
 
 export function TrustRow() {
   const t = useTranslations("trust");
+  const payment = useSubscriptionPaymentText();
 
   const items: TrustItem[] = [
     {
@@ -112,7 +114,7 @@ export function TrustRow() {
               {t(item.titleKey)}
             </h3>
             <p className="text-sm text-text-secondary leading-relaxed mb-3">
-              {t(item.descKey)}
+              {item.key === "mp" ? payment.body : t(item.descKey)}
             </p>
             <span className="text-[10px] font-medium uppercase tracking-wider text-text-muted">
               {item.badge}

@@ -822,7 +822,7 @@ jobs:
           PROD_MS_AUTH_CLIENT_SECRET: ${{ secrets.MS_AUTH_CLIENT_SECRET }}
           PROD_MS_CLIENT_ID: ${{ secrets.MS_AUTH_CLIENT_ID }}
           PROD_MS_CLIENT_SECRET: ${{ secrets.MS_AUTH_CLIENT_SECRET }}
-          # Wompi is the sole platform subscription rail. This local/syntactic
+          # Wompi is the Colombia subscription rail. This local/syntactic
           # preflight requires a production-prefixed quartet plus contractual
           # caps; merchant ownership and method activation still require the
           # provider-side go-live smoke documented in the billing runbook.
@@ -832,6 +832,8 @@ jobs:
           PROD_WOMPI_INTEGRITY_SECRET: ${{ secrets.WOMPI_INTEGRITY_SECRET }}
           PROD_WOMPI_MAX_TRANSACTION_COP_CENTS: ${{ secrets.WOMPI_MAX_TRANSACTION_COP_CENTS }}
           PROD_WOMPI_DAILY_CAP_COP_CENTS: ${{ secrets.WOMPI_DAILY_CAP_COP_CENTS }}
+          PROD_STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          PROD_STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
           # PIN del dueño para emitir cupones de alto impacto. Opcional: si el
           # secret no está, los cupones de alto impacto se bloquean (fail-closed).
           PROD_OWNER_COUPON_PIN: ${{ secrets.OWNER_COUPON_PIN }}
@@ -898,6 +900,7 @@ jobs:
             PROD_OWNER_COUPON_PIN,
             PROD_WOMPI_PUBLIC_KEY,PROD_WOMPI_PRIVATE_KEY,PROD_WOMPI_EVENTS_SECRET,PROD_WOMPI_INTEGRITY_SECRET,
             PROD_WOMPI_MAX_TRANSACTION_COP_CENTS,PROD_WOMPI_DAILY_CAP_COP_CENTS,
+            PROD_STRIPE_SECRET_KEY,PROD_STRIPE_WEBHOOK_SECRET,
             PROD_FACTUS_BASE_URL,PROD_FACTUS_CLIENT_ID,PROD_FACTUS_CLIENT_SECRET,PROD_FACTUS_USERNAME,PROD_FACTUS_PASSWORD,
             PROD_HUBSPOT_CLIENT_ID,PROD_HUBSPOT_CLIENT_SECRET,
             PROD_PIPEDRIVE_CLIENT_ID,PROD_PIPEDRIVE_CLIENT_SECRET,
@@ -952,6 +955,13 @@ jobs:
                 exit 1
               fi
             done
+
+            # Stripe is optional until international activation, but never accept
+            # a partial pair or a sandbox key on the production deployment.
+            if [ -n "$PROD_STRIPE_SECRET_KEY$PROD_STRIPE_WEBHOOK_SECRET" ]; then
+              case "$PROD_STRIPE_SECRET_KEY" in sk_live_*) ;; *) echo "ERROR: STRIPE_SECRET_KEY must be live"; exit 1 ;; esac
+              case "$PROD_STRIPE_WEBHOOK_SECRET" in whsec_*) ;; *) echo "ERROR: STRIPE_WEBHOOK_SECRET is required"; exit 1 ;; esac
+            fi
 
             echo "===> Validating DIAN/Factus production readiness..."
             for factus_var in \
@@ -1128,6 +1138,10 @@ jobs:
             echo "WOMPI_MERCHANT_TIMEZONE=America/Bogota" >> .env
             echo "WOMPI_ALLOW_SANDBOX_IN_PRODUCTION=false" >> .env
             echo "WOMPI_WEBHOOK_URL=https://api.parallly-chat.cloud/api/v1/billing/webhook/wompi" >> .env
+            echo "STRIPE_SECRET_KEY=${PROD_STRIPE_SECRET_KEY}" >> .env
+            echo "STRIPE_WEBHOOK_SECRET=${PROD_STRIPE_WEBHOOK_SECRET}" >> .env
+            # The production origin is behind Cloudflare Tunnel; do not enable on a public origin.
+            echo "BILLING_TRUST_COUNTRY_HEADER=true" >> .env
             # PIN del dueño para cupones de alto impacto / que superan la cuota
             # mensual. Vive en Secrets (no en la DB) para que ningún super_admin
             # pueda resetearlo desde el panel y vaciar el control. Si no se setea,

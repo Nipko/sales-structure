@@ -11,11 +11,11 @@ import { useSpotlight } from "../../hooks/useSpotlight";
 import {
   formatMoney,
   formatChannelNames,
-  PRICING_COUNTRIES,
   pricingCountryName,
   type ApiPlan,
   type PricingCountry,
 } from "../../lib/api";
+import { useSubscriptionPaymentText } from "../../hooks/useSubscriptionPaymentText";
 import { usePlanCatalog } from "../../hooks/usePlanCatalog";
 
 function isSalesLed(plan: ApiPlan): boolean {
@@ -191,7 +191,8 @@ export function PricingSection() {
   const [annual, setAnnual] = useState(false);
   const t = useTranslations("pricing");
   const locale = useLocale();
-  const { country, setCountry, plans, status, retry } = usePlanCatalog();
+  const payment = useSubscriptionPaymentText();
+  const { country, countries, setCountry, plans, status, retry } = usePlanCatalog();
   const selfServePlans = useMemo(() => plans.filter((plan) => !isSalesLed(plan)), [plans]);
   const annualAvailable = selfServePlans.some(
     (plan) => plan.annualAvailable
@@ -212,11 +213,12 @@ export function PricingSection() {
         <label className="flex items-center gap-2 text-sm text-text-secondary">
           <span>{t("countryLabel")}</span>
           <select
-            value={country ?? "CO"}
+            value={country ?? ""}
             onChange={(event) => setCountry(event.target.value as PricingCountry)}
             className="rounded-lg border border-border bg-surface px-3 py-2 text-text-primary focus:border-accent focus:outline-none"
           >
-            {PRICING_COUNTRIES.map((code) => (
+            <option value="" disabled>{payment.chooseCountry}</option>
+                {countries.map((code) => (
               <option key={code} value={code}>{pricingCountryName(code, locale)}</option>
             ))}
           </select>
@@ -248,6 +250,7 @@ export function PricingSection() {
         )}
       </div>
 
+      <p className="mb-6 text-center text-sm text-text-secondary" aria-live="polite">{payment.countryHint}</p>
       {status === "loading" && (
         <div className="glass-card rounded-2xl py-12 text-center text-text-secondary" aria-live="polite">
           {t("loadingPlans")}

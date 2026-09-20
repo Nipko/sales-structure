@@ -110,9 +110,7 @@ export class StripeAdapter implements IPaymentProvider {
     }
 
     async pauseSubscription(providerSubscriptionId: string): Promise<void> {
-        await this.stripe.subscriptions.update(providerSubscriptionId, {
-            pause_collection: { behavior: 'void' },
-        });
+        throw new BadRequestException({ error: 'pause_unsupported', providerSubscriptionId });
     }
 
     async resumeSubscription(providerSubscriptionId: string): Promise<void> {
@@ -128,14 +126,22 @@ export class StripeAdapter implements IPaymentProvider {
 
         const updated = await this.stripe.subscriptions.update(providerSubscriptionId, {
             items: [{ id: itemId, price: newPriceId }],
-            proration_behavior: 'create_prorations',
+            proration_behavior: 'always_invoice',
+            payment_behavior: 'error_if_incomplete',
         });
 
         return this.mapSubscription(updated);
     }
 
     async refundPayment(providerPaymentId: string, amountCents?: number): Promise<void> {
-        const params: Record<string, any> = { payment_intent: providerPaymentId };
+        let paymentIntent = providerPaymentId;
+        if (providerPaymentId.startsWith('in_')) {
+            const invoice = await this.stripe.invoices.retrieve(providerPaymentId, { expand: ['payments.data.payment.payment_intent'] });
+            const candidate = invoice.payment_intent ?? invoice.payments?.data?.find((p: any) => p.payment?.type === 'payment_intent')?.payment?.payment_intent;
+            paymentIntent = typeof candidate === 'string' ? candidate : candidate?.id;
+            if (!paymentIntent) throw new BadRequestException({ error: 'stripe_payment_not_refundable' });
+        }
+        const params: Record<string, any> = { payment_intent: paymentIntent };
         if (amountCents) params.amount = amountCents;
         await this.stripe.refunds.create(params);
     }
@@ -182,6 +188,19 @@ export class StripeAdapter implements IPaymentProvider {
         };
 
         switch (event.type) {
+            case 'checkout.session.completed': {
+                const session = event.data.object;
+                if (session.mode !== 'subscription' || !session.subscription) {
+                    throw new BadRequestException({ error: 'unsupported_stripe_checkout' });
+                }
+                return {
+                    ...base,
+                    type: BillingEventType.SUBSCRIPTION_CREATED,
+                    tenantId: session.metadata?.tenantId,
+                    providerSubscriptionId: typeof session.subscription === 'string' ? session.subscription : session.subscription.id,
+                    providerCustomerId: typeof session.customer === 'string' ? session.customer : session.customer?.id,
+                } as NormalizedBillingEvent;
+            }
             case 'customer.subscription.created':
             case 'customer.subscription.updated':
             case 'customer.subscription.deleted': {
@@ -199,28 +218,32 @@ export class StripeAdapter implements IPaymentProvider {
                 } as NormalizedBillingEvent;
             }
 
+            case 'invoice.paid':
             case 'invoice.payment_succeeded':
             case 'invoice.payment_failed': {
                 const invoice = event.data.object;
-                const subId = typeof invoice.subscription === 'string' ? invoice.subscription : invoice.subscription?.id;
+                const subscription = invoice.parent?.subscription_details?.subscription ?? invoice.subscription;
+                const subId = typeof subscription === 'string' ? subscription : subscription?.id;
+                if (!subId) throw new BadRequestException({ error: 'stripe_invoice_not_subscription' });
                 const custId = typeof invoice.customer === 'string' ? invoice.customer : invoice.customer?.id;
+                const succeeded = event.type !== 'invoice.payment_failed';
 
                 const payment: ProviderPayment = {
-                    providerPaymentId: (invoice.payment_intent as string) || invoice.id,
+                    providerPaymentId: invoice.id,
                     providerSubscriptionId: subId,
-                    amountCents: invoice.amount_paid || invoice.amount_due,
+                    amountCents: succeeded ? (invoice.amount_paid ?? 0) : (invoice.amount_due ?? 0),
                     currency: (invoice.currency || 'usd').toUpperCase(),
-                    status: event.type === 'invoice.payment_succeeded' ? 'succeeded' : 'failed',
+                    status: succeeded ? 'succeeded' : 'failed',
                     paidAt: invoice.status_transitions?.paid_at ? new Date(invoice.status_transitions.paid_at * 1000) : undefined,
                     failureReason: event.type === 'invoice.payment_failed' ? 'Payment method declined' : undefined,
                 };
 
                 return {
                     ...base,
-                    type: event.type === 'invoice.payment_succeeded'
+                    type: succeeded
                         ? BillingEventType.PAYMENT_SUCCEEDED
                         : BillingEventType.PAYMENT_FAILED,
-                    tenantId: invoice.subscription_details?.metadata?.tenantId || undefined,
+                    tenantId: invoice.parent?.subscription_details?.metadata?.tenantId ?? invoice.subscription_details?.metadata?.tenantId,
                     providerSubscriptionId: subId,
                     providerCustomerId: custId,
                     providerPaymentId: payment.providerPaymentId,
@@ -231,12 +254,23 @@ export class StripeAdapter implements IPaymentProvider {
             case 'charge.refunded': {
                 const charge = event.data.object;
                 const piId = typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.id;
+                const invoiceId = typeof charge.invoice === 'string' ? charge.invoice : charge.invoice?.id;
+                // Modern charge payloads no longer expose invoice. InvoicePayments
+                // provides the reverse relation for our stable invoice payment key.
+                const invoices = !invoiceId && piId.startsWith('pi_')
+                    ? await this.stripe.invoicePayments.list({ payment: { type: 'payment_intent', payment_intent: piId }, limit: 1 })
+                    : null;
+                const relatedInvoice = invoices?.data?.[0]?.invoice;
+                const paymentId = invoiceId ?? (typeof relatedInvoice === 'string' ? relatedInvoice : relatedInvoice?.id) ?? piId;
+                const invoice = paymentId.startsWith('in_') ? await this.stripe.invoices.retrieve(paymentId) : null;
+                const subscription = invoice?.parent?.subscription_details?.subscription ?? invoice?.subscription;
                 return {
                     ...base,
                     type: BillingEventType.PAYMENT_REFUNDED,
-                    providerPaymentId: piId,
+                    providerPaymentId: paymentId,
+                    providerSubscriptionId: typeof subscription === 'string' ? subscription : subscription?.id,
                     payment: {
-                        providerPaymentId: piId,
+                        providerPaymentId: paymentId,
                         amountCents: charge.amount_refunded,
                         currency: (charge.currency || 'usd').toUpperCase(),
                         status: 'refunded',
@@ -258,15 +292,16 @@ export class StripeAdapter implements IPaymentProvider {
         }
     }
 
-    private mapSubscription(sub: any): ProviderSubscription {
+    mapSubscription(sub: any): ProviderSubscription {
+        const item = sub.items?.data?.[0];
         return {
             providerSubscriptionId: sub.id,
             providerCustomerId: typeof sub.customer === 'string' ? sub.customer : sub.customer?.id || '',
             providerPlanId: sub.items?.data?.[0]?.price?.id || '',
-            status: this.mapStatus(sub.status),
+            status: sub.pause_collection ? SubscriptionStatus.PAST_DUE : this.mapStatus(sub.status),
             trialEndsAt: sub.trial_end ? new Date(sub.trial_end * 1000) : undefined,
-            currentPeriodStart: sub.current_period_start ? new Date(sub.current_period_start * 1000) : undefined,
-            currentPeriodEnd: sub.current_period_end ? new Date(sub.current_period_end * 1000) : undefined,
+            currentPeriodStart: (item?.current_period_start ?? sub.current_period_start) ? new Date((item?.current_period_start ?? sub.current_period_start) * 1000) : undefined,
+            currentPeriodEnd: (item?.current_period_end ?? sub.current_period_end) ? new Date((item?.current_period_end ?? sub.current_period_end) * 1000) : undefined,
             cancelAtPeriodEnd: sub.cancel_at_period_end || false,
             rawStatus: sub.status,
         };
@@ -281,8 +316,8 @@ export class StripeAdapter implements IPaymentProvider {
             case 'unpaid': return SubscriptionStatus.PAST_DUE;
             case 'incomplete': return SubscriptionStatus.PENDING_AUTH;
             case 'incomplete_expired': return SubscriptionStatus.EXPIRED;
-            case 'paused': return SubscriptionStatus.ACTIVE;
-            default: return SubscriptionStatus.ACTIVE;
+            case 'paused': return SubscriptionStatus.PAST_DUE;
+            default: return SubscriptionStatus.PENDING_AUTH;
         }
     }
 

@@ -6,11 +6,11 @@ import { useLocale, useTranslations } from "next-intl";
 import { FEATURE_MATRIX, FEATURE_CATEGORIES, resolveFeatureValue } from "../../../data/pricing";
 import {
   formatMoney,
-  PRICING_COUNTRIES,
   pricingCountryName,
   type ApiPlan,
   type PricingCountry,
 } from "../../../lib/api";
+import { useSubscriptionPaymentText } from "../../../hooks/useSubscriptionPaymentText";
 import { usePlanCatalog } from "../../../hooks/usePlanCatalog";
 import { PageContents, PricingIntro, PlanGuide } from "../../../components/sections/CommercialGuide";
 import { Section } from "../../../components/ui/Section";
@@ -61,7 +61,8 @@ export default function PricingPage() {
   const [expandedCat, setExpandedCat] = useState<string | null>("communication");
   const t = useTranslations("pricingPage");
   const locale = useLocale();
-  const { country, setCountry, plans, status, retry } = usePlanCatalog();
+  const payment = useSubscriptionPaymentText();
+  const { country, countries, setCountry, plans, status, retry } = usePlanCatalog();
   const selfServePlans = useMemo(() => plans.filter((plan) => !isSalesLed(plan)), [plans]);
   const annualAvailable = selfServePlans.some(
     (plan) => plan.annualAvailable
@@ -104,11 +105,12 @@ export default function PricingPage() {
             <label className="flex items-center gap-2 text-sm text-text-secondary">
               <span>{t("countryLabel")}</span>
               <select
-                value={country ?? "CO"}
+                value={country ?? ""}
                 onChange={(event) => setCountry(event.target.value as PricingCountry)}
                 className="rounded-lg border border-border bg-surface px-3 py-2 text-text-primary focus:border-accent focus:outline-none"
               >
-                {PRICING_COUNTRIES.map((code) => (
+                <option value="" disabled>{payment.chooseCountry}</option>
+                {countries.map((code) => (
                   <option key={code} value={code}>{pricingCountryName(code, locale)}</option>
                 ))}
               </select>
@@ -147,6 +149,7 @@ export default function PricingPage() {
 
       {/* Plan Cards */}
       <Section id="planes">
+      <p className="mb-6 text-center text-sm text-text-secondary" aria-live="polite">{payment.countryHint}</p>
         {status === "loading" && (
           <div className="rounded-2xl border border-border bg-surface py-12 text-center text-text-secondary" aria-live="polite">
             {t("loadingPlans")}

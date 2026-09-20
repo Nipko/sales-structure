@@ -347,7 +347,7 @@ audit_logs                 — Offboarding and billing audit trail
 
 ## Billing System (Aug 2026)
 
-- **Subscription provider**: Wompi is the only live platform→tenant rail (Colombia/COP), driven by Parallly's internal renewal engine. Mercado Pago is retired from subscriptions.
+- **Subscription providers**: New subscriptions use Wompi for Colombia/COP (internal renewal engine) and Stripe for recognized non-Colombian billing countries/USD (hosted Checkout and native subscriptions). Stripe remains disabled until explicitly enabled with valid server credentials and webhook configuration. Existing subscriptions keep their provider; Mercado Pago is retired from subscriptions. See `docs/stripe-international-subscriptions-2026-09.md` for activation and fiscal issuer prerequisites.
 - **Tenant customer payments**: Wompi Payment Links and Mercado Pago Checkout Pro live under `tenant-payments`; each tenant supplies its own encrypted credentials, selects one active provider, and collects tenant→customer purchases directly. Those credentials never pay Parallly. The `customerPayments` plan feature and `tools.payments` agent capability gate new links; webhook/status reconciliation remains available after downgrade.
 - **Plans**: 5 plan families seeded in `billing_plans`; active database rows are authoritative. Provider sync scripts do not by themselves prove a payment provider is enabled in production.
 - **Subscription lifecycle**: pending_auth → trialing → active → past_due → cancelled/expired. `pending_auth` never grants paid entitlement.

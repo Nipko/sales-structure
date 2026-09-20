@@ -27,6 +27,8 @@ import { BillingEmailService } from './billing-email.service';
 import { MockPaymentProvider } from './adapters/mock-payment-provider.adapter';
 import { StripeAdapter } from './adapters/stripe.adapter';
 import { StripeConfigService } from './adapters/stripe-config.service';
+import { StripeBillingService } from './stripe-billing.service';
+import { StripeBillingController } from './stripe-billing.controller';
 import { WompiAdapter } from './adapters/wompi.adapter';
 import { WompiConfigService } from './adapters/wompi-config.service';
 import { PaymentProviderFactory } from './payment-provider.factory';
@@ -66,7 +68,7 @@ import { BillingPlanCatalogService } from './billing-plan-catalog.service';
         BullModule.registerQueue({ name: RENEWAL_QUEUE }),
         BullModule.registerQueue({ name: CHARGE_POLL_QUEUE }),
     ],
-    controllers: [BillingController, BillingAdminController, BillingPublicController, CouponsController, BillingWebhookController, SmsCheckoutController, PaymentSourceController],
+    controllers: [BillingController, BillingAdminController, BillingPublicController, CouponsController, BillingWebhookController, SmsCheckoutController, PaymentSourceController, StripeBillingController],
     providers: [
         BillingService,
         BillingEmailService,
@@ -77,6 +79,7 @@ import { BillingPlanCatalogService } from './billing-plan-catalog.service';
         MockPaymentProvider,
         StripeAdapter,
         StripeConfigService,
+        StripeBillingService,
         WompiAdapter,
         WompiConfigService,
         BillingReconciliationProcessor,

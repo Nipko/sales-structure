@@ -10,6 +10,7 @@ import {
 import { useTranslations, useLocale } from "next-intl";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
+import { normalizeBillingCountry, selectBillingCountry } from "@/lib/billing-market";
 import { saveBillingCheckoutIntent } from "@/lib/billing-checkout-session";
 import {
     clearSignupAttribution,
@@ -58,7 +59,6 @@ const BILLING_COUNTRIES = [
     "CO", "MX", "AR", "CL", "PE", "BR", "UY", "PY", "BO",
     "EC", "VE", "CR", "PA", "DO", "GT", "US", "CA",
 ] as const;
-type BillingCountry = typeof BILLING_COUNTRIES[number];
 
 type BillingCycle = "monthly" | "annual";
 type CheckoutMode = "self_serve" | "contact_sales" | "temporarily_unavailable";
@@ -101,26 +101,11 @@ function validPlanSlug(value: string | null): string | undefined {
 }
 
 function validCountry(value: string | null): string | undefined {
-    const normalized = value?.trim().toUpperCase();
-    return normalized && BILLING_COUNTRIES.includes(normalized as BillingCountry)
-        ? normalized
-        : undefined;
+    return normalizeBillingCountry(value);
 }
 
 function validCycle(value: string | null): BillingCycle | undefined {
     return value === "monthly" || value === "annual" ? value : undefined;
-}
-
-function browserBillingCountry(): string | undefined {
-    try {
-        for (const language of navigator.languages) {
-            const region = new Intl.Locale(language).region?.toUpperCase();
-            if (region && BILLING_COUNTRIES.includes(region as BillingCountry)) {
-                return region;
-            }
-        }
-    } catch { /* browser without Intl.Locale */ }
-    return undefined;
 }
 
 function readStoredPricingIntent(): PricingIntent {
@@ -172,7 +157,8 @@ function formatMoney(amountCents: number, currency: string, locale: string): str
         return new Intl.NumberFormat(locale, {
             style: "currency",
             currency,
-            maximumFractionDigits: 0,
+            minimumFractionDigits: Number.isInteger(amountCents / 100) ? 0 : 2,
+            maximumFractionDigits: 2,
         }).format(amountCents / 100);
     } catch {
         return `${currency} ${(amountCents / 100).toLocaleString(locale)}`;
@@ -397,6 +383,7 @@ export default function OnboardingPage() {
     const [planSlug, setPlanSlug] = useState("");
     const [billingCycle, setBillingCycle] = useState<BillingCycle>("monthly");
     const [billingCountry, setBillingCountry] = useState<string | undefined>();
+    const [billingCountryOptions, setBillingCountryOptions] = useState<string[]>([...BILLING_COUNTRIES]);
     const [billingPlans, setBillingPlans] = useState<BillingPlan[]>([]);
     const [planCatalogLoading, setPlanCatalogLoading] = useState(true);
     const [planCatalogError, setPlanCatalogError] = useState(false);
@@ -440,13 +427,28 @@ export default function OnboardingPage() {
         setPlanSlug(pricingIntent.plan ?? "");
         setHasPricingIntent(Boolean(pricingIntent.plan));
         setShowAllPlans(Boolean(pricingIntent.plan));
-        setBillingCountry(pricingIntent.country ?? browserBillingCountry() ?? "CO");
         setBillingCycle(pricingIntent.cycle ?? "monthly");
-        setPricingIntentLoaded(true);
+        let cancelled = false;
+        api.getBillingMarket().catch(() => null).then((result) => {
+            if (cancelled) return;
+            const market = result?.success ? result.data : null;
+            const supported = market?.supportedCountries ?? [...BILLING_COUNTRIES];
+            const country = selectBillingCountry(pricingIntent.country, market?.country ?? null, supported);
+            setBillingCountryOptions(supported);
+            setBillingCountry(country);
+            setCountryOpen(!country);
+            setPricingIntentLoaded(true);
+        });
+        return () => { cancelled = true; };
     }, []);
 
     useEffect(() => {
         if (!pricingIntentLoaded) return;
+        if (!billingCountry) {
+            setBillingPlans([]);
+            setPlanCatalogLoading(false);
+            return;
+        }
         let cancelled = false;
         setPlanCatalogLoading(true);
         setPlanCatalogError(false);
@@ -693,8 +695,8 @@ export default function OnboardingPage() {
     const annualCycleAvailable = billingPlans.some((plan) => isCycleAvailable(plan, "annual"));
     const planCatalogIsCurrent = !planCatalogLoading
         && !planCatalogError
+        && !!billingCountry
         && planCatalogCountry === billingCountry;
-    const billingCountryOptions = [...BILLING_COUNTRIES];
     const visiblePlans = showAllPlans || !selectedPlan
         ? billingPlans
         : billingPlans.filter((plan) => plan.slug === selectedPlan.slug);
@@ -1458,8 +1460,7 @@ export default function OnboardingPage() {
                             <h2 className="text-xl font-semibold text-foreground mb-1">{t('planTitle')}</h2>
                             <p className="text-muted-foreground text-sm mb-6">{t('planSubtitle')}</p>
 
-                            {/* El país es una confirmación, no una pregunta: se deduce del
-                                navegador y sólo se abre si está mal. */}
+                            {/* El país sugerido viene del servidor; el usuario puede corregirlo. */}
                             <div className="mb-4">
                                 {!countryOpen ? (
                                     <button
@@ -1468,7 +1469,7 @@ export default function OnboardingPage() {
                                         className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-[12px] text-muted-foreground transition-colors hover:border-indigo-400 hover:text-foreground dark:border-white/10 dark:bg-white/5 cursor-pointer"
                                     >
                                         <Globe size={13} />
-                                        {t('billingCountryDetected', { country: billingCountryLabel(billingCountry ?? "CO", locale) })}
+                                        {billingCountry ? t('billingCountryDetected', { country: billingCountryLabel(billingCountry, locale) }) : t('billingCountryChoose')}
                                         <span className="font-semibold text-indigo-500">{t('timezoneChange')}</span>
                                     </button>
                                 ) : (
@@ -1478,7 +1479,7 @@ export default function OnboardingPage() {
                                         </label>
                                         <select
                                             id="billing-country"
-                                            value={billingCountry ?? "CO"}
+                                            value={billingCountry ?? ""}
                                             autoFocus
                                             onChange={(event) => {
                                                 setBillingCountry(event.target.value);
@@ -1486,6 +1487,7 @@ export default function OnboardingPage() {
                                             }}
                                             className={selectClasses}
                                         >
+                                            <option value="" disabled>{t('billingCountryChoose')}</option>
                                             {billingCountryOptions.map((country) => (
                                                 <option key={country} value={country}>
                                                     {billingCountryLabel(country, locale)} ({country})
@@ -1496,6 +1498,8 @@ export default function OnboardingPage() {
                                     </>
                                 )}
                             </div>
+
+                            {billingCountry && <p className="mb-4 text-xs text-muted-foreground">{t(billingCountry === "CO" ? 'billingWompiHint' : 'billingStripeHint')}</p>}
 
                             {pricingIntentAdjusted && (
                                 <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
@@ -1675,7 +1679,7 @@ export default function OnboardingPage() {
                                 agenda al vencer la prueba. */}
                             {selectedPlan?.requiresPaymentMethodAtSignup && (
                                 <div className="mt-5 p-4 rounded-xl border border-indigo-200 dark:border-indigo-900 bg-indigo-50/60 dark:bg-indigo-950/30 text-sm text-indigo-800 dark:text-indigo-300">
-                                    {t('paidPlanAfterSignup', { plan: selectedPlan.name })}
+                                    {t('paidPlanAfterSignup', { plan: selectedPlan.name, provider: billingCountry === "CO" ? "Wompi" : "Stripe" })}
                                 </div>
                             )}
 

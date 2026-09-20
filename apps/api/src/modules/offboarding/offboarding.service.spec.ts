@@ -34,6 +34,7 @@ describe('OffboardingService purge saga', () => {
             },
             billingSubscription: { findUnique: jest.fn().mockResolvedValue(null) },
             billingChargeAttempt: { findFirst: jest.fn().mockResolvedValue(null) },
+            billingPayment: { findMany: jest.fn().mockResolvedValue([]) },
             preflightTenantPublicPurge: jest.fn().mockImplementation(async () => { order.push('public-preflight'); }),
             executeInTenantSchema: jest.fn().mockResolvedValue([]),
             $queryRawUnsafe: jest.fn().mockResolvedValue([]),
@@ -315,6 +316,68 @@ describe('OffboardingService purge saga', () => {
         await expect(h.service.extendTrial(tenantId, 7)).rejects.toMatchObject({
             response: expect.objectContaining({ error: 'tenant_provisioning_incomplete' }),
         });
+        expect(h.prisma.tenant.update).not.toHaveBeenCalled();
+    });
+
+    function stripeStandingHarness() {
+        const h = makeHarness();
+        h.prisma.tenant.findUnique.mockResolvedValue({ ...tenant, onboardingCompletedAt: new Date(), isInternal: false });
+        const start = new Date(Date.now() - 86_400_000);
+        const end = new Date(Date.now() + 86_400_000);
+        const sub = {
+            id: 'sub-stripe', tenantId, provider: 'stripe', engine: 'provider', providerSubscriptionId: 'sub_remote',
+            status: 'active', cancellationReason: null, currentPeriodStart: start, currentPeriodEnd: end,
+        };
+        const payment = { amountCents: 6900, metadata: {
+            invoiceSubscriptionId: 'sub_remote', invoiceBillingReason: 'subscription_cycle',
+            invoicePeriodStart: start.toISOString(), invoicePeriodEnd: end.toISOString(),
+            refundedAmountCents: 0,
+        } };
+        h.prisma.billingSubscription.findUnique.mockResolvedValue(sub);
+        h.prisma.billingPayment.findMany.mockResolvedValue([payment]);
+        return { ...h, sub, payment };
+    }
+
+    it.each(['subscription_create', 'subscription_cycle'])('reactivates a paid Stripe %s period without Wompi charge attempts', async (reason) => {
+        const h = stripeStandingHarness();
+        h.payment.metadata.invoiceBillingReason = reason;
+        await expect(h.service.reactivate(tenantId)).resolves.toMatchObject({ isActive: true, subscriptionStatus: 'active' });
+        expect(h.prisma.billingChargeAttempt.findFirst).not.toHaveBeenCalled();
+        expect(h.prisma.billingPayment.findMany).toHaveBeenCalledTimes(2);
+        expect(h.prisma.billingPayment.findMany).toHaveBeenCalledWith(expect.objectContaining({
+            where: expect.objectContaining({ tenantId, subscriptionId: 'sub-stripe', provider: 'stripe', status: 'succeeded', amountCents: { gt: 0 } }),
+        }));
+    });
+
+    it.each(['old_period', 'future_period', 'proration', 'other_subscription', 'zero', 'fully_refunded', 'malformed_period', 'no_proof'])(
+        'refuses Stripe reactivation with %s payment evidence', async (kind) => {
+            const h = stripeStandingHarness();
+            if (kind === 'old_period') h.payment.metadata.invoicePeriodEnd = new Date(Date.now() - 1000).toISOString();
+            if (kind === 'future_period') h.payment.metadata.invoicePeriodStart = new Date(Date.now() + 1000).toISOString();
+            if (kind === 'proration') h.payment.metadata.invoiceBillingReason = 'subscription_update';
+            if (kind === 'other_subscription') h.payment.metadata.invoiceSubscriptionId = 'sub_old';
+            if (kind === 'zero') h.payment.amountCents = 0;
+            if (kind === 'fully_refunded') h.payment.metadata.refundedAmountCents = 6900;
+            if (kind === 'malformed_period') h.payment.metadata.invoicePeriodStart = 'invalid';
+            if (kind === 'no_proof') h.prisma.billingPayment.findMany.mockResolvedValue([]);
+            await expect(h.service.reactivate(tenantId)).rejects.toMatchObject({ response: { error: 'billing_reactivation_requires_standing' } });
+            expect(h.prisma.tenant.update).not.toHaveBeenCalled();
+            expect(h.prisma.user.updateMany).not.toHaveBeenCalled();
+        },
+    );
+
+    it('revalidates Stripe paid standing inside the activation transaction', async () => {
+        const h = stripeStandingHarness();
+        h.prisma.billingPayment.findMany.mockResolvedValueOnce([h.payment]).mockResolvedValueOnce([]);
+        await expect(h.service.reactivate(tenantId)).rejects.toMatchObject({ response: { error: 'billing_reactivation_requires_standing' } });
+        expect(h.prisma.tenant.update).not.toHaveBeenCalled();
+        expect(h.prisma.user.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('does not extend a live Stripe trial locally while its remote charge date remains unchanged', async () => {
+        const h = stripeStandingHarness();
+        h.sub.status = 'trialing';
+        await expect(h.service.extendTrial(tenantId, 7)).rejects.toMatchObject({ response: { error: 'stripe_trial_extension_requires_provider' } });
         expect(h.prisma.tenant.update).not.toHaveBeenCalled();
     });
 

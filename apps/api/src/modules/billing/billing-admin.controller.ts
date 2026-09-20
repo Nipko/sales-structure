@@ -21,6 +21,7 @@ import {
 import { normalizeBillingCountry } from './billing-country-config';
 import { PaymentRoutingService } from './payment-routing.service';
 import { WompiConfigService } from './adapters/wompi-config.service';
+import { StripeConfigService } from './adapters/stripe-config.service';
 import { PaymentProviderFactory } from './payment-provider.factory';
 import { PAYMENT_PROVIDER_NAMES, PaymentProviderName } from './types/provider-types';
 
@@ -120,6 +121,7 @@ export class BillingAdminController {
         private readonly reconciliation: BillingReconciliationProcessor,
         private readonly routing: PaymentRoutingService,
         private readonly providerFactory: PaymentProviderFactory,
+        private readonly stripeConfig?: StripeConfigService,
     ) {}
 
     // ── Plan Management ─────────────────────────────────────────
@@ -351,6 +353,10 @@ export class BillingAdminController {
                         currencies: caps.currencies,
                         nativeSubscriptions: caps.nativeSubscriptions,
                         refunds: caps.refunds,
+                        ...(name === 'stripe' ? {
+                            configured: this.stripeConfig?.isConfigured === true,
+                            webhookConfigured: Boolean(this.stripeConfig?.webhookSecret),
+                        } : {}),
                         ...(name === 'wompi'
                             ? {
                                   environment: this.wompiConfig.environment(),

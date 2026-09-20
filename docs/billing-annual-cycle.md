@@ -2,6 +2,8 @@
 
 _Última actualización: 2026-08-15_
 
+Adenda septiembre de 2026: el flujo internacional Stripe utiliza USD y calendario nativo, con un anual explícito independiente. Ver [Suscripciones internacionales](stripe-international-subscriptions-2026-09.md). Las secciones del motor de este documento corresponden a Wompi/Colombia.
+
 Referencia operativa del ciclo de suscripción y de las acciones cross-tenant. El
 riel de suscripciones es **Wompi + motor recurrente interno de Parallly**.
 Mercado Pago no participa en altas, trials, renovaciones ni cambios de plan; su

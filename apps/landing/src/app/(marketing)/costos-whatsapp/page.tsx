@@ -11,6 +11,7 @@ import { ThreePaymentsPanel } from "../../../components/sections/ThreePaymentsPa
 import { WhatsappCostEstimator } from "../../../components/sections/WhatsappCostEstimator";
 import { breadcrumbJsonLd, faqJsonLd } from "../../../lib/seo";
 import { routes } from "../../../lib/routes";
+import { useSubscriptionPaymentText } from "../../../hooks/useSubscriptionPaymentText";
 import {
   CHANNELS_WITHOUT_PER_MESSAGE_CHARGE,
   META_WHATSAPP_CHARGE,
@@ -46,7 +47,8 @@ const FAQ_NUMBERS = [1, 2, 3, 4, 5] as const;
 
 export default function WhatsappCostsPage() {
   const t = useTranslations("whatsappCosts");
-  const faqs = FAQ_NUMBERS.map((n) => ({ question: t(`faqQ${n}`), answer: t(`faqA${n}`) }));
+  const payment = useSubscriptionPaymentText();
+  const faqs = FAQ_NUMBERS.map((n) => ({ question: t(`faqQ${n}`), answer: n === 2 ? payment.metaSeparation : t(`faqA${n}`) }));
 
   return (
     <div className="reference-page">

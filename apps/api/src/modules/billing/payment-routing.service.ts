@@ -11,6 +11,8 @@ import {
 import { providerSupportsCountry } from './adapters/provider-capabilities';
 import { normalizeBillingCountry } from './billing-country-config';
 import { WompiConfigService } from './adapters/wompi-config.service';
+import { StripeConfigService } from './adapters/stripe-config.service';
+import { isSupportedBillingCountry } from '../../common/utils/billing-country.util';
 
 /** Wompi payment methods that can be switched on independently once verified in production. */
 export interface WompiMethodFlags {
@@ -22,7 +24,7 @@ export interface WompiMethodFlags {
 export interface ProviderRoutingConfig {
     /** L0 — kill switch per provider. Governs NEW acquisitions only. */
     providersEnabled: Record<PaymentProviderName, boolean>;
-    /** L1 — default provider per ISO country code, plus the '*' catch-all. */
+    /** Market policy: CO uses Wompi; all other recognized countries use Stripe. */
     defaultByCountry: Record<string, PaymentProviderName>;
     /** Which Wompi methods the checkout may offer. */
     wompiMethods: WompiMethodFlags;
@@ -82,13 +84,12 @@ const DEFAULT_PROVIDERS_ENABLED: Record<PaymentProviderName, boolean> = {
 };
 
 /**
- * CO explícito y el catch-all al único riel vivo. Un país que Wompi no factura
- * (todo lo no-CO) cae en no_payment_provider_available — fail-closed a
- * sabiendas hasta que Stripe despierte como riel internacional.
+ * New subscriptions have a fixed market partition. Country rules and tenant
+ * pins cannot send Colombia to Stripe or international customers to Wompi.
  */
 const DEFAULT_BY_COUNTRY: Record<string, PaymentProviderName> = {
     CO: 'wompi',
-    '*': 'wompi',
+    '*': 'stripe',
 };
 
 /**
@@ -106,13 +107,8 @@ export interface ResolveProviderInput {
     /** Provider frozen on an existing subscription (L3). When present it wins outright. */
     subscriptionProvider?: string | null;
     /**
-     * Deliberate per-tenant pin set by a super admin (L2) — `tenants.
-     * payment_provider_override`, never `tenants.payment_provider`.
-     *
-     * That distinction is the whole point: `payment_provider` is written on
-     * every subscription as a record of where it was created, so feeding it
-     * back in here pinned every tenant to whatever charged them last and made
-     * changing a country's operator a no-op for the existing base.
+     * Legacy per-tenant pin. Honored only when it agrees with the country
+     * partition; existing subscriptions keep their original provider separately.
      */
     tenantOverride?: string | null;
     /** Tenant billing country, used for the L1 default and to reject providers that cannot bill there. */
@@ -131,14 +127,9 @@ export interface ProviderResolution {
 }
 
 /**
- * Decides WHICH payment provider handles a given tenant, and lets a super admin
- * change that decision at runtime — no deploy, no rebuild.
- *
- * Four levels, most specific first:
- *   L3 billing_subscriptions.provider  → frozen for the life of the subscription
- *   L2 tenants.payment_provider        → per-tenant override (audited)
- *   L1 billing.default_provider_by_country
- *   L0 billing.providers_enabled       → kill switch, applied as a filter
+ * Keeps new Colombian subscriptions on Wompi and international subscriptions
+ * on Stripe. Runtime kill switches can close a rail, never substitute the other.
+ * Existing subscriptions retain their immutable provider.
  *
  * Scope note: L0 gates NEW acquisitions only. Disabling a provider must never
  * stop us from processing webhooks, reconciling, or charging subscriptions that
@@ -155,6 +146,7 @@ export class PaymentRoutingService {
         private readonly redis: RedisService,
         private readonly providerFactory: PaymentProviderFactory,
         private readonly wompiConfig: WompiConfigService,
+        private readonly stripeConfig: StripeConfigService,
     ) {}
 
     // -------------------------------------------------------------------------
@@ -164,7 +156,10 @@ export class PaymentRoutingService {
     async getConfig(): Promise<ProviderRoutingConfig> {
         try {
             const cached = await this.redis.getJson<ProviderRoutingConfig>(this.CACHE_KEY);
-            if (cached) return cached;
+            if (cached) return {
+                ...cached,
+                defaultByCountry: this.parseDefaultByCountry(JSON.stringify(cached.defaultByCountry)),
+            };
         } catch {
             // Cache read failures fall through to the DB — never to a wrong default.
         }
@@ -224,7 +219,10 @@ export class PaymentRoutingService {
             for (const [key, value] of Object.entries(parsed)) {
                 if (!isPaymentProviderName(value)) continue;
                 const country = key === '*' ? '*' : normalizeBillingCountry(key);
-                if (country) result[country] = value;
+                const expected = country === 'CO' ? 'wompi' : 'stripe';
+                if (country && (country === '*' || isSupportedBillingCountry(country)) && value === expected) {
+                    result[country] = value;
+                }
             }
         } catch {
             this.logger.warn(`${SETTING_DEFAULT_BY_COUNTRY} is not valid JSON — using safe defaults`);
@@ -303,7 +301,7 @@ export class PaymentRoutingService {
             const merged = { ...current.defaultByCountry };
             for (const [key, value] of Object.entries(patch.defaultByCountry)) {
                 const country = key === '*' ? '*' : normalizeBillingCountry(key);
-                if (!country) {
+                if (!country || (country !== '*' && !isSupportedBillingCountry(country))) {
                     throw new BadRequestException({ error: 'invalid_country', message: `Invalid country code: ${key}` });
                 }
                 if (value === null) {
@@ -323,6 +321,12 @@ export class PaymentRoutingService {
                         message: `Unknown provider '${value}' for country ${country}.`,
                     });
                 }
+                if (value !== (country === 'CO' ? 'wompi' : 'stripe')) {
+                    throw new BadRequestException({
+                        error: 'provider_country_unsupported',
+                        message: 'Colombia uses Wompi; international subscriptions use Stripe.',
+                    });
+                }
                 const caps = this.providerFactory.capabilitiesOf(value);
                 if (country !== '*' && !providerSupportsCountry(caps, country)) {
                     throw new BadRequestException({
@@ -332,10 +336,9 @@ export class PaymentRoutingService {
                 }
                 merged[country] = value;
             }
-            // El catch-all nunca puede faltar (ningún país sin regla), y apunta
-            // al único riel vivo. Antes reinyectaba 'mercadopago' acá — cada
-            // guardado del panel resucitaba al proveedor retirado.
-            if (!merged['*']) merged['*'] = 'wompi';
+            // Persist the same partition the acquisition resolver enforces.
+            merged.CO = 'wompi';
+            merged['*'] = 'stripe';
             updates[SETTING_DEFAULT_BY_COUNTRY] = JSON.stringify(merged);
         }
 
@@ -392,6 +395,9 @@ export class PaymentRoutingService {
     async resolveForNewSubscription(input: ResolveProviderInput): Promise<ProviderResolution> {
         const config = await this.getConfig();
         const country = normalizeBillingCountry(input.billingCountry);
+        if (!country || !isSupportedBillingCountry(country)) {
+            throw new BadRequestException({ error: 'invalid_billing_country', billingCountry: country });
+        }
 
         const usable = (name: PaymentProviderName): string | null => {
             if (!this.providerFactory.isRegistered(name)) return 'adapter_not_registered';
@@ -400,6 +406,9 @@ export class PaymentRoutingService {
             // a missing/partial/mixed quartet sends onboarding through expensive
             // tenant provisioning only to fail at the final billing write.
             if (name === 'wompi' && !this.wompiConfig.isConfigured()) {
+                return 'provider_not_configured';
+            }
+            if (name === 'stripe' && !this.stripeConfig.isConfigured) {
                 return 'provider_not_configured';
             }
             const caps = this.providerFactory.capabilitiesOf(name);
@@ -411,46 +420,16 @@ export class PaymentRoutingService {
             return null;
         };
 
-        const candidates: Array<{ name: PaymentProviderName; level: ProviderResolution['level'] }> = [];
-
-        if (isPaymentProviderName(input.tenantOverride)) {
-            candidates.push({ name: input.tenantOverride, level: 'tenant' });
-        }
-        if (country && isPaymentProviderName(config.defaultByCountry[country])) {
-            candidates.push({ name: config.defaultByCountry[country], level: 'country' });
-        }
-        if (isPaymentProviderName(config.defaultByCountry['*'])) {
-            candidates.push({ name: config.defaultByCountry['*'], level: 'fallback' });
-        }
-
-        let firstBlocked: { name: PaymentProviderName; reason: string } | null = null;
-        for (const candidate of candidates) {
-            const blocked = usable(candidate.name);
-            if (!blocked) {
-                return {
-                    provider: candidate.name,
-                    level: candidate.level,
-                    substituted: Boolean(firstBlocked),
-                    reason: firstBlocked ? `${firstBlocked.name}:${firstBlocked.reason}` : undefined,
-                };
-            }
-            if (!firstBlocked) firstBlocked = { name: candidate.name, reason: blocked };
-        }
-
-        // Nothing preferred is usable — take the first enabled provider that can
-        // bill this country rather than failing the signup outright.
-        for (const name of PAYMENT_PROVIDER_NAMES) {
-            if (!usable(name)) {
-                this.logger.warn(
-                    `[Billing] Falling over to ${name} for country ${country ?? '(unknown)'}${input.tenantId ? ` (tenant ${input.tenantId})` : ''}`,
-                );
-                return {
-                    provider: name,
-                    level: 'failover',
-                    substituted: true,
-                    reason: firstBlocked ? `${firstBlocked.name}:${firstBlocked.reason}` : 'no_preferred_provider',
-                };
-            }
+        const requiredProvider = country === 'CO' ? 'wompi' : 'stripe';
+        const blocked = usable(requiredProvider);
+        if (!blocked) {
+            const ignoredOverride = !!input.tenantOverride && input.tenantOverride !== requiredProvider;
+            return {
+                provider: requiredProvider,
+                level: input.tenantOverride === requiredProvider ? 'tenant' : 'country',
+                substituted: ignoredOverride,
+                reason: ignoredOverride ? `${input.tenantOverride}:country_policy` : undefined,
+            };
         }
 
         // Never fall back to a silent default: charging through the wrong
@@ -461,6 +440,8 @@ export class PaymentRoutingService {
                 ? `No payment provider is currently enabled for country ${country}.`
                 : 'No payment provider is currently enabled.',
             billingCountry: country ?? null,
+            providerName: requiredProvider,
+            reason: blocked,
         });
     }
 
@@ -486,13 +467,20 @@ export class PaymentRoutingService {
             });
         }
         const country = normalizeBillingCountry(billingCountry);
-        if (!providerSupportsCountry(caps, country)) {
+        if (!country || !isSupportedBillingCountry(country)
+            || provider !== (country === 'CO' ? 'wompi' : 'stripe')
+            || !providerSupportsCountry(caps, country)) {
             throw new BadRequestException({
                 error: 'provider_country_unsupported',
                 message: `Payment provider ${provider} cannot bill in ${country ?? '(unknown country)'}.`,
                 providerName: provider,
                 billingCountry: country ?? null,
             });
+        }
+        if (!this.providerFactory.isRegistered(provider)
+            || (provider === 'wompi' && !this.wompiConfig.isConfigured())
+            || (provider === 'stripe' && !this.stripeConfig.isConfigured)) {
+            throw new BadRequestException({ error: 'provider_not_configured', providerName: provider });
         }
     }
 }

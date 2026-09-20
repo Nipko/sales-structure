@@ -1,10 +1,11 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Header, Query, Req } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { BillingPlanCatalogService } from './billing-plan-catalog.service';
 import { PaymentRoutingService } from './payment-routing.service';
 import { WompiConfigService } from './adapters/wompi-config.service';
 import { PaymentProviderFactory } from './payment-provider.factory';
 import { normalizeBillingCountry } from './billing-country-config';
-import { DEFAULT_BILLING_COUNTRY } from '../../common/utils/billing-country.util';
+import { DEFAULT_BILLING_COUNTRY, isSupportedBillingCountry, SUPPORTED_BILLING_COUNTRIES } from '../../common/utils/billing-country.util';
 
 @Controller('billing/public')
 export class BillingPublicController {
@@ -13,7 +14,27 @@ export class BillingPublicController {
         private readonly routing: PaymentRoutingService,
         private readonly wompiConfig: WompiConfigService,
         private readonly providerFactory: PaymentProviderFactory,
+        private readonly config?: ConfigService,
     ) {}
+
+    /** Edge location is a suggestion only; checkout uses the tenant's confirmed billing country. */
+    @Get('market')
+    @Header('Cache-Control', 'private, no-store')
+    market(@Req() req: { headers: Record<string, string | string[] | undefined> }) {
+        const raw = req.headers['cf-ipcountry'];
+        const detected = typeof raw === 'string' ? normalizeBillingCountry(raw) : null;
+        const trusted = this.config?.get<string>('BILLING_TRUST_COUNTRY_HEADER') === 'true';
+        const country = trusted && isSupportedBillingCountry(detected) ? detected : null;
+        return {
+            success: true,
+            data: {
+                country,
+                provider: country ? (country === 'CO' ? 'wompi' : 'stripe') : null,
+                source: country ? 'edge' : 'unknown',
+                supportedCountries: SUPPORTED_BILLING_COUNTRIES,
+            },
+        };
+    }
 
     @Get('plans')
     async listPlans(@Query('country') country?: string) {
@@ -67,6 +88,7 @@ export class BillingPublicController {
                 /** Charges settle asynchronously — the UI must show a pending state instead of assuming success. */
                 asyncSettlement: capabilities.asyncSettlement,
                 requiresAcceptanceTokens: capabilities.requiresAcceptanceTokens,
+                checkoutMode: provider === 'stripe' ? 'hosted' : 'embedded',
             },
         };
     }

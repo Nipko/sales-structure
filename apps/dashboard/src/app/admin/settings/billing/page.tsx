@@ -12,6 +12,7 @@ import {
     type StoredPaymentSource,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { isStripeBillingUrl, stripeBillingAction } from "@/lib/stripe-checkout";
 import {
     CreditCard, CheckCircle2, AlertTriangle, XCircle, Clock,
     Zap, Rocket, Briefcase, Sparkles, Loader2, X, Tag, Lightbulb,
@@ -207,6 +208,18 @@ export default function BillingPage() {
     const [sourceBusy, setSourceBusy] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [toast, setToast] = useState<string | null>(null);
+    const [stripeConfirmationPending, setStripeConfirmationPending] = useState(false);
+    const stripeRefreshAttempts = useRef(0);
+
+    const billingError = (message?: string) => {
+        const keys: Record<string, string> = {
+            stripe_trial_ending_soon: "stripeTrialEndingSoon",
+            stripe_trial_duration_unsupported: "stripeTrialUnsupported",
+            stripe_checkout_processing: "stripeCheckoutProcessing",
+            stripe_price_not_configured: "stripePriceUnavailable",
+        };
+        return message && keys[message] ? t(keys[message]) : message || t("actionFailed");
+    };
 
     // Modal state — "upgrade" when user is about to subscribe/change to a paid plan
     // that needs a payment method; "change-card" when rotating the card on an
@@ -222,9 +235,9 @@ export default function BillingPage() {
         setModal(null);
     }, [activeTenantId]);
 
-    const load = useCallback(async () => {
+    const load = useCallback(async (silent = false) => {
         if (!activeTenantId) return;
-        setLoading(true);
+        if (!silent) setLoading(true);
         setError(null);
         try {
             // First fetch the subscription to learn the tenant's billing country,
@@ -232,18 +245,22 @@ export default function BillingPage() {
             const subRes = await api.getBillingSubscription(activeTenantId);
             if (subRes?.success) setSubscription((subRes.data as any) ?? null);
             const country = (subRes as any)?.billingCountry as string | null;
+            const pinnedSubscription = subRes.data as Subscription | null;
+            setBillingCountry(country ?? null);
             setIsInternalAccount((subRes as any)?.isInternal === true);
             const [plansRes, usageRes, kbRes, fiscalRes, configRes, sourcesRes] = await Promise.all([
                 api.getBillingPlans(country || undefined),
                 api.getBillingUsage(activeTenantId),
                 api.fetch(`/knowledge/usage/${activeTenantId}`).catch(() => null),
-                api.getFiscalData(activeTenantId).catch(() => null),
-                api.getBillingPublicConfig(country || undefined).catch(() => null),
+                country === "CO"
+                    ? api.getFiscalData(activeTenantId).catch(() => null)
+                    : Promise.resolve({ success: true, data: { billingCountry: country, fiscalData: null, complete: false, required: false } }),
+                api.getBillingPublicConfig(pinnedSubscription?.provider === "wompi" ? "CO" : country || undefined).catch(() => null),
                 api.listPaymentSources(activeTenantId).catch(() => null),
             ]);
             if (plansRes?.success) setPlans((plansRes.data as Plan[]) ?? []);
-            if (configRes?.success && configRes.data) setPublicConfig(configRes.data);
-            if (sourcesRes?.success) setPaymentSources(sourcesRes.data ?? []);
+            setPublicConfig(configRes?.success && configRes.data ? configRes.data : null);
+            setPaymentSources(sourcesRes?.success ? sourcesRes.data ?? [] : []);
             if (fiscalRes?.success) {
                 setFiscalData(((fiscalRes.data as any)?.fiscalData ?? null));
                 setBillingCountry(((fiscalRes.data as any)?.billingCountry ?? country ?? null));
@@ -264,11 +281,26 @@ export default function BillingPage() {
         } catch (err: any) {
             setError(err?.message || t("loadError"));
         } finally {
-            setLoading(false);
+            if (!silent) setLoading(false);
         }
     }, [activeTenantId, t]);
 
     useEffect(() => { load(); }, [load]);
+
+    useEffect(() => {
+        if (!stripeConfirmationPending || loading) return;
+        if (subscription?.provider === "stripe" && subscription.providerBacked
+            && (subscription.status === "active" || subscription.status === "trialing")) {
+            setStripeConfirmationPending(false);
+            return;
+        }
+        if (stripeRefreshAttempts.current >= 10) return;
+        const timer = setTimeout(() => {
+            stripeRefreshAttempts.current += 1;
+            void load(true);
+        }, 3000);
+        return () => clearTimeout(timer);
+    }, [load, loading, stripeConfirmationPending, subscription]);
 
     const currentPlan = useMemo(
         () => plans.find((p) => p.id === subscription?.planId),
@@ -322,6 +354,15 @@ export default function BillingPage() {
         if (!activeTenantId || recoveredCheckoutRef.current === activeTenantId) return;
         recoveredCheckoutRef.current = activeTenantId;
         const url = new URL(window.location.href);
+        if (url.searchParams.has("stripe")) {
+            const cancelled = url.searchParams.get("stripe") === "cancel";
+            clearBillingCheckoutIntent(sessionStorage, activeTenantId);
+            url.searchParams.delete("stripe");
+            window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+            setToast(t(cancelled ? "stripeReturnCancelled" : "stripeReturnPending"));
+            setStripeConfirmationPending(!cancelled);
+            return;
+        }
         if (url.searchParams.has("wompiReturn")) {
             url.searchParams.delete("wompiReturn");
             window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
@@ -335,9 +376,39 @@ export default function BillingPage() {
         setModal(intent.kind === "upgrade"
             ? { kind: "upgrade", planSlug: intent.planSlug! }
             : { kind: intent.kind });
-    }, [activeTenantId]);
+    }, [activeTenantId, t]);
 
     const storedSourceCheckout = usesStoredPaymentSources(publicConfig?.provider);
+    const stripeCheckout = subscription?.provider
+        ? subscription.provider === "stripe"
+        : publicConfig?.provider === "stripe";
+    const legacyProviderMismatch = !!subscription && !subscription.providerBacked && !!billingCountry
+        && subscription.provider !== (billingCountry === "CO" ? "wompi" : "stripe");
+
+    const handleStripeBilling = async (planSlug?: string, selectedCycle = billingCycle) => {
+        if (!activeTenantId) return;
+        setAction("upgrade");
+        setError(null);
+        try {
+            if (!subscription && planSlug) {
+                const created = await api.startBillingTrial(activeTenantId, { planSlug, billingCycle: selectedCycle });
+                if (!created.success) throw new Error(created.errorCode || created.error || t("actionFailed"));
+                await load(true);
+            }
+            const res = stripeBillingAction(subscription) === "portal"
+                ? await api.createStripePortal(activeTenantId)
+                : await api.createStripeCheckout(activeTenantId, { planSlug, billingCycle: selectedCycle });
+            if (!res.success || !res.data?.url || !isStripeBillingUrl(res.data.url)) {
+                throw new Error(res.errorCode || res.error || t("actionFailed"));
+            }
+            clearBillingCheckoutIntent(sessionStorage, activeTenantId);
+            window.location.assign(res.data.url);
+        } catch (err: any) {
+            setError(billingError(err?.message));
+        } finally {
+            setAction(null);
+        }
+    };
     const hasChargeableSource = useMemo(
         () => paymentSources.some((source) => source.status === "available"),
         [paymentSources],
@@ -368,8 +439,19 @@ export default function BillingPage() {
         },
     ) => {
         if (!activeTenantId) return;
+        if (legacyProviderMismatch) {
+            setError(t("legacyProviderMismatch", { provider: subscription?.provider ?? "" }));
+            return;
+        }
         const cardTokenId = opts?.cardTokenId;
         const selectedCycle = opts?.billingCycle ?? billingCycle;
+        if (stripeCheckout && !subscription?.providerBacked
+            && (subscription || plans.find((plan) => plan.slug === planSlug)?.requiresPaymentMethodAtSignup)) {
+            setTargetPlan(planSlug);
+            await handleStripeBilling(planSlug, selectedCycle);
+            setTargetPlan(null);
+            return;
+        }
         setAction("upgrade");
         setTargetPlan(planSlug);
         try {
@@ -388,9 +470,11 @@ export default function BillingPage() {
             // An operator billed by our own engine charges the method already on
             // file, so a stored source satisfies the requirement; a provider
             // without stored sources would need a fresh single-use token.
-            const methodMissing = storedSourceCheckout
-                ? !(hasChargeableSource || opts?.methodReady)
-                : !cardTokenId;
+            const methodMissing = stripeCheckout && subscription?.providerBacked
+                ? false
+                : storedSourceCheckout
+                    ? !(hasChargeableSource || opts?.methodReady)
+                    : !cardTokenId;
             const needsCard = requiresMethod && methodMissing;
             // A same-cycle DOWNGRADE is a no-charge scheduled change (backend
             // early-returns before the fiscal gate), so the fiscal precheck must not
@@ -461,7 +545,7 @@ export default function BillingPage() {
             closePaymentModal();
             await load();
         } catch (err: any) {
-            setError(err?.message || t("actionFailed"));
+            setError(billingError(err?.message));
         } finally {
             setAction(null);
             setTargetPlan(null);
@@ -735,6 +819,19 @@ export default function BillingPage() {
                 </div>
             )}
 
+            {stripeConfirmationPending && (
+                <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
+                    {t("stripeReturnPending")}
+                    <button type="button" onClick={() => void load(true)} className="ml-2 underline">{t("stripeRefreshStatus")}</button>
+                </div>
+            )}
+
+            {legacyProviderMismatch && (
+                <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
+                    {t("legacyProviderMismatch", { provider: subscription?.provider ?? "" })}
+                </div>
+            )}
+
             {toast && (
                 <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900 text-emerald-700 dark:text-emerald-300 text-sm flex gap-2">
                     <CheckCircle2 size={16} className="shrink-0 mt-0.5" />
@@ -776,7 +873,7 @@ export default function BillingPage() {
                                 value={`${formatMoney(subscription.nextCharge.amountCents, subscription.nextCharge.currency, locale)} · ${formatDate(subscription.nextCharge.at, locale)}`}
                             />
                         )}
-                        <InfoRow label={t("provider")} value={subscription.provider === "wompi" ? "Wompi" : subscription.provider} />
+                        <InfoRow label={t("provider")} value={subscription.provider === "wompi" ? "Wompi" : subscription.provider === "stripe" ? "Stripe" : subscription.provider} />
                     </div>
 
                     {subscription.status === "pending_auth" && (
@@ -820,7 +917,7 @@ export default function BillingPage() {
                                 || subscription.cancellationReason?.startsWith("paused:"));
                         return (
                             <>
-                                {isPaused && (
+                                {isPaused && !stripeCheckout && (
                                     <div className="mt-4 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-sm text-amber-800 dark:text-amber-300">
                                         {t("pausedBanner")}
                                     </div>
@@ -839,7 +936,7 @@ export default function BillingPage() {
                                     )}
 
                                     {/* Paused: only resume button */}
-                                    {isPaused && (
+                                    {isPaused && !stripeCheckout && (
                                         <button
                                             onClick={handleResume}
                                             disabled={action === "resume"}
@@ -852,13 +949,13 @@ export default function BillingPage() {
                                     {/* Active / trialing (not pending cancel, not paused): pause + cancel options */}
                                     {(subscription.status === "active" || subscription.status === "trialing") && !subscription.cancelAtPeriodEnd && !isPaused && (
                                         <>
-                                            <button
+                                            {!stripeCheckout && <button
                                                 onClick={handlePause}
                                                 disabled={action === "pause"}
                                                 className="px-4 py-2 rounded-lg text-sm font-medium bg-amber-50 dark:bg-amber-950/30 hover:bg-amber-100 dark:hover:bg-amber-950/50 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-900 disabled:opacity-50"
                                             >
                                                 {action === "pause" ? <Loader2 className="inline animate-spin" size={14} /> : t("pause")}
-                                            </button>
+                                            </button>}
                                             <button
                                                 onClick={() => handleCancel(false)}
                                                 disabled={action === "cancel"}
@@ -897,13 +994,14 @@ export default function BillingPage() {
                             <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 flex items-center gap-2">
                                 <CreditCard size={15} className="text-indigo-500" /> {t("paymentMethodsTitle")}
                             </h2>
-                            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">{t("paymentMethodsHint")}</p>
+                            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">{t(stripeCheckout ? "stripeManagedHint" : "paymentMethodsHint")}</p>
                         </div>
                         <button
-                            onClick={() => setModal({ kind: storedSourceCheckout ? "add-method" : "change-card" })}
+                            onClick={() => stripeCheckout ? handleStripeBilling() : setModal({ kind: storedSourceCheckout ? "add-method" : "change-card" })}
+                            disabled={action !== null || legacyProviderMismatch}
                             className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-indigo-50 dark:bg-indigo-950/30 hover:bg-indigo-100 dark:hover:bg-indigo-950/50 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-900"
                         >
-                            <Plus size={14} /> {storedSourceCheckout ? t("addPaymentMethod") : t("changeCard")}
+                            <Plus size={14} /> {stripeCheckout ? t("stripeManage") : storedSourceCheckout ? t("addPaymentMethod") : t("changeCard")}
                         </button>
                     </div>
 
@@ -1498,7 +1596,7 @@ export default function BillingPage() {
                                             }
                                             handleUpgrade(plan.slug);
                                         }}
-                                        disabled={isCurrent || action !== null || !cycleActionAvailable}
+                                        disabled={isCurrent || action !== null || !cycleActionAvailable || legacyProviderMismatch}
                                         className={cn(
                                             "mt-4 w-full px-4 py-2 rounded-lg text-sm font-medium transition-colors",
                                             isCurrent
@@ -1559,6 +1657,7 @@ export default function BillingPage() {
                                     const trialEnd = subscription?.status === "trialing" && subscription.trialEndsAt
                                         ? new Date(subscription.trialEndsAt)
                                         : null;
+                                    if (stripeCheckout) return t("stripeManagedHint");
                                     if (trialEnd && trialEnd.getTime() > Date.now()) {
                                         return t("modalUpgradeTrialSubtitle", {
                                             name,
@@ -1573,11 +1672,14 @@ export default function BillingPage() {
                             </p>
                         )}
 
-                        <PaymentForm
+                        {legacyProviderMismatch ? (
+                            <p role="alert">{t("legacyProviderMismatch", { provider: subscription?.provider ?? "" })}</p>
+                        ) : <PaymentForm
                             tenantId={activeTenantId!}
                             country={billingCountry ?? undefined}
                             config={publicConfig}
                             onSourceSaved={handleSourceSaved}
+                            onHostedCheckout={() => handleStripeBilling(modal.kind === "upgrade" ? modal.planSlug : undefined)}
                             submitting={action !== null}
                             submitLabel={
                                 modal.kind === "upgrade"
@@ -1586,7 +1688,7 @@ export default function BillingPage() {
                                         ? t("modalAddMethodSubmit")
                                         : t("modalChangeCardSubmit")
                             }
-                        />
+                        />}
                     </div>
                 </div>
             )}

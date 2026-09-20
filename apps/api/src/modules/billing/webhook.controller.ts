@@ -74,6 +74,9 @@ export class BillingWebhookController {
         const providerKey = providerName as PaymentProviderName;
         const provider = this.providerFactory.getByName(providerKey);
 
+        if (providerName === 'stripe' && !req.rawBody) {
+            throw new UnauthorizedException({ error: 'stripe_raw_body_required' });
+        }
         const rawBody = req.rawBody ? req.rawBody.toString('utf8') : JSON.stringify(req.body ?? {});
         const queryDataId = req.query?.['data.id'];
         const dataId = typeof queryDataId === 'string'

@@ -11,6 +11,8 @@ import { PaymentProviderFactory } from './payment-provider.factory';
 import { WompiConfigService } from './adapters/wompi-config.service';
 import { providerSupportsCountry } from './adapters/provider-capabilities';
 import { PaymentProviderName } from './types/provider-types';
+import { StripeConfigService } from './adapters/stripe-config.service';
+import { resolveStripePlanPrice } from './stripe-plan-price.util';
 
 type JsonRecord = Record<string, any>;
 
@@ -82,6 +84,7 @@ export class BillingPlanCatalogService {
         private readonly routing: PaymentRoutingService,
         private readonly providerFactory: PaymentProviderFactory,
         private readonly wompiConfig: WompiConfigService,
+        private readonly stripeConfig?: StripeConfigService,
     ) {}
 
     /**
@@ -91,6 +94,7 @@ export class BillingPlanCatalogService {
     private isProviderConfigured(provider: PaymentProviderName): boolean {
         if (provider === 'mercadopago') return false; // retirado: jamás cobrable
         if (provider === 'wompi') return this.wompiConfig.isConfigured();
+        if (provider === 'stripe') return this.stripeConfig?.isConfigured === true;
         // Adapters without a dedicated credential service count as configured
         // once registered.
         return this.providerFactory.isRegistered(provider);
@@ -118,7 +122,7 @@ export class BillingPlanCatalogService {
             // itself unavailable: falling back to MercadoPago's capabilities here
             // would advertise a buy button whose POST is guaranteed to 400 —
             // the kill switch would be invisible to the storefront.
-            providerName = 'wompi';
+            providerName = effectiveCountry === 'CO' ? 'wompi' : 'stripe';
             noProviderAvailable = true;
         }
         const capabilities = this.providerFactory.capabilitiesOf(providerName);
@@ -126,7 +130,8 @@ export class BillingPlanCatalogService {
         // Only providers with a remote plan catalog need a synced id + fingerprint.
         // Ours-engine providers freeze the local amount instead — demanding an id
         // there would permanently report "not synchronized".
-        const requiresProviderPlanId = capabilities.planCatalog;
+        const stripeCheckout = providerName === 'stripe';
+        const requiresProviderPlanId = !stripeCheckout && capabilities.planCatalog;
         const plans = await this.prisma.billingPlan.findMany({
             where: { isActive: true },
             orderBy: { sortOrder: 'asc' },
@@ -144,7 +149,7 @@ export class BillingPlanCatalogService {
             },
         });
 
-        const localPrice = billingCountrySupported
+        const localPrice = billingCountrySupported && !stripeCheckout
             ? await this.resolveLocalPrice(effectiveCountry)
             : null;
 
@@ -171,12 +176,12 @@ export class BillingPlanCatalogService {
             let displayPriceCents = plan.priceUsdCents;
             let priceSource: 'override' | 'fx' | 'usd' = 'usd';
 
-            if (
+            if (!stripeCheckout && (
                 Number.isSafeInteger(countryOverride?.amountCents)
                 && Number(countryOverride?.amountCents) >= 0
                 && expectedCurrency !== null
                 && String(countryOverride?.currency || '').trim().toUpperCase() === expectedCurrency
-            ) {
+            )) {
                 displayCurrency = expectedCurrency;
                 displayPriceCents = Number(countryOverride!.amountCents);
                 priceSource = 'override';
@@ -186,7 +191,11 @@ export class BillingPlanCatalogService {
                 priceSource = 'fx';
             }
 
-            const annualDisplay = resolveAnnualPlanDisplay(countryOverride, displayPriceCents, {
+            const stripeMonthly = stripeCheckout ? resolveStripePlanPrice(plan, effectiveCountry, 'monthly') : null;
+            const stripeAnnual = stripeCheckout ? resolveStripePlanPrice(plan, effectiveCountry, 'annual') : null;
+            const annualDisplay = resolveAnnualPlanDisplay(stripeCheckout
+                ? (stripeAnnual ? { annual: { amountCents: stripeAnnual.amountCents } } : null)
+                : countryOverride, displayPriceCents, {
                 requiresProviderPlanId,
             });
             // La moneda del ciclo anual se HEREDA del país cuando la fila anual no
@@ -201,7 +210,7 @@ export class BillingPlanCatalogService {
                 && String(countryOverride.annual.currency || '').trim()
                 ? String(countryOverride.annual.currency).trim().toUpperCase()
                 : String(countryOverride?.currency || '').trim().toUpperCase();
-            const annualCurrencyReady = expectedCurrency !== null
+            const annualCurrencyReady = stripeCheckout ? stripeAnnual !== null : expectedCurrency !== null
                 && annualCurrency === expectedCurrency;
             const features: JsonRecord = isRecord(plan.features) ? plan.features : {};
             const salesLed = plan.slug === 'custom' || features.salesLed === true;
@@ -210,7 +219,7 @@ export class BillingPlanCatalogService {
             // A provider plan is a fixed local-currency amount. An FX preview or
             // USD fallback is display-only and cannot prove that the frozen MP
             // amount matches, even when a legacy CO id happens to exist.
-            const configuredMonthlyPrice = priceSource === 'override'
+            const configuredMonthlyPrice = stripeCheckout ? stripeMonthly !== null : priceSource === 'override'
                 && displayCurrency === expectedCurrency
                 && Number.isSafeInteger(displayPriceCents)
                 && displayPriceCents > 0;
@@ -253,6 +262,7 @@ export class BillingPlanCatalogService {
             const signupAvailable = !salesLed
                 && !cardTrialNotSupported
                 && providerConfigured
+                && providerCountrySupported
                 && (trialAvailable || monthlyAvailable || annualAvailable);
 
             let checkoutMode: PlanCheckoutMode;
@@ -287,6 +297,7 @@ export class BillingPlanCatalogService {
 
             return {
                 ...catalogPlan,
+                paymentProvider: providerName,
                 displayCountry: effectiveCountry,
                 displayPriceCents,
                 displayCurrency,

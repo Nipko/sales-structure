@@ -119,7 +119,7 @@ export type PaymentProviderStatusEntry = {
     currencies: string[];
     nativeSubscriptions: boolean;
     refunds: PaymentProviderRefunds;
-    /** Credential/environment state — hoy solo Wompi lo reporta. */
+    /** Credential state for Wompi and Stripe; environment is reported by Wompi. */
     environment?: 'sandbox' | 'production' | 'unconfigured';
     configured?: boolean;
     webhookConfigured?: boolean;
@@ -154,6 +154,13 @@ export type BillingPublicConfig = {
     /** Charges settle asynchronously — the UI shows a pending state instead of assuming success. */
     asyncSettlement: boolean;
     requiresAcceptanceTokens: boolean;
+};
+
+export type BillingMarket = {
+    country: string | null;
+    provider: 'wompi' | 'stripe' | null;
+    source: 'edge' | 'unknown';
+    supportedCountries: string[];
 };
 
 export type PaymentSourceKind = 'card' | 'nequi' | 'bancolombia_transfer' | 'daviplata';
@@ -1798,6 +1805,11 @@ export const api = {
     // --- Billing (Sprint 2+3) ---
     getBillingPlans: (country?: string) => apiGet(`/billing/plans${country ? `?country=${encodeURIComponent(country)}` : ""}`),
     getPublicBillingPlans: (country?: string) => apiGet(`/billing/public/plans${country ? `?country=${encodeURIComponent(country)}` : ""}`),
+    getBillingMarket: () => apiGet<BillingMarket>("/billing/public/market"),
+    createStripeCheckout: (tenantId: string, data: { planSlug?: string; billingCycle?: 'monthly' | 'annual' }) =>
+        apiPost<{ url: string }>(`/billing/${tenantId}/stripe/checkout`, data),
+    createStripePortal: (tenantId: string) =>
+        apiPost<{ url: string }>(`/billing/${tenantId}/stripe/portal`, {}),
     getBillingSubscription: (tenantId: string) =>
         apiGet(`/billing/${tenantId}/subscription`),
     startBillingTrial: (tenantId: string, data: { planSlug: string; cardTokenId?: string; billingEmail?: string; billingCountry?: string; billingCycle?: 'monthly' | 'annual' }) =>

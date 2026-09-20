@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import {
-    AlertCircle, Info, Loader2, Plus, Save, ToggleLeft, ToggleRight, Trash2,
+    AlertCircle, Info, Loader2, Save, ToggleLeft, ToggleRight,
 } from "lucide-react";
 import {
     api,
@@ -17,7 +17,6 @@ import { SkeletonTable } from "@/components/ui/skeleton-loader";
 /** Editable slice of the routing config. `available` is server-owned metadata. */
 type RoutingDraft = {
     providersEnabled: Record<PaymentProviderName, boolean>;
-    defaultByCountry: Record<string, PaymentProviderName>;
     wompiMethods: WompiMethodFlags;
 };
 
@@ -34,8 +33,6 @@ const ERROR_KEY_BY_CODE: Record<string, string> = {
     no_payment_provider_available: "errors.noProviderAvailable",
 };
 
-const ISO2 = /^[A-Za-z]{2}$/;
-
 function countryDisplayName(country: string, locale: string): string {
     try {
         return new Intl.DisplayNames([locale], { type: "region" }).of(country) ?? country;
@@ -47,18 +44,17 @@ function countryDisplayName(country: string, locale: string): string {
 function toDraft(config: ProviderRoutingConfig): RoutingDraft {
     return {
         providersEnabled: { ...config.providersEnabled },
-        defaultByCountry: { ...config.defaultByCountry },
         wompiMethods: { ...config.wompiMethods },
     };
 }
 
 /**
- * Runtime operator switch: which provider bills which country, without a deploy.
+ * Enable providers and Wompi methods. The country policy is fixed by the server.
  *
  * Scope is deliberately narrow and stated in the UI: this only governs NEW
  * acquisitions. A live subscription keeps billing through the provider it was
  * born with (its ids, its stored card and its webhooks only mean something
- * there), so flipping a country never migrates anyone.
+ * there), so changing availability never migrates anyone.
  */
 export function ProvidersTab({
     onToast,
@@ -77,8 +73,6 @@ export function ProvidersTab({
     // `key` is an i18n key resolved at render time so the loader never depends on
     // the translator: a changing `t` identity would re-trigger the fetch effect.
     const [error, setError] = useState<{ key: string; params?: Record<string, string>; detail?: string } | null>(null);
-    const [newCountry, setNewCountry] = useState("");
-    const [newProvider, setNewProvider] = useState<PaymentProviderName>("wompi");
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -91,8 +85,6 @@ export function ProvidersTab({
             if (routingRes.success && routingRes.data) {
                 setConfig(routingRes.data);
                 setDraft(toDraft(routingRes.data));
-                const firstRegistered = routingRes.data.available.find((p: { registered: boolean; name: string }) => p.registered)?.name;
-                if (firstRegistered) setNewProvider(firstRegistered);
             } else {
                 setError({ key: "loadError", detail: routingRes.error });
             }
@@ -105,45 +97,18 @@ export function ProvidersTab({
 
     useEffect(() => { load(); }, [load]);
 
-    const providerNames: PaymentProviderName[] = useMemo(
-        () => config?.available.map(p => p.name) ?? [],
-        [config],
-    );
-
     const dirty = useMemo(() => {
         if (!config || !draft) return false;
         return JSON.stringify(toDraft(config)) !== JSON.stringify(draft);
     }, [config, draft]);
 
-    const countryRows = useMemo(() => {
-        if (!draft) return [] as string[];
-        const countries = Object.keys(draft.defaultByCountry).filter(c => c !== "*").sort();
-        return ["*", ...countries];
-    }, [draft]);
+    const countryRows = ["CO", "*"];
 
     const toggleProvider = (name: PaymentProviderName) => {
         setDraft(prev => prev && ({
             ...prev,
             providersEnabled: { ...prev.providersEnabled, [name]: !prev.providersEnabled[name] },
         }));
-    };
-
-    const setCountryProvider = (country: string, provider: PaymentProviderName) => {
-        setDraft(prev => prev && ({
-            ...prev,
-            defaultByCountry: { ...prev.defaultByCountry, [country]: provider },
-        }));
-    };
-
-    /** Drops the country rule locally; the save turns it into an explicit `null` (delete). */
-    const removeCountry = (country: string) => {
-        if (country === "*") return; // the catch-all is not deletable
-        setDraft(prev => {
-            if (!prev) return prev;
-            const next = { ...prev.defaultByCountry };
-            delete next[country];
-            return { ...prev, defaultByCountry: next };
-        });
     };
 
     const toggleWompiMethod = (key: keyof WompiMethodFlags) => {
@@ -153,37 +118,13 @@ export function ProvidersTab({
         }));
     };
 
-    const addCountry = () => {
-        if (!draft) return;
-        const code = newCountry.trim().toUpperCase();
-        if (!ISO2.test(code)) {
-            setError({ key: "addCountryInvalid" });
-            return;
-        }
-        if (draft.defaultByCountry[code]) {
-            setError({ key: "addCountryDuplicate", params: { country: code } });
-            return;
-        }
-        setError(null);
-        setCountryProvider(code, newProvider);
-        setNewCountry("");
-    };
-
     const handleSave = async () => {
         if (!draft || !config) return;
         setSaving(true);
         setError(null);
         try {
-            // A country the admin removed has to travel as an explicit null:
-            // omitting it would just leave the stored rule untouched.
-            const defaultByCountry: Record<string, PaymentProviderName | null> = { ...draft.defaultByCountry };
-            for (const country of Object.keys(config.defaultByCountry)) {
-                if (!(country in draft.defaultByCountry)) defaultByCountry[country] = null;
-            }
-
             const res = await api.updateProviderRouting({
                 providersEnabled: draft.providersEnabled,
-                defaultByCountry,
                 wompiMethods: draft.wompiMethods,
             });
             if (res.success && res.data) {
@@ -207,7 +148,6 @@ export function ProvidersTab({
     const sectionCls = "rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900";
     const thCls = "px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400";
     const tdCls = "px-3 py-2 text-sm text-neutral-800 dark:text-neutral-200";
-    const selectCls = "h-8 rounded-md border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 px-2 text-sm text-neutral-900 dark:text-neutral-100 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 disabled:cursor-not-allowed disabled:opacity-60";
     const chipCls = "inline-flex items-center gap-1 rounded-full bg-neutral-100 dark:bg-neutral-800 px-2 py-0.5 text-[10px] font-medium text-neutral-600 dark:text-neutral-300";
 
     if (loading) {
@@ -228,11 +168,6 @@ export function ProvidersTab({
         value === "full" ? t("capabilities.refundsFull")
             : value === "void_only" ? t("capabilities.refundsVoidOnly")
                 : t("capabilities.refundsNone");
-
-    const providerOptionLabel = (name: PaymentProviderName) => {
-        const registered = config.available.find(p => p.name === name)?.registered ?? false;
-        return registered ? name : `${name} · ${t("notRegisteredShort")}`;
-    };
 
     return (
         <div className="space-y-5">
@@ -322,11 +257,13 @@ export function ProvidersTab({
                                     </span>
                                 </div>
 
-                                {detail?.environment && (
+                                {detail && (name === "wompi" || name === "stripe") && (
                                     <div className="mt-2 flex flex-wrap gap-1">
-                                        <span className={chipCls}>
-                                            {t("credentials")}: {tp(detail.environment)}
-                                        </span>
+                                        {detail.environment && (
+                                            <span className={chipCls}>
+                                                {t("credentials")}: {tp(detail.environment)}
+                                            </span>
+                                        )}
                                         <span className={chipCls}>
                                             {detail.configured ? t("credentialsConfigured") : t("credentialsMissing")}
                                         </span>
@@ -334,6 +271,9 @@ export function ProvidersTab({
                                             {detail.webhookConfigured ? t("webhookConfigured") : t("webhookMissing")}
                                         </span>
                                     </div>
+                                )}
+                                {name === "stripe" && (
+                                    <p className="mt-2 text-[11px] text-neutral-500 dark:text-neutral-400">{t("stripeSecretsHint")}</p>
                                 )}
                             </div>
                         );
@@ -352,13 +292,12 @@ export function ProvidersTab({
                             <tr className="border-b border-neutral-200 dark:border-neutral-700">
                                 <th className={thCls}>{t("routingCountry")}</th>
                                 <th className={thCls}>{t("routingProvider")}</th>
-                                <th className={thCls} />
                             </tr>
                         </thead>
                         <tbody>
                             {countryRows.map(country => {
                                 const isGlobal = country === "*";
-                                const value = draft.defaultByCountry[country];
+                                const value = country === "CO" ? "Wompi" : "Stripe";
                                 return (
                                     <tr key={country} className="border-b border-neutral-100 dark:border-neutral-800">
                                         <td className={tdCls}>
@@ -371,30 +310,7 @@ export function ProvidersTab({
                                                 </span>
                                             )}
                                         </td>
-                                        <td className={tdCls}>
-                                            <select
-                                                value={value}
-                                                onChange={e => setCountryProvider(country, e.target.value as PaymentProviderName)}
-                                                className={selectCls}
-                                                aria-label={isGlobal ? t("routingRestOfWorld") : country}
-                                            >
-                                                {providerNames.map(name => (
-                                                    <option key={name} value={name}>{providerOptionLabel(name)}</option>
-                                                ))}
-                                            </select>
-                                        </td>
-                                        <td className={tdCls}>
-                                            {!isGlobal && (
-                                                <button
-                                                    type="button"
-                                                    title={t("removeHint")}
-                                                    onClick={() => removeCountry(country)}
-                                                    className="inline-flex items-center gap-1 text-[11px] text-neutral-500 transition-colors hover:text-red-600 dark:text-neutral-400 dark:hover:text-red-400"
-                                                >
-                                                    <Trash2 size={12} /> {t("remove")}
-                                                </button>
-                                            )}
-                                        </td>
+                                        <td className={tdCls}>{value}</td>
                                     </tr>
                                 );
                             })}
@@ -402,34 +318,6 @@ export function ProvidersTab({
                     </table>
                 </div>
 
-                <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-neutral-100 pt-3 dark:border-neutral-800">
-                    <input
-                        value={newCountry}
-                        onChange={e => setNewCountry(e.target.value.toUpperCase().slice(0, 2))}
-                        onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addCountry(); } }}
-                        maxLength={2}
-                        placeholder={t("addCountryPlaceholder")}
-                        aria-label={t("addCountry")}
-                        className="h-8 w-24 rounded-md border border-neutral-300 bg-white px-2 font-mono text-sm uppercase text-neutral-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-100"
-                    />
-                    <select
-                        value={newProvider}
-                        onChange={e => setNewProvider(e.target.value as PaymentProviderName)}
-                        aria-label={t("routingProvider")}
-                        className={selectCls}
-                    >
-                        {providerNames.map(name => (
-                            <option key={name} value={name}>{providerOptionLabel(name)}</option>
-                        ))}
-                    </select>
-                    <button
-                        type="button"
-                        onClick={addCountry}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs font-medium text-neutral-700 transition-colors hover:border-indigo-400 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300"
-                    >
-                        <Plus size={13} /> {t("addCountry")}
-                    </button>
-                </div>
             </div>
 
             {/* Wompi method flags — only meaningful while Wompi is switched on */}

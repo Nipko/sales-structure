@@ -225,6 +225,7 @@ describe('AuthService onboarding provisioning retry', () => {
             getVerticalConfig: jest.fn().mockResolvedValue({ industry: 'retail', subType: 'moda' }),
         };
         const persona: any = { createDefaultAgentFromGoals: jest.fn().mockResolvedValue(undefined) };
+        const billing = { createTrialSubscription: jest.fn().mockResolvedValue({}) };
         const service = new AuthService(
             prisma,
             {} as any,
@@ -234,7 +235,7 @@ describe('AuthService onboarding provisioning retry', () => {
             redis,
             persona,
             { upsertPrimary: jest.fn().mockResolvedValue({}) } as any,
-            { createTrialSubscription: jest.fn().mockResolvedValue({}) } as any,
+            billing as any,
             {} as any, // coupons — el alta sin couponCode nunca lo toca
             verticals,
             {} as any,
@@ -250,7 +251,8 @@ describe('AuthService onboarding provisioning retry', () => {
         const data = {
             // `retail/marketplace` esta cerrado a altas nuevas y la puerta lo
             // rechaza; esta prueba es sobre concurrencia, no sobre verticales.
-            company: { name: 'Race Store', industry: 'retail', subType: 'moda' },
+            company: { name: 'Race Store', industry: 'retail', subType: 'moda', country: 'CO' },
+            billingCountry: 'MX',
             plan: 'starter',
             goals: ['support'],
             signupSource: 'forged-partner',
@@ -277,6 +279,7 @@ describe('AuthService onboarding provisioning retry', () => {
 
         unblockBootstrap();
         await first;
+        expect(billing.createTrialSubscription).toHaveBeenCalledWith(expect.objectContaining({ billingCountry: 'MX' }));
         expect(persona.createDefaultAgentFromGoals).toHaveBeenCalledWith(
             tenantId,
             ['support'],

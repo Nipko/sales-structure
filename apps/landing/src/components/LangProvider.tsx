@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
 import { NextIntlClientProvider } from "next-intl";
+import { BillingMarketProvider } from "./BillingMarketProvider";
 
 import esMessages from "../../messages/es.json";
 import esARMessages from "../../messages/es-AR.json";
@@ -163,7 +164,7 @@ export default function LangProvider({ children, initialLocale }: {
                 messages={messages}
                 timeZone="America/Bogota"
             >
-                {children}
+                <BillingMarketProvider>{children}</BillingMarketProvider>
             </NextIntlClientProvider>
         </LangContext.Provider>
     );

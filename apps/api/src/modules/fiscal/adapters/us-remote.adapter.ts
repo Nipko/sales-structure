@@ -9,17 +9,17 @@ import {
 
 /**
  * US_REMOTE fiscal provider — used when fiscalMode='US_REMOTE' (the LLC bills
- * from the US). There is NO Colombian DIAN obligation in this path; we issue a
- * plain commercial receipt (no CUFE, no DIAN validation). The downloadable PDF
+ * from the US). This adapter issues a plain commercial receipt (no CUFE or
+ * DIAN validation); selecting it does not determine the seller's tax obligations.
+ * The downloadable PDF
  * is served on demand by the billing module's existing receipt generator
  * (InvoiceGeneratorService) from the BillingPayment, so this adapter only
  * records that a commercial document applies and assigns a sequential-ish
  * reference.
  *
- * This is intentionally a thin stub: when the LLC is live, Colombian IVA on
- * foreign digital services is handled separately (e.g. Stripe Tax / Quaderno),
- * which would grow this adapter or add a sibling one — without touching the
- * generic fiscal layer.
+ * Tax treatment and any required additional documents must be configured for
+ * the actual seller separately. Connecting Stripe does not select this adapter
+ * or establish an issuer.
  */
 @Injectable()
 export class UsRemoteAdapter implements IFiscalInvoiceProvider {

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, Fragment } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { api, type PaymentProvidersStatus, type PaymentProviderName } from "@/lib/api";
+import { api } from "@/lib/api";
 import {
     Layers, Save, CheckCircle, AlertCircle, Loader2, Pencil, X,
     RefreshCw, Users, ToggleLeft, ToggleRight, CreditCard,
@@ -47,6 +47,7 @@ type Plan = {
 
 const BILLING_CURRENCY_BY_COUNTRY = {
     CO: "COP",
+    USD: "USD",
     MX: "MXN",
     AR: "ARS",
     CL: "CLP",
@@ -66,14 +67,14 @@ const BILLING_CURRENCY_BY_COUNTRY = {
 } as const;
 
 type BillingCountry = keyof typeof BILLING_CURRENCY_BY_COUNTRY;
-
-function countryDisplayName(country: BillingCountry, locale: string): string {
-    try {
-        return new Intl.DisplayNames([locale], { type: "region" }).of(country) ?? country;
-    } catch {
-        return country;
-    }
-}
+type PricingMarket = "CO" | "USD";
+type PricingCycle = "monthly" | "annual";
+const PRICING_ROWS: { market: PricingMarket; cycle: PricingCycle; label: "priceCoMonthly" | "priceCoAnnual" | "priceUsdMonthly" | "priceUsdAnnual" }[] = [
+    { market: "CO", cycle: "monthly", label: "priceCoMonthly" },
+    { market: "CO", cycle: "annual", label: "priceCoAnnual" },
+    { market: "USD", cycle: "monthly", label: "priceUsdMonthly" },
+    { market: "USD", cycle: "annual", label: "priceUsdAnnual" },
+];
 
 function formatLocalPrice(amountCents: number | undefined, currency: string, locale: string): string {
     if (!Number.isSafeInteger(amountCents)) return "—";
@@ -199,54 +200,22 @@ export default function PlansPage() {
     const moneyValidity = fieldValidity;
     const [saving, setSaving] = useState(false);
     const [toast, setToast] = useState<{ type: "success" | "error"; msg: string } | null>(null);
-    const [routing, setRouting] = useState<PaymentProvidersStatus["routing"] | null>(null);
-    // Operador que el backend resuelve para el país elegido, failover incluido.
-    const [effectiveProvider, setEffectiveProvider] = useState<PaymentProviderName | null>(null);
     const [reconciling, setReconciling] = useState(false);
-    const [selectedCountry, setSelectedCountry] = useState<BillingCountry>("CO");
-
-    const selectedCurrency = BILLING_CURRENCY_BY_COUNTRY[selectedCountry];
-
-    // Quién cobra REALMENTE en el país elegido: el operador EFECTIVO que
-    // resuelve el backend (failover incluido), con la tabla de ruteo como
-    // respaldo si esa consulta no cargó.
-    const countryProvider = effectiveProvider
-        ?? (routing
-            ? (routing.defaultByCountry[selectedCountry] ?? routing.defaultByCountry["*"] ?? null)
-            : null);
 
     const load = useCallback(async () => {
         setLoading(true);
         try {
-            const [plansRes, regRes, provRes] = await Promise.all([
+            const [plansRes, regRes] = await Promise.all([
                 api.getAdminPlans(),
                 api.getFeatureRegistry(),
-                api.getPaymentProviderStatus(),
             ]);
             if (plansRes.success) setPlans(plansRes.data);
             if (regRes.success) setRegistry(regRes.data);
-            if (provRes.success && provRes.data) {
-                setRouting(provRes.data.routing ?? null);
-            }
         } catch { /* ignore */ }
         setLoading(false);
     }, []);
 
     useEffect(() => { load(); }, [load]);
-
-    // El operador efectivo depende del país elegido, así que se re-resuelve al
-    // cambiarlo. Si la consulta falla se deja en null y la pantalla cae a la
-    // tabla de ruteo: peor información, pero nunca una pantalla vacía.
-    useEffect(() => {
-        let cancelled = false;
-        api.getBillingPublicConfig(selectedCountry)
-            .then((res) => {
-                if (cancelled) return;
-                setEffectiveProvider(res.success && res.data?.provider ? res.data.provider : null);
-            })
-            .catch(() => { if (!cancelled) setEffectiveProvider(null); });
-        return () => { cancelled = true; };
-    }, [selectedCountry]);
 
     useEffect(() => {
         if (toast) {
@@ -363,7 +332,6 @@ export default function PlansPage() {
         updateFeature("channels", next);
     };
 
-    const fmtPrice = (cents: number) => `$${(cents / 100).toFixed(0)}`;
     const fmtNum = (v: number) => v === -1 ? t("unlimited") : v.toLocaleString();
 
     const cellTypeFor = (def: FeatureDef): "number" | "boolean" | "select" | "channels" | "text" => {
@@ -477,24 +445,11 @@ export default function PlansPage() {
         );
     };
 
-    const renderTopCell = (plan: Plan, key: "maxAgents" | "maxAiMessages" | "priceUsdCents" | "trialDays") => {
+    const renderTopCell = (plan: Plan, key: "maxAgents" | "maxAiMessages" | "trialDays") => {
         const isEditing = editSlug === plan.slug && editBuffer;
         const val = isEditing ? editBuffer[key] : plan[key];
         if (!isEditing) {
-            return <span className="font-mono text-xs">{key === "priceUsdCents" ? fmtPrice(val as number) : fmtNum(val as number)}</span>;
-        }
-        // El precio USD se edita en DÓLARES. El campo mostraba los centavos
-        // crudos (`2100` por 21 USD), así que escribir `21` —lo natural— dejaba
-        // el plan en 21 centavos. No es cosmético: fuera de Colombia ese importe
-        // es el precio de venta.
-        if (key === "priceUsdCents") {
-            return (
-                <PlanMoneyInput key={`${editSlug}:usd`} cents={val as number} locale={locale}
-                    label={t("priceRef")} errorLabel={t("invalidMoney")}
-                    onValidity={valid => moneyValidity("usd", valid)}
-                    className={`${inputCls} text-right font-mono`}
-                    onValue={value => updateTopLevel(key, value)} />
-            );
+            return <span className="font-mono text-xs">{fmtNum(val as number)}</span>;
         }
         return (
             <PlanQuotaInput key={`${editSlug}:top:${key}`} value={val as number}
@@ -505,6 +460,46 @@ export default function PlansPage() {
         );
     };
 
+    const renderPriceCell = (plan: Plan, market: PricingMarket, cycle: PricingCycle, label: string) => {
+        const isEditing = editSlug === plan.slug && editBuffer;
+        const current = isEditing ? editBuffer : plan;
+        const currency = market === "CO" ? "COP" : "USD";
+        const amountCents = market === "USD" && cycle === "monthly"
+            ? current.priceUsdCents
+            : cycle === "annual"
+                ? current.priceLocalOverrides?.[market]?.annual?.amountCents
+                : current.priceLocalOverrides?.[market]?.amountCents;
+        if (cycle === "annual" && plan.slug === "custom") {
+            return <td key={plan.slug} className={tdCls}><span className="text-xs text-neutral-400">—</span></td>;
+        }
+        if (!isEditing) {
+            return <td key={plan.slug} className={tdCls}><span className="font-mono text-xs">{formatLocalPrice(amountCents, currency, locale)}</span></td>;
+        }
+        return (
+            <td key={plan.slug} className={tdCls}>
+                <PlanMoneyInput key={`${editSlug}:${market}:${cycle}`}
+                    cents={amountCents} locale={locale} label={label}
+                    errorLabel={t("invalidMoney")}
+                    onValidity={valid => moneyValidity(`${market}:${cycle}`, valid)}
+                    className={`${inputCls} text-right font-mono`}
+                    onValue={value => {
+                        if (market === "USD" && cycle === "monthly") {
+                            updateTopLevel("priceUsdCents", value);
+                            return;
+                        }
+                        setEditBuffer(previous => {
+                            if (!previous) return previous;
+                            const entry = previous.priceLocalOverrides?.[market] ?? {};
+                            const next = cycle === "annual"
+                                ? { ...entry, currency, annual: { ...entry.annual, currency, amountCents: value } }
+                                : { ...entry, currency, amountCents: value };
+                            return { ...previous, priceLocalOverrides: { ...previous.priceLocalOverrides, [market]: next } };
+                        });
+                    }} />
+            </td>
+        );
+    };
+
     return (
         <div className="space-y-5 max-w-full">
             <div className="flex items-center justify-between">
@@ -512,16 +507,6 @@ export default function PlansPage() {
                     <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 flex items-center gap-2">
                         <Layers size={20} className="text-indigo-600 dark:text-indigo-400" />
                         {t("title")}
-                        {/* Qué operador cobra en el país elegido. El detalle de
-                            credenciales/ambiente vive en la pestaña Proveedores. */}
-                        {countryProvider ? (
-                            <span
-                                title={t("routedByHint", { country: selectedCountry })}
-                                className="ml-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300"
-                            >
-                                {t("routedBy", { country: selectedCountry, provider: countryProvider })}
-                            </span>
-                        ) : null}
                     </h1>
                     <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{t("subtitle")}</p>
                 </div>
@@ -570,36 +555,8 @@ export default function PlansPage() {
             />
 
             <div className={`${sectionCls} p-4`}>
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                    <div className="min-w-0 flex-1">
-                        <label htmlFor="pricing-country" className="block text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-                            {t("pricingCountry")}
-                        </label>
-                        <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
-                            {t("pricingCountryHint")}
-                        </p>
-                    </div>
-                    <div className="flex flex-col gap-2 sm:items-end">
-                        <select
-                            id="pricing-country"
-                            value={selectedCountry}
-                            disabled={Boolean(editSlug)}
-                            onChange={(event) => setSelectedCountry(event.target.value as BillingCountry)}
-                            className="h-9 min-w-[260px] rounded-lg border border-neutral-300 bg-white px-3 text-sm text-neutral-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-100"
-                        >
-                            {(Object.keys(BILLING_CURRENCY_BY_COUNTRY) as BillingCountry[]).map((country) => (
-                                <option key={country} value={country}>
-                                    {countryDisplayName(country, locale)} ({country}) · {BILLING_CURRENCY_BY_COUNTRY[country]}
-                                </option>
-                            ))}
-                        </select>
-                        {countryProvider && (
-                            <span className="inline-flex w-fit items-center rounded-full px-2 py-1 text-[11px] font-medium bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300">
-                                {t("countryBilledByOther", { country: selectedCountry, provider: countryProvider })}
-                            </span>
-                        )}
-                    </div>
-                </div>
+                <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{t("pricingCountry")}</h2>
+                <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">{t("pricingCountryHint")}</p>
             </div>
 
             <div className={`${sectionCls} overflow-x-auto`}>
@@ -668,109 +625,15 @@ export default function PlansPage() {
                                 );
                             })}
                         </tr>
-                        <tr className="border-b border-neutral-100 dark:border-neutral-800">
-                            <td className={`${tdCls} font-medium`}>{t("priceRef")}</td>
-                            {plans.map(p => <td key={p.slug} className={tdCls}>{renderTopCell(p, "priceUsdCents")}</td>)}
-                        </tr>
-                        <tr className="border-b border-neutral-100 dark:border-neutral-800">
-                            <td className={`${tdCls} font-medium`}>
-                                {t("priceLocal", { country: selectedCountry, currency: selectedCurrency })}
-                            </td>
-                            {plans.map(p => {
-                                const isEditing = editSlug === p.slug && editBuffer;
-                                const overrides = isEditing ? editBuffer.priceLocalOverrides : p.priceLocalOverrides;
-                                const amountCents = overrides?.[selectedCountry]?.amountCents;
-                                if (!isEditing) {
-                                    return (
-                                        <td key={p.slug} className={tdCls}>
-                                            <span className="font-mono text-xs">
-                                                {formatLocalPrice(amountCents, selectedCurrency, locale)}
-                                            </span>
-                                        </td>
-                                    );
-                                }
-                                return (
-                                    <td key={p.slug} className={tdCls}>
-                                        <PlanMoneyInput key={`${editSlug}:${selectedCountry}:monthly`}
-                                            cents={amountCents} locale={locale} label={t("priceLocal", {country: selectedCountry, currency: selectedCurrency})}
-                                            errorLabel={t("invalidMoney")}
-                                            onValidity={valid => moneyValidity(`${selectedCountry}:monthly`, valid)}
-                                            className={`${inputCls} text-right font-mono`}
-                                            onValue={val => {
-                                                const currentCountry = editBuffer.priceLocalOverrides?.[selectedCountry] ?? {};
-                                                setEditBuffer({
-                                                    ...editBuffer,
-                                                    priceLocalOverrides: {
-                                                        ...editBuffer.priceLocalOverrides,
-                                                        [selectedCountry]: {
-                                                            ...currentCountry,
-                                                            currency: selectedCurrency,
-                                                            amountCents: val,
-                                                        },
-                                                    },
-                                                });
-                                            }}
-                                        />
-                                        <span className="text-[10px] text-neutral-400 mt-0.5 block">
-                                            {t("localPriceHint", { currency: selectedCurrency })}
-                                        </span>
-                                    </td>
-                                );
-                            })}
-                        </tr>
-                        <tr className="border-b border-neutral-100 dark:border-neutral-800">
-                            <td className={`${tdCls} font-medium`}>
-                                {t("priceLocalAnnual", { country: selectedCountry, currency: selectedCurrency })}
-                            </td>
-                            {plans.map(p => {
-                                const isEditing = editSlug === p.slug && editBuffer;
-                                const overrides = isEditing ? editBuffer.priceLocalOverrides : p.priceLocalOverrides;
-                                const annualCents = overrides?.[selectedCountry]?.annual?.amountCents;
-                                if (p.slug === "custom") {
-                                    return <td key={p.slug} className={tdCls}><span className="text-xs text-neutral-400">—</span></td>;
-                                }
-                                if (!isEditing) {
-                                    return (
-                                        <td key={p.slug} className={tdCls}>
-                                            <span className="font-mono text-xs">
-                                                {formatLocalPrice(annualCents, selectedCurrency, locale)}
-                                            </span>
-                                        </td>
-                                    );
-                                }
-                                return (
-                                    <td key={p.slug} className={tdCls}>
-                                        <PlanMoneyInput key={`${editSlug}:${selectedCountry}:annual`}
-                                            cents={annualCents} locale={locale} label={t("priceLocalAnnual", {country: selectedCountry, currency: selectedCurrency})}
-                                            errorLabel={t("invalidMoney")}
-                                            onValidity={valid => moneyValidity(`${selectedCountry}:annual`, valid)}
-                                            className={`${inputCls} text-right font-mono`}
-                                            onValue={val => {
-                                                const currentCountry = editBuffer.priceLocalOverrides?.[selectedCountry] ?? {};
-                                                setEditBuffer({
-                                                    ...editBuffer,
-                                                    priceLocalOverrides: {
-                                                        ...editBuffer.priceLocalOverrides,
-                                                        [selectedCountry]: {
-                                                            ...currentCountry,
-                                                            currency: selectedCurrency,
-                                                            annual: {
-                                                                ...(currentCountry.annual ?? {}),
-                                                                currency: selectedCurrency,
-                                                                amountCents: val,
-                                                            },
-                                                        },
-                                                    },
-                                                });
-                                            }}
-                                        />
-                                        <span className="text-[10px] text-neutral-400 mt-0.5 block">
-                                            {t("localAnnualHint", { currency: selectedCurrency })}
-                                        </span>
-                                    </td>
-                                );
-                            })}
-                        </tr>
+                        {PRICING_ROWS.map(row => {
+                            const label = t(row.label);
+                            return (
+                                <tr key={`${row.market}:${row.cycle}`} className={`border-b border-neutral-100 dark:border-neutral-800 ${row.market === "USD" && row.cycle === "monthly" ? "border-t-2 border-t-indigo-200 dark:border-t-indigo-800" : ""}`}>
+                                    <td className={`${tdCls} font-medium`}>{label}</td>
+                                    {plans.map(plan => renderPriceCell(plan, row.market, row.cycle, label))}
+                                </tr>
+                            );
+                        })}
                         <tr className="border-b border-neutral-100 dark:border-neutral-800">
                             <td className={`${tdCls} font-medium`}>{t("trialDays")}</td>
                             {plans.map(p => <td key={p.slug} className={tdCls}>{renderTopCell(p, "trialDays")}</td>)}

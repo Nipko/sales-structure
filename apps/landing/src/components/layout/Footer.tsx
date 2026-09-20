@@ -3,9 +3,11 @@
 import { useTranslations } from "next-intl";
 import Link from "../LocalizedLink";
 import { FOOTER_SECTIONS } from "../../data/navigation";
+import { useSubscriptionPaymentText } from "../../hooks/useSubscriptionPaymentText";
 
 export function Footer() {
   const t = useTranslations("nav");
+  const payment = useSubscriptionPaymentText();
 
   return (
     <footer className="site-footer border-t border-border">
@@ -16,7 +18,7 @@ export function Footer() {
             <p className="text-text-muted text-sm leading-relaxed">{t("footerBrandDesc")}</p>
             <div className="mt-5 space-y-2 text-xs text-text-muted">
               <p>{t("footerMetaIntegration")}</p>
-              <p>{t("footerPaymentIntegration")}</p>
+              <p>{payment.footer}</p>
             </div>
           </div>
 

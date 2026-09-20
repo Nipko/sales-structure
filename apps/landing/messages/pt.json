@@ -61,7 +61,7 @@
     "footerDataDeletion": "Excluir dados",
     "footerBrandDesc": "Atendimento, vendas e acompanhamento em uma plataforma. Configure para seu negócio com a orientação do Parallly Assist.",
     "footerMetaIntegration": "Canais conectados pelas APIs da Meta",
-    "footerPaymentIntegration": "Assinaturas processadas pela Wompi (Grupo Bancolombia)",
+    "footerPaymentIntegration": "Assinaturas processadas por Wompi na Colômbia e Stripe fora da Colômbia",
     "footerMadeBy": "Desenvolvido pela Parallext em Bogotá, Colômbia",
     "footerCopyright": "© {year} Parallly. Todos os direitos reservados.",
     "menuAriaLabel": "Menu",
@@ -232,7 +232,7 @@
     "metaTitle": "Canais da Meta",
     "metaDesc": "Conexão pelas APIs do WhatsApp Business, Instagram e Messenger",
     "mpTitle": "Integração de pagamentos",
-    "mpDesc": "A Wompi (Grupo Bancolombia) processa as assinaturas: os dados do cartão vão do seu navegador para a Wompi e na nossa base fica uma referência com a bandeira, os últimos quatro dígitos e a validade.",
+    "mpDesc": "A assinatura cobre a plataforma e a capacidade de IA do seu plano. Wompi na Colômbia e Stripe fora da Colômbia processa o pagamento; a Parallly não armazena os dados completos do cartão nem o código de segurança. A disponibilidade é confirmada ao selecionar o plano.",
     "latamTitle": "Feito na América Latina",
     "latamDesc": "Interface em espanhol, inglês, português e francês, com preços locais onde disponíveis.",
     "encTitle": "Isolamento por empresa",
@@ -748,7 +748,7 @@
     "faqQ3": "Há cobranças ocultas?",
     "faqA3": "Da nossa parte não: os limites de IA não geram cobrança excedente automática; ao atingi-los, essa automação pausa e mostramos opções de ampliação. Fora do plano há cobranças que não são nossas: a partir de 1º de outubro de 2026, a Meta cobra da sua própria conta do WhatsApp Business as mensagens que entrega — as de serviço e também os modelos de marketing, utilidade e autenticação —, com a forma de pagamento que você cadastrar na Meta. Serviços de terceiros ou pacotes opcionais são informados à parte.",
     "faqQ4": "Aceitam pagamentos em moeda local?",
-    "faqA4": "Selecione seu país para ver a moeda disponível. Se não houver uma tarifa local vigente, o catálogo exibirá o valor em USD antes da contratação.",
+    "faqA4": "Na Colômbia, a assinatura é cobrada em COP pelo Wompi. Nos demais países atendidos, é cobrada em USD pelo Stripe. Confirme seu país para ver o preço correspondente antes de contratar.",
     "faqQ5": "Há desconto por pagamento anual?",
     "faqA5": "Quando o ciclo anual estiver disponível, o preço total será exibido antes da contratação. Se houver economia frente a doze pagamentos mensais, o percentual também será mostrado; o total anual é cobrado antecipadamente.",
     "faqQ6": "Posso alterar minha assinatura?",
@@ -919,7 +919,7 @@
       "Suporte prioritário dedicado"
     ],
     "perMonth": "/mês",
-    "currencyHint": "Selecione seu país para consultar a moeda e o preço vigentes. Se não houver tarifa local, o valor será exibido em USD.",
+    "currencyHint": "A Colômbia mostra o preço em COP; os demais países atendidos mostram o preço internacional em USD. Você pode corrigir o país detectado antes de continuar.",
     "transparencyTitle": "Preços honestos, sem surpresas",
     "transparencyAiIncluded": "Limites e recursos visíveis por plano",
     "transparencyWhatsapp": "Preço e moeda consultados no catálogo vigente",
@@ -962,7 +962,7 @@
     "q2": "Como funciona a IA?",
     "a2": "Você configura as informações do negócio, o catálogo, as perguntas frequentes e as regras. A IA consulta essas fontes para preparar as respostas. Você pode testá-las, ajustar as instruções e decidir quando sua equipe deve intervir.",
     "q3": "É seguro? E meus dados?",
-    "a3": "Os dados de cada empresa ficam isolados em seu próprio esquema e o acesso usa autenticação e papéis. A Wompi (Grupo Bancolombia) processa os dados do cartão. Consulte a política de privacidade para o tratamento aplicável.",
+    "a3": "Cada empresa tem dados isolados e acesso protegido por autenticação e funções. Wompi na Colômbia e Stripe fora da Colômbia processa os pagamentos da assinatura. Consulte a política de privacidade para saber como os dados são tratados.",
     "q4": "Como mantenho o controle da IA?",
     "a4": "Você define as fontes, as instruções e os casos que devem passar a uma pessoa. Antes de publicar, pode testar e revisar as respostas. Se o cliente pedir atendimento humano ou uma regra de transferência for ativada, a conversa vai para a equipe com contexto, desde que o atendimento humano esteja habilitado. A IA precisa de supervisão e pode errar.",
     "q5": "Quanto tempo leva para implementar?",
@@ -1394,7 +1394,7 @@
     "sectionSubtitle": "Vender pelo WhatsApp com a Parallly são três cobranças distintas, de três empresas distintas. Nenhuma substitui a outra.",
     "subscriptionTitle": "Sua assinatura da Parallly",
     "subscriptionWho": "Sua empresa paga à Parallly",
-    "subscriptionBody": "Cobre a plataforma e a capacidade de IA do plano escolhido. O cartão é tokenizado com a Wompi a partir do seu navegador; nosso servidor guarda uma referência de pagamento e dados parciais para administrar as cobranças autorizadas, não o número completo nem o código de segurança.",
+    "subscriptionBody": "A assinatura cobre a plataforma e a capacidade de IA do seu plano. Wompi na Colômbia e Stripe fora da Colômbia processa o pagamento; a Parallly não armazena os dados completos do cartão nem o código de segurança. A disponibilidade é confirmada ao selecionar o plano.",
     "subscriptionNote": "Esse cartão não configura nem paga nada na Meta.",
     "whatsappDeliveryTitle": "As mensagens que o WhatsApp entrega",
     "whatsappDeliveryWho": "Sua empresa paga à Meta",
@@ -1461,7 +1461,7 @@
     "faqQ1": "Quem paga à Meta pelas minhas mensagens do WhatsApp?",
     "faqA1": "Sua empresa. A cobrança é emitida pela Meta contra a sua própria conta do WhatsApp Business, com a forma de pagamento que você cadastrar ali. Esse dinheiro não passa pela Parallly e não faz parte do seu plano.",
     "faqQ2": "O cartão da minha assinatura serve para pagar à Meta?",
-    "faqA2": "Não. O cartão da assinatura é tokenizado com a Wompi e cobre apenas as cobranças da Parallly. O pagamento à Meta se configura na página da Meta e vive em um registro próprio.",
+    "faqA2": "Não. Wompi na Colômbia e Stripe fora da Colômbia processa apenas sua assinatura da Parallly. A forma de pagamento da Meta é configurada e mantida na Meta. Os pagamentos dos seus clientes usam as credenciais próprias da sua empresa.",
     "faqQ3": "As 1.000 mensagens grátis incluem as respostas da IA?",
     "faqA3": "Sim, quando são mensagens de serviço: a Meta conta por categoria, não por quem escreveu. São 1.000 entregas de serviço por número e mês civil; não cobrem modelos, não acumulam e não são uma franquia por país.",
     "faqQ4": "O que acontece se essa conta ficar sem forma de pagamento?",
@@ -2745,6 +2745,19 @@
       "title": "Saiba o que vem a seguir.",
       "description": "Consulte os agendamentos e coordene as ações disponíveis para seu negócio. Cada pessoa trabalha com o acesso correspondente ao seu papel.",
       "imageAlt": "Agenda do Parallly no Android com um agendamento de exemplo"
+    }
+  },
+  "subscriptionPayment": {
+    "chooseCountry": "Selecione seu país de faturamento",
+    "providerUnknown": "Wompi na Colômbia e Stripe fora da Colômbia",
+    "footer": "Assinaturas processadas por {provider}",
+    "body": "A assinatura cobre a plataforma e a capacidade de IA do seu plano. {provider} processa o pagamento; a Parallly não armazena os dados completos do cartão nem o código de segurança. A disponibilidade é confirmada ao selecionar o plano.",
+    "security": "Cada empresa tem dados isolados e acesso protegido por autenticação e funções. {provider} processa os pagamentos da assinatura. Consulte a política de privacidade para saber como os dados são tratados.",
+    "metaSeparation": "Não. {provider} processa apenas sua assinatura da Parallly. A forma de pagamento da Meta é configurada e mantida na Meta. Os pagamentos dos seus clientes usam as credenciais próprias da sua empresa.",
+    "countryHint": {
+      "wompi": "Colômbia: assinatura pelo Wompi em COP. A nota fiscal eletrônica colombiana é gerenciada separadamente no Faturamento fiscal.",
+      "stripe": "Fora da Colômbia: assinatura pelo Stripe em USD. O cadastro não solicita um perfil DIAN colombiano. Confirme seu país de faturamento antes de continuar.",
+      "unknown": "Selecione seu país para consultar preços: Wompi na Colômbia e Stripe nos demais países disponíveis. O idioma do navegador não determina seu país."
     }
   }
 }

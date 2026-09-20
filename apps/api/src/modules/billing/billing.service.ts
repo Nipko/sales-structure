@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -16,10 +16,7 @@ import {
 import { FiscalConfigService } from '../fiscal/fiscal-config.service';
 import { billingCountryRequiresFiscalData, isFiscalDataComplete } from '../fiscal/fiscal-data.util';
 import { SmsCreditsService } from '../sms-credits/sms-credits.service';
-import {
-    hasBillingCurrency,
-    normalizeBillingCountry,
-} from './billing-country-config';
+import { normalizeBillingCountry } from './billing-country-config';
 import { INTERNAL_RECURRING_ENGINE_AVAILABLE, PaymentRoutingService } from './payment-routing.service';
 import { ProviderCapabilities } from './adapters/provider-capabilities';
 import { WompiConfigService } from './adapters/wompi-config.service';
@@ -30,6 +27,10 @@ import { anchorDayOf, nextPeriodEnd } from './recurring/period.util';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { DUNNING_EXPIRY_DAY, DUNNING_SOFT_LOCK_DAY } from './recurring/dunning.service';
+import { StripeBillingService } from './stripe-billing.service';
+import { StripeConfigService } from './adapters/stripe-config.service';
+import { isSupportedBillingCountry } from '../../common/utils/billing-country.util';
+import { resolveStripePlanPrice } from './stripe-plan-price.util';
 
 /**
  * Provider-agnostic subscription billing orchestrator.
@@ -66,6 +67,8 @@ export class BillingService {
         private readonly engine: SubscriptionEngineService,
         private readonly proration: ProrationService,
         @InjectQueue(RENEWAL_QUEUE) private readonly enginePendingCharges: Queue,
+        @Optional() private readonly stripeBilling?: StripeBillingService,
+        @Optional() private readonly stripeConfig?: StripeConfigService,
     ) {}
 
     /**
@@ -151,28 +154,18 @@ export class BillingService {
         const tenant = await this.prisma.tenant.findUnique({ where: { id: input.tenantId } });
         if (!tenant) throw new NotFoundException({ error: 'tenant_not_found', tenantId: input.tenantId });
         const normalizedInputCountry = normalizeBillingCountry(input.billingCountry);
-        if (normalizedInputCountry && !hasBillingCurrency(normalizedInputCountry)) {
+        if (normalizedInputCountry && !isSupportedBillingCountry(normalizedInputCountry)) {
             throw new BadRequestException({
                 error: 'invalid_billing_country',
-                message: `Billing country ${normalizedInputCountry} has no charging currency configured.`,
+                message: `Billing country ${normalizedInputCountry} is not recognized.`,
             });
         }
         const storedCountry = normalizeBillingCountry(tenant.billingCountry);
-        // 'CO' here is a LAST-RESORT FALLBACK, not a fact about the tenant. It is
-        // reached when the stored country is missing (the column was added nullable
-        // without backfill) or is recognized but has no charging currency. It gets
-        // written back to `tenants.billing_country` below, which also decides which
-        // fiscal document is issued — so a wrong fallback is not cosmetic. Logged
-        // loudly instead of silently swallowed; behaviour is unchanged.
-        const storedCountryUsable = !!storedCountry && hasBillingCurrency(storedCountry);
-        if (!normalizedInputCountry && !storedCountryUsable) {
-            this.logger.warn(
-                `[Billing] Tenant ${tenant.id} has no usable billing country `
-                + `(stored=${storedCountry ?? 'null'}) — falling back to 'CO' for charging and fiscal routing.`,
-            );
-        }
-        const effectiveBillingCountry = normalizedInputCountry
-            || (storedCountryUsable ? storedCountry! : 'CO');
+        // The confirmed billing country determines both the payment rail and
+        // the fiscal document. Missing identity must never default to Colombia.
+        const storedCountryUsable = !!storedCountry && isSupportedBillingCountry(storedCountry);
+        if (!normalizedInputCountry && !storedCountryUsable) throw new BadRequestException({ error: 'billing_country_required' });
+        const effectiveBillingCountry = normalizedInputCountry || storedCountry!;
 
         const existing = await this.prisma.billingSubscription.findUnique({ where: { tenantId: input.tenantId } });
         if (existing) {
@@ -194,9 +187,8 @@ export class BillingService {
             });
         }
 
-        // Which provider bills this tenant is a runtime decision (kill switch →
-        // country default → tenant override), not a hardcoded default. Changing
-        // the operator for a country is a settings edit, not a deploy.
+        // New subscriptions follow the confirmed country partition and the
+        // runtime provider readiness/kill switch before accepting a plan.
         //
         // Resolved BEFORE the payment-method check because what counts as "has a
         // payment method" depends on the provider.
@@ -212,6 +204,12 @@ export class BillingService {
             );
         }
         this.assertProviderConfigured(providerName);
+        if (providerName === 'stripe' && !resolveStripePlanPrice(plan, effectiveBillingCountry, billingCycle)) {
+            throw new BadRequestException({ error: 'stripe_price_not_configured' });
+        }
+        if (providerName === 'stripe' && input.cardTokenId) {
+            throw new BadRequestException({ error: 'stripe_checkout_required' });
+        }
 
         // Un trial con tarjeta promete cobro automático al vencer. La promesa
         // solo se sostiene si el operador RETIENE el instrumento; con tokens de
@@ -254,7 +252,7 @@ export class BillingService {
                 });
             }
 
-            if (!input.cardTokenId && !storedSourceAtSignup
+            if (providerName !== 'stripe' && !input.cardTokenId && !storedSourceAtSignup
                 && this.capabilitiesFor(providerName).nativeSubscriptions) {
                 throw new BadRequestException({
                     error: 'card_required_for_trial',
@@ -270,7 +268,7 @@ export class BillingService {
         // Only meaningful for providers with a remote plan catalog: one billed by
         // our own engine has no id to verify — its frozen local amount IS the
         // contract, and demanding an id here would reject every annual signup.
-        if (billingCycle === 'annual' && this.capabilitiesFor(providerName).planCatalog) {
+        if (providerName !== 'stripe' && billingCycle === 'annual' && this.capabilitiesFor(providerName).planCatalog) {
             this.resolveProviderPlanId(
                 plan,
                 providerName,
@@ -289,7 +287,7 @@ export class BillingService {
         // un plan sin trial: no existe el objeto suscripción del lado del
         // proveedor. Pedírselo tira `unsupported` y el alta muere; lo que
         // corresponde es nacer local y que nuestro motor cobre el primer período.
-        const skipProviderCreate = plan.trialDays > 0
+        const skipProviderCreate = providerName === 'stripe' || plan.trialDays > 0
             || !this.capabilitiesFor(providerName).nativeSubscriptions;
 
         // Fiscal gate: only block CHARGE-bearing flows (paid plan, or a card-backed
@@ -318,9 +316,9 @@ export class BillingService {
         // activa. Nacer TRIALING con un trial de cero días daría acceso al plan
         // sin que se haya movido un peso.
         const awaitingPaymentSource = requiresPaymentMethodAtSignup
-            && !this.capabilitiesFor(providerName).nativeSubscriptions
-            && !storedSourceAtSignup;
-        const engineFirstCharge = skipProviderCreate && plan.trialDays === 0 && !awaitingPaymentSource;
+            && (!this.capabilitiesFor(providerName).nativeSubscriptions || providerName === 'stripe')
+            && (providerName === 'stripe' || !storedSourceAtSignup);
+        const engineFirstCharge = !this.capabilitiesFor(providerName).nativeSubscriptions && skipProviderCreate && plan.trialDays === 0 && !awaitingPaymentSource;
         const localPeriodEnd = engineFirstCharge
             ? nextPeriodEnd(new Date(), billingCycle, anchorDayOf(new Date()))
             : awaitingPaymentSource
@@ -371,7 +369,7 @@ export class BillingService {
         // misma razón: del otro lado no hay nadie que cobre.
         //   · trial con tarjeta  → se cobra al vencer (nextChargeAt = fin del trial)
         //   · plan sin trial     → se cobra ya (nextChargeAt = ahora)
-        const engineDriven = this.capabilitiesFor(providerName).storedPaymentSources
+        const engineDriven = !this.capabilitiesFor(providerName).nativeSubscriptions && this.capabilitiesFor(providerName).storedPaymentSources
             && ((plan.requiresCardForTrial && plan.trialDays > 0 && !!trialEndsAt) || engineFirstCharge);
 
         const engineSource = storedSourceAtSignup ?? (engineDriven
@@ -424,6 +422,7 @@ export class BillingService {
                     cancelAtPeriodEnd: providerSub.cancelAtPeriodEnd,
                     metadata: {
                         billingCycle,
+                        billingCountry: effectiveBillingCountry,
                         ...(awaitingPaymentSource && plan.trialDays > 0
                             ? { trialDaysPending: plan.trialDays }
                             : {}),
@@ -513,6 +512,7 @@ export class BillingService {
 
     async upgradeSubscription(tenantId: string, newPlanSlug: string, cardTokenId?: string, billingCycle?: BillingCycle) {
         const sub = await this.requireSubscription(tenantId);
+        if (sub.provider === 'stripe' && this.stripeBilling) return this.stripeBilling.changePlan(tenantId, newPlanSlug, billingCycle);
         if ([SubscriptionStatus.CANCELLED, SubscriptionStatus.EXPIRED].includes(sub.status as SubscriptionStatus)) {
             throw new BadRequestException({
                 error: 'subscription_terminal',
@@ -878,6 +878,7 @@ export class BillingService {
      */
     async cancelPendingDowngrade(tenantId: string): Promise<void> {
         const sub = await this.requireSubscription(tenantId);
+        if (sub.provider === 'stripe' && this.stripeBilling) return this.stripeBilling.cancelPendingDowngrade(tenantId);
         if (!sub.pendingPlanId) {
             throw new BadRequestException({ error: 'no_pending_change' });
         }
@@ -916,6 +917,10 @@ export class BillingService {
         for (const sub of due) {
             let phase: 'load' | 'provider' | 'local' = 'load';
             try {
+                if (sub.provider === 'stripe' && this.stripeBilling) {
+                    await this.stripeBilling.sync(sub.tenantId);
+                    continue;
+                }
                 const newPlan = await this.prisma.billingPlan.findUnique({
                     where: { id: sub.pendingPlanId! },
                     select: {
@@ -1081,6 +1086,7 @@ export class BillingService {
         opts: CancelSubscriptionServiceOptions = {},
     ): Promise<{ strandedMandate: { provider: string; mandateId: string } | null }> {
         const sub = await this.requireSubscription(tenantId);
+        if (sub.provider === 'stripe' && this.stripeBilling) return this.stripeBilling.cancel(tenantId, opts);
 
         // Cuando el calendario de cobro es NUESTRO no hay nada que cancelar del
         // otro lado: no existe una suscripción en el proveedor. Cancelar es dejar
@@ -1463,6 +1469,7 @@ export class BillingService {
      */
     async syncFromProvider(tenantId: string): Promise<{ status: string; updated: boolean }> {
         const sub = await this.requireSubscription(tenantId);
+        if (sub.provider === 'stripe' && this.stripeBilling) return this.stripeBilling.sync(tenantId);
         if (sub.engine === 'internal') {
             const live = await this.prisma.billingChargeAttempt.findFirst({
                 where: {
@@ -2160,6 +2167,7 @@ export class BillingService {
      * signature and parsed the payload.
      */
     async handleBillingEvent(event: NormalizedBillingEvent): Promise<{ processed: boolean; reason?: string }> {
+        if (event.provider === 'stripe' && this.stripeBilling) return this.stripeBilling.handleEvent(event);
         // Idempotency — the unique index on billing_events(provider, provider_event_id)
         // would throw on the insert below, but we check first so duplicates return
         // a clean no-op instead of raising a DB exception.
@@ -2607,6 +2615,9 @@ export class BillingService {
      * initialized provider client, including local no-card trial acquisition.
      */
     private assertProviderConfigured(providerName: PaymentProviderName): void {
+        if (providerName === 'stripe' && !this.stripeConfig?.isConfigured) {
+            throw new BadRequestException({ error: 'provider_not_configured', providerName });
+        }
         // 'mock' bypasses signature verification entirely — routing to it in
         // production would hand out paid plans for free.
         if (providerName === 'mock' && process.env.NODE_ENV === 'production') {

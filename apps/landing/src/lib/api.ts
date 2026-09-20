@@ -3,7 +3,25 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.parallly-chat.cl
 export const PRICING_COUNTRIES = [
     'CO', 'MX', 'AR', 'CL', 'PE', 'BR', 'UY', 'PY', 'BO', 'EC', 'VE', 'CR', 'PA', 'DO', 'GT', 'US', 'CA',
 ] as const;
-export type PricingCountry = typeof PRICING_COUNTRIES[number];
+export type PricingCountry = string;
+
+export interface BillingMarket {
+    country: string | null;
+    provider: 'wompi' | 'stripe' | null;
+    source: 'edge' | 'unknown';
+    supportedCountries: string[];
+}
+
+export async function fetchBillingMarket(): Promise<BillingMarket | null> {
+    try {
+        const res = await fetch(`${API_URL}/billing/public/market`, { cache: 'no-store', signal: AbortSignal.timeout(8000) });
+        if (!res.ok) return null;
+        const json = await res.json();
+        return json.success && Array.isArray(json.data?.supportedCountries) ? json.data : null;
+    } catch {
+        return null;
+    }
+}
 
 export interface ApiPlan {
     id?: string;
@@ -14,6 +32,7 @@ export interface ApiPlan {
     requiresCardForTrial: boolean;
     requiresPaymentMethodAtSignup: boolean;
     providerConfigured: boolean;
+    paymentProvider?: 'wompi' | 'stripe';
     maxAgents: number;
     maxAiMessages: number;
     features: Record<string, unknown>;
@@ -33,23 +52,6 @@ export interface ApiPlan {
     checkoutMode: 'self_serve' | 'contact_sales' | 'temporarily_unavailable';
     monthlyUnavailableReason?: 'sales_led' | 'country_not_supported' | 'provider_not_configured' | 'invalid_price' | 'provider_plan_not_synced' | null;
     annualUnavailableReason?: 'sales_led' | 'country_not_supported' | 'provider_not_configured' | 'annual_not_synchronized' | null;
-}
-
-export function detectPricingCountry(): PricingCountry {
-    if (typeof navigator === 'undefined') return 'CO';
-
-    try {
-        for (const language of [navigator.language, ...(navigator.languages || [])]) {
-            const region = new Intl.Locale(language).region?.toUpperCase();
-            if (region && PRICING_COUNTRIES.includes(region as PricingCountry)) {
-                return region as PricingCountry;
-            }
-        }
-    } catch {
-        // A malformed browser locale should not prevent the catalog from loading.
-    }
-
-    return 'CO';
 }
 
 export function pricingCountryName(country: PricingCountry, locale: string): string {
@@ -97,7 +99,7 @@ export function formatMoney(cents: number, currency: string, locale: string): st
     return new Intl.NumberFormat(locale, {
         style: 'currency',
         currency,
-        currencyDisplay: 'narrowSymbol',
+        currencyDisplay: 'code',
         minimumFractionDigits: Number.isInteger(amount) ? 0 : 2,
         maximumFractionDigits: 2,
     }).format(amount);

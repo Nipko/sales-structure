@@ -6031,7 +6031,7 @@
     "strandedMandate": "{tenant} foi excluído, mas {provider} mantém um mandato de cobrança que não podemos cancelar daqui. Cancele manualmente no provedor ou o cliente pode continuar sendo cobrado. Fica registrado na auditoria da plataforma."
   },
   "onboarding": {
-    "paidPlanAfterSignup": "O plano {plan} exige um meio de pagamento. Primeiro criamos a conta sem acesso pago; depois levamos você a Faturamento para autorizar cartão, Nequi ou Botão Bancolombia. O plano só é ativado após a aprovação da Wompi.",
+    "paidPlanAfterSignup": "O plano {plan} exige uma forma de pagamento. Primeiro criamos sua conta sem acesso pago; depois você continuará com segurança pelo {provider}. O plano só é liberado após a confirmação do provedor.",
     "billingHandoffError": "A conta foi criada, mas a intenção de cobrança do plano selecionado não foi retornada. Abra Configurações → Faturamento ou fale com o suporte; não trocamos seu plano silenciosamente.",
     "step1Title": "Sua empresa",
     "step1Subtitle": "Conte-nos sobre o seu negócio",
@@ -6058,7 +6058,7 @@
     "planTitle": "Escolha seu plano",
     "planSubtitle": "Confira o catálogo atual e escolha o plano mais adequado para sua empresa.",
     "billingCountry": "País de faturamento",
-    "billingCountryHint": "Usamos este país para exibir a moeda e validar os ciclos disponíveis.",
+    "billingCountryHint": "Confirme o país de faturamento da sua empresa. A localização detectada é uma sugestão; o idioma não define o país.",
     "planStarterNote": "Você pode alterar ou cancelar seu plano em Configurações > Faturamento.",
     "planContactSales": "Ativação personalizada com nossa equipe comercial",
     "contactSalesHint": "Precisa de um plano sob medida ou faturamento em outro país?",
@@ -6513,7 +6513,10 @@
         "title": "É só isso por enquanto",
         "body": "O resto é opcional e você pode preencher depois pelo painel."
       }
-    }
+    },
+    "billingCountryChoose": "Selecione seu país de faturamento",
+    "billingWompiHint": "Colômbia: assinatura pelo Wompi em COP. Os dados da nota fiscal eletrônica colombiana são preenchidos no Faturamento fiscal quando aplicável.",
+    "billingStripeHint": "Fora da Colômbia: assinatura pelo Stripe em USD. Você concluirá o pagamento no Stripe; não é solicitado um perfil DIAN colombiano."
   },
   "analytics": {
     "title": "Analytics",
@@ -7550,7 +7553,9 @@
   "paymentForm": {
     "loading": "Carregando o formulário de pagamento...",
     "configError": "Não conseguimos carregar a configuração de pagamentos. Recarregue a página ou fale com o suporte.",
-    "unsupportedProvider": "O provedor de pagamentos {provider} ainda não tem formulário no painel. Fale com o suporte para concluir a cobrança."
+    "unsupportedProvider": "O provedor de pagamentos {provider} ainda não tem formulário no painel. Fale com o suporte para concluir a cobrança.",
+    "stripeHostedHint": "Você continuará na página segura do Stripe para autorizar o pagamento ou gerenciar sua assinatura. Os dados do cartão são inseridos no Stripe.",
+    "stripeContinue": "Continuar com Stripe"
   },
   "wompiForm": {
     "loading": "Carregando o formulário seguro...",
@@ -7607,6 +7612,12 @@
     }
   },
   "billingPage": {
+    "legacyProviderMismatch": "Esta conta mantém uma configuração anterior de {provider} que não corresponde ao país de faturamento. Contate o suporte antes de ativar o plano para evitar cobranças em dois provedores.",
+    "stripeTrialEndingSoon": "Seu teste termina em menos de 48 horas. Para preservar os dias restantes, conclua o pagamento no Stripe quando o teste terminar.",
+    "stripeTrialUnsupported": "Esta duração de teste não está disponível no Stripe. Contate o suporte para revisar o plano.",
+    "stripeCheckoutProcessing": "O Stripe já recebeu este processo e estamos aguardando a confirmação. Atualize o status em alguns instantes.",
+    "stripePriceUnavailable": "Este ciclo ainda não tem um preço configurado no Stripe. Escolha outro ciclo ou contate o suporte.",
+    "stripeRefreshStatus": "Atualizar status",
     "paymentMethodsTitle": "Meios de pagamento",
     "paymentMethodsHint": "É com isso que cobramos sua assinatura. O padrão é usado em cada renovação.",
     "paymentMethodsEmpty": "Você ainda não tem um meio de pagamento salvo.",
@@ -7653,8 +7664,8 @@
     "modalUpgradeTitle": "Ativar plano",
     "modalUpgradeSubtitle": "Cadastre seu cartao para ativar o plano {name}. Voce nao sera cobrado ate o fim do teste.",
     "modalUpgradeTrialSubtitle": "Autorize um meio para o plano {name}. Nada é cobrado hoje: a cobrança fica agendada para {date}, no fim do seu teste.",
-    "modalUpgradeStartsTrialSubtitle": "Autorize um meio para o plano {name}. Quando a Wompi aprovar, seus {days} dias de teste começam; a primeira cobrança ocorre ao final.",
-    "modalUpgradeImmediateSubtitle": "Autorize um meio para o plano {name}. Processaremos a cobrança agora e só ativaremos o plano após a aprovação da Wompi.",
+    "modalUpgradeStartsTrialSubtitle": "Autorize uma forma de pagamento para {name}. Quando o provedor confirmar a autorização, seus {days} dias de teste começarão; a primeira cobrança será ao final.",
+    "modalUpgradeImmediateSubtitle": "Autorize uma forma de pagamento para {name}. Processaremos a cobrança agora; o plano será ativado somente quando o provedor confirmar o pagamento.",
     "modalUpgradeSubmit": "Ativar plano",
     "modalChangeCardTitle": "Trocar cartao",
     "modalChangeCardSubmit": "Salvar novo cartao",
@@ -7806,7 +7817,11 @@
     "limitReached": "Você atingiu o limite de {limit} {resource} no seu plano atual ({current}/{limit}).",
     "upgradePlan": "Melhorar plano",
     "cancel": "Cancelar",
-    "aiSpendingPolicy": "As respostas incluídas estão sujeitas ao limite mensal de gasto de IA do plano. Conversas longas, ferramentas e modelos avançados consomem mais orçamento: a IA pode pausar antes de esgotar a quantidade de respostas. As mensagens do WhatsApp são pagas separadamente à Meta."
+    "aiSpendingPolicy": "As respostas incluídas estão sujeitas ao limite mensal de gasto de IA do plano. Conversas longas, ferramentas e modelos avançados consomem mais orçamento: a IA pode pausar antes de esgotar a quantidade de respostas. As mensagens do WhatsApp são pagas separadamente à Meta.",
+    "stripeManage": "Gerenciar no Stripe",
+    "stripeManagedHint": "As formas de pagamento e as alterações da assinatura internacional são gerenciadas no portal seguro do Stripe.",
+    "stripeReturnCancelled": "Você saiu do Stripe sem concluir o processo. Pode tentar novamente.",
+    "stripeReturnPending": "Você voltou do Stripe. O status da assinatura é atualizado após a confirmação do provedor; voltar a esta página não confirma um pagamento."
   },
   "couponsPage": {
     "title": "Cupons promocionais",
@@ -11730,7 +11745,7 @@
       "providers": "Provedores"
     },
     "providers": {
-      "scopeNote": "A troca de operador vale só para as novas assinaturas: as assinaturas ativas continuam sendo cobradas pelo provedor com que nasceram.",
+      "scopeNote": "Regra de assinatura: a Colômbia usa Wompi; os demais países disponíveis usam Stripe. Ativar ou desativar um provedor não migra assinaturas existentes.",
       "enabledTitle": "Provedores habilitados",
       "enabledDesc": "Interruptor por provedor. Desligar um não interrompe cobranças, webhooks nem reconciliações das assinaturas que já vivem nele.",
       "enabled": "Ligado",
@@ -11755,8 +11770,9 @@
       "credentialsMissing": "Faltam credenciais",
       "webhookConfigured": "Webhook com segredo",
       "webhookMissing": "Webhook sem segredo",
-      "routingTitle": "Provedor por país",
-      "routingDesc": "Define qual operador cobra em cada país. Aplica-se ao criar uma assinatura nova.",
+      "stripeSecretsHint": "As chaves do Stripe são carregadas como segredos do deploy. Este painel mostra seu status e habilita o provedor para novas assinaturas.",
+      "routingTitle": "Provedor por país de faturamento",
+      "routingDesc": "Esta regra é fixa. As assinaturas existentes mantêm seu provedor; os interruptores controlam a disponibilidade para novos cadastros.",
       "routingCountry": "País",
       "routingProvider": "Provedor",
       "routingRestOfWorld": "Resto do mundo",
@@ -11802,9 +11818,14 @@
     "active": "Ativo",
     "inactive": "Inativo",
     "planName": "Nome do plano",
-    "priceRef": "Preço de referência (USD)",
-    "pricingCountry": "País e moeda do preço",
-    "pricingCountryHint": "Selecione o mercado que deseja consultar ou editar. Cada país usa sua moeda canônica.",
+    "priceRef": "Preço mensal internacional (USD)",
+    "priceCoMonthly": "Colômbia · mensal (COP, Wompi)",
+    "priceCoAnnual": "Colômbia · ano completo (COP, Wompi)",
+    "priceUsdMonthly": "Resto do mundo · mensal (USD, Stripe)",
+    "priceUsdAnnual": "Resto do mundo · ano completo (USD, Stripe)",
+    "internationalUsd": "Internacional: Stripe em USD",
+    "pricingCountry": "Preços de assinatura por mercado",
+    "pricingCountryHint": "Configure COP para a Colômbia e USD para os demais países atendidos. Cada valor é independente; o anual é a cobrança total do ano e só é oferecido quando configurado.",
     "priceLocal": "Preço mensal {country} ({currency})",
     "localPriceHint": "Valor mensal em {currency}. Ex.: 129.900",
     "priceLocalAnnual": "Preço anual {country} ({currency})",
@@ -15414,7 +15435,7 @@
   },
   "whatsappFunding": {
     "title": "Financiamento da sua conta do WhatsApp",
-    "separation": "A Meta cobra o WhatsApp diretamente da sua empresa. A assinatura Parallly é paga separadamente pela Wompi. Não copiamos cartões entre serviços: os dados do cartão da Meta são inseridos e permanecem na Meta.",
+    "separation": "A Meta cobra o WhatsApp diretamente da sua empresa. A assinatura da Parallly é paga separadamente: Wompi na Colômbia e Stripe fora da Colômbia. Não copiamos cartões entre serviços: o cartão da Meta é inserido e mantido na Meta.",
     "step1": "Abra o WhatsApp Manager e entre como administrador da empresa.",
     "step2": "Selecione a conta do WhatsApp (WABA) indicada abaixo. Em Visão geral, abra as configurações de pagamentos e adicione uma forma de pagamento.",
     "step3": "Volte aqui e confira a conta. Não é necessário reconectar números nem mudar o cartão da Parallly.",

@@ -15,10 +15,10 @@ import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { MediaThrottleService } from '../media-processing/media-throttle.service';
 import { RequiresVerifiedEmail } from '../../common/decorators/requires-verified-email.decorator';
 import { BillingPlanCatalogService } from './billing-plan-catalog.service';
-import { BILLING_CURRENCY_BY_COUNTRY } from './billing-country-config';
+import { SUPPORTED_BILLING_COUNTRIES } from '../../common/utils/billing-country.util';
 import { PaymentSourceService } from './recurring/payment-source.service';
 
-const BILLING_COUNTRIES = Object.keys(BILLING_CURRENCY_BY_COUNTRY);
+const BILLING_COUNTRIES = [...SUPPORTED_BILLING_COUNTRIES];
 
 /**
  * Tenant-facing billing endpoints.

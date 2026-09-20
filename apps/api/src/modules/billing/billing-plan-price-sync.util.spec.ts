@@ -4,6 +4,14 @@ import {
 } from './billing-plan-price-sync.util';
 
 describe('reconcilePlanPriceSync', () => {
+    it('stores an explicit international USD annual amount without changing Colombia', () => {
+        const result = reconcilePlanPriceSync({ planSlug: 'starter',
+            existingOverrides: { CO: { currency: 'COP', amountCents: 29990000 } },
+            incomingOverrides: { USD: { currency: 'USD', annual: { amountCents: 74520 } } },
+            existingUsdPriceCents: 6900, nextUsdPriceCents: 6900, existingLegacyMpPlanId: null });
+        expect(result.priceLocalOverrides.USD).toEqual({ currency: 'USD', annual: { currency: 'USD', amountCents: 74520 } });
+        expect(result.priceLocalOverrides.CO.amountCents).toBe(29990000);
+    });
     const existingOverrides = {
         CO: {
             currency: 'COP',

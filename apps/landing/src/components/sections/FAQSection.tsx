@@ -4,15 +4,17 @@ import { useTranslations } from "next-intl";
 import { Section } from "../ui/Section";
 import { FAQItem } from "../ui/FAQItem";
 import { WHATSAPP_URL } from "../../lib/constants";
+import { useSubscriptionPaymentText } from "../../hooks/useSubscriptionPaymentText";
 
 const FAQ_COUNT = 10;
 
 export function FAQSection() {
   const t = useTranslations("faq");
+  const payment = useSubscriptionPaymentText();
 
   const faqs = Array.from({ length: FAQ_COUNT }, (_, i) => ({
     q: t(`q${i + 1}`),
-    a: t(`a${i + 1}`),
+    a: i === 2 ? payment.security : t(`a${i + 1}`),
   }));
 
   return (

@@ -2260,8 +2260,8 @@ export class AuthService {
         const businessEmail = company.email || data.businessEmail;
         const about = company.about || data.about;
         const selectedPlan = (data.plan || data.planSlug || 'emprendedor') as string;
-        const billingCountry = (company.country
-            || data.billingCountry
+        const billingCountry = (data.billingCountry
+            || company.country
             || this.inferCountryFromTimezone(timezone)) as string;
         // Se persiste sin secretos/token de tarjeta: es el insumo durable que un
         // retry necesita para reparar Business Identity y billing tras un corte.

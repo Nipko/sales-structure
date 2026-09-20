@@ -7,6 +7,7 @@ import { User, Mail, AlertCircle, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
+import { normalizeBillingCountry } from "@/lib/billing-market";
 import AnimatedLogo from "@/components/AnimatedLogo";
 import LocaleSwitcher from "@/components/LocaleSwitcher";
 import PasswordInput, { isPasswordValid } from "@/components/PasswordInput";
@@ -22,10 +23,6 @@ const GOOGLE_CLIENT_ID =
     "950001098107-4ctk2jm3876afqktip7r4f04120kt0ou.apps.googleusercontent.com";
 
 const PRICING_INTENT_KEY = "pricingIntent";
-const BILLING_COUNTRIES = [
-    "CO", "MX", "AR", "CL", "PE", "BR", "UY", "PY", "BO",
-    "EC", "VE", "CR", "PA", "DO", "GT", "US", "CA",
-] as const;
 
 type PricingIntent = {
     plan?: string;
@@ -41,10 +38,7 @@ function validPlanSlug(value: string | null): string | undefined {
 }
 
 function validCountry(value: string | null): string | undefined {
-    const normalized = value?.trim().toUpperCase();
-    return normalized && BILLING_COUNTRIES.includes(normalized as typeof BILLING_COUNTRIES[number])
-        ? normalized
-        : undefined;
+    return normalizeBillingCountry(value);
 }
 
 function validCycle(value: string | null): PricingIntent["cycle"] {

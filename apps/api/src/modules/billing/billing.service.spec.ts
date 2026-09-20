@@ -17,6 +17,7 @@ import { RENEWAL_QUEUE } from './recurring/renewal-scheduler.service';
 import { getQueueToken } from '@nestjs/bullmq';
 import { FiscalConfigService } from '../fiscal/fiscal-config.service';
 import { SmsCreditsService } from '../sms-credits/sms-credits.service';
+import { StripeConfigService } from './adapters/stripe-config.service';
 
 /**
  * Unit tests for BillingService.
@@ -79,6 +80,7 @@ describe('BillingService', () => {
                 PaymentProviderFactory,
                 MockPaymentProvider,
                 EventEmitter2,
+                { provide: StripeConfigService, useValue: { isConfigured: true } },
                 { provide: PrismaService, useValue: prismaMock },
                 { provide: RedisService, useValue: redisMock },
                 {
@@ -414,6 +416,35 @@ describe('BillingService', () => {
     // -------------------------------------------------------------------------
 
     describe('createTrialSubscription', () => {
+        it.each([
+            { trialDays: 0, requiresCardForTrial: false, status: 'pending_auth' },
+            { trialDays: 7, requiresCardForTrial: true, status: 'pending_auth' },
+            { trialDays: 7, requiresCardForTrial: false, status: 'trialing' },
+        ])('provisions Stripe safely for trial=$trialDays requiresCard=$requiresCardForTrial', async ({ trialDays, requiresCardForTrial, status }) => {
+            prismaMock.tenant.findUnique.mockResolvedValue({ id: 't1', name: 'T1', billingCountry: 'MX', plan: 'emprendedor', settings: {} });
+            prismaMock.billingSubscription.findUnique.mockResolvedValue(null);
+            prismaMock.billingPlan.findUnique.mockResolvedValue({
+                id: 'plan-starter', slug: 'starter', requiresCardForTrial, trialDays,
+                isActive: true, features: {}, priceUsdCents: 4900, priceLocalOverrides: {},
+            });
+            prismaMock.billingSubscription.create.mockImplementation(async ({ data }: any) => ({ id: 'sub-1', engine: 'provider', ...data }));
+            (module.get(PaymentRoutingService) as any).resolveForNewSubscription.mockResolvedValue({ provider: 'stripe', level: 'country', substituted: false });
+            const providerCreate = jest.spyOn(mockProvider, 'createSubscription');
+            const sub = await service.createTrialSubscription({ tenantId: 't1', planSlug: 'starter' });
+            expect(sub.status).toBe(status);
+            expect(sub.engine).toBe('provider');
+            expect(sub.providerSubscriptionId).toBeNull();
+            expect((sub.metadata as any).billingCountry).toBe('MX');
+            expect(providerCreate).not.toHaveBeenCalled();
+            expect(module.get(SubscriptionEngineService).claimAttempt).not.toHaveBeenCalled();
+            expect(module.get(getQueueToken(RENEWAL_QUEUE)).add).not.toHaveBeenCalled();
+            if (requiresCardForTrial) expect((sub.metadata as any).trialDaysPending).toBe(7);
+        });
+
+        it('requires a confirmed country instead of assuming Colombia', async () => {
+            prismaMock.tenant.findUnique.mockResolvedValue({ id: 't1' });
+            await expect(service.createTrialSubscription({ tenantId: 't1', planSlug: 'starter' })).rejects.toMatchObject({ response: { error: 'billing_country_required' } });
+        });
         // Helper: NestJS HttpException.toString() doesn't serialize the
         // payload, so assert on the response body instead.
         const expectErrorCode = async (fn: () => Promise<unknown>, code: string) => {
@@ -426,7 +457,7 @@ describe('BillingService', () => {
         };
 
         it('rejects when tenant already has a subscription', async () => {
-            prismaMock.tenant.findUnique.mockResolvedValueOnce({ id: 't1', name: 'T1' });
+            prismaMock.tenant.findUnique.mockResolvedValueOnce({ id: 't1', name: 'T1', billingCountry: 'CO' });
             prismaMock.billingSubscription.findUnique.mockResolvedValueOnce({ id: 'existing_sub', status: 'active' });
 
             await expectErrorCode(
@@ -440,7 +471,7 @@ describe('BillingService', () => {
             // automatico al vencer, y sin instrumentos guardados la promesa es
             // falsa. Se simula un proveedor sin retencion parcheando las
             // capabilities del factory.
-            prismaMock.tenant.findUnique.mockResolvedValueOnce({ id: 't1', name: 'T1' });
+            prismaMock.tenant.findUnique.mockResolvedValueOnce({ id: 't1', name: 'T1', billingCountry: 'CO' });
             prismaMock.billingSubscription.findUnique.mockResolvedValueOnce(null);
             prismaMock.billingPlan.findUnique.mockResolvedValueOnce({
                 id: 'plan_pro', slug: 'pro', requiresCardForTrial: true,
@@ -551,7 +582,7 @@ describe('BillingService', () => {
         });
 
         it('keeps requiring a card for a zero-day self-serve plan', async () => {
-            prismaMock.tenant.findUnique.mockResolvedValueOnce({ id: 't1', name: 'T1' });
+            prismaMock.tenant.findUnique.mockResolvedValueOnce({ id: 't1', name: 'T1', billingCountry: 'CO' });
             prismaMock.billingSubscription.findUnique.mockResolvedValueOnce(null);
             prismaMock.billingPlan.findUnique.mockResolvedValueOnce({
                 id: 'plan_paid', slug: 'paid-now', requiresCardForTrial: false,
@@ -564,9 +595,9 @@ describe('BillingService', () => {
             );
         });
 
-        it('requires an annual provider fingerprint even for a local no-card trial', async () => {
+        it('requires an explicit USD annual price even for a Stripe local no-card trial', async () => {
             prismaMock.tenant.findUnique.mockResolvedValueOnce({
-                id: 't1', name: 'T1', paymentProvider: 'mercadopago', billingCountry: 'CO',
+                id: 't1', name: 'T1', paymentProvider: 'stripe', billingCountry: 'MX',
             });
             prismaMock.billingSubscription.findUnique.mockResolvedValueOnce(null);
             prismaMock.billingPlan.findUnique.mockResolvedValueOnce({
@@ -585,7 +616,7 @@ describe('BillingService', () => {
                 () => service.createTrialSubscription({
                     tenantId: 't1', planSlug: 'starter', billingCycle: 'annual',
                 }),
-                'provider_plan_not_configured',
+                'stripe_price_not_configured',
             );
         });
 
@@ -613,7 +644,7 @@ describe('BillingService', () => {
         });
 
         it('blocks sales-led plans from the self-serve trial endpoint', async () => {
-            prismaMock.tenant.findUnique.mockResolvedValueOnce({ id: 't1', name: 'T1' });
+            prismaMock.tenant.findUnique.mockResolvedValueOnce({ id: 't1', name: 'T1', billingCountry: 'CO' });
             prismaMock.billingSubscription.findUnique.mockResolvedValueOnce(null);
             prismaMock.billingPlan.findUnique.mockResolvedValueOnce({
                 id: 'plan_custom', slug: 'custom', requiresCardForTrial: false,
@@ -627,7 +658,7 @@ describe('BillingService', () => {
         });
 
         it('rejects when plan slug does not exist', async () => {
-            prismaMock.tenant.findUnique.mockResolvedValueOnce({ id: 't1' });
+            prismaMock.tenant.findUnique.mockResolvedValueOnce({ id: 't1', billingCountry: 'CO' });
             prismaMock.billingSubscription.findUnique.mockResolvedValueOnce(null);
             prismaMock.billingPlan.findUnique.mockResolvedValueOnce(null);
 

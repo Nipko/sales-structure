@@ -18,7 +18,7 @@ export class StripeConfigService {
             // realmente usa Stripe, así que no puede ser un import de arriba.
             // eslint-disable-next-line @typescript-eslint/no-require-imports
             const Stripe = require('stripe');
-            this._client = new Stripe(key);
+            this._client = new Stripe(key, { timeout: 15000, maxNetworkRetries: 1 });
             this.logger.log('Stripe client initialized');
         }
         return this._client;
@@ -29,6 +29,18 @@ export class StripeConfigService {
     }
 
     get isConfigured(): boolean {
-        return !!this.config.get<string>('STRIPE_SECRET_KEY');
+        const key = this.config.get<string>('STRIPE_SECRET_KEY', '');
+        return /^sk_(test|live)_/.test(key)
+            && (this.config.get<string>('NODE_ENV') !== 'production' || key.startsWith('sk_live_'))
+            && this.webhookSecret.startsWith('whsec_');
+    }
+
+    get dashboardUrl(): string {
+        const value = this.config.get<string>('DASHBOARD_URL', 'http://localhost:3001');
+        const url = new URL(value);
+        if (url.protocol !== 'https:' && !(url.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(url.hostname))) {
+            throw new Error('Invalid DASHBOARD_URL for Stripe return URLs');
+        }
+        return `${url.origin}/admin/settings/billing`;
     }
 }

@@ -94,14 +94,30 @@ export class FiscalInvoiceService {
                 where: payload.paymentId
                     ? { id: payload.paymentId }
                     : { providerPaymentId: providerPaymentId! },
-                select: { id: true, amountCents: true, currency: true, metadata: true },
+                select: { id: true, amountCents: true, currency: true, metadata: true, provider: true },
             });
             if (!payment) {
                 this.logger.warn(`[Fiscal] BillingPayment ${payload.paymentId ?? providerPaymentId} not found — cannot link invoice`);
                 return;
             }
 
-            const provider = this.factory.resolve(cfg.mode, tenant.billingCountry);
+            const paymentMetadata = payment.metadata as any ?? {};
+            const hasCountrySnapshot = Object.prototype.hasOwnProperty.call(paymentMetadata, 'billingCountryAtPayment');
+            const historicalCountry = hasCountrySnapshot
+                ? paymentMetadata.billingCountryAtPayment
+                : payment.provider === 'stripe' ? null : tenant.billingCountry;
+            const billingCountry = typeof historicalCountry === 'string'
+                && /^[A-Z]{2}$/.test(historicalCountry.trim().toUpperCase())
+                ? historicalCountry.trim().toUpperCase()
+                : null;
+            // Stripe checkout is international. A later edit of the tenant's
+            // country must never turn that payment into a Colombian DIAN sale.
+            // Legacy Stripe payments without historical country need review.
+            const countryBlockReason = payment.provider === 'stripe'
+                ? !billingCountry ? 'billing_country_snapshot_missing'
+                    : billingCountry === 'CO' ? 'stripe_billing_country_mismatch' : null
+                : null;
+            const provider = countryBlockReason ? null : this.factory.resolve(cfg.mode, billingCountry);
 
             // Idempotency: one fiscal invoice per payment.
             const existing = await this.prisma.fiscalInvoice.findUnique({ where: { paymentId: payment.id } });
@@ -120,7 +136,6 @@ export class FiscalInvoiceService {
             // facturas DIAN reales contra plata que no existió. Sandbox se
             // registra como omitido; un origen desconocido queda bloqueado para
             // revisión. Nunca se adivina el ambiente de un movimiento de dinero.
-            const paymentMetadata = payment.metadata as any ?? {};
             const railEnvironment = paymentMetadata.railEnvironment;
             const internalAtPayment = Object.prototype.hasOwnProperty.call(paymentMetadata, 'tenantInternalAtPayment')
                 ? paymentMetadata.tenantInternalAtPayment === true
@@ -145,7 +160,9 @@ export class FiscalInvoiceService {
                         tenantId,
                         payment,
                         'unresolved',
-                        'billing_country_missing_or_not_routed',
+                        countryBlockReason ?? (billingCountry && billingCountry !== 'CO'
+                            ? 'international_fiscal_issuer_not_configured'
+                            : 'billing_country_missing_or_not_routed'),
                     );
                 }
                 this.logger.error(`[Fiscal] Payment ${payment.id} has no fiscal provider; durable blocked_config row created`);
@@ -368,7 +385,8 @@ export class FiscalInvoiceService {
 
     /**
      * Is the resolved provider actually usable? Factus needs API credentials
-     * (env) AND a numbering range (config). us_remote has no external deps.
+     * (env) AND a numbering range (config). Remote receipts need an explicitly
+     * configured issuer; choosing a payment processor does not identify one.
      * Used to keep the fiscal layer dormant until go-live configuration exists.
      */
     private isProviderReady(providerName: string, cfg: FiscalConfig, railEnvironment?: string): boolean {
@@ -386,7 +404,10 @@ export class FiscalInvoiceService {
             const environmentMatches = cfg.factusEnvironment === 'production';
             return creds && !!cfg.factusNumberingRangeId && environmentMatches;
         }
-        return true;
+        if (providerName === 'us_remote') {
+            return !!(cfg.usIssuer?.legalName?.trim() && cfg.usIssuer?.taxId?.trim());
+        }
+        return false;
     }
 
     /**
@@ -480,6 +501,7 @@ export class FiscalInvoiceService {
         // fiscal configuration can actually move to pending.
         const cfg = await this.config.getConfig();
         const factusReadyForProduction = this.isProviderReady('factus', cfg, 'production');
+        const remoteReadyForProduction = this.isProviderReady('us_remote', cfg, 'production');
         const blocked = await this.prisma.$queryRawUnsafe(
             `SELECT f.id, f.tenant_id, f.payment_id, p.provider_payment_id
                FROM public.fiscal_invoices f
@@ -488,17 +510,29 @@ export class FiscalInvoiceService {
               WHERE f.status = 'blocked_config'
                 AND p.metadata->>'railEnvironment' = 'production'
                 AND (
-                    $1::text = 'US_REMOTE'
+                    p.provider <> 'stripe'
+                    OR (
+                        UPPER(TRIM(p.metadata->>'billingCountryAtPayment')) ~ '^[A-Z]{2}$'
+                        AND UPPER(TRIM(p.metadata->>'billingCountryAtPayment')) <> 'CO'
+                    )
+                )
+                AND (
+                    ($1::text = 'US_REMOTE' AND $3::boolean)
                     OR (
                         $1::text = 'CO_LOCAL'
                         AND $2::boolean
-                        AND UPPER(COALESCE(t.billing_country, '')) = 'CO'
+                        AND UPPER(TRIM(CASE
+                            WHEN p.metadata ? 'billingCountryAtPayment'
+                                THEN COALESCE(p.metadata->>'billingCountryAtPayment', '')
+                            ELSE COALESCE(t.billing_country, '')
+                        END)) = 'CO'
                     )
                 )
               ORDER BY f.created_at ASC, f.id ASC
               LIMIT 200`,
             cfg.mode,
             factusReadyForProduction,
+            remoteReadyForProduction,
         ) as Array<{
             id: string;
             tenant_id: string;

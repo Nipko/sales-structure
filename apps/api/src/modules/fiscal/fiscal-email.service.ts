@@ -89,13 +89,13 @@ export class FiscalEmailService {
 
             const tenant = await this.prisma.tenant.findUnique({
                 where: { id: inv.tenantId },
-                select: { settings: true },
+                select: { settings: true, name: true, billingEmail: true },
             });
             const fiscalData = (tenant?.settings as any)?.fiscalData || null;
 
             // Recipient: the acquirer email (invoice snapshot → tenant fiscal data).
             const snap = (inv.acquirerSnapshot as any) || {};
-            const to: string | null = snap.email || fiscalData?.email || null;
+            const to: string | null = snap.email || fiscalData?.email || tenant?.billingEmail || null;
             if (!to) {
                 this.logger.warn(`[Fiscal] No acquirer email for invoice ${inv.id} — branded email skipped`);
                 await this.suppress(invoiceId,lease,'fiscal_email_recipient_missing');
@@ -112,12 +112,18 @@ export class FiscalEmailService {
                 relatedInvoiceNumber = orig?.invoiceNumber ?? null;
             }
 
-            const data = buildBrandedInvoiceData(inv, cfg, fiscalData, relatedInvoiceNumber);
+            const acquirerFallback = {
+                businessName: tenant?.name,
+                email: tenant?.billingEmail,
+                ...(fiscalData || {}),
+            };
+            const data = buildBrandedInvoiceData(inv, cfg, acquirerFallback, relatedInvoiceNumber);
             const pdfBuffer = await this.pdf.render(data);
 
             const isCredit = inv.type === 'credit_note';
+            const isCommercial = inv.provider === 'us_remote';
             const total = this.money(inv.amountCents, inv.currency);
-            const baseName = `${isCredit ? 'nota-credito' : 'factura'}-${data.invoiceNumber}`;
+            const baseName = `${isCommercial ? (isCredit ? 'nota-credito-comercial' : 'recibo-comercial') : (isCredit ? 'nota-credito' : 'factura')}-${data.invoiceNumber}`;
 
             // Entrega estándar: un único .zip con la factura (nuestro PDF con marca)
             // + el XML firmado (documento legal DIAN). El XML se toma del storage o
@@ -140,7 +146,7 @@ export class FiscalEmailService {
 
             const send = this.email.prepareBoundedSend({
                 to,
-                subject: `${isCredit ? 'Nota crédito' : 'Factura'} ${data.invoiceNumber} — ${data.issuerName}`,
+                subject: `${isCommercial ? (isCredit ? 'Nota de crédito comercial' : 'Recibo comercial') : (isCredit ? 'Nota crédito' : 'Factura')} ${data.invoiceNumber} — ${data.issuerName}`,
                 html: fiscalInvoiceEmail({
                     recipientName: data.acquirerName,
                     invoiceNumber: data.invoiceNumber,
@@ -149,6 +155,7 @@ export class FiscalEmailService {
                     cufe: data.cufe,
                     isCredit,
                     hasXml: !!xml,
+                    commercial: isCommercial,
                 }),
                 attachments,
             });
@@ -188,7 +195,7 @@ export class FiscalEmailService {
             return new Intl.NumberFormat('es-CO', {
                 style: 'currency',
                 currency: currency || 'COP',
-                maximumFractionDigits: 0,
+                maximumFractionDigits: currency?.toUpperCase() === 'COP' ? 0 : 2,
             }).format(cents / 100);
         } catch {
             return `${(cents / 100).toFixed(2)} ${currency}`;

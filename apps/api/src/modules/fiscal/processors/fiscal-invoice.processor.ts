@@ -272,6 +272,7 @@ export class FiscalInvoiceProcessor extends WorkerHost {
                     factusPublicUrl: result.pdfUrl ?? null,
                     consumidorFinalFallback: consumidorFinalFallback || undefined,
                     numberingRange: numberingRange ?? undefined,
+                    issuerSnapshot: provider.name === 'us_remote' ? { ...cfg.usIssuer } : undefined,
                     raw: result.raw,
                 } as any,
             },

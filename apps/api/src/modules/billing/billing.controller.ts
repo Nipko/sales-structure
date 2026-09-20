@@ -432,8 +432,8 @@ export class BillingController {
     }
 
     /**
-     * Download PDF invoice for a payment. Generated on demand (not persisted)
-     * until fiscal integration is wired. Tenant scope enforced via tenantId
+     * Download a payment receipt PDF (the fiscal document is separate).
+     * Tenant scope enforced via tenantId
      * path param + JWT — service rejects mismatch.
     */
     @Get(':tenantId/payments/:paymentId/invoice')
@@ -445,7 +445,7 @@ export class BillingController {
         @Res() res: Response,
     ) {
         const pdf = await this.invoiceGenerator.generate(tenantId, paymentId);
-        const filename = `parallly-invoice-${paymentId.slice(0, 8)}.pdf`;
+        const filename = `parallly-payment-receipt-${paymentId.slice(0, 8)}.pdf`;
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
         res.setHeader('Content-Length', pdf.length.toString());

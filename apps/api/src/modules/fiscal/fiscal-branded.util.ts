@@ -21,15 +21,19 @@ export function buildBrandedInvoiceData(
     relatedInvoiceNumber?: string | null,
 ): BrandedInvoiceData {
     const snapRaw = (inv.acquirerSnapshot as any) || null;
+    const co = cfg.coIssuer || {};
+    const us = (inv.metadata as any)?.issuerSnapshot || cfg.usIssuer || {};
+    // The invoice's persisted provider is authoritative. A hybrid CO_LOCAL
+    // deployment can issue Colombian DIAN invoices and US commercial receipts
+    // at the same time; the global mode alone cannot choose the PDF issuer.
+    const isCo = inv.provider === 'us_remote' ? false
+        : inv.provider === 'factus' ? true : cfg.mode !== 'US_REMOTE';
     // Prefer the immutable snapshot; if it carries no document (was null at
     // creation, before the tenant had fiscal data), fall back to the tenant's
     // current fiscal data instead of wrongly printing "Consumidor Final".
-    const snap = (snapRaw && snapRaw.documentId)
-        ? snapRaw
-        : (acquirerFallback && acquirerFallback.documentId ? acquirerFallback : (snapRaw || {}));
-    const co = cfg.coIssuer || {};
-    const us = cfg.usIssuer || {};
-    const isCo = cfg.mode !== 'US_REMOTE';
+    const snap = isCo
+        ? (snapRaw?.documentId ? snapRaw : acquirerFallback?.documentId ? acquirerFallback : (snapRaw || {}))
+        : { ...(acquirerFallback || {}), ...(snapRaw || {}) };
 
     // Prefijo + consecutivo: el número DIAN viene como '<PREFIJO><consecutivo>'.
     const fullNumber = inv.invoiceNumber || String(inv.id).slice(0, 8).toUpperCase();
@@ -39,7 +43,7 @@ export function buildBrandedInvoiceData(
 
     // Resolución/rango/prefijo AUTORITATIVOS desde Factus (metadata al emitir); si
     // no están, se usa la config manual del emisor.
-    const nr = (inv.metadata as any)?.numberingRange || null;
+    const nr = isCo ? (inv.metadata as any)?.numberingRange || null : null;
     const resolvedPrefix = nr?.prefix || prefix;
     const dianResolution = nr?.resolution ? `Resolución ${nr.resolution}` : (isCo ? co.dianResolution ?? null : null);
     const authRange = (nr?.from != null && nr?.to != null) ? `${nr.from} — ${nr.to}` : (isCo ? co.authRange ?? null : null);
@@ -55,6 +59,7 @@ export function buildBrandedInvoiceData(
     const amountInWords = (inv.currency || '').toUpperCase() === 'COP' ? copAmountInWords(inv.amountCents) : null;
 
     return {
+        documentKind: isCo ? 'dian' : 'commercial_receipt',
         type: inv.type,
         invoiceNumber: fullNumber,
         prefix: resolvedPrefix,

@@ -4,6 +4,7 @@ import * as QRCode from 'qrcode';
 import { PARALLLY_LOGO_PNG_BASE64 } from './assets/parallly-logo';
 
 export interface BrandedInvoiceData {
+    documentKind?: 'dian' | 'commercial_receipt';
     type: string; // 'invoice' | 'credit_note'
     invoiceNumber: string;
     /** Prefijo autorizado del rango de numeración (p.ej. 'SETP'). */
@@ -76,6 +77,9 @@ export class FiscalPdfService {
     }
 
     async render(data: BrandedInvoiceData): Promise<Buffer> {
+        if (data.documentKind === 'commercial_receipt') {
+            return this.renderCommercialReceipt(data);
+        }
         let qrPng: Buffer | null = null;
         if (data.qrUrl) {
             try {
@@ -319,6 +323,59 @@ export class FiscalPdfService {
                 doc.end();
             } catch (err) {
                 reject(err);
+            }
+        });
+    }
+
+    /** US commercial document. It must never reuse the DIAN PDF's CUFE, QR,
+     * Colombian IVA, numbering resolution or validation language. */
+    private renderCommercialReceipt(data: BrandedInvoiceData): Promise<Buffer> {
+        return new Promise((resolve, reject) => {
+            try {
+                const doc = new PDFDocument({ size: 'A4', margin: 50 });
+                const chunks: Buffer[] = [];
+                doc.on('data', (chunk) => chunks.push(chunk));
+                doc.on('end', () => resolve(Buffer.concat(chunks)));
+                doc.on('error', reject);
+
+                const credit = data.type === 'credit_note';
+                const money = (cents: number) => new Intl.NumberFormat('en-US', {
+                    style: 'currency', currency: data.currency.toUpperCase(),
+                }).format(cents / 100);
+                const date = data.issuedAt
+                    ? new Date(data.issuedAt).toLocaleDateString('en-US', { timeZone: 'UTC', year: 'numeric', month: 'long', day: 'numeric' })
+                    : '';
+
+                doc.fillColor('#3897f0').font('Helvetica-Bold').fontSize(24).text('Parallly');
+                doc.moveDown(0.5);
+                doc.fillColor('#111827').fontSize(18).text(credit ? 'COMMERCIAL CREDIT MEMO' : 'COMMERCIAL RECEIPT');
+                doc.moveDown(1);
+                doc.font('Helvetica').fontSize(10).fillColor('#374151');
+                doc.text(`Issuer: ${data.issuerName}`);
+                if (data.issuerNit) doc.text(`Tax ID: ${data.issuerNit}`);
+                if (data.issuerAddress) doc.text(data.issuerAddress);
+                if (data.issuerEmail) doc.text(data.issuerEmail);
+                doc.moveDown(1);
+                doc.text(`Reference: ${data.invoiceNumber}`);
+                if (date) doc.text(`Issued: ${date} (UTC)`);
+                if (credit && data.relatedInvoiceNumber) doc.text(`Original receipt: ${data.relatedInvoiceNumber}`);
+                doc.moveDown(1);
+                doc.font('Helvetica-Bold').text('Customer');
+                doc.font('Helvetica').text(data.acquirerName || 'Customer');
+                if (data.acquirerEmail) doc.text(data.acquirerEmail);
+                if (data.acquirerDoc) doc.text(data.acquirerDoc);
+                doc.moveDown(1.5);
+                doc.moveTo(50, doc.y).lineTo(545, doc.y).strokeColor('#d1d5db').stroke();
+                doc.moveDown(0.7);
+                doc.font('Helvetica').text(data.itemDescription, 50, doc.y, { width: 360 });
+                doc.font('Helvetica-Bold').text(money(data.amountCents), 420, doc.y - 14, { width: 125, align: 'right' });
+                doc.moveDown(2);
+                doc.moveTo(50, doc.y).lineTo(545, doc.y).strokeColor('#d1d5db').stroke();
+                doc.moveDown(0.7);
+                doc.font('Helvetica-Bold').fontSize(14).text(`Total: ${money(data.amountCents)}`, { align: 'right' });
+                doc.end();
+            } catch (error) {
+                reject(error);
             }
         });
     }

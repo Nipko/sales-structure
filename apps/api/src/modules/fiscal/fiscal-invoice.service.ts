@@ -117,7 +117,7 @@ export class FiscalInvoiceService {
                 ? !billingCountry ? 'billing_country_snapshot_missing'
                     : billingCountry === 'CO' ? 'stripe_billing_country_mismatch' : null
                 : null;
-            const provider = countryBlockReason ? null : this.factory.resolve(cfg.mode, billingCountry);
+            const provider = countryBlockReason ? null : this.factory.resolve(cfg.mode, billingCountry, payment.provider);
 
             // Idempotency: one fiscal invoice per payment.
             const existing = await this.prisma.fiscalInvoice.findUnique({ where: { paymentId: payment.id } });
@@ -521,11 +521,19 @@ export class FiscalInvoiceService {
                     OR (
                         $1::text = 'CO_LOCAL'
                         AND $2::boolean
+                        AND p.provider <> 'stripe'
                         AND UPPER(TRIM(CASE
                             WHEN p.metadata ? 'billingCountryAtPayment'
                                 THEN COALESCE(p.metadata->>'billingCountryAtPayment', '')
                             ELSE COALESCE(t.billing_country, '')
                         END)) = 'CO'
+                    )
+                    OR (
+                        $1::text = 'CO_LOCAL'
+                        AND $3::boolean
+                        AND p.provider = 'stripe'
+                        AND UPPER(TRIM(p.metadata->>'billingCountryAtPayment')) ~ '^[A-Z]{2}$'
+                        AND UPPER(TRIM(p.metadata->>'billingCountryAtPayment')) <> 'CO'
                     )
                 )
               ORDER BY f.created_at ASC, f.id ASC

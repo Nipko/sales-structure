@@ -4,9 +4,9 @@ import { RedisService } from '../redis/redis.service';
 import { FiscalMode, IvaTreatment } from './interfaces/fiscal-provider.interface';
 
 /**
- * Issuer (the entity that issues the invoice) for the US_REMOTE mode.
- * In CO_LOCAL mode the issuer is the account configured at Factus (the NIT that
- * owns the numbering resolution), so we don't duplicate it here.
+ * US issuer for international Stripe payments in the hybrid CO_LOCAL mode,
+ * and for all payments when US_REMOTE is explicitly selected. Colombian
+ * non-Stripe payments under CO_LOCAL keep the Factus issuer and DIAN range.
  */
 export interface UsIssuerConfig {
     legalName?: string;
@@ -74,7 +74,7 @@ export interface FiscalConfig {
     /** Invoice line item: base description (plan name is appended) and SKU/code. */
     itemDescription: string;
     itemCodeReference: string;
-    /** Issuer details for US_REMOTE mode. */
+    /** Issuer details for international Stripe payments and US_REMOTE mode. */
     usIssuer: UsIssuerConfig;
     /** Issuer fiscal data for CO_LOCAL mode (printed on the branded representation). */
     coIssuer: CoIssuerConfig;

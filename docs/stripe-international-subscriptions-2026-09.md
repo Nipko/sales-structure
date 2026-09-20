@@ -40,12 +40,13 @@ El anual internacional requiere un importe explícito, editable en Planes → In
 - Meta mantiene su facturación de WhatsApp independiente.
 - Los pagos Stripe guardan país al pagar y ambiente. La emisión fiscal usa ese país histórico; editar luego el perfil no transforma el pago en una operación colombiana.
 - En `CO_LOCAL`, Colombia conserva Factus/DIAN. Una suscripción internacional no se envía a Factus por el mero hecho de que Parallly también tenga un comercio Wompi colombiano.
-- Falta confirmar el titular legal y país de la cuenta Stripe para configurar su emisor fiscal. Hasta entonces la emisión internacional queda registrada como `blocked_config` con `international_fiscal_issuer_not_configured`. Esto no afirma que no exista obligación de facturar; deja la decisión pendiente y auditable.
+- El titular confirmado de la cuenta Stripe es Parallext LLC (Estados Unidos, liquidación USD). En `CO_LOCAL`, los pagos internacionales Stripe usan el emisor LLC cuando `fiscal.usIssuer` incluye razón social y EIN/Tax ID; Colombia conserva Factus. Sin ficha completa, la emisión queda en `blocked_config` con `fiscal_provider_not_ready` y se reintenta tras configurarla. Esto no determina por sí mismo las obligaciones tributarias del vendedor.
+- Los documentos internacionales emitidos son recibos comerciales y notas de crédito de la LLC, sin CUFE, XML o afirmaciones de validación DIAN. El emisor se conserva en el registro al emitir para que una edición posterior de la ficha no cambie el PDF histórico. La descarga del historial de pagos se identifica como recibo de pago y muestra el emisor de su riel; no sustituye el documento fiscal correspondiente.
 - **No activar el modo global `US_REMOTE` para resolver Stripe**: ese modo también cambia el emisor de Colombia. Stripe como procesador tampoco implica que sea Merchant of Record.
 
 ## Configuración y activación
 
-1. Confirmar entidad titular, país de la cuenta Stripe, moneda de liquidación y datos del emisor. Resolver la política de documento internacional sin cambiar el emisor colombiano.
+1. Confirmar los datos fiscales de Parallext LLC (incluido EIN/Tax ID), su dirección y correo, y la política de documento internacional; cargarlos en Fiscal → Emisor LLC sin cambiar el modo `CO_LOCAL` ni el emisor colombiano.
 2. En un entorno de prueba aislado, configurar `STRIPE_SECRET_KEY=sk_test_…`, `STRIPE_WEBHOOK_SECRET=whsec_…` y `DASHBOARD_URL` del entorno. Mantener sus webhooks y datos separados de producción.
 3. Registrar el endpoint `/api/v1/billing/webhook/stripe` de la API correspondiente. Escuchar `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid`, `invoice.payment_succeeded`, `invoice.payment_failed` y `charge.refunded`. Las dos señales de éxito de una misma factura se deduplican por factura. Usar payloads snapshot y la versión compatible con el SDK instalado; el adapter admite campos de factura y periodos anteriores y posteriores a Basil.
 4. Activar Stripe en Planes → Proveedores (`billing.providers_enabled.stripe=true`). El interruptor permanece apagado por defecto; la disponibilidad también exige las credenciales y el secreto de webhook.
@@ -54,7 +55,7 @@ El anual internacional requiere un importe explícito, editable en Planes → In
 7. `BILLING_TRUST_COUNTRY_HEADER=true` solo es válido cuando el origen está restringido a Cloudflare. El despliegue mediante Tunnel lo configura; en desarrollo u origen expuesto el valor por defecto es `false`. No usar este encabezado para autorización de cobros.
 8. Desplegar, comprobar catálogo CO/internacional y readiness de proveedores, y completar una prueba controlada del comercio real antes de abrir ventas.
 
-No se guardan secretos en este documento, el navegador ni el repositorio. No se ejecutaron cargos, cambios de configuración ni despliegues de producción durante esta implementación.
+No se guardan secretos en este documento ni en el repositorio. La activación comercial requiere confirmar los datos del emisor, crear las credenciales y el webhook de la cuenta correcta, desplegar y completar una prueba controlada.
 
 ## Límites explícitos de esta entrega
 

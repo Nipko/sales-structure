@@ -8,14 +8,11 @@ import {
 } from '../interfaces/fiscal-provider.interface';
 
 /**
- * US_REMOTE fiscal provider — used when fiscalMode='US_REMOTE' (the LLC bills
- * from the US). This adapter issues a plain commercial receipt (no CUFE or
+ * US issuer for international Stripe payments in CO_LOCAL, or all payments
+ * when fiscalMode='US_REMOTE'. This adapter issues a commercial receipt (no CUFE or
  * DIAN validation); selecting it does not determine the seller's tax obligations.
- * The downloadable PDF
- * is served on demand by the billing module's existing receipt generator
- * (InvoiceGeneratorService) from the BillingPayment, so this adapter only
- * records that a commercial document applies and assigns a sequential-ish
- * reference.
+ * The fiscal PDF/email path renders the commercial document from the issued
+ * FiscalInvoice; this adapter assigns its reference without claiming DIAN status.
  *
  * Tax treatment and any required additional documents must be configured for
  * the actual seller separately. Connecting Stripe does not select this adapter

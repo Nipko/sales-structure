@@ -117,14 +117,17 @@ export function fiscalInvoiceEmail(opts: {
     cufe?: string | null;
     isCredit?: boolean;
     hasXml?: boolean;
+    commercial?: boolean;
     lang?: string;
 }): string {
-    const docLabel = opts.isCredit ? 'nota crédito electrónica' : 'factura electrónica de venta';
+    const docLabel = opts.commercial
+        ? (opts.isCredit ? 'nota de crédito comercial' : 'recibo comercial')
+        : (opts.isCredit ? 'nota crédito electrónica' : 'factura electrónica de venta');
     const greetingName = opts.recipientName ? ` ${opts.recipientName}` : '';
     const content = `
       <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;color:#111;">Tu ${docLabel}</h1>
       <p style="margin:0 0 20px;font-size:14px;color:#555;line-height:1.6;">
-        Hola${greetingName}, adjuntamos tu ${docLabel} <strong>N.º ${opts.invoiceNumber}</strong> emitida por <strong>${opts.issuerName}</strong> y validada por la DIAN.
+        Hola${greetingName}, adjuntamos tu ${docLabel} <strong>N.º ${opts.invoiceNumber}</strong> ${opts.isCredit ? 'emitida' : 'emitido'} por <strong>${opts.issuerName}</strong>${opts.commercial ? '.' : ' y validado por la DIAN.'}
       </p>
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px;border:1px solid #e8e8e8;border-radius:8px;">
         <tr>
@@ -136,9 +139,11 @@ export function fiscalInvoiceEmail(opts: {
           <td style="padding:14px 18px;font-size:15px;color:${BRAND_DARK};text-align:right;font-weight:700;">${opts.total}</td>
         </tr>
       </table>
-      ${opts.cufe ? `<p style="margin:0 0 8px;font-size:11px;color:#999;word-break:break-all;"><strong>CUFE:</strong> ${opts.cufe}</p>` : ''}
+      ${!opts.commercial && opts.cufe ? `<p style="margin:0 0 8px;font-size:11px;color:#999;word-break:break-all;"><strong>CUFE:</strong> ${opts.cufe}</p>` : ''}
       <p style="margin:16px 0 0;font-size:13px;color:#555;line-height:1.6;">
-        Adjuntamos un archivo comprimido <strong>.zip</strong> con ${opts.hasXml ? 'la factura en <strong>PDF</strong> y el <strong>XML firmado</strong> (documento legal ante la DIAN)' : 'la factura en <strong>PDF</strong>'}. Puedes verificar la validez escaneando el código QR del PDF en el portal de la DIAN.
+        ${opts.commercial
+            ? 'Adjuntamos un archivo comprimido <strong>.zip</strong> con el comprobante comercial en <strong>PDF</strong>.'
+            : `Adjuntamos un archivo comprimido <strong>.zip</strong> con ${opts.hasXml ? 'la factura en <strong>PDF</strong> y el <strong>XML firmado</strong> (documento legal ante la DIAN)' : 'la factura en <strong>PDF</strong>'}. Puedes verificar la validez escaneando el código QR del PDF en el portal de la DIAN.`}
       </p>`;
     return emailLayout(content, undefined, opts.lang || 'es');
 }

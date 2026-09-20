@@ -22,7 +22,7 @@ const recipe: SetupRecipe = {
 describe("prepared setup cards", () => {
     it("shows the four owner decisions and marks sample prices and incomplete answers honestly", async () => {
         const onApply = jest.fn();
-        const screen = await renderScreen(<RecipeSetupCards recipe={recipe} applied={false} applying={false} onApply={onApply} />);
+        const screen = await renderScreen(<RecipeSetupCards recipe={recipe} agentId="agent-123" applied={false} applying={false} onApply={onApply} />);
         try {
             const text = screen.container.textContent ?? "";
             expect(text).toContain("Qué ofreces");
@@ -32,10 +32,20 @@ describe("prepared setup cards", () => {
             expect(text).toContain("Los precios de ejemplo no se publican como precios reales");
             expect(text).toContain("1 de 2 respuestas están listas");
             expect(text).toContain("Completa 1 respuestas");
+            expect(screen.container.querySelector('a[href="/admin/appointments?tab=services"]')).not.toBeNull();
+            expect(screen.container.querySelector('a[href="/admin/settings/business-hours"]')).not.toBeNull();
+            expect(screen.container.querySelector('a[href="/admin/agent/agent-123?tab=tools&tool=appointments"]')).not.toBeNull();
             const apply = Array.from(screen.container.querySelectorAll("button")).find((button) => button.textContent?.includes("Usar esta base"))!;
             apply.click();
             expect(onApply).toHaveBeenCalledTimes(1);
             expect(await findAccessibilityViolations(screen.container)).toEqual([]);
+        } finally { screen.unmount(); }
+    });
+
+    it("opens restaurant controls for a recipe with orders and table reservations", async () => {
+        const screen = await renderScreen(<RecipeSetupCards recipe={{ ...recipe, purchaseModes: ["order", "table"] }} agentId="agent-123" applied={false} applying={false} onApply={jest.fn()} />);
+        try {
+            expect(screen.container.querySelector('a[href="/admin/agent/agent-123?tab=tools&tool=restaurants"]')).not.toBeNull();
         } finally { screen.unmount(); }
     });
 });

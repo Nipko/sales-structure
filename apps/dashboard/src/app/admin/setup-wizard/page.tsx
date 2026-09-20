@@ -997,6 +997,7 @@ export default function SetupWizardPage() {
                         {recipe && (
                             <RecipeSetupCards
                                 recipe={recipe}
+                                agentId={workspace?.agentId ?? null}
                                 applied={recipeApplied}
                                 applying={applyingRecipe}
                                 onApply={() => void applyPreparedRecipe()}

@@ -146,6 +146,18 @@ export default function AppointmentsPage() {
 
   // ---- UI state ----
   const [activeTab, setActiveTab] = useState<"calendar" | "agenda" | "services" | "config" | "analytics">("calendar");
+  // Setup links should open the relevant editor rather than the default calendar.
+  // Keep role-restricted tabs inaccessible to users who cannot manage them.
+  useEffect(() => {
+    const requestedTab = searchParams.get("tab");
+    if ((requestedTab === "services" || requestedTab === "config") && canManageSettings) {
+      setActiveTab(requestedTab);
+    } else if (requestedTab === "analytics" && canSeeGlobalAnalytics) {
+      setActiveTab(requestedTab);
+    } else if (requestedTab === "calendar" || requestedTab === "agenda") {
+      setActiveTab(requestedTab);
+    }
+  }, [searchParams, canManageSettings, canSeeGlobalAnalytics]);
   const [weekStart, setWeekStart] = useState<Date>(getMondayOfWeek(new Date()));
   const [toast, setToast] = useState<string | null>(null);
 

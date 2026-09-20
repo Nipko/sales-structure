@@ -631,6 +631,17 @@ export default function AgentEditorPage() {
   }, [loading, searchParams]);
 
   useEffect(() => {
+    if (loading || activeTab !== "tools") return;
+    const tool = searchParams.get("tool");
+    if (tool !== "restaurants" && tool !== "appointments") return;
+    const raf = window.requestAnimationFrame(() => {
+      document.querySelector<HTMLElement>(`[data-tool-family="${tool}"]`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    return () => window.cancelAnimationFrame(raf);
+  }, [loading, activeTab, searchParams]);
+
+  useEffect(() => {
     if (!focusField) return;
     const anchor = FOCUS_ANCHOR[focusField];
     // One frame so the tab we just selected has rendered its fields.

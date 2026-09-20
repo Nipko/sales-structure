@@ -5,14 +5,21 @@ import { useTranslations } from "next-intl";
 import { Check, Clock3, HelpCircle, Loader2, MapPin, ShoppingBag } from "lucide-react";
 import type { SetupRecipe } from "../setup-recipe";
 
-export default function RecipeSetupCards({ recipe, applied, applying, onApply }: {
+export default function RecipeSetupCards({ recipe, agentId, applied, applying, onApply }: {
     recipe: SetupRecipe;
+    agentId: string | null;
     applied: boolean;
     applying: boolean;
     onApply: () => void;
 }) {
     const t = useTranslations("setupWizard.recipeCards");
     const completeQuestions = recipe.questions.filter((question) => question.complete).length;
+    const purchaseTool = recipe.purchaseModes.includes("table")
+        ? "restaurants"
+        : recipe.purchaseModes.includes("appointment") ? "appointments" : null;
+    const purchaseHref = agentId
+        ? `/admin/agent/${encodeURIComponent(agentId)}?tab=tools${purchaseTool ? `&tool=${purchaseTool}` : ""}`
+        : "/admin/agent";
     const cards = [
         {
             key: "offers", Icon: ShoppingBag,
@@ -21,13 +28,13 @@ export default function RecipeSetupCards({ recipe, applied, applying, onApply }:
                 ? recipe.services.slice(0, 4).map((service) => `${service.name}${service.durationMinutes ? ` · ${service.durationMinutes} min` : ""}`).join(" · ")
                 : t("offers.empty"),
             note: recipe.services.some((service) => service.priceState === "example") ? t("offers.examplePrices") : t("offers.quotePrices"),
-            href: "/admin/appointments", action: t("offers.change"),
+            href: "/admin/appointments?tab=services", action: t("offers.change"),
         },
         {
             key: "place", Icon: MapPin,
             title: t("place.title"), why: t("place.why"),
             body: Object.keys(recipe.businessHours).length ? t("place.prepared") : t("place.pending"),
-            note: t("place.note"), href: "/admin/settings/general", action: t("place.change"),
+            note: t("place.note"), href: "/admin/settings/business-hours", action: t("place.change"),
         },
         {
             key: "purchase", Icon: Clock3,
@@ -35,7 +42,9 @@ export default function RecipeSetupCards({ recipe, applied, applying, onApply }:
             body: recipe.purchaseModes.length
                 ? recipe.purchaseModes.map((mode) => t(`purchase.mode.${mode}`)).join(" · ")
                 : t("purchase.empty"),
-            note: t("purchase.note"), href: "/admin/appointments", action: t("purchase.change"),
+            note: t("purchase.note"),
+            href: purchaseHref,
+            action: t("purchase.change"),
         },
         {
             key: "questions", Icon: HelpCircle,

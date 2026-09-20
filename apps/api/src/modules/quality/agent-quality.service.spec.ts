@@ -338,8 +338,8 @@ describe('AgentQualityService', () => {
         const result = await createHarness({ config, services: 1, slots: 1, vehicles: 1 }).service.getOverview(TENANT_ID, AGENT_ID);
         expect(check(result, 'tool_appointments').status).toBe('pass');
         expect(check(result, 'tool_vehicles').status).toBe('pass');
-        expect(check(result, 'test_drive_service')).toMatchObject({ status: 'fail', href: '/admin/appointments' });
-        expect(check(result, 'test_drive_staff').status).toBe('fail');
+        expect(check(result, 'test_drive_service')).toMatchObject({ status: 'fail', href: '/admin/appointments?tab=services' });
+        expect(check(result, 'test_drive_staff')).toMatchObject({ status: 'fail', href: '/admin/appointments?tab=config' });
     });
     it('keeps the intended test-drive mission pending when booking permission is disabled', async () => {
         const config = { ...completeConfig, tools: { vehicles: { enabled: true }, appointments: { enabled: false } } };
@@ -443,8 +443,14 @@ describe('AgentQualityService', () => {
         const { service } = createHarness({ config, services: 1, slots: 0 });
 
         const overview = await service.getOverview(TENANT_ID, AGENT_ID);
-        expect(check(overview, 'tool_appointments')).toMatchObject({ status: 'fail', critical: true, href: '/admin/appointments' });
-        expect(overview.recommendations).toContainEqual(expect.objectContaining({ code: 'fix_tool_appointments', href: '/admin/appointments' }));
+        expect(check(overview, 'tool_appointments')).toMatchObject({ status: 'fail', critical: true, href: '/admin/appointments?tab=config' });
+        expect(overview.recommendations).toContainEqual(expect.objectContaining({ code: 'fix_tool_appointments', href: '/admin/appointments?tab=config' }));
+    });
+
+    it('opens the service editor when the appointment tool has no services yet', async () => {
+        const config = { ...completeConfig, tools: { appointments: { enabled: true } } };
+        const overview = await createHarness({ config, services: 0, slots: 0 }).service.getOverview(TENANT_ID, AGENT_ID);
+        expect(check(overview, 'tool_appointments')).toMatchObject({ status: 'fail', href: '/admin/appointments?tab=services' });
     });
 
     describe('services still carrying an example price', () => {
@@ -455,11 +461,11 @@ describe('AgentQualityService', () => {
             const overview = await service.getOverview(TENANT_ID, AGENT_ID);
 
             expect(check(overview, 'services_example_price')).toMatchObject({
-                status: 'warning', critical: false, weight: 2, href: '/admin/appointments',
+                status: 'warning', critical: false, weight: 2, href: '/admin/appointments?tab=services',
                 evidence: { examplePriceServices: 1 },
             });
             expect(overview.recommendations).toContainEqual(expect.objectContaining({
-                code: 'fix_services_example_price', severity: 'medium', href: '/admin/appointments',
+                code: 'fix_services_example_price', severity: 'medium', href: '/admin/appointments?tab=services',
             }));
             // An example price is a number nobody agreed to, not a broken agenda:
             // the booking check keeps its own verdict and readiness stays untouched.
@@ -518,7 +524,7 @@ describe('AgentQualityService', () => {
             const both = await createHarness({ config: booking, services: 1, slots: 1, examplePriceServices: 1, examplePricePlans: 2 })
                 .service.getOverview(TENANT_ID, AGENT_ID);
             expect(check(both, 'services_example_price')).toMatchObject({
-                status: 'warning', href: '/admin/appointments', evidence: { examplePriceServices: 1, examplePricePlans: 2 },
+                status: 'warning', href: '/admin/appointments?tab=services', evidence: { examplePriceServices: 1, examplePricePlans: 2 },
             });
 
             const confirmed = await createHarness({ config: completeConfig, services: 0, examplePriceServices: 0, examplePricePlans: 0 })
@@ -550,11 +556,11 @@ describe('AgentQualityService', () => {
             const overview = await service.getOverview(TENANT_ID, AGENT_ID);
 
             expect(check(overview, 'services_example_price')).toMatchObject({
-                status: 'warning', critical: false, href: '/admin/appointments',
+                status: 'warning', critical: false, href: '/admin/appointments?tab=services',
                 evidence: { examplePriceServices: 0, examplePricePlans: 0, noPriceServices: 2, noPricePlans: 0 },
             });
             expect(overview.recommendations).toContainEqual(expect.objectContaining({
-                code: 'fix_services_example_price', severity: 'medium', href: '/admin/appointments',
+                code: 'fix_services_example_price', severity: 'medium', href: '/admin/appointments?tab=services',
             }));
             expect(overview.preparation.criticalBlockers).not.toContain('services_example_price');
             // The same reading as `customerFacingPrice`: not example, not quote, no amount.

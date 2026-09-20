@@ -55,7 +55,7 @@ describe('the readiness banner and example prices', () => {
 
   it('without an href, keeps services on Citas', async () => {
     const { screen, href } = await linkFor({ evidence: { examplePriceServices: 1, examplePricePlans: 2 } });
-    try { expect(href).toBe('/admin/appointments'); } finally { screen.unmount(); }
+    try { expect(href).toBe('/admin/appointments?tab=services'); } finally { screen.unmount(); }
   });
 
   // The check also counts rows with NO amount (`noPriceServices`,
@@ -76,7 +76,7 @@ describe('the readiness banner and example prices', () => {
     const { screen, href } = await linkFor({
       evidence: { examplePriceServices: 0, examplePricePlans: 3, noPriceServices: 1, noPricePlans: 0 },
     });
-    try { expect(href).toBe('/admin/appointments'); } finally { screen.unmount(); }
+    try { expect(href).toBe('/admin/appointments?tab=services'); } finally { screen.unmount(); }
   });
 
   it('follows the href the check sends for a no-price-only mix', async () => {

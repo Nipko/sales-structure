@@ -24,7 +24,7 @@ export function AgentGuideCards({ agentId, agentName, config, onSelectTab, canAs
     { key: "offers", Icon: ShoppingBag, summary: t("offers.summary", { count: enabledTools }), tab: "tools" as const },
     { key: "place", Icon: MapPin, summary: t("place.summary"), tab: "schedule" as const },
     { key: "purchase", Icon: CalendarClock, summary: t("purchase.summary"), tab: "instructions" as const },
-    { key: "questions", Icon: HelpCircle, summary: t("questions.summary"), href: "/admin/knowledge?tab=faqs" },
+    { key: "questions", Icon: HelpCircle, summary: t("questions.summary"), href: "/admin/knowledge/faqs" },
   ];
   const ask = (key: string) => openQualityAssistant({ agentId, agentName, prompt: t(`${key}.assistPrompt`), send: false });
 

@@ -5,11 +5,10 @@ on:
     branches:
       - main
     # The mobile app (apps/mobile) ships via EAS, not this pipeline, and docs are
-    # not deployable. Skip the web deploy when a push touches ONLY those paths
-    # (a push that also changes web/api/infra still deploys normally).
+    # not deployable. E2E changes must trigger this workflow: a fix to a failed
+    # browser gate needs to resume the pending web deployment.
     paths-ignore:
       - 'apps/mobile/**'
-      - 'apps/e2e/**'
       - 'docs/**'
   workflow_dispatch:
 

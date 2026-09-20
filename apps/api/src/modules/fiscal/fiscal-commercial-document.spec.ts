@@ -1,4 +1,5 @@
-const parsePdf: (buffer: Buffer) => Promise<{ text: string }> = require('pdf-parse');
+// @ts-expect-error -- pdf-parse does not ship TypeScript declarations.
+import * as parsePdf from 'pdf-parse';
 import { buildBrandedInvoiceData } from './fiscal-branded.util';
 import { FiscalPdfService } from './fiscal-pdf.service';
 import { fiscalInvoiceEmail } from '../email/email-layouts';

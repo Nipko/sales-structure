@@ -30,8 +30,8 @@ export class StripeConfigService {
 
     get isConfigured(): boolean {
         const key = this.config.get<string>('STRIPE_SECRET_KEY', '');
-        return /^sk_(test|live)_/.test(key)
-            && (this.config.get<string>('NODE_ENV') !== 'production' || key.startsWith('sk_live_'))
+        return /^(sk|rk)_(test|live)_/.test(key)
+            && (this.config.get<string>('NODE_ENV') !== 'production' || /^(sk|rk)_live_/.test(key))
             && this.webhookSecret.startsWith('whsec_');
     }
 

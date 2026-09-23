@@ -25,6 +25,8 @@ describe('Stripe credentials and real SDK signature boundary', () => {
         [{ STRIPE_WEBHOOK_SECRET: '' }, false],
         [{ NODE_ENV: 'production' }, false],
         [{ NODE_ENV: 'production', STRIPE_SECRET_KEY: 'sk_live_fixture' }, true],
+        [{ NODE_ENV: 'production', STRIPE_SECRET_KEY: 'rk_live_fixture' }, true],
+        [{ NODE_ENV: 'production', STRIPE_SECRET_KEY: 'rk_test_fixture' }, false],
         [{}, true],
     ])('requires matching deployment readiness %j', (values, configured) => {
         expect(config(values as Record<string, string>).isConfigured).toBe(configured);

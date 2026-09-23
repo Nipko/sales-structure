@@ -958,7 +958,7 @@ jobs:
             # Stripe is optional until international activation, but never accept
             # a partial pair or a sandbox key on the production deployment.
             if [ -n "$PROD_STRIPE_SECRET_KEY$PROD_STRIPE_WEBHOOK_SECRET" ]; then
-              case "$PROD_STRIPE_SECRET_KEY" in sk_live_*) ;; *) echo "ERROR: STRIPE_SECRET_KEY must be live"; exit 1 ;; esac
+              case "$PROD_STRIPE_SECRET_KEY" in sk_live_*|rk_live_*) ;; *) echo "ERROR: STRIPE_SECRET_KEY must be a live secret or restricted key"; exit 1 ;; esac
               case "$PROD_STRIPE_WEBHOOK_SECRET" in whsec_*) ;; *) echo "ERROR: STRIPE_WEBHOOK_SECRET is required"; exit 1 ;; esac
             fi
 

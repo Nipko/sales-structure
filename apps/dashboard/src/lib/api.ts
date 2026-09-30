@@ -1990,8 +1990,8 @@ export const api = {
         apiPost(`/invitations/by-token/${token}/accept`, data),
 
     // --- Billing admin (super_admin only) ---
-    refundBillingPayment: (paymentId: string, data?: { amountCents?: number; reason?: string }) =>
-        apiPost(`/billing-admin/payments/${paymentId}/refund`, data || {}),
+    refundBillingPayment: (paymentId: string, data: { requestId: string; amountCents?: number; reason?: string; expectedRefundedAmountCents?: number }) =>
+        apiPost<BillingRefundResult>(`/billing-admin/payments/${paymentId}/refund`, data),
     setTenantPlan: (tenantId: string, data: { planSlug: string; reason?: string }) =>
         apiPut(`/billing-admin/tenants/${tenantId}/plan`, data),
     grantCompPlan: (tenantId: string, data: { planSlug: string; durationDays: number; reason: string }) =>
@@ -2881,6 +2881,14 @@ export const api = {
 // `agent_invalid`. Sin él la pantalla tiene que adivinar cuál de los campos
 // rechazó el servidor, que es justo lo que hacía que alguien llenara cuatro
 // pasos y recibiera un error sin saber dónde estaba el problema.
+export interface BillingRefundResult {
+    providerPaymentId: string;
+    partialAmountCents: number | null;
+    operationId?: string;
+    status?: "succeeded" | "pending" | "failed" | "needs_review";
+    errorCode?: string;
+}
+
 export interface ApiFieldError { path: string; constraint?: string; message?: string }
 export interface ApiEnvelope<T> {
     httpStatus?: number;

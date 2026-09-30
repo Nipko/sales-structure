@@ -761,10 +761,38 @@ model BillingPayment {
   createdAt         DateTime  @default(now()) @map("created_at")
 
   subscription BillingSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  refundOperations BillingRefundOperation[]
 
   @@index([tenantId, createdAt])
   @@index([status])
   @@map("billing_payments")
+  @@schema("public")
+}
+
+model BillingRefundOperation {
+  id                String    @id @default(uuid())
+  paymentId         String    @map("payment_id")
+  amountCents       Int       @map("amount_cents")
+  currency          String
+  requestedFull     Boolean   @default(false) @map("requested_full")
+  status            String    @default("reserved")
+  providerRefundId  String?   @unique @map("provider_refund_id")
+  firstSubmittedAt  DateTime? @map("first_submitted_at")
+  nextCheckAt       DateTime  @default(now()) @map("next_check_at")
+  processingToken   String?   @map("processing_token")
+  processingUntil   DateTime? @map("processing_until")
+  attempts          Int       @default(0)
+  errorCode         String?   @map("error_code")
+  actorUserId       String?   @map("actor_user_id")
+  reason            String?
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  payment BillingPayment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextCheckAt])
+  @@index([paymentId])
+  @@map("billing_refund_operations")
   @@schema("public")
 }
 

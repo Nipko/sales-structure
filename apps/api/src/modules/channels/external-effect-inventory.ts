@@ -1827,9 +1827,10 @@ producer({
             class: 'commercial_write', audience: 'provider', personalData: true,
             channels: ['provider_api'],
         },
-        properties: uncovered('no `idempotencyKey` is passed on any Stripe call, which is the one thing '
-            + 'that API gives away for free. It is dormant, so nothing has been charged twice — but the '
-            + 'gap is in the code, not in the configuration'),
+        properties: uncovered('this aggregate entry does not certify every Stripe adapter primitive. '
+            + 'StripeRefundService now admits refunds through a durable operation, stable idempotency key, '
+            + 'canonical receipt and reconciliation; Checkout also persists its attempt key. Other customer, '
+            + 'subscription and catalog writes still require their own effect guarantees before this whole rail can be certified'),
     }),
 
     producer({

@@ -1,9 +1,10 @@
 import { BadRequestException, Body, ConflictException, Controller, Get, HttpCode, HttpStatus, Logger, NotFoundException, Param, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
-import { IsBoolean, IsDateString, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsPositive, IsString, Max, MaxLength, Min } from 'class-validator';
+import { IsBoolean, IsDateString, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsPositive, IsString, IsUUID, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { BillingService } from './billing.service';
+import { StripeRefundService } from './stripe-refund.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { BillingReconciliationProcessor } from './processors/reconciliation.processor';
@@ -26,6 +27,8 @@ import { PaymentProviderFactory } from './payment-provider.factory';
 import { PAYMENT_PROVIDER_NAMES, PaymentProviderName } from './types/provider-types';
 
 class RefundPaymentDto {
+    @IsOptional() @IsUUID() requestId?: string;
+    @IsOptional() @IsInt() @Min(0) expectedRefundedAmountCents?: number;
     @IsOptional()
     @IsInt()
     @Min(1)
@@ -34,6 +37,12 @@ class RefundPaymentDto {
     @IsOptional()
     @IsString()
     reason?: string;
+}
+
+class ResolveRefundDto {
+    @IsOptional() @IsString() @MaxLength(100) providerRefundId?: string;
+    @IsOptional() @IsBoolean() confirmNotCreated?: boolean;
+    @IsString() @MinLength(10) @MaxLength(1000) reason!: string;
 }
 
 class CompPlanDto {
@@ -122,6 +131,7 @@ export class BillingAdminController {
         private readonly routing: PaymentRoutingService,
         private readonly providerFactory: PaymentProviderFactory,
         private readonly stripeConfig?: StripeConfigService,
+        private readonly stripeRefunds?: StripeRefundService,
     ) {}
 
     // ── Plan Management ─────────────────────────────────────────
@@ -688,9 +698,19 @@ export class BillingAdminController {
             paymentId,
             amountCents: body.amountCents,
             reason: body.reason,
-            actorUserId: req.user?.sub,
+            actorUserId: req.user?.id ?? req.user?.sub,
+            requestId: body.requestId,
+            expectedRefundedAmountCents: body.expectedRefundedAmountCents,
         });
         return { success: true, data: result };
+    }
+
+    @Post('payments/:paymentId/refunds/:operationId/resolve')
+    async resolveRefund(@Param('paymentId') paymentId: string, @Param('operationId') operationId: string,
+        @Body() body: ResolveRefundDto, @Req() req: any) {
+        if (!this.stripeRefunds) throw new ConflictException({ error: 'stripe_refund_service_unavailable' });
+        return { success: true, data: await this.stripeRefunds.resolve({ paymentId, operationId, ...body,
+            actorUserId: req.user?.id ?? req.user?.sub }) };
     }
 
     @Post('tenants/:tenantId/comp-plan')

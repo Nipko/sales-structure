@@ -20,6 +20,30 @@ export interface WebhookSignatureContext {
     headers?: Record<string, string>;
 }
 
+export interface RefundRequestContext {
+    operationId: string;
+    idempotencyKey: string;
+}
+
+export interface ProviderRefund {
+    id: string;
+    paymentIntentId: string;
+    amountCents: number;
+    currency: string;
+    status: string;
+    livemode: boolean;
+    operationId?: string;
+}
+
+export interface ProviderRefundSnapshot {
+    paymentIntentId: string;
+    amountPaidCents: number;
+    currency: string;
+    livemode: boolean;
+    refunds: ProviderRefund[];
+    succeededAmountCents: number;
+}
+
 /**
  * Provider-agnostic contract for payment integrations.
  *
@@ -111,7 +135,7 @@ export interface IPaymentProvider {
      * fires asynchronously and BillingService picks up the status change
      * via parseWebhookEvent → handleBillingEvent.
      */
-    refundPayment(providerPaymentId: string, amountCents?: number): Promise<void>;
+    refundPayment(providerPaymentId: string, amountCents?: number, context?: RefundRequestContext): Promise<void | ProviderRefund>;
 
     // --- Reconciliation ---
 

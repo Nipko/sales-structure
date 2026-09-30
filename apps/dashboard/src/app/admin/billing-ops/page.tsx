@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslations } from "next-intl";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
+import { finishRefundIntent, readRefundIntent, refundFeedback, RefundIntentStorageError, saveRefundIntent } from "@/lib/billing-refund-intent";
 import { PageHeader } from "@/components/ui/page-header";
 import { TabNav } from "@/components/ui/tab-nav";
 import { SkeletonTable } from "@/components/ui/skeleton-loader";
@@ -28,6 +29,7 @@ export default function BillingOpsPage() {
     const [toast, setToast] = useState<{ type: "success" | "error"; msg: string } | null>(null);
     const [refundFor, setRefundFor] = useState<any | null>(null);
     const [refunding, setRefunding] = useState(false);
+    const refundBusy = useRef(false);
 
     const load = useCallback(async (tab: TabId, pg: number) => {
         setLoading(true);
@@ -52,14 +54,31 @@ export default function BillingOpsPage() {
     const changeTab = (id: TabId) => { setPage(1); setActiveTab(id); };
 
     const doRefund = async (reason: string) => {
-        if (!refundFor) return;
+        if (!refundFor || !user?.id || refundBusy.current) return;
+        refundBusy.current = true;
         setRefunding(true);
         try {
-            const res = await api.refundBillingPayment(refundFor.id, { reason });
-            if (res.success) { setToast({ type: "success", msg: t("refundDone") }); setRefundFor(null); load(activeTab, page); }
-            else setToast({ type: "error", msg: res.error || "Error" });
-        } catch { setToast({ type: "error", msg: "Connection error" }); }
-        setRefunding(false);
+            const intent = saveRefundIntent(localStorage, user.id, refundFor.id, { reason, expectedRefundedAmountCents: Number(refundFor.metadata?.refundedAmountCents ?? 0) });
+            const res = await api.refundBillingPayment(refundFor.id, intent);
+            finishRefundIntent(localStorage, user.id, refundFor.id, intent, res);
+            const feedback = refundFeedback(res);
+            setToast({ type: feedback === "refundSucceeded" ? "success" : "error", msg: t(feedback) });
+            setRefundFor(null);
+            await load(activeTab, page);
+        } catch (error) {
+            setToast({ type: "error", msg: t(error instanceof RefundIntentStorageError ? "refundStorageUnavailable" : "refundPending") });
+        } finally {
+            refundBusy.current = false;
+            setRefunding(false);
+        }
+    };
+
+    const openRefund = (payment: any) => {
+        if (!user?.id || refundBusy.current) return;
+        try {
+            const pending = readRefundIntent(localStorage, user.id, payment.id);
+            setRefundFor({ ...payment, pendingIntent: pending });
+        } catch { setToast({ type: "error", msg: t("refundStorageUnavailable") }); }
     };
 
     const tabs = [
@@ -142,7 +161,7 @@ export default function BillingOpsPage() {
                                     <td className={tdCls}><span className="text-xs">{r.provider}</span></td>
                                     <td className={tdCls}><span className="text-xs">{fmtDate(r.paidAt ?? r.createdAt)}</span></td>
                                     <td className={tdCls}>{r.status === "succeeded" && r.providerPaymentId ? (
-                                        <button onClick={() => setRefundFor(r)} className="inline-flex items-center gap-1 text-[11px] text-red-600 dark:text-red-400 hover:underline"><RotateCcw size={11} /> {t("refund")}</button>
+                                        <button disabled={refunding} onClick={() => openRefund(r)} className="inline-flex items-center gap-1 text-[11px] text-red-600 dark:text-red-400 hover:underline disabled:opacity-50"><RotateCcw size={11} /> {t("refund")}</button>
                                     ) : null}</td>
                                 </tr>
                             ))}
@@ -171,24 +190,25 @@ export default function BillingOpsPage() {
             )}
 
             {refundFor && (
-                <RefundModal payment={refundFor} busy={refunding} onCancel={() => setRefundFor(null)} onConfirm={doRefund} t={t} fmtMoney={fmtMoney} />
+                <RefundModal payment={refundFor} busy={refunding} onCancel={() => { if (!refundBusy.current) setRefundFor(null); }} onConfirm={doRefund} t={t} fmtMoney={fmtMoney} />
             )}
         </div>
     );
 }
 
 function RefundModal({ payment, busy, onCancel, onConfirm, t, fmtMoney }: any) {
-    const [reason, setReason] = useState("");
+    const [reason, setReason] = useState(payment.pendingIntent?.reason ?? "");
+    const resuming = !!payment.pendingIntent;
     return (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={onCancel}>
             <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-2xl p-5 w-full max-w-md" onClick={e => e.stopPropagation()}>
                 <h3 className="text-base font-semibold text-neutral-900 dark:text-neutral-100 mb-2">{t("refundTitle")}</h3>
-                <p className="text-sm text-neutral-500 mb-3">{t("refundDesc", { amount: fmtMoney(payment.amountCents, payment.currency) })}</p>
-                <textarea value={reason} onChange={e => setReason(e.target.value)} placeholder={t("refundReason")} rows={2} className="w-full rounded-lg border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 mb-4" />
+                <p className="text-sm text-neutral-500 mb-3">{resuming ? t("refundResume") : t("refundDesc", { amount: fmtMoney(Math.max(0, payment.amountCents - Number(payment.metadata?.refundedAmountCents ?? 0)), payment.currency) })}</p>
+                <textarea value={reason} disabled={busy || resuming} aria-label={t("refundReason")} onChange={e => setReason(e.target.value)} placeholder={t("refundReason")} rows={2} className="w-full rounded-lg border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 mb-4" />
                 <div className="flex justify-end gap-2">
-                    <button onClick={onCancel} className="px-3 py-1.5 rounded-lg text-sm text-neutral-600 dark:text-neutral-400">{t("cancel")}</button>
+                    <button disabled={busy} onClick={onCancel} className="px-3 py-1.5 rounded-lg text-sm text-neutral-600 dark:text-neutral-400">{t("cancel")}</button>
                     <button onClick={() => onConfirm(reason)} disabled={busy} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-600 text-white text-sm disabled:opacity-50">
-                        {busy ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />} {t("refundConfirm")}
+                        {busy ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />} {t(resuming ? "refundCheck" : "refundConfirm")}
                     </button>
                 </div>
             </div>

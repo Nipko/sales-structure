@@ -58,12 +58,13 @@ describe('Stripe subscription safety regressions', () => {
         const adapter = new StripeAdapter(config);
         const events: any = { emit: jest.fn() };
         const redis: any = { acquireLockToken: jest.fn(async () => 'lease'), releaseLockToken: jest.fn(async () => undefined), del: jest.fn(async () => undefined), get: jest.fn(async () => null) };
-        const service = new StripeBillingService(prisma, redis, config, adapter, events, {} as any);
+        const refunds: any = { handleEvent: jest.fn(async () => ({ processed: true })) };
+        const service = new StripeBillingService(prisma, redis, config, adapter, events, {} as any, refunds);
         const event = (id: string, overrides: any = {}) => ({
             provider: 'stripe' as const, providerEventId: id, providerSubscriptionId: 'sub_bound',
             type: BillingEventType.SUBSCRIPTION_PLAN_CHANGED, occurredAt: new Date(), rawPayload: { livemode: true }, ...overrides,
         });
-        return { service, adapter, sdk, remote, prisma, events, payments, ledger, event,
+        return { service, adapter, sdk, remote, prisma, events, payments, ledger, event, refunds,
             get sub() { return sub; },
             replaceDuringTransaction() {
                 onTransaction = () => { sub = { ...sub, provider: 'wompi', engine: 'internal', status: 'active', cancellationReason: 'comp:operator' }; };
@@ -121,7 +122,7 @@ describe('Stripe subscription safety regressions', () => {
         expect(f.events.emit).not.toHaveBeenCalled();
     });
 
-    it('keeps cumulative refunds monotonic when signed events arrive out of order', async () => {
+    it('routes refunds to the payment ledger without applying subscription entitlements', async () => {
         const f = fixture();
         f.payments.push({ id: 'paid-1', provider: 'stripe', providerPaymentId: 'in_paid', subscriptionId, tenantId,
             amountCents: 6900, currency: 'USD', status: 'succeeded', metadata: { refundedAmountCents: 2000 },
@@ -130,9 +131,9 @@ describe('Stripe subscription safety regressions', () => {
             type: BillingEventType.PAYMENT_REFUNDED, providerPaymentId: 'in_paid',
             payment: { providerPaymentId: 'in_paid', amountCents: 1000, currency: 'USD', status: 'refunded' },
         }));
-        expect(f.payments[0].metadata.refundedAmountCents).toBe(2000);
-        expect(f.payments[0].amountCents).toBe(6900);
-        expect(f.payments[0].status).toBe('succeeded');
+        expect(f.refunds.handleEvent).toHaveBeenCalledWith(expect.objectContaining({ providerPaymentId: 'in_paid' }));
+        expect(f.prisma.billingSubscription.update).not.toHaveBeenCalled();
+        expect(f.prisma.billingPayment.update).not.toHaveBeenCalled();
     });
 
     it('leaves a refund retryable when its original invoice payment has not arrived', async () => {
@@ -141,6 +142,7 @@ describe('Stripe subscription safety regressions', () => {
             type: BillingEventType.PAYMENT_REFUNDED, providerPaymentId: 'in_pending',
             payment: { providerPaymentId: 'in_pending', amountCents: 6900, currency: 'USD', status: 'refunded' },
         });
+        f.refunds.handleEvent.mockRejectedValueOnce(new Error('stripe_refund_payment_pending'));
         await expect(f.service.handleEvent(pending)).rejects.toThrow();
         expect(f.ledger).toHaveLength(0);
         expect(f.payments).toHaveLength(0);

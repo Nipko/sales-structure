@@ -48,7 +48,7 @@ El anual internacional requiere un importe explícito, editable en Planes → In
 
 1. Confirmar los datos fiscales de Parallext LLC (incluido EIN/Tax ID), su dirección y correo, y la política de documento internacional; cargarlos en Fiscal → Emisor LLC sin cambiar el modo `CO_LOCAL` ni el emisor colombiano.
 2. En un entorno de prueba aislado, configurar `STRIPE_SECRET_KEY=sk_test_…`, `STRIPE_WEBHOOK_SECRET=whsec_…` y `DASHBOARD_URL` del entorno. Mantener sus webhooks y datos separados de producción.
-3. Registrar el endpoint `/api/v1/billing/webhook/stripe` de la API correspondiente. Escuchar `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid`, `invoice.payment_succeeded`, `invoice.payment_failed` y `charge.refunded`. Las dos señales de éxito de una misma factura se deduplican por factura. Usar payloads snapshot y la versión compatible con el SDK instalado; el adapter admite campos de factura y periodos anteriores y posteriores a Basil.
+3. Registrar el endpoint `/api/v1/billing/webhook/stripe` de la API correspondiente. Escuchar `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid`, `invoice.payment_succeeded`, `invoice.payment_failed`, `charge.refunded`, `refund.created`, `refund.updated` y `refund.failed`. Las dos señales de éxito de una misma factura se deduplican por factura. Usar payloads snapshot y la versión compatible con el SDK instalado; el adapter admite campos de factura y periodos anteriores y posteriores a Basil.
 4. Activar Stripe en Planes → Proveedores (`billing.providers_enabled.stripe=true`). El interruptor permanece apagado por defecto; la disponibilidad también exige las credenciales y el secreto de webhook.
 5. Probar alta con/sin trial, cancelación del checkout, autenticación del pago, eventos duplicados/desordenados, renovación fallida y recuperada, cambio de plan, portal y cancelación al fin del periodo. Verificar que un retorno `?stripe=success` sin webhook no activa acceso y que Wompi continúa operando para Colombia.
 6. Para producción, añadir los secretos de GitHub `STRIPE_SECRET_KEY` (`rk_live_…` con permisos mínimos recomendados, o `sk_live_…`) y `STRIPE_WEBHOOK_SECRET` del endpoint `https://api.parallly-chat.cloud/api/v1/billing/webhook/stripe`. El workflow los transmite a API/worker y rechaza pares parciales o claves test en el deploy productivo.
@@ -56,6 +56,26 @@ El anual internacional requiere un importe explícito, editable en Planes → In
 8. Desplegar, comprobar catálogo CO/internacional y readiness de proveedores, y completar una prueba controlada del comercio real antes de abrir ventas.
 
 No se guardan secretos en este documento ni en el repositorio. La activación comercial requiere confirmar los datos del emisor, crear las credenciales y el webhook de la cuenta correcta, desplegar y completar una prueba controlada.
+
+### Comprobación de activación del 30 de septiembre
+
+- Producción devolvió `provider_disabled` para US y MX. Colombia continuó disponible con Wompi.
+- No estaban definidos `STRIPE_SECRET_KEY` ni `STRIPE_WEBHOOK_SECRET` en GitHub Secrets del repositorio ni del entorno `production`. Una clave creada en Stripe todavía debe conectarse al despliegue.
+- Los datos guardados del emisor LLC, precios anuales y la configuración de la cuenta Stripe requieren comprobación autenticada. No se deduce que falten a partir del catálogo público, que oculta ofertas mientras el proveedor está apagado.
+- `GET /api/v1/billing-admin/provider-status` comprueba configuración local; no valida con Stripe la autenticidad de la clave, permisos o entregas del webhook.
+- Si se usa una clave restringida, comprobar en sandbox los permisos necesarios para Customers, Checkout Sessions, Subscriptions, Subscription Schedules, Products/Prices y Customer Portal, además de lectura de Invoices, Invoice Payments, PaymentIntents y Charges y lectura/escritura de Refunds. El checkout usa `price_data`; no exige crear manualmente un catálogo de productos en Stripe.
+
+## Recuperación de reembolsos
+
+Cada devolución Stripe se registra antes de contactar al proveedor en `billing_refund_operations`. El panel conserva su `requestId` por administrador y pago en el navegador; al reabrir una solicitud pendiente usa su importe y motivo originales. Un doble clic, una recarga o una respuesta perdida no representan una nueva devolución.
+
+`POST /api/v1/billing-admin/payments/:paymentId/refund` requiere `requestId` UUID para Stripe y admite `amountCents`, `reason` y `expectedRefundedAmountCents`. Este último detecta que otro administrador modificó el saldo desde que se abrió el historial. Repetir el ID devuelve o concilia la operación original. Las respuestas distinguen `succeeded`, `pending`, `failed` y `needs_review`: un HTTP exitoso no basta para mostrar una devolución confirmada.
+
+La conciliación consulta los reembolsos de Stripe y usa el mismo identificador al recuperar una solicitud cuyo resultado se desconoce. Sólo contabiliza reembolsos confirmados como `succeeded`; una devolución pendiente o fallida no reduce el saldo local. El acumulado confirmado también permite al conciliador fiscal recuperar una nota de crédito si el proceso se interrumpe antes de emitir el evento.
+
+Después de 23 horas desde el primer envío, una operación sin resultado confirmado pasa a revisión y deja de reenviarse automáticamente. Stripe permite eliminar claves idempotentes desde las 24 horas; reutilizar después la clave podría crear otra devolución. Las solicitudes ambiguas heredadas de la versión anterior también requieren revisión y no se vuelven a enviar automáticamente.
+
+Para soporte superadmin, `POST /api/v1/billing-admin/payments/:paymentId/refunds/:operationId/resolve` registra una resolución auditada. Se debe consultar primero la operación en Stripe y aportar `reason` (mínimo 10 caracteres) junto a `providerRefundId`, o confirmar expresamente `confirmNotCreated: true` si se verificó que no existe. El servidor vuelve a consultar Stripe, comprueba la vinculación con el pago y no emite un nuevo reembolso durante esta resolución. Una devolución que falló después de contabilizarse requiere revisión contable; no debe liberarse como si nunca hubiera existido.
 
 ## Límites explícitos de esta entrega
 
@@ -71,5 +91,7 @@ Validación local completada: TypeScript sin errores en API, dashboard y landing
 
 - [Stripe: subscriptions with hosted Checkout](https://docs.stripe.com/payments/checkout/build-subscriptions)
 - [Stripe: webhook signature and raw body](https://docs.stripe.com/webhooks)
+- [Stripe: idempotencia y conservación de claves](https://docs.stripe.com/api/idempotent_requests)
+- [Stripe: estados y eventos de reembolsos](https://docs.stripe.com/refunds)
 - [Corrección comercial del 14 de septiembre](audits/2026-09-14/plan-economics-implementation.md)
 - [Operación Wompi](billing-runbook.md)

@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
-import { IPaymentProvider, WebhookSignatureContext } from './payment-provider.interface';
+import { IPaymentProvider, ProviderRefund, ProviderRefundSnapshot, RefundRequestContext, WebhookSignatureContext } from './payment-provider.interface';
 import { StripeConfigService } from './stripe-config.service';
 import {
     PaymentProviderName,
@@ -133,17 +133,66 @@ export class StripeAdapter implements IPaymentProvider {
         return this.mapSubscription(updated);
     }
 
-    async refundPayment(providerPaymentId: string, amountCents?: number): Promise<void> {
-        let paymentIntent = providerPaymentId;
+    private async refundPaymentIntent(providerPaymentId: string): Promise<string> {
+        let paymentIntent: string = providerPaymentId;
         if (providerPaymentId.startsWith('in_')) {
             const invoice = await this.stripe.invoices.retrieve(providerPaymentId, { expand: ['payments.data.payment.payment_intent'] });
-            const candidate = invoice.payment_intent ?? invoice.payments?.data?.find((p: any) => p.payment?.type === 'payment_intent')?.payment?.payment_intent;
-            paymentIntent = typeof candidate === 'string' ? candidate : candidate?.id;
-            if (!paymentIntent) throw new BadRequestException({ error: 'stripe_payment_not_refundable' });
+            const candidates = invoice.payment_intent ? [invoice.payment_intent]
+                : (invoice.payments?.data ?? []).filter((p: any) => p.payment?.type === 'payment_intent' && p.status !== 'canceled')
+                    .map((p: any) => p.payment.payment_intent);
+            const ids = [...new Set(candidates.map((p: any) => typeof p === 'string' ? p : p?.id))];
+            if (ids.length !== 1 || invoice.payments?.has_more) throw new BadRequestException({ error: 'stripe_payment_not_refundable' });
+            paymentIntent = ids[0] as string;
         }
-        const params: Record<string, any> = { payment_intent: paymentIntent };
-        if (amountCents) params.amount = amountCents;
-        await this.stripe.refunds.create(params);
+        if (!paymentIntent?.startsWith('pi_')) throw new BadRequestException({ error: 'stripe_payment_not_refundable' });
+        return paymentIntent;
+    }
+
+    private mapRefund(refund: any): ProviderRefund {
+        return {
+            id: refund.id, paymentIntentId: typeof refund.payment_intent === 'string' ? refund.payment_intent : refund.payment_intent?.id,
+            amountCents: refund.amount, currency: String(refund.currency).toUpperCase(),
+            status: refund.status, livemode: refund.livemode, operationId: refund.metadata?.paralllyRefundOperationId,
+        };
+    }
+
+    async refundPayment(providerPaymentId: string, amountCents?: number, context?: RefundRequestContext): Promise<ProviderRefund> {
+        // Every Stripe refund must belong to a durable operation. SDK-generated
+        // retry keys alone do not survive another HTTP request or a restart.
+        if (!context?.operationId || !context.idempotencyKey || !Number.isSafeInteger(amountCents) || amountCents! <= 0) {
+            throw new BadRequestException({ error: 'stripe_refund_operation_required' });
+        }
+        const paymentIntent = await this.refundPaymentIntent(providerPaymentId);
+        const result = await this.stripe.refunds.create({
+            payment_intent: paymentIntent, amount: amountCents,
+            metadata: { paralllyRefundOperationId: context.operationId },
+        }, { idempotencyKey: context.idempotencyKey, maxNetworkRetries: 0 });
+        return this.mapRefund(result);
+    }
+
+    async getRefundSnapshot(providerPaymentId: string): Promise<ProviderRefundSnapshot> {
+        const paymentIntentId = await this.refundPaymentIntent(providerPaymentId);
+        const intent = await this.stripe.paymentIntents.retrieve(paymentIntentId);
+        const refunds: ProviderRefund[] = [];
+        let after: string | undefined;
+        // Never treat a truncated page as proof that an operation does not exist.
+        for (let page = 0; page < 20; page++) {
+            const result = await this.stripe.refunds.list({ payment_intent: paymentIntentId, limit: 100, ...(after ? { starting_after: after } : {}) });
+            if (!Array.isArray(result.data)) throw new Error('stripe_refund_lookup_invalid');
+            refunds.push(...result.data.map((refund: any) => this.mapRefund(refund)));
+            if (!result.has_more) {
+                if (refunds.some(r => r.paymentIntentId !== paymentIntentId || r.currency !== String(intent.currency).toUpperCase()
+                    || r.livemode !== intent.livemode || !Number.isSafeInteger(r.amountCents) || r.amountCents <= 0)) {
+                    throw new Error('stripe_refund_identity_mismatch');
+                }
+                return { paymentIntentId, amountPaidCents: intent.amount_received, currency: String(intent.currency).toUpperCase(),
+                    livemode: intent.livemode, refunds, succeededAmountCents: refunds.filter(r => r.status === 'succeeded').reduce((sum, r) => sum + r.amountCents, 0) };
+            }
+            const next = result.data[result.data.length - 1]?.id;
+            if (!next || next === after) break;
+            after = next;
+        }
+        throw new Error('stripe_refund_lookup_incomplete');
     }
 
     async getSubscription(providerSubscriptionId: string): Promise<ProviderSubscription> {
@@ -251,9 +300,12 @@ export class StripeAdapter implements IPaymentProvider {
                 } as NormalizedBillingEvent;
             }
 
-            case 'charge.refunded': {
+            case 'charge.refunded':
+            case 'refund.created':
+            case 'refund.updated':
+            case 'refund.failed': {
                 const charge = event.data.object;
-                const piId = typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.id;
+                const piId = typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent?.id ?? charge.id;
                 const invoiceId = typeof charge.invoice === 'string' ? charge.invoice : charge.invoice?.id;
                 // Modern charge payloads no longer expose invoice. InvoicePayments
                 // provides the reverse relation for our stable invoice payment key.
@@ -271,7 +323,9 @@ export class StripeAdapter implements IPaymentProvider {
                     providerSubscriptionId: typeof subscription === 'string' ? subscription : subscription?.id,
                     payment: {
                         providerPaymentId: paymentId,
-                        amountCents: charge.amount_refunded,
+                        // Refund accounting reloads canonical refunds in its own
+                        // payment lock; this webhook amount is never settlement.
+                        amountCents: charge.amount_refunded ?? charge.amount ?? 0,
                         currency: (charge.currency || 'usd').toUpperCase(),
                         status: 'refunded',
                     },

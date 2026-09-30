@@ -1,6 +1,6 @@
 # Matriz estructural de herramientas por tipo de negocio
 
-Origen: `e1fcd184f3c071145f6a969a031804ecad4ad6f6`. Fuentes y hashes completos en [JSON](./tool-profile-audit.json).
+Origen: `7b7afa3be12ed9ba941632a8210e2bad16853d5c`. Fuentes y hashes completos en [JSON](./tool-profile-audit.json).
 
 20 verticales; 80 tipos de negocio; 123 herramientas estáticas; 26 familias nativas; 444 tareas (158 transaccionales).
 

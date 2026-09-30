@@ -13,6 +13,7 @@ import {
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { isStripeBillingUrl, stripeBillingAction } from "@/lib/stripe-checkout";
+import { finishRefundIntent, readRefundIntent, refundFeedback, RefundIntentStorageError, saveRefundIntent } from "@/lib/billing-refund-intent";
 import {
     CreditCard, CheckCircle2, AlertTriangle, XCircle, Clock,
     Zap, Rocket, Briefcase, Sparkles, Loader2, X, Tag, Lightbulb,
@@ -64,6 +65,7 @@ interface Payment {
     paidAt?: string;
     createdAt: string;
     invoicePdfUrl?: string | null;
+    metadata?: { refundedAmountCents?: number } | null;
 }
 
 interface Subscription {
@@ -209,6 +211,8 @@ export default function BillingPage() {
     const [error, setError] = useState<string | null>(null);
     const [toast, setToast] = useState<string | null>(null);
     const [stripeConfirmationPending, setStripeConfirmationPending] = useState(false);
+    const refundBusy = useRef(false);
+    const [refundingPaymentId, setRefundingPaymentId] = useState<string | null>(null);
     const stripeRefreshAttempts = useRef(0);
 
     const billingError = (message?: string) => {
@@ -661,32 +665,43 @@ export default function BillingPage() {
         }
     };
 
-    const handleRefund = async (paymentId: string, fullAmountCents: number, currency: string) => {
-        const partial = window.prompt(
-            t("refundAmountPrompt", {
-                full: formatMoney(fullAmountCents, currency, locale),
-            }) || "Partial amount in cents (leave empty for full):",
-        );
-        if (partial === null) return;
-        let amountCents: number | undefined;
-        if (partial.trim() !== "") {
-            const parsed = parseInt(partial.trim(), 10);
-            if (Number.isNaN(parsed) || parsed <= 0 || parsed > fullAmountCents) {
-                alert(t("refundInvalidAmount"));
-                return;
-            }
-            amountCents = parsed;
-        }
-        const reason = window.prompt(t("refundReasonPrompt") || "Reason (required for audit):");
-        if (reason === null || !reason.trim()) return;
-
+    const handleRefund = async (paymentId: string, fullAmountCents: number, currency: string, alreadyRefundedCents: number) => {
+        if (!user?.id || refundBusy.current) return;
+        refundBusy.current = true;
+        setRefundingPaymentId(paymentId);
+        setError(null);
+        setToast(null);
         try {
-            const res = await api.refundBillingPayment(paymentId, { amountCents, reason });
-            if (!res?.success) throw new Error((res as any)?.error || t("actionFailed"));
-            setToast(t("refundIssued"));
+            let intent = readRefundIntent(localStorage, user.id, paymentId);
+            if (intent) {
+                if (!window.confirm(t("refundResume"))) return;
+            } else {
+                const partial = window.prompt(t("refundAmountPrompt", { full: formatMoney(fullAmountCents, currency, locale) }));
+                if (partial === null) return;
+                let amountCents: number | undefined;
+                if (partial.trim() !== "") {
+                    const parsed = Number(partial.trim());
+                    if (!/^\d+$/.test(partial.trim()) || !Number.isSafeInteger(parsed) || parsed <= 0 || parsed > fullAmountCents) {
+                        setError(t("refundInvalidAmount"));
+                        return;
+                    }
+                    amountCents = parsed;
+                }
+                const reason = window.prompt(t("refundReasonPrompt"));
+                if (reason === null || !reason.trim()) return;
+                intent = saveRefundIntent(localStorage, user.id, paymentId, { amountCents, reason: reason.trim(), expectedRefundedAmountCents: alreadyRefundedCents });
+            }
+            const res = await api.refundBillingPayment(paymentId, intent);
+            finishRefundIntent(localStorage, user.id, paymentId, intent, res);
+            const feedback = refundFeedback(res);
             await load();
-        } catch (err: any) {
-            setError(err?.message || t("actionFailed"));
+            if (feedback === "refundSucceeded") setToast(t(feedback));
+            else setError(t(feedback));
+        } catch (error) {
+            setError(t(error instanceof RefundIntentStorageError ? "refundStorageUnavailable" : "refundPending"));
+        } finally {
+            refundBusy.current = false;
+            setRefundingPaymentId(null);
         }
     };
 
@@ -1743,7 +1758,8 @@ export default function BillingPage() {
                                                 )}
                                                 {isSuperAdmin && p.status === "succeeded" && (
                                                     <button
-                                                        onClick={() => handleRefund(p.id, p.amountCents, p.currency)}
+                                                        onClick={() => handleRefund(p.id, Math.max(0, p.amountCents - Number(p.metadata?.refundedAmountCents ?? 0)), p.currency, Number(p.metadata?.refundedAmountCents ?? 0))}
+                                                        disabled={refundingPaymentId !== null}
                                                         className="text-xs px-2 py-0.5 rounded-md text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 border border-red-200 dark:border-red-900"
                                                     >
                                                         {t("refund")}

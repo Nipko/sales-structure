@@ -352,7 +352,7 @@ direcciones**: lo que el barrido encuentra y ella no nombra, y lo que ella
 nombra y el barrido no encuentra. Un desacuerdo no es un error de ninguno de
 los dos — es exactamente el sitio donde hay que ir a mirar.
 
-Entradas declaradas allí: **67**.
+Entradas declaradas allí: **69**.
 
 ### Encontrados por el barrido y no declarados como productores
 
@@ -401,6 +401,8 @@ esperada y su clasificación queda **fuera del alcance de este generador**.
 | `ops.coupon_alerts` | `inline` | `internal_only` | `modules/health/coupon-alert.listener.ts` |
 | `ops.platform_alerts` | `inline` | `internal_only` | `modules/health/platform-monitor.service.ts` |
 | `payments.tenant_payment_link` | `inline` | `live` | `modules/tenant-payments/tenant-payments.service.ts` |
+| `platform_communications.campaign_email` | `delivery_outbox` | `live` | `modules/platform-communications/platform-communications.processor.ts` |
+| `platform_communications.test_email` | `inline` | `internal_only` | `modules/platform-communications/platform-communications.service.ts` |
 | `public_api.webhook_subscriptions` | `delivery_outbox` | `live` | `modules/public-api/webhook-subscription.service.ts` |
 | `push.operational_events` | `operational_notice` | `live` | `modules/push/push-listener.service.ts` |
 | `reviews.gbp_reply` | `domain_queue` | `live` | `modules/reviews/reviews.service.ts` |

@@ -382,6 +382,9 @@ jobs:
           apps/dashboard/src/app/admin/agent/_components/agent-guide-cards.a11y.spec.tsx
           apps/dashboard/src/app/admin/agent/quality/owner-health-summary.spec.ts
           apps/dashboard/src/app/admin/agent/quality/weekly-summary-choice.a11y.spec.tsx
+          apps/dashboard/src/lib/billing-refund-intent.spec.ts
+          apps/dashboard/src/app/admin/billing-ops/billing-refund.a11y.spec.tsx
+          apps/dashboard/src/app/admin/settings/billing/billing-refund.a11y.spec.tsx
 
       # Bloqueante desde ago 2026: el codebase quedó lint-clean (commit 64c46827,
       # 28 errores → 0). Es el único gate automático que atrapa la clase de bug
@@ -393,15 +396,19 @@ jobs:
           (cd apps/dashboard && npx eslint . --quiet)
           (cd apps/whatsapp && npx eslint "src/**/*.ts" --quiet)
 
-      # MercadoPago fue RETIRADO como PSP de plataforma (ago 2026): su adapter,
-      # su config service, sus scripts y sus specs salieron del repo. El riel
-      # vivo es Wompi, cobrado por el motor de recurrencia propio.
+      # Wompi retains its internal renewal engine. Stripe refund recovery must
+      # also pass before deploying any billing or provider changes.
       - name: Billing contract tests
         run: |
           cd apps/api
           npm test -- --runInBand \
             src/modules/billing/billing-plan-display.util.spec.ts \
-            src/modules/billing/billing.service.spec.ts
+            src/modules/billing/billing.service.spec.ts \
+            src/modules/billing/stripe-refund.service.spec.ts \
+            src/modules/billing/stripe-billing.service.spec.ts \
+            src/modules/billing/stripe-billing.safety.spec.ts \
+            src/modules/billing/adapters/stripe.adapter.spec.ts \
+            src/modules/billing/adapters/stripe-webhook-signature.spec.ts
 
       - name: Prisma generate + migrate (ephemeral DB)
         run: |
@@ -436,7 +443,8 @@ jobs:
           npx jest --config apps/api/jest.config.js --runInBand --forceExit \
             apps/api/src/modules/ai/router/llm-spend-guard.postgres.spec.ts \
             apps/api/src/modules/simulation/eval-namespace-reaper.postgres.spec.ts \
-            apps/api/src/modules/prisma/legacy-schema-repoint.postgres.spec.ts
+            apps/api/src/modules/prisma/legacy-schema-repoint.postgres.spec.ts \
+            apps/api/src/modules/billing/stripe-refund.postgres.spec.ts
 
       - name: Tenant schema migration compatibility smoke test
         run: cd apps/api && npm run test:migrate:tenants

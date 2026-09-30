@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { StripeRefundService } from './stripe-refund.service';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -69,6 +70,7 @@ export class BillingService {
         @InjectQueue(RENEWAL_QUEUE) private readonly enginePendingCharges: Queue,
         @Optional() private readonly stripeBilling?: StripeBillingService,
         @Optional() private readonly stripeConfig?: StripeConfigService,
+        @Optional() private readonly stripeRefunds?: StripeRefundService,
     ) {}
 
     /**
@@ -1633,11 +1635,19 @@ export class BillingService {
         amountCents?: number;
         reason?: string;
         actorUserId?: string;
-    }): Promise<{ providerPaymentId: string; partialAmountCents: number | null }> {
+        requestId?: string;
+        expectedRefundedAmountCents?: number;
+    }) {
         const payment = await this.prisma.billingPayment.findUnique({
             where: { id: input.paymentId },
         });
         if (!payment) throw new NotFoundException({ error: 'payment_not_found' });
+        if (payment.provider === 'stripe') {
+            if (!this.stripeRefunds) throw new ServiceUnavailableException({ error: 'stripe_refund_service_unavailable' });
+            // Replay lookup precedes status/remaining checks: a lost successful
+            // response must still return success when the payment is refunded.
+            return this.stripeRefunds.refundPayment(input);
+        }
         if (payment.status === 'refunded') {
             throw new BadRequestException({ error: 'already_refunded' });
         }
@@ -1863,6 +1873,7 @@ export class BillingService {
      * manual review instead of being guessed as refunded.
      */
     async reconcilePendingRefunds(): Promise<{ scanned: number; finalized: number; errors: number }> {
+        const stripe = this.stripeRefunds ? await this.stripeRefunds.reconcilePending() : { scanned: 0, finalized: 0, errors: 0 };
         type PendingRefundRow = {
             paymentId: string;
             provider: string;
@@ -1873,9 +1884,9 @@ export class BillingService {
             attemptId: string;
             reference: string;
         };
-        let scanned = 0;
-        let finalized = 0;
-        let errors = 0;
+        let scanned = stripe.scanned;
+        let finalized = stripe.finalized;
+        let errors = stripe.errors;
         // Ambiguous APPROVED/PENDING rows are moved into a durable backoff
         // window before reading the next batch. Without this loop, the oldest
         // 100 could monopolize LIMIT forever and starve a later VOIDED row.

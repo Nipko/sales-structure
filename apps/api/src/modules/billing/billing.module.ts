@@ -28,6 +28,7 @@ import { MockPaymentProvider } from './adapters/mock-payment-provider.adapter';
 import { StripeAdapter } from './adapters/stripe.adapter';
 import { StripeConfigService } from './adapters/stripe-config.service';
 import { StripeBillingService } from './stripe-billing.service';
+import { StripeRefundService } from './stripe-refund.service';
 import { StripeBillingController } from './stripe-billing.controller';
 import { WompiAdapter } from './adapters/wompi.adapter';
 import { WompiConfigService } from './adapters/wompi-config.service';
@@ -80,6 +81,7 @@ import { BillingPlanCatalogService } from './billing-plan-catalog.service';
         StripeAdapter,
         StripeConfigService,
         StripeBillingService,
+        StripeRefundService,
         WompiAdapter,
         WompiConfigService,
         BillingReconciliationProcessor,

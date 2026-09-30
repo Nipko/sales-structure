@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { createHash, randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -9,6 +9,7 @@ import { resolveStripePlanPrice } from './stripe-plan-price.util';
 import { BillingCycle, CancelSubscriptionOptions, NormalizedBillingEvent } from './types/provider-types';
 import { BillingEventType } from './types/billing-event.enum';
 import { PaymentRoutingService } from './payment-routing.service';
+import { StripeRefundService } from './stripe-refund.service';
 
 /** Stripe owns its calendar and payment methods. None of these operations arm the Wompi engine. */
 @Injectable()
@@ -20,6 +21,7 @@ export class StripeBillingService {
         private readonly adapter: StripeAdapter,
         private readonly events: EventEmitter2,
         private readonly routing: PaymentRoutingService,
+        @Optional() private readonly refunds?: StripeRefundService,
     ) {}
 
     private get stripe(): any { return this.config.client; }
@@ -314,15 +316,15 @@ export class StripeBillingService {
     }
 
     async handleEvent(event: NormalizedBillingEvent): Promise<{ processed: boolean; reason?: string }> {
+        if (event.type === BillingEventType.PAYMENT_REFUNDED) {
+            if (!this.refunds) throw new ServiceUnavailableException({ error: 'stripe_refund_service_unavailable' });
+            return this.refunds.handleEvent(event);
+        }
         const duplicate = await this.prisma.billingEvent.findUnique({ where: { provider_providerEventId: { provider: 'stripe', providerEventId: event.providerEventId } } });
         if (duplicate) return { processed: false, reason: 'duplicate' };
         let sub = event.providerSubscriptionId
             ? await this.prisma.billingSubscription.findUnique({ where: { providerSubscriptionId: event.providerSubscriptionId } })
             : null;
-        if (!sub && event.type === BillingEventType.PAYMENT_REFUNDED && event.providerPaymentId) {
-            const payment = await this.prisma.billingPayment.findFirst({ where: { provider: 'stripe', providerPaymentId: event.providerPaymentId } });
-            if (payment) sub = await this.prisma.billingSubscription.findUnique({ where: { id: payment.subscriptionId } });
-        }
         // First events may precede checkout.session.completed. The canonical
         // subscription metadata binds to a durable, authorized local attempt.
         let candidate: any;
@@ -384,10 +386,7 @@ export class StripeBillingService {
                 const prior = payment && event.providerPaymentId
                     ? await tx.billingPayment.findFirst({ where: { provider: 'stripe', providerPaymentId: event.providerPaymentId } })
                     : null;
-                if (event.type === BillingEventType.PAYMENT_REFUNDED && !prior) {
-                    throw new ServiceUnavailableException({ error: 'stripe_refund_payment_pending' });
-                }
-                const redundantPayment = payment && prior && event.type !== BillingEventType.PAYMENT_REFUNDED
+                const redundantPayment = payment && prior
                     && !(prior.status === 'failed' && payment.status === 'succeeded');
                 await tx.billingEvent.create({ data: { tenantId: current.tenantId, subscriptionId: current.id, provider: 'stripe', providerEventId: event.providerEventId,
                     eventType: redundantPayment ? `${event.type}.ignored` : event.type, payload: event.rawPayload as any } });
@@ -426,19 +425,7 @@ export class StripeBillingService {
                             invoicePeriodEnd: new Date(recurringLine.period.end * 1000).toISOString(),
                         } : {}),
                     };
-                    if (event.type === BillingEventType.PAYMENT_REFUNDED && prior) {
-                        // Partial refunds do not change the original paid amount.
-                        const previousRefund = Number((prior.metadata as any)?.refundedAmountCents ?? 0);
-                        const refunded = Math.min(prior.amountCents, Math.max(previousRefund, payment.amountCents));
-                        if (refunded > previousRefund) {
-                            const full = refunded >= prior.amountCents;
-                            await tx.billingPayment.update({ where: { id: prior.id }, data: {
-                                ...(full ? { status: 'refunded' } : {}),
-                                metadata: { ...(prior.metadata as any), refundedAmountCents: refunded },
-                            } });
-                            paymentChanged = true;
-                        }
-                    } else if (['succeeded', 'failed'].includes(payment.status) && (!prior || (prior.status === 'failed' && payment.status === 'succeeded'))) {
+                    if (['succeeded', 'failed'].includes(payment.status) && (!prior || (prior.status === 'failed' && payment.status === 'succeeded'))) {
                         const data = { amountCents: payment.amountCents, currency: payment.currency, status: payment.status,
                             paidAt: payment.status === 'succeeded' ? payment.paidAt ?? new Date() : null,
                             failureReason: payment.status === 'failed' ? payment.failureReason : null, metadata: stamp };

@@ -55,6 +55,7 @@ function verifyArtifact(file, next) {
     // counter that moved because somebody closed a gap — and that is what this
     // compares. The stored revision is printed so the drift is visible.
     const strip = value => String(value ?? '')
+        .replace(/\r\n/g, '\n') // Git checkout line endings do not change the evidence.
         .replace(/"generatedAt": "[^"]*"/g, '')
         .replace(/"revision": "[a-f0-9]{7,40}"/g, '')
         .replace(/[a-f0-9]{40}/g, '');

@@ -173,8 +173,10 @@ describe("WhatsApp connected on day 0", () => {
 
         expect(text).not.toContain("ya responde");
         expect(text).toContain("Meta nos dice que tu cuenta de WhatsApp no tiene un método de pago.");
-        expect(text).toContain("no pasa por Parallly");
-        expect(text).toContain("antes del 30 de septiembre de 2026");
+        expect(text).toContain("por separado de la suscripción de Parallly");
+        expect(text).toContain("antes del 1 de octubre de 2026");
+        expect(text).toContain("no entrega ese excedente");
+        expect(screen.container.querySelector("a[href='/help/meta-whatsapp-pagos-2026-10.pdf']")).not.toBeNull();
         const link = screen.container.querySelector<HTMLAnchorElement>("a[href='https://business.facebook.com/wa/manage/home/']")!;
         expect(link.target).toBe("_blank");
         expect(link.textContent).toContain("se abre en una pestaña nueva");
@@ -239,7 +241,8 @@ describe("WhatsApp connected on day 0", () => {
         const text = screen.container.textContent ?? "";
 
         expect(text).not.toContain("ya responde");
-        expect(text).toContain("Desde el 1 de octubre de 2026, Meta no entrega las respuestas de tu agente");
+        expect(text).toContain("Parallly aún no puede confirmar que este número esté preparado para los cobros");
+        expect(text).toContain("no entrega ese excedente");
         expect(text).not.toContain("antes del 30 de septiembre");
         screen.unmount();
     });

@@ -386,6 +386,7 @@ const platformSections: NavSectionDef[] = [
       { labelKey: "integrationOutbox", href: "/admin/ops/integrations", icon: Waypoints, accent: "text-indigo-500 dark:text-indigo-400" },
       { labelKey: "dispatchOperations", href: "/admin/dispatch", icon: Send, accent: "text-amber-500 dark:text-amber-400" },
       { labelKey: "managed", href: "/admin/managed", icon: ShieldCheck, accent: "text-indigo-500 dark:text-indigo-400" },
+      { labelKey: "communications", href: "/admin/communications", icon: Megaphone, accent: "text-blue-500 dark:text-blue-400" },
       { labelKey: "platformHealth", href: "/admin/health", icon: Activity, accent: "text-rose-500 dark:text-rose-400" },
       { labelKey: "storage", href: "/admin/storage", icon: HardDrive, accent: "text-cyan-500 dark:text-cyan-400" },
       { labelKey: "webhookTap", href: "/admin/webhooks", icon: Radio },

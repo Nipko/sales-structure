@@ -1,0 +1,164 @@
+{
+  "campaign": "meta-whatsapp-2026-10",
+  "effectiveDate": "2026-10-01",
+  "preparedOn": "2026-09-30",
+  "status": "draft",
+  "links": {
+    "paymentMethods": "https://business.facebook.com/latest/billing_hub/payment_methods/",
+    "whatsappManager": "https://business.facebook.com/wa/manage/home/",
+    "metaHelp": "https://www.facebook.com/business/help/488291839463771",
+    "metaPricing": "https://developers.facebook.com/documentation/business-messaging/whatsapp/pricing",
+    "pdfGuide": "https://admin.parallly-chat.cloud/help/meta-whatsapp-pagos-2026-10.pdf",
+    "support": "mailto:it.executive@parallext.com"
+  },
+  "locales": {
+    "es": {
+      "email": {
+        "subject": "WhatsApp: verifica tu método de pago en Meta antes del 1 de octubre",
+        "preheader": "Cambio de Meta desde el 1 de octubre de 2026: revisa los pagos de tu cuenta de WhatsApp Business.",
+        "eyebrow": "AVISO DE SERVICIO · WHATSAPP",
+        "title": "Revisa los pagos de WhatsApp en Meta",
+        "greeting": "Hola,",
+        "intro": "Si usas WhatsApp en Parallly, revisa cuanto antes que tu cuenta de WhatsApp Business tenga un método de pago válido en Meta. El cambio entra en vigor el 1 de octubre de 2026. Si todavía no conectas WhatsApp, completa esta revisión cuando lo conectes.",
+        "changesTitle": "Qué cambia",
+        "changes": [
+          "Cada número tendrá 1.000 mensajes de servicio sin plantilla entregados sin cargo al mes; no se acumulan. Los que excedan ese límite tendrán costo.",
+          "Sin un método de pago válido, Meta no entregará esos mensajes excedentes.",
+          "Las plantillas de utilidad dentro de la ventana de atención de 24 horas también pasan a tener costo, salvo las excepciones de Meta."
+        ],
+        "stepsTitle": "Cómo revisarlo",
+        "steps": [
+          "Abre WhatsApp Manager y selecciona el portafolio y la cuenta de WhatsApp Business que conectaste a Parallly.",
+          "En la cuenta, abre ⋯ → Administrar configuración de la cuenta → Configuración → Configuración de pago.",
+          "Elige Añadir método de pago. Completa y guarda los datos de la empresa y un método admitido para tu cuenta.",
+          "Comprueba que el método quedó asociado a esa cuenta de WhatsApp y que no muestra errores o importes pendientes."
+        ],
+        "cta": "Revisar métodos de pago en Meta",
+        "managerLabel": "Abrir WhatsApp Manager",
+        "pdfGuideLabel": "Descargar guía PDF en español",
+        "important": "Una tarjeta guardada para anuncios de Facebook o para pagar Parallly no garantiza que esté asociada a WhatsApp. La suscripción de Parallly y los cargos de Meta son pagos separados.",
+        "provider": "Si tu proveedor administra la facturación de WhatsApp, confirma con él quién debe realizar el cambio antes de modificarla.",
+        "reassurance": "Este cambio no implica un bloqueo definitivo ni el borrado de tu cuenta o tus conversaciones.",
+        "support": "¿Necesitas ayuda? Escríbenos indicando tu empresa y el número conectado. No compartas datos completos de tarjetas, contraseñas ni códigos de verificación.",
+        "supportLabel": "Contactar a soporte",
+        "helpLabel": "Guía oficial de Meta",
+        "pricingLabel": "Tarifas y excepciones de Meta",
+        "signoff": "Equipo Parallly",
+        "footer": "Aviso sobre el servicio de WhatsApp Business conectado a Parallly."
+      },
+      "banner": "WhatsApp: desde el 1 de octubre de 2026, Meta cobrará mensajes de servicio que superen los 1.000 gratuitos por número al mes. Sin un método de pago válido, no entregará el excedente. Revisa los pagos de tu cuenta de WhatsApp Business en Meta; pagar Parallly no configura esos pagos.",
+      "connectionGuideIntro": "Al conectar un número nuevo, usar coexistencia o migrar desde otro proveedor, revisa los pagos de esa cuenta en Meta. Después vuelve a Parallly, usa la comprobación del método de pago y resuelve los pendientes de conexión. Un resultado desconocido no prueba que falte una tarjeta; un método asociado no garantiza que un cargo sea aprobado. Desde el 1 de octubre de 2026, Meta permite 1.000 entregas de servicio sin plantilla gratis por número al mes y cobra el excedente, que requiere un método válido. Parallly también aplica comprobaciones técnicas: el cupo gratuito no garantiza una entrega. Si otro proveedor gestiona los cargos, confirma primero quién administra la facturación."
+    },
+    "en": {
+      "email": {
+        "subject": "WhatsApp: check your payment method in Meta before October 1",
+        "preheader": "Meta changes take effect on October 1, 2026: review billing for your WhatsApp Business account.",
+        "eyebrow": "SERVICE NOTICE · WHATSAPP",
+        "title": "Check your WhatsApp payments in Meta",
+        "greeting": "Hello,",
+        "intro": "If you use WhatsApp in Parallly, please check that your WhatsApp Business account has a valid payment method in Meta as soon as possible. The change takes effect on October 1, 2026. If you have not connected WhatsApp yet, complete this check when you connect it.",
+        "changesTitle": "What changes",
+        "changes": [
+          "Each number gets 1,000 non-template service messages delivered at no charge per month; unused messages do not roll over. Messages above that limit will be charged.",
+          "Without a valid payment method, Meta will not deliver those messages above the limit.",
+          "Utility templates sent within the 24-hour customer service window will also be charged, subject to Meta's exceptions."
+        ],
+        "stepsTitle": "How to check",
+        "steps": [
+          "Open WhatsApp Manager and select the business portfolio and WhatsApp Business account connected to Parallly.",
+          "For that account, open ⋯ → Manage account settings → Settings → Payment settings.",
+          "Choose Add payment method. Enter and save your business details and a payment method supported for your account.",
+          "Check that the method is linked to that WhatsApp account and that no errors or outstanding balances are shown."
+        ],
+        "cta": "Review payment methods in Meta",
+        "managerLabel": "Open WhatsApp Manager",
+        "pdfGuideLabel": "Download PDF guide in Spanish",
+        "important": "A card saved for Facebook ads or your Parallly subscription does not guarantee that it is linked to WhatsApp. Your Parallly subscription and Meta charges are separate payments.",
+        "provider": "If your provider manages WhatsApp billing, confirm who needs to make the change before modifying it.",
+        "reassurance": "This change does not mean your account is permanently blocked or that your account or conversations will be deleted.",
+        "support": "Need help? Contact us with your business name and connected number. Do not share full card details, passwords or verification codes.",
+        "supportLabel": "Contact support",
+        "helpLabel": "Meta's official guide",
+        "pricingLabel": "Meta pricing and exceptions",
+        "signoff": "The Parallly team",
+        "footer": "A service notice about WhatsApp Business connected to Parallly."
+      },
+      "banner": "WhatsApp: from October 1, 2026, Meta will charge for service messages above the 1,000 free messages per number per month. Without a valid payment method, it will not deliver messages above that limit. Review your WhatsApp Business account's payments in Meta; paying Parallly does not set them up.",
+      "connectionGuideIntro": "When connecting a new number, using coexistence or migrating from another provider, review billing for that account in Meta. Then return to Parallly, check the payment method and resolve any pending connection steps. An unknown result does not prove a card is missing; an attached method does not guarantee that a charge will be approved. From October 1, 2026, Meta includes 1,000 free non-template service deliveries per number per month and charges for the excess, which requires a valid payment method. Parallly also applies technical checks: the free allowance does not guarantee delivery. If another provider manages the charges, first confirm who handles billing."
+    },
+    "pt": {
+      "email": {
+        "subject": "WhatsApp: confira sua forma de pagamento na Meta antes de 1º de outubro",
+        "preheader": "Mudança da Meta a partir de 1º de outubro de 2026: revise os pagamentos da sua conta do WhatsApp Business.",
+        "eyebrow": "AVISO DE SERVIÇO · WHATSAPP",
+        "title": "Confira os pagamentos do WhatsApp na Meta",
+        "greeting": "Olá,",
+        "intro": "Se você usa WhatsApp na Parallly, confira o quanto antes se sua conta do WhatsApp Business tem uma forma de pagamento válida na Meta. A mudança entra em vigor em 1º de outubro de 2026. Se ainda não conectou o WhatsApp, faça essa revisão quando conectar.",
+        "changesTitle": "O que muda",
+        "changes": [
+          "Cada número terá 1.000 mensagens de serviço sem modelo entregues gratuitamente por mês, sem acumular para o mês seguinte. As mensagens que excederem esse limite serão cobradas.",
+          "Sem uma forma de pagamento válida, a Meta não entregará essas mensagens excedentes.",
+          "Os modelos de utilidade enviados na janela de atendimento de 24 horas também passarão a ser cobrados, salvo as exceções da Meta."
+        ],
+        "stepsTitle": "Como conferir",
+        "steps": [
+          "Abra o Gerenciador do WhatsApp e selecione o portfólio e a conta do WhatsApp Business conectada à Parallly.",
+          "Na conta, abra ⋯ → Gerenciar configurações da conta → Configurações → Configurações de pagamento.",
+          "Escolha Adicionar forma de pagamento. Preencha e salve os dados da empresa e uma forma aceita para sua conta.",
+          "Confira se a forma ficou associada àquela conta do WhatsApp e se não há erros ou valores pendentes."
+        ],
+        "cta": "Revisar formas de pagamento na Meta",
+        "managerLabel": "Abrir o Gerenciador do WhatsApp",
+        "pdfGuideLabel": "Baixar guia em PDF em espanhol",
+        "important": "Um cartão salvo para anúncios do Facebook ou para pagar a Parallly não garante que esteja associado ao WhatsApp. A assinatura da Parallly e as cobranças da Meta são pagamentos separados.",
+        "provider": "Se seu provedor administra a cobrança do WhatsApp, confirme quem precisa fazer a alteração antes de modificá-la.",
+        "reassurance": "Essa mudança não significa bloqueio definitivo nem exclusão da sua conta ou das suas conversas.",
+        "support": "Precisa de ajuda? Escreva para nós informando sua empresa e o número conectado. Não compartilhe dados completos de cartões, senhas nem códigos de verificação.",
+        "supportLabel": "Falar com o suporte",
+        "helpLabel": "Guia oficial da Meta",
+        "pricingLabel": "Tarifas e exceções da Meta",
+        "signoff": "Equipe Parallly",
+        "footer": "Aviso sobre o serviço do WhatsApp Business conectado à Parallly."
+      },
+      "banner": "WhatsApp: a partir de 1º de outubro de 2026, a Meta cobrará mensagens de serviço que excedam as 1.000 gratuitas por número ao mês. Sem uma forma de pagamento válida, não entregará o excedente. Confira os pagamentos da sua conta do WhatsApp Business na Meta; pagar a Parallly não configura esses pagamentos.",
+      "connectionGuideIntro": "Ao conectar um número novo, usar coexistência ou migrar de outro provedor, revise os pagamentos dessa conta na Meta. Depois volte à Parallly, verifique a forma de pagamento e resolva as etapas pendentes da conexão. Um resultado desconhecido não prova que falta um cartão; uma forma associada não garante que a cobrança será aprovada. A partir de 1º de outubro de 2026, a Meta inclui 1.000 entregas de serviço sem modelo gratuitas por número ao mês e cobra o excedente, que exige uma forma válida. A Parallly também aplica verificações técnicas: a cota gratuita não garante a entrega. Se outro provedor gerencia as cobranças, confirme primeiro quem administra o faturamento."
+    },
+    "fr": {
+      "email": {
+        "subject": "WhatsApp : vérifiez votre moyen de paiement dans Meta avant le 1er octobre",
+        "preheader": "Changement Meta au 1er octobre 2026 : vérifiez les paiements de votre compte WhatsApp Business.",
+        "eyebrow": "AVIS DE SERVICE · WHATSAPP",
+        "title": "Vérifiez les paiements WhatsApp dans Meta",
+        "greeting": "Bonjour,",
+        "intro": "Si vous utilisez WhatsApp dans Parallly, vérifiez rapidement que votre compte WhatsApp Business dispose d'un moyen de paiement valide dans Meta. Le changement prend effet le 1er octobre 2026. Si vous n'avez pas encore connecté WhatsApp, effectuez cette vérification lors de la connexion.",
+        "changesTitle": "Ce qui change",
+        "changes": [
+          "Chaque numéro bénéficie de 1 000 messages de service sans modèle livrés gratuitement par mois, sans report. Les messages dépassant ce seuil seront facturés.",
+          "Sans moyen de paiement valide, Meta ne livrera pas ces messages supplémentaires.",
+          "Les modèles utilitaires envoyés dans la fenêtre de service client de 24 heures deviennent également payants, sauf exceptions prévues par Meta."
+        ],
+        "stepsTitle": "Comment vérifier",
+        "steps": [
+          "Ouvrez le Gestionnaire WhatsApp et sélectionnez le portefeuille professionnel et le compte WhatsApp Business connecté à Parallly.",
+          "Sur ce compte, ouvrez ⋯ → Gérer les paramètres du compte → Paramètres → Paramètres de paiement.",
+          "Choisissez Ajouter un moyen de paiement. Renseignez et enregistrez les informations de l'entreprise et un moyen accepté pour votre compte.",
+          "Vérifiez que le moyen est associé à ce compte WhatsApp et qu'aucune erreur ni somme impayée n'apparaît."
+        ],
+        "cta": "Vérifier les moyens de paiement dans Meta",
+        "managerLabel": "Ouvrir le Gestionnaire WhatsApp",
+        "pdfGuideLabel": "Télécharger le guide PDF en espagnol",
+        "important": "Une carte enregistrée pour les publicités Facebook ou pour payer Parallly n'est pas nécessairement associée à WhatsApp. L'abonnement Parallly et les frais Meta sont des paiements distincts.",
+        "provider": "Si votre prestataire gère la facturation WhatsApp, confirmez qui doit effectuer le changement avant de la modifier.",
+        "reassurance": "Ce changement ne signifie pas un blocage définitif ni la suppression de votre compte ou de vos conversations.",
+        "support": "Besoin d'aide ? Écrivez-nous avec le nom de votre entreprise et le numéro connecté. Ne partagez jamais vos données bancaires complètes, mots de passe ou codes de vérification.",
+        "supportLabel": "Contacter l'assistance",
+        "helpLabel": "Guide officiel Meta",
+        "pricingLabel": "Tarifs et exceptions Meta",
+        "signoff": "L'équipe Parallly",
+        "footer": "Avis concernant le service WhatsApp Business connecté à Parallly."
+      },
+      "banner": "WhatsApp : dès le 1er octobre 2026, Meta facturera les messages de service au-delà des 1 000 gratuits par numéro et par mois. Sans moyen de paiement valide, les messages supplémentaires ne seront pas livrés. Vérifiez les paiements du compte WhatsApp Business dans Meta ; payer Parallly ne les configure pas.",
+      "connectionGuideIntro": "Lors de la connexion d'un nouveau numéro, d'une coexistence ou d'une migration, vérifiez les paiements de ce compte dans Meta. Revenez ensuite dans Parallly, lancez la vérification du moyen de paiement et résolvez les étapes de connexion en attente. Un résultat inconnu ne prouve pas l'absence de carte ; un moyen associé ne garantit pas l'approbation d'un paiement. Dès le 1er octobre 2026, Meta inclut 1 000 livraisons gratuites de messages de service sans modèle par numéro et par mois, puis facture le dépassement, qui nécessite un moyen valide. Parallly applique aussi des vérifications techniques : le quota gratuit ne garantit pas la livraison. Si un prestataire gère les frais, confirmez d'abord qui est responsable de la facturation."
+    }
+  }
+}

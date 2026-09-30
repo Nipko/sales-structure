@@ -284,12 +284,13 @@ describe("the copy the owner reads after connecting", () => {
         for (const word of words[locale]) expect(desc).toMatch(word);
     });
 
-    it.each(LOCALES)("says Meta charges it, not Parallly, and gives the date, in %s", (locale) => {
+    it.each(LOCALES)("explains Meta billing and the October 1 effective date, in %s", (locale) => {
         const payment = read(locale).channels.whatsapp.afterConnect.payment;
         expect(payment.what).toMatch(/Meta/);
         expect(payment.what).toMatch(/Parallly/);
         expect(payment.dateBefore).toMatch(/2026/);
-        expect(payment.dateBefore).toMatch(/30/);
+        expect(payment.dateBefore).toMatch(/1/);
+        expect(payment.dateBefore).toMatch(/octubre|October|outubro|octobre/);
         expect(payment.dateAfter).toMatch(/2026/);
     });
 

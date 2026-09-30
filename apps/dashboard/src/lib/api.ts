@@ -17,6 +17,7 @@ import type { AgentReleaseDetail, AgentReleaseListItem, AgentReleaseRequest, Age
 import type { AgentPublicationHistory, AgentPublicationReceipt, PublishAgentConfigurationRequest, RollbackAgentConfigurationRequest } from './agent-publication';
 import type { DispatchReconciliationQueue, DispatchResolution, DispatchResolutionExport, DispatchResolutionReceipt, DispatchRolloutRequest, DispatchRolloutState } from './dispatch-operations';
 import type { NotificationPreferences } from './notification-preferences';
+import type { CommunicationDraft, CommunicationLanguage, CommunicationPage, CommunicationRecipient, PlatformCommunication } from "./platform-communications";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud/api/v1";
 
@@ -2837,6 +2838,18 @@ export const api = {
         apiDelete(`/widget/triggers/${triggerId}${tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : ''}`),
 
     // ─── System Updates (Changelog / Novedades) ───
+    listPlatformCommunications: (page = 1) => apiGet<CommunicationPage<PlatformCommunication>>(`/platform-communications?page=${page}&pageSize=20`),
+    getPlatformCommunicationTenants: (search = "", page = 1) => apiGet<CommunicationPage<{ id: string; name: string }>>(`/platform-communications/tenants?search=${encodeURIComponent(search)}&page=${page}&pageSize=50`),
+    createPlatformCommunication: (data: CommunicationDraft) => apiPost<PlatformCommunication>("/platform-communications", data),
+    getPlatformCommunication: (id: string) => apiGet<PlatformCommunication>(`/platform-communications/${encodeURIComponent(id)}`),
+    updatePlatformCommunication: (id: string, data: CommunicationDraft & { expectedRevision: number }) => apiPatch<PlatformCommunication>(`/platform-communications/${encodeURIComponent(id)}`, data),
+    deletePlatformCommunication: (id: string, expectedRevision: number) => apiDelete(`/platform-communications/${encodeURIComponent(id)}?expectedRevision=${expectedRevision}`),
+    previewPlatformCommunication: (id: string, expectedRevision: number) => apiPost<PlatformCommunication>(`/platform-communications/${encodeURIComponent(id)}/preview`, { expectedRevision }),
+    getPlatformCommunicationRecipients: (id: string, page = 1) => apiGet<CommunicationPage<CommunicationRecipient>>(`/platform-communications/${encodeURIComponent(id)}/recipients?page=${page}&pageSize=25`),
+    testPlatformCommunication: (id: string, language: CommunicationLanguage) => apiPost<{ status: "accepted" }>(`/platform-communications/${encodeURIComponent(id)}/test`, { language }),
+    sendPlatformCommunication: (id: string, expectedRevision: number, previewVersion: string) => apiPost<PlatformCommunication>(`/platform-communications/${encodeURIComponent(id)}/send`, { expectedRevision, previewVersion }),
+    retryPlatformCommunication: (id: string, expectedRevision: number) => apiPost<PlatformCommunication>(`/platform-communications/${encodeURIComponent(id)}/retry`, { expectedRevision }),
+
     getSystemUpdates: () => apiGet("/system-updates"),
     getAdminSystemUpdates: () => apiGet("/system-updates/admin"),
     createSystemUpdate: (data: any) => apiPost("/system-updates", data),

@@ -1,9 +1,9 @@
 # Modules Reference
 
-Technical inventory for 99 API module declaration files, 160 dashboard pages
-(147 admin + 13 non-admin), 11 BullMQ queues, and the documented cron jobs.
+Technical inventory for 100 API module declaration files, 163 dashboard pages
+(149 admin + 14 non-admin), 11 BullMQ queues, and the documented cron jobs.
 
-**Last updated:** 13 sep 2026 — Runtime único del agente y retiro de la superficie Carla heredada
+**Last updated:** 30 sep 2026 — Comunicaciones generales del superadmin; recuento de módulos y páginas actualizado desde el sistema de archivos.
 
 > Counts are a filesystem snapshot, not a product contract. Recalculate with
 > `rg --files apps/api/src/modules -g '*.module.ts'` and
@@ -11,7 +11,17 @@ Technical inventory for 99 API module declaration files, 160 dashboard pages
 
 ---
 
-## API Modules (99 module declaration files)
+## API Modules (100 module declaration files)
+
+### Platform communications
+
+- **Module:** `platform-communications/`, global to the platform, restricted to `super_admin` outside impersonation.
+- **Purpose:** Draft, preview and send administrative emails to active tenant users, with audience filters, four languages and an editable Meta WhatsApp payment notice.
+- **Controller:** `/platform-communications` — drafts, tenants, recipient snapshot, test, send and retry.
+- **Storage:** `platform_communications` and `platform_communication_recipients`; revision checks, frozen recipient lists and actor audit fields.
+- **Cron:** `*/15 * * * * *` — claim up to five recipients atomically per batch; retain uncertain SMTP outcomes without automatic retry.
+- **Dashboard:** `/admin/communications`.
+- **Operation guide:** [Comunicaciones generales](platform-communications.md).
 
 ### Infrastructure (6 modules)
 
@@ -1679,10 +1689,10 @@ Technical inventory for 99 API module declaration files, 160 dashboard pages
 
 ---
 
-## Dashboard Pages (144 total — 131 admin + 13 non-admin)
+## Dashboard Pages (163 total — 149 admin + 14 non-admin)
 
 > Las tablas por sección cubren la navegación principal; no son exhaustivas de las
-> 131 páginas admin. La autoridad de rutas es `navigation-contract.ts` y la de acceso,
+> 149 páginas admin. La autoridad de rutas es `navigation-contract.ts` y la de acceso,
 > `roles.ts`; el sidebar proyecta ese contrato por rol y vertical.
 
 ### Public Pages
@@ -1825,6 +1835,7 @@ Technical inventory for 99 API module declaration files, 160 dashboard pages
 | `/admin/financials` | SaaS financials (5 tabs + CSV export) | ✅ |
 | `/admin/usage` | Platform usage / quota tracking | ✅ |
 | `/admin/health` | Platform health + BullMQ inspection | ✅ |
+| `/admin/communications` | General administrative emails: audiences, drafts, preview and individual results | ✅ |
 | `/admin/ops` | Ops Center — monitoreo de plataforma + incidentes | ✅ |
 | `/admin/ops/alerts` | Configuración de umbrales de alerta | ✅ |
 | `/admin/incidents` | Incidentes de plataforma (ack/resolve) | ✅ |

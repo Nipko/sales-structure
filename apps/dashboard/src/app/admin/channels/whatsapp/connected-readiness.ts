@@ -11,9 +11,10 @@
  *     reply is retried and then dropped. `billing-time-zone.ts` owns what "set"
  *     means; this file only consumes it.
  *  2. The payment method on the WhatsApp Business Account. From 1 October 2026
- *     Meta stops delivering service messages from a WABA with no payment
- *     method (docs/whatsapp-meta-pricing-2026-10.md §2), and a 131042 refusal
- *     stops them already. The reading is `GET /whatsapp/spend/funding-readiness`.
+ *     Meta charges service deliveries above the free allowance; without a
+ *     valid method those excess messages are not delivered. Parallly keeps
+ *     a conservative readiness check before promising that replies work.
+ *     The reading is `GET /whatsapp/spend/funding-readiness`.
  *
  * And a third fact the signup itself reports: Embedded Signup can finish with
  * `warnings`, two of which mean messages do not flow at all (see
@@ -180,7 +181,7 @@ export function paymentVerdict(reading: FundingReading | undefined): PaymentVerd
     }
 }
 
-/** Whether Meta already stops delivering replies from an account with no payment method. */
+/** Whether Parallly requires a conclusive funding reading before claiming readiness. */
 export function paymentRequiredNow(now: number): boolean {
     return now >= META_SERVICE_CHARGES_FROM;
 }
@@ -193,11 +194,10 @@ export function paymentRequiredNow(now: number): boolean {
  * - The zone comes first: while it is missing NOTHING is delivered, whatever
  *   the payment method says, and one step at a time is how the owner gets
  *   through it.
- * - A payment method that nobody could establish is not a finding before
- *   1 October — today replies are delivered without one — but from that date
- *   the most common "unknown" is an account with no card (see the KNOWN GAP in
- *   apps/api/src/modules/channels/whatsapp-funding-readiness.ts), so the claim
- *   stops there too.
+ * - From 1 October an inconclusive funding reading prevents this screen from
+ *   promising readiness for chargeable replies. This is Parallly's readiness
+ *   rule, not a claim that Meta blocks the monthly free service allowance.
+ *   The provider reading remains unknown until evidence establishes it.
  * - A signup warning that stops messages (`signupBlockers`) is known from the
  *   signup answer itself, so it is pending from the first render; it replaces
  *   only the claim, and the zone and the card keep their own headlines.

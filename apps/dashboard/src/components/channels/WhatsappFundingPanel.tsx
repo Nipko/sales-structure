@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { api } from '@/lib/api';
+import WhatsAppBillingHelpLinks from '@/app/admin/channels/whatsapp/WhatsAppBillingHelpLinks';
 
 type FundingNumber = { channelAccountId: string; displayName?: string; wabaId?: string;
     state: 'not_checked'|'attached'|'absent'|'restricted'|'unknown'; checkedAt?: string };
@@ -36,6 +37,7 @@ export function WhatsappFundingPanel({ canCheck }: { canCheck: boolean }) {
         </ol>
         <a className="inline-block underline" href="https://business.facebook.com/wa/manage/home/" target="_blank" rel="noopener noreferrer">{t('openMeta')}</a>
         <p className="text-sm">{t('allowance')}</p>
+        <WhatsAppBillingHelpLinks />
         {error && <p role="alert">{t('error')} <button className="underline" onClick={() => void load()}>{t('reload')}</button></p>}
         <ul className="space-y-3">{numbers.map(number => <li key={number.channelAccountId} className="border-t pt-3">
             <p>{number.displayName || number.channelAccountId} · {t('waba')}: {number.wabaId || t('unknown')}</p>

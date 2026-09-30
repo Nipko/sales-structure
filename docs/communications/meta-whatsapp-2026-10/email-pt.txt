@@ -1,0 +1,38 @@
+WhatsApp: confira sua forma de pagamento na Meta antes de 1º de outubro
+
+Olá,
+
+Se você usa WhatsApp na Parallly, confira o quanto antes se sua conta do WhatsApp Business tem uma forma de pagamento válida na Meta. A mudança entra em vigor em 1º de outubro de 2026. Se ainda não conectou o WhatsApp, faça essa revisão quando conectar.
+
+O que muda
+• Cada número terá 1.000 mensagens de serviço sem modelo entregues gratuitamente por mês, sem acumular para o mês seguinte. As mensagens que excederem esse limite serão cobradas.
+• Sem uma forma de pagamento válida, a Meta não entregará essas mensagens excedentes.
+• Os modelos de utilidade enviados na janela de atendimento de 24 horas também passarão a ser cobrados, salvo as exceções da Meta.
+
+Como conferir
+1. Abra o Gerenciador do WhatsApp e selecione o portfólio e a conta do WhatsApp Business conectada à Parallly.
+2. Na conta, abra ⋯ → Gerenciar configurações da conta → Configurações → Configurações de pagamento.
+3. Escolha Adicionar forma de pagamento. Preencha e salve os dados da empresa e uma forma aceita para sua conta.
+4. Confira se a forma ficou associada àquela conta do WhatsApp e se não há erros ou valores pendentes.
+
+Abrir o Gerenciador do WhatsApp: https://business.facebook.com/wa/manage/home/
+
+Baixar guia em PDF em espanhol: https://admin.parallly-chat.cloud/help/meta-whatsapp-pagos-2026-10.pdf
+
+Revisar formas de pagamento na Meta: https://business.facebook.com/latest/billing_hub/payment_methods/
+
+Um cartão salvo para anúncios do Facebook ou para pagar a Parallly não garante que esteja associado ao WhatsApp. A assinatura da Parallly e as cobranças da Meta são pagamentos separados.
+
+Se seu provedor administra a cobrança do WhatsApp, confirme quem precisa fazer a alteração antes de modificá-la.
+
+Essa mudança não significa bloqueio definitivo nem exclusão da sua conta ou das suas conversas.
+
+Precisa de ajuda? Escreva para nós informando sua empresa e o número conectado. Não compartilhe dados completos de cartões, senhas nem códigos de verificação.
+
+Falar com o suporte: it.executive@parallext.com
+
+Equipe Parallly
+
+Aviso sobre o serviço do WhatsApp Business conectado à Parallly.
+Guia oficial da Meta: https://www.facebook.com/business/help/488291839463771
+Tarifas e exceções da Meta: https://developers.facebook.com/documentation/business-messaging/whatsapp/pricing

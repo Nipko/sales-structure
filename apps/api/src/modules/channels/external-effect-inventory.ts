@@ -1535,6 +1535,52 @@ producer({
         },
     }),
 
+    producer({
+        id: 'platform_communications.campaign_email',
+        effect: 'A confirmed operational email campaign sent by a super admin to a frozen audience of tenant users',
+        lane: 'delivery_outbox',
+        status: 'live',
+        derivation: 'census',
+        source: 'modules/platform-communications/platform-communications.processor.ts',
+        symbol: 'processRecipient',
+        egress: 'platform_communication_recipients claimed with SKIP LOCKED and sent through EmailService.sendWithOutcome using bounded SMTP',
+        reach: {
+            class: 'operator_notification', audience: 'tenant_operator', personalData: true,
+            channels: ['email'],
+        },
+        properties: {
+            authority: durable('the super admin confirms a frozen preview version and revision; sentBy is recorded before the worker revalidates each user and tenant'),
+            idempotency: durable('UNIQUE campaign/email plus atomic claims and immutable queued content prevent duplicate recipients and repeated send requests'),
+            receipt: partial('SMTP acceptance is required and acceptedAt is persisted, but the provider message id is not stored and recipient delivery is not tracked'),
+            uncertainOutcome: durable('uncertain SMTP results and stale processing claims become unknown; neither automatic recovery nor explicit failed-only retry can send them again'),
+            erasure: partial('tenant purge deletes recipient snapshots; deleting an individual user does not cascade into this independent historical snapshot'),
+            recovery: durable('a bounded cron claims pending recipients; failed outcomes require explicit retry below three attempts and unknown outcomes remain for manual review'),
+        },
+    }),
+
+    producer({
+        id: 'platform_communications.test_email',
+        effect: 'A campaign preview email sent only to the authenticated super admin who requests the test',
+        lane: 'inline',
+        status: 'internal_only',
+        derivation: 'census',
+        source: 'modules/platform-communications/platform-communications.service.ts',
+        symbol: 'async test(',
+        egress: 'EmailService.sendWithOutcome with bounded SMTP and the authenticated administrator address',
+        reach: {
+            class: 'platform_notification', audience: 'platform_operator', personalData: true,
+            channels: ['email'],
+        },
+        properties: {
+            authority: partial('JWT and super_admin role authorize each test; impersonation is rejected, but there is no durable test-attempt audit row'),
+            idempotency: none('each explicit test request sends once; a repeated request has no persisted idempotency key'),
+            receipt: partial('the HTTP response reports SMTP acceptance only; no provider message id or test-delivery row is retained'),
+            uncertainOutcome: partial('the bounded attempt returns an explicit unknown error without auto retry, but the outcome is not recorded after the HTTP request ends'),
+            erasure: none('no test-recipient ledger exists in the platform; the administrator mailbox and SMTP provider keep their own copies'),
+            recovery: none('test emails run on the request and have no durable pending job; another test requires an explicit administrator action'),
+        },
+    }),
+
     // -- Retained surfaces -----------------------------------------------------
 
     producer({

@@ -1396,3 +1396,56 @@ model LlmSpendReservation {
   @@map("llm_spend_reservations")
   @@schema("public")
 }
+// Global operational email campaigns. Recipient snapshots are deliberately
+// independent of mutable user records; they are visible only to super admins.
+model PlatformCommunication {
+  id           String   @id @default(uuid()) @db.Uuid
+  name         String   @db.VarChar(120)
+  audience     String   @db.VarChar(32)
+  recipientRole String  @map("recipient_role") @db.VarChar(16)
+  tenantIds    String[] @default([]) @map("tenant_ids")
+  content      Json
+  status       String   @default("draft") @db.VarChar(16)
+  revision     Int      @default(1)
+  previewVersion String? @map("preview_version") @db.Uuid
+  totalCount   Int      @default(0) @map("total_count")
+  createdBy    String   @map("created_by")
+  updatedBy    String   @map("updated_by")
+  sentBy       String?  @map("sent_by")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  previewedAt  DateTime? @map("previewed_at") @db.Timestamptz(6)
+  startedAt    DateTime? @map("started_at") @db.Timestamptz(6)
+  completedAt  DateTime? @map("completed_at") @db.Timestamptz(6)
+  recipients   PlatformCommunicationRecipient[]
+
+  @@index([status, createdAt])
+  @@map("platform_communications")
+  @@schema("public")
+}
+
+model PlatformCommunicationRecipient {
+  id          String   @id @default(uuid()) @db.Uuid
+  campaignId  String   @map("campaign_id") @db.Uuid
+  userId      String   @map("user_id")
+  tenantId    String   @map("tenant_id")
+  tenantName  String   @map("tenant_name")
+  name        String
+  email       String   @db.VarChar(254)
+  language    String   @db.VarChar(2)
+  status      String   @default("pending") @db.VarChar(16)
+  attempts    Int      @default(0)
+  errorCode   String?  @map("error_code") @db.VarChar(64)
+  claimedAt   DateTime? @map("claimed_at") @db.Timestamptz(6)
+  claimToken  String?  @map("claim_token") @db.Uuid
+  acceptedAt  DateTime? @map("accepted_at") @db.Timestamptz(6)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  campaign    PlatformCommunication @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, email])
+  @@index([campaignId, status])
+  @@index([status, claimedAt])
+  @@map("platform_communication_recipients")
+  @@schema("public")
+}

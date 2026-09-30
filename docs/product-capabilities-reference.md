@@ -1,6 +1,6 @@
 # Referencia de capacidades del producto
 
-_Estado documental: agosto de 2026_
+_Estado documental: septiembre de 2026; comunicaciones y pagos de WhatsApp revisados el 30 de septiembre._
 
 Esta referencia explica qué parte de Parallly puede esperar cada tipo de usuario y
 cómo se decide qué aparece en web y móvil. No es una promesa comercial ni una
@@ -33,6 +33,7 @@ indicados abajo.
 | Web tenant | Configuración completa del negocio, canales, agentes IA, CRM, operación, analítica y facturación según rol/plan |
 | App móvil | Compañera operativa: inbox, CRM, pipeline, tareas, disponibilidad y workspace vertical seguro; no replica toda la administración web |
 | Consola de plataforma | Operación cross-tenant para `super_admin`; separada de los workspaces tenant salvo impersonación explícita |
+| Comunicaciones de plataforma | `/admin/communications`: borradores de correo administrativo, selección de usuarios activos, vista previa de audiencia, prueba al operador y resultados de aceptación SMTP. Requiere migración/despliegue; no acredita entrega ni lectura. Ver [manual operativo](platform-communications.md). |
 | Portal público | Reserva, base de conocimiento y otras experiencias públicas habilitadas por el tenant |
 
 ## Canales y superficies conversacionales
@@ -51,19 +52,43 @@ agente predeterminado del borrador toman efecto en esa publicación.
 
 ## Costo de entrega de WhatsApp: quién le paga a Meta
 
-Desde el **1 de octubre de 2026**, Meta cobra cada **mensaje de servicio entregado** a la
-**cuenta de WhatsApp Business del tenant**. Parallly es proveedor de tecnología ante Meta:
-no paga ese consumo, no lo refactura y no lo incluye en ningún plan. El medio de pago vive
-en las herramientas de Meta, sobre la cuenta del tenant, y **una cuenta sin medio de pago
-válido deja de entregar los mensajes de servicio** — corta, no degrada. Instagram,
-Messenger, Telegram y el widget no tienen hoy un cobro por mensaje de servicio de su
-proveedor.
+Desde el **1 de octubre de 2026**, Meta cobra los **mensajes de servicio entregados que
+exceden el cupo gratuito** a la **cuenta de WhatsApp Business del tenant**. Parallly es
+proveedor de tecnología ante Meta: no paga ese consumo, no lo refactura y no lo incluye
+en ningún plan. El medio de pago se configura en Meta, sobre la cuenta del tenant.
+Según las páginas oficiales de Meta actualizadas el **28 de septiembre de 2026**, sin
+un método de pago válido **Meta no entrega el excedente cobrable**. Esta regla comercial
+no garantiza por sí sola que una conexión en Parallly pueda enviar: también se aplican
+las comprobaciones técnicas indicadas abajo.
 
 La cuota gratis es de **1.000 mensajes de servicio por número y por mes calendario**, sin
 acumulación, cerrada en la zona horaria de la cuenta de WhatsApp Business; no cubre
-plantillas. Esa cifra y su fecha de vigencia no se transcriben a mano en ninguna
-superficie: salen de `WHATSAPP_FREE_SERVICE_ALLOWANCE`. Las tarifas tampoco se copian —
-Meta revisa sus tarjetas por trimestre y cobra según el país del destinatario.
+plantillas. Para calcular el cupo en el producto, la fuente de código es
+`WHATSAPP_FREE_SERVICE_ALLOWANCE`; las comunicaciones fechadas conservan la regla
+comercial consultada. Para estimar cargos se usan las tarjetas vigentes de Meta y
+el país del destinatario.
+
+La política comercial de Meta se contrasta con [Precios de WhatsApp Business Platform](https://developers.facebook.com/documentation/business-messaging/whatsapp/pricing)
+y su [anuncio de servicio y utilidad](https://developers.facebook.com/documentation/business-messaging/whatsapp/pricing/non-template-messages).
+Las plantillas de utilidad son cobrables también dentro de la ventana de 24 horas,
+salvo las excepciones gratuitas que Meta documente; no consumen el cupo de servicio.
+
+**Preparación técnica en Parallly:** el estado de conexión, la zona horaria de
+facturación y el resultado de la consulta de financiación son datos distintos.
+`GET /whatsapp/spend/funding-readiness` presenta la evidencia guardada por número;
+`POST /channels/whatsapp/connection/check-funding` consulta la cuenta en Meta para un
+administrador autorizado. `attached` acredita que Meta devolvió un identificador de
+financiación; no prueba solvencia ni una entrega futura. `unknown` y `not_checked`
+no prueban ausencia de tarjeta. Un rechazo de cobro observado (`restricted`) tiene
+precedencia sobre una lectura de configuración.
+
+La evaluación técnica existente conserva un criterio conservador: una ausencia
+confirmada (`absent`) se informa como falta de preparación desde el 1 de octubre,
+sin descontar el cupo gratuito en esa evaluación. La interfaz también puede mantener
+pendientes cuando no logra confirmar el pago. Además, una zona horaria ausente o una
+pausa activa puede impedir envíos. Por tanto, no se debe prometer que las primeras
+1.000 entregas saldrán desde Parallly solo por la gratuidad comercial de Meta; revisar
+el estado del número, resolver sus pendientes y comprobar una entrega real.
 
 | Tema | Autoridad vigente |
 |------|-------------------|
@@ -71,6 +96,7 @@ Meta revisa sus tarjetas por trimestre y cobra según el país del destinatario.
 | Medición, reserva y conciliación del gasto | `apps/api/src/modules/billing/whatsapp-spend/` |
 | Autorización de cada envío cobrable | `whatsapp-send-admission.service.ts` |
 | Estado de cobro de un número y su pausa | `whatsapp-funding-readiness.ts`, `account-send-pause.ts` |
+| Comprobación en Meta y preparación técnica | `whatsapp-connection.service.ts` (`checkFunding`), `account-send-readiness.ts`, `WhatsAppConnectedState.tsx`, `WhatsAppPaymentMethodNotice.tsx` |
 | Superficie del tenant | `/admin/channels/whatsapp` → `WhatsappSpendPanel`, rutas `/whatsapp/spend/*` |
 | Reglas de Meta y tarjetas de tarifas | `docs/whatsapp-meta-pricing-2026-10.md` |
 

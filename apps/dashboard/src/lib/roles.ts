@@ -83,6 +83,8 @@ interface PageRule {
     roles: Role[];
     /** If true, super_admin can access ONLY through impersonation */
     requiresImpersonationForSuperAdmin?: boolean;
+    /** Platform actions that must remain unavailable while inspecting a tenant. */
+    disallowImpersonation?: boolean;
     /**
      * Match the path exactly instead of as a prefix. Lets a hub page stay open
      * while everything nested under it is gated by a separate prefix rule
@@ -125,6 +127,7 @@ export function canAccessPath(
     if (!rule) return false;
 
     if (!rule.roles.includes(role)) return false;
+    if (rule.disallowImpersonation && impersonating) return false;
 
     // super_admin restricted by impersonation flag
     if (rule.requiresImpersonationForSuperAdmin && isSuperAdmin(role) && !impersonating) {

@@ -206,6 +206,7 @@ const NAVIGATION_ROUTE_DEFINITIONS = [
 
   // Platform console
   { id: "platformTenants", pattern: "/admin/tenants", titleKey: "nav.items.tenants", scope: "platform" },
+  { id: "platformCommunications", pattern: "/admin/communications", titleKey: "nav.items.communications", scope: "platform" },
   { id: "platformTenantDetail", pattern: "/admin/tenants/:tenantId", titleKey: "navigation.routes.platformTenantDetail", scope: "platform", parentId: "platformTenants", dynamicTitleParam: "tenantId" },
   { id: "platformOps", pattern: "/admin/ops", titleKey: "nav.items.ops", scope: "platform" },
   // How replies leave the system is a platform decision, never a tenant's own

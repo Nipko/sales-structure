@@ -20,6 +20,8 @@ export interface EmailPayload {
     attachments?: EmailAttachment[];
 }
 
+export type EmailSendOutcome = { status: 'accepted' | 'failed' | 'unknown' };
+
 @Injectable()
 export class EmailService implements OnModuleInit {
     private readonly logger = new Logger(EmailService.name);
@@ -154,6 +156,30 @@ export class EmailService implements OnModuleInit {
         } catch (error: any) {
             this.logger.error(`Failed to send email to ${payload.to}: ${error.message}`, error.stack);
             return false;
+        }
+    }
+
+    /** Campaigns reuse the bounded transport; acceptance is not recipient delivery. */
+    async sendWithOutcome(payload: EmailPayload): Promise<EmailSendOutcome> {
+        let send: () => Promise<string>;
+        try {
+            send = this.prepareBoundedSend(payload);
+        } catch {
+            return { status: 'failed' };
+        }
+        try {
+            const receipt = await send();
+            return { status: receipt ? 'accepted' : 'unknown' };
+        } catch (error: any) {
+            this.logger.error('Email transport did not confirm acceptance');
+            // An explicit negative SMTP reply or failure before DATA is safe to
+            // retry on operator request. A lost acknowledgement after DATA is not.
+            const rejected = Number(error?.responseCode) >= 400 && Number(error?.responseCode) <= 599;
+            const beforeData = ['EAUTH', 'EENVELOPE', 'EDNS', 'ENOTFOUND'].includes(error?.code)
+                || ['AUTH', 'MAIL FROM', 'RCPT TO'].includes(error?.command);
+            // Nodemailer uses command=CONN for socket closes and timeouts even
+            // after DATA, so that label alone is not evidence of a safe retry.
+            return { status: rejected || beforeData ? 'failed' : 'unknown' };
         }
     }
 

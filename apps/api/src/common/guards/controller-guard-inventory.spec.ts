@@ -92,6 +92,7 @@ const UNAUTHENTICATED: Readonly<Record<string, string>> = Object.freeze({
  * an impersonation with a reason. The two that are not say so.
  */
 const PLATFORM_SCOPED: Readonly<Record<string, string>> = Object.freeze({
+    'platform-communications.controller.ts': 'platform mode: operational email campaigns across active tenants, JWT and super_admin only; impersonation is rejected',
     'auth.controller.ts': 'sessions, refresh and 2FA. It authenticates; it cannot require the session it issues',
     'billing-admin.controller.ts': 'platform mode: billing operations across every tenant, super_admin only',
     'dispatch-rollout.controller.ts': 'platform mode: the dispatch rollout switch, super_admin only',

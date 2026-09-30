@@ -59,6 +59,7 @@ import { CatalogModule } from './modules/catalog/catalog.module';
 import { ComplianceModule } from './modules/compliance/compliance.module';
 import { CrmModule } from './modules/crm/crm.module';
 import { EmailModule } from './modules/email/email.module';
+import { PlatformCommunicationsModule } from './modules/platform-communications/platform-communications.module';
 import { InternalModule } from './modules/internal/internal.module';
 import { ThrottleModule } from './modules/throttle/throttle.module';
 import { IdentityModule } from './modules/identity/identity.module';
@@ -242,6 +243,7 @@ import { TenantPaymentsModule } from './modules/tenant-payments/tenant-payments.
         WhatsappModule,
         CrmModule,
         EmailModule,
+        PlatformCommunicationsModule,
         IdentityModule,
         AutomationModule,
         CatalogModule,

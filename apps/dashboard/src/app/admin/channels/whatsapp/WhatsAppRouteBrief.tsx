@@ -5,6 +5,7 @@ import { AlertTriangle, CheckCircle, Shield, X, XCircle, Info } from "lucide-rea
 import { cn } from "@/lib/utils";
 import { guidedTourAnchorId } from "@/lib/guided-tours";
 import { whatsAppRouteKey, type WhatsAppConnectRoute } from "./whatsapp-connect-routes";
+import WhatsAppBillingHelpLinks from "./WhatsAppBillingHelpLinks";
 
 /**
  * What the chosen route actually involves — steps, requirements and the
@@ -27,6 +28,7 @@ export default function WhatsAppRouteBrief({
 }) {
     const tw = useTranslations("channels.whatsapp");
     const tb = useTranslations("channels.whatsapp.brief");
+    const tp = useTranslations("channels.whatsapp.afterConnect.payment");
     const steps = Array.from({ length: route.stepCount }, (_, i) => i + 1);
     const requirements = Array.from({ length: route.requirementCount }, (_, i) => i + 1);
     const pad = compact ? "p-4" : "p-6";
@@ -159,6 +161,12 @@ export default function WhatsAppRouteBrief({
             </div>
 
             </details>
+
+            <div className={cn(pad, "border-t border-border space-y-3")}>
+                <h3 className="text-sm font-semibold">{tp("title")}</h3>
+                <p className="m-0 text-xs leading-relaxed text-muted-foreground">{tp("setupNote")}</p>
+                <WhatsAppBillingHelpLinks />
+            </div>
 
             {/* Los avisos NO se pliegan: la ventana de 24 h y el PIN de dos pasos
                 muerden después de cerrar la ventana de Meta, cuando ya es tarde. */}

@@ -92,6 +92,14 @@ describe("dashboard route access contract", () => {
         expect(defaultLandingForRole(ROLE_KEYS.TENANT_VIEWER, false)).toBe("/admin/settings/profile");
     });
 
+    it("restricts platform communications to the platform operator", () => {
+        expect(canAccessPath("/admin/communications", ROLE_KEYS.SUPER_ADMIN, false)).toBe(true);
+        for (const role of [ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR, ROLE_KEYS.TENANT_AGENT, ROLE_KEYS.TENANT_VIEWER]) {
+            expect(canAccessPath("/admin/communications", role, false)).toBe(false);
+        }
+        expect(canAccessPath("/admin/communications", ROLE_KEYS.SUPER_ADMIN, true)).toBe(false);
+    });
+
     it("declares at least one valid audience for every registered dashboard page", () => {
         const exampleId = "00000000-0000-4000-8000-000000000001";
         const audiences = [

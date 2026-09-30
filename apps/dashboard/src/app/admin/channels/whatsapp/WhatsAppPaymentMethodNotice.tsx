@@ -5,11 +5,12 @@ import { useTranslations } from "next-intl";
 import { AlertTriangle, CheckCircle, CreditCard, ExternalLink, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { META_PAYMENT_METHOD_URL, paymentRequiredNow, type PaymentVerdict } from "./connected-readiness";
+import WhatsAppBillingHelpLinks from "./WhatsAppBillingHelpLinks";
 
 /**
  * The payment method on the WhatsApp account, said the way a business owner
  * needs to hear it on day 0: what it is, that Meta charges it and not us, and
- * the date after which Meta stops delivering replies without it.
+ * the date when Meta starts charging service deliveries above the allowance.
  *
  * Healthy is one quiet line. Anything else — missing, refused, or simply not
  * established — is a clear next step, because the most common "we could not
@@ -112,6 +113,7 @@ export default function WhatsAppPaymentMethodNotice({
                         )}
                     </div>
                     <p className="mt-2 mb-0 text-[12px] text-muted-foreground">{t("later")}</p>
+                    <div className="mt-3"><WhatsAppBillingHelpLinks /></div>
                 </div>
             </div>
         </section>

@@ -38,6 +38,8 @@ export interface DashboardPageRule {
     readonly roles: readonly DashboardRole[];
     /** super_admin reaches it ONLY through impersonation. */
     readonly requiresImpersonationForSuperAdmin?: boolean;
+    /** Platform actions unavailable while inspecting a tenant. */
+    readonly disallowImpersonation?: boolean;
     /**
      * Match the path exactly instead of as a prefix. Lets a hub page stay open
      * while everything nested under it is gated by a separate prefix rule.
@@ -54,6 +56,7 @@ export const DASHBOARD_PAGE_RULES: readonly DashboardPageRule[] = [
 
     // ── Platform-only (super_admin always; no one else) ──────
     { prefix: "/admin/tenants", roles: [ROLE_KEYS.SUPER_ADMIN] },
+    { prefix: "/admin/communications", roles: [ROLE_KEYS.SUPER_ADMIN], disallowImpersonation: true },
     { prefix: "/admin/ops", roles: [ROLE_KEYS.SUPER_ADMIN] },
     // Rollout, kill switch and the reconciliation queue. Deliberately NOT
     // behind impersonation: it decides how replies leave the system for every

@@ -1,6 +1,6 @@
 # Super_admin — Modelo de acceso, gobernanza e impersonación
 
-_Última actualización: 2026-07-23_
+_Última actualización: 2026-09-30; incorporación de Comunicaciones de plataforma._
 
 Documento de referencia único del modelo de acceso `super_admin` y de la gobernanza de impersonación. Antes esta convención (crítica) estaba dispersa y desalineada entre `SECURITY.md`, `security-specification.md`, `analytics-billing-reference.md` y los `CLAUDE.md` de app. Esta es la fuente de verdad.
 
@@ -47,11 +47,22 @@ Páginas/áreas que operan bajo este modelo (todas requieren regla explícita en
 
 - `/admin/tenants` (+ `/[id]`) — gestión de tenants, punto de entrada a la impersonación
 - `/admin/ops` — Ops Center (platform-monitor)
+- `/admin/communications` — correos administrativos a usuarios de tenants, con borradores, audiencia guardada, prueba y confirmación de envío. Ver [Comunicaciones generales](platform-communications.md).
 - `/admin/storage`, `/admin/incidents` — almacenamiento por tenant, incidentes
 - `/admin/plans`, `/admin/billing-ops` — catálogo de planes + billing cross-tenant (sync MP, refund, reconciliación)
 - `/admin/sms-packages` — tiers de créditos SMS
 - `/admin/fiscal` — configuración fiscal DIAN
 - Auditoría / audit log
+
+### Comunicaciones de plataforma
+
+`/admin/communications` y `/platform-communications` operan con la sesión de
+plataforma del `super_admin`, fuera de impersonación. El destinatario de una prueba
+es el correo del administrador autenticado. El envío general usa la lista guardada
+en la vista previa y exige su versión; filtrar por negocios no cambia la identidad
+del operador ni inicia una sesión tenant. Las campañas guardan creador, último
+editor y actor del envío. Ver el [manual operativo](platform-communications.md)
+para audiencia, confirmación y tratamiento de resultados inciertos.
 
 ## 7. Regla para páginas nuevas (checklist)
 

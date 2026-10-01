@@ -164,6 +164,8 @@ export class FiscalAdminController {
                 error: result.error,
                 message: result.error === 'not_found'
                     ? 'Factura no encontrada.'
+                    : result.error === 'issuance_outcome_unknown'
+                        ? 'Hubo un intento de emisión y su resultado requiere revisión. No se puede confirmar que el proveedor no haya creado el documento.'
                     : 'La factura ya consumió un consecutivo DIAN: anularla requiere nota crédito, no un cambio de estado.',
             });
         }
@@ -179,47 +181,50 @@ export class FiscalAdminController {
      */
     @Post('invoices/:id/reissue')
     async reissueInvoice(@Param('id') id: string) {
-        const inv = await this.prisma.fiscalInvoice.findUnique({ where: { id } });
-        if (!inv) throw new BadRequestException({ error: 'not_found', message: 'Factura no encontrada.' });
-        if (inv.cufe) {
-            throw new BadRequestException({
-                error: 'already_validated',
-                message: 'La factura ya fue validada por la DIAN (CUFE) y es inmutable: no se puede re-emitir.',
-            });
-        }
-        // El guard de `requeue` no alcanza acá: más abajo esto resetea la fila a
-        // 'pending' ANTES de llamarlo, así que llegaría con el estado limpio y
-        // pasaría. Re-emitir una anulada u omitida gastaría justamente el
-        // consecutivo que se decidió no gastar — y en una fila anulada era la
-        // única acción que ofrecía el panel.
-        if (['cancelled', 'skipped'].includes(inv.status)) {
-            throw new BadRequestException({
-                error: 'deliberately_not_issued',
-                message: inv.status === 'cancelled'
-                    ? 'Esta factura fue anulada a propósito antes de emitirse: re-emitirla consumiría un consecutivo DIAN por un cobro que se decidió no documentar.'
-                    : 'Este cobro no era una venta y por eso no se facturó. Re-emitir consumiría un consecutivo DIAN.',
-            });
-        }
-        // Free the reference at Factus (only works while unvalidated) so the fresh
-        // issue doesn't 409 on the existing bill.
-        if (inv.provider === 'factus') {
-            await this.factus.deleteByReference(inv.id);
-        }
-        await this.prisma.fiscalInvoice.update({
-            where: { id },
-            data: {
-                status: 'pending',
-                providerRef: null,
-                invoiceNumber: null,
-                cufe: null,
-                qrUrl: null,
-                pdfUrl: null,
-                failureReason: null,
-                attempts: 0,
-            },
+        return this.fiscalService.withIssuanceLock(id, async () => {
+            const inv = await this.prisma.fiscalInvoice.findUnique({ where: { id } });
+            if (!inv) throw new BadRequestException({ error: 'not_found', message: 'Factura no encontrada.' });
+            if (inv.cufe) {
+                throw new BadRequestException({
+                    error: 'already_validated',
+                    message: 'La factura ya fue validada por la DIAN (CUFE) y es inmutable: no se puede re-emitir.',
+                });
+            }
+            // El guard de `requeue` no alcanza acá: más abajo esto resetea la fila a
+            // 'pending' ANTES de llamarlo, así que llegaría con el estado limpio y
+            // pasaría. Re-emitir una anulada u omitida gastaría justamente el
+            // consecutivo que se decidió no gastar — y en una fila anulada era la
+            // única acción que ofrecía el panel.
+            if (['cancelled', 'skipped'].includes(inv.status)) {
+                throw new BadRequestException({
+                    error: 'deliberately_not_issued',
+                    message: inv.status === 'cancelled'
+                        ? 'Esta factura fue anulada a propósito antes de emitirse: re-emitirla consumiría un consecutivo DIAN por un cobro que se decidió no documentar.'
+                        : 'Este cobro no era una venta y por eso no se facturó. Re-emitir consumiría un consecutivo DIAN.',
+                });
+            }
+            await this.fiscalService.assertCanReissue(inv);
+            // Free the reference at Factus (only works while unvalidated) so the fresh
+            // issue doesn't 409 on the existing bill.
+            if (inv.provider === 'factus') {
+                await this.factus.deleteByReference(inv.id);
+            }
+            await this.prisma.fiscalInvoice.update({
+                where: { id },
+                data: {
+                    status: 'pending',
+                    providerRef: null,
+                    invoiceNumber: null,
+                    cufe: null,
+                    qrUrl: null,
+                    pdfUrl: null,
+                    failureReason: null,
+                    attempts: 0,
+                },
         });
         await this.fiscalService.requeue(id);
         return { success: true };
+        });
     }
 
     // ── Validación: preview de generación (sin Factus) + emisión de prueba ──
@@ -274,6 +279,18 @@ export class FiscalAdminController {
     @Post('test-invoice')
     async testInvoice() {
         const cfg = await this.config.getConfig();
+        let sandboxHost = false;
+        try {
+            const url = new URL(process.env.FACTUS_BASE_URL || 'https://api-sandbox.factus.com.co');
+            sandboxHost = url.protocol === 'https:' && url.hostname === 'api-sandbox.factus.com.co'
+                && !url.username && !url.password && !url.port;
+        } catch { /* Invalid URLs must not reach the provider. */ }
+        if (cfg.factusEnvironment !== 'sandbox' || !sandboxHost) {
+            throw new BadRequestException({
+                error: 'fiscal_test_requires_sandbox',
+                message: 'La emisión de prueba sólo está disponible con Factus en sandbox. Usa la vista previa del PDF en producción.',
+            });
+        }
         if (!cfg.factusNumberingRangeId) {
             return {
                 success: false,

@@ -17,15 +17,19 @@ describe('FiscalInvoiceService — anular antes de consumir consecutivo', () => 
             },
             $transaction: jest.fn().mockImplementation(async (cb: (c: any) => unknown) => cb({
                 $queryRawUnsafe: jest.fn().mockResolvedValue([{ purge_started_at: null }]),
-                fiscalInvoice: { update: jest.fn().mockResolvedValue({ id: 'fi-1' }) },
+                fiscalInvoice: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
             })),
         };
         const queue = { add: jest.fn().mockResolvedValue(undefined) };
-        const redis = { get: jest.fn().mockResolvedValue(null) };
+        const redis = {
+            get: jest.fn().mockResolvedValue(null),
+            acquireLockToken: jest.fn().mockResolvedValue('cancel-token'),
+            releaseLockToken: jest.fn().mockResolvedValue(true),
+        };
         const service = new FiscalInvoiceService(
             prisma as any, {} as any, {} as any, queue as any, redis as any,
         );
-        return { service, prisma, queue };
+        return { service, prisma, queue, redis };
     }
 
     const pending = {
@@ -60,6 +64,12 @@ describe('FiscalInvoiceService — anular antes de consumir consecutivo', () => 
             .resolves.toEqual({ ok: false, error: 'already_issued' });
     });
 
+    it.each([{ attempts: 1 }, { providerRef: 'accepted-remote-reference' }])('preserves reconciliation after an ambiguous provider attempt: %j', async fields => {
+        const h = makeHarness({ ...pending, ...fields });
+        await expect(h.service.cancelPending('fi-1', 'not a sale')).resolves.toEqual({ ok: false, error: 'issuance_outcome_unknown' });
+        expect(h.prisma.fiscalInvoice.update).not.toHaveBeenCalled();
+    });
+
     it('reintentar NO puede resucitar una anulada', async () => {
         const h = makeHarness({ ...pending, status: 'cancelled' });
 
@@ -79,5 +89,38 @@ describe('FiscalInvoiceService — anular antes de consumir consecutivo', () => 
 
         await expect(h.service.requeue('fi-1')).resolves.toBe(true);
         expect(h.queue.add).toHaveBeenCalled();
+    });
+
+    it.each(['busy', 'unavailable'])('does not cancel while issuance is %s', async (state) => {
+        const h = makeHarness(pending);
+        if (state === 'busy') h.redis.acquireLockToken.mockResolvedValue(null);
+        else h.redis.acquireLockToken.mockRejectedValue(new Error('Redis unavailable'));
+        await expect(h.service.cancelPending('fi-1', 'internal use')).rejects.toMatchObject({
+            response: expect.objectContaining({ error: 'fiscal_issuance_in_progress' }),
+        });
+        expect(h.prisma.fiscalInvoice.findUnique).not.toHaveBeenCalled();
+        expect(h.prisma.fiscalInvoice.update).not.toHaveBeenCalled();
+    });
+
+    it('rechecks the invoice after acquiring the same lock used by the worker', async () => {
+        const h = makeHarness(pending);
+        h.redis.acquireLockToken.mockImplementation(async () => {
+            h.prisma.fiscalInvoice.findUnique.mockResolvedValue({ ...pending, invoiceNumber: 'FV1', cufe: 'validated' });
+            return 'cancel-token';
+        });
+        await expect(h.service.cancelPending('fi-1', 'internal use')).resolves.toEqual({ ok: false, error: 'already_issued' });
+        expect(h.redis.acquireLockToken).toHaveBeenCalledWith('lock:fiscal:issue:fi-1', 1800);
+        expect(h.redis.releaseLockToken).toHaveBeenCalledWith('lock:fiscal:issue:fi-1', 'cancel-token');
+        expect(h.prisma.fiscalInvoice.update).not.toHaveBeenCalled();
+    });
+
+    it('does not resurrect a cancellation that wins a concurrent retry', async () => {
+        const h = makeHarness({ ...pending, status: 'failed' });
+        h.prisma.$transaction.mockImplementation(async (cb: any) => cb({
+            $queryRawUnsafe: jest.fn().mockResolvedValue([{ purge_started_at: null }]),
+            fiscalInvoice: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+        }));
+        await expect(h.service.requeue('fi-1')).resolves.toBe(false);
+        expect(h.queue.add).not.toHaveBeenCalled();
     });
 });

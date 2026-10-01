@@ -1,4 +1,4 @@
-import { Logger } from '@nestjs/common';
+import { BadRequestException, Logger } from '@nestjs/common';
 import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import * as Sentry from '@sentry/nestjs';
@@ -9,8 +9,9 @@ import { FactusAdapter } from '../adapters/factus.adapter';
 import { FiscalStorageService } from '../fiscal-storage.service';
 import { FiscalEmailService } from '../fiscal-email.service';
 import { CONSUMIDOR_FINAL_ACQUIRER, FISCAL_MAX_ATTEMPTS, FISCAL_QUEUE, FiscalJobData } from '../fiscal.constants';
-import { FiscalAcquirer, FiscalIssueResult } from '../interfaces/fiscal-provider.interface';
+import { FiscalAcquirer, FiscalIssueResult, IvaTreatment } from '../interfaces/fiscal-provider.interface';
 import { RedisService } from '../../redis/redis.service';
+import { FiscalInvoiceService } from '../fiscal-invoice.service';
 
 /**
  * Worker that performs the actual fiscal provider call. Runs async so a slow or
@@ -30,6 +31,7 @@ export class FiscalInvoiceProcessor extends WorkerHost {
         private readonly storage: FiscalStorageService,
         private readonly fiscalEmail: FiscalEmailService,
         private readonly redis: RedisService,
+        private readonly fiscalService: FiscalInvoiceService,
     ) {
         super();
     }
@@ -60,10 +62,34 @@ export class FiscalInvoiceProcessor extends WorkerHost {
             this.logger.warn(`[Fiscal] Invoice ${fiscalInvoiceId} not found — dropping job`);
             return;
         }
+        // A queued or delayed job can outlive an operator's cancellation. The
+        // durable decision wins even when the old BullMQ job still exists.
+        if (['cancelled', 'skipped', 'blocked_config'].includes(inv.status)) return;
         // Idempotent — but a Factus invoice is only truly done once it has a CUFE
         // (DIAN-validated). An 'issued' row without a CUFE is still pending and must
         // be re-checked, so don't short-circuit it.
         if (inv.status === 'issued' && (inv.provider !== 'factus' || inv.cufe)) return;
+
+        // Old jobs may predate the creation guard. Revalidate only before the
+        // first provider document exists; accepted documents still need their
+        // canonical status reconciled even after tenant/config changes.
+        if (!inv.providerRef && !inv.invoiceNumber && !inv.cufe) {
+            try { await this.fiscalService.assertCanReissue(inv); }
+            catch (error) {
+                if (!(error instanceof BadRequestException)) throw error;
+                const failure = error.getResponse() as { error: string; reason?: string };
+                const ambiguous = inv.attempts > 0;
+                const skipped = failure.error === 'deliberately_not_issued' && !ambiguous;
+                const blockReason = ambiguous ? 'issuance_outcome_unknown' : failure.error;
+                await this.prisma.fiscalInvoice.update({ where: { id: inv.id }, data: {
+                    status: skipped ? 'skipped' : 'blocked_config',
+                    failureReason: skipped ? null : blockReason,
+                    metadata: { ...(inv.metadata as object),
+                        ...(skipped ? { skipReason: failure.reason } : { blockReason }) },
+                } });
+                return;
+            }
+        }
 
         const tenant = await this.prisma.tenant.findUnique({
             where: { id: inv.tenantId },
@@ -77,6 +103,43 @@ export class FiscalInvoiceProcessor extends WorkerHost {
         if (!provider) {
             await this.markFailed(inv.id, 'no_provider');
             return;
+        }
+
+        const original = inv.type === 'credit_note' && inv.relatedInvoiceId
+            ? await this.prisma.fiscalInvoice.findUnique({ where: { id: inv.relatedInvoiceId } }) : null;
+        let ivaTreatment: IvaTreatment = (inv.metadata as any)?.ivaTreatment ?? cfg.coIvaTreatment;
+        let issuerSnapshot = (inv.metadata as any)?.issuerSnapshot
+            ?? (provider.name === 'us_remote' ? { ...cfg.usIssuer } : undefined);
+        if (inv.type === 'credit_note') {
+            if (!original?.providerRef) {
+                await this.markFailed(inv.id, 'missing_original_provider_ref');
+                return;
+            }
+            if (provider.name === 'factus') {
+                const previous = (original.metadata as any)?.ivaTreatment;
+                if (previous === 'excluido' || previous === 'gravado_19') ivaTreatment = previous;
+                // Legacy documents support exactly these two treatments. Infer
+                // 19% only from the exact stored COP amount/tax invariant; FX
+                // rows without an issued-amount snapshot require manual review.
+                else if (original.taxCents === 0) ivaTreatment = 'excluido';
+                else {
+                    const gross = (original.metadata as any)?.issuedAmountCents
+                        ?? (!(original.metadata as any)?.trmApplied && original.currency === 'COP' ? original.amountCents : null);
+                    if (Number.isSafeInteger(gross) && gross > 0 && original.taxCents > 0
+                        && original.taxCents === gross - Math.round(gross / 1.19)) ivaTreatment = 'gravado_19';
+                    else {
+                        await this.markFailed(inv.id, 'missing_original_tax_treatment');
+                        return;
+                    }
+                }
+            }
+            if (provider.name === 'us_remote') {
+                issuerSnapshot = (original.metadata as any)?.issuerSnapshot;
+                if (!issuerSnapshot?.legalName || !issuerSnapshot?.taxId) {
+                    await this.markFailed(inv.id, 'missing_original_issuer_snapshot');
+                    return;
+                }
+            }
         }
 
         // Acquirer: prefer the immutable snapshot taken at creation; fall back to
@@ -130,33 +193,28 @@ export class FiscalInvoiceProcessor extends WorkerHost {
                 // had no fiscal data yet), which previously left the branded PDF
                 // defaulting to "Consumidor Final".
                 ...(acquirer ? { acquirerSnapshot: acquirer as any } : {}),
+                metadata: { ...(inv.metadata as object), ivaTreatment, issuerSnapshot,
+                    issuedAmountCents: copAmountCents ?? inv.amountCents } as any,
             },
         });
 
-        const ivaTreatment = cfg.coIvaTreatment;
         const acq = (acquirer || {}) as FiscalAcquirer;
         let result: FiscalIssueResult;
 
         try {
             if (inv.type === 'credit_note') {
-                const original = inv.relatedInvoiceId
-                    ? await this.prisma.fiscalInvoice.findUnique({ where: { id: inv.relatedInvoiceId } })
-                    : null;
-                if (!original?.providerRef) {
-                    await this.markFailed(inv.id, 'missing_original_provider_ref');
-                    return;
-                }
                 result = await provider.issueCreditNote({
                     referenceCode: inv.id,
                     tenantId: inv.tenantId,
-                    originalProviderRef: original.providerRef,
-                    originalInvoiceNumber: original.invoiceNumber ?? undefined,
+                    originalProviderRef: original!.providerRef!,
+                    originalInvoiceNumber: original!.invoiceNumber ?? undefined,
                     amountCents: copAmountCents ?? inv.amountCents,
                     currency: provider.name === 'factus' ? 'COP' : inv.currency,
                     description: `${cfg.itemDescription} — Reembolso`,
                     acquirer: acq,
                     ivaTreatment,
                     reason: 'Reembolso',
+                    correctionConceptCode: inv.amountCents === original!.amountCents ? '2' : '1',
                 });
             } else {
                 result = await provider.issue({
@@ -224,9 +282,9 @@ export class FiscalInvoiceProcessor extends WorkerHost {
         let xmlUrl: string | undefined = result.xmlUrl ?? undefined;
         if (provider.name === 'factus' && result.invoiceNumber) {
             try {
-                const pdfBuf = await this.factus.downloadPdf(result.invoiceNumber);
+                const pdfBuf = await this.factus.downloadPdf(result.invoiceNumber, inv.type === 'credit_note' ? 'credit_note' : 'invoice');
                 if (pdfBuf) this.storage.save(inv.tenantId, inv.id, 'pdf', pdfBuf);
-                const xmlBuf = await this.factus.downloadXml(result.invoiceNumber);
+                const xmlBuf = await this.factus.downloadXml(result.invoiceNumber, inv.type === 'credit_note' ? 'credit_note' : 'invoice');
                 if (xmlBuf) this.storage.save(inv.tenantId, inv.id, 'xml', xmlBuf);
             } catch (e: any) {
                 this.logger.warn(`[Fiscal] Could not archive PDF/XML for ${inv.id}: ${e?.message}`);
@@ -272,7 +330,9 @@ export class FiscalInvoiceProcessor extends WorkerHost {
                     factusPublicUrl: result.pdfUrl ?? null,
                     consumidorFinalFallback: consumidorFinalFallback || undefined,
                     numberingRange: numberingRange ?? undefined,
-                    issuerSnapshot: provider.name === 'us_remote' ? { ...cfg.usIssuer } : undefined,
+                    issuerSnapshot,
+                    ivaTreatment,
+                    issuedAmountCents: copAmountCents ?? inv.amountCents,
                     raw: result.raw,
                 } as any,
             },

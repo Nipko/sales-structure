@@ -10,6 +10,32 @@ import {
     IvaTreatment,
 } from '../interfaces/fiscal-provider.interface';
 
+export interface FactusRangeDiagnostic {
+    configuredId: string | null;
+    id: string | null;
+    document: string | null;
+    prefix: string | null;
+    resolutionNumber: string | null;
+    from: number | null;
+    to: number | null;
+    current: number | null;
+    isActive: boolean;
+    isExpired: boolean;
+    startDate: string | null;
+    endDate: string | null;
+}
+
+export interface FactusConnectionDiagnostic {
+    ok: boolean;
+    message: string;
+    authenticated: boolean;
+    apiEnvironment: 'sandbox' | 'production' | 'unknown';
+    configuredEnvironment: string;
+    numberingRange: FactusRangeDiagnostic | null;
+    creditNumberingRange: FactusRangeDiagnostic | null;
+    blockers: string[];
+}
+
 /**
  * Factus (Halltec) — DIAN electronic invoicing for Colombia, API v2.
  *
@@ -74,6 +100,16 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
         return (process.env.FACTUS_BASE_URL || 'https://api-sandbox.factus.com.co').replace(/\/+$/, '');
     }
 
+    private apiEnvironment(): FactusConnectionDiagnostic['apiEnvironment'] {
+        try {
+            const url = new URL(this.baseUrl);
+            if (url.protocol !== 'https:' || url.username || url.password || url.pathname !== '/') return 'unknown';
+            if (url.hostname === 'api-sandbox.factus.com.co') return 'sandbox';
+            if (url.hostname === 'api.factus.com.co') return 'production';
+        } catch { /* Invalid endpoint configuration is not production. */ }
+        return 'unknown';
+    }
+
     /**
      * Producción de Factus son TRES interruptores independientes, y cualquier
      * desalineación entre ellos pasaba en silencio y en verde:
@@ -95,8 +131,9 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
      * papel inválido y creer que se cumplió.
      */
     private assertEnvironmentAligned(cfg: { factusEnvironment?: string }): void {
-        const url = this.baseUrl.toLowerCase();
-        const urlIsSandbox = url.includes('sandbox');
+        const environment = this.apiEnvironment();
+        if (environment === 'unknown') throw new Error('factus_api_environment_unknown');
+        const urlIsSandbox = environment === 'sandbox';
         const declaredSandbox = (cfg.factusEnvironment || 'sandbox').toLowerCase() !== 'production';
 
         if (urlIsSandbox !== declaredSandbox) {
@@ -242,6 +279,11 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
 
     async issueCreditNote(data: CreditNoteData): Promise<FiscalIssueResult> {
         const cfg = await this.config.getConfig();
+        this.assertEnvironmentAligned(cfg);
+        // A previous attempt can have been accepted even if its HTTP response
+        // was lost. Read its canonical state before sending another mutation.
+        const existing = await this.reconcileCreditByReference(data.referenceCode);
+        if (existing) return existing;
         const baseCents = data.amountCents;
         const line = this.buildLine(data.description, baseCents, data.ivaTreatment, cfg);
 
@@ -262,7 +304,44 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
         }
 
         const res = await this.authedFetch('/v2/credit-notes/validate', { method: 'POST', body: payload });
+        if (res.status === 409) {
+            const recovered = await this.reconcileCreditByReference(data.referenceCode);
+            if (recovered) return recovered;
+            return {
+                status: 'pending',
+                failureReason: 'Factus: nota crédito pendiente de revisión; no se confirmó el documento por su referencia.',
+                raw: { conflict: true, referenceCode: data.referenceCode },
+            };
+        }
         return this.parseIssueResponse(res, 'credit_note');
+    }
+
+    /** Exact reference matching prevents recovering another customer's note. */
+    private async reconcileCreditByReference(referenceCode: string): Promise<FiscalIssueResult | null> {
+        for (let page = 1; page <= 20; page++) {
+            const res = await this.authedFetch(
+                `/v2/credit-notes?filter[reference_code]=${encodeURIComponent(referenceCode)}&page=${page}`,
+                { method: 'GET' },
+            );
+            if (!res.ok) throw new Error(`Factus credit note lookup failed (${res.status})`);
+            const json: any = await res.json().catch(() => ({}));
+            const rows = Array.isArray(json?.data) ? json.data : Array.isArray(json?.data?.data) ? json.data.data : null;
+            if (!rows) throw new Error('factus_credit_lookup_invalid_response');
+            const summary = rows.find((row: any) => String(row?.reference_code) === referenceCode);
+            if (summary) {
+                const number = summary.number != null ? String(summary.number) : null;
+                const detail = number ? await this.fetchDocumentByNumber(number, 'credit_note') : null;
+                if (detail?.reference_code != null && String(detail.reference_code) !== referenceCode) {
+                    throw new Error('factus_credit_lookup_reference_mismatch');
+                }
+                return this.parseIssueResponse(new Response(JSON.stringify({ data: { credit_note: detail ?? summary } })), 'credit_note', false);
+            }
+            const pagination = json?.data?.pagination ?? json?.pagination ?? json?.data ?? {};
+            const lastPage = Number(pagination.last_page ?? json?.meta?.last_page ?? 1);
+            if (!Number.isInteger(lastPage) || lastPage < page) throw new Error('factus_credit_lookup_invalid_pagination');
+            if (page >= lastPage) return null;
+        }
+        throw new Error('factus_credit_lookup_truncated');
     }
 
     // -------------------------------------------------------------------------
@@ -324,7 +403,7 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
                 : Array.isArray(listJson?.data?.data)
                     ? listJson.data.data
                     : [];
-            const summary = list.find((b) => String(b?.reference_code) === referenceCode) || list[0];
+            const summary = list.find((b) => String(b?.reference_code) === referenceCode);
             if (!summary) return null;
 
             // Fetch full detail by number to obtain CUFE/QR/public_url.
@@ -337,6 +416,7 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
                     bill = detJson?.data?.bill ?? detJson?.data ?? summary;
                 }
             }
+            if (bill?.reference_code != null && String(bill.reference_code) !== referenceCode) return null;
 
             const cufe = bill?.cufe ?? bill?.cude;
             if (!cufe) return null; // not validated yet → caller keeps it 'pending' and polls
@@ -506,7 +586,7 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
      * Distinguishes non-retryable validation rejections (400/422 → returns
      * {status:'failed'}) from transient/server errors (throws → BullMQ retry).
      */
-    private async parseIssueResponse(res: Response, kind: 'bill' | 'credit_note'): Promise<FiscalIssueResult> {
+    private async parseIssueResponse(res: Response, kind: 'bill' | 'credit_note', fetchDetail = true): Promise<FiscalIssueResult> {
         const json: any = await res.json().catch(() => ({}));
 
         if (!res.ok) {
@@ -518,7 +598,7 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
             throw new Error(`Factus ${kind} HTTP ${res.status}: ${this.formatErrors(json)}`);
         }
 
-        let node = json?.data?.[kind] ?? json?.data?.bill ?? json?.data ?? {};
+        let node = json?.data?.[kind] ?? (kind === 'bill' ? json?.data?.bill : undefined) ?? json?.data ?? {};
         const errors = node?.errors;
         if (Array.isArray(errors) && errors.length > 0) {
             return { status: 'failed', failureReason: this.formatErrors(json), raw: json };
@@ -531,12 +611,16 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
         // enviar a la DIAN" (no CUFE yet). In that case re-fetch the full bill by
         // number — it may have validated in the meantime — before deciding.
         let cufe = node?.cufe ?? node?.cude;
-        if (!cufe && number) {
-            const detail = await this.fetchBillByNumber(number);
+        if (fetchDetail && (!cufe || node?.is_validated === false) && number) {
+            const detail = await this.fetchDocumentByNumber(number, kind);
             if (detail) {
                 node = detail;
                 cufe = node?.cufe ?? node?.cude;
             }
+        }
+
+        if (Array.isArray(node?.errors) && node.errors.length > 0) {
+            return { status: 'failed', failureReason: this.formatErrors({ errors: node.errors }), raw: json };
         }
 
         const total = node?.total != null ? Math.round(parseFloat(String(node.total)) * 100) : undefined;
@@ -546,12 +630,12 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
         // No CUFE ⇒ not validated by the DIAN. Report 'pending' (with the provider
         // ref/number) instead of a fake 'issued' with no QR / no official PDF; the
         // processor keeps it pending and polls (issue() reconciles by reference).
-        if (!cufe && kind === 'bill') {
+        if (!cufe || node?.is_validated === false) {
             return {
                 status: 'pending',
                 providerRef,
                 invoiceNumber: number,
-                failureReason: 'Aceptada por Factus; pendiente de validación DIAN (sin CUFE).',
+                failureReason: `Aceptada por Factus; pendiente de validación DIAN (${kind === 'bill' ? 'CUFE' : 'CUDE'} no confirmado).`,
                 raw: { status: json?.status, total, node },
             };
         }
@@ -586,13 +670,15 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
         return `https://${host}/document/searchqr?documentkey=${cufe}`;
     }
 
-    /** Fetch the full bill object by number (Factus GET /v2/bills/show/:number), or null. */
-    private async fetchBillByNumber(number: string): Promise<any | null> {
+    /** Read the same document type; a credit note is never looked up as a bill. */
+    private async fetchDocumentByNumber(number: string, kind: 'bill' | 'credit_note'): Promise<any | null> {
         try {
-            const res = await this.authedFetch(`/v2/bills/show/${encodeURIComponent(number)}`, { method: 'GET' });
+            const path = kind === 'bill' ? `/v2/bills/show/${encodeURIComponent(number)}`
+                : `/v2/credit-notes/${encodeURIComponent(number)}`;
+            const res = await this.authedFetch(path, { method: 'GET' });
             if (!res.ok) return null;
             const json: any = await res.json().catch(() => ({}));
-            return json?.data?.bill ?? json?.data ?? null;
+            return json?.data?.[kind] ?? json?.data ?? null;
         } catch {
             return null;
         }
@@ -616,14 +702,14 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
     // -------------------------------------------------------------------------
 
     /** Download the official Factus PDF (graphic representation) for an invoice number. */
-    async downloadPdf(number: string): Promise<Buffer | null> {
+    async downloadPdf(number: string, kind: 'invoice' | 'credit_note' = 'invoice'): Promise<Buffer | null> {
         // Factus path is /v2/bills/:number/download-pdf (number BEFORE the verb).
-        return this.downloadDocument(`/v2/bills/${encodeURIComponent(number)}/download-pdf`);
+        return this.downloadDocument(`/v2/${kind === 'credit_note' ? 'credit-notes' : 'bills'}/${encodeURIComponent(number)}/download-pdf`);
     }
 
     /** Download the DIAN-signed XML for an invoice number. */
-    async downloadXml(number: string): Promise<Buffer | null> {
-        return this.downloadDocument(`/v2/bills/${encodeURIComponent(number)}/download-xml`);
+    async downloadXml(number: string, kind: 'invoice' | 'credit_note' = 'invoice'): Promise<Buffer | null> {
+        return this.downloadDocument(`/v2/${kind === 'credit_note' ? 'credit-notes' : 'bills'}/${encodeURIComponent(number)}/download-xml`);
     }
 
     private async downloadDocument(apiPath: string): Promise<Buffer | null> {
@@ -657,25 +743,128 @@ export class FactusAdapter implements IFiscalInvoiceProvider {
     // Admin helpers — connection test + numbering ranges
     // -------------------------------------------------------------------------
 
-    /** Verify Factus credentials by requesting a token. */
-    async testConnection(): Promise<{ ok: boolean; message: string }> {
+    /** Read-only checks. Authentication alone never certifies issuance readiness. */
+    async testConnection(): Promise<FactusConnectionDiagnostic> {
+        const result: FactusConnectionDiagnostic = {
+            ok: false, message: 'Diagnóstico de Factus incompleto.', authenticated: false,
+            apiEnvironment: this.apiEnvironment(), configuredEnvironment: 'unknown',
+            numberingRange: null, creditNumberingRange: null, blockers: [],
+        };
+        let cfg: FiscalConfig;
+        try {
+            cfg = await this.config.getConfig();
+            result.configuredEnvironment = cfg.factusEnvironment;
+        } catch {
+            result.blockers.push('factus_configuration_unavailable');
+            return result;
+        }
+        if (result.apiEnvironment === 'unknown') {
+            result.blockers.push('factus_api_environment_unknown');
+            return result;
+        }
+        if (result.apiEnvironment !== result.configuredEnvironment) result.blockers.push('factus_environment_mismatch');
         try {
             await this.getToken();
-            return { ok: true, message: `Conectado a ${this.baseUrl}` };
-        } catch (err: any) {
-            return { ok: false, message: err?.message || 'auth_failed' };
+            result.authenticated = true;
+        } catch {
+            result.blockers.push('factus_authentication_failed');
+            result.message = 'No se pudo autenticar con Factus.';
+            return result;
         }
+        try {
+            const invoiceRanges = cfg.factusNumberingRangeId
+                ? await this.listNumberingRanges({ id: cfg.factusNumberingRangeId }) : [];
+            result.numberingRange = this.checkRange(invoiceRanges, cfg.factusNumberingRangeId, 'invoice', result.blockers);
+            const creditRanges = await this.listNumberingRanges(cfg.factusCreditNumberingRangeId
+                ? { id: cfg.factusCreditNumberingRangeId } : { document: '22', isActive: true });
+            result.creditNumberingRange = this.checkRange(creditRanges, cfg.factusCreditNumberingRangeId, 'credit', result.blockers);
+        } catch {
+            result.blockers.push('factus_numbering_ranges_unavailable');
+        }
+        result.ok = result.blockers.length === 0;
+        result.message = result.ok ? 'Autenticación, ambiente y rangos verificados; no se emitieron documentos.'
+            : 'Autenticación correcta; hay bloqueos de configuración para emitir documentos.';
+        return result;
+    }
+
+    private checkRange(rows: any[], configuredId: string | null, kind: 'invoice' | 'credit', blockers: string[]): FactusRangeDiagnostic | null {
+        const typeMatches = (r: any) => {
+            const value = String(r?.document?.name ?? r?.document ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+            return kind === 'invoice' ? value === '21' || value === 'factura de venta'
+                : value === '22' || value === 'nota credito' || value === 'nota de credito';
+        };
+        const active = (value: unknown) => value === true || value === 1 || value === '1';
+        let row: any;
+        if (configuredId) row = rows.find((r) => String(r?.id) === String(configuredId));
+        else if (kind === 'credit') {
+            const candidates = rows.filter((r) => typeMatches(r) && active(r?.is_active));
+            if (candidates.length !== 1) {
+                blockers.push(candidates.length > 1 ? 'credit_range_multiple_active' : 'credit_range_not_available');
+                return null;
+            }
+            row = candidates[0];
+        } else {
+            blockers.push('invoice_range_not_configured');
+            return null;
+        }
+        const integer = (value: unknown) => value != null && value !== '' && Number.isSafeInteger(Number(value)) ? Number(value) : null;
+        const result: FactusRangeDiagnostic = {
+            configuredId: configuredId || null, id: row?.id != null ? String(row.id) : null,
+            document: row?.document != null ? String(row.document?.name ?? row.document) : null,
+            prefix: row?.prefix != null ? String(row.prefix) : null,
+            resolutionNumber: row?.resolution_number != null ? String(row.resolution_number) : null,
+            from: integer(row?.from), to: integer(row?.to), current: integer(row?.current),
+            isActive: active(row?.is_active), isExpired: active(row?.is_expired),
+            startDate: row?.start_date != null ? String(row.start_date) : null,
+            endDate: row?.end_date != null ? String(row.end_date) : null,
+        };
+        if (!row) { blockers.push(`${kind}_range_not_found`); return result; }
+        if (!typeMatches(row)) blockers.push(`${kind}_range_wrong_document`);
+        if (!result.isActive) blockers.push(`${kind}_range_inactive`);
+        const validDate = (date: string | null) => !!date && /^\d{4}-\d{2}-\d{2}$/.test(date)
+            && Number.isFinite(Date.parse(`${date}T00:00:00Z`))
+            && new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10) === date;
+        if (kind === 'invoice') {
+            if (!result.resolutionNumber?.trim()) blockers.push('invoice_range_resolution_missing');
+            if (!validDate(result.startDate) || !validDate(result.endDate)
+                || result.startDate! > result.endDate!) blockers.push('invoice_range_invalid_dates');
+        }
+        // Factus is_expired is authoritative; ISO date checks also catch stale flags.
+        const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+        if (result.isExpired || (result.endDate && /^\d{4}-\d{2}-\d{2}/.test(result.endDate) && result.endDate.slice(0, 10) < today)) {
+            result.isExpired = true;
+            blockers.push(`${kind}_range_expired`);
+        }
+        if (result.startDate && /^\d{4}-\d{2}-\d{2}/.test(result.startDate) && result.startDate.slice(0, 10) > today) blockers.push(`${kind}_range_not_yet_valid`);
+        // Factus also accepts the last used consecutive at range creation, so
+        // from - 1 denotes an unused range; it is not an exhausted range.
+        if (result.from == null || result.to == null || result.current == null || result.from < 1 || result.from > result.to || result.current < result.from - 1) blockers.push(`${kind}_range_invalid_bounds`);
+        else if (result.current > result.to) blockers.push(`${kind}_range_exhausted`);
+        return result;
     }
 
     /** List the issuer's numbering ranges so the admin can pick numbering_range_id. */
-    async listNumberingRanges(): Promise<any[]> {
-        const res = await this.authedFetch('/v2/numbering-ranges', { method: 'GET' });
-        const json: any = await res.json().catch(() => ({}));
-        if (!res.ok) {
-            throw new Error(`Factus numbering-ranges failed (${res.status}): ${this.formatErrors(json)}`);
+    async listNumberingRanges(filters: { id?: string; document?: string; isActive?: boolean } = {}): Promise<any[]> {
+        const query = new URLSearchParams();
+        if (filters.id) query.set('filter[id]', filters.id);
+        if (filters.document) query.set('filter[document]', filters.document);
+        if (filters.isActive !== undefined) query.set('filter[is_active]', filters.isActive ? '1' : '0');
+        const rows: any[] = [];
+        for (let page = 1; page <= 20; page++) {
+            if (page > 1) query.set('page', String(page));
+            const res = await this.authedFetch(`/v2/numbering-ranges${query.size ? `?${query}` : ''}`, { method: 'GET' });
+            const json: any = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(`Factus numbering-ranges failed (${res.status}): ${this.formatErrors(json)}`);
+            const data = json?.data;
+            const list = Array.isArray(data) ? data : Array.isArray(data?.data) ? data.data : null;
+            if (!list) throw new Error('factus_numbering_ranges_invalid_response');
+            rows.push(...list);
+            const pagination = data?.pagination ?? json?.pagination ?? data ?? {};
+            const lastPage = Number(pagination.last_page ?? json?.meta?.last_page ?? 1);
+            if (!Number.isInteger(lastPage) || lastPage < page) throw new Error('factus_numbering_ranges_invalid_pagination');
+            if (page >= lastPage) return rows;
         }
-        const data = json?.data;
-        return Array.isArray(data) ? data : Array.isArray(data?.data) ? data.data : [];
+        throw new Error('factus_numbering_ranges_truncated');
     }
 
     /**

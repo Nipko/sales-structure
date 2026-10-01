@@ -296,7 +296,7 @@ export class FiscalController {
             // Official: stored copy → fetch from Factus on demand → branded fallback.
             buffer = this.storage.read(tenantId, inv.id, 'pdf');
             if (!buffer && inv.provider === 'factus' && inv.invoiceNumber) {
-                buffer = await this.factus.downloadPdf(inv.invoiceNumber).catch(() => null);
+                buffer = await this.factus.downloadPdf(inv.invoiceNumber, inv.type === 'credit_note' ? 'credit_note' : 'invoice').catch(() => null);
                 if (buffer) this.storage.save(tenantId, inv.id, 'pdf', buffer);
             }
             if (!buffer) {
@@ -323,7 +323,7 @@ export class FiscalController {
         if (inv.provider !== 'factus') throw new NotFoundException({ error: 'xml_unavailable' });
         let buffer = this.storage.read(tenantId, inv.id, 'xml');
         if (!buffer && inv.provider === 'factus' && inv.invoiceNumber) {
-            buffer = await this.factus.downloadXml(inv.invoiceNumber).catch(() => null);
+            buffer = await this.factus.downloadXml(inv.invoiceNumber, inv.type === 'credit_note' ? 'credit_note' : 'invoice').catch(() => null);
             if (buffer) this.storage.save(tenantId, inv.id, 'xml', buffer);
         }
         if (!buffer) throw new NotFoundException({ error: 'xml_unavailable' });

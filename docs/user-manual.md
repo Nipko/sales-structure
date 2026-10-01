@@ -2046,6 +2046,17 @@ sandbox, una cuenta marcada como interna o un movimiento sin contraprestación q
 registrado como omitido y no consume numeración. Si falta configuración fiscal, el
 documento debe quedar bloqueado y visible para reintento; no se considera emitido.
 
+La clasificación de cuenta propia se conserva con el pago. Marcar una cuenta como
+propia después de una venta real no borra sus documentos ni cambia la clasificación
+de ese cobro anterior. Los estados **Omitida** y **Anulada** no se reemiten mediante
+el reintento ordinario.
+
+Para suscripciones internacionales cobradas por Stripe, el modo fiscal Colombia
+puede conservar simultáneamente Factus para Colombia y el emisor LLC para el
+exterior. La LLC emite un recibo comercial y, para devoluciones, una nota de crédito
+comercial. Esos documentos no tienen CUFE ni validación DIAN y no acreditan por sí
+solos el cumplimiento tributario de todos los países.
+
 ---
 
 # 21. Adaptación por Industria — Verticales

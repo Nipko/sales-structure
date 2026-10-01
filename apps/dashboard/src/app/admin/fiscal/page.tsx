@@ -37,6 +37,28 @@ type AdminInvoice = {
     failureReason?: string | null; issuedAt?: string | null; createdAt: string;
 };
 
+type FactusRange = {
+    configuredId: string | null; id?: number | string | null; document?: string; prefix?: string;
+    from?: number | string; to?: number | string; current?: number | string;
+    resolutionNumber?: string | null; startDate?: string | null; endDate?: string | null;
+    isActive?: boolean;
+};
+
+type FactusHealth = {
+    ok: boolean; message: string; authenticated?: boolean;
+    apiEnvironment?: string; configuredEnvironment?: string;
+    numberingRange?: FactusRange | null; creditNumberingRange?: FactusRange | null;
+    blockers?: string[];
+};
+
+function rangeDocumentKind(range: any): "invoice" | "credit" | null {
+    const document = String(range.document?.name ?? range.document ?? "")
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    if (document === "21" || document === "factura de venta") return "invoice";
+    if (["22", "nota credito", "nota de credito"].includes(document)) return "credit";
+    return null;
+}
+
 export default function FiscalAdminPage() {
     const t = useTranslations("fiscalAdmin");
     const tc = useTranslations("common");
@@ -51,7 +73,7 @@ export default function FiscalAdminPage() {
     const [saved, setSaved] = useState(false);
     const [error, setError] = useState("");
     const [confirmUsRemote, setConfirmUsRemote] = useState(false);
-    const [health, setHealth] = useState<{ ok: boolean; message: string } | null>(null);
+    const [health, setHealth] = useState<FactusHealth | null>(null);
     const [ranges, setRanges] = useState<any[] | null>(null);
     const [busy, setBusy] = useState(false);
     const [testResult, setTestResult] = useState<any>(null);
@@ -83,7 +105,7 @@ export default function FiscalAdminPage() {
     }, []);
 
     const doSave = async (cfg: FiscalConfig) => {
-        setSaving(true); setError("");
+        setSaving(true); setError(""); setHealth(null);
         try {
             const res = await api.updateFiscalConfig(cfg as any);
             if (res.success) { setConfig(res.data as FiscalConfig); setSaved(true); setTimeout(() => setSaved(false), 3000); }
@@ -129,10 +151,26 @@ export default function FiscalAdminPage() {
 
     const testFactus = async () => {
         setBusy(true); setHealth(null);
-        const res = await api.getFactusHealth();
-        if (res.success) setHealth(res.data as any);
-        else setHealth({ ok: false, message: res.error || "error" });
-        setBusy(false);
+        try {
+            const res = await api.getFactusHealth();
+            if (res.success) setHealth(res.data as FactusHealth);
+            else setHealth({ ok: false, message: res.error || tc("connectionError") });
+        } catch { setHealth({ ok: false, message: tc("connectionError") }); }
+        finally { setBusy(false); }
+    };
+
+    const canTestInvoice = !!health?.ok
+        && health.apiEnvironment === "sandbox"
+        && health.configuredEnvironment === "sandbox"
+        && config?.factusEnvironment === "sandbox"
+        && String(health.numberingRange?.configuredId || "") === String(config?.factusNumberingRangeId || "");
+
+    const testInvoice = async () => {
+        if (busy || !canTestInvoice) return;
+        setBusy(true); setTestResult(null);
+        try { setTestResult(await api.testFiscalInvoice()); }
+        catch { setTestResult({ success: false, error: tc("connectionError") }); }
+        finally { setBusy(false); }
     };
 
     const loadRanges = async () => {
@@ -156,6 +194,8 @@ export default function FiscalAdminPage() {
         pending: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
         failed: "bg-red-500/10 text-red-600 dark:text-red-400",
         cancelled: "bg-neutral-500/10 text-neutral-500",
+        skipped: "bg-neutral-500/10 text-neutral-500",
+        blocked_config: "bg-amber-500/10 text-amber-700 dark:text-amber-400",
     } as Record<string, string>)[s] || "bg-neutral-500/10 text-neutral-500";
 
     const sel = "h-10 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-3 text-sm text-neutral-900 dark:text-neutral-100 outline-none focus:border-indigo-500 cursor-pointer";
@@ -246,10 +286,10 @@ export default function FiscalAdminPage() {
                             <label className={lbl}>{t("numberingRangeId")}</label>
                             <select value={config.factusNumberingRangeId || ""} onChange={(e) => setConfig({ ...config, factusNumberingRangeId: e.target.value })} className={cn(sel, "w-full")}>
                                 <option value="">{t("rangePickNone")}</option>
-                                {(ranges || []).map((r: any) => (
-                                    <option key={r.id} value={String(r.id)}>{r.id} · {r.document} ({r.prefix}){r.is_active ? "" : " · inactivo"}</option>
+                                {(ranges || []).filter(r => rangeDocumentKind(r) === "invoice").map((r: any) => (
+                                    <option key={r.id} value={String(r.id)}>{r.id} · {r.document} ({r.prefix}){Number(r.is_active) === 1 ? "" : ` · ${t("rangeInactive")}`}</option>
                                 ))}
-                                {config.factusNumberingRangeId && !(ranges || []).some((r: any) => String(r.id) === String(config.factusNumberingRangeId)) && (
+                                {config.factusNumberingRangeId && !(ranges || []).some((r: any) => rangeDocumentKind(r) === "invoice" && String(r.id) === String(config.factusNumberingRangeId)) && (
                                     <option value={config.factusNumberingRangeId}>{config.factusNumberingRangeId}</option>
                                 )}
                             </select>
@@ -258,10 +298,10 @@ export default function FiscalAdminPage() {
                             <label className={lbl}>{t("creditNumberingRangeId")}</label>
                             <select value={config.factusCreditNumberingRangeId || ""} onChange={(e) => setConfig({ ...config, factusCreditNumberingRangeId: e.target.value })} className={cn(sel, "w-full")}>
                                 <option value="">{t("rangePickNoneOptional")}</option>
-                                {(ranges || []).map((r: any) => (
+                                {(ranges || []).filter(r => rangeDocumentKind(r) === "credit").map((r: any) => (
                                     <option key={r.id} value={String(r.id)}>{r.id} · {r.document} ({r.prefix})</option>
                                 ))}
-                                {config.factusCreditNumberingRangeId && !(ranges || []).some((r: any) => String(r.id) === String(config.factusCreditNumberingRangeId)) && (
+                                {config.factusCreditNumberingRangeId && !(ranges || []).some((r: any) => rangeDocumentKind(r) === "credit" && String(r.id) === String(config.factusCreditNumberingRangeId)) && (
                                     <option value={config.factusCreditNumberingRangeId}>{config.factusCreditNumberingRangeId}</option>
                                 )}
                             </select>
@@ -327,6 +367,8 @@ export default function FiscalAdminPage() {
                             <option value="pending">{t("status.pending")}</option>
                             <option value="failed">{t("status.failed")}</option>
                             <option value="cancelled">{t("status.cancelled")}</option>
+                            <option value="skipped">{t("status.skipped")}</option>
+                            <option value="blocked_config">{t("status.blocked_config")}</option>
                         </select>
                         <button onClick={loadInvoices} className="flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200"><RefreshCw size={14} /> {t("refresh")}</button>
                     </div>
@@ -352,7 +394,7 @@ export default function FiscalAdminPage() {
                                             <td className="py-2.5 pr-3 font-mono text-xs">{inv.invoiceNumber || "—"}</td>
                                             <td className="py-2.5 pr-3">
                                                 <span className={cn("inline-block rounded-full px-2 py-0.5 text-xs font-medium", statusBadge(inv.status))}>{t(`status.${inv.status}`)}</span>
-                                                {inv.status === "failed" && inv.failureReason && <span className="ml-1 block max-w-[220px] truncate text-[11px] text-red-500" title={inv.failureReason}>{inv.failureReason}</span>}
+                                                {(inv.status === "failed" || inv.status === "blocked_config") && inv.failureReason && <span className="ml-1 block max-w-[220px] truncate text-[11px] text-neutral-500" title={inv.failureReason}>{inv.failureReason}</span>}
                                             </td>
                                             <td className="py-2.5 pr-3">{money(inv.amountCents, inv.currency)}</td>
                                             <td className="py-2.5 pr-3 text-neutral-500">{new Date(inv.issuedAt || inv.createdAt).toLocaleDateString("es-CO")}</td>
@@ -364,7 +406,7 @@ export default function FiscalAdminPage() {
                                                             {inv.provider === "factus" && <button title={t("xml")} onClick={() => api.downloadFiscalInvoice(inv.tenantId, inv.id, "xml")} className="text-neutral-400 hover:text-neutral-700"><FileCode size={15} /></button>}
                                                         </>
                                                     )}
-                                                    {(inv.status === "failed" || inv.status === "pending") && (
+                                                    {(inv.status === "failed" || inv.status === "pending" || inv.status === "blocked_config") && (
                                                         <>
                                                             <button title={t("retry")} disabled={busy} onClick={() => retry(inv.id)} className="flex items-center gap-1 text-xs text-amber-600 hover:text-amber-800 disabled:opacity-50"><RotateCw size={14} /> {t("retry")}</button>
                                                             {!inv.cufe && !inv.invoiceNumber && (
@@ -376,7 +418,7 @@ export default function FiscalAdminPage() {
                                                         acción visible en esas filas y gastaba el consecutivo
                                                         que se acababa de decidir no gastar. */}
                                                     {inv.provider === "factus" && !inv.cufe
-                                                        && inv.status !== "cancelled" && inv.status !== "skipped" && (
+                                                        && inv.status !== "cancelled" && inv.status !== "skipped" && inv.status !== "blocked_config" && (
                                                         <button title={t("reissueHint")} disabled={busy} onClick={() => reissue(inv)} className="flex items-center gap-1 text-xs text-red-600 hover:text-red-800 disabled:opacity-50"><RefreshCw size={14} /> {t("reissue")}</button>
                                                     )}
                                                 </div>
@@ -393,14 +435,41 @@ export default function FiscalAdminPage() {
             {/* ── Factus ── */}
             {tab === "factus" && (
                 <div className="space-y-5 rounded-xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-wrap items-center gap-3">
                         <button onClick={testFactus} disabled={busy} className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"><PlugZap size={16} /> {t("testConnection")}</button>
                         {health && (
-                            <span className={cn("flex items-center gap-1 text-sm", health.ok ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400")}>
-                                {health.ok ? <CheckCircle2 size={16} /> : <XCircle size={16} />} {health.message}
+                            <span className={cn("flex items-center gap-1 text-sm", health.authenticated ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400")}>
+                                {health.authenticated ? <CheckCircle2 size={16} /> : <XCircle size={16} />}
+                                {health.authenticated ? t("factusAuthenticated") : t("factusAuthenticationUnconfirmed")}
                             </span>
                         )}
                     </div>
+
+                    {health && (
+                        <div role="status" className={cn("space-y-3 rounded-lg border p-4 text-sm", health.ok ? "border-emerald-200 dark:border-emerald-500/20" : "border-amber-200 dark:border-amber-500/20")}>
+                            <p className="font-medium">{health.ok ? t("factusReady") : t("factusNeedsReview")}</p>
+                            <p className="text-neutral-600 dark:text-neutral-400">{health.message}</p>
+                            <dl className="grid gap-3 sm:grid-cols-2">
+                                <div><dt className="text-xs text-neutral-500">{t("apiEnvironment")}</dt><dd>{health.apiEnvironment === "sandbox" ? t("sandbox") : health.apiEnvironment === "production" ? t("production") : t("notVerified")}</dd></div>
+                                <div><dt className="text-xs text-neutral-500">{t("configuredEnvironment")}</dt><dd>{health.configuredEnvironment === "sandbox" ? t("sandbox") : health.configuredEnvironment === "production" ? t("production") : t("notVerified")}</dd></div>
+                            </dl>
+                            {[{ label: t("numberingRangeId"), range: health.numberingRange }, { label: t("creditNumberingRangeId"), range: health.creditNumberingRange }].map(({ label, range }) => range && (range.configuredId || range.id) && (
+                                <div key={label} className="rounded-lg bg-neutral-50 p-3 dark:bg-neutral-800/50">
+                                    <p className="font-medium">{label} · {range.configuredId || range.id}{range.prefix ? ` · ${range.prefix}` : ""}</p>
+                                    {range.id ? (
+                                        <dl className="mt-2 grid gap-3 text-xs sm:grid-cols-2 lg:grid-cols-4">
+                                            <div><dt className="text-neutral-500">{t("coDianResolution")}</dt><dd>{range.resolutionNumber || "—"}</dd></div>
+                                            <div><dt className="text-neutral-500">{t("rangeValidity")}</dt><dd>{range.startDate || "—"} – {range.endDate || "—"}</dd></div>
+                                            <div><dt className="text-neutral-500">{t("rangeRange")}</dt><dd>{range.from ?? "—"}–{range.to ?? "—"}</dd></div>
+                                            <div><dt className="text-neutral-500">{t("rangeCurrent")}</dt><dd>{range.current ?? "—"}</dd></div>
+                                        </dl>
+                                    ) : <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">{t("rangeNotFound")}</p>}
+                                </div>
+                            ))}
+                            {!!health.blockers?.length && <ul className="list-disc space-y-1 pl-5 text-amber-800 dark:text-amber-300">{health.blockers.map((blocker) => <li key={blocker}>{t.has(`factusBlockers.${blocker}`) ? t(`factusBlockers.${blocker}`) : t("factusUnrecognizedBlocker")}</li>)}</ul>}
+                            <p className="text-xs text-neutral-500">{t("factusDiagnosticHint")}</p>
+                        </div>
+                    )}
 
                     {/* Validación: preview de generación + emisión de prueba */}
                     <div className="rounded-lg border border-teal-200 p-4 dark:border-teal-500/20">
@@ -409,10 +478,11 @@ export default function FiscalAdminPage() {
                             <button onClick={() => api.previewFiscalInvoice()} className="flex items-center gap-2 rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800">
                                 <FileText size={15} /> {t("previewInvoice")}
                             </button>
-                            <button onClick={async () => { setBusy(true); setTestResult(null); const r = await api.testFiscalInvoice(); setTestResult(r); setBusy(false); }} disabled={busy} className="flex items-center gap-2 rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 disabled:opacity-60">
+                            <button onClick={testInvoice} disabled={busy || !canTestInvoice} aria-describedby="fiscal-test-requirement" className="flex items-center gap-2 rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 disabled:opacity-60">
                                 <Receipt size={15} /> {t("testInvoice")}
                             </button>
                         </div>
+                        <p id="fiscal-test-requirement" className="mt-2 text-xs text-neutral-500">{t("testSandboxOnly")}</p>
                         {testResult && (() => {
                             const d = testResult.data || {};
                             if (testResult.success && d.status === "issued") {
@@ -453,7 +523,7 @@ export default function FiscalAdminPage() {
                                 <div className="mt-4 overflow-x-auto">
                                     <table className="w-full text-sm">
                                         <thead><tr className="border-b border-neutral-200 text-left text-xs text-neutral-500 dark:border-neutral-800">
-                                            <th className="py-2 pr-3 font-medium">ID</th><th className="py-2 pr-3 font-medium">{t("rangeDocument")}</th><th className="py-2 pr-3 font-medium">{t("rangePrefix")}</th><th className="py-2 pr-3 font-medium">{t("rangeRange")}</th><th className="py-2 pr-3 font-medium">{t("rangeActive")}</th><th className="py-2 font-medium"></th>
+                                            <th className="py-2 pr-3 font-medium">ID</th><th className="py-2 pr-3 font-medium">{t("rangeDocument")}</th><th className="py-2 pr-3 font-medium">{t("rangePrefix")}</th><th className="py-2 pr-3 font-medium">{t("rangeRange")}</th><th className="py-2 pr-3 font-medium">{t("coDianResolution")}</th><th className="py-2 pr-3 font-medium">{t("rangeValidity")}</th><th className="py-2 pr-3 font-medium">{t("rangeCurrent")}</th><th className="py-2 pr-3 font-medium">{t("rangeActive")}</th><th className="py-2 font-medium"></th>
                                         </tr></thead>
                                         <tbody>
                                             {ranges.map((r: any) => (
@@ -462,8 +532,11 @@ export default function FiscalAdminPage() {
                                                     <td className="py-2.5 pr-3">{r.document}</td>
                                                     <td className="py-2.5 pr-3">{r.prefix}</td>
                                                     <td className="py-2.5 pr-3 text-neutral-500">{r.from}–{r.to}</td>
-                                                    <td className="py-2.5 pr-3">{r.is_active ? <CheckCircle2 size={14} className="text-emerald-500" /> : <XCircle size={14} className="text-neutral-400" />}</td>
-                                                    <td className="py-2.5">{String(r.id) === String(config?.factusNumberingRangeId) ? <span className="text-xs font-semibold text-emerald-600">{t("rangeInUse")}</span> : <button onClick={() => selectRange(r.id)} className="text-xs text-teal-600 hover:underline">{t("useThis")}</button>}</td>
+                                                    <td className="py-2.5 pr-3">{r.resolution_number || "—"}</td>
+                                                    <td className="py-2.5 pr-3 whitespace-nowrap text-xs">{r.start_date || "—"} – {r.end_date || "—"}</td>
+                                                    <td className="py-2.5 pr-3">{r.current ?? "—"}</td>
+                                                    <td className="py-2.5 pr-3">{Number(r.is_active) === 1 ? <CheckCircle2 size={14} className="text-emerald-500" aria-label={t("rangeActive")} /> : <XCircle size={14} className="text-neutral-400" aria-label={t("rangeInactive")} />}</td>
+                                                    <td className="py-2.5">{String(r.id) === String(config?.factusNumberingRangeId) ? <span className="text-xs font-semibold text-emerald-600">{t("rangeInUse")}</span> : rangeDocumentKind(r) === "invoice" && <button onClick={() => selectRange(r.id)} className="text-xs text-teal-600 hover:underline">{t("useThis")}</button>}</td>
                                                 </tr>
                                             ))}
                                         </tbody>

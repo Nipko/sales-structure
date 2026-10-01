@@ -61,7 +61,7 @@ describe('FiscalInvoiceService — pagos que NO son una venta', () => {
                     },
                 }),
             },
-            fiscalInvoice: { findUnique: jest.fn().mockResolvedValue(null) },
+            fiscalInvoice: { findUnique: jest.fn().mockResolvedValue(null), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
         };
         const config = { getConfig: jest.fn().mockResolvedValue({ mode: opts.fiscalMode ?? 'CO_LOCAL', usIssuer: opts.usIssuer }) };
         const actualFactory = new FiscalProviderFactory({ name: 'factus' } as any, { name: 'us_remote' } as any);
@@ -106,6 +106,26 @@ describe('FiscalInvoiceService — pagos que NO son una venta', () => {
         await h.service.onPaymentSucceeded(event as any);
 
         expect(h.created[0].metadata.skipReason).toBe('tenant_internal_use');
+        expect(h.queue.add).not.toHaveBeenCalled();
+    });
+
+    it('turns a configuration block into a durable skip for an internal payment', async () => {
+        const h = makeHarness({ tenantInternalAtPayment: true, railEnvironment: 'production' });
+        h.prisma.fiscalInvoice.findUnique.mockResolvedValue({ id: 'fi-blocked', status: 'blocked_config', metadata: { blockReason: 'fiscal_provider_not_ready' } });
+        await h.service.onPaymentSucceeded(event as any);
+        expect(h.prisma.fiscalInvoice.updateMany).toHaveBeenCalledWith({
+            where: { id: 'fi-blocked', status: 'blocked_config', attempts: 0, providerRef: null, invoiceNumber: null, cufe: null },
+            data: { status: 'skipped', failureReason: null,
+                metadata: { blockReason: 'fiscal_provider_not_ready', skipReason: 'tenant_internal_use' } },
+        });
+        expect(h.queue.add).not.toHaveBeenCalled();
+    });
+
+    it('keeps an ambiguous issuance blocked for review even if the tenant is internal', async () => {
+        const h = makeHarness({ tenantInternalAtPayment: true, railEnvironment: 'production' });
+        h.prisma.fiscalInvoice.findUnique.mockResolvedValue({ id: 'fi-blocked', status: 'blocked_config', failureReason: 'issuance_outcome_unknown' });
+        await h.service.onPaymentSucceeded(event as any);
+        expect(h.prisma.fiscalInvoice.updateMany).not.toHaveBeenCalled();
         expect(h.queue.add).not.toHaveBeenCalled();
     });
 

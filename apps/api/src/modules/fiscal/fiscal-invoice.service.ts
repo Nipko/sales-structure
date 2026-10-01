@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { OnEvent } from '@nestjs/event-emitter';
 import { Queue } from 'bullmq';
@@ -125,6 +125,7 @@ export class FiscalInvoiceService {
                 this.logger.debug(`[Fiscal] Invoice already exists for payment ${payment.id} — skipping`);
                 return;
             }
+            if (existing?.failureReason === 'issuance_outcome_unknown') return;
 
             // A DIAN consecutive is a finite, paid resource, and an invoice
             // asserts a SALE. These two cases are not sales, so they get a
@@ -150,6 +151,13 @@ export class FiscalInvoiceService {
             if (skipReason) {
                 if (!existing) {
                     await this.recordSkippedIssuance(tenantId, payment, provider?.name ?? 'unresolved', skipReason);
+                } else {
+                    await this.prisma.fiscalInvoice.updateMany({
+                        where: { id: existing.id, status: 'blocked_config', attempts: 0,
+                            providerRef: null, invoiceNumber: null, cufe: null },
+                        data: { status: 'skipped', failureReason: null,
+                            metadata: { ...(existing.metadata as object), skipReason } as any },
+                    });
                 }
                 return;
             }
@@ -189,8 +197,8 @@ export class FiscalInvoiceService {
             }
 
             if (existing?.status === 'blocked_config') {
-                await this.prisma.fiscalInvoice.update({
-                    where: { id: existing.id },
+                const updated = await this.prisma.fiscalInvoice.updateMany({
+                    where: { id: existing.id, status: 'blocked_config' },
                     data: {
                         status: 'pending',
                         provider: provider.name,
@@ -198,6 +206,7 @@ export class FiscalInvoiceService {
                         acquirerSnapshot: (this.extractAcquirer(tenant.settings) ?? undefined) as any,
                     },
                 });
+                if (!updated.count) return;
                 await this.enqueue({ fiscalInvoiceId: existing.id, kind: 'issue' });
                 return;
             }
@@ -317,17 +326,22 @@ export class FiscalInvoiceService {
         // no gastar. 'issued' ya consumió el suyo.
         if (!inv || ['issued', 'cancelled', 'skipped'].includes(inv.status)) return false;
         if (inv.status === 'blocked_config') {
-            if (!inv.paymentId) return false;
-            await this.onPaymentSucceeded({ tenantId: inv.tenantId, paymentId: inv.paymentId });
-            const fresh = await this.prisma.fiscalInvoice.findUnique({ where: { id: inv.id } });
-            return fresh?.status === 'pending';
+            if (inv.type === 'credit_note') {
+                try { await this.assertCanReissue({ ...inv, status: 'pending' }); }
+                catch (error) { if (error instanceof BadRequestException) return false; throw error; }
+            } else {
+                if (!inv.paymentId) return false;
+                await this.onPaymentSucceeded({ tenantId: inv.tenantId, paymentId: inv.paymentId });
+                const fresh = await this.prisma.fiscalInvoice.findUnique({ where: { id: inv.id } });
+                return fresh?.status === 'pending';
+            }
         }
-        const updated = await this.withTenantPurgeGate(inv.tenantId, (tx) =>
-            tx.fiscalInvoice.update({
-                where: { id: fiscalInvoiceId },
+        const updated = await this.withTenantPurgeGate<{ count: number }>(inv.tenantId, (tx) =>
+            tx.fiscalInvoice.updateMany({
+                where: { id: fiscalInvoiceId, status: inv.status },
                 data: { status: 'pending', failureReason: null },
             }));
-        if (!updated) return false;
+        if (!updated?.count) return false;
         await this.enqueue({ fiscalInvoiceId, kind: inv.type === 'credit_note' ? 'credit_note' : 'issue' });
         this.logger.log(`[Fiscal] Re-queued ${inv.type} ${fiscalInvoiceId} for retry`);
         return true;
@@ -343,25 +357,99 @@ export class FiscalInvoiceService {
      * crédito, no un cambio de estado.
      */
     async cancelPending(fiscalInvoiceId: string, reason: string): Promise<
-        { ok: true } | { ok: false; error: 'not_found' | 'already_issued' }
+        { ok: true } | { ok: false; error: 'not_found' | 'already_issued' | 'issuance_outcome_unknown' }
     > {
-        const inv = await this.prisma.fiscalInvoice.findUnique({ where: { id: fiscalInvoiceId } });
-        if (!inv) return { ok: false, error: 'not_found' };
-        if (inv.cufe || inv.invoiceNumber || inv.status === 'issued') {
-            return { ok: false, error: 'already_issued' };
-        }
-        await this.prisma.fiscalInvoice.update({
-            where: { id: fiscalInvoiceId },
-            data: {
-                status: 'cancelled',
-                metadata: { ...(inv.metadata as any ?? {}), cancelReason: reason } as any,
-            },
+        return this.withIssuanceLock(fiscalInvoiceId, async () => {
+            const inv = await this.prisma.fiscalInvoice.findUnique({ where: { id: fiscalInvoiceId } });
+            if (!inv) return { ok: false, error: 'not_found' };
+            if (inv.cufe || inv.invoiceNumber || inv.status === 'issued') {
+                return { ok: false, error: 'already_issued' };
+            }
+            // A timeout can hide a document already accepted by Factus. Local
+            // absence of its number is not proof that no consecutive exists.
+            if (inv.providerRef || inv.attempts > 0) return { ok: false, error: 'issuance_outcome_unknown' };
+            await this.prisma.fiscalInvoice.update({
+                where: { id: fiscalInvoiceId },
+                data: {
+                    status: 'cancelled',
+                    metadata: { ...(inv.metadata as any ?? {}), cancelReason: reason } as any,
+                },
         });
         this.logger.warn(
             `[Fiscal] Invoice ${fiscalInvoiceId} (tenant=${inv.tenantId}) cancelled before issuance — ${reason}. `
             + 'No DIAN consecutive was consumed.',
         );
         return { ok: true };
+        });
+    }
+
+    /** Cancellation and re-emission must serialize with the provider call. */
+    async withIssuanceLock<T>(fiscalInvoiceId: string, work: () => Promise<T>): Promise<T> {
+        const key = `lock:fiscal:issue:${fiscalInvoiceId}`;
+        const token = await this.redis.acquireLockToken(key, 30 * 60).catch(() => null);
+        if (!token) throw new ConflictException({
+            error: 'fiscal_issuance_in_progress',
+            message: 'La factura está en proceso de emisión. Espera y vuelve a consultar su estado.',
+        });
+        try { return await work(); }
+        finally { await this.redis.releaseLockToken(key, token).catch(() => undefined); }
+    }
+
+    /** Re-emission cannot bypass a blocked payment or change its historical classification. */
+    async assertCanReissue(inv: any): Promise<void> {
+        if (inv.status === 'blocked_config') throw new BadRequestException({
+            error: 'fiscal_configuration_blocked',
+            message: 'Corrige la configuración y usa Reintentar antes de volver a emitir.',
+        });
+        const original = inv.type === 'credit_note' && inv.relatedInvoiceId
+            ? await this.prisma.fiscalInvoice.findUnique({ where: { id: inv.relatedInvoiceId } })
+            : inv;
+        if (inv.type === 'credit_note') {
+            // An accepted document may still require a corrective note even if
+            // its original sale classification was wrong. The document, not
+            // today's tenant flag or the old payment environment, owns this debt.
+            if (!original || original.id === inv.id || original.tenantId !== inv.tenantId
+                || original.provider !== inv.provider || original.status !== 'issued'
+                || !original.providerRef || (original.provider === 'factus' && !original.cufe)
+                || !Number.isSafeInteger(inv.amountCents) || inv.amountCents <= 0
+                || inv.amountCents > original.amountCents) {
+                throw new BadRequestException({ error: 'invalid_original_fiscal_document' });
+            }
+            const cfg = await this.config.getConfig();
+            if (inv.provider === 'factus' && !this.isProviderReady('factus', cfg, 'production')) {
+                throw new BadRequestException({ error: 'fiscal_configuration_blocked' });
+            }
+            return;
+        }
+        const payment = original?.paymentId
+            ? await this.prisma.billingPayment.findUnique({ where: { id: original.paymentId } })
+            : null;
+        if (!payment || payment.tenantId !== inv.tenantId) throw new BadRequestException({ error: 'fiscal_payment_not_found' });
+        if (!['succeeded', 'refunded'].includes(payment.status)) {
+            throw new BadRequestException({ error: 'fiscal_payment_not_settled' });
+        }
+        const tenant = await this.prisma.tenant.findUnique({
+            where: { id: inv.tenantId }, select: { isInternal: true, billingCountry: true },
+        });
+        if (!tenant) throw new BadRequestException({ error: 'tenant_not_found' });
+        const metadata = payment.metadata as any ?? {};
+        const internal = Object.prototype.hasOwnProperty.call(metadata, 'tenantInternalAtPayment')
+            ? metadata.tenantInternalAtPayment === true : tenant.isInternal;
+        if (internal || metadata.railEnvironment === 'sandbox' || payment.amountCents <= 0) {
+            throw new BadRequestException({ error: 'deliberately_not_issued',
+                reason: internal ? 'tenant_internal_use' : metadata.railEnvironment === 'sandbox' ? 'test_mode_payment' : 'no_consideration',
+                message: 'Este cobro no corresponde a una venta facturable.' });
+        }
+        const historicalCountry = Object.prototype.hasOwnProperty.call(metadata, 'billingCountryAtPayment')
+            ? metadata.billingCountryAtPayment : payment.provider === 'stripe' ? null : tenant.billingCountry;
+        const country = typeof historicalCountry === 'string' ? historicalCountry.trim().toUpperCase() : '';
+        const countryInvalid = !/^[A-Z]{2}$/.test(country)
+            || (payment.provider === 'stripe' && country === 'CO')
+            || (inv.provider === 'factus' && (payment.provider === 'stripe' || country !== 'CO'));
+        const cfg = await this.config.getConfig();
+        if (countryInvalid || !this.isProviderReady(inv.provider, cfg, metadata.railEnvironment)) {
+            throw new BadRequestException({ error: 'fiscal_configuration_blocked', message: 'El pago o el emisor fiscal requiere revisión antes de volver a emitir.' });
+        }
     }
 
     private async enqueue(data: FiscalJobData): Promise<void> {
@@ -507,7 +595,8 @@ export class FiscalInvoiceService {
                FROM public.fiscal_invoices f
                JOIN public.billing_payments p ON p.id = f.payment_id
                JOIN public.tenants t ON t.id = f.tenant_id
-              WHERE f.status = 'blocked_config'
+               WHERE f.status = 'blocked_config'
+                 AND COALESCE(f.failure_reason, '') <> 'issuance_outcome_unknown'
                 AND p.metadata->>'railEnvironment' = 'production'
                 AND (
                     p.provider <> 'stripe'

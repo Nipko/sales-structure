@@ -254,8 +254,8 @@ settlement idempotente actualice pago, acceso y fiscal.
 `billing.payment.succeeded` crea una decisión fiscal durable uno-a-uno por pago:
 
 - tenant Colombia + riel producción + venta real + Factus listo: FEV DIAN;
-- `tenant.isInternal=true`: `skipped / tenant_internal_use`, sin factura porque
-  no hay venta a documentar;
+- `payment.metadata.tenantInternalAtPayment=true`: `skipped / tenant_internal_use`,
+  sin factura. Para pagos anteriores a ese snapshot se consulta `tenant.isInternal`;
 - pago Wompi sandbox: `skipped / test_mode_payment`, nunca una factura DIAN real;
 - monto sin contraprestación: `skipped / no_consideration`;
 - proveedor/config fiscal faltante: `blocked_config`, visible y reintentable.
@@ -272,6 +272,35 @@ Antes del go-live:
 - cobro sandbox confirma `skipped`, no emisión;
 - cobro real mínimo confirma `issued`, CUFE, XML/PDF y correo;
 - reversa aprobada confirma nota crédito cuando corresponda.
+
+**Diagnóstico del superadmin:** `Facturación electrónica → Factus → Probar conexión`
+consulta autenticación, entorno y rangos sin emitir. Una autenticación correcta
+no acredita por sí sola habilitación DIAN. Revisar que el ambiente declarado
+coincida con la API, que los rangos de factura y nota crédito correspondan al
+documento y estén activos, vigentes y con numeración disponible. La habilitación
+del emisor se comprueba en Factus/DIAN.
+
+**Activación y recuperación:** cambiar de sandbox a producción puede permitir
+que el conciliador recupere pagos históricos sin documento o en `blocked_config`.
+Revisar esas filas antes de cambiar el entorno. Marcar un tenant como propio hoy
+no elimina documentos ni reclasifica ventas cuyo snapshot indicaba que eran
+comerciales. Anular una factura pendiente y reemitirla comparten el bloqueo del
+worker; los trabajos antiguos no deben revivir documentos anulados u omitidos.
+
+**Pruebas:** la emisión ficticia sólo está disponible si tanto la API como la
+configuración son sandbox. En producción, usar la vista previa para revisar el
+PDF. La validación de extremo a extremo usa una venta real identificada y su
+documento persistido; nunca el botón de emisión ficticia. Las notas crédito
+conservan el tratamiento tributario y el emisor del documento original.
+
+**Exterior:** mantener `CO_LOCAL` para combinar Factus en Colombia con recibos
+comerciales de la LLC para pagos internacionales Stripe. El emisor LLC necesita
+razón social y EIN/Tax ID. Esta integración no implementa automáticamente los
+regímenes de facturación electrónica o impuestos de cada país del comprador.
+
+Referencias: [habilitación DIAN](https://micrositios.dian.gov.co/sistema-de-facturacion-electronica/requerimientos-para-ser-facturador-electronico/),
+[rangos Factus](https://developers.factus.com.co/rangos-de-numeracion/facturaci%C3%B3n/obtener-rangos/)
+y [validación de notas crédito](https://developers.factus.com.co/notas-credito/crear-y-validar/).
 
 ### Retiro seguro del riel Mercado Pago de plataforma
 

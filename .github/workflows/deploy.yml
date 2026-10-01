@@ -385,6 +385,7 @@ jobs:
           apps/dashboard/src/lib/billing-refund-intent.spec.ts
           apps/dashboard/src/app/admin/billing-ops/billing-refund.a11y.spec.tsx
           apps/dashboard/src/app/admin/settings/billing/billing-refund.a11y.spec.tsx
+          apps/dashboard/src/app/admin/fiscal/factus-diagnostic.a11y.spec.tsx
 
       # Bloqueante desde ago 2026: el codebase quedó lint-clean (commit 64c46827,
       # 28 errores → 0). Es el único gate automático que atrapa la clase de bug
@@ -396,8 +397,8 @@ jobs:
           (cd apps/dashboard && npx eslint . --quiet)
           (cd apps/whatsapp && npx eslint "src/**/*.ts" --quiet)
 
-      # Wompi retains its internal renewal engine. Stripe refund recovery must
-      # also pass before deploying any billing or provider changes.
+      # Billing settlement, internal-tenant exclusions and fiscal documents must
+      # pass together before deploying any payment or issuer changes.
       - name: Billing contract tests
         run: |
           cd apps/api
@@ -408,7 +409,9 @@ jobs:
             src/modules/billing/stripe-billing.service.spec.ts \
             src/modules/billing/stripe-billing.safety.spec.ts \
             src/modules/billing/adapters/stripe.adapter.spec.ts \
-            src/modules/billing/adapters/stripe-webhook-signature.spec.ts
+            src/modules/billing/adapters/stripe-webhook-signature.spec.ts \
+            src/modules/tenants/tenants.service.spec.ts \
+            src/modules/fiscal
 
       - name: Prisma generate + migrate (ephemeral DB)
         run: |

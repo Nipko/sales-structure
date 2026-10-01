@@ -57,11 +57,12 @@ El anual internacional requiere un importe explícito, editable en Planes → In
 
 No se guardan secretos en este documento ni en el repositorio. La activación comercial requiere confirmar los datos del emisor, crear las credenciales y el webhook de la cuenta correcta, desplegar y completar una prueba controlada.
 
-### Comprobación de activación del 30 de septiembre
+### Comprobación de activación del 30 de septiembre de 2026
 
-- Producción devolvió `provider_disabled` para US y MX. Colombia continuó disponible con Wompi.
-- No estaban definidos `STRIPE_SECRET_KEY` ni `STRIPE_WEBHOOK_SECRET` en GitHub Secrets del repositorio ni del entorno `production`. Una clave creada en Stripe todavía debe conectarse al despliegue.
-- Los datos guardados del emisor LLC, precios anuales y la configuración de la cuenta Stripe requieren comprobación autenticada. No se deduce que falten a partir del catálogo público, que oculta ofertas mientras el proveedor está apagado.
+- Tras la activación, la configuración pública de US y MX devolvió HTTP 200 con Stripe, tarjeta y Checkout alojado. Los cuatro planes mensuales quedaron disponibles; los anuales continuaron deshabilitados por `annual_not_synchronized`. Colombia conservó Wompi en producción.
+- Se confirmó que `STRIPE_SECRET_KEY` y `STRIPE_WEBHOOK_SECRET` existen en GitHub Secrets y preceden al despliegue de `8bf66724`. La comprobación anterior que los consideraba ausentes queda sustituida por esta verificación.
+- Se guardaron los datos de PARALLEXT LLC, incluido su EIN, sin incluir identificadores fiscales ni secretos en el repositorio. Se aceptó el acuerdo de servicios con autorización expresa del titular.
+- La clave restringida tiene lectura de Payment Intents y el webhook está activo con los once eventos enumerados arriba. Estas comprobaciones no sustituyen una prueba de pago y entrega real del webhook, que sigue pendiente.
 - `GET /api/v1/billing-admin/provider-status` comprueba configuración local; no valida con Stripe la autenticidad de la clave, permisos o entregas del webhook.
 - Si se usa una clave restringida, comprobar en sandbox los permisos necesarios para Customers, Checkout Sessions, Subscriptions, Subscription Schedules, Products/Prices y Customer Portal, además de lectura de Invoices, Invoice Payments, PaymentIntents y Charges y lectura/escritura de Refunds. El checkout usa `price_data`; no exige crear manualmente un catálogo de productos en Stripe.
 

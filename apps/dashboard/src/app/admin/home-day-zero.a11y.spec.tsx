@@ -5,6 +5,8 @@ import { api } from "@/lib/api";
 import TrialCountdownBanner from "@/components/TrialCountdownBanner";
 import type { RestrictionInfo } from "@/app/admin/layout";
 import AdminDashboard from "./page";
+import { getOnboardingLandingSignal } from "@/lib/onboarding-guide-signal";
+import { QUALITY_HEALTH_REFRESH_EVENT } from "@/lib/quality-health-events";
 
 /**
  * Home during day 0: one guide, and it is the setup card.
@@ -45,6 +47,7 @@ jest.mock("@/lib/api", () => ({
         getAgentAssessment: jest.fn(),
         getBillingSubscription: jest.fn(),
         getTenants: jest.fn(),
+        getStages: jest.fn(),
         fetch: jest.fn(),
     },
 }));
@@ -190,6 +193,7 @@ beforeEach(() => {
     mockRole = "tenant_admin";
     mockOpenEveryRoute = false;
     mockPlanFeatures = null;
+    mockVertical.industry = "otro";
     mockUser = owner();
     // No recipe unless a test gives one: the wizard's default order, WhatsApp first.
     answerRecipeWith(undefined);
@@ -201,6 +205,7 @@ beforeEach(() => {
         success: true, data: { recentActivity: [], modelUsage: [{ model: "gpt-4o-mini", count: 12 }] },
     } as any);
     jest.mocked(api.getAgentAssessment).mockResolvedValue(assessment() as any);
+    jest.mocked(api.getStages).mockResolvedValue({ success: true, data: [] } as any);
     jest.mocked(api.getBillingSubscription).mockResolvedValue({
         success: true,
         data: { status: "trialing", trialEndsAt: new Date(Date.now() + 13.5 * 86_400_000).toISOString() },
@@ -482,6 +487,44 @@ describe("Home after the first real reply", () => {
             hasAnyChannel: true, connectedChannelTypes: ["whatsapp"], onboardingStage: "live", whatsappTriage: null,
         }) as any);
         jest.mocked(api.getAgentAssessment).mockResolvedValue(assessment("pass", "fail") as any);
+    });
+
+    it("keeps unfinished setup first and reveals general health when its tasks finish", async () => {
+        const screen = await renderHome();
+        try {
+            expect(homeSurfaces(screen.container)[0].getAttribute("aria-labelledby")).toBe("initial-setup-card-title");
+            const healthDetails = screen.container.querySelector("details");
+            expect(healthDetails?.querySelector("summary")?.textContent).toBe("Salud de tus agentes");
+            expect(healthDetails?.open).toBe(false);
+            expect(getOnboardingLandingSignal()).toBe("setup_card_and_health");
+            expect(screen.container.textContent).toContain("Actividad reciente");
+
+            jest.mocked(api.getAgentAssessment).mockResolvedValue(assessment("pass", "pass") as any);
+            await interact(() => window.dispatchEvent(new Event(QUALITY_HEALTH_REFRESH_EVENT)));
+            expect(screen.container.querySelector("#initial-setup-card-title")).toBeNull();
+            expect(screen.container.querySelector("details")).toBeNull();
+            expect(screen.container.querySelector("#mock-agent-health")).not.toBeNull();
+            expect(getOnboardingLandingSignal()).toBe("normal");
+        } finally { screen.unmount(); }
+    });
+
+    it("uses the runtime pipeline label and translates a standard fallback instead of printing slugs", async () => {
+        mockVertical.industry = "inmobiliaria";
+        jest.mocked(api.getStages).mockResolvedValue({ success: true, data: [
+            { id: "stage-1", slug: "visita_programada", name: "Visita programada" },
+        ] } as any);
+        jest.mocked(api.fetch).mockImplementation(async (path: string) => path.startsWith("/crm/leads/")
+            ? { success: true, data: [
+                { id: "lead-1", name: "Cliente A", stage: "visita_programada" },
+                { id: "lead-2", name: "Cliente B", stage: "nuevo" },
+            ] } : undefined as any);
+        const screen = await renderHome();
+        try {
+            expect(api.getStages).toHaveBeenCalledWith("tenant-1");
+            expect(screen.container.textContent).toContain("Visita programada");
+            expect(screen.container.textContent).toContain("Nuevo");
+            expect(screen.container.textContent).not.toContain("visita_programada");
+        } finally { screen.unmount(); }
     });
 
     it("brings the board back, with AI usage in plain words", async () => {

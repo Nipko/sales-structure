@@ -1210,6 +1210,7 @@
     }
   },
   "auth": {
+    "verificationDigit": "Dígito {position} del código de verificación",
     "login": "Iniciar sesión",
     "signup": "Crear cuenta",
     "logout": "Cerrar sesión",
@@ -2754,6 +2755,7 @@
       "logoUploading": "Subiendo...",
       "logoChooseFile": "Elegir imagen",
       "logoChangeFile": "Cambiar logo",
+      "logoFormats": "JPG, PNG, WebP o GIF. Máximo 5 MB.",
       "errors": {
         "companyNameRequired": "El nombre de la empresa es obligatorio",
         "saveFailed": "Error al guardar",
@@ -4502,11 +4504,12 @@
       "validating": "Validando…",
       "connectBtn": "Conectar bot",
       "successTitle": "¡Bot conectado!",
-      "successDesc": "Todo listo. Tu bot ya está recibiendo mensajes y tu agente los responde automáticamente.",
+      "successDesc": "Tu bot quedó conectado. Ahora envíale una pregunta para comprobar que tu agente responde.",
       "testInTelegram": "Probar en Telegram",
       "testHint": "Envía un mensaje a tu bot para comprobar que responde bien.",
       "tryItOut": "Prueba tu bot",
-      "tryItOutDesc": "Envía un mensaje a tu bot en Telegram para comprobar que todo funciona. Te responde tu agente de IA.",
+      "tryItOutDesc": "Abre el bot que quieres probar. Pulsa Iniciar o envía /start y luego una pregunta real de tu negocio. Comprueba que recibes la respuesta en Telegram; en Inbox puedes revisar la conversación.",
+      "openInbox": "Revisar conversación en Inbox",
       "openInTelegram": "Abrir en Telegram",
       "testSuccess": "Conexión verificada correctamente",
       "testReady": "Tu bot está listo para recibir mensajes",
@@ -6036,7 +6039,7 @@
     "strandedMandate": "{tenant} fue eliminado, pero {provider} conserva un mandato de cobro que no podemos cancelar desde acá. Cancelalo a mano en el proveedor o el cliente puede seguir siendo cobrado. Queda registrado en la auditoría de plataforma."
   },
   "onboarding": {
-    "paidPlanAfterSignup": "El plan {plan} requiere un medio de pago. Primero creamos tu cuenta sin acceso pagado; después continuarás de forma segura con {provider}. El plan solo se habilita tras la confirmación del proveedor.",
+    "paidPlanAfterSignup": "El plan {plan} requiere un medio de pago. Después de crear tu cuenta, completarás el pago de forma segura. El acceso al plan se activará cuando se confirme el pago.",
     "billingHandoffError": "La cuenta fue creada, pero no recibimos la intención de cobro del plan elegido. Abrí Configuración → Facturación o contactá a soporte; no se cambió tu plan por otro.",
     "step1Title": "Tu empresa",
     "step1Subtitle": "Cuéntanos sobre tu negocio",
@@ -6088,6 +6091,18 @@
     "agentsIncluded": "Agentes IA: {n}",
     "messagesIncluded": "Mensajes IA/mes: {n}",
     "channelsIncluded": "Canales: {n}",
+    "planChannels": {
+      "included": "Canales incluidos: {channels}",
+      "none": "Este plan no incluye canales de conversación.",
+      "unavailable": "Información de canales no disponible.",
+      "names": {
+        "whatsapp": "WhatsApp",
+        "instagram": "Instagram",
+        "messenger": "Messenger",
+        "telegram": "Telegram",
+        "web_widget": "Chat web"
+      }
+    },
     "unlimited": "Ilimitados",
     "planSelectionUnavailable": "El plan o ciclo seleccionado dejó de estar disponible. Revisa el catálogo e inténtalo de nuevo.",
     "companyName": "Nombre de la empresa",
@@ -6483,7 +6498,7 @@
     "moreDetailsHint": "(opcional)",
     "timezoneDetected": "Detectamos {zone}",
     "timezoneChange": "cambiar",
-    "billingCountryDetected": "Facturamos desde {country}",
+    "billingCountryDetected": "País de facturación: {country}",
     "seeOtherPlans": "Ver otros planes",
     "validation": {
       "summary": "Revisa los datos marcados y vuelve a intentar.",
@@ -6498,9 +6513,25 @@
       "tenant_exists": "Esta cuenta ya tiene un negocio creado. Te llevamos al panel.",
       "rate_limited": "Demasiados intentos seguidos. Espera un minuto y prueba de nuevo."
     },
+    "draftNeedsReview": "Revisa los datos pendientes antes de continuar. Conservamos lo que ya escribiste.",
     "coachMarks": {
-      "skip": "Saltar",
-      "next": "Siguiente",
+      "skip": "Cerrar ayuda",
+      "next": "Siguiente consejo",
+      "back": "Consejo anterior",
+      "label": "Ayuda para completar tus datos",
+      "progress": "Consejo {current} de {total}",
+      "name": {
+        "title": "El nombre de tu negocio",
+        "body": "Escribe el nombre con el que tus clientes conocen tu empresa. Los campos con * son obligatorios."
+      },
+      "subtype": {
+        "title": "Elige tu tipo de negocio",
+        "body": "Selecciona la opción que mejor describe tu actividad. La usamos para preparar las funciones y respuestas de tu agente."
+      },
+      "orgSize": {
+        "title": "¿Cuántas personas trabajan contigo?",
+        "body": "Elige el tamaño de tu empresa. Este dato es obligatorio para continuar; si trabajas por tu cuenta, selecciona de 1 a 10."
+      },
       "done": "Entendido",
       "industry": {
         "title": "Empieza por tu rubro",
@@ -6515,8 +6546,8 @@
         "body": "La detectamos por ti. Toca el chip solo si no es la correcta."
       },
       "submit": {
-        "title": "Eso es todo por ahora",
-        "body": "Lo demás es opcional y lo puedes completar después desde el panel."
+        "title": "Continúa con tus clientes",
+        "body": "Completa los campos con * y pulsa Siguiente en el formulario. Después elegirás tus clientes, objetivos y plan. Puedes dejar los datos opcionales para después."
       }
     },
     "billingCountryChoose": "Selecciona tu país de facturación",
@@ -7187,17 +7218,20 @@
     },
     "doneStep": {
       "title": "Configuración inicial guardada",
-      "subtitle": "Tu agente ya responde por el canal conectado. Pídele a alguien que le escriba por ahí para verlo en acción.",
+      "subtitleConnected": "Tu canal quedó conectado. Comprueba una respuesta real antes de empezar a atender clientes.",
+      "subtitleVerified": "Registramos una respuesta enviada por tu agente en un canal conectado. Puedes seguir la operación desde Inicio e Inbox.",
       "subtitleDeferred": "Te esperamos en Inicio para conectar {channel}. Mientras tanto, estos son los pasos que siguen.",
       "goToPanel": "Ir al panel",
       "tourCta": "Ver el recorrido del panel",
       "essentials": {
         "channel": {
           "title": "Conectar {channel}",
+          "action": "Conectar canal",
           "description": "Sin un canal, tu agente no recibe mensajes de nadie.",
           "descriptionWithLink": "Por ahora solo le escriben por su enlace. Con {channel} le llegan tus clientes de siempre.",
           "connectedTitle": "Canal conectado",
           "connectedDescription": "Lo que te escriban por ahí ya lo contesta tu agente.",
+          "testDescription": "La conexión está guardada. Envía una pregunta real y comprueba la respuesta del agente.",
           "checkingDescription": "Estamos revisando que tu agente pueda responder ahí…",
           "pendingTitle": "Terminar de activar WhatsApp",
           "pendingZone": "Confirma la zona horaria de facturación de tu número: sin ella, ninguna respuesta de tu agente sale por WhatsApp.",
@@ -7212,12 +7246,14 @@
         },
         "knowledge": {
           "title": "Cargar lo que tu agente debe saber",
+          "action": "Agregar preguntas frecuentes",
           "description": "Precios, servicios y preguntas frecuentes: de ahí saca las respuestas.",
           "doneTitle": "Tu agente ya tiene de dónde responder",
           "doneDescription": "Responde con lo que cargaste. Puedes sumar más cuando quieras."
         },
         "team": {
           "title": "Definir quién recibe los casos pendientes",
+          "action": "Configurar equipo",
           "description": "No encontramos una persona activa para recibirlos. Puedes agregarla sin bloquear el resto de la configuración.",
           "doneTitle": "Los casos pendientes ya tienen destino",
           "doneDescription": "Cuando tu agente necesite ayuda, el caso queda en Inbox y avisamos a {recipient}.",
@@ -7620,7 +7656,9 @@
     "legacyProviderMismatch": "Esta cuenta conserva una configuración anterior de {provider} que no corresponde a su país de facturación. Contacta a soporte antes de activar el plan; así evitamos crear cobros en dos proveedores.",
     "stripeTrialEndingSoon": "Tu prueba termina en menos de 48 horas. Para conservar los días restantes, completa el pago con Stripe cuando termine.",
     "stripeTrialUnsupported": "La duración de esta prueba no está disponible en Stripe. Contacta a soporte para revisar el plan.",
-    "stripeCheckoutProcessing": "Stripe ya recibió este proceso y estamos esperando su confirmación. Actualiza el estado en unos momentos.",
+    "stripeCheckoutProcessing": "Estamos confirmando un proceso de pago anterior. Actualiza el estado en unos momentos.",
+    "trialUpgradeNeedsPayment": "Este cambio requiere activar un medio de pago. Actualiza la página y vuelve a elegir el plan.",
+    "subscriptionChangedRetry": "El estado de tu plan cambió. Actualiza la página y vuelve a intentarlo.",
     "stripePriceUnavailable": "Este ciclo todavía no tiene un precio configurado para Stripe. Elige otro ciclo o contacta a soporte.",
     "stripeRefreshStatus": "Actualizar estado",
     "paymentMethodsTitle": "Medios de pago",
@@ -7662,6 +7700,7 @@
     "trialStarted": "Prueba gratuita iniciada.",
     "paymentProcessing": "El medio quedó autorizado y el cobro se está procesando. El plan solo se activará cuando Wompi confirme el pago.",
     "planChangedDuringTrial": "Plan {plan} activado. Tu prueba sigue hasta el {date}; ese día se cobrarán {amount} con el medio de pago guardado.",
+    "planChangedDuringTrialWithoutPaymentMethod": "Tu prueba ahora incluye {plan} hasta el {date}. No se realizó ningún cobro. Para continuar después de la prueba, agrega un medio de pago.",
     "planChanged": "Plan actualizado.",
     "cancelled": "Suscripcion cancelada.",
     "cardUpdated": "Tarjeta actualizada correctamente.",
@@ -12730,7 +12769,10 @@
       },
       "firstReply": {
         "title": "Comprueba la primera respuesta de {agent}",
-        "description": "La configuración está lista. Ahora escríbele por {channels} desde otra cuenta o teléfono para comprobar la atención real.",
+        "description": "El canal está conectado. Escríbele por {channels} desde otra cuenta o teléfono para comprobar la atención real.",
+        "unavailable": "No pudimos consultar las respuestas. Reintenta la comprobación; todavía no podemos confirmar el resultado.",
+        "retry": "Reintentar comprobación",
+        "openChannel": "Abrir {channel}",
         "agentFallback": "tu agente",
         "channelFallback": "el canal conectado",
         "stepSend": "1. Envía una pregunta real de tu negocio.",

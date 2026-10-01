@@ -1,4 +1,15 @@
-import type { ToolPolicy } from './tool-policy-registry';
+import { getToolPolicy, type ToolPolicy } from './tool-policy-registry';
+import { persistenceDisabled, type ServiceExecutionContext } from '../../common/types/execution-context';
+
+/** search_faqs normally records views. Its automatic-context handler explicitly
+ * disables persistence, so that audited mode can safely use a read deadline. */
+export function awaitAutomaticFaqLookup<T>(operation: Promise<T>, timeoutMs: number, context: ServiceExecutionContext): Promise<T> {
+    const policy = getToolPolicy('search_faqs');
+    const readPolicy = policy?.agentTestAllowed && persistenceDisabled(context)
+        ? { ...policy, effect: 'read' as const, idempotency: 'not_applicable' as const }
+        : policy;
+    return awaitToolWithSafeTimeout(operation, timeoutMs, 'automatic_search_faqs', readPolicy);
+}
 
 /**
  * A Promise timeout does not cancel the underlying operation. It is therefore

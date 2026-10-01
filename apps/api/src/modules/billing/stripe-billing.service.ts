@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException, Optional, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { createHash, randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -14,6 +14,8 @@ import { StripeRefundService } from './stripe-refund.service';
 /** Stripe owns its calendar and payment methods. None of these operations arm the Wompi engine. */
 @Injectable()
 export class StripeBillingService {
+    private readonly logger = new Logger(StripeBillingService.name);
+
     constructor(
         private readonly prisma: PrismaService,
         private readonly redis: RedisService,
@@ -191,15 +193,64 @@ export class StripeBillingService {
         const initial = await this.subscription(tenantId);
         return this.locked(initial.id, async () => {
             const sub = await this.subscription(tenantId);
-            if (!sub.providerSubscriptionId) throw new BadRequestException({ error: 'stripe_checkout_required' });
             if (['cancelled', 'expired', 'pending_auth'].includes(sub.status) || sub.cancelAtPeriodEnd) throw new BadRequestException({ error: 'subscription_terminal' });
-            if (sub.pendingPlanId) throw new ConflictException({ error: 'plan_change_in_progress' });
+            if (sub.pendingPlanId || sub.pendingUpgradePlanId) throw new ConflictException({ error: 'plan_change_in_progress' });
             const plan = await this.prisma.billingPlan.findUnique({ where: { slug: planSlug } });
             if (!plan || !plan.isActive || plan.slug === 'custom' || (plan.features as any)?.salesLed) throw new BadRequestException({ error: 'plan_not_available' });
             const metadata: any = sub.metadata ?? {};
             const currentCycle = metadata.billingCycle === 'annual' ? 'annual' : 'monthly';
             const targetCycle = cycle ?? currentCycle;
             if (sub.planId === plan.id && currentCycle === targetCycle) throw new BadRequestException({ error: 'same_plan' });
+            if (!sub.providerSubscriptionId) {
+                // A monthly trial without a payment method can use another
+                // no-card trial plan for the time already granted. This neither
+                // starts a native subscription nor extends the trial.
+                if (sub.status !== 'trialing' || !sub.trialEndsAt || sub.trialEndsAt.getTime() <= Date.now()
+                    || currentCycle !== 'monthly' || targetCycle !== 'monthly'
+                    || plan.trialDays <= 0 || plan.requiresCardForTrial
+                    || plan.priceUsdCents <= sub.plan.priceUsdCents
+                    || sub.defaultPaymentSourceId || sub.nextChargeAt || metadata.stripeContract) {
+                    throw new BadRequestException({ error: 'stripe_checkout_required' });
+                }
+                // An abandoned Checkout must no longer be payable before its
+                // binding is removed. Completed or uncertain attempts must settle.
+                if (metadata.stripeCheckout) await this.expirePendingCheckout(metadata.stripeCheckout);
+                const nextMetadata = { ...metadata, billingCycle: targetCycle };
+                delete nextMetadata.stripeCheckout;
+                const result = await this.prisma.$transaction(async tx => {
+                    await tx.$queryRawUnsafe('SELECT id FROM billing_subscriptions WHERE id = $1::uuid FOR UPDATE', sub.id);
+                    const current = await tx.billingSubscription.findUnique({ where: { id: sub.id } });
+                    if (!current || current.provider !== sub.provider || current.engine !== sub.engine
+                        || current.providerSubscriptionId !== sub.providerSubscriptionId
+                        || current.providerCustomerId !== sub.providerCustomerId || current.planId !== sub.planId
+                        || current.status !== sub.status || current.cancelAtPeriodEnd !== sub.cancelAtPeriodEnd
+                        || current.cancellationReason !== sub.cancellationReason
+                        || current.pendingPlanId !== sub.pendingPlanId || current.pendingUpgradePlanId !== sub.pendingUpgradePlanId
+                        || current.defaultPaymentSourceId !== sub.defaultPaymentSourceId
+                        || current.nextChargeAt?.getTime() !== sub.nextChargeAt?.getTime()
+                        || current.trialEndsAt?.getTime() !== sub.trialEndsAt?.getTime()
+                        || !current.trialEndsAt || current.trialEndsAt.getTime() <= Date.now()
+                        || JSON.stringify(current.metadata) !== JSON.stringify(sub.metadata)) {
+                        throw new ConflictException({ error: 'stripe_subscription_changed_retry' });
+                    }
+                    const updated = await tx.billingSubscription.update({
+                        where: { id: sub.id }, data: { planId: plan.id, metadata: nextMetadata },
+                    });
+                    await tx.tenant.update({ where: { id: tenantId }, data: { plan: plan.slug } });
+                    return updated;
+                });
+                const cacheKeys = ['tenant_plan', 'sub_status', 'plan_features'].map(prefix => `${prefix}:${tenantId}`);
+                const invalidations = await Promise.allSettled(cacheKeys.map(key => this.redis.del(key)));
+                invalidations.forEach((invalidation, index) => {
+                    if (invalidation.status === 'rejected') {
+                        this.logger.warn(`Trial plan changed, but cache invalidation failed for ${cacheKeys[index]}`);
+                    }
+                });
+                this.events.emit(BillingEventType.SUBSCRIPTION_PLAN_CHANGED, {
+                    tenantId, subscriptionId: sub.id, fromPlan: sub.planId, toPlan: plan.id,
+                });
+                return result;
+            }
             const contract = await this.priceFor(plan, metadata.billingCountry ?? sub.tenant.billingCountry, targetCycle);
             const remote = await this.stripe.subscriptions.retrieve(sub.providerSubscriptionId);
             const item = remote.items?.data?.[0];
@@ -241,6 +292,21 @@ export class StripeBillingService {
         });
     }
 
+    private async expirePendingCheckout(checkout: any): Promise<void> {
+        let session: any;
+        try {
+            session = checkout.sessionId
+                ? await this.stripe.checkout.sessions.retrieve(checkout.sessionId)
+                : await this.stripe.checkout.sessions.create(checkout.params, { idempotencyKey: checkout.id });
+        } catch (error: any) {
+            if (!checkout.sessionId && checkout.params?.expires_at < Date.now() / 1000
+                && error.type === 'StripeInvalidRequestError' && error.param === 'expires_at') session = { status: 'expired' };
+            else throw error;
+        }
+        if (session.status === 'open') session = await this.stripe.checkout.sessions.expire(session.id);
+        if (session.status !== 'expired') throw new ConflictException({ error: 'stripe_checkout_processing' });
+    }
+
     async cancelPendingDowngrade(tenantId: string): Promise<void> {
         const initial = await this.subscription(tenantId);
         await this.locked(initial.id, async () => {
@@ -262,18 +328,7 @@ export class StripeBillingService {
             const metadata: any = { ...(sub.metadata as any) };
             const checkout = metadata.stripeCheckout;
             if (checkout && !sub.providerSubscriptionId) {
-                let session: any;
-                try {
-                    session = checkout.sessionId
-                        ? await this.stripe.checkout.sessions.retrieve(checkout.sessionId)
-                        : await this.stripe.checkout.sessions.create(checkout.params, { idempotencyKey: checkout.id });
-                } catch (error: any) {
-                    if (!checkout.sessionId && checkout.params?.expires_at < Date.now() / 1000
-                        && error.type === 'StripeInvalidRequestError' && error.param === 'expires_at') session = { status: 'expired' };
-                    else throw error;
-                }
-                if (session.status === 'complete') throw new ConflictException({ error: 'stripe_checkout_processing' });
-                if (session.status === 'open') await this.stripe.checkout.sessions.expire(session.id);
+                await this.expirePendingCheckout(checkout);
                 delete metadata.stripeCheckout;
             }
             if (sub.providerSubscriptionId) {

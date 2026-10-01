@@ -19,6 +19,11 @@ function subject(rows: Record<string, any[]>) {
     return { service, executeInTenantSchema };
 }
 
+function insertedValue(sql: string, params: any[], column: string): unknown {
+    const columns = sql.match(/INSERT INTO services \(([^)]+)\)/)![1].split(',').map(value => value.trim());
+    return params[columns.indexOf(column)];
+}
+
 const EXAMPLE_ROW = {
     id: '11111111-1111-4111-8111-111111111111', name: 'Corte y estilo', description: null, duration_minutes: 45,
     duration_minutes_max: null, duration_type: 'fixed', buffer_minutes: 0, price: '40000', currency: 'COP', color: '#6c5ce7',
@@ -192,9 +197,9 @@ describe('a NULL price read from the database stays NULL (FX1-1)', () => {
     it('"Es gratis" when creating stores 0', async () => {
         const { service, executeInTenantSchema } = subject({ current: [{ ...EXAMPLE_ROW, price: '0', price_status: 'confirmed' }] });
         await service.create('tenant_test', { name: 'Asesoría inicial', durationMinutes: 30, priceStatus: 'confirmed', price: 0, free: true }, 'tenant');
-        const [, , params] = executeInTenantSchema.mock.calls.find(([, s]) => String(s).startsWith('INSERT INTO services'))! as [string, string, any[]];
+        const [, sql, params] = executeInTenantSchema.mock.calls.find(([, s]) => String(s).startsWith('INSERT INTO services'))! as [string, string, any[]];
         expect(params[5]).toBe(0);
-        expect(params[params.length - 1]).toBe('confirmed');
+        expect(insertedValue(sql, params, 'price_status')).toBe('confirmed');
     });
 });
 
@@ -218,13 +223,13 @@ describe('ServicesService writes the provenance', () => {
         await service.create('tenant_test', { name: 'Corte', durationMinutes: 45, price: 40000 }, 'tenant');
         const [, sql, params] = executeInTenantSchema.mock.calls.find(([, s]) => String(s).startsWith('INSERT INTO services'))! as [string, string, any[]];
         expect(sql).toContain('price_status');
-        expect(params[params.length - 1]).toBe('confirmed');
+        expect(insertedValue(sql, params, 'price_status')).toBe('confirmed');
     });
     it('lets the owner create a quote-only service', async () => {
         const { service, executeInTenantSchema } = subject({ current: [{ ...EXAMPLE_ROW, price_status: 'quote' }] });
         await service.create('tenant_test', { name: 'Evento', durationMinutes: 120, priceStatus: 'quote' }, 'tenant');
-        const [, , params] = executeInTenantSchema.mock.calls.find(([, s]) => String(s).startsWith('INSERT INTO services'))! as [string, string, any[]];
-        expect(params[params.length - 1]).toBe('quote');
+        const [, sql, params] = executeInTenantSchema.mock.calls.find(([, s]) => String(s).startsWith('INSERT INTO services'))! as [string, string, any[]];
+        expect(insertedValue(sql, params, 'price_status')).toBe('quote');
     });
     it('refuses to create a deposit-taking service on a quote-only price', async () => {
         const { service } = subject({ current: [] });

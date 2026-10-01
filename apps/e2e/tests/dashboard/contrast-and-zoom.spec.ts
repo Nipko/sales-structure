@@ -5,7 +5,7 @@ import {
   pendingAssessment,
   readyBusiness,
 } from "../../fixtures/dashboard-routes";
-import { hermeticDashboard, ok, settled, signIn } from "../../fixtures/dashboard-session";
+import { expectHermetic, hermeticDashboard, ok, settled, signIn } from "../../fixtures/dashboard-session";
 
 /**
  * Two things a person needs before anything else: to be able to read the text,
@@ -86,6 +86,104 @@ async function openDashboard(page: Page) {
 }
 
 test.describe("se puede leer, y se puede agrandar", () => {
+  test("el modal de servicio permite recorrer, guardar y reabrir una visita online en una pantalla baja", async ({ page, isMobile }, testInfo) => {
+    await page.setViewportSize({ width: isMobile ? 320 : 1280, height: 548 });
+    const state = await hermeticDashboard(page, {
+      ...routes(),
+      [`tenants/${TENANT}/regional/profile`]: ok({
+        operatingCurrency: { value: "COP", source: "declared" },
+      }),
+    });
+    const serviceId = "88888888-8888-4888-8888-888888888888";
+    const writes: Array<{ method: string; body: Record<string, unknown> }> = [];
+    let saved: Record<string, unknown> | null = null;
+    await page.route(new RegExp(`/api/v1/appointments/${TENANT}/services(?:/[^/?]+)?(?:\\?.*)?$`), async (route) => {
+      const method = route.request().method();
+      if (method === "POST" || method === "PUT") {
+        const body = route.request().postDataJSON();
+        writes.push({ method, body });
+        // Echo the API's service shape on the subsequent list read, so the
+        // reopened editor proves that the real catalogue mapper kept its terms.
+        saved = { ...saved, ...body, id: serviceId, isActive: true, durationMinutes: body.duration };
+      }
+      await route.fulfill({
+        status: 200, contentType: "application/json",
+        body: JSON.stringify({ success: true, data: method === "GET" ? (saved ? [saved] : []) : saved }),
+      });
+    });
+    await signIn(page, "tenant_admin");
+    await page.goto("/admin/appointments?tab=services");
+    await settled(page);
+    await page.getByRole("button", { name: "Nuevo servicio", exact: true }).first().click();
+    const dialog = page.getByRole("dialog", { name: "Nuevo servicio", exact: true });
+    const save = dialog.getByRole("button", { name: "Crear servicio", exact: true });
+    const body = dialog.locator(".overflow-y-auto");
+    await expect(dialog).toBeVisible();
+
+    const assertFits = async () => {
+      const geometry = await dialog.evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        const content = element.querySelector<HTMLElement>(".overflow-y-auto")!;
+        const contentBox = content.getBoundingClientRect();
+        const footer = element.lastElementChild!.getBoundingClientRect();
+        return {
+          top: box.top, bottom: box.bottom, left: box.left, right: box.right,
+          width: window.innerWidth, height: window.innerHeight,
+          contentBottom: contentBox.bottom, footerTop: footer.top,
+          scrollHeight: content.scrollHeight, clientHeight: content.clientHeight,
+          scrollWidth: content.scrollWidth, clientWidth: content.clientWidth,
+        };
+      });
+      expect(geometry.top).toBeGreaterThanOrEqual(15);
+      expect(geometry.bottom).toBeLessThanOrEqual(geometry.height - 15);
+      expect(geometry.left).toBeGreaterThanOrEqual(15);
+      expect(geometry.right).toBeLessThanOrEqual(geometry.width - 15);
+      expect(geometry.contentBottom).toBeLessThanOrEqual(geometry.footerTop + 1);
+      expect(geometry.scrollHeight).toBeGreaterThan(geometry.clientHeight);
+      expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.clientWidth + 1);
+      await expect(save).toBeInViewport({ ratio: 1 });
+      await expect(dialog.getByRole("button", { name: "Cerrar", exact: true })).toBeInViewport({ ratio: 1 });
+      return geometry;
+    };
+    const initialGeometry = await assertFits();
+    await page.screenshot({ path: testInfo.outputPath("service-modal-top.png") });
+    await dialog.getByPlaceholder("Ej: Consulta general").fill("Visita virtual");
+    await dialog.getByPlaceholder("Duración personalizada").fill("20");
+    await dialog.getByRole("button", { name: "Es gratis", exact: true }).click();
+    await dialog.getByRole("button", { name: "Online", exact: true }).click();
+    await dialog.getByPlaceholder("https://meet.google.com/... o https://teams.microsoft.com/...").fill("https://meet.example.test/visita");
+    await dialog.getByRole("checkbox", { name: "email", exact: true }).check();
+    expect(await body.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+    const scrolledGeometry = await assertFits();
+    await testInfo.attach("service-modal-geometry", {
+      body: JSON.stringify({ initial: initialGeometry, scrolled: scrolledGeometry }, null, 2),
+      contentType: "application/json",
+    });
+    await page.screenshot({ path: testInfo.outputPath("service-modal-scrollable.png") });
+    await save.click();
+    await expect(dialog).not.toBeVisible();
+    expect(writes).toHaveLength(1);
+    expect(writes[0]).toMatchObject({ method: "POST", body: {
+      name: "Visita virtual", duration: 20, locationType: "online",
+      meetingLink: "https://meet.example.test/visita", requiredFields: ["email"],
+      paymentPolicy: "none", depositPercent: null, depositAmount: null,
+      price: 0, priceStatus: "confirmed", free: true,
+    } });
+    await expect(page.getByText("Visita virtual", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Editar", exact: true }).click();
+    const editDialog = page.getByRole("dialog", { name: "Editar servicio", exact: true });
+    await expect(editDialog.getByPlaceholder("Duración personalizada")).toHaveValue("20");
+    await expect(editDialog.getByRole("button", { name: "Online", exact: true })).toHaveClass(/bg-primary/);
+    await expect(editDialog.getByPlaceholder("https://meet.google.com/... o https://teams.microsoft.com/...")).toHaveValue("https://meet.example.test/visita");
+    await expect(editDialog.getByRole("radio", { name: /^Sin pago/ })).toBeChecked();
+    await expect(editDialog.getByRole("checkbox", { name: "email", exact: true })).toBeChecked();
+    await editDialog.getByRole("button", { name: "Actualizar servicio", exact: true }).click();
+    await expect(editDialog).not.toBeVisible();
+    expect(writes).toHaveLength(2);
+    expect(writes[1]).toEqual({ method: "PUT", body: writes[0].body });
+    await expectHermetic(state);
+  });
+
   for (const scheme of ["light", "dark"] as const) {
     test(`el panel no tiene texto ilegible en modo ${scheme}`, async ({ page }) => {
       await page.emulateMedia({ colorScheme: scheme });

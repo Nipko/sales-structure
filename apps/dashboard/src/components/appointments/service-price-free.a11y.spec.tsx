@@ -215,6 +215,43 @@ describe("what the catalogue sends", () => {
         } finally { screen.unmount(); }
     });
 
+    it.each([
+        { paymentPolicy: "deposit", depositPercent: 25, depositAmount: null },
+        { paymentPolicy: "any", depositPercent: null, depositAmount: 20000 },
+    ])("preserves stored online booking terms when editing a name ($paymentPolicy)", async (policy) => {
+        const stored = {
+            id: "svc-online", name: "Consulta online", durationMinutes: 20,
+            durationType: "fixed", bufferMinutes: 5, price: 80000, priceStatus: "confirmed",
+            isActive: false, rebookAfterDays: 45, requiredFields: ["email", "notes"],
+            locationType: "online", locationAddress: "Sede norte, piso 2", meetingLink: "https://meet.example.test/consulta",
+            ...policy,
+        };
+        getServices.mockResolvedValue({ success: true, data: [stored] });
+        const screen = await renderScreen(<Harness />);
+        try {
+            await act(async () => { await catalog().loadServices(); });
+            expect(catalog().services[0].active).toBe(false);
+            await act(async () => { catalog().openEditServiceModal(catalog().services[0]); });
+            expect(catalog().serviceForm).toMatchObject({
+                locationType: "online", locationAddress: stored.locationAddress, meetingLink: stored.meetingLink,
+                rebookAfterDays: 45, requiredFields: ["email", "notes"], ...policy,
+            });
+            await act(async () => { catalog().setServiceForm({ ...catalog().serviceForm, name: "Consulta virtual" }); });
+            await act(async () => { await catalog().handleSaveService(); });
+            expect(update).toHaveBeenCalledTimes(1);
+            expect(update).toHaveBeenCalledWith(TENANT, stored.id, expect.objectContaining({
+                name: "Consulta virtual", duration: 20, buffer: 5,
+                locationType: "online", locationAddress: stored.locationAddress, meetingLink: stored.meetingLink,
+                rebookAfterDays: 45, requiredFields: ["email", "notes"], ...policy,
+            }));
+            // Name edits preserve the price and do not change publication.
+            const payload = update.mock.calls[0][2];
+            expect(payload).not.toHaveProperty("active");
+            expect(payload).not.toHaveProperty("isActive");
+            expect(payload).toMatchObject({ price: 80000, priceStatus: "confirmed" });
+        } finally { screen.unmount(); }
+    });
+
     it('"Es gratis" on a card is sent as free, not as a confirmation of nothing', async () => {
         const screen = await renderScreen(<Harness />);
         try {

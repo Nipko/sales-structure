@@ -218,7 +218,7 @@ describe("SecondaryChannels", () => {
         } finally { screen.unmount(); }
     });
 
-    it("asks for Telegram's key in plain words, and says what connected", async () => {
+    it("keeps Telegram's labelled key masked while accepting it and saying what connected", async () => {
         jest.mocked(api.connectTelegram).mockResolvedValue({ success: true, data: { botUsername: "cafe_luna_bot" } });
         const onConnected = jest.fn();
         const screen = await render({ onConnected });
@@ -229,6 +229,9 @@ describe("SecondaryChannels", () => {
             const label = screen.container.querySelector('label[for="setup-telegram-key"]')?.textContent ?? "";
             expect(label).toContain("@BotFather");
             expect(label).not.toMatch(/token|Pegá|obtenés/i);
+            expect(input.type).toBe("password");
+            expect(input.autocomplete).toBe("off");
+            expect(input.getAttribute("spellcheck")).toBe("false");
             expect(input.placeholder).not.toMatch(/token/i);
             expect(await findAccessibilityViolations(screen.container)).toEqual([]);
 

@@ -1,5 +1,5 @@
-import { awaitToolWithSafeTimeout, canDetachToolAfterTimeout } from './tool-timeout-policy';
-import type { ToolPolicy } from './tool-policy-registry';
+import { awaitAutomaticFaqLookup, awaitToolWithSafeTimeout, canDetachToolAfterTimeout } from './tool-timeout-policy';
+import { getToolPolicy, type ToolPolicy } from './tool-policy-registry';
 
 const policy = (overrides: Partial<ToolPolicy> = {}): ToolPolicy => ({
     effect: 'read',
@@ -63,5 +63,20 @@ describe('tool timeout policy', () => {
         const assertion = expect(result).rejects.toThrow('search_faqs timed out after 25ms');
         await jest.advanceTimersByTimeAsync(25);
         await assertion;
+    });
+
+    it('limits the audited automatic FAQ read while retaining the real manual writer policy', async () => {
+        jest.useFakeTimers();
+        expect(getToolPolicy('search_faqs')).toMatchObject({ effect: 'conditional_write', idempotency: 'central_ledger' });
+        const result = awaitAutomaticFaqLookup(new Promise(() => undefined), 25, { mode: 'live', persistence: 'disabled' });
+        const assertion = expect(result).rejects.toThrow('automatic_search_faqs timed out after 25ms');
+        await jest.advanceTimersByTimeAsync(25);
+        await assertion;
+        expect(getToolPolicy('search_faqs')).toMatchObject({ effect: 'conditional_write', idempotency: 'central_ledger' });
+    });
+
+    it('cannot detach a FAQ lookup that could record views or a ledger', () => {
+        const operation = new Promise(() => undefined);
+        expect(awaitAutomaticFaqLookup(operation, 25, { mode: 'live', persistence: 'enabled' })).toBe(operation);
     });
 });

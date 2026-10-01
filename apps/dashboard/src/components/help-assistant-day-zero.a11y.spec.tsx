@@ -101,6 +101,19 @@ describe("Assist during day 0", () => {
             expect(launcher(screen)?.getAttribute("aria-label")).toBe(ES.helpAssistant.launcherTooltip);
         } finally { screen.unmount(); }
     });
+
+    it.each(["/admin/inbox", `/admin/agent/${AGENT}/test`])("leaves the composer clear and keeps Ayuda available on %s", async (route) => {
+        mockPath = route;
+        mockUser = liveOwner();
+        const screen = await renderScreen(<HelpAssistant />);
+        try {
+            expect(launcher(screen)).toBeNull();
+            await interact(() => window.dispatchEvent(new CustomEvent("parallly:open-copilot")));
+            await settle();
+            expect(sheet()?.textContent).toContain(ES.helpAssistant.drawerTitle);
+            expect(await findAccessibilityViolations(sheet()!)).toEqual([]);
+        } finally { screen.unmount(); }
+    });
 });
 
 describe("\"Dime qué cambiar\" in Assist", () => {

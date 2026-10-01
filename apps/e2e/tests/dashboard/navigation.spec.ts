@@ -630,7 +630,8 @@ async function bootstrapTenantAdmin(
       return;
     }
 
-    if (method === "GET" && path === `/crm/leads/${TENANT_ID}`) {
+    // Home reads stage names alongside the recent leads.
+    if (method === "GET" && (path === `/crm/leads/${TENANT_ID}` || path === `/pipeline/stages/${TENANT_ID}`)) {
       await fulfillSuccess(route, []);
       return;
     }

@@ -15,7 +15,7 @@ describe('Inbound without a serving agent',()=>{
             analyticsService:{trackEvent:jest.fn().mockResolvedValue(undefined)},
             nurturingService:{cancelFollowUp:jest.fn().mockResolvedValue(undefined)},
             dripSequenceService:{stopOnReply:jest.fn().mockResolvedValue(undefined)},
-            pipelineService:{resolveTenantStage:jest.fn().mockResolvedValue({slug:'initial'})},
+            pipelineService:{isAutoProgressEnabled:jest.fn().mockResolvedValue(true),resolveTenantStage:jest.fn().mockResolvedValue({slug:'initial'})},
             personaService:{resolvePersonaForChannel:jest.fn().mockResolvedValue({config:null,agentId:null,version:null})},
             saveMessage:jest.fn().mockResolvedValue({id:'inbound',duplicate:false}),recordAgentSignal:jest.fn(),
             generateResponse:jest.fn(),sendAfterHoursMessage:jest.fn(),

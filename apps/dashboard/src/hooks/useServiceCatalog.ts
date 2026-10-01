@@ -142,21 +142,27 @@ export function useServiceCatalog(
                 const mapped = (res.data || []).map((s: any) => ({
                     id: s.id,
                     name: s.name,
-                    duration: s.durationMinutes || s.duration || 30,
-                    durationMax: s.durationMinutesMax || s.durationMax || null,
+                    duration: s.durationMinutes ?? s.duration ?? 30,
+                    durationMax: s.durationMinutesMax ?? s.durationMax ?? null,
                     durationType: s.durationType || s.duration_type || "fixed",
-                    buffer: s.bufferMinutes || s.buffer || 0,
+                    buffer: s.bufferMinutes ?? s.buffer ?? 0,
                     // NULL stays NULL (FX1): read as 0, a service seeded without
                     // an amount looked like a price to confirm, and confirming
                     // it told customers it was free.
                     price: readServiceAmount(s.price),
                     priceStatus: readServicePriceStatus(s.priceStatus ?? s.price_status),
                     color: s.color || "#6c5ce7",
-                    active: s.isActive ?? s.active ?? true,
+                    active: s.isActive ?? s.is_active ?? s.active ?? true,
                     category: s.category || null,
                     maxConcurrent: s.maxConcurrent || 1,
-                    rebookAfterDays: s.rebookAfterDays ?? null,
-                    requiredFields: s.requiredFields || [],
+                    rebookAfterDays: s.rebookAfterDays ?? s.rebook_after_days ?? null,
+                    requiredFields: s.requiredFields ?? s.required_fields ?? [],
+                    // Editing reuses this row. Keep the stored booking terms so
+                    // changing a name never resets its modality or payment policy.
+                    locationType: s.locationType ?? s.location_type ?? "in_person",
+                    locationAddress: s.locationAddress ?? s.location_address ?? "",
+                    meetingLink: s.meetingLink ?? s.meeting_link ?? "",
+                    ...readPaymentPolicy(s),
                 }));
                 setServices(mapped);
             }
@@ -189,7 +195,7 @@ export function useServiceCatalog(
             color: svc.color,
             category: svc.category || "",
             maxConcurrent: svc.maxConcurrent || 1,
-            rebookAfterDays: (svc as any).rebookAfterDays ?? null,
+            rebookAfterDays: svc.rebookAfterDays ?? null,
             requiredFields: svc.requiredFields || [],
             locationType: (svc as any).locationType || (svc as any).location_type || "in_person",
             locationAddress: (svc as any).locationAddress || (svc as any).location_address || "",

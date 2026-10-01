@@ -61,6 +61,7 @@ export default function ServiceModal({
   form, onChange, editingService, saving, onSave, onClose, currency,
 }: ServiceModalProps) {
   const t = useTranslations("appointments");
+  const tc = useTranslations("common");
   const locale = useLocale();
   const numLocale = locale === "pt" ? "pt-BR" : locale === "fr" ? "fr-FR" : locale === "en" ? "en-US" : undefined;
   // El número que trae un servicio sembrado por el rubro no lo escribió el
@@ -87,24 +88,28 @@ export default function ServiceModal({
   return (
     <div
       data-tour-form="service"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
       onClick={onClose}
     >
       <div
-        className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl w-full max-w-md mx-4 shadow-2xl"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="service-modal-title"
+        className="flex max-h-[calc(100dvh-2rem)] w-full max-w-md flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-2xl dark:border-neutral-800 dark:bg-neutral-900"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-neutral-200 dark:border-neutral-800">
+        <div className="flex shrink-0 items-center justify-between px-6 py-5 border-b border-neutral-200 dark:border-neutral-800">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg" style={{ backgroundColor: `${form.color}15` }}>
               <Tag size={18} style={{ color: form.color }} />
             </div>
-            <h2 className="text-lg font-semibold text-neutral-900 dark:text-white">
+            <h2 id="service-modal-title" className="text-lg font-semibold text-neutral-900 dark:text-white">
               {editingService ? t('editServiceTitle') : t('newServiceTitle')}
             </h2>
           </div>
           <button
+            aria-label={tc('close')}
             onClick={onClose}
             className="p-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer border-none bg-transparent text-neutral-400 hover:text-neutral-600"
           >
@@ -112,7 +117,7 @@ export default function ServiceModal({
           </button>
         </div>
 
-        <div className="p-6 space-y-5">
+        <div className="min-h-0 overflow-y-auto p-6 space-y-5">
           {/* Name */}
           <div>
             <label className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
@@ -132,7 +137,7 @@ export default function ServiceModal({
             <label className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
               {t('durationType')}
             </label>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               {([
                 { value: 'fixed' as DurationType, icon: Clock, label: t('durationFixed') },
                 { value: 'flexible' as DurationType, icon: Timer, label: t('durationFlexible') },
@@ -170,7 +175,7 @@ export default function ServiceModal({
               <label className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
                 {form.durationType === 'flexible' ? t('durationMin') : t('durationRequired')}
               </label>
-              <div className="flex gap-2 mb-2">
+              <div className="flex flex-wrap gap-2 mb-2">
                 {DURATION_PRESETS.map((d) => (
                   <button
                     key={d}
@@ -367,7 +372,7 @@ export default function ServiceModal({
             <label className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
               {t('locationType')}
             </label>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               {[
                 { value: 'in_person', icon: MapPin, label: t('inPerson') },
                 { value: 'online', icon: Video, label: t('online') },
@@ -493,7 +498,7 @@ export default function ServiceModal({
         </div>
 
         {/* Footer */}
-        <div className="flex justify-end gap-3 px-6 py-4 border-t border-neutral-200 dark:border-neutral-800">
+        <div className="flex shrink-0 justify-end gap-3 px-6 py-4 border-t border-neutral-200 dark:border-neutral-800">
           <button
             onClick={onClose}
             className="px-4 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-transparent text-neutral-700 dark:text-neutral-300 text-sm font-medium cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"

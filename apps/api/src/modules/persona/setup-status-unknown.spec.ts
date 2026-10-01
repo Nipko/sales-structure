@@ -64,6 +64,33 @@ describe('what setup-status says when a count cannot be read', () => {
         expect(answer.data.hasPersona).toBe(false);
     });
 
+    it.each(['faqs', 'policies'])('accepts a published %s source without uploaded documents', async (source) => {
+        const controller = harness(sql => sql.includes(`\"tenant_demo\".${source}`) ? rows(1) : rows(0));
+        const answer: any = await controller.getSetupStatus(tenantId);
+        expect(answer.data.hasKnowledge).toBe(true);
+        const queries = controller.prisma.$queryRawUnsafe.mock.calls.map(([sql]: [string]) => sql);
+        expect(queries).toContainEqual(expect.stringContaining(source === 'faqs'
+            ? "is_published = true AND question ~ '[^[:space:]]' AND answer ~ '[^[:space:]]'"
+            : "is_active = true AND content ~ '[^[:space:]]'"));
+    });
+
+    it('keeps knowledge unknown when an alternative cannot be read and no usable source was found', async () => {
+        const controller = harness(sql => {
+            if (sql.includes('.faqs')) throw new Error('FAQ read unavailable');
+            return rows(0);
+        });
+        expect((await controller.getSetupStatus(tenantId)).data.hasKnowledge).toBeUndefined();
+    });
+
+    it('keeps a confirmed FAQ when document and policy checks are unavailable', async () => {
+        const controller = harness(sql => {
+            if (sql.includes('.faqs')) return rows(1);
+            if (/\.knowledge_resources|\.knowledge_documents|\.policies/.test(sql)) throw new Error('source read unavailable');
+            return rows(0);
+        });
+        expect((await controller.getSetupStatus(tenantId)).data.hasKnowledge).toBe(true);
+    });
+
     it('still answers true when the row is there', async () => {
         const controller = harness(sql =>
             sql.includes('FROM channel_accounts') && sql.includes('COUNT') ? rows(2)

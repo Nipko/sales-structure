@@ -14,6 +14,7 @@ import { readSignupAttribution } from "@/lib/signup-attribution";
 import { resolveLoginRedirect } from "@/lib/onboarding-guide";
 import { isSessionInDayZero, mergeOnboardingSessionFacts } from "@/lib/onboarding-session-facts";
 import { requestQualityHealthRefresh } from "@/lib/quality-health-events";
+import { AUTH_REFRESH_EVENT, authFetch, refreshAccessToken } from "@/lib/api";
 
 // ============================================
 // Constants
@@ -23,7 +24,7 @@ const IDLE_TIMEOUT_MS = 60 * 60 * 1000;  // 60 minutes
 const WARNING_BEFORE_MS = 2 * 60 * 1000; // 2 minutes before timeout
 const WARNING_SECONDS = 120;              // 2 min countdown
 const PROACTIVE_REFRESH_MS = 10 * 60 * 1000; // Refresh at 10 min (access token is 15 min)
-const ACTIVITY_PING_MS = 5 * 60 * 1000; // 5 min — keeps server-side session alive (6 min TTL)
+const ACTIVITY_PING_MS = 2 * 60 * 1000; // Headroom for timer/network delays within the unchanged 6 min TTL
 /**
  * Tiempo mínimo entre dos lecturas de `/auth/me` al volver a la pestaña. No es
  * un sondeo: sólo corre cuando la persona vuelve, y sólo mientras la cuenta
@@ -110,6 +111,7 @@ interface AuthContextType {
     send2FAEmailFallback: (twoFAToken: string) => Promise<boolean>;
     send2FASmsFallback: (twoFAToken: string) => Promise<boolean>;
     logout: () => void;
+    syncSessionFacts: (payload: unknown) => void;
     hasRole: (...roles: string[]) => boolean;
 }
 
@@ -163,6 +165,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const bc = new BroadcastChannel(AUTH_SESSION_CHANNEL);
             bc.onmessage = (evt) => {
                 if (evt.data?.type === "logout") {
+                    setShowWarning(false);
                     setUser(null);
                     setVerticalConfig(null);
                     setIsVerticalConfigLoading(false);
@@ -267,6 +270,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (stageChanged) requestQualityHealthRefresh();
     }, []);
 
+    useEffect(() => {
+        const onRefresh = (event: Event) => syncOnboardingFacts((event as CustomEvent).detail);
+        window.addEventListener(AUTH_REFRESH_EVENT, onRefresh);
+        return () => window.removeEventListener(AUTH_REFRESH_EVENT, onRefresh);
+    }, [syncOnboardingFacts]);
+
     /**
      * Relee el día 0 con `/auth/me`, que ya devuelve los tres datos —y el
      * correo confirmado, porque `/auth/me` es el usuario validado entero.
@@ -344,69 +353,59 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // the session alive matters most.
         if (!localStorage.getItem("accessToken")) return;
 
-        const scheduleRefresh = () => {
-            if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
-            refreshTimerRef.current = setTimeout(async () => {
-                const refreshToken = localStorage.getItem("refreshToken");
-                if (!refreshToken) return;
-
-                try {
-                    const res = await fetch(`${API_URL}/auth/refresh`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ refreshToken }),
-                    });
-
-                    if (res.ok) {
-                        const data = await res.json();
-                        if (data.success) {
-                            localStorage.setItem("accessToken", data.data.accessToken);
-                            if (data.data.refreshToken) {
-                                localStorage.setItem("refreshToken", data.data.refreshToken);
-                            }
-                            syncOnboardingFacts(data.data);
-                            scheduleRefresh(); // Schedule next refresh
-                        }
-                    }
-                } catch {
-                    // Silently fail — the 401 interceptor in api.ts will handle it
-                }
-            }, PROACTIVE_REFRESH_MS);
-        };
-
-        scheduleRefresh();
+        // Route changes must not postpone renewal indefinitely. Keep this timer
+        // for the authenticated session and share the request/rotation mutex.
+        refreshTimerRef.current = setInterval(async () => {
+            try { await refreshAccessToken(); }
+            catch { /* A transient failure is retried by the next ping/request. */ }
+        }, PROACTIVE_REFRESH_MS);
 
         return () => {
-            if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+            if (refreshTimerRef.current) clearInterval(refreshTimerRef.current);
         };
-    }, [isAuthenticated, isPublicPage, pathname, syncOnboardingFacts]);
+    }, [isAuthenticated, isPublicPage]);
 
     // ── Activity ping — keeps server-side session alive ──
     useEffect(() => {
         if (isPublicPage) return;
         if (!localStorage.getItem("accessToken")) return;
 
+        let inFlight = false;
+        let cancelled = false;
+        let lastPing = 0;
         const sendPing = async () => {
-            const token = localStorage.getItem("accessToken");
-            if (!token) return;
+            if (inFlight || !localStorage.getItem("accessToken")) return;
+            inFlight = true;
+            lastPing = Date.now();
             try {
-                const res = await fetch(`${API_URL}/auth/activity-ping`, {
+                const res = await authFetch("/auth/activity-ping", {
                     method: "POST",
-                    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-                });
-                if (res.status === 401) {
-                    performLogout(true, true);
+                }, false);
+                if (!cancelled && res.status === 401) {
+                    // Only a rejected refresh or a rejected retry expires the
+                    // session. An expired access token alone is recoverable.
+                    performLogout(true);
                 }
-            } catch { /* noop */ }
+            } catch { /* Offline/5xx is not proof that authentication was revoked. */ }
+            finally { inFlight = false; }
+        };
+
+        const onReturn = () => {
+            if (document.visibilityState === "visible" && Date.now() - lastPing >= 30_000) void sendPing();
         };
 
         sendPing();
         activityPingRef.current = setInterval(sendPing, ACTIVITY_PING_MS);
+        window.addEventListener("focus", onReturn);
+        document.addEventListener("visibilitychange", onReturn);
 
         return () => {
+            cancelled = true;
             if (activityPingRef.current) clearInterval(activityPingRef.current);
+            window.removeEventListener("focus", onReturn);
+            document.removeEventListener("visibilitychange", onReturn);
         };
-    }, [isAuthenticated, isPublicPage, pathname]);
+    }, [isAuthenticated, isPublicPage]);
 
     // ── Idle timer ──
     const handleWarning = useCallback(() => {
@@ -431,27 +430,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         resetActivity();
 
         // Also refresh the token proactively
-        const refreshToken = localStorage.getItem("refreshToken");
-        if (!refreshToken) return;
-
-        try {
-            const res = await fetch(`${API_URL}/auth/refresh`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ refreshToken }),
-            });
-            if (res.ok) {
-                const data = await res.json();
-                if (data.success) {
-                    localStorage.setItem("accessToken", data.data.accessToken);
-                    if (data.data.refreshToken) {
-                        localStorage.setItem("refreshToken", data.data.refreshToken);
-                    }
-                    syncOnboardingFacts(data.data);
-                }
-            }
-        } catch { /* noop */ }
-    }, [resetActivity, syncOnboardingFacts]);
+        try { await refreshAccessToken(); }
+        catch { /* A transient failure must not discard the active session. */ }
+    }, [resetActivity]);
 
     // ── Fetch vertical config ──
     const fetchVerticalConfig = useCallback(async (tenantId: string) => {
@@ -696,6 +677,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, []);
 
     const performLogout = useCallback((expired = false, kicked = false) => {
+        setShowWarning(false);
         const refreshToken = localStorage.getItem("refreshToken");
         if (refreshToken) {
             fetch(`${API_URL}/auth/logout`, {
@@ -772,6 +754,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 send2FAEmailFallback,
                 send2FASmsFallback,
                 logout,
+                syncSessionFacts: syncOnboardingFacts,
                 hasRole,
             }}
         >

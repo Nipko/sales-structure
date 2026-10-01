@@ -80,8 +80,12 @@ describe("doneStepChannel — what the last screen says about the channel", () =
         expect(doneStepChannel({ channelConnected: true, whatsapp: true, readiness: CHECKING })).toEqual({ kind: "checking" });
     });
 
-    it("a channel that is not WhatsApp has no blocker this screen can read: taken at its word", () => {
+    it("a non-WhatsApp connection waits for real reply evidence", () => {
         expect(doneStepChannel({ channelConnected: true, whatsapp: false, readiness: undefined }))
+            .toEqual({ kind: "connected" });
+        expect(doneStepChannel({ channelConnected: true, whatsapp: false, readiness: undefined, firstReplyAt: "not-a-date" }))
+            .toEqual({ kind: "connected" });
+        expect(doneStepChannel({ channelConnected: true, whatsapp: false, readiness: undefined, firstReplyAt: "2026-09-30T12:00:00.000Z" }))
             .toEqual({ kind: "answering", paymentSoon: false });
     });
 

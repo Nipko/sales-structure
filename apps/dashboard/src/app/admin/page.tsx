@@ -101,6 +101,7 @@ export default function AdminDashboard() {
     const tc = useTranslations("common");
     const tVw = useTranslations("verticalWelcome");
     const tHelp = useTranslations("help");
+    const tQualityHealth = useTranslations("qualityHealth");
     const vt = useVerticalTerms();
     const locale = useLocale() as "es" | "en" | "pt" | "fr";
     const canViewAgentHealth = role === "tenant_admin"
@@ -180,6 +181,7 @@ export default function AdminDashboard() {
     const [modelUsage, setModelUsage] = useState<any[]>([]);
     const [verticalAppointments, setVerticalAppointments] = useState<any[]>([]);
     const [verticalLeads, setVerticalLeads] = useState<any[]>([]);
+    const [pipelineStages, setPipelineStages] = useState<Array<{ id: string; slug: string; name: string }>>([]);
     const [verticalLoading, setVerticalLoading] = useState(false);
     const [detailsState, setDetailsState] = useState<"loading" | "ready" | "unavailable">("loading");
     const [isLive, setIsLive] = useState(false);
@@ -408,6 +410,9 @@ export default function AdminDashboard() {
 
     // Load vertical-specific data
     useEffect(() => {
+        let cancelled = false;
+        setVerticalLeads([]);
+        setPipelineStages([]);
         async function loadVerticalData() {
             if (!user?.tenantId || user?.role === 'super_admin') return;
             const industry = vt.industry;
@@ -425,15 +430,21 @@ export default function AdminDashboard() {
             } else if (PIPELINE_INDUSTRIES.includes(industry)) {
                 setVerticalLoading(true);
                 try {
-                    const res = await api.fetch(`/crm/leads/${user.tenantId}?limit=5&sort=created_at:desc`);
+                    const [res, stagesRes] = await Promise.all([
+                        api.fetch(`/crm/leads/${user.tenantId}?limit=5&sort=created_at:desc`),
+                        api.getStages(user.tenantId).catch(() => null),
+                    ]);
+                    if (cancelled) return;
                     if (res.success && Array.isArray(res.data)) {
                         setVerticalLeads(res.data);
                     }
+                    if (stagesRes?.success && Array.isArray(stagesRes.data)) setPipelineStages(stagesRes.data);
                 } catch { /* ignore */ }
-                setVerticalLoading(false);
+                if (!cancelled) setVerticalLoading(false);
             }
         }
         loadVerticalData();
+        return () => { cancelled = true; };
     }, [user?.tenantId, user?.role, vt.industry]);
 
     const formatTime = (dateStr: string) => {
@@ -504,6 +515,9 @@ export default function AdminDashboard() {
     });
     /** A board of zeros is not help on an account that cannot receive a message yet. */
     const hideBoard = setupCardOnly || cardOwnsScreen;
+    // The first reply proves delivery, not that every setup task is finished.
+    // Keep the next task first; the owner can open the health details meanwhile.
+    const setupNeedsAttention = guideOwnsHome && setupIncomplete !== false;
     /**
      * "Uso de IA hoy" only with numbers to show. Its counts come from the
      * `model_used` analytics event, and no turn emits that event today
@@ -589,20 +603,6 @@ export default function AdminDashboard() {
                 <DataSourceBadge state={(overviewState === "unavailable" || detailsState === "unavailable") ? "unavailable" : isLive ? "live" : "unverified"} />
             </div>
 
-            {/* KPI tips over a board of zeros are not help; the card is the help. */}
-            {!hideBoard && (
-                <HelpPanel
-                    title={tHelp("dashboard.title")}
-                    description={tHelp("dashboard.description")}
-                    tips={tHelp.raw("dashboard.tips") as string[]}
-                    mediaKey="dashboard"
-                />
-            )}
-
-            {/* Salud de agentes aparece recién cuando hay un canal y, en el día 0,
-                cuando la tarjeta ya no tiene pasos: antes sólo repetiría, en rojo, lo
-                que la tarjeta de puesta en marcha ya está diciendo con sus pasos. */}
-            {canViewAgentHealth && !hideBoard && !guideSilent && <AgentHealthCard />}
             {canViewAgentHealth && !guideSilent && (
                 <>
                     <InitialSetupCard
@@ -619,6 +619,27 @@ export default function AdminDashboard() {
                         />
                     )}
                 </>
+            )}
+
+            {canViewAgentHealth && !hideBoard && !guideSilent && (
+                setupNeedsAttention ? (
+                    <details className="mb-8 rounded-xl border border-neutral-200 dark:border-neutral-800">
+                        <summary className="cursor-pointer px-5 py-4 text-sm font-semibold text-neutral-700 dark:text-neutral-200">
+                            {tQualityHealth("title")}
+                        </summary>
+                        <AgentHealthCard />
+                    </details>
+                ) : <AgentHealthCard />
+            )}
+
+            {/* Setup remains ahead of general dashboard guidance after the first reply. */}
+            {!hideBoard && (
+                <HelpPanel
+                    title={tHelp("dashboard.title")}
+                    description={tHelp("dashboard.description")}
+                    tips={tHelp.raw("dashboard.tips") as string[]}
+                    mediaKey="dashboard"
+                />
             )}
 
             {/* Empty-state guiado (Fase 4) — tenant nuevo sin actividad todavía */}
@@ -897,7 +918,8 @@ export default function AdminDashboard() {
                                 <div className="flex items-center gap-2">
                                     {lead.stage && (
                                         <span className={cn("text-xs px-2 py-0.5 rounded-full", stageColors[lead.stage] || 'bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-400')}>
-                                            {lead.stage}
+                                            {pipelineStages.find((stage) => stage.id === lead.stage || stage.slug === lead.stage)?.name
+                                                || (tc.has(`stages.${lead.stage}`) ? tc(`stages.${lead.stage}`) : tc("unknown"))}
                                         </span>
                                     )}
                                     {lead.created_at && (

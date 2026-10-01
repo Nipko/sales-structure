@@ -384,8 +384,9 @@ export default function SecondaryChannels({
                     <div className="flex gap-2">
                         <input
                             id="setup-telegram-key"
-                            type="text"
+                            type="password"
                             autoComplete="off"
+                            spellCheck={false}
                             value={botToken}
                             onChange={(e) => setBotToken(e.target.value)}
                             onKeyDown={(e) => { if (e.key === "Enter") void connectTelegram(); }}

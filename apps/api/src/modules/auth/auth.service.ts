@@ -750,7 +750,10 @@ export class AuthService {
                 role: user.role as UserRole, tenantId: readyTenantId,
             };
             const session = await this.redis.getJson<SessionData>(sessionKey);
-            const { accessToken, refreshToken: newRefresh } = await this.generateTokens(payload, { sid: session?.sid, clientType });
+            if (tokenSid && session?.sid !== tokenSid) {
+                throw new UnauthorizedException('Session expired — please log in again');
+            }
+            const { accessToken, refreshToken: newRefresh } = await this.generateTokens(payload, { sid: tokenSid || session?.sid, clientType });
             // La etapa viaja con cada renovación: el usuario guardado en el
             // panel se escribió en el login y una sesión larga lo deja viejo.
             // `undefined` = no se pudo establecer, y el panel no infiere nada.
@@ -806,13 +809,19 @@ export class AuthService {
         }
 
         const session = await this.redis.getJson<SessionData>(sessionKey);
+        // A logout or forced login can win while token rotation awaits the
+        // database. Never let the old refresh adopt another session's sid or
+        // lose its sid and become an unbound legacy credential.
+        if (tokenSid && session?.sid !== tokenSid) {
+            throw new UnauthorizedException('Session expired — please log in again');
+        }
         const payload: JwtPayload = {
             sub: user.id, email: user.email,
             role: user.role as UserRole, tenantId: readyTenantId,
         };
         const { accessToken, refreshToken: newRefresh } = await this.generateTokens(payload, {
             rememberMe: stored.rememberMe,
-            sid: session?.sid,
+            sid: tokenSid || session?.sid,
             clientType,
         });
 
@@ -2007,6 +2016,12 @@ export class AuthService {
     ): Promise<any> {
         const user = await this.prisma.user.findUnique({ where: { id: userId } });
         if (!user) throw new NotFoundException('User not found');
+        if (user.role !== 'tenant_admin') {
+            throw new ForbiddenException({
+                error: 'onboarding_not_allowed',
+                message: 'Solo el administrador puede completar el alta del negocio.',
+            });
+        }
         const assertOnboardingLockOwned = assertLockOwned;
 
         // Idempotencia. La transacción comitea el tenant ANTES de los pasos críticos
@@ -2024,6 +2039,7 @@ export class AuthService {
             const tenant = await this.prisma.tenant.findUnique({
                 where: { id: existingTenantId },
                 select: {
+                    id: true,
                     name: true,
                     industry: true,
                     language: true,
@@ -2032,9 +2048,33 @@ export class AuthService {
                     plan: true,
                     billingEmail: true,
                     billingCountry: true,
+                    isActive: true,
+                    onboardingCompletedAt: true,
                 },
             });
             if (!tenant) throw new NotFoundException('Tenant not found');
+
+            // A replay after completion only recovers the response. Provisioning
+            // would overwrite the current business identity from its old draft
+            // and could reactivate a tenant suspended after its original signup.
+            // Both unfinished markers are required to resume provisioning.
+            if (tenant.onboardingCompletedAt || user.onboardingCompleted) {
+                if (!tenant.isActive || !tenant.onboardingCompletedAt || !user.onboardingCompleted) {
+                    throw new ConflictException({
+                        error: 'tenant_not_ready',
+                        message: 'Esta cuenta no puede reactivarse desde el alta. Contacta al administrador.',
+                    });
+                }
+                const subscription = await this.prisma.billingSubscription.findUnique({
+                    where: { tenantId: existingTenantId },
+                    select: { status: true, metadata: true, plan: { select: { slug: true } } },
+                });
+                return this.onboardingSessionResult(user, tenant, subscription ? {
+                    status: subscription.status,
+                    planSlug: subscription.plan.slug,
+                    billingCycle: (subscription.metadata as any)?.billingCycle === 'annual' ? 'annual' : 'monthly',
+                } : null, assertLockOwned);
+            }
 
             const settings = (tenant.settings as any) || {};
             const requestedSubType = settings.subType
@@ -2155,49 +2195,7 @@ export class AuthService {
                 await assertLockOwned();
             });
 
-            const verticalConfig = await this.verticalsService.getVerticalConfig(existingTenantId);
-
-            await assertLockOwned();
-            const prevSession = await this.redis.getJson<SessionData>(`session:${user.id}`);
-            const existingSid = prevSession?.sid || await this.createSession(user.id, existingTenantId);
-            await assertLockOwned();
-            const { accessToken, refreshToken } = await this.generateTokens({
-                sub: user.id,
-                email: user.email,
-                role: user.role as UserRole,
-                tenantId: existingTenantId,
-            }, { sid: existingSid });
-            const onboarding = await this.resolveOnboardingFactsForTenant(existingTenantId);
-
-            return {
-                accessToken,
-                refreshToken,
-                user: {
-                    id: user.id,
-                    email: user.email,
-                    firstName: user.firstName,
-                    lastName: user.lastName,
-                    role: user.role,
-                    tenantId: existingTenantId,
-                    tenantName: tenant?.name,
-                    onboardingCompleted: true,
-                    // Un alta reintentada sobre un tenant que ya existía es una
-                    // sesión como cualquier otra: sin el estado, el panel vuelve
-                    // a adivinar en qué punto está la cuenta.
-                    onboardingStage: onboarding.onboardingStage,
-                    firstReplyAt: onboarding.firstReplyAt,
-                    tenantCreatedAt: onboarding.tenantCreatedAt,
-                    hasAnyChannel: onboarding.hasAnyChannel,
-                },
-                verticalConfig,
-                coupon: couponResult,
-                billingCheckout: {
-                    status: onboardingSubscription.status,
-                    requiresPaymentMethod: onboardingSubscription.status === 'pending_auth',
-                    planSlug: onboardingSubscription.planSlug,
-                    billingCycle: onboardingSubscription.billingCycle,
-                },
-            };
+            return this.onboardingSessionResult(user, tenant, onboardingSubscription, assertLockOwned, couponResult);
             });
         }
 
@@ -2526,6 +2524,10 @@ export class AuthService {
                 role: result.user.role,
                 tenantId: result.user.tenantId,
                 tenantName: result.tenant.name,
+                plan: result.tenant.plan,
+                hasPassword: !!user.password,
+                emailVerified: user.emailVerified,
+                emailVerificationState: user.emailVerificationState,
                 onboardingCompleted: result.user.onboardingCompleted,
                 // El tenant se acaba de crear con esta etapa exacta: el puente
                 // /onboarding → asistente se apoya en un hecho, no en un default.
@@ -2547,6 +2549,63 @@ export class AuthService {
             },
         };
         });
+    }
+
+    /** Recover an onboarding session without changing the tenant's configuration. */
+    private async onboardingSessionResult(
+        user: any,
+        tenant: any,
+        subscription: { status: string; planSlug: string; billingCycle: string } | null,
+        assertLockOwned: () => Promise<void>,
+        coupon?: any,
+    ) {
+        const tenantId = user.tenantId as string;
+        const verticalConfig = await this.verticalsService.getVerticalConfig(tenantId, 0, {
+            mode: 'live', persistence: 'disabled',
+        });
+        await assertLockOwned();
+        const session = await this.redis.getJson<SessionData>(`session:${user.id}`);
+        const sid = session?.sid || await this.createSession(user.id, tenantId);
+        if (session && session.tenantId !== tenantId) {
+            await assertLockOwned();
+            await this.redis.setJson(`session:${user.id}`, { ...session, tenantId }, SESSION_TTL);
+            await this.redis.sadd(`tenant_sessions:${tenantId}`, user.id);
+        }
+        await assertLockOwned();
+        const { accessToken, refreshToken } = await this.generateTokens({
+            sub: user.id,
+            email: user.email,
+            role: user.role as UserRole,
+            tenantId,
+        }, { sid });
+        const onboarding = await this.resolveOnboardingFactsForTenant(tenantId);
+        return {
+            accessToken,
+            refreshToken,
+            user: {
+                id: user.id,
+                email: user.email,
+                firstName: user.firstName,
+                lastName: user.lastName,
+                role: user.role,
+                tenantId,
+                tenantName: tenant.name,
+                plan: tenant.plan,
+                hasPassword: !!user.password,
+                emailVerified: user.emailVerified,
+                emailVerificationState: user.emailVerificationState,
+                onboardingCompleted: true,
+                ...onboarding,
+            },
+            verticalConfig,
+            ...(coupon ? { coupon } : {}),
+            billingCheckout: subscription ? {
+                status: subscription.status,
+                requiresPaymentMethod: subscription.status === 'pending_auth',
+                planSlug: subscription.planSlug,
+                billingCycle: subscription.billingCycle,
+            } : undefined,
+        };
     }
 
     /**

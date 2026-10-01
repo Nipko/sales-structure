@@ -392,6 +392,7 @@ const ready = !!databaseUrl && !!redisUrl;
             dripSequenceService: { stopOnReply: jest.fn(async () => undefined) },
             identityService: { resolveOrCreateProfile: jest.fn(async () => undefined) },
             pipelineService: {
+                isAutoProgressEnabled: jest.fn().mockResolvedValue(true),
                 resolveTenantStage: jest.fn(async (_t: string, stage?: string) => ({ slug: stage || 'nuevo' })),
                 writeLeadStage: jest.fn(async () => undefined),
                 syncOpportunityToDeal: jest.fn(async () => undefined),

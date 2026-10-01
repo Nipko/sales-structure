@@ -1210,6 +1210,7 @@
     }
   },
   "auth": {
+    "verificationDigit": "Verification code digit {position}",
     "login": "Log in",
     "signup": "Create account",
     "logout": "Log out",
@@ -2754,6 +2755,7 @@
       "logoUploading": "Uploading...",
       "logoChooseFile": "Choose image",
       "logoChangeFile": "Change logo",
+      "logoFormats": "JPG, PNG, WebP or GIF. Maximum 5 MB.",
       "errors": {
         "companyNameRequired": "Company name is required",
         "saveFailed": "Failed to save",
@@ -4502,11 +4504,12 @@
       "validating": "Validating…",
       "connectBtn": "Connect bot",
       "successTitle": "Bot connected!",
-      "successDesc": "All set. Your bot is now receiving messages and your agent answers them automatically.",
+      "successDesc": "Your bot is connected. Send it a question to check that your agent replies.",
       "testInTelegram": "Test on Telegram",
       "testHint": "Send a message to your bot to check that it answers well.",
       "tryItOut": "Try your bot",
-      "tryItOutDesc": "Send a message to your bot on Telegram to check that everything works. Your AI agent answers it.",
+      "tryItOutDesc": "Open the bot you want to test. Select Start or send /start, then ask a real question about your business. Check that you receive the reply in Telegram; you can review the conversation in Inbox.",
+      "openInbox": "Review conversation in Inbox",
       "openInTelegram": "Open on Telegram",
       "testSuccess": "Connection verified successfully",
       "testReady": "Your bot is ready to receive messages",
@@ -6036,7 +6039,7 @@
     "strandedMandate": "{tenant} was deleted, but {provider} still holds a charging mandate we cannot cancel from here. Cancel it at the provider by hand or the customer may keep being charged. It is recorded in the platform audit log."
   },
   "onboarding": {
-    "paidPlanAfterSignup": "The {plan} plan requires a payment method. We first create your account without paid access, then you will continue securely with {provider}. Access is granted only after the provider confirms.",
+    "paidPlanAfterSignup": "The {plan} plan requires a payment method. After creating your account, you will complete payment securely. Access to the plan starts when payment is confirmed.",
     "billingHandoffError": "The account was created, but the selected plan's checkout intent was not returned. Open Settings → Billing or contact support; we did not silently switch you to another plan.",
     "step1Title": "Your company",
     "step1Subtitle": "Tell us about your business",
@@ -6088,6 +6091,18 @@
     "agentsIncluded": "AI agents: {n}",
     "messagesIncluded": "AI messages/month: {n}",
     "channelsIncluded": "Channels: {n}",
+    "planChannels": {
+      "included": "Included channels: {channels}",
+      "none": "This plan does not include conversational channels.",
+      "unavailable": "Channel information is unavailable.",
+      "names": {
+        "whatsapp": "WhatsApp",
+        "instagram": "Instagram",
+        "messenger": "Messenger",
+        "telegram": "Telegram",
+        "web_widget": "Web Chat"
+      }
+    },
     "unlimited": "Unlimited",
     "planSelectionUnavailable": "The selected plan or billing cycle is no longer available. Review the catalog and try again.",
     "companyName": "Company name",
@@ -6483,7 +6498,7 @@
     "moreDetailsHint": "(optional)",
     "timezoneDetected": "We detected {zone}",
     "timezoneChange": "change",
-    "billingCountryDetected": "Billing from {country}",
+    "billingCountryDetected": "Billing country: {country}",
     "seeOtherPlans": "See other plans",
     "validation": {
       "summary": "Check the highlighted fields and try again.",
@@ -6498,9 +6513,25 @@
       "tenant_exists": "This account already has a business. We're taking you to the panel.",
       "rate_limited": "Too many attempts in a row. Wait a minute and try again."
     },
+    "draftNeedsReview": "Review the missing details before continuing. We kept what you already entered.",
     "coachMarks": {
-      "skip": "Skip",
-      "next": "Next",
+      "skip": "Close help",
+      "next": "Next tip",
+      "back": "Previous tip",
+      "label": "Help with your details",
+      "progress": "Tip {current} of {total}",
+      "name": {
+        "title": "Your business name",
+        "body": "Enter the name your customers know your business by. Fields marked with * are required."
+      },
+      "subtype": {
+        "title": "Choose your business type",
+        "body": "Select the option that best describes your business. We use it to prepare your agent's features and answers."
+      },
+      "orgSize": {
+        "title": "How many people work with you?",
+        "body": "Choose your company size. This is required to continue; if you work on your own, select 1 to 10."
+      },
       "done": "Got it",
       "industry": {
         "title": "Start with your industry",
@@ -6515,8 +6546,8 @@
         "body": "We detected it for you. Tap the chip only if it is not the right one."
       },
       "submit": {
-        "title": "That's all for now",
-        "body": "Everything else is optional and you can fill it in later from the panel."
+        "title": "Continue to your customers",
+        "body": "Complete the fields marked with * and select Next in the form. Then you will choose your customers, goals and plan. You can leave optional details for later."
       }
     },
     "billingCountryChoose": "Select your billing country",
@@ -7187,17 +7218,20 @@
     },
     "doneStep": {
       "title": "Initial setup saved",
-      "subtitle": "Your agent now answers on the connected channel. Ask someone to write to it there to see it in action.",
+      "subtitleConnected": "Your channel is connected. Check a real reply before starting to serve customers.",
+      "subtitleVerified": "We recorded a reply sent by your agent through a connected channel. You can follow operations from Home and Inbox.",
       "subtitleDeferred": "We'll be waiting on Home to connect {channel}. Meanwhile, here is what comes next.",
       "goToPanel": "Go to the panel",
       "tourCta": "Take the dashboard tour",
       "essentials": {
         "channel": {
           "title": "Connect {channel}",
+          "action": "Connect channel",
           "description": "Without a channel, your agent receives messages from nobody.",
           "descriptionWithLink": "For now, people can only write to them through the link. With {channel}, your usual customers reach them too.",
           "connectedTitle": "Channel connected",
           "connectedDescription": "Whatever people write to you there, your agent already answers.",
+          "testDescription": "The connection is saved. Send a real question and check the agent's reply.",
           "checkingDescription": "We're checking that your agent can reply there…",
           "pendingTitle": "Finish setting up WhatsApp",
           "pendingZone": "Confirm your number's billing time zone: without it, none of your agent's replies go out on WhatsApp.",
@@ -7212,12 +7246,14 @@
         },
         "knowledge": {
           "title": "Load what your agent must know",
+          "action": "Add frequently asked questions",
           "description": "Prices, services and frequent questions: that is where its answers come from.",
           "doneTitle": "Your agent already has information to answer with",
           "doneDescription": "It answers with what you loaded. You can add more whenever you want."
         },
         "team": {
           "title": "Choose who receives pending cases",
+          "action": "Set up team",
           "description": "We could not find an active person to receive them. You can add one without blocking the rest of setup.",
           "doneTitle": "Pending cases already have a destination",
           "doneDescription": "When your agent needs help, the case stays in Inbox and we notify {recipient}.",
@@ -7620,7 +7656,9 @@
     "legacyProviderMismatch": "This account retains a previous {provider} configuration that does not match its billing country. Contact support before activating the plan so charges are not created in two providers.",
     "stripeTrialEndingSoon": "Your trial ends in less than 48 hours. To preserve the remaining days, complete Stripe checkout when the trial ends.",
     "stripeTrialUnsupported": "This trial duration is not available on Stripe. Contact support to review the plan.",
-    "stripeCheckoutProcessing": "Stripe has received this checkout and we are awaiting confirmation. Refresh the status in a few moments.",
+    "stripeCheckoutProcessing": "We are confirming a previous payment process. Refresh the status in a few moments.",
+    "trialUpgradeNeedsPayment": "This change requires adding a payment method. Refresh the page and choose the plan again.",
+    "subscriptionChangedRetry": "Your plan status has changed. Refresh the page and try again.",
     "stripePriceUnavailable": "This billing cycle does not yet have a configured Stripe price. Choose another cycle or contact support.",
     "stripeRefreshStatus": "Refresh status",
     "paymentMethodsTitle": "Payment methods",
@@ -7662,6 +7700,7 @@
     "trialStarted": "Free trial started.",
     "paymentProcessing": "The method is authorized and the charge is processing. The plan activates only after Wompi confirms the payment.",
     "planChangedDuringTrial": "{plan} plan activated. Your trial runs until {date}; that day we will charge {amount} to your saved payment method.",
+    "planChangedDuringTrialWithoutPaymentMethod": "Your trial now includes {plan} until {date}. You have not been charged. Add a payment method to continue after your trial.",
     "planChanged": "Plan updated.",
     "cancelled": "Subscription cancelled.",
     "cardUpdated": "Card updated successfully.",
@@ -12730,7 +12769,10 @@
       },
       "firstReply": {
         "title": "Check {agent}'s first reply",
-        "description": "Setup is ready. Now message it through {channels} from another account or phone to check real service.",
+        "description": "The channel is connected. Message it through {channels} from another account or phone to check real service.",
+        "unavailable": "We could not check the replies. Retry the check; we cannot confirm the result yet.",
+        "retry": "Retry check",
+        "openChannel": "Open {channel}",
         "agentFallback": "your agent",
         "channelFallback": "the connected channel",
         "stepSend": "1. Send a real question about your business.",

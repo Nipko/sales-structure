@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Check, Loader2, MessageSquare, RefreshCw } from "lucide-react";
+import { Check, ExternalLink, Loader2, MessageSquare, RefreshCw } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { api } from "@/lib/api";
 import { readSetupStatusFacts } from "@/lib/onboarding-guide";
@@ -13,11 +13,14 @@ export default function FirstOperationalReplyCard({
   tenantId,
   agentName,
   connectedChannelTypes,
+  testChannel,
   onVerified,
 }: {
   tenantId: string;
   agentName?: string | null;
   connectedChannelTypes: readonly string[];
+  /** A provider link already validated by the channel connection reader. */
+  testChannel?: { href: string; name: string } | null;
   onVerified: (at: string) => void;
 }) {
   const t = useTranslations("qualityHealth.setup.firstReply");
@@ -25,6 +28,7 @@ export default function FirstOperationalReplyCard({
   const locale = useLocale();
   const [checking, setChecking] = useState(false);
   const [checked, setChecked] = useState(false);
+  const [readFailed, setReadFailed] = useState(false);
   const [verifiedAt, setVerifiedAt] = useState<string | null>(null);
   const running = useRef(false);
 
@@ -42,10 +46,12 @@ export default function FirstOperationalReplyCard({
     if (visible) setChecking(true);
     try {
       const facts = readSetupStatusFacts(await api.getSetupStatus(tenantId));
-      if (facts?.firstReplyAt) setVerifiedAt(facts.firstReplyAt);
+      if (!facts) throw new Error("setup_status_unavailable");
+      setReadFailed(false);
+      if (facts.firstReplyAt) setVerifiedAt(facts.firstReplyAt);
       else if (visible) setChecked(true);
     } catch {
-      if (visible) setChecked(true);
+      setReadFailed(true);
     } finally {
       running.current = false;
       if (visible) setChecking(false);
@@ -85,12 +91,18 @@ export default function FirstOperationalReplyCard({
                 <li>{t("stepSend")}</li>
                 <li>{t("stepWait")}</li>
               </ol>
-              <p className="mt-3 text-xs text-muted-foreground">{checked ? t("notSeen") : t("evidence")}</p>
+              <p role="status" className="mt-3 text-xs text-muted-foreground">{readFailed ? t("unavailable") : checked ? t("notSeen") : t("evidence")}</p>
               <div className="mt-4 flex flex-wrap gap-2">
+                {testChannel && (
+                  <a href={testChannel.href} target="_blank" rel="noopener noreferrer"
+                    className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-indigo-600 px-3 text-sm font-semibold text-white hover:bg-indigo-700">
+                    {t("openChannel", { channel: testChannel.name })} <ExternalLink size={14} aria-hidden="true" />
+                  </a>
+                )}
                 <button type="button" onClick={() => void verify(true)} disabled={checking}
-                  className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-indigo-600 px-3 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">
+                  className={`inline-flex min-h-9 items-center gap-1.5 rounded-lg px-3 text-sm font-semibold disabled:opacity-50 ${testChannel ? "border border-indigo-200 text-indigo-700 hover:bg-indigo-100 dark:border-indigo-500/30 dark:text-indigo-300 dark:hover:bg-indigo-500/10" : "bg-indigo-600 text-white hover:bg-indigo-700"}`}>
                   {checking ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <RefreshCw size={14} aria-hidden="true" />}
-                  {t("check")}
+                  {readFailed ? t("retry") : t("check")}
                 </button>
                 <Link href="/admin/inbox" className="inline-flex min-h-9 items-center rounded-lg px-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 dark:text-indigo-300 dark:hover:bg-indigo-500/10">
                   {t("openInbox")}

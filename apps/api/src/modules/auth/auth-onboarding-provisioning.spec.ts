@@ -13,6 +13,9 @@ describe('AuthService onboarding provisioning retry', () => {
             role: 'tenant_admin',
             tenantId,
             onboardingCompleted: false,
+            emailVerified: false,
+            emailVerificationState: 'unverified',
+            password: 'existing-hash',
         };
         const tenant = {
             name: 'Store',
@@ -20,6 +23,8 @@ describe('AuthService onboarding provisioning retry', () => {
             language: 'es-CO',
             schemaName: canonicalSchema,
             plan: 'starter',
+            isActive: false,
+            onboardingCompletedAt: null,
             billingEmail: null,
             billingCountry: null,
             settings: { subType: 'seguros', chatReasons: ['sales'], timezone: 'America/Bogota' },
@@ -139,6 +144,9 @@ describe('AuthService onboarding provisioning retry', () => {
             data: { onboardingCompleted: true },
         });
         expect(result.user.onboardingCompleted).toBe(true);
+        expect(result.user).toMatchObject({
+            hasPassword: true, emailVerified: false, emailVerificationState: 'unverified', plan: 'starter',
+        });
         expect(result.verticalConfig).toEqual({ industry: 'seguros', subType: 'broker' });
         expect(redis.releaseLockToken).toHaveBeenCalledTimes(6);
 
@@ -166,6 +174,9 @@ describe('AuthService onboarding provisioning retry', () => {
             role: 'tenant_admin',
             tenantId: null,
             onboardingCompleted: false,
+            emailVerified: false,
+            emailVerificationState: 'unverified',
+            password: 'signup-hash',
             signupSource: 'google',
             signupAttribution: { source: 'google', utmCampaign: 'durable-campaign' },
         };
@@ -278,7 +289,10 @@ describe('AuthService onboarding provisioning retry', () => {
         }));
 
         unblockBootstrap();
-        await first;
+        const completed = await first;
+        expect(completed.user).toMatchObject({
+            hasPassword: true, emailVerified: false, emailVerificationState: 'unverified',
+        });
         expect(billing.createTrialSubscription).toHaveBeenCalledWith(expect.objectContaining({ billingCountry: 'MX' }));
         expect(persona.createDefaultAgentFromGoals).toHaveBeenCalledWith(
             tenantId,

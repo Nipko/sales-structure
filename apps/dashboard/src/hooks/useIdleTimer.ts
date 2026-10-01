@@ -8,6 +8,8 @@ const ACTIVITY_EVENTS = [
     "scroll",
     "touchstart",
     "click",
+    "input",
+    "change",
 ] as const;
 
 const THROTTLE_MS = 30_000; // Only record activity once per 30s
@@ -73,9 +75,8 @@ export function useIdleTimer({
                     lastActivityRef.current = evt.data.ts;
                     warningFiredRef.current = false;
                 }
-                if (evt.data?.type === "logout") {
-                    onTimeout();
-                }
+                // AuthProvider owns logout. Treating it as another timeout
+                // rebroadcasts logout and replaces the original reason.
             };
             channelRef.current = bc;
         } catch {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useId } from "react";
+import Link from "next/link";
 import { api } from "@/lib/api";
 import { useTenant } from "@/contexts/TenantContext";
 import { usePlanLimits } from "@/hooks/usePlanLimits";
@@ -27,6 +28,7 @@ import { LoadFailureNotice } from "@/components/ui/load-failure";
 import { ConnectFailureCard } from "../_components/ConnectFailureCard";
 import type { ChannelConnectFailure } from "../_components/connect-errors";
 import { TELEGRAM_PAGE_ERRORS_NAMESPACE, telegramConnectFailure } from "./telegram-connect-failure";
+import { readTelegramConnected } from "../../setup-wizard/connect-channels";
 
 const BRAND = "#0088cc";
 
@@ -44,9 +46,7 @@ export default function TelegramSetupPage() {
     const [botToken, setBotToken] = useState("");
     const [loading, setLoading] = useState(true);
     const [connecting, setConnecting] = useState(false);
-    const [testing, setTesting] = useState(false);
     const [disconnecting, setDisconnecting] = useState(false);
-    const [testResult, setTestResult] = useState<{ ok: boolean; text: string } | null>(null);
     /** A refused connection, as the one card it becomes. Never the server's sentence. */
     const [failure, setFailure] = useState<ChannelConnectFailure | null>(null);
     const [warning, setWarning] = useState("");
@@ -111,26 +111,6 @@ export default function TelegramSetupPage() {
         } catch { setWarning(tc("connectionError")); }
     };
 
-    const handleTest = async () => {
-        setTesting(true);
-        setTestResult(null);
-        try {
-            // Use the bot's own chat — send getMe first to find bot ID,
-            // but actually we need a real chat_id. The user needs to message the bot first.
-            // Instead, we validate the webhook is working by calling getWebhookInfo
-            const creds = status?.account;
-            await api.fetch("/channels/telegram/test", {
-                method: "POST",
-                body: JSON.stringify({ chatId: creds?.metadata?.botId?.toString() }),
-            });
-            setTestResult({ ok: true, text: t("telegram.testSuccess") });
-        } catch {
-            setTestResult({ ok: false, text: t("telegram.testFailed") });
-        } finally {
-            setTesting(false);
-        }
-    };
-
     const handleDisconnect = async () => {
         setDisconnecting(true);
         setWarning("");
@@ -139,7 +119,6 @@ export default function TelegramSetupPage() {
             setShowDisconnectModal(false);
             setStatus(null);
             setStep(1);
-            setTestResult(null);
             // If Telegram didn't actually accept deleteWebhook (token expired,
             // bot revoked, etc.) we still flipped is_active in our DB but the
             // bot might keep posting messages somewhere else. Surface that.
@@ -204,7 +183,9 @@ export default function TelegramSetupPage() {
 
                 {/* Bots list (multi-account) */}
                 <div className="flex flex-col gap-3 mb-4">
-                    {accounts.map((acc: any, idx: number) => (
+                    {accounts.map((acc: any, idx: number) => {
+                        const bot = readTelegramConnected({ data: { botUsername: acc.accountId || acc.metadata?.botUsername } });
+                        return (
                         <div key={acc.accountId || idx} className="rounded-xl border border-border bg-[var(--bg-secondary)] overflow-hidden">
                             <div className="p-6">
                                 <div className="flex items-center gap-4">
@@ -221,6 +202,12 @@ export default function TelegramSetupPage() {
                                         <p className="text-sm font-mono m-0 mt-0.5" style={{ color: BRAND }}>
                                             @{acc.accountId || acc.metadata?.botUsername}
                                         </p>
+                                        {bot.href && (
+                                            <a href={bot.href} target="_blank" rel="noopener noreferrer"
+                                                className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-sky-700 dark:text-sky-400">
+                                                {t("telegram.openInTelegram")} <ExternalLink size={13} aria-hidden="true" />
+                                            </a>
+                                        )}
                                     </div>
                                     {accounts.length > 1 && (
                                         <button
@@ -233,7 +220,8 @@ export default function TelegramSetupPage() {
                                 </div>
                             </div>
                         </div>
-                    ))}
+                        );
+                    })}
                     {canAddTelegram && (
                         <button
                             onClick={() => { setForceSetup(true); setStep(1); }}
@@ -243,19 +231,6 @@ export default function TelegramSetupPage() {
                         </button>
                     )}
                 </div>
-
-                {/* Test Result */}
-                {testResult && (
-                    <div className={cn(
-                        "p-4 rounded-xl mb-4 text-sm border flex items-center gap-2",
-                        testResult.ok
-                            ? "bg-[rgba(0,214,143,0.1)] text-[var(--success)] border-[rgba(0,214,143,0.2)]"
-                            : "bg-[rgba(255,71,87,0.1)] text-[var(--danger)] border-[rgba(255,71,87,0.2)]"
-                    )}>
-                        {testResult.ok ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
-                        {testResult.text}
-                    </div>
-                )}
 
                 {/* How to test */}
                 <div className="rounded-xl border border-border bg-[var(--bg-secondary)] overflow-hidden mb-4">
@@ -269,17 +244,14 @@ export default function TelegramSetupPage() {
                                 <p className="text-[13px] text-[var(--text-secondary)] m-0 mb-3 leading-relaxed">
                                     {t("telegram.tryItOutDesc")}
                                 </p>
-                                <a
-                                    href={`https://t.me/${account.accountId || account.metadata?.botUsername}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
+                                <Link
+                                    href="/admin/inbox"
                                     className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white no-underline"
                                     style={{ background: BRAND }}
                                 >
                                     <MessageCircle size={16} />
-                                    {t("telegram.openInTelegram")}
-                                    <ExternalLink size={12} />
-                                </a>
+                                    {t("telegram.openInbox")}
+                                </Link>
                             </div>
                         </div>
                     </div>
@@ -475,6 +447,8 @@ export default function TelegramSetupPage() {
                             <input
                                 id={keyInputId}
                                 type="password"
+                                autoComplete="off"
+                                spellCheck={false}
                                 value={botToken}
                                 onChange={(e) => { setBotToken(e.target.value); setFailure(null); }}
                                 placeholder={t("telegram.keyPlaceholder")}

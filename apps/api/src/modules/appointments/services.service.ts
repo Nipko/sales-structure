@@ -15,6 +15,7 @@ import { validatePaymentPolicyInput } from '../../common/utils/payment-policy.ut
 import { storedPriceAmount } from './service-price-status';
 
 export type DurationType = 'fixed' | 'flexible' | 'open';
+export type ServiceLocationType = 'in_person' | 'online' | 'hybrid';
 
 export interface BookableService {
     id: string;
@@ -23,6 +24,9 @@ export interface BookableService {
     durationMinutes: number;
     durationMinutesMax: number | null;
     durationType: DurationType;
+    locationType: ServiceLocationType;
+    locationAddress: string | null;
+    meetingLink: string | null;
     bufferMinutes: number;
     /**
      * `null` = the row has no amount (D17 seeds it that way outside the six
@@ -60,6 +64,36 @@ export interface BookableService {
 
 export type ServicePriceStatus = 'example' | 'confirmed' | 'quote';
 const OWNER_PRICE_STATUSES: readonly ServicePriceStatus[] = ['confirmed', 'quote'];
+
+/** Omitted fields inherit the current service; empty address/link clear them.
+ * Online services can leave the link empty for calendar-generated meetings. */
+function serviceLocationInput(data: any): Partial<Pick<BookableService, 'locationType' | 'locationAddress' | 'meetingLink'>> {
+    const values: Partial<Pick<BookableService, 'locationType' | 'locationAddress' | 'meetingLink'>> = {};
+    if (data.locationType !== undefined) {
+        if (!['in_person', 'online', 'hybrid'].includes(data.locationType)) {
+            throw new BadRequestException('locationType must be in_person, online, or hybrid');
+        }
+        values.locationType = data.locationType;
+    }
+    for (const field of ['locationAddress', 'meetingLink'] as const) {
+        const value = data[field];
+        if (value === undefined) continue;
+        if (value !== null && typeof value !== 'string') {
+            throw new BadRequestException(`${field} must be a string or null`);
+        }
+        values[field] = value?.trim() || null;
+    }
+    if (values.meetingLink) {
+        let url: URL;
+        try { url = new URL(values.meetingLink); }
+        catch { throw new BadRequestException('meetingLink must be an absolute HTTP or HTTPS URL'); }
+        if (!['http:', 'https:'].includes(url.protocol) || !url.hostname || url.username || url.password
+            || /\s|[\u0000-\u001f\u007f]/.test(values.meetingLink)) {
+            throw new BadRequestException('meetingLink must be an absolute HTTP or HTTPS URL without credentials');
+        }
+    }
+    return values;
+}
 
 /** A price the request carries. `undefined` = not sent; `null` or '' = cleared. */
 function hasPriceValue(value: unknown): boolean {
@@ -231,6 +265,7 @@ export class ServicesService {
 
     async create(schemaName: string, data: any, tenantId?: string): Promise<BookableService> {
         const id = randomUUID();
+        const location = serviceLocationInput(data);
         const durationType: DurationType = data.durationType || 'fixed';
         if (!['fixed', 'flexible', 'open'].includes(durationType)) {
             throw new BadRequestException('durationType must be fixed, flexible, or open');
@@ -259,8 +294,8 @@ export class ServicesService {
         const price = data?.free === true ? 0 : storedPriceAmount(data?.price);
         try {
             await this.prisma.executeInTenantSchema(schemaName,
-                `INSERT INTO services (id, name, description, duration_minutes, buffer_minutes, price, currency, color, category, max_concurrent, required_fields, duration_type, duration_minutes_max, rebook_after_days, payment_policy, deposit_percent, deposit_amount, price_status, created_at, updated_at)
-                 VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13, $14, $15, $16, $17, $18, NOW(), NOW())`,
+                `INSERT INTO services (id, name, description, duration_minutes, buffer_minutes, price, currency, color, category, max_concurrent, required_fields, duration_type, duration_minutes_max, rebook_after_days, payment_policy, deposit_percent, deposit_amount, price_status, location_type, location_address, meeting_link, created_at, updated_at)
+                 VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, NOW(), NOW())`,
                 [id, data.name, data.description || null, duration,
                  buffer, price, currency, data.color || '#6c5ce7',
                  data.category || null, data.maxConcurrent || 1,
@@ -272,7 +307,7 @@ export class ServicesService {
                  createPolicy.values.payment_policy ?? 'none',
                  createPolicy.values.deposit_percent ?? null,
                  createPolicy.values.deposit_amount ?? null,
-                 priceStatus],
+                 priceStatus, location.locationType ?? 'in_person', location.locationAddress ?? null, location.meetingLink ?? null],
             );
         } catch (e: any) {
             // uidx_services_name (tenant-schema.sql): el motor de reservas lista los
@@ -292,6 +327,7 @@ export class ServicesService {
     }
 
     async update(schemaName: string, serviceId: string, data: any, tenantId?: string): Promise<BookableService> {
+        const location = serviceLocationInput(data);
         const current = await this.getById(schemaName, serviceId);
         const nextPriceStatus = resolvePriceStatusInput(data, current);
         const nextDurationType = (data.durationType ?? current.durationType) as DurationType;
@@ -347,6 +383,9 @@ export class ServicesService {
         if (active !== undefined) { sets.push(`is_active = $${idx++}`); params.push(active); }
         if (data.sortOrder !== undefined) { sets.push(`sort_order = $${idx++}`); params.push(data.sortOrder); }
         if (data.category !== undefined) { sets.push(`category = $${idx++}`); params.push(data.category || null); }
+        if (location.locationType !== undefined) { sets.push(`location_type = $${idx++}`); params.push(location.locationType); }
+        if (location.locationAddress !== undefined) { sets.push(`location_address = $${idx++}`); params.push(location.locationAddress); }
+        if (location.meetingLink !== undefined) { sets.push(`meeting_link = $${idx++}`); params.push(location.meetingLink); }
         if (data.maxConcurrent !== undefined) { sets.push(`max_concurrent = $${idx++}`); params.push(data.maxConcurrent); }
         if (data.requiredFields !== undefined) { sets.push(`required_fields = $${idx++}::jsonb`); params.push(JSON.stringify(data.requiredFields)); }
         if (data.durationType !== undefined) { sets.push(`duration_type = $${idx++}`); params.push(nextDurationType); }
@@ -485,6 +524,9 @@ export class ServicesService {
             durationMinutes: row.duration_minutes,
             durationMinutesMax: row.duration_minutes_max || null,
             durationType: row.duration_type || 'fixed',
+            locationType: row.location_type || 'in_person',
+            locationAddress: row.location_address || null,
+            meetingLink: row.meeting_link || null,
             bufferMinutes: row.buffer_minutes,
             // NULL stays NULL (FX1): a missing amount read as 0 is a free
             // service, and it is what let "Confirmar precio" confirm nothing.

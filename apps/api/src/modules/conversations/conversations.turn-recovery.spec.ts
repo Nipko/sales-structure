@@ -55,6 +55,7 @@ describe('recovering a turn from its ledger', () => {
             nurturingService: { cancelFollowUp: jest.fn().mockResolvedValue(undefined), scheduleFollowUp: jest.fn().mockResolvedValue(undefined) },
             dripSequenceService: { stopOnReply: jest.fn().mockResolvedValue(undefined) },
             pipelineService: {
+                isAutoProgressEnabled: jest.fn().mockResolvedValue(true),
                 resolveTenantStage: jest.fn().mockResolvedValue({ slug: 'initial' }),
                 autoProgressFromConversation: jest.fn().mockResolvedValue(undefined),
             },

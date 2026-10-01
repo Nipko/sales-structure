@@ -148,6 +148,10 @@ function TenantHelpAssistant() {
   const t = useTranslations("helpAssistant");
   const locale = useLocale();
   const pathname = usePathname();
+  // Conversation screens already have a composer at the bottom right.
+  // Keep Assist reachable through Ayuda without covering Send or attachments.
+  const hasConversationComposer = pathname === "/admin/inbox"
+    || /^\/admin\/agent\/[^/]+\/test\/?$/.test(pathname ?? "");
   // The guided setup owns the screen until the first real reply, so the mascot
   // is not drawn at all during day 0 (D7-A) — on any screen, not only the
   // wizard. Assist itself stays reachable: the sheet below is still mounted,
@@ -488,7 +492,7 @@ function TenantHelpAssistant() {
           the sheet stays, so every explicit way in still opens Assist — which
           on the wizard it did not, because this used to return nothing there
           and the sidebar's "Ayuda" opened a sheet that was never drawn. */}
-      {!beforeLive && <SheetTrigger asChild>
+      {!beforeLive && !hasConversationComposer && <SheetTrigger asChild>
         <button
           type="button"
           id={guidedTourAnchorId("assistant")}

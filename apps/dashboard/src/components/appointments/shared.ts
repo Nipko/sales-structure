@@ -46,7 +46,14 @@ export interface Service {
   active: boolean;
   category?: string | null;
   maxConcurrent?: number;
+  rebookAfterDays?: number | null;
   requiredFields?: string[];
+  locationType?: string;
+  locationAddress?: string | null;
+  meetingLink?: string | null;
+  paymentPolicy?: "none" | "full" | "deposit" | "any";
+  depositPercent?: number | null;
+  depositAmount?: number | null;
 }
 
 export interface ExternalEvent {

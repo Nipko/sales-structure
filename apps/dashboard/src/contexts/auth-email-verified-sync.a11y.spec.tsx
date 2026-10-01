@@ -38,8 +38,11 @@ function liveOwner(overrides: Record<string, unknown> = {}) {
 }
 
 function EmailFlag() {
-    const { user } = useAuth();
-    return <output data-email-verified>{String(user?.emailVerified)}</output>;
+    const { user, syncSessionFacts } = useAuth();
+    return <>
+        <output data-email-verified>{String(user?.emailVerified)}</output>
+        <button onClick={() => syncSessionFacts({ id: "user-1", tenantId: "tenant-1", emailVerified: true })}>Confirm in this tab</button>
+    </>;
 }
 
 /** What `fetch` resolves to, as far as the provider reads it (jsdom has no `Response`). */
@@ -113,6 +116,19 @@ describe("the session learns the email was confirmed elsewhere", () => {
             });
 
             expect(flag(screen)).toBe("true");
+            expect(meReads).toBe(readsBefore);
+        } finally { screen.unmount(); }
+    });
+
+    it("updates the mounted provider immediately after verification in the same tab", async () => {
+        localStorage.setItem("user", JSON.stringify(liveOwner()));
+        const screen = await renderScreen(<AuthProvider><EmailFlag /></AuthProvider>);
+        try {
+            expect(flag(screen)).toBe("false");
+            const readsBefore = meReads;
+            await interact(() => screen.container.querySelector<HTMLButtonElement>("button")!.click());
+            expect(flag(screen)).toBe("true");
+            expect(JSON.parse(localStorage.getItem("user")!).emailVerified).toBe(true);
             expect(meReads).toBe(readsBefore);
         } finally { screen.unmount(); }
     });

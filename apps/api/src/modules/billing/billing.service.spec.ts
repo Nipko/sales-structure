@@ -168,6 +168,16 @@ describe('BillingService', () => {
         expect(service).toBeDefined();
     });
 
+    it('does not discard a payment token when changing a local Stripe trial plan', async () => {
+        const stripeBilling = { changePlan: jest.fn() };
+        (service as any).stripeBilling = stripeBilling;
+        prismaMock.billingSubscription.findUnique.mockResolvedValue({ provider: 'stripe', providerSubscriptionId: null });
+        await expect(service.upgradeSubscription('tenant-1', 'starter', 'single-use-token', 'monthly'))
+            .rejects.toMatchObject({ response: { error: 'stripe_checkout_required' } });
+        expect(stripeBilling.changePlan).not.toHaveBeenCalled();
+        expect(prismaMock.tenant.update).not.toHaveBeenCalled();
+    });
+
     // -------------------------------------------------------------------------
     // State machine — deriveSubscriptionPatch (private, accessed via any-cast)
     // -------------------------------------------------------------------------
@@ -416,6 +426,62 @@ describe('BillingService', () => {
     // -------------------------------------------------------------------------
 
     describe('createTrialSubscription', () => {
+        it.each([
+            { trialDays: 0, requiresCardForTrial: false },
+            { trialDays: 7, requiresCardForTrial: true },
+        ])('allows pending authorization before collecting tax identity (trial=$trialDays)', async (planTerms) => {
+            prismaMock.tenant.findUnique.mockResolvedValue({
+                id: 't1', name: 'T1', billingCountry: 'CO', plan: 'emprendedor', settings: {},
+            });
+            prismaMock.billingSubscription.findUnique.mockResolvedValue(null);
+            prismaMock.billingPlan.findUnique.mockResolvedValue({
+                id: 'plan-pro', slug: 'pro', isActive: true, features: {}, ...planTerms,
+            });
+            prismaMock.billingSubscription.create.mockImplementation(async ({ data }: any) => ({ id: 'sub-1', ...data }));
+            (module.get(PaymentRoutingService) as any).resolveForNewSubscription.mockResolvedValue({
+                provider: 'wompi', level: 'country', substituted: false,
+            });
+            (module.get(WompiConfigService) as any).isConfigured.mockReturnValue(true);
+            (module.get(FiscalConfigService) as any).getConfig.mockResolvedValue({ fiscalGateEnabled: true });
+            const createProviderSubscription = jest.spyOn(mockProvider, 'createSubscription');
+
+            const result = await service.createTrialSubscription({ tenantId: 't1', planSlug: 'pro' });
+
+            expect(result.status).toBe(SubscriptionStatus.PENDING_AUTH);
+            expect(result.trialStartedAt).toBeNull();
+            expect(result.trialEndsAt).toBeNull();
+            expect(createProviderSubscription).not.toHaveBeenCalled();
+            expect(module.get(SubscriptionEngineService).claimAttempt).not.toHaveBeenCalled();
+            expect(module.get(getQueueToken(RENEWAL_QUEUE)).add).not.toHaveBeenCalled();
+            expect(prismaMock.tenant.update).toHaveBeenCalledWith(expect.objectContaining({
+                data: expect.objectContaining({ plan: 'emprendedor', subscriptionStatus: SubscriptionStatus.PENDING_AUTH }),
+            }));
+        });
+
+        it.each([
+            { trialDays: 0, requiresCardForTrial: false },
+            { trialDays: 7, requiresCardForTrial: true },
+        ])('requires tax identity before arming a stored source (trial=$trialDays)', async (planTerms) => {
+            prismaMock.tenant.findUnique.mockResolvedValue({ id: 't1', billingCountry: 'CO', settings: {} });
+            prismaMock.billingSubscription.findUnique.mockResolvedValue(null);
+            prismaMock.billingPlan.findUnique.mockResolvedValue({
+                id: 'plan-pro', slug: 'pro', isActive: true, features: {}, ...planTerms,
+            });
+            prismaMock.billingPaymentSource.findFirst.mockResolvedValue({ id: 'source-1', status: 'available' });
+            (module.get(PaymentRoutingService) as any).resolveForNewSubscription.mockResolvedValue({
+                provider: 'wompi', level: 'country', substituted: false,
+            });
+            (module.get(WompiConfigService) as any).isConfigured.mockReturnValue(true);
+            (module.get(FiscalConfigService) as any).getConfig.mockResolvedValue({ fiscalGateEnabled: true });
+
+            await expect(service.createTrialSubscription({ tenantId: 't1', planSlug: 'pro' })).rejects.toMatchObject({
+                response: expect.objectContaining({ error: 'fiscal_data_required' }),
+            });
+            expect(prismaMock.billingSubscription.create).not.toHaveBeenCalled();
+            expect(module.get(SubscriptionEngineService).claimAttempt).not.toHaveBeenCalled();
+            expect(module.get(getQueueToken(RENEWAL_QUEUE)).add).not.toHaveBeenCalled();
+        });
+
         it.each([
             { trialDays: 0, requiresCardForTrial: false, status: 'pending_auth' },
             { trialDays: 7, requiresCardForTrial: true, status: 'pending_auth' },

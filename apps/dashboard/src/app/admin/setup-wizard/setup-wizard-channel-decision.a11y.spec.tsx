@@ -187,6 +187,7 @@ function byTestId(container: HTMLElement, id: string): HTMLElement | null {
 }
 
 const ANSWERS = "Tu agente ya responde por el canal conectado.";
+const VERIFY_FIRST_REPLY = "Tu canal quedó conectado. Comprueba una respuesta real antes de empezar a atender clientes.";
 const PENDING = "Tu WhatsApp quedó conectado, pero tu agente todavía no puede responder ahí.";
 const ZONE_LINE = "Confirma la zona horaria de facturación de tu número";
 const PAYMENT_LINE = "Revisa el método de pago de tu cuenta de WhatsApp";
@@ -342,7 +343,7 @@ describe("the setup wizard's channel decision", () => {
         } finally { screen.unmount(); }
     });
 
-    it("'Continuar' with nothing pending: 'Listo' says the agent answers there, from the reading it was handed", async () => {
+    it("'Continuar' with nothing pending: 'Listo' asks for a real reply before claiming readiness", async () => {
         jest.mocked(api.getSetupStatus).mockResolvedValue(setupStatus(WHATSAPP_CONNECTED) as any);
         mockAck = READY;
         const screen = await renderScreen(<SetupWizardPage />);
@@ -354,7 +355,8 @@ describe("the setup wizard's channel decision", () => {
             expect(heading(screen.container)).toBe("Configuración inicial guardada");
             expect(deferralWrites()).toEqual([]);
             const text = screen.container.textContent ?? "";
-            expect(text).toContain(ANSWERS);
+            expect(text).toContain(VERIFY_FIRST_REPLY);
+            expect(text).not.toContain(ANSWERS);
             // Named: "Canal conectado" did not say which one.
             expect(text).toContain("WhatsApp conectado");
             expect(text).not.toContain("WhatsApp queda pendiente");
@@ -429,7 +431,7 @@ describe("the setup wizard's channel decision", () => {
         } finally { screen.unmount(); }
     });
 
-    it("before 1 October, a payment method nobody confirmed: it answers, and says to add one before the 30th", async () => {
+    it("before 1 October, a payment method nobody confirmed: asks for a real reply and shows the deadline", async () => {
         jest.mocked(api.getSetupStatus).mockResolvedValue(setupStatus(WHATSAPP_CONNECTED) as any);
         mockAck = READY_NO_CARD_YET;
         const screen = await renderScreen(<SetupWizardPage />);
@@ -438,7 +440,8 @@ describe("the setup wizard's channel decision", () => {
             await click(button(screen.container, "Siguiente"));
             await click(button(screen.container, "Continuar del estado"));
             const text = screen.container.textContent ?? "";
-            expect(text).toContain(ANSWERS);
+            expect(text).toContain(VERIFY_FIRST_REPLY);
+            expect(text).not.toContain(ANSWERS);
             expect(text).toContain("agrégalo antes del 30 de septiembre de 2026");
         } finally { screen.unmount(); }
     });
@@ -461,7 +464,7 @@ describe("the setup wizard's channel decision", () => {
         } finally { screen.unmount(); }
     });
 
-    it("'Siguiente' with everything in place still says the agent answers", async () => {
+    it("'Siguiente' with everything in place still asks for a real reply", async () => {
         jest.mocked(api.getSetupStatus).mockResolvedValue(setupStatus(WHATSAPP_CONNECTED) as any);
         whatsappReads({ zone: "America/Bogota", funding: "attached" });
         const screen = await renderScreen(<SetupWizardPage />);
@@ -469,7 +472,8 @@ describe("the setup wizard's channel decision", () => {
             await settle();
             await click(button(screen.container, "Siguiente"));
             await click(button(screen.container, "Siguiente"));
-            expect(screen.container.textContent).toContain(ANSWERS);
+            expect(screen.container.textContent).toContain(VERIFY_FIRST_REPLY);
+            expect(screen.container.textContent).not.toContain(ANSWERS);
         } finally { screen.unmount(); }
     });
 
@@ -528,7 +532,8 @@ describe("the setup wizard's channel decision", () => {
             mockAck = READY;
             await click(button(screen.container, "Continuar del estado"));
             const text = screen.container.textContent ?? "";
-            expect(text).toContain(ANSWERS);
+            expect(text).toContain(VERIFY_FIRST_REPLY);
+            expect(text).not.toContain(ANSWERS);
             expect(text).not.toContain(PENDING);
         } finally { screen.unmount(); }
     });

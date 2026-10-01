@@ -124,18 +124,19 @@ describe("session renewal shared by API calls and activity pings", () => {
 
     it("navigation does not postpone proactive renewal, and return-to-tab keeps the session alive", async () => {
         global.fetch = jest.fn(async (url) => String(url).endsWith("/auth/refresh") ? renewed() : response(200)) as typeof fetch;
-        let rerender!: () => void;
         function NavigatingApp() {
             const [, setRender] = useState(0);
-            rerender = () => setRender(value => value + 1);
-            return <AuthProvider><Probe /></AuthProvider>;
+            return <>
+                <button type="button" onClick={() => setRender(value => value + 1)}>Navigate</button>
+                <AuthProvider><Probe /></AuthProvider>
+            </>;
         }
         const screen = await renderScreen(<NavigatingApp />);
         try {
             for (const path of ["/admin/inbox", "/admin/appointments", "/admin/knowledge"]) {
                 await act(async () => { await jest.advanceTimersByTimeAsync(3 * MINUTE); });
                 mockPathname = path;
-                await act(async () => { rerender(); });
+                await act(async () => { screen.container.querySelector("button")?.click(); });
             }
             expect(callsTo("/auth/refresh")).toHaveLength(0);
             await act(async () => { await jest.advanceTimersByTimeAsync(MINUTE); });

@@ -65,7 +65,7 @@ describe('what setup-status says when a count cannot be read', () => {
     });
 
     it.each(['faqs', 'policies'])('accepts a published %s source without uploaded documents', async (source) => {
-        const controller = harness(sql => sql.includes(`\"tenant_demo\".${source}`) ? rows(1) : rows(0));
+        const controller = harness(sql => sql.includes(`"tenant_demo".${source}`) ? rows(1) : rows(0));
         const answer: any = await controller.getSetupStatus(tenantId);
         expect(answer.data.hasKnowledge).toBe(true);
         const queries = controller.prisma.$queryRawUnsafe.mock.calls.map(([sql]: [string]) => sql);

@@ -87,8 +87,12 @@ function serviceLocationInput(data: any): Partial<Pick<BookableService, 'locatio
         let url: URL;
         try { url = new URL(values.meetingLink); }
         catch { throw new BadRequestException('meetingLink must be an absolute HTTP or HTTPS URL'); }
+        const containsControlCharacter = Array.from(values.meetingLink).some((character) => {
+            const code = character.charCodeAt(0);
+            return code < 0x20 || code === 0x7f;
+        });
         if (!['http:', 'https:'].includes(url.protocol) || !url.hostname || url.username || url.password
-            || /\s|[\u0000-\u001f\u007f]/.test(values.meetingLink)) {
+            || /\s/.test(values.meetingLink) || containsControlCharacter) {
             throw new BadRequestException('meetingLink must be an absolute HTTP or HTTPS URL without credentials');
         }
     }

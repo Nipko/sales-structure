@@ -1862,6 +1862,35 @@ producer({
     }),
 
     producer({
+        id: 'fiscal.admin_provider_actions',
+        effect: 'A super admin deletes an unvalidated Factus bill before reissuing it, or issues a synthetic sandbox test bill',
+        lane: 'inline',
+        status: 'live',
+        derivation: 'census',
+        source: 'modules/fiscal/fiscal-admin.controller.ts',
+        symbol: 'FiscalAdminController',
+        egress: 'FactusAdapter.deleteByReference or issue, called by the super-admin reissue and test-invoice routes',
+        reach: {
+            class: 'commercial_write', audience: 'provider', personalData: true,
+            channels: ['provider_api'],
+        },
+        properties: {
+            authority: partial('the super_admin guard, issuance lock and reissue checks gate the production path; '
+                + 'the test path is restricted to the Factus sandbox, but neither path has a durable admission record'),
+            idempotency: partial('reissue uses the existing invoice reference; a sandbox test uses a time-based reference '
+                + 'and has no persisted attempt key'),
+            receipt: partial('the sandbox result is returned to the operator but not persisted; the reissue route does not '
+                + 'check the boolean returned by deleteByReference'),
+            uncertainOutcome: none('a failed or unanswered delete can be followed by a local reset and requeue; '
+                + 'the direct sandbox test has no reconciliation record'),
+            erasure: retained('production invoice data follows mandatory fiscal retention; the sandbox test uses a '
+                + 'synthetic acquirer'),
+            recovery: partial('the production invoice is requeued after its local reset, but the direct provider '
+                + 'delete and sandbox test have no durable recovery state'),
+        },
+    }),
+
+    producer({
         id: 'automation.http_request',
         effect: 'An arbitrary HTTP request a tenant configured as an automation action — any method, '
             + 'any allowed host, with data from the conversation',

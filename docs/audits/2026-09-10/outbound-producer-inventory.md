@@ -352,7 +352,7 @@ direcciones**: lo que el barrido encuentra y ella no nombra, y lo que ella
 nombra y el barrido no encuentra. Un desacuerdo no es un error de ninguno de
 los dos — es exactamente el sitio donde hay que ir a mirar.
 
-Entradas declaradas allí: **69**.
+Entradas declaradas allí: **70**.
 
 ### Encontrados por el barrido y no declarados como productores
 
@@ -384,6 +384,7 @@ esperada y su clasificación queda **fuera del alcance de este generador**.
 | `customer_portal.access_code` | `delivery_outbox` | `live` | `modules/customer-portal/customer-portal-access.service.ts` |
 | `external_crm.sync` | `domain_queue` | `live` | `modules/external-crm/external-crm.service.ts` |
 | `feature_requests.status_email` | `delivery_outbox` | `live` | `modules/platform-notifications/platform-notification-outbox.service.ts` |
+| `fiscal.admin_provider_actions` | `inline` | `live` | `modules/fiscal/fiscal-admin.controller.ts` |
 | `fiscal.invoice_email` | `delivery_outbox` | `live` | `modules/fiscal/fiscal-email.service.ts` |
 | `fiscal.invoice_issue` | `domain_queue` | `live` | `modules/fiscal/adapters/factus.adapter.ts` |
 | `handoff.agent_sms` | `handoff_effects` | `off` | `modules/sms-notifications/sms-notification-listener.service.ts` |

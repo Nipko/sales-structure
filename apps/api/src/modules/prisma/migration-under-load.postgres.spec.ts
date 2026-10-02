@@ -196,18 +196,21 @@ const WRITERS = 6;
         }
 
         const applied: { name: string; ms: number }[] = [];
-        for (const migration of migrations) {
-            const started = Date.now();
-            await admin.query(migration.sql);
-            applied.push({ name: migration.name, ms: Date.now() - started });
-        }
+        try {
+            for (const migration of migrations) {
+                const started = Date.now();
+                await admin.query(migration.sql);
+                applied.push({ name: migration.name, ms: Date.now() - started });
+            }
 
-        // Keep writing after the last migration too: the old code runs against
-        // the new schema for minutes in a real deploy, and that half of
-        // expand-contract deserves the same load as the first.
-        await new Promise(resolve => setTimeout(resolve, 1_500));
-        running = false;
-        await Promise.all(load);
+            // Keep writing after the last migration too: the old code runs against
+            // the new schema for minutes in a real deploy, and that half of
+            // expand-contract deserves the same load as the first.
+            await new Promise(resolve => setTimeout(resolve, 1_500));
+        } finally {
+            running = false;
+            await Promise.all(load);
+        }
 
         // 1. Nothing in flight failed.
         expect(failures).toEqual([]);

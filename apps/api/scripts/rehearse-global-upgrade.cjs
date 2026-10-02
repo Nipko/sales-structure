@@ -1,7 +1,8 @@
 const assert = require('node:assert/strict');
 const { createHash, randomUUID } = require('node:crypto');
 const { execFileSync } = require('node:child_process');
-const { resolve } = require('node:path');
+const { existsSync, readdirSync } = require('node:fs');
+const { join, resolve } = require('node:path');
 const { Client } = require('pg');
 
 if (process.env.NODE_ENV !== 'test') {
@@ -39,6 +40,14 @@ function baselineMigrations() {
     name: path.slice(migrationPrefix.length).split('/')[0],
     sql: git(['show', `${baseRef}:${path}`], 'buffer'),
   }));
+}
+
+function candidateMigrationNames() {
+  const directory = resolve(apiRoot, 'prisma', 'migrations');
+  return readdirSync(directory, { withFileTypes: true })
+    .filter(entry => entry.isDirectory() && existsSync(join(directory, entry.name, 'migration.sql')))
+    .map(entry => entry.name)
+    .sort();
 }
 
 async function main() {
@@ -90,11 +99,15 @@ async function main() {
         COUNT(*)::int AS applied,
         COUNT(*) FILTER (WHERE finished_at IS NULL AND rolled_back_at IS NULL)::int AS unfinished
       FROM public._prisma_migrations`);
+    const applied = await client.query(`SELECT migration_name FROM public._prisma_migrations
+      WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL ORDER BY migration_name`);
     const preserved = await client.query(
       'SELECT value FROM public.platform_settings WHERE key=$1', [evidenceKey]);
     const currentCount = Number(result.rows[0].applied);
-    assert.ok(currentCount > baseline.length,
-      `candidate must add migrations after ${baseRef}`);
+    assert.ok(currentCount >= baseline.length,
+      `candidate must retain baseline migrations from ${baseRef}`);
+    assert.deepEqual(applied.rows.map(row => row.migration_name), candidateMigrationNames(),
+      'all candidate migrations must be applied, including when none were added');
     assert.equal(result.rows[0].unfinished, 0);
     assert.deepEqual(preserved.rows, [{ value: 'preserve-me' }]);
     console.log(`GLOBAL_UPGRADE_REHEARSAL base=${baseRef} baseline=${baseline.length} `

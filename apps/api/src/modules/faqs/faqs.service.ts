@@ -11,6 +11,7 @@ import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-eve
 import { structuredKnowledgeRelation, type StructuredKnowledgeCapture } from '../evaluation-revision/evaluation-structured-knowledge';
 import { onboardingOnceKey } from '@parallext/shared';
 import { recordOnboardingEvent } from '../../common/utils/onboarding-event.util';
+import { faqSearchTerms, rankPartialFaqMatches } from './faq-search';
 
 /**
  * Plegado de diacríticos para la búsqueda de FAQs.
@@ -234,7 +235,25 @@ export class FaqsService {
              LIMIT $2`,
             query, limit, ...(frozen ? [frozen.json] : []),
         ) as any[];
-        return rows.map(this.rowToFaq);
+        if (rows.length) return rows.map(this.rowToFaq);
+
+        // A customer can quote a FAQ topic and add another question. Requiring
+        // every word in that whole message lost even named topics. Broaden only
+        // after the exact/full-text search is empty, then require substantial
+        // word overlap so one generic word never injects unrelated seed FAQs.
+        const terms = faqSearchTerms(query);
+        if (terms.length < 2) return [];
+        const candidates = await this.prisma.$queryRawUnsafe(
+            `SELECT id, question, answer, category, tags, order_index, is_published, views, created_at, updated_at,
+                    ts_rank(to_tsvector('simple', ${fold("question || ' ' || answer")}), to_tsquery('simple', $1)) AS rank
+             FROM ${frozen?.relation || `"${schemaName}"."faqs"`}
+             WHERE is_published = true
+               AND to_tsvector('simple', ${fold("question || ' ' || answer")}) @@ to_tsquery('simple', $1)
+             ORDER BY rank DESC, order_index ASC, id ASC
+             LIMIT $2`,
+            terms.join(' | '), Math.max(20, Math.min(limit, 10)), ...(frozen ? [frozen.json] : []),
+        ) as any[];
+        return rankPartialFaqMatches(candidates.map(this.rowToFaq), query, Math.min(limit, 10));
     }
 
     /** Increment view count (fire-and-forget from tools). */

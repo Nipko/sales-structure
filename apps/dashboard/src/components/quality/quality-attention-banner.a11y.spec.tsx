@@ -170,7 +170,7 @@ describe("the quality bar during day 0", () => {
         } finally { screen.unmount(); }
     });
 
-    it("leaves Home and the wizard to their own guidance", async () => {
+    it("keeps a checked delivery failure visible on Home while leaving the wizard to its own guidance", async () => {
         mockUser = owner("channel_connected");
         mockSummary = summary("fix_channel_connection");
         landing("setup_card_and_health");
@@ -178,9 +178,37 @@ describe("the quality bar during day 0", () => {
             mockPath = path;
             const screen = await banner();
             try {
-                expect({ path, text: screen.container.textContent }).toEqual({ path, text: "" });
+                if (path === "/admin") expect(screen.container.querySelector('[role="alert"]')).not.toBeNull();
+                else expect(screen.container.textContent).toBe("");
             } finally { screen.unmount(); }
         }
+    });
+
+    it("keeps general health behind incomplete setup after a first reply, then restores it when setup finishes", async () => {
+        mockPath = "/admin";
+        mockUser = owner("live", new Date().toISOString(), { hasAnyChannel: true });
+        mockSummary = summary("fix_media_plan");
+        landing("setup_card_and_health");
+        const screen = await banner();
+        try {
+            expect(screen.container.textContent).toBe("");
+            await act(async () => { landing("normal"); });
+            expect(screen.container.querySelector('[role="alert"]')).not.toBeNull();
+        } finally { screen.unmount(); }
+    });
+
+    it.each(["fail", "unknown"] as const)("only lets a checked delivery failure interrupt incomplete setup (%s)", async (checkStatus) => {
+        mockPath = "/admin";
+        mockUser = owner("live", new Date().toISOString(), { hasAnyChannel: true });
+        mockSummary = behindUnrelated(action("fix_whatsapp_delivery", { checkStatus, deliveryIssue: "timezone_missing" }));
+        landing("setup_card_and_health");
+        const screen = await banner();
+        try {
+            if (checkStatus === "fail") {
+                expect(screen.container.textContent).toContain("Tu agente no puede contestar por el canal que conectaste.");
+                expect(screen.container.querySelector("a")?.getAttribute("href")).toContain(DELIVERY_SIGNAL_ID);
+            } else expect(screen.container.textContent).toBe("");
+        } finally { screen.unmount(); }
     });
 
     it("proves the channel with the session's own fact, after the wizard's last button and before Home said anything", async () => {

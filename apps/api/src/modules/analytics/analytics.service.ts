@@ -327,9 +327,10 @@ export class AnalyticsService {
         }
 
         // Redis counters (real-time, fast path)
-        const [redisConvos, redisMessages, redisHandoffs, costStr] = await Promise.all([
+        const [redisConvos, redisInboundMessages, redisOutboundMessages, redisHandoffs, costStr] = await Promise.all([
             this.redis.get(`analytics:${tenantId}:${today}:conversation_started`),
-            this.redis.get(`analytics:${tenantId}:${today}:total`),
+            this.redis.get(`analytics:${tenantId}:${today}:message_received`),
+            this.redis.get(`analytics:${tenantId}:${today}:message_sent`),
             this.redis.get(`analytics:${tenantId}:${today}:handoff_triggered`),
             this.redis.get(`analytics:${tenantId}:${today}:cost`),
         ]);
@@ -340,10 +341,19 @@ export class AnalyticsService {
         let leadsReadyToClose = 0;
         let dbConversations = 0;
         let dbHandoffs = 0;
-        let dbMessages = 0;
+        // Persisted messages are authoritative. Event counters can include
+        // retried outbound attempts, and unrelated legacy-table failures must
+        // not discard a successful message count.
+        const messageCount = this.prisma.executeInTenantSchema<Array<{ cnt: string }>>(
+            schemaName,
+            `SELECT COUNT(*) as cnt FROM messages WHERE created_at >= CURRENT_DATE`
+        ).then(rows => parseInt(rows[0]?.cnt ?? '0')).catch(() => {
+            this.logger.warn(`[Analytics] Could not query messages for tenant ${tenantId}; using message events.`);
+            return undefined;
+        });
 
         try {
-            const [todayRows, scoreRows, convoRows, handoffRows, msgRows] = await Promise.all([
+            const [todayRows, scoreRows, convoRows, handoffRows] = await Promise.all([
                 // Leads created today
                 this.prisma.executeInTenantSchema<Array<{ cnt: string }>>(
                     schemaName,
@@ -369,11 +379,6 @@ export class AnalyticsService {
                     schemaName,
                     `SELECT COUNT(*) as cnt FROM conversations WHERE status IN ('waiting_human', 'with_human') AND updated_at >= CURRENT_DATE`
                 ),
-                // Messages today (DB fallback)
-                this.prisma.executeInTenantSchema<Array<{ cnt: string }>>(
-                    schemaName,
-                    `SELECT COUNT(*) as cnt FROM messages WHERE created_at >= CURRENT_DATE`
-                ),
             ]);
 
             leadsToday = parseInt(todayRows[0]?.cnt ?? '0');
@@ -388,14 +393,17 @@ export class AnalyticsService {
 
             dbConversations = parseInt(convoRows[0]?.cnt ?? '0');
             dbHandoffs = parseInt(handoffRows[0]?.cnt ?? '0');
-            dbMessages = parseInt(msgRows[0]?.cnt ?? '0');
         } catch {
             this.logger.warn(`[Analytics] Could not query leads/conversations for tenant ${tenantId} — schema may be outdated.`);
         }
+        const dbMessages = await messageCount;
 
         // Use Redis counters when available, fall back to DB counts
         const redisConvoCount = parseInt((redisConvos as string) ?? '0');
-        const redisMessageCount = parseInt((redisMessages as string) ?? '0');
+        // `total` also counts lead, booking and model events. Using it as
+        // messages made the dashboard grow when no message was sent.
+        const redisMessageCount = parseInt((redisInboundMessages as string) ?? '0')
+            + parseInt((redisOutboundMessages as string) ?? '0');
         const redisHandoffCount = parseInt((redisHandoffs as string) ?? '0');
 
         // Vertical-specific KPIs (each wrapped in try/catch — tables may not exist)
@@ -481,7 +489,7 @@ export class AnalyticsService {
             conversations: Math.max(redisConvoCount, dbConversations),
             handoffs: Math.max(redisHandoffCount, dbHandoffs),
             llmCostToday: parseFloat((costStr as string) ?? '0'),
-            messagesProcessed: Math.max(redisMessageCount, dbMessages),
+            messagesProcessed: dbMessages ?? redisMessageCount,
             appointmentsToday,
             noShowsWeek,
             conversionRate,

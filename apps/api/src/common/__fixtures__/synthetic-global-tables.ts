@@ -104,6 +104,16 @@ const BILLING_SUBSCRIPTION_COLUMNS: ReadonlyArray<[string, string]> = [
     ['pending_upgrade_plan_id', 'UUID'],
 ];
 
+/** Base payment shape from the pre-window billing migration. Later migrations reference it. */
+const BILLING_PAYMENT_COLUMNS: ReadonlyArray<[string, string]> = [
+    ['subscription_id', 'UUID'], ['tenant_id', 'UUID'], ['amount_cents', 'INTEGER'],
+    ['currency', 'TEXT'], ['status', 'TEXT'], ['provider', 'TEXT'],
+    ['provider_payment_id', 'TEXT'], ['paid_at', 'TIMESTAMPTZ'],
+    ['failure_reason', 'TEXT'], ['invoice_number', 'TEXT'], ['invoice_pdf_url', 'TEXT'],
+    ['metadata', "JSONB NOT NULL DEFAULT '{}'::jsonb"],
+    ['created_at', 'TIMESTAMPTZ NOT NULL DEFAULT NOW()'],
+];
+
 /**
  * Columnas de `public.channel_accounts`. La tercera tabla global que empezó a
  * tener una copia por suite, con el mismo desenlace: `tenant_id` era UUID en
@@ -294,4 +304,5 @@ export async function ensureSyntheticGlobalTables(exec: Exec): Promise<void> {
     await exec('CREATE UNIQUE INDEX IF NOT EXISTS synthetic_billing_plans_slug_key ON public.billing_plans(slug)');
     await ensure(exec, 'billing_subscriptions', BILLING_SUBSCRIPTION_COLUMNS, { generatedId: true });
     await exec('CREATE UNIQUE INDEX IF NOT EXISTS synthetic_billing_subscriptions_tenant_key ON public.billing_subscriptions(tenant_id)');
+    await ensure(exec, 'billing_payments', BILLING_PAYMENT_COLUMNS, { generatedId: true });
 }

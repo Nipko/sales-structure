@@ -22,6 +22,7 @@ import { APPOINTMENT_SERVICE_TERMS_COLUMNS, appointmentPriceSql, appointmentCurr
 import { CalendarIntegrationService } from '../appointments/calendar-integration.service';
 import { CalendarSyncOutboxService } from '../appointments/calendar-sync-outbox.service';
 import { FaqsService } from '../faqs/faqs.service';
+import { boundedAutomaticFaqs } from '../faqs/automatic-faq-context';
 import { PoliciesService } from '../policies/policies.service';
 import { KnowledgeService } from '../knowledge/knowledge.service';
 import { PropertiesService } from '../vacation-rental/properties.service';
@@ -283,6 +284,8 @@ export class AIToolExecutorService {
             missionScope?: import('@parallext/shared').MissionExecutionScopeV1;
             channelType?: string;
             readOnly?: boolean;
+            /** Trusted automatic context lookup; no views, DDL or ledger writes. */
+            automaticFaqContext?: boolean;
             executionContext?: ServiceExecutionContext;
             draftScope?: { agentId: string; agentVersion: number };
             /** Trusted caller key; it is always rebound to tenant/tool/args. */
@@ -334,6 +337,11 @@ export class AIToolExecutorService {
             deniedTools?: readonly string[];
         },
     ): Promise<any> {
+        if (toolName === 'search_faqs' && opts?.automaticFaqContext) {
+            opts = { ...opts, executionContext: {
+                ...opts.executionContext, mode: opts.executionContext?.mode ?? 'live', persistence: 'disabled',
+            } };
+        }
         this.logger.log(`[Tool] Executing: ${toolName}`);
 
         let controlDecision: ToolExecutionControlDecision | undefined;
@@ -751,7 +759,7 @@ export class AIToolExecutorService {
                         {source:'agent',expectedVersion:args.catalogTerms?.orderVersion,expectedTermsHash:args.catalogTermsHash,reason:args.reason,operationalScope}),refundPerformed:false };
 
                 case 'search_faqs':
-                    return this.searchFaqs(tenantId, args.query, args.limit, opts?.executionContext, opts?.structuredKnowledgeInputs);
+                    return this.searchFaqs(tenantId, args.query, args.limit, opts?.executionContext, opts?.structuredKnowledgeInputs, opts?.automaticFaqContext);
 
                 case 'get_policy':
                     return this.getPolicy(tenantId, args.type as PolicyType, opts?.executionContext, opts?.structuredKnowledgeInputs);
@@ -1806,6 +1814,7 @@ export class AIToolExecutorService {
         limit = 3,
         executionContext?: ServiceExecutionContext,
         captured?:import('../evaluation-revision/evaluation-structured-knowledge').StructuredKnowledgeCapture,
+        automaticContext = false,
     ): Promise<any> {
         const faqs = await this.faqsService.search(tenantId, query, limit, executionContext, captured);
         // View counts are analytics writes, so introspection skips them.
@@ -1813,7 +1822,7 @@ export class AIToolExecutorService {
             for (const f of faqs) this.faqsService.incrementViews(tenantId, f.id);
         }
         return {
-            faqs: faqs.map(f => ({
+            faqs: (automaticContext ? boundedAutomaticFaqs(faqs) : faqs).map(f => ({
                 id: f.id,
                 question: f.question,
                 answer: f.answer,

@@ -292,10 +292,15 @@ export class BillingService {
         const skipProviderCreate = providerName === 'stripe' || plan.trialDays > 0
             || !this.capabilitiesFor(providerName).nativeSubscriptions;
 
-        // Fiscal gate: only block CHARGE-bearing flows (paid plan, or a card-backed
-        // trial that auto-converts). A free trial with no card has no charge yet, so
-        // we don't block free signups/onboarding — the gate fires later on upgrade.
-        if (plan.requiresCardForTrial || plan.trialDays === 0) {
+        const awaitingPaymentSource = requiresPaymentMethodAtSignup
+            && (!this.capabilitiesFor(providerName).nativeSubscriptions || providerName === 'stripe')
+            && (providerName === 'stripe' || !storedSourceAtSignup);
+
+        // Pending authorization only records the plan choice. The owner needs
+        // the completed tenant to enter Billing and supply their tax identity.
+        // Enforce the fiscal gate here only when signup can arm or make a charge;
+        // payment-source activation and checkout retain their own fiscal checks.
+        if (requiresPaymentMethodAtSignup && !awaitingPaymentSource) {
             await this.assertFiscalDataReady(tenant, effectiveBillingCountry);
         }
 
@@ -317,9 +322,6 @@ export class BillingService {
         // activa: nace pendiente de autorización y sólo el cobro liquidado la
         // activa. Nacer TRIALING con un trial de cero días daría acceso al plan
         // sin que se haya movido un peso.
-        const awaitingPaymentSource = requiresPaymentMethodAtSignup
-            && (!this.capabilitiesFor(providerName).nativeSubscriptions || providerName === 'stripe')
-            && (providerName === 'stripe' || !storedSourceAtSignup);
         const engineFirstCharge = !this.capabilitiesFor(providerName).nativeSubscriptions && skipProviderCreate && plan.trialDays === 0 && !awaitingPaymentSource;
         const localPeriodEnd = engineFirstCharge
             ? nextPeriodEnd(new Date(), billingCycle, anchorDayOf(new Date()))
@@ -514,7 +516,10 @@ export class BillingService {
 
     async upgradeSubscription(tenantId: string, newPlanSlug: string, cardTokenId?: string, billingCycle?: BillingCycle) {
         const sub = await this.requireSubscription(tenantId);
-        if (sub.provider === 'stripe' && this.stripeBilling) return this.stripeBilling.changePlan(tenantId, newPlanSlug, billingCycle);
+        if (sub.provider === 'stripe' && this.stripeBilling) {
+            if (cardTokenId && !sub.providerSubscriptionId) throw new BadRequestException({ error: 'stripe_checkout_required' });
+            return this.stripeBilling.changePlan(tenantId, newPlanSlug, billingCycle);
+        }
         if ([SubscriptionStatus.CANCELLED, SubscriptionStatus.EXPIRED].includes(sub.status as SubscriptionStatus)) {
             throw new BadRequestException({
                 error: 'subscription_terminal',

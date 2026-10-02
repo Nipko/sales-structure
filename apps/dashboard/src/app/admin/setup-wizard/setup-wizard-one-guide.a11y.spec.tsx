@@ -190,6 +190,21 @@ describe("the setup wizard: one guide, and every channel treated honestly", () =
     });
 
     describe("day 0: the step is the only guide", () => {
+        it("focuses and scrolls the current question when moving forward or back", async () => {
+            const scroll = jest.spyOn(Element.prototype, "scrollIntoView");
+            const screen = await renderScreen(<SetupWizardPage />);
+            try {
+                await settle();
+                await click(button(screen.container, "Siguiente"));
+                expect(document.activeElement).toBe(screen.container.querySelector("#setup-wizard-step-heading"));
+                expect(document.activeElement?.textContent).toBe("¿Por dónde te escriben tus clientes?");
+                expect(scroll).toHaveBeenCalledWith({ block: "start", behavior: "auto" });
+                await click(button(screen.container, "Anterior"));
+                expect(document.activeElement).toBe(screen.container.querySelector("#setup-wizard-step-heading"));
+                expect(document.activeElement?.textContent).toBe("Tu agente");
+            } finally { screen.unmount(); scroll.mockRestore(); }
+        });
+
         it("draws no help strip, no link to the expert editor and no tour", async () => {
             const screen = await renderScreen(<SetupWizardPage />);
             try {
@@ -302,7 +317,10 @@ describe("the setup wizard: one guide, and every channel treated honestly", () =
                 await click(button(screen.container, "Continuar"));
                 expect(screen.container.querySelector("h2")?.textContent).toBe("Configuración inicial guardada");
                 const text = screen.container.textContent ?? "";
-                expect(text).toContain("Tu agente ya responde por el canal conectado.");
+                expect(text).toContain("Tu canal quedó conectado. Comprueba una respuesta real");
+                expect(text).not.toContain("Tu agente ya responde por el canal conectado.");
+                expect(screen.container.querySelector('[data-channel-outcome]')?.getAttribute("data-channel-outcome")).toBe("connected");
+                expect(screen.container.querySelector("#first-operational-reply-title")).not.toBeNull();
                 expect(screen.container.querySelector('[data-essential="channel"]')?.textContent).toContain("Instagram conectado");
                 // Not a "conectar después": a channel is connected.
                 const deferrals = jest.mocked(api.applySetupTemplate).mock.calls
@@ -468,6 +486,23 @@ describe("the setup wizard: one guide, and every channel treated honestly", () =
     });
 
     describe("'Listo' lists the real state", () => {
+        it("gives each pending essential an action to the screen that fixes it", async () => {
+            jest.mocked(api.getSetupStatus).mockResolvedValue(setupStatus({ hasKnowledge: false, hasTeam: false }) as any);
+            const screen = await renderScreen(<SetupWizardPage />);
+            try {
+                await settle();
+                await click(button(screen.container, "3"));
+                const knowledge = screen.container.querySelector('[data-essential="knowledge"]');
+                const team = screen.container.querySelector('[data-essential="team"]');
+                expect(knowledge?.getAttribute("data-done")).toBe("false");
+                expect(knowledge?.querySelector('a[href="/admin/knowledge/faqs"]')?.textContent).toContain("Agregar preguntas frecuentes");
+                expect(team?.querySelector('a[href="/admin/users"]')?.textContent).toContain("Configurar equipo");
+                await click(button(screen.container, "Conectar canal"));
+                expect(screen.container.querySelector("#setup-wizard-step-heading")?.textContent).toBe("¿Por dónde te escriben tus clientes?");
+                expect(document.activeElement).toBe(screen.container.querySelector("#setup-wizard-step-heading"));
+            } finally { screen.unmount(); }
+        });
+
         it("says done what is done and pending what is pending", async () => {
             jest.mocked(api.getSetupStatus).mockResolvedValue(setupStatus({ hasKnowledge: true, hasTeam: false }) as any);
             const screen = await renderScreen(<SetupWizardPage />);
@@ -480,6 +515,7 @@ describe("the setup wizard: one guide, and every channel treated honestly", () =
                 expect(knowledge?.textContent).toContain("Hecho");
                 expect(knowledge?.textContent).toContain("Tu agente ya tiene de dónde responder");
                 expect(knowledge?.textContent).not.toContain("Cargar lo que tu agente debe saber");
+                expect(knowledge?.querySelector("a")).toBeNull();
                 expect(team?.getAttribute("data-done")).toBe("false");
                 expect(team?.textContent).toContain("Pendiente");
                 expect(team?.textContent).toContain("Definir quién recibe los casos pendientes");

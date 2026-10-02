@@ -809,6 +809,8 @@ export class PersonaController {
                     this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM "${schema}".email_templates LIMIT 1`).catch(() => null),
                     this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM channel_accounts WHERE tenant_id = $1::uuid AND is_active = true`, tenantId).catch(() => null),
                     this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM "${schema}".companies WHERE is_primary = true AND about IS NOT NULL AND btrim(about) != ''`).catch(() => null),
+                    this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM "${schema}".faqs WHERE is_published = true AND question ~ '[^[:space:]]' AND answer ~ '[^[:space:]]'`).catch(() => null),
+                    this.prisma.$queryRawUnsafe(`SELECT COUNT(*)::int AS c FROM "${schema}".policies WHERE is_active = true AND content ~ '[^[:space:]]'`).catch(() => null),
                 ]);
 
                 // A count that could not be read is `null`, and a flag derived
@@ -826,7 +828,13 @@ export class PersonaController {
                 };
                 hasPersona = over(checks[0]);
                 hasConversations = over(checks[1]);
-                hasKnowledge = over(checks[2]);
+                // Documents, published FAQs and active policies are usable
+                // knowledge sources. Loading an FAQ must complete the same
+                // step as uploading a document; an unreadable alternative
+                // remains unknown unless another source was confirmed.
+                const knowledgeSources = [over(checks[2]), over(checks[8]), over(checks[9])];
+                hasKnowledge = knowledgeSources.includes(true) ? true
+                    : knowledgeSources.includes(undefined) ? undefined : false;
                 // The owner is already a valid human destination. Requiring a
                 // second active user turned a solo business into an artificial
                 // blocker even though the handoff service sends unassigned

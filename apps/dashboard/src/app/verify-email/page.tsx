@@ -6,6 +6,8 @@ import { AlertCircle, AlertTriangle, Mail } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
+import { resolveLoginRedirect } from "@/lib/onboarding-guide";
+import { mergeOnboardingSessionFacts } from "@/lib/onboarding-session-facts";
 import { useAuth } from "@/contexts/AuthContext";
 import AnimatedLogo from "@/components/AnimatedLogo";
 import LocaleSwitcher from "@/components/LocaleSwitcher";
@@ -13,7 +15,7 @@ import LocaleSwitcher from "@/components/LocaleSwitcher";
 export default function VerifyEmailPage() {
     const t = useTranslations('auth');
     const tc = useTranslations('common');
-    const { logout } = useAuth();
+    const { logout, syncSessionFacts } = useAuth();
     const [digits, setDigits] = useState<string[]>(["", "", "", "", "", ""]);
     const [error, setError] = useState("");
     const [notice, setNotice] = useState("");
@@ -115,22 +117,35 @@ export default function VerifyEmailPage() {
                     setIsSubmitting(false);
                     return;
                 }
-                // Update user in localStorage
+                // Verification can happen after company setup. Resume the account's
+                // current stage instead of sending an existing tenant through signup.
+                let destination = "/admin";
                 const savedUser = localStorage.getItem("user");
                 if (savedUser) {
                     try {
-                        const u = JSON.parse(savedUser);
-                        u.emailVerified = true;
-                        localStorage.setItem("user", JSON.stringify(u));
+                        let verifiedUser = {
+                            ...JSON.parse(savedUser),
+                            emailVerified: true,
+                            emailVerificationState: "verified",
+                        };
+                        try {
+                            const current = await api.me();
+                            if (current.success) {
+                                verifiedUser = mergeOnboardingSessionFacts(verifiedUser, current.data);
+                            }
+                        } catch { /* Verification succeeded; the stored stage can resume offline. */ }
+                        localStorage.setItem("user", JSON.stringify(verifiedUser));
+                        syncSessionFacts(verifiedUser);
+                        destination = resolveLoginRedirect(verifiedUser);
                     } catch { /* ignore */ }
                 }
-                router.push("/onboarding");
+                router.replace(destination);
             } catch {
                 setError(t('connectionError'));
             }
             setIsSubmitting(false);
         },
-        [router, t]
+        [router, t, syncSessionFacts]
     );
 
     const handleChange = (index: number, value: string) => {
@@ -230,7 +245,7 @@ export default function VerifyEmailPage() {
                     </h1>
                     <p className="text-muted-foreground text-sm mb-8 text-center">
                         {t('codeSentToEmail')}{" "}
-                        <span className="font-medium text-foreground">
+                        <span className="font-medium text-foreground break-words">
                             {userEmail || t('yourEmail')}
                         </span>
                     </p>
@@ -256,13 +271,15 @@ export default function VerifyEmailPage() {
                     )}
 
                     {/* OTP Inputs */}
-                    <div className="flex justify-center gap-3 mb-6">
+                    <div className="grid grid-cols-6 gap-2 sm:gap-3 mb-6">
                         {digits.map((digit, i) => (
                             <input
                                 key={i}
                                 ref={(el) => { inputRefs.current[i] = el; }}
                                 type="text"
                                 inputMode="numeric"
+                                aria-label={t('verificationDigit', { position: i + 1 })}
+                                autoComplete={i === 0 ? "one-time-code" : "off"}
                                 maxLength={6}
                                 value={digit}
                                 onChange={(e) => handleChange(i, e.target.value)}
@@ -270,7 +287,7 @@ export default function VerifyEmailPage() {
                                 disabled={isSubmitting}
                                 autoFocus={i === 0}
                                 className={cn(
-                                    "w-12 h-14 text-center text-2xl font-semibold rounded-xl border outline-none transition-all",
+                                    "w-full min-w-0 h-14 text-center text-2xl font-semibold rounded-xl border outline-none transition-all",
                                     "bg-neutral-50 dark:bg-white/5 text-foreground",
                                     digit
                                         ? "border-indigo-500 dark:border-indigo-500/50 ring-1 ring-indigo-500/20"
@@ -319,10 +336,11 @@ export default function VerifyEmailPage() {
                     <div className="mt-6 pt-5 border-t border-neutral-200 dark:border-white/[0.08]">
                         {editingEmail ? (
                             <div>
-                                <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium">
+                                <label htmlFor="verification-new-email" className="block text-[13px] text-muted-foreground mb-1.5 font-medium">
                                     {t('newEmailLabel')}
                                 </label>
                                 <input
+                                    id="verification-new-email"
                                     type="email"
                                     value={newEmail}
                                     onChange={(e) => setNewEmail(e.target.value)}

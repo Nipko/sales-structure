@@ -221,6 +221,8 @@ export default function BillingPage() {
             stripe_trial_duration_unsupported: "stripeTrialUnsupported",
             stripe_checkout_processing: "stripeCheckoutProcessing",
             stripe_price_not_configured: "stripePriceUnavailable",
+            stripe_checkout_required: "trialUpgradeNeedsPayment",
+            stripe_subscription_changed_retry: "subscriptionChangedRetry",
         };
         return message && keys[message] ? t(keys[message]) : message || t("actionFailed");
     };
@@ -307,8 +309,8 @@ export default function BillingPage() {
     }, [load, loading, stripeConfirmationPending, subscription]);
 
     const currentPlan = useMemo(
-        () => plans.find((p) => p.id === subscription?.planId),
-        [plans, subscription?.planId],
+        () => plans.find((p) => p.id === subscription?.planId) ?? subscription?.plan,
+        [plans, subscription?.planId, subscription?.plan],
     );
 
     const currentPlanPrice = useMemo(() => {
@@ -449,8 +451,22 @@ export default function BillingPage() {
         }
         const cardTokenId = opts?.cardTokenId;
         const selectedCycle = opts?.billingCycle ?? billingCycle;
+        const plan = plans.find((p) => p.slug === planSlug);
+        const localTrial = subscription?.status === "trialing"
+            && !!subscription.trialEndsAt
+            && new Date(subscription.trialEndsAt).getTime() > Date.now()
+            && !subscription.providerBacked;
+        const noCardTrialChange = localTrial
+            && subscription?.billingCycle === "monthly"
+            && selectedCycle === "monthly"
+            && !!plan && plan.id !== subscription?.planId
+            && !!currentPlan && plan.priceUsdCents > currentPlan.priceUsdCents
+            && plan.trialDays > 0
+            && !plan.requiresCardForTrial && !plan.requiresPaymentMethodAtSignup
+            && !cardTokenId;
         if (stripeCheckout && !subscription?.providerBacked
-            && (subscription || plans.find((plan) => plan.slug === planSlug)?.requiresPaymentMethodAtSignup)) {
+            && !noCardTrialChange
+            && (subscription || plan?.requiresPaymentMethodAtSignup)) {
             setTargetPlan(planSlug);
             await handleStripeBilling(planSlug, selectedCycle);
             setTargetPlan(null);
@@ -459,11 +475,6 @@ export default function BillingPage() {
         setAction("upgrade");
         setTargetPlan(planSlug);
         try {
-            const plan = plans.find((p) => p.slug === planSlug);
-            const localTrial = subscription?.status === "trialing"
-                && !!subscription.trialEndsAt
-                && new Date(subscription.trialEndsAt).getTime() > Date.now()
-                && !subscription.providerBacked;
             // Un trial local no exige medio de pago para MOVERSE entre planes
             // gratuitos, pero sí para saltar a uno que se cobra al vencer: sin
             // esto el botón llamaba al upgrade, el backend lo rechazaba por no
@@ -514,7 +525,7 @@ export default function BillingPage() {
                 const res = await api.startBillingTrial(activeTenantId, { planSlug, cardTokenId, billingCycle: selectedCycle });
                 if (!res?.success) {
                     if ((res as any)?.errorCode === "fiscal_data_required") { closePaymentModal(); setFiscalGatePlan(planSlug); setFiscalGate(true); return; }
-                    throw new Error((res as any)?.error || t("actionFailed"));
+                    throw new Error((res as any)?.errorCode || (res as any)?.error || t("actionFailed"));
                 }
                 const resultStatus = (res.data as { status?: SubscriptionStatus } | undefined)?.status;
                 setToast(resultStatus === "pending_auth" ? t("paymentProcessing") : t("trialStarted"));
@@ -522,7 +533,7 @@ export default function BillingPage() {
                 const res = await api.upgradeBillingPlan(activeTenantId, { planSlug, cardTokenId, billingCycle: selectedCycle });
                 if (!res?.success) {
                     if ((res as any)?.errorCode === "fiscal_data_required") { closePaymentModal(); setFiscalGatePlan(planSlug); setFiscalGate(true); return; }
-                    throw new Error((res as any)?.error || t("actionFailed"));
+                    throw new Error((res as any)?.errorCode || (res as any)?.error || t("actionFailed"));
                 }
                 // Cambiar de plan DURANTE un trial no cobra nada todavía, y la
                 // pantalla sigue diciendo "prueba" — con razón. Sin explicarlo, el
@@ -534,7 +545,9 @@ export default function BillingPage() {
                     const amount = selectedCycle === "annual" && plan.displayPriceAnnualCents
                         ? plan.displayPriceAnnualCents
                         : (plan.displayPriceCents ?? plan.priceUsdCents);
-                    setToast(t("planChangedDuringTrial", {
+                    setToast(t(noCardTrialChange && !hasChargeableSource && !opts?.methodReady
+                        ? "planChangedDuringTrialWithoutPaymentMethod"
+                        : "planChangedDuringTrial", {
                         plan: plan.name,
                         date: trialEnd.toLocaleDateString(locale, { day: "numeric", month: "long" }),
                         amount: formatMoney(amount, plan.displayCurrency ?? "USD", locale),

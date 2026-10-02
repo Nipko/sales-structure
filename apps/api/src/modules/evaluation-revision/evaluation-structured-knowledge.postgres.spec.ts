@@ -92,6 +92,23 @@ const url = process.env.PARALLLY_ISOLATION_TEST_URL;
         expect(tenants.getSchemaName).not.toHaveBeenCalled();
     });
 
+    it('finds a named FAQ with an added duration question in live and captured readers, excluding unrelated and unpublished answers', async () => {
+        const demoId = randomUUID();
+        await sql(`INSERT INTO "${schema}".faqs(id,question,answer,is_published,search_tsv) VALUES
+            ($1::uuid,'¿Qué incluye la demostración Faro Azul?',
+                'Faro Azul es una demostración para una inmobiliaria de prueba en Bogotá. Incluye consultas simuladas sobre compra y arriendo y una visita virtual de prueba de 20 minutos. No hay inmuebles reales disponibles ni cobros.',
+                true,to_tsvector('simple','Qué incluye la demostración Faro Azul visita virtual prueba veinte minutos')),
+            (gen_random_uuid(),'¿Cómo agendo una visita a la propiedad?','Te muestro propiedades y agendamos visita con el asesor.',true,NULL),
+            (gen_random_uuid(),'Faro Azul información privada','Faro Azul incluye una visita de duración privada.',false,NULL)`, demoId);
+        const captured = await captureStructuredKnowledge(database, tenantId);
+        for (const source of [undefined, captured]) {
+            const result = await faqs.search(tenantId, 'Que incluye la demostración Faro Azul y cuánto dura la visita?',
+                3, AGENT_TEST_EXECUTION_CONTEXT, source);
+            expect(result.map(row => row.id)).toEqual([demoId]);
+            expect(result[0].answer).toContain('20 minutos');
+        }
+    });
+
     it('ranks indexed matches before null vectors and breaks ties identically in live and captured queries', async () => {
         const firstId = '11111111-1111-4111-8111-111111111111', lastId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
         await sql(`INSERT INTO "${schema}".faqs(id,question,answer,order_index,search_tsv) VALUES
@@ -186,6 +203,7 @@ const url = process.env.PARALLLY_ISOLATION_TEST_URL;
         const response = await f.service.test(tenantId, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', { message: 'Consulta las preguntas y la política de cambios' });
         expect(response.debug.runtimeError).toBeUndefined();
         expect(response.debug.toolCalls.map((row: any) => row.result)).toEqual([
+            { faqs: [] },
             { faqs: [expect.objectContaining({ answer: 'FAQ française' })] },
             { type: 'return', title: 'Devoluciones', content: 'Cambios durante siete días.', version: 2 },
         ]);

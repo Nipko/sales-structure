@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import {
     Building2, Globe, ChevronLeft, ChevronRight, ChevronDown,
     AlertCircle, Instagram, Facebook, Linkedin,
-    Phone, Mail, Info, Clock, LifeBuoy, X,
+    Phone, Mail, Info, Clock, LifeBuoy,
 } from "lucide-react";
 import { useTranslations, useLocale } from "next-intl";
 import { cn } from "@/lib/utils";
@@ -28,6 +28,8 @@ import {
 import { TIMEZONE_GROUPS, TIMEZONE_VALUES, DEFAULT_TIMEZONE, normalizeTimezone } from "@parallext/shared";
 import AnimatedLogo from "@/components/AnimatedLogo";
 import LocaleSwitcher from "@/components/LocaleSwitcher";
+import OnboardingCoachMarks from "./_components/OnboardingCoachMarks";
+import PlanChannels from "./_components/PlanChannels";
 
 // Ruta crítica: empresa → audiencia → objetivos → plan. El catálogo del último
 // paso viene del backend; ningún slug, precio o requisito de tarjeta vive acá.
@@ -326,6 +328,18 @@ export default function OnboardingPage() {
     const locale = useLocale();
     const catalogLocale = locale.split("-")[0] as VerticalCatalogLocale;
     const [step, setStep] = useState(0);
+    const focusStepHeading = useRef(false);
+    const navigateStep = useCallback((nextStep: number) => {
+        focusStepHeading.current = true;
+        setStep(nextStep);
+    }, []);
+    useEffect(() => {
+        if (!focusStepHeading.current) return;
+        focusStepHeading.current = false;
+        const heading = document.getElementById("onboarding-step-heading");
+        heading?.focus({ preventScroll: true });
+        heading?.scrollIntoView({ block: "start", behavior: "auto" });
+    }, [step]);
     const [error, setError] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [redirecting, setRedirecting] = useState(false);
@@ -554,17 +568,18 @@ export default function OnboardingPage() {
     // A restored draft can contain an identifier removed from a newer manifest.
     // Clear only the invalid selection and keep the rest of the draft intact.
     useEffect(() => {
-        if (verticalCatalogLoading || !industry) return;
-        const available = verticalDefinitions[industry];
-        if (!available) {
+        if (verticalCatalogLoading || verticalCatalogError || !industry) return;
+        const allowedIndustries = offerableIndustries(verticalDefinitions, SIGNUP_AVAILABILITY);
+        if (!allowedIndustries.includes(industry)) {
             setIndustry("");
             setSubType("");
             return;
         }
+        const available = offerableSubTypes(verticalDefinitions[industry] || [], SIGNUP_AVAILABILITY);
         if (subType && !available.some((candidate) => candidate.key === subType)) {
             setSubType("");
         }
-    }, [industry, subType, verticalCatalogLoading, verticalDefinitions]);
+    }, [industry, subType, verticalCatalogLoading, verticalCatalogError, verticalDefinitions]);
 
     const [draftLoaded, setDraftLoaded] = useState(false);
     const [draftKey, setDraftKey] = useState<string | null>(null);
@@ -619,7 +634,7 @@ export default function OnboardingPage() {
             // quedaría trabado en una pantalla que no puede validar.
             const step1Complete = !!str(draft.companyName).trim() && !!str(draft.industry)
                 && !!str(draft.orgSize) && !!str(draft.about).trim();
-            if (typeof draft.step === "number" && step1Complete) {
+            if (Number.isInteger(draft.step) && step1Complete) {
                 setStep(Math.min(STEP_KEYS.length - 1, Math.max(0, draft.step)));
             }
         }
@@ -700,20 +715,38 @@ export default function OnboardingPage() {
     const visiblePlans = showAllPlans || !selectedPlan
         ? billingPlans
         : billingPlans.filter((plan) => plan.slug === selectedPlan.slug);
+    const companyComplete = !verticalCatalogLoading
+        && verticalCatalogReady
+        && !!companyName.trim()
+        && industryKeys.includes(industry)
+        && (selectedSubTypes.length === 0 || selectedSubTypes.some((candidate) => candidate.key === subType))
+        && ORG_SIZE_KEYS.includes(orgSize)
+        && !!about.trim()
+        && invalidFieldsForStep(0).length === 0;
+
+    // A saved screen number is not evidence that its prerequisites still hold.
+    // The current catalog may require a subtype that an older draft omitted or
+    // no longer offers. Wait for it before allowing an advanced screen to submit.
+    useEffect(() => {
+        if (!draftLoaded || verticalCatalogLoading || step === 0) return;
+        const firstIncompleteStep = !companyComplete ? 0 : audiences.length === 0 ? 1 : goals.length === 0 ? 2 : 3;
+        if (step > firstIncompleteStep) {
+            setError(t('draftNeedsReview'));
+            navigateStep(firstIncompleteStep);
+        }
+    }, [audiences.length, companyComplete, draftLoaded, goals.length, navigateStep, step, t, verticalCatalogLoading]);
 
     const canProceed = (): boolean => {
+        if (!companyComplete) return false;
+        if (step > 1 && audiences.length === 0) return false;
+        if (step > 2 && goals.length === 0) return false;
         if (invalidFieldsForStep(step).length > 0) return false;
         switch (step) {
             case 0:
                 // `about` es requerido: es el campo más impactante para la calidad del
                 // agente (alimenta <turn.business> → "¿qué hacen?"). Sin él, el agente
                 // no puede describir el negocio desde el día 1.
-                return verticalCatalogReady
-                    && !!companyName.trim()
-                    && !!industry
-                    && (selectedSubTypes.length === 0 || !!subType)
-                    && !!orgSize
-                    && !!about.trim();
+                return companyComplete;
             case 1:
                 return audiences.length > 0;
             case 2:
@@ -748,14 +781,16 @@ export default function OnboardingPage() {
             return;
         }
         if (!canProceed()) return;
+        setError("");
         if (step < STEP_KEYS.length - 1) {
-            setStep(step + 1);
+            navigateStep(step + 1);
         } else {
             handleSubmit();
         }
     };
 
     const handleSubmit = async () => {
+        if (!companyComplete || audiences.length === 0 || goals.length === 0) return;
         if (!planCatalogIsCurrent || !selectedPlan || !isCycleAvailable(selectedPlan, billingCycle)) {
             setError(t('planSelectionUnavailable'));
             return;
@@ -1012,7 +1047,7 @@ export default function OnboardingPage() {
                 </div>
 
                 {/* Card */}
-                <div className="p-8 rounded-xl bg-white dark:bg-white/[0.04] border border-neutral-200 dark:border-white/[0.08] shadow-lg dark:shadow-[0_20px_60px_rgba(0,0,0,0.3)] dark:backdrop-blur-xl">
+                <div className="p-5 sm:p-8 rounded-xl bg-white dark:bg-white/[0.04] border border-neutral-200 dark:border-white/[0.08] shadow-lg dark:shadow-[0_20px_60px_rgba(0,0,0,0.3)] dark:backdrop-blur-xl">
                     {/* Error */}
                     {error && (
                         <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-lg mb-4 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-400 text-[13px]">
@@ -1023,13 +1058,13 @@ export default function OnboardingPage() {
                     {/* Step 1: Company */}
                     {step === 0 && (
                         <div>
-                            <h2 className="text-xl font-semibold text-foreground mb-1">{t('step1Title')}</h2>
+                            <h2 id="onboarding-step-heading" tabIndex={-1} className="scroll-mt-6 text-xl font-semibold text-foreground mb-1">{t('step1Title')}</h2>
                             <p className="text-muted-foreground text-sm mb-6">
                                 {t('step1Subtitle')}
                             </p>
 
                             {/* Company Name */}
-                            <div className="mb-4">
+                            <div className="mb-4" id="onboarding-name-field">
                                 <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium" htmlFor={fieldDomId("company.name")}>
                                     {t('companyName')} <span className="text-rose-500">*</span>
                                 </label>
@@ -1044,6 +1079,7 @@ export default function OnboardingPage() {
                                     />
                                 </div>
                                 <FieldError field="company.name" />
+                                <div id="onboarding-name-field-guide-slot" />
                             </div>
 
                             {/* Industry */}
@@ -1086,13 +1122,14 @@ export default function OnboardingPage() {
                                             : t('verticalCatalogError')}
                                     </p>
                                 )}
+                                <div id="onboarding-industry-field-guide-slot" />
                             </div>
 
                             {/* Sub-type (conditional) */}
                             {selectedSubTypes.length > 0 && (
-                                <div className="mb-4">
+                                <div className="mb-4" id="onboarding-subtype-field">
                                     <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium" htmlFor="onboarding-subtype">
-                                        {t('businessType')}
+                                        {t('businessType')} <span className="text-rose-500">*</span>
                                     </label>
                                     {/* La frontera belleza/salud es la que más se
                                         equivoca el dueño: una clínica de estética
@@ -1119,6 +1156,7 @@ export default function OnboardingPage() {
                                             </option>
                                         ))}
                                     </select>
+                                    <div id="onboarding-subtype-field-guide-slot" />
                                 </div>
                             )}
 
@@ -1148,10 +1186,11 @@ export default function OnboardingPage() {
                                     {t('aboutHint')}
                                 </p>
                                 <FieldError field="company.about" />
+                                <div id="onboarding-about-field-guide-slot" />
                             </div>
 
                             {/* Org Size */}
-                            <div className="mb-4">
+                            <div className="mb-4" id="onboarding-orgsize-field">
                                 <label className="block text-[13px] text-muted-foreground mb-1.5 font-medium" htmlFor="onboarding-orgsize">
                                     {t('companySize')} <span className="text-rose-500">*</span>
                                 </label>
@@ -1169,6 +1208,7 @@ export default function OnboardingPage() {
                                         </option>
                                     ))}
                                 </select>
+                                <div id="onboarding-orgsize-field-guide-slot" />
                             </div>
 
                             {/* Timezone — ya la sabemos por el navegador. Presentarla como
@@ -1206,6 +1246,7 @@ export default function OnboardingPage() {
                                         </select>
                                     </>
                                 )}
+                                <div id="onboarding-timezone-field-guide-slot" />
                             </div>
 
                             {/* Todo lo demás es opcional. Trece campos visibles hacían que
@@ -1360,7 +1401,7 @@ export default function OnboardingPage() {
                     {/* Step 2: Audience */}
                     {step === 1 && (
                         <div>
-                            <h2 className="text-xl font-semibold text-foreground mb-1">
+                            <h2 id="onboarding-step-heading" tabIndex={-1} className="scroll-mt-6 text-xl font-semibold text-foreground mb-1">
                                 {t('step2')}
                             </h2>
                             <p className="text-muted-foreground text-sm mb-6">
@@ -1408,7 +1449,7 @@ export default function OnboardingPage() {
                     {/* Step 3: Goals */}
                     {step === 2 && (
                         <div>
-                            <h2 className="text-xl font-semibold text-foreground mb-1">
+                            <h2 id="onboarding-step-heading" tabIndex={-1} className="scroll-mt-6 text-xl font-semibold text-foreground mb-1">
                                 {t('goalsTitle')}
                             </h2>
                             <p className="text-muted-foreground text-sm mb-6">
@@ -1457,7 +1498,7 @@ export default function OnboardingPage() {
                     {/* Step 4: live plan catalog */}
                     {step === 3 && (
                         <div>
-                            <h2 className="text-xl font-semibold text-foreground mb-1">{t('planTitle')}</h2>
+                            <h2 id="onboarding-step-heading" tabIndex={-1} className="scroll-mt-6 text-xl font-semibold text-foreground mb-1">{t('planTitle')}</h2>
                             <p className="text-muted-foreground text-sm mb-6">{t('planSubtitle')}</p>
 
                             {/* El país sugerido viene del servidor; el usuario puede corregirlo. */}
@@ -1498,8 +1539,6 @@ export default function OnboardingPage() {
                                     </>
                                 )}
                             </div>
-
-                            {billingCountry && <p className="mb-4 text-xs text-muted-foreground">{t(billingCountry === "CO" ? 'billingWompiHint' : 'billingStripeHint')}</p>}
 
                             {pricingIntentAdjusted && (
                                 <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
@@ -1559,9 +1598,6 @@ export default function OnboardingPage() {
                                         const amount = billingCycle === "annual"
                                             ? plan.displayPriceAnnualCents
                                             : plan.displayPriceCents;
-                                        const channels = Array.isArray(plan.features?.channels)
-                                            ? plan.features.channels.length
-                                            : null;
                                         const messages = plan.maxAiMessages < 0
                                             ? t('unlimited')
                                             : new Intl.NumberFormat(locale).format(plan.maxAiMessages);
@@ -1610,8 +1646,8 @@ export default function OnboardingPage() {
                                                     <p className="mt-1 text-xs text-muted-foreground">
                                                         {t('agentsIncluded', { n: agents })}
                                                         {" · "}{t('messagesIncluded', { n: messages })}
-                                                        {channels !== null && <>{" · "}{t('channelsIncluded', { n: channels })}</>}
                                                     </p>
+                                                    <PlanChannels channels={plan.features?.channels} />
                                                     {billingCycle === "monthly" && plan.trialAvailable ? (
                                                         <div className="mt-2 text-[11px] text-muted-foreground">
                                                             <p>
@@ -1679,7 +1715,7 @@ export default function OnboardingPage() {
                                 agenda al vencer la prueba. */}
                             {selectedPlan?.requiresPaymentMethodAtSignup && (
                                 <div className="mt-5 p-4 rounded-xl border border-indigo-200 dark:border-indigo-900 bg-indigo-50/60 dark:bg-indigo-950/30 text-sm text-indigo-800 dark:text-indigo-300">
-                                    {t('paidPlanAfterSignup', { plan: selectedPlan.name, provider: billingCountry === "CO" ? "Wompi" : "Stripe" })}
+                                    {t('paidPlanAfterSignup', { plan: selectedPlan.name })}
                                 </div>
                             )}
 
@@ -1692,7 +1728,7 @@ export default function OnboardingPage() {
                         {step > 0 ? (
                             <button
                                 type="button"
-                                onClick={() => setStep(step - 1)}
+                                onClick={() => navigateStep(step - 1)}
                                 className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-neutral-300 dark:border-white/10 bg-transparent text-sm font-medium text-foreground hover:bg-neutral-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
                             >
                                 <ChevronLeft size={16} /> {t('back')}
@@ -1727,21 +1763,18 @@ export default function OnboardingPage() {
                             )}
                         </button>
                     </div>
+                    {step === 0 && <div id="onboarding-next-button-guide-slot" />}
                 </div>
 
                 {/* Footer */}
                 <p className="text-center text-xs text-neutral-400 mt-6">{t('poweredBy')} <a href="https://parallext.com" target="_blank" className="text-indigo-500 hover:text-indigo-400">Parallext.com</a></p>
             </div>
 
-            {step === 0 && draftLoaded && verticalCatalogReady && (
-                <CoachMarks
+            {draftLoaded && verticalCatalogReady && (
+                <OnboardingCoachMarks
                     storageKey={COACH_MARKS_KEY}
-                    marks={[
-                        { targetId: "onboarding-industry-field", key: "industry" },
-                        { targetId: "onboarding-about-field", key: "about" },
-                        { targetId: "onboarding-timezone-field", key: "timezone" },
-                        { targetId: "onboarding-next-button", key: "submit" },
-                    ]}
+                    enabled={step === 0}
+                    includeSubtype={selectedSubTypes.length > 0}
                 />
             )}
         </div>
@@ -1754,110 +1787,4 @@ function fieldDomId(field: FieldPath): string {
 
 function isFieldPath(value: string): value is FieldPath {
     return (STEP_FIELDS[0] as string[]).includes(value);
-}
-
-/**
- * First-visit coach marks.
- *
- * Not a product tour: those live in `/admin` and need the tour runner. This is
- * four sentences pointing at the four things that matter on the first screen a
- * person ever sees, shown once per browser. Without them the honest reaction to
- * a form with an accordion is "what do I actually have to fill in?".
- */
-function CoachMarks({
-    marks,
-    storageKey,
-}: {
-    marks: { targetId: string; key: string }[];
-    storageKey: string;
-}) {
-    const t = useTranslations("onboarding.coachMarks");
-    const [index, setIndex] = useState<number | null>(null);
-    const [box, setBox] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
-
-    useEffect(() => {
-        try {
-            if (!localStorage.getItem(storageKey)) setIndex(0);
-        } catch { /* sin storage → no molestar */ }
-    }, [storageKey]);
-
-    const dismiss = useCallback(() => {
-        setIndex(null);
-        try { localStorage.setItem(storageKey, "1"); } catch { /* noop */ }
-    }, [storageKey]);
-
-    useEffect(() => {
-        if (index === null) return;
-        const mark = marks[index];
-        if (!mark) { dismiss(); return; }
-
-        const measure = () => {
-            const element = document.getElementById(mark.targetId);
-            if (!element) { setBox(null); return; }
-            const rect = element.getBoundingClientRect();
-            setBox({ top: rect.top, left: rect.left, width: rect.width, height: rect.height });
-        };
-        measure();
-        const raf = requestAnimationFrame(measure);
-        window.addEventListener("resize", measure);
-        window.addEventListener("scroll", measure, true);
-        return () => {
-            cancelAnimationFrame(raf);
-            window.removeEventListener("resize", measure);
-            window.removeEventListener("scroll", measure, true);
-        };
-    }, [dismiss, index, marks]);
-
-    if (index === null || !box) return null;
-    const mark = marks[index];
-    const isLast = index === marks.length - 1;
-    const bubbleWidth = 280;
-    const left = Math.min(Math.max(box.left, 12), Math.max(12, window.innerWidth - bubbleWidth - 12));
-    const below = box.top + box.height + 10;
-    const top = below + 130 > window.innerHeight ? Math.max(12, box.top - 140) : below;
-
-    return (
-        <div className="pointer-events-none fixed inset-0 z-50">
-            <div
-                className="absolute rounded-xl ring-2 ring-indigo-500 ring-offset-2 ring-offset-transparent transition-all"
-                style={{ top: box.top - 4, left: box.left - 4, width: box.width + 8, height: box.height + 8 }}
-            />
-            <div
-                className="pointer-events-auto absolute rounded-xl border border-indigo-200 bg-white p-4 shadow-xl dark:border-indigo-500/30 dark:bg-[#16162c]"
-                style={{ top, left, width: bubbleWidth }}
-                role="dialog"
-                aria-label={t(`${mark.key}.title`)}
-            >
-                <button
-                    type="button"
-                    onClick={dismiss}
-                    aria-label={t("skip")}
-                    className="absolute right-2 top-2 rounded-md p-1 text-muted-foreground transition-colors hover:text-foreground cursor-pointer"
-                >
-                    <X size={14} />
-                </button>
-                <p className="pr-5 text-[13px] font-semibold text-foreground">{t(`${mark.key}.title`)}</p>
-                <p className="mt-1 text-[12px] leading-relaxed text-muted-foreground">{t(`${mark.key}.body`)}</p>
-                <div className="mt-3 flex items-center justify-between gap-2">
-                    <span className="text-[11px] text-muted-foreground">{index + 1}/{marks.length}</span>
-                    <div className="flex items-center gap-2">
-                        <button
-                            type="button"
-                            onClick={dismiss}
-                            className="rounded-lg px-2 py-1.5 text-[12px] font-medium text-muted-foreground transition-colors hover:text-foreground cursor-pointer"
-                        >
-                            {t("skip")}
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => (isLast ? dismiss() : setIndex(index + 1))}
-                            className="rounded-lg bg-indigo-600 px-3 py-1.5 text-[12px] font-semibold text-white transition-colors hover:bg-indigo-700 cursor-pointer"
-                        >
-                            {isLast ? t("done") : t("next")}
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
 }

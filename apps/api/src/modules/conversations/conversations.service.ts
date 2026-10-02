@@ -66,7 +66,7 @@ import { AgentTurnSession } from './agent-turn-session';
 import { sessionCanExecute, sessionLlmRouter, sessionToolExecutor } from './agent-turn-adapters';
 import { restoreBookingMission } from './booking-state-continuity';
 import { resolveEvaluationSnapshot } from './agent-evaluation-snapshot';
-import { AGENT_TEST_EXECUTION_CONTEXT, DRAFT_EXECUTION_CONTEXT } from '../../common/types/execution-context';
+import { AGENT_TEST_EXECUTION_CONTEXT, DRAFT_EXECUTION_CONTEXT, type ServiceExecutionContext } from '../../common/types/execution-context';
 import { EVALUATION_CONTEXT_LANGUAGES, evaluationContextLanguage, projectBusinessTurnContext,
     resolveEvaluationTurnContext, type EvaluationTurnContextInputs } from './evaluation-turn-context';
 import { isAgentTestSafeToolName } from './agent-test-tool-policy';
@@ -123,7 +123,8 @@ import {
     toolOrigin,
     toolRequiresSequentialExecution,
 } from './tool-policy-registry';
-import { awaitToolWithSafeTimeout } from './tool-timeout-policy';
+import { awaitAutomaticFaqLookup, awaitToolWithSafeTimeout } from './tool-timeout-policy';
+import { boundedAutomaticFaqs } from '../faqs/automatic-faq-context';
 import {
     CONTROL_ERRORS_REQUIRING_HUMAN,
     ToolExecutionControlService,
@@ -868,35 +869,49 @@ export class ConversationsService {
             this.logger.warn(`Drip stop-on-reply failed (non-fatal): ${(e as Error).message}`),
         );
 
-        // Auto-progress from the tenant's own initial/replied stages. Compatibility
-        // aliases in the predicate repair legacy generic rows without persisting them.
-        const [initialStage, repliedStage] = await Promise.all([
-            this.pipelineService.resolveTenantStage(tenantId, undefined, { schemaName }),
-            this.pipelineService.resolveTenantStage(tenantId, 'respondio', { schemaName }),
-        ]);
-        const replyOpportunities = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-            `SELECT id, lead_id, stage
-               FROM opportunities
-              WHERE conversation_id = $1::uuid`,
-            [conversation.id],
-        );
-        for (const opportunity of replyOpportunities || []) {
-            const current = await this.pipelineService.resolveTenantStage(
-                tenantId,
-                opportunity.stage,
-                { schemaName },
-            );
-            if (current.slug !== initialStage.slug) continue;
-            await this.pipelineService.writeLeadStage(
-                tenantId,
-                String(opportunity.lead_id),
-                repliedStage.slug,
-                {
-                    schemaName,
-                    opportunityId: String(opportunity.id),
-                    triggeredBy: 'customer_reply',
-                },
-            );
+        // A reply is an automatic stage change too. The semantic alias can map
+        // to a gated vertical stage (e.g. "respondio" -> "visita_agendada"),
+        // so it must honor both the tenant toggle and the stage prerequisites.
+        // A held stage must never prevent the agent from answering the message.
+        try {
+            if (await this.pipelineService.isAutoProgressEnabled(tenantId)) {
+                const [initialStage, repliedStage] = await Promise.all([
+                    this.pipelineService.resolveTenantStage(tenantId, undefined, { schemaName }),
+                    this.pipelineService.resolveTenantStage(tenantId, 'respondio', { schemaName }),
+                ]);
+                const replyOpportunities = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                    `SELECT id, lead_id, stage
+                       FROM opportunities
+                      WHERE conversation_id = $1::uuid`,
+                    [conversation.id],
+                );
+                for (const opportunity of replyOpportunities || []) {
+                    const current = await this.pipelineService.resolveTenantStage(
+                        tenantId,
+                        opportunity.stage,
+                        { schemaName },
+                    );
+                    if (current.slug !== initialStage.slug || current.slug === repliedStage.slug) continue;
+                    try {
+                        await this.pipelineService.writeLeadStage(
+                            tenantId,
+                            String(opportunity.lead_id),
+                            repliedStage.slug,
+                            {
+                                schemaName,
+                                opportunityId: String(opportunity.id),
+                                triggeredBy: 'customer_reply',
+                                enforceTransitionRules: true,
+                            },
+                        );
+                    } catch (error: any) {
+                        if (!String(error?.message || '').includes('TRANSITION_RULE_FAILED')) throw error;
+                        this.logger.log(`Customer-reply progression held at "${current.slug}": ${error.message}`);
+                    }
+                }
+            }
+        } catch (error: any) {
+            this.logger.warn(`Customer-reply progression failed (non-fatal): ${error.message}`);
         }
 
         // 2. Load Persona & Check Business Hours — per-connection agent resolution
@@ -3288,6 +3303,29 @@ export class ConversationsService {
                 flowCapable = !session && !!flowCfg?.enabled && !!flowCfg?.flowId;
             }
 
+            // A newly created appointment service can contain a vertical word
+            // such as "visita". The conversation's saved service list may still
+            // be empty or stale, so refresh the authorized catalog before both
+            // intent extraction and the decision to yield to vertical tools.
+            // Otherwise ownership stays with booking while the model attempts
+            // the same appointment through the tool port and is correctly denied.
+            if (bookingAuthority.allowed && this.shouldYieldToVerticalTools(config, userText, bookingState)) {
+                try {
+                    const result = await toolExecutor.execute(
+                        schemaName, tenantId, conversation.contact_id || '', 'list_services', {},
+                        conversation.id, { authority: engineAuthority, executionContext },
+                    );
+                    if (!result?.error && Array.isArray(result?.services)) {
+                        bookingState.services = result.services;
+                        await cache.set(`booking:services:${tenantId}`, JSON.stringify(result.services), 300).catch(() => {});
+                        turnTrace.add('booking', 'catalog_refreshed_for_routing', { serviceCount: result.services.length });
+                    }
+                } catch (error: any) {
+                    if (session || error instanceof LLMSourceAuthorityUnavailable) throw error;
+                    this.logger.warn(`[Booking] Routing catalog unavailable: ${error.message}`);
+                }
+            }
+
             // ═══ PHASE 1: INTERPRET — extract structured intent ═══
             const serviceNames = bookingState.services?.map(s => s.name) || [];
             const upcoming = turnContext.upcomingDays || [];
@@ -3859,6 +3897,38 @@ export class ConversationsService {
             };
         }
 
+        // Published FAQs are an independent source: an empty document corpus
+        // must not leave their use to the model's optional tool selection. Use
+        // the normal executor so capability, mission and evaluation snapshot
+        // guards are identical to an explicit search_faqs call.
+        if (!engineProducedText && userText.trim() && turnAllowedTools.includes('search_faqs')) {
+            const args = { query: userText, limit: 3 };
+            const faqExecutionContext: ServiceExecutionContext = {
+                ...executionContext, mode: executionContext?.mode ?? 'live', persistence: 'disabled',
+            };
+            try {
+                turnTrace.add('tool_call', 'search_faqs', { origin: 'core', effect: 'read', automatic: true });
+                const result = await awaitAutomaticFaqLookup(toolExecutor.execute(
+                    schemaName, tenantId, conversation.contact_id || '', 'search_faqs', args, conversation.id,
+                    { authority: llmAuthority, channelType: msg.channelType, executionContext: faqExecutionContext,
+                        automaticFaqContext: true,
+                        commitmentBlocked, deniedTools, jurisdiction: regional?.operatingCountry.value },
+                ), 3_000, faqExecutionContext);
+                const faqs = !result?.error && Array.isArray(result?.faqs) ? boundedAutomaticFaqs(result.faqs) : [];
+                preExecutedTools.push({ name: 'search_faqs', result: { ...result, faqs } });
+                const retrievedFaqs: RetrievedKnowledgeItem[] = faqs
+                    .filter((faq: any) => typeof faq.id === 'string' && typeof faq.question === 'string' && typeof faq.answer === 'string')
+                    .map((faq: any) => ({ source: 'faq' as const, id: faq.id, title: faq.question, content: faq.answer }));
+                turnContext.retrievedKnowledge = retrievedFaqs;
+                turnTrace.add('tool_result', 'search_faqs', { ok: !result?.error, error: result?.error,
+                    automatic: true, retrievedCount: retrievedFaqs.length });
+            } catch (error: any) {
+                if (session || error instanceof LLMSourceAuthorityUnavailable) throw error;
+                this.logger.warn(`FAQ search failed (non-fatal): ${error.message}`);
+                turnTrace.add('tool_result', 'search_faqs', { ok: false, automatic: true, error: 'faq_search_failed' });
+            }
+        }
+
         // 5. Knowledge retrieval — runs on EVERY turn (booking and non-booking alike).
         // When the booking engine produced a directive, the Layer 1 contract rule
         // "When <directive> is present, communicate ONLY that information" ensures
@@ -3922,7 +3992,7 @@ export class ConversationsService {
                     const possible = ragResults.filter((r: any) => r.score >= 0.25 && r.score < similarityThreshold);
 
                     if (retrieved.length > 0) {
-                        turnContext.retrievedKnowledge = retrieved.map(knowledgeHitToContext);
+                        turnContext.retrievedKnowledge = [...(turnContext.retrievedKnowledge || []), ...retrieved.map(knowledgeHitToContext)];
                         this.logger.log(`RAG: Injected ${retrieved.length} chunks (topK=${topK}, threshold=${similarityThreshold}) for tenant ${tenantId}`);
                     }
 

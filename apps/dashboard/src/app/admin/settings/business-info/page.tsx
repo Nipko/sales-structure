@@ -72,6 +72,7 @@ function logoFullUrl(relative: string): string {
 export default function BusinessInfoPage() {
     const { activeTenantId } = useTenant();
     const t = useTranslations("settings.businessInfo");
+    const tOnboarding = useTranslations("onboarding");
     const tHelp = useTranslations("help");
     const [form, setForm] = useState<BusinessForm>(EMPTY);
     const [loading, setLoading] = useState(true);
@@ -180,6 +181,18 @@ export default function BusinessInfoPage() {
     }
 
     const previewUrl = logoFullUrl(form.logoUrl);
+    const verticalGoalKey = `verticalGoals.${form.industry}`;
+    const verticalAudienceKey = `verticalAudiences.${form.industry}`;
+    const goalKeys = form.industry && tOnboarding.has(verticalGoalKey)
+        ? Object.keys(tOnboarding.raw(verticalGoalKey) as Record<string, string>) : GOAL_KEYS;
+    const audienceKeys = form.industry && tOnboarding.has(verticalAudienceKey)
+        ? Object.keys(tOnboarding.raw(verticalAudienceKey) as Record<string, string>) : AUDIENCE_KEYS;
+    const localizedChip = (value: string, prefix: "goals" | "audiences") => {
+        const verticalKey = `${prefix === "goals" ? "verticalGoals" : "verticalAudiences"}.${form.industry}.${value}`;
+        return !value.startsWith("other:") && form.industry && tOnboarding.has(verticalKey)
+            ? tOnboarding(verticalKey)
+            : chipLabel(value, (key) => t(key), (key) => t.has(key), prefix);
+    };
 
     return (
         <div className="max-w-3xl space-y-6">
@@ -220,22 +233,23 @@ export default function BusinessInfoPage() {
                 <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 mb-4">{t("sections.identity")}</h2>
                 <div className="space-y-4">
                     <div id={guidedTourAnchorId("business-name")}>
-                        <label className={labelCls}>{t("fields.companyName")} *</label>
-                        <input className={inputCls} value={form.companyName} onChange={e => setField("companyName", e.target.value)} />
+                        <label htmlFor="business-info-company-name" className={labelCls}>{t("fields.companyName")} *</label>
+                        <input id="business-info-company-name" aria-required="true" className={inputCls} value={form.companyName} onChange={e => setField("companyName", e.target.value)} />
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className={labelCls}>{t("fields.industry")}</label>
-                            <input className={inputCls} value={form.industry} onChange={e => setField("industry", e.target.value)} placeholder={t("placeholders.industry")} />
+                            <label htmlFor="business-info-industry" className={labelCls}>{t("fields.industry")}</label>
+                            <input id="business-info-industry" className={inputCls} value={form.industry} onChange={e => setField("industry", e.target.value)} placeholder={t("placeholders.industry")} />
                         </div>
                         <div>
-                            <label className={labelCls}>{t("fields.website")}</label>
-                            <input className={inputCls} value={form.website} onChange={e => setField("website", e.target.value)} placeholder="https://" />
+                            <label htmlFor="business-info-website" className={labelCls}>{t("fields.website")}</label>
+                            <input id="business-info-website" className={inputCls} value={form.website} onChange={e => setField("website", e.target.value)} placeholder="https://" />
                         </div>
                     </div>
                     <div id={guidedTourAnchorId("business-about")}>
-                        <label className={labelCls}>{t("fields.about")} *</label>
+                        <label htmlFor="business-info-about" className={labelCls}>{t("fields.about")} *</label>
                         <textarea
+                            id="business-info-about"
                             className={textareaCls}
                             value={form.about}
                             aria-required="true"
@@ -248,17 +262,18 @@ export default function BusinessInfoPage() {
 
                     {/* Logo */}
                     <div>
-                        <label className={labelCls}>
+                        <label htmlFor={logoMode === "upload" ? "business-info-logo-file" : "business-info-logo-url"} className={labelCls}>
                             <ImageIcon size={12} className="inline mr-1" />
                             {t("fields.logoUrl")}
                         </label>
 
-                        <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="hidden"
+                        <input id="business-info-logo-file" aria-label={t("fields.logoUrl")} ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="hidden"
                             onChange={e => { const f = e.target.files?.[0]; if (f) handleLogoUpload(f); e.target.value = ""; }} />
 
                         {/* Clickable drop zone */}
                         <button
                             type="button"
+                            aria-label={t("fields.logoUrl")}
                             onClick={() => { if (logoMode === "upload") fileRef.current?.click(); }}
                             disabled={uploading || logoMode === "url"}
                             className={`w-full rounded-xl border-2 border-dashed p-4 transition-all ${logoMode === "upload" ? "border-indigo-300 dark:border-indigo-500/40 hover:border-indigo-500 dark:hover:border-indigo-400 hover:bg-indigo-50/50 dark:hover:bg-indigo-500/5 cursor-pointer" : "border-neutral-200 dark:border-neutral-700 cursor-default"} bg-neutral-50 dark:bg-neutral-800/50`}
@@ -266,7 +281,7 @@ export default function BusinessInfoPage() {
                             <div className="flex items-center gap-4">
                                 <div className="w-16 h-16 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 flex items-center justify-center overflow-hidden shrink-0">
                                     {previewUrl ? (
-                                        <img src={previewUrl} alt="Logo" className="w-full h-full object-contain p-1" onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                                        <img src={previewUrl} alt={t("fields.logoUrl")} className="w-full h-full object-contain p-1" onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />
                                     ) : (
                                         <Building2 size={24} className="text-neutral-300 dark:text-neutral-600" />
                                     )}
@@ -283,7 +298,7 @@ export default function BusinessInfoPage() {
                                                 <Upload size={14} />
                                                 {previewUrl ? t("logoChangeFile") : t("logoChooseFile")}
                                             </p>
-                                            <p className="text-[11px] text-neutral-400 dark:text-neutral-500 mt-0.5">JPG, PNG, WebP, GIF — Max 5 MB</p>
+                                            <p className="text-[11px] text-neutral-400 dark:text-neutral-500 mt-0.5">{t("logoFormats")}</p>
                                         </>
                                     ) : null}
                                 </div>
@@ -312,6 +327,7 @@ export default function BusinessInfoPage() {
 
                         {logoMode === "url" && (
                             <input
+                                id="business-info-logo-url"
                                 className={`${inputCls} mt-2`}
                                 value={form.logoUrl}
                                 onChange={e => setField("logoUrl", e.target.value)}
@@ -330,12 +346,13 @@ export default function BusinessInfoPage() {
 
                 <p className={labelCls}>{t("fields.chatReasons")}</p>
                 <div className="flex flex-wrap gap-2 mb-4">
-                    {Array.from(new Set([...GOAL_KEYS, ...form.chatReasons])).map((key) => {
+                    {Array.from(new Set([...goalKeys, ...form.chatReasons])).map((key) => {
                         const selected = form.chatReasons.includes(key);
                         return (
                             <button
                                 key={key}
                                 type="button"
+                                aria-pressed={selected}
                                 onClick={() => setField("chatReasons", selected
                                     ? form.chatReasons.filter(v => v !== key)
                                     : [...form.chatReasons, key])}
@@ -343,7 +360,7 @@ export default function BusinessInfoPage() {
                                     ? "border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300"
                                     : "border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400 hover:border-neutral-300 dark:hover:border-neutral-600"}`}
                             >
-                                {chipLabel(key, (k) => t(k), (k) => t.has(k), "goals")}
+                                {localizedChip(key, "goals")}
                             </button>
                         );
                     })}
@@ -351,12 +368,13 @@ export default function BusinessInfoPage() {
 
                 <p className={labelCls}>{t("fields.customerTypes")}</p>
                 <div className="flex flex-wrap gap-2">
-                    {Array.from(new Set([...AUDIENCE_KEYS, ...form.customerTypes])).map((key) => {
+                    {Array.from(new Set([...audienceKeys, ...form.customerTypes])).map((key) => {
                         const selected = form.customerTypes.includes(key);
                         return (
                             <button
                                 key={key}
                                 type="button"
+                                aria-pressed={selected}
                                 onClick={() => setField("customerTypes", selected
                                     ? form.customerTypes.filter(v => v !== key)
                                     : [...form.customerTypes, key])}
@@ -364,7 +382,7 @@ export default function BusinessInfoPage() {
                                     ? "border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300"
                                     : "border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400 hover:border-neutral-300 dark:hover:border-neutral-600"}`}
                             >
-                                {chipLabel(key, (k) => t(k), (k) => t.has(k), "audiences")}
+                                {localizedChip(key, "audiences")}
                             </button>
                         );
                     })}
@@ -376,12 +394,12 @@ export default function BusinessInfoPage() {
                 <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 mb-4">{t("sections.contact")}</h2>
                 <div className="grid grid-cols-2 gap-4">
                     <div>
-                        <label className={labelCls}><Phone size={12} className="inline mr-1" />{t("fields.phone")}</label>
-                        <input className={inputCls} value={form.phone} onChange={e => setField("phone", e.target.value)} placeholder="+57 300 000 0000" />
+                        <label htmlFor="business-info-phone" className={labelCls}><Phone size={12} className="inline mr-1" />{t("fields.phone")}</label>
+                        <input id="business-info-phone" className={inputCls} value={form.phone} onChange={e => setField("phone", e.target.value)} placeholder="+57 300 000 0000" />
                     </div>
                     <div>
-                        <label className={labelCls}><Mail size={12} className="inline mr-1" />{t("fields.email")}</label>
-                        <input className={inputCls} type="email" value={form.email} onChange={e => setField("email", e.target.value)} placeholder="contact@company.com" />
+                        <label htmlFor="business-info-email" className={labelCls}><Mail size={12} className="inline mr-1" />{t("fields.email")}</label>
+                        <input id="business-info-email" className={inputCls} type="email" value={form.email} onChange={e => setField("email", e.target.value)} placeholder="contact@company.com" />
                     </div>
                 </div>
             </section>
@@ -393,17 +411,17 @@ export default function BusinessInfoPage() {
                 </h2>
                 <div className="space-y-4">
                     <div>
-                        <label className={labelCls}>{t("fields.address")}</label>
-                        <input className={inputCls} value={form.address} onChange={e => setField("address", e.target.value)} />
+                        <label htmlFor="business-info-address" className={labelCls}>{t("fields.address")}</label>
+                        <input id="business-info-address" className={inputCls} value={form.address} onChange={e => setField("address", e.target.value)} />
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className={labelCls}>{t("fields.city")}</label>
-                            <input className={inputCls} value={form.city} onChange={e => setField("city", e.target.value)} />
+                            <label htmlFor="business-info-city" className={labelCls}>{t("fields.city")}</label>
+                            <input id="business-info-city" className={inputCls} value={form.city} onChange={e => setField("city", e.target.value)} />
                         </div>
                         <div>
-                            <label className={labelCls}>{t("fields.country")}</label>
-                            <input className={inputCls} value={form.country} onChange={e => setField("country", e.target.value)} placeholder="CO" />
+                            <label htmlFor="business-info-country" className={labelCls}>{t("fields.country")}</label>
+                            <input id="business-info-country" className={inputCls} value={form.country} onChange={e => setField("country", e.target.value)} placeholder="CO" />
                         </div>
                     </div>
                 </div>
@@ -417,8 +435,9 @@ export default function BusinessInfoPage() {
                 <div className="grid grid-cols-2 gap-4">
                     {(["facebook", "instagram", "twitter", "linkedin", "youtube", "tiktok"] as const).map((platform) => (
                         <div key={platform}>
-                            <label className={labelCls}>{t(`social.${platform}`)}</label>
+                            <label htmlFor={`business-info-social-${platform}`} className={labelCls}>{t(`social.${platform}`)}</label>
                             <input
+                                id={`business-info-social-${platform}`}
                                 className={inputCls}
                                 value={form.socialLinks[platform] || ""}
                                 onChange={e => setSocial(platform, e.target.value)}

@@ -252,7 +252,10 @@ export default function QualityAttentionBanner() {
   const { action: topAction, headline, reasonKey } = content;
   if (snoozingSignalId === topAction.signalId) return null;
   if (pathname === "/admin/setup-wizard" || pathname.startsWith("/admin/agent/quality")) return null;
-  if (pathname === "/admin" && isOnboardingGuidanceOwningHome(onboardingLanding)) return null;
+  // General health waits behind the remaining setup tasks on Home. A checked
+  // failure on a channel the owner connected must stay visible there too.
+  if (pathname === "/admin" && isOnboardingGuidanceOwningHome(onboardingLanding)
+    && !isDayZeroDeliveryFailure(topAction, channelProven)) return null;
   if (tourSuppressedPath === pathname) return null;
   if (focusedSignalId && focusedSignalId === topAction.signalId) return null;
 

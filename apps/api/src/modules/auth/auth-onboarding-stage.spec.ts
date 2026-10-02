@@ -268,8 +268,10 @@ describe('AuthService onboarding stage', () => {
             });
 
             expect({ offenders }).toEqual({ offenders: [] });
-            // login, Google, Microsoft, 2FA, alta reintentada, alta nueva, impersonación.
-            expect(sites.length).toBeGreaterThanOrEqual(7);
+            // Login, Google, Microsoft, 2FA, alta nueva e impersonación siguen
+            // explícitos. El replay usa el objeto completo del helper común;
+            // auth-onboarding-replay.spec valida esos datos en su respuesta.
+            expect(sites.length).toBeGreaterThanOrEqual(6);
         });
     });
 });

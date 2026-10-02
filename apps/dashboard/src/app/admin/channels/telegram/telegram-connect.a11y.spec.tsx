@@ -76,6 +76,9 @@ describe("the Telegram page speaks the wizard's words", () => {
             const input = screen.container.querySelector("input") as HTMLInputElement;
             const label = screen.container.querySelector(`label[for="${input.id}"]`);
             expect(label?.textContent?.trim()).toBe(ES.channels.telegram.keyLabel);
+            expect(input.type).toBe("password");
+            expect(input.autocomplete).toBe("off");
+            expect(input.getAttribute("spellcheck")).toBe("false");
             expect(input.placeholder).toBe(ES.channels.telegram.keyPlaceholder);
             expect(ES.channels.telegram.keyLabel).toMatch(/clave/i);
             expect(await findAccessibilityViolations(screen.container)).toEqual([]);
@@ -91,6 +94,24 @@ describe("the Telegram page speaks the wizard's words", () => {
         try {
             expect(screen.container.textContent).toContain(ES.channels.telegram.disconnectDesc);
             expect(readable(screen.container)).not.toMatch(/token|webhook/i);
+        } finally { screen.unmount(); }
+    });
+
+    it("lets each connected bot be tested from a real chat, without sending to its own bot ID", async () => {
+        const account = { accountId: "mitienda_bot", displayName: "Mi Tienda", metadata: { botName: "Mi Tienda", botId: 12345 } };
+        jest.mocked(api.fetch).mockResolvedValue({
+            success: true,
+            data: { connected: true, account, accounts: [account, { ...account, accountId: "sucursal_bot" }] },
+        } as any);
+        const screen = await renderScreen(<TelegramSetupPage />);
+        try {
+            expect(screen.container.querySelector('a[href="https://t.me/mitienda_bot"]')).not.toBeNull();
+            expect(screen.container.querySelector('a[href="https://t.me/sucursal_bot"]')).not.toBeNull();
+            expect(screen.container.querySelector('a[href="/admin/inbox"]')?.textContent).toContain("Revisar conversación en Inbox");
+            expect(screen.container.textContent).toContain("/start");
+            expect(screen.container.textContent).not.toContain("ya está recibiendo mensajes");
+            expect(jest.mocked(api.fetch).mock.calls.map(([endpoint]) => endpoint)).toEqual(["/channels/telegram/status"]);
+            expect(await findAccessibilityViolations(screen.container)).toEqual([]);
         } finally { screen.unmount(); }
     });
 });

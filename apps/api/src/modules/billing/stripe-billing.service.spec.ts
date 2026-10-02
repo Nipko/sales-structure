@@ -6,7 +6,7 @@ describe('Stripe hosted subscription boundary', () => {
     const tenantId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
     const subId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
     function fixture() {
-        const plan = { id: 'plan-1', slug: 'starter', name: 'Starter', priceUsdCents: 4900, trialDays: 7, isActive: true, priceLocalOverrides: {}, features: {} };
+        const plan = { id: 'plan-1', slug: 'starter', name: 'Starter', priceUsdCents: 4900, trialDays: 7, requiresCardForTrial: false, isActive: true, priceLocalOverrides: {}, features: {} };
         const tenant = { id: tenantId, name: 'Example', billingEmail: 'owner@example.com', billingCountry: 'MX' };
         let sub: any = { id: subId, tenantId, planId: plan.id, provider: 'stripe', engine: 'provider', status: 'trialing',
             providerCustomerId: 'cus_1', providerSubscriptionId: null, metadata: { billingCountry: 'MX', billingCycle: 'monthly' },
@@ -62,8 +62,126 @@ describe('Stripe hosted subscription boundary', () => {
         };
         const event = (overrides: any = {}) => ({ provider: 'stripe' as const, providerEventId: 'evt_1', providerSubscriptionId: 'sub_remote',
             occurredAt: new Date(), type: BillingEventType.SUBSCRIPTION_CREATED, rawPayload: { livemode: false }, ...overrides });
-        return { service, prisma, stripe, config, events, routing, remote, tenant, plan, bind, event, payments: paymentRows, get sub() { return sub; } };
+        return { service, prisma, stripe, config, events, routing, redis, remote, tenant, plan, bind, event, payments: paymentRows, get sub() { return sub; } };
     }
+
+    describe('upgrading a local trial without a payment method', () => {
+        function localTrial() {
+            const f = fixture();
+            const upgrade = { ...f.plan, id: 'plan-pro', slug: 'pro', name: 'Pro', priceUsdCents: 9900 };
+            f.prisma.billingPlan.findUnique.mockResolvedValue(upgrade);
+            return { ...f, upgrade };
+        }
+
+        it('grants the target trial plan atomically, preserves its end, and makes no provider or charge request', async () => {
+            const f = localTrial();
+            const originalTrialEnd = f.sub.trialEndsAt;
+            const result = await f.service.changePlan(tenantId, 'pro', 'monthly');
+            expect(result).toMatchObject({ planId: 'plan-pro', status: 'trialing', providerSubscriptionId: null, trialEndsAt: originalTrialEnd });
+            expect(f.prisma.$transaction).toHaveBeenCalledTimes(1);
+            expect(f.prisma.$queryRawUnsafe).toHaveBeenCalledWith(expect.stringContaining('FOR UPDATE'), subId);
+            expect(f.prisma.billingSubscription.update).toHaveBeenCalledWith({ where: { id: subId }, data: {
+                planId: 'plan-pro', metadata: { billingCountry: 'MX', billingCycle: 'monthly' },
+            } });
+            expect(f.prisma.tenant.update).toHaveBeenCalledWith({ where: { id: tenantId }, data: { plan: 'pro' } });
+            for (const prefix of ['tenant_plan', 'sub_status', 'plan_features']) expect(f.redis.del).toHaveBeenCalledWith(`${prefix}:${tenantId}`);
+            expect(f.stripe.checkout.sessions.create).not.toHaveBeenCalled();
+            expect(f.stripe.customers.create).not.toHaveBeenCalled();
+            expect(f.stripe.prices.create).not.toHaveBeenCalled();
+            expect(f.stripe.subscriptions.retrieve).not.toHaveBeenCalled();
+            expect(f.stripe.subscriptions.update).not.toHaveBeenCalled();
+            expect(f.events.emit).toHaveBeenCalledWith(BillingEventType.SUBSCRIPTION_PLAN_CHANGED, {
+                tenantId, subscriptionId: subId, fromPlan: 'plan-1', toPlan: 'plan-pro',
+            });
+        });
+
+        it('returns the applied plan and emits its event when post-commit cache invalidation fails', async () => {
+            const f = localTrial();
+            const warning = jest.spyOn((f.service as any).logger, 'warn').mockImplementation(() => undefined);
+            f.redis.del.mockImplementation(async (key: string) => {
+                if (key.startsWith('plan_features:')) throw new Error('redis unavailable');
+            });
+            const result = await f.service.changePlan(tenantId, 'pro', 'monthly');
+            expect(result).toMatchObject({ planId: 'plan-pro', status: 'trialing' });
+            expect(f.prisma.tenant.update).toHaveBeenCalledWith({ where: { id: tenantId }, data: { plan: 'pro' } });
+            for (const prefix of ['tenant_plan', 'sub_status', 'plan_features']) expect(f.redis.del).toHaveBeenCalledWith(`${prefix}:${tenantId}`);
+            expect(warning).toHaveBeenCalledWith(expect.stringContaining(`plan_features:${tenantId}`));
+            expect(f.events.emit).toHaveBeenCalledWith(BillingEventType.SUBSCRIPTION_PLAN_CHANGED, {
+                tenantId, subscriptionId: subId, fromPlan: 'plan-1', toPlan: 'plan-pro',
+            });
+        });
+
+        it.each([
+            'expired-trial', 'past-due', 'annual-target', 'annual-current', 'card-required',
+            'no-trial', 'downgrade', 'stored-source', 'scheduled-charge', 'existing-contract',
+        ])('keeps %s on the hosted payment path', async (kind) => {
+            const f = localTrial();
+            if (kind === 'expired-trial') f.sub.trialEndsAt = new Date(Date.now() - 1);
+            if (kind === 'past-due') f.sub.status = 'past_due';
+            if (kind === 'annual-current') f.sub.metadata.billingCycle = 'annual';
+            if (kind === 'card-required') f.upgrade.requiresCardForTrial = true;
+            if (kind === 'no-trial') f.upgrade.trialDays = 0;
+            if (kind === 'downgrade') f.upgrade.priceUsdCents = 1000;
+            if (kind === 'stored-source') f.sub.defaultPaymentSourceId = 'source-1';
+            if (kind === 'scheduled-charge') f.sub.nextChargeAt = new Date();
+            if (kind === 'existing-contract') f.sub.metadata.stripeContract = { priceId: 'previous-contract' };
+            await expect(f.service.changePlan(tenantId, 'pro', kind === 'annual-target' ? 'annual' : 'monthly'))
+                .rejects.toMatchObject({ response: { error: 'stripe_checkout_required' } });
+            expect(f.prisma.billingSubscription.update).not.toHaveBeenCalled();
+            expect(f.prisma.tenant.update).not.toHaveBeenCalled();
+        });
+
+        it.each(['cancelled', 'expired', 'pending_auth'])('never grants a trial upgrade to a %s subscription', async (status) => {
+            const f = localTrial();
+            f.sub.status = status;
+            await expect(f.service.changePlan(tenantId, 'pro')).rejects.toMatchObject({ response: { error: 'subscription_terminal' } });
+            expect(f.prisma.tenant.update).not.toHaveBeenCalled();
+        });
+
+        it('expires an abandoned Checkout before removing its binding and changing the local plan', async () => {
+            const f = localTrial();
+            f.sub.metadata.stripeCheckout = { id: 'attempt-1', sessionId: 'cs_1' };
+            const result = await f.service.changePlan(tenantId, 'pro');
+            expect(f.stripe.checkout.sessions.expire).toHaveBeenCalledWith('cs_1');
+            expect(f.stripe.checkout.sessions.expire.mock.invocationCallOrder[0])
+                .toBeLessThan(f.prisma.billingSubscription.update.mock.invocationCallOrder[0]);
+            expect((result.metadata as Record<string, unknown>).stripeCheckout).toBeUndefined();
+            expect(f.stripe.checkout.sessions.create).not.toHaveBeenCalled();
+        });
+
+        it('recovers an ambiguous Checkout with its original key and expires it before granting the local plan', async () => {
+            const f = localTrial();
+            const attempt = { id: 'attempt-unknown', params: { expires_at: Math.floor(Date.now() / 1000) + 1200 } };
+            f.sub.metadata.stripeCheckout = attempt;
+            await f.service.changePlan(tenantId, 'pro');
+            expect(f.stripe.checkout.sessions.create).toHaveBeenCalledWith(attempt.params, { idempotencyKey: attempt.id });
+            expect(f.stripe.checkout.sessions.expire).toHaveBeenCalledWith('cs_1');
+            expect(f.prisma.tenant.update).toHaveBeenCalledTimes(1);
+        });
+
+        it.each(['complete', 'unknown', 'network-error', 'expire-race'])('leaves the plan and binding intact for %s Checkout', async (kind) => {
+            const f = localTrial();
+            const checkout = { id: 'attempt-1', sessionId: 'cs_1' };
+            f.sub.metadata.stripeCheckout = checkout;
+            if (kind === 'network-error') f.stripe.checkout.sessions.retrieve.mockRejectedValueOnce(new Error('network timeout'));
+            else if (kind === 'expire-race') f.stripe.checkout.sessions.expire.mockRejectedValueOnce(new Error('session completed'));
+            else f.stripe.checkout.sessions.retrieve.mockResolvedValueOnce({ id: 'cs_1', status: kind });
+            await expect(f.service.changePlan(tenantId, 'pro')).rejects.toThrow();
+            expect(f.prisma.billingSubscription.update).not.toHaveBeenCalled();
+            expect(f.prisma.tenant.update).not.toHaveBeenCalled();
+            expect(f.sub.metadata.stripeCheckout).toEqual(checkout);
+        });
+
+        it('rechecks state under the row lock before granting the local plan', async () => {
+            const f = localTrial();
+            f.prisma.billingSubscription.findUnique
+                .mockResolvedValueOnce(f.sub).mockResolvedValueOnce(f.sub)
+                .mockResolvedValueOnce({ ...f.sub, status: 'cancelled' });
+            await expect(f.service.changePlan(tenantId, 'pro')).rejects.toMatchObject({ response: { error: 'stripe_subscription_changed_retry' } });
+            expect(f.prisma.billingSubscription.update).not.toHaveBeenCalled();
+            expect(f.prisma.tenant.update).not.toHaveBeenCalled();
+        });
+    });
 
     it('freezes USD catalog price and trial, never sends card data or arms the internal engine', async () => {
         const f = fixture();

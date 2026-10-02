@@ -23,6 +23,7 @@ describe('armar el motor al guardar un método de pago', () => {
         const engine = { claimAttempt: jest.fn().mockResolvedValue({ id: 'attempt-1' }) };
         const queue = { add: jest.fn().mockResolvedValue(undefined) };
         const redis = { del: jest.fn().mockResolvedValue(undefined) };
+        const fiscal = { getConfig: jest.fn().mockResolvedValue({ fiscalGateEnabled: false }) };
         const prisma: any = {
             tenant: {
                 findUnique: jest.fn().mockResolvedValue({
@@ -53,14 +54,32 @@ describe('armar el motor al guardar un método de pago', () => {
             { capabilitiesOf: () => capabilities } as any,
             {} as any,
             engine as any,
-            { getConfig: jest.fn().mockResolvedValue({ fiscalGateEnabled: false }) } as any,
+            fiscal as any,
             queue as any,
         );
-        return { service, prisma, updates, engine, queue, redis };
+        return { service, prisma, updates, engine, queue, redis, fiscal };
     }
 
     const arm = (service: PaymentSourceService) =>
         (service as any).armEngineForNewSource(TENANT, SOURCE);
+
+    it.each([0, 7])('keeps pending authorization until tax identity is complete (trial=%s)', async (trialDaysPending) => {
+        const h = makeService({
+            id: 'sub-tax', tenantId: TENANT, provider: 'wompi', engine: 'provider',
+            status: SubscriptionStatus.PENDING_AUTH, trialEndsAt: null,
+            chargeAmountCents: 27_690_000, chargeCurrency: 'COP',
+            metadata: { trialDaysPending },
+        });
+        h.fiscal.getConfig.mockResolvedValue({ fiscalGateEnabled: true });
+
+        await expect(arm(h.service)).rejects.toMatchObject({
+            response: expect.objectContaining({ error: 'fiscal_data_required' }),
+        });
+        expect(h.prisma.billingSubscription.update).not.toHaveBeenCalled();
+        expect(h.prisma.tenant.update).not.toHaveBeenCalled();
+        expect(h.engine.claimAttempt).not.toHaveBeenCalled();
+        expect(h.queue.add).not.toHaveBeenCalled();
+    });
 
     it('durante un trial vigente agenda el cobro para el final, no para ahora', async () => {
         // El cliente tiene días prometidos. Cobrarle por adelantado sólo porque

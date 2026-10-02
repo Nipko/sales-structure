@@ -518,9 +518,25 @@ export interface CreateRepairOrderInput {
 // ============================================
 
 let refreshPromise: Promise<string | null> | null = null;
+export const AUTH_REFRESH_EVENT = "parallly:auth-refreshed";
 
-async function authFetch(endpoint: string, options: RequestInit = {}): Promise<Response> {
+/** A refresh may rotate credentials, but must never switch the acting session. */
+function authSessionIdentity(): string | null {
+    if (typeof window === "undefined") return null;
+    let user: any = null;
+    let claims: any = null;
+    try { user = JSON.parse(localStorage.getItem("user") || "null"); } catch { /* legacy cache */ }
+    try {
+        const payload = localStorage.getItem("accessToken")?.split(".")[1];
+        if (payload) claims = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
+    } catch { /* Non-JWT test/legacy credentials still have the stored user. */ }
+    const userId = claims?.sub ?? user?.id;
+    return userId ? JSON.stringify([userId, claims?.sid ?? null, claims?.impersonationSid ?? null]) : null;
+}
+
+export async function authFetch(endpoint: string, options: RequestInit = {}, redirectOnUnauthorized = true): Promise<Response> {
     const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+    const identity = authSessionIdentity();
 
     const headers: Record<string, string> = {
         "Content-Type": "application/json",
@@ -537,12 +553,21 @@ async function authFetch(endpoint: string, options: RequestInit = {}): Promise<R
     });
 
     if (res.status === 401 && token) {
-        const refreshed = await refreshAccessToken();
+        if (authSessionIdentity() !== identity) throw new Error("Session changed during request");
+        const refreshed = await refreshAccessToken(token);
+        if (authSessionIdentity() !== identity) throw new Error("Session changed during request");
         if (refreshed) {
             headers["Authorization"] = `Bearer ${refreshed}`;
-            return fetch(`${BASE_URL}${endpoint}`, { ...options, headers });
+            const retried = await fetch(`${BASE_URL}${endpoint}`, { ...options, headers });
+            if (retried.status !== 401) return retried;
+            if (authSessionIdentity() !== identity || localStorage.getItem("accessToken") !== refreshed) {
+                throw new Error("Session changed during request");
+            }
+            if (!redirectOnUnauthorized) return retried;
+        } else if (localStorage.getItem("accessToken") !== token) {
+            throw new Error("Session changed during request");
         }
-        if (typeof window !== "undefined") {
+        if (redirectOnUnauthorized && typeof window !== "undefined") {
             localStorage.removeItem("accessToken");
             localStorage.removeItem("refreshToken");
             localStorage.removeItem("user");
@@ -554,10 +579,27 @@ async function authFetch(endpoint: string, options: RequestInit = {}): Promise<R
     return res;
 }
 
-async function refreshAccessToken(): Promise<string | null> {
+/** All refresh callers share rotation, including the heartbeat and other tabs. */
+export async function refreshAccessToken(staleAccessToken?: string | null): Promise<string | null> {
+    if (typeof window === "undefined") return null;
     if (refreshPromise) return refreshPromise;
 
-    refreshPromise = doRefresh();
+    const expected = staleAccessToken ?? localStorage.getItem("accessToken");
+    const identity = authSessionIdentity();
+    const rotate = async () => {
+        const current = localStorage.getItem("accessToken");
+        if (authSessionIdentity() !== identity) throw new Error("Session changed while waiting for refresh");
+        // Another request/tab already renewed the credential while this one
+        // waited. Rotating the same single-use refresh token revokes sessions.
+        if (current && expected && current !== expected) {
+            if (!identity) throw new Error("Unknown session changed while waiting for refresh");
+            return current;
+        }
+        return doRefresh();
+    };
+    refreshPromise = typeof navigator !== "undefined" && navigator.locks?.request
+        ? Promise.resolve(navigator.locks.request("parallly-auth-refresh", rotate))
+        : rotate();
     try {
         return await refreshPromise;
     } finally {
@@ -569,27 +611,34 @@ async function doRefresh(): Promise<string | null> {
     const refreshToken = typeof window !== "undefined" ? localStorage.getItem("refreshToken") : null;
     if (!refreshToken) return null;
 
-    try {
-        const res = await fetch(`${BASE_URL}/auth/refresh`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ refreshToken }),
-        });
+    const res = await fetch(`${BASE_URL}/auth/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refreshToken }),
+    });
 
-        if (!res.ok) return null;
-
-        const data = await res.json();
-        if (data.success && data.data.accessToken) {
-            localStorage.setItem("accessToken", data.data.accessToken);
-            if (data.data.refreshToken) {
-                localStorage.setItem("refreshToken", data.data.refreshToken);
-            }
-            return data.data.accessToken;
-        }
-        return null;
-    } catch {
-        return null;
+    // Logout, a different login or an impersonation swap won while this request
+    // was in flight. Never restore its tokens or expire the newer session.
+    if (localStorage.getItem("refreshToken") !== refreshToken) {
+        throw new Error("Session changed during token refresh");
     }
+    if (res.status === 401) return null;
+    if (!res.ok) throw new Error("Session refresh temporarily unavailable");
+
+    const data = await res.json();
+    if (localStorage.getItem("refreshToken") !== refreshToken) {
+        throw new Error("Session changed during token refresh");
+    }
+    if (data.success && typeof data.data?.accessToken === "string" && data.data.accessToken) {
+        localStorage.setItem("accessToken", data.data.accessToken);
+        if (data.data.refreshToken) {
+            localStorage.setItem("refreshToken", data.data.refreshToken);
+        }
+        window.dispatchEvent(new CustomEvent(AUTH_REFRESH_EVENT, { detail: data.data }));
+        return data.data.accessToken;
+    }
+    // A broken/partial response is not evidence that the session was revoked.
+    throw new Error("Invalid session refresh response");
 }
 
 // ============================================

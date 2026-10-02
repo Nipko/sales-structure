@@ -41,6 +41,8 @@ export type DoneStepChannel =
     | { kind: "no_channel" }
     /** A WhatsApp number is connected and its readiness is still being read. */
     | { kind: "checking" }
+    /** A channel is configured; its first operational reply is still unverified. */
+    | { kind: "connected" }
     /**
      * Nothing known stops the agent. `paymentSoon`: Meta did not confirm a
      * payment method, which does not stop replies before 1 October 2026 but
@@ -56,17 +58,20 @@ export type DoneStepChannel =
  * `readiness`: `undefined` = not read yet, `null` = could not be read.
  *
  * `whatsapp` is whether a WhatsApp number is among the connections. Any other
- * channel has no known account-wide blocker the panel can read here, so a
- * channel that is not WhatsApp is taken at its word.
+ * channel has no account-wide readiness check here. A successful connection
+ * alone does not prove its message pipeline has sent an operational reply.
  */
 export function doneStepChannel(input: {
     channelConnected: boolean;
     whatsapp: boolean;
     readiness: ConnectedReadiness | null | undefined;
+    firstReplyAt?: string | null;
 }): DoneStepChannel {
     const { channelConnected, whatsapp, readiness } = input;
     if (!channelConnected && !whatsapp) return { kind: "no_channel" };
-    if (!whatsapp) return { kind: "answering", paymentSoon: false };
+    if (!whatsapp) return input.firstReplyAt && Number.isFinite(Date.parse(input.firstReplyAt))
+        ? { kind: "answering", paymentSoon: false }
+        : { kind: "connected" };
     if (readiness === undefined || readiness?.headline === "checking") return { kind: "checking" };
     if (readiness === null) return { kind: "unconfirmed" };
     if (readiness.answering) {

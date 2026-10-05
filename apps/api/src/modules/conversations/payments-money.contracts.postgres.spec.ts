@@ -119,11 +119,11 @@ import { APPLY_DISCOUNT_TOOL } from './tools/ecommerce-tools';
             w.payments.applyDiscount(w.schema, w.tenantId, '11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222',
                 { percent, reason: 'qa' }, max);
 
-        it.each([[0, 15], [-5, 15], [31, 15], [31, undefined], [16, 15], [Number.NaN, 15]])(
+        it.each([[0, 15], [-5, 15], [31, 15], [31, undefined], [16, 15], [Number.NaN, 15], [13, 12.5]])(
             'rejects percent=%p with max=%p as invalid_discount, ceiling=min(30,max), provider untouched', async (percent, max) => {
                 const ledgerRowsBefore = await count("payment_operation_ledger");
                 const result = await direct(percent, max);
-                expect(result).toMatchObject({ error: 'invalid_discount', maxPercent: Math.min(30, max ?? 30) });
+                expect(result).toMatchObject({ error: 'invalid_discount', maxPercent: Math.min(30, Math.floor(max ?? 30)) });
                 expect(w.sim.calls.applyDiscount).toHaveLength(0);
                 expect(await count('payment_operation_ledger')).toBe(ledgerRowsBefore);
             });
@@ -143,12 +143,12 @@ import { APPLY_DISCOUNT_TOOL } from './tools/ecommerce-tools';
             expect(w.sim.calls.applyDiscount.map(x => x.percent)).toEqual([3]);
         });
 
-        it('documents the gap: with max omitted the ceiling is 30 (the cap only travels from the LLM loop)', async () => {
+        it('fails closed: with neither a verified scope nor a ceiling nothing bounds the grant, so no discount', async () => {
             const c = await customer({ verified: true });
-            const a = { percent: 30, reason: 'qa' };
-            await toAwaitingApproval(c, 'apply_discount', a, {});
-            await approve(c.conversationId);
-            expect(await w.run(c.contactId, c.conversationId, 'apply_discount', a, {})).toMatchObject({ success: true, percent: 30 });
+            const result = await w.run(c.contactId, c.conversationId, 'apply_discount', { percent: 30, reason: 'qa' }, {});
+            expect(result).toMatchObject({ error: 'discounts_disabled', shouldHandoff: true });
+            expect((await tickets(c.conversationId)).length).toBe(0);
+            expect(w.sim.calls.applyDiscount).toEqual([]);
         });
     });
 

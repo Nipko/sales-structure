@@ -1,6 +1,6 @@
 import {
     Controller, Get, Post, Put, Delete, Param, Body, Query,
-    UseGuards, HttpCode, HttpStatus, BadRequestException,
+    UseGuards, HttpCode, HttpStatus, BadRequestException, Res,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
@@ -111,9 +111,12 @@ export class InsuranceController {
 
     @Post(':tenantId/claims')
     @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
-    async fileClaim(@Param('tenantId') tenantId: string, @Body() body: any) {
+    async fileClaim(@Param('tenantId') tenantId: string, @Body() body: any, @Res({ passthrough: true }) res: any) {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         const data = await this.service.fileClaim(schemaName, body);
-        return { success: true, data };
+        // The same incident is filed once, from any channel. A repeat returns
+        // the existing claim with 200 and alreadyFiled, never a silent 201.
+        if (data?.alreadyFiled) res.status(200);
+        return { success: true, data, ...(data?.alreadyFiled ? { alreadyFiled: true } : {}) };
     }
 }

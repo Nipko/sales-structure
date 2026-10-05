@@ -10,6 +10,10 @@ import { CronLockService } from '../redis/cron-lock.service';
 
 const MAX_ATTEMPTS = 5;
 const VERIFY_MAX_RETRIES = 10;
+/** Issuance ceiling per conversation and contact; stops brute force by re-issuing codes. */
+export const IDENTITY_MAX_CHALLENGES_PER_HOUR = 3;
+/** After a lockout (too many wrong codes) no new code is issued for this long. */
+export const IDENTITY_LOCKOUT_COOLDOWN_MINUTES = 30;
 
 /** Prisma P2034 / PostgreSQL 40001 (serialization failure) and 40P01 (deadlock). */
 function isSerializationConflict(error: any): boolean {
@@ -22,6 +26,7 @@ export type StartResult =
     | { status: 'sent'; via: 'email' | 'sms'; hint: string }
     | { status: 'pending' }
     | { status: 'no_channel' }
+    | { status: 'blocked' }
     | { status: 'already_verified' };
 
 /** Durable out-of-band identity step-up for sensitive agent tools. */
@@ -104,6 +109,17 @@ export class ChatIdentityService {
                 ORDER BY created_at DESC LIMIT 1 FOR UPDATE`, [tenantId, conversationId]);
             if (inFlight[0]) return inFlight[0];
 
+            const [throttle]: any[] = await query(`SELECT
+                (SELECT COUNT(*)::int FROM public.chat_identity_challenges
+                  WHERE tenant_id=$1::uuid AND conversation_id=$2::uuid AND contact_id=$3::uuid
+                    AND created_at>NOW()-INTERVAL '1 hour') AS issued,
+                EXISTS(SELECT 1 FROM public.chat_identity_challenges
+                  WHERE tenant_id=$1::uuid AND conversation_id=$2::uuid
+                    AND error_code='identity_too_many_attempts'
+                    AND updated_at>NOW()-INTERVAL '${IDENTITY_LOCKOUT_COOLDOWN_MINUTES} minutes') AS locked`,
+            [tenantId, conversationId, contactId]);
+            if (throttle?.locked || Number(throttle?.issued) >= IDENTITY_MAX_CHALLENGES_PER_HOUR) return { state: 'blocked' };
+
             await query(`UPDATE public.chat_identity_challenges
                 SET superseded_at=NOW(),updated_at=NOW(),code=NULL,
                     state=CASE WHEN state IN ('pending','failed','claimed') THEN 'suppressed' ELSE state END,
@@ -126,6 +142,7 @@ export class ChatIdentityService {
         });
 
         if (admitted.state === 'no_channel') return { status: 'no_channel' };
+        if (admitted.state === 'blocked') return { status: 'blocked' };
         if (admitted.state === 'sent') return { status: 'sent', via: admitted.channel, hint: admitted.hint };
         if (!['pending', 'failed'].includes(admitted.state)) return { status: 'pending' };
         const outcome = await this.deliver(admitted.id).catch(() => 'identity:pending');
@@ -186,6 +203,14 @@ export class ChatIdentityService {
                 WHERE conversation_id=$1::uuid AND consumed_at IS NULL AND superseded_at IS NULL
                 ORDER BY created_at DESC LIMIT 1 FOR UPDATE`, conversationId);
             const row = rows[0];
+            if (!row) {
+                // A lockout supersedes the challenge: report it as what it is,
+                // not as an expired code the customer could ask to renew.
+                const locked = await tx.$queryRawUnsafe(`SELECT 1 FROM chat_identity_challenges
+                    WHERE conversation_id=$1::uuid AND error_code='identity_too_many_attempts'
+                      AND updated_at>NOW()-INTERVAL '${IDENTITY_LOCKOUT_COOLDOWN_MINUTES} minutes' LIMIT 1`, conversationId);
+                if (locked[0]) return { state: 'too_many' };
+            }
             if (!row || !row.code || new Date(row.expires_at).getTime() <= Date.now()) {
                 if (row) await tx.$executeRawUnsafe(`UPDATE chat_identity_challenges SET state=CASE
                     WHEN state IN ('pending','failed','claimed') THEN 'suppressed' ELSE state END,

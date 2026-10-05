@@ -67,6 +67,42 @@ import { buildWorld, isolationUrl, type World } from './__fixtures__/n3-money-id
         expect({ replay: retry.idempotentReplay === true, verified: retry.verified }).toEqual({ replay: false, verified: true });
     });
 
+    it('(5) after five wrong codes the lockout holds: no new code is issued and verify answers too_many, not expired', async () => {
+        const contactId = await w.newContact();
+        const conversationId = await w.newConversation(contactId);
+        await w.identity.startVerification(w.tenantId, w.schema, contactId, conversationId, 'whatsapp');
+        const [row] = await w.client.$queryRawUnsafe(
+            `SELECT code FROM public.chat_identity_challenges WHERE conversation_id=$1::uuid AND consumed_at IS NULL`, conversationId) as any[];
+        const wrong = row.code === '000000' ? '111111' : '000000';
+        let last: any;
+        for (let i = 0; i < 5; i += 1) last = await w.identity.verifyCode(conversationId, wrong);
+        expect(last).toEqual({ ok: false, reason: 'too_many' });
+        const deliveries = w.smtp.mock.calls.length;
+
+        await w.inbound(conversationId, 'Dame otro código por favor');
+        const again = await w.run(contactId, conversationId, 'request_identity_code', {});
+        const retry = await w.identity.startVerification(w.tenantId, w.schema, contactId, conversationId, 'whatsapp');
+        const right = await w.identity.verifyCode(conversationId, row.code);
+
+        expect(again).toMatchObject({ error: 'identity_locked', shouldHandoff: true });
+        expect(retry).toEqual({ status: 'blocked' });
+        expect(right).toEqual({ ok: false, reason: 'too_many' });
+        expect(w.smtp.mock.calls.length).toBe(deliveries);
+    });
+
+    it('(6) at most three codes per conversation and contact per hour, whatever the reason they were replaced', async () => {
+        const contactId = await w.newContact();
+        const conversationId = await w.newConversation(contactId);
+        const before = w.smtp.mock.calls.length;
+        for (let i = 0; i < 3; i += 1) {
+            expect(await w.identity.startVerification(w.tenantId, w.schema, contactId, conversationId, 'whatsapp')).toMatchObject({ status: 'sent' });
+            await w.client.$executeRawUnsafe(
+                `UPDATE public.chat_identity_challenges SET expires_at=NOW()-INTERVAL '1 second' WHERE conversation_id=$1::uuid`, conversationId);
+        }
+        expect(await w.identity.startVerification(w.tenantId, w.schema, contactId, conversationId, 'whatsapp')).toEqual({ status: 'blocked' });
+        expect(w.smtp.mock.calls.length - before).toBe(3);
+    });
+
     it('(4) a serialization conflict (P2034) is retried and the correct code still verifies', async () => {
         const contactId = await w.newContact();
         const conversationId = await w.newConversation(contactId);

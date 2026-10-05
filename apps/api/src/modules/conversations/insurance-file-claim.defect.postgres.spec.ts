@@ -47,6 +47,65 @@ import { buildWorld, isolationUrl, type World } from './__fixtures__/n3-money-id
         expect((await claimsOf(c.policyId)).length).toBe(1);
     });
 
+    async function serviceWith(prisma: any) {
+        const { InsuranceService } = await import('../insurance/insurance.service');
+        const service: any = Object.create(InsuranceService.prototype);
+        service.prisma = prisma;
+        return service;
+    }
+
+    it('concurrent filings of the same incident serialize on the per-policy lock (forced interleaving)', async () => {
+        const c = await policyOwner();
+        // Barrier right after the existence SELECT: without the lock both callers
+        // pass it with no row and both insert. With the lock the second caller
+        // cannot even reach the SELECT until the first has committed.
+        let arrived = 0;
+        let release: () => void = () => undefined;
+        const both = new Promise<void>(resolve => { release = resolve; });
+        const prisma = Object.create(w.prisma);
+        prisma.transactionInTenantSchema = (schema: string, fn: any, opts?: any) =>
+            w.prisma.transactionInTenantSchema(schema, async (query: any) => fn(async (sql: string, params?: any[]) => {
+                const rows = await query(sql, params);
+                if (/FROM insurance_claims/.test(sql) && /SELECT/.test(sql)) {
+                    arrived += 1;
+                    if (arrived >= 2) release();
+                    await Promise.race([both, new Promise(resolve => setTimeout(resolve, 1500))]);
+                }
+                return rows;
+            }), opts);
+        const service = await serviceWith(prisma);
+        const data = { policyId: c.policyId, incidentType: 'collision', incidentAt: '2026-09-29', description: 'Choque' };
+        await Promise.all([service.fileClaim(w.schema, data), service.fileClaim(w.schema, data)]);
+        expect((await claimsOf(c.policyId)).length).toBe(1);
+    });
+
+    it('without incidentType the same normalized description within 24h is the same claim', async () => {
+        const c = await policyOwner();
+        const service = await serviceWith(w.prisma);
+        const first = await service.fileClaim(w.schema, { policyId: c.policyId, description: 'Me robaron el  CELULAR' });
+        const second = await service.fileClaim(w.schema, { policyId: c.policyId, description: '  me robaron el celular ' });
+        const other = await service.fileClaim(w.schema, { policyId: c.policyId, description: 'Otro siniestro distinto' });
+        expect({ sameId: second.id === first.id, flagged: second.alreadyFiled === true, otherNew: other.id !== first.id })
+            .toEqual({ sameId: true, flagged: true, otherNew: true });
+        expect((await claimsOf(c.policyId)).length).toBe(2);
+    });
+
+    it('rejects non-string fields with a 400 instead of crashing, and the HTTP POST reports a repeat as 200 alreadyFiled', async () => {
+        const c = await policyOwner();
+        const service = await serviceWith(w.prisma);
+        await expect(service.fileClaim(w.schema, { policyId: c.policyId, incidentType: 42 as any })).rejects.toMatchObject({ status: 400 });
+        const { InsuranceController } = await import('../insurance/insurance.controller');
+        const controller: any = Object.create(InsuranceController.prototype);
+        controller.service = service;
+        controller.prisma = { getTenantSchemaName: async () => w.schema };
+        const res = { status: jest.fn() };
+        const body = { policyId: c.policyId, incidentType: 'theft', incidentAt: '2026-09-28', description: 'Hurto' };
+        const first = await controller.fileClaim(w.tenantId, body, res);
+        const second = await controller.fileClaim(w.tenantId, body, res);
+        expect({ firstFlag: first.alreadyFiled, secondFlag: second.alreadyFiled, secondId: second.data.id === first.data.id, status200: res.status.mock.calls })
+            .toEqual({ firstFlag: undefined, secondFlag: true, secondId: true, status200: [[200]] });
+    });
+
     it('two claims filed in the same millisecond get distinct claim numbers', async () => {
         const c = await policyOwner();
         const now = jest.spyOn(Date, 'now').mockReturnValue(1_790_000_000_000);

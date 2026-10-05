@@ -370,6 +370,17 @@ export class InsuranceService {
         claimedAmount?: number;
     }): Promise<any> {
         if (!data.policyId) throw new BadRequestException('policyId is required');
+        // The HTTP controller forwards the raw body: reject wrong types here
+        // instead of failing later in .trim() or in a SQL cast.
+        for (const key of ['incidentType', 'incidentAt', 'description'] as const) {
+            const value = (data as any)[key];
+            if (value !== undefined && value !== null && typeof value !== 'string') {
+                throw new BadRequestException(`${key} must be a string`);
+            }
+        }
+        if (data.claimedAmount !== undefined && data.claimedAmount !== null && !Number.isFinite(Number(data.claimedAmount))) {
+            throw new BadRequestException('claimedAmount must be a number');
+        }
         // Timestamp for rough ordering plus 40 random bits: two filings in the
         // same millisecond (or two replicas) can no longer share a number.
         const claimNumber = `C-${Date.now().toString(36).toUpperCase()}-${randomBytes(5).toString('hex').toUpperCase()}`;
@@ -381,17 +392,25 @@ export class InsuranceService {
             const incidentType = data.incidentType?.trim() || null;
             const incidentAt = data.incidentAt || null;
             const description = data.description?.trim() || null;
-            if (incidentType) {
+            // Same incident = same policy and (type + date) OR, whatever the type,
+            // the same normalized description within 24 hours.
+            const normalized = description ? description.toLowerCase().replace(/\s+/g, ' ') : null;
+            if (incidentType || normalized) {
                 const existing: any[] = await query(
                     `SELECT * FROM insurance_claims
-                      WHERE policy_id = $1::uuid AND LOWER(incident_type) = LOWER($2)
-                        AND status <> 'rejected'
-                        AND (($3::date IS NOT NULL AND incident_at = $3::date)
-                          OR ($3::date IS NULL AND incident_at IS NULL
-                              AND LOWER(COALESCE(description,'')) = LOWER(COALESCE($4,''))
-                              AND created_at > NOW() - INTERVAL '24 hours'))
+                      WHERE policy_id = $1::uuid AND status <> 'rejected'
+                        AND (
+                          ($2::text IS NOT NULL AND LOWER(incident_type) = LOWER($2) AND (
+                              ($3::date IS NOT NULL AND incident_at = $3::date)
+                              OR ($3::date IS NULL AND incident_at IS NULL
+                                  AND LOWER(REGEXP_REPLACE(TRIM(COALESCE(description,'')), '\\s+', ' ', 'g')) = COALESCE($4,'')
+                                  AND created_at > NOW() - INTERVAL '24 hours')))
+                          OR ($4::text IS NOT NULL
+                              AND LOWER(REGEXP_REPLACE(TRIM(COALESCE(description,'')), '\\s+', ' ', 'g')) = $4
+                              AND created_at > NOW() - INTERVAL '24 hours')
+                        )
                       ORDER BY created_at ASC LIMIT 1`,
-                    [data.policyId, incidentType, incidentAt, description],
+                    [data.policyId, incidentType, incidentAt, normalized],
                 );
                 if (existing[0]) return { ...existing[0], alreadyFiled: true };
             }

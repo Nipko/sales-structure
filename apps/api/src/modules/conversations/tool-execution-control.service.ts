@@ -1539,6 +1539,13 @@ export class ToolExecutionControlService {
             request.channelType || '',
         );
         if (started.status === 'already_verified') return null;
+        if (started.status === 'blocked') {
+            return {
+                error: 'identity_locked',
+                message: 'La verificación de identidad está bloqueada temporalmente por demasiados intentos. No ofrezcas un código nuevo; escala la gestión a una persona.',
+                shouldHandoff: true,
+            };
+        }
         if (started.status === 'no_channel') {
             return {
                 error: 'identity_unverifiable',

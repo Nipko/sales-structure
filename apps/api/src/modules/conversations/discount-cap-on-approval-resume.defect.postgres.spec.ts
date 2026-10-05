@@ -1,5 +1,6 @@
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { buildWorld, isolationUrl, SAY_YES, type World } from './__fixtures__/n3-money-identity.harness';
+import { DRAFT_EXECUTION_CONTEXT } from '../../common/types/execution-context';
 import { authorityFor } from './__fixtures__/tool-authority.fixture';
 import { ToolApprovalWorkflowService } from './tool-approval-workflow.service';
 
@@ -77,6 +78,14 @@ import { ToolApprovalWorkflowService } from './tool-approval-workflow.service';
 
         expect(decided.resume.result).toMatchObject({ error: 'invalid_discount', maxPercent: 15 });
         expect(w.sim.calls.applyDiscount).toEqual([]);
+    });
+
+    it('draft mode refuses an out-of-ceiling discount before it becomes a proposal', async () => {
+        const c = await customer();
+        const result = await w.run(c.contactId, c.conversationId, 'apply_discount', args,
+            { executionContext: DRAFT_EXECUTION_CONTEXT, draftScope: { agentId: w.agentId, agentVersion: 1 }, maxDiscountPercent: 15, operationalScope: await w.scope() });
+        expect(result).toMatchObject({ error: 'invalid_discount', maxPercent: 15 });
+        expect((await w.q('SELECT id FROM tool_execution_ledger WHERE conversation_id=$1::uuid', [c.conversationId])).length).toBe(0);
     });
 
     it('control: a 10% discount within the cap still flows through approval and is granted once', async () => {

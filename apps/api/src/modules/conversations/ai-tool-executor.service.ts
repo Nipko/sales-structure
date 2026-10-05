@@ -475,6 +475,13 @@ export class AIToolExecutorService {
                 args = { ...args, allowWaitlist: args.allowWaitlist === true, enrollmentTerms: terms, enrollmentTermsHash: enrollmentTermsHash(terms) };
             }
             if (opts?.executionContext?.mode === 'draft' && !isAgentTestSafeToolName(toolName)) {
+                if (toolName === 'apply_discount') {
+                    // Refuse an out-of-ceiling discount before it becomes a proposal.
+                    const ceiling = await this.resolveDiscountCeiling(schemaName, opts.operationalScope, opts.maxDiscountPercent);
+                    if (!ceiling.ok) return { ...ceiling.result, persisted: false };
+                    const rejected = this.paymentOperations.discountRequestError(args, ceiling.max);
+                    if (rejected) return { ...rejected, persisted: false };
+                }
                 if (!this.toolExecutionControl?.proposeDraftAction) return { error: 'draft_action_requires_approval', persisted: false };
                 // Resolve only canonical, read-only terms before recording the
                 // review. Domain preconditions, identity challenges and writers
@@ -3988,6 +3995,15 @@ export class AIToolExecutorService {
                 } };
             }
         }
+        // No verified scope and no caller ceiling: nothing bounds the grant, so
+        // refuse instead of silently falling back to the platform maximum.
+        if (max === undefined && !(scope && validServedAgentAuthority(scope, schemaName))) {
+            return { ok: false, result: {
+                error: 'discounts_disabled',
+                message: 'Este negocio no autoriza descuentos por chat.',
+                shouldHandoff: true,
+            } };
+        }
         return { ok: true, max };
     }
 
@@ -5120,6 +5136,7 @@ export class AIToolExecutorService {
                 message: 'Ya hay una verificación en curso. No envíes otro código; pídele al cliente que espere el mensaje y comparta el código recibido.',
             };
         }
+        if (started.status === 'blocked') return this.identityLockedResult();
         if (started.status === 'no_channel') {
             return {
                 error: 'identity_unverifiable',
@@ -5135,6 +5152,15 @@ export class AIToolExecutorService {
         };
     }
 
+    /** Too many codes issued or too many wrong attempts: no new code, hand off. */
+    private identityLockedResult(): Record<string, unknown> {
+        return {
+            error: 'identity_locked',
+            message: 'La verificación de identidad está bloqueada temporalmente por demasiados intentos. NO ofrezcas un código nuevo ni sigas intentando: pasa la conversación a un asesor humano.',
+            shouldHandoff: true,
+        };
+    }
+
     private async requestIdentityCodeTool(
         tenantId: string,
         schemaName: string,
@@ -5146,6 +5172,7 @@ export class AIToolExecutorService {
         const res = await this.chatIdentity.startVerification(tenantId, schemaName, contactId, conversationId, channelType || '');
         if (res.status === 'already_verified') return { alreadyVerified: true };
         if (res.status === 'pending') return { pending: true, message: 'Ya hay una verificación en curso. No envíes otro código.' };
+        if (res.status === 'blocked') return this.identityLockedResult();
         if (res.status === 'no_channel') {
             return {
                 error: 'identity_unverifiable',

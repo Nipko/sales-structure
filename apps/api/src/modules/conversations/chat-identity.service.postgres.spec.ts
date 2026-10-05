@@ -30,7 +30,9 @@ describeDb('durable chat identity against PostgreSQL',()=>{
             VALUES($1::uuid,$2,true,'es','services')`,[tenantId,schema]);
         await admin.query(`CREATE SCHEMA "${schema}"`);
         await admin.query(`CREATE TABLE "${schema}".contacts(
-            id UUID PRIMARY KEY,email TEXT,phone TEXT,phone_normalized TEXT,is_active BOOLEAN NOT NULL DEFAULT true)`);
+            id UUID PRIMARY KEY,email TEXT,phone TEXT,phone_normalized TEXT)`);
+        await admin.query(`CREATE TABLE "${schema}".customer_memory_erasure(
+            contact_id UUID PRIMARY KEY,erased_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
         await admin.query(`INSERT INTO "${schema}".contacts(id,email,phone,phone_normalized)
             VALUES($1::uuid,'identity@example.test','+573001112233','+573001112233')`,[contactId]);
         service=new ChatIdentityService(prisma,email as any,sms as any,
@@ -49,7 +51,8 @@ describeDb('durable chat identity against PostgreSQL',()=>{
         sms.send.mockResolvedValue({sent:true,sid:'SM_IDENTITY_1'});
         await admin.query('DELETE FROM chat_identity_challenges WHERE tenant_id=$1::uuid',[tenantId]);
         await admin.query(`UPDATE "${schema}".contacts SET email='identity@example.test',phone='+573001112233',
-            phone_normalized='+573001112233',is_active=true WHERE id=$1::uuid`,[contactId]);
+            phone_normalized='+573001112233' WHERE id=$1::uuid`,[contactId]);
+        await admin.query(`DELETE FROM "${schema}".customer_memory_erasure`);
     });
 
     it('admits concurrent calls once and stores the SMTP receipt',async()=>{
@@ -79,6 +82,26 @@ describeDb('durable chat identity against PostgreSQL',()=>{
         for(let attempt=1;attempt<=4;attempt+=1)
             await expect(service.verifyCode(nextConversation,'000000')).resolves.toEqual({ok:false,reason:'wrong'});
         await expect(service.verifyCode(nextConversation,'000000')).resolves.toEqual({ok:false,reason:'too_many'});
+    });
+
+    it('does not admit a challenge for an erased contact',async()=>{
+        await admin.query(`INSERT INTO "${schema}".customer_memory_erasure(contact_id) VALUES($1::uuid)`,[contactId]);
+        await expect(service.startVerification(tenantId,schema,contactId,conversationId,'whatsapp'))
+            .resolves.toEqual({status:'no_channel'});
+        expect((await admin.query(`SELECT id FROM chat_identity_challenges WHERE tenant_id=$1::uuid`,[tenantId])).rows).toHaveLength(0);
+        expect(smtp).not.toHaveBeenCalled();
+    });
+
+    it('fails explicitly and logs when the admission query breaks, instead of answering pending',async()=>{
+        const error=jest.spyOn((service as any).logger,'error').mockImplementation(()=>undefined);
+        const original=prisma.transactionInTenantSchema;
+        prisma.transactionInTenantSchema=async()=>{throw new Error('column does not exist');};
+        try {
+            await expect(service.startVerification(tenantId,schema,contactId,conversationId,'whatsapp'))
+                .rejects.toThrow('identity_challenge_admission_failed');
+            expect(error).toHaveBeenCalledWith(expect.stringContaining('column does not exist'),expect.anything());
+        } finally { prisma.transactionInTenantSchema=original;error.mockRestore(); }
+        expect(smtp).not.toHaveBeenCalled();
     });
 
     it('freezes an unanswered provider call and never retries it',async()=>{

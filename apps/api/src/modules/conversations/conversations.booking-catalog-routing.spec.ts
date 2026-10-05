@@ -59,7 +59,7 @@ describe('booking routing uses the current service catalog before yielding to ve
         }
         const first = await h.turn(REQUEST);
         expect(first.debug.runtimeError).toBeUndefined();
-        expect(h.session().metadata.bookingState).toMatchObject({ step: 'show_slots', serviceId: SERVICE.id, serviceName: SERVICE.name });
+        expect(h.session().metadata.bookingState).toMatchObject({ step: 'ask_name', time: '09:00', staffId: STAFF, serviceId: SERVICE.id, serviceName: SERVICE.name });
         expect(first.debug.turnContext.directive).toContain('09:00');
         expect(first.debug.toolCalls.some((call: any) => call.result?.error === 'mission_selection_required')).toBe(false);
         expect(h.session().metadata.missionFocus.selected).toMatchObject({ kind: 'booking', domain: 'appointment' });

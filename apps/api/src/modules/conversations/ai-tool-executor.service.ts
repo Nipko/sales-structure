@@ -99,6 +99,7 @@ import {
 } from '../../common/utils/payment-policy.util';
 import { attachWriterActiveObject } from './writer-active-object';
 import { RepairOrdersService } from '../repair-orders/repair-orders.service';
+import { selectSlotWindow } from './slot-window';
 
 interface PreparedContactConsent {
     policyId: string;
@@ -692,7 +693,7 @@ export class AIToolExecutorService {
                     return this.listServices(schemaName);
 
                 case 'check_availability':
-                    return this.checkAvailability(schemaName, args.date, args.serviceId, args.staffId, canonicalSandbox, args.vehicleId);
+                    return this.checkAvailability(schemaName, args.date, args.serviceId, args.staffId, canonicalSandbox, args.vehicleId, typeof args.time === 'string' ? args.time : undefined);
 
                 case 'create_appointment':
                     return this.createAppointment(schemaName, tenantId, contactId, args as any, conversationId, opts?.evalMode, canonicalSandbox, operationalScope, executionIdempotencyKey);
@@ -2794,7 +2795,7 @@ export class AIToolExecutorService {
         };
     }
 
-    private async checkAvailability(schema: string, date: string, serviceId: string, staffId?: string, namespace?: EvalNamespaceLease, vehicleId?: string): Promise<any> {
+    private async checkAvailability(schema: string, date: string, serviceId: string, staffId?: string, namespace?: EvalNamespaceLease, vehicleId?: string, requestedTime?: string): Promise<any> {
         const directory = await tenantActorDirectory(this.prisma,schema,namespace);
         const resolvedStaffId = staffId
             ? await assertActiveTenantUser(this.prisma, schema, staffId, namespace)
@@ -3038,7 +3039,10 @@ export class AIToolExecutorService {
         }
         // Slot hold (D3): ofrecer sin reservar es race. Al mostrar slots, pre-reservar 2 min con NX
         // para que segundo cliente no vea mismo hueco libre y luego falle al crear.
-        for (const s of availableSlots.slice(0, 6)) {
+        // La tanda visible se centra en la hora pedida, si la hay; los holds cubren
+        // exactamente lo que se ofrece.
+        const offeredSlots = selectSlotWindow(availableSlots, requestedTime);
+        for (const s of offeredSlots) {
             const holdKey = `slot:hold:${resolvedServiceId}:${date}:${s.time}`;
             // Best-effort, no bloquea respuesta; NX evita pisar hold existente
             this.redis.acquireLockToken(holdKey, 120).catch(() => {});
@@ -3062,7 +3066,7 @@ export class AIToolExecutorService {
         return {
             available: availableSlots.length > 0,
             date,
-            slots: availableSlots.slice(0, 6).map(s => ({
+            slots: offeredSlots.map(s => ({
                 time: s.time,
                 endTime: s.endTime,
                 staffName: userNames[s.userId] || undefined,

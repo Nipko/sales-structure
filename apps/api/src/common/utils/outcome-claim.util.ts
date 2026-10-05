@@ -20,24 +20,46 @@
  * "voy a generar el enlace", which are proposals and questions, not claims. Only
  * the shapes that leave a customer believing the deed is done.
  */
+const OPERATION_SUBJECT =
+    '(reserva|reservas|cita|citas|pago|pagos|pedido|pedidos|cobro|cancelacion|compra|orden|solicitud|booking|reservation|appointment|order|payment|purchase|request|agendamento|pagamento|commande|paiement|rendez-vous)';
+// Words between the operation and the verb ("tu reserva en X del 1 al 5 esta confirmada"),
+// but never across a data word: "el precio de la cita esta confirmado" is about the price.
+const SUBJECT_GAP = '(?:(?!precio|tarifa|valor|price|cost|horario|disponibilidad|prix|preco|tarif)[^.!?;]){0,70}';
+
+/**
+ * "Confirmed" alone is a statement about data ("el precio está confirmado"),
+ * not a deed: it only counts when an operation (booking, appointment, payment,
+ * order...) is the subject. The verbs that carry the operation themselves
+ * (reservado, pagado, cancelado, agendado) stay generic.
+ */
 const COMPLETION_CLAIM = new RegExp(
     [
         // es — "tu reserva está confirmada", "quedó reservado", "ya está pagado"
         'reserva (esta|quedo|fue) (confirmada|hecha|creada|realizada)',
-        '(esta|quedo|fue) (confirmada|confirmado|reservada|reservado|pagada|pagado|cancelada|cancelado|agendada|agendado)',
+        OPERATION_SUBJECT + ' ' + SUBJECT_GAP + '(esta|quedo|fue) (confirmada|confirmado)',
+        '(esta|quedo|fue) (reservada|reservado|pagada|pagado|cancelada|cancelado|agendada|agendado)',
         '(reserve|agende|cancele|cobre) (tu|su|la|el)',
         'ya (esta|quedo) (confirmad|reservad|pagad|cancelad|agendad)',
         // en — "your booking is confirmed", "has been booked"
-        '(booking|reservation|appointment|payment) (is|has been|was) (confirmed|booked|created|cancelled|canceled|paid)',
-        '(has|have) been (confirmed|booked|cancelled|canceled|paid)',
+        '(booking|reservation|appointment|payment|order) (is|has been|was) (confirmed|booked|created|cancelled|canceled|paid)',
+        '(has|have) been (booked|cancelled|canceled|paid)',
+        OPERATION_SUBJECT + ' ' + SUBJECT_GAP + '(has|have) been confirmed',
         // pt — "sua reserva esta confirmada", "foi reservado"
         'reserva (esta|foi) (confirmada|feita|criada)',
-        '(foi|esta) (confirmado|confirmada|reservado|reservada|pago|paga|cancelado|cancelada)',
+        OPERATION_SUBJECT + ' ' + SUBJECT_GAP + '(foi|esta) (confirmado|confirmada)',
+        '(foi|esta) (reservado|reservada|pago|paga|cancelado|cancelada)',
         // fr — "votre reservation est confirmee"
         'reservation est (confirmee|creee|effectuee)',
         'a ete (confirmee|reservee|annulee|payee)',
     ].join('|'),
+    'g',
 );
+
+/** A negation shortly before the claimed verb: "no", "aún no", "todavía no", "not", "não", "pas". */
+const NEGATED_BEFORE = /\b(no|nunca|jamas|ni|not|never|nao|pas|jamais)\b(?: [a-zñ']+){0,2} ?$/;
+const NEGATION_INSIDE = /\b(no|not|nao|pas|never|nunca)\b/;
+/** "el precio de la cita esta confirmado": the data word governs, the operation is only a complement. */
+const DATA_OF_BEFORE = /(precio|tarifa|valor|price|cost|costo|horario|disponibilidad|prix|preco)\s+(de|del|of|do|da|du|des)\b(\s+(la|el|los|las|the|l'))?\s*$/;
 
 /** Same normalisation the confirmation classifier uses: accents and case are noise. */
 function normalize(text: string): string {
@@ -50,7 +72,15 @@ function normalize(text: string): string {
 
 export function claimsCompletedAction(reply: unknown): boolean {
     if (typeof reply !== 'string' || !reply.trim()) return false;
-    return COMPLETION_CLAIM.test(normalize(reply));
+    // Per sentence: a negation in one clause must not cancel a claim in another.
+    return normalize(reply).split(/(?<=[.!?;])\s+|\n+/).some(sentence => {
+        COMPLETION_CLAIM.lastIndex = 0;
+        for (let m = COMPLETION_CLAIM.exec(sentence); m; m = COMPLETION_CLAIM.exec(sentence)) {
+            const before = sentence.slice(Math.max(0, m.index - 30), m.index);
+            if (!NEGATED_BEFORE.test(before) && !NEGATION_INSIDE.test(m[0]) && !DATA_OF_BEFORE.test(before)) return true;
+        }
+        return false;
+    });
 }
 
 /**
@@ -331,6 +361,45 @@ export function promisesHumanHandoff(reply: unknown): boolean {
         .some(sentence =>
             !sentence.includes('?')
             && !sentence.includes('\u00bf')
+            && !CONDITIONAL_OFFER.test(sentence)
             && HANDOFF_PROMISE.test(sentence));
 }
+
+/**
+ * "Si quiere, le paso con alguien del equipo" is an OFFER the customer has not
+ * accepted, not a promise. Reading it as a promise escalated the conversation
+ * (waiting_human, agent muted) on a customer who had asked for nothing.
+ */
+const CONDITIONAL_OFFER = new RegExp(
+    [
+        // es
+        '\\bsi (lo |le |te )?(quiere|quieres|desea|deseas|gusta|gustas|prefiere|prefieres|quisiera|quisieras|le gustaria|te gustaria)\\b',
+        '\\bsi (lo|le|te) (desea|deseas|prefiere|prefieres|quiere|quieres)\\b',
+        // en
+        "\\bif (you|you'd|you would|youd) ?(like|want|prefer|wish)",
+        '\\bif you (would )?(like|want|prefer|wish)\\b',
+        // pt
+        '\\bse (voce )?(quiser|preferir|desejar|quiseres|preferires|gostar)\\b',
+        // fr
+        '\\bsi (vous|tu) (voulez|veux|le souhaitez|souhaitez|preferez|prefere|desirez|le desirez)\\b',
+    ].join('|'),
+);
+
+/**
+ * Does the text OFFER (or promise) a person from the team, in any mood? Used on
+ * the previous outbound message to tell whether the customer's "s\u00ed" accepts a
+ * handoff. Conditional and interrogative sentences count here: they are exactly
+ * the offers a "s\u00ed" answers.
+ */
+export function offersHumanHandoff(reply: unknown): boolean {
+    if (typeof reply !== 'string' || !reply.trim()) return false;
+    return normalize(reply)
+        .split(/(?<=[.!?])\s+|\n+/)
+        .some(sentence => HANDOFF_PROMISE.test(sentence) || OFFER_QUESTION.test(sentence));
+}
+
+const OFFER_QUESTION = new RegExp(
+    '\\b(?:quiere|quieres|desea|deseas|gustaria|prefiere|would you|do you want|voulez|souhaitez|quer|gostaria)\\b[^?]{0,80}\\b'
+    + HUMAN_TARGET + '\\b',
+);
 

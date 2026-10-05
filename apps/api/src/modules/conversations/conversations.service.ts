@@ -95,7 +95,8 @@ import { ProcedureEngineService } from './procedure-engine.service';
 import { IntentInterpreterService } from './intent-interpreter.service';
 import { normalizePhoneE164 } from '../../common/utils/phone.util';
 import { PromptAssemblerService } from './prompt-assembler.service';
-import { HUMAN_OFFER_MARK, HUMAN_OFFER_TTL_MS, NO_DATA_WAIT_REPLACEMENT, NO_DATA_NO_OFFER, noDataWaitReplacementText, noDataNoOfferText, containsHumanOffer, isHumanOfferText, isAffirmation, isLiveHumanOffer } from './human-offer';
+import { resolveBusinessWindow } from './business-window';
+import { HUMAN_OFFER_MARK, HUMAN_OFFER_TTL_MS, NO_DATA_WAIT_REPLACEMENT, NO_DATA_NO_OFFER, noDataWaitReplacementText, noDataNoOfferText, containsHumanOffer, isHumanOfferText, isAffirmation, isAffirmationOfHumanOffer, isLiveHumanOffer } from './human-offer';
 import { LanguageDetectorService } from './language-detector.service';
 import { BusinessInfoService } from '../business-info/business-info.service';
 import { PaymentOperationService } from './payment-operation.service';
@@ -272,6 +273,15 @@ const HANDOFF_MSG: Record<string, {
 };
 const handoffText = (lang?: string) => HANDOFF_MSG[(lang || 'es').slice(0, 2).toLowerCase()] || HANDOFF_MSG.es;
 
+// Sent once when nobody from the team picked the handoff up and the agent resumes.
+const HANDOFF_RETURN_MSG: Record<string, string> = {
+    es: 'No hay nadie del equipo disponible ahora; sigo ayudándote yo.',
+    en: 'Nobody from the team is available right now; I will keep helping you.',
+    pt: 'Não há ninguém da equipe disponível agora; eu continuo te ajudando.',
+    fr: "Personne de l'équipe n'est disponible pour le moment ; je continue de vous aider.",
+};
+const handoffReturnText = (lang?: string) => HANDOFF_RETURN_MSG[(lang || 'es').slice(0, 2).toLowerCase()] || HANDOFF_RETURN_MSG.es;
+
 /** A persisted row identifier, never a provider message id. */
 const PERSISTED_ID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 
@@ -361,10 +371,10 @@ const EXECUTED_OPERATION_MSG: Record<string, { done: string; doneNoDetails: stri
 // the corrective rewrite also insisted. Better a flat, honest sentence than a
 // confident lie about a booking that does not exist.
 const UNVERIFIED_CLAIM_FALLBACK: Record<string, string> = {
-    es: 'Todavía no puedo darte esa acción por confirmada: no me consta que se haya completado. Déjame verificarlo y te confirmo en un momento.',
-    en: 'I cannot treat that as done yet: I have no confirmation that it completed. Let me check and get back to you in a moment.',
-    pt: 'Ainda não posso considerar isso concluído: não tenho confirmação de que foi finalizado. Vou verificar e já te confirmo.',
-    fr: "Je ne peux pas encore considérer cela comme fait : je n'ai pas de confirmation que l'opération a abouti. Je vérifie et je reviens vers vous.",
+    es: 'No puedo darte esa acción por confirmada: no tengo constancia de que se haya completado. ¿Quieres que le pida a una persona del equipo que lo confirme?',
+    en: 'I cannot treat that as done: I have no record that it was completed. Would you like me to ask someone from the team to confirm it?',
+    pt: 'Não posso considerar isso concluído: não tenho registro de que foi finalizado. Quer que eu peça a alguém da equipe para confirmar?',
+    fr: "Je ne peux pas considérer cela comme fait : je n'ai aucune trace que l'opération a abouti. Souhaitez-vous que je demande à quelqu'un de l'équipe de la confirmer ?",
 };
 const unverifiedClaimFallbackText = (lang?: string) =>
     UNVERIFIED_CLAIM_FALLBACK[(lang || 'es').slice(0, 2).toLowerCase()] || UNVERIFIED_CLAIM_FALLBACK.es;
@@ -377,6 +387,7 @@ function isSystemFixedText(text: string): boolean {
         ...Object.values(UNVERIFIED_CLAIM_FALLBACK), ...Object.values(NO_DATA_WAIT_REPLACEMENT), ...Object.values(NO_DATA_NO_OFFER),
         ...Object.values(PARTIAL_SUCCESS_MSG), ...Object.values(BUDGET_EXHAUSTED_MSG),
         ...Object.values(HANDOFF_MSG).flatMap(h => [h.transferring, h.unavailable, h.queueHead]),
+        ...Object.values(HANDOFF_RETURN_MSG),
     ];
     return fixed.some(f => f.trim() === t);
 }
@@ -974,7 +985,13 @@ export class ConversationsService {
         // 3. Check if in human handoff mode — skip AI, just save message
         if (conversation.status === 'waiting_human' || conversation.status === 'with_human') {
             this.logger.log(`Conversation ${conversation.id} is in HUMAN HANDOFF mode. Skipping AI.`);
-            await this.saveMessage(tenantId, conversation.id, normalizedMsg);
+            const waitingSaved = await this.saveMessage(tenantId, conversation.id, normalizedMsg);
+            // A customer writing into an unattended queue gets ONE notice instead of
+            // total silence (the agent returns after UNATTENDED_HANDOFF_MINUTES).
+            if (!draftMode && conversation.status === 'waiting_human') {
+                await this.sendQueueNoticeOnce(tenantId, schemaName, conversation, normalizedMsg, waitingSaved.id,
+                    turnScope, content?.text, config.language || 'es');
+            }
             return;
         }
 
@@ -1256,6 +1273,13 @@ export class ConversationsService {
                 originKey: `handoff-notice:${inboundMessageId}`,
             });
             return;
+        }
+
+        // 5a. The unattended-handoff sweep gave this conversation back to the agent:
+        // say so once, honestly, before answering.
+        if (!draftMode) {
+            await this.sendReturnNoticeOnce(tenantId, schemaName, conversation, normalizedMsg, inboundMessageId,
+                turnScope, content?.text, config.language || 'es');
         }
 
         // 5b. Send typing indicator before AI generates response
@@ -3362,6 +3386,7 @@ export class ConversationsService {
                 userText, bookingState.step, serviceNames, todayISO, upcoming, tenantId,
                 regional?.operatingCountry.value,
                 bookingState.step === 'confirm' && bookingState.serviceName ? [bookingState.serviceName] : [],
+                dateISO => resolveBusinessWindow(bizHours, config.hours, dateISO),
             );
             turnTrace.add('intent','interpreted',{intent:intent.intent,bookingStep:bookingState.step});
             await observeMission({kind:'intent',intent:intent.intent});
@@ -4708,7 +4733,25 @@ export class ConversationsService {
             // Se HONRA la promesa en vez de bloquearla: el cliente ya leyó que lo
             // iban a transferir, así que reescribir el mensaje lo dejaría peor.
             // `isInHandoff` impide re-escalar en cada turno siguiente.
-            if (!draftMode && !postToolHandoff && promisesHumanHandoff(finalResponse)) {
+            //
+            // PERO SOLO SI EL CLIENTE LO PIDIO O LO ACEPTO (regresion 5-oct). El
+            // agente tambien promete por su cuenta —"Le paso con nuestro equipo"
+            // ante una pregunta de catalogo— y escalar esa promesa deja la
+            // conversacion en waiting_human con el bot mudo: el cliente nunca pidio
+            // un humano. Sin pedido ni aceptacion en ESTE turno (palabra clave de
+            // traspaso, oferta aceptada, o un "si" a la oferta del mensaje previo),
+            // el texto se reescribe como la oferta en forma de pregunta y NO se
+            // escala; el "si" siguiente si escala.
+            const lastOutboundText = [...(history || [])].reverse()
+                .find((row: any) => row?.direction === 'outbound')?.content_text;
+            const humanHandoffAuthorized = !!this.handoffService.shouldHandoff?.(userText, conversation, config)
+                || isAffirmationOfHumanOffer(userText, lastOutboundText);
+            if (!draftMode && !postToolHandoff && !humanHandoffAuthorized && promisesHumanHandoff(finalResponse)) {
+                this.logger.warn(`[Pipeline] Promesa de traspaso SIN pedido del cliente en ${conversation.id} — reescrita como oferta, sin escalar`);
+                this.recordAgentSignal(tenantId, 'handoff_promise_unsolicited_rewritten', session);
+                finalResponse = allowHumanHandoff ? noDataWaitReplacementText(userLanguage) : noDataNoOfferText(userLanguage);
+                if (!session && allowHumanHandoff) await this.rememberHumanOffer(schemaName, conversation.id, finalResponse);
+            } else if (!draftMode && !postToolHandoff && promisesHumanHandoff(finalResponse)) {
                 try {
                     if (!allowHumanHandoff) throw new Error('human_delivery_unavailable');
                     if (!(await this.handoffService.isInHandoff(tenantId, conversation.id))) {
@@ -6325,6 +6368,73 @@ export class ConversationsService {
         await this.handoffService.executeHandoffOnce(tenantId, conversation.id, msg, reason, {
             contactId, inboundMessageId, noticeKind, noticeLanguage: handoffNoticeLanguage(language),
         });
+    }
+
+    /**
+     * One queue notice per handoff for a customer who writes while nobody from the
+     * team has answered. Skipped when anything was already sent to them since the
+     * handoff started (the transfer notice or the agent's own announcement).
+     */
+    private async sendQueueNoticeOnce(tenantId: string, schemaName: string, conversation: any,
+        msg: NormalizedMessage, inboundMessageId: string | undefined, scope: ServedAgentAuthority | undefined, text: string | undefined, defaultLanguage: string): Promise<void> {
+        const handoff = (conversation?.metadata as any)?.handoff;
+        const startedAt = handoff?.startedAt;
+        if (!startedAt || handoff?.queueNoticeSent === true || handoff?.queueNoticeSent === 'true') return;
+        try {
+            const prior = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `SELECT 1 FROM messages WHERE conversation_id = $1::uuid AND direction = 'outbound'
+                    AND created_at >= $2::timestamptz LIMIT 1`, [conversation.id, startedAt]);
+            if (prior?.length) return;
+            const claimed = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `UPDATE conversations
+                    SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{handoff,queueNoticeSent}', 'true'::jsonb, true)
+                  WHERE id = $1::uuid AND status = 'waiting_human'
+                    AND COALESCE(metadata->'handoff'->>'queueNoticeSent', 'false') <> 'true'
+                RETURNING id`, [conversation.id]);
+            if (!claimed?.length) return;
+            try {
+                await this.replyOnceThroughOutbox({
+                    tenantId, conversation, msg, operationalScope: scope, inboundMessageId,
+                    item: { kind: 'text', payload: { text: handoffText(this.languageDetector.detect(text || '', defaultLanguage)).queueHead } },
+                    originKey: `handoff-queue-notice:${conversation.id}:${startedAt}`,
+                });
+            } catch (error) {
+                await this.prisma.executeInTenantSchema(schemaName,
+                    `UPDATE conversations SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{handoff,queueNoticeSent}', 'false'::jsonb, true)
+                      WHERE id = $1::uuid`, [conversation.id]).catch(() => {});
+                throw error;
+            }
+        } catch (error: any) {
+            // The notice is courtesy: it must never break the storage of the message.
+            this.logger.warn(`[Handoff] Queue notice not sent for ${conversation?.id}: ${error?.message}`);
+        }
+    }
+
+    /**
+     * After the unattended-handoff sweep returned the conversation to the agent,
+     * tell the customer once, honestly, that nobody from the team is available
+     * and that the agent keeps helping. Sent on the customer's next message, just
+     * before the agent answers it.
+     */
+    private async sendReturnNoticeOnce(tenantId: string, schemaName: string, conversation: any,
+        msg: NormalizedMessage, inboundMessageId: string | undefined, scope: ServedAgentAuthority | undefined, text: string | undefined, defaultLanguage: string): Promise<void> {
+        const handoff = (conversation?.metadata as any)?.handoff;
+        if (!(handoff?.returnNoticePending === true || handoff?.returnNoticePending === 'true')) return;
+        try {
+            const claimed = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `UPDATE conversations
+                    SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{handoff,returnNoticePending}', 'false'::jsonb, true)
+                  WHERE id = $1::uuid AND metadata->'handoff'->>'returnNoticePending' = 'true'
+                RETURNING id`, [conversation.id]);
+            if (!claimed?.length) return;
+            await this.replyOnceThroughOutbox({
+                tenantId, conversation, msg, operationalScope: scope, inboundMessageId,
+                item: { kind: 'text', payload: { text: handoffReturnText(this.languageDetector.detect(text || '', defaultLanguage)) } },
+                originKey: `handoff-return-notice:${conversation.id}:${handoff?.startedAt || ''}`,
+            });
+        } catch (error: any) {
+            this.logger.warn(`[Handoff] Return notice not sent for ${conversation?.id}: ${error?.message}`);
+        }
     }
 
     /** Leave the short-lived "a person was offered" mark when the reply is our offer. */

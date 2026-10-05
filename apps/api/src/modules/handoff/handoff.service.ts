@@ -46,12 +46,13 @@ import {
 } from './handoff-summary.util';
 
 /**
- * How long an escalated conversation may sit with nobody answering before the
- * agent is allowed to speak again. Long enough that a team on a normal shift is
- * never interrupted; short enough that a customer is not left in silence for a
- * day because a handoff fired at closing time.
+ * How long an escalated conversation may sit with nobody from the team writing
+ * before the agent speaks again. Owner decision (5-oct): 10 minutes — a customer
+ * who asked for nothing, or who is waiting on an empty queue, is not left in
+ * silence. Not per tenant: no per-tenant handoff settings exist yet, so the one
+ * constant is the single place to change it.
  */
-const UNATTENDED_HANDOFF_MINUTES = 180;
+export const UNATTENDED_HANDOFF_MINUTES = 10;
 
 export interface HandoffResult {
     handoffId: string;
@@ -753,11 +754,14 @@ export class HandoffService {
      * Only conversations where the customer is still writing and no agent ever
      * replied are returned. A handoff a person is actually working is left alone.
      */
-    @Cron('*/10 * * * *')
+    // Every minute so the 10-minute window is met (a 10-minute cron would return
+    // it between minute 10 and 20). The lock TTL (30s, the CronLockService floor)
+    // keeps the API and the worker from both running it.
+    @Cron('* * * * *')
     async returnUnattendedHandoffsCron(): Promise<void> {
         await this.cronLock.runExclusive(
             'handoff.returnUnattendedHandoffs',
-            300,
+            30,
             () => this.returnUnattendedHandoffs(),
             { prefer: 'api' },
         );
@@ -785,12 +789,13 @@ export class HandoffService {
         const stranded = await this.prisma.executeInTenantSchema<any[]>(schemaName,
             `SELECT c.id
                FROM conversations c
-              WHERE c.status = 'waiting_human'
+              WHERE c.status IN ('waiting_human', 'with_human')
                 AND c.metadata->'handoff'->>'startedAt' IS NOT NULL
                 AND (c.metadata->'handoff'->>'startedAt')::timestamptz
                     < NOW() - ($1 || ' minutes')::interval
                 AND COALESCE(c.metadata->'handoff'->>'returnedToAi', 'false') <> 'true'
-                -- nobody from the team ever answered
+                -- nobody from the team ever answered (also covers an auto-assigned
+                -- with_human conversation whose agent never wrote)
                 AND NOT EXISTS (
                     SELECT 1 FROM messages m
                      WHERE m.conversation_id = c.id
@@ -815,12 +820,12 @@ export class HandoffService {
                 `UPDATE conversations
                     SET status = 'active',
                         assigned_to = NULL,
-                        metadata = jsonb_set(
+                        metadata = jsonb_set(jsonb_set(
                             COALESCE(metadata, '{}'::jsonb),
                             '{handoff,returnedToAi}', 'true'::jsonb, true
-                        ),
+                        ), '{handoff,returnNoticePending}', 'true'::jsonb, true),
                         updated_at = NOW()
-                  WHERE id = $1::uuid AND status = 'waiting_human'`,
+                  WHERE id = $1::uuid AND status IN ('waiting_human', 'with_human')`,
                 [row.id],
             );
             await this.redis.del(`handoff:${tenantId}:${row.id}`).catch(() => {});

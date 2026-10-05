@@ -104,6 +104,13 @@ import { selectSlotWindow } from './slot-window';
 import { foldedSql, foldQueryText } from '../../common/utils/sql-accent-fold.util';
 
 /**
+ * Products carry no price_status column: a price above zero IS the confirmed price.
+ * Without this the model, told by prompt rule 22a that only priceStatus="confirmed"
+ * gives an amount, denied the price of every product (regresion 5-oct).
+ */
+const productPriceStatus = (price: unknown): 'confirmed' | 'missing' => (Number(price) > 0 ? 'confirmed' : 'missing');
+
+/**
  * Two products whose names differ only by accents ("Audífono" / "Audifono") both
  * satisfy the folded comparison. The one written exactly as the customer typed
  * it wins, then the one that differs only in case, then a stable order, so the
@@ -1474,6 +1481,7 @@ export class AIToolExecutorService {
                     description: p.description,
                     category: p.category,
                     price: Number(p.price || 0),
+                    priceStatus: productPriceStatus(p.price),
                     currency: p.currency || null,
                     stock: p.stock ?? null,
                     isAvailable: !!p.is_available,
@@ -1509,6 +1517,7 @@ export class AIToolExecutorService {
                     description: p.description,
                     category: p.category,
                     price: Number(p.price || 0),
+                    priceStatus: productPriceStatus(p.price),
                     currency: p.currency || null,
                     stock: p.stock ?? null,
                     isAvailable: !!p.is_available,
@@ -1827,6 +1836,7 @@ export class AIToolExecutorService {
                     // Same fields and same coercion as get_product: an answer about
                     // stock that omits the price makes the agent guess or stay silent.
                     price: Number(p.price || 0),
+                    priceStatus: productPriceStatus(p.price),
                     currency: p.currency || null,
                     stock: p.stock ?? null,
                     inStock: p.stock == null ? p.is_available : Number(p.stock) > 0,

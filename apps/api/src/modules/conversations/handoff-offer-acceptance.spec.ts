@@ -1,6 +1,6 @@
 import { promisesHumanHandoff } from '../../common/utils/outcome-claim.util';
 import { ConversationsService } from './conversations.service';
-import { HUMAN_OFFER_MARK, isAffirmation, isHumanOfferText, noDataWaitReplacementText } from './human-offer';
+import { HUMAN_OFFER_MARK, isAffirmation, isAffirmationOfHumanOffer, isHumanOfferText, noDataWaitReplacementText } from './human-offer';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 
@@ -144,5 +144,33 @@ describe('a "yes" to the guardian offer escalates deterministically', () => {
         expect(src).toContain('&& allowHumanHandoff) await this.rememberHumanOffer(');
         expect(src.indexOf("turnTrace.add('guardrail', 'output'")).toBeLessThan(src.indexOf('await this.rememberHumanOffer('));
         expect(noDataWaitReplacementText('es')).toContain('persona del equipo');
+    });
+});
+
+describe('agent-promised handoff is honoured only when the customer asked or accepted (regresion 5-oct)', () => {
+    it('"sí" after an offer in free text counts as acceptance', () => {
+        expect(isAffirmationOfHumanOffer('sí', 'Si quiere, le paso con alguien del equipo para que se la confirme.')).toBe(true);
+        expect(isAffirmationOfHumanOffer('Dale', '¿Le gustaría que alguien del equipo lo contacte?')).toBe(true);
+        expect(isAffirmationOfHumanOffer('yes please', "If you'd like, I'll connect you with a human agent.")).toBe(true);
+    });
+    it('"sí" after anything else does not', () => {
+        expect(isAffirmationOfHumanOffer('sí', '¿Le agendo el sábado a las 4?')).toBe(false);
+        expect(isAffirmationOfHumanOffer('quiero un corte', 'Si quiere, le paso con alguien del equipo.')).toBe(false);
+        expect(isAffirmationOfHumanOffer('sí', undefined)).toBe(false);
+    });
+    it('an unsolicited promise is rewritten as a question and does NOT escalate', () => {
+        const src = readFileSync(resolve(__dirname, 'conversations.service.ts'), 'utf8');
+        const at = src.indexOf('const humanHandoffAuthorized =');
+        expect(at).toBeGreaterThan(0);
+        const block = src.slice(at, at + 4000);
+        expect(block).toContain('this.handoffService.shouldHandoff?.(userText');
+        expect(block).toContain('isAffirmationOfHumanOffer(userText, lastOutboundText)');
+        const rewrite = block.indexOf('!humanHandoffAuthorized && promisesHumanHandoff(finalResponse)');
+        const honour = block.indexOf('} else if (!draftMode && !postToolHandoff && promisesHumanHandoff(finalResponse))');
+        expect(rewrite).toBeGreaterThan(0);
+        expect(honour).toBeGreaterThan(rewrite);
+        expect(block.slice(rewrite, honour)).toContain('noDataWaitReplacementText(userLanguage)');
+        expect(block.slice(rewrite, honour)).not.toContain('escalateWithinTurn');
+        expect(block.slice(honour)).toContain('escalateWithinTurn');
     });
 });

@@ -1,3 +1,5 @@
+import { offersHumanHandoff } from '../../common/utils/outcome-claim.util';
+
 /**
  * The honest "I don't have that confirmed" reply offers a person from the team.
  * A "yes" to that offer must produce a REAL handoff whatever the model says
@@ -63,4 +65,14 @@ export type HumanOfferMark = { at: string; expiresAt: string };
 export function isLiveHumanOffer(mark: any, now = Date.now()): boolean {
     const exp = mark && typeof mark.expiresAt === 'string' ? Date.parse(mark.expiresAt) : NaN;
     return Number.isFinite(exp) && exp > now;
+}
+
+/**
+ * A "sí" to an offer of a person that was written in free text (the model's own
+ * "Si quiere, le paso con alguien del equipo"), not only to our fixed offer
+ * sentence. The previous outbound message must itself offer a person.
+ */
+export function isAffirmationOfHumanOffer(userText: unknown, previousOutbound: unknown): boolean {
+    return isAffirmation(userText)
+        && (containsHumanOffer(previousOutbound) || offersHumanHandoff(previousOutbound));
 }

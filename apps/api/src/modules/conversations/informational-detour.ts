@@ -42,6 +42,7 @@ const LEADING_ANSWER = /^(?:si|ok|okay|dale|claro|listo|vale|perfecto|yes|yeah|s
 
 export interface InterpretedHint {
     dateMentioned?: string | null;
+    serviceMentioned?: string | null;
 }
 
 /** Which kind of business question this is, or null when it is not one. */

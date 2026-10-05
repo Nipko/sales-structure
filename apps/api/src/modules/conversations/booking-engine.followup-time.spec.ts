@@ -280,7 +280,7 @@ describe('changing the time after the slot was already chosen', () => {
 describe('time asked together with a service change', () => {
     it('queries the NEW service, not the old one that has no slots', async () => {
         const h = harness();
-        h.execute.mockImplementation(async (_s: string, _t: string, _c: string, name: string, args: any) => {
+        (h.execute as jest.Mock).mockImplementation(async (_s: string, _t: string, _c: string, name: string, args: any) => {
             if (name !== 'check_availability') return { success: true };
             if (args.serviceId === idA) return { available: false, slots: [], message: 'Not available' };
             const target = mins(args.time);

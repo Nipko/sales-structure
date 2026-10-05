@@ -34,6 +34,9 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         ['pate', 'Pâté à l’Île', 14, 'EUR', 5],
         ['hay', 'Haÿ-les-Roses', 3, 'EUR', 1],
         ['plain', 'Cable USB', 5, 'USD', 100],
+        // Differ only by the accent: the exact spelling must win, deterministically.
+        ['proPlain', 'Audifono Pro', 80000, 'COP', 1],
+        ['proAccent', 'Audífono Pro', 90000, 'COP', 2],
     ];
 
     beforeAll(async () => {
@@ -43,7 +46,7 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         client = new PrismaClient({ datasourceUrl: databaseUrl });
         await client.$executeRawUnsafe(`CREATE SCHEMA "${schema}"`);
         await client.$executeRawUnsafe(`CREATE TABLE "${schema}".products(
-            id UUID PRIMARY KEY, name TEXT, description TEXT, category TEXT, price NUMERIC, currency TEXT,
+            id UUID PRIMARY KEY, name VARCHAR(500) NOT NULL, description TEXT, category VARCHAR(255), price DECIMAL(15, 2) NOT NULL DEFAULT 0, currency VARCHAR(10) DEFAULT 'COP',
             stock INTEGER, is_available BOOLEAN DEFAULT true, images JSONB DEFAULT '[]', metadata JSONB DEFAULT '{}',
             requires_prescription BOOLEAN DEFAULT false)`);
         for (const [key, name, price, currency, stock] of catalogue) {
@@ -121,6 +124,27 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             expect((await executor[method](schema, '%')).id).toBeUndefined();
             expect((await executor[method](schema, 'audifono_bluetooth')).id).toBeUndefined();
         });
+    });
+
+    describe.each(['checkStock', 'getProduct'] as const)('%s with two names that differ only by the accent', method => {
+        it('returns the exact spelling the customer typed, on every call', async () => {
+            for (let i = 0; i < 5; i++) {
+                expect((await executor[method](schema, 'Audifono Pro')).id).toBe(ids.proPlain);
+                expect((await executor[method](schema, 'Audífono Pro')).id).toBe(ids.proAccent);
+            }
+        });
+
+        it('falls back to a stable choice when neither is typed exactly', async () => {
+            const first = (await executor[method](schema, 'AUDIFONO PRO')).id;
+            for (let i = 0; i < 5; i++) expect((await executor[method](schema, 'AUDIFONO PRO')).id).toBe(first);
+        });
+    });
+
+    it('search_products treats % and _ as text and folds the category filter', async () => {
+        expect((await executor.searchProducts(schema, '%', 5)).products).toHaveLength(0);
+        expect((await executor.searchProducts(schema, 'audifono_pro', 5)).products).toHaveLength(0);
+        const byCategory = await executor.searchProducts(schema, 'cable', 5, 'catalogo');
+        expect(byCategory.products.map((p: any) => p.id)).toContain(ids.plain);
     });
 
     it('search_products finds by an unaccented word too', async () => {

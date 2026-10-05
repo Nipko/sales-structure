@@ -667,9 +667,12 @@ export default function InboxPage() {
                         };
                     });
                     setMessages(msgs);
-                    if (conv.handoffSummary || conv.handoffReason) {
-                        setSelectedConv((prev: any) => prev ? {
+                    const detailContactId = [conv.contact_id, conv.contactId, conv.contact?.id]
+                        .find((value): value is string => typeof value === "string" && value.trim().length > 0);
+                    if (detailContactId || conv.handoffSummary || conv.handoffReason) {
+                        setSelectedConv((prev: any) => prev?.id === selectedConv.id ? {
                             ...prev,
+                            contactId: detailContactId || prev.contactId,
                             handoffSummary: conv.handoffSummary || prev.handoffSummary,
                             handoffReason: conv.handoffReason || prev.handoffReason,
                         } : prev);
@@ -1452,7 +1455,12 @@ export default function InboxPage() {
                                     isWaitingHuman && "inbox-conv-handoff-pulsing"
                                 )}
                                 onClick={() => {
-                                    setSelectedConv(conv);
+                                    setSelectedConv((prev: any) => prev?.id === conv.id ? {
+                                        ...conv,
+                                        contactId: conv.contactId || prev.contactId,
+                                        handoffSummary: conv.handoffSummary || prev.handoffSummary,
+                                        handoffReason: conv.handoffReason || prev.handoffReason,
+                                    } : conv);
                                     setMobileShowChat(true);
                                     setConversations(prev => prev.map(c =>
                                         c.id === conv.id ? { ...c, unreadCount: 0 } : c
@@ -1807,6 +1815,15 @@ export default function InboxPage() {
                                     </button>
                                     {showMoreMenu && (
                                         <div className="absolute top-full right-0 mt-1.5 bg-card border border-border rounded-xl p-1 z-[100] min-w-[200px] shadow-lg">
+                                            {selectedConv.contactId && (
+                                                <a
+                                                    href={`/admin/contacts/${selectedConv.contactId}`}
+                                                    onClick={() => setShowMoreMenu(false)}
+                                                    className="flex items-center gap-2 w-full py-2 px-3 rounded-lg text-foreground text-[13px] no-underline hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500"
+                                                >
+                                                    <ExternalLink size={14} aria-hidden="true" /> {t("viewContact", { noun: vt.customerNoun })}
+                                                </a>
+                                            )}
                                             {/* Notes */}
                                             <button
                                                 onClick={() => { setShowNotes(!showNotes); setShowMoreMenu(false); }}

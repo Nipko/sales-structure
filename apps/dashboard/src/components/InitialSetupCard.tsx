@@ -174,7 +174,7 @@ export default function InitialSetupCard({
           ) : error ? (
             <div className="mt-4 flex flex-col gap-2 rounded-lg bg-white/80 p-3 dark:bg-neutral-900/50 sm:flex-row sm:items-center">
               <p className="min-w-0 flex-1 text-sm text-neutral-600 dark:text-neutral-300">{t("unavailable")}</p>
-              <button type="button" onClick={() => void load()} className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-md px-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:text-indigo-300 dark:hover:bg-indigo-500/10">
+              <button type="button" onClick={() => void load()} className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-md px-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 forced-colors:focus-visible:outline-[Highlight] focus-visible:ring-2 focus-visible:ring-indigo-500 dark:text-indigo-300 dark:hover:bg-indigo-500/10">
                 <RotateCw size={14} aria-hidden="true" /> {t("retry")}
               </button>
             </div>
@@ -220,7 +220,7 @@ export default function InitialSetupCard({
                           <RotateCw size={12} aria-hidden="true" /> {t("retry")}
                         </button> : <Link
                           href={deferral?.href ?? item.href}
-                          className="inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:text-indigo-300 dark:hover:bg-indigo-500/10"
+                          className="inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 forced-colors:focus-visible:outline-[Highlight] focus-visible:ring-2 focus-visible:ring-indigo-500 dark:text-indigo-300 dark:hover:bg-indigo-500/10"
                         >
                           {t(deferral ? "resume" : "continue")} <ArrowRight size={12} aria-hidden="true" />
                         </Link>}
@@ -228,7 +228,7 @@ export default function InitialSetupCard({
                           <button
                             type="button"
                             onClick={() => startTour(item)}
-                            className="inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-xs font-semibold text-neutral-600 hover:bg-neutral-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:text-neutral-300 dark:hover:bg-white/5"
+                            className="inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-xs font-semibold text-neutral-600 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 forced-colors:focus-visible:outline-[Highlight] focus-visible:ring-2 focus-visible:ring-indigo-500 dark:text-neutral-300 dark:hover:bg-white/5"
                           >
                             <Compass size={12} aria-hidden="true" /> {t("showMe")}
                           </button>

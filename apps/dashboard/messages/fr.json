@@ -1247,6 +1247,8 @@
     "sessionKicked": "Votre session a été fermée car vous vous êtes connecté sur un autre appareil",
     "tenantSessionLimit": "Votre entreprise a atteint la limite de sessions simultanées",
     "signupSubtitle": "Inscrivez-vous et commencez en quelques minutes",
+    "localeDraftRestored": "Vos informations ont été conservées lors du changement de langue. Saisissez de nouveau votre mot de passe pour continuer.",
+    "localeSwitchUnavailable": "Nous n'avons pas pu conserver les données du formulaire pour changer de langue. Vous pouvez continuer ici sans les perdre.",
     "firstName": "Prénom",
     "lastName": "Nom",
     "firstNamePlaceholder": "Jean",

@@ -23,6 +23,7 @@ const GOOGLE_CLIENT_ID =
     "950001098107-4ctk2jm3876afqktip7r4f04120kt0ou.apps.googleusercontent.com";
 
 const PRICING_INTENT_KEY = "pricingIntent";
+const SIGNUP_LOCALE_DRAFT_KEY = "signupLocaleDraft";
 
 type PricingIntent = {
     plan?: string;
@@ -83,11 +84,56 @@ export default function SignupPage() {
     });
     const [error, setError] = useState("");
     const [emailTaken, setEmailTaken] = useState(false);
+    const emailInputRef = useRef<HTMLInputElement>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isGoogleLoading, setIsGoogleLoading] = useState(false);
     const [googleReady, setGoogleReady] = useState(false);
+    const [localeDraftRestored, setLocaleDraftRestored] = useState(false);
     const { googleLogin } = useAuth();
     const router = useRouter();
+
+    // LocaleSwitcher reloads the page so the server can read the new locale.
+    // Restore only non-secret fields, and only once after that specific reload.
+    useEffect(() => {
+        try {
+            const raw = sessionStorage.getItem(SIGNUP_LOCALE_DRAFT_KEY);
+            if (!raw) return;
+            sessionStorage.removeItem(SIGNUP_LOCALE_DRAFT_KEY);
+            const draft = JSON.parse(raw);
+            if (!draft || typeof draft !== "object" || draft.path !== window.location.pathname
+                || typeof draft.savedAt !== "number" || Date.now() - draft.savedAt > 60_000) return;
+            const firstName = typeof draft.firstName === "string" ? draft.firstName : "";
+            const lastName = typeof draft.lastName === "string" ? draft.lastName : "";
+            const email = typeof draft.email === "string" ? draft.email : "";
+            setForm((current) => ({ ...current, firstName, lastName, email }));
+            if (draft.errorKey === "passwordRequirementsError" || draft.errorKey === "emailTakenError") {
+                setError(t(draft.errorKey));
+                setEmailTaken(draft.errorKey === "emailTakenError");
+            }
+            setLocaleDraftRestored(Boolean(firstName || lastName || email || draft.hadPassword));
+        } catch {
+            // A malformed or unavailable session store must not block signup.
+        }
+    }, [t]);
+
+    const preserveDraftBeforeLocaleChange = () => {
+        try {
+            sessionStorage.setItem(SIGNUP_LOCALE_DRAFT_KEY, JSON.stringify({
+                path: window.location.pathname,
+                savedAt: Date.now(),
+                firstName: form.firstName,
+                lastName: form.lastName,
+                email: form.email,
+                hadPassword: Boolean(form.password),
+                errorKey: emailTaken ? "emailTakenError"
+                    : error === t('passwordRequirementsError') ? "passwordRequirementsError" : null,
+            }));
+            return true;
+        } catch {
+            setError(t('localeSwitchUnavailable'));
+            return false;
+        }
+    };
 
     // The marketing site sends the selected commercial context in the signup
     // query. Persist only syntactically valid values so email verification and
@@ -116,7 +162,18 @@ export default function SignupPage() {
 
     const updateField = (field: string, value: string) => {
         setForm((prev) => ({ ...prev, [field]: value }));
+        if (field === "email" && emailTaken) {
+            setEmailTaken(false);
+            setError("");
+        }
+        if (field === "password" && isPasswordValid(value) && error === t('passwordRequirementsError')) {
+            setError("");
+        }
     };
+
+    useEffect(() => {
+        if (emailTaken) emailInputRef.current?.focus();
+    }, [emailTaken]);
 
     const handleGoogleCallback = useCallback(
         async (response: { credential: string }) => {
@@ -241,7 +298,7 @@ export default function SignupPage() {
                     >
                         <ArrowLeft size={14} /> {t('backToLanding')}
                     </a>
-                    <LocaleSwitcher />
+                    <LocaleSwitcher onBeforeChange={preserveDraftBeforeLocaleChange} />
                 </div>
 
                 {/* Logo */}
@@ -260,22 +317,19 @@ export default function SignupPage() {
                     <p className="text-muted-foreground text-sm mb-6">
                         {t('signupSubtitle')}
                     </p>
+                    {localeDraftRestored && (
+                        <p role="status" className="text-muted-foreground text-sm mb-4">
+                            {t('localeDraftRestored')}
+                        </p>
+                    )}
 
                     {/* Error. Si el correo ya tiene cuenta, el camino útil es iniciar
                         sesión — ofrecerlo ahí mismo en vez de dejarlo en un callejón. */}
-                    {error && (
-                        <div className="flex items-start gap-2 px-3.5 py-2.5 rounded-lg mb-4 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-400 text-[13px]">
+                    {error && !emailTaken && (
+                        <div role="alert" className="flex items-start gap-2 px-3.5 py-2.5 rounded-lg mb-4 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-400 text-[13px]">
                             <AlertCircle size={16} className="shrink-0 mt-0.5" />
                             <span>
                                 {error}
-                                {emailTaken && (
-                                    <>
-                                        {" "}
-                                        <a href="/login" className="underline font-medium hover:no-underline">
-                                            {t('goToLogin')}
-                                        </a>
-                                    </>
-                                )}
                             </span>
                         </div>
                     )}
@@ -384,15 +438,26 @@ export default function SignupPage() {
                                 <Mail size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
                                 <input
                                     id="signup-email"
+                                    ref={emailInputRef}
                                     type="email"
                                     autoComplete="email"
                                     value={form.email}
                                     onChange={(e) => updateField("email", e.target.value)}
+                                    aria-invalid={emailTaken}
+                                    aria-describedby={emailTaken ? "signup-email-error" : undefined}
                                     placeholder={t('emailPlaceholder')}
                                     required
                                     className={inputClasses}
                                 />
                             </div>
+                            {emailTaken && (
+                                <p id="signup-email-error" role="alert" className="mt-1.5 text-[13px] text-red-600 dark:text-red-400">
+                                    {error}{" "}
+                                    <Link href="/login" className="underline font-medium hover:no-underline">
+                                        {t('goToLogin')}
+                                    </Link>
+                                </p>
+                            )}
                         </div>
 
                         {/* Password */}

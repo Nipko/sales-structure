@@ -1247,6 +1247,8 @@
     "sessionKicked": "Sua sessão foi encerrada porque você fez login em outro dispositivo",
     "tenantSessionLimit": "Sua empresa atingiu o limite de sessões simultâneas",
     "signupSubtitle": "Cadastre-se e comece em minutos",
+    "localeDraftRestored": "Seus dados foram mantidos ao mudar o idioma. Digite a senha novamente para continuar.",
+    "localeSwitchUnavailable": "Não foi possível guardar os dados do formulário para mudar o idioma. Você pode continuar aqui sem perdê-los.",
     "firstName": "Nome",
     "lastName": "Sobrenome",
     "firstNamePlaceholder": "João",

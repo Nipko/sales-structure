@@ -1,6 +1,7 @@
 import { catalogHash, catalogItems, catalogTerms } from '../orders/catalog-order-contract';
 import { AIToolExecutorService } from './ai-tool-executor.service';
 import { authorityFor } from './__fixtures__/tool-authority.fixture';
+import { foldedSql, foldQueryText } from '../../common/utils/sql-accent-fold.util';
 
 /**
  * El catálogo ofrecía lo que no vendía y no podía cerrar nada.
@@ -71,7 +72,9 @@ describe('search_products respeta la disponibilidad y su propio dominio', () => 
 
         const [sql, ...params] = query.mock.calls[0];
         expect(sql).toContain('is_available = true');
-        expect(sql).toContain('category = $2');
+        // La categoría se compara plegada (sin tildes ni mayúsculas) y sigue siendo $2.
+        expect(sql).toContain(`${foldedSql('category')} = ${foldedSql('$2::text')}`);
+        expect(params[1]).toBe(foldQueryText('analgesicos'));
         // El último parámetro sigue siendo el LIMIT, no la categoría.
         expect(params[params.length - 1]).toBe(5);
     });

@@ -101,6 +101,15 @@ import {
 import { attachWriterActiveObject } from './writer-active-object';
 import { RepairOrdersService } from '../repair-orders/repair-orders.service';
 import { selectSlotWindow } from './slot-window';
+import { foldedSql, foldQueryText } from '../../common/utils/sql-accent-fold.util';
+
+/**
+ * Two products whose names differ only by accents ("Audífono" / "Audifono") both
+ * satisfy the folded comparison. The one written exactly as the customer typed
+ * it wins, then the one that differs only in case, then a stable order, so the
+ * answer is the same on every call.
+ */
+const EXACT_NAME_FIRST = '(name = $1::text) DESC, (lower(name) = lower($1::text)) DESC, name ASC, id ASC';
 
 interface PreparedContactConsent {
     policyId: string;
@@ -1436,14 +1445,17 @@ export class AIToolExecutorService {
      * matched — and a query that throws says so instead of returning zero rows.
      */
     private async searchProducts(schema: string, query: string, limit = 5, category?: string): Promise<any> {
-        const q = `%${query}%`;
+        // `%` and `_` typed by the customer are text, not wildcards.
+        const q = `%${foldQueryText(query).replace(/[\\%_]/g, '\\$&')}%`;
         const conds: string[] = [];
         const params: any[] = [];
-        conds.push(`(name ILIKE $${params.length + 1} OR description ILIKE $${params.length + 1} OR category ILIKE $${params.length + 1})`);
+        // Accent- and case-insensitive: "Audifono" must find "Audífono".
+        const pattern = foldedSql(`$${params.length + 1}::text`);
+        conds.push(`(${foldedSql('name')} LIKE ${pattern} OR ${foldedSql('description')} LIKE ${pattern} OR ${foldedSql('category')} LIKE ${pattern})`);
         params.push(q);
         if (category) {
-            conds.push(`category = $${params.length + 1}`);
-            params.push(category);
+            conds.push(`${foldedSql('category')} = ${foldedSql(`$${params.length + 1}::text`)}`);
+            params.push(foldQueryText(category));
         }
         conds.push(`is_available = true`);
         params.push(limit);
@@ -1486,8 +1498,8 @@ export class AIToolExecutorService {
             const rows: any[] = await this.prisma.$queryRawUnsafe(
                 isUuid
                     ? `SELECT id, name, description, category, price, currency, stock, is_available, images, metadata, requires_prescription FROM "${schema}".products WHERE id = $1::uuid LIMIT 1`
-                    : `SELECT id, name, description, category, price, currency, stock, is_available, images, metadata, requires_prescription FROM "${schema}".products WHERE name ILIKE $1 LIMIT 1`,
-                productIdOrName,
+                    : `SELECT id, name, description, category, price, currency, stock, is_available, images, metadata, requires_prescription FROM "${schema}".products WHERE ${foldedSql('name')} = ${foldedSql('$1::text')} ORDER BY ${EXACT_NAME_FIRST} LIMIT 1`,
+                isUuid ? productIdOrName : foldQueryText(productIdOrName),
             );
             if (rows.length > 0) {
                 const p = rows[0];
@@ -1803,15 +1815,19 @@ export class AIToolExecutorService {
         try {
             const rows: any[] = await this.prisma.$queryRawUnsafe(
                 isUuid
-                    ? `SELECT id, name, stock, is_available, requires_prescription FROM "${schema}".products WHERE id = $1::uuid LIMIT 1`
-                    : `SELECT id, name, stock, is_available, requires_prescription FROM "${schema}".products WHERE name ILIKE $1 LIMIT 1`,
-                productIdOrName,
+                    ? `SELECT id, name, price, currency, stock, is_available, requires_prescription FROM "${schema}".products WHERE id = $1::uuid LIMIT 1`
+                    : `SELECT id, name, price, currency, stock, is_available, requires_prescription FROM "${schema}".products WHERE ${foldedSql('name')} = ${foldedSql('$1::text')} ORDER BY ${EXACT_NAME_FIRST} LIMIT 1`,
+                isUuid ? productIdOrName : foldQueryText(productIdOrName),
             );
             if (rows.length > 0) {
                 const p = rows[0];
                 return readOk({
                     id: p.id,
                     name: p.name,
+                    // Same fields and same coercion as get_product: an answer about
+                    // stock that omits the price makes the agent guess or stay silent.
+                    price: Number(p.price || 0),
+                    currency: p.currency || null,
                     stock: p.stock ?? null,
                     inStock: p.stock == null ? p.is_available : Number(p.stock) > 0,
                     // Haber stock y poder venderlo por chat no son lo mismo.

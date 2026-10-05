@@ -39,6 +39,15 @@ describe('selectSlotWindow', () => {
     });
 });
 
+describe('selectSlotWindow ordering', () => {
+    const shuffled = [...day].reverse();
+
+    it('orders by time regardless of the input order', () => {
+        expect(times(selectSlotWindow(shuffled))).toEqual(times(day.slice(0, 6)));
+        expect(times(selectSlotWindow(shuffled, '16:00'))).toEqual(times(selectSlotWindow(day, '16:00')));
+    });
+});
+
 describe('nearestSlots', () => {
     const slots = ['15:00', '15:30', '16:30', '17:30'].map(time => ({ time }));
 
@@ -52,6 +61,11 @@ describe('nearestSlots', () => {
 
     it('returns only the one that is within range', () => {
         expect(times(nearestSlots(slots, '16:45'))).toEqual(['16:30']);
+    });
+
+    it('lists each hour once when several professionals share it', () => {
+        const two = [{ time: '15:30', n: 'a' }, { time: '15:30', n: 'b' }, { time: '16:30', n: 'a' }];
+        expect(nearestSlots(two, '16:00').map(s => s.time)).toEqual(['15:30', '16:30']);
     });
 
     it('returns nothing when everything is farther than 30 minutes or the time is unreadable', () => {

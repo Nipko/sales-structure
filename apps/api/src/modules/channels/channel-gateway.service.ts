@@ -103,9 +103,18 @@ export interface IChannelAdapter {
     ): Promise<string>;
 }
 
+/**
+ * AI-origin messages only. A human agent's message, a template or a broadcast is
+ * somebody's own text: if it contains a bracket that looks like a citation, it
+ * is theirs to send. The AI lane marks itself with `metadata.aiGenerated`.
+ */
+export function isAiGenerated(outbound: OutboundMessage): boolean {
+    return (outbound?.metadata as any)?.aiGenerated === true;
+}
+
 function withoutInternalMarkers(outbound: OutboundMessage): OutboundMessage {
     const content: any = outbound?.content;
-    if (!content) return outbound;
+    if (!content || !isAiGenerated(outbound)) return outbound;
     const text = typeof content.text === 'string' ? stripInternalMarkers(content.text) : content.text;
     const caption = typeof content.caption === 'string' ? stripInternalMarkers(content.caption) : content.caption;
     if (text === content.text && caption === content.caption) return outbound;
@@ -190,6 +199,15 @@ export class ChannelGatewayService {
         // the internal `[Article: …]` citation must not cross it. A copy, so the
         // caller's envelope (and whatever it persisted) is left as it was.
         const outbound = withoutInternalMarkers(rawOutbound);
+        if (outbound !== rawOutbound) {
+            this.logger.warn(`[Gateway] internal citation marker removed from an AI message for ${outbound.channelType} (tenant ${outbound.tenantId})`);
+            // A message that was only the marker has nothing to say: never hand an empty text to a provider.
+            const c: any = outbound.content;
+            if (c.type === 'text' && !String(c.text ?? '').trim() && !c.mediaUrl) {
+                this.logger.warn('[Gateway] message empty after removing the internal marker; nothing sent');
+                return null;
+            }
+        }
         const adapter = this.adapters.get(outbound.channelType);
         if (!adapter) {
             this.logger.warn(`No adapter for channel: ${outbound.channelType}`);

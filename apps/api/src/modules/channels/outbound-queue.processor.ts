@@ -29,6 +29,7 @@ import { dispatchPriceFacts } from './dispatch-price-facts';
 import { OutboundQueueService } from './outbound-queue.service';
 import { loadOutboundPayload, markOutboundPayloadSent } from './outbound-payload-store';
 import { stripInternalMarkers } from '../../common/utils/internal-markers.util';
+import { isAiGenerated } from './channel-gateway.service';
 
 export const OUTBOUND_QUEUE = 'outbound-messages';
 
@@ -1314,7 +1315,7 @@ export class OutboundQueueProcessor extends WorkerHost {
             let res: Awaited<ReturnType<TenantNotificationSmsService['send']>>;
             try {
                 // Reseller SMS skips the gateway, so it strips the internal citation itself.
-                res = await this.tenantSms.send(outbound.tenantId, outbound.to, stripInternalMarkers(outbound.content.text), {
+                res = await this.tenantSms.send(outbound.tenantId, outbound.to, (isAiGenerated(outbound) ? stripInternalMarkers(outbound.content.text) : outbound.content.text), {
                     reason: (outbound.metadata as any)?.notificationReason || 'outbound',
                     ref: (outbound.metadata as any)?.messageId,
                 });

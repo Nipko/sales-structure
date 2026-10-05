@@ -1330,6 +1330,8 @@ export class ConversationsService {
                 undefined,
                 turnEffects,
             );
+        // A recovered envelope or a cached reply may predate the strip.
+        if (typeof response === 'string' && response) response = stripInternalMarkers(response);
 
         // Words that derive from learned examples whose provenance could not be
         // stated do not go out by any path. Aggregation used to swallow that

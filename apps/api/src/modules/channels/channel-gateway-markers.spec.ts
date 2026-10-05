@@ -15,7 +15,7 @@ function gatewayWith(channelType: string, extra: Record<string, any> = {}) {
     return { gateway, sent, adapter };
 }
 const hooks = { admitFallback: async () => false };
-const base = { tenantId: 't', channelAccountId: 'a', to: '123', metadata: {} } as any;
+const base = { tenantId: 't', channelAccountId: 'a', to: '123', metadata: { aiGenerated: true } } as any;
 
 describe('the gateway never hands an internal citation marker to a channel', () => {
     it.each(['whatsapp', 'telegram', 'instagram', 'messenger', 'email', 'sms'])('%s text', async channelType => {
@@ -36,6 +36,31 @@ describe('the gateway never hands an internal citation marker to a channel', () 
         const { gateway } = gatewayWith('webchat', { sendOutbound: jest.fn(async (o: any) => { seen.push(o); return 'x'; }) });
         await gateway.sendMessage({ ...base, channelType: 'webchat', content: { type: 'text', text: 'Hola [Article: X]' } }, 'tok', hooks);
         expect(seen[0].content.text).toBe('Hola');
+    });
+
+    it('leaves a human agent or broadcast message exactly as written', async () => {
+        const { gateway, sent } = gatewayWith('whatsapp');
+        await gateway.sendMessage({ ...base, metadata: {}, channelType: 'whatsapp',
+            content: { type: 'text', text: 'Ref [Article: 4512] disponible' } }, 'tok', hooks);
+        expect(sent[0].text).toBe('Ref [Article: 4512] disponible');
+    });
+
+    it('sends nothing, not an empty text, when the AI message was only the marker', async () => {
+        const { gateway, sent, adapter } = gatewayWith('whatsapp');
+        const result = await gateway.sendMessage({ ...base, channelType: 'whatsapp',
+            content: { type: 'text', text: '[Article: Envios]' } }, 'tok', hooks);
+        expect(result).toBeNull();
+        expect(adapter.sendTextMessage).not.toHaveBeenCalled();
+        expect(sent).toHaveLength(0);
+    });
+
+    it('does not hand an empty envelope to an adapter that takes the whole message (widget)', async () => {
+        const sendOutbound = jest.fn(async () => 'x');
+        const { gateway } = gatewayWith('webchat', { sendOutbound });
+        const result = await gateway.sendMessage({ ...base, channelType: 'webchat',
+            content: { type: 'text', text: '[Article: Envios]' } }, 'tok', hooks);
+        expect(result).toBeNull();
+        expect(sendOutbound).not.toHaveBeenCalled();
     });
 
     it('does not mutate the callers envelope', async () => {

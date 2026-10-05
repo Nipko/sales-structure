@@ -109,13 +109,17 @@ export default function AgentTestChat({ tenantId, agentId, configurationRevision
         setSavingCorrection(true);
         setError("");
         try {
-            await api.createFaq(tenantId, {
+            const result = await api.createFaq(tenantId, {
                 question,
                 answer: correction.trim(),
                 category: "onboarding_correction",
                 tags: ["onboarding"],
                 isPublished: true,
             });
+            if (!result?.success) {
+                setError(t("correctionError"));
+                return;
+            }
             setCorrecting(null);
             setCorrectionSaved(true);
         } catch {

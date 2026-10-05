@@ -42,7 +42,7 @@ describe('unattended handoff return', () => {
         expect(update.sql).toContain("status IN ('waiting_human', 'with_human')");
         expect(update.sql).toContain("status = 'active'");
         expect(update.sql).toContain('assigned_to = NULL');
-        expect(update.sql).toContain('returnNoticePending');
+        expect(update.sql).toContain("'{handoff,returnNoticePending}'");
     });
 
     it('returns each stranded conversation once and emits the event', async () => {
@@ -94,7 +94,7 @@ describe('customer messaging around an unattended handoff', () => {
     });
 
     it('after the return the agent says honestly that nobody is available, once, in four languages', () => {
-        expect(src).toContain('sendReturnNoticeOnce(');
+        expect(src).toContain('await this.sendReturnNoticeOnce(');
         for (const text of [
             'No hay nadie del equipo disponible ahora; sigo ayudándote yo.',
             'Nobody from the team is available right now; I will keep helping you.',

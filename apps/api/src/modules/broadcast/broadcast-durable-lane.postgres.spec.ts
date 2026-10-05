@@ -357,9 +357,11 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
     it('prepares nothing for a recipient who opted out before the worker got to them', async () => {
         const c = await campaign();
         await sql("INSERT INTO leads(contact_id,phone,opted_out) VALUES($1::uuid,'+573009990000',true)", [c.contactId]);
-        await send(c).catch(() => undefined);
+        expect(await send(c)).toBe('skipped:recipient_opted_out');
         expect(await outboxRows()).toEqual([]);
         expect(scheduled).toEqual([]);
+        // Closed, not left queued: otherwise the campaign is never reported finished.
+        expect(await recipient(c.recipientId)).toMatchObject({ status: 'skipped' });
     });
 
     // ── THE SENDER THAT HAS TO BE NAMED ─────────────────────────────────────

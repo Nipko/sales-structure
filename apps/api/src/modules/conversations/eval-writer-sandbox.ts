@@ -309,3 +309,14 @@ export function evalIdentityChallengeResult(toolName: string): Record<string, un
         message: 'Identity step-up is required; evaluation mode never sends or accepts a real verification code.',
     };
 }
+
+/** Preview modes (Agent Test and draft; persistence disabled) can read, but never sends or accepts a real verification code. */
+export function agentTestIdentityChallengeResult(): Record<string, unknown> {
+    return {
+        error: 'identity_verification_required',
+        needsVerification: true,
+        outboundSuppressed: true,
+        persisted: false,
+        message: 'Identity step-up is required; this preview mode never sends or accepts a real verification code.',
+    };
+}

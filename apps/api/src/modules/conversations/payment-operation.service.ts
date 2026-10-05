@@ -529,21 +529,17 @@ export class PaymentOperationService {
         }
     }
 
-    async applyDiscount(
-        schemaName: string,
-        tenantId: string,
-        contactId: string,
-        executionLedgerId: string,
-        args: Record<string, unknown>,
-        /** Tenant ceiling from `upsell.maxDiscountPercent`. */
-        maxPercent?: number,
-    ): Promise<Record<string, unknown>> {
+    /**
+     * Pure ceiling check shared by the executor's pre-approval validation and
+     * by the handler itself: a request above the tenant ceiling is refused
+     * before anyone is asked to confirm or approve it, and again at the effect.
+     */
+    discountRequestError(args: Record<string, unknown>, maxPercent?: number): Record<string, unknown> | null {
         const percent = Math.round(Number(args.percent));
-        const reason = this.boundedText(args.reason, 500);
         // The platform ceiling and the tenant's own ceiling are different
         // limits. The tenant's used to live only in the prompt, which means the
         // model could ignore it and the backend would happily accept 30%.
-        const configuredMax = Number.isSafeInteger(maxPercent as number) ? Number(maxPercent) : undefined;
+        const configuredMax = Number.isFinite(maxPercent as number) ? Math.floor(Number(maxPercent)) : undefined;
         if (configuredMax !== undefined && configuredMax <= 0) {
             return {
                 error: 'discounts_disabled',
@@ -559,6 +555,22 @@ export class PaymentOperationService {
                 message: `El descuento debe ser un entero entre 1 y ${ceiling}.`,
             };
         }
+        return null;
+    }
+
+    async applyDiscount(
+        schemaName: string,
+        tenantId: string,
+        contactId: string,
+        executionLedgerId: string,
+        args: Record<string, unknown>,
+        /** Tenant ceiling from `upsell.maxDiscountPercent`. */
+        maxPercent?: number,
+    ): Promise<Record<string, unknown>> {
+        const rejected = this.discountRequestError(args, maxPercent);
+        if (rejected) return rejected;
+        const percent = Math.round(Number(args.percent));
+        const reason = this.boundedText(args.reason, 500);
         const intent = await this.createIntent(schemaName, executionLedgerId, 'discount', {
             percent,
             reason: reason || null,

@@ -2,6 +2,7 @@ import { isCanonicalConsentRecovery, canonicalConsentRecoveryDirective } from '.
 import { DemoAllowanceService } from '../throttle/demo-allowance.service';
 import { demoAllowanceExhaustedText } from '../widget/widget-demo-link';
 import { recordFirstReply } from '../../common/utils/first-reply.util';
+import { stripInternalMarkers } from '../../common/utils/internal-markers.util';
 import { projectAvailableService } from '../appointments/service-price-status';
 import { servedAgentAuthority, type ServedAgentAuthority } from '../persona/served-agent-authority';
 import { LearningService } from '../learning/learning.service';
@@ -75,6 +76,7 @@ import {
     auditTurnClaim,
     promisesHumanHandoff,
     promisesLaterDelivery,
+    isBareWaitPromise,
     toolResultSucceeded,
 } from '../../common/utils/outcome-claim.util';
 import { sanitizeToolResultForModel } from '../../common/utils/tool-error-sanitizer.util';
@@ -93,6 +95,7 @@ import { ProcedureEngineService } from './procedure-engine.service';
 import { IntentInterpreterService } from './intent-interpreter.service';
 import { normalizePhoneE164 } from '../../common/utils/phone.util';
 import { PromptAssemblerService } from './prompt-assembler.service';
+import { HUMAN_OFFER_MARK, HUMAN_OFFER_TTL_MS, NO_DATA_WAIT_REPLACEMENT, NO_DATA_NO_OFFER, noDataWaitReplacementText, noDataNoOfferText, containsHumanOffer, isHumanOfferText, isAffirmation, isLiveHumanOffer } from './human-offer';
 import { LanguageDetectorService } from './language-detector.service';
 import { BusinessInfoService } from '../business-info/business-info.service';
 import { PaymentOperationService } from './payment-operation.service';
@@ -365,6 +368,18 @@ const UNVERIFIED_CLAIM_FALLBACK: Record<string, string> = {
 };
 const unverifiedClaimFallbackText = (lang?: string) =>
     UNVERIFIED_CLAIM_FALLBACK[(lang || 'es').slice(0, 2).toLowerCase()] || UNVERIFIED_CLAIM_FALLBACK.es;
+
+// Fixed system texts must never be rewritten by the wait-promise guard.
+function isSystemFixedText(text: string): boolean {
+    const t = (text || '').trim();
+    if (!t) return false;
+    const fixed = [
+        ...Object.values(UNVERIFIED_CLAIM_FALLBACK), ...Object.values(NO_DATA_WAIT_REPLACEMENT), ...Object.values(NO_DATA_NO_OFFER),
+        ...Object.values(PARTIAL_SUCCESS_MSG), ...Object.values(BUDGET_EXHAUSTED_MSG),
+        ...Object.values(HANDOFF_MSG).flatMap(h => [h.transferring, h.unavailable, h.queueHead]),
+    ];
+    return fixed.some(f => f.trim() === t);
+}
 
 // The turn broke AFTER something real was committed. The generic error would
 // have the customer believe nothing happened and ask for it all over again.
@@ -1198,9 +1213,12 @@ export class ConversationsService {
         })) return;
 
         // 5. Check handoff triggers BEFORE generating AI response
+        // A "yes" to our own offer of a person is a handoff request, decided here
+        // from the mark the offer left — not from whatever the model says next.
+        const acceptedOffer = await this.resolveHumanOfferAcceptance(schemaName, conversation, content?.text);
         const handoffReason = this.handoffService.shouldHandoff(
             content?.text || '', conversation, config,
-        );
+        ) || (acceptedOffer ? 'customer_accepted_human_offer' : null);
         if (handoffReason && !draftMode) {
             // A configured handoff rule is an agent outcome even though it
             // deliberately avoids an LLM call.
@@ -1329,6 +1347,8 @@ export class ConversationsService {
                 undefined,
                 turnEffects,
             );
+        // A recovered envelope or a cached reply may predate the strip.
+        if (typeof response === 'string' && response) response = stripInternalMarkers(response);
 
         // Words that derive from learned examples whose provenance could not be
         // stated do not go out by any path. Aggregation used to swallow that
@@ -1639,6 +1659,10 @@ export class ConversationsService {
         text?: string;
     }): Promise<boolean> {
         if (!input.text || !this.complianceService.detectOptOut(input.text)) return false;
+        // OPEN QUESTION FOR THE OWNER: the customer gets NO reply after an opt-out.
+        // No i18n confirmation text exists and the policy (confirm per channel /
+        // jurisdiction, or stay silent) has not been decided, so the silence is
+        // kept on purpose. See the QA 2026-10-05 conversation-honesty report.
         this.logger.warn(`Opt-out detected from ${input.contactId} on ${input.channelType}`);
         await this.complianceService.processOptOut(input.tenantId, {
             leadId: input.leadId,
@@ -2712,17 +2736,22 @@ export class ConversationsService {
         // replies like "ok", "yes", "gracias" were reverting an English/Portuguese
         // conversation back to the tenant default mid-chat.
         const previousLanguage = (conversation.metadata as any)?.detectedLanguage;
-        const detectedLanguage = this.languageDetector.detect(userText, previousLanguage || configuredLanguage);
+        // A single weak marker never overrides an established language and a
+        // change decided on weak evidence is not persisted (detectDetailed).
+        const fallbackLanguage = previousLanguage || configuredLanguage;
+        const detectedLanguage = this.languageDetector.detect(userText, fallbackLanguage, previousLanguage);
+        const detail = this.languageDetector.detectDetailed?.(userText, fallbackLanguage, previousLanguage);
+        const detection = { language: detectedLanguage, persist: detail && detail.language === detectedLanguage ? detail.persist : true };
         const userLanguage = detectedLanguage;
         (msg as any).detectedLang = detectedLanguage; // expose this turn's language to auto-progress
         // Persist when it changes so the stickiness carries to the next turn.
-        if (!session && detectedLanguage && detectedLanguage !== previousLanguage) {
+        if (!session && detection.persist && detectedLanguage && detectedLanguage !== previousLanguage) {
             this.prisma.executeInTenantSchema(schemaName,
                 `UPDATE conversations SET metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb WHERE id = $1::uuid`,
                 [conversation.id, JSON.stringify({ detectedLanguage })],
             ).catch(() => { /* non-blocking */ });
         }
-        if (session) session.metadata.detectedLanguage = detectedLanguage;
+        if (session && detection.persist) session.metadata.detectedLanguage = detectedLanguage;
         // The turn's clock comes from the tenant's OPERATING identity, not from
         // a Colombian literal. `America/Bogota` was the last resort in four
         // separate places, so a Mexican restaurant computed "hoy" and "mañana"
@@ -4576,8 +4605,12 @@ export class ConversationsService {
             finalResponse = await this.applyOutputGuardrails(
                 finalResponse, systemPrompt, currentMessages, allowedTiers, tenantId, conversation.id,
                 executedToolsThisTurn, userLanguage, priorActions, turnContext, session, {execute:executeLearningModel},
+                allowHumanHandoff,
             );
             turnTrace.add('guardrail', 'output', { responseLength: finalResponse?.length || 0 });
+            // The guard answered with an offer of a person: remember it so a
+            // "yes" next turn escalates for real.
+            if (!session && !draftMode && allowHumanHandoff) await this.rememberHumanOffer(schemaName, conversation.id, finalResponse);
 
             // Long-term memory (#1): periodically distill the conversation into
             // durable facts (fire-and-forget, cheap tier). Cadence keeps cost low.
@@ -4785,7 +4818,9 @@ export class ConversationsService {
                 }
             }
 
-            return finalResponse;
+            // The attribution above needed the raw `[Article: …]` citations; the
+            // customer, the stored message and the history must never see them.
+            return stripInternalMarkers(finalResponse);
         } catch (e: any) {
             if (session) session.trace.error = String(e.message || e);
             this.logger.error(`[Pipeline] LLM call FAILED: ${e.message}`, e.stack);
@@ -5352,6 +5387,7 @@ export class ConversationsService {
         trustedContext?: Partial<TurnContext>,
         session?: AgentTurnSession,
         modelRouter?: Pick<LLMRouterService,'execute'>,
+        humanOfferAvailable: boolean = true,
     ): Promise<string> {
         const llmRouter = modelRouter || (session ? sessionLlmRouter(this.llmRouter, session) : this.llmRouter);
         if (!response || isErrorFallback(response)) return response;
@@ -5452,6 +5488,36 @@ export class ConversationsService {
             } catch (e: any) {
                 this.logger.warn(`[Guardrail] Reintento de promesa diferida fallo: ${e.message}`);
             }
+        }
+
+        // Promesa de espera SIN herramienta: "déjame verificar…" y nada más.
+        //
+        // El guardián de arriba solo actúa cuando una herramienta de respaldo
+        // ya corrió. Acá no corrió ninguna, así que no hay nada que reintentar
+        // (otra iteración del modelo = otra llamada y el mismo dato inexistente)
+        // y la respuesta no tiene contenido que salvar. Se reemplaza por un texto
+        // determinista, honesto y sin llamadas extra: el dato no está confirmado
+        // y se OFRECE una persona (pregunta, no promesa).
+        //
+        // No actúa si (a) la respuesta ya es un texto fijo del sistema, (b) el
+        // motor/handoff produjo una directiva este turno, o (c) la respuesta
+        // promete pasar con una persona: ésa la cumple `escalateWithinTurn`
+        // más abajo y borrarla dejaría al cliente sin traspaso.
+        const hasDirective = !!(trustedContext as any)?.directive;
+        if ((executedTools || []).length === 0 && !hasDirective
+            && !isSystemFixedText(response) && !promisesHumanHandoff(response)
+            && isBareWaitPromise(response)) {
+            this.recordAgentSignal(tenantId, 'wait_promise_without_tool', session);
+            this.logger.warn(`[Guardrail] Respuesta = promesa de espera sin herramienta — reemplazada por texto honesto: "${response.slice(0, 100)}"`);
+            // If the previous assistant message was already our offer of a person
+            // and the model again only "waits", the customer said yes: do not loop
+            // the offer, state the transfer (a real handoff promise, honoured by
+            // `promisesHumanHandoff` → `escalateWithinTurn`).
+            const lastAssistant = [...(currentMessages || [])].reverse().find(m => m?.role === 'assistant');
+            const offeredBefore = typeof lastAssistant?.content === 'string'
+                && Object.values(NO_DATA_WAIT_REPLACEMENT).includes(lastAssistant.content.trim());
+            response = !humanOfferAvailable ? noDataNoOfferText(lang)
+                : offeredBefore ? handoffText(lang).transferring : noDataWaitReplacementText(lang);
         }
 
         // Lo que las herramientas DEVOLVIERON entra al corpus.
@@ -6259,6 +6325,41 @@ export class ConversationsService {
         await this.handoffService.executeHandoffOnce(tenantId, conversation.id, msg, reason, {
             contactId, inboundMessageId, noticeKind, noticeLanguage: handoffNoticeLanguage(language),
         });
+    }
+
+    /** Leave the short-lived "a person was offered" mark when the reply is our offer. */
+    private async rememberHumanOffer(schemaName: string, conversationId: string, reply: string): Promise<boolean> {
+        if (!isHumanOfferText(reply)) return false;
+        const now = Date.now();
+        const mark = { at: new Date(now).toISOString(), expiresAt: new Date(now + HUMAN_OFFER_TTL_MS).toISOString() };
+        await this.prisma.executeInTenantSchema(schemaName,
+            `UPDATE conversations SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{${HUMAN_OFFER_MARK}}', $2::jsonb) WHERE id = $1::uuid`,
+            [conversationId, JSON.stringify(mark)],
+        ).catch(e => this.logger.warn(`[HumanOffer] mark not persisted: ${e?.message}`));
+        return true;
+    }
+
+    /**
+     * Judge the inbound message against a pending offer: an affirmation inside the
+     * TTL escalates; anything else just clears the mark. Returns true to escalate.
+     */
+    private async resolveHumanOfferAcceptance(schemaName: string, conversation: any, text?: string): Promise<boolean> {
+        const mark = (conversation?.metadata as any)?.[HUMAN_OFFER_MARK];
+        if (!mark) return false;
+        await this.prisma.executeInTenantSchema(schemaName,
+            `UPDATE conversations SET metadata = COALESCE(metadata, '{}'::jsonb) - '${HUMAN_OFFER_MARK}' WHERE id = $1::uuid`,
+            [conversation.id],
+        ).catch(e => this.logger.warn(`[HumanOffer] mark not cleared: ${e?.message}`));
+        delete (conversation.metadata as any)[HUMAN_OFFER_MARK];
+        if (!isLiveHumanOffer(mark) || !isAffirmation(text)) return false;
+        // The offer must still be the LAST outbound message: a reminder, template,
+        // notice or human message sent after it changes what "yes" answers.
+        const last = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            `SELECT content_text FROM messages WHERE conversation_id = $1::uuid AND direction = 'outbound'
+              ORDER BY created_at DESC LIMIT 1`,
+            [conversation.id],
+        ).catch(() => []);
+        return containsHumanOffer(last?.[0]?.content_text);
     }
 
     /** A persisted suggestion is the only output of a draft turn. */

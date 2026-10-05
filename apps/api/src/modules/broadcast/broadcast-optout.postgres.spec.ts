@@ -205,6 +205,7 @@ import { LANE_CHAT_DDL, N3_LANE_URL, leadOptedOut, openLane, optOut } from '../.
         service.abTestService = {
             ensureAbTestTables: async () => undefined,
             assignRecipientsToVariants: async () => {
+                if (pendingWhenAssigning >= 0) return; // the FIRST assignment is the one that matters
                 pendingWhenAssigning = (await lane.sql("SELECT COUNT(*)::int AS n FROM campaign_recipients WHERE status = 'pending'"))[0].n;
             },
         };

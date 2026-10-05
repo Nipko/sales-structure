@@ -914,8 +914,12 @@ export class BookingEngineService {
         // Si el mismo mensaje cambia de servicio, la hora se usa DESPUÉS con el
         // servicio nuevo (más abajo); consultar ahora preguntaría por el viejo.
         const normSvc = (v: string) => v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-        const switchingService = !!intent.serviceMentioned && !!state.serviceName
-            && normSvc(intent.serviceMentioned) !== normSvc(state.serviceName);
+        // Es un cambio solo si el texto se resuelve a OTRO servicio del catálogo
+        // (mismo criterio que el bloque de cambio de opinión): "la consulta" o un
+        // servicio que no existe no son un cambio.
+        const switchTo = intent.serviceMentioned && state.serviceName
+            ? state.services?.find(sv => normSvc(sv.name).includes(normSvc(intent.serviceMentioned!))) : undefined;
+        const switchingService = !!switchTo && switchTo.id !== state.serviceId;
         const needsRefresh = !!askedTime && !!state.serviceId && !!state.date /* refresh-guard */
             && !switchingService
             && !state.slots?.some(s => s.time === askedTime)

@@ -81,26 +81,46 @@ export function imsg(lang: string | undefined | null, key: string): string {
 //
 // Phrases are escaped and matched as substrings (they're specific enough).
 
-/** Single words — each is wrapped in \b…\b word-boundary anchors. */
+/**
+ * Unambiguous single words — an opt-out in any message, of any length.
+ * Each is wrapped in … word-boundary anchors.
+ */
 const OPT_OUT_WORDS: string[] = [
-    // ── Spanish ──────────────────────────────────
-    'stop',           // also shared EN/FR (universal SMS opt-out keyword)
-    'baja',           // "darme de baja"
-    'parar',
-    'salir',
-    'quitar',
-    'desuscribir',
-    // ── English ──────────────────────────────────
     'unsubscribe',
-    // ── French ───────────────────────────────────
+    'desuscribir',
+    'desuscribirme',
+    'desuscribanme',
     'desabonner',     // "se désabonner"
-    // NOTE: ambiguous bare verbs (cancelar / sair / arreter) are intentionally
-    // NOT single-word triggers — in the live all-channels pipeline they usually
-    // mean "cancel my appointment", "I'm leaving now" or "stop working", not
-    // "stop messaging me". The qualified phrases below ('cancelar inscricao',
-    // 'quero sair da lista', 'arreter les messages', …) capture the real opt-out
-    // intent in each language without those false positives.
+    'descadastrar',
 ];
+
+/**
+ * Ambiguous opt-out words. Policy while the owner decides: WHEN IN DOUBT,
+ * OPT OUT (the record stays "pending" for review and an admin can reject it).
+ * They count only when the message is, apart from courtesy filler, nothing but
+ * that word (<= OPT_OUT_BARE_MAX_TOKENS tokens, no question mark): "stop",
+ * "BAJA por favor gracias", "quiero salir". Any other content word ("salir
+ * temprano", "baja temporada", "parar motores", "presion baja", "exit 5")
+ * makes it ordinary vocabulary; those messages need an explicit phrase from
+ * OPT_OUT_PHRASES. (cancelar is excluded: alone it means "cancel my appointment".)
+ */
+const OPT_OUT_BARE_WORDS: string[] = [
+    'stop', 'baja', 'parar', 'salir', 'quitar', 'basta', 'exit', 'sair', 'arreter', 'arretez',
+    'pare', 'parem',
+];
+
+/** Courtesy words that may accompany a bare opt-out word without changing its meaning. */
+const OPT_OUT_BARE_FILLERS = new Set([
+    'por', 'favor', 'please', 'pls', 'plz', 'ya', 'ahora', 'now', 'ja', 'agora',
+    'svp', 'maintenant', 'merci', 'gracias', 'thanks', 'thank', 'you', 'obrigado', 'obrigada',
+    'todo', 'todos', 'all', 'it', 'bye', 'chao', 'adios', 'hola', 'hi', 'hello', 'ok', 'okay',
+    'tchau', 'si', 'yes', 'sim', 'oui',
+    // lead-ins: "quiero salir", "i want to stop", "je veux arreter"
+    'quiero', 'quero', 'necesito', 'want', 'to', 'i', 'me', 'je', 'veux', 'voudrais',
+]);
+
+/** A bare-word opt-out is at most this many tokens long. */
+export const OPT_OUT_BARE_MAX_TOKENS = 5;
 
 /** Multi-word phrases — matched as literal substrings (case-insensitive). */
 const OPT_OUT_PHRASES: string[] = [
@@ -113,8 +133,25 @@ const OPT_OUT_PHRASES: string[] = [
     'no me escribas',
     'no me escriban',
     'darme de baja',
+    'dar de baja',
+    'dame de baja',
+    'denme de baja',
+    'quiero la baja',
+    'deja de escribirme',
+    'dejen de escribirme',
+    'no me manden mas',
+    'no quiero mas mensajes',
+    'quitenme de la lista',
+    'detener promociones',
+    'no molesten mas',
+    'no molestes mas',
+    'parar promociones',
     'cancelar suscripcion',
-    'quiero salir',
+    'quiero salir de la lista',
+    'salir de la lista',
+    'quitarme de la lista',
+    'sacarme de la lista',
+    'dejar de recibir',
     'eliminar mis datos',
     'borrar mis datos',
     'desuscribirme',
@@ -124,7 +161,12 @@ const OPT_OUT_PHRASES: string[] = [
     'do not contact',
     'remove me',
     'stop messaging',
+    'stop promotions',
     'stop contacting',
+    'stop sending',
+    'stop texting',
+    'leave me alone',
+    'remove me from',
     'unsubscribe me',
     'take me off',
     'do not send',
@@ -136,6 +178,9 @@ const OPT_OUT_PHRASES: string[] = [
     'remover meu cadastro',
     'cancelar inscricao',      // "cancelar inscrição"
     'quero sair da lista',
+    'sair da lista',
+    'quero parar de receber',
+    'me tire da lista',
     'quero me descadastrar',
     'parar de receber',
     'nao receber mais',
@@ -148,20 +193,23 @@ const OPT_OUT_PHRASES: string[] = [
     'supprimer mes donnees',   // "supprimer mes données"
     'retirer mon consentement',
     'ne plus recevoir',
+    'sortir de la liste',
+    'me desinscrire',
+    'retirer de la liste',
     'plus de messages',
 ];
 
-/** Deduplicate the words list (e.g. "parar" was listed twice for clarity). */
+/** Deduplicate the words list. */
 const uniqueWords = [...new Set(OPT_OUT_WORDS)];
+const uniqueBareWords = [...new Set(OPT_OUT_BARE_WORDS)];
 
 /**
  * Compiled opt-out regex patterns — multi-language, built once at startup.
- *
- * Exported so callers (intake.service.ts, compliance.service.ts) can reuse
- * the same compiled list without duplicating the word/phrase arrays.
+ * These are the patterns that count in a message of ANY length; the ambiguous
+ * bare words are handled separately by `isOptOutMessage`.
  */
 export const OPT_OUT_INTAKE_PATTERNS: RegExp[] = [
-    // Single words with word-boundary anchors
+    // Unambiguous single words with word-boundary anchors
     ...uniqueWords.map(w => new RegExp(`\\b${w}\\b`, 'i')),
     // Multi-word phrases escaped and matched as substrings
     ...OPT_OUT_PHRASES.map(p =>
@@ -171,6 +219,11 @@ export const OPT_OUT_INTAKE_PATTERNS: RegExp[] = [
 
 /**
  * Return true if the message text contains an opt-out signal in ANY supported language.
+ *
+ * - Explicit phrases and unambiguous words ("unsubscribe") count at any length.
+ * - Ambiguous bare words ("stop", "baja", "salir", "sair", "arrêter"…) count
+ *   only when the message is essentially just that word (<= 3 tokens, the
+ *   rest being courtesy filler like "por favor").
  */
 export function isOptOutMessage(text: string): boolean {
     if (!text) return false;
@@ -182,5 +235,20 @@ export function isOptOutMessage(text: string): boolean {
         .normalize('NFD')
         .replace(/[̀-ͯ]/g, '')
         .trim();
-    return OPT_OUT_INTAKE_PATTERNS.some(p => p.test(normalized));
+    if (OPT_OUT_INTAKE_PATTERNS.some(p => p.test(normalized))) return true;
+
+    // A stop sign emoji on its own is a request to stop.
+    if (/\u{1F6D1}/u.test(text) && normalized.replace(/[^a-zA-Z0-9]/g, '').length <= 12) return true;
+
+    const tokens = normalized
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .split(/\s+/)
+        .filter(Boolean);
+    if (tokens.length === 0 || tokens.length > OPT_OUT_BARE_MAX_TOKENS) return false;
+    // A question is a question, not a request ("puedo salir?", "stop?").
+    if (/[?¿]/.test(text)) return false;
+    // Courtesy filler carries no meaning; what is left must be only the keyword.
+    const rest = tokens.filter(t => !OPT_OUT_BARE_FILLERS.has(t) || uniqueBareWords.includes(t));
+    return rest.length > 0 && rest.every(t => uniqueBareWords.includes(t));
 }

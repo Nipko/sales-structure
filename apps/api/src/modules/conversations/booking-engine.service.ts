@@ -13,7 +13,7 @@ import { isPauseMessage, isResumeMessage } from '../../common/conversation/inten
 import { procedureDialogueMessages } from './procedure-dialogue-messages';
 import { containsMissionDirective, isCollectionCancellation, isDirectedCorrection, isNamedMissionResume, mentionedMissionDomains, missionDialogue, parseDirectedSlotCorrection } from './mission-focus';
 import { coerceProcedureSlot } from './procedure-slot-interpolation';
-import { selectSlotWindow } from './slot-window';
+import { nearestSlots, selectSlotWindow } from './slot-window';
 
 /**
  * Lo que el motor necesita saber del turno además del estado de la reserva.
@@ -87,6 +87,8 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
             'Disculpa, no encontré espacios el {date}. ¿Qué otro día te gustaría intentar?'
         ],
         slotUnavailable: 'El horario de las {time} no está disponible. Horarios disponibles: {slots}. ¿Cuál te funciona?',
+        slotSuggest: 'Las {time} no está disponible. Te recomiendo {suggestion}. ¿Te sirve?',
+        slotSuggestOr: 'o',
         schedulingUnavailable: 'Todavía no tenemos la agenda disponible por acá. Te paso con alguien del equipo para coordinar tu cita.',
         bookingFailedHandoff: 'No pude completar la reserva por acá. Te paso con alguien del equipo para confirmarla contigo.',
         askName: '{time} seleccionado para {service}. ¿Cuál es tu nombre completo?',
@@ -132,6 +134,8 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         slotsAvailable: 'Available times for {service} on {date}: {slots}. Which time do you prefer?',
         noAvailability: 'No availability on {date}. Would you like to try another date?',
         slotUnavailable: 'The {time} slot is not available. Available times: {slots}. Which one works for you?',
+        slotSuggest: '{time} is not available. I recommend {suggestion}. Does that work for you?',
+        slotSuggestOr: 'or',
         schedulingUnavailable: 'Our booking calendar is not available here yet. Let me connect you with someone from our team to arrange your appointment.',
         bookingFailedHandoff: 'I could not complete the booking here. Let me connect you with someone from our team to confirm it with you.',
         askName: '{time} selected for {service}. What is your full name?',
@@ -172,6 +176,8 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         slotsAvailable: 'Horários disponíveis para {service} em {date}: {slots}. Qual horário prefere?',
         noAvailability: 'Sem disponibilidade em {date}. Gostaria de tentar outra data?',
         slotUnavailable: 'O horário das {time} não está disponível. Horários disponíveis: {slots}. Qual funciona para você?',
+        slotSuggest: 'As {time} não está disponível. Recomendo {suggestion}. Serve para você?',
+        slotSuggestOr: 'ou',
         schedulingUnavailable: 'Ainda não temos a agenda disponível por aqui. Vou te passar para alguém da equipe para combinar seu horário.',
         bookingFailedHandoff: 'Não consegui concluir o agendamento por aqui. Vou te passar para alguém da equipe para confirmar com você.',
         askName: '{time} selecionado para {service}. Qual é seu nome completo?',
@@ -212,6 +218,8 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         slotsAvailable: 'Créneaux disponibles pour {service} le {date} : {slots}. Quel horaire préférez-vous ?',
         noAvailability: 'Pas de disponibilité le {date}. Souhaitez-vous essayer une autre date ?',
         slotUnavailable: 'Le créneau de {time} n\'est pas disponible. Créneaux disponibles : {slots}. Lequel vous convient ?',
+        slotSuggest: '{time} n\'est pas disponible. Je vous recommande {suggestion}. Cela vous convient-il ?',
+        slotSuggestOr: 'ou',
         schedulingUnavailable: 'La prise de rendez-vous n\'est pas encore disponible par ici. Je vous mets en relation avec une personne de l\'équipe pour organiser votre rendez-vous.',
         bookingFailedHandoff: 'Je n\'ai pas pu finaliser la réservation par ici. Je vous mets en relation avec une personne de l\'équipe pour la confirmer avec vous.',
         askName: '{time} sélectionné pour {service}. Quel est votre nom complet ?',
@@ -332,6 +340,8 @@ export interface BookingState {
     // la que usan justamente las verticales de agenda pura.
     slots?: Array<{ time: string; endTime: string; staffId?: string; staffName?: string }>;
     time?: string;
+    /** Huecos recomendados porque la hora pedida no estaba libre; esperan un "sí" del cliente. */
+    suggestedSlots?: Array<{ time: string; endTime: string; staffId?: string; staffName?: string }>;
     /** Profesional del slot elegido. Se persiste como `appointments.assigned_to`. */
     staffId?: string;
     staffName?: string;
@@ -866,6 +876,7 @@ export class BookingEngineService {
                 // Date changed → clear slots so availability is re-checked
                 if (state.date && state.date !== intent.dateMentioned) {
                     state.slots = undefined;
+                    state.suggestedSlots = undefined;
                     state.time = undefined;
                     state.staffId = undefined;
                     state.staffName = undefined;
@@ -873,14 +884,17 @@ export class BookingEngineService {
                 state.date = intent.dateMentioned;
             }
         }
+        // El cliente acepta la hora que se le recomendó: solo con un "sí" explícito
+        // y una única recomendación pendiente se fija. Con dos, debe elegir una.
+        if (state.suggestedSlots?.length === 1 && intent.isConfirmation && !intent.timeMentioned) {
+            const accepted = state.suggestedSlots[0];
+            state.time = accepted.time;
+            state.staffId = accepted.staffId;
+            state.staffName = accepted.staffName;
+            state.suggestedSlots = undefined;
+        }
         if (intent.timeMentioned && state.slots?.length) {
-            // Bug #3: Tolerant time matching — accept the closest available slot within ±30 min.
-            // Exact match first, then find nearest.
-            const toMinutes = (t: string) => {
-                const [h, m] = t.split(':').map(Number);
-                return h * 60 + m;
-            };
-            const requestedMin = toMinutes(intent.timeMentioned);
+            state.suggestedSlots = undefined;
             // El profesional se toma del MISMO slot que la hora: elegir la franja
             // es elegir con quién, y separarlos era lo que hacía que la reserva
             // llegara sin dueño.
@@ -893,23 +907,15 @@ export class BookingEngineService {
             if (exactSlot) {
                 takeSlot(exactSlot);
             } else {
-                // Find closest slot within ±30 minutes
-                let closest: { time: string; endTime: string; staffId?: string; staffName?: string } | undefined;
-                let closestDiff = Infinity;
-                for (const s of state.slots) {
-                    const diff = Math.abs(toMinutes(s.time) - requestedMin);
-                    if (diff < closestDiff && diff <= 30) {
-                        closestDiff = diff;
-                        closest = s;
-                    }
+                // La hora pedida no está libre. Nunca se reserva otra en silencio:
+                // se dice y se recomienda el hueco más cercano (±30 min) para que
+                // el cliente lo confirme.
+                const near = nearestSlots(state.slots, intent.timeMentioned);
+                if (near.length) {
+                    this.logger.log(`[Decide] ${intent.timeMentioned} not free — recommending ${near.map(n => n.time).join(', ')}`);
+                    state.suggestedSlots = near;
                 }
-                if (closest) {
-                    this.logger.log(`[Decide] Closest slot to ${intent.timeMentioned} is ${closest.time} (diff=${closestDiff}min)`);
-                    takeSlot(closest);
-                } else {
-                    // Time mentioned but NOT within range of available slots — flag it
-                    requestedUnavailableTime = intent.timeMentioned;
-                }
+                requestedUnavailableTime = intent.timeMentioned;
             }
         }
         this.logger.log(`[Decide] State after intent: step=${state.step} svc=${state.serviceName || '-'} date=${state.date || '-'} time=${state.time || '-'} slots=${state.slots?.length || 0}`);
@@ -1052,6 +1058,12 @@ export class BookingEngineService {
         // ── User asked for a specific time that's NOT available ──
         if (requestedUnavailableTime && state.step === 'show_slots' && state.slots?.length) {
             const requested = requestedUnavailableTime;
+            if (state.suggestedSlots?.length) {
+                return {
+                    handled: true, state,
+                    text: this.suggestionText(L, requested, state.suggestedSlots),
+                };
+            }
             const available = (state.slots ?? []).map(s => `${s.time}-${s.endTime}`).join(', ');
             return {
                 handled: true, state,
@@ -1124,6 +1136,12 @@ export class BookingEngineService {
         };
     }
 
+    /** "Las 16:00 no está disponible. Te recomiendo 16:30. ¿Te sirve?" */
+    private suggestionText(lang: string, requested: string, near: Array<{ time: string; endTime: string }>): string {
+        const suggestion = near.map(s => `${s.time} - ${s.endTime}`).join(` ${msg(lang, 'slotSuggestOr')} `);
+        return msg(lang, 'slotSuggest', { time: requested, suggestion });
+    }
+
     // ── Check availability ──
     private async checkAvailability(
         schema: string, tenantId: string, contactId: string, state: BookingState, lang: string,
@@ -1141,6 +1159,15 @@ export class BookingEngineService {
         if (result?.available && result.slots?.length) {
             state.slots = selectSlotWindow(result.slots, requestedTime);
             state.step = 'show_slots';
+            state.suggestedSlots = undefined;
+            if (requestedTime) {
+                const near = nearestSlots(state.slots, requestedTime);
+                if (near.length) {
+                    state.suggestedSlots = near;
+                    state.time = undefined;
+                    return { handled: true, state, text: this.suggestionText(lang, requestedTime, near) };
+                }
+            }
             // El nombre del profesional se muestra solo cuando hay MÁS DE UNO en
             // la tanda: en un local de una sola persona repetirlo en cada franja
             // es ruido, y en una clínica con tres doctoras es justo el dato con

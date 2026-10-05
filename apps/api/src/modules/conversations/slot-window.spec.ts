@@ -1,4 +1,4 @@
-import { MAX_OFFERED_SLOTS, selectSlotWindow } from './slot-window';
+import { MAX_OFFERED_SLOTS, nearestSlots, selectSlotWindow } from './slot-window';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const day = Array.from({ length: 20 }, (_, i) => {
@@ -36,5 +36,26 @@ describe('selectSlotWindow', () => {
 
     it('returns a short list untouched', () => {
         expect(selectSlotWindow(day.slice(0, 4), '16:00')).toEqual(day.slice(0, 4));
+    });
+});
+
+describe('nearestSlots', () => {
+    const slots = ['15:00', '15:30', '16:30', '17:30'].map(time => ({ time }));
+
+    it('returns nothing when the requested time exists', () => {
+        expect(nearestSlots([...slots, { time: '16:00' }], '16:00')).toEqual([]);
+    });
+
+    it('returns the neighbours within 30 minutes, in chronological order', () => {
+        expect(times(nearestSlots(slots, '16:00'))).toEqual(['15:30', '16:30']);
+    });
+
+    it('returns only the one that is within range', () => {
+        expect(times(nearestSlots(slots, '16:45'))).toEqual(['16:30']);
+    });
+
+    it('returns nothing when everything is farther than 30 minutes or the time is unreadable', () => {
+        expect(nearestSlots(slots, '20:00')).toEqual([]);
+        expect(nearestSlots(slots, 'tarde')).toEqual([]);
     });
 });

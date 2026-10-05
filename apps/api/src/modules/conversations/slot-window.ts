@@ -38,3 +38,29 @@ export function selectSlotWindow<T extends { time: string }>(
         .sort((a, b) => a.index - b.index)
         .map(entry => entry.slot);
 }
+
+/** Distancia máxima, en minutos, para recomendar un hueco en lugar de la hora pedida. */
+export const NEAREST_SLOT_TOLERANCE_MIN = 30;
+
+/**
+ * Los huecos (hasta `count`, los más cercanos primero) que distan como mucho
+ * `toleranceMin` de la hora pedida. Si hay uno a esa hora exacta, no hay nada
+ * que recomendar y devuelve vacío. Solo recomienda: quien lo muestre debe pedir
+ * confirmación antes de reservar.
+ */
+export function nearestSlots<T extends { time: string }>(
+    slots: readonly T[],
+    requestedTime: string,
+    toleranceMin: number = NEAREST_SLOT_TOLERANCE_MIN,
+    count = 2,
+): T[] {
+    const requested = toMinutes(requestedTime);
+    if (requested === null || slots.some(s => toMinutes(s.time) === requested)) return [];
+    return slots
+        .map((slot, index) => ({ slot, index, distance: Math.abs((toMinutes(slot.time) ?? Infinity) - requested) }))
+        .filter(entry => entry.distance <= toleranceMin)
+        .sort((a, b) => a.distance - b.distance || a.index - b.index)
+        .slice(0, count)
+        .sort((a, b) => a.index - b.index)
+        .map(entry => entry.slot);
+}

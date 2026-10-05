@@ -1724,13 +1724,16 @@ export class ToolExecutionControlService {
                 },
             };
         }
-        await ensureCommitmentProposals(
-            ((sql: string, params: any[] = []) => this.query(request.schemaName, sql, params)) as any);
+        // No DDL here. This runs inside the preflight transaction, whose first
+        // statement is the shared privacy lock; any `CREATE TABLE` after it trips
+        // runtime_schema_lock_required_at_transaction_start and the customer's own
+        // "yes" ends in tool_failed. `commitment_proposals` is created once per
+        // schema by ensureControlTables, outside the transaction.
         await this.query(request.schemaName,
             `INSERT INTO commitment_proposals
                 (proposal_hash, family, action, contact_id, conversation_id, inbound_message_id,
                  idempotency_key, proposal, amount_cents, currency, accepted_at)
-             VALUES ($1,$2,$3,$4::uuid,$5::uuid,$6::uuid,$7,$8::jsonb,$9,$10,NOW())
+             VALUES ($1,$2,$3,$4::uuid,$5::uuid,$6::uuid,$7,$8::jsonb,$9::numeric,$10,NOW())
              -- The unique index is partial, and PostgreSQL will not infer a
              -- partial index unless the statement repeats its predicate.
              -- Without this the insert fails with "no unique or exclusion
@@ -2659,6 +2662,10 @@ export class ToolExecutionControlService {
                     ON tool_approval_outbox (status, next_attempt_at)
                     WHERE status IN ('pending', 'failed')`,
             );
+            // Canonical in tenant-schema.sql; kept here only for legacy tenants. It
+            // belongs with the other lazy tables, before any transaction opens.
+            await ensureCommitmentProposals(
+                ((sql: string, params: any[] = []) => this.query(schemaName, sql, params)) as any);
         })().catch(error => {
             this.initializedSchemas.delete(schemaName);
             throw error;

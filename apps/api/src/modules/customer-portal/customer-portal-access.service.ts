@@ -45,10 +45,12 @@ export class CustomerPortalAccessService {
             await query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))::text',
                 [`portal:${tenantId}:${channel}:${digest}`]);
             const contacts: any[] = channel === 'email'
-                ? await query(`SELECT id FROM contacts
-                    WHERE LOWER(email)=LOWER($1) AND is_active=true LIMIT 1`, [recipient])
-                : await query(`SELECT id FROM contacts
-                    WHERE phone=$1 AND is_active=true LIMIT 1`, [recipient]);
+                ? await query(`SELECT c.id FROM contacts c
+                    WHERE LOWER(c.email)=LOWER($1)
+                      AND NOT EXISTS (SELECT 1 FROM customer_memory_erasure e WHERE e.contact_id=c.id) LIMIT 1`, [recipient])
+                : await query(`SELECT c.id FROM contacts c
+                    WHERE c.phone=$1
+                      AND NOT EXISTS (SELECT 1 FROM customer_memory_erasure e WHERE e.contact_id=c.id) LIMIT 1`, [recipient]);
             if (!contacts[0]) return null;
 
             const recent: any[] = await query(`SELECT id
@@ -171,9 +173,11 @@ export class CustomerPortalAccessService {
                 return { state: 'suppressed' };
             }
             const contacts: any[] = row.channel === 'email'
-                ? await query(`SELECT 1 FROM contacts WHERE id=$1::uuid AND is_active=true
+                ? await query(`SELECT 1 FROM contacts c WHERE c.id=$1::uuid
+                    AND NOT EXISTS (SELECT 1 FROM customer_memory_erasure e WHERE e.contact_id=c.id)
                     AND LOWER(email)=LOWER($2) LIMIT 1`, [row.contact_id, row.recipient])
-                : await query(`SELECT 1 FROM contacts WHERE id=$1::uuid AND is_active=true
+                : await query(`SELECT 1 FROM contacts c WHERE c.id=$1::uuid
+                    AND NOT EXISTS (SELECT 1 FROM customer_memory_erasure e WHERE e.contact_id=c.id)
                     AND phone=$2 LIMIT 1`, [row.contact_id, row.recipient]);
             if (!contacts[0]) {
                 await query(`UPDATE public.customer_portal_access_challenges

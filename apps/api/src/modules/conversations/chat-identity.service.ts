@@ -67,10 +67,11 @@ export class ChatIdentityService {
         const admitted = await this.prisma.transactionInTenantSchema(schemaName, async query => {
             await query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))::text',
                 [`chat-identity:${tenantId}:${conversationId}`]);
-            const contacts: any[] = await query(`SELECT email,phone,phone_normalized,is_active
-                FROM contacts WHERE id=$1::uuid LIMIT 1`, [contactId]);
+            const contacts: any[] = await query(`SELECT c.email,c.phone,c.phone_normalized,
+                EXISTS (SELECT 1 FROM customer_memory_erasure e WHERE e.contact_id=c.id) AS erased
+                FROM contacts c WHERE c.id=$1::uuid LIMIT 1`, [contactId]);
             const contact = contacts[0];
-            if (!contact || contact.is_active === false) return { state: 'no_channel' };
+            if (!contact || contact.erased === true) return { state: 'no_channel' };
 
             const email = String(contact.email || '').trim();
             const phone = contact.phone_normalized
@@ -114,8 +115,12 @@ export class ChatIdentityService {
                 this.digest(channel, recipient), hint, code]);
             return rows[0];
         }).catch(error => {
-            this.logger.warn(`Identity challenge admission failed: ${error?.message}`);
-            return { state: 'pending' };
+            // Never answer 'pending' here: that tells the customer a code is on its
+            // way when no challenge row exists and nothing was sent (a broken query
+            // looked exactly like a verification in progress). Fail explicitly so
+            // the tool layer reports a failure instead of a phantom handshake.
+            this.logger.error(`Identity challenge admission failed: ${error?.message}`, error?.stack);
+            throw new Error('identity_challenge_admission_failed', { cause: error });
         });
 
         if (admitted.state === 'no_channel') return { status: 'no_channel' };
@@ -212,9 +217,11 @@ export class ChatIdentityService {
                 return { state: 'suppressed' };
             }
             const contacts: any[] = row.channel === 'email'
-                ? await query(`SELECT 1 FROM contacts WHERE id=$1::uuid AND is_active=true
+                ? await query(`SELECT 1 FROM contacts c WHERE c.id=$1::uuid
+                    AND NOT EXISTS (SELECT 1 FROM customer_memory_erasure e WHERE e.contact_id=c.id)
                     AND LOWER(email)=LOWER($2) LIMIT 1`, [row.contact_id,row.recipient])
-                : await query(`SELECT 1 FROM contacts WHERE id=$1::uuid AND is_active=true
+                : await query(`SELECT 1 FROM contacts c WHERE c.id=$1::uuid
+                    AND NOT EXISTS (SELECT 1 FROM customer_memory_erasure e WHERE e.contact_id=c.id)
                     AND (phone_normalized=$2 OR phone=$2) LIMIT 1`, [row.contact_id,row.recipient]);
             if (!contacts[0]) {
                 await query(`UPDATE public.chat_identity_challenges SET state='suppressed',code=NULL,

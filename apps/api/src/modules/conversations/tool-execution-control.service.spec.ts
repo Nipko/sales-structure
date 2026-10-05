@@ -49,7 +49,7 @@ function createHarness(identityVerified = true) {
         if(normalized.startsWith('SELECT pg_advisory_xact_lock'))return [];
         if(normalized.startsWith('SELECT contact_id FROM customer_memory_erasure'))return state.erased?[{contact_id:contactId}]:[];
         if(normalized.startsWith('SELECT contact_id FROM tool_approval_tickets'))return [{contact_id:contactId}];
-        if (normalized.startsWith('CREATE TABLE') || normalized.startsWith('CREATE INDEX')
+        if (normalized.startsWith('CREATE TABLE') || normalized.startsWith('CREATE INDEX') || normalized.startsWith('CREATE UNIQUE INDEX')
             || normalized.startsWith('ALTER TABLE') || normalized.startsWith('DO $ddl$')) return [];
         if (normalized.startsWith('SELECT name FROM')) return [{ name: state.canonicalName }];
 

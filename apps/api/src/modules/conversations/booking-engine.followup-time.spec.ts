@@ -40,11 +40,11 @@ function realisticTool(all: Array<ReturnType<typeof make>>) {
     });
 }
 
-function harness(all = dayFrom(), lang = 'es') {
+function harness(all = dayFrom(), lang = 'es', catalog = services) {
     const execute = realisticTool(all);
     const engine = new BookingEngineService(
         { $queryRawUnsafe: jest.fn().mockResolvedValue([]) } as any,
-        { get: jest.fn().mockResolvedValue(JSON.stringify(services)), set: jest.fn() } as any,
+        { get: jest.fn().mockResolvedValue(JSON.stringify(catalog)), set: jest.fn() } as any,
         { execute } as any,
     );
     const turn = (state: BookingState, intent: Record<string, unknown>, rawText = 'x', flowData?: Record<string, unknown>) =>
@@ -313,7 +313,7 @@ describe('a yes while two recommendations are pending', () => {
 
 describe('remaining first-turn and stale-state cases', () => {
     it('single service with date and time in the first message takes a free time', async () => {
-        const h = harness();
+        const h = harness(dayFrom(), 'es', [services[0]]);
         const state: BookingState = { step: 'idle', services: [services[0]] };
         const result = await h.turn(state, { intent: 'ask_availability', dateMentioned: date, timeMentioned: '16:00' }, 'sábado 16:00');
 

@@ -16,6 +16,14 @@ function toMinutes(time: string): number | null {
     return hours > 23 || minutes > 59 ? null : hours * 60 + minutes;
 }
 
+/** Orden cronológico estable: la consulta de agenda no garantiza ninguno. */
+function byTime<T extends { time: string }>(slots: readonly T[]): T[] {
+    return slots
+        .map((slot, index) => ({ slot, index, minutes: toMinutes(slot.time) ?? Infinity }))
+        .sort((a, b) => a.minutes - b.minutes || a.index - b.index)
+        .map(entry => entry.slot);
+}
+
 /**
  * Elige la tanda de huecos a mostrar.
  *
@@ -29,9 +37,10 @@ export function selectSlotWindow<T extends { time: string }>(
     requestedTime?: string | null,
     limit: number = MAX_OFFERED_SLOTS,
 ): T[] {
+    const ordered = byTime(slots);
     const requested = requestedTime ? toMinutes(requestedTime) : null;
-    if (requested === null || slots.length <= limit) return slots.slice(0, limit);
-    return slots
+    if (requested === null || ordered.length <= limit) return ordered.slice(0, limit);
+    return ordered
         .map((slot, index) => ({ slot, index, distance: Math.abs((toMinutes(slot.time) ?? Infinity) - requested) }))
         .sort((a, b) => a.distance - b.distance || a.index - b.index)
         .slice(0, limit)
@@ -56,11 +65,15 @@ export function nearestSlots<T extends { time: string }>(
 ): T[] {
     const requested = toMinutes(requestedTime);
     if (requested === null || slots.some(s => toMinutes(s.time) === requested)) return [];
-    return slots
-        .map((slot, index) => ({ slot, index, distance: Math.abs((toMinutes(slot.time) ?? Infinity) - requested) }))
+    const seen = new Set<string>();
+    // Una hora una sola vez: con varios profesionales libres a la misma hora,
+    // repetirla ocuparía los dos puestos de la recomendación.
+    return byTime(slots)
+        .filter(slot => !seen.has(slot.time) && !!seen.add(slot.time))
+        .map(slot => ({ slot, distance: Math.abs((toMinutes(slot.time) ?? Infinity) - requested) }))
         .filter(entry => entry.distance <= toleranceMin)
-        .sort((a, b) => a.distance - b.distance || a.index - b.index)
+        .sort((a, b) => a.distance - b.distance)
         .slice(0, count)
-        .sort((a, b) => a.index - b.index)
-        .map(entry => entry.slot);
+        .map(entry => entry.slot)
+        .sort((a, b) => (toMinutes(a.time) ?? 0) - (toMinutes(b.time) ?? 0));
 }

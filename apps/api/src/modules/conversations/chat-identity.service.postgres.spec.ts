@@ -104,6 +104,18 @@ describeDb('durable chat identity against PostgreSQL',()=>{
         expect(smtp).not.toHaveBeenCalled();
     });
 
+    it('suppresses delivery when the contact is erased between admission and delivery',async()=>{
+        const deliver=jest.spyOn(service,'deliver').mockResolvedValueOnce('identity:pending');
+        await service.startVerification(tenantId,schema,contactId,conversationId,'whatsapp');
+        deliver.mockRestore();
+        const id=(await admin.query(`SELECT id FROM chat_identity_challenges WHERE tenant_id=$1::uuid`,[tenantId])).rows[0].id;
+        await admin.query(`INSERT INTO "${schema}".customer_memory_erasure(contact_id) VALUES($1::uuid)`,[contactId]);
+        await expect(service.deliver(id)).resolves.toBe('identity:suppressed');
+        expect(smtp).not.toHaveBeenCalled();
+        expect((await admin.query(`SELECT state,error_code FROM chat_identity_challenges WHERE id=$1::uuid`,[id])).rows[0])
+            .toMatchObject({state:'suppressed',error_code:'identity_recipient_unavailable'});
+    });
+
     it('freezes an unanswered provider call and never retries it',async()=>{
         smtp.mockRejectedValueOnce(new Error('smtp_answer_lost'));
         await expect(service.startVerification(tenantId,schema,contactId,conversationId,'whatsapp'))

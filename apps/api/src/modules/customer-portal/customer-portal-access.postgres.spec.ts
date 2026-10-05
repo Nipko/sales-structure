@@ -89,12 +89,29 @@ describeDb('durable customer portal access against PostgreSQL', () => {
     });
 
     it('does not admit a challenge for an erased contact', async () => {
-        await admin.query(`INSERT INTO "${schema}".customer_memory_erasure(contact_id) VALUES($1::uuid)`, [contactId]);
-        await expect(service.issue(tenantId, schema, 'email', 'portal@example.test', 'es')).resolves.toBeNull();
-        await expect(service.issue(tenantId, schema, 'sms', '+573001112233', 'es')).resolves.toBeNull();
-        expect((await admin.query(`SELECT id FROM customer_portal_access_challenges
-            WHERE tenant_id=$1::uuid`, [tenantId])).rows).toHaveLength(0);
-        await admin.query(`DELETE FROM "${schema}".customer_memory_erasure`);
+        try {
+            await admin.query(`INSERT INTO "${schema}".customer_memory_erasure(contact_id) VALUES($1::uuid)`, [contactId]);
+            await expect(service.issue(tenantId, schema, 'email', 'portal@example.test', 'es')).resolves.toBeNull();
+            await expect(service.issue(tenantId, schema, 'sms', '+573001112233', 'es')).resolves.toBeNull();
+            expect((await admin.query(`SELECT id FROM customer_portal_access_challenges
+                WHERE tenant_id=$1::uuid`, [tenantId])).rows).toHaveLength(0);
+        } finally {
+            await admin.query(`DELETE FROM "${schema}".customer_memory_erasure`);
+        }
+    });
+
+    it('suppresses delivery when the contact is erased between admission and delivery', async () => {
+        const id = await service.issue(tenantId, schema, 'email', 'portal@example.test', 'es');
+        expect(id).toBeTruthy();
+        try {
+            await admin.query(`INSERT INTO "${schema}".customer_memory_erasure(contact_id) VALUES($1::uuid)`, [contactId]);
+            await expect(service.deliver(id!)).resolves.toBe('portal:suppressed');
+            expect(smtpAttempt).not.toHaveBeenCalled();
+            expect((await admin.query(`SELECT state,error_code FROM customer_portal_access_challenges
+                WHERE id=$1::uuid`, [id])).rows[0]).toMatchObject({ state: 'suppressed', error_code: 'portal_recipient_unavailable' });
+        } finally {
+            await admin.query(`DELETE FROM "${schema}".customer_memory_erasure`);
+        }
     });
 
     it('freezes an unanswered provider attempt instead of sending it again', async () => {

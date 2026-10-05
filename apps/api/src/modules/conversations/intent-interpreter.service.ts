@@ -6,6 +6,7 @@ import {
     normalizeCustomerIntent,
 } from '../../common/conversation/intent-normalizer';
 import { LLMRouterService } from '../ai/router/llm-router.service';
+import { isInformationalDetour } from './informational-detour';
 
 /**
  * INTERPRET phase — extracts structured intent from user messages.
@@ -62,6 +63,32 @@ export class IntentInterpreterService {
          * this service is a singleton shared by every tenant, and holding one
          * tenant's country on `this` would leak it into the next tenant's turn.
          */
+        operatingCountry?: string | null,
+        acceptedReferents?: readonly string[],
+    ): Promise<InterpretedIntent> {
+        const interpreted = await this.interpretMessage(
+            userText, currentBookingStep, availableServices, todayDate, upcomingDays, tenantId, operatingCountry, acceptedReferents,
+        );
+        // Mid-mission, "¿cuánto cuesta el corte?" names a service and "¿a qué hora
+        // abren?" resembles an availability request, so the extractors label them
+        // select_service / ask_availability and the booking flow takes them as its
+        // own. They are questions about the business: label them as such. At idle
+        // the established behaviour (service list, flow start) is unchanged.
+        const missionOpen = currentBookingStep !== 'idle' && currentBookingStep !== 'booked';
+        if (missionOpen && isInformationalDetour(userText)
+            && ['ask_availability', 'select_service', 'ask_services', 'select_time', 'provide_info', 'unknown'].includes(interpreted.intent)) {
+            return { ...interpreted, intent: 'general_question', isConfirmation: false, questionTopic: userText };
+        }
+        return interpreted;
+    }
+
+    private async interpretMessage(
+        userText: string,
+        currentBookingStep: string,
+        availableServices: string[],
+        todayDate: string,
+        upcomingDays: Array<{ date: string; weekday: string; label?: string }>,
+        tenantId?: string,
         operatingCountry?: string | null,
         acceptedReferents?: readonly string[],
     ): Promise<InterpretedIntent> {

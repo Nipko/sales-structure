@@ -1247,6 +1247,8 @@
     "sessionKicked": "Tu sesión fue cerrada porque iniciaste sesión en otro dispositivo",
     "tenantSessionLimit": "Tu empresa ha alcanzado el límite de sesiones concurrentes",
     "signupSubtitle": "Regístrate y comienza en minutos",
+    "localeDraftRestored": "Conservamos tus datos al cambiar de idioma. Vuelve a escribir la contraseña para continuar.",
+    "localeSwitchUnavailable": "No pudimos conservar los datos del formulario. Puedes continuar aquí sin perderlos.",
     "firstName": "Nombre",
     "lastName": "Apellido",
     "firstNamePlaceholder": "Juan",

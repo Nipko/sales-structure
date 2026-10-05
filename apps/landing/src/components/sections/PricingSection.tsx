@@ -120,6 +120,7 @@ function PricingCard({ plan, annual, index, locale, t }: PricingCardProps) {
       <p className="text-text-muted text-sm mb-5 leading-snug">
         {t("planSummary", {
           agents: formatLimit(plan.maxAgents, locale, t("valueUnlimited")),
+          agentCount: plan.maxAgents,
           messages: formatLimit(plan.maxAiMessages, locale, t("valueUnlimited")),
         })}
       </p>

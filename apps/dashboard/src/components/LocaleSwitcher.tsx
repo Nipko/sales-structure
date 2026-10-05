@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import { Globe, ChevronDown } from "lucide-react";
 import { locales, localeNames, type Locale } from "@/i18n/config";
 
-export default function LocaleSwitcher() {
+export default function LocaleSwitcher({ onBeforeChange }: { onBeforeChange?: () => boolean | void }) {
     const t = useTranslations("topbar");
     const [current, setCurrent] = useState<Locale>("es");
 
@@ -18,6 +18,7 @@ export default function LocaleSwitcher() {
     }, []);
 
     const handleChange = (locale: string) => {
+        if (onBeforeChange?.() === false) return;
         document.cookie = `locale=${locale};path=/;max-age=31536000`;
         window.location.reload();
     };

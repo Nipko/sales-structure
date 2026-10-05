@@ -427,7 +427,7 @@ export class ChannelManagementController {
 
     /**
      * Gate channel connection behind the plan's `channels` allow-list.
-     * emprendedor=whatsapp-only; starter adds ig/messenger/email; pro+ adds telegram/sms.
+     * emprendedor=whatsapp-only; starter adds ig/messenger/telegram; pro+ adds sms.
      * WhatsApp is in every plan, so its connect path doesn't need this.
      */
     private async assertChannelAllowed(tenantId: string, channelType: string): Promise<void> {

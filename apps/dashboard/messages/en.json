@@ -1247,6 +1247,8 @@
     "sessionKicked": "Your session was closed because you logged in on another device",
     "tenantSessionLimit": "Your company has reached the concurrent sessions limit",
     "signupSubtitle": "Sign up and get started in minutes",
+    "localeDraftRestored": "Your details were kept when you changed language. Enter your password again to continue.",
+    "localeSwitchUnavailable": "We couldn't keep the form details for a language change. You can continue here without losing them.",
     "firstName": "First name",
     "lastName": "Last name",
     "firstNamePlaceholder": "John",

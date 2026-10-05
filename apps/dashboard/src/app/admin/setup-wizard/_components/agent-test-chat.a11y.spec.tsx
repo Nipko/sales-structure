@@ -120,6 +120,30 @@ describe("the wizard's test chat", () => {
         } finally { screen.unmount(); }
     });
 
+    it.each([
+        ["HTTP 409", { success: false, httpStatus: 409, error: "conflict" }],
+        ["HTTP 200 success:false", { success: false, httpStatus: 200, error: "validation_failed" }],
+    ])("keeps the correction editor open when createFaq rejects the write (%s)", async (_case, response) => {
+        api.testAgent.mockResolvedValue({ success: true, data: { reply: "Abrimos hasta las cinco.", debug: {} } });
+        api.createFaq.mockResolvedValue(response);
+        const screen = await renderScreen(<AgentTestChat tenantId={TENANT} agentId={AGENT} />);
+        try {
+            await interact(() => type(screen.container.querySelector("input") as HTMLInputElement, "¿Hasta qué hora abren?"));
+            await interact(() => Array.from(screen.container.querySelectorAll("button")).find((button) => button.textContent?.includes(ES.setupWizard.test.send))!.click());
+            await interact(() => Array.from(screen.container.querySelectorAll("button")).find((button) => button.textContent?.includes(ES.setupWizard.test.correctAnswer))!.click());
+            const textarea = screen.container.querySelector("textarea") as HTMLTextAreaElement;
+            await interact(() => {
+                Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(textarea, "Abrimos hasta las seis.");
+                textarea.dispatchEvent(new Event("input", { bubbles: true }));
+            });
+            await interact(() => Array.from(screen.container.querySelectorAll("button")).find((button) => button.textContent?.includes(ES.setupWizard.test.saveCorrection))!.click());
+            expect(api.createFaq).toHaveBeenCalledTimes(1);
+            expect(screen.container.querySelector("textarea")?.value).toBe("Abrimos hasta las seis.");
+            expect(screen.container.textContent).toContain(ES.setupWizard.test.correctionError);
+            expect(screen.container.textContent).not.toContain(ES.setupWizard.test.correctionSaved);
+        } finally { screen.unmount(); }
+    });
+
     it("maps the status and the error as pure rules", () => {
         expect(agentTestStatusKey({ agentId: AGENT })).toBeNull();
         expect(agentTestStatusKey({ agentId: null, blocked: true })).toBeNull();

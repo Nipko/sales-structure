@@ -18,7 +18,7 @@ export const IDENTITY_LOCKOUT_COOLDOWN_MINUTES = 30;
 /** Prisma P2034 / PostgreSQL 40001 (serialization failure) and 40P01 (deadlock). */
 function isSerializationConflict(error: any): boolean {
     const text = `${error?.code ?? ''} ${error?.meta?.code ?? ''} ${error?.message ?? ''}`;
-    return /P2034|40001|40P01|could not serialize|deadlock detected/i.test(text);
+    return /P2034|\b40001\b|\b40P01\b|could not serialize|deadlock detected/i.test(text);
 }
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 

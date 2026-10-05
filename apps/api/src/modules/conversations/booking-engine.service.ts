@@ -867,7 +867,7 @@ export class BookingEngineService {
                 this.logger.warn(`[Decide] dateMentioned=${intent.dateMentioned} is in the past (today=${todayDate}) — ignoring`);
                 // Clear state values so they don't persist
                 state.date = undefined;
-                state.slots = undefined; state.suggestedSlots = undefined;
+                state.slots = undefined; state.suggestedSlots = undefined; // past-date-clear
                 state.time = undefined;
                 state.staffId = undefined;
                 state.staffName = undefined;
@@ -910,14 +910,23 @@ export class BookingEngineService {
         // mañana en pantalla, cliente pide las 16:00): se vuelve a consultar con
         // esa hora antes de decidir, en vez de buscarla solo en la lista vieja.
         const askedTime = intent.timeMentioned ?? undefined;
+        const lateStep = ['ask_name', 'ask_email', 'confirm'].includes(state.step);
+        // Si el mismo mensaje cambia de servicio, la hora se usa DESPUÉS con el
+        // servicio nuevo (más abajo); consultar ahora preguntaría por el viejo.
+        const normSvc = (v: string) => v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+        const switchingService = !!intent.serviceMentioned && !!state.serviceName
+            && normSvc(intent.serviceMentioned) !== normSvc(state.serviceName);
         const needsRefresh = !!askedTime && !!state.serviceId && !!state.date /* refresh-guard */
-            && ['idle', 'show_services', 'ask_date', 'show_slots'].includes(state.step)
-            && !state.slots?.some(s => s.time === askedTime);
+            && !switchingService
+            && !state.slots?.some(s => s.time === askedTime)
+            && (['idle', 'show_services', 'ask_date', 'show_slots'].includes(state.step)
+                || (lateStep /* late-guard */ && askedTime !== state.time));
         if (needsRefresh) {
             const failed = await this.loadSlots(schemaName, tenantId, contactId, state, L, authority, conversationId, askedTime);
             if (failed) return failed;
         }
-        if (intent.timeMentioned && state.slots?.length) {
+        const prevTime = state.time;
+        if (intent.timeMentioned && state.slots?.length && !(lateStep && intent.timeMentioned === state.time)) {
             state.suggestedSlots = undefined;
             // El profesional se toma del MISMO slot que la hora: elegir la franja
             // es elegir con quién, y separarlos era lo que hacía que la reserva
@@ -930,7 +939,15 @@ export class BookingEngineService {
             const exactSlot = state.slots.find(s => s.time === intent.timeMentioned);
             if (exactSlot) {
                 takeSlot(exactSlot);
+                // Otra hora en un paso tardío: la propuesta anterior ya no vale.
+                if (lateStep && state.time !== prevTime) invalidateBookingProposal(state);
             } else {
+                if (lateStep) {
+                    // Nunca se queda la hora vieja si el cliente pidió otra que no está libre.
+                    state.time = undefined; state.staffId = undefined; state.staffName = undefined;
+                    invalidateBookingProposal(state);
+                    state.step = 'show_slots';
+                }
                 // La hora pedida no está libre. Nunca se reserva otra en silencio:
                 // se dice y se recomienda el hueco más cercano (±30 min) para que
                 // el cliente lo confirme.
@@ -1011,9 +1028,16 @@ export class BookingEngineService {
                 // User changed their mind — reset and apply new service
                 const newSvc = state.services?.find(s => norm(s.name).includes(norm(intent.serviceMentioned!)));
                 if (newSvc) {
+                    const keptDate = state.date;
                     state.serviceId = newSvc.id; state.serviceName = newSvc.name;
                     state.date = undefined; state.slots = undefined; state.suggestedSlots = undefined; state.time = undefined; state.staffId = undefined; state.staffName = undefined;
                     state.step = 'ask_date';
+                    // "Mejor el masaje a las 17:30": la fecha y la hora siguen valiendo
+                    // con el servicio nuevo.
+                    if (intent.timeMentioned && keptDate) {
+                        state.date = keptDate;
+                        return this.checkAvailability(schemaName, tenantId, contactId, state, L, authority, conversationId, intent.timeMentioned);
+                    }
                     this.logger.log(`[Decide] Changed service to: ${newSvc.name}`);
                     return { handled: true, state, text: msg(L, 'switchedService', { service: newSvc.name }) };
                 }
@@ -1201,6 +1225,8 @@ export class BookingEngineService {
         }
 
         const noDate = state.date;
+        state.time = undefined; state.staffId = undefined; state.staffName = undefined;
+        invalidateBookingProposal(state);
         state.date = undefined; state.step = 'ask_date';
         return { handled: true, state, text: msg(lang, 'noAvailability', { date: noDate || '' }) };
     }
@@ -1436,7 +1462,9 @@ export class BookingEngineService {
             case 'ask_date':
                 return { handled: true, state, text: msg(lang, 'askDate', { service: state.serviceName || '' }) };
             case 'show_slots':
-                return { handled: true, state, text: msg(lang, 'whichTime', { slots: (state.slots ?? []).map(s => s.time).join(', ') }) };
+                // Con recomendaciones pendientes se repiten solo ellas: es la lista que
+                // el cliente acaba de leer y sobre la que contará "la primera".
+                return { handled: true, state, text: msg(lang, 'whichTime', { slots: (state.suggestedSlots?.length ? state.suggestedSlots : state.slots ?? []).map(s => s.time).join(', ') }) };
             case 'ask_name':
                 return { handled: true, state, text: msg(lang, 'whichName') };
             case 'ask_email':

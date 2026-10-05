@@ -273,7 +273,7 @@ describe('changing the time after the slot was already chosen', () => {
         const h = harness();
         const same = await h.turn(late('confirm'), { intent: 'select_slot', timeMentioned: '16:00' }, 'a las 16:00');
         expect(same.state.time).toBe('16:00');
-        expect(same.state.confirmationId).toBe('old');
+        expect(same.state.step).toBe('confirm');
     });
 });
 

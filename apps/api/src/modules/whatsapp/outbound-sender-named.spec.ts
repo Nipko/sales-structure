@@ -272,9 +272,12 @@ describe('every charged WhatsApp producer names the account that pays', () => {
     describe('automation rules', () => {
         const send = async (action: Record<string, unknown>, event: Record<string, unknown>) => {
             const { dispatched, lane } = dispatchDouble();
-            // prisma, throttle, httpRequestHandler, pipeline, proactive.
+            // prisma, throttle, httpRequestHandler, pipeline, proactive. The prisma
+            // double answers the one question the action asks first: is this
+            // recipient on the opt-out register? (No.)
+            const prisma = { executeInTenantSchema: async () => [{ blocked: false }] };
             const processor = new AutomationJobsProcessor(
-                {} as any, {} as any, {} as any, {} as any, lane as any,
+                prisma as any, {} as any, {} as any, {} as any, lane as any,
             );
             await (processor as any).handleSendTemplate(TENANT, SCHEMA,
                 '66666666-6666-4666-8666-666666666666', '77777777-7777-4777-8777-777777777777',

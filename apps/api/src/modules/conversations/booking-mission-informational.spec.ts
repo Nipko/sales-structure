@@ -49,19 +49,19 @@ function harness(llmIntent: Record<string, unknown> = { intent: 'ask_availabilit
 
 describe('informational questions during an open booking mission (production sequence)', () => {
     it.each([
-        ['C03 hours', 'Me puede decir el horario del salón, a qué hora empiezan y a qué hora terminan.', 'show_slots', { intent: 'ask_availability' }],
-        ['C02 hours', '¿Cuál es el horario de atención?', 'show_slots', { intent: 'ask_availability' }],
-        ['C07 hours fr', "Quels sont vos horaires d'ouverture ?", 'show_slots', { intent: 'ask_availability' }],
-        ['C15 price', '¿Cuánto cuesta el corte y estilo?', 'ask_date', { intent: 'select_service' }],
-        ['C26 services and hours', '¿Qué servicios tienen y hasta qué hora están atendiendo?', 'show_slots', { intent: 'ask_services' }],
-        ['hours at ask_date', 'a qué hora abren los sábados', 'ask_date', { intent: 'ask_availability' }],
-        ['location', '¿Dónde están ubicados?', 'show_slots', { intent: 'ask_availability' }],
-        ['policy', '¿Cuál es la política de cancelación?', 'ask_date', { intent: 'ask_availability' }],
-    ])('%s is not consumed by the engine and keeps the mission', async (_name, text, step, llm) => {
+        ['C03 hours', 'Me puede decir el horario del salón, a qué hora empiezan y a qué hora terminan.', 'show_slots', { intent: 'ask_availability' }, 'general_question'],
+        ['C02 hours', '¿Cuál es el horario de atención?', 'show_slots', { intent: 'ask_availability' }, 'general_question'],
+        ['C07 hours fr', "Quels sont vos horaires d'ouverture ?", 'show_slots', { intent: 'ask_availability' }, 'general_question'],
+        ['C15 price', '¿Cuánto cuesta el corte y estilo?', 'ask_date', { intent: 'select_service' }, 'general_question'],
+        ['C26 services and hours', '¿Qué servicios tienen y hasta qué hora están atendiendo?', 'show_slots', { intent: 'ask_services' }, 'ask_services'],
+        ['hours at ask_date', 'a qué hora abren los sábados', 'ask_date', { intent: 'ask_availability' }, 'general_question'],
+        ['location', '¿Dónde están ubicados?', 'show_slots', { intent: 'ask_availability' }, 'general_question'],
+        ['policy', '¿Cuál es la política de cancelación?', 'ask_date', { intent: 'ask_availability' }, 'general_question'],
+    ])('%s is not consumed by the engine and keeps the mission', async (_name, text, step, llm, expected) => {
         const h = harness(llm);
         const before = h.mission(step as BookingState['step']);
         const { intent, result } = await h.turn(text, before);
-        expect(intent.intent).toBe('general_question');
+        expect(intent.intent).toBe(expected);
         expect(result.handled).toBe(false);
         expect(result.text).toBeUndefined();
         expect(result.state).toMatchObject({ missionId: '86e8ed88', step, serviceId: 'svc-corte', date: '2026-10-06' });

@@ -72,11 +72,12 @@ export class IntentInterpreterService {
         // Mid-mission, "¿cuánto cuesta el corte?" names a service and "¿a qué hora
         // abren?" resembles an availability request, so the extractors label them
         // select_service / ask_availability and the booking flow takes them as its
-        // own. They are questions about the business: label them as such. At idle
+        // own. They are questions about the business: label them as such
+        // (`ask_services` is already the right label and stays). At idle
         // the established behaviour (service list, flow start) is unchanged.
         const missionOpen = currentBookingStep !== 'idle' && currentBookingStep !== 'booked';
         if (missionOpen && isInformationalDetour(userText)
-            && ['ask_availability', 'select_service', 'ask_services', 'select_time', 'provide_info', 'unknown'].includes(interpreted.intent)) {
+            && ['ask_availability', 'select_service', 'select_time', 'provide_info', 'unknown'].includes(interpreted.intent)) {
             return { ...interpreted, intent: 'general_question', isConfirmation: false, questionTopic: userText };
         }
         return interpreted;

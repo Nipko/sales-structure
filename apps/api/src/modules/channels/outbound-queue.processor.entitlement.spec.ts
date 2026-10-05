@@ -73,6 +73,15 @@ describe('OutboundQueueProcessor subscription boundary', () => {
         expect(h.throttle.commitActionUsage).toHaveBeenCalled();
     });
 
+    it('never sends the internal citation marker through the reseller SMS path', async () => {
+        const h = harness('active');
+        h.job.data.outbound.content.text = 'Envio gratis [Article: Envios] hoy';
+
+        await h.processor.process(h.job);
+
+        expect(h.tenantSms.send).toHaveBeenCalledWith(expect.any(String), '+573001112233', 'Envio gratis hoy', expect.anything());
+    });
+
     it('delays without an SMS call when the atomic reservation loses the final slot', async () => {
         const h = harness('active', false);
 

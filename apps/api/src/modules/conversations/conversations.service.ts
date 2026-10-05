@@ -2,6 +2,7 @@ import { isCanonicalConsentRecovery, canonicalConsentRecoveryDirective } from '.
 import { DemoAllowanceService } from '../throttle/demo-allowance.service';
 import { demoAllowanceExhaustedText } from '../widget/widget-demo-link';
 import { recordFirstReply } from '../../common/utils/first-reply.util';
+import { stripInternalMarkers } from '../../common/utils/internal-markers.util';
 import { projectAvailableService } from '../appointments/service-price-status';
 import { servedAgentAuthority, type ServedAgentAuthority } from '../persona/served-agent-authority';
 import { LearningService } from '../learning/learning.service';
@@ -4785,7 +4786,9 @@ export class ConversationsService {
                 }
             }
 
-            return finalResponse;
+            // The attribution above needed the raw `[Article: …]` citations; the
+            // customer, the stored message and the history must never see them.
+            return stripInternalMarkers(finalResponse);
         } catch (e: any) {
             if (session) session.trace.error = String(e.message || e);
             this.logger.error(`[Pipeline] LLM call FAILED: ${e.message}`, e.stack);

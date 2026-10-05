@@ -4,6 +4,7 @@ import { WebhookTapService } from './webhook-tap.service';
 import { channelSafeImageUrl } from '../../common/utils/media-url.util';
 import type { StrictDispatchTransport } from './strict-dispatch-transport';
 import { classifyFlowFailure } from './flow-fallback';
+import { stripInternalMarkers } from '../../common/utils/internal-markers.util';
 
 /**
  * A recipient the selected channel endpoint cannot address.
@@ -102,6 +103,15 @@ export interface IChannelAdapter {
     ): Promise<string>;
 }
 
+function withoutInternalMarkers(outbound: OutboundMessage): OutboundMessage {
+    const content: any = outbound?.content;
+    if (!content) return outbound;
+    const text = typeof content.text === 'string' ? stripInternalMarkers(content.text) : content.text;
+    const caption = typeof content.caption === 'string' ? stripInternalMarkers(content.caption) : content.caption;
+    if (text === content.text && caption === content.caption) return outbound;
+    return { ...outbound, content: { ...content, text, caption } } as OutboundMessage;
+}
+
 @Injectable()
 export class ChannelGatewayService {
     private readonly logger = new Logger(ChannelGatewayService.name);
@@ -174,8 +184,12 @@ export class ChannelGatewayService {
     /**
      * Send an outbound message to any channel
      */
-    async sendMessage(outbound: OutboundMessage, accessToken: string,
+    async sendMessage(rawOutbound: OutboundMessage, accessToken: string,
         hooks: GatewaySendHooks): Promise<string | null> {
+        // The one method every legacy lane, the widget and email send through:
+        // the internal `[Article: …]` citation must not cross it. A copy, so the
+        // caller's envelope (and whatever it persisted) is left as it was.
+        const outbound = withoutInternalMarkers(rawOutbound);
         const adapter = this.adapters.get(outbound.channelType);
         if (!adapter) {
             this.logger.warn(`No adapter for channel: ${outbound.channelType}`);

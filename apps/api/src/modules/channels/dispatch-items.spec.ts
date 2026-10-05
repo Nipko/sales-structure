@@ -163,3 +163,26 @@ describe('Messenger strict dispatch', () => {
             .resolves.toEqual({ kind: 'unknown', errorCode: 'provider_timeout' });
     });
 });
+
+describe('internal citation markers never become an effect', () => {
+    it('strips [Article: ...] from reply bubbles', () => {
+        const items = buildDispatchItems({ textChunks: ['Aceptamos devoluciones [Article: Devoluciones].'] },
+            { channelType: 'whatsapp' });
+        expect(items.map(item => item.payload.text)).toEqual(['Aceptamos devoluciones.']);
+    });
+
+    it('strips it from a caption, folded or split', () => {
+        for (const channelType of ['whatsapp', 'messenger']) {
+            const items = buildDispatchItems({
+                media: [{ url: 'https://example.test/a.jpg', caption: 'Foto [Article: Catalogo]' }],
+            }, { channelType });
+            expect(JSON.stringify(items.map(item => item.payload))).not.toMatch(/Article/);
+        }
+    });
+
+    it('strips it from a Flow body', () => {
+        const items = buildDispatchItems({ flow: { flowId: 'f', flowToken: 't', text: 'Reserva [Article: Citas]' } },
+            { channelType: 'whatsapp' });
+        expect(JSON.stringify(items.map(item => item.payload))).not.toMatch(/Article/);
+    });
+});

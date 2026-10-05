@@ -75,6 +75,7 @@ import {
     auditTurnClaim,
     promisesHumanHandoff,
     promisesLaterDelivery,
+    isBareWaitPromise,
     toolResultSucceeded,
 } from '../../common/utils/outcome-claim.util';
 import { sanitizeToolResultForModel } from '../../common/utils/tool-error-sanitizer.util';
@@ -365,6 +366,19 @@ const UNVERIFIED_CLAIM_FALLBACK: Record<string, string> = {
 };
 const unverifiedClaimFallbackText = (lang?: string) =>
     UNVERIFIED_CLAIM_FALLBACK[(lang || 'es').slice(0, 2).toLowerCase()] || UNVERIFIED_CLAIM_FALLBACK.es;
+
+// The model's whole answer was a wait promise ("déjame verificar…", "un
+// momento") and no tool ran this turn. Nothing will ever send the follow-up,
+// so the customer would wait forever. Say plainly that the data is not
+// confirmed and offer a person — an offer (a question), not a promise.
+const NO_DATA_WAIT_REPLACEMENT: Record<string, string> = {
+    es: 'No tengo ese dato confirmado en este momento. ¿Quieres que le pida a una persona del equipo que lo confirme?',
+    en: 'I don’t have that information confirmed right now. Would you like me to ask someone from the team to confirm it?',
+    pt: 'Não tenho essa informação confirmada neste momento. Quer que eu peça a alguém da equipe para confirmar?',
+    fr: "Je n'ai pas cette information confirmée pour le moment. Souhaitez-vous que je demande à quelqu'un de l'équipe de la confirmer ?",
+};
+const noDataWaitReplacementText = (lang?: string) =>
+    NO_DATA_WAIT_REPLACEMENT[(lang || 'es').slice(0, 2).toLowerCase()] || NO_DATA_WAIT_REPLACEMENT.es;
 
 // The turn broke AFTER something real was committed. The generic error would
 // have the customer believe nothing happened and ask for it all over again.
@@ -1639,6 +1653,10 @@ export class ConversationsService {
         text?: string;
     }): Promise<boolean> {
         if (!input.text || !this.complianceService.detectOptOut(input.text)) return false;
+        // OPEN QUESTION FOR THE OWNER: the customer gets NO reply after an opt-out.
+        // No i18n confirmation text exists and the policy (confirm per channel /
+        // jurisdiction, or stay silent) has not been decided, so the silence is
+        // kept on purpose. See the QA 2026-10-05 conversation-honesty report.
         this.logger.warn(`Opt-out detected from ${input.contactId} on ${input.channelType}`);
         await this.complianceService.processOptOut(input.tenantId, {
             leadId: input.leadId,
@@ -5452,6 +5470,20 @@ export class ConversationsService {
             } catch (e: any) {
                 this.logger.warn(`[Guardrail] Reintento de promesa diferida fallo: ${e.message}`);
             }
+        }
+
+        // Promesa de espera SIN herramienta: "déjame verificar…" y nada más.
+        //
+        // El guardián de arriba solo actúa cuando una herramienta de respaldo
+        // ya corrió. Acá no corrió ninguna, así que no hay nada que reintentar
+        // (otra iteración del modelo = otra llamada y el mismo dato inexistente)
+        // y la respuesta no tiene contenido que salvar. Se reemplaza por un texto
+        // determinista, honesto y sin llamadas extra: el dato no está confirmado
+        // y se OFRECE una persona (pregunta, no promesa).
+        if ((executedTools || []).length === 0 && isBareWaitPromise(response)) {
+            this.recordAgentSignal(tenantId, 'wait_promise_without_tool', session);
+            this.logger.warn(`[Guardrail] Respuesta = promesa de espera sin herramienta — reemplazada por texto honesto: "${response.slice(0, 100)}"`);
+            response = noDataWaitReplacementText(lang);
         }
 
         // Lo que las herramientas DEVOLVIERON entra al corpus.

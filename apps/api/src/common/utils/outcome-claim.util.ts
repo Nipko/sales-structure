@@ -188,6 +188,62 @@ export function promisesLaterDelivery(text: string | null | undefined): boolean 
 }
 
 /**
+ * Frases de ESPERA: "déjame verificar", "permítame consultar", "un momento",
+ * "let me check", "um instante", "je vais vérifier"… Prometen volver con un
+ * dato. En este pipeline un turno es pregunta→respuesta y nada manda un segundo
+ * mensaje, así que la promesa solo es cierta si en ese mismo turno se llamó a
+ * una herramienta (y entonces ya hay dato que decir).
+ */
+const WAIT_PHRASE = new RegExp(
+    [
+        // es
+        '(dejame|dejeme|permiteme|permitame|permitanme|dame|denme) (un |unos |una )?(momento|segundo|minuto|instante)?\s*(para )?(verificar|consultar|revisar|confirmar|chequear|checar|comprobar|ver|averiguar|validar)',
+        '(dejame|dejeme|permiteme|permitame) (verificar|consultar|revisar|confirmar|chequear|checar|comprobar|averiguar)',
+        'voy a (verificar|consultar|revisar|confirmar|chequear|checar|comprobar|averiguar|validar)',
+        '(un|unos) (momento|momentito|segundo|segundito|minuto|instante)',
+        'ya (te|le) (confirmo|digo|aviso|cuento|respondo)',
+        'enseguida (te|le) ',
+        // en
+        "let me (check|verify|confirm|look|see|find out|get)",
+        "i(’|')?ll (check|verify|confirm|look into|find out|get back)",
+        'i will (check|verify|confirm|look into|find out|get back)',
+        '(one|just a|give me a|hold on a|bear with me a) ?(moment|second|minute)',
+        'hold on',
+        // pt
+        '(deixe|deixa)(-| )?(me|eu) (verificar|consultar|checar|confirmar|ver|conferir)',
+        'vou (verificar|consultar|checar|confirmar|conferir|ver)',
+        'um (momento|instante|segundo|minutinho)',
+        'so um (momento|instante|segundo)',
+        // fr
+        '(laissez|laisse)(-| )?(moi) (verifier|consulter|voir|regarder|confirmer)',
+        'je vais (verifier|consulter|regarder|confirmer|voir)',
+        'un (instant|moment|petit moment)',
+        'un instant',
+    ].join('|'),
+    'i',
+);
+
+/** Wait-promise messages carry no information; anything longer is content. */
+const BARE_WAIT_MAX_WORDS = 18;
+
+/**
+ * ¿La respuesta ES SOLO una promesa de espera, sin contenido?
+ *
+ * Estrecho a propósito: tiene una frase de espera, es corta (<= 18 palabras),
+ * no trae cifras (un precio, una hora, una fecha ya es contenido) ni le hace
+ * una pregunta al cliente (pedir un dato es avanzar el turno). Sirve para el
+ * caso en que NO se llamó a ninguna herramienta: ahí la espera es una promesa
+ * sin entrega posible.
+ */
+export function isBareWaitPromise(text: string | null | undefined): boolean {
+    if (!text || !text.trim()) return false;
+    if (/[?¿]/.test(text) || /\d/.test(text)) return false;
+    const words = text.trim().split(/\s+/).filter(Boolean);
+    if (words.length > BARE_WAIT_MAX_WORDS) return false;
+    return WAIT_PHRASE.test(normalize(text).replace(/[’]/g, "'"));
+}
+
+/**
  * Destinatarios humanos. Sin acentos porque `normalize` ya los quitó
  * ("companero", no "compañero").
  */

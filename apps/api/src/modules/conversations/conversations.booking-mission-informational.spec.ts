@@ -92,3 +92,45 @@ describe('a booking mission left untouched is offered back instead of continuing
         expect(h.session().metadata.bookingState.serviceId).toBeUndefined();
     });
 });
+
+/** The tenant hours handed to the persona block on the last prompt build. */
+const promptHours = (f: ReturnType<typeof fixture>['f']) => {
+    const calls = f.personaService.buildSystemPrompt.mock.calls;
+    return calls[calls.length - 1][1];
+};
+
+describe('opening hours reach the prompt from the appointment agenda', () => {
+    const agenda = [1, 2, 3, 4, 5, 6].map(day => ({ user_id: 'u', day_of_week: day, start_time: '09:00:00', end_time: '19:00:00' }));
+    const withAgenda = (rows: any[] | Error) => {
+        const h = fixture();
+        (h.f.runtime as any).tenantSchema = async () => 'tenant_test';
+        h.f.prisma.executeInTenantSchema.mockImplementation(async (_schema: string, sql: string) => {
+            if (/availability_slots/.test(sql)) { if (rows instanceof Error) throw rows; return rows; }
+            return [];
+        });
+        return h;
+    };
+
+    it('describes the agenda hours in the prompt without changing open/closed', async () => {
+        const h = withAgenda(agenda);
+        await h.turn('¿A qué hora abren?');
+        const hours = promptHours(h.f);
+        expect(hours).toMatchObject({ informational: true, source: 'appointment_availability' });
+        expect(hours.schedule.monday.windows).toEqual([{ open: '09:00', close: '19:00' }]);
+        expect(hours.schedule.sunday).toEqual({ enabled: false });
+        // Open/closed still comes from the tenant configuration (24/7), not from the agenda.
+        expect(h.session().trace.systemPrompt).toContain('<business_hours_status>open</business_hours_status>');
+    });
+
+    it('tells the model it has no hours when the agenda is empty', async () => {
+        const h = withAgenda([]);
+        await h.turn('¿A qué hora abren?');
+        expect(promptHours(h.f)).toMatchObject({ informational: true, unknown: true });
+    });
+
+    it('leaves the prompt as it was when the agenda cannot be read', async () => {
+        const h = withAgenda(new Error('relation does not exist'));
+        await h.turn('¿A qué hora abren?');
+        expect(promptHours(h.f)).toBeNull();
+    });
+});

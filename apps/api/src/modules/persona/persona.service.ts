@@ -23,6 +23,7 @@ import { normalizeRequiredFields } from './required-fields.util';
 import { VERTICAL_REGISTRY } from '../verticals/vertical-definitions';
 import { PERSONA_CACHE_CHANNELS, personaChannelCacheKeys } from '../../common/utils/persona-cache.util';
 import { escapeXmlAttribute, escapeXmlText } from '../../common/utils/xml.util';
+import { unknownHoursInstruction } from '../conversations/informational-hours';
 import type { ServiceExecutionContext } from '../../common/types/execution-context';
 import { persistenceDisabled } from '../../common/types/execution-context';
 import {
@@ -222,7 +223,7 @@ export class PersonaService {
         this.pushMission(lines, config);
         this.pushForbiddenTopics(lines, config.behavior);
         this.pushHandoffTriggers(lines, config.behavior);
-        this.pushBusinessHours(lines, config.hours, tenantBusinessHours);
+        this.pushBusinessHours(lines, config.hours, tenantBusinessHours, config.language);
         this.pushSkillset(lines, config);
         return lines.join('\n');
     }
@@ -273,7 +274,7 @@ export class PersonaService {
         this.pushHandoffTriggers(lines, behavior);
         this.pushRequiredInformation(lines, config);
         this.pushMission(lines, config);
-        this.pushBusinessHours(lines, hours, tenantBusinessHours);
+        this.pushBusinessHours(lines, hours, tenantBusinessHours, config.language);
         this.pushSkillset(lines, config);
 
         lines.push('</persona>');
@@ -333,7 +334,32 @@ export class PersonaService {
         lines.push('  </mission>');
     }
 
-    private pushBusinessHours(lines: string[], hours: any, tenantBusinessHours?: any): void {
+    private pushBusinessHours(lines: string[], hours: any, tenantBusinessHours?: any, language?: string): void {
+        // Hours derived from the appointment agenda (nothing else configured):
+        // descriptive only, they never decide whether the assistant answers.
+        if (tenantBusinessHours?.informational === true) {
+            lines.push('  <business_hours>');
+            lines.push('    <source>appointment_availability</source>');
+            if (tenantBusinessHours.unknown === true) {
+                lines.push('    <status>unknown</status>');
+                lines.push(`    <instruction>${escapeXmlText(unknownHoursInstruction(language))}</instruction>`);
+            } else {
+                if (tenantBusinessHours.timezone) lines.push(`    <timezone>${escapeXmlText(tenantBusinessHours.timezone)}</timezone>`);
+                for (const [day, value] of Object.entries(tenantBusinessHours.schedule || {})) {
+                    const entry = value as any;
+                    const windows: Array<{ open: string; close: string }> = Array.isArray(entry?.windows) ? entry.windows : [];
+                    if (!windows.length) {
+                        lines.push(`    <day name="${escapeXmlAttribute(day)}">closed</day>`);
+                        continue;
+                    }
+                    for (const window of windows) {
+                        lines.push(`    <day name="${escapeXmlAttribute(day)}" start="${escapeXmlAttribute(window.open)}" end="${escapeXmlAttribute(window.close)}" />`);
+                    }
+                }
+            }
+            lines.push('  </business_hours>');
+            return;
+        }
         // Business hours: prefer tenant-level settings, fall back to agent schedule
         if (tenantBusinessHours) {
             lines.push('  <business_hours>');

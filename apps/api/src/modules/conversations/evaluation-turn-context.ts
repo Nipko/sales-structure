@@ -10,6 +10,8 @@ export interface EvaluationTurnContextInputs {
     version: 1;
     tenantId: string;
     businessHours: Record<string, unknown> | null;
+    /** Hours derived from the appointment agenda, for the prompt only. Optional: older snapshots lack it. */
+    appointmentHours?: Record<string, unknown> | null;
     regional: TenantRegionalProfileV1;
     business: NonNullable<TurnContext['business']> | null;
     activeObjectPolicy: ActiveObjectPolicyContext;

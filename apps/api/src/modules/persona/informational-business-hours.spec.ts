@@ -3,6 +3,8 @@ import {
     deriveInformationalHours,
     resolvePromptBusinessHours,
     UNKNOWN_INFORMATIONAL_HOURS,
+    informationalStatus,
+    promptHoursStatus,
 } from '../conversations/informational-hours';
 
 /**
@@ -105,5 +107,35 @@ describe('the prompt carries the informational hours', () => {
         expect(prompt).toContain('<status>unknown</status>');
         expect(prompt).toMatch(/persona del equipo/);
         expect(prompt).not.toContain('<day ');
+    });
+});
+
+describe('the status the prompt states', () => {
+    const agenda = deriveInformationalHours(citasRows, 'America/Bogota')!;
+    // Bogota is UTC-5 all year.
+    const at = (iso: string) => new Date(iso);
+
+    it.each([
+        ['Saturday 15:00 local', '2026-10-03T20:00:00Z', 'open'],
+        ['Saturday 19:00 local (closing instant)', '2026-10-04T00:00:00Z', 'closed'],
+        ['Sunday noon local', '2026-10-04T17:00:00Z', 'closed'],
+        ['Monday 08:59 local', '2026-10-05T13:59:00Z', 'closed'],
+        ['Monday 09:00 local', '2026-10-05T14:00:00Z', 'open'],
+    ])('%s is %s according to the agenda', (_name, iso, expected) => {
+        expect(informationalStatus(agenda, 'America/Bogota', at(iso))).toBe(expected);
+    });
+
+    it('is unknown, not open, without configured hours or an agenda', () => {
+        expect(promptHoursStatus('open', false, null, 'America/Bogota')).toBe('unknown');
+        expect(promptHoursStatus('open', false, UNKNOWN_INFORMATIONAL_HOURS, 'America/Bogota')).toBe('unknown');
+    });
+
+    it('keeps the existing verdict whenever hours are configured', () => {
+        expect(promptHoursStatus('closed', true, null, 'America/Bogota')).toBe('closed');
+        expect(promptHoursStatus('open', true, agenda, 'America/Bogota')).toBe('open');
+    });
+
+    it('uses the agenda when nothing is configured', () => {
+        expect(promptHoursStatus('open', false, agenda, 'America/Bogota', at('2026-10-04T17:00:00Z'))).toBe('closed');
     });
 });

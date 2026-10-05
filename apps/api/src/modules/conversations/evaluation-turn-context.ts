@@ -1,5 +1,6 @@
 import type { BusinessIdentity, TenantRegionalProfileV1, TurnContext, VerticalContext } from '@parallext/shared';
 import type { ActiveObjectPolicyContext } from './active-object-policy';
+import type { InformationalHours } from './informational-hours';
 
 export const EVALUATION_CONTEXT_LANGUAGES = ['es', 'en', 'pt', 'fr'] as const;
 export type EvaluationContextLanguage = typeof EVALUATION_CONTEXT_LANGUAGES[number];
@@ -11,7 +12,7 @@ export interface EvaluationTurnContextInputs {
     tenantId: string;
     businessHours: Record<string, unknown> | null;
     /** Hours derived from the appointment agenda, for the prompt only. Optional: older snapshots lack it. */
-    appointmentHours?: Record<string, unknown> | null;
+    appointmentHours?: InformationalHours | null;
     regional: TenantRegionalProfileV1;
     business: NonNullable<TurnContext['business']> | null;
     activeObjectPolicy: ActiveObjectPolicyContext;

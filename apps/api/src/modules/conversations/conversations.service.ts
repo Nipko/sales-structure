@@ -66,7 +66,7 @@ import { buildUnverifiedPriceReply, enforceVerifiedPriceReply, ResponseValidator
 import { AgentTurnSession } from './agent-turn-session';
 import { sessionCanExecute, sessionLlmRouter, sessionToolExecutor } from './agent-turn-adapters';
 import { restoreBookingMission } from './booking-state-continuity';
-import { deriveInformationalHours, resolvePromptBusinessHours, UNKNOWN_INFORMATIONAL_HOURS, type InformationalHours } from './informational-hours';
+import { deriveInformationalHours, hasConfiguredHours, promptHoursStatus, resolvePromptBusinessHours, UNKNOWN_INFORMATIONAL_HOURS, type InformationalHours } from './informational-hours';
 import { resolveEvaluationSnapshot } from './agent-evaluation-snapshot';
 import { AGENT_TEST_EXECUTION_CONTEXT, DRAFT_EXECUTION_CONTEXT, type ServiceExecutionContext } from '../../common/types/execution-context';
 import { EVALUATION_CONTEXT_LANGUAGES, evaluationContextLanguage, projectBusinessTurnContext,
@@ -1971,7 +1971,7 @@ export class ConversationsService {
     private async loadInformationalHours(
         tenantId: string, config: TenantConfig, evaluationContext: EvaluationTurnContextInputs | null,
     ): Promise<InformationalHours | null> {
-        if (evaluationContext) return (evaluationContext.appointmentHours as InformationalHours | null | undefined) ?? null;
+        if (evaluationContext) return evaluationContext.appointmentHours ?? null;
         const cacheKey = `biz_hours_info:${tenantId}`;
         try {
             const cached = await this.redis.getJson(cacheKey);
@@ -2501,7 +2501,7 @@ export class ConversationsService {
     /** Informational hours for the sealed preview context; absent when unreadable. */
     private async captureAppointmentHours(tenantId: string, config: TenantConfig): Promise<InformationalHours | null> {
         try {
-            return await this.readInformationalHours(await this.tenantSchema(tenantId), config.hours?.timezone);
+            return await this.readInformationalHours(await this.prisma.getTenantSchemaName(tenantId), config.hours?.timezone);
         } catch (error: any) {
             this.logger.warn(`[Hours] Appointment hours not captured for the evaluation context: ${error?.message}`);
             return null;
@@ -4259,6 +4259,11 @@ export class ConversationsService {
         // open/closed; this only adds an informational schedule when the tenant
         // configured none, so the agent can answer "¿a qué hora abren?".
         const promptHours = await this.resolvePromptBusinessHours(tenantId, config, bizHours, evaluationContext);
+        // `isWithinBusinessHours` answers `open` when no hours exist; the prompt must not
+        // repeat that as a fact. Configured hours keep their verdict; otherwise the agenda
+        // decides, and without one the status is `unknown`.
+        turnContext.businessHoursStatus = promptHoursStatus(turnContext.businessHoursStatus as 'open' | 'closed',
+            hasConfiguredHours(bizHours, config.hours), promptHours, config.hours?.timezone || 'America/Bogota');
         // Assemble with a cache boundary: the contract+persona prefix is stable
         // across turns and can be cached by the provider (90% off on Anthropic;
         // better OpenAI auto-cache hit-rate). Only the <turn> block changes.

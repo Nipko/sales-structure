@@ -115,3 +115,43 @@ export function unknownHoursInstruction(language?: string): string {
     const code = String(language || 'es').slice(0, 2).toLowerCase();
     return UNKNOWN_HOURS_INSTRUCTION[code] ?? UNKNOWN_HOURS_INSTRUCTION.es;
 }
+
+export type HoursStatus = 'open' | 'closed' | 'unknown';
+
+/** Are the hours of this tenant/agent configured by a person (not derived)? */
+export function hasConfiguredHours(tenantHours: any, agentHours: any): boolean {
+    return !!tenantHours?.is247 || hasEntries(tenantHours?.schedule) || hasEntries(agentHours?.schedule);
+}
+
+/** Open/closed right now according to the agenda hours, in the given time zone. */
+export function informationalStatus(hours: InformationalHours, timezone: string, now: Date = new Date()): HoursStatus {
+    let parts: Intl.DateTimeFormatPart[];
+    try {
+        parts = new Intl.DateTimeFormat('en-US', { timeZone: timezone, weekday: 'long', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(now);
+    } catch { return 'unknown'; }
+    const day = (parts.find(p => p.type === 'weekday')?.value || '').toLowerCase();
+    const current = (parseInt(parts.find(p => p.type === 'hour')?.value || '0', 10) % 24) * 60
+        + parseInt(parts.find(p => p.type === 'minute')?.value || '0', 10);
+    const windows = hours.schedule?.[day]?.windows ?? [];
+    return windows.some(w => {
+        const open = toMinutes(w.open);
+        const close = toMinutes(w.close);
+        return open !== null && close !== null && current >= open && current < close;
+    }) ? 'open' : 'closed';
+}
+
+/**
+ * The status the PROMPT states. Configured hours keep the existing verdict.
+ * Without them `isWithinBusinessHours` answers `open` for lack of data, and the
+ * agent then claimed "estamos abiertos" with no hours at all: the status comes
+ * from the agenda when there is one, and is `unknown` otherwise.
+ */
+export function promptHoursStatus(
+    configuredStatus: 'open' | 'closed', configured: boolean, promptHours: any, fallbackTimezone: string, now: Date = new Date(),
+): HoursStatus {
+    if (configured) return configuredStatus;
+    if (promptHours?.informational === true && promptHours.unknown !== true) {
+        return informationalStatus(promptHours as InformationalHours, promptHours.timezone || fallbackTimezone, now);
+    }
+    return 'unknown';
+}

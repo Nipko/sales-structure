@@ -103,7 +103,7 @@ describe('opening hours reach the prompt from the appointment agenda', () => {
     const agenda = [1, 2, 3, 4, 5, 6].map(day => ({ user_id: 'u', day_of_week: day, start_time: '09:00:00', end_time: '19:00:00' }));
     const withAgenda = (rows: any[] | Error) => {
         const h = fixture();
-        (h.f.runtime as any).tenantSchema = async () => 'tenant_test';
+        (h.f.prisma as any).getTenantSchemaName = async () => 'tenant_test';
         h.f.prisma.executeInTenantSchema.mockImplementation(async (_schema: string, sql: string) => {
             if (/availability_slots/.test(sql)) { if (rows instanceof Error) throw rows; return rows; }
             return [];
@@ -132,5 +132,24 @@ describe('opening hours reach the prompt from the appointment agenda', () => {
         const h = withAgenda(new Error('relation does not exist'));
         await h.turn('¿A qué hora abren?');
         expect(promptHours(h.f)).toBeNull();
+    });
+
+    it('states the status as unknown, never open, when no hours are known (BEH-C19)', async () => {
+        const h = withAgenda([]);
+        await h.turn('¿Están abiertos?');
+        expect(h.session().trace.systemPrompt).toContain('<business_hours_status>unknown</business_hours_status>');
+        expect(h.session().trace.systemPrompt).not.toContain('<business_hours_status>open</business_hours_status>');
+    });
+
+    it('keeps the old status when the agenda cannot be read and nothing is configured: unknown, not open', async () => {
+        const h = withAgenda(new Error('relation does not exist'));
+        await h.turn('¿Están abiertos?');
+        expect(h.session().trace.systemPrompt).toContain('<business_hours_status>unknown</business_hours_status>');
+    });
+
+    it('computes the status from the agenda when there is one', async () => {
+        const h = withAgenda(agenda);
+        await h.turn('¿Están abiertos?');
+        expect(h.session().trace.systemPrompt).toMatch(/<business_hours_status>(open|closed)<\/business_hours_status>/);
     });
 });

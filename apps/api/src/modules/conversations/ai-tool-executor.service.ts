@@ -74,6 +74,7 @@ import {
 } from './agent-test-tool-policy';
 import {
     evalIdentityChallengeResult,
+    agentTestIdentityChallengeResult,
     executeEvalSandboxMutation,
 } from './eval-writer-sandbox';
 import { isDraftProposableToolName, isNonCommittalTool, isRegisteredStaticTool } from './tool-policy-registry';
@@ -99,6 +100,16 @@ import {
 } from '../../common/utils/payment-policy.util';
 import { attachWriterActiveObject } from './writer-active-object';
 import { RepairOrdersService } from '../repair-orders/repair-orders.service';
+import { selectSlotWindow } from './slot-window';
+import { foldedSql, foldQueryText } from '../../common/utils/sql-accent-fold.util';
+
+/**
+ * Two products whose names differ only by accents ("Audífono" / "Audifono") both
+ * satisfy the folded comparison. The one written exactly as the customer typed
+ * it wins, then the one that differs only in case, then a stable order, so the
+ * answer is the same on every call.
+ */
+const EXACT_NAME_FIRST = '(name = $1::text) DESC, (lower(name) = lower($1::text)) DESC, name ASC, id ASC';
 
 interface PreparedContactConsent {
     policyId: string;
@@ -474,6 +485,13 @@ export class AIToolExecutorService {
                 args = { ...args, allowWaitlist: args.allowWaitlist === true, enrollmentTerms: terms, enrollmentTermsHash: enrollmentTermsHash(terms) };
             }
             if (opts?.executionContext?.mode === 'draft' && !isAgentTestSafeToolName(toolName)) {
+                if (toolName === 'apply_discount') {
+                    // Refuse an out-of-ceiling discount before it becomes a proposal.
+                    const ceiling = await this.resolveDiscountCeiling(schemaName, opts.operationalScope, opts.maxDiscountPercent);
+                    if (!ceiling.ok) return { ...ceiling.result, persisted: false };
+                    const rejected = this.paymentOperations.discountRequestError(args, ceiling.max);
+                    if (rejected) return { ...rejected, persisted: false };
+                }
                 if (!this.toolExecutionControl?.proposeDraftAction) return { error: 'draft_action_requires_approval', persisted: false };
                 // Resolve only canonical, read-only terms before recording the
                 // review. Domain preconditions, identity challenges and writers
@@ -596,6 +614,15 @@ export class AIToolExecutorService {
                 : await this.assertWritePreconditions(schemaName, toolName, args);
             if (precondition) return precondition;
 
+            // A discount above the tenant ceiling is refused BEFORE the customer
+            // is asked to confirm and before a human is asked to approve it.
+            if (toolName === 'apply_discount') {
+                const ceiling = await this.resolveDiscountCeiling(schemaName, operationalScope, opts?.maxDiscountPercent);
+                if (!ceiling.ok) return ceiling.result;
+                const rejected = this.paymentOperations.discountRequestError(args, ceiling.max);
+                if (rejected) return rejected;
+            }
+
             controlDecision = await this.toolExecutionControl.preflight({
                 schemaName,
                 tenantId,
@@ -692,7 +719,7 @@ export class AIToolExecutorService {
                     return this.listServices(schemaName);
 
                 case 'check_availability':
-                    return this.checkAvailability(schemaName, args.date, args.serviceId, args.staffId, canonicalSandbox, args.vehicleId);
+                    return this.checkAvailability(schemaName, args.date, args.serviceId, args.staffId, canonicalSandbox, args.vehicleId, typeof args.time === 'string' ? args.time : undefined);
 
                 case 'create_appointment':
                     return this.createAppointment(schemaName, tenantId, contactId, args as any, conversationId, opts?.evalMode, canonicalSandbox, operationalScope, executionIdempotencyKey);
@@ -840,14 +867,21 @@ export class AIToolExecutorService {
                     if (!controlDecision?.allowed || !controlDecision.ledgerId) {
                         return this.moneyLedgerUnavailable();
                     }
-                    return this.paymentOperations.applyDiscount(
-                        schemaName,
-                        tenantId,
-                        contactId,
-                        controlDecision.ledgerId,
-                        args,
-                        opts?.maxDiscountPercent,
-                    );
+                    {
+                        // The ceiling is resolved HERE, from the stored agent
+                        // configuration the scope names, so no caller (LLM loop,
+                        // approval resume, server-side "yes") can omit it.
+                        const ceiling = await this.resolveDiscountCeiling(schemaName, operationalScope, opts?.maxDiscountPercent);
+                        if (!ceiling.ok) return ceiling.result;
+                        return this.paymentOperations.applyDiscount(
+                            schemaName,
+                            tenantId,
+                            contactId,
+                            controlDecision.ledgerId,
+                            args,
+                            ceiling.max,
+                        );
+                    }
 
                 case 'create_payment_link':
                     if (!controlDecision?.allowed || !controlDecision.ledgerId || !preparedPaymentLink) {
@@ -1038,7 +1072,7 @@ export class AIToolExecutorService {
                 // sigue pudiendo leerlo. El código por un canal distinto es lo
                 // que convierte la identidad de declarada en verificada.
                 case 'check_policy_status': {
-                    const gate = await this.requireVerifiedIdentity(tenantId, schemaName, contactId, conversationId, opts?.channelType);
+                    const gate = await this.requireVerifiedIdentity(tenantId, schemaName, contactId, conversationId, opts?.channelType, opts?.executionContext);
                     if (gate) return gate;
                     return this.checkPolicyStatusTool(schemaName, contactId, args);
                 }
@@ -1050,13 +1084,13 @@ export class AIToolExecutorService {
                     return this.verifyIdentityCodeTool(conversationId, args?.code);
 
                 case 'file_claim': {
-                    const gate = await this.requireVerifiedIdentity(tenantId, schemaName, contactId, conversationId, opts?.channelType);
+                    const gate = await this.requireVerifiedIdentity(tenantId, schemaName, contactId, conversationId, opts?.channelType, opts?.executionContext);
                     if (gate) return gate;
                     return this.fileInsuranceClaimTool(schemaName, contactId, args);
                 }
 
                 case 'list_my_claims': {
-                    const gate = await this.requireVerifiedIdentity(tenantId, schemaName, contactId, conversationId, opts?.channelType);
+                    const gate = await this.requireVerifiedIdentity(tenantId, schemaName, contactId, conversationId, opts?.channelType, opts?.executionContext);
                     if (gate) return gate;
                     return this.listMyClaimsTool(schemaName, contactId, args.policyNumber);
                 }
@@ -1411,14 +1445,17 @@ export class AIToolExecutorService {
      * matched — and a query that throws says so instead of returning zero rows.
      */
     private async searchProducts(schema: string, query: string, limit = 5, category?: string): Promise<any> {
-        const q = `%${query}%`;
+        // `%` and `_` typed by the customer are text, not wildcards.
+        const q = `%${foldQueryText(query).replace(/[\\%_]/g, '\\$&')}%`;
         const conds: string[] = [];
         const params: any[] = [];
-        conds.push(`(name ILIKE $${params.length + 1} OR description ILIKE $${params.length + 1} OR category ILIKE $${params.length + 1})`);
+        // Accent- and case-insensitive: "Audifono" must find "Audífono".
+        const pattern = foldedSql(`$${params.length + 1}::text`);
+        conds.push(`(${foldedSql('name')} LIKE ${pattern} OR ${foldedSql('description')} LIKE ${pattern} OR ${foldedSql('category')} LIKE ${pattern})`);
         params.push(q);
         if (category) {
-            conds.push(`category = $${params.length + 1}`);
-            params.push(category);
+            conds.push(`${foldedSql('category')} = ${foldedSql(`$${params.length + 1}::text`)}`);
+            params.push(foldQueryText(category));
         }
         conds.push(`is_available = true`);
         params.push(limit);
@@ -1461,8 +1498,8 @@ export class AIToolExecutorService {
             const rows: any[] = await this.prisma.$queryRawUnsafe(
                 isUuid
                     ? `SELECT id, name, description, category, price, currency, stock, is_available, images, metadata, requires_prescription FROM "${schema}".products WHERE id = $1::uuid LIMIT 1`
-                    : `SELECT id, name, description, category, price, currency, stock, is_available, images, metadata, requires_prescription FROM "${schema}".products WHERE name ILIKE $1 LIMIT 1`,
-                productIdOrName,
+                    : `SELECT id, name, description, category, price, currency, stock, is_available, images, metadata, requires_prescription FROM "${schema}".products WHERE ${foldedSql('name')} = ${foldedSql('$1::text')} ORDER BY ${EXACT_NAME_FIRST} LIMIT 1`,
+                isUuid ? productIdOrName : foldQueryText(productIdOrName),
             );
             if (rows.length > 0) {
                 const p = rows[0];
@@ -1778,15 +1815,19 @@ export class AIToolExecutorService {
         try {
             const rows: any[] = await this.prisma.$queryRawUnsafe(
                 isUuid
-                    ? `SELECT id, name, stock, is_available, requires_prescription FROM "${schema}".products WHERE id = $1::uuid LIMIT 1`
-                    : `SELECT id, name, stock, is_available, requires_prescription FROM "${schema}".products WHERE name ILIKE $1 LIMIT 1`,
-                productIdOrName,
+                    ? `SELECT id, name, price, currency, stock, is_available, requires_prescription FROM "${schema}".products WHERE id = $1::uuid LIMIT 1`
+                    : `SELECT id, name, price, currency, stock, is_available, requires_prescription FROM "${schema}".products WHERE ${foldedSql('name')} = ${foldedSql('$1::text')} ORDER BY ${EXACT_NAME_FIRST} LIMIT 1`,
+                isUuid ? productIdOrName : foldQueryText(productIdOrName),
             );
             if (rows.length > 0) {
                 const p = rows[0];
                 return readOk({
                     id: p.id,
                     name: p.name,
+                    // Same fields and same coercion as get_product: an answer about
+                    // stock that omits the price makes the agent guess or stay silent.
+                    price: Number(p.price || 0),
+                    currency: p.currency || null,
                     stock: p.stock ?? null,
                     inStock: p.stock == null ? p.is_available : Number(p.stock) > 0,
                     // Haber stock y poder venderlo por chat no son lo mismo.
@@ -2794,7 +2835,7 @@ export class AIToolExecutorService {
         };
     }
 
-    private async checkAvailability(schema: string, date: string, serviceId: string, staffId?: string, namespace?: EvalNamespaceLease, vehicleId?: string): Promise<any> {
+    private async checkAvailability(schema: string, date: string, serviceId: string, staffId?: string, namespace?: EvalNamespaceLease, vehicleId?: string, requestedTime?: string): Promise<any> {
         const directory = await tenantActorDirectory(this.prisma,schema,namespace);
         const resolvedStaffId = staffId
             ? await assertActiveTenantUser(this.prisma, schema, staffId, namespace)
@@ -3038,7 +3079,10 @@ export class AIToolExecutorService {
         }
         // Slot hold (D3): ofrecer sin reservar es race. Al mostrar slots, pre-reservar 2 min con NX
         // para que segundo cliente no vea mismo hueco libre y luego falle al crear.
-        for (const s of availableSlots.slice(0, 6)) {
+        // La tanda visible se centra en la hora pedida, si la hay; los holds cubren
+        // exactamente lo que se ofrece.
+        const offeredSlots = selectSlotWindow(availableSlots, requestedTime);
+        for (const s of offeredSlots) {
             const holdKey = `slot:hold:${resolvedServiceId}:${date}:${s.time}`;
             // Best-effort, no bloquea respuesta; NX evita pisar hold existente
             this.redis.acquireLockToken(holdKey, 120).catch(() => {});
@@ -3062,7 +3106,7 @@ export class AIToolExecutorService {
         return {
             available: availableSlots.length > 0,
             date,
-            slots: availableSlots.slice(0, 6).map(s => ({
+            slots: offeredSlots.map(s => ({
                 time: s.time,
                 endTime: s.endTime,
                 staffName: userNames[s.userId] || undefined,
@@ -3893,7 +3937,7 @@ export class AIToolExecutorService {
             const booking: any[] = await this.prisma.$queryRawUnsafe(
                 `SELECT 1 FROM "${schema}".property_bookings
                  WHERE property_id = $1::uuid AND contact_id = $2::uuid
-                   AND status NOT IN ('cancelled', 'rejected')
+                   AND LOWER(COALESCE(status, '')) IN ('confirmed', 'checked_in')
                    AND check_in <= CURRENT_DATE
                    AND check_out >= CURRENT_DATE
                  LIMIT 1`,
@@ -3934,6 +3978,55 @@ export class AIToolExecutorService {
      * agente tiene `list_properties` para reencontrar el dato, y ahora tambien
      * el bloque <recent_actions> donde ese id figura.
      */
+    /**
+     * Tenant discount ceiling, resolved on the server. The stored configuration
+     * of the agent named by the (hash-verified) scope is authoritative; the
+     * caller-supplied value can only tighten it. Fails closed when the scope
+     * names a configuration that cannot be read.
+     */
+    private async resolveDiscountCeiling(
+        schemaName: string,
+        scope: ServedAgentAuthority | undefined,
+        requested: number | undefined,
+    ): Promise<{ ok: true; max: number | undefined } | { ok: false; result: Record<string, unknown> }> {
+        const finite = (value: unknown): number | undefined => {
+            if (value === null || value === undefined || value === '') return undefined;
+            const n = Number(value);
+            return Number.isFinite(n) ? n : undefined;
+        };
+        let max = finite(requested);
+        if (scope && validServedAgentAuthority(scope, schemaName)) {
+            try {
+                const rows: any[] = scope.kind === 'agent'
+                    ? await this.prisma.executeInTenantSchema(schemaName,
+                        `SELECT config_json->'upsell'->>'maxDiscountPercent' AS max FROM agent_personas WHERE id = $1::uuid AND is_active = true`,
+                        [scope.agentId])
+                    : await this.prisma.executeInTenantSchema(schemaName,
+                        `SELECT config_json->'upsell'->>'maxDiscountPercent' AS max FROM persona_config WHERE is_active = true ORDER BY version DESC LIMIT 1`);
+                if (!rows[0]) throw new Error('discount_ceiling_source_missing');
+                const stored = finite(rows[0].max);
+                if (stored !== undefined) max = max === undefined ? stored : Math.min(max, stored);
+            } catch (error: any) {
+                this.logger.warn(`[Tool] apply_discount ceiling unavailable: ${error?.message}`);
+                return { ok: false, result: {
+                    error: 'discount_ceiling_unavailable',
+                    message: 'No pude verificar el tope de descuento de este negocio. No apliques ningún descuento; ofrece pasar la solicitud a una persona.',
+                    shouldHandoff: true,
+                } };
+            }
+        }
+        // No verified scope and no caller ceiling: nothing bounds the grant, so
+        // refuse instead of silently falling back to the platform maximum.
+        if (max === undefined && !(scope && validServedAgentAuthority(scope, schemaName))) {
+            return { ok: false, result: {
+                error: 'discounts_disabled',
+                message: 'Este negocio no autoriza descuentos por chat.',
+                shouldHandoff: true,
+            } };
+        }
+        return { ok: true, max };
+    }
+
     private async assertWritePreconditions(
         schemaName: string, toolName: string, args: any,
     ): Promise<any | null> {
@@ -5038,7 +5131,11 @@ export class AIToolExecutorService {
         contactId: string,
         conversationId: string | undefined,
         channelType?: string,
+        executionContext?: ServiceExecutionContext,
     ): Promise<any | null> {
+        // Agent Test is zero-effect: it never delivers an OTP and never creates
+        // a challenge. Same directive the evaluation identity receives.
+        if (persistenceDisabled(executionContext)) return agentTestIdentityChallengeResult();
         if (!conversationId) {
             return {
                 error: 'identity_context_required',
@@ -5048,9 +5145,15 @@ export class AIToolExecutorService {
         }
         if (await this.chatIdentity.isVerified(conversationId, contactId)) return null;
 
-        const started = await this.chatIdentity.startVerification(
-            tenantId, schemaName, contactId, conversationId, channelType || '',
-        );
+        let started: Awaited<ReturnType<ChatIdentityService['startVerification']>>;
+        try {
+            started = await this.chatIdentity.startVerification(
+                tenantId, schemaName, contactId, conversationId, channelType || '',
+            );
+        } catch (error: any) {
+            if (error?.message !== 'identity_challenge_admission_failed') throw error;
+            return { error: 'identity_unverifiable', message: 'No pude iniciar la verificación; no se envió ningún código. Escala la gestión a una persona.', shouldHandoff: true };
+        }
 
         if (started.status === 'already_verified') return null;
         if (started.status === 'pending') {
@@ -5059,6 +5162,7 @@ export class AIToolExecutorService {
                 message: 'Ya hay una verificación en curso. No envíes otro código; pídele al cliente que espere el mensaje y comparta el código recibido.',
             };
         }
+        if (started.status === 'blocked') return this.identityLockedResult();
         if (started.status === 'no_channel') {
             return {
                 error: 'identity_unverifiable',
@@ -5074,6 +5178,15 @@ export class AIToolExecutorService {
         };
     }
 
+    /** Too many codes issued or too many wrong attempts: no new code, hand off. */
+    private identityLockedResult(): Record<string, unknown> {
+        return {
+            error: 'identity_locked',
+            message: 'La verificación de identidad está bloqueada temporalmente por demasiados intentos. NO ofrezcas un código nuevo ni sigas intentando: pasa la conversación a un asesor humano.',
+            shouldHandoff: true,
+        };
+    }
+
     private async requestIdentityCodeTool(
         tenantId: string,
         schemaName: string,
@@ -5082,9 +5195,16 @@ export class AIToolExecutorService {
         channelType?: string,
     ): Promise<any> {
         if (!conversationId) return { error: 'no_conversation' };
-        const res = await this.chatIdentity.startVerification(tenantId, schemaName, contactId, conversationId, channelType || '');
+        let res: Awaited<ReturnType<ChatIdentityService['startVerification']>>;
+        try {
+            res = await this.chatIdentity.startVerification(tenantId, schemaName, contactId, conversationId, channelType || '');
+        } catch (error: any) {
+            if (error?.message !== 'identity_challenge_admission_failed') throw error;
+            return { error: 'identity_unverifiable', message: 'No pude iniciar la verificación; no se envió ningún código. Escala la gestión a una persona.', shouldHandoff: true };
+        }
         if (res.status === 'already_verified') return { alreadyVerified: true };
         if (res.status === 'pending') return { pending: true, message: 'Ya hay una verificación en curso. No envíes otro código.' };
+        if (res.status === 'blocked') return this.identityLockedResult();
         if (res.status === 'no_channel') {
             return {
                 error: 'identity_unverifiable',
@@ -5104,7 +5224,13 @@ export class AIToolExecutorService {
             expired: 'El código venció o no se pidió ninguno. Ofrece enviar uno nuevo con request_identity_code.',
             wrong: 'El código no coincide. Pídaselo de nuevo; le quedan intentos.',
             too_many: 'Demasiados intentos fallidos. NO siga intentando: pase la conversación a un asesor humano.',
+            unavailable: 'No se pudo comprobar el código en este momento. El código NO es inválido: pídele al cliente que lo envíe de nuevo en unos segundos.',
         };
+        if (res.reason === 'unavailable') {
+            // Carries `error` so the execution ledger records a failure and never
+            // replays this transient outcome as the answer to the same code.
+            return { verified: false, reason: res.reason, error: 'identity_verification_unavailable', message: messages.unavailable, retryable: true };
+        }
         return {
             verified: false,
             reason: res.reason,
@@ -5163,7 +5289,10 @@ export class AIToolExecutorService {
                 claimId: claim.id,
                 claimNumber: claim.claim_number,
                 status: claim.status,
-                message: `Claim filed with number ${claim.claim_number}. A human agent will review it shortly.`,
+                ...(claim.alreadyFiled ? { alreadyFiled: true } : {}),
+                message: claim.alreadyFiled
+                    ? `This incident was already filed under claim number ${claim.claim_number}. Do not file it again; a human agent will review it.`
+                    : `Claim filed with number ${claim.claim_number}. A human agent will review it shortly.`,
                 shouldHandoff: true,
             };
         } catch (e: any) {

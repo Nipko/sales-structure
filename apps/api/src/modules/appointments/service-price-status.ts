@@ -48,7 +48,7 @@ export function customerFacingPrice(row: { price?: unknown; price_status?: unkno
 /** The instruction the model gets instead of a number. */
 export function servicePriceNote(status: ServicePriceStatus): string | undefined {
     if (status === 'quote') return 'El negocio cotiza este servicio según el caso: no digas ningún monto, ofrece que una persona lo cotice.';
-    if (status === 'example') return 'Precio pendiente de confirmar por el negocio: no digas ningún monto ni lo estimes; di que te lo confirman.';
+    if (status === 'example') return 'Precio pendiente de confirmar por el negocio: no digas ningún monto ni lo estimes; di que el precio no está confirmado y ofrece que una persona del equipo lo confirme.';
     return undefined;
 }
 

@@ -9,12 +9,24 @@ import { RegionalProfileService } from '../tenants/regional-profile.service';
 import { CronLockService } from '../redis/cron-lock.service';
 
 const MAX_ATTEMPTS = 5;
+const VERIFY_MAX_RETRIES = 10;
+/** Issuance ceiling per conversation and contact; stops brute force by re-issuing codes. */
+export const IDENTITY_MAX_CHALLENGES_PER_HOUR = 3;
+/** After a lockout (too many wrong codes) no new code is issued for this long. */
+export const IDENTITY_LOCKOUT_COOLDOWN_MINUTES = 30;
+
+/** Prisma P2034 / PostgreSQL 40001 (serialization failure) and 40P01 (deadlock). */
+function isSerializationConflict(error: any): boolean {
+    const text = `${error?.code ?? ''} ${error?.meta?.code ?? ''} ${error?.message ?? ''}`;
+    return /P2034|\b40001\b|\b40P01\b|could not serialize|deadlock detected/i.test(text);
+}
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 
 export type StartResult =
     | { status: 'sent'; via: 'email' | 'sms'; hint: string }
     | { status: 'pending' }
     | { status: 'no_channel' }
+    | { status: 'blocked' }
     | { status: 'already_verified' };
 
 /** Durable out-of-band identity step-up for sensitive agent tools. */
@@ -67,10 +79,11 @@ export class ChatIdentityService {
         const admitted = await this.prisma.transactionInTenantSchema(schemaName, async query => {
             await query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))::text',
                 [`chat-identity:${tenantId}:${conversationId}`]);
-            const contacts: any[] = await query(`SELECT email,phone,phone_normalized,is_active
-                FROM contacts WHERE id=$1::uuid LIMIT 1`, [contactId]);
+            const contacts: any[] = await query(`SELECT c.email,c.phone,c.phone_normalized,
+                EXISTS (SELECT 1 FROM customer_memory_erasure e WHERE e.contact_id=c.id) AS erased
+                FROM contacts c WHERE c.id=$1::uuid LIMIT 1`, [contactId]);
             const contact = contacts[0];
-            if (!contact || contact.is_active === false) return { state: 'no_channel' };
+            if (!contact || contact.erased === true) return { state: 'no_channel' };
 
             const email = String(contact.email || '').trim();
             const phone = contact.phone_normalized
@@ -97,6 +110,17 @@ export class ChatIdentityService {
                 ORDER BY created_at DESC LIMIT 1 FOR UPDATE`, [tenantId, conversationId]);
             if (inFlight[0]) return inFlight[0];
 
+            const [throttle]: any[] = await query(`SELECT
+                (SELECT COUNT(*)::int FROM public.chat_identity_challenges
+                  WHERE tenant_id=$1::uuid AND conversation_id=$2::uuid AND contact_id=$3::uuid
+                    AND created_at>NOW()-INTERVAL '1 hour') AS issued,
+                EXISTS(SELECT 1 FROM public.chat_identity_challenges
+                  WHERE tenant_id=$1::uuid AND conversation_id=$2::uuid
+                    AND error_code='identity_too_many_attempts'
+                    AND updated_at>NOW()-INTERVAL '${IDENTITY_LOCKOUT_COOLDOWN_MINUTES} minutes') AS locked`,
+            [tenantId, conversationId, contactId]);
+            if (throttle?.locked || Number(throttle?.issued) >= IDENTITY_MAX_CHALLENGES_PER_HOUR) return { state: 'blocked' };
+
             await query(`UPDATE public.chat_identity_challenges
                 SET superseded_at=NOW(),updated_at=NOW(),code=NULL,
                     state=CASE WHEN state IN ('pending','failed','claimed') THEN 'suppressed' ELSE state END,
@@ -114,26 +138,89 @@ export class ChatIdentityService {
                 this.digest(channel, recipient), hint, code]);
             return rows[0];
         }).catch(error => {
-            this.logger.warn(`Identity challenge admission failed: ${error?.message}`);
-            return { state: 'pending' };
+            // Never answer 'pending' here: that tells the customer a code is on its
+            // way when no challenge row exists and nothing was sent (a broken query
+            // looked exactly like a verification in progress). Fail explicitly so
+            // the tool layer reports a failure instead of a phantom handshake.
+            this.logger.error(`Identity challenge admission failed: ${error?.message}`, error?.stack);
+            throw new Error('identity_challenge_admission_failed', { cause: error });
         });
 
         if (admitted.state === 'no_channel') return { status: 'no_channel' };
+        if (admitted.state === 'blocked') return { status: 'blocked' };
         if (admitted.state === 'sent') return { status: 'sent', via: admitted.channel, hint: admitted.hint };
         if (!['pending', 'failed'].includes(admitted.state)) return { status: 'pending' };
-        const outcome = await this.deliver(admitted.id).catch(() => 'identity:pending');
+        const outcome = await this.deliver(admitted.id).catch(error => {
+            // The challenge row exists and the provider outcome is unknown or
+            // failed; recovery owns it. Log it so it is never silent.
+            this.logger.warn(`Identity challenge delivery did not complete: ${error?.message}`);
+            return 'identity:pending';
+        });
         return outcome === 'identity:sent'
             ? { status: 'sent', via: admitted.channel, hint: admitted.hint }
             : { status: 'pending' };
     }
 
-    async verifyCode(conversationId: string, code: string): Promise<{ ok: boolean; reason?: 'expired' | 'wrong' | 'too_many' }> {
+    /**
+     * True while the conversation has a challenge a customer can still answer:
+     * issued, not consumed, not superseded and not past its expiry.
+     */
+    async hasLiveChallenge(conversationId: string, contactId?: string): Promise<boolean> {
+        if (!UUID.test(conversationId)) return false;
+        try {
+            const rows = await this.prisma.$queryRawUnsafe<any[]>(`SELECT contact_id
+                FROM chat_identity_challenges
+                WHERE conversation_id=$1::uuid AND consumed_at IS NULL AND superseded_at IS NULL
+                  AND expires_at>NOW() AND code IS NOT NULL
+                ORDER BY created_at DESC LIMIT 1`, conversationId);
+            if (!rows[0]) return false;
+            return contactId ? String(rows[0].contact_id) === contactId : true;
+        } catch { return false; }
+    }
+
+    async verifyCode(conversationId: string, code: string): Promise<{ ok: boolean; reason?: 'expired' | 'wrong' | 'too_many' | 'unavailable' }> {
         if (!UUID.test(conversationId)) return { ok: false, reason: 'expired' };
-        const result = await this.prisma.$transaction(async (tx: any) => {
+        // Serializable transactions abort with a serialization failure (P2034 /
+        // SQLSTATE 40001) when other customers verify at the same time. That is
+        // a retryable infrastructure signal, never an answer about the code:
+        // retry a bounded number of times, and report anything else as
+        // 'unavailable' - NEVER as 'expired', which tells the customer (and the
+        // execution ledger) that a correct code is dead.
+        let result: { state: string } | undefined;
+        for (let attempt = 0; ; attempt += 1) {
+            try {
+                result = await this.verifyCodeOnce(conversationId, code);
+                break;
+            } catch (error: any) {
+                if (isSerializationConflict(error) && attempt < VERIFY_MAX_RETRIES) {
+                    await new Promise(resolve => setTimeout(resolve, Math.min(20 * 2 ** attempt, 400) * (0.5 + Math.random())));
+                    continue;
+                }
+                this.logger.warn(`Identity verification unavailable (attempt ${attempt + 1}): ${error?.code || ''} ${error?.message}`);
+                return { ok: false, reason: 'unavailable' };
+            }
+        }
+        if (result.state === 'accepted') {
+            this.logger.log(`Identidad verificada en la conversación ${conversationId}`);
+            return { ok: true };
+        }
+        return { ok: false, reason: result.state as 'expired' | 'wrong' | 'too_many' };
+    }
+
+    private async verifyCodeOnce(conversationId: string, code: string): Promise<{ state: string }> {
+        return this.prisma.$transaction(async (tx: any) => {
             const rows = await tx.$queryRawUnsafe(`SELECT * FROM chat_identity_challenges
                 WHERE conversation_id=$1::uuid AND consumed_at IS NULL AND superseded_at IS NULL
                 ORDER BY created_at DESC LIMIT 1 FOR UPDATE`, conversationId);
             const row = rows[0];
+            if (!row) {
+                // A lockout supersedes the challenge: report it as what it is,
+                // not as an expired code the customer could ask to renew.
+                const locked = await tx.$queryRawUnsafe(`SELECT 1 FROM chat_identity_challenges
+                    WHERE conversation_id=$1::uuid AND error_code='identity_too_many_attempts'
+                      AND updated_at>NOW()-INTERVAL '${IDENTITY_LOCKOUT_COOLDOWN_MINUTES} minutes' LIMIT 1`, conversationId);
+                if (locked[0]) return { state: 'too_many' };
+            }
             if (!row || !row.code || new Date(row.expires_at).getTime() <= Date.now()) {
                 if (row) await tx.$executeRawUnsafe(`UPDATE chat_identity_challenges SET state=CASE
                     WHEN state IN ('pending','failed','claimed') THEN 'suppressed' ELSE state END,
@@ -160,12 +247,7 @@ export class ChatIdentityService {
                 SET consumed_at=NOW(),verified_at=NOW(),verified_expires_at=NOW()+INTERVAL '30 minutes',
                     code=NULL,updated_at=NOW() WHERE id=$1::uuid`, row.id);
             return { state: 'accepted' };
-        }, { isolationLevel: 'Serializable' as any }).catch(() => ({ state: 'expired' }));
-        if (result.state === 'accepted') {
-            this.logger.log(`Identidad verificada en la conversación ${conversationId}`);
-            return { ok: true };
-        }
-        return { ok: false, reason: result.state as 'expired' | 'wrong' | 'too_many' };
+        }, { isolationLevel: 'Serializable' as any });
     }
 
     async processDue(limit = 100): Promise<number> {
@@ -212,9 +294,11 @@ export class ChatIdentityService {
                 return { state: 'suppressed' };
             }
             const contacts: any[] = row.channel === 'email'
-                ? await query(`SELECT 1 FROM contacts WHERE id=$1::uuid AND is_active=true
+                ? await query(`SELECT 1 FROM contacts c WHERE c.id=$1::uuid
+                    AND NOT EXISTS (SELECT 1 FROM customer_memory_erasure e WHERE e.contact_id=c.id)
                     AND LOWER(email)=LOWER($2) LIMIT 1`, [row.contact_id,row.recipient])
-                : await query(`SELECT 1 FROM contacts WHERE id=$1::uuid AND is_active=true
+                : await query(`SELECT 1 FROM contacts c WHERE c.id=$1::uuid
+                    AND NOT EXISTS (SELECT 1 FROM customer_memory_erasure e WHERE e.contact_id=c.id)
                     AND (phone_normalized=$2 OR phone=$2) LIMIT 1`, [row.contact_id,row.recipient]);
             if (!contacts[0]) {
                 await query(`UPDATE public.chat_identity_challenges SET state='suppressed',code=NULL,

@@ -1,5 +1,6 @@
 import type { DispatchItem, DispatchItemKind } from './agent-dispatch-outbox';
 import { foldableCaption } from './native-caption';
+import { stripInternalMarkers } from '../../common/utils/internal-markers.util';
 
 /**
  * Turns what a turn produced into the ordered list of remote effects it means.
@@ -52,7 +53,9 @@ const MAX_ITEMS = 32;
 const MAX_TEXT = 32000;
 
 function textItem(text: string, kind: DispatchItemKind): DispatchItem {
-    const body = String(text ?? '').trim();
+    // Last line of defence for the internal `[Article: …]` citation: the turn
+    // already strips it, but this is the edge every durable effect crosses.
+    const body = stripInternalMarkers(String(text ?? '')).trim();
     if (!body) throw new DispatchItemError('dispatch_item_empty_text');
     if (body.length > MAX_TEXT) throw new DispatchItemError('dispatch_item_text_too_long');
     return Object.freeze({ kind, payload: Object.freeze({ text: body }) });
@@ -85,9 +88,9 @@ export function buildDispatchItems(
             throw new DispatchItemError('dispatch_item_incomplete_flow');
         items.push(Object.freeze({ kind: 'flow' as const, payload: Object.freeze({
             flowId: String(flowId), flowToken: String(flowToken),
-            text: String(output.flow.text ?? ''),
-            ...(output.flow.headerText ? { headerText: String(output.flow.headerText) } : {}),
-            ...(output.flow.footerText ? { footerText: String(output.flow.footerText) } : {}),
+            text: stripInternalMarkers(String(output.flow.text ?? '')),
+            ...(output.flow.headerText ? { headerText: stripInternalMarkers(String(output.flow.headerText)) } : {}),
+            ...(output.flow.footerText ? { footerText: stripInternalMarkers(String(output.flow.footerText)) } : {}),
             ...(output.flow.flowCta ? { flowCta: String(output.flow.flowCta) } : {}),
             ...(output.flow.flowMode ? { flowMode: output.flow.flowMode } : {}),
             ...(output.flow.initialScreen ? { initialScreen: String(output.flow.initialScreen) } : {}),
@@ -95,7 +98,11 @@ export function buildDispatchItems(
                 ? { initialData: output.flow.initialData } : {}),
         }) }));
     } else {
-        for (const chunk of output.textChunks || []) items.push(textItem(chunk, 'text'));
+        for (const chunk of output.textChunks || []) {
+            // A bubble that was nothing but an internal marker has nothing to say.
+            if (String(chunk ?? '').trim() && !stripInternalMarkers(String(chunk)).trim()) continue;
+            items.push(textItem(chunk, 'text'));
+        }
     }
 
     // The link goes before the pictures because it is what the customer is
@@ -111,7 +118,8 @@ export function buildDispatchItems(
         // second message the transport never needed. Everywhere else it really
         // is two POSTs behind one call, and the split stays — see
         // `native-caption.ts` for why that distinction lives in one place.
-        const folded = foldableCaption(options.channelType, attachment.mediaType, attachment.caption);
+        const caption = attachment.caption == null ? attachment.caption : stripInternalMarkers(String(attachment.caption));
+        const folded = foldableCaption(options.channelType, attachment.mediaType, caption);
         items.push(Object.freeze({ kind: 'media' as const, payload: Object.freeze({
             mediaUrl: url,
             ...(attachment.mediaType ? { mediaType: String(attachment.mediaType) } : {}),
@@ -120,8 +128,8 @@ export function buildDispatchItems(
         }) }));
         // The caption follows the attachment as its own effect, so a caption
         // that fails never causes the attachment to be sent a second time.
-        if (!folded && attachment.caption && String(attachment.caption).trim()) {
-            items.push(textItem(String(attachment.caption), 'text'));
+        if (!folded && caption && String(caption).trim()) {
+            items.push(textItem(String(caption), 'text'));
         }
     }
 

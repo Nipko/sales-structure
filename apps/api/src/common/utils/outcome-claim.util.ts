@@ -188,11 +188,90 @@ export function promisesLaterDelivery(text: string | null | undefined): boolean 
 }
 
 /**
+ * Frases de ESPERA: "déjame verificar", "permítame consultar", "un momento",
+ * "let me check", "um instante", "je vais vérifier"… Prometen volver con un
+ * dato. En este pipeline un turno es pregunta→respuesta y nada manda un segundo
+ * mensaje, así que la promesa solo es cierta si en ese mismo turno se llamó a
+ * una herramienta (y entonces ya hay dato que decir).
+ */
+const WAIT_PHRASE = new RegExp(
+    [
+        // es
+        '(dejame|dejeme|permiteme|permitame|permitanme|dame|denme) (un |unos |una )?(momento|segundo|minuto|instante)?\\s*(para )?(verificar|consultar|revisar|confirmar|chequear|checar|comprobar|ver|averiguar|validar)',
+        '(dejame|dejeme|permiteme|permitame) (verificar|consultar|revisar|confirmar|chequear|checar|comprobar|averiguar)',
+        'voy a (verificar|consultar|revisar|confirmar|chequear|checar|comprobar|averiguar|validar)',
+        '(un|unos) (momento|momentito|segundo|segundito|minuto|instante)',
+        // en
+        "let me (check|verify|confirm|look|see|find out|get)",
+        "i(’|')?ll (check|verify|confirm|look into|find out|get back)",
+        'i will (check|verify|confirm|look into|find out|get back)',
+        '(one|just a|give me a|hold on a|bear with me a) ?(moment|second|minute)',
+        'hold on',
+        // pt
+        '(deixe|deixa)(-| )?(me|eu) (verificar|consultar|checar|confirmar|ver|conferir)',
+        'vou (verificar|consultar|checar|confirmar|conferir|ver)',
+        'um (momento|instante|segundo|minutinho)',
+        'so um (momento|instante|segundo)',
+        // fr
+        '(laissez|laisse)(-| )?(moi) (verifier|consulter|voir|regarder|confirmer)',
+        'je vais (verifier|consulter|regarder|confirmer|voir)',
+        'un (instant|moment|petit moment)',
+        'un instant',
+    ].join('|'),
+    'i',
+);
+
+/**
+ * Words that may remain around a wait phrase without being "content":
+ * acknowledgements, courtesy and the object pronouns of the wait itself
+ * ("déjame verificar ESO", "let me check THAT for you").
+ */
+const WAIT_FILLER = new Set([
+    'listo', 'claro', 'perfecto', 'ok', 'okay', 'vale', 'sure', 'of', 'course', 'certainly',
+    'gracias', 'thanks', 'thank', 'you', 'por', 'favor', 'please', 'eso', 'esto', 'ese', 'esa',
+    'dato', 'info', 'informacion', 'que', 'el', 'la', 'lo', 'los', 'las', 'te', 'le', 'me', 'mi',
+    'tu', 'su', 'un', 'una', 'y', 'e', 'and', 'para', 'for', 'that', 'this', 'it', 'a', 'the', 'i',
+    'ya', 'hola', 'hello', 'hi', 'oi', 'ola', 'bonjour', 'merci', 'svp', 'tudo', 'bem', 'bom',
+    'isso', 'ca', 'cela', 'vous', 'pour', 'je', 'de', 'des', 'si', 'yes', 'sim', 'oui', 'pues',
+    'be', 'right', 'back', 'soon', 'bien', 'entonces', 'mismo', 'ahora', 'now', 'agora', 'maintenant', 's', 'il', 'plait',
+]);
+
+/** Fewer words than this after the wait phrase is stripped is "no content". */
+const WAIT_MAX_CONTENT_WORDS = 1;
+
+/** Wait-promise messages carry no information; anything longer is content. */
+const BARE_WAIT_MAX_WORDS = 18;
+
+/**
+ * ¿La respuesta ES SOLO una promesa de espera, sin contenido?
+ *
+ * Estrecho a propósito: tiene una frase de espera, es corta (<= 18 palabras),
+ * no trae cifras (un precio, una hora, una fecha ya es contenido), no le hace
+ * una pregunta al cliente (pedir un dato es avanzar el turno) y, quitada la
+ * frase de espera y la cortesía, no queda otra cláusula con contenido
+ * ("un momento y te comparto el menú" SÍ tiene otra cláusula). Sirve para el
+ * caso en que NO se llamó a ninguna herramienta: ahí la espera es una promesa
+ * sin entrega posible.
+ */
+export function isBareWaitPromise(text: string | null | undefined): boolean {
+    if (!text || !text.trim()) return false;
+    if (/[?¿]/.test(text) || /\d/.test(text)) return false;
+    const words = text.trim().split(/\s+/).filter(Boolean);
+    if (words.length > BARE_WAIT_MAX_WORDS) return false;
+    const n = normalize(text).replace(/[’]/g, "'");
+    if (!WAIT_PHRASE.test(n)) return false;
+    const rest = n
+        .replace(new RegExp(WAIT_PHRASE.source, 'gi'), ' ')
+        .match(/[a-z]+/g) || [];
+    return rest.filter(w => !WAIT_FILLER.has(w)).length <= WAIT_MAX_CONTENT_WORDS;
+}
+
+/**
  * Destinatarios humanos. Sin acentos porque `normalize` ya los quitó
  * ("companero", no "compañero").
  */
 const HUMAN_TARGET =
-    '(asesor|asesores|agente|agentes|equipo|humano|persona|representante|especialista'
+    '(asesor|asesores|agente|agentes|agent|equipe|equipo|humano|persona|representante|especialista'
     + '|ejecutivo|operador|companero|colega|supervisor|team|human|advisor|representative'
     + '|colleague|atendente|consultor|conseiller)';
 
@@ -211,6 +290,17 @@ const HUMAN_TARGET =
  * transferencia Y un destinatario humano cerca. "Puedo ayudarte con el equipo
  * de ventas" no es una promesa de transferencia.
  */
+/**
+ * The destination of a transfer: a preposition, optional determiners, then the
+ * human target — all adjacent. Without it "Vou te passar o cardápio da equipe"
+ * (hand you the menu) or "Je vais vous passer les horaires de notre équipe"
+ * would read as "I am transferring you to the team" and escalate unasked.
+ */
+const WORDS3 = "([a-z']+\\s+){0,3}";
+const DEST_EN = '\\b(to|with)\\s+' + WORDS3 + HUMAN_TARGET;
+const DEST_PT = '\\b(para|com|a|ao)\\s+' + WORDS3 + HUMAN_TARGET;
+const DEST_FR = '\\b(a|avec|vers)\\s+' + WORDS3 + HUMAN_TARGET;
+
 const HANDOFF_PROMISE = new RegExp(
     [
         // es — "le paso con un asesor", "lo transfiero con el equipo"
@@ -218,14 +308,14 @@ const HANDOFF_PROMISE = new RegExp(
         '(voy a|procedo a|paso a)\\s+(transferir|pasar|comunicar|conectar|derivar)\\b[^.!?]{0,40}' + HUMAN_TARGET,
         // "un asesor se comunicara", "nuestro equipo lo contactara"
         HUMAN_TARGET + '[^.!?]{0,40}(se (comunicara|contactara|pondra en contacto)|lo (contactara|atendera)|le (escribira|atendera)|te (contactara|atendera))',
-        // en
-        '(transferring|connecting) you\\b[^.!?]{0,40}' + HUMAN_TARGET,
-        "(i['’]?ll|i will|let me) (transfer|connect|put) you\\b[^.!?]{0,40}" + HUMAN_TARGET,
+        // en — the human target must be introduced by "to"/"with" right before it
+        '(transferring|connecting) you\\b[^.!?,]{0,12}' + DEST_EN,
+        "(i['’]?ll|i will|let me) (transfer|connect|put) you\\b[^.!?,]{0,12}" + DEST_EN,
         HUMAN_TARGET + '[^.!?]{0,40}will (contact|reach out|be with|get back)',
-        // pt
-        '(vou|estou) (transferir|transferindo|conectar|passar)\\b[^.!?]{0,40}' + HUMAN_TARGET,
-        // fr
-        'je vous (transfere|mets en relation|passe)\\b[^.!?]{0,40}' + HUMAN_TARGET,
+        // pt — "passar você para um atendente"; "passar o cardápio da equipe" is NOT a handoff
+        '(vou|estou) (te |lhe |voce )?(transferir|transferindo|conectar|passar)\\b[^.!?,]{0,12}' + DEST_PT,
+        // fr — "vous passer à un conseiller"; "vous passer les horaires de notre équipe" is NOT
+        'je (vous (transfere|mets en relation|passe)|vais vous (transferer|passer|mettre( en relation)?))\\b[^.!?,]{0,12}' + DEST_FR,
     ].join('|'),
 );
 

@@ -1531,14 +1531,33 @@ export class ToolExecutionControlService {
         }
         if (await this.chatIdentity.isVerified(request.conversationId, request.contactId)) return null;
 
-        const started = await this.chatIdentity.startVerification(
-            request.tenantId,
-            request.schemaName,
-            request.contactId,
-            request.conversationId,
-            request.channelType || '',
-        );
+        let started: Awaited<ReturnType<ChatIdentityService['startVerification']>>;
+        try {
+            started = await this.chatIdentity.startVerification(
+                request.tenantId,
+                request.schemaName,
+                request.contactId,
+                request.conversationId,
+                request.channelType || '',
+            );
+        } catch (error: any) {
+            // The admission itself broke (already logged by the identity service):
+            // no challenge exists and nothing was sent. Say so instead of tool_failed.
+            if (error?.message !== 'identity_challenge_admission_failed') throw error;
+            return {
+                error: 'identity_unverifiable',
+                message: 'No pude iniciar la verificación; no se envió ningún código. Escala la gestión a una persona.',
+                shouldHandoff: true,
+            };
+        }
         if (started.status === 'already_verified') return null;
+        if (started.status === 'blocked') {
+            return {
+                error: 'identity_locked',
+                message: 'La verificación de identidad está bloqueada temporalmente por demasiados intentos. No ofrezcas un código nuevo; escala la gestión a una persona.',
+                shouldHandoff: true,
+            };
+        }
         if (started.status === 'no_channel') {
             return {
                 error: 'identity_unverifiable',
@@ -1567,6 +1586,11 @@ export class ToolExecutionControlService {
         argsHash: string,
         latestInbound: { id: string; content_text: string | null },
     ): Promise<ExecutionLedgerRow | null> {
+        // A code check is not an effect to deduplicate: replaying an earlier
+        // verdict (e.g. a transient 'unavailable' or a stale 'expired') would
+        // answer a correct code with someone else's outcome. Each attempt is
+        // evaluated afresh; the challenge row itself bounds the attempts.
+        if (request.toolName === 'verify_identity_code') return null;
         const latestInboundMessageId = latestInbound.id;
         const supplied = request.idempotencyKey?.trim();
         if (supplied && /^[A-Za-z0-9_.:-]{8,128}$/.test(supplied)) {
@@ -1612,7 +1636,13 @@ export class ToolExecutionControlService {
         if (requestsAnotherOperation(latestInbound.content_text)) {
             return null;
         }
-        const settled = await this.query<ExecutionLedgerRow[]>(
+        // The idempotency of a code request is tied to the LIVE challenge, not to
+        // the ledger alone: once the code expired (or was consumed or superseded)
+        // an identical request is a new intention and must issue a new code.
+        const bound = request.toolName === 'request_identity_code'
+            && !(await this.chatIdentity.hasLiveChallenge(String(request.conversationId), request.contactId))
+            && !(await this.chatIdentity.isVerified(String(request.conversationId), request.contactId));
+        const settled = bound ? [] : await this.query<ExecutionLedgerRow[]>(
             request.schemaName,
             `SELECT * FROM tool_execution_ledger
               WHERE conversation_id = $1::uuid
@@ -1724,13 +1754,16 @@ export class ToolExecutionControlService {
                 },
             };
         }
-        await ensureCommitmentProposals(
-            ((sql: string, params: any[] = []) => this.query(request.schemaName, sql, params)) as any);
+        // No DDL here. This runs inside the preflight transaction, whose first
+        // statement is the shared privacy lock; any `CREATE TABLE` after it trips
+        // runtime_schema_lock_required_at_transaction_start and the customer's own
+        // "yes" ends in tool_failed. `commitment_proposals` is created once per
+        // schema by ensureControlTables, outside the transaction.
         await this.query(request.schemaName,
             `INSERT INTO commitment_proposals
                 (proposal_hash, family, action, contact_id, conversation_id, inbound_message_id,
                  idempotency_key, proposal, amount_cents, currency, accepted_at)
-             VALUES ($1,$2,$3,$4::uuid,$5::uuid,$6::uuid,$7,$8::jsonb,$9,$10,NOW())
+             VALUES ($1,$2,$3,$4::uuid,$5::uuid,$6::uuid,$7,$8::jsonb,$9::numeric,$10,NOW())
              -- The unique index is partial, and PostgreSQL will not infer a
              -- partial index unless the statement repeats its predicate.
              -- Without this the insert fails with "no unique or exclusion
@@ -2415,7 +2448,9 @@ export class ToolExecutionControlService {
         sourceMessageId: string,
     ): string {
         const supplied = request.idempotencyKey?.trim();
-        const source = supplied && /^[A-Za-z0-9_.:-]{8,128}$/.test(supplied)
+        const source = request.toolName === 'verify_identity_code'
+            ? `attempt:${randomUUID()}`
+            : supplied && /^[A-Za-z0-9_.:-]{8,128}$/.test(supplied)
             ? `caller:${supplied}`
             : `derived:${sourceMessageId}`;
         return sha256([
@@ -2659,6 +2694,10 @@ export class ToolExecutionControlService {
                     ON tool_approval_outbox (status, next_attempt_at)
                     WHERE status IN ('pending', 'failed')`,
             );
+            // Canonical in tenant-schema.sql; kept here only for legacy tenants. It
+            // belongs with the other lazy tables, before any transaction opens.
+            await ensureCommitmentProposals(
+                ((sql: string, params: any[] = []) => this.query(schemaName, sql, params)) as any);
         })().catch(error => {
             this.initializedSchemas.delete(schemaName);
             throw error;

@@ -22,6 +22,7 @@ export const APPOINTMENT_TOOLS: ToolDefinition[] = [
             properties: {
                 date: { type: 'string', description: 'YYYY-MM-DD format' },
                 serviceId: { type: 'string', description: 'Service UUID or name' },
+                time: { type: 'string', description: 'Optional HH:MM 24h time the customer asked for. At most 6 slots are returned; with this, they are the ones closest to that time so it is not cut off.' },
                 vehicleId: {type:'string',description:'For a test drive, vehicle UUID from search_vehicles; filters occupied vehicle intervals as well as the staff agenda'},
                 staffId: {
                     type: 'string',

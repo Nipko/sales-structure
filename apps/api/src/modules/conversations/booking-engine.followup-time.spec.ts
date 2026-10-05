@@ -220,3 +220,117 @@ describe('slot order', () => {
         expect(times(result.state.slots)).toEqual(['08:00', '08:30', '09:00', '09:30', '10:00', '10:30']);
     });
 });
+
+describe('changing the time after the slot was already chosen', () => {
+    const window = (from: string, to: string) => dayFrom().filter(s => mins(s.time) >= mins(from) && mins(s.time) <= mins(to));
+    const late = (step: BookingState['step']): BookingState => ({
+        step, services, serviceId: idA, serviceName: 'Consulta', date, time: '16:00',
+        slots: window('14:30', '17:00'), customerName: 'Ana Perez', customerEmail: step === 'ask_email' ? undefined : 'ana@example.test',
+        ...(step === 'confirm' ? { confirmationId: 'old', confirmationHash: 'old-hash', confirmationIssuedAt: new Date().toISOString() } : {}),
+    });
+    const created = (h: ReturnType<typeof harness>) => h.execute.mock.calls.filter(c => c[3] === 'create_appointment');
+
+    it('confirm + "mejor a las 17:30" (free): new summary with 17:30, and a yes books 17:30', async () => {
+        const h = harness();
+        const changed = await h.turn(late('confirm'), { intent: 'select_slot', timeMentioned: '17:30' }, 'mejor a las 17:30');
+        expect(changed.state.time).toBe('17:30');
+        expect(changed.state.confirmationId).not.toBe('old');
+        expect(changed.text).toContain('17:30');
+        expect(changed.text).not.toContain('16:00');
+        await h.turn(changed.state, { intent: 'confirm', isConfirmation: true }, 'sí');
+        for (const call of created(h)) expect((call[4] as any).time).toBe('17:30');
+    });
+
+    it('confirm + a time that is not free: drops the old time and proposal and never books the old one', async () => {
+        const h = harness(dayFrom().filter(s => mins(s.time) < 11 * 60 || s.time === '16:00'));
+        const changed = await h.turn(late('confirm'), { intent: 'select_slot', timeMentioned: '17:30' }, 'mejor a las 17:30');
+        expect(changed.state.time).toBeUndefined();
+        expect(changed.state.staffId).toBeUndefined();
+        expect(changed.state.confirmationId).toBeUndefined();
+        expect(changed.state.step).toBe('show_slots');
+        expect(changed.text).toMatch(/no est[aá] disponible/i);
+        await h.turn(changed.state, { intent: 'confirm', isConfirmation: true }, 'sí');
+        expect(created(h)).toHaveLength(0);
+    });
+
+    it('ask_email + another free time replaces the time', async () => {
+        const h = harness();
+        const changed = await h.turn(late('ask_email'), { intent: 'select_slot', timeMentioned: '17:30' }, 'mejor a las 17:30');
+        expect(changed.state.time).toBe('17:30');
+        expect(changed.state.step).toBe('ask_email');
+    });
+
+    it('ask_email + a busy time recommends a neighbour instead of keeping the old time', async () => {
+        const h = harness(dayFrom(['17:30']));
+        const changed = await h.turn(late('ask_email'), { intent: 'select_slot', timeMentioned: '17:30' }, 'mejor a las 17:30');
+        expect(changed.state.time).toBeUndefined();
+        expect(changed.state.step).toBe('show_slots');
+        expect(times(changed.state.suggestedSlots)).toEqual(['17:00']);
+        expect(changed.text).toMatch(/recomiendo/i);
+    });
+
+    it('repeating the time already chosen keeps the booking as it is', async () => {
+        const h = harness();
+        const same = await h.turn(late('confirm'), { intent: 'select_slot', timeMentioned: '16:00' }, 'a las 16:00');
+        expect(same.state.time).toBe('16:00');
+        expect(same.state.confirmationId).toBe('old');
+    });
+});
+
+describe('time asked together with a service change', () => {
+    it('queries the NEW service, not the old one that has no slots', async () => {
+        const h = harness();
+        h.execute.mockImplementation(async (_s: string, _t: string, _c: string, name: string, args: any) => {
+            if (name !== 'check_availability') return { success: true };
+            if (args.serviceId === idA) return { available: false, slots: [], message: 'Not available' };
+            const target = mins(args.time);
+            const pick = dayFrom().map((s, i) => ({ s, i, d: Math.abs(mins(s.time) - target) }))
+                .sort((a, b) => a.d - b.d || a.i - b.i).slice(0, 6).sort((a, b) => a.i - b.i).map(e => e.s);
+            return { available: true, date, slots: pick };
+        });
+        const state: BookingState = { step: 'show_slots', services, serviceId: idA, serviceName: 'Consulta', date, slots: dayFrom().slice(0, 3) };
+        const result = await h.turn(state, { intent: 'select_service', serviceMentioned: 'Masaje', timeMentioned: '17:30' }, 'mejor masaje a las 17:30');
+
+        expect(result.state.serviceId).toBe(idB);
+        expect(result.state.time).toBe('17:30');
+        expect(result.text).not.toMatch(/completamente lleno|no encontr|no tenemos horarios/i);
+    });
+});
+
+describe('a yes while two recommendations are pending', () => {
+    it('repeats only the recommended times, so "la primera" means what the customer just read', async () => {
+        const h = harness();
+        const first = await h.turn(h.start(), { intent: 'ask_availability', dateMentioned: date, timeMentioned: '16:10' }, 'x');
+        expect(times(first.state.suggestedSlots)).toEqual(['16:00', '16:30']);
+        const yes = await h.turn(first.state, { intent: 'confirm', isConfirmation: true }, 'sí');
+
+        expect(yes.text).toContain('16:00');
+        expect(yes.text).toContain('16:30');
+        expect(yes.text).not.toContain('15:00');
+        expect(yes.text).not.toContain('17:30');
+    });
+});
+
+describe('remaining first-turn and stale-state cases', () => {
+    it('single service with date and time in the first message takes a free time', async () => {
+        const h = harness();
+        const state: BookingState = { step: 'idle', services: [services[0]] };
+        const result = await h.turn(state, { intent: 'ask_availability', dateMentioned: date, timeMentioned: '16:00' }, 'sábado 16:00');
+
+        expect(result.state.serviceId).toBe(idA);
+        expect(result.state.time).toBe('16:00');
+        expect(result.state.step).toBe('ask_name');
+    });
+
+    it('a past date drops pending recommendations', async () => {
+        const h = harness();
+        const state: BookingState = {
+            step: 'show_slots', services, serviceId: idA, serviceName: 'Consulta', date,
+            slots: [make('15:00'), make('16:30')], suggestedSlots: [make('16:30')],
+        };
+        const result = await h.turn(state, { intent: 'ask_availability', dateMentioned: '2026-08-01' }, 'x');
+
+        expect(result.state.suggestedSlots).toBeUndefined();
+        expect(result.state.date).toBeUndefined();
+    });
+});

@@ -6,6 +6,7 @@ import { AgentDispatchOutboxStore } from '../channels/agent-dispatch-outbox.stor
 import { ProactiveDispatchService } from '../channels/proactive-dispatch.service';
 import { DISPATCH_OUTBOX_DDL, DispatchOutboxError } from '../channels/agent-dispatch-outbox';
 import { ensureSyntheticGlobalTables } from '../../common/__fixtures__/synthetic-global-tables';
+import { OPT_OUT_REGISTER_DDL } from '../../common/__fixtures__/opt-out-register-ddl';
 
 /**
  * ═══ A DRIP STEP, THROUGH THE REAL STORE ═══
@@ -47,6 +48,20 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
 
     const sql = (text: string, params: any[] = []): Promise<any[]> =>
         prisma.executeInTenantSchema(schema, text, params);
+
+    it('suppresses a step whose contact opted out after preparing, and says so', async () => {
+        const drip = await enrolment();
+        await run(drip.id);
+        const [row] = await outboxRows();
+        expect(row.state).toBe('queued');
+        await sql("INSERT INTO opt_out_records(phone,channel,status) VALUES('573001112233','whatsapp','confirmed')");
+
+        await expect(store.admit(tenantId, row.id))
+            .rejects.toMatchObject({ code: 'dispatch_effect_superseded' });
+        const [after] = await outboxRows();
+        expect(after.state).toBe('suppressed');
+        expect(after.error_code).toBe('recipient_opted_out');
+    });
 
     const STEPS = [
         { delay_seconds: 0, message_type: 'template', template_name: 'prospeccion', template_language: 'es' },
@@ -106,6 +121,7 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
 
         await sql(`CREATE TABLE contacts(id UUID PRIMARY KEY, name TEXT, phone TEXT,
             external_id TEXT, channel_type TEXT, email TEXT)`);
+        for (const ddl of OPT_OUT_REGISTER_DDL) await sql(ddl);
         await sql(`CREATE TABLE conversations(id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             contact_id UUID REFERENCES contacts(id), channel_type TEXT, channel_account_id TEXT,
             status TEXT DEFAULT 'active', updated_at TIMESTAMPTZ DEFAULT NOW())`);
@@ -160,7 +176,7 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
     beforeEach(async () => {
         published = [];
         scheduled = [];
-        await sql(`TRUNCATE agent_dispatch_outbox, messages, drip_enrollments, drip_sequences,
+        await sql(`TRUNCATE agent_dispatch_outbox, opt_out_records, leads, messages, drip_enrollments, drip_sequences,
             conversations, contacts CASCADE`);
     });
 

@@ -351,7 +351,7 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             .rejects.toMatchObject({ code: 'dispatch_effect_superseded' });
         const [after] = await outboxRows();
         expect(after.state).toBe('suppressed');
-        expect(String(after.error_code)).toContain('proactive_gone');
+        expect(after.error_code).toBe('recipient_opted_out');
     });
 
     it('prepares nothing for a recipient who opted out before the worker got to them', async () => {
@@ -517,6 +517,38 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         const closed = await recipient(c.recipientId);
         expect(closed.status).toBe('failed');
         expect(String(closed.error_message)).toContain('proactive_gone');
+    });
+
+    it('closes an opted-out recipient as SKIPPED at settle, not failed, and finishes the campaign', async () => {
+        const c = await campaign();
+        await send(c);
+        const [row] = await outboxRows();
+        await sql("INSERT INTO opt_out_records(phone,channel,status) VALUES('573001112233','whatsapp','confirmed')");
+        await expect(store.admit(tenantId, row.id)).rejects.toThrow();
+
+        const completion = jest.spyOn((processor as any).broadcastService, 'checkCampaignCompletion');
+        expect(await settle(c)).toContain('settled:skipped');
+        expect(completion).toHaveBeenCalledWith(schema, c.campaignId);
+        completion.mockRestore();
+        const closed = await recipient(c.recipientId);
+        expect(closed.status).toBe('skipped');
+        expect(closed.error_message).toBe('recipient_opted_out');
+    });
+
+    it('closes the recipient when the opt-out lands AFTER the worker gate but before the authority is read', async () => {
+        const c = await campaign();
+        await sql("INSERT INTO opt_out_records(phone,channel,status) VALUES('573001112233','whatsapp','confirmed')");
+        // The gate at the top of process() sees nobody opted out; the authority
+        // built a moment later does.
+        const gate = jest.spyOn(processor as any, 'recipientOptedOut').mockResolvedValueOnce(false);
+        const completion = jest.spyOn((processor as any).broadcastService, 'checkCampaignCompletion');
+        try {
+            expect(await send(c)).toBe('skipped:recipient_opted_out');
+        } finally { gate.mockRestore(); }
+        expect(await outboxRows()).toEqual([]);
+        expect(await recipient(c.recipientId)).toMatchObject({ status: 'skipped' });
+        expect(completion).toHaveBeenCalledWith(schema, c.campaignId);
+        completion.mockRestore();
     });
 
     it('retries rather than inventing an answer when the row is gone', async () => {

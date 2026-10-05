@@ -6,6 +6,7 @@ import { AgentDispatchOutboxStore } from '../channels/agent-dispatch-outbox.stor
 import { ProactiveDispatchService } from '../channels/proactive-dispatch.service';
 import { DISPATCH_OUTBOX_DDL, DispatchOutboxError } from '../channels/agent-dispatch-outbox';
 import { ensureSyntheticGlobalTables } from '../../common/__fixtures__/synthetic-global-tables';
+import { OPT_OUT_REGISTER_DDL } from '../../common/__fixtures__/opt-out-register-ddl';
 
 /**
  * ═══ A NURTURING NUDGE, THROUGH THE REAL STORE ═══
@@ -124,8 +125,9 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         // fixture missing them would make the gate throw, and the gate stands
         // down when it cannot read — so the test would pass for the wrong
         // reason, which is the worst way to cover a consent rule.
-        await sql(`CREATE TABLE leads(id UUID PRIMARY KEY, contact_id UUID,
+        await sql(`CREATE TABLE leads(id UUID PRIMARY KEY, contact_id UUID, phone VARCHAR(50),
             opted_out BOOLEAN DEFAULT false, updated_at TIMESTAMPTZ DEFAULT NOW())`);
+        await sql(OPT_OUT_REGISTER_DDL[1]);
         await sql(`CREATE TABLE tasks(id UUID PRIMARY KEY DEFAULT gen_random_uuid(), lead_id UUID,
             title TEXT, description TEXT, type TEXT, status TEXT, due_at TIMESTAMPTZ)`);
         for (const statement of DISPATCH_OUTBOX_DDL) await sql(statement);
@@ -170,7 +172,7 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             enabled: true, maxAttempts: 3, delays: [1, 2, 3], allowedChannels: ['whatsapp'],
             finalAction: 'mark_not_interested', whatsappTemplateName: 'seguimiento', maxPerDay: 1,
         };
-        await sql(`TRUNCATE agent_dispatch_outbox, messages, tasks, leads, conversations,
+        await sql(`TRUNCATE agent_dispatch_outbox, opt_out_records, messages, tasks, leads, conversations,
             contacts CASCADE`);
     });
 
@@ -358,6 +360,22 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         await expect(store.admit(tenantId, row.id))
             .rejects.toMatchObject({ code: 'dispatch_effect_superseded' });
         expect(String((await outboxRows())[0].error_code)).toContain('proactive_gone');
+    });
+
+    it('suppresses a nudge whose contact opted out after preparing, and says so', async () => {
+        const t = await thread();
+        await run(t, 1);
+        const [row] = await outboxRows();
+        expect(row.state).toBe('queued');
+        await sql("INSERT INTO opt_out_records(lead_id,channel,status) VALUES($1::uuid,'whatsapp','confirmed')", [t.leadId]);
+        await sql("UPDATE leads SET contact_id = (SELECT contact_id FROM conversations WHERE id = $1::uuid) WHERE id = $2::uuid",
+            [t.conversationId, t.leadId]);
+
+        await expect(store.admit(tenantId, row.id))
+            .rejects.toMatchObject({ code: 'dispatch_effect_superseded' });
+        const [after] = await outboxRows();
+        expect(after.state).toBe('suppressed');
+        expect(after.error_code).toBe('recipient_opted_out');
     });
 
     it('sends nothing to a contact who used the unsubscribe link', async () => {

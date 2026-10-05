@@ -155,14 +155,77 @@ import { LANE_CHAT_DDL, N3_LANE_URL, leadOptedOut, openLane, optOut } from '../.
         ]);
     });
 
-    it('AUT-C36 (second layer): a campaign whose every recipient opted out is not launched', async () => {
+    it('AUT-C36 (second layer): a campaign whose every recipient opted out is FINISHED, not failed', async () => {
         await seedContact(randomUUID(), 'Ana Baja', '+573001110001');
         const created = await service.createCampaign(lane.tenantId,
             { name: 'Sola', channels: ['whatsapp'], templateName: 'promo', targetAudience: 'all' }, actorId);
         await optOut(lane.sql, '+573001110001');
-        await expect(service.launchCampaign(lane.tenantId, created.id, actorId)).rejects.toThrow(/No eligible recipients/);
+        await expect(service.launchCampaign(lane.tenantId, created.id, actorId))
+            .resolves.toEqual({ queued: 0, finished: 'all_recipients_opted_out' });
         expect(jobs).toEqual([]);
+        const [campaign] = await lane.sql('SELECT status, ends_at, metadata FROM campaigns WHERE id=$1::uuid', [created.id]);
+        expect(campaign.status).toBe('finished');
+        expect(campaign.ends_at).not.toBeNull();
+        expect(campaign.metadata.finishedWithoutSending.code).toBe('all_recipients_opted_out');
+    });
+
+    it('AUT-C36 (scheduler): a due scheduled campaign with nobody left is closed once and does not come back every minute', async () => {
+        await seedContact(randomUUID(), 'Ana Baja', '+573001110001');
+        const created = await service.createCampaign(lane.tenantId, {
+            name: 'Programada vacia', channels: ['whatsapp'], templateName: 'promo', targetAudience: 'all',
+            scheduledAt: new Date(Date.now() - 60_000).toISOString(),
+        }, actorId);
+        expect((await lane.sql('SELECT status FROM campaigns WHERE id=$1::uuid', [created.id]))[0].status).toBe('scheduled');
+        await optOut(lane.sql, '+573001110001');
+
+        // Only this tenant: the isolated database holds other suites' tenants.
+        lane.prisma.$queryRaw = async () => [{ id: lane.tenantId, schema_name: lane.schema }];
+        const launchSpy = jest.spyOn(service, 'launchCampaign');
+        await service.launchScheduledCampaigns();
+        await service.launchScheduledCampaigns();
+        await service.launchScheduledCampaigns();
+
+        expect(launchSpy).toHaveBeenCalledTimes(1);
+        launchSpy.mockRestore();
         const [campaign] = await lane.sql('SELECT status FROM campaigns WHERE id=$1::uuid', [created.id]);
-        expect(campaign.status).toBe('draft');
+        expect(campaign.status).toBe('finished');
+        expect(jobs).toEqual([]);
+    });
+
+    it('AUT-C36 (A/B): an opted-out recipient is dropped BEFORE variants are assigned', async () => {
+        await seedContact(randomUUID(), 'Ana Baja', '+573001110001');
+        await seedContact(randomUUID(), 'Beto Activo', '+573001110002');
+        const created = await service.createCampaign(lane.tenantId,
+            { name: 'AB', channels: ['whatsapp'], templateName: 'promo', targetAudience: 'all' }, actorId);
+        await lane.sql('UPDATE campaigns SET is_ab_test = true WHERE id=$1::uuid', [created.id]);
+        await lane.sql('CREATE TABLE IF NOT EXISTS campaign_variants(id UUID PRIMARY KEY DEFAULT gen_random_uuid(), campaign_id UUID, content JSONB)');
+        await optOut(lane.sql, '+573001110001');
+        let pendingWhenAssigning = -1;
+        const realAb = service.abTestService;
+        service.abTestService = {
+            ensureAbTestTables: async () => undefined,
+            assignRecipientsToVariants: async () => {
+                pendingWhenAssigning = (await lane.sql("SELECT COUNT(*)::int AS n FROM campaign_recipients WHERE status = 'pending'"))[0].n;
+            },
+        };
+        try {
+            await service.launchCampaign(lane.tenantId, created.id, actorId);
+        } finally { service.abTestService = realAb; }
+        expect(pendingWhenAssigning).toBe(1);
+    });
+
+    it('AUT-C36: an opt-out recorded for channel=all blocks the WhatsApp campaign too', async () => {
+        await seedContact(randomUUID(), 'Ana Todos', '+573001110001');
+        await seedContact(randomUUID(), 'Beto Activo', '+573001110002');
+        await lane.sql("INSERT INTO opt_out_records(phone,channel,status) VALUES('+573001110001','all','confirmed')");
+        await launch();
+        expect(jobs.map(job => job.data.phone)).toEqual(['+573001110002']);
+    });
+
+    it('AUT-C36: an opt-out on another channel does not block the WhatsApp campaign', async () => {
+        await seedContact(randomUUID(), 'Ana Instagram', '+573001110001');
+        await lane.sql("INSERT INTO opt_out_records(phone,channel,status) VALUES('+573001110001','instagram','confirmed')");
+        await launch();
+        expect(jobs.map(job => job.data.phone)).toEqual(['+573001110001']);
     });
 });

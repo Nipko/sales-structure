@@ -97,7 +97,7 @@ import { LANE_CHAT_DDL, N3_LANE_URL, leadOptedOut, openLane, optOut } from '../.
         await expect(lane.store.admit(lane.tenantId, row.id)).rejects.toMatchObject({ code: 'dispatch_effect_superseded' });
         const [after] = await lane.outboxRows();
         expect(after.state).toBe('suppressed');
-        expect(String(after.error_code)).toContain('proactive_gone');
+        expect(after.error_code).toBe('recipient_opted_out');
     });
 
     it('send_template (second layer): control — without an opt-out the same queued action is admitted', async () => {

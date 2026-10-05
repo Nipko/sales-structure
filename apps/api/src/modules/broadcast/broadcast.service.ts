@@ -256,6 +256,17 @@ export class BroadcastService {
             throw new BadRequestException('No pending recipients found for this campaign');
         }
 
+        // ── THE REGISTER, BEFORE ANYTHING IS ASSIGNED OR QUEUED ─────────────
+        //
+        // It may have grown since the recipient rows were written (a scheduled
+        // campaign waits days). Asked BEFORE the A/B assignment so an opted-out
+        // person is never given a variant, and so a variant's share is not
+        // computed over people who will not receive it.
+        const eligible = [...await this.skipOptedOutRecipients(schema, campaignId, recipients)];
+        if (!eligible.length) return this.finishWithoutRecipients(schema, campaignId);
+        recipients.length = 0;
+        recipients.push(...eligible);
+
         const metadata = campaignMetadata;
 
         const channelContent: ChannelContent = metadata.channelContent || {};
@@ -293,16 +304,6 @@ export class BroadcastService {
                 const content = typeof v.content === 'string' ? JSON.parse(v.content) : (v.content || {});
                 variantContentMap[v.id] = content;
             }
-        }
-
-        // The register may have grown since the recipient rows were written
-        // (a scheduled campaign waits days). Ask again, at the last moment
-        // before anything is queued.
-        const eligible = [...await this.skipOptedOutRecipients(schema, campaignId, recipients)];
-        recipients.length = 0;
-        recipients.push(...eligible);
-        if (!recipients.length) {
-            throw new BadRequestException('No eligible recipients: every pending recipient has opted out');
         }
 
         await this.prisma.executeInTenantSchema(
@@ -806,6 +807,31 @@ export class BroadcastService {
             for (const key of dropped) blocked.add(key);
         }
         return blocked;
+    }
+
+    /**
+     * A campaign whose every pending recipient opted out has nothing to send and
+     * never will. It is CLOSED, with the reason, and the launch returns instead of
+     * throwing: the scheduler launches a due campaign every minute and an error
+     * leaves it `scheduled`, so it would fail again every minute for ever.
+     */
+    private async finishWithoutRecipients(schema: string, campaignId: string) {
+        await this.prisma.executeInTenantSchema(
+            schema,
+            `UPDATE campaigns
+                SET status = 'finished', ends_at = NOW(),
+                    metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb,
+                    updated_at = NOW()
+              WHERE id = $1::uuid AND status IN ('draft', 'paused', 'scheduled')`,
+            [campaignId, JSON.stringify({
+                finishedWithoutSending: {
+                    code: 'all_recipients_opted_out',
+                    at: new Date().toISOString(),
+                },
+            })],
+        );
+        this.logger.warn(`Campaign ${campaignId} finished without sending: every recipient opted out`);
+        return { queued: 0, finished: 'all_recipients_opted_out' as const };
     }
 
     /**

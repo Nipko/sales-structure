@@ -4,8 +4,8 @@
  * `ComplianceService.isBlocked` answers it for a single phone or lead id and is
  * what drip, nurturing, the temporal evaluator and SMS ask. The producers that
  * pick their audience in SQL (recall, broadcast) or revalidate inside the
- * outbox admission transaction (all three) cannot call a service that goes
- * through Redis and its own connection, so the same semantics live here as SQL.
+ * outbox admission transaction cannot call a service that goes through Redis
+ * and its own connection, so the same semantics live here as SQL.
  *
  * A person is suppressed when ANY of these holds:
  *
@@ -21,12 +21,28 @@
  * wrote it, the contact as E.164, and a formatting difference must not be the
  * way an opt-out is missed.
  *
+ * ── SHAPE OF THE SQL, AND WHY ───────────────────────────────────────────────
+ *
+ * It runs once per candidate (a recall page, a campaign of thousands, an
+ * admission). Every subquery below is UNCORRELATED: it does not mention the
+ * candidate, so the planner evaluates it once and hashes it, and each candidate
+ * costs a hash probe. The first version correlated a `leads` lookup to each
+ * candidate, which is a scan of `leads` per recipient.
+ *
  * It is a fragment of SQL, not a function that executes, so the SAME text is
  * used in a `WHERE` of a selection, in a `SELECT … FROM unnest(…)` over a batch
  * and inside an admission transaction.
  */
 
 export const OPT_OUT_ACTIVE_STATUSES_SQL = `('pending', 'confirmed')`;
+
+/**
+ * What a policy revision answers, and the outbox records as the reason, when the
+ * recipient opted out after the effect was queued. Distinct from "the entity is
+ * gone" so an operator (and the campaign's statistics) can tell a person who
+ * said stop from a campaign that was deleted.
+ */
+export const RECIPIENT_OPTED_OUT_CODE = 'recipient_opted_out';
 
 const DIGITS = (expr: string) => `NULLIF(regexp_replace(${expr}, '\\D', '', 'g'), '')`;
 
@@ -38,44 +54,29 @@ export function uuidsOnly(values: ReadonlyArray<unknown>): string[] {
 }
 
 /**
- * `TRUE` when the person is on the opt-out register for the channel.
+ * `TRUE` when the person is on the opt-out register for the channel, never NULL
+ * (`x IN (… NULL …)` is NULL, and `NOT NULL` in a WHERE would drop the row).
  *
- * @param input.phone    SQL expression for the phone (text), e.g. `$1` or `contacts.phone`.
- * @param input.ids      SQL expression for a `uuid[]` of contact and/or lead ids.
- * @param input.channel  SQL expression for the channel being used (text).
+ * @param input.phone    SQL expression for the phone (text, may be NULL), e.g. `contacts.phone`.
+ * @param input.id       SQL expression for the contact or lead id (uuid, may be NULL).
+ * @param input.channel  SQL expression for the channel being used (text); must not depend on the candidate.
  */
-export function optedOutSql(input: { phone: string; ids: string; channel: string }): string {
-    const { phone, ids, channel } = input;
-    return `(
-        EXISTS (
-            SELECT 1 FROM opt_out_records oo
-             WHERE oo.status IN ${OPT_OUT_ACTIVE_STATUSES_SQL}
-               AND (oo.channel = ${channel} OR oo.channel = 'all')
-               AND (
-                    (${DIGITS('oo.phone')} IS NOT NULL AND (
-                        ${DIGITS('oo.phone')} = ${DIGITS(phone)}
-                        OR ${DIGITS('oo.phone')} IN (
-                            SELECT ${DIGITS('cc.phone')} FROM contacts cc WHERE cc.id = ANY(${ids}))))
-                    OR oo.lead_id = ANY(${ids})
-                    OR oo.lead_id IN (
-                        SELECT ll.id FROM leads ll
-                         WHERE ll.contact_id = ANY(${ids})
-                            OR (${DIGITS('ll.phone')} IS NOT NULL AND ${DIGITS('ll.phone')} = ${DIGITS(phone)}))
-               )
-        )
-        OR EXISTS (
-            SELECT 1 FROM leads ll
-             WHERE ll.opted_out = true
-               AND (
-                    ll.id = ANY(${ids})
-                    OR ll.contact_id = ANY(${ids})
-                    OR (${DIGITS('ll.phone')} IS NOT NULL AND (
-                        ${DIGITS('ll.phone')} = ${DIGITS(phone)}
-                        OR ${DIGITS('ll.phone')} IN (
-                            SELECT ${DIGITS('cc.phone')} FROM contacts cc WHERE cc.id = ANY(${ids}))))
-               )
-        )
-    )`;
+export function optedOutSql(input: { phone: string; id: string; channel: string }): string {
+    const { phone, id, channel } = input;
+    const active = `oo.status IN ${OPT_OUT_ACTIVE_STATUSES_SQL} AND (oo.channel = ${channel} OR oo.channel = 'all')`;
+    const leadsOptedOutByRequest = `SELECT oo.lead_id FROM opt_out_records oo WHERE ${active} AND oo.lead_id IS NOT NULL`;
+    return `COALESCE((
+        ${DIGITS(phone)} IN (
+            SELECT ${DIGITS('oo.phone')} FROM opt_out_records oo WHERE ${active} AND oo.phone IS NOT NULL)
+        OR ${DIGITS(phone)} IN (
+            SELECT ${DIGITS('ll.phone')} FROM leads ll
+             WHERE ll.opted_out = true OR ll.id IN (${leadsOptedOutByRequest}))
+        OR ${id} IN (${leadsOptedOutByRequest})
+        OR ${id} IN (SELECT ll.id FROM leads ll WHERE ll.opted_out = true)
+        OR ${id} IN (
+            SELECT ll.contact_id FROM leads ll
+             WHERE ll.opted_out = true OR ll.id IN (${leadsOptedOutByRequest}))
+    ), false)`;
 }
 
 type Query = <T = any[]>(sql: string, params?: any[]) => Promise<T>;
@@ -88,8 +89,18 @@ export async function isRecipientOptedOut(
     const ids = uuidsOnly(input.ids ?? []);
     const phone = String(input.phone ?? '').trim() || null;
     if (!ids.length && !phone) return false;
+    // One row per way the person can be named: the phone given, each id, and
+    // the phone of each contact id (a rule or a campaign row knows the contact,
+    // not always the number).
     const rows = await query<any[]>(
-        `SELECT ${optedOutSql({ phone: '$1::text', ids: '$2::uuid[]', channel: '$3::text' })} AS blocked`,
+        `WITH p(phone, id) AS (
+            SELECT $1::text, NULL::uuid
+            UNION ALL SELECT NULL::text, x FROM unnest($2::uuid[]) AS x
+            UNION ALL SELECT cc.phone, cc.id FROM contacts cc WHERE cc.id = ANY($2::uuid[])
+         )
+         SELECT EXISTS (
+            SELECT 1 FROM p WHERE ${optedOutSql({ phone: 'p.phone', id: 'p.id', channel: '$3::text' })}
+         ) AS blocked`,
         [phone, ids, input.channel]);
     return rows?.[0]?.blocked === true;
 }
@@ -113,7 +124,7 @@ export async function optedOutRecipientKeys(
         const rows = await query<any[]>(
             `SELECT r.key
                FROM unnest($1::text[], $2::text[], $3::text[]) AS r(key, id, phone)
-              WHERE ${optedOutSql({ phone: 'r.phone', ids: "ARRAY[NULLIF(r.id, '')::uuid]", channel: '$4::text' })}`,
+              WHERE ${optedOutSql({ phone: 'r.phone', id: "NULLIF(r.id, '')::uuid", channel: '$4::text' })}`,
             [
                 chunk.map(recipient => String(recipient.key)),
                 chunk.map(recipient => uuidsOnly([recipient.id])[0] ?? ''),

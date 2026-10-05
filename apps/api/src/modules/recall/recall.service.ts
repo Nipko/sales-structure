@@ -136,7 +136,7 @@ export class RecallService {
                    -- Dropped HERE, before the LIMIT, and not in the loop: a
                    -- page of a hundred people who all asked to stop would
                    -- otherwise fill the batch and starve everybody behind them.
-                   AND NOT ${optedOutSql({ phone: 'contacts.phone', ids: 'ARRAY[contacts.id]', channel: '$2::text' })}
+                   AND NOT ${optedOutSql({ phone: 'contacts.phone', id: 'contacts.id', channel: '$2::text' })}
                  LIMIT 100`,
                 [daysThreshold, channelType],
             );

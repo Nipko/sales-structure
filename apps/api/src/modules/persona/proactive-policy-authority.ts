@@ -1,6 +1,6 @@
 import { revisionHash } from '../evaluation-revision/evaluation-revision';
 import type { RevisionQuery } from './agent-configuration-revision';
-import { isRecipientOptedOut } from '../../common/policies/opt-out-register';
+import { isRecipientOptedOut, RECIPIENT_OPTED_OUT_CODE } from '../../common/policies/opt-out-register';
 
 /**
  * What a revision needs to know about WHERE the effect is going, beyond the
@@ -171,7 +171,7 @@ const cancelledAppointmentRevision = async (
  * delivering the wrong one.
  */
 const dripEnrolmentRevision = async (
-    query: RevisionQuery, _schema: string, entityId: string,
+    query: RevisionQuery, _schema: string, entityId: string, context?: ProactiveRevisionContext,
 ): Promise<string | null> => {
     const [row] = await query<any[]>(
         `SELECT id, sequence_id, status, current_step, contact_id, conversation_id
@@ -180,6 +180,11 @@ const dripEnrolmentRevision = async (
     // Stopped, completed or paused: the journey is over and its next step is
     // not owed. Suppressed, not failed.
     if (String(row.status) !== 'active') return null;
+    // Selection asked `isBlocked`; a person who opts out while the step waits in
+    // the queue is caught here.
+    if (context && await isRecipientOptedOut(query, {
+        channel: context.channelType, ids: [row.contact_id, context.contactId],
+    })) return RECIPIENT_OPTED_OUT_CODE;
     return revisionHash({
         status: row.status,
         sequenceId: row.sequence_id ?? null,
@@ -201,7 +206,7 @@ const dripEnrolmentRevision = async (
  * thing this lane can do — and it is billed.
  */
 const nurturedConversationRevision = async (
-    query: RevisionQuery, _schema: string, entityId: string,
+    query: RevisionQuery, _schema: string, entityId: string, context?: ProactiveRevisionContext,
 ): Promise<string | null> => {
     const [row] = await query<any[]>(
         `SELECT c.id, c.status, c.contact_id, c.channel_type, c.channel_account_id,
@@ -213,6 +218,10 @@ const nurturedConversationRevision = async (
     // A thread somebody closed, or one already handed to a person, is not a
     // thread to nudge.
     if (['resolved', 'archived', 'with_human'].includes(String(row.status ?? ''))) return null;
+    // Same as the drip step: opted out after the nudge was queued.
+    if (context && await isRecipientOptedOut(query, {
+        channel: context.channelType, ids: [row.contact_id, context.contactId],
+    })) return RECIPIENT_OPTED_OUT_CODE;
     return revisionHash({
         status: row.status ?? null,
         contactId: row.contact_id ?? null,
@@ -273,7 +282,7 @@ const campaignRecipientRevision = async (
     // stop, and a retry would say the same.
     if (context && await isRecipientOptedOut(query, {
         channel: context.channelType, phone: row.phone, ids: [row.contact_id, context.contactId],
-    })) return null;
+    })) return RECIPIENT_OPTED_OUT_CODE;
     return revisionHash({
         status: row.status,
         campaignId: row.campaign_id ?? null,
@@ -304,7 +313,7 @@ const automationRuleRevision = async (
     // the seeded templates) is owed nothing: suppressed, not failed.
     if (context?.contactId && await isRecipientOptedOut(query, {
         channel: context.channelType, ids: [context.contactId],
-    })) return null;
+    })) return RECIPIENT_OPTED_OUT_CODE;
     return revisionHash({
         triggerType: row.trigger_type ?? null,
         actions: row.actions_json ?? null,
@@ -332,7 +341,7 @@ const recallContactRevision = async (
     // Opted out after the recall was queued: nothing is owed to them.
     if (context && await isRecipientOptedOut(query, {
         channel: context.channelType, phone: row.phone, ids: [row.id],
-    })) return null;
+    })) return RECIPIENT_OPTED_OUT_CODE;
     return revisionHash({
         phone: row.phone,
         nextRecallAt: row.next_recall_at ? new Date(row.next_recall_at).toISOString() : null,
@@ -431,7 +440,8 @@ export async function proactivePolicyAuthority(
     if (!policy) return undefined;
     const entityRevision = await policy.revision(query, schema, input.entityId,
         { channelType: input.channelType, contactId: input.contactId });
-    if (!entityRevision) return undefined;
+    // `RECIPIENT_OPTED_OUT_CODE` is a reason, not a hash: nothing to authorise.
+    if (!entityRevision || entityRevision === RECIPIENT_OPTED_OUT_CODE) return undefined;
     const scope: ProactivePolicyAuthority = Object.freeze({
         kind: 'proactive_policy' as const,
         tenantId: input.tenantId,
@@ -450,7 +460,9 @@ export async function proactivePolicyAuthority(
 export type ProactiveRevalidation =
     | { readonly kind: 'current' }
     | { readonly kind: 'stale'; readonly detail: string }
-    | { readonly kind: 'gone'; readonly detail: string };
+    | { readonly kind: 'gone'; readonly detail: string }
+    /** The recipient asked us to stop after the effect was queued. A suppression of its own kind. */
+    | { readonly kind: 'opted_out'; readonly detail: string };
 
 /**
  * Is this prepared effect still the effect the policy authorised?
@@ -484,6 +496,9 @@ export async function revalidateProactivePolicy(
 
     const current = await policy.revision(query, schema, scope.entityId,
         { channelType: scope.channelType, contactId: recipient?.contactId });
+    if (current === RECIPIENT_OPTED_OUT_CODE) {
+        return { kind: 'opted_out', detail: `${scope.producer}:${scope.entityId}` };
+    }
     if (!current) return { kind: 'gone', detail: `${scope.producer}:${scope.entityId}` };
     if (current !== scope.entityRevision) {
         return { kind: 'stale', detail: `${scope.producer}:${scope.entityId}` };

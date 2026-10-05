@@ -55,6 +55,37 @@ import { LANE_CHAT_DDL, N3_LANE_URL, leadOptedOut, openLane, optOut } from '../.
         expect(rows.filter((r: any) => r.contact_id === quiet)).toHaveLength(0);
     });
 
+    it('AUT-C12: an opt-out recorded ONLY against a lead (no phone on the record) suppresses the contact the lead belongs to', async () => {
+        const quiet = await lapsed('Lia Solo Lead', '+573001110011');
+        const leadId = randomUUID();
+        await lane.sql('INSERT INTO leads(id,contact_id,phone) VALUES($1::uuid,$2::uuid,$3)', [leadId, quiet, '+573009990011']);
+        await lane.sql("INSERT INTO opt_out_records(lead_id,phone,channel,status) VALUES($1::uuid,NULL,'whatsapp','confirmed')", [leadId]);
+        const active = await lapsed('Beto Activo', '+573001110002');
+        await service.processForTenant(lane.tenantId, lane.schema,
+            { daysThreshold: 180, cooldownDays: 90, channelType: 'whatsapp', message: '' });
+        const rows = await lane.outboxRows();
+        expect(rows.filter((r: any) => r.contact_id === quiet)).toHaveLength(0);
+        expect(rows.filter((r: any) => r.contact_id === active)).toHaveLength(1);
+    });
+
+    it('AUT-C12: a lead-level unsubscribe with no contact behind it does not blank the whole sweep (NULL-safe)', async () => {
+        // `x IN (… NULL …)` is NULL, and `NOT NULL` in a WHERE drops the row: one
+        // form unsubscribe from somebody who never wrote in would stop every recall.
+        await leadOptedOut(lane.sql, { phone: '+573009990099' });
+        const active = await lapsed('Beto Activo', '+573001110002');
+        await service.processForTenant(lane.tenantId, lane.schema,
+            { daysThreshold: 180, cooldownDays: 90, channelType: 'whatsapp', message: '' });
+        expect((await lane.outboxRows()).filter((r: any) => r.contact_id === active)).toHaveLength(1);
+    });
+
+    it('AUT-C12: an opt-out recorded for channel=all suppresses the WhatsApp recall', async () => {
+        const quiet = await lapsed('Mara Todos', '+573001110012');
+        await lane.sql("INSERT INTO opt_out_records(phone,channel,status) VALUES('+573001110012','all','confirmed')");
+        await service.processForTenant(lane.tenantId, lane.schema,
+            { daysThreshold: 180, cooldownDays: 90, channelType: 'whatsapp', message: '' });
+        expect((await lane.outboxRows()).filter((r: any) => r.contact_id === quiet)).toHaveLength(0);
+    });
+
     it('AUT-C12: a PENDING opt-out request also suppresses the recall (isBlocked treats it as blocked)', async () => {
         const quiet = await lapsed('Carla Pendiente', '+573001110003');
         await optOut(lane.sql, '+573001110003', 'pending');
@@ -120,7 +151,7 @@ import { LANE_CHAT_DDL, N3_LANE_URL, leadOptedOut, openLane, optOut } from '../.
         await expect(lane.store.admit(lane.tenantId, row.id)).rejects.toMatchObject({ code: 'dispatch_effect_superseded' });
         const [after] = await lane.outboxRows();
         expect(after.state).toBe('suppressed');
-        expect(String(after.error_code)).toContain('proactive_gone');
+        expect(after.error_code).toBe('recipient_opted_out');
     });
 
     it('AUT-C12 (second layer): control — without an opt-out the same queued recall is admitted', async () => {

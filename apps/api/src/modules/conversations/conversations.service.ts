@@ -94,7 +94,7 @@ import { ProcedureEngineService } from './procedure-engine.service';
 import { IntentInterpreterService } from './intent-interpreter.service';
 import { normalizePhoneE164 } from '../../common/utils/phone.util';
 import { PromptAssemblerService } from './prompt-assembler.service';
-import { HUMAN_OFFER_MARK, HUMAN_OFFER_TTL_MS, NO_DATA_WAIT_REPLACEMENT, noDataWaitReplacementText, isHumanOfferText, isAffirmation, isLiveHumanOffer } from './human-offer';
+import { HUMAN_OFFER_MARK, HUMAN_OFFER_TTL_MS, NO_DATA_WAIT_REPLACEMENT, NO_DATA_NO_OFFER, noDataWaitReplacementText, noDataNoOfferText, containsHumanOffer, isHumanOfferText, isAffirmation, isLiveHumanOffer } from './human-offer';
 import { LanguageDetectorService } from './language-detector.service';
 import { BusinessInfoService } from '../business-info/business-info.service';
 import { PaymentOperationService } from './payment-operation.service';
@@ -373,7 +373,7 @@ function isSystemFixedText(text: string): boolean {
     const t = (text || '').trim();
     if (!t) return false;
     const fixed = [
-        ...Object.values(UNVERIFIED_CLAIM_FALLBACK), ...Object.values(NO_DATA_WAIT_REPLACEMENT),
+        ...Object.values(UNVERIFIED_CLAIM_FALLBACK), ...Object.values(NO_DATA_WAIT_REPLACEMENT), ...Object.values(NO_DATA_NO_OFFER),
         ...Object.values(PARTIAL_SUCCESS_MSG), ...Object.values(BUDGET_EXHAUSTED_MSG),
         ...Object.values(HANDOFF_MSG).flatMap(h => [h.transferring, h.unavailable, h.queueHead]),
     ];
@@ -4602,11 +4602,12 @@ export class ConversationsService {
             finalResponse = await this.applyOutputGuardrails(
                 finalResponse, systemPrompt, currentMessages, allowedTiers, tenantId, conversation.id,
                 executedToolsThisTurn, userLanguage, priorActions, turnContext, session, {execute:executeLearningModel},
+                allowHumanHandoff,
             );
             turnTrace.add('guardrail', 'output', { responseLength: finalResponse?.length || 0 });
             // The guard answered with an offer of a person: remember it so a
             // "yes" next turn escalates for real.
-            if (!session && !draftMode) await this.rememberHumanOffer(schemaName, conversation.id, finalResponse);
+            if (!session && !draftMode && allowHumanHandoff) await this.rememberHumanOffer(schemaName, conversation.id, finalResponse);
 
             // Long-term memory (#1): periodically distill the conversation into
             // durable facts (fire-and-forget, cheap tier). Cadence keeps cost low.
@@ -5381,6 +5382,7 @@ export class ConversationsService {
         trustedContext?: Partial<TurnContext>,
         session?: AgentTurnSession,
         modelRouter?: Pick<LLMRouterService,'execute'>,
+        humanOfferAvailable: boolean = true,
     ): Promise<string> {
         const llmRouter = modelRouter || (session ? sessionLlmRouter(this.llmRouter, session) : this.llmRouter);
         if (!response || isErrorFallback(response)) return response;
@@ -5509,7 +5511,8 @@ export class ConversationsService {
             const lastAssistant = [...(currentMessages || [])].reverse().find(m => m?.role === 'assistant');
             const offeredBefore = typeof lastAssistant?.content === 'string'
                 && Object.values(NO_DATA_WAIT_REPLACEMENT).includes(lastAssistant.content.trim());
-            response = offeredBefore ? handoffText(lang).transferring : noDataWaitReplacementText(lang);
+            response = !humanOfferAvailable ? noDataNoOfferText(lang)
+                : offeredBefore ? handoffText(lang).transferring : noDataWaitReplacementText(lang);
         }
 
         // Lo que las herramientas DEVOLVIERON entra al corpus.
@@ -6343,7 +6346,15 @@ export class ConversationsService {
             [conversation.id],
         ).catch(e => this.logger.warn(`[HumanOffer] mark not cleared: ${e?.message}`));
         delete (conversation.metadata as any)[HUMAN_OFFER_MARK];
-        return isLiveHumanOffer(mark) && isAffirmation(text);
+        if (!isLiveHumanOffer(mark) || !isAffirmation(text)) return false;
+        // The offer must still be the LAST outbound message: a reminder, template,
+        // notice or human message sent after it changes what "yes" answers.
+        const last = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            `SELECT content_text FROM messages WHERE conversation_id = $1::uuid AND direction = 'outbound'
+              ORDER BY created_at DESC LIMIT 1`,
+            [conversation.id],
+        ).catch(() => []);
+        return containsHumanOffer(last?.[0]?.content_text);
     }
 
     /** A persisted suggestion is the only output of a draft turn. */

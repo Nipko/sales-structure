@@ -31,6 +31,13 @@ describe('handoff promise needs a human DESTINATION right after the verb', () =>
         'Je vous transfère à un agent de notre équipe.',
         'Je vous mets en relation avec un conseiller.',
         'Je vais vous transférer à un agent de notre équipe.',
+        'Let me connect you with someone from our team.',
+        'I will transfer you to one of our human agents.',
+        "I'll connect you to the sales team.",
+        'Let me transfer you over to our support team.',
+        'Estou te transferindo para um de nossos atendentes.',
+        "Je vais vous transférer à l'un de nos conseillers.",
+        'Je vais vous mettre en relation avec un conseiller.',
     ])('is a handoff: %s', text => {
         expect(promisesHumanHandoff(text)).toBe(true);
     });
@@ -46,12 +53,13 @@ describe('a "yes" to the guardian offer escalates deterministically', () => {
 
     // In-memory stand-in for the conversations row: only the two metadata statements.
     const harness = () => {
-        const row: any = { id: 'conv', metadata: {} as Record<string, any> };
+        const row: any = { id: 'conv', metadata: {} as Record<string, any>, lastOutbound: '' };
         const service: any = Object.create(ConversationsService.prototype);
         service.logger = { warn: jest.fn() };
         service.prisma = { executeInTenantSchema: jest.fn(async (_s: string, sql: string, params: any[]) => {
             if (sql.includes("'{" + HUMAN_OFFER_MARK + "}'")) row.metadata[HUMAN_OFFER_MARK] = JSON.parse(params[1]);
             else if (sql.includes("- '" + HUMAN_OFFER_MARK + "'")) delete row.metadata[HUMAN_OFFER_MARK];
+            else if (/direction = 'outbound'/.test(sql)) return [{ content_text: row.lastOutbound }];
             return [];
         }) };
         // What the next turn would load from the database.
@@ -59,19 +67,20 @@ describe('a "yes" to the guardian offer escalates deterministically', () => {
         return { service, row, reload };
     };
 
-    const offerTurn = async (service: any) => {
+    const offerTurn = async (service: any, row?: any) => {
         service.recordAgentSignal = jest.fn();
         service.eventEmitter = { emit: jest.fn() };
         service.responseValidator = { validatePrices: () => ({ ok: true, hallucinatedPrices: [] }) };
         service.llmRouter = { execute: jest.fn() };
         const reply = await service.applyOutputGuardrails('Déjame verificar eso, un momento.', 'sys', [], [], 't', 'conv', [], 'es', [], {});
         await service.rememberHumanOffer('schema', 'conv', reply);
+        if (row) row.lastOutbound = reply; // the sent offer is now the last outbound message
         return reply;
     };
 
     it('offer → "sí" → handoff, whatever the model would have paraphrased', async () => {
-        const { service, reload } = harness();
-        const reply = await offerTurn(service);
+        const { service, reload, row } = harness();
+        const reply = await offerTurn(service, row);
         expect(isHumanOfferText(reply)).toBe(true);
         // Turn 2: the simulated LLM would answer "Listo, le aviso al equipo" (no handoff phrase);
         // the decision is taken before it is ever consulted.
@@ -83,7 +92,7 @@ describe('a "yes" to the guardian offer escalates deterministically', () => {
 
     it('any other message clears the mark, so a later "sí" does nothing', async () => {
         const { service, reload, row } = harness();
-        await offerTurn(service);
+        await offerTurn(service, row);
         expect(await service.resolveHumanOfferAcceptance('schema', reload(), 'cuánto cuesta el corte?')).toBe(false);
         expect(row.metadata[HUMAN_OFFER_MARK]).toBeUndefined();
         expect(await service.resolveHumanOfferAcceptance('schema', reload(), 'sí')).toBe(false);
@@ -91,10 +100,33 @@ describe('a "yes" to the guardian offer escalates deterministically', () => {
 
     it('the mark expires', async () => {
         const { service, reload, row } = harness();
-        await offerTurn(service);
+        await offerTurn(service, row);
         row.metadata[HUMAN_OFFER_MARK].expiresAt = new Date(Date.now() - 1000).toISOString();
         expect(await service.resolveHumanOfferAcceptance('schema', reload(), 'sí')).toBe(false);
     });
+
+    it('a later outbound message (reminder, template, human) means "yes" no longer answers the offer', async () => {
+        const { service, reload, row } = harness();
+        await offerTurn(service, row);
+        row.lastOutbound = 'Recordatorio: tu cita es mañana a las 10:00.';
+        expect(await service.resolveHumanOfferAcceptance('schema', reload(), 'sí')).toBe(false);
+    });
+
+    it.each([['es', /No tengo ese dato confirmado/], ['en', /have that information confirmed/], ['pt', /Não tenho essa informação/], ['fr', /pas cette information/]])(
+        'with no human reachable (%s) the guard says it has no confirmed data and offers nobody, leaving no mark', async (lang, expected) => {
+            const { service, row } = harness();
+            service.recordAgentSignal = jest.fn();
+            service.eventEmitter = { emit: jest.fn() };
+            service.responseValidator = { validatePrices: () => ({ ok: true, hallucinatedPrices: [] }) };
+            service.llmRouter = { execute: jest.fn() };
+            const wait = { es: 'Déjame verificar eso.', en: 'Let me check that.', pt: 'Um momento, vou verificar.', fr: 'Je vais vérifier.' }[lang as string]!;
+            const reply = await service.applyOutputGuardrails(wait, 'sys', [], [], 't', 'conv', [], lang, [], {}, undefined, undefined, false);
+            expect(reply).toMatch(expected);
+            expect(reply).not.toMatch(/persona|person|alguém|quelqu|equipo|equipe|team/i);
+            expect(isHumanOfferText(reply)).toBe(false);
+            expect(await service.rememberHumanOffer('schema', 'conv', reply)).toBe(false);
+            expect(row.metadata[HUMAN_OFFER_MARK]).toBeUndefined();
+        });
 
     it('a reply that is not our offer leaves no mark', async () => {
         const { service, row } = harness();
@@ -109,6 +141,7 @@ describe('a "yes" to the guardian offer escalates deterministically', () => {
         expect(accept).toBeGreaterThan(0);
         expect(branch).toBeGreaterThan(accept);
         expect(src).toContain("(acceptedOffer ? 'customer_accepted_human_offer' : null)");
+        expect(src).toContain('&& allowHumanHandoff) await this.rememberHumanOffer(');
         expect(src.indexOf("turnTrace.add('guardrail', 'output'")).toBeLessThan(src.indexOf('await this.rememberHumanOffer('));
         expect(noDataWaitReplacementText('es')).toContain('persona del equipo');
     });

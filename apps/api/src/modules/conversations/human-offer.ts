@@ -18,6 +18,21 @@ export const NO_DATA_WAIT_REPLACEMENT: Record<string, string> = {
 export const noDataWaitReplacementText = (lang?: string): string =>
     NO_DATA_WAIT_REPLACEMENT[(lang || 'es').slice(0, 2).toLowerCase()] || NO_DATA_WAIT_REPLACEMENT.es;
 
+/** Same fact, with NO offer: used when no person can be reached from this conversation. */
+export const NO_DATA_NO_OFFER: Record<string, string> = {
+    es: 'No tengo ese dato confirmado en este momento.',
+    en: 'I don’t have that information confirmed right now.',
+    pt: 'Não tenho essa informação confirmada neste momento.',
+    fr: "Je n'ai pas cette information confirmée pour le moment.",
+};
+export const noDataNoOfferText = (lang?: string): string =>
+    NO_DATA_NO_OFFER[(lang || 'es').slice(0, 2).toLowerCase()] || NO_DATA_NO_OFFER.es;
+
+/** True when the stored outbound text contains one of our offers. */
+export function containsHumanOffer(text: unknown): boolean {
+    return typeof text === 'string' && Object.values(NO_DATA_WAIT_REPLACEMENT).some(o => text.includes(o));
+}
+
 export function isHumanOfferText(text: unknown): boolean {
     if (typeof text !== 'string') return false;
     const t = text.trim();

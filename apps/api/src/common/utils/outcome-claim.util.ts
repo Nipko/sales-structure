@@ -296,10 +296,10 @@ const HUMAN_TARGET =
  * (hand you the menu) or "Je vais vous passer les horaires de notre équipe"
  * would read as "I am transferring you to the team" and escalate unasked.
  */
-const DET = '((um|uma|o|a|nosso|nossa|our|an|the|notre|un|une|le|la|votre|vosso)\\s+){0,2}';
-const DEST_EN = '\\b(to|with)\\s+' + DET + HUMAN_TARGET;
-const DEST_PT = '\\b(para|com|a|ao)\\s+' + DET + HUMAN_TARGET;
-const DEST_FR = '\\b(a|avec|vers)\\s+' + DET + HUMAN_TARGET;
+const WORDS3 = "([a-z']+\\s+){0,3}";
+const DEST_EN = '\\b(to|with)\\s+' + WORDS3 + HUMAN_TARGET;
+const DEST_PT = '\\b(para|com|a|ao)\\s+' + WORDS3 + HUMAN_TARGET;
+const DEST_FR = '\\b(a|avec|vers)\\s+' + WORDS3 + HUMAN_TARGET;
 
 const HANDOFF_PROMISE = new RegExp(
     [
@@ -315,7 +315,7 @@ const HANDOFF_PROMISE = new RegExp(
         // pt — "passar você para um atendente"; "passar o cardápio da equipe" is NOT a handoff
         '(vou|estou) (te |lhe |voce )?(transferir|transferindo|conectar|passar)\\b[^.!?,]{0,12}' + DEST_PT,
         // fr — "vous passer à un conseiller"; "vous passer les horaires de notre équipe" is NOT
-        'je (vous (transfere|mets en relation|passe)|vais vous (transferer|passer|mettre))\\b[^.!?,]{0,12}' + DEST_FR,
+        'je (vous (transfere|mets en relation|passe)|vais vous (transferer|passer|mettre( en relation)?))\\b[^.!?,]{0,12}' + DEST_FR,
     ].join('|'),
 );
 

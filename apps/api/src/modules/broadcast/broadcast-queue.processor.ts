@@ -13,6 +13,7 @@ import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription
 import {
     ProactiveDispatchService, effectIsDurable, producerMayAdvance,
 } from '../channels/proactive-dispatch.service';
+import { isRecipientOptedOut } from '../../common/policies/opt-out-register';
 
 /** The job that closes a WhatsApp recipient once its effect has settled. */
 export const BROADCAST_SETTLE_JOB = 'settle-whatsapp';
@@ -91,6 +92,21 @@ export class BroadcastQueueProcessor extends WorkerHost {
             return `skipped:${reason}`;
         }
 
+        // ── SOMEBODY WHO ASKED US TO STOP, WHILE THIS WAITED FOR A WORKER ───
+        //
+        // Every channel, before anything is prepared or sent. The campaign
+        // asked at creation and again at launch; a job can sit in the queue
+        // long enough for a person to reply STOP in between. The recipient is
+        // CLOSED (skipped, with the reason) rather than left queued, or the
+        // campaign would never be reported finished. The outbox asks once more
+        // when it grants the lease, for the person who opts out after this.
+        if (await this.recipientOptedOut(job.data)) {
+            this.logger.warn(`Broadcast dropped (recipient_opted_out): campaign=${campaignId} recipient=${recipientId}`);
+            await this.broadcastService.updateRecipientStatus(schemaName, recipientId, 'skipped', 'recipient_opted_out');
+            await this.broadcastService.checkCampaignCompletion(schemaName, campaignId);
+            return 'skipped:recipient_opted_out';
+        }
+
         // ── WHATSAPP IS ITS OWN SHAPE NOW: COMMIT, THEN CLOSE LATER ─────────
         if (channel === 'whatsapp') return this.dispatchWhatsApp(job);
 
@@ -131,6 +147,12 @@ export class BroadcastQueueProcessor extends WorkerHost {
 
         this.logger.log(`Broadcast sent: campaign=${campaignId} channel=${channel} messageId=${messageId}`);
         return messageId;
+    }
+
+    private recipientOptedOut(data: BroadcastJobData): Promise<boolean> {
+        return isRecipientOptedOut(
+            (text, params) => this.prisma.executeInTenantSchema<any>(data.schemaName, text, params || []),
+            { channel: data.channel || 'whatsapp', phone: data.phone, ids: [data.contactId] });
     }
 
     /** Mark a recipient failed + update A/B stats + check campaign completion. */

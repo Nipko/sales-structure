@@ -7,6 +7,7 @@ import { DISPATCH_OUTBOX_DDL } from '../channels/agent-dispatch-outbox';
 import { PROACTIVE_POLICIES } from './proactive-policy-authority';
 import { SENDING_ROLES } from './human-operator-authority';
 import { ensureSyntheticGlobalTables } from '../../common/__fixtures__/synthetic-global-tables';
+import { OPT_OUT_REGISTER_DDL } from '../../common/__fixtures__/opt-out-register-ddl';
 
 /**
  * ═══ THE THREE THINGS A DURABLE EFFECT CAN BE SENT ON BEHALF OF ═══
@@ -82,6 +83,7 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
 
         await sql('CREATE TABLE contacts(id UUID PRIMARY KEY, name TEXT, phone TEXT, '
             + 'next_recall_at TIMESTAMPTZ, last_contact_at TIMESTAMPTZ)');
+        for (const ddl of OPT_OUT_REGISTER_DDL) await sql(ddl);
         await sql(`CREATE TABLE conversations(id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             contact_id UUID REFERENCES contacts(id), channel_type TEXT, channel_account_id TEXT,
             status TEXT DEFAULT 'active', metadata JSONB DEFAULT '{}'::jsonb,

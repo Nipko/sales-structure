@@ -11,6 +11,7 @@ import { senderOriginProblem, whatsappSenderFrom } from '../channels/whatsapp-se
 import { PipelineService } from '../pipeline/pipeline.service';
 import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription-entitlement.util';
 import { ProactiveDispatchService, producerMayAdvance } from '../channels/proactive-dispatch.service';
+import { isRecipientOptedOut } from '../../common/policies/opt-out-register';
 
 export interface AutomationJobData {
     tenantId: string;
@@ -401,6 +402,20 @@ export class AutomationJobsProcessor extends WorkerHost {
         if (!contactId) throw new Error('automation_rule_action_sin_contacto');
 
         const channelType = 'whatsapp';
+
+        // ── SOMEBODY WHO ASKED US TO STOP IS NOT A RECIPIENT ────────────────
+        //
+        // Asked before a conversation is created or anything is prepared, with
+        // the same semantics as `ComplianceService.isBlocked` (confirmed or
+        // pending request, `leads.opted_out`). The outbox asks once more when it
+        // grants the lease, for the person who opts out while this waits.
+        const optedOut = await isRecipientOptedOut(
+            (text, params) => this.prisma.executeInTenantSchema<any>(schemaName, text, params || []),
+            { channel: channelType, phone, ids: [contactId, event.leadId] });
+        if (optedOut) {
+            this.logger.log(`[AutomationJobs] '${templateName}' suprimido: el destinatario se dio de baja`);
+            return { action: 'send_template', templateName, phone, suppressed: 'recipient_opted_out' };
+        }
         // Resolved against the SENDER, never taken from the event: the outbox
         // refuses a binding whose conversation belongs to another connection,
         // and a rule that overrides the number is precisely the case where the
@@ -419,7 +434,7 @@ export class AutomationJobsProcessor extends WorkerHost {
         // a message nobody currently authorises.
         const operationalScope = await this.proactive.policyAuthority(schemaName, {
             tenantId, producer: 'automation_rule_action', channelType,
-            channelAccountId: fromPhoneNumberId, entityId: ruleId,
+            channelAccountId: fromPhoneNumberId, entityId: ruleId, contactId,
         });
         if (!operationalScope) {
             // Switched off, edited, or gone. Nothing is owed, so the execution

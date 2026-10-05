@@ -1,5 +1,17 @@
 import { revisionHash } from '../evaluation-revision/evaluation-revision';
 import type { RevisionQuery } from './agent-configuration-revision';
+import { isRecipientOptedOut } from '../../common/policies/opt-out-register';
+
+/**
+ * What a revision needs to know about WHERE the effect is going, beyond the
+ * entity it is about. The channel is what an opt-out is scoped to, and the
+ * contact is who the message is for: a recall's entity IS the contact, but a
+ * rule's entity is the rule and a campaign's is a recipient row.
+ */
+export type ProactiveRevisionContext = Readonly<{
+    channelType: string;
+    contactId?: string | null;
+}>;
 
 /**
  * ═══ WHO A MESSAGE NOBODY ASKED FOR IS SENT ON BEHALF OF ═══
@@ -82,7 +94,9 @@ export interface ProactivePolicy {
     readonly producer: string;
     /** What this policy sends, for the operator reading a suppression. */
     readonly describes: string;
-    revision(query: RevisionQuery, schema: string, entityId: string): Promise<string | null>;
+    revision(
+        query: RevisionQuery, schema: string, entityId: string, context?: ProactiveRevisionContext,
+    ): Promise<string | null>;
 }
 
 /** The decisive fields of an appointment, hashed. */
@@ -220,10 +234,10 @@ const nurturedConversationRevision = async (
  * a recipient already sent or failed is GONE rather than stale.
  */
 const campaignRecipientRevision = async (
-    query: RevisionQuery, _schema: string, entityId: string,
+    query: RevisionQuery, _schema: string, entityId: string, context?: ProactiveRevisionContext,
 ): Promise<string | null> => {
     const [row] = await query<any[]>(
-        `SELECT r.id, r.status, r.contact_id, r.campaign_id,
+        `SELECT r.id, r.status, r.contact_id, r.campaign_id, r.phone,
                 c.status AS campaign_status, c.wa_template_name
            FROM campaign_recipients r
            LEFT JOIN campaigns c ON c.id = r.campaign_id
@@ -251,6 +265,15 @@ const campaignRecipientRevision = async (
     // recipients outlive the campaign and nothing is left that says who
     // authorised them. An allowlist answers both cases with one rule.
     if (!['active', 'draft'].includes(String(row.campaign_status ?? ''))) return null;
+    // ── A PERSON WHO ASKED TO STOP AFTER THE MESSAGE WAS QUEUED ─────────────
+    //
+    // The recipient row is written when the campaign is created and queued when
+    // it launches; the person can opt out in between, or while the job waits
+    // for a worker. `null` suppresses it: nothing is owed to somebody who said
+    // stop, and a retry would say the same.
+    if (context && await isRecipientOptedOut(query, {
+        channel: context.channelType, phone: row.phone, ids: [row.contact_id, context.contactId],
+    })) return null;
     return revisionHash({
         status: row.status,
         campaignId: row.campaign_id ?? null,
@@ -269,13 +292,19 @@ const campaignRecipientRevision = async (
  * the old one go out under the new rule's authority.
  */
 const automationRuleRevision = async (
-    query: RevisionQuery, _schema: string, entityId: string,
+    query: RevisionQuery, _schema: string, entityId: string, context?: ProactiveRevisionContext,
 ): Promise<string | null> => {
     const [row] = await query<any[]>(
         `SELECT id, active, trigger_type, actions_json, conditions_json
            FROM automation_rules WHERE id = $1::uuid FOR SHARE`, [entityId]);
     if (!row) return null;
     if (row.active !== true) return null;
+    // The entity is the RULE, so who the message is for comes from the context.
+    // A person who opted out while the action sat in its delay (up to days for
+    // the seeded templates) is owed nothing: suppressed, not failed.
+    if (context?.contactId && await isRecipientOptedOut(query, {
+        channel: context.channelType, ids: [context.contactId],
+    })) return null;
     return revisionHash({
         triggerType: row.trigger_type ?? null,
         actions: row.actions_json ?? null,
@@ -292,7 +321,7 @@ const automationRuleRevision = async (
  * customer reads as spam and the business pays for twice.
  */
 const recallContactRevision = async (
-    query: RevisionQuery, _schema: string, entityId: string,
+    query: RevisionQuery, _schema: string, entityId: string, context?: ProactiveRevisionContext,
 ): Promise<string | null> => {
     const [row] = await query<any[]>(
         `SELECT id, phone, next_recall_at, last_contact_at
@@ -300,6 +329,10 @@ const recallContactRevision = async (
     if (!row) return null;
     // No number, nothing to send to.
     if (!String(row.phone ?? '').trim()) return null;
+    // Opted out after the recall was queued: nothing is owed to them.
+    if (context && await isRecipientOptedOut(query, {
+        channel: context.channelType, phone: row.phone, ids: [row.id],
+    })) return null;
     return revisionHash({
         phone: row.phone,
         nextRecallAt: row.next_recall_at ? new Date(row.next_recall_at).toISOString() : null,
@@ -390,11 +423,14 @@ export async function proactivePolicyAuthority(
         readonly channelType: string;
         readonly channelAccountId: string;
         readonly entityId: string;
+        /** Who the message is for, when the entity is not the person (a rule, a campaign row). */
+        readonly contactId?: string;
     },
 ): Promise<ProactivePolicyAuthority | undefined> {
     const policy = PROACTIVE_POLICIES[input.producer];
     if (!policy) return undefined;
-    const entityRevision = await policy.revision(query, schema, input.entityId);
+    const entityRevision = await policy.revision(query, schema, input.entityId,
+        { channelType: input.channelType, contactId: input.contactId });
     if (!entityRevision) return undefined;
     const scope: ProactivePolicyAuthority = Object.freeze({
         kind: 'proactive_policy' as const,
@@ -425,6 +461,8 @@ export type ProactiveRevalidation =
  */
 export async function revalidateProactivePolicy(
     query: RevisionQuery, schema: string, scope: ProactivePolicyAuthority,
+    /** The contact the prepared effect is addressed to (the outbox row's own binding). */
+    recipient?: { readonly contactId?: string | null },
 ): Promise<ProactiveRevalidation> {
     if (!validProactivePolicyAuthority(scope, schema)) {
         throw new ProactivePolicyAuthorityError('proactive_policy_invalid');
@@ -444,7 +482,8 @@ export async function revalidateProactivePolicy(
     const policy = PROACTIVE_POLICIES[scope.producer];
     if (!policy) throw new ProactivePolicyAuthorityError('proactive_policy_unknown');
 
-    const current = await policy.revision(query, schema, scope.entityId);
+    const current = await policy.revision(query, schema, scope.entityId,
+        { channelType: scope.channelType, contactId: recipient?.contactId });
     if (!current) return { kind: 'gone', detail: `${scope.producer}:${scope.entityId}` };
     if (current !== scope.entityRevision) {
         return { kind: 'stale', detail: `${scope.producer}:${scope.entityId}` };

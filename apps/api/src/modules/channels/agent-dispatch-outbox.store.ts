@@ -295,7 +295,12 @@ export class AgentDispatchOutboxStore {
                     || scope.channelAccountId !== current.binding.channelAccountId) {
                     throw new DispatchOutboxError('dispatch_binding_changed');
                 }
-                const verdict = await revalidateProactivePolicy(query, schema, scope);
+                // The contact is the ROW's own binding, not something the
+                // policy's entity can name (a rule has no contact): it is what
+                // lets the policy suppress a person who opted out after this
+                // effect was queued.
+                const verdict = await revalidateProactivePolicy(query, schema, scope,
+                    { contactId: current.binding.contactId });
                 if (verdict.kind !== 'current') {
                     // ── SUPPRESSED, AND THE SUPPRESSION HAS TO COMMIT ───────
                     //

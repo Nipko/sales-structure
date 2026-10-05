@@ -24,8 +24,8 @@ export class LanguageDetectorService {
         // 'tres' is NOT a French marker: "très" loses its accent in normalize()
         // and collides with Spanish "tres personas".
         es: ['hola', 'gracias', 'quiero', 'necesito', 'puedo', 'tengo', 'usted', 'ustedes', 'nosotros', 'pero', 'muy', 'tambien', 'aqui', 'ahora', 'quisiera', 'disculpa', 'cuanto', 'cuesta', 'donde', 'tienen', 'buenas', 'buenos', 'busco', 'estoy', 'cual', 'cuales', 'tienes'],
-        en: ['the', 'and', 'you', 'for', 'are', 'but', 'not', 'with', 'this', 'that', 'hello', 'thanks', 'thank', 'want', 'need', 'have', 'would', 'could', 'please', 'when', 'where', 'what', 'how', 'your', 'can', 'looking', "i'm", 'budget', 'is', 'to', 'of', 'any', 'available', 'much', 'many', 'does', 'my', 'there', 'hi'],
-        pt: ['nao', 'obrigado', 'obrigada', 'voce', 'voces', 'preciso', 'isso', 'tambem', 'entao', 'ola', 'sim', 'quero', 'gostaria', 'muito', 'quanto', 'custa', 'tudo', 'bom', 'um', 'uma', 'qual', 'quais', 'procuro', 'em', 'meu', 'minha', 'pessoas', 'funcionamento', 'tem'],
+        en: ['the', 'and', 'you', 'for', 'are', 'but', 'not', 'with', 'this', 'that', 'hello', 'thanks', 'thank', 'want', 'need', 'have', 'would', 'could', 'please', 'when', 'where', 'what', 'how', 'your', 'can', 'looking', "i'm"],
+        pt: ['nao', 'obrigado', 'obrigada', 'voce', 'voces', 'preciso', 'isso', 'tambem', 'entao', 'ola', 'sim', 'quero', 'gostaria', 'muito', 'quanto', 'custa', 'tudo', 'bom', 'uma', 'qual', 'quais', 'procuro', 'meu', 'minha', 'pessoas', 'funcionamento', 'tem'],
         fr: ['bonjour', 'bonsoir', 'merci', 'vous', 'nous', 'veux', 'besoin', 'comment', 'aussi', "c'est", 'oui', 'est', 'sont', 'avec', 'pourquoi', 'voudrais', 'combien', 'salut', 'je', 'quel', 'quels', 'quelle', 'quelles', 'horaires', 'vos', 'votre', 'pour', 'avez', 'une', 'dans', 'cherche', 'acheter', 'jusqu'],
     };
 
@@ -51,9 +51,23 @@ export class LanguageDetectorService {
      * at least 2 and beats second place by at least 2 (3+ hits need only 1).
      * Otherwise we cannot tell — stick with fallback.
      */
-    detect(text: string, fallback: string): string {
+    detect(text: string, fallback: string, previous?: string | null): string {
+        return this.detectDetailed(text, fallback, previous).language;
+    }
+
+    /**
+     * Same as `detect`, plus whether the result is solid enough to be PERSISTED
+     * as the conversation's language.
+     *
+     * Switching away from `previous` needs strong evidence (2+ markers, or a
+     * distinctive diacritic plus a marker). A single marker never overrides an
+     * established language: "me mandas el link please" stays Spanish. With no
+     * previous language a single marker is accepted for this turn only
+     * (`persist: false`).
+     */
+    detectDetailed(text: string, fallback: string, previous?: string | null): { language: string; persist: boolean } {
         const normalized = this.normalize(text);
-        if (normalized.length < 3) return this.short(fallback);
+        if (normalized.length < 3) return { language: this.short(fallback), persist: true };
 
         const tokens = new Set(normalized.split(/\s+/).filter(Boolean));
         // "d'ouverture", "jusqu'a": also expose the pieces around the elision.
@@ -75,13 +89,17 @@ export class LanguageDetectorService {
         const ranked = Object.entries(scores).sort((a, b) => b[1] - a[1]);
         const [winner, winnerScore] = ranked[0];
         const secondScore = ranked[1]?.[1] ?? 0;
-
         const margin = winnerScore - secondScore;
-        if (winnerScore >= 1 && secondScore === 0) return winner;
+
         if ((winnerScore >= 2 && margin >= 2) || (winnerScore >= 3 && margin >= 1)) {
-            return winner;
+            return { language: winner, persist: true };
         }
-        return this.short(fallback);
+        if (winnerScore >= 1 && secondScore === 0) {
+            const prev = previous ? this.short(previous) : null;
+            if (prev && prev !== winner) return { language: prev, persist: true };
+            return { language: winner, persist: !!prev };
+        }
+        return { language: this.short(fallback), persist: true };
     }
 
     /**

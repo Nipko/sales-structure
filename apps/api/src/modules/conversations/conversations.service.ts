@@ -380,6 +380,18 @@ const NO_DATA_WAIT_REPLACEMENT: Record<string, string> = {
 const noDataWaitReplacementText = (lang?: string) =>
     NO_DATA_WAIT_REPLACEMENT[(lang || 'es').slice(0, 2).toLowerCase()] || NO_DATA_WAIT_REPLACEMENT.es;
 
+// Fixed system texts must never be rewritten by the wait-promise guard.
+function isSystemFixedText(text: string): boolean {
+    const t = (text || '').trim();
+    if (!t) return false;
+    const fixed = [
+        ...Object.values(UNVERIFIED_CLAIM_FALLBACK), ...Object.values(NO_DATA_WAIT_REPLACEMENT),
+        ...Object.values(PARTIAL_SUCCESS_MSG), ...Object.values(BUDGET_EXHAUSTED_MSG),
+        ...Object.values(HANDOFF_MSG).flatMap(h => [h.transferring, h.unavailable, h.queueHead]),
+    ];
+    return fixed.some(f => f.trim() === t);
+}
+
 // The turn broke AFTER something real was committed. The generic error would
 // have the customer believe nothing happened and ask for it all over again.
 const PARTIAL_SUCCESS_MSG: Record<string, string> = {
@@ -2730,17 +2742,22 @@ export class ConversationsService {
         // replies like "ok", "yes", "gracias" were reverting an English/Portuguese
         // conversation back to the tenant default mid-chat.
         const previousLanguage = (conversation.metadata as any)?.detectedLanguage;
-        const detectedLanguage = this.languageDetector.detect(userText, previousLanguage || configuredLanguage);
+        // A single weak marker never overrides an established language and a
+        // change decided on weak evidence is not persisted (detectDetailed).
+        const fallbackLanguage = previousLanguage || configuredLanguage;
+        const detectedLanguage = this.languageDetector.detect(userText, fallbackLanguage, previousLanguage);
+        const detail = this.languageDetector.detectDetailed?.(userText, fallbackLanguage, previousLanguage);
+        const detection = { language: detectedLanguage, persist: detail && detail.language === detectedLanguage ? detail.persist : true };
         const userLanguage = detectedLanguage;
         (msg as any).detectedLang = detectedLanguage; // expose this turn's language to auto-progress
         // Persist when it changes so the stickiness carries to the next turn.
-        if (!session && detectedLanguage && detectedLanguage !== previousLanguage) {
+        if (!session && detection.persist && detectedLanguage && detectedLanguage !== previousLanguage) {
             this.prisma.executeInTenantSchema(schemaName,
                 `UPDATE conversations SET metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb WHERE id = $1::uuid`,
                 [conversation.id, JSON.stringify({ detectedLanguage })],
             ).catch(() => { /* non-blocking */ });
         }
-        if (session) session.metadata.detectedLanguage = detectedLanguage;
+        if (session && detection.persist) session.metadata.detectedLanguage = detectedLanguage;
         // The turn's clock comes from the tenant's OPERATING identity, not from
         // a Colombian literal. `America/Bogota` was the last resort in four
         // separate places, so a Mexican restaurant computed "hoy" and "mañana"
@@ -5480,10 +5497,25 @@ export class ConversationsService {
         // y la respuesta no tiene contenido que salvar. Se reemplaza por un texto
         // determinista, honesto y sin llamadas extra: el dato no está confirmado
         // y se OFRECE una persona (pregunta, no promesa).
-        if ((executedTools || []).length === 0 && isBareWaitPromise(response)) {
+        //
+        // No actúa si (a) la respuesta ya es un texto fijo del sistema, (b) el
+        // motor/handoff produjo una directiva este turno, o (c) la respuesta
+        // promete pasar con una persona: ésa la cumple `escalateWithinTurn`
+        // más abajo y borrarla dejaría al cliente sin traspaso.
+        const hasDirective = !!(trustedContext as any)?.directive;
+        if ((executedTools || []).length === 0 && !hasDirective
+            && !isSystemFixedText(response) && !promisesHumanHandoff(response)
+            && isBareWaitPromise(response)) {
             this.recordAgentSignal(tenantId, 'wait_promise_without_tool', session);
             this.logger.warn(`[Guardrail] Respuesta = promesa de espera sin herramienta — reemplazada por texto honesto: "${response.slice(0, 100)}"`);
-            response = noDataWaitReplacementText(lang);
+            // If the previous assistant message was already our offer of a person
+            // and the model again only "waits", the customer said yes: do not loop
+            // the offer, state the transfer (a real handoff promise, honoured by
+            // `promisesHumanHandoff` → `escalateWithinTurn`).
+            const lastAssistant = [...(currentMessages || [])].reverse().find(m => m?.role === 'assistant');
+            const offeredBefore = typeof lastAssistant?.content === 'string'
+                && Object.values(NO_DATA_WAIT_REPLACEMENT).includes(lastAssistant.content.trim());
+            response = offeredBefore ? handoffText(lang).transferring : noDataWaitReplacementText(lang);
         }
 
         // Lo que las herramientas DEVOLVIERON entra al corpus.

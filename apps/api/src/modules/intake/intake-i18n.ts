@@ -89,30 +89,49 @@ const OPT_OUT_WORDS: string[] = [
     'unsubscribe',
     'desuscribir',
     'desuscribirme',
+    'desuscribanme',
     'desabonner',     // "se désabonner"
     'descadastrar',
 ];
 
 /**
- * Ambiguous bare words — they only count when the WHOLE message is that word
- * (plus courtesy filler, see OPT_OUT_BARE_MAX_TOKENS). In a sentence they are
- * ordinary vocabulary: "queremos salir el 20 de diciembre" (travel), "a que
- * hora sale", "stop by tomorrow", "quero sair às 10h", "arrêter de tondre".
- * A longer message must use an explicit phrase from OPT_OUT_PHRASES.
+ * Ambiguous opt-out words. Policy while the owner decides: WHEN IN DOUBT,
+ * OPT OUT (the record stays "pending" for review and an admin can reject it).
+ * They count in a SHORT message (<= OPT_OUT_BARE_MAX_TOKENS tokens) unless the
+ * word is clearly used as an ordinary verb: directly followed by a preposition,
+ * article, place/time word or number ("salir el sabado", "parar en Medellin",
+ * "stop by the office", "exit 5", "sair amanha"). In a longer message only the
+ * explicit phrases below count.
  * (cancelar is still excluded: alone it means "cancel my appointment".)
  */
 const OPT_OUT_BARE_WORDS: string[] = [
-    'stop', 'baja', 'parar', 'salir', 'exit', 'sair', 'arreter', 'arretez', 'pare',
+    'stop', 'baja', 'parar', 'salir', 'quitar', 'basta', 'exit', 'sair', 'arreter', 'arretez',
+    'pare', 'parem',
 ];
 
 /** Courtesy words that may accompany a bare opt-out word without changing its meaning. */
 const OPT_OUT_BARE_FILLERS = new Set([
     'por', 'favor', 'please', 'pls', 'plz', 'ya', 'ahora', 'now', 'ja', 'agora',
-    'svp', 'maintenant', 'merci', 'gracias', 'thanks', 'obrigado', 'obrigada',
+    'svp', 'maintenant', 'merci', 'gracias', 'thanks', 'thank', 'you', 'obrigado', 'obrigada',
+    'todo', 'todos', 'all', 'it', 'bye', 'chao', 'adios', 'hola', 'hi', 'hello', 'ok', 'okay',
+    'tchau', 'si', 'yes', 'sim', 'oui',
 ]);
 
-/** A bare-word opt-out is at most this many tokens long (keyword + filler). */
-export const OPT_OUT_BARE_MAX_TOKENS = 3;
+/**
+ * Words that, right after the keyword, mark ordinary use of the verb
+ * (preposition, article, time/place) instead of a request to stop.
+ */
+const OPT_OUT_BARE_CONTEXT = new Set([
+    'en', 'de', 'el', 'la', 'los', 'las', 'un', 'una', 'a', 'al', 'hacia', 'del', 'con', 'sin', 'sobre',
+    'by', 'at', 'in', 'on', 'the', 'to', 'for', 'from', 'with', 'tomorrow', 'today', 'tonight',
+    'manana', 'hoy', 'ayer', 'amanha', 'hoje', 'demain', 'aujourd', 'lunes', 'martes', 'miercoles',
+    'jueves', 'viernes', 'sabado', 'domingo', 'monday', 'tuesday', 'wednesday', 'thursday',
+    'friday', 'saturday', 'sunday', 'segunda', 'terca', 'quarta', 'quinta', 'sexta',
+    'no', 'na', 'em', 'ao', 'aos', 'dans', 'sur', 'chez', 'le', 'les', 'des', 'du', 'pour',
+]);
+
+/** A bare-word opt-out is at most this many tokens long. */
+export const OPT_OUT_BARE_MAX_TOKENS = 5;
 
 /** Multi-word phrases — matched as literal substrings (case-insensitive). */
 const OPT_OUT_PHRASES: string[] = [
@@ -125,6 +144,17 @@ const OPT_OUT_PHRASES: string[] = [
     'no me escribas',
     'no me escriban',
     'darme de baja',
+    'dar de baja',
+    'dame de baja',
+    'denme de baja',
+    'quiero la baja',
+    'deja de escribirme',
+    'dejen de escribirme',
+    'no me manden mas',
+    'no quiero mas mensajes',
+    'quitenme de la lista',
+    'detener promociones',
+    'parar promociones',
     'cancelar suscripcion',
     'quiero salir de la lista',
     'salir de la lista',
@@ -140,6 +170,7 @@ const OPT_OUT_PHRASES: string[] = [
     'do not contact',
     'remove me',
     'stop messaging',
+    'stop promotions',
     'stop contacting',
     'stop sending',
     'stop texting',
@@ -215,12 +246,22 @@ export function isOptOutMessage(text: string): boolean {
         .trim();
     if (OPT_OUT_INTAKE_PATTERNS.some(p => p.test(normalized))) return true;
 
+    // A stop sign emoji on its own is a request to stop.
+    if (/\u{1F6D1}/u.test(text) && normalized.replace(/[^a-zA-Z0-9]/g, '').length <= 12) return true;
+
     const tokens = normalized
         .toLowerCase()
         .replace(/[^a-z0-9\s]/g, ' ')
         .split(/\s+/)
         .filter(Boolean);
     if (tokens.length === 0 || tokens.length > OPT_OUT_BARE_MAX_TOKENS) return false;
-    const keyword = tokens.some(t => uniqueBareWords.includes(t));
-    return keyword && tokens.every(t => uniqueBareWords.includes(t) || OPT_OUT_BARE_FILLERS.has(t));
+    // Courtesy filler carries no meaning; judge the words that remain.
+    const rest = tokens.filter(t => !OPT_OUT_BARE_FILLERS.has(t) || uniqueBareWords.includes(t));
+    for (let i = 0; i < rest.length; i++) {
+        if (!uniqueBareWords.includes(rest[i])) continue;
+        const next = rest[i + 1];
+        const ordinaryUse = next !== undefined && (OPT_OUT_BARE_CONTEXT.has(next) || /^\d/.test(next));
+        if (!ordinaryUse) return true;
+    }
+    return false;
 }

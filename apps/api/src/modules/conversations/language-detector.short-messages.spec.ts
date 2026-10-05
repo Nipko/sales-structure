@@ -59,3 +59,44 @@ describe('LanguageDetectorService keeps Spanish and ambiguous input safe', () =>
         expect(detector.detect('Quais são os pacotes?', 'es')).toBe('pt');
     });
 });
+
+/**
+ * Review of 56e5de08: one weak marker must not flip an established language.
+ */
+describe('LanguageDetectorService does not flip an established language on weak evidence', () => {
+    const detector = new LanguageDetectorService();
+
+    it.each([
+        'y vos?',
+        'vos sabés el precio',
+        'el budget es de 2 millones',
+        'is available el lunes?',
+        'me mandas el link please',
+        'mándame el PDF to my email',
+        'Um, no sé',
+        'a las 10 em punto',
+    ])('stays Spanish with a Spanish history: %s', text => {
+        expect(detector.detect(text, 'es', 'es')).toBe('es');
+        expect(detector.detectDetailed(text, 'es', 'es').language).toBe('es');
+    });
+
+    it.each([
+        ['uma consulta', 'pt'],
+        ['qual o preço', 'pt'],
+        ['procuro casa', 'pt'],
+        ['tem disponibilidade?', 'pt'],
+        ['What services do you offer?', 'en'],
+    ])('still detected with no previous language: %s', (text, expected) => {
+        expect(detector.detect(text, 'es')).toBe(expected);
+    });
+
+    it('a strong signal still switches an established language and is persisted', () => {
+        expect(detector.detectDetailed('What services do you offer?', 'es', 'es')).toEqual({ language: 'en', persist: true });
+        expect(detector.detectDetailed('Qual o preço? Procuro uma casa', 'es', 'es')).toEqual({ language: 'pt', persist: true });
+    });
+
+    it('a single marker with no previous language applies to this turn only', () => {
+        expect(detector.detectDetailed('uma consulta', 'es')).toEqual({ language: 'pt', persist: false });
+        expect(detector.detectDetailed('uma consulta', 'es', 'es')).toEqual({ language: 'es', persist: true });
+    });
+});

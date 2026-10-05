@@ -334,3 +334,21 @@ describe('remaining first-turn and stale-state cases', () => {
         expect(result.state.date).toBeUndefined();
     });
 });
+
+describe('a service mention that is not another service', () => {
+    const shown = (): BookingState => ({
+        step: 'show_slots', services, serviceId: idA, serviceName: 'Consulta', date, slots: dayFrom().slice(0, 6),
+    });
+
+    it.each([
+        ['the same service with an article', 'la consulta'],
+        ['a service that does not exist', 'depilación'],
+    ])('%s does not block the re-query: a free 16:00 is taken', async (_label, mention) => {
+        const h = harness();
+        const result = await h.turn(shown(), { intent: 'select_slot', serviceMentioned: mention, timeMentioned: '16:00' }, `${mention} a las 16:00`);
+
+        expect(result.state.serviceId).toBe(idA);
+        expect(result.state.time).toBe('16:00');
+        expect(result.text).not.toMatch(/no est[aá] disponible/i);
+    });
+});

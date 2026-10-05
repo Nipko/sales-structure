@@ -218,6 +218,7 @@ export default function PricingPage() {
                   <p className="text-text-muted text-sm mb-5">
                     {t("planSubtitle", {
                       agents: formatLimit(plan.maxAgents, locale, t("valueUnlimited")),
+                      agentCount: plan.maxAgents,
                       messages: formatLimit(plan.maxAiMessages, locale, t("valueUnlimited")),
                     })}
                   </p>

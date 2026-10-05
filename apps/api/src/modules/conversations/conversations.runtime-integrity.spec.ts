@@ -256,6 +256,20 @@ describe('Shared runtime integrity', () => {
         expect((await hook.mock.results[0].value).observedDocuments).toBe(0);
     });
 
+    it('records the citation for attribution but never lets the marker reach the customer', async () => {
+        const { service, run, llm } = fixture();
+        service.knowledgeService.searchRelevant.mockResolvedValue([{ id: 'chunk', document_id: 'document', retrievalId: 'retrieval',
+            title: 'Tarifas', score: 0.95, chunk_text: 'La consulta cuesta COP 20000.', doc_version: 3 }]);
+        llm.mockResolvedValue({ content: 'La consulta cuesta COP 20000. [Article: Tarifas]' });
+        const reply = await run();
+        expect(reply).toBe('La consulta cuesta COP 20000.');
+        const hook = service.knowledgeService.recordResponseAttribution;
+        expect(hook).toHaveBeenCalledTimes(1);
+        // Attribution reads the raw reply; only the delivered text is clean.
+        expect(hook.mock.calls[0][2]).toBe('La consulta cuesta COP 20000. [Article: Tarifas]');
+        expect(attributeKnowledgeResponse(hook.mock.calls[0][2], hook.mock.calls[0][3]).citedDocuments).toBe(1);
+    });
+
     it('blocks an unadvertised draft writer at the real executor and skips deterministic effects', async () => {
         const { service, run, llm, domainCreate, config } = fixture(true);
         config.tools.appointments.enabled = true;

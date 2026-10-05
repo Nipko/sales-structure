@@ -14,7 +14,7 @@ import { CRM_BASE_TABLES, N3_DATABASE_URL, openLive, seedCustomer } from './__fi
 
     beforeAll(async () => {
         h = await openLive({
-            prefix: 'n3idf', chatIdentity: { isVerified: async () => false, startVerification },
+            prefix: 'n3idf', chatIdentity: { isVerified: async () => false, hasLiveChallenge: async () => false, startVerification },
             tables: [...CRM_BASE_TABLES, 'staff_members', 'operational_locations', 'operational_resources', 'staff_operational_bindings', 'staff_resource_assignments', 'services', 'service_staff', 'calendar_integrations', 'appointments',
                 'availability_slots', 'blocked_dates', 'calendar_sync_outbox', 'tool_execution_ledger',
                 'tool_approval_tickets', 'tool_approval_outbox', 'commitment_proposals', 'operational_notice_outbox'],

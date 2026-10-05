@@ -49,7 +49,7 @@ function harness(all = dayFrom(), lang = 'es') {
     );
     const turn = (state: BookingState, intent: Record<string, unknown>, rawText = 'x', flowData?: Record<string, unknown>) =>
         engine.process('tenant_followup', tenantId, contactId, intent as any, rawText, state, {}, '2026-08-08', lang,
-            { authority, conversationId, ...(flowData ? { flowData } : {}) } as any);
+            { authority, conversationId, ...(flowData ? { flowData, flowResponseToken: 'tok' } : {}) } as any);
     const start = (): BookingState => ({ step: 'ask_date', services, serviceId: idA, serviceName: 'Consulta' });
     return { execute, turn, start };
 }

@@ -62,10 +62,12 @@ import { LANE_CHAT_DDL, N3_LANE_URL, openLane } from '../../common/__fixtures__/
         await lane.sql('TRUNCATE agent_dispatch_outbox, messages, appointments, conversations, contacts CASCADE');
     });
 
-    const appointmentFor = async (channel: string, opts: { conversation?: boolean; email?: string } = {}) => {
+    const appointmentFor = async (channel: string, opts: { conversation?: boolean; email?: string; phone?: string | null; chatId?: string | null } = {}) => {
         const contactId = randomUUID(), conversationId = randomUUID(), id = randomUUID();
-        await lane.sql('INSERT INTO contacts(id,name,phone,email,channel_type) VALUES($1::uuid,$2,$3,$4,$5)',
-            [contactId, `Cliente ${channel}`, '+573001112233', opts.email ?? null, channel]);
+        // A Telegram contact is addressed by its chat id (`external_id`); a phone is optional there.
+        const chatId = opts.chatId === undefined ? (channel === 'telegram' ? `tg-${contactId.slice(0, 8)}` : null) : opts.chatId;
+        await lane.sql('INSERT INTO contacts(id,name,phone,email,channel_type,external_id) VALUES($1::uuid,$2,$3,$4,$5,$6)',
+            [contactId, `Cliente ${channel}`, opts.phone === undefined ? '+573001112233' : opts.phone, opts.email ?? null, channel, chatId]);
         const withConversation = opts.conversation !== false;
         if (withConversation) {
             await lane.sql(`INSERT INTO conversations(id,contact_id,channel_type,channel_account_id) VALUES($1::uuid,$2::uuid,$3,$4)`,
@@ -75,10 +77,11 @@ import { LANE_CHAT_DDL, N3_LANE_URL, openLane } from '../../common/__fixtures__/
             VALUES($1::uuid,$2::uuid,$3::uuid,'Consulta',(NOW() AT TIME ZONE 'America/Bogota') + interval '24 hours',
                    (NOW() AT TIME ZONE 'America/Bogota') + interval '25 hours','confirmed',false,false)`,
         [id, contactId, withConversation ? conversationId : null]);
-        return { id, contactId };
+        return { id, contactId, chatId };
     };
     const flag = async (id: string) => (await lane.sql('SELECT reminder_24h_sent AS v FROM appointments WHERE id=$1::uuid', [id]))[0].v;
     const rowsFor = async (contactId: string) => (await lane.outboxRows()).filter((r: any) => r.contact_id === contactId);
+    const recipientOf = async (contactId: string) => (await lane.sql('SELECT recipient FROM agent_dispatch_outbox WHERE contact_id=$1::uuid', [contactId]))[0]?.recipient;
 
     it('Telegram: one text row naming the appointment, then the flag', async () => {
         const tg = await appointmentFor('telegram');
@@ -87,6 +90,35 @@ import { LANE_CHAT_DDL, N3_LANE_URL, openLane } from '../../common/__fixtures__/
         expect(rows).toHaveLength(1);
         expect(rows[0]).toMatchObject({ item_kind: 'text', channel_account_id: 'telegram-bot-1' });
         expect(JSON.stringify(rows[0].payload)).toContain('Consulta');
+        expect(await flag(tg.id)).toBe(true);
+    });
+
+    it('Telegram: the recipient is the chat id, never the phone', async () => {
+        const tg = await appointmentFor('telegram');
+        await service.processReminders(lane.tenantId, lane.schema, '24h');
+        expect(await recipientOf(tg.contactId)).toBe(tg.chatId);
+    });
+
+    it('Telegram contact WITHOUT a phone is still reminded, to its chat id', async () => {
+        const tg = await appointmentFor('telegram', { phone: null });
+        await service.processReminders(lane.tenantId, lane.schema, '24h');
+        expect(await recipientOf(tg.contactId)).toBe(tg.chatId);
+        expect(await flag(tg.id)).toBe(true);
+    });
+
+    it('Telegram contact with a phone but no chat id: no address, nothing written, flag stays false', async () => {
+        const tg = await appointmentFor('telegram', { chatId: null });
+        await service.processReminders(lane.tenantId, lane.schema, '24h');
+        expect(await rowsFor(tg.contactId)).toHaveLength(0);
+        expect(await flag(tg.id)).toBe(false);
+    });
+
+    it('a refused message does not swallow the email: the email goes out and settles the flag', async () => {
+        // No Telegram thread, so the lane refuses; the contact also has an email.
+        const tg = await appointmentFor('telegram', { conversation: false, email: 'tg@example.invalid' });
+        await service.processReminders(lane.tenantId, lane.schema, '24h');
+        expect(await rowsFor(tg.contactId)).toHaveLength(0);
+        expect(emailSent).toHaveBeenCalledTimes(1);
         expect(await flag(tg.id)).toBe(true);
     });
 

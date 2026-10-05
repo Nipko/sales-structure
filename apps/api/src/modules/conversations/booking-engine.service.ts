@@ -13,6 +13,7 @@ import { isPauseMessage, isResumeMessage } from '../../common/conversation/inten
 import { procedureDialogueMessages } from './procedure-dialogue-messages';
 import { containsMissionDirective, isCollectionCancellation, isDirectedCorrection, isNamedMissionResume, mentionedMissionDomains, missionDialogue, parseDirectedSlotCorrection } from './mission-focus';
 import { coerceProcedureSlot } from './procedure-slot-interpolation';
+import { nearestSlots, selectSlotWindow } from './slot-window';
 
 /**
  * Lo que el motor necesita saber del turno además del estado de la reserva.
@@ -86,6 +87,10 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
             'Disculpa, no encontré espacios el {date}. ¿Qué otro día te gustaría intentar?'
         ],
         slotUnavailable: 'El horario de las {time} no está disponible. Horarios disponibles: {slots}. ¿Cuál te funciona?',
+        slotSuggest: 'El horario de las {time} no está disponible. Te recomiendo {suggestion}. ¿Te sirve?',
+        slotSuggestMany: 'El horario de las {time} no está disponible. Te recomiendo {suggestion}. ¿Cuál te sirve?',
+        slotSuggestOr: 'o',
+        slotSuggestItem: 'las {t}',
         schedulingUnavailable: 'Todavía no tenemos la agenda disponible por acá. Te paso con alguien del equipo para coordinar tu cita.',
         bookingFailedHandoff: 'No pude completar la reserva por acá. Te paso con alguien del equipo para confirmarla contigo.',
         askName: '{time} seleccionado para {service}. ¿Cuál es tu nombre completo?',
@@ -131,6 +136,10 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         slotsAvailable: 'Available times for {service} on {date}: {slots}. Which time do you prefer?',
         noAvailability: 'No availability on {date}. Would you like to try another date?',
         slotUnavailable: 'The {time} slot is not available. Available times: {slots}. Which one works for you?',
+        slotSuggest: '{time} is not available. I recommend {suggestion}. Does that work for you?',
+        slotSuggestMany: '{time} is not available. I recommend {suggestion}. Which one works for you?',
+        slotSuggestOr: 'or',
+        slotSuggestItem: '{t}',
         schedulingUnavailable: 'Our booking calendar is not available here yet. Let me connect you with someone from our team to arrange your appointment.',
         bookingFailedHandoff: 'I could not complete the booking here. Let me connect you with someone from our team to confirm it with you.',
         askName: '{time} selected for {service}. What is your full name?',
@@ -171,6 +180,10 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         slotsAvailable: 'Horários disponíveis para {service} em {date}: {slots}. Qual horário prefere?',
         noAvailability: 'Sem disponibilidade em {date}. Gostaria de tentar outra data?',
         slotUnavailable: 'O horário das {time} não está disponível. Horários disponíveis: {slots}. Qual funciona para você?',
+        slotSuggest: 'O horário das {time} não está disponível. Recomendo {suggestion}. Serve para você?',
+        slotSuggestMany: 'O horário das {time} não está disponível. Recomendo {suggestion}. Qual serve para você?',
+        slotSuggestOr: 'ou',
+        slotSuggestItem: 'as {t}',
         schedulingUnavailable: 'Ainda não temos a agenda disponível por aqui. Vou te passar para alguém da equipe para combinar seu horário.',
         bookingFailedHandoff: 'Não consegui concluir o agendamento por aqui. Vou te passar para alguém da equipe para confirmar com você.',
         askName: '{time} selecionado para {service}. Qual é seu nome completo?',
@@ -211,6 +224,10 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         slotsAvailable: 'Créneaux disponibles pour {service} le {date} : {slots}. Quel horaire préférez-vous ?',
         noAvailability: 'Pas de disponibilité le {date}. Souhaitez-vous essayer une autre date ?',
         slotUnavailable: 'Le créneau de {time} n\'est pas disponible. Créneaux disponibles : {slots}. Lequel vous convient ?',
+        slotSuggest: 'Le créneau de {time} n\'est pas disponible. Je vous recommande {suggestion}. Cela vous convient-il ?',
+        slotSuggestMany: 'Le créneau de {time} n\'est pas disponible. Je vous recommande {suggestion}. Lequel vous convient ?',
+        slotSuggestOr: 'ou',
+        slotSuggestItem: '{t}',
         schedulingUnavailable: 'La prise de rendez-vous n\'est pas encore disponible par ici. Je vous mets en relation avec une personne de l\'équipe pour organiser votre rendez-vous.',
         bookingFailedHandoff: 'Je n\'ai pas pu finaliser la réservation par ici. Je vous mets en relation avec une personne de l\'équipe pour la confirmer avec vous.',
         askName: '{time} sélectionné pour {service}. Quel est votre nom complet ?',
@@ -331,6 +348,8 @@ export interface BookingState {
     // la que usan justamente las verticales de agenda pura.
     slots?: Array<{ time: string; endTime: string; staffId?: string; staffName?: string }>;
     time?: string;
+    /** Huecos recomendados porque la hora pedida no estaba libre; esperan un "sí" del cliente. */
+    suggestedSlots?: Array<{ time: string; endTime: string; staffId?: string; staffName?: string }>;
     /** Profesional del slot elegido. Se persiste como `appointments.assigned_to`. */
     staffId?: string;
     staffName?: string;
@@ -494,7 +513,7 @@ export class BookingEngineService {
             if (!correction || !value?.ok || !temporalValid) return { handled: true, state, text: missionDialogue(L, 'invalidCorrection') };
             (state as any)[correction.field] = value.value;
             invalidateBookingProposal(state);
-            if (correction.field === 'date') { state.time = undefined; state.slots = undefined; state.staffId = undefined; state.staffName = undefined; }
+            if (correction.field === 'date') { state.time = undefined; state.slots = undefined; state.suggestedSlots = undefined; state.staffId = undefined; state.staffName = undefined; }
             if (correction.field === 'date' || correction.field === 'time') {
                 // Revalidate availability on a later selection turn, never book
                 // merely because this correction contains a previously valid time.
@@ -530,7 +549,7 @@ export class BookingEngineService {
             this.logger.log(`[Engine] Discarding stale state.date ${state.date} < ${todayDate} → reset to ask_date`);
             state.date = undefined;
             state.time = undefined;
-            (state as any).slots = undefined;
+            (state as any).slots = undefined; state.suggestedSlots = undefined;
             if (state.step && state.step !== 'idle' && state.step !== 'show_services') {
                 state.step = 'ask_date';
             }
@@ -619,7 +638,7 @@ export class BookingEngineService {
                     // show_slots. Without this, a closed/out-of-hours slot books blindly.
                     const avail = await this.toolExecutor.execute(
                         schemaName, tenantId, contactId, 'check_availability',
-                        { date: state.date, serviceId: state.serviceId },
+                        { date: state.date, serviceId: state.serviceId, ...(state.time ? { time: state.time } : {}) },
                         conversationId, { authority },
                     );
                     // Dead end (agenda not configured / tool failure): re-asking for a
@@ -647,7 +666,7 @@ export class BookingEngineService {
                     // in text so the customer chooses a valid one (or is asked for a new date).
                     this.logger.warn(`[Engine] Flow slot ${state.date} ${state.time} not available — showing real slots`);
                     state.flowStartedAt = undefined;
-                    return this.checkAvailability(schemaName, tenantId, contactId, state, L, authority, conversationId);
+                    return this.checkAvailability(schemaName, tenantId, contactId, state, L, authority, conversationId, state.time);
                 }
                 // Flow returned incomplete/invalid/past/unknown-service data → restart in text.
                 this.logger.warn('[Engine] Flow response incomplete/invalid — falling back to text flow');
@@ -684,7 +703,7 @@ export class BookingEngineService {
                 || !!intent.serviceMentioned
                 || !!intent.dateMentioned;
             if (wantsNewBooking) {
-                Object.assign(state, { step: 'idle', serviceId: undefined, serviceName: undefined, date: undefined, slots: undefined, time: undefined });
+                Object.assign(state, { step: 'idle', serviceId: undefined, serviceName: undefined, date: undefined, slots: undefined, suggestedSlots: undefined, time: undefined });
                 this.logger.log('[Decide] New booking intent after a completed booking — resetting to idle');
             }
         }
@@ -791,8 +810,10 @@ export class BookingEngineService {
                     if (tNorm.includes(word)) { slotIdx = idx; break; }
                 }
             }
-            if (slotIdx >= 0 && slotIdx < state.slots.length) {
-                const chosen = state.slots[slotIdx];
+            // Con recomendaciones pendientes, "la primera" es la primera RECOMENDADA.
+            const pool = state.suggestedSlots?.length ? state.suggestedSlots : state.slots; // ordinal-pool
+            if (slotIdx >= 0 && slotIdx < pool.length) {
+                const chosen = pool[slotIdx];
                 intent.timeMentioned = chosen.time;
                 // Al elegir por número se sabe EXACTAMENTE qué slot es. Buscarlo
                 // después por hora tomaría el primero con esa hora, que con dos
@@ -811,7 +832,7 @@ export class BookingEngineService {
                 state.serviceId = undefined;
                 state.serviceName = undefined;
                 state.date = undefined;
-                state.slots = undefined;
+                state.slots = undefined; state.suggestedSlots = undefined;
                 state.time = undefined;
                 state.staffId = undefined;
                 state.staffName = undefined;
@@ -846,7 +867,7 @@ export class BookingEngineService {
                 this.logger.warn(`[Decide] dateMentioned=${intent.dateMentioned} is in the past (today=${todayDate}) — ignoring`);
                 // Clear state values so they don't persist
                 state.date = undefined;
-                state.slots = undefined;
+                state.slots = undefined; state.suggestedSlots = undefined; // past-date-clear
                 state.time = undefined;
                 state.staffId = undefined;
                 state.staffName = undefined;
@@ -865,6 +886,7 @@ export class BookingEngineService {
                 // Date changed → clear slots so availability is re-checked
                 if (state.date && state.date !== intent.dateMentioned) {
                     state.slots = undefined;
+                    state.suggestedSlots = undefined;
                     state.time = undefined;
                     state.staffId = undefined;
                     state.staffName = undefined;
@@ -872,14 +894,44 @@ export class BookingEngineService {
                 state.date = intent.dateMentioned;
             }
         }
-        if (intent.timeMentioned && state.slots?.length) {
-            // Bug #3: Tolerant time matching — accept the closest available slot within ±30 min.
-            // Exact match first, then find nearest.
-            const toMinutes = (t: string) => {
-                const [h, m] = t.split(':').map(Number);
-                return h * 60 + m;
-            };
-            const requestedMin = toMinutes(intent.timeMentioned);
+        // El cliente acepta la hora que se le recomendó: solo con un "sí" explícito
+        // y una única recomendación pendiente se fija. Con dos, debe elegir una.
+        if (state.suggestedSlots?.length === 1 && intent.isConfirmation && !intent.timeMentioned) {
+            const accepted = state.suggestedSlots[0];
+            // Solo si seguimos mostrando huecos y el recomendado sigue en la lista.
+            if (state.step === 'show_slots' /* accept-step */ && state.slots?.some(s => s.time === accepted.time && s.staffId === accepted.staffId)) {
+                state.time = accepted.time;
+                state.staffId = accepted.staffId;
+                state.staffName = accepted.staffName;
+            }
+            state.suggestedSlots = undefined;
+        }
+        // La hora pedida puede estar fuera de la tanda que se ve (huecos de la
+        // mañana en pantalla, cliente pide las 16:00): se vuelve a consultar con
+        // esa hora antes de decidir, en vez de buscarla solo en la lista vieja.
+        const askedTime = intent.timeMentioned ?? undefined;
+        const lateStep = ['ask_name', 'ask_email', 'confirm'].includes(state.step);
+        // Si el mismo mensaje cambia de servicio, la hora se usa DESPUÉS con el
+        // servicio nuevo (más abajo); consultar ahora preguntaría por el viejo.
+        const normSvc = (v: string) => v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+        // Es un cambio solo si el texto se resuelve a OTRO servicio del catálogo
+        // (mismo criterio que el bloque de cambio de opinión): "la consulta" o un
+        // servicio que no existe no son un cambio.
+        const switchTo = intent.serviceMentioned && state.serviceName
+            ? state.services?.find(sv => normSvc(sv.name).includes(normSvc(intent.serviceMentioned!))) : undefined;
+        const switchingService = !!switchTo && switchTo.id !== state.serviceId;
+        const needsRefresh = !!askedTime && !!state.serviceId && !!state.date /* refresh-guard */
+            && !switchingService
+            && !state.slots?.some(s => s.time === askedTime)
+            && (['idle', 'show_services', 'ask_date', 'show_slots'].includes(state.step)
+                || (lateStep /* late-guard */ && askedTime !== state.time));
+        if (needsRefresh) {
+            const failed = await this.loadSlots(schemaName, tenantId, contactId, state, L, authority, conversationId, askedTime);
+            if (failed) return failed;
+        }
+        const prevTime = state.time;
+        if (intent.timeMentioned && state.slots?.length && !(lateStep && intent.timeMentioned === state.time)) {
+            state.suggestedSlots = undefined;
             // El profesional se toma del MISMO slot que la hora: elegir la franja
             // es elegir con quién, y separarlos era lo que hacía que la reserva
             // llegara sin dueño.
@@ -891,24 +943,24 @@ export class BookingEngineService {
             const exactSlot = state.slots.find(s => s.time === intent.timeMentioned);
             if (exactSlot) {
                 takeSlot(exactSlot);
+                // Otra hora en un paso tardío: la propuesta anterior ya no vale.
+                if (lateStep && state.time !== prevTime) invalidateBookingProposal(state);
             } else {
-                // Find closest slot within ±30 minutes
-                let closest: { time: string; endTime: string; staffId?: string; staffName?: string } | undefined;
-                let closestDiff = Infinity;
-                for (const s of state.slots) {
-                    const diff = Math.abs(toMinutes(s.time) - requestedMin);
-                    if (diff < closestDiff && diff <= 30) {
-                        closestDiff = diff;
-                        closest = s;
-                    }
+                if (lateStep) {
+                    // Nunca se queda la hora vieja si el cliente pidió otra que no está libre.
+                    state.time = undefined; state.staffId = undefined; state.staffName = undefined;
+                    invalidateBookingProposal(state);
+                    state.step = 'show_slots';
                 }
-                if (closest) {
-                    this.logger.log(`[Decide] Closest slot to ${intent.timeMentioned} is ${closest.time} (diff=${closestDiff}min)`);
-                    takeSlot(closest);
-                } else {
-                    // Time mentioned but NOT within range of available slots — flag it
-                    requestedUnavailableTime = intent.timeMentioned;
+                // La hora pedida no está libre. Nunca se reserva otra en silencio:
+                // se dice y se recomienda el hueco más cercano (±30 min) para que
+                // el cliente lo confirme.
+                const near = nearestSlots(state.slots, intent.timeMentioned);
+                if (near.length) {
+                    this.logger.log(`[Decide] ${intent.timeMentioned} not free — recommending ${near.map(n => n.time).join(', ')}`);
+                    state.suggestedSlots = near;
                 }
+                requestedUnavailableTime = intent.timeMentioned;
             }
         }
         this.logger.log(`[Decide] State after intent: step=${state.step} svc=${state.serviceName || '-'} date=${state.date || '-'} time=${state.time || '-'} slots=${state.slots?.length || 0}`);
@@ -941,7 +993,7 @@ export class BookingEngineService {
         if (rawText.startsWith('slot_') && state.slots?.length) {
             const time = rawText.replace('slot_', '');
             const slot = state.slots.find(s => s.time === time);
-            if (slot) { state.time = slot.time; return this.collectMissingInfo(state, L); }
+            if (slot) { state.time = slot.time; state.suggestedSlots = undefined; return this.collectMissingInfo(state, L); }
         }
         if (rawText === 'confirm_yes' || rawText.startsWith('confirm_yes:')) {
             if (!state.confirmationId || rawText !== `confirm_yes:${state.confirmationId}` || state.step !== 'confirm') {
@@ -960,7 +1012,7 @@ export class BookingEngineService {
         }
         if ((rawText === 'confirm_no' || rawText.startsWith('confirm_no:')) && state.confirmationId
             && rawText === `confirm_no:${state.confirmationId}`) {
-            Object.assign(state, { step: 'idle', serviceId: undefined, serviceName: undefined, date: undefined, slots: undefined, time: undefined });
+            Object.assign(state, { step: 'idle', serviceId: undefined, serviceName: undefined, date: undefined, slots: undefined, suggestedSlots: undefined, time: undefined });
             return { handled: true, state, text: msg(L, 'cancelled') };
         }
 
@@ -980,9 +1032,16 @@ export class BookingEngineService {
                 // User changed their mind — reset and apply new service
                 const newSvc = state.services?.find(s => norm(s.name).includes(norm(intent.serviceMentioned!)));
                 if (newSvc) {
+                    const keptDate = state.date;
                     state.serviceId = newSvc.id; state.serviceName = newSvc.name;
-                    state.date = undefined; state.slots = undefined; state.time = undefined; state.staffId = undefined; state.staffName = undefined;
+                    state.date = undefined; state.slots = undefined; state.suggestedSlots = undefined; state.time = undefined; state.staffId = undefined; state.staffName = undefined;
                     state.step = 'ask_date';
+                    // "Mejor el masaje a las 17:30": la fecha y la hora siguen valiendo
+                    // con el servicio nuevo.
+                    if (intent.timeMentioned && keptDate) {
+                        state.date = keptDate;
+                        return this.checkAvailability(schemaName, tenantId, contactId, state, L, authority, conversationId, intent.timeMentioned);
+                    }
                     this.logger.log(`[Decide] Changed service to: ${newSvc.name}`);
                     return { handled: true, state, text: msg(L, 'switchedService', { service: newSvc.name }) };
                 }
@@ -1004,7 +1063,7 @@ export class BookingEngineService {
 
         // ── CANCEL: user wants to abort booking ──
         if (intent.intent === 'cancel' && state.step !== 'idle') {
-            Object.assign(state, { step: 'idle', serviceId: undefined, serviceName: undefined, date: undefined, slots: undefined, time: undefined });
+            Object.assign(state, { step: 'idle', serviceId: undefined, serviceName: undefined, date: undefined, slots: undefined, suggestedSlots: undefined, time: undefined });
             return { handled: true, state, text: msg(L, 'cancelled') };
         }
 
@@ -1022,7 +1081,7 @@ export class BookingEngineService {
         // times. The button never hit it because it short-circuits earlier.
         const confirmingChosenSlot = state.step === 'confirm' && !!state.time && intent.isConfirmation;
         if (state.serviceId && state.date && (!state.slots || !state.slots.length) && !confirmingChosenSlot) {
-            return this.checkAvailability(schemaName, tenantId, contactId, state, L, authority, conversationId);
+            return this.checkAvailability(schemaName, tenantId, contactId, state, L, authority, conversationId, intent.timeMentioned ?? undefined);
         }
 
         // ── Have service + date + time → collect info or confirm ──
@@ -1051,6 +1110,12 @@ export class BookingEngineService {
         // ── User asked for a specific time that's NOT available ──
         if (requestedUnavailableTime && state.step === 'show_slots' && state.slots?.length) {
             const requested = requestedUnavailableTime;
+            if (state.suggestedSlots?.length) {
+                return {
+                    handled: true, state,
+                    text: this.suggestionText(L, requested, state.suggestedSlots),
+                };
+            }
             const available = (state.slots ?? []).map(s => `${s.time}-${s.endTime}`).join(', ');
             return {
                 handled: true, state,
@@ -1093,7 +1158,7 @@ export class BookingEngineService {
         this.logger.warn(`[Decide] Booking dead end (${reason}) — escalating to a human`);
         Object.assign(state, {
             step: 'idle', serviceId: undefined, serviceName: undefined,
-            date: undefined, slots: undefined, time: undefined, flowStartedAt: undefined,
+            date: undefined, slots: undefined, suggestedSlots: undefined, time: undefined, flowStartedAt: undefined,
         });
         return { handled: true, state, text: msg(lang, msgKey), handoff: true, handoffReason: reason };
     }
@@ -1123,34 +1188,36 @@ export class BookingEngineService {
         };
     }
 
-    // ── Check availability ──
-    private async checkAvailability(
+    /** "Las 16:00 no está disponible. Te recomiendo 16:30. ¿Te sirve?" */
+    private suggestionText(lang: string, requested: string, near: Array<{ time: string }>): string {
+        // Solo horas de inicio: un rango "15:30 - 16:00" parece ofrecer las 16:00.
+        const suggestion = near.map(s => msg(lang, 'slotSuggestItem', { t: s.time })).join(` ${msg(lang, 'slotSuggestOr')} `);
+        return msg(lang, near.length > 1 ? 'slotSuggestMany' : 'slotSuggest', { time: requested, suggestion });
+    }
+
+    /**
+     * Pide huecos a la herramienta (centrados en la hora pedida, si la hay) y los
+     * deja en `state.slots` con `step = show_slots`. Devuelve un resultado solo
+     * cuando no hay huecos que mostrar (sin disponibilidad o callejón sin salida).
+     */
+    private async loadSlots(
         schema: string, tenantId: string, contactId: string, state: BookingState, lang: string,
-        authority: ToolExecutionAuthority, conversationId?: string,
-    ): Promise<EngineResult> {
+        authority: ToolExecutionAuthority, conversationId?: string, requestedTime?: string,
+    ): Promise<EngineResult | null> {
         this.logger.log(`[Decide] Checking availability: ${state.serviceName} on ${state.date}`);
         const result = await this.toolExecutor.execute(
             schema, tenantId, contactId, 'check_availability',
-            { date: state.date, serviceId: state.serviceId },
+            // La hora pedida viaja a la herramienta solo si existe: sin ella el
+            // contrato de la llamada es el de siempre.
+            { date: state.date, serviceId: state.serviceId, ...(requestedTime ? { time: requestedTime } : {}) },
             conversationId, { authority },
         );
 
         if (result?.available && result.slots?.length) {
-            state.slots = result.slots.slice(0, 6);
+            state.slots = selectSlotWindow(result.slots, requestedTime);
             state.step = 'show_slots';
-            // El nombre del profesional se muestra solo cuando hay MÁS DE UNO en
-            // la tanda: en un local de una sola persona repetirlo en cada franja
-            // es ruido, y en una clínica con tres doctoras es justo el dato con
-            // el que el paciente elige.
-            const staffNames = new Set((state.slots ?? []).map(s => s.staffName).filter(Boolean));
-            const showStaff = staffNames.size > 1;
-            const slotList = (state.slots ?? [])
-                .map(s => `${s.time} - ${s.endTime}${showStaff && s.staffName ? ` (${s.staffName})` : ''}`)
-                .join(', ');
-            return {
-                handled: true, state,
-                text: msg(lang, 'slotsAvailable', { service: state.serviceName || '', date: state.date || '', slots: slotList }),
-            };
+            state.suggestedSlots = undefined;
+            return null;
         }
 
         // The tool distinguishes "closed that weekday" (retry another date) from a
@@ -1162,8 +1229,53 @@ export class BookingEngineService {
         }
 
         const noDate = state.date;
+        state.time = undefined; state.staffId = undefined; state.staffName = undefined;
+        invalidateBookingProposal(state);
         state.date = undefined; state.step = 'ask_date';
         return { handled: true, state, text: msg(lang, 'noAvailability', { date: noDate || '' }) };
+    }
+
+    // ── Check availability ──
+    private async checkAvailability(
+        schema: string, tenantId: string, contactId: string, state: BookingState, lang: string,
+        authority: ToolExecutionAuthority, conversationId?: string, requestedTime?: string,
+    ): Promise<EngineResult> {
+        const failed = await this.loadSlots(schema, tenantId, contactId, state, lang, authority, conversationId, requestedTime);
+        if (failed) return failed;
+        if (requestedTime) {
+            const exact = state.slots?.find(s => s.time === requestedTime);
+            if (exact) {
+                state.time = exact.time; state.staffId = exact.staffId; state.staffName = exact.staffName;
+                return this.collectMissingInfo(state, lang);
+            }
+            // Nunca se conserva ni se reserva otra hora sin que el cliente la confirme.
+            state.time = undefined;
+            const near = nearestSlots(state.slots ?? [], requestedTime);
+            if (near.length) {
+                state.suggestedSlots = near;
+                return { handled: true, state, text: this.suggestionText(lang, requestedTime, near) };
+            }
+            return {
+                handled: true, state,
+                text: msg(lang, 'slotUnavailable', {
+                    time: requestedTime,
+                    slots: (state.slots ?? []).map(s => `${s.time}-${s.endTime}`).join(', '),
+                }),
+            };
+        }
+        // El nombre del profesional se muestra solo cuando hay MÁS DE UNO en
+        // la tanda: en un local de una sola persona repetirlo en cada franja
+        // es ruido, y en una clínica con tres doctoras es justo el dato con
+        // el que el paciente elige.
+        const staffNames = new Set((state.slots ?? []).map(s => s.staffName).filter(Boolean));
+        const showStaff = staffNames.size > 1;
+        const slotList = (state.slots ?? [])
+            .map(s => `${s.time} - ${s.endTime}${showStaff && s.staffName ? ` (${s.staffName})` : ''}`)
+            .join(', ');
+        return {
+            handled: true, state,
+            text: msg(lang, 'slotsAvailable', { service: state.serviceName || '', date: state.date || '', slots: slotList }),
+        };
     }
 
     // ── Collect missing info or show confirmation ──
@@ -1354,7 +1466,9 @@ export class BookingEngineService {
             case 'ask_date':
                 return { handled: true, state, text: msg(lang, 'askDate', { service: state.serviceName || '' }) };
             case 'show_slots':
-                return { handled: true, state, text: msg(lang, 'whichTime', { slots: (state.slots ?? []).map(s => s.time).join(', ') }) };
+                // Con recomendaciones pendientes se repiten solo ellas: es la lista que
+                // el cliente acaba de leer y sobre la que contará "la primera".
+                return { handled: true, state, text: msg(lang, 'whichTime', { slots: (state.suggestedSlots?.length ? state.suggestedSlots : state.slots ?? []).map(s => s.time).join(', ') }) };
             case 'ask_name':
                 return { handled: true, state, text: msg(lang, 'whichName') };
             case 'ask_email':

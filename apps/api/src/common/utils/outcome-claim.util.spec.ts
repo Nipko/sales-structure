@@ -145,3 +145,41 @@ describe('auditTurnClaim', () => {
         expect(audit.falseClaim).toBe(false);
     });
 });
+
+describe('claimsCompletedAction — negation and operation subject (regresion 5-oct)', () => {
+    it.each([
+        'El precio no está confirmado para este producto.',
+        'Todavía no tengo un precio confirmado.',
+        'Aún no está confirmada la disponibilidad.',
+        'La disponibilidad está confirmada para mañana.',
+        'No momento, não tenho um preço confirmado.',
+        'O preço ainda não está confirmado.',
+        'The price is not confirmed yet.',
+        "Le prix n'est pas confirmé.",
+        'Tu reserva no está confirmada todavía.',
+        'Your booking has not been confirmed.',
+        'Su cita aún no quedó confirmada.',
+    ])('no es un hecho consumado: %s', reply => {
+        expect(claimsCompletedAction(reply)).toBe(false);
+    });
+
+    it.each([
+        'Tu cita está confirmada para el sábado.',
+        'Su pedido quedó confirmado.',
+        'Tu reserva está confirmada.',
+        'O pagamento foi confirmado.',
+        'Your order was confirmed.',
+        'Ya está pagado, te llega el comprobante',
+    ])('sigue siendo un hecho consumado: %s', reply => {
+        expect(claimsCompletedAction(reply)).toBe(true);
+    });
+});
+
+describe('claimsCompletedAction — operation subject across a long clause', () => {
+    it('detecta la reserva con fechas entre el sujeto y el verbo', () => {
+        expect(claimsCompletedAction('Tu reserva en Amazon Minimalist del 1 al 5 de diciembre está confirmada.')).toBe(true);
+    });
+    it('un dato como sujeto no es un hecho consumado aunque nombre la cita', () => {
+        expect(claimsCompletedAction('El precio de la cita está confirmado en 50.000.')).toBe(false);
+    });
+});

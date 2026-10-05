@@ -1,3 +1,5 @@
+import { offersHumanHandoff, removeHandoffPromiseSentences } from '../../common/utils/outcome-claim.util';
+
 /**
  * The honest "I don't have that confirmed" reply offers a person from the team.
  * A "yes" to that offer must produce a REAL handoff whatever the model says
@@ -15,6 +17,16 @@ export const NO_DATA_WAIT_REPLACEMENT: Record<string, string> = {
     fr: "Je n'ai pas cette information confirmée pour le moment. Souhaitez-vous que je demande à quelqu'un de l'équipe de la confirmer ?",
 };
 
+/** Only the offer, as a question: for a reply that already says everything else it has to say. */
+export const HUMAN_OFFER_QUESTION: Record<string, string> = {
+    es: '¿Quieres que le pida a una persona del equipo que lo confirme?',
+    en: 'Would you like me to ask someone from the team to confirm it?',
+    pt: 'Quer que eu peça a alguém da equipe para confirmar?',
+    fr: "Souhaitez-vous que je demande à quelqu'un de l'équipe de la confirmer ?",
+};
+export const humanOfferQuestionText = (lang?: string): string =>
+    HUMAN_OFFER_QUESTION[(lang || 'es').slice(0, 2).toLowerCase()] || HUMAN_OFFER_QUESTION.es;
+
 export const noDataWaitReplacementText = (lang?: string): string =>
     NO_DATA_WAIT_REPLACEMENT[(lang || 'es').slice(0, 2).toLowerCase()] || NO_DATA_WAIT_REPLACEMENT.es;
 
@@ -30,7 +42,7 @@ export const noDataNoOfferText = (lang?: string): string =>
 
 /** True when the stored outbound text contains one of our offers. */
 export function containsHumanOffer(text: unknown): boolean {
-    return typeof text === 'string' && Object.values(NO_DATA_WAIT_REPLACEMENT).some(o => text.includes(o));
+    return typeof text === 'string' && Object.values(HUMAN_OFFER_QUESTION).some(o => text.includes(o));
 }
 
 export function isHumanOfferText(text: unknown): boolean {
@@ -63,4 +75,39 @@ export type HumanOfferMark = { at: string; expiresAt: string };
 export function isLiveHumanOffer(mark: any, now = Date.now()): boolean {
     const exp = mark && typeof mark.expiresAt === 'string' ? Date.parse(mark.expiresAt) : NaN;
     return Number.isFinite(exp) && exp > now;
+}
+
+/**
+ * A "sí" to an offer of a person that was written in free text (the model's own
+ * "Si quiere, le paso con alguien del equipo"), not only to our fixed offer
+ * sentence. The previous outbound message must itself offer a person.
+ */
+export function isAffirmationOfHumanOffer(userText: unknown, previousOutbound: unknown): boolean {
+    return isAffirmation(userText)
+        && (containsHumanOffer(previousOutbound) || offersHumanHandoff(previousOutbound));
+}
+
+/**
+ * The honest "nobody from the team is available" notice goes in front of the
+ * turn's own answer, in the same message batch. Nothing to say after it (no
+ * answer) or an answer owned by an earlier attempt: leave the text as it is.
+ */
+export function withReturnNotice<T extends string | null | undefined>(notice: string | null | undefined, response: T, answerIsStored: boolean): T | string {
+    if (!notice || !response || answerIsStored) return response;
+    return `${notice}\n\n${response}`;
+}
+
+/**
+ * An unsolicited promise of a transfer becomes the offer in question form.
+ *   · Something is left after the promise sentence goes: append ONLY the question.
+ *     "No tengo ese dato confirmado" next to a reply that just gave the data would
+ *     contradict it.
+ *   · Nothing is left: the whole honest "no confirmed data" reply and its question.
+ *   · No person can be reached (`canOffer` false): keep what is left, or say there is
+ *     no confirmed data, and offer nobody.
+ */
+export function offerInsteadOfPromise(response: string, lang: string | undefined, canOffer: boolean): string {
+    const kept = removeHandoffPromiseSentences(response);
+    if (!canOffer) return kept || noDataNoOfferText(lang);
+    return kept ? `${kept}\n\n${humanOfferQuestionText(lang)}` : noDataWaitReplacementText(lang);
 }

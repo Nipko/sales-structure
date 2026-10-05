@@ -1,4 +1,4 @@
-import { promisesHumanHandoff } from './outcome-claim.util';
+import { offersHumanHandoff, promisesHumanHandoff, removeHandoffPromiseSentences } from './outcome-claim.util';
 
 /**
  * Caso real de producción (2-sep-2026, tenant Amazon Minimalist).
@@ -51,5 +51,123 @@ describe('promisesHumanHandoff', () => {
         expect(promisesHumanHandoff(null)).toBe(false);
         expect(promisesHumanHandoff(undefined)).toBe(false);
         expect(promisesHumanHandoff(42)).toBe(false);
+    });
+});
+
+/**
+ * Regresion 5-oct (C26): "Si quiere, le paso con alguien del equipo..." es una
+ * OFERTA condicional, no una promesa. Leerla como promesa escalaba la
+ * conversacion a waiting_human y el bot dejaba de contestar.
+ */
+describe('promisesHumanHandoff — conditional offers are not promises', () => {
+    it.each([
+        ['es · C26 literal', 'Le cuento: los servicios y horarios los maneja el salón según su agenda. Si quiere, le paso con alguien del equipo para que se la confirme.'],
+        ['es · si desea', 'Si desea, le paso con un asesor para que se lo confirme.'],
+        ['es · si gusta', 'Si gusta, le conecto con nuestro equipo.'],
+        ['es · si prefiere', 'Si prefiere, lo transfiero con un asesor.'],
+        ['es · si lo desea', 'Lo transfiero con un asesor si lo desea.'],
+        ['en · if you\'d like', "If you'd like, I'll connect you with a human agent."],
+        ['en · if you want', 'I can transfer you to our team if you want.'],
+        ['en · if you prefer', 'If you prefer, I will transfer you to an advisor.'],
+        ['pt · se quiser', 'Se quiser, vou te transferir para um atendente.'],
+        ['pt · se preferir', 'Vou te passar para um atendente, se preferir.'],
+        ['fr · si vous voulez', 'Si vous voulez, je vous mets en relation avec un conseiller.'],
+        ['fr · si vous le souhaitez', 'Je vous passe à un conseiller si vous le souhaitez.'],
+        ['es · pregunta', '¿Quiere que le paso con alguien del equipo?'],
+        ['en · question', 'Would you like me to connect you with a human agent?'],
+    ])('%s', (_label, text) => {
+        expect(promisesHumanHandoff(text)).toBe(false);
+    });
+
+    it('sigue contando la promesa incondicional que escribio el bot en I09', () => {
+        expect(promisesHumanHandoff(
+            'Con gusto le ayudo con esa búsqueda en Chapinero. Sin embargo, en este momento no puedo consultar el catálogo '
+            + 'de propiedades para mostrarle opciones.\n\nLe paso con nuestro equipo para que le compartan los apartamentos '
+            + 'disponibles en Chapinero dentro de su presupuesto.',
+        )).toBe(true);
+    });
+
+    it('una oferta condicional no tapa una promesa incondicional en otra oracion', () => {
+        expect(promisesHumanHandoff('Si quiere, le explico más. Le paso con nuestro equipo ahora mismo.')).toBe(true);
+    });
+});
+
+describe('offersHumanHandoff — what a later "sí" answers', () => {
+    it.each([
+        'Si quiere, le paso con alguien del equipo para que se la confirme.',
+        '¿Le gustaría que alguien del equipo lo contacte?',
+        "If you'd like, I'll connect you with a human agent.",
+        'Would you like me to connect you with our team?',
+        'Se quiser, vou te transferir para um atendente.',
+    ])('es una oferta: %s', text => {
+        expect(offersHumanHandoff(text)).toBe(true);
+    });
+
+    it.each([
+        'Abrimos de 9 a 18.',
+        '¿Qué día le conviene?',
+        '',
+        null,
+    ])('no es una oferta: %s', text => {
+        expect(offersHumanHandoff(text)).toBe(false);
+    });
+});
+
+describe('offersHumanHandoff names a PERSON, not any "team" word (H8)', () => {
+    it.each([
+        '¿Quieres el kit del equipo de fútbol?',
+        '¿Desea agendar con el especialista?',
+        '¿Le gustaría ver el plan del equipo de ventas?',
+        'Would you like the team jersey?',
+        '¿Prefiere el agente de viajes que ya conoce, o uno nuevo?',
+        '¿Le paso el menú del equipo?',
+        '¿Le paso el contacto del asesor?',
+        '¿Quiere que le pase el enlace de la carta?',
+    ])('no es una oferta de traspaso: %s', text => {
+        expect(offersHumanHandoff(text)).toBe(false);
+    });
+    it.each([
+        '¿Quieres que le pida a una persona del equipo que lo confirme?',
+        '¿Le gustaría que alguien del equipo lo contacte?',
+        '¿Desea que lo comunique con un asesor?',
+        'Would you like me to ask someone from the team?',
+        'Would you like to talk to a human agent?',
+        '¿Quiere que lo conecte con nuestro equipo?',
+        '¿Quiere hablar con un agente?',
+        'Would you like to speak to an agent?',
+        'Would you like me to connect you with our team?',
+        'Quer que eu peça a alguém da equipe? Posso chamar um atendente.',
+        'Souhaitez-vous que je demande à quelqu\'un de l\'équipe ?',
+    ])('sí es una oferta de traspaso: %s', text => {
+        expect(offersHumanHandoff(text)).toBe(true);
+    });
+});
+
+describe('removeHandoffPromiseSentences keeps the correct information (H7)', () => {
+    it('I09: drops only the promise sentence', () => {
+        const kept = removeHandoffPromiseSentences(
+            'Con gusto le ayudo con esa búsqueda en Chapinero. Sin embargo, en este momento no puedo consultar el catálogo de propiedades.\n\n'
+            + 'Le paso con nuestro equipo para que le compartan los apartamentos disponibles.');
+        expect(kept).toBe('Con gusto le ayudo con esa búsqueda en Chapinero. Sin embargo, en este momento no puedo consultar el catálogo de propiedades.');
+    });
+    it('keeps a conditional offer and a question (they are not promises)', () => {
+        const text = 'Abrimos de 9 a 18. Si quiere, le paso con alguien del equipo. ¿Le agendo?';
+        expect(removeHandoffPromiseSentences(text)).toBe('Abrimos de 9 a 18. Si quiere, le paso con alguien del equipo. ¿Le agendo?');
+    });
+    it('a reply that is only the promise leaves nothing', () => {
+        expect(removeHandoffPromiseSentences('Le paso con nuestro equipo especializado, espere un momento.')).toBe('');
+    });
+});
+
+describe('removeHandoffPromiseSentences keeps structure and figures', () => {
+    it('keeps line breaks of a list', () => {
+        const list = ['Tenemos:', '- Corte 30.000', '- Color 80.000'].join(String.fromCharCode(10));
+        expect(removeHandoffPromiseSentences(list + String.fromCharCode(10) + 'Le paso con nuestro equipo.')).toBe(list);
+    });
+    it('keeps the figure of a promise sentence, drops the promise', () => {
+        expect(removeHandoffPromiseSentences('El kit cuesta 50.000 COP, le paso con nuestro equipo para que lo confirmen.')).toBe('El kit cuesta 50.000 COP.');
+    });
+    it('a promise sentence without any figure is dropped whole', () => {
+        expect(removeHandoffPromiseSentences('Hola. Le paso con nuestro equipo ahora.')).toBe('Hola.');
     });
 });

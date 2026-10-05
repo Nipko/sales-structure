@@ -6,6 +6,7 @@ import {
     normalizeCustomerIntent,
 } from '../../common/conversation/intent-normalizer';
 import { LLMRouterService } from '../ai/router/llm-router.service';
+import { BusinessWindowResolver, disambiguateBareHour } from './business-window';
 
 /**
  * INTERPRET phase — extracts structured intent from user messages.
@@ -64,10 +65,13 @@ export class IntentInterpreterService {
          */
         operatingCountry?: string | null,
         acceptedReferents?: readonly string[],
+        /** Business hours per date; without them an unqualified hour is never reinterpreted. */
+        businessWindowFor?: BusinessWindowResolver,
     ): Promise<InterpretedIntent> {
         // First try deterministic extraction (fast, no LLM cost)
         const deterministicResult = this.deterministicExtract(
             userText, currentBookingStep, availableServices, todayDate, upcomingDays, operatingCountry, acceptedReferents,
+            businessWindowFor,
         );
         if (deterministicResult) {
             this.logger.log(`[Interpret] Deterministic: intent=${deterministicResult.intent} service=${deterministicResult.serviceMentioned || '-'} date=${deterministicResult.dateMentioned || '-'}`);
@@ -95,6 +99,7 @@ export class IntentInterpreterService {
         upcoming: Array<{ date: string; weekday: string; label?: string }>,
         operatingCountry?: string | null,
         acceptedReferents?: readonly string[],
+        businessWindowFor?: BusinessWindowResolver,
     ): InterpretedIntent | null {
         const t = text.toLowerCase().trim();
         const norm = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
@@ -353,6 +358,12 @@ export class IntentInterpreterService {
                 const isAm = q.startsWith('am') || q === 'a.m' || q.includes('mañana') || q.includes('manana') || q.includes('madrugada') || q.includes('manha') || q.includes('matin') || q.includes('morning');
                 if (isPm && h < 12) h += 12;
                 else if (isAm && h === 12) h = 0;
+                // "a las 4" with no am/pm and no 24h marker: when 04:00 is outside the
+                // business hours and 16:00 is inside, the customer means the afternoon.
+                // Unknown hours: assume nothing.
+                else if (!q && businessWindowFor) {
+                    h = disambiguateBareHour(h, parseInt(min), businessWindowFor(base.dateMentioned || todayDate));
+                }
                 base.timeMentioned = `${String(h).padStart(2, '0')}:${min}`;
             } else {
                 // Bare "15h" / "15hs" / "15hrs" (common in pt/fr) without a prefix.

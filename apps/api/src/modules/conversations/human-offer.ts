@@ -17,6 +17,16 @@ export const NO_DATA_WAIT_REPLACEMENT: Record<string, string> = {
     fr: "Je n'ai pas cette information confirmée pour le moment. Souhaitez-vous que je demande à quelqu'un de l'équipe de la confirmer ?",
 };
 
+/** Only the offer, as a question: for a reply that already says everything else it has to say. */
+export const HUMAN_OFFER_QUESTION: Record<string, string> = {
+    es: '¿Quieres que le pida a una persona del equipo que lo confirme?',
+    en: 'Would you like me to ask someone from the team to confirm it?',
+    pt: 'Quer que eu peça a alguém da equipe para confirmar?',
+    fr: "Souhaitez-vous que je demande à quelqu'un de l'équipe de la confirmer ?",
+};
+export const humanOfferQuestionText = (lang?: string): string =>
+    HUMAN_OFFER_QUESTION[(lang || 'es').slice(0, 2).toLowerCase()] || HUMAN_OFFER_QUESTION.es;
+
 export const noDataWaitReplacementText = (lang?: string): string =>
     NO_DATA_WAIT_REPLACEMENT[(lang || 'es').slice(0, 2).toLowerCase()] || NO_DATA_WAIT_REPLACEMENT.es;
 
@@ -32,7 +42,7 @@ export const noDataNoOfferText = (lang?: string): string =>
 
 /** True when the stored outbound text contains one of our offers. */
 export function containsHumanOffer(text: unknown): boolean {
-    return typeof text === 'string' && Object.values(NO_DATA_WAIT_REPLACEMENT).some(o => text.includes(o));
+    return typeof text === 'string' && Object.values(HUMAN_OFFER_QUESTION).some(o => text.includes(o));
 }
 
 export function isHumanOfferText(text: unknown): boolean {
@@ -88,11 +98,16 @@ export function withReturnNotice<T extends string | null | undefined>(notice: st
 }
 
 /**
- * An unsolicited promise of a transfer becomes the offer in question form. Only
- * the promise sentence goes: the correct information the agent gave around it
- * stays in front of the offer.
+ * An unsolicited promise of a transfer becomes the offer in question form.
+ *   · Something is left after the promise sentence goes: append ONLY the question.
+ *     "No tengo ese dato confirmado" next to a reply that just gave the data would
+ *     contradict it.
+ *   · Nothing is left: the whole honest "no confirmed data" reply and its question.
+ *   · No person can be reached (`canOffer` false): keep what is left, or say there is
+ *     no confirmed data, and offer nobody.
  */
-export function offerInsteadOfPromise(response: string, offer: string): string {
+export function offerInsteadOfPromise(response: string, lang: string | undefined, canOffer: boolean): string {
     const kept = removeHandoffPromiseSentences(response);
-    return kept ? `${kept}\n\n${offer}` : offer;
+    if (!canOffer) return kept || noDataNoOfferText(lang);
+    return kept ? `${kept}\n\n${humanOfferQuestionText(lang)}` : noDataWaitReplacementText(lang);
 }

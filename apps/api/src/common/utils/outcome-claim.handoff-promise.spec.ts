@@ -120,6 +120,9 @@ describe('offersHumanHandoff names a PERSON, not any "team" word (H8)', () => {
         '¿Le gustaría ver el plan del equipo de ventas?',
         'Would you like the team jersey?',
         '¿Prefiere el agente de viajes que ya conoce, o uno nuevo?',
+        '¿Le paso el menú del equipo?',
+        '¿Le paso el contacto del asesor?',
+        '¿Quiere que le pase el enlace de la carta?',
     ])('no es una oferta de traspaso: %s', text => {
         expect(offersHumanHandoff(text)).toBe(false);
     });
@@ -130,6 +133,8 @@ describe('offersHumanHandoff names a PERSON, not any "team" word (H8)', () => {
         'Would you like me to ask someone from the team?',
         'Would you like to talk to a human agent?',
         '¿Quiere que lo conecte con nuestro equipo?',
+        '¿Quiere hablar con un agente?',
+        'Would you like to speak to an agent?',
         'Would you like me to connect you with our team?',
         'Quer que eu peça a alguém da equipe? Posso chamar um atendente.',
         'Souhaitez-vous que je demande à quelqu\'un de l\'équipe ?',
@@ -151,5 +156,18 @@ describe('removeHandoffPromiseSentences keeps the correct information (H7)', () 
     });
     it('a reply that is only the promise leaves nothing', () => {
         expect(removeHandoffPromiseSentences('Le paso con nuestro equipo especializado, espere un momento.')).toBe('');
+    });
+});
+
+describe('removeHandoffPromiseSentences keeps structure and figures', () => {
+    it('keeps line breaks of a list', () => {
+        const list = ['Tenemos:', '- Corte 30.000', '- Color 80.000'].join(String.fromCharCode(10));
+        expect(removeHandoffPromiseSentences(list + String.fromCharCode(10) + 'Le paso con nuestro equipo.')).toBe(list);
+    });
+    it('keeps the figure of a promise sentence, drops the promise', () => {
+        expect(removeHandoffPromiseSentences('El kit cuesta 50.000 COP, le paso con nuestro equipo para que lo confirmen.')).toBe('El kit cuesta 50.000 COP.');
+    });
+    it('a promise sentence without any figure is dropped whole', () => {
+        expect(removeHandoffPromiseSentences('Hola. Le paso con nuestro equipo ahora.')).toBe('Hola.');
     });
 });

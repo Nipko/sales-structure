@@ -1276,13 +1276,12 @@ export class ConversationsService {
             return;
         }
 
-        // 5a. The unattended-handoff sweep gave this conversation back to the agent.
-        // The notice is claimed here and goes out IN FRONT of this turn's answer,
-        // in the same batch (see `claimReturnNotice`).
-        let returnNotice: string | null = null;
-        if (!draftMode) {
-            returnNotice = await this.claimReturnNotice(schemaName, conversation, content?.text, config.language || 'es');
-        }
+        // The handoff return notice is claimed lazily, only once this turn has text to
+        // send (see `claimReturnNotice` at the reply): a turn that produces nothing
+        // (interactive flow, quota, refused provenance) must not consume it.
+        const returnNoticePending = !draftMode
+            && ((conversation.metadata as any)?.handoff?.returnNoticePending === true
+                || (conversation.metadata as any)?.handoff?.returnNoticePending === 'true');
 
         // 5b. Send typing indicator before AI generates response
         try {
@@ -1375,9 +1374,14 @@ export class ConversationsService {
             );
         // A recovered envelope or a cached reply may predate the strip.
         if (typeof response === 'string' && response) response = stripInternalMarkers(response);
-        // The handoff return notice leads the answer of the turn it was claimed in. A
-        // recovered or resumed answer was composed by an earlier attempt that already
-        // carried (or lost) it; prepending again would say it twice.
+        // The handoff return notice leads the answer of the turn it is claimed in, in
+        // the same durable batch. A recovered or resumed answer was composed by an
+        // earlier attempt that already carried (or lost) it; prepending again would
+        // say it twice. An error fallback or an empty answer does not consume it.
+        const returnNotice = returnNoticePending && !recoveredEnvelope && !resumedReply
+            && typeof response === 'string' && response && !isErrorFallback(response) && !turnEffects.learningProvenanceRefused
+            ? await this.claimReturnNotice(schemaName, conversation, content?.text, config.language || 'es')
+            : null;
         response = withReturnNotice(returnNotice, response, !!recoveredEnvelope || !!resumedReply);
 
         // Words that derive from learned examples whose provenance could not be
@@ -4757,8 +4761,7 @@ export class ConversationsService {
                 this.recordAgentSignal(tenantId, 'handoff_promise_unsolicited_rewritten', session);
                 // Only the promise sentence goes; the correct information around it
                 // stays, followed by the offer in question form.
-                const offer = allowHumanHandoff ? noDataWaitReplacementText(userLanguage) : noDataNoOfferText(userLanguage);
-                finalResponse = offerInsteadOfPromise(finalResponse, offer);
+                finalResponse = offerInsteadOfPromise(finalResponse, userLanguage, allowHumanHandoff);
                 if (!session && allowHumanHandoff) await this.rememberHumanOffer(schemaName, conversation.id, finalResponse);
             } else if (!draftMode && !postToolHandoff && promisesHumanHandoff(finalResponse)) {
                 try {
@@ -6527,3 +6530,4 @@ export class ConversationsService {
         }
     }
 }
+

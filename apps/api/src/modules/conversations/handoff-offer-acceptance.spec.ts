@@ -169,7 +169,7 @@ describe('agent-promised handoff is honoured only when the customer asked or acc
         const honour = block.indexOf('} else if (!draftMode && !postToolHandoff && promisesHumanHandoff(finalResponse))');
         expect(rewrite).toBeGreaterThan(0);
         expect(honour).toBeGreaterThan(rewrite);
-        expect(block.slice(rewrite, honour)).toContain('noDataWaitReplacementText(userLanguage)');
+        expect(block.slice(rewrite, honour)).toContain('offerInsteadOfPromise(finalResponse, userLanguage, allowHumanHandoff)');
         expect(block.slice(rewrite, honour)).not.toContain('escalateWithinTurn');
         expect(block.slice(honour)).toContain('escalateWithinTurn');
     });

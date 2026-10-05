@@ -1,6 +1,6 @@
 import { ConversationsService } from './conversations.service';
 import { DEFAULT_PIPELINE_STAGES, PipelineService, TenantStageMapping } from '../pipeline/pipeline.service';
-import { offerInsteadOfPromise, withReturnNotice } from './human-offer';
+import { containsHumanOffer, HUMAN_OFFER_QUESTION, offerInsteadOfPromise, withReturnNotice } from './human-offer';
 
 /**
  * Behavior of the two customer-facing notices around an unattended handoff,
@@ -175,15 +175,65 @@ describe('queue notice for a customer waiting on a handoff nobody serves', () =>
     });
 });
 
-describe('an unsolicited promise becomes an offer without losing the correct information', () => {
-    const OFFER = '¿Quieres que le pida a una persona del equipo que lo confirme?';
-    it('I09: keeps the true statements and swaps the promise for the offer', () => {
-        const out = offerInsteadOfPromise(
-            'Con gusto le ayudo con esa búsqueda en Chapinero. Hoy no puedo consultar el catálogo.\n\nLe paso con nuestro equipo para que le compartan las opciones.',
-            OFFER);
-        expect(out).toBe(`Con gusto le ayudo con esa búsqueda en Chapinero. Hoy no puedo consultar el catálogo.\n\n${OFFER}`);
+describe('the return notice is only consumed by a turn that sends text', () => {
+    const returned = { startedAt: '2026-10-05T20:00:00Z', returnedToAi: true, returnNoticePending: true };
+    const claimed = (executed: string[]) => executed.some(sql => sql.includes("'{handoff,returnNoticePending}'"));
+
+    it('an empty turn (interactive flow, nothing to say) leaves it pending', async () => {
+        const { service, message, executed } = fixture({ status: 'active', handoff: returned });
+        service.generateResponse.mockResolvedValue('');
+        await service.runTurn(message);
+        expect(claimed(executed)).toBe(false);
+        expect(sentChunks(service)).toEqual([]);
     });
-    it('a reply that was only the promise becomes just the offer', () => {
-        expect(offerInsteadOfPromise('Le paso con nuestro equipo especializado, espere un momento.', OFFER)).toBe(OFFER);
+
+    it('a generic error fallback does not consume it', async () => {
+        const { service, message, executed } = fixture({ status: 'active', handoff: returned });
+        service.generateResponse.mockResolvedValue('Disculpa, tuve un problema procesando tu mensaje. ¿Podrías repetirlo?');
+        await service.runTurn(message);
+        expect(claimed(executed)).toBe(false);
+        expect(sentChunks(service).join('\n')).not.toContain(RETURN_NOTICE);
+    });
+
+    it('a reply refused for learning provenance does not consume it', async () => {
+        const { service, message, executed } = fixture({ status: 'active', handoff: returned });
+        service.generateResponse.mockImplementation(async (...args: any[]) => {
+            args[args.length - 1].learningProvenanceRefused = true;
+            return ANSWER;
+        });
+        await service.runTurn(message);
+        expect(claimed(executed)).toBe(false);
+        expect(service.dispatchReplyThroughOutbox).not.toHaveBeenCalled();
+    });
+});
+
+describe('an unsolicited promise becomes an offer that agrees with the rest of the reply (H7)', () => {
+    it('data stays and only the question is added: no contradictory "no confirmed data"', () => {
+        const out = offerInsteadOfPromise('El kit cuesta 50.000 COP.\n\nLe paso con nuestro equipo para que se lo confirmen.', 'es', true);
+        expect(out).toBe(`El kit cuesta 50.000 COP.\n\n${HUMAN_OFFER_QUESTION.es}`);
+        expect(out).not.toContain('No tengo ese dato');
+    });
+    it('a figure inside the promise sentence is kept, the promise is not', () => {
+        const out = offerInsteadOfPromise('El kit cuesta 50.000 COP, le paso con nuestro equipo para que lo confirmen.', 'es', true);
+        expect(out).toContain('50.000 COP');
+        expect(out).not.toMatch(/le paso/i);
+        expect(out.endsWith(HUMAN_OFFER_QUESTION.es)).toBe(true);
+    });
+    it('lists keep their line breaks', () => {
+        const out = offerInsteadOfPromise('Tenemos:\n- Corte 30.000\n- Color 80.000\nLe paso con nuestro equipo ahora mismo.', 'es', true);
+        expect(out).toBe(`Tenemos:\n- Corte 30.000\n- Color 80.000\n\n${HUMAN_OFFER_QUESTION.es}`);
+    });
+    it('only the promise left: the whole honest reply and its question', () => {
+        expect(offerInsteadOfPromise('Le paso con nuestro equipo especializado, espere un momento.', 'es', true))
+            .toBe('No tengo ese dato confirmado en este momento. ¿Quieres que le pida a una persona del equipo que lo confirme?');
+    });
+    it.each(['es', 'en', 'pt', 'fr'])('%s: the question alone is a human offer, so a "sí" still escalates', lang => {
+        const out = offerInsteadOfPromise(lang === 'en' ? 'We open at 9 am. I will transfer you to our team now.' : 'Abrimos a las 9. Le paso con nuestro equipo ahora mismo.', lang, true);
+        expect(out.endsWith(HUMAN_OFFER_QUESTION[lang])).toBe(true);
+        expect(containsHumanOffer(out)).toBe(true);
+    });
+    it('no person reachable: nothing is offered', () => {
+        expect(offerInsteadOfPromise('Abrimos a las 9. Le paso con nuestro equipo.', 'es', false)).toBe('Abrimos a las 9.');
+        expect(offerInsteadOfPromise('Le paso con nuestro equipo.', 'es', false)).toBe('No tengo ese dato confirmado en este momento.');
     });
 });

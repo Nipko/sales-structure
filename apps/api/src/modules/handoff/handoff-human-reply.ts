@@ -2,7 +2,7 @@
  * "A person already answered this handoff", as SQL.
  *
  * A human reply leaves different evidence depending on the channel:
- *   · web widget: a `messages` row with `metadata.source = 'agent'`;
+ *   · web widget: a `messages` row with `metadata.source = 'agent'`; the macro `send_canned` writes `metadata.sender_type = 'agent'` instead;
  *   · WhatsApp / Instagram / Messenger / Telegram: the console sends through the
  *     durable outbox, and the only trace of the person is
  *     `agent_dispatch_outbox.operational_scope.kind = 'human_operator'`.
@@ -18,7 +18,7 @@ export function noHumanReplySql(alias: string, hasOutbox: boolean): string {
                     SELECT 1 FROM messages m
                      WHERE m.conversation_id = ${alias}.id
                        AND m.direction = 'outbound'
-                       AND m.metadata->>'source' = 'agent'
+                       AND (m.metadata->>'source' = 'agent' OR m.metadata->>'sender_type' = 'agent')
                        AND m.created_at > ${startedAt}
                 )`;
     const outbox = hasOutbox ? `AND NOT EXISTS (

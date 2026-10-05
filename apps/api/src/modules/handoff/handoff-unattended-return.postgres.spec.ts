@@ -121,6 +121,14 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         expect(returnedIds()).toEqual([]);
     });
 
+    it('a canned reply from the send_canned macro (sender_type=agent, no outbox) keeps the conversation', async () => {
+        const id = await conversation({ status: 'with_human', assignedTo: randomUUID() });
+        await sql(`INSERT INTO messages(conversation_id, direction, metadata, created_at)
+            VALUES($1::uuid, 'outbound', '{"sender_type":"agent","sender_id":"x"}', NOW() - interval '5 minutes')`, [id]);
+        await sweep();
+        expect(returnedIds()).toEqual([]);
+    });
+
     it('an outbox row that is not a human operator does not count as an answer', async () => {
         const id = await conversation({ status: 'with_human', assignedTo: randomUUID() });
         await outboxRow(id, 'served_agent');

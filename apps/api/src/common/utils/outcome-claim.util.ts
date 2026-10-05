@@ -367,15 +367,38 @@ export function promisesHumanHandoff(reply: unknown): boolean {
 
 /**
  * The reply without its unsolicited promise-of-transfer sentences. Everything else
- * the agent said (the correct information) is kept; the caller adds the offer in
- * question form. Same sentence rules as `promisesHumanHandoff`.
+ * the agent said (the correct information) is kept, line breaks included (lists
+ * stay lists); the caller adds the offer in question form. Same sentence rules as
+ * `promisesHumanHandoff`.
+ *
+ * A promise sentence that also carries a figure ("El kit cuesta 50.000 COP, le paso
+ * con nuestro equipo") is not dropped whole: its clauses without the promise are
+ * kept when they hold a digit, so an amount, hour or date is never lost.
  */
 export function removeHandoffPromiseSentences(reply: string): string {
-    return reply
-        .split(/(?<=[.!?])[ \t]+|\n+/)
-        .filter(sentence => sentence.trim() && !promisesHumanHandoff(sentence))
-        .join(' ')
-        .trim();
+    // Odd indexes are the separators (spaces after a full stop, or line breaks).
+    const parts = reply.split(/((?<=[.!?])[ \t]+|\n+)/);
+    let out = '';
+    let pendingSeparator = '';
+    for (let i = 0; i < parts.length; i += 2) {
+        const sentence = parts[i];
+        const separator = parts[i + 1] ?? '';
+        let kept: string | null = sentence;
+        if (sentence.trim() && promisesHumanHandoff(sentence)) {
+            const withData = sentence.split(/(?<=,)\s+|\s+(?:y|and|e|et)\s+/)
+                .filter(clause => !promisesHumanHandoff(clause) && /\d/.test(clause))
+                .join(', ').replace(/[,;:\s]+$/, '');
+            kept = withData ? `${withData}.` : null;
+        }
+        if (kept === null || !kept.trim()) {
+            // Its own separator goes with it; a line break that preceded it stays.
+            pendingSeparator = pendingSeparator.includes('\n') ? pendingSeparator : separator.includes('\n') ? separator : pendingSeparator;
+            continue;
+        }
+        out += (out ? (pendingSeparator || ' ') : '') + kept;
+        pendingSeparator = separator;
+    }
+    return out.trim();
 }
 
 /**
@@ -409,7 +432,7 @@ export function offersHumanHandoff(reply: unknown): boolean {
     return normalize(reply)
         .split(/(?<=[.!?])\s+|\n+/)
         .some(sentence => HANDOFF_PROMISE.test(sentence) || OFFER_QUESTION.test(sentence)
-            || (sentence.includes('?') && OFFER_TRANSFER.test(sentence)));
+            || (sentence.includes('?') && OFFER_TRANSFER.test(sentence) && !HANDS_OVER_AN_OBJECT.test(sentence)));
 }
 
 /**
@@ -422,12 +445,23 @@ const OFFER_TARGET =
     '(?:una persona|alguien del equipo|alguien de nuestro equipo|alguien de ventas|alguien mas del equipo|un asesor|una asesora|asesor humano'
     + '|agente humano|un humano|someone from (?:our |the )?team|a person|a human|human agent|an advisor|an agent'
     + '|alguem da equipe|alguem de nossa equipe|uma pessoa|um atendente|um humano|um consultor'
-    + "|quelqu'un de l'equipe|quelqu'un de notre equipe|un conseiller|une personne)";
+    + "|quelqu'un de l'equipe|quelqu'un de notre equipe|un conseiller|une personne"
+    + '|hablar con (?:un|una) (?:agente|asesor|asesora|persona|humano)|(?:speak|talk) (?:to|with) (?:(?:a|an) (?:human|agent|person|advisor|representative)|someone)'
+    + '|falar com (?:um|uma) (?:atendente|agente|pessoa|humano|consultor)|parler a (?:un|une) (?:conseiller|agent|personne))';
 
 /** A transfer verb followed by a human destination: "¿Quiere que lo conecte con nuestro equipo?". */
 const OFFER_TRANSFER = new RegExp(
     '\\b(?:conecte|conecto|comunique|comunico|pase|paso|transfiera|transfiero|derive|derivo|connect|transfer|put you|pass you'
     + '|transfira|passe|passar|conectar|mette|mets|transfere|transferer|passer)\\b[^?.!]{0,40}\\b' + HUMAN_TARGET + '\\b',
+);
+
+/**
+ * "¿Le paso el menú del equipo?" hands over a THING, not the person: the verb is
+ * followed by an object noun before any destination.
+ */
+const HANDS_OVER_AN_OBJECT = new RegExp(
+    '\\b(?:paso|pase|passo|passe|passar|mets|send|share)\\b\\s+(?:\\S+\\s+){0,2}?'
+    + '(?:menu|contacto|contato|carta|enlace|link|numero|telefono|telefone|catalogo|precio|lista|informacion|datos|horario|cotizacion|presupuesto|cuenta|factura|direccion|ubicacion|number|contact|phone|price|list|address|details)\\b',
 );
 
 const OFFER_QUESTION = new RegExp(

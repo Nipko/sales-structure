@@ -182,6 +182,7 @@ export class MacrosService {
                             `UPDATE conversations
                                 SET assigned_to = $1,
                                     status = 'with_human',
+                                    metadata = COALESCE(metadata, '{}'::jsonb) #- '{handoff,returnNoticePending}',
                                     was_handed_off = true,
                                     handoff_at = COALESCE(handoff_at, NOW()),
                                     updated_at = NOW()

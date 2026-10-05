@@ -96,7 +96,8 @@ import { IntentInterpreterService } from './intent-interpreter.service';
 import { normalizePhoneE164 } from '../../common/utils/phone.util';
 import { PromptAssemblerService } from './prompt-assembler.service';
 import { resolveBusinessWindow } from './business-window';
-import { HUMAN_OFFER_MARK, HUMAN_OFFER_TTL_MS, NO_DATA_WAIT_REPLACEMENT, NO_DATA_NO_OFFER, noDataWaitReplacementText, noDataNoOfferText, containsHumanOffer, isHumanOfferText, isAffirmation, isAffirmationOfHumanOffer, isLiveHumanOffer } from './human-offer';
+import { hasDispatchOutbox, noHumanReplySql } from '../handoff/handoff-human-reply';
+import { HUMAN_OFFER_MARK, HUMAN_OFFER_TTL_MS, NO_DATA_WAIT_REPLACEMENT, NO_DATA_NO_OFFER, noDataWaitReplacementText, noDataNoOfferText, containsHumanOffer, isHumanOfferText, isAffirmation, isAffirmationOfHumanOffer, isLiveHumanOffer, withReturnNotice, offerInsteadOfPromise } from './human-offer';
 import { LanguageDetectorService } from './language-detector.service';
 import { BusinessInfoService } from '../business-info/business-info.service';
 import { PaymentOperationService } from './payment-operation.service';
@@ -1275,11 +1276,12 @@ export class ConversationsService {
             return;
         }
 
-        // 5a. The unattended-handoff sweep gave this conversation back to the agent:
-        // say so once, honestly, before answering.
+        // 5a. The unattended-handoff sweep gave this conversation back to the agent.
+        // The notice is claimed here and goes out IN FRONT of this turn's answer,
+        // in the same batch (see `claimReturnNotice`).
+        let returnNotice: string | null = null;
         if (!draftMode) {
-            await this.sendReturnNoticeOnce(tenantId, schemaName, conversation, normalizedMsg, inboundMessageId,
-                turnScope, content?.text, config.language || 'es');
+            returnNotice = await this.claimReturnNotice(schemaName, conversation, content?.text, config.language || 'es');
         }
 
         // 5b. Send typing indicator before AI generates response
@@ -1373,6 +1375,10 @@ export class ConversationsService {
             );
         // A recovered envelope or a cached reply may predate the strip.
         if (typeof response === 'string' && response) response = stripInternalMarkers(response);
+        // The handoff return notice leads the answer of the turn it was claimed in. A
+        // recovered or resumed answer was composed by an earlier attempt that already
+        // carried (or lost) it; prepending again would say it twice.
+        response = withReturnNotice(returnNotice, response, !!recoveredEnvelope || !!resumedReply);
 
         // Words that derive from learned examples whose provenance could not be
         // stated do not go out by any path. Aggregation used to swallow that
@@ -4749,7 +4755,10 @@ export class ConversationsService {
             if (!draftMode && !postToolHandoff && !humanHandoffAuthorized && promisesHumanHandoff(finalResponse)) {
                 this.logger.warn(`[Pipeline] Promesa de traspaso SIN pedido del cliente en ${conversation.id} — reescrita como oferta, sin escalar`);
                 this.recordAgentSignal(tenantId, 'handoff_promise_unsolicited_rewritten', session);
-                finalResponse = allowHumanHandoff ? noDataWaitReplacementText(userLanguage) : noDataNoOfferText(userLanguage);
+                // Only the promise sentence goes; the correct information around it
+                // stays, followed by the offer in question form.
+                const offer = allowHumanHandoff ? noDataWaitReplacementText(userLanguage) : noDataNoOfferText(userLanguage);
+                finalResponse = offerInsteadOfPromise(finalResponse, offer);
                 if (!session && allowHumanHandoff) await this.rememberHumanOffer(schemaName, conversation.id, finalResponse);
             } else if (!draftMode && !postToolHandoff && promisesHumanHandoff(finalResponse)) {
                 try {
@@ -6372,8 +6381,10 @@ export class ConversationsService {
 
     /**
      * One queue notice per handoff for a customer who writes while nobody from the
-     * team has answered. Skipped when anything was already sent to them since the
-     * handoff started (the transfer notice or the agent's own announcement).
+     * team has answered. It is skipped only when a PERSON has replied since the
+     * handoff (any channel): the transfer notice of step 5 and the model's own
+     * promise are not a person, and counting them silenced this notice for
+     * everyone who had been transferred.
      */
     private async sendQueueNoticeOnce(tenantId: string, schemaName: string, conversation: any,
         msg: NormalizedMessage, inboundMessageId: string | undefined, scope: ServedAgentAuthority | undefined, text: string | undefined, defaultLanguage: string): Promise<void> {
@@ -6381,11 +6392,13 @@ export class ConversationsService {
         const startedAt = handoff?.startedAt;
         if (!startedAt || handoff?.queueNoticeSent === true || handoff?.queueNoticeSent === 'true') return;
         try {
-            const prior = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-                `SELECT 1 FROM messages WHERE conversation_id = $1::uuid AND direction = 'outbound'
-                    AND created_at >= $2::timestamptz LIMIT 1`, [conversation.id, startedAt]);
-            if (prior?.length) return;
-            const claimed = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            const run = (sql: string, params: any[]) => this.prisma.executeInTenantSchema<any[]>(schemaName, sql, params);
+            const hasOutbox = await hasDispatchOutbox(run, schemaName);
+            const answered = await run(
+                `SELECT 1 FROM conversations c WHERE c.id = $1::uuid
+                    AND NOT (TRUE ${noHumanReplySql('c', hasOutbox)}) LIMIT 1`, [conversation.id]);
+            if (answered?.length) return;
+            const claimed = await run(
                 `UPDATE conversations
                     SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{handoff,queueNoticeSent}', 'true'::jsonb, true)
                   WHERE id = $1::uuid AND status = 'waiting_human'
@@ -6399,7 +6412,7 @@ export class ConversationsService {
                     originKey: `handoff-queue-notice:${conversation.id}:${startedAt}`,
                 });
             } catch (error) {
-                await this.prisma.executeInTenantSchema(schemaName,
+                await run(
                     `UPDATE conversations SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{handoff,queueNoticeSent}', 'false'::jsonb, true)
                       WHERE id = $1::uuid`, [conversation.id]).catch(() => {});
                 throw error;
@@ -6411,35 +6424,35 @@ export class ConversationsService {
     }
 
     /**
-     * After the unattended-handoff sweep returned the conversation to the agent,
-     * tell the customer once, honestly, that nobody from the team is available
-     * and that the agent keeps helping. Sent on the customer's next message, just
-     * before the agent answers it.
+     * After the unattended-handoff sweep gave the conversation back to the agent,
+     * the customer is told once, honestly, that nobody from the team is available.
+     * This only CLAIMS the notice and returns its text: the caller puts it in front
+     * of the turn's own answer, inside the same durable batch. Sending it as a
+     * separate reply for the same inbound created the batch that
+     * `dispatchReplyThroughOutbox` later found and treated as "already answered",
+     * so the real answer was never sent.
      */
-    private async sendReturnNoticeOnce(tenantId: string, schemaName: string, conversation: any,
-        msg: NormalizedMessage, inboundMessageId: string | undefined, scope: ServedAgentAuthority | undefined, text: string | undefined, defaultLanguage: string): Promise<void> {
+    private async claimReturnNotice(schemaName: string, conversation: any, text: string | undefined,
+        defaultLanguage: string): Promise<string | null> {
         const handoff = (conversation?.metadata as any)?.handoff;
-        if (!(handoff?.returnNoticePending === true || handoff?.returnNoticePending === 'true')) return;
+        if (!(handoff?.returnNoticePending === true || handoff?.returnNoticePending === 'true')) return null;
         try {
             const claimed = await this.prisma.executeInTenantSchema<any[]>(schemaName,
                 `UPDATE conversations
                     SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{handoff,returnNoticePending}', 'false'::jsonb, true)
                   WHERE id = $1::uuid AND metadata->'handoff'->>'returnNoticePending' = 'true'
                 RETURNING id`, [conversation.id]);
-            if (!claimed?.length) return;
-            await this.replyOnceThroughOutbox({
-                tenantId, conversation, msg, operationalScope: scope, inboundMessageId,
-                item: { kind: 'text', payload: { text: handoffReturnText(this.languageDetector.detect(text || '', defaultLanguage)) } },
-                originKey: `handoff-return-notice:${conversation.id}:${handoff?.startedAt || ''}`,
-            });
+            if (!claimed?.length) return null;
+            return handoffReturnText(this.languageDetector.detect(text || '', defaultLanguage));
         } catch (error: any) {
-            this.logger.warn(`[Handoff] Return notice not sent for ${conversation?.id}: ${error?.message}`);
+            this.logger.warn(`[Handoff] Return notice not claimed for ${conversation?.id}: ${error?.message}`);
+            return null;
         }
     }
 
     /** Leave the short-lived "a person was offered" mark when the reply is our offer. */
     private async rememberHumanOffer(schemaName: string, conversationId: string, reply: string): Promise<boolean> {
-        if (!isHumanOfferText(reply)) return false;
+        if (!containsHumanOffer(reply)) return false;
         const now = Date.now();
         const mark = { at: new Date(now).toISOString(), expiresAt: new Date(now + HUMAN_OFFER_TTL_MS).toISOString() };
         await this.prisma.executeInTenantSchema(schemaName,

@@ -366,6 +366,19 @@ export function promisesHumanHandoff(reply: unknown): boolean {
 }
 
 /**
+ * The reply without its unsolicited promise-of-transfer sentences. Everything else
+ * the agent said (the correct information) is kept; the caller adds the offer in
+ * question form. Same sentence rules as `promisesHumanHandoff`.
+ */
+export function removeHandoffPromiseSentences(reply: string): string {
+    return reply
+        .split(/(?<=[.!?])[ \t]+|\n+/)
+        .filter(sentence => sentence.trim() && !promisesHumanHandoff(sentence))
+        .join(' ')
+        .trim();
+}
+
+/**
  * "Si quiere, le paso con alguien del equipo" is an OFFER the customer has not
  * accepted, not a promise. Reading it as a promise escalated the conversation
  * (waiting_human, agent muted) on a customer who had asked for nothing.
@@ -395,11 +408,30 @@ export function offersHumanHandoff(reply: unknown): boolean {
     if (typeof reply !== 'string' || !reply.trim()) return false;
     return normalize(reply)
         .split(/(?<=[.!?])\s+|\n+/)
-        .some(sentence => HANDOFF_PROMISE.test(sentence) || OFFER_QUESTION.test(sentence));
+        .some(sentence => HANDOFF_PROMISE.test(sentence) || OFFER_QUESTION.test(sentence)
+            || (sentence.includes('?') && OFFER_TRANSFER.test(sentence)));
 }
 
+/**
+ * What a question has to name to be an offer of a PERSON. Deliberately not the
+ * bare "equipo"/"especialista": "¿Quiere el kit del equipo de fútbol?" and "¿Desea
+ * agendar con el especialista?" are about a product and a booking, and a "sí" to
+ * them must not become a handoff.
+ */
+const OFFER_TARGET =
+    '(?:una persona|alguien del equipo|alguien de nuestro equipo|alguien de ventas|alguien mas del equipo|un asesor|una asesora|asesor humano'
+    + '|agente humano|un humano|someone from (?:our |the )?team|a person|a human|human agent|an advisor|an agent'
+    + '|alguem da equipe|alguem de nossa equipe|uma pessoa|um atendente|um humano|um consultor'
+    + "|quelqu'un de l'equipe|quelqu'un de notre equipe|un conseiller|une personne)";
+
+/** A transfer verb followed by a human destination: "¿Quiere que lo conecte con nuestro equipo?". */
+const OFFER_TRANSFER = new RegExp(
+    '\\b(?:conecte|conecto|comunique|comunico|pase|paso|transfiera|transfiero|derive|derivo|connect|transfer|put you|pass you'
+    + '|transfira|passe|passar|conectar|mette|mets|transfere|transferer|passer)\\b[^?.!]{0,40}\\b' + HUMAN_TARGET + '\\b',
+);
+
 const OFFER_QUESTION = new RegExp(
-    '\\b(?:quiere|quieres|desea|deseas|gustaria|prefiere|would you|do you want|voulez|souhaitez|quer|gostaria)\\b[^?]{0,80}\\b'
-    + HUMAN_TARGET + '\\b',
+    '\\b(?:quiere|quieres|desea|deseas|gustaria|prefiere|prefieres|would you|do you want|voulez|souhaitez|quer|gostaria)\\b[^?]{0,80}\\b'
+    + OFFER_TARGET,
 );
 

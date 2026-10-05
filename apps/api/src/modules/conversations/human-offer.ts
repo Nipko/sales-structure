@@ -1,4 +1,4 @@
-import { offersHumanHandoff } from '../../common/utils/outcome-claim.util';
+import { offersHumanHandoff, removeHandoffPromiseSentences } from '../../common/utils/outcome-claim.util';
 
 /**
  * The honest "I don't have that confirmed" reply offers a person from the team.
@@ -75,4 +75,24 @@ export function isLiveHumanOffer(mark: any, now = Date.now()): boolean {
 export function isAffirmationOfHumanOffer(userText: unknown, previousOutbound: unknown): boolean {
     return isAffirmation(userText)
         && (containsHumanOffer(previousOutbound) || offersHumanHandoff(previousOutbound));
+}
+
+/**
+ * The honest "nobody from the team is available" notice goes in front of the
+ * turn's own answer, in the same message batch. Nothing to say after it (no
+ * answer) or an answer owned by an earlier attempt: leave the text as it is.
+ */
+export function withReturnNotice<T extends string | null | undefined>(notice: string | null | undefined, response: T, answerIsStored: boolean): T | string {
+    if (!notice || !response || answerIsStored) return response;
+    return `${notice}\n\n${response}`;
+}
+
+/**
+ * An unsolicited promise of a transfer becomes the offer in question form. Only
+ * the promise sentence goes: the correct information the agent gave around it
+ * stays in front of the offer.
+ */
+export function offerInsteadOfPromise(response: string, offer: string): string {
+    const kept = removeHandoffPromiseSentences(response);
+    return kept ? `${kept}\n\n${offer}` : offer;
 }

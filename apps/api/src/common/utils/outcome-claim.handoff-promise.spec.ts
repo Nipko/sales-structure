@@ -1,4 +1,4 @@
-import { offersHumanHandoff, promisesHumanHandoff } from './outcome-claim.util';
+import { offersHumanHandoff, promisesHumanHandoff, removeHandoffPromiseSentences } from './outcome-claim.util';
 
 /**
  * Caso real de producción (2-sep-2026, tenant Amazon Minimalist).
@@ -110,5 +110,46 @@ describe('offersHumanHandoff — what a later "sí" answers', () => {
         null,
     ])('no es una oferta: %s', text => {
         expect(offersHumanHandoff(text)).toBe(false);
+    });
+});
+
+describe('offersHumanHandoff names a PERSON, not any "team" word (H8)', () => {
+    it.each([
+        '¿Quieres el kit del equipo de fútbol?',
+        '¿Desea agendar con el especialista?',
+        '¿Le gustaría ver el plan del equipo de ventas?',
+        'Would you like the team jersey?',
+        '¿Prefiere el agente de viajes que ya conoce, o uno nuevo?',
+    ])('no es una oferta de traspaso: %s', text => {
+        expect(offersHumanHandoff(text)).toBe(false);
+    });
+    it.each([
+        '¿Quieres que le pida a una persona del equipo que lo confirme?',
+        '¿Le gustaría que alguien del equipo lo contacte?',
+        '¿Desea que lo comunique con un asesor?',
+        'Would you like me to ask someone from the team?',
+        'Would you like to talk to a human agent?',
+        '¿Quiere que lo conecte con nuestro equipo?',
+        'Would you like me to connect you with our team?',
+        'Quer que eu peça a alguém da equipe? Posso chamar um atendente.',
+        'Souhaitez-vous que je demande à quelqu\'un de l\'équipe ?',
+    ])('sí es una oferta de traspaso: %s', text => {
+        expect(offersHumanHandoff(text)).toBe(true);
+    });
+});
+
+describe('removeHandoffPromiseSentences keeps the correct information (H7)', () => {
+    it('I09: drops only the promise sentence', () => {
+        const kept = removeHandoffPromiseSentences(
+            'Con gusto le ayudo con esa búsqueda en Chapinero. Sin embargo, en este momento no puedo consultar el catálogo de propiedades.\n\n'
+            + 'Le paso con nuestro equipo para que le compartan los apartamentos disponibles.');
+        expect(kept).toBe('Con gusto le ayudo con esa búsqueda en Chapinero. Sin embargo, en este momento no puedo consultar el catálogo de propiedades.');
+    });
+    it('keeps a conditional offer and a question (they are not promises)', () => {
+        const text = 'Abrimos de 9 a 18. Si quiere, le paso con alguien del equipo. ¿Le agendo?';
+        expect(removeHandoffPromiseSentences(text)).toBe('Abrimos de 9 a 18. Si quiere, le paso con alguien del equipo. ¿Le agendo?');
+    });
+    it('a reply that is only the promise leaves nothing', () => {
+        expect(removeHandoffPromiseSentences('Le paso con nuestro equipo especializado, espere un momento.')).toBe('');
     });
 });

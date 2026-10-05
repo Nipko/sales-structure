@@ -9,6 +9,7 @@ import { EmailTemplatesService } from '../email-templates/email-templates.servic
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { AiResolutionService } from '../analytics/ai-resolution.service';
 import { normalizeCustomerIntent } from '../../common/conversation/intent-normalizer';
+import { hasDispatchOutbox, noHumanReplySql } from './handoff-human-reply';
 import {
     normalizeForIntent,
     ConversationAssignedEvent,
@@ -786,52 +787,57 @@ export class HandoffService {
     }
 
     private async returnUnattendedHandoffsForTenant(tenantId: string, schemaName: string): Promise<void> {
-        const stranded = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-            `SELECT c.id
-               FROM conversations c
-              WHERE c.status IN ('waiting_human', 'with_human')
-                AND c.metadata->'handoff'->>'startedAt' IS NOT NULL
-                AND (c.metadata->'handoff'->>'startedAt')::timestamptz
+        const run = (sql: string, params: any[]) => this.prisma.executeInTenantSchema<any[]>(schemaName, sql, params);
+        const hasOutbox = await hasDispatchOutbox(run, schemaName);
+        // The same conditions pick the rows AND guard the UPDATE: between the two a
+        // person may have answered, and the second statement must not undo that.
+        const eligible = (a: string) => `${a}.status IN ('waiting_human', 'with_human')
+                AND ${a}.metadata->'handoff'->>'startedAt' IS NOT NULL
+                AND (${a}.metadata->'handoff'->>'startedAt')::timestamptz
                     < NOW() - ($1 || ' minutes')::interval
-                AND COALESCE(c.metadata->'handoff'->>'returnedToAi', 'false') <> 'true'
-                -- nobody from the team ever answered (also covers an auto-assigned
-                -- with_human conversation whose agent never wrote)
-                AND NOT EXISTS (
-                    SELECT 1 FROM messages m
-                     WHERE m.conversation_id = c.id
-                       AND m.direction = 'outbound'
-                       AND m.metadata->>'source' = 'agent'
-                       AND m.created_at > (c.metadata->'handoff'->>'startedAt')::timestamptz
-                )
+                AND COALESCE(${a}.metadata->'handoff'->>'returnedToAi', 'false') <> 'true'
+                -- nobody from the team answered, on any channel (also covers an
+                -- auto-assigned with_human conversation whose agent never wrote)
+                ${noHumanReplySql(a, hasOutbox)}
                 -- ...and the customer is still waiting on an answer
                 AND EXISTS (
                     SELECT 1 FROM messages m
-                     WHERE m.conversation_id = c.id
+                     WHERE m.conversation_id = ${a}.id
                        AND m.direction = 'inbound'
-                       AND m.created_at > (c.metadata->'handoff'->>'startedAt')::timestamptz
-                )
-              LIMIT 50`,
+                       AND m.created_at > (${a}.metadata->'handoff'->>'startedAt')::timestamptz
+                )`;
+        const returned = await run(
+            `UPDATE conversations c
+                SET status = 'active',
+                    assigned_to = NULL,
+                    metadata = jsonb_set(jsonb_set(
+                        COALESCE(c.metadata, '{}'::jsonb),
+                        '{handoff,returnedToAi}', 'true'::jsonb, true
+                    ), '{handoff,returnNoticePending}', 'true'::jsonb, true),
+                    updated_at = NOW()
+              WHERE c.id IN (SELECT x.id FROM conversations x WHERE ${eligible('x')} LIMIT 50)
+                AND ${eligible('c')}
+          RETURNING c.id`,
             [String(UNATTENDED_HANDOFF_MINUTES)],
         );
-        if (!stranded?.length) return;
+        // Only the rows this statement really changed are announced: a conversation a
+        // person answered in the meantime comes back empty and is left alone.
+        if (!returned?.length) return;
 
-        for (const row of stranded) {
-            await this.prisma.executeInTenantSchema(schemaName,
-                `UPDATE conversations
-                    SET status = 'active',
-                        assigned_to = NULL,
-                        metadata = jsonb_set(jsonb_set(
-                            COALESCE(metadata, '{}'::jsonb),
-                            '{handoff,returnedToAi}', 'true'::jsonb, true
-                        ), '{handoff,returnNoticePending}', 'true'::jsonb, true),
-                        updated_at = NOW()
-                  WHERE id = $1::uuid AND status IN ('waiting_human', 'with_human')`,
-                [row.id],
-            );
+        const hasAssignments = !!(await run('SELECT to_regclass($1)::text AS t',
+            [`${schemaName}.conversation_assignments`]).catch(() => []))?.[0]?.t;
+        for (const row of returned) {
+            if (hasAssignments) {
+                // The person nobody heard from no longer owns it.
+                await run(
+                    `UPDATE conversation_assignments SET resolved_at = NOW()
+                      WHERE conversation_id = $1::uuid AND resolved_at IS NULL`, [row.id],
+                ).catch(e => this.logger.warn(`[Handoff] Could not close the assignment of ${row.id}: ${e.message}`));
+            }
             await this.redis.del(`handoff:${tenantId}:${row.id}`).catch(() => {});
             this.eventEmitter.emit('handoff.returned_unattended', { tenantId, conversationId: row.id });
         }
-        this.logger.warn(`[Handoff] Returned ${stranded.length} unattended conversation(s) to the AI in tenant ${tenantId}`);
+        this.logger.warn(`[Handoff] Returned ${returned.length} unattended conversation(s) to the AI in tenant ${tenantId}`);
     }
 
     /**
@@ -969,7 +975,7 @@ export class HandoffService {
                         const conversations = await query<Array<{ contact_id: string | null }>>(
                             // assigned_to es VARCHAR, no UUID (ver agent-console.service).
                             `UPDATE conversations
-                                SET assigned_to = $2, status = 'with_human', updated_at = NOW()
+                                SET assigned_to = $2, status = 'with_human', metadata = COALESCE(metadata, '{}'::jsonb) #- '{handoff,returnNoticePending}', updated_at = NOW()
                               WHERE id = $1::uuid
                               RETURNING contact_id`,
                             [conversationId, agent.id],

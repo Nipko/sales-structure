@@ -2897,58 +2897,12 @@ export class AIToolExecutorService {
                 message: 'The service duration or buffer is invalid. Correct the service before offering slots.' };
         }
 
-        // Get availability slots for the day
-        const dayOfWeek = dayOfWeekForLocalDate(date);
-
-        let staffFilter = '';
-        const params: any[] = [dayOfWeek, schema];
-        if (resolvedStaffId) {
-            staffFilter = ' AND availability.user_id = $3::uuid';
-            params.push(resolvedStaffId);
-        }
-
-        const slots: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT availability.user_id, availability.start_time::text, availability.end_time::text
-             FROM "${schema}".availability_slots availability
-             JOIN ${directory.users} staff_user
-               ON staff_user.id = availability.user_id
-              AND staff_user.is_active = true
-             JOIN ${directory.tenants} tenant_owner
-               ON tenant_owner.id = staff_user.tenant_id
-              AND tenant_owner.schema_name = $2
-              AND tenant_owner.is_active = true
-             WHERE availability.day_of_week = $1
-               AND availability.is_active = true${staffFilter}`,
-            ...params,
-        );
-
-        if (!slots.length) {
-            return this.buildNoSlotsResult(schema);
-        }
-
-        // blocked_dates: feriados y vacaciones que el dueño bloqueó en el panel. La
-        // ruta del dashboard los respeta (appointments.service.ts:598) y la de chat
-        // no, así que el bot vendía turnos el 25 de diciembre. user_id NULL = el
-        // negocio entero cerrado ese día.
-        let blockedRows: any[];
-        try {
-            blockedRows = await this.prisma.$queryRawUnsafe(
-                `SELECT user_id FROM "${schema}".blocked_dates WHERE blocked_date = $1::date`,
-                date,
-            ) as any[];
-        } catch (error: any) {
-            this.logger.warn(`[Tool] blocked-date availability could not be verified: ${error?.message}`);
-            return this.availabilityInfrastructureFailure('calendar_availability_unverified');
-        }
-        if (blockedRows.length) {
-            const closedForAll = blockedRows.some(b => !b.user_id);
-            if (closedForAll) return this.buildNoSlotsResult(schema);
-            const blockedUserIds = new Set(blockedRows.map(b => b.user_id));
-            const open = slots.filter((s: any) => !s.user_id || !blockedUserIds.has(s.user_id));
-            if (!open.length) return this.buildNoSlotsResult(schema);
-            slots.length = 0;
-            slots.push(...open);
-        }
+        // Open windows of the day (weekly hours minus blocked dates). The same loader
+        // validates create/reschedule, so "offered" and "bookable" cannot drift apart.
+        const windows = await this.loadOpenWindows(schema, date, directory, resolvedStaffId);
+        if (windows.outcome === 'unverified') return this.availabilityInfrastructureFailure('calendar_availability_unverified');
+        if (windows.outcome === 'closed') return this.buildNoSlotsResult(schema);
+        const slots = windows.slots;
 
         // Get existing appointments for that date. service_id entra al SELECT para
         // poder contar la ocupación POR SERVICIO (la capacidad es del servicio, no
@@ -3112,6 +3066,104 @@ export class AIToolExecutorService {
                 staffName: userNames[s.userId] || undefined,
                 staffId: s.userId || undefined,
             })),
+        };
+    }
+
+    /**
+     * The working windows of one local date: active weekly `availability_slots`
+     * of active staff, minus `blocked_dates` (feriados y vacaciones del panel;
+     * user_id NULL = el negocio entero cerrado). Shared by `checkAvailability`
+     * (what the bot offers) and `assertWithinBusinessHours` (what create and
+     * reschedule accept), so the two can never disagree about the opening hours.
+     */
+    private async loadOpenWindows(
+        schema: string, date: string, directory: { users: string; tenants: string }, staffId?: string,
+    ): Promise<{ outcome: 'ok'; slots: any[] } | { outcome: 'closed' } | { outcome: 'unverified' }> {
+        const dayOfWeek = dayOfWeekForLocalDate(date);
+        let staffFilter = '';
+        const params: any[] = [dayOfWeek, schema];
+        if (staffId) {
+            staffFilter = ' AND availability.user_id = $3::uuid';
+            params.push(staffId);
+        }
+
+        const slots: any[] = await this.prisma.$queryRawUnsafe(
+            `SELECT availability.user_id, availability.start_time::text, availability.end_time::text
+             FROM "${schema}".availability_slots availability
+             JOIN ${directory.users} staff_user
+               ON staff_user.id = availability.user_id
+              AND staff_user.is_active = true
+             JOIN ${directory.tenants} tenant_owner
+               ON tenant_owner.id = staff_user.tenant_id
+              AND tenant_owner.schema_name = $2
+              AND tenant_owner.is_active = true
+             WHERE availability.day_of_week = $1
+               AND availability.is_active = true${staffFilter}`,
+            ...params,
+        );
+        if (!slots.length) return { outcome: 'closed' };
+
+        // blocked_dates: feriados y vacaciones que el dueño bloqueó en el panel. La
+        // ruta del dashboard los respeta (appointments.service.ts:598) y la de chat
+        // no, así que el bot vendía turnos el 25 de diciembre. user_id NULL = el
+        // negocio entero cerrado ese día.
+        let blockedRows: any[];
+        try {
+            blockedRows = await this.prisma.$queryRawUnsafe(
+                `SELECT user_id FROM "${schema}".blocked_dates WHERE blocked_date = $1::date`,
+                date,
+            ) as any[];
+        } catch (error: any) {
+            this.logger.warn(`[Tool] blocked-date availability could not be verified: ${error?.message}`);
+            return { outcome: 'unverified' };
+        }
+        if (!blockedRows.length) return { outcome: 'ok', slots };
+        if (blockedRows.some(b => !b.user_id)) return { outcome: 'closed' };
+        const blockedUserIds = new Set(blockedRows.map(b => b.user_id));
+        const open = slots.filter((s: any) => !s.user_id || !blockedUserIds.has(s.user_id));
+        return open.length ? { outcome: 'ok', slots: open } : { outcome: 'closed' };
+    }
+
+    /**
+     * create_appointment / reschedule_appointment gate: the whole block
+     * (service duration + buffer, as `checkAvailability` sizes its slots) must sit
+     * inside one working window of the date, and the date must not be blocked.
+     * With an assigned staff member only that person's windows count; a shared
+     * resource (no staff) is open whenever anybody works. Returns null when the
+     * time is bookable, or the tool result to hand back to the model.
+     */
+    private async assertWithinBusinessHours(
+        schema: string, date: string, time: string, blockMinutes: number,
+        staffId: string | null, namespace?: EvalNamespaceLease,
+    ): Promise<Record<string, unknown> | null> {
+        const directory = await tenantActorDirectory(this.prisma, schema, namespace);
+        const windows = await this.loadOpenWindows(schema, date, directory, staffId || undefined);
+        if (windows.outcome === 'unverified') return this.availabilityInfrastructureFailure('calendar_availability_unverified');
+        const toMinutes = (hhmm: string) => { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m; };
+        const start = toMinutes(time);
+        const end = start + blockMinutes;
+        if (windows.outcome === 'ok'
+            && windows.slots.some((w: any) => start >= toMinutes(w.start_time) && end <= toMinutes(w.end_time))) {
+            return null;
+        }
+        if (windows.outcome === 'closed') {
+            const configured = await this.buildNoSlotsResult(schema);
+            if (configured.error === 'appointments_not_configured') {
+                return { error: 'appointments_not_configured', persisted: false, message: configured.message };
+            }
+        }
+        const businessHours = windows.outcome === 'ok'
+            ? [...new Set(windows.slots.map((w: any) => `${String(w.start_time).slice(0, 5)}-${String(w.end_time).slice(0, 5)}`))]
+            : [];
+        return {
+            error: 'outside_business_hours',
+            persisted: false,
+            requestedDate: date,
+            requestedTime: time,
+            businessHours,
+            message: businessHours.length
+                ? `${time} is outside the business hours for ${date} (${businessHours.join(', ')}). Nothing was saved. Call check_availability and offer the customer a time inside those hours.`
+                : `The business is closed on ${date}. Nothing was saved. Call check_availability and offer the customer another date.`,
         };
     }
 
@@ -3329,7 +3381,7 @@ export class AIToolExecutorService {
         // inválido → tool_failed. El check de disponibilidad ya la aceptaba
         // (b9bd6332), pero la reserva en sí seguía rota.
         const svcRows: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT id, name, duration_minutes, duration_type, duration_minutes_max, price, currency, location_type, location_address, meeting_link, price_status FROM "${schema}".services WHERE id = $1::uuid AND is_active = true`,
+            `SELECT id, name, duration_minutes, buffer_minutes, duration_type, duration_minutes_max, price, currency, location_type, location_address, meeting_link, price_status FROM "${schema}".services WHERE id = $1::uuid AND is_active = true`,
             args.serviceId,
         );
         if (!svcRows.length) return { error: 'Service not found' };
@@ -3373,6 +3425,13 @@ export class AIToolExecutorService {
         const assignedTo = staffCandidate
             ? await assertActiveTenantUser(this.prisma, schema, staffCandidate, namespace)
             : null;
+
+        // Opening hours and blocked dates: the same windows check_availability offers.
+        // The conflict and capacity guards below say nothing about whether anybody
+        // works at that hour, so without this a 03:00 booking was accepted.
+        const outsideHours = await this.assertWithinBusinessHours(
+            schema, args.date, args.time, effectiveDuration + (Number(svc.buffer_minutes) || 0), assignedTo, namespace);
+        if (outsideHours) return outsideHours;
 
         // Build the immutable calendar snapshot before the appointment INSERT.
         // The outbox reads the just-inserted row in the same transaction, so a
@@ -3846,7 +3905,7 @@ export class AIToolExecutorService {
         schema: string,
         args: any,
     ): Promise<{ metadata: Record<string, string>; labels: string[]; suggestedStaffId?: string;
-        error?: string; message?: string; shouldHandoff?: boolean }> {
+        error?: string; message?: string; shouldHandoff?: boolean; persisted?: boolean }> {
         const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         // La etiqueta se resuelve en el mismo viaje que la validación: es lo que
         // después ve el asesor en su calendario, y un id crudo no le sirve.
@@ -3865,7 +3924,20 @@ export class AIToolExecutorService {
         const metadata: Record<string, string> = {};
         const labels: string[] = [];
         for (const c of candidates) {
-            if (typeof c.value !== 'string' || !UUID_RE.test(c.value)) continue;
+            // An id the model SENT must resolve. Dropping a malformed one ("N/A", "")
+            // booked the visit with no listing and no advisor, and an unassigned visit
+            // blocks every other visit of that hour (NULL = shared resource).
+            if (c.value === undefined || c.value === null
+                || (typeof c.value === 'string' && c.value.trim() === '')) continue;
+            if (typeof c.value !== 'string' || !UUID_RE.test(c.value)) {
+                return {
+                    metadata, labels,
+                    error: c.key === 'listingId' ? 'appointment_subject_required' : 'appointment_subject_invalid',
+                    persisted: false,
+                    message: `${c.key} must be the UUID of an existing record, not a name or a placeholder. Nothing was saved. `
+                        + 'Look it up with the search tool, ask the customer which one they mean, and retry; omit the field only if it does not apply.',
+                };
+            }
             let found: any[];
             try {
                 found = await this.prisma.$queryRawUnsafe(
@@ -3885,7 +3957,45 @@ export class AIToolExecutorService {
                 metadata[c.key] = c.value;
                 if (found[0].label) labels.push(`${c.label}: ${found[0].label}`);
             } else {
-                this.logger.warn(`[Tool] create_appointment: ${c.key}=${c.value} no existe en ${c.table}; se descarta`);
+                // Same rule as a malformed id: a visit to a record that does not exist
+                // is not a visit to "nothing", and writing it would be a guess.
+                return {
+                    metadata, labels,
+                    error: 'appointment_subject_not_found',
+                    persisted: false,
+                    message: `${c.key} does not match any record. Nothing was saved. Look it up again and retry with a valid id.`,
+                };
+            }
+        }
+
+        // Real-estate agency: every visit is a visit TO a listing. Without one there
+        // is no advisor to assign, so refuse instead of booking an anonymous visit.
+        if (!metadata.listingId && !metadata.petId && !metadata.vehicleId && !metadata.treatmentPlanId) {
+            let hasListings = false;
+            try {
+                hasListings = ((await this.prisma.$queryRawUnsafe(
+                    `SELECT 1 FROM "${schema}".real_estate_listings LIMIT 1`,
+                )) as any[]).length > 0;
+            } catch (error: any) {
+                // Tenants that never had the table are not real-estate tenants.
+                if (!(error?.meta?.code === '42P01' || /relation .* does not exist/i.test(String(error?.message)))) {
+                    this.logger.warn(`[Tool] create_appointment could not tell whether the tenant sells listings: ${error?.message}`);
+                    return {
+                        metadata, labels,
+                        error: 'appointment_subject_unavailable',
+                        message: 'The appointment subject could not be verified. Do not create a generic booking; offer a human handoff instead.',
+                        shouldHandoff: true,
+                    };
+                }
+            }
+            if (hasListings) {
+                return {
+                    metadata, labels,
+                    error: 'appointment_subject_required',
+                    persisted: false,
+                    message: 'This business books visits to a specific listing. Nothing was saved. Ask which listing the customer wants to visit '
+                        + '(search_listings gives its UUID) and call create_appointment again with listingId.',
+                };
             }
         }
 
@@ -5993,7 +6103,7 @@ export class AIToolExecutorService {
 
         const apt = rows[0];
         const svcRows: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT duration_minutes FROM "${schema}".services WHERE id = $1::uuid`,
+            `SELECT duration_minutes, buffer_minutes FROM "${schema}".services WHERE id = $1::uuid`,
             apt.service_id,
         );
         const duration = Number(svcRows[0]?.duration_minutes);
@@ -6020,6 +6130,15 @@ export class AIToolExecutorService {
                 id: appointmentId, service: apt.service_name, date: newDate, time: newTime, status: apt.status,
                 vehicleId: appointmentVehicleId(apt.metadata), vehicleLabel: apt.metadata?.vehicleTerms?.label,
             } };
+        }
+
+        // Same opening-hours gate as create_appointment, for the NEW slot only: a
+        // retry that lands on the time the appointment already has stays idempotent.
+        if (apt.start_local !== newStartAt || apt.end_local !== newEndAt) {
+            const outsideHours = await this.assertWithinBusinessHours(
+                schema, newDate, newTime, duration + (Number(svcRows[0]?.buffer_minutes) || 0),
+                apt.assigned_to || null, sandboxNamespace);
+            if (outsideHours) return outsideHours;
         }
 
         const noteAppend = reason

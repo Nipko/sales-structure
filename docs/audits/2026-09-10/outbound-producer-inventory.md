@@ -134,7 +134,7 @@ mensajes entregados, y un indicador de "escribiendo" no lo es.
 
 | Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
 |---:|---|---|---|---|---|---|---|
-| 166 | `dispatchTemplate` | `proactive.send` | `dispatch_outbox` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 166 | `dispatchReminder` | `proactive.send` | `dispatch_outbox` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
 
 ### `apps/api/src/modules/appointments/appointments.service.ts`
 
@@ -309,7 +309,7 @@ buscar una llamada a la autoridad economica en el codigo del archivo.
 | `modules/appointments/appointment-payment.listener.ts:89` | `onPaid` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/appointments/appointment-payment.listener.ts:107` | `onPaid` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/appointments/appointment-payment.listener.ts:115` | `onPaid` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
-| `modules/appointments/appointment-reminders.service.ts:166` | `dispatchTemplate` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
+| `modules/appointments/appointment-reminders.service.ts:166` | `dispatchReminder` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/appointments/appointments.service.ts:439` | `create` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/appointments/appointments.service.ts:738` | `createRecurring` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/automation/automation-jobs.processor.ts:432` | `handleSendTemplate` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |

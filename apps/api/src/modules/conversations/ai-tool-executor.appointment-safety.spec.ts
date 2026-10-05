@@ -27,7 +27,9 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
                 preparedService = queuedResults[0]?.[0];
                 return preparedService ? [structuredClone(preparedService)] : [];
             }
-            if (sql.includes('SELECT duration_minutes FROM')) rescheduling = true;
+            if (sql.includes('SELECT duration_minutes, buffer_minutes FROM')) rescheduling = true;
+            // The tenant sells no listings: this read is not part of the ordered fixtures below.
+            if (sql.includes('real_estate_listings')) return [];
             if (rescheduling && sql.includes("config_json->'hours'")) return [{ tz: 'America/Bogota' }];
             if (rescheduling && sql.includes('AS cap FROM')) return [{ cap: 1 }];
             const result = queuedResults.shift() ?? [];
@@ -160,6 +162,9 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
             status: insertedAppointment?.status, metadata: insertedAppointment?.metadata,
         } as any));
         (executor as any).appointmentsService = appointments;
+        // Opening hours are covered by appointment-hours-listing.postgres.spec.ts; the ordered
+        // fixtures here describe the write path and must not be consumed by the hours reads.
+        jest.spyOn(executor as any, 'assertWithinBusinessHours').mockResolvedValue(null);
         return {
             executor,
             prisma,

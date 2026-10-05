@@ -384,9 +384,11 @@ export interface BookingState {
     /**
      * A mission left untouched past the continuity window is dormant: it is kept
      * but never consumes a message silently. `pending` = the customer has not
-     * been asked yet; `offered` = the resume/discard question was sent.
+     * been asked yet; `offered` = the resume/discard question was sent;
+     * `lapsed` = it went unanswered: it is not asked again until the customer
+     * brings a booking datum, and until then the mission consumes nothing.
      */
-    resumeOffer?: 'pending' | 'offered';
+    resumeOffer?: 'pending' | 'offered' | 'lapsed';
     /**
      * Last real customer activity before the mission went dormant. Retention is
      * measured from here: `savedAt` is refreshed on every turn (even turns the
@@ -1097,6 +1099,11 @@ export class BookingEngineService {
             return { handled: false, state };
         }
 
+        // ── FAREWELL mid-booking: a goodbye is not an answer to the current step ──
+        if (intent.intent === 'farewell' && state.step !== 'idle') {
+            return { handled: false, state };
+        }
+
         // ── GREET mid-booking: don't reset, just acknowledge ──
         if (intent.intent === 'greet' && state.step !== 'idle') {
             return this.repromptCurrentStep(state, L);
@@ -1528,7 +1535,13 @@ export class BookingEngineService {
             // Neither answer nor booking data: the model replies next, so the offer
             // is no longer the last outgoing message and a later yes/no (to the
             // model's own question) must not resume or discard the old mission.
-            state.resumeOffer = 'pending';
+            // It is also not repeated: "gracias" or "chao" must not bring it back.
+            state.resumeOffer = 'lapsed';
+            return { handled: false, state };
+        }
+        if (state.resumeOffer === 'lapsed') {
+            // An explicit wish to book is as good as a datum: the mission resumes.
+            if (['ask_availability', 'select_service', 'select_time'].includes(intent.intent)) { clear(); return null; }
             return { handled: false, state };
         }
         state.resumeOffer = 'offered';

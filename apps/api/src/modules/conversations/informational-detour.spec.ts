@@ -21,6 +21,17 @@ describe('isInformationalDetour', () => {
         'cierran los domingos?',
         '¿Cuál es el horario de funcionamiento?',
         'what are your business hours',
+        'no, ¿a qué hora cierran?',
+        'ok pero ¿dónde quedan?',
+        'quiero conocer los precios',
+        'necesito la dirección',
+        'quiero preguntar a qué hora abren',
+        '¿Cuánto cuesta? Necesito decidir hoy',
+        'me gustaría saber a qué hora abren',
+        'i would like to know your opening hours',
+        'Vous ouvrez à quelle heure ?',
+        '¿atienden los domingos?',
+        '¿a qué hora atienden?',
     ])('treats %s as a question about the business', text => {
         expect(isInformationalDetour(text)).toBe(true);
     });
@@ -52,6 +63,11 @@ describe('isInformationalDetour', () => {
         'quiero el corte, ¿cuánto cuesta?',
         'sí, ¿y cuánto cuesta?',
         'quiero cancelar, ¿cuál es la política de cancelación?',
+        // "atender" is about being served, not about opening hours
+        '¿me atiende Carlos?',
+        '¿me atienden mañana a las 3?',
+        '¿atienden el sábado a las 10?',
+        '¿quién me atiende?',
     ])('leaves %s to the booking flow', text => {
         expect(isInformationalDetour(text)).toBe(false);
     });
@@ -67,5 +83,14 @@ describe('isInformationalDetour with what the interpreter already extracted', ()
     });
     it('an opening-hours question wins over a weekday it mentions', () => {
         expect(isInformationalDetour('a qué hora abren los sábados', { dateMentioned: '2026-10-10' })).toBe(true);
+    });
+});
+
+describe('isInformationalDetour with a clock time or a datum from the interpreter', () => {
+    it('an hours question that carries a concrete time is an availability request', () => {
+        expect(isInformationalDetour('¿abren a las 9?', { timeMentioned: '09:00' })).toBe(false);
+    });
+    it('an hours question without a time stays informational', () => {
+        expect(isInformationalDetour('¿abren los sábados?', { timeMentioned: null })).toBe(true);
     });
 });

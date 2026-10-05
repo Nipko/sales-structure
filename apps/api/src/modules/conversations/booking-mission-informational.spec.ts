@@ -130,10 +130,10 @@ describe('a booking mission cannot stay open indefinitely', () => {
         const offered: BookingState = { ...base, step: 'ask_date', resumeOffer: 'offered', dormantSince: '2026-10-02T21:00:00.000Z' };
         const ignored = await h.turn('gracias, ya estoy bien', offered);
         expect(ignored.result.handled).toBe(false);
-        expect(ignored.result.state.resumeOffer).toBe('pending');
+        expect(ignored.result.state.resumeOffer).toBe('lapsed');
         const later = await h.turn('sí', ignored.result.state);
-        expect(later.result.text).toMatch(/sin terminar/);
-        expect(later.result.state.resumeOffer).toBe('offered');
+        expect(later.result.handled).toBe(false);
+        expect(later.result.state.resumeOffer).toBe('lapsed');
         expect(later.result.state.serviceId).toBe('svc-corte');
     });
 
@@ -143,5 +143,26 @@ describe('a booking mission cannot stay open indefinitely', () => {
         const { result } = await h.turn('¿Cuál es el horario de atención?', offered);
         expect(result.handled).toBe(false);
         expect(result.state.resumeOffer).toBe('pending');
+    });
+
+    it('after one unanswered offer it is not repeated by thanks, laughter or goodbyes', async () => {
+        const h = harness({ intent: 'unknown' });
+        let state: BookingState = { ...base, step: 'ask_date', resumeOffer: 'offered', dormantSince: '2026-10-02T21:00:00.000Z' };
+        for (const text of ['gracias', 'jaja', 'chao', 'ok', 'gracias de nuevo']) {
+            const { result } = await h.turn(text, state);
+            expect(result.handled).toBe(false);
+            expect(result.text).toBeUndefined();
+            expect(result.state.resumeOffer).toBe('lapsed');
+            state = result.state;
+        }
+        const fresh = await h.turn('quiero el corte para mañana', state);
+        expect(fresh.result.state.resumeOffer).toBeUndefined();
+        expect(fresh.result.handled).toBe(true);
+    });
+
+    it('a farewell with an open mission is not answered with the next booking step', async () => {
+        const h = harness({ intent: 'farewell' });
+        const { result } = await h.turn('chao', h.mission('ask_date'));
+        expect(result.handled).toBe(false);
     });
 });

@@ -197,7 +197,7 @@ export function promisesLaterDelivery(text: string | null | undefined): boolean 
 const WAIT_PHRASE = new RegExp(
     [
         // es
-        '(dejame|dejeme|permiteme|permitame|permitanme|dame|denme) (un |unos |una )?(momento|segundo|minuto|instante)?\s*(para )?(verificar|consultar|revisar|confirmar|chequear|checar|comprobar|ver|averiguar|validar)',
+        '(dejame|dejeme|permiteme|permitame|permitanme|dame|denme) (un |unos |una )?(momento|segundo|minuto|instante)?\\s*(para )?(verificar|consultar|revisar|confirmar|chequear|checar|comprobar|ver|averiguar|validar)',
         '(dejame|dejeme|permiteme|permitame) (verificar|consultar|revisar|confirmar|chequear|checar|comprobar|averiguar)',
         'voy a (verificar|consultar|revisar|confirmar|chequear|checar|comprobar|averiguar|validar)',
         '(un|unos) (momento|momentito|segundo|segundito|minuto|instante)',

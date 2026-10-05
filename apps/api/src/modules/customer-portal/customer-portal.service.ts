@@ -178,17 +178,15 @@ export class CustomerPortalService {
                 id,
                 phone,
                 email,
-                first_name,
-                last_name,
-                display_name,
+                name,
+                name AS display_name,
                 avatar_url,
-                language,
                 tags,
-                custom_attributes,
                 created_at,
                 updated_at
             FROM contacts
-            WHERE id = $1::uuid AND is_active = true
+            WHERE id = $1::uuid
+              AND NOT EXISTS (SELECT 1 FROM customer_memory_erasure e WHERE e.contact_id = contacts.id)
             LIMIT 1`,
             [contactId],
         );

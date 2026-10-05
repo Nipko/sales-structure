@@ -186,7 +186,7 @@ const PLANS = [
             maxWebhookSubscriptions: 3,
 
             // ── Channel access ──
-            channels: ['whatsapp', 'instagram', 'messenger', 'email'],
+            channels: ['whatsapp', 'instagram', 'messenger', 'telegram'],
 
             // ── AI & engagement ──
             llmTier: 'tier_3',

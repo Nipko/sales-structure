@@ -139,11 +139,11 @@ describe("the plan decides what can be started", () => {
     it("names the first plan in catalogue order that includes each locked channel", () => {
         const catalogue = { success: true, data: [
             { slug: "emprendedor", name: "Emprendedor", features: { channels: ["whatsapp"] } },
-            { slug: "starter", name: "Starter", features: { channels: ["whatsapp", "instagram", "messenger", "email"] } },
+            { slug: "starter", name: "Starter", features: { channels: ["whatsapp", "instagram", "messenger", "telegram"] } },
             { slug: "pro", name: "Pro", features: { channels: ["whatsapp", "instagram", "messenger", "telegram"] } },
         ] };
         expect(planNamesIncluding(catalogue, ["instagram", "messenger", "telegram"]))
-            .toEqual({ instagram: "Starter", messenger: "Starter", telegram: "Pro" });
+            .toEqual({ instagram: "Starter", messenger: "Starter", telegram: "Starter" });
         // Unreadable, or a channel no plan has: no name, never a guessed one.
         expect(planNamesIncluding(null, ["instagram"])).toEqual({});
         expect(planNamesIncluding({ data: [{ name: "Starter", features: {} }] }, ["telegram"])).toEqual({});

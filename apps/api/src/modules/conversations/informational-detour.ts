@@ -13,14 +13,16 @@ import { isInformationSeekingMessage } from '../../common/conversation/intent-no
  * `check_availability`) and the mission is kept untouched to be resumed later.
  *
  * Deliberately conservative in both directions:
- *  - an explicit booking commitment ("quiero reservar", "agéndame", "confirmo")
- *    is never a detour, even when it also asks a price;
- *  - "horario" next to a clock time ("el horario de las 10:00") is a slot pick,
- *    not a question about opening hours.
+ *  - "horario" alone is the engine's word for a free slot ("¿tienen horario
+ *    mañana?", "el horario de las 10"): only an opening/closing verb or a
+ *    qualifier ("de atención", "de apertura", "business hours") makes it a
+ *    question about the business;
+ *  - a booking datum riding with the question (a commitment verb, a leading
+ *    "sí", a date next to a price question) stays with the engine, which must
+ *    read it. The datum wins; the engine's next prompt continues the flow.
  */
 
-const HOURS_TOPIC = /\b(?:horarios?|horas? de (?:atencion|apertura|cierre|servicio|trabajo)|(?:hasta|desde) que hora|a que hora (?:abren|abre|cierran|cierra|atienden|atiende|empiezan|empieza|comienzan|comienza|terminan|termina|salen|trabajan|estan)|(?:abren|abre|cierran|cierra|atienden|atiende) (?:los |el |la |las |hoy|manana|domingos?|sabados?|lunes|martes|miercoles|jueves|viernes)|opening hours|business hours|working hours|(?:what|which) hours|what time (?:do|does|are|is) (?:you|it|the \w+) (?:open|close|opening|closing)|when do you (?:open|close)|horaires?|heures? d ouverture|a quelle heure|horario de funcionamento|horarios de funcionamento|a que horas (?:abrem|fecham|comecam|terminam))\b/;
-const HOURS_ACTION = /\b(?:abren|abre|cierran|cierra|atienden|atiende|open|opens|close|closes|ouvert|ouvrez|fermez|abrem|fecham)\b/;
+const HOURS_TOPIC = /\b(?:horarios? (?:de|del) (?:atencion|apertura|cierre|funcionamiento|servicio|trabajo|local|salon|negocio|tienda|consultorio)|horas? de (?:atencion|apertura|cierre|servicio|trabajo)|(?:hasta|desde) que hora|a que hora (?:abren|abre|cierran|cierra|atienden|atiende|empiezan|empieza|comienzan|comienza|terminan|termina|salen|trabajan)|abren|abre|cierran|cierra|atienden|atiende|opening hours|business hours|working hours|opening times|are you open|do you open|when do you (?:open|close)|what time (?:do|does) (?:you|it|the \w+) (?:open|close)|horaires?|heures? d ouverture|a quelle heure (?:ouvrez|fermez)|ouvert|fermez|horario de funcionamento|horarios de funcionamento|a que horas (?:abrem|fecham|comecam|terminam)|abrem|fecham)\b/;
 const PRICE_TOPIC = /\b(?:cuanto (?:cuesta|cuestan|vale|valen|cobran|cobra|sale|salen|es)|precios?|tarifas?|costos?|cuanto me (?:cobran|saldria)|how much|prices?|pricing|cost|quanto (?:custa|custam|cobram)|precos?|combien|prix|tarifs?|coute)\b/;
 const SERVICES_TOPIC = /\b(?:que servicios|cuales servicios|servicios (?:ofrecen|tienen|ofrece|tiene|disponibles)|que (?:ofrecen|tratamientos tienen|hacen|manejan)|catalogo|what services|which services|services do you|quels services|que servicos|quais servicos)\b/;
 const LOCATION_TOPIC = /\b(?:donde (?:estan|queda|quedan|se ubican|se encuentran|es|puedo encontrar)|direccion|ubicacion|ubicados?|como llego|where are you|where is|your address|located|adresse|ou etes vous|onde fica|onde voces|endereco|localizacao)\b/;
@@ -34,21 +36,34 @@ const GREETING_LEAD = /^(?:hola|buenas|buenos dias|buen dia|buenas tardes|buenas
 const PREPOSITIONAL_QUESTION = /^(?:a|hasta|desde|de|en|para|por) (?:que|cual|cuales|cuanto|cuando|donde)\b/;
 
 /** The customer is acting on the booking, not asking about the business. */
-const BOOKING_COMMITMENT = /\b(?:agend\w*|reserv\w*|apartar|aparta|programar|programame|book|booking|schedule|confirm\w*|quiero (?:una |la |mi |el )?(?:cita|turno)|necesito (?:una |la |mi |el )?(?:cita|turno))\b/;
+const BOOKING_COMMITMENT = /\b(?:agend\w*|reserv\w*|apartar|aparta|programar|programame|book|booking|schedule|confirm\w*|cancelar|cancela|cancelalo|cancel|quiero (?!saber)\w+|lo quiero|la quiero|necesito (?!saber)\w+|me gustaria (?!saber)\w+|i want (?!to know)\w+|i would like (?!to know)\w+)\b/;
+/** A leading yes/no answers the previous prompt: the rest is a datum, not a question. */
+const LEADING_ANSWER = /^(?:si|ok|okay|dale|claro|listo|vale|perfecto|yes|yeah|sim|oui|no)\b/;
 
-export function isInformationalDetour(raw: unknown): boolean {
+export interface InterpretedHint {
+    dateMentioned?: string | null;
+}
+
+/** Which kind of business question this is, or null when it is not one. */
+function informationalTopic(raw: unknown): 'hours' | 'other' | null {
     const text = normalizeForIntent(raw);
-    if (!text) return false;
-    if (BOOKING_COMMITMENT.test(text)) return false;
+    if (!text) return null;
+    if (BOOKING_COMMITMENT.test(text)) return null;
     const unGreeted = text.replace(GREETING_LEAD, '');
+    if (LEADING_ANSWER.test(unGreeted)) return null;
     const asksSomething = isInformationSeekingMessage(raw) || isInformationSeekingMessage(unGreeted)
         || INFORMATION_IMPERATIVE.test(text) || PREPOSITIONAL_QUESTION.test(unGreeted);
-    if (!asksSomething) return false;
-    // "el horario de las 10:00", "horario 15:30": picking a slot, not asking hours.
-    const hoursQuestion = HOURS_TOPIC.test(text) && (!/\d/.test(text) || HOURS_ACTION.test(text));
-    return hoursQuestion
-        || PRICE_TOPIC.test(text)
-        || SERVICES_TOPIC.test(text)
-        || LOCATION_TOPIC.test(text)
-        || POLICY_TOPIC.test(text);
+    if (!asksSomething) return null;
+    if (HOURS_TOPIC.test(text)) return 'hours';
+    if (PRICE_TOPIC.test(text) || SERVICES_TOPIC.test(text) || LOCATION_TOPIC.test(text) || POLICY_TOPIC.test(text)) return 'other';
+    return null;
+}
+
+export function isInformationalDetour(raw: unknown, interpreted?: InterpretedHint): boolean {
+    const topic = informationalTopic(raw);
+    if (!topic) return false;
+    // A date the interpreter extracted next to a price/service/policy question is
+    // booking data the engine must keep. Opening hours mention weekdays by nature.
+    if (topic === 'other' && interpreted?.dateMentioned) return false;
+    return true;
 }

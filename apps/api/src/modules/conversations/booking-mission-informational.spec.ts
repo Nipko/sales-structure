@@ -124,4 +124,24 @@ describe('a booking mission cannot stay open indefinitely', () => {
         expect(result.state.resumeOffer).toBe('pending');
         expect(result.state.dormantSince).toBe('2026-10-02T21:00:00.000Z');
     });
+
+    it('an offer the customer ignored lapses: a later yes or no does not resume or discard the old mission', async () => {
+        const h = harness({ intent: 'unknown' });
+        const offered: BookingState = { ...base, step: 'ask_date', resumeOffer: 'offered', dormantSince: '2026-10-02T21:00:00.000Z' };
+        const ignored = await h.turn('gracias, ya estoy bien', offered);
+        expect(ignored.result.handled).toBe(false);
+        expect(ignored.result.state.resumeOffer).toBe('pending');
+        const later = await h.turn('sí', ignored.result.state);
+        expect(later.result.text).toMatch(/sin terminar/);
+        expect(later.result.state.resumeOffer).toBe('offered');
+        expect(later.result.state.serviceId).toBe('svc-corte');
+    });
+
+    it('a question answered by the model also lapses an open offer', async () => {
+        const h = harness({ intent: 'ask_availability' });
+        const offered: BookingState = { ...base, step: 'ask_date', resumeOffer: 'offered', dormantSince: '2026-10-02T21:00:00.000Z' };
+        const { result } = await h.turn('¿Cuál es el horario de atención?', offered);
+        expect(result.handled).toBe(false);
+        expect(result.state.resumeOffer).toBe('pending');
+    });
 });

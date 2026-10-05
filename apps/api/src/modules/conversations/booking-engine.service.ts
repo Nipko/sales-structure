@@ -506,8 +506,11 @@ export class BookingEngineService {
         // not a step of the open mission: the engine has no tool to answer it and
         // used to re-prompt the step instead. Leave it to the model with its
         // tools; the mission, dormant or not, is returned untouched.
-        if (active && isInformationalDetour(rawText)) {
+        if (active && isInformationalDetour(rawText, intent)) {
             this.logger.log(`[Decide] Informational question mid-mission, letting the LLM answer (booking state preserved: ${state.step})`);
+            // The model speaks next: a bare yes/no after its answer must not be
+            // read as the reply to a resume offer that is no longer the last message.
+            if (state.resumeOffer === 'offered') state.resumeOffer = 'pending';
             return { handled: false, state };
         }
         if (active && state.resumeOffer && bookingEngineAuthorityDecision(authority).allowed && !isPauseMessage(rawText)) {
@@ -1522,7 +1525,10 @@ export class BookingEngineService {
                 return { handled: true, state, text: msg(lang, 'resumeDiscarded') };
             }
             if (intent.isConfirmation) { clear(); return this.repromptCurrentStep(state, lang); }
-            // Neither answer nor booking data: leave the question open for the model.
+            // Neither answer nor booking data: the model replies next, so the offer
+            // is no longer the last outgoing message and a later yes/no (to the
+            // model's own question) must not resume or discard the old mission.
+            state.resumeOffer = 'pending';
             return { handled: false, state };
         }
         state.resumeOffer = 'offered';

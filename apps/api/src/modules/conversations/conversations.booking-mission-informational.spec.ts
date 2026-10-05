@@ -152,4 +152,13 @@ describe('opening hours reach the prompt from the appointment agenda', () => {
         await h.turn('¿Están abiertos?');
         expect(h.session().trace.systemPrompt).toMatch(/<business_hours_status>(open|closed)<\/business_hours_status>/);
     });
+
+    it('uses the turn time zone, not a fixed one, and only active staff', async () => {
+        const h = withAgenda(agenda);
+        jest.spyOn(h.f.runtime as any, 'regionalContextForTurn').mockResolvedValue({ regional: null, timezone: 'Europe/Madrid' });
+        await h.turn('¿A qué hora abren?');
+        expect(promptHours(h.f).timezone).toBe('Europe/Madrid');
+        const agendaQuery = h.f.prisma.executeInTenantSchema.mock.calls.map((call: any[]) => String(call[1])).find((sql: string) => /availability_slots/.test(sql));
+        expect(agendaQuery).toMatch(/u\.is_active = true/);
+    });
 });

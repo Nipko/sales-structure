@@ -76,7 +76,7 @@ export class IntentInterpreterService {
         // (`ask_services` is already the right label and stays). At idle
         // the established behaviour (service list, flow start) is unchanged.
         const missionOpen = currentBookingStep !== 'idle' && currentBookingStep !== 'booked';
-        if (missionOpen && isInformationalDetour(userText)
+        if (missionOpen && isInformationalDetour(userText, interpreted)
             && ['ask_availability', 'select_service', 'select_time', 'provide_info', 'unknown'].includes(interpreted.intent)) {
             return { ...interpreted, intent: 'general_question', isConfirmation: false, questionTopic: userText };
         }

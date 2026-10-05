@@ -1961,11 +1961,14 @@ export class ConversationsService {
      */
     private async resolvePromptBusinessHours(
         tenantId: string, config: TenantConfig, bizHours: any, evaluationContext: EvaluationTurnContextInputs | null,
+        turnTimezone: string,
     ): Promise<any> {
         // The identity check means "something configured already describes the hours".
         if (resolvePromptBusinessHours(bizHours, config.hours, UNKNOWN_INFORMATIONAL_HOURS) === (bizHours ?? null)) return bizHours;
         const derived = await this.loadInformationalHours(tenantId, config, evaluationContext);
-        return derived ? resolvePromptBusinessHours(bizHours, config.hours, derived) : bizHours;
+        // The agenda is wall-clock time of the tenant: stamp the turn's resolved zone
+        // here, never in the cache or the sealed snapshot.
+        return derived ? resolvePromptBusinessHours(bizHours, config.hours, { ...derived, timezone: turnTimezone }) : bizHours;
     }
 
     private async loadInformationalHours(
@@ -1977,7 +1980,7 @@ export class ConversationsService {
             const cached = await this.redis.getJson(cacheKey);
             if (cached) return cached as InformationalHours;
             const schema = await this.tenantSchema(tenantId);
-            const derived = await this.readInformationalHours(schema, config.hours?.timezone);
+            const derived = await this.readInformationalHours(schema);
             await this.redis.setJson(cacheKey, derived, 300);
             return derived;
         } catch (error: any) {
@@ -1987,10 +1990,15 @@ export class ConversationsService {
     }
 
     /** Throws when the agenda cannot be read; an empty agenda is a real answer. */
-    private async readInformationalHours(schema: string, timezone?: string | null): Promise<InformationalHours> {
+    private async readInformationalHours(schema: string): Promise<InformationalHours> {
+        // Same eligibility as check_availability: a slot of a deactivated user is not bookable.
         const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
-            'SELECT user_id, day_of_week, start_time::text AS start_time, end_time::text AS end_time FROM availability_slots WHERE is_active = true');
-        return deriveInformationalHours(rows, timezone) ?? UNKNOWN_INFORMATIONAL_HOURS;
+            `SELECT a.user_id, a.day_of_week, a.start_time::text AS start_time, a.end_time::text AS end_time
+               FROM availability_slots a
+               JOIN public.tenants tenant_owner ON tenant_owner.schema_name = $1 AND tenant_owner.is_active = true
+               JOIN public.users u ON u.id = a.user_id AND u.tenant_id = tenant_owner.id AND u.is_active = true
+              WHERE a.is_active = true`, [schema]);
+        return deriveInformationalHours(rows) ?? UNKNOWN_INFORMATIONAL_HOURS;
     }
 
     private async loadTenantBusinessHours(tenantId: string, session?: AgentTurnSession): Promise<any | null> {
@@ -2501,7 +2509,7 @@ export class ConversationsService {
     /** Informational hours for the sealed preview context; absent when unreadable. */
     private async captureAppointmentHours(tenantId: string, config: TenantConfig): Promise<InformationalHours | null> {
         try {
-            return await this.readInformationalHours(await this.prisma.getTenantSchemaName(tenantId), config.hours?.timezone);
+            return await this.readInformationalHours(await this.prisma.getTenantSchemaName(tenantId));
         } catch (error: any) {
             this.logger.warn(`[Hours] Appointment hours not captured for the evaluation context: ${error?.message}`);
             return null;
@@ -4258,12 +4266,12 @@ export class ConversationsService {
         // Opening hours as the prompt describes them. `bizHours` keeps deciding
         // open/closed; this only adds an informational schedule when the tenant
         // configured none, so the agent can answer "¿a qué hora abren?".
-        const promptHours = await this.resolvePromptBusinessHours(tenantId, config, bizHours, evaluationContext);
+        const promptHours = await this.resolvePromptBusinessHours(tenantId, config, bizHours, evaluationContext, turnContext.timezone);
         // `isWithinBusinessHours` answers `open` when no hours exist; the prompt must not
         // repeat that as a fact. Configured hours keep their verdict; otherwise the agenda
         // decides, and without one the status is `unknown`.
         turnContext.businessHoursStatus = promptHoursStatus(turnContext.businessHoursStatus as 'open' | 'closed',
-            hasConfiguredHours(bizHours, config.hours), promptHours, config.hours?.timezone || 'America/Bogota');
+            hasConfiguredHours(bizHours, config.hours), promptHours, turnContext.timezone);
         // Assemble with a cache boundary: the contract+persona prefix is stable
         // across turns and can be cached by the provider (90% off on Anthropic;
         // better OpenAI auto-cache hit-rate). Only the <turn> block changes.

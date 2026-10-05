@@ -13,6 +13,7 @@ import { isPauseMessage, isResumeMessage } from '../../common/conversation/inten
 import { procedureDialogueMessages } from './procedure-dialogue-messages';
 import { containsMissionDirective, isCollectionCancellation, isDirectedCorrection, isNamedMissionResume, mentionedMissionDomains, missionDialogue, parseDirectedSlotCorrection } from './mission-focus';
 import { coerceProcedureSlot } from './procedure-slot-interpolation';
+import { selectSlotWindow } from './slot-window';
 
 /**
  * Lo que el motor necesita saber del turno además del estado de la reserva.
@@ -619,7 +620,7 @@ export class BookingEngineService {
                     // show_slots. Without this, a closed/out-of-hours slot books blindly.
                     const avail = await this.toolExecutor.execute(
                         schemaName, tenantId, contactId, 'check_availability',
-                        { date: state.date, serviceId: state.serviceId },
+                        { date: state.date, serviceId: state.serviceId, ...(state.time ? { time: state.time } : {}) },
                         conversationId, { authority },
                     );
                     // Dead end (agenda not configured / tool failure): re-asking for a
@@ -647,7 +648,7 @@ export class BookingEngineService {
                     // in text so the customer chooses a valid one (or is asked for a new date).
                     this.logger.warn(`[Engine] Flow slot ${state.date} ${state.time} not available — showing real slots`);
                     state.flowStartedAt = undefined;
-                    return this.checkAvailability(schemaName, tenantId, contactId, state, L, authority, conversationId);
+                    return this.checkAvailability(schemaName, tenantId, contactId, state, L, authority, conversationId, state.time);
                 }
                 // Flow returned incomplete/invalid/past/unknown-service data → restart in text.
                 this.logger.warn('[Engine] Flow response incomplete/invalid — falling back to text flow');
@@ -1022,7 +1023,7 @@ export class BookingEngineService {
         // times. The button never hit it because it short-circuits earlier.
         const confirmingChosenSlot = state.step === 'confirm' && !!state.time && intent.isConfirmation;
         if (state.serviceId && state.date && (!state.slots || !state.slots.length) && !confirmingChosenSlot) {
-            return this.checkAvailability(schemaName, tenantId, contactId, state, L, authority, conversationId);
+            return this.checkAvailability(schemaName, tenantId, contactId, state, L, authority, conversationId, intent.timeMentioned ?? undefined);
         }
 
         // ── Have service + date + time → collect info or confirm ──
@@ -1126,17 +1127,19 @@ export class BookingEngineService {
     // ── Check availability ──
     private async checkAvailability(
         schema: string, tenantId: string, contactId: string, state: BookingState, lang: string,
-        authority: ToolExecutionAuthority, conversationId?: string,
+        authority: ToolExecutionAuthority, conversationId?: string, requestedTime?: string,
     ): Promise<EngineResult> {
         this.logger.log(`[Decide] Checking availability: ${state.serviceName} on ${state.date}`);
         const result = await this.toolExecutor.execute(
             schema, tenantId, contactId, 'check_availability',
-            { date: state.date, serviceId: state.serviceId },
+            // La hora pedida viaja a la herramienta solo si existe: sin ella el
+            // contrato de la llamada es el de siempre.
+            { date: state.date, serviceId: state.serviceId, ...(requestedTime ? { time: requestedTime } : {}) },
             conversationId, { authority },
         );
 
         if (result?.available && result.slots?.length) {
-            state.slots = result.slots.slice(0, 6);
+            state.slots = selectSlotWindow(result.slots, requestedTime);
             state.step = 'show_slots';
             // El nombre del profesional se muestra solo cuando hay MÁS DE UNO en
             // la tanda: en un local de una sola persona repetirlo en cada franja

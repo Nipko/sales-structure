@@ -1567,6 +1567,11 @@ export class ToolExecutionControlService {
         argsHash: string,
         latestInbound: { id: string; content_text: string | null },
     ): Promise<ExecutionLedgerRow | null> {
+        // A code check is not an effect to deduplicate: replaying an earlier
+        // verdict (e.g. a transient 'unavailable' or a stale 'expired') would
+        // answer a correct code with someone else's outcome. Each attempt is
+        // evaluated afresh; the challenge row itself bounds the attempts.
+        if (request.toolName === 'verify_identity_code') return null;
         const latestInboundMessageId = latestInbound.id;
         const supplied = request.idempotencyKey?.trim();
         if (supplied && /^[A-Za-z0-9_.:-]{8,128}$/.test(supplied)) {
@@ -1612,7 +1617,13 @@ export class ToolExecutionControlService {
         if (requestsAnotherOperation(latestInbound.content_text)) {
             return null;
         }
-        const settled = await this.query<ExecutionLedgerRow[]>(
+        // The idempotency of a code request is tied to the LIVE challenge, not to
+        // the ledger alone: once the code expired (or was consumed or superseded)
+        // an identical request is a new intention and must issue a new code.
+        const bound = request.toolName === 'request_identity_code'
+            && !(await this.chatIdentity.hasLiveChallenge(String(request.conversationId), request.contactId))
+            && !(await this.chatIdentity.isVerified(String(request.conversationId), request.contactId));
+        const settled = bound ? [] : await this.query<ExecutionLedgerRow[]>(
             request.schemaName,
             `SELECT * FROM tool_execution_ledger
               WHERE conversation_id = $1::uuid
@@ -2415,7 +2426,9 @@ export class ToolExecutionControlService {
         sourceMessageId: string,
     ): string {
         const supplied = request.idempotencyKey?.trim();
-        const source = supplied && /^[A-Za-z0-9_.:-]{8,128}$/.test(supplied)
+        const source = request.toolName === 'verify_identity_code'
+            ? `attempt:${randomUUID()}`
+            : supplied && /^[A-Za-z0-9_.:-]{8,128}$/.test(supplied)
             ? `caller:${supplied}`
             : `derived:${sourceMessageId}`;
         return sha256([

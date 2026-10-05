@@ -1,3 +1,4 @@
+import { randomBytes } from 'crypto';
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { OperationConfirmationService } from '../email-templates/operation-confirmation.service';
@@ -369,20 +370,40 @@ export class InsuranceService {
         claimedAmount?: number;
     }): Promise<any> {
         if (!data.policyId) throw new BadRequestException('policyId is required');
-        const claimNumber = `C-${Date.now().toString(36).toUpperCase()}`;
-        const rows = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `INSERT INTO insurance_claims (
-                policy_id, claim_number, incident_type, incident_at,
-                description, claimed_amount, status
-             ) VALUES ($1::uuid, $2, $3, $4::date, $5, $6, 'submitted')
-             RETURNING *`,
-            [
-                data.policyId, claimNumber,
-                data.incidentType || null, data.incidentAt || null,
-                data.description || null, data.claimedAmount ?? null,
-            ],
-        );
-        return rows[0];
+        // Timestamp for rough ordering plus 40 random bits: two filings in the
+        // same millisecond (or two replicas) can no longer share a number.
+        const claimNumber = `C-${Date.now().toString(36).toUpperCase()}-${randomBytes(5).toString('hex').toUpperCase()}`;
+        return this.prisma.transactionInTenantSchema<any>(schemaName, async (query) => {
+            // Natural key: policy (which names its holder) + incident type + incident
+            // date. Serialized per policy so two concurrent filings of the same
+            // incident - from any conversation - cannot both pass the check.
+            await query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))::text', [`insurance-claim:${schemaName}:${data.policyId}`]);
+            const incidentType = data.incidentType?.trim() || null;
+            const incidentAt = data.incidentAt || null;
+            const description = data.description?.trim() || null;
+            if (incidentType) {
+                const existing: any[] = await query(
+                    `SELECT * FROM insurance_claims
+                      WHERE policy_id = $1::uuid AND LOWER(incident_type) = LOWER($2)
+                        AND status <> 'rejected'
+                        AND (($3::date IS NOT NULL AND incident_at = $3::date)
+                          OR ($3::date IS NULL AND incident_at IS NULL
+                              AND LOWER(COALESCE(description,'')) = LOWER(COALESCE($4,''))
+                              AND created_at > NOW() - INTERVAL '24 hours'))
+                      ORDER BY created_at ASC LIMIT 1`,
+                    [data.policyId, incidentType, incidentAt, description],
+                );
+                if (existing[0]) return { ...existing[0], alreadyFiled: true };
+            }
+            const rows: any[] = await query(
+                `INSERT INTO insurance_claims (
+                    policy_id, claim_number, incident_type, incident_at,
+                    description, claimed_amount, status
+                 ) VALUES ($1::uuid, $2, $3, $4::date, $5, $6, 'submitted')
+                 RETURNING *`,
+                [data.policyId, claimNumber, incidentType, incidentAt, description, data.claimedAmount ?? null],
+            );
+            return rows[0];
+        });
     }
 }

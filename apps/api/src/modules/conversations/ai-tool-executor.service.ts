@@ -74,6 +74,7 @@ import {
 } from './agent-test-tool-policy';
 import {
     evalIdentityChallengeResult,
+    agentTestIdentityChallengeResult,
     executeEvalSandboxMutation,
 } from './eval-writer-sandbox';
 import { isDraftProposableToolName, isNonCommittalTool, isRegisteredStaticTool } from './tool-policy-registry';
@@ -596,6 +597,15 @@ export class AIToolExecutorService {
                 : await this.assertWritePreconditions(schemaName, toolName, args);
             if (precondition) return precondition;
 
+            // A discount above the tenant ceiling is refused BEFORE the customer
+            // is asked to confirm and before a human is asked to approve it.
+            if (toolName === 'apply_discount') {
+                const ceiling = await this.resolveDiscountCeiling(schemaName, operationalScope, opts?.maxDiscountPercent);
+                if (!ceiling.ok) return ceiling.result;
+                const rejected = this.paymentOperations.discountRequestError(args, ceiling.max);
+                if (rejected) return rejected;
+            }
+
             controlDecision = await this.toolExecutionControl.preflight({
                 schemaName,
                 tenantId,
@@ -840,14 +850,21 @@ export class AIToolExecutorService {
                     if (!controlDecision?.allowed || !controlDecision.ledgerId) {
                         return this.moneyLedgerUnavailable();
                     }
-                    return this.paymentOperations.applyDiscount(
-                        schemaName,
-                        tenantId,
-                        contactId,
-                        controlDecision.ledgerId,
-                        args,
-                        opts?.maxDiscountPercent,
-                    );
+                    {
+                        // The ceiling is resolved HERE, from the stored agent
+                        // configuration the scope names, so no caller (LLM loop,
+                        // approval resume, server-side "yes") can omit it.
+                        const ceiling = await this.resolveDiscountCeiling(schemaName, operationalScope, opts?.maxDiscountPercent);
+                        if (!ceiling.ok) return ceiling.result;
+                        return this.paymentOperations.applyDiscount(
+                            schemaName,
+                            tenantId,
+                            contactId,
+                            controlDecision.ledgerId,
+                            args,
+                            ceiling.max,
+                        );
+                    }
 
                 case 'create_payment_link':
                     if (!controlDecision?.allowed || !controlDecision.ledgerId || !preparedPaymentLink) {
@@ -1038,7 +1055,7 @@ export class AIToolExecutorService {
                 // sigue pudiendo leerlo. El código por un canal distinto es lo
                 // que convierte la identidad de declarada en verificada.
                 case 'check_policy_status': {
-                    const gate = await this.requireVerifiedIdentity(tenantId, schemaName, contactId, conversationId, opts?.channelType);
+                    const gate = await this.requireVerifiedIdentity(tenantId, schemaName, contactId, conversationId, opts?.channelType, opts?.executionContext);
                     if (gate) return gate;
                     return this.checkPolicyStatusTool(schemaName, contactId, args);
                 }
@@ -1050,13 +1067,13 @@ export class AIToolExecutorService {
                     return this.verifyIdentityCodeTool(conversationId, args?.code);
 
                 case 'file_claim': {
-                    const gate = await this.requireVerifiedIdentity(tenantId, schemaName, contactId, conversationId, opts?.channelType);
+                    const gate = await this.requireVerifiedIdentity(tenantId, schemaName, contactId, conversationId, opts?.channelType, opts?.executionContext);
                     if (gate) return gate;
                     return this.fileInsuranceClaimTool(schemaName, contactId, args);
                 }
 
                 case 'list_my_claims': {
-                    const gate = await this.requireVerifiedIdentity(tenantId, schemaName, contactId, conversationId, opts?.channelType);
+                    const gate = await this.requireVerifiedIdentity(tenantId, schemaName, contactId, conversationId, opts?.channelType, opts?.executionContext);
                     if (gate) return gate;
                     return this.listMyClaimsTool(schemaName, contactId, args.policyNumber);
                 }
@@ -3893,7 +3910,7 @@ export class AIToolExecutorService {
             const booking: any[] = await this.prisma.$queryRawUnsafe(
                 `SELECT 1 FROM "${schema}".property_bookings
                  WHERE property_id = $1::uuid AND contact_id = $2::uuid
-                   AND status NOT IN ('cancelled', 'rejected')
+                   AND LOWER(COALESCE(status, '')) IN ('confirmed', 'checked_in')
                    AND check_in <= CURRENT_DATE
                    AND check_out >= CURRENT_DATE
                  LIMIT 1`,
@@ -3934,6 +3951,46 @@ export class AIToolExecutorService {
      * agente tiene `list_properties` para reencontrar el dato, y ahora tambien
      * el bloque <recent_actions> donde ese id figura.
      */
+    /**
+     * Tenant discount ceiling, resolved on the server. The stored configuration
+     * of the agent named by the (hash-verified) scope is authoritative; the
+     * caller-supplied value can only tighten it. Fails closed when the scope
+     * names a configuration that cannot be read.
+     */
+    private async resolveDiscountCeiling(
+        schemaName: string,
+        scope: ServedAgentAuthority | undefined,
+        requested: number | undefined,
+    ): Promise<{ ok: true; max: number | undefined } | { ok: false; result: Record<string, unknown> }> {
+        const finite = (value: unknown): number | undefined => {
+            if (value === null || value === undefined || value === '') return undefined;
+            const n = Number(value);
+            return Number.isFinite(n) ? n : undefined;
+        };
+        let max = finite(requested);
+        if (scope && validServedAgentAuthority(scope, schemaName)) {
+            try {
+                const rows: any[] = scope.kind === 'agent'
+                    ? await this.prisma.executeInTenantSchema(schemaName,
+                        `SELECT config_json->'upsell'->>'maxDiscountPercent' AS max FROM agent_personas WHERE id = $1::uuid AND is_active = true`,
+                        [scope.agentId])
+                    : await this.prisma.executeInTenantSchema(schemaName,
+                        `SELECT config_json->'upsell'->>'maxDiscountPercent' AS max FROM persona_config WHERE is_active = true ORDER BY version DESC LIMIT 1`);
+                if (!rows[0]) throw new Error('discount_ceiling_source_missing');
+                const stored = finite(rows[0].max);
+                if (stored !== undefined) max = max === undefined ? stored : Math.min(max, stored);
+            } catch (error: any) {
+                this.logger.warn(`[Tool] apply_discount ceiling unavailable: ${error?.message}`);
+                return { ok: false, result: {
+                    error: 'discount_ceiling_unavailable',
+                    message: 'No pude verificar el tope de descuento de este negocio. No apliques ningún descuento; ofrece pasar la solicitud a una persona.',
+                    shouldHandoff: true,
+                } };
+            }
+        }
+        return { ok: true, max };
+    }
+
     private async assertWritePreconditions(
         schemaName: string, toolName: string, args: any,
     ): Promise<any | null> {
@@ -5038,7 +5095,11 @@ export class AIToolExecutorService {
         contactId: string,
         conversationId: string | undefined,
         channelType?: string,
+        executionContext?: ServiceExecutionContext,
     ): Promise<any | null> {
+        // Agent Test is zero-effect: it never delivers an OTP and never creates
+        // a challenge. Same directive the evaluation identity receives.
+        if (persistenceDisabled(executionContext)) return agentTestIdentityChallengeResult();
         if (!conversationId) {
             return {
                 error: 'identity_context_required',
@@ -5104,7 +5165,13 @@ export class AIToolExecutorService {
             expired: 'El código venció o no se pidió ninguno. Ofrece enviar uno nuevo con request_identity_code.',
             wrong: 'El código no coincide. Pídaselo de nuevo; le quedan intentos.',
             too_many: 'Demasiados intentos fallidos. NO siga intentando: pase la conversación a un asesor humano.',
+            unavailable: 'No se pudo comprobar el código en este momento. El código NO es inválido: pídele al cliente que lo envíe de nuevo en unos segundos.',
         };
+        if (res.reason === 'unavailable') {
+            // Carries `error` so the execution ledger records a failure and never
+            // replays this transient outcome as the answer to the same code.
+            return { verified: false, reason: res.reason, error: 'identity_verification_unavailable', message: messages.unavailable, retryable: true };
+        }
         return {
             verified: false,
             reason: res.reason,
@@ -5163,7 +5230,10 @@ export class AIToolExecutorService {
                 claimId: claim.id,
                 claimNumber: claim.claim_number,
                 status: claim.status,
-                message: `Claim filed with number ${claim.claim_number}. A human agent will review it shortly.`,
+                ...(claim.alreadyFiled ? { alreadyFiled: true } : {}),
+                message: claim.alreadyFiled
+                    ? `This incident was already filed under claim number ${claim.claim_number}. Do not file it again; a human agent will review it.`
+                    : `Claim filed with number ${claim.claim_number}. A human agent will review it shortly.`,
                 shouldHandoff: true,
             };
         } catch (e: any) {

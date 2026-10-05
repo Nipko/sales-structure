@@ -9,6 +9,13 @@ import { RegionalProfileService } from '../tenants/regional-profile.service';
 import { CronLockService } from '../redis/cron-lock.service';
 
 const MAX_ATTEMPTS = 5;
+const VERIFY_MAX_RETRIES = 10;
+
+/** Prisma P2034 / PostgreSQL 40001 (serialization failure) and 40P01 (deadlock). */
+function isSerializationConflict(error: any): boolean {
+    const text = `${error?.code ?? ''} ${error?.meta?.code ?? ''} ${error?.message ?? ''}`;
+    return /P2034|40001|40P01|could not serialize|deadlock detected/i.test(text);
+}
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 
 export type StartResult =
@@ -127,9 +134,54 @@ export class ChatIdentityService {
             : { status: 'pending' };
     }
 
-    async verifyCode(conversationId: string, code: string): Promise<{ ok: boolean; reason?: 'expired' | 'wrong' | 'too_many' }> {
+    /**
+     * True while the conversation has a challenge a customer can still answer:
+     * issued, not consumed, not superseded and not past its expiry.
+     */
+    async hasLiveChallenge(conversationId: string, contactId?: string): Promise<boolean> {
+        if (!UUID.test(conversationId)) return false;
+        try {
+            const rows = await this.prisma.$queryRawUnsafe<any[]>(`SELECT contact_id
+                FROM chat_identity_challenges
+                WHERE conversation_id=$1::uuid AND consumed_at IS NULL AND superseded_at IS NULL
+                  AND expires_at>NOW() AND code IS NOT NULL
+                ORDER BY created_at DESC LIMIT 1`, conversationId);
+            if (!rows[0]) return false;
+            return contactId ? String(rows[0].contact_id) === contactId : true;
+        } catch { return false; }
+    }
+
+    async verifyCode(conversationId: string, code: string): Promise<{ ok: boolean; reason?: 'expired' | 'wrong' | 'too_many' | 'unavailable' }> {
         if (!UUID.test(conversationId)) return { ok: false, reason: 'expired' };
-        const result = await this.prisma.$transaction(async (tx: any) => {
+        // Serializable transactions abort with a serialization failure (P2034 /
+        // SQLSTATE 40001) when other customers verify at the same time. That is
+        // a retryable infrastructure signal, never an answer about the code:
+        // retry a bounded number of times, and report anything else as
+        // 'unavailable' - NEVER as 'expired', which tells the customer (and the
+        // execution ledger) that a correct code is dead.
+        let result: { state: string } | undefined;
+        for (let attempt = 0; ; attempt += 1) {
+            try {
+                result = await this.verifyCodeOnce(conversationId, code);
+                break;
+            } catch (error: any) {
+                if (isSerializationConflict(error) && attempt < VERIFY_MAX_RETRIES) {
+                    await new Promise(resolve => setTimeout(resolve, Math.min(20 * 2 ** attempt, 400) * (0.5 + Math.random())));
+                    continue;
+                }
+                this.logger.warn(`Identity verification unavailable (attempt ${attempt + 1}): ${error?.code || ''} ${error?.message}`);
+                return { ok: false, reason: 'unavailable' };
+            }
+        }
+        if (result.state === 'accepted') {
+            this.logger.log(`Identidad verificada en la conversación ${conversationId}`);
+            return { ok: true };
+        }
+        return { ok: false, reason: result.state as 'expired' | 'wrong' | 'too_many' };
+    }
+
+    private async verifyCodeOnce(conversationId: string, code: string): Promise<{ state: string }> {
+        return this.prisma.$transaction(async (tx: any) => {
             const rows = await tx.$queryRawUnsafe(`SELECT * FROM chat_identity_challenges
                 WHERE conversation_id=$1::uuid AND consumed_at IS NULL AND superseded_at IS NULL
                 ORDER BY created_at DESC LIMIT 1 FOR UPDATE`, conversationId);
@@ -160,12 +212,7 @@ export class ChatIdentityService {
                 SET consumed_at=NOW(),verified_at=NOW(),verified_expires_at=NOW()+INTERVAL '30 minutes',
                     code=NULL,updated_at=NOW() WHERE id=$1::uuid`, row.id);
             return { state: 'accepted' };
-        }, { isolationLevel: 'Serializable' as any }).catch(() => ({ state: 'expired' }));
-        if (result.state === 'accepted') {
-            this.logger.log(`Identidad verificada en la conversación ${conversationId}`);
-            return { ok: true };
-        }
-        return { ok: false, reason: result.state as 'expired' | 'wrong' | 'too_many' };
+        }, { isolationLevel: 'Serializable' as any });
     }
 
     async processDue(limit = 100): Promise<number> {

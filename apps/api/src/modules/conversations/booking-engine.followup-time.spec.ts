@@ -122,7 +122,7 @@ describe('pending recommendations', () => {
         const button = await h.turn(base(), { intent: 'unknown' }, 'slot_15:00');
         expect(button.state.time).toBe('15:00');
         expect(button.state.suggestedSlots).toBeUndefined();
-        h.execute.mockResolvedValueOnce({ available: false, error: 'appointments_not_configured', slots: [] });
+        h.execute.mockResolvedValueOnce({ available: false, error: 'appointments_not_configured', slots: [] } as any);
         const handoff = await h.turn({ ...base(), slots: undefined, suggestedSlots: [make('16:30')] }, { intent: 'ask_availability', dateMentioned: date }, 'x');
         expect(handoff.handoff).toBe(true);
         expect(handoff.state.suggestedSlots).toBeUndefined();
@@ -205,7 +205,7 @@ describe('text of the recommendation', () => {
         const { text, state } = await ask('es', two);
 
         expect(times(state.suggestedSlots)).toEqual(['15:30', '16:30']);
-        expect(text.match(/15:30/g)).toHaveLength(1);
+        expect(text!.match(/15:30/g)).toHaveLength(1);
     });
 });
 

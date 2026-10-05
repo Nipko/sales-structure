@@ -58,8 +58,9 @@ describe('BookingEngine requested time beyond the first six slots', () => {
     it('offers the requested afternoon time even though it is beyond the first six slots', async () => {
         const { result } = await run({ timeMentioned: '16:00' });
 
-        expect(result.state.step).toBe('show_slots');
+        // 16:00 existe: se toma (con su profesional) y se pide el nombre.
         expect(result.state.slots).toEqual(expect.arrayContaining([expect.objectContaining({ time: '16:00' })]));
+        expect(result.state.time).toBe('16:00');
         expect(result.text).toContain('16:00');
     });
 

@@ -31,16 +31,17 @@ function harness(lang = 'es') {
     const turn = (state: BookingState, intent: Record<string, unknown>, rawText: string) =>
         engine.process(schemaName, tenantId, contactId, intent as any, rawText, state, {}, '2026-08-08', lang,
             { authority: BOOKING_AUTHORITY, conversationId });
-    return { toolExecutor, turn };
+    // La herramienta devuelve lo mismo que ya se le mostró al cliente.
+    const showSlots = (times: string[]): BookingState => {
+        toolExecutor.execute.mockResolvedValue({ available: true, date, slots: times.map(slot) });
+        return { step: 'show_slots', services, serviceId, serviceName: 'Consulta', date, slots: times.map(slot) };
+    };
+    return { toolExecutor, turn, showSlots };
 }
-
-const showSlots = (times: string[]): BookingState => ({
-    step: 'show_slots', services, serviceId, serviceName: 'Consulta', date, slots: times.map(slot),
-});
 
 describe('BookingEngine never swaps the requested time silently', () => {
     it('recommends the nearest slot instead of taking it', async () => {
-        const { turn, toolExecutor } = harness();
+        const { turn, toolExecutor, showSlots } = harness();
         const result = await turn(showSlots(['15:00', '16:30', '17:00']), { intent: 'select_slot', timeMentioned: '16:00' }, 'a las 16:00');
 
         expect(result.state.time).toBeUndefined();
@@ -53,7 +54,7 @@ describe('BookingEngine never swaps the requested time silently', () => {
     });
 
     it('recommends the two nearest when both sides are within 30 minutes', async () => {
-        const { turn } = harness();
+        const { turn, showSlots } = harness();
         const result = await turn(showSlots(['15:30', '16:30', '17:00']), { intent: 'select_slot', timeMentioned: '16:00' }, 'a las 16:00');
 
         expect(result.state.time).toBeUndefined();
@@ -62,7 +63,7 @@ describe('BookingEngine never swaps the requested time silently', () => {
     });
 
     it('books the recommended slot only after an explicit yes', async () => {
-        const { turn } = harness();
+        const { turn, showSlots } = harness();
         const first = await turn(showSlots(['15:00', '16:30', '17:00']), { intent: 'select_slot', timeMentioned: '16:00' }, 'a las 16:00');
         const second = await turn(first.state, { intent: 'confirm', isConfirmation: true }, 'sí');
 
@@ -71,7 +72,7 @@ describe('BookingEngine never swaps the requested time silently', () => {
     });
 
     it('also recommends (not swaps) on the first turn, when date and time arrive together', async () => {
-        const { turn, toolExecutor } = harness();
+        const { turn, toolExecutor, showSlots } = harness();
         toolExecutor.execute.mockResolvedValue({ available: true, date, slots: ['15:30', '16:30', '17:00'].map(slot) });
         const state: BookingState = { step: 'ask_date', services, serviceId, serviceName: 'Consulta' };
         const result = await turn(state, { intent: 'ask_availability', dateMentioned: date, timeMentioned: '16:00' }, 'sábado 16:00');
@@ -82,7 +83,7 @@ describe('BookingEngine never swaps the requested time silently', () => {
     });
 
     it('speaks the recommendation in the conversation language', async () => {
-        const { turn } = harness('en');
+        const { turn, showSlots } = harness('en');
         const result = await turn(showSlots(['15:00', '16:30']), { intent: 'select_slot', timeMentioned: '16:00' }, 'at 16:00');
 
         expect(result.text).toMatch(/recommend/i);
@@ -90,7 +91,7 @@ describe('BookingEngine never swaps the requested time silently', () => {
     });
 
     it('still takes an exact match directly', async () => {
-        const { turn } = harness();
+        const { turn, showSlots } = harness();
         const result = await turn(showSlots(['15:00', '16:00', '16:30']), { intent: 'select_slot', timeMentioned: '16:00' }, 'a las 16:00');
 
         expect(result.state.time).toBe('16:00');
@@ -98,7 +99,7 @@ describe('BookingEngine never swaps the requested time silently', () => {
     });
 
     it('keeps the plain unavailable list when nothing is within 30 minutes', async () => {
-        const { turn } = harness();
+        const { turn, showSlots } = harness();
         const result = await turn(showSlots(['09:00', '10:00']), { intent: 'select_slot', timeMentioned: '16:00' }, 'a las 16:00');
 
         expect(result.state.time).toBeUndefined();

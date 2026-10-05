@@ -135,6 +135,13 @@ export class AppointmentRemindersService {
             this.logger.warn(`[Reminders] appointment ${appt.id} has no sender — nothing dispatched`);
             return { kind: 'refused', reason: 'no_sender' };
         }
+        // WhatsApp is addressed by phone; a Telegram chat by the contact's chat id (`external_id`),
+        // which is what the adapter sends as `chat_id`. A phone is not a Telegram address.
+        const recipient = String((channelType === 'telegram' ? appt.contact_external_id : appt.contact_phone) ?? '').trim();
+        if (!recipient) {
+            this.logger.warn(`[Reminders] appointment ${appt.id} has no ${channelType} address — nothing dispatched`);
+            return { kind: 'refused', reason: 'no_recipient' };
+        }
         const conversationId = appt.conversation_id
             ?? await this.proactive.conversationFor(schemaName, {
                 contactId: String(appt.contact_id ?? ''),
@@ -168,7 +175,7 @@ export class AppointmentRemindersService {
             conversationId: String(conversationId),
             contactId: String(appt.contact_id),
             channelType, channelAccountId: sender,
-            recipient: String(appt.contact_phone ?? ''),
+            recipient,
             items: [input.item],
             operationalScope,
         });
@@ -335,7 +342,7 @@ export class AppointmentRemindersService {
             `SELECT a.id, a.service_name, a.start_at, a.end_at, a.location, a.metadata,
                     a.contact_id, a.assigned_to, a.customer_name, a.customer_email,
                     c.name as contact_name, c.phone as contact_phone, c.email as contact_email,
-                    c.channel_type as contact_channel,
+                    c.channel_type as contact_channel, c.external_id AS contact_external_id,
                     cv.channel_account_id AS conversation_account_id,
                     cv.channel_type AS conversation_channel,
                     u.first_name || ' ' || u.last_name AS staff_name
@@ -364,8 +371,8 @@ export class AppointmentRemindersService {
                AND (c.phone IS NOT NULL OR c.email IS NOT NULL OR a.customer_email IS NOT NULL
                     -- A Telegram contact has no phone to filter on: the bot thread it
                     -- booked in is the address.
-                    OR (c.channel_type = 'telegram' AND cv.channel_type = 'telegram'
-                        AND cv.channel_account_id IS NOT NULL))`,
+                    OR (c.channel_type = 'telegram' AND c.external_id IS NOT NULL
+                        AND cv.channel_type = 'telegram' AND cv.channel_account_id IS NOT NULL))`,
             [schemaName],
         );
 
@@ -381,7 +388,14 @@ export class AppointmentRemindersService {
                 // UPDATE below: a Telegram contact was "reminded" without a word.
                 let settled = false;
                 if (appt.contact_phone || appt.contact_channel === 'telegram') {
-                    settled = await this.sendReminderMessage(tenantId, schemaName, appt, type);
+                    // A refused/deferred message must not take the email down with it: the
+                    // email is its own effect, and the flag follows whichever one happened.
+                    try {
+                        settled = await this.sendReminderMessage(tenantId, schemaName, appt, type);
+                    } catch (err: any) {
+                        if (!(err instanceof ReminderNotDispatched)) throw err;
+                        this.logger.warn(`Reminder message for appointment ${appt.id} not dispatched: ${err.message}`);
+                    }
                 }
                 // Email only on the 24h pass: a second copy two hours out is noise,
                 // and by then nobody is reading mail to decide whether to show up.

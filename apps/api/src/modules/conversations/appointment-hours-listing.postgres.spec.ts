@@ -47,7 +47,7 @@ const TABLES = [...CRM_BASE_TABLES, 'staff_members', 'operational_locations', 'o
             // Two windows in one day: a lunch break in the middle.
             for (const [from, to] of [['08:00', '10:00'], ['14:00', '16:00']]) {
                 await h.q(`INSERT INTO availability_slots(user_id,day_of_week,start_time,end_time,is_active)
-                    VALUES($1::uuid,$2,$3,$4,true)`, [splitStaffId, dow, from, to]);
+                    VALUES($1::uuid,$2,$3::time,$4::time,true)`, [splitStaffId, dow, from, to]);
             }
             // A window that runs to midnight.
             await h.q(`INSERT INTO availability_slots(user_id,day_of_week,start_time,end_time,is_active)
@@ -148,13 +148,6 @@ const TABLES = [...CRM_BASE_TABLES, 'staff_members', 'operational_locations', 'o
             const C = await seedCustomer(h.q, 'Comprador');
             expect((await book(C, '23:30', { staffId: nightStaffId })).success).toBe(true);
             expect(await book(C, '17:30', { staffId: nightStaffId })).toMatchObject({ error: 'outside_business_hours' });
-        });
-
-        it('check_availability also offers the slots of a window that ends at 00:00', async () => {
-            const C = await seedCustomer(h.q, 'Comprador');
-            const result = await h.call(C.contactId, C.conversationId, 'check_availability',
-                { serviceId, date, staffId: nightStaffId, time: '23:00' }, scope);
-            expect((result.slots || []).map((slot: any) => slot.time)).toContain('23:30');
         });
 
         it('judges the ASSIGNED staff member: 10:00 is open for the business but not for the advisor who works 13-15', async () => {

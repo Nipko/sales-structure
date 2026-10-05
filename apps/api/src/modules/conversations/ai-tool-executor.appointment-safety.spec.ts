@@ -27,7 +27,7 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
                 preparedService = queuedResults[0]?.[0];
                 return preparedService ? [structuredClone(preparedService)] : [];
             }
-            if (sql.includes('SELECT duration_minutes, buffer_minutes FROM')) rescheduling = true;
+            if (sql.includes('duration_minutes_max FROM')) rescheduling = true;
             // The tenant sells no listings: this read is not part of the ordered fixtures below.
             if (sql.includes('real_estate_listings')) return [];
             if (rescheduling && sql.includes("config_json->'hours'")) return [{ tz: 'America/Bogota' }];
@@ -672,6 +672,17 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
         expect(result.available).toBe(true);
         expect(result.slots.map((slot: any) => slot.time)).toEqual(['01:00', '03:00', '03:30']);
         expect(harness.prisma.transactionInTenantSchema).not.toHaveBeenCalled();
+    });
+
+    it('offers the slots of a window that ends at 00:00 up to midnight', async () => {
+        const harness = createHarness([
+            [{ id: appointment.service_id, name: 'Consulta', duration_minutes: 30, buffer_minutes: 0, duration_type: 'fixed', max_concurrent: 1 }],
+            [{ user_id: null, start_time: '22:00:00', end_time: '00:00:00' }], [], [],
+        ]);
+        jest.spyOn(harness.executor as any, 'getTenantTimezone').mockResolvedValue('America/Bogota');
+        const result = await harness.executor.execute(schemaName, tenantId, contactId, 'check_availability',
+            { serviceId: appointment.service_id, date: '2026-08-12' }, undefined, { operationalScope, authority: authorityFor('check_availability') });
+        expect(result.slots.map((slot: any) => slot.time)).toEqual(['22:00', '22:30', '23:00', '23:30']);
     });
 
     it('does not turn an invalid zero-minute service into a bookable 30-minute slot', async () => {

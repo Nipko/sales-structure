@@ -125,7 +125,7 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         };
 
         await sql(`CREATE TABLE contacts(id UUID PRIMARY KEY, name TEXT, phone TEXT,
-            channel_type TEXT, email TEXT)`);
+            channel_type TEXT, email TEXT, external_id TEXT)`);
         await sql(`CREATE TABLE conversations(id UUID PRIMARY KEY,
             contact_id UUID REFERENCES contacts(id), channel_type TEXT, channel_account_id TEXT,
             status TEXT DEFAULT 'active', updated_at TIMESTAMPTZ DEFAULT NOW())`);

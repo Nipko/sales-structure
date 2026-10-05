@@ -2957,7 +2957,8 @@ export class AIToolExecutorService {
             const [startH, startM] = slot.start_time.split(':').map(Number);
             const [endH, endM] = slot.end_time.split(':').map(Number);
             const slotStartMin = startH * 60 + startM;
-            const slotEndMin = endH * 60 + endM;
+            // 00:00 as an end is midnight, the end of that day.
+            const slotEndMin = (endH * 60 + endM) || 1440;
 
             // Generate slots every 30 min (or service duration if shorter).
             // A slot must fit entirely within the window INCLUDING the post-service buffer.
@@ -3078,7 +3079,7 @@ export class AIToolExecutorService {
      */
     private async loadOpenWindows(
         schema: string, date: string, directory: { users: string; tenants: string }, staffId?: string,
-    ): Promise<{ outcome: 'ok'; slots: any[] } | { outcome: 'closed' } | { outcome: 'unverified' }> {
+    ): Promise<{ outcome: 'ok'; slots: any[] } | { outcome: 'closed'; reason: 'no_windows' | 'blocked' } | { outcome: 'unverified' }> {
         const dayOfWeek = dayOfWeekForLocalDate(date);
         let staffFilter = '';
         const params: any[] = [dayOfWeek, schema];
@@ -3101,7 +3102,7 @@ export class AIToolExecutorService {
                AND availability.is_active = true${staffFilter}`,
             ...params,
         );
-        if (!slots.length) return { outcome: 'closed' };
+        if (!slots.length) return { outcome: 'closed', reason: 'no_windows' };
 
         // blocked_dates: feriados y vacaciones que el dueño bloqueó en el panel. La
         // ruta del dashboard los respeta (appointments.service.ts:598) y la de chat
@@ -3118,10 +3119,10 @@ export class AIToolExecutorService {
             return { outcome: 'unverified' };
         }
         if (!blockedRows.length) return { outcome: 'ok', slots };
-        if (blockedRows.some(b => !b.user_id)) return { outcome: 'closed' };
+        if (blockedRows.some(b => !b.user_id)) return { outcome: 'closed', reason: 'blocked' };
         const blockedUserIds = new Set(blockedRows.map(b => b.user_id));
         const open = slots.filter((s: any) => !s.user_id || !blockedUserIds.has(s.user_id));
-        return open.length ? { outcome: 'ok', slots: open } : { outcome: 'closed' };
+        return open.length ? { outcome: 'ok', slots: open } : { outcome: 'closed', reason: 'blocked' };
     }
 
     /**
@@ -3137,19 +3138,29 @@ export class AIToolExecutorService {
         staffId: string | null, namespace?: EvalNamespaceLease,
     ): Promise<Record<string, unknown> | null> {
         const directory = await tenantActorDirectory(this.prisma, schema, namespace);
-        const windows = await this.loadOpenWindows(schema, date, directory, staffId || undefined);
+        let windows = await this.loadOpenWindows(schema, date, directory, staffId || undefined);
+        // An advisor with no weekly hours of their own (the listing's owner, say) is judged
+        // by the business's windows, which is what check_availability offers without a staff.
+        if (staffId && windows.outcome === 'closed' && windows.reason === 'no_windows') {
+            windows = await this.loadOpenWindows(schema, date, directory, undefined);
+        }
         if (windows.outcome === 'unverified') return this.availabilityInfrastructureFailure('calendar_availability_unverified');
         const toMinutes = (hhmm: string) => { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m; };
+        // A window that ends at 00:00 ends at the end of the day, not at its start.
+        const endMinutes = (hhmm: string) => toMinutes(hhmm) || 1440;
         const start = toMinutes(time);
         const end = start + blockMinutes;
         if (windows.outcome === 'ok'
-            && windows.slots.some((w: any) => start >= toMinutes(w.start_time) && end <= toMinutes(w.end_time))) {
+            && windows.slots.some((w: any) => start >= toMinutes(w.start_time) && end <= endMinutes(w.end_time))) {
             return null;
         }
-        if (windows.outcome === 'closed') {
+        if (windows.outcome === 'closed' && windows.reason === 'no_windows') {
+            // A business that never configured weekly hours has nothing to validate against;
+            // it keeps booking as before (the owner decides whether to configure them).
             const configured = await this.buildNoSlotsResult(schema);
             if (configured.error === 'appointments_not_configured') {
-                return { error: 'appointments_not_configured', persisted: false, message: configured.message };
+                this.logger.warn(`[Tool] ${schema} has no availability_slots: booking at ${date} ${time} is not validated against opening hours`);
+                return null;
             }
         }
         const businessHours = windows.outcome === 'ok'
@@ -3901,6 +3912,22 @@ export class AIToolExecutorService {
      * envenena en silencio todo el reporting de mañana. Si la tabla no existe
      * (las verticales son lazy) el id es necesariamente espurio y se descarta.
      */
+    /**
+     * Whether the tenant keeps real-estate listings. Only consulted when the model sent an
+     * EMPTY listingId; a tenant whose table never existed (42P01) simply has none.
+     */
+    private async tenantHasListings(schema: string): Promise<boolean | 'unavailable'> {
+        try {
+            return ((await this.prisma.$queryRawUnsafe(
+                `SELECT 1 FROM "${schema}".real_estate_listings LIMIT 1`,
+            )) as any[]).length > 0;
+        } catch (error: any) {
+            if (error?.meta?.code === '42P01' || /relation .* does not exist/i.test(String(error?.message))) return false;
+            this.logger.warn(`[Tool] create_appointment could not tell whether the tenant sells listings: ${error?.message}`);
+            return 'unavailable';
+        }
+    }
+
     private async resolveAppointmentSubject(
         schema: string,
         args: any,
@@ -3927,8 +3954,30 @@ export class AIToolExecutorService {
             // An id the model SENT must resolve. Dropping a malformed one ("N/A", "")
             // booked the visit with no listing and no advisor, and an unassigned visit
             // blocks every other visit of that hour (NULL = shared resource).
-            if (c.value === undefined || c.value === null
-                || (typeof c.value === 'string' && c.value.trim() === '')) continue;
+            if (c.value === undefined || c.value === null) continue;
+            if (typeof c.value === 'string' && c.value.trim() === '') {
+                // An explicit empty id means "no value": harmless for a business with no
+                // listings, but a real-estate agency gets an unassigned visit out of it.
+                if (c.key === 'listingId') {
+                    const listings = await this.tenantHasListings(schema);
+                    if (listings === 'unavailable') {
+                        return {
+                            metadata, labels,
+                            error: 'appointment_subject_unavailable',
+                            message: 'The appointment subject could not be verified. Do not create a generic booking; offer a human handoff instead.',
+                            shouldHandoff: true,
+                        };
+                    }
+                    if (listings) {
+                        return {
+                            metadata, labels, error: 'appointment_subject_required', persisted: false,
+                            message: 'listingId was sent empty. Nothing was saved. Ask which listing the customer wants to visit '
+                                + '(search_listings gives its UUID) and call create_appointment again with listingId, or omit it if no listing applies.',
+                        };
+                    }
+                }
+                continue;
+            }
             if (typeof c.value !== 'string' || !UUID_RE.test(c.value)) {
                 return {
                     metadata, labels,
@@ -3964,37 +4013,6 @@ export class AIToolExecutorService {
                     error: 'appointment_subject_not_found',
                     persisted: false,
                     message: `${c.key} does not match any record. Nothing was saved. Look it up again and retry with a valid id.`,
-                };
-            }
-        }
-
-        // Real-estate agency: every visit is a visit TO a listing. Without one there
-        // is no advisor to assign, so refuse instead of booking an anonymous visit.
-        if (!metadata.listingId && !metadata.petId && !metadata.vehicleId && !metadata.treatmentPlanId) {
-            let hasListings = false;
-            try {
-                hasListings = ((await this.prisma.$queryRawUnsafe(
-                    `SELECT 1 FROM "${schema}".real_estate_listings LIMIT 1`,
-                )) as any[]).length > 0;
-            } catch (error: any) {
-                // Tenants that never had the table are not real-estate tenants.
-                if (!(error?.meta?.code === '42P01' || /relation .* does not exist/i.test(String(error?.message)))) {
-                    this.logger.warn(`[Tool] create_appointment could not tell whether the tenant sells listings: ${error?.message}`);
-                    return {
-                        metadata, labels,
-                        error: 'appointment_subject_unavailable',
-                        message: 'The appointment subject could not be verified. Do not create a generic booking; offer a human handoff instead.',
-                        shouldHandoff: true,
-                    };
-                }
-            }
-            if (hasListings) {
-                return {
-                    metadata, labels,
-                    error: 'appointment_subject_required',
-                    persisted: false,
-                    message: 'This business books visits to a specific listing. Nothing was saved. Ask which listing the customer wants to visit '
-                        + '(search_listings gives its UUID) and call create_appointment again with listingId.',
                 };
             }
         }
@@ -6103,10 +6121,12 @@ export class AIToolExecutorService {
 
         const apt = rows[0];
         const svcRows: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT duration_minutes, buffer_minutes FROM "${schema}".services WHERE id = $1::uuid`,
+            `SELECT duration_minutes, buffer_minutes, duration_type, duration_minutes_max FROM "${schema}".services WHERE id = $1::uuid`,
             apt.service_id,
         );
-        const duration = Number(svcRows[0]?.duration_minutes);
+        // Same effective duration as createAppointment: a flexible service blocks its maximum.
+        const duration = Number(svcRows[0]?.duration_type === 'flexible' && svcRows[0]?.duration_minutes_max != null
+            ? svcRows[0].duration_minutes_max : svcRows[0]?.duration_minutes);
 
         if (!/^\d{4}-\d{2}-\d{2}$/.test(newDate) || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(newTime)) {
             return { error: 'newDate must use YYYY-MM-DD and newTime must use HH:MM (24-hour)' };

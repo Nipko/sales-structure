@@ -290,6 +290,17 @@ const HUMAN_TARGET =
  * transferencia Y un destinatario humano cerca. "Puedo ayudarte con el equipo
  * de ventas" no es una promesa de transferencia.
  */
+/**
+ * The destination of a transfer: a preposition, optional determiners, then the
+ * human target — all adjacent. Without it "Vou te passar o cardápio da equipe"
+ * (hand you the menu) or "Je vais vous passer les horaires de notre équipe"
+ * would read as "I am transferring you to the team" and escalate unasked.
+ */
+const DET = '((um|uma|o|a|nosso|nossa|our|an|the|notre|un|une|le|la|votre|vosso)\\s+){0,2}';
+const DEST_EN = '\\b(to|with)\\s+' + DET + HUMAN_TARGET;
+const DEST_PT = '\\b(para|com|a|ao)\\s+' + DET + HUMAN_TARGET;
+const DEST_FR = '\\b(a|avec|vers)\\s+' + DET + HUMAN_TARGET;
+
 const HANDOFF_PROMISE = new RegExp(
     [
         // es — "le paso con un asesor", "lo transfiero con el equipo"
@@ -297,14 +308,14 @@ const HANDOFF_PROMISE = new RegExp(
         '(voy a|procedo a|paso a)\\s+(transferir|pasar|comunicar|conectar|derivar)\\b[^.!?]{0,40}' + HUMAN_TARGET,
         // "un asesor se comunicara", "nuestro equipo lo contactara"
         HUMAN_TARGET + '[^.!?]{0,40}(se (comunicara|contactara|pondra en contacto)|lo (contactara|atendera)|le (escribira|atendera)|te (contactara|atendera))',
-        // en
-        '(transferring|connecting) you\\b[^.!?]{0,40}' + HUMAN_TARGET,
-        "(i['’]?ll|i will|let me) (transfer|connect|put) you\\b[^.!?]{0,40}" + HUMAN_TARGET,
+        // en — the human target must be introduced by "to"/"with" right before it
+        '(transferring|connecting) you\\b[^.!?,]{0,12}' + DEST_EN,
+        "(i['’]?ll|i will|let me) (transfer|connect|put) you\\b[^.!?,]{0,12}" + DEST_EN,
         HUMAN_TARGET + '[^.!?]{0,40}will (contact|reach out|be with|get back)',
-        // pt
-        '(vou|estou) (te |lhe )?(transferir|transferindo|conectar|passar)\\b[^.!?]{0,40}' + HUMAN_TARGET,
-        // fr
-        'je (vous (transfere|mets en relation|passe)|vais vous (transferer|passer|mettre))\\b[^.!?]{0,40}' + HUMAN_TARGET,
+        // pt — "passar você para um atendente"; "passar o cardápio da equipe" is NOT a handoff
+        '(vou|estou) (te |lhe |voce )?(transferir|transferindo|conectar|passar)\\b[^.!?,]{0,12}' + DEST_PT,
+        // fr — "vous passer à un conseiller"; "vous passer les horaires de notre équipe" is NOT
+        'je (vous (transfere|mets en relation|passe)|vais vous (transferer|passer|mettre))\\b[^.!?,]{0,12}' + DEST_FR,
     ].join('|'),
 );
 

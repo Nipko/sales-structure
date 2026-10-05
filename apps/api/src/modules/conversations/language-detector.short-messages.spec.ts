@@ -100,3 +100,11 @@ describe('LanguageDetectorService does not flip an established language on weak 
         expect(detector.detectDetailed('uma consulta', 'es', 'es')).toEqual({ language: 'es', persist: true });
     });
 });
+
+describe('"vos" (voseo) is not a French marker', () => {
+    const detector = new LanguageDetectorService();
+    it.each(['y vos?', 'vos sabés el precio', 'vos tenés turno'])('%s is not French', t => {
+        expect(detector.detect(t, 'es')).not.toBe('fr');
+        expect(detector.detect(t, 'en', 'en')).toBe('en');
+    });
+});

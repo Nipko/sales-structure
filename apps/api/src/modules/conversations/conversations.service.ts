@@ -94,6 +94,7 @@ import { ProcedureEngineService } from './procedure-engine.service';
 import { IntentInterpreterService } from './intent-interpreter.service';
 import { normalizePhoneE164 } from '../../common/utils/phone.util';
 import { PromptAssemblerService } from './prompt-assembler.service';
+import { HUMAN_OFFER_MARK, HUMAN_OFFER_TTL_MS, NO_DATA_WAIT_REPLACEMENT, noDataWaitReplacementText, isHumanOfferText, isAffirmation, isLiveHumanOffer } from './human-offer';
 import { LanguageDetectorService } from './language-detector.service';
 import { BusinessInfoService } from '../business-info/business-info.service';
 import { PaymentOperationService } from './payment-operation.service';
@@ -366,19 +367,6 @@ const UNVERIFIED_CLAIM_FALLBACK: Record<string, string> = {
 };
 const unverifiedClaimFallbackText = (lang?: string) =>
     UNVERIFIED_CLAIM_FALLBACK[(lang || 'es').slice(0, 2).toLowerCase()] || UNVERIFIED_CLAIM_FALLBACK.es;
-
-// The model's whole answer was a wait promise ("déjame verificar…", "un
-// momento") and no tool ran this turn. Nothing will ever send the follow-up,
-// so the customer would wait forever. Say plainly that the data is not
-// confirmed and offer a person — an offer (a question), not a promise.
-const NO_DATA_WAIT_REPLACEMENT: Record<string, string> = {
-    es: 'No tengo ese dato confirmado en este momento. ¿Quieres que le pida a una persona del equipo que lo confirme?',
-    en: 'I don’t have that information confirmed right now. Would you like me to ask someone from the team to confirm it?',
-    pt: 'Não tenho essa informação confirmada neste momento. Quer que eu peça a alguém da equipe para confirmar?',
-    fr: "Je n'ai pas cette information confirmée pour le moment. Souhaitez-vous que je demande à quelqu'un de l'équipe de la confirmer ?",
-};
-const noDataWaitReplacementText = (lang?: string) =>
-    NO_DATA_WAIT_REPLACEMENT[(lang || 'es').slice(0, 2).toLowerCase()] || NO_DATA_WAIT_REPLACEMENT.es;
 
 // Fixed system texts must never be rewritten by the wait-promise guard.
 function isSystemFixedText(text: string): boolean {
@@ -1224,9 +1212,12 @@ export class ConversationsService {
         })) return;
 
         // 5. Check handoff triggers BEFORE generating AI response
+        // A "yes" to our own offer of a person is a handoff request, decided here
+        // from the mark the offer left — not from whatever the model says next.
+        const acceptedOffer = await this.resolveHumanOfferAcceptance(schemaName, conversation, content?.text);
         const handoffReason = this.handoffService.shouldHandoff(
             content?.text || '', conversation, config,
-        );
+        ) || (acceptedOffer ? 'customer_accepted_human_offer' : null);
         if (handoffReason && !draftMode) {
             // A configured handoff rule is an agent outcome even though it
             // deliberately avoids an LLM call.
@@ -4613,6 +4604,9 @@ export class ConversationsService {
                 executedToolsThisTurn, userLanguage, priorActions, turnContext, session, {execute:executeLearningModel},
             );
             turnTrace.add('guardrail', 'output', { responseLength: finalResponse?.length || 0 });
+            // The guard answered with an offer of a person: remember it so a
+            // "yes" next turn escalates for real.
+            if (!session && !draftMode) await this.rememberHumanOffer(schemaName, conversation.id, finalResponse);
 
             // Long-term memory (#1): periodically distill the conversation into
             // durable facts (fire-and-forget, cheap tier). Cadence keeps cost low.
@@ -6323,6 +6317,33 @@ export class ConversationsService {
         await this.handoffService.executeHandoffOnce(tenantId, conversation.id, msg, reason, {
             contactId, inboundMessageId, noticeKind, noticeLanguage: handoffNoticeLanguage(language),
         });
+    }
+
+    /** Leave the short-lived "a person was offered" mark when the reply is our offer. */
+    private async rememberHumanOffer(schemaName: string, conversationId: string, reply: string): Promise<boolean> {
+        if (!isHumanOfferText(reply)) return false;
+        const now = Date.now();
+        const mark = { at: new Date(now).toISOString(), expiresAt: new Date(now + HUMAN_OFFER_TTL_MS).toISOString() };
+        await this.prisma.executeInTenantSchema(schemaName,
+            `UPDATE conversations SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{${HUMAN_OFFER_MARK}}', $2::jsonb) WHERE id = $1::uuid`,
+            [conversationId, JSON.stringify(mark)],
+        ).catch(e => this.logger.warn(`[HumanOffer] mark not persisted: ${e?.message}`));
+        return true;
+    }
+
+    /**
+     * Judge the inbound message against a pending offer: an affirmation inside the
+     * TTL escalates; anything else just clears the mark. Returns true to escalate.
+     */
+    private async resolveHumanOfferAcceptance(schemaName: string, conversation: any, text?: string): Promise<boolean> {
+        const mark = (conversation?.metadata as any)?.[HUMAN_OFFER_MARK];
+        if (!mark) return false;
+        await this.prisma.executeInTenantSchema(schemaName,
+            `UPDATE conversations SET metadata = COALESCE(metadata, '{}'::jsonb) - '${HUMAN_OFFER_MARK}' WHERE id = $1::uuid`,
+            [conversation.id],
+        ).catch(e => this.logger.warn(`[HumanOffer] mark not cleared: ${e?.message}`));
+        delete (conversation.metadata as any)[HUMAN_OFFER_MARK];
+        return isLiveHumanOffer(mark) && isAffirmation(text);
     }
 
     /** A persisted suggestion is the only output of a draft turn. */

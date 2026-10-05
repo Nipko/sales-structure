@@ -95,3 +95,18 @@ describe('opt-out: nothing main detected is lost', () => {
         expect(isOptOutMessage(text)).toBe(false);
     });
 });
+
+describe('opt-out: ambiguous word must be the whole message (second review)', () => {
+    it.each([
+        'quitar color', 'parar motores', 'baja temporada', 'salir temprano', 'cuándo salir', 'stop?',
+        'pare aqui', 'puedo salir?', 'a qué hora puedo salir', 'la tarifa baja?', 'presión baja',
+        'talla baja', 'temporada baja', 'la baja',
+    ])('not an opt-out: %s', t => {
+        expect(isOptOutMessage(t)).toBe(false);
+    });
+
+    it.each(['stop', 'baja', 'BAJA por favor gracias', 'salir', 'quiero salir', 'Quitar', 'STOP ALL', 'no molesten más', 'i want to stop'])(
+        'still an opt-out: %s', t => {
+            expect(isOptOutMessage(t)).toBe(true);
+        });
+});

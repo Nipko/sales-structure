@@ -97,12 +97,12 @@ const OPT_OUT_WORDS: string[] = [
 /**
  * Ambiguous opt-out words. Policy while the owner decides: WHEN IN DOUBT,
  * OPT OUT (the record stays "pending" for review and an admin can reject it).
- * They count in a SHORT message (<= OPT_OUT_BARE_MAX_TOKENS tokens) unless the
- * word is clearly used as an ordinary verb: directly followed by a preposition,
- * article, place/time word or number ("salir el sabado", "parar en Medellin",
- * "stop by the office", "exit 5", "sair amanha"). In a longer message only the
- * explicit phrases below count.
- * (cancelar is still excluded: alone it means "cancel my appointment".)
+ * They count only when the message is, apart from courtesy filler, nothing but
+ * that word (<= OPT_OUT_BARE_MAX_TOKENS tokens, no question mark): "stop",
+ * "BAJA por favor gracias", "quiero salir". Any other content word ("salir
+ * temprano", "baja temporada", "parar motores", "presion baja", "exit 5")
+ * makes it ordinary vocabulary; those messages need an explicit phrase from
+ * OPT_OUT_PHRASES. (cancelar is excluded: alone it means "cancel my appointment".)
  */
 const OPT_OUT_BARE_WORDS: string[] = [
     'stop', 'baja', 'parar', 'salir', 'quitar', 'basta', 'exit', 'sair', 'arreter', 'arretez',
@@ -115,19 +115,8 @@ const OPT_OUT_BARE_FILLERS = new Set([
     'svp', 'maintenant', 'merci', 'gracias', 'thanks', 'thank', 'you', 'obrigado', 'obrigada',
     'todo', 'todos', 'all', 'it', 'bye', 'chao', 'adios', 'hola', 'hi', 'hello', 'ok', 'okay',
     'tchau', 'si', 'yes', 'sim', 'oui',
-]);
-
-/**
- * Words that, right after the keyword, mark ordinary use of the verb
- * (preposition, article, time/place) instead of a request to stop.
- */
-const OPT_OUT_BARE_CONTEXT = new Set([
-    'en', 'de', 'el', 'la', 'los', 'las', 'un', 'una', 'a', 'al', 'hacia', 'del', 'con', 'sin', 'sobre',
-    'by', 'at', 'in', 'on', 'the', 'to', 'for', 'from', 'with', 'tomorrow', 'today', 'tonight',
-    'manana', 'hoy', 'ayer', 'amanha', 'hoje', 'demain', 'aujourd', 'lunes', 'martes', 'miercoles',
-    'jueves', 'viernes', 'sabado', 'domingo', 'monday', 'tuesday', 'wednesday', 'thursday',
-    'friday', 'saturday', 'sunday', 'segunda', 'terca', 'quarta', 'quinta', 'sexta',
-    'no', 'na', 'em', 'ao', 'aos', 'dans', 'sur', 'chez', 'le', 'les', 'des', 'du', 'pour',
+    // lead-ins: "quiero salir", "i want to stop", "je veux arreter"
+    'quiero', 'quero', 'necesito', 'want', 'to', 'i', 'me', 'je', 'veux', 'voudrais',
 ]);
 
 /** A bare-word opt-out is at most this many tokens long. */
@@ -154,6 +143,8 @@ const OPT_OUT_PHRASES: string[] = [
     'no quiero mas mensajes',
     'quitenme de la lista',
     'detener promociones',
+    'no molesten mas',
+    'no molestes mas',
     'parar promociones',
     'cancelar suscripcion',
     'quiero salir de la lista',
@@ -255,13 +246,9 @@ export function isOptOutMessage(text: string): boolean {
         .split(/\s+/)
         .filter(Boolean);
     if (tokens.length === 0 || tokens.length > OPT_OUT_BARE_MAX_TOKENS) return false;
-    // Courtesy filler carries no meaning; judge the words that remain.
+    // A question is a question, not a request ("puedo salir?", "stop?").
+    if (/[?¿]/.test(text)) return false;
+    // Courtesy filler carries no meaning; what is left must be only the keyword.
     const rest = tokens.filter(t => !OPT_OUT_BARE_FILLERS.has(t) || uniqueBareWords.includes(t));
-    for (let i = 0; i < rest.length; i++) {
-        if (!uniqueBareWords.includes(rest[i])) continue;
-        const next = rest[i + 1];
-        const ordinaryUse = next !== undefined && (OPT_OUT_BARE_CONTEXT.has(next) || /^\d/.test(next));
-        if (!ordinaryUse) return true;
-    }
-    return false;
+    return rest.length > 0 && rest.every(t => uniqueBareWords.includes(t));
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { Lock, Eye, EyeOff, RefreshCw, Check, X, Copy } from "lucide-react";
+import { Lock, Eye, EyeOff, RefreshCw, Check, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 
@@ -13,7 +13,17 @@ const VALIDATIONS = [
     { key: "special", test: (p: string) => /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(p) },
 ];
 
-function generatePassword(): string {
+function secureIndex(length: number): number {
+    const range = 0x100000000;
+    const limit = range - (range % length);
+    const sample = new Uint32Array(1);
+    do {
+        globalThis.crypto.getRandomValues(sample);
+    } while (sample[0] >= limit);
+    return sample[0] % length;
+}
+
+export function generatePassword(): string {
     const upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
     const lower = "abcdefghijklmnopqrstuvwxyz";
     const digits = "0123456789";
@@ -21,19 +31,24 @@ function generatePassword(): string {
     const all = upper + lower + digits + special;
 
     // Ensure at least one of each type
-    let pass = "";
-    pass += upper[Math.floor(Math.random() * upper.length)];
-    pass += lower[Math.floor(Math.random() * lower.length)];
-    pass += digits[Math.floor(Math.random() * digits.length)];
-    pass += special[Math.floor(Math.random() * special.length)];
+    const pass = [
+        upper[secureIndex(upper.length)],
+        lower[secureIndex(lower.length)],
+        digits[secureIndex(digits.length)],
+        special[secureIndex(special.length)],
+    ];
 
     // Fill rest to 16 chars
     for (let i = 4; i < 16; i++) {
-        pass += all[Math.floor(Math.random() * all.length)];
+        pass.push(all[secureIndex(all.length)]);
     }
 
     // Shuffle
-    return pass.split("").sort(() => Math.random() - 0.5).join("");
+    for (let i = pass.length - 1; i > 0; i--) {
+        const j = secureIndex(i + 1);
+        [pass[i], pass[j]] = [pass[j], pass[i]];
+    }
+    return pass.join("");
 }
 
 interface PasswordInputProps {
@@ -60,9 +75,7 @@ export default function PasswordInput({
     autoComplete = "new-password",
 }: PasswordInputProps) {
     const t = useTranslations("auth");
-    const tc = useTranslations("common");
     const [show, setShow] = useState(false);
-    const [copied, setCopied] = useState(false);
 
     const results = VALIDATIONS.map(v => ({ ...v, valid: v.test(value) }));
     const allValid = results.every(r => r.valid);
@@ -73,11 +86,6 @@ export default function PasswordInput({
         onChange(pass);
         setShow(true); // Show generated password
 
-        // Copy to clipboard
-        navigator.clipboard.writeText(pass).then(() => {
-            setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
-        }).catch(() => {});
     }, [onChange]);
 
     return (
@@ -99,11 +107,11 @@ export default function PasswordInput({
                         <button
                             type="button"
                             onClick={handleGenerate}
-                            title={copied ? tc("copied") : t("generatePassword")}
-                            aria-label={copied ? tc("copied") : t("generatePassword")}
+                            title={t("generatePassword")}
+                            aria-label={t("generatePassword")}
                             className="p-1.5 rounded-lg bg-transparent text-muted-foreground/50 hover:text-indigo-500 hover:bg-indigo-500/10 transition-colors"
                         >
-                            {copied ? <Copy size={16} className="text-emerald-500" /> : <RefreshCw size={16} />}
+                            <RefreshCw size={16} />
                         </button>
                     )}
                     <button

@@ -1531,13 +1531,25 @@ export class ToolExecutionControlService {
         }
         if (await this.chatIdentity.isVerified(request.conversationId, request.contactId)) return null;
 
-        const started = await this.chatIdentity.startVerification(
-            request.tenantId,
-            request.schemaName,
-            request.contactId,
-            request.conversationId,
-            request.channelType || '',
-        );
+        let started: Awaited<ReturnType<ChatIdentityService['startVerification']>>;
+        try {
+            started = await this.chatIdentity.startVerification(
+                request.tenantId,
+                request.schemaName,
+                request.contactId,
+                request.conversationId,
+                request.channelType || '',
+            );
+        } catch (error: any) {
+            // The admission itself broke (already logged by the identity service):
+            // no challenge exists and nothing was sent. Say so instead of tool_failed.
+            if (error?.message !== 'identity_challenge_admission_failed') throw error;
+            return {
+                error: 'identity_unverifiable',
+                message: 'No pude iniciar la verificación; no se envió ningún código. Escala la gestión a una persona.',
+                shouldHandoff: true,
+            };
+        }
         if (started.status === 'already_verified') return null;
         if (started.status === 'no_channel') {
             return {

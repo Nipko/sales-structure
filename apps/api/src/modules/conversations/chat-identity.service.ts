@@ -126,7 +126,12 @@ export class ChatIdentityService {
         if (admitted.state === 'no_channel') return { status: 'no_channel' };
         if (admitted.state === 'sent') return { status: 'sent', via: admitted.channel, hint: admitted.hint };
         if (!['pending', 'failed'].includes(admitted.state)) return { status: 'pending' };
-        const outcome = await this.deliver(admitted.id).catch(() => 'identity:pending');
+        const outcome = await this.deliver(admitted.id).catch(error => {
+            // The challenge row exists and the provider outcome is unknown or
+            // failed; recovery owns it. Log it so it is never silent.
+            this.logger.warn(`Identity challenge delivery did not complete: ${error?.message}`);
+            return 'identity:pending';
+        });
         return outcome === 'identity:sent'
             ? { status: 'sent', via: admitted.channel, hint: admitted.hint }
             : { status: 'pending' };

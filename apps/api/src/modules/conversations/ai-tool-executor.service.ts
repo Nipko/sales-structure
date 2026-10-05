@@ -5048,9 +5048,15 @@ export class AIToolExecutorService {
         }
         if (await this.chatIdentity.isVerified(conversationId, contactId)) return null;
 
-        const started = await this.chatIdentity.startVerification(
-            tenantId, schemaName, contactId, conversationId, channelType || '',
-        );
+        let started: Awaited<ReturnType<ChatIdentityService['startVerification']>>;
+        try {
+            started = await this.chatIdentity.startVerification(
+                tenantId, schemaName, contactId, conversationId, channelType || '',
+            );
+        } catch (error: any) {
+            if (error?.message !== 'identity_challenge_admission_failed') throw error;
+            return { error: 'identity_unverifiable', message: 'No pude iniciar la verificación; no se envió ningún código. Escala la gestión a una persona.', shouldHandoff: true };
+        }
 
         if (started.status === 'already_verified') return null;
         if (started.status === 'pending') {
@@ -5082,7 +5088,13 @@ export class AIToolExecutorService {
         channelType?: string,
     ): Promise<any> {
         if (!conversationId) return { error: 'no_conversation' };
-        const res = await this.chatIdentity.startVerification(tenantId, schemaName, contactId, conversationId, channelType || '');
+        let res: Awaited<ReturnType<ChatIdentityService['startVerification']>>;
+        try {
+            res = await this.chatIdentity.startVerification(tenantId, schemaName, contactId, conversationId, channelType || '');
+        } catch (error: any) {
+            if (error?.message !== 'identity_challenge_admission_failed') throw error;
+            return { error: 'identity_unverifiable', message: 'No pude iniciar la verificación; no se envió ningún código. Escala la gestión a una persona.', shouldHandoff: true };
+        }
         if (res.status === 'already_verified') return { alreadyVerified: true };
         if (res.status === 'pending') return { pending: true, message: 'Ya hay una verificación en curso. No envíes otro código.' };
         if (res.status === 'no_channel') {

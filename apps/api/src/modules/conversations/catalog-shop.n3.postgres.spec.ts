@@ -138,6 +138,7 @@ import { CRM_BASE_TABLES, N3_DATABASE_URL, openLive, seedCustomer } from './__fi
         await product('Aurora basico', 39990, 3);
         await product('Aurora premium', 79990, 3);
         const C = await seedCustomer(h.q, 'Cliente');
+        await h.inbound(C.conversationId, 'busco audifonos con presupuesto');
         const result = await h.call(C.contactId, C.conversationId, 'recommend_products', { search: 'Aurora', maxPrice: budget }, scope);
         expect((result.products || []).map((p: any) => p.name)).toEqual(['Aurora basico']);
     });
@@ -145,15 +146,17 @@ import { CRM_BASE_TABLES, N3_DATABASE_URL, openLive, seedCustomer } from './__fi
     it.each([['cheap'], [true], [-5]])('SHOP-05: an invalid budget %p is reported, not silently dropped', async budget => {
         await product('Aurora premium', 79990, 3);
         const C = await seedCustomer(h.q, 'Cliente');
+        await h.inbound(C.conversationId, 'busco audifonos con presupuesto');
         const result = await h.call(C.contactId, C.conversationId, 'recommend_products', { search: 'Aurora', maxPrice: budget }, scope);
         expect(result.products).toBeUndefined();
-        expect(result.error).toBeDefined();
+        expect(String(result.message)).toMatch(/número válido/);
     });
 
     it('SHOP-05: with a budget, a product without a price (0) is not offered as if it fitted', async () => {
         await product('Aurora sin precio', 0, 3);
         await product('Aurora basico', 39990, 3);
         const C = await seedCustomer(h.q, 'Cliente');
+        await h.inbound(C.conversationId, 'busco audifonos hasta 50 mil');
         const result = await h.call(C.contactId, C.conversationId, 'recommend_products', { search: 'Aurora', maxPrice: 50000 }, scope);
         expect((result.products || []).map((p: any) => p.name)).toEqual(['Aurora basico']);
     });

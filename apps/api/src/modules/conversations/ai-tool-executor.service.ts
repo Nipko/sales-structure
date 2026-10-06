@@ -6214,6 +6214,9 @@ export class AIToolExecutorService {
                         `UPDATE appointments
                          SET start_at = $1::timestamp, end_at = $2::timestamp,
                              notes = COALESCE(notes, '') || $3,
+                             reminder_24h_sent = CASE WHEN start_at IS DISTINCT FROM $1::timestamp THEN false ELSE reminder_24h_sent END,
+                             reminder_2h_sent = CASE WHEN start_at IS DISTINCT FROM $1::timestamp THEN false ELSE reminder_2h_sent END,
+                             no_show_followed_up = CASE WHEN start_at IS DISTINCT FROM $1::timestamp THEN false ELSE no_show_followed_up END,
                              updated_at = NOW()
                          WHERE id = $4::uuid
                            AND contact_id = $5::uuid

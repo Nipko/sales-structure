@@ -245,11 +245,17 @@ export class BroadcastService {
             );
         }
 
+        // Resuming a paused campaign: its workers found it paused and left every recipient
+        // exactly as it was, i.e. `queued` with no live job to send it. Those are re-queued
+        // here. Nothing is duplicated: a recipient that did get its message already has its
+        // durable effect under the (campaign, recipient) origin key, and the lane returns
+        // that row instead of sending again; sent/failed/skipped recipients are not selected.
+        const launchableStatuses = campaign.status === 'paused' ? ['pending', 'queued'] : ['pending'];
         const recipients = await this.prisma.executeInTenantSchema<any[]>(
             schema,
             `SELECT id, contact_id, phone, email, channel, variant_id FROM campaign_recipients
-             WHERE campaign_id = $1::uuid AND status = 'pending'`,
-            [campaignId],
+             WHERE campaign_id = $1::uuid AND status = ANY($2::text[])`,
+            [campaignId, launchableStatuses],
         );
 
         if (!recipients?.length) {
@@ -288,8 +294,8 @@ export class BroadcastService {
             const updatedRecipients = await this.prisma.executeInTenantSchema<any[]>(
                 schema,
                 `SELECT id, contact_id, phone, email, channel, variant_id FROM campaign_recipients
-                 WHERE campaign_id = $1::uuid AND status = 'pending'`,
-                [campaignId],
+                 WHERE campaign_id = $1::uuid AND status = ANY($2::text[])`,
+                [campaignId, launchableStatuses],
             );
             recipients.length = 0;
             recipients.push(...(updatedRecipients || []));
@@ -852,7 +858,7 @@ export class BroadcastService {
             schema,
             `UPDATE campaign_recipients
                 SET status = 'skipped', error_message = 'recipient_opted_out', updated_at = NOW()
-              WHERE campaign_id = $1::uuid AND status = 'pending' AND id = ANY($2::uuid[])`,
+              WHERE campaign_id = $1::uuid AND status IN ('pending', 'queued') AND id = ANY($2::uuid[])`,
             [campaignId, [...blocked]],
         );
         this.logger.warn(`Campaign ${campaignId}: ${blocked.size} recipient(s) skipped, opted out since they were added`);

@@ -562,8 +562,15 @@ export class AppointmentsService {
                 timezone,
                 durationMinutes: this.diffMinutesNaive(startAt, endAt),
             });
-            sets.push(`start_at = $${idx++}::timestamp`); params.push(startAt);
+            const startIdx = idx++;
+            sets.push(`start_at = $${startIdx}::timestamp`); params.push(startAt);
             sets.push(`end_at = $${idx++}::timestamp`); params.push(endAt);
+            // A moved appointment is a new occasion: it must be reminded (and asked about
+            // attendance) for its NEW time. SET expressions read the old row, so the CASE
+            // compares the previous start with the incoming one.
+            for (const flag of ['reminder_24h_sent', 'reminder_2h_sent', 'no_show_followed_up']) {
+                sets.push(`${flag} = CASE WHEN start_at IS DISTINCT FROM $${startIdx}::timestamp THEN false ELSE ${flag} END`);
+            }
         }
         if (data.status !== undefined) {
             sets.push(`status = $${idx++}`); params.push(data.status);

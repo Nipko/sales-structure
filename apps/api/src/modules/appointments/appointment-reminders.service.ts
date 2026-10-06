@@ -38,6 +38,7 @@ import {
     buildAppointmentIcs,
     durationMinutes,
     formatWallClockDate,
+    formatWallClockShortDate,
     formatWallClockTime,
     timezoneLabel,
 } from './appointment-ics.util';
@@ -601,7 +602,7 @@ export class AppointmentRemindersService {
             apptMsg(lang, 'reminderFooter'),
         ].filter((line): line is string => line !== null).join('\n');
         const result = await this.dispatchReminder(tenantId, schemaName, appt, {
-            originKey: `appointment_reminder:${appt.id}:${type}`,
+            originKey: `appointment_reminder:${appt.id}:${type}:${startAt}`,
             producer: 'appointment_reminder',
             sender,
             item: { kind: 'text', payload: { text } },
@@ -628,17 +629,13 @@ export class AppointmentRemindersService {
             return false;
         }
 
-        const tz = await this.getTenantTimezone(tenantId);
         const lang = await this.getTenantLanguage(tenantId);
-        const startDate = new Date(appt.start_at);
         const locale = lang === 'pt' ? 'pt-BR' : lang === 'fr' ? 'fr-FR' : lang === 'en' ? 'en-US' : 'es-CO';
-
-        const dateStr = startDate.toLocaleDateString(locale, {
-            weekday: 'long', day: 'numeric', month: 'long', timeZone: tz,
-        });
-        const timeStr = startDate.toLocaleTimeString(locale, {
-            hour: '2-digit', minute: '2-digit', hour12: true, timeZone: tz,
-        });
+        // `start_at` is a naive wall clock: it is rendered as written, never converted
+        // through a zone (reading it as UTC and formatting in the tenant zone shifted it).
+        const startAt = this.toNaive(appt.start_at) ?? '';
+        const dateStr = formatWallClockShortDate(startAt, locale);
+        const timeStr = formatWallClockTime(startAt, locale);
 
         const staffName = appt.assigned_to
             ? await this.getStaffName(schemaName, appt.assigned_to)
@@ -667,7 +664,7 @@ export class AppointmentRemindersService {
         // 2h are two different effects of one appointment and a retry of either
         // finds its own row.
         const result = await this.dispatchTemplate(tenantId, schemaName, appt, {
-            originKey: `appointment_reminder:${appt.id}:${type}`,
+            originKey: `appointment_reminder:${appt.id}:${type}:${startAt}`,
             producer: 'appointment_reminder',
             sender, templateName: 'appointment_reminder',
             language: normalizeMetaLanguage(lang), components,
@@ -697,6 +694,13 @@ export class AppointmentRemindersService {
              WHERE a.status IN ('pending', 'confirmed')
                AND a.no_show_followed_up = false
                AND a.end_at < (NOW() AT TIME ZONE '${tz}') - interval '30 minutes'
+               -- Lower bound: "did you attend?" is only meaningful shortly after the visit.
+               -- 48 h matches the window in which conversations.service reads a "yes" as
+               -- attendance confirmation, and caps retries when the template is missing.
+               AND a.end_at > (NOW() AT TIME ZONE '${tz}') - interval '48 hours'
+               -- Only WhatsApp has an attendance check (approved template). Other channels
+               -- are excluded here so they are neither flagged nor re-scanned every 30 min.
+               AND COALESCE(c.channel_type, 'whatsapp') = 'whatsapp'
                AND c.phone IS NOT NULL`,
             [],
         );
@@ -706,7 +710,9 @@ export class AppointmentRemindersService {
 
         for (const appt of appointments) {
             try {
-                await this.sendAttendanceTemplate(tenantId, schemaName, appt);
+                // The flag makes the customer's next "yes" count as attendance confirmation,
+                // so it is written only when a check really went out.
+                if (!await this.sendAttendanceTemplate(tenantId, schemaName, appt)) continue;
                 await this.prisma.executeInTenantSchema(schemaName,
                     `UPDATE appointments SET no_show_followed_up = true, updated_at = NOW() WHERE id = $1::uuid`,
                     [appt.id],
@@ -717,10 +723,11 @@ export class AppointmentRemindersService {
         }
     }
 
-    private async sendAttendanceTemplate(tenantId: string, schemaName: string, appt: any) {
+    /** True only when the attendance check was durably dispatched; the caller flags on that alone. */
+    private async sendAttendanceTemplate(tenantId: string, schemaName: string, appt: any): Promise<boolean> {
         await this.assertTenantCanSend(tenantId);
         if ((appt.contact_channel || 'whatsapp') !== 'whatsapp') {
-            return;
+            return false;
         }
 
         const sender = senderOf(appt);
@@ -728,20 +735,14 @@ export class AppointmentRemindersService {
         if (!template) {
             this.logger.warn(`No approved attendance_check template on the WABA of `
                 + `${sender ?? 'this tenant'} (${tenantId}) — skipping`);
-            return;
+            return false;
         }
 
-        const tz = await this.getTenantTimezone(tenantId);
         const lang = await this.getTenantLanguage(tenantId);
-        const startDate = new Date(appt.start_at);
         const locale = lang === 'pt' ? 'pt-BR' : lang === 'fr' ? 'fr-FR' : lang === 'en' ? 'en-US' : 'es-CO';
-
-        const dateStr = startDate.toLocaleDateString(locale, {
-            weekday: 'long', day: 'numeric', month: 'long', timeZone: tz,
-        });
-        const timeStr = startDate.toLocaleTimeString(locale, {
-            hour: '2-digit', minute: '2-digit', hour12: true, timeZone: tz,
-        });
+        const startAt = this.toNaive(appt.start_at) ?? '';
+        const dateStr = formatWallClockShortDate(startAt, locale);
+        const timeStr = formatWallClockTime(startAt, locale);
 
         const components = [
             {
@@ -756,7 +757,7 @@ export class AppointmentRemindersService {
         ];
 
         const result = await this.dispatchTemplate(tenantId, schemaName, appt, {
-            originKey: `attendance_check:${appt.id}`,
+            originKey: `attendance_check:${appt.id}:${startAt}`,
             producer: 'attendance_check',
             sender, templateName: 'attendance_check',
             language: normalizeMetaLanguage(lang), components,
@@ -765,6 +766,7 @@ export class AppointmentRemindersService {
             throw new ReminderNotDispatched(String(appt.id), result);
         }
         this.logger.log(`${result.kind} the attendance check for appointment ${appt.id}`);
+        return true;
     }
 
     private async canSendTenantWork(tenantId: string): Promise<boolean> {

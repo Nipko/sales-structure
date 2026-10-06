@@ -81,7 +81,6 @@ describe('a booking request that also asks for the duration keeps the flow (idle
     it.each([
         '¿Puedo pedir una cita para color y tratamiento? ¿cuánto dura?',
         '¿Me dan turno para color y tratamiento? ¿cuánto demora?',
-        'Hola, para color y tratamiento cuánto tiempo necesito?',
         '¿tienen cupo a las 16:00 para color y tratamiento? ¿cuánto dura?',
         'Quiero reservar color y tratamiento, ¿cuánto dura?',
     ])('"%s" starts the flow', async text => {
@@ -94,6 +93,40 @@ describe('a booking request that also asks for the duration keeps the flow (idle
 
     it('keeps a time next to a duration question with the engine', () => {
         expect(isInformationalDetour('¿cuánto dura color y tratamiento a las 16:00?', { timeMentioned: '16:00' })).toBe(false);
+    });
+});
+
+describe('a bare question never opens a mission (idle), whatever booking word it uses', () => {
+    it.each([
+        '¿Cuánto tiempo necesito para color y tratamiento?',
+        'Necesito saber cuánto dura color y tratamiento',
+        '¿Cuánto dura la cita de color y tratamiento?',
+        '¿Cuánto dura el turno de color y tratamiento?',
+        '¿Cuánto cuesta la cita de color y tratamiento?',
+        '¿Hay que reservar para color y tratamiento o puedo llegar?',
+        '¿Está disponible color y tratamiento los domingos?',
+        'Hola, para color y tratamiento cuánto tiempo necesito?',
+        'What is your schedule for color y tratamiento? How long does it take?',
+    ])('"%s" stays idle with no mission', async text => {
+        const { turn } = harness();
+        const { result } = await turn(text, { step: 'idle' });
+        expect(result.handled).toBe(false);
+        expect(result.state.step).toBe('idle');
+        expect(result.state.serviceId).toBeUndefined();
+    });
+
+    it.each([
+        ['Quiero una cita para color y tratamiento'],
+        ['Necesito agendar color y tratamiento'],
+        ['Agéndame color y tratamiento'],
+        ['Me dan un turno para color y tratamiento?'],
+        ['Hay cupo para color y tratamiento el sábado?'],
+        ["I'd like to book color y tratamiento"],
+    ])('"%s" is a request and starts the flow', async text => {
+        const { turn } = harness();
+        const { result } = await turn(text, { step: 'idle' });
+        expect(result.handled).toBe(true);
+        expect(result.state.step).not.toBe('idle');
     });
 });
 

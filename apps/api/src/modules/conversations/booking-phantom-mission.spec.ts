@@ -18,7 +18,7 @@ const services = [
 const today = '2026-10-05';
 const upcoming = [{ date: '2026-10-10', weekday: 'sabado' }];
 
-function harness() {
+function harness(llmIntent: Record<string, unknown> = {}) {
     const execute = jest.fn(async (_s: string, _t: string, _c: string, name: string) => {
         if (name === 'check_availability') return { available: true, slots: [{ time: '16:00', endTime: '18:00' }] };
         if (name === 'list_services') return { services };
@@ -31,7 +31,7 @@ function harness() {
     );
     const llm = jest.fn(async () => ({ content: JSON.stringify({
         intent: 'unknown', serviceMentioned: null, dateMentioned: null, timeMentioned: null, isConfirmation: false,
-        isNegation: false, nameProvided: null, emailProvided: null, questionTopic: null, language: 'es',
+        isNegation: false, nameProvided: null, emailProvided: null, questionTopic: null, language: 'es', ...llmIntent,
     }) }));
     const interpreter = new IntentInterpreterService({ execute: llm } as any);
     const turn = async (text: string, state: BookingState) => {
@@ -74,6 +74,51 @@ describe('an informational question about a service never opens a booking missio
         const { result } = await turn('Quiero agendar color y tratamiento', { step: 'idle' });
         expect(result.handled).toBe(true);
         expect(result.state).toMatchObject({ step: 'ask_date', serviceId: 'svc-color' });
+    });
+});
+
+describe('a booking request that also asks for the duration keeps the flow (idle)', () => {
+    it.each([
+        '¿Puedo pedir una cita para color y tratamiento? ¿cuánto dura?',
+        '¿Me dan turno para color y tratamiento? ¿cuánto demora?',
+        'Hola, para color y tratamiento cuánto tiempo necesito?',
+        '¿tienen cupo a las 16:00 para color y tratamiento? ¿cuánto dura?',
+        'Quiero reservar color y tratamiento, ¿cuánto dura?',
+    ])('"%s" starts the flow', async text => {
+        const { turn } = harness();
+        const { result } = await turn(text, { step: 'idle' });
+        expect(result.handled).toBe(true);
+        expect(result.state).toMatchObject({ serviceId: 'svc-color' });
+        expect(result.state.step).not.toBe('idle');
+    });
+
+    it('keeps a time next to a duration question with the engine', () => {
+        expect(isInformationalDetour('¿cuánto dura color y tratamiento a las 16:00?', { timeMentioned: '16:00' })).toBe(false);
+    });
+});
+
+describe('a duration question riding with the answer to the current step', () => {
+    it('at show_services the named service is still selected', async () => {
+        const { turn } = harness();
+        const { intent, result } = await turn('Color y tratamiento, ¿cuánto dura?', { step: 'show_services', missionId: 'm1', services });
+        expect(intent.intent).toBe('select_service');
+        expect(result.handled).toBe(true);
+        expect(result.state).toMatchObject({ serviceId: 'svc-color', step: 'ask_date' });
+    });
+
+    it('at show_slots the named time is still selected', async () => {
+        const { turn } = harness({ intent: 'select_time', timeMentioned: '16:00' });
+        const open: BookingState = {
+            missionId: 'm1', step: 'show_slots', serviceId: 'svc-color', serviceName: 'Color y tratamiento', date: '2026-10-10',
+            slots: [{ time: '15:00', endTime: '17:00' }, { time: '16:00', endTime: '18:00' }], services,
+        };
+        const { result } = await turn('a las 16:00, ¿cuánto dura?', open);
+        expect(result.handled).toBe(true);
+        expect(result.state.time).toBe('16:00');
+    });
+
+    it('a pure duration question mid-mission at another step still goes to the model', () => {
+        expect(isInformationalDetour('¿Cuánto dura color y tratamiento?', { serviceMentioned: 'Color y tratamiento' }, 'ask_date')).toBe(true);
     });
 });
 

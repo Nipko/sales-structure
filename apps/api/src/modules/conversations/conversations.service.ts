@@ -66,7 +66,7 @@ import { AIToolExecutorService } from './ai-tool-executor.service';
 import { buildUnverifiedPriceReply, correctivePriceInstruction, enforceVerifiedPriceReply, ResponseValidatorService } from './response-validator.service';
 import { AgentTurnSession } from './agent-turn-session';
 import { sessionCanExecute, sessionLlmRouter, sessionToolExecutor } from './agent-turn-adapters';
-import { projectOwnCatalogRow } from './catalog-turn-projection';
+import { projectEcommerceCatalogRow, projectOwnCatalogRow } from './catalog-turn-projection';
 import { projectBookingStateForPrompt, restoreBookingMission } from './booking-state-continuity';
 import { deriveInformationalHours, hasConfiguredHours, promptHoursStatus, resolvePromptBusinessHours, UNKNOWN_INFORMATIONAL_HOURS, type InformationalHours } from './informational-hours';
 import { resolveEvaluationSnapshot } from './agent-evaluation-snapshot';
@@ -4209,15 +4209,7 @@ export class ConversationsService {
                     [],
                 );
                 if (products?.length) {
-                    turnContext.catalog = products.map((p: any) => ({
-                        id: String(p.external_id),
-                        title: p.title,
-                        price: p.price_cents != null ? Number(p.price_cents) / 100 : undefined,
-                        currency: p.currency || 'USD',
-                        inStock: (p.inventory_quantity ?? 0) > 0,
-                        ...(p.inventory_quantity != null && Number.isFinite(Number(p.inventory_quantity)) ? { stock: Number(p.inventory_quantity) } : {}),
-                        category: p.product_type || undefined,
-                    }));
+                    turnContext.catalog = products.map(projectEcommerceCatalogRow);
                 }
             } catch (e: any) {
                 this.logger.debug(`[T2.17] catalog injection skipped: ${e.message}`);

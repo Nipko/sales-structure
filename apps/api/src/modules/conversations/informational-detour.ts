@@ -76,14 +76,36 @@ function informationalTopic(raw: unknown): 'hours' | 'other' | null {
     return null;
 }
 
-export function isInformationalDetour(raw: unknown, interpreted?: InterpretedHint): boolean {
+/** The message asks how long something lasts. */
+export function asksDuration(raw: unknown): boolean {
+    return DURATION_TOPIC.test(normalizeForIntent(raw));
+}
+
+/** A request to get an appointment, as opposed to a question about the business. */
+const BOOKING_REQUEST = /\b(?:citas?|turnos?|reserv(?:a|as|ar|o|e|ame|eme)|agend(?:a|ar|ame|o|e)|pedir|sacar|me dan|cupos?|disponibilidad|disponible|necesito|appointments?|book\w*|schedule|rendez vous)\b/;
+
+/** The customer is asking to book (noun or verb of the booking domain), whatever else they ask. */
+export function namesBookingRequest(raw: unknown): boolean {
+    return BOOKING_REQUEST.test(normalizeForIntent(raw));
+}
+
+/**
+ * `step` is the open mission's step. While the customer is picking a service, the service they
+ * name is the answer the engine must read; a duration question riding with it is left for the
+ * model. (A time next to a question already stays with the engine, see above; the engine itself
+ * keeps a slot pick that rides with a duration question.)
+ */
+export function isInformationalDetour(raw: unknown, interpreted?: InterpretedHint, step?: string): boolean {
     const topic = informationalTopic(raw);
     if (!topic) return false;
-    // A date the interpreter extracted next to a price/service/policy question is
+    // A date or time the interpreter extracted next to a price/service/policy question is
     // booking data the engine must keep. Opening hours mention weekdays by nature.
-    if (topic === 'other' && interpreted?.dateMentioned) return false;
+    if (topic === 'other' && (interpreted?.dateMentioned || interpreted?.timeMentioned)) return false;
     // A concrete time (or a professional/date asked together with it) is an
     // availability request the engine answers with its tool.
     if (topic === 'hours' && interpreted?.timeMentioned) return false;
+    if (asksDuration(raw)) {
+        if (step === 'show_services' && interpreted?.serviceMentioned) return false;
+    }
     return true;
 }

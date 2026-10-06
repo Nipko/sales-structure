@@ -15,7 +15,7 @@ import { procedureDialogueMessages } from './procedure-dialogue-messages';
 import { containsMissionDirective, isCollectionCancellation, isDirectedCorrection, isNamedMissionResume, mentionedMissionDomains, missionDialogue, parseDirectedSlotCorrection } from './mission-focus';
 import { coerceProcedureSlot } from './procedure-slot-interpolation';
 import { nearestSlots, selectSlotWindow } from './slot-window';
-import { isInformationalDetour } from './informational-detour';
+import { asksDuration, isInformationalDetour, namesBookingRequest } from './informational-detour';
 
 /**
  * Lo que el motor necesita saber del turno además del estado de la reserva.
@@ -508,7 +508,8 @@ export class BookingEngineService {
         // question about the business (duration, price, policy) is answered by the model; only a
         // booking wish (commitment verb, date, time) starts a mission.
         if ((!currentState.step || ['idle', 'booked'].includes(currentState.step))
-            && intent.intent === 'select_service' && isInformationalDetour(rawText, intent)) {
+            && intent.intent === 'select_service' && !namesBookingRequest(rawText) && !intent.timeMentioned
+            && isInformationalDetour(rawText, intent)) {
             this.logger.log('[Decide] Informational question about a service with no mission open, letting the LLM answer (no mission started)');
             return { handled: false, state };
         }
@@ -520,7 +521,7 @@ export class BookingEngineService {
         // not a step of the open mission: the engine has no tool to answer it and
         // used to re-prompt the step instead. Leave it to the model with its
         // tools; the mission, dormant or not, is returned untouched.
-        if (active && isInformationalDetour(rawText, intent)) {
+        if (active && isInformationalDetour(rawText, intent, state.step)) {
             this.logger.log(`[Decide] Informational question mid-mission, letting the LLM answer (booking state preserved: ${state.step})`);
             // The model speaks next: a bare yes/no after its answer must not be
             // read as the reply to a resume offer that is no longer the last message.
@@ -1104,7 +1105,10 @@ export class BookingEngineService {
         }
 
         // ── GENERAL QUESTION mid-booking: let LLM answer BUT keep booking state ──
-        if (intent.intent === 'general_question' && state.step !== 'idle') {
+        // "a las 16:00, ¿cuánto dura?" while slots are shown: the time is the answer, the duration
+        // is left for the model; the engine advances.
+        const pickingSlotWithDurationQuestion = state.step === 'show_slots' && !!intent.timeMentioned && asksDuration(rawText);
+        if (intent.intent === 'general_question' && state.step !== 'idle' && !pickingSlotWithDurationQuestion) {
             // Don't handle — let LLM answer the general question.
             // But DON'T reset the booking state. Next message will resume the flow.
             this.logger.log(`[Decide] General question mid-booking, letting LLM handle (booking state preserved: ${state.step})`);

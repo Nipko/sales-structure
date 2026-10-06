@@ -1,4 +1,4 @@
-import { projectOwnCatalogRow } from './catalog-turn-projection';
+import { projectEcommerceCatalogRow, projectOwnCatalogRow } from './catalog-turn-projection';
 import { PromptAssemblerService } from './prompt-assembler.service';
 
 /**
@@ -22,6 +22,14 @@ describe('own catalog rows carry the stock quantity', () => {
     it('states no quantity when the product does not track stock', () => {
         const projected = projectOwnCatalogRow(row(null));
         expect(projected.inStock).toBe(true);
+        expect(projected).not.toHaveProperty('stock');
+    });
+});
+
+describe('synced ecommerce rows carry no stock quantity', () => {
+    it('keeps only the availability flag, whatever the synced count is', () => {
+        const projected = projectEcommerceCatalogRow({ external_id: 'e1', title: 'Audifono', price_cents: 1299000, currency: 'COP', inventory_quantity: 2, product_type: 'audio' });
+        expect(projected).toMatchObject({ id: 'e1', inStock: true });
         expect(projected).not.toHaveProperty('stock');
     });
 });

@@ -24,3 +24,19 @@ export function projectOwnCatalogRow(row: any): CatalogItem & { priceStatus: 'co
         category: row.category || undefined,
     };
 }
+
+/**
+ * A synced store product. Deliberately carries NO quantity: the sync stores untracked stock
+ * as 0, reads only the first variant and can hold negative oversell, so the number is not
+ * something the model may tell a customer. Only the flag travels; check_stock is the source.
+ */
+export function projectEcommerceCatalogRow(p: any): CatalogItem {
+    return {
+        id: String(p.external_id),
+        title: p.title,
+        price: p.price_cents != null ? Number(p.price_cents) / 100 : undefined,
+        currency: p.currency || 'USD',
+        inStock: (p.inventory_quantity ?? 0) > 0,
+        category: p.product_type || undefined,
+    };
+}

@@ -86,7 +86,7 @@ export class ActivityService {
 
         await this.prisma.executeInTenantSchema(schema, `
             INSERT INTO analytics_events (event_type, contact_id, data)
-            VALUES ($1, $2, $3)
+            VALUES ($1, $2::uuid, $3::jsonb)
         `, [eventType, contactId, JSON.stringify({ ...data, lead_id: leadId })]);
     }
 }

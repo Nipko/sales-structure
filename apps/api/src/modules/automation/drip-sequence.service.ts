@@ -287,7 +287,7 @@ export class DripSequenceService {
         sequenceId: string,
         segmentId: string,
         opts?: { cap?: number },
-    ): Promise<{ matched: number; enrolled: number; skippedOptOut: number; skippedDuplicate: number; skippedNoContact: number; capped: boolean }> {
+    ): Promise<{ matched: number; enrolled: number; skippedOptOut: number; skippedDuplicate: number; skippedNoContact: number; failed: number; capped: boolean }> {
         if (!segmentId) throw new BadRequestException('segmentId is required');
         const schemaName = await this.tenantSchema(tenantId);
         await this.ensureDripTables(schemaName);
@@ -318,7 +318,7 @@ export class DripSequenceService {
         const matched = capped ? cap : leads.length;
 
         const phoneRe = /^\+?\d{7,15}$/;
-        let enrolled = 0, skippedOptOut = 0, skippedDuplicate = 0, skippedNoContact = 0;
+        let enrolled = 0, skippedOptOut = 0, skippedDuplicate = 0, skippedNoContact = 0, failed = 0;
         for (const lead of targets) {
             try {
                 const contactId = lead.contact_id;
@@ -332,14 +332,15 @@ export class DripSequenceService {
                 const enrollment = await this.enrollOne(tenantId, schemaName, sequenceId, contactId, steps, convId);
                 if (enrollment) enrolled++; else skippedDuplicate++;
             } catch (e: any) {
-                // A single bad lead must never abort the whole batch.
+                // A single bad lead must never abort the whole batch, but a real error is
+                // reported as `failed`, never as "no contact" (that hid AUT-17 entirely).
                 this.logger.warn(`[Prospecting] enroll failed for lead ${lead?.id}: ${e.message}`);
-                skippedNoContact++;
+                failed++;
             }
         }
 
-        this.logger.log(`[Prospecting] Segment ${segmentId} → seq ${sequenceId}: ${enrolled} enrolled / ${skippedOptOut} opt-out / ${skippedDuplicate} dup / ${skippedNoContact} skipped${capped ? ' (capped)' : ''}`);
-        return { matched, enrolled, skippedOptOut, skippedDuplicate, skippedNoContact, capped };
+        this.logger.log(`[Prospecting] Segment ${segmentId} → seq ${sequenceId}: ${enrolled} enrolled / ${skippedOptOut} opt-out / ${skippedDuplicate} dup / ${skippedNoContact} skipped / ${failed} failed${capped ? ' (capped)' : ''}`);
+        return { matched, enrolled, skippedOptOut, skippedDuplicate, skippedNoContact, failed, capped };
     }
 
     /** Insert one enrollment (dedup via the active unique index) and schedule its first
@@ -356,7 +357,7 @@ export class DripSequenceService {
             schemaName,
             `INSERT INTO drip_enrollments (sequence_id, contact_id, conversation_id, current_step, status)
              VALUES ($1::uuid, $2::uuid, $3::uuid, 0, 'active')
-             ON CONFLICT ON CONSTRAINT uidx_drip_enrollments_active DO NOTHING
+             ON CONFLICT (sequence_id, contact_id) WHERE status = 'active' DO NOTHING
              RETURNING *`,
             [sequenceId, contactId, conversationId],
         );

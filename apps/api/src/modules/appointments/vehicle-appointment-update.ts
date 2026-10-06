@@ -55,6 +55,9 @@ export async function updateVehicleAppointment(
     }
     const changed = await query<any[]>(`UPDATE appointments SET start_at=$2::timestamp, end_at=$3::timestamp,
         assigned_to=$4::uuid, status=$5::text, location=$6, notes=$7, updated_at=NOW(),
+        reminder_24h_sent=CASE WHEN start_at IS DISTINCT FROM $2::timestamp THEN false ELSE reminder_24h_sent END,
+        reminder_2h_sent=CASE WHEN start_at IS DISTINCT FROM $2::timestamp THEN false ELSE reminder_2h_sent END,
+        no_show_followed_up=CASE WHEN start_at IS DISTINCT FROM $2::timestamp THEN false ELSE no_show_followed_up END,
         completed_at=CASE WHEN $5::text='completed' THEN NOW() ELSE completed_at END,
         completed_by=CASE WHEN $5::text='completed' THEN 'staff' ELSE completed_by END
         WHERE id=$1::uuid AND updated_at::text=$8 AND metadata=$9::jsonb

@@ -1171,13 +1171,17 @@ export class ConversationsService {
                     // in our hands — but its timing is: it went out when the
                     // appointment row was flagged, so only the FIRST inbound
                     // after that flag can be answering it.
+                    // `end_at` is a naive wall clock of the TENANT's zone (the attendance cron
+                    // compares it in that zone), so the 48 h window is measured there too,
+                    // not in the database session's zone.
+                    const attendanceZone = (await this.regionalProfile?.timezoneFor(tenantId)) || 'UTC';
                     const pendingAppt = await this.prisma.executeInTenantSchema<any[]>(schemaName,
                         `SELECT a.id, a.service_name FROM appointments a
                          WHERE a.contact_id = $1::uuid
                            AND a.status IN ('pending', 'confirmed')
                            AND a.no_show_followed_up = true
-                           AND a.end_at < NOW()
-                           AND a.end_at > NOW() - INTERVAL '48 hours'
+                           AND a.end_at < (NOW() AT TIME ZONE $4::text)
+                           AND a.end_at > (NOW() AT TIME ZONE $4::text) - INTERVAL '48 hours'
                            AND NOT EXISTS (
                                SELECT 1 FROM messages m
                                 WHERE m.conversation_id = $2::uuid
@@ -1186,7 +1190,7 @@ export class ConversationsService {
                                   AND ($3::uuid IS NULL OR m.id <> $3::uuid)
                            )
                          ORDER BY a.end_at DESC LIMIT 1`,
-                        [contact.id, conversation.id, inboundMessageId || null],
+                        [contact.id, conversation.id, inboundMessageId || null, attendanceZone],
                     );
                     if (pendingAppt?.length > 0) {
                         const apptId = pendingAppt[0].id;

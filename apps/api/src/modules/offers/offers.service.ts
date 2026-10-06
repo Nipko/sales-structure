@@ -79,7 +79,7 @@ export class OffersService {
         const rows = await this.prisma.$queryRawUnsafe(
             `INSERT INTO "${schemaName}"."commercial_offers"
                 (tenant_id, course_id, campaign_id, offer_type, title, conditions_json, valid_from, valid_to, active)
-             VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::timestamp, $8::timestamp, $9)
+             VALUES ($1, $2::uuid, $3::uuid, $4, $5, $6::jsonb, $7::timestamp, $8::timestamp, $9)
              RETURNING id, course_id, campaign_id, offer_type, title, conditions_json, valid_from, valid_to, active, created_at`,
             tenantId,
             input.courseId ?? null,
@@ -102,8 +102,8 @@ export class OffersService {
         if (input.offerType !== undefined) { sets.push(`offer_type = $${idx++}`); params.push(input.offerType); }
         if (input.title !== undefined) { sets.push(`title = $${idx++}`); params.push(input.title); }
         if (input.conditions !== undefined) { sets.push(`conditions_json = $${idx++}::jsonb`); params.push(JSON.stringify(input.conditions)); }
-        if (input.courseId !== undefined) { sets.push(`course_id = $${idx++}`); params.push(input.courseId || null); }
-        if (input.campaignId !== undefined) { sets.push(`campaign_id = $${idx++}`); params.push(input.campaignId || null); }
+        if (input.courseId !== undefined) { sets.push(`course_id = $${idx++}::uuid`); params.push(input.courseId || null); }
+        if (input.campaignId !== undefined) { sets.push(`campaign_id = $${idx++}::uuid`); params.push(input.campaignId || null); }
         if (input.validFrom !== undefined) { sets.push(`valid_from = $${idx++}::timestamp`); params.push(input.validFrom || null); }
         if (input.validTo !== undefined) { sets.push(`valid_to = $${idx++}::timestamp`); params.push(input.validTo || null); }
         if (input.active !== undefined) { sets.push(`active = $${idx++}`); params.push(input.active); }

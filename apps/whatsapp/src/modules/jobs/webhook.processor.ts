@@ -71,6 +71,21 @@ export class WebhookProcessor extends WorkerHost {
         ['message', JSON.stringify({ phoneNumberId, message, contacts }), `msg:${message.id}`],
       );
 
+      // Not a customer turn (same rule as the API ingress): a reaction, a `system`
+      // notice and a `request_welcome` are audited above but never become a contact
+      // upsert or an agent turn — they used to arrive as the text "[reaction]" and
+      // get an answer. sticker/contacts/order/button/unsupported keep flowing.
+      if (message?.type === 'reaction' || message?.type === 'system' || message?.type === 'request_welcome') {
+        await this.prisma.executeInTenantSchema(
+          schemaName,
+          `UPDATE whatsapp_webhook_events
+              SET processing_status = 'processed', processed_at = NOW()
+            WHERE dedupe_key = $1`,
+          [`msg:${message.id}`],
+        ).catch(() => { /* best-effort stamp */ });
+        return;
+      }
+
       // ── 2. QUIÉN ESCRIBIÓ, QUE PUEDE NO TENER TELÉFONO ────────────────────
       //
       // `message.from` es un teléfono, y con los identificadores de usuario por

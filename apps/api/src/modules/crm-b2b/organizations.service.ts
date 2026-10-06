@@ -157,7 +157,7 @@ export class OrganizationsService {
         const schemaName = await this.schema(tenantId);
         await this.prisma.executeInTenantSchema(
             schemaName,
-            `UPDATE leads SET company_id = $2, updated_at = NOW() WHERE id = $1::uuid`,
+            `UPDATE leads SET company_id = $2::uuid, updated_at = NOW() WHERE id = $1::uuid`,
             [leadId, organizationId],
         );
     }

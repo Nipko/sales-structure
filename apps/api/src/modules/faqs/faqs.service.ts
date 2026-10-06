@@ -179,8 +179,19 @@ export class FaqsService {
         if (input.orderIndex !== undefined) { sets.push(`order_index = $${idx++}`); params.push(input.orderIndex); }
         if (input.isPublished !== undefined) { sets.push(`is_published = $${idx++}`); params.push(input.isPublished); }
         if (input.question !== undefined || input.answer !== undefined || input.category !== undefined) {
-            // Re-index search vector when text or category changed
-            sets.push(`search_tsv = to_tsvector('simple', question || ' ' || answer || ' ' || COALESCE(category, ''))`);
+            // Re-index from the NEW values. In an UPDATE every right-hand side reads the OLD
+            // row, so `question || answer` would index the text being replaced. Each changed
+            // field is therefore passed again, as its own typed parameter (reusing the SET
+            // parameter would make PostgreSQL deduce two different types for it).
+            const part = (value: string | null | undefined, column: string): string => {
+                if (value === undefined) return `COALESCE(${column}, '')`;
+                params.push(value);
+                return `COALESCE($${idx++}::text, '')`;
+            };
+            const q = part(input.question, 'question');
+            const a = part(input.answer, 'answer');
+            const c = part(input.category, 'category');
+            sets.push(`search_tsv = to_tsvector('simple', ${q} || ' ' || ${a} || ' ' || ${c})`);
         }
         params.push(id);
         const rows = await this.prisma.$queryRawUnsafe(

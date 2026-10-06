@@ -32,4 +32,31 @@ describe('ListingsService id validation', () => {
         await expect(service.getById(schemaName, listingId)).resolves.toEqual({ id: listingId });
         expect(prisma.executeInTenantSchema).toHaveBeenCalledTimes(1);
     });
+
+    // Customer read vs admin read: getById stays unfiltered for the panel;
+    // getAvailableById only hands the row over when search_listings would offer it.
+    it.each([
+        ['sold', { status: 'sold', is_active: true }],
+        ['rented', { status: 'rented', is_active: true }],
+        ['reserved', { status: 'reserved', is_active: true }],
+        ['inactive status', { status: 'inactive', is_active: true }],
+        ['deactivated', { status: 'available', is_active: false }],
+        ['null flag', { status: 'available', is_active: null }],
+        ['null status', { status: null, is_active: true }],
+    ])('getAvailableById never returns the row of a %s listing', async (_label, row) => {
+        const { service, prisma } = buildService();
+        prisma.executeInTenantSchema.mockResolvedValue([{ id: listingId, name: 'Casa', price: 1, ...row }]);
+
+        await expect(service.getAvailableById(schemaName, listingId)).resolves.toEqual({ state: 'unavailable' });
+        await expect(service.getById(schemaName, listingId)).resolves.toMatchObject({ name: 'Casa' });
+    });
+
+    it('getAvailableById returns an available, active listing and reports a missing one', async () => {
+        const { service, prisma } = buildService();
+        const row = { id: listingId, name: 'Casa', status: 'available', is_active: true };
+        prisma.executeInTenantSchema.mockResolvedValueOnce([row]).mockResolvedValueOnce([]);
+
+        await expect(service.getAvailableById(schemaName, listingId)).resolves.toEqual({ state: 'available', listing: row });
+        await expect(service.getAvailableById(schemaName, listingId)).resolves.toEqual({ state: 'not_found' });
+    });
 });

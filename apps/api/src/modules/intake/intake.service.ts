@@ -82,7 +82,7 @@ export class IntakeService {
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `INSERT INTO landing_pages (slug, course_id, campaign_id, title, subtitle, status)
-             VALUES ($1, $2, $3, $4, $5, $6)
+             VALUES ($1, $2::uuid, $3::uuid, $4, $5, $6)
              RETURNING *`,
              [
                  payload.slug,
@@ -201,7 +201,7 @@ export class IntakeService {
                 campaign_id, course_id, lead_id,
                 raw_payload_json, source_url, referrer,
                 utm_json, ip_address, user_agent
-             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+             ) VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6, $7, $8, $9, $10, $11)`,
             [
                 formDef.landing_page_id, formDefinitionId,
                 formDef.campaign_id, formDef.course_id, result.leadId,

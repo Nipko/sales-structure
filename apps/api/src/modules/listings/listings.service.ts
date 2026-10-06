@@ -10,6 +10,15 @@ function assertListingUuid(value: unknown): string {
     return value;
 }
 
+/**
+ * The one rule for "a customer may see / visit this listing": same predicate as
+ * `ListingsService.search` (`is_active = true AND status = 'available'`).
+ * Statuses in the schema: available | reserved | sold | rented | inactive.
+ */
+export function isListingBookable(row: { is_active?: unknown; status?: unknown } | null | undefined): boolean {
+    return !!row && row.is_active === true && row.status === 'available';
+}
+
 /** Tope de fotos por inmueble. El agente manda 3; el resto es para la web. */
 export const MAX_LISTING_IMAGES = 20;
 
@@ -113,6 +122,21 @@ export class ListingsService {
             [listingId],
         );
         return rows?.[0] || null;
+    }
+
+    /**
+     * Customer-facing read of ONE listing (agent tools). `getById` is the admin
+     * read and sees everything; the customer must only get a listing that
+     * `search` would also offer: active AND status `available`. A sold, rented,
+     * reserved or deactivated listing comes back WITHOUT its row, so no caller
+     * can leak its name, price or photos by forgetting to check the status.
+     */
+    async getAvailableById(schemaName: string, listingId: string): Promise<
+        { state: 'available'; listing: any } | { state: 'unavailable' } | { state: 'not_found' }
+    > {
+        const listing = await this.getById(schemaName, listingId);
+        if (!listing) return { state: 'not_found' };
+        return isListingBookable(listing) ? { state: 'available', listing } : { state: 'unavailable' };
     }
 
     async create(schemaName: string, data: any): Promise<any> {

@@ -188,7 +188,7 @@ export class AgentAvailabilityService {
                     if(!updated[0])return null;
                     await enqueueOperationalNoticesForTenantRoles(query,schemaName,{kind:'handoff.sla_escalated',
                         entityId:conv.id,contactId:updated[0].contact_id,conversationId:conv.id,
-                        roles:['tenant_admin','tenant_supervisor']});
+                        roles:['tenant_admin','tenant_supervisor'],revision:String(handoff.startedAt||'1')});
                     return updated[0].contact_id as string;
                 });
                 if(!committed)continue;

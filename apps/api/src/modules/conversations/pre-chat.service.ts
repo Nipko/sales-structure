@@ -62,7 +62,7 @@ export class PreChatService {
                 UPDATE pre_chat_forms SET is_active = false, updated_at = NOW() WHERE is_active = true RETURNING 1
             )
             INSERT INTO pre_chat_forms (tenant_id, name, fields_json, greeting_message, is_active)
-            VALUES ($1, 'default', $2, $3, $4)
+            VALUES ($1, 'default', $2::jsonb, $3, $4)
             RETURNING id, name, fields_json, greeting_message, is_active
         `, [
             tenantId,

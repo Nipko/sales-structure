@@ -652,8 +652,8 @@ export class ToursService {
                 throw new BadRequestException({
                     error: dateProblem,
                     message: dateProblem === 'departure_in_past'
-                        ? 'That departure date has already passed. No packages can be listed for it. Offer a future date.'
-                        : 'date must be a real calendar date (YYYY-MM-DD)',
+                        ? 'Esa fecha de salida ya pasó, así que no hay paquetes que listar para ella. Ofrece una fecha futura.'
+                        : 'La fecha debe ser una fecha real del calendario (AAAA-MM-DD).',
                 });
             }
             const requested = parsePartySize(params.partySize);

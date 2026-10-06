@@ -121,3 +121,49 @@ describe('InsuranceService contact integrity', () => {
     });
 });
 
+
+describe('InsuranceService applicant age', () => {
+    const planId = '11111111-1111-4111-8111-111111111111';
+    const ranged = {
+        id: planId, name: 'Vida Plus', insurance_type: 'vida', monthly_premium_min: 50000, monthly_premium_max: 150000,
+        currency: 'COP', min_age: 18, max_age: 60, is_active: true,
+    };
+    const build = (plan: any) => {
+        const query = jest.fn().mockResolvedValue([{ id: 'q1', monthly_premium: 1, annual_premium: 12 }]);
+        const prisma = {
+            executeInTenantSchema: jest.fn().mockResolvedValue([plan]),
+            transactionInTenantSchema: jest.fn(async (_s: string, cb: any) => cb(query)),
+        };
+        const service = new InsuranceService(prisma as any);
+        jest.spyOn(service as any, 'confirmQuote').mockResolvedValue(undefined);
+        return { service, prisma };
+    };
+
+    it.each([
+        [82, 'insurance_applicant_age_out_of_range'], [61, 'insurance_applicant_age_out_of_range'], [17, 'insurance_applicant_age_out_of_range'],
+        [undefined, 'insurance_applicant_age_required'], [null, 'insurance_applicant_age_required'],
+        [-3, 'insurance_applicant_age_invalid'], [Number.NaN, 'insurance_applicant_age_invalid'], [200, 'insurance_applicant_age_invalid'],
+        [' ', 'insurance_applicant_age_invalid'], [true, 'insurance_applicant_age_invalid'], ['abc', 'insurance_applicant_age_invalid'],
+    ])('refuses age %p with %s and stores nothing', async (age, code) => {
+        const { service, prisma } = build(ranged);
+        await expect(service.createQuote('t', { planId, applicantAge: age as any }))
+            .rejects.toMatchObject({ response: expect.objectContaining({ error: code }) });
+        expect(prisma.transactionInTenantSchema).not.toHaveBeenCalled();
+    });
+
+    it.each([[18], [39], [60], ['45' as any]])('quotes age %p', async age => {
+        const { service, prisma } = build(ranged);
+        await service.createQuote('t', { planId, applicantAge: age });
+        expect(prisma.transactionInTenantSchema).toHaveBeenCalledTimes(1);
+    });
+
+    it('asks for the age when the premium varies even if the plan has no age limits, and does not when nothing depends on it', async () => {
+        const open = { ...ranged, min_age: null, max_age: null };
+        await expect(build(open).service.createQuote('t', { planId }))
+            .rejects.toMatchObject({ response: expect.objectContaining({ error: 'insurance_applicant_age_required' }) });
+        const flat = { ...open, monthly_premium_max: 50000 };
+        const { service, prisma } = build(flat);
+        await service.createQuote('t', { planId });
+        expect(prisma.transactionInTenantSchema).toHaveBeenCalledTimes(1);
+    });
+});

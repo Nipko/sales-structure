@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
-import { RestaurantsService } from './restaurants.service';
+import { RestaurantsService, menuLabelCandidates, toLabelList } from './restaurants.service';
+import { MENU_LABEL_MATCHES, MENU_LABEL_MISSES } from './menu-label.cases';
 
 describe('RestaurantsService.createOrder', () => {
     const schemaName = 'tenant_restaurant';
@@ -206,5 +207,66 @@ describe('RestaurantsService.updateOrderStatus events', () => {
         expect(result.status).toBe('cancelled');
         expect(query).toHaveBeenCalledTimes(1);
         expect(eventEmitter.emit).not.toHaveBeenCalled();
+    });
+});
+
+describe('menu label normalisation and allergen filter', () => {
+    const intersects = (a: string, b: string) => {
+        const other = new Set(menuLabelCandidates(b));
+        return menuLabelCandidates(a).some(form => other.has(form));
+    };
+
+    it.each(MENU_LABEL_MATCHES)('typed %p matches the stored %p (both directions)', (typed, stored) => {
+        expect(intersects(typed, stored)).toBe(true);
+        expect(intersects(stored, typed)).toBe(true);
+    });
+
+    it.each(MENU_LABEL_MISSES)('typed %p does not match the different food %p', (typed, stored) => {
+        expect(intersects(typed, stored)).toBe(false);
+    });
+
+    it.each([[null], [undefined], [''], ['   ']])('a blank label (%p) has no candidates', raw => {
+        expect(menuLabelCandidates(raw)).toEqual([]);
+    });
+
+    it('keeps the plain form next to the rule results, so a French or English plural is never lost', () => {
+        expect(menuLabelCandidates('crustacés')).toEqual(expect.arrayContaining(['crustaces', 'crustace']));
+        expect(menuLabelCandidates('dulces')).toEqual(expect.arrayContaining(['dulces', 'dulce']));
+        expect(menuLabelCandidates('Nueces')).toEqual(['nuec', 'nuece', 'nueces', 'nuez']);
+    });
+
+    it('stores allergen and tag labels composed (NFC)', async () => {
+        const calls: Array<any[]> = [];
+        const prisma = { executeInTenantSchema: jest.fn(async (_s: string, _sql: string, params: any[]) => { calls.push(params); return [{}]; }) };
+        const service = new RestaurantsService(prisma as any, { emit: jest.fn() } as any);
+        jest.spyOn(service as any, 'writeCurrency').mockResolvedValue('COP');
+        await service.createItem('tenant_x', { name: 'Pan', price: 1, allergens: ['maní'], tags: ['piñon'] } as any);
+        expect(calls[0]).toEqual(expect.arrayContaining([JSON.stringify(['maní']), JSON.stringify(['piñon'])]));
+        await service.updateItem('tenant_x', 'id', { allergens: ['maní'] });
+        expect(calls[1]).toEqual(expect.arrayContaining([JSON.stringify(['maní'])]));
+    });
+
+    it.each([['mani', ['mani']], ['  ', []], [undefined, []], [['a', 3, 'b'], ['a', 'b']]])('toLabelList(%p)', (raw, expected) => {
+        expect(toLabelList(raw)).toEqual(expected);
+    });
+
+    it('accepts a single string as the allergen list', async () => {
+        const calls: Array<any[]> = [];
+        const prisma = { executeInTenantSchema: jest.fn(async (_s: string, _sql: string, params: any[]) => { calls.push(params); return []; }) };
+        const service = new RestaurantsService(prisma as any, { emit: jest.fn() } as any);
+        await service.searchMenu('tenant_x', { excludeAllergens: 'Nueces' });
+        expect(calls[0]).toEqual([['nuec', 'nuece', 'nueces', 'nuez']]);
+    });
+
+    it('builds a filter that keeps dishes without data and compares normalised labels', async () => {
+        const calls: Array<[string, any[]]> = [];
+        const prisma = { executeInTenantSchema: jest.fn(async (_s: string, sql: string, params: any[]) => { calls.push([sql, params]); return []; }) };
+        const service = new RestaurantsService(prisma as any, { emit: jest.fn() } as any);
+        await service.searchMenu('tenant_x', { excludeAllergens: ['Mariscos', '  ', ' GLÚTEN '], tag: 'Vegano' });
+        const [sql, params] = calls[0];
+        expect(sql).toContain('jsonb_typeof(mi.allergens)');
+        expect(sql).toContain('NOT EXISTS');
+        expect(params).toEqual([['vegano'], ['marisco', 'mariscos'], ['gluten']]);
+        expect(sql).toContain('normalize(');
     });
 });

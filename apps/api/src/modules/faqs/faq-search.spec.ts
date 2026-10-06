@@ -87,3 +87,59 @@ describe('FAQ search with added question details', () => {
         expect(query).toHaveBeenCalledTimes(1);
     });
 });
+
+describe('FAQ lexical matching of rephrased questions', () => {
+    const visitDuration = faq('dur', '¿Cuánto dura la visita guiada?', 'La visita guiada dura 45 minutos.');
+    const visitPrice = faq('price', '¿Cuánto cuesta la visita guiada?', 'La visita guiada cuesta 20 mil pesos y dura 45 minutos.');
+
+    it.each([
+        'cuanto tiempo dura la visita guiada',
+        'duración de la visita guiada?',
+        'cuál es la duración de la visita guiada',
+        'cuánto dura la visita guiada',
+        'cuanto duran las visitas guiadas',
+    ])('finds the duration FAQ for %p', query => {
+        expect(rankPartialFaqMatches([visitDuration], query, 3)).toEqual([visitDuration]);
+    });
+
+    it.each([
+        ['a price question', 'cuanto cuesta la visita guiada'],
+        ['another kind of visit', 'cuanto dura la visita privada'],
+        ['another topic with duration', 'duración de la entrega'],
+        ['only the duration word', 'cuanto tiempo dura'],
+        ['a different named topic', 'cuanto dura la visita guiada nocturna'],
+    ])('does not answer %s (%p) with the duration FAQ', (_label, query) => {
+        expect(rankPartialFaqMatches([visitDuration], query, 3)).toEqual([]);
+    });
+
+    // "time" and "last" are ordinary words: "what time" asks for a schedule and "the last tour" is
+    // the final one. Only "how long" / "dura" / "duracion" / "duration" mean duration.
+    const tourDuration = faq('tdur', 'How long does the tour last?', 'The tour lasts 90 minutes.');
+    const tourStart = faq('tstart', 'What time does the tour start?', 'The tour starts at 9 am.');
+    const arrival = faq('arr', '¿A qué hora y cuánto tiempo antes debo llegar al tour?', 'Llega 15 minutos antes de la hora del tour.');
+    const returns = faq('ret', '¿Cuánto tiempo tengo para devolver un producto?', 'Tienes 15 días para devolver tu producto.');
+
+    it.each([
+        ['How long does the tour last?', tourStart],
+        ['When is the last tour?', tourDuration],
+        ['What time is the tour?', tourDuration],
+        ['cuanto dura el tour', arrival],
+        ['cuanto dura el producto', returns],
+    ])('does not answer %p with an unrelated FAQ (%#)', (query, wrong) => {
+        expect(rankPartialFaqMatches([wrong], query, 3)).toEqual([]);
+    });
+
+    it.each([
+        ['How long does the tour last?', tourDuration],
+        ['how long is the tour', tourDuration],
+        ['What time does the tour start?', tourStart],
+        ['cuanto tiempo antes debo llegar al tour', arrival],
+    ])('still answers %p with its own FAQ', (query, right) => {
+        expect(rankPartialFaqMatches([right], query, 3)).toEqual([right]);
+    });
+
+    it('keeps each FAQ for its own question', () => {
+        expect(rankPartialFaqMatches([visitDuration, visitPrice], 'cuanto cuesta la visita guiada', 3)).toEqual([visitPrice]);
+        expect(rankPartialFaqMatches([visitPrice, visitDuration], 'cuanto tiempo dura la visita guiada', 3).map(f => f.id)).toEqual(['dur']);
+    });
+});

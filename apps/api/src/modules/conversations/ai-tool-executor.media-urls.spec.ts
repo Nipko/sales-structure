@@ -37,7 +37,7 @@ describe('AIToolExecutorService media URL resolution', () => {
             executeInTenantSchema: jest.fn().mockResolvedValue([]),
         };
         const propertiesService = { getById: jest.fn() };
-        const listingsService = { getById: jest.fn() };
+        const listingsService = { getById: jest.fn(), getAvailableById: jest.fn() };
         const toolExecutionControl = {
             preflight: jest.fn().mockResolvedValue({ allowed: true, policy: { externalEffect: 'none' } }),
             complete: jest.fn().mockResolvedValue(undefined),
@@ -144,10 +144,13 @@ describe('AIToolExecutorService media URL resolution', () => {
 
     it('absolutizes relative photos for a real-estate listing', async () => {
         const harness = createHarness();
-        harness.listingsService.getById.mockResolvedValue({
-            id: listingId,
-            name: 'Penthouse Chapinero',
-            images: [`/api/v1/media/file/${tenantId}/sala.webp`],
+        harness.listingsService.getAvailableById.mockResolvedValue({
+            state: 'available',
+            listing: {
+                id: listingId,
+                name: 'Penthouse Chapinero',
+                images: [`/api/v1/media/file/${tenantId}/sala.webp`],
+            },
         });
 
         const result = await run(harness, 'send_listing_image', { listingId });
@@ -198,7 +201,7 @@ describe('AIToolExecutorService media URL resolution', () => {
 
     it('answers an invalid listing id with a correctable error', async () => {
         const harness = createHarness();
-        harness.listingsService.getById.mockRejectedValue(
+        harness.listingsService.getAvailableById.mockRejectedValue(
             new BadRequestException('listingId must be a valid UUID'),
         );
 

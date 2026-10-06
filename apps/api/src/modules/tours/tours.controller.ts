@@ -135,8 +135,8 @@ export class ToursController {
     ) {
         if (!date) throw new BadRequestException('date is required (YYYY-MM-DD)');
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
-        const size = parseInt(partySize || '1', 10);
-        const data = await this.toursService.checkAvailability(schemaName, packageId, date, size);
+        // No default: a missing count answers `party_size_required`, not "available for 1".
+        const data = await this.toursService.checkAvailability(schemaName, packageId, date, partySize);
         return { success: true, data };
     }
 

@@ -11,7 +11,8 @@ describe('ToursService booking contact integrity', () => {
     const input = {
         packageId,
         contactId,
-        departureDate: '2026-09-01',
+        // Always in the future: a past departure is refused before any query.
+        departureDate: new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10),
         partySize: 2,
     };
 
@@ -88,6 +89,8 @@ describe('ToursService booking contact integrity', () => {
             // request cannot decrement inventory on its way to being rejected.
             expect.stringContaining('FROM tour_bookings'),
             expect.stringContaining('FROM tour_inventory'),
+            // No row for that date: is the package scheduled at all? (unlimited only if not)
+            expect.stringContaining('FROM tour_inventory WHERE package_id'),
             expect.stringContaining('INSERT INTO tour_bookings'),
         ]);
         expect(noticeWrites).toHaveBeenCalledTimes(1);
@@ -205,6 +208,81 @@ describe('ToursService booking contact integrity', () => {
         expect(execute.mock.calls.some(([, sql]) => (
             sql.includes('available_seats = available_seats +')
         ))).toBe(false);
+    });
+
+    it.each([
+        ['a departure in the past', { departureDate: '2020-01-01' }, 'departure_in_past'],
+        ['a malformed date', { departureDate: '2026-02-31' }, 'invalid_departure_date'],
+        ['a missing date', { departureDate: undefined }, 'invalid_departure_date'],
+    ])('createBooking refuses %s before opening a transaction', async (_label, patch, error) => {
+        const execute = jest.fn();
+        const { service, transactionInTenantSchema } = buildService(execute);
+
+        await expect(service.createBooking(schemaName, { ...input, ...patch } as any))
+            .rejects.toMatchObject({ response: expect.objectContaining({ error }) });
+        expect(transactionInTenantSchema).not.toHaveBeenCalled();
+    });
+
+    it('createBooking refuses a group below the package minimum and a date outside a scheduled package', async () => {
+        const run = async (pkg: any, scheduled: boolean) => {
+            const execute = jest.fn(async (_schema: string, sql: string) => {
+                if (sql.includes('FROM contacts')) return [{ id: contactId }];
+                if (sql.includes('FROM opportunities o')) return [];
+                if (sql.includes('FROM tour_packages')) return [{ id: packageId, is_active: true, price: 100, ...pkg }];
+                if (sql.includes('FROM tour_bookings')) return [];
+                if (sql.includes('FROM tour_inventory WHERE package_id')) return scheduled ? [{ '?column?': 1 }] : [];
+                if (sql.includes('FROM tour_inventory')) return [];
+                throw new Error(`should not reach: ${sql}`);
+            });
+            const { service } = buildService(execute);
+            return service.createBooking(schemaName, { ...input, partySize: 1 });
+        };
+
+        await expect(run({ min_party_size: 4 }, false)).rejects.toMatchObject({
+            response: expect.objectContaining({ error: 'party_size_too_small', minPartySize: 4 }),
+        });
+        await expect(run({ min_party_size: 1 }, true)).rejects.toMatchObject({
+            response: expect.objectContaining({ error: 'no_departure_on_date' }),
+        });
+    });
+
+    describe('checkAvailability', () => {
+        const future = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10);
+        const build = (rowsForDate: any[], scheduled: boolean, pkg: any = {}) => {
+            const execute = jest.fn(async (_schema: string, sql: string) => {
+                if (sql.includes('FROM tour_packages')) return [{ id: packageId, is_active: true, ...pkg }];
+                if (sql.includes('FROM tour_inventory WHERE package_id = $1::uuid AND is_active')) return scheduled ? [{}] : [];
+                if (sql.includes('FROM tour_inventory')) return rowsForDate;
+                throw new Error(`Unexpected SQL: ${sql}`);
+            });
+            return buildService(execute).service;
+        };
+
+        it.each([[undefined], [null], ['varios'], [0], [-2], [1.5], ['']])(
+            'never says available without a usable traveller count (%p)', async (partySize) => {
+                const result = await build([{ available_seats: 6 }], true).checkAvailability(schemaName, packageId, future, partySize);
+                expect(result).toMatchObject({ available: false, reason: 'party_size_required', seatsLeft: null });
+            });
+
+        it('accepts a numeric string count and checks the seats', async () => {
+            const service = build([{ available_seats: 3 }], true);
+            await expect(service.checkAvailability(schemaName, packageId, future, '2')).resolves.toEqual({ available: true, seatsLeft: 3 });
+            await expect(service.checkAvailability(schemaName, packageId, future, 4)).resolves.toMatchObject({ available: false, reason: 'not_enough_seats' });
+        });
+
+        it('refuses past dates and dates with no departure on a scheduled package, but not on an unscheduled one', async () => {
+            await expect(build([], true).checkAvailability(schemaName, packageId, '2020-01-01', 2))
+                .resolves.toMatchObject({ available: false, reason: 'departure_in_past' });
+            await expect(build([], true).checkAvailability(schemaName, packageId, future, 2))
+                .resolves.toMatchObject({ available: false, reason: 'no_departure_on_date' });
+            await expect(build([], false).checkAvailability(schemaName, packageId, future, 2))
+                .resolves.toEqual({ available: true, seatsLeft: 'unlimited' });
+        });
+
+        it('applies the package minimum', async () => {
+            await expect(build([{ available_seats: 9 }], true, { min_party_size: 4 }).checkAvailability(schemaName, packageId, future, 1))
+                .resolves.toMatchObject({ available: false, reason: 'party_size_too_small', minPartySize: 4 });
+        });
     });
 
     it('restores inventory exactly once under concurrent cancellation retries', async () => {

@@ -20,6 +20,29 @@ import {
 } from '../../common/utils/payment-policy.util';
 import { enqueueOperationalNotice } from '../operational-notices/operational-notice-outbox';
 
+/** A traveller count: a whole number >= 1, as a number or a numeric string. Anything else is "not given". */
+export function parsePartySize(value: unknown): number | null {
+    const n = typeof value === 'number' ? value
+        : typeof value === 'string' && /^\s*\d+\s*$/.test(value) ? Number(value)
+            : NaN;
+    return Number.isInteger(n) && n >= 1 ? n : null;
+}
+
+/**
+ * Why a departure date cannot be sold, or null when it can.
+ *
+ * The tenant's timezone is not known at this layer, so "today" is the UTC day
+ * minus one: no timezone west of UTC (the Americas) rejects a departure that is
+ * still today locally, and a trip from days ago is always refused.
+ */
+export function departureDateProblem(value: unknown, now: Date = new Date()): 'invalid_departure_date' | 'departure_in_past' | null {
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return 'invalid_departure_date';
+    const parsed = new Date(`${value}T00:00:00.000Z`);
+    if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) return 'invalid_departure_date';
+    const earliest = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) - 86_400_000;
+    return parsed.getTime() < earliest ? 'departure_in_past' : null;
+}
+
 /**
  * Tours / travel packages module — supports both same-day experiences
  * (duration_type='hours') and multi-day packages (duration_type='days').
@@ -230,20 +253,60 @@ export class ToursService {
 
     // ── Availability check ─────────────────────────────────────────
 
+    /**
+     * `partySize` arrives from an LLM tool call or a query string, so it is
+     * `unknown`: an absent or non-numeric count ("varios") is NEVER defaulted to
+     * a number, because "available" for an unknown group is a promise nobody
+     * checked. Without a count the answer is `party_size_required`.
+     */
     async checkAvailability(
         schemaName: string,
         packageId: string,
         departureDate: string,
-        partySize: number,
-    ): Promise<{ available: boolean; seatsLeft: number | 'unlimited'; reason?: string }> {
+        partySize: unknown,
+    ): Promise<{ available: boolean; seatsLeft: number | 'unlimited' | null; reason?: string; minPartySize?: number; message?: string }> {
         const pkg = await this.getPackage(schemaName, packageId);
         if (!pkg || !pkg.is_active) {
             return { available: false, seatsLeft: 0, reason: 'package_not_found' };
         }
-        if (partySize < (pkg.min_party_size || 1)) {
-            return { available: false, seatsLeft: 0, reason: 'party_size_too_small' };
+        const size = parsePartySize(partySize);
+        if (size === null) {
+            return {
+                available: false, seatsLeft: null, reason: 'party_size_required',
+                message: 'Ask the customer how many travellers there are (a whole number, at least 1) before answering about availability.',
+            };
         }
+        const minPartySize = Number(pkg.min_party_size) || 1;
+        if (size < minPartySize) {
+            return { available: false, seatsLeft: 0, reason: 'party_size_too_small', minPartySize };
+        }
+        const dateProblem = departureDateProblem(departureDate);
+        if (dateProblem) return { available: false, seatsLeft: 0, reason: dateProblem };
 
+        const departure = await this.departureStatus(schemaName, packageId, departureDate);
+        if (departure.kind === 'no_departure') {
+            return { available: false, seatsLeft: 0, reason: 'no_departure_on_date' };
+        }
+        // No inventory rows at all = unlimited capacity (custom packages)
+        if (departure.kind === 'unlimited') {
+            return { available: true, seatsLeft: 'unlimited' };
+        }
+        if (departure.seatsLeft < size) {
+            return { available: false, seatsLeft: departure.seatsLeft, reason: 'not_enough_seats' };
+        }
+        return { available: true, seatsLeft: departure.seatsLeft };
+    }
+
+    /**
+     * What the calendar says about ONE date of a package. "No inventory row =
+     * unlimited" holds only for a package that has no scheduled departures at
+     * all; once the operator loaded any departure, only those dates exist.
+     */
+    private async departureStatus(
+        schemaName: string,
+        packageId: string,
+        departureDate: string,
+    ): Promise<{ kind: 'unlimited' } | { kind: 'no_departure' } | { kind: 'seats'; seatsLeft: number }> {
         const inv = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `SELECT * FROM tour_inventory
@@ -251,17 +314,22 @@ export class ToursService {
              ORDER BY departure_time NULLS FIRST LIMIT 1`,
             [packageId, departureDate],
         );
+        if (inv?.length) return { kind: 'seats', seatsLeft: Number(inv[0].available_seats) };
+        return (await this.hasScheduledDepartures(schemaName, packageId))
+            ? { kind: 'no_departure' }
+            : { kind: 'unlimited' };
+    }
 
-        // No inventory row = unlimited capacity (custom packages)
-        if (!inv?.length) {
-            return { available: true, seatsLeft: 'unlimited' };
-        }
-
-        const seatsLeft = inv[0].available_seats;
-        if (seatsLeft < partySize) {
-            return { available: false, seatsLeft, reason: 'not_enough_seats' };
-        }
-        return { available: true, seatsLeft };
+    private async hasScheduledDepartures(
+        schemaName: string,
+        packageId: string,
+        query?: (sql: string, params?: any[]) => Promise<any>,
+    ): Promise<boolean> {
+        const sql = `SELECT 1 FROM tour_inventory WHERE package_id = $1::uuid AND is_active = true LIMIT 1`;
+        const rows = query
+            ? await query(sql, [packageId])
+            : await this.prisma.executeInTenantSchema<any[]>(schemaName, sql, [packageId]);
+        return !!rows?.length;
     }
 
     // ── Bookings ───────────────────────────────────────────────────
@@ -322,6 +390,15 @@ export class ToursService {
         if (adults < 0 || children < 0 || adults + children !== partySize) {
             throw new BadRequestException('adults + children must equal partySize');
         }
+        const dateProblem = departureDateProblem(data.departureDate);
+        if (dateProblem) {
+            throw new BadRequestException({
+                error: dateProblem,
+                message: dateProblem === 'departure_in_past'
+                    ? 'That departure date has already passed. Nothing was booked. Offer a future date.'
+                    : 'departureDate must be a real calendar date (YYYY-MM-DD). Nothing was booked.',
+            });
+        }
         const contactId = assertOptionalContactId(data.contactId);
         const created = await this.prisma.transactionInTenantSchema(schemaName, async (query) => {
             // Contact ownership, package state, inventory claim and booking
@@ -341,6 +418,16 @@ export class ToursService {
             );
             const pkg = packages?.[0];
             if (!pkg) throw new NotFoundException('Package not found');
+
+            const minPartySize = Number(pkg.min_party_size) || 1;
+            if (partySize < minPartySize) {
+                throw new BadRequestException({
+                    error: 'party_size_too_small',
+                    minPartySize,
+                    requested: partySize,
+                    message: `This package needs at least ${minPartySize} travellers. Nothing was booked.`,
+                });
+            }
 
             // The same contact, the same package, the same departure: one booking.
             //
@@ -403,6 +490,13 @@ export class ToursService {
                     });
                 }
                 inventoryId = inv.id;
+            } else if (await this.hasScheduledDepartures(schemaName, data.packageId, query)) {
+                // Unlimited capacity is only for a package with NO scheduled
+                // departures. This one runs on loaded dates, and this is not one.
+                throw new BadRequestException({
+                    error: 'no_departure_on_date',
+                    message: 'This package has no departure on that date. Nothing was booked. Offer one of its scheduled departures (get_package_details).',
+                });
             }
 
             // Pricing: inventory override > package price; child discount if applicable.
@@ -512,7 +606,7 @@ export class ToursService {
         durationType?: 'hours' | 'days';
         maxPrice?: number;
         date?: string;
-        partySize?: number;
+        partySize?: unknown;
     }): Promise<any[]> {
         const conditions: string[] = ['is_active = true'];
         const vals: any[] = [];
@@ -541,12 +635,29 @@ export class ToursService {
             vals,
         );
 
-        // If a date is provided, filter further by availability.
-        if (params.date && params.partySize) {
+        // If a date is provided, only packages that can actually be sold that
+        // day are listed. Without a traveller count the bar is "at least one
+        // seat" (and the package minimum), so a sold-out package, or one with
+        // no departure that day, is never presented as available.
+        if (params.date) {
+            const dateProblem = departureDateProblem(params.date);
+            if (dateProblem === 'invalid_departure_date') {
+                throw new BadRequestException('date must be a real calendar date (YYYY-MM-DD)');
+            }
+            if (dateProblem) return [];
+            const requested = parsePartySize(params.partySize);
             const filtered: any[] = [];
             for (const p of packages) {
-                const avail = await this.checkAvailability(schemaName, p.id, params.date, params.partySize);
-                if (avail.available) filtered.push({ ...p, available_seats: avail.seatsLeft });
+                const minPartySize = Number(p.min_party_size) || 1;
+                if (requested !== null && requested < minPartySize) continue;
+                const needed = requested ?? minPartySize;
+                const departure = await this.departureStatus(schemaName, p.id, params.date);
+                if (departure.kind === 'no_departure') continue;
+                if (departure.kind === 'unlimited') {
+                    filtered.push({ ...p, available_seats: 'unlimited' });
+                } else if (departure.seatsLeft >= needed) {
+                    filtered.push({ ...p, available_seats: departure.seatsLeft });
+                }
             }
             return filtered;
         }

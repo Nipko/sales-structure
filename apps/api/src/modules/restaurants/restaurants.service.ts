@@ -15,9 +15,15 @@ import { resolveNativeEvidenceOpportunity } from '../../common/utils/native-evid
 import type { EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
 import { OperationConfirmationService } from '../email-templates/operation-confirmation.service';
 import { escapeReceiptHtml, receiptMoney } from '../email-templates/receipt-format.util';
-import { menuLabelSql, normalizeMenuLabel } from './menu-label.util';
+import { menuLabelCandidates, menuLabelCandidatesSql } from './menu-label.util';
 
-export { normalizeMenuLabel };
+export { menuLabelCandidates };
+
+/** Allergen and tag labels are stored composed (NFC), so "n + combining tilde" never reaches the table. */
+const nfcLabels = (value: any): any => {
+    const list = value || [];
+    return Array.isArray(list) ? list.map(label => (typeof label === 'string' ? label.normalize('NFC') : label)) : list;
+};
 
 /** A model may send a single string where a list is expected. */
 export function toLabelList(value: unknown): string[] {
@@ -213,8 +219,8 @@ export class RestaurantsService {
                 data.price,
                 currency,
                 data.imageUrl || null,
-                JSON.stringify(data.allergens || []),
-                JSON.stringify(data.tags || []),
+                JSON.stringify(nfcLabels(data.allergens)),
+                JSON.stringify(nfcLabels(data.tags)),
                 prepTimeMinutes,
                 data.calories ?? null,
                 data.sortOrder ?? 0,
@@ -254,7 +260,7 @@ export class RestaurantsService {
         for (const [k, def] of Object.entries(map)) {
             if (k in data) {
                 let value = data[k];
-                if (def.cast === '::jsonb') value = JSON.stringify(value || []);
+                if (def.cast === '::jsonb') value = JSON.stringify(nfcLabels(value));
                 fields.push(`${def.col} = $${i}${def.cast || ''}`);
                 values.push(value);
                 i++;
@@ -302,10 +308,11 @@ export class RestaurantsService {
             params.push(opts.category);
             i++;
         }
-        if (opts.tag) {
-            // Same normalised comparison as allergens: "Vegano" must find a dish tagged "vegano".
-            where.push(`EXISTS (SELECT 1 FROM jsonb_array_elements_text(CASE WHEN jsonb_typeof(mi.tags) = 'array' THEN mi.tags ELSE '[]'::jsonb END) AS te(v) WHERE ${menuLabelSql('te.v')} = $${i}::text)`);
-            params.push(normalizeMenuLabel(opts.tag));
+        const tagForms = menuLabelCandidates(opts.tag);
+        if (tagForms.length > 0) {
+            // Same candidate matching as allergens: "Vegano" must find a dish tagged "vegano".
+            where.push(`EXISTS (SELECT 1 FROM jsonb_array_elements_text(CASE WHEN jsonb_typeof(mi.tags) = 'array' THEN mi.tags ELSE '[]'::jsonb END) AS te(v) WHERE ${menuLabelCandidatesSql('te.v')} && $${i}::text[])`);
+            params.push(tagForms);
             i++;
         }
         if (opts.maxPrice !== undefined) {
@@ -322,9 +329,10 @@ export class RestaurantsService {
             // not to present it as safe. Dropping them would empty almost every menu, because
             // every dish is created with allergens = '[]'. A bare JSON string counts as one entry.
             for (const a of excluded) {
-                const wanted = normalizeMenuLabel(a);
-                if (!wanted) continue;
-                where.push(`NOT EXISTS (SELECT 1 FROM jsonb_array_elements_text(CASE jsonb_typeof(mi.allergens) WHEN 'array' THEN mi.allergens WHEN 'string' THEN jsonb_build_array(mi.allergens) ELSE '[]'::jsonb END) AS ae(v) WHERE ${menuLabelSql('ae.v')} = $${i}::text)`);
+                const wanted = menuLabelCandidates(a);
+                if (wanted.length === 0) continue;
+                // Excluded when the candidate forms of ANY stored allergen intersect the customer's.
+                where.push(`NOT EXISTS (SELECT 1 FROM jsonb_array_elements_text(CASE jsonb_typeof(mi.allergens) WHEN 'array' THEN mi.allergens WHEN 'string' THEN jsonb_build_array(mi.allergens) ELSE '[]'::jsonb END) AS ae(v) WHERE ${menuLabelCandidatesSql('ae.v')} && $${i}::text[])`);
                 params.push(wanted);
                 i++;
             }

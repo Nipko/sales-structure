@@ -30,7 +30,7 @@ import { ToursService } from '../tours/tours.service';
 import { TreatmentPlansService } from '../treatment-plans/treatment-plans.service';
 import { ListingsService } from '../listings/listings.service';
 import { PetsService } from '../pets/pets.service';
-import { RestaurantsService, normalizeMenuLabel, toLabelList } from '../restaurants/restaurants.service';
+import { RestaurantsService, menuLabelCandidates, toLabelList } from '../restaurants/restaurants.service';
 import { GymsService } from '../gyms/gyms.service';
 import { EducationService } from '../education/education.service';
 import { InsuranceService } from '../insurance/insurance.service';
@@ -4732,7 +4732,7 @@ export class AIToolExecutorService {
             if (!items.length) {
                 return { items: [], message: 'No items match those criteria. Suggest broadening the search.' };
             }
-            const filtering = excludeAllergens.some(a => normalizeMenuLabel(a) !== '');
+            const filtering = excludeAllergens.some(a => menuLabelCandidates(a).length > 0);
             const allergensOf = (raw: unknown): string[] => Array.isArray(raw)
                 ? raw.map(String).filter(a => a.trim() !== '')
                 : typeof raw === 'string' && raw.trim() ? [raw] : [];

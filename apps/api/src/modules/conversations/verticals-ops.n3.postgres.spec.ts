@@ -2,9 +2,9 @@ import { randomUUID } from 'crypto';
 import { GymsService } from '../gyms/gyms.service';
 import { InsuranceService } from '../insurance/insurance.service';
 import { RepairOrdersService } from '../repair-orders/repair-orders.service';
-import { RestaurantsService, normalizeMenuLabel } from '../restaurants/restaurants.service';
-import { menuLabelSql } from '../restaurants/menu-label.util';
-import { MENU_LABEL_CASES } from '../restaurants/menu-label.cases';
+import { RestaurantsService } from '../restaurants/restaurants.service';
+import { menuLabelCandidates, menuLabelCandidatesSql } from '../restaurants/menu-label.util';
+import { MENU_LABEL_ALL, MENU_LABEL_MATCHES, MENU_LABEL_MISSES } from '../restaurants/menu-label.cases';
 import { PropertiesService } from '../vacation-rental/properties.service';
 import { CRM_BASE_TABLES, N3_DATABASE_URL, openLive, seedCustomer } from './__fixtures__/n3-live-harness';
 
@@ -145,12 +145,52 @@ import { CRM_BASE_TABLES, N3_DATABASE_URL, openLive, seedCustomer } from './__fi
         expect(result.items.map((i: any) => i.name)).toEqual(['Pollo asado']);
     });
 
-    it('REST-ALLERGEN: the SQL normaliser gives the same label as the JavaScript one for every case of the shared table', async () => {
-        for (const [raw, expected] of MENU_LABEL_CASES) {
-            const [row] = await h.q<any[]>(`SELECT ${menuLabelSql('$1::text')} AS v`, [raw]);
-            expect([raw, row.v]).toEqual([raw, expected]);
-            expect(normalizeMenuLabel(raw)).toBe(expected);
+    it('REST-ALLERGEN: PostgreSQL 13+ (normalize(..., NFC)) and the SQL candidates equal the JavaScript ones for every shared label', async () => {
+        const [{ v }] = await h.q<any[]>(`SELECT current_setting('server_version_num') AS v`);
+        expect(Number(v)).toBeGreaterThanOrEqual(130000);
+        for (const raw of MENU_LABEL_ALL) {
+            const [row] = await h.q<any[]>(`SELECT ${menuLabelCandidatesSql('$1::text')} AS v`, [raw]);
+            expect([raw, [...row.v].sort()]).toEqual([raw, menuLabelCandidates(raw)]);
         }
+    });
+
+    it('REST-ALLERGEN: every typed/stored pair of the shared table excludes the dish, and the different foods do not', async () => {
+        const stored = [...new Set(MENU_LABEL_MATCHES.flatMap(([a, b]) => [a, b]).concat(MENU_LABEL_MISSES.flatMap(([a, b]) => [a, b])))];
+        const nameOf = new Map(stored.map((label, n) => [label, `Plato${String(n).padStart(3, '0')}x`]));
+        for (const label of stored) await dish(nameOf.get(label)!, 10000, { allergens: [label] });
+        const C = await seedCustomer(h.q, 'Cliente');
+        // get_menu is capped at 30 dishes, so each question is narrowed to the one dish under test.
+        const offered = async (typed: string, label: string) => {
+            const name = nameOf.get(label)!;
+            const result = await h.call(C.contactId, C.conversationId, 'get_menu', { query: name, excludeAllergens: [typed] }, scope);
+            return (result.items ?? []).some((i: any) => i.name === name);
+        };
+        const failures: string[] = [];
+        for (const [typed, kept] of MENU_LABEL_MATCHES) {
+            for (const [from, to] of [[typed, kept], [kept, typed]]) {
+                if (await offered(from, to)) failures.push(`typed ${JSON.stringify(from)} still offers ${JSON.stringify(to)}`);
+            }
+        }
+        for (const [typed, other] of MENU_LABEL_MISSES) {
+            if (!(await offered(typed, other))) failures.push(`typed ${JSON.stringify(typed)} wrongly hides ${JSON.stringify(other)}`);
+        }
+        expect(failures).toEqual([]);
+    });
+
+    it('REST-ALLERGEN: an allergen stored decomposed (NFD) in the table is still excluded', async () => {
+        await dish('Sopa', 9000, { allergens: [] });
+        await h.q(`UPDATE menu_items SET allergens = $1::jsonb WHERE name = 'Sopa'`, [JSON.stringify(['maní'])]);
+        const C = await seedCustomer(h.q, 'Cliente');
+        const result = await h.call(C.contactId, C.conversationId, 'get_menu', { excludeAllergens: ['maní'] }, scope);
+        expect(result.items ?? []).toEqual([]);
+    });
+
+    it('REST-ALLERGEN: a dietary tag is matched the same way', async () => {
+        await dish('Ensalada', 9000, { allergens: [] });
+        await h.q(`UPDATE menu_items SET tags = $1::jsonb WHERE name = 'Ensalada'`, [JSON.stringify(['Veganos'])]);
+        const C = await seedCustomer(h.q, 'Cliente');
+        const result = await h.call(C.contactId, C.conversationId, 'get_menu', { tag: 'vegano' }, scope);
+        expect(result.items.map((i: any) => i.name)).toEqual(['Ensalada']);
     });
 
     it('REST-ORDER: place_order prices every line from the menu, ignoring the price the customer or model sent', async () => {

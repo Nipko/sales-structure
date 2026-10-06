@@ -21,7 +21,7 @@ describe('N3 DEFECT: Telegram edited message', () => {
 
     beforeEach(() => {
         queued.length = 0; claimed.clear();
-        const adapter = new TelegramAdapter();
+        const adapter = new TelegramAdapter({ get: () => undefined } as any);
         const bot = { channelType: 'telegram', accountId: 'tienda_bot', tenantId: 'tenant-a', isActive: true, accessToken: 'encrypted_ref', metadata: { webhookSecret: SECRET } };
         controller = Object.create(ChannelsController.prototype);
         Object.assign(controller, {

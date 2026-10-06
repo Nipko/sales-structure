@@ -51,7 +51,7 @@ export class MacrosService {
 
         const result = await this.prisma.executeInTenantSchema<any[]>(schema, `
             INSERT INTO macros (name, description, actions_json)
-            VALUES ($1, $2, $3)
+            VALUES ($1, $2, $3::jsonb)
             RETURNING *
         `, [
             data.name,
@@ -84,7 +84,7 @@ export class MacrosService {
             params.push(data.description);
         }
         if (data.actionsJson !== undefined) {
-            setClauses.push(`actions_json = $${n++}`);
+            setClauses.push(`actions_json = $${n++}::jsonb`);
             params.push(JSON.stringify(data.actionsJson));
         }
 

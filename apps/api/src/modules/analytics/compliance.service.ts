@@ -63,7 +63,7 @@ export class ComplianceService {
         const rows = await this.prisma.transactionInTenantSchema<any>(schema, async (query) => {
             const inserted = await query<any[]>(`
             INSERT INTO opt_out_records (lead_id, phone, channel, trigger_msg, detected_from, status, created_at)
-            VALUES ($1, $2, $3, $4, $5, 'pending', NOW())
+            VALUES ($1::uuid, $2, $3, $4, $5, 'pending', NOW())
             ON CONFLICT DO NOTHING
             RETURNING *
             `, [leadId || null, phone || null, channel, triggerMessage, detectedFrom]);

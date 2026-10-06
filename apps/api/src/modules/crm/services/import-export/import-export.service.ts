@@ -264,7 +264,7 @@ export class ImportExportService {
                              last_name = COALESCE($2, last_name),
                              email = COALESCE($3, email),
                              stage = $4,
-                             company_id = COALESCE($5, company_id),
+                             company_id = COALESCE($5::uuid, company_id),
                              is_vip = $6,
                              preferred_contact = $7,
                              utm_source = COALESCE($8, utm_source),
@@ -308,7 +308,7 @@ export class ImportExportService {
                             first_name, last_name, phone, phone_normalized, email, stage,
                             company_id, is_vip, preferred_contact, utm_source, utm_medium, utm_campaign, utm_content,
                             metadata, created_at, updated_at
-                         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb, NOW(), NOW())`,
+                         ) VALUES ($1, $2, $3, $4, $5, $6, $7::uuid, $8, $9, $10, $11, $12, $13, $14::jsonb, NOW(), NOW())`,
                         [
                             row.first_name || null,
                             row.last_name || null,

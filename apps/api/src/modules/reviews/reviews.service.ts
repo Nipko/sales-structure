@@ -225,7 +225,7 @@ export class ReviewsService {
             await this.prisma.executeInTenantSchema(
                 schemaName,
                 `INSERT INTO gbp_reviews (review_name, reviewer_name, reviewer_photo, rating, comment, create_time, reply_comment, reply_status, synced_at)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+                 VALUES ($1, $2, $3, $4, $5, $6::timestamptz, $7, $8, NOW())
                  ON CONFLICT (review_name) DO UPDATE SET
                     rating = EXCLUDED.rating, comment = EXCLUDED.comment,
                     reply_comment = EXCLUDED.reply_comment,

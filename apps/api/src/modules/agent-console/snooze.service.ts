@@ -39,7 +39,7 @@ export class SnoozeService {
 
         // Update conversation with snooze time
         await this.prisma.executeInTenantSchema(schema,
-            `UPDATE conversations SET snoozed_until = $1, status = 'snoozed', updated_at = NOW() WHERE id = $2::uuid`,
+            `UPDATE conversations SET snoozed_until = $1::timestamp, status = 'snoozed', updated_at = NOW() WHERE id = $2::uuid`,
             [snoozeUntil.toISOString(), conversationId],
         );
 

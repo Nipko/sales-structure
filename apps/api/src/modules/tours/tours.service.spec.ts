@@ -270,6 +270,28 @@ describe('ToursService booking contact integrity', () => {
             await expect(service.checkAvailability(schemaName, packageId, future, 4)).resolves.toMatchObject({ available: false, reason: 'not_enough_seats' });
         });
 
+        it.each([[undefined], [null], ['varios']])(
+            'reports a past date before asking for the traveller count (%p)', async (partySize) => {
+                await expect(build([], true).checkAvailability(schemaName, packageId, '2020-01-01', partySize))
+                    .resolves.toMatchObject({ available: false, reason: 'departure_in_past' });
+                await expect(build([], true).checkAvailability(schemaName, packageId, '2026-02-31', partySize))
+                    .resolves.toMatchObject({ available: false, reason: 'invalid_departure_date' });
+            });
+
+        it('still asks for the traveller count when the date is fine', async () => {
+            await expect(build([], true).checkAvailability(schemaName, packageId, future, undefined))
+                .resolves.toMatchObject({ available: false, reason: 'party_size_required' });
+        });
+
+        it('searchPackages names the problem of a past or malformed date instead of returning an empty list', async () => {
+            const execute = jest.fn(async () => [{ id: packageId, is_active: true }]);
+            const { service } = buildService(execute);
+            await expect(service.searchPackages(schemaName, { destination: 'Cartagena', date: '2020-01-01' }))
+                .rejects.toMatchObject({ response: expect.objectContaining({ error: 'departure_in_past' }) });
+            await expect(service.searchPackages(schemaName, { destination: 'Cartagena', date: '2026-02-31' }))
+                .rejects.toMatchObject({ response: expect.objectContaining({ error: 'invalid_departure_date' }) });
+        });
+
         it('refuses past dates and dates with no departure on a scheduled package, but not on an unscheduled one', async () => {
             await expect(build([], true).checkAvailability(schemaName, packageId, '2020-01-01', 2))
                 .resolves.toMatchObject({ available: false, reason: 'departure_in_past' });

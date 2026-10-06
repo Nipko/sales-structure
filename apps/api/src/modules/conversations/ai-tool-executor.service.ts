@@ -4380,6 +4380,12 @@ export class AIToolExecutorService {
                 })),
             };
         } catch (e: any) {
+            // A date that cannot be sold is not a failed search: say which problem it is, so the
+            // model asks for another date instead of claiming it cannot search.
+            const body = e instanceof BadRequestException ? e.getResponse() as { error?: string; message?: string } : null;
+            if (body && (body.error === 'departure_in_past' || body.error === 'invalid_departure_date')) {
+                return { packages: [], reason: body.error, message: body.message };
+            }
             return this.safeToolFailure('search_packages', e, 'read');
         }
     }
@@ -4544,8 +4550,9 @@ export class AIToolExecutorService {
                 minAreaM2: args.minAreaM2,
                 limit: 8,
             });
+            const found = listings || [];
             return {
-                listings: (listings || []).map((l: any) => ({
+                listings: found.map((l: any) => ({
                     id: l.id,
                     name: l.name,
                     transactionType: l.transaction_type,
@@ -4562,6 +4569,10 @@ export class AIToolExecutorService {
                     description: l.description,
                     status: l.status,
                 })),
+                // The search ran; an empty list is an answer, not an outage.
+                ...(found.length === 0 ? {
+                    message: 'No hay inmuebles con esos criterios. La búsqueda se hizo correctamente: dilo así y ofrece ajustar zona, presupuesto o tipo de inmueble.',
+                } : {}),
             };
         } catch (e: any) {
             return this.safeToolFailure('search_listings', e, 'read');

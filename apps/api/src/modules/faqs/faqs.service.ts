@@ -11,7 +11,7 @@ import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-eve
 import { structuredKnowledgeRelation, type StructuredKnowledgeCapture } from '../evaluation-revision/evaluation-structured-knowledge';
 import { onboardingOnceKey } from '@parallext/shared';
 import { recordOnboardingEvent } from '../../common/utils/onboarding-event.util';
-import { faqSearchTerms, rankPartialFaqMatches } from './faq-search';
+import { faqSearchTerms, rankPartialFaqMatches, stripFaqQueryNoise } from './faq-search';
 
 /**
  * Plegado de diacríticos para la búsqueda de FAQs.
@@ -224,6 +224,24 @@ export class FaqsService {
         tenantId: string,
         query: string,
         limit = 5,
+        executionContext?: ServiceExecutionContext,
+        captured?: StructuredKnowledgeCapture,
+    ): Promise<FAQ[]> {
+        // The original message goes first, exactly as before. Only when it finds nothing is
+        // it retried without the codes a customer pastes next to the question (a label
+        // prefix `XXX_YYY:` and what precedes it, `_` tokens, long numbers): `plainto_tsquery`
+        // demands every word and no FAQ contains them.
+        const found = await this.searchOnce(tenantId, query, limit, executionContext, captured);
+        if (found.length) return found;
+        const cleaned = stripFaqQueryNoise(query);
+        if (!cleaned || cleaned === query.trim()) return [];
+        return this.searchOnce(tenantId, cleaned, limit, executionContext, captured);
+    }
+
+    private async searchOnce(
+        tenantId: string,
+        query: string,
+        limit: number,
         executionContext?: ServiceExecutionContext,
         captured?: StructuredKnowledgeCapture,
     ): Promise<FAQ[]> {

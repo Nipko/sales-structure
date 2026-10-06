@@ -269,6 +269,10 @@ export class ToursService {
         if (!pkg || !pkg.is_active) {
             return { available: false, seatsLeft: 0, reason: 'package_not_found' };
         }
+        // The date comes first: a departure that already passed (or is not a date) is
+        // the answer whatever the group size, and asking "for how many?" about it wastes a turn.
+        const dateProblem = departureDateProblem(departureDate);
+        if (dateProblem) return { available: false, seatsLeft: 0, reason: dateProblem };
         const size = parsePartySize(partySize);
         if (size === null) {
             return {
@@ -280,8 +284,6 @@ export class ToursService {
         if (size < minPartySize) {
             return { available: false, seatsLeft: 0, reason: 'party_size_too_small', minPartySize };
         }
-        const dateProblem = departureDateProblem(departureDate);
-        if (dateProblem) return { available: false, seatsLeft: 0, reason: dateProblem };
 
         const departure = await this.departureStatus(schemaName, packageId, departureDate);
         if (departure.kind === 'no_departure') {
@@ -644,10 +646,16 @@ export class ToursService {
         // no departure that day, is never presented as available.
         if (params.date) {
             const dateProblem = departureDateProblem(params.date);
-            if (dateProblem === 'invalid_departure_date') {
-                throw new BadRequestException('date must be a real calendar date (YYYY-MM-DD)');
+            // Typed, like `createBooking`: an empty list with no reason read as "I cannot
+            // search" to the model. The tool turns this into `{ packages: [], reason }`.
+            if (dateProblem) {
+                throw new BadRequestException({
+                    error: dateProblem,
+                    message: dateProblem === 'departure_in_past'
+                        ? 'Esa fecha de salida ya pasó, así que no hay paquetes que listar para ella. Ofrece una fecha futura.'
+                        : 'La fecha debe ser una fecha real del calendario (AAAA-MM-DD).',
+                });
             }
-            if (dateProblem) return [];
             const requested = parsePartySize(params.partySize);
             const filtered: any[] = [];
             for (const p of packages) {

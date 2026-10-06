@@ -1,5 +1,5 @@
 import type { FAQ } from '@parallext/shared';
-import { faqSearchTerms, rankPartialFaqMatches } from './faq-search';
+import { faqSearchTerms, rankPartialFaqMatches, stripFaqQueryNoise } from './faq-search';
 import { FaqsService } from './faqs.service';
 import { AGENT_TEST_EXECUTION_CONTEXT } from '../../common/types/execution-context';
 import { sealStructuredKnowledgeCapture } from '../evaluation-revision/evaluation-structured-knowledge';
@@ -141,5 +141,122 @@ describe('FAQ lexical matching of rephrased questions', () => {
     it('keeps each FAQ for its own question', () => {
         expect(rankPartialFaqMatches([visitDuration, visitPrice], 'cuanto cuesta la visita guiada', 3)).toEqual([visitPrice]);
         expect(rankPartialFaqMatches([visitPrice, visitDuration], 'cuanto tiempo dura la visita guiada', 3).map(f => f.id)).toEqual(['dur']);
+    });
+});
+
+describe('FAQ search with identifier noise in the message', () => {
+    const warranty = faq('warranty', '¿Cuál es el plazo de garantía QA del audífono de prueba?',
+        'El plazo de garantía QA del audífono de prueba es de 72 días calendario desde la entrega.');
+    const unrelatedFaq = faq('hours', '¿Cuál es el horario de atención?', 'Atendemos de lunes a viernes de 9 a 18.');
+    const prefixed = 'Prueba QA QA_C20261006P_T01_1: ¿Cuál es el plazo de garantía QA del audífono de prueba?';
+
+    // Minimal emulation of the SQL: `plainto_tsquery` requires EVERY word, the fallback accepts ANY term.
+    const fold = (v: string) => v.toLowerCase().normalize('NFKD').replace(/\p{M}/gu, '');
+    const words = (v: string) => fold(v).match(/[\p{L}\p{N}_]+/gu) || [];
+    const fakeDb = (corpus: FAQ[]) => jest.fn(async (sql: string, q: string) => {
+        const raw = (f: FAQ) => ({ id: f.id, question: f.question, answer: f.answer, is_published: true });
+        const doc = (f: FAQ) => new Set(words(`${f.question} ${f.answer}`));
+        if (sql.includes('plainto_tsquery')) {
+            const need = words(q);
+            const text = (f: FAQ) => fold(`${f.question} ${f.answer}`);
+            // plainto_tsquery (every word) OR the ILIKE '%query%' of the real SQL.
+            return corpus.filter(f => (need.length && need.every(w => doc(f).has(w))) || text(f).includes(fold(q))).map(raw);
+        }
+        const any = q.split(' | ');
+        return corpus.filter(f => any.some(w => doc(f).has(w))).map(raw);
+    });
+    const service = (corpus: FAQ[]) => {
+        const query = fakeDb(corpus);
+        return { query, svc: new FaqsService({ $queryRawUnsafe: query } as any, {} as any,
+            { getSchemaName: jest.fn().mockResolvedValue('tenant_faq_search') } as any) };
+    };
+
+    it('drops a label prefix with everything before it, tokens with an underscore and long numbers', () => {
+        expect(stripFaqQueryNoise(prefixed)).toBe('¿Cuál es el plazo de garantía QA del audífono de prueba?');
+        expect(stripFaqQueryNoise('Mi pedido 123456789 llegó roto, ¿cuál es la garantía?')).toBe('Mi pedido llegó roto, ¿cuál es la garantía?');
+        expect(stripFaqQueryNoise('Mi ref ABC_12 llegó roto, ¿hacen envíos?')).toBe('Mi ref llegó roto, ¿hacen envíos?');
+        expect(stripFaqQueryNoise('¿Cuántos días tiene el plan 2025?')).toBe('¿Cuántos días tiene el plan 2025?');
+    });
+
+    it.each(['24h', '4x4', '2x1', 'A123', 'COVID19', 'COVID-19', '2da', '1er', '4G', '5G', 'mp3', '10M'])(
+        'keeps the legitimate letter/digit token %s', token => {
+            const text = `¿Tienen ${token} disponible?`;
+            expect(stripFaqQueryNoise(text)).toBe(text);
+        });
+
+    it('keeps the topic of a question that follows a statement (no last-question shortcut)', () => {
+        expect(stripFaqQueryNoise('Compré el tour Faro Rojo ayer. ¿Cuánto dura?')).toBe('Compré el tour Faro Rojo ayer. ¿Cuánto dura?');
+    });
+
+    it('drops the text before a label only when it is made of generic markers', () => {
+        expect(stripFaqQueryNoise('Pedido ORD_123: ¿cuándo llega?')).toBe('¿cuándo llega?');
+        expect(stripFaqQueryNoise('Tour Faro Rojo, reserva RES_77: ¿Cuánto dura?')).toBe('Tour Faro Rojo ¿Cuánto dura?');
+        expect(stripFaqQueryNoise('Plan Premium REF_9: ¿Cuánto cuesta?')).toBe('Plan Premium ¿Cuánto cuesta?');
+        expect(stripFaqQueryNoise('¿Cuánto cuesta el envío? ref ORD_1: gracias')).toContain('¿Cuánto cuesta el envío?');
+    });
+
+    it('never answers with another topic when a label follows the topic', async () => {
+        const faroAzul = faq('azul', '¿Cuánto dura el tour Faro Azul?', 'El tour Faro Azul dura 3 horas.');
+        const basic = faq('basic', '¿Cuánto cuesta el plan Básico?', 'El plan Básico cuesta 10 dólares.');
+        const ship = faq('ship', '¿Cuánto cuesta el envío?', 'El envío cuesta 5 dólares.');
+        const { svc } = service([faroAzul, basic, ship]);
+        expect(await svc.search('tenant', 'Tour Faro Rojo, reserva RES_77: ¿Cuánto dura?', 3, AGENT_TEST_EXECUTION_CONTEXT)).toEqual([]);
+        expect(await svc.search('tenant', 'Plan Premium REF_9: ¿Cuánto cuesta?', 3, AGENT_TEST_EXECUTION_CONTEXT)).toEqual([]);
+        const trailing = await svc.search('tenant', '¿Cuánto cuesta el envío? ref ORD_1: gracias', 3, AGENT_TEST_EXECUTION_CONTEXT);
+        expect(trailing.every(r => r.id === 'ship')).toBe(true);
+    });
+
+    it('still cleans a generic marker before the label', async () => {
+        const arrival = faq('arrival', '¿Cuándo llega mi pedido?', 'Llega en 3 días hábiles.');
+        const { svc } = service([unrelatedFaq, arrival]);
+        expect((await svc.search('tenant', 'Pedido ORD_123: ¿cuándo llega?', 3, AGENT_TEST_EXECUTION_CONTEXT)).map(r => r.id)).toEqual(['arrival']);
+    });
+
+    it('does not answer another topic when the question follows a statement', async () => {
+        const faroAzul = faq('azul', '¿Cuánto dura el tour Faro Azul?', 'El tour Faro Azul dura 3 horas.');
+        const { svc } = service([faroAzul]);
+        expect(await svc.search('tenant', 'Compré el tour Faro Rojo ayer. ¿Cuánto dura?', 3, AGENT_TEST_EXECUTION_CONTEXT)).toEqual([]);
+        const basic = faq('basic', '¿Cuánto cuesta el plan Básico?', 'El plan Básico cuesta 10 dólares.');
+        const { svc: plans } = service([basic]);
+        expect(await plans.search('tenant', 'Quiero info del plan Premium. ¿Cuánto cuesta?', 3, AGENT_TEST_EXECUTION_CONTEXT)).toEqual([]);
+    });
+
+    it('still finds FAQs about 24h and COVID19 when the whole message is the token', async () => {
+        const open = faq('open', '¿Atienden 24h?', 'Sí, atendemos 24h todos los días.');
+        const covid = faq('covid', 'Protocolo COVID19', 'Seguimos el protocolo COVID19 vigente.');
+        const hours = faq('hours2', '¿Cuál es el horario de atención?', 'Atendemos de lunes a viernes de 9 a 18.');
+        const { svc } = service([open, covid, hours]);
+        expect((await svc.search('tenant', '24h', 3, AGENT_TEST_EXECUTION_CONTEXT)).map(r => r.id)).toEqual(['open']);
+        expect((await svc.search('tenant', 'COVID19', 3, AGENT_TEST_EXECUTION_CONTEXT)).map(r => r.id)).toEqual(['covid']);
+        expect((await svc.search('tenant', '¿atienden 24h?', 3, AGENT_TEST_EXECUTION_CONTEXT)).map(r => r.id)).toEqual(['open']);
+    });
+
+    it('searches with the ORIGINAL query first and cleans only after an empty result', async () => {
+        const { svc, query } = service([unrelatedFaq, warranty]);
+        await svc.search('tenant', warranty.question, 3, AGENT_TEST_EXECUTION_CONTEXT);
+        expect(query).toHaveBeenCalledTimes(1);
+        expect(query.mock.calls[0][1]).toBe(warranty.question);
+        const { svc: other, query: q2 } = service([warranty]);
+        await other.search('tenant', prefixed, 3, AGENT_TEST_EXECUTION_CONTEXT);
+        expect(q2.mock.calls[0][1]).toBe(prefixed);
+        expect(q2.mock.calls.some(call => call[1] === '¿Cuál es el plazo de garantía QA del audífono de prueba?')).toBe(true);
+    });
+
+    it('finds the QA warranty FAQ when the message carries a test code prefix', async () => {
+        const { svc } = service([unrelatedFaq, warranty]);
+        const result = await svc.search('tenant', prefixed, 3, AGENT_TEST_EXECUTION_CONTEXT);
+        expect(result.map(r => r.id)).toEqual(['warranty']);
+    });
+
+    it('finds it with a prefix and a question without question marks', async () => {
+        const { svc } = service([unrelatedFaq, warranty]);
+        const result = await svc.search('tenant', 'Prueba QA QA_C20261006P_T01_1: cuál es el plazo de garantía QA del audífono de prueba',
+            3, AGENT_TEST_EXECUTION_CONTEXT);
+        expect(result.map(r => r.id)).toEqual(['warranty']);
+    });
+
+    it('does not find the warranty FAQ for an unrelated question carrying a code', async () => {
+        const { svc } = service([unrelatedFaq, warranty, faq('p', '¿Cuánto dura el envío?', 'El envío dura 3 días.')]);
+        expect(await svc.search('tenant', 'Prueba QA QA_C20261006P_T01_2: ¿Venden pizzas congeladas?', 3, AGENT_TEST_EXECUTION_CONTEXT)).toEqual([]);
     });
 });

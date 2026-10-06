@@ -224,8 +224,12 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         expect(keys.length).toBeGreaterThanOrEqual(7);
         for (const key of keys) {
             // Either the customer message it answers, or the identity the
-            // BullMQ jobId carried. Both vary per effect; a bare string does not.
-            expect(key).toMatch(/\$\{(inboundMessageId|dedupeId|input\.[A-Za-z.]+)\}/);
+            // BullMQ jobId carried, or — for the once-per-handoff queue notice —
+            // the conversation together with that handoff's start. All vary per
+            // effect; a bare string does not.
+            const perEffect = /\$\{(inboundMessageId|dedupeId|input\.[A-Za-z.]+)\}/.test(key)
+                || /\$\{conversation\.id\}:\$\{startedAt\}/.test(key);
+            expect({ key, perEffect }).toEqual({ key, perEffect: true });
         }
         // And each one names WHICH reply it is, so two different answers to the
         // same customer message cannot collide on one row.

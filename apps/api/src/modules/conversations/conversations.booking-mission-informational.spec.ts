@@ -111,15 +111,22 @@ describe('opening hours reach the prompt from the appointment agenda', () => {
         return h;
     };
 
-    it('describes the agenda hours in the prompt without changing open/closed', async () => {
-        const h = withAgenda(agenda);
-        await h.turn('¿A qué hora abren?');
-        const hours = promptHours(h.f);
-        expect(hours).toMatchObject({ informational: true, source: 'appointment_availability' });
-        expect(hours.schedule.monday.windows).toEqual([{ open: '09:00', close: '19:00' }]);
-        expect(hours.schedule.sunday).toEqual({ enabled: false });
-        // Open/closed still comes from the tenant configuration (24/7), not from the agenda.
-        expect(h.session().trace.systemPrompt).toContain('<business_hours_status>open</business_hours_status>');
+    it('describes the agenda hours in the prompt and states open inside them', async () => {
+        // Monday 15:00 UTC is inside 09:00-19:00 in every tenant timezone the fixtures use;
+        // without a fixed clock the status depended on when the suite ran.
+        jest.useFakeTimers({ now: new Date('2026-10-05T15:00:00Z'), doNotFake: ['nextTick', 'setImmediate', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'queueMicrotask'] });
+        try {
+            const h = withAgenda(agenda);
+            await h.turn('¿A qué hora abren?');
+            const hours = promptHours(h.f);
+            expect(hours).toMatchObject({ informational: true, source: 'appointment_availability' });
+            expect(hours.schedule.monday.windows).toEqual([{ open: '09:00', close: '19:00' }]);
+            expect(hours.schedule.sunday).toEqual({ enabled: false });
+            // Without configured hours the status is computed from the agenda in the tenant's timezone.
+            expect(h.session().trace.systemPrompt).toContain('<business_hours_status>open</business_hours_status>');
+        } finally {
+            jest.useRealTimers();
+        }
     });
 
     it('tells the model it has no hours when the agenda is empty', async () => {

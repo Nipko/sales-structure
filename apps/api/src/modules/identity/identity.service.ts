@@ -389,7 +389,7 @@ export class IdentityService {
         // Create suggestion and auto-approve
         const suggestion = await this.prisma.executeInTenantSchema<any[]>(schemaName,
             `INSERT INTO merge_suggestions (customer_profile_id_a, customer_profile_id_b, contact_id_a, contact_id_b, match_type, confidence, status, reviewed_by, reviewed_at)
-             VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'manual', 1.0, 'pending', $5, NOW()) RETURNING id`,
+             VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'manual', 1.0, 'pending', $5::uuid, NOW()) RETURNING id`,
             [profileIdA, profileIdB, contactIdA, contactIdB, userId],
         );
 

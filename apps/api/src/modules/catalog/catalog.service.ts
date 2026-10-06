@@ -132,7 +132,7 @@ export class CatalogService {
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `INSERT INTO campaigns (code, name, course_id, source_type, channel, wa_template_name, status, schedule_json, default_owner_rule, fallback_email)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+             VALUES ($1, $2, $3::uuid, $4, $5, $6, $7, $8::jsonb, $9, $10) RETURNING *`,
             [
                 data.code || null,
                 data.name,
@@ -180,7 +180,7 @@ export class CatalogService {
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `INSERT INTO commercial_offers (tenant_id, course_id, campaign_id, offer_type, title, conditions_json, valid_from, valid_to, active)
-             VALUES ($1, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9) RETURNING *`,
+             VALUES ($1, $2::uuid, $3::uuid, $4, $5, $6::jsonb, $7::timestamp, $8::timestamp, $9) RETURNING *`,
             [
                 data.tenant_id,
                 data.course_id || null,

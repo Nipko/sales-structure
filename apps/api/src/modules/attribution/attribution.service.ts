@@ -75,7 +75,7 @@ export class AttributionService {
                 schemaName,
                 `INSERT INTO ctwa_attributions
                     (contact_id, conversation_id, source_id, source_type, source_url, headline, body, media_type, ctwa_clid)
-                 VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9)
+                 VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9)
                  ON CONFLICT (contact_id, source_id) DO NOTHING`,
                 [
                     input.contactId, input.conversationId || null, sourceId,

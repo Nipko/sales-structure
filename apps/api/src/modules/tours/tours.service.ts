@@ -203,7 +203,7 @@ export class ToursService {
             schemaName,
             `INSERT INTO tour_inventory (package_id, departure_date, departure_time,
                 available_seats, total_seats, price_override, notes)
-             VALUES ($1::uuid, $2::date, $3, $4, $5, $6, $7)
+             VALUES ($1::uuid, $2::date, $3::time, $4, $5, $6, $7)
              ON CONFLICT (package_id, departure_date, departure_time)
              DO UPDATE SET available_seats = EXCLUDED.available_seats,
                            total_seats = EXCLUDED.total_seats,
@@ -435,7 +435,7 @@ export class ToursService {
                  ) VALUES (
                     $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid,
                     $6, $7, $8,
-                    $9::date, $10, $11, $12, $13,
+                    $9::date, $10::time, $11, $12, $13,
                     $14, $15, $16, $17, $18,
                     $19, $20, $21
                 ) RETURNING *`,

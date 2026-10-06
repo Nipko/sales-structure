@@ -58,7 +58,7 @@ export class CustomAttributesService {
         const result = await this.prisma.executeInTenantSchema<any[]>(schema, `
             INSERT INTO custom_attribute_definitions
                 (entity_type, attribute_key, attribute_label, attribute_type, options, required)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            VALUES ($1, $2, $3, $4, $5::jsonb, $6)
             RETURNING *
         `, [
             data.entityType,
@@ -95,7 +95,7 @@ export class CustomAttributesService {
             params.push(data.attributeType);
         }
         if (data.options !== undefined) {
-            setClauses.push(`options = $${n++}`);
+            setClauses.push(`options = $${n++}::jsonb`);
             params.push(JSON.stringify(data.options));
         }
         if (data.required !== undefined) {
@@ -190,7 +190,7 @@ export class CustomAttributesService {
 
             await this.prisma.executeInTenantSchema(schema,
                 `INSERT INTO custom_attribute_values (definition_id, entity_id, entity_type, value_text, value_number, value_boolean, value_date, value_json)
-                 VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8::jsonb)
+                 VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7::timestamp, $8::jsonb)
                  ON CONFLICT (definition_id, entity_id) DO UPDATE SET
                    value_text = EXCLUDED.value_text,
                    value_number = EXCLUDED.value_number,

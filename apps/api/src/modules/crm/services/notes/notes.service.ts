@@ -47,7 +47,7 @@ export class NotesService {
 
         const result = await this.prisma.executeInTenantSchema<any[]>(schema, `
             INSERT INTO notes (lead_id, opportunity_id, conversation_id, content, created_by)
-            VALUES ($1, $2, $3, $4, $5)
+            VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5)
             RETURNING *
         `, [
             data.leadId,

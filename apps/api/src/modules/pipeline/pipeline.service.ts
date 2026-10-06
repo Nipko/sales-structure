@@ -1070,7 +1070,7 @@ export class PipelineService {
                                     assigned_agent_id, notes, status, sla_deadline,
                                     pipeline_id,
                                     created_at, updated_at, stage_entered_at)
-                 VALUES ($1::uuid, $2, $3, $4::uuid, $5, $6, $7::uuid, $8, $9,
+                 VALUES ($1::uuid, $2, $3, $4::uuid, $5, $6::date, $7::uuid, $8, $9,
                          CASE WHEN $10::int IS NULL THEN NULL ELSE NOW() + ($10::int * INTERVAL '1 hour') END,
                          $11::uuid, NOW(), NOW(), NOW())
                  RETURNING *`,
@@ -1974,7 +1974,7 @@ export class PipelineService {
         if (data.title) { sets.push(`title = $${i++}`); params.push(data.title); }
         if (data.value !== undefined) { sets.push(`value = $${i++}`); params.push(data.value); }
         if (data.probability !== undefined) { sets.push(`probability = $${i++}`); params.push(data.probability); }
-        if (data.expectedCloseDate !== undefined) { sets.push(`expected_close_date = $${i++}`); params.push(data.expectedCloseDate); }
+        if (data.expectedCloseDate !== undefined) { sets.push(`expected_close_date = $${i++}::date`); params.push(data.expectedCloseDate); }
         if (data.assignedAgentId !== undefined) { sets.push(`assigned_agent_id = $${i++}::uuid`); params.push(data.assignedAgentId); }
         if (data.notes !== undefined) { sets.push(`notes = $${i++}`); params.push(data.notes); }
 

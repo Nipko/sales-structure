@@ -328,6 +328,13 @@ export class WhatsappWebhookService {
              this.resolveAccessTokenAndMarkRead(tenantId, phoneNumberId, waMessageId);
          }
 
+         // Not a customer turn: a reaction (emoji on an earlier message), a service
+         // `system` notice and a `request_welcome` carry nothing the agent should answer.
+         // Queued like a message they cost a reply (and quota) per emoji. They are NOT
+         // dropped blind: the claim above already de-duplicates them. `unsupported`,
+         // `sticker`, `contacts`, `order` and `button` stay: the customer did write them.
+         if (msg?.type === 'reaction' || msg?.type === 'system' || msg?.type === 'request_welcome') continue;
+
          // ── WHO WROTE, WHEN THERE MAY BE NO PHONE NUMBER ────────────────
          //
          // `msg.from` is a phone, and Meta's business-scoped user ids mean it

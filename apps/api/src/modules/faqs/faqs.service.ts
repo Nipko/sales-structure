@@ -11,7 +11,7 @@ import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-eve
 import { structuredKnowledgeRelation, type StructuredKnowledgeCapture } from '../evaluation-revision/evaluation-structured-knowledge';
 import { onboardingOnceKey } from '@parallext/shared';
 import { recordOnboardingEvent } from '../../common/utils/onboarding-event.util';
-import { faqSearchTerms, rankPartialFaqMatches } from './faq-search';
+import { faqSearchTerms, lastInterrogativePhrase, rankPartialFaqMatches, stripFaqQueryNoise } from './faq-search';
 
 /**
  * Plegado de diacríticos para la búsqueda de FAQs.
@@ -224,6 +224,25 @@ export class FaqsService {
         tenantId: string,
         query: string,
         limit = 5,
+        executionContext?: ServiceExecutionContext,
+        captured?: StructuredKnowledgeCapture,
+    ): Promise<FAQ[]> {
+        // Order numbers, test codes and `XXX_YYY:` prefixes written next to the question
+        // never appear in a FAQ, and `plainto_tsquery` demands every word. Search without
+        // them; if that finds nothing, retry with just the last question of the message.
+        const cleaned = stripFaqQueryNoise(query);
+        if (!cleaned) return [];
+        const found = await this.searchOnce(tenantId, cleaned, limit, executionContext, captured);
+        if (found.length) return found;
+        const lastQuestion = lastInterrogativePhrase(cleaned);
+        if (!lastQuestion || lastQuestion === cleaned) return [];
+        return this.searchOnce(tenantId, lastQuestion, limit, executionContext, captured);
+    }
+
+    private async searchOnce(
+        tenantId: string,
+        query: string,
+        limit: number,
         executionContext?: ServiceExecutionContext,
         captured?: StructuredKnowledgeCapture,
     ): Promise<FAQ[]> {

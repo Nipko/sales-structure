@@ -1,5 +1,5 @@
 import type { FAQ } from '@parallext/shared';
-import { faqSearchTerms, rankPartialFaqMatches } from './faq-search';
+import { faqSearchTerms, lastInterrogativePhrase, rankPartialFaqMatches, stripFaqQueryNoise } from './faq-search';
 import { FaqsService } from './faqs.service';
 import { AGENT_TEST_EXECUTION_CONTEXT } from '../../common/types/execution-context';
 import { sealStructuredKnowledgeCapture } from '../evaluation-revision/evaluation-structured-knowledge';
@@ -141,5 +141,71 @@ describe('FAQ lexical matching of rephrased questions', () => {
     it('keeps each FAQ for its own question', () => {
         expect(rankPartialFaqMatches([visitDuration, visitPrice], 'cuanto cuesta la visita guiada', 3)).toEqual([visitPrice]);
         expect(rankPartialFaqMatches([visitPrice, visitDuration], 'cuanto tiempo dura la visita guiada', 3).map(f => f.id)).toEqual(['dur']);
+    });
+});
+
+describe('FAQ search with identifier noise in the message', () => {
+    const warranty = faq('warranty', '¿Cuál es el plazo de garantía QA del audífono de prueba?',
+        'El plazo de garantía QA del audífono de prueba es de 72 días calendario desde la entrega.');
+    const unrelatedFaq = faq('hours', '¿Cuál es el horario de atención?', 'Atendemos de lunes a viernes de 9 a 18.');
+    const prefixed = 'Prueba QA QA_C20261006P_T01_1: ¿Cuál es el plazo de garantía QA del audífono de prueba?';
+
+    // Minimal emulation of the SQL: `plainto_tsquery` requires EVERY word, the fallback accepts ANY term.
+    const fold = (v: string) => v.toLowerCase().normalize('NFKD').replace(/\p{M}/gu, '');
+    const words = (v: string) => fold(v).match(/[\p{L}\p{N}_]+/gu) || [];
+    const fakeDb = (corpus: FAQ[]) => jest.fn(async (sql: string, q: string) => {
+        const raw = (f: FAQ) => ({ id: f.id, question: f.question, answer: f.answer, is_published: true });
+        const doc = (f: FAQ) => new Set(words(`${f.question} ${f.answer}`));
+        if (sql.includes('plainto_tsquery')) {
+            const need = words(q);
+            return corpus.filter(f => need.length && need.every(w => doc(f).has(w))).map(raw);
+        }
+        const any = q.split(' | ');
+        return corpus.filter(f => any.some(w => doc(f).has(w))).map(raw);
+    });
+    const service = (corpus: FAQ[]) => {
+        const query = fakeDb(corpus);
+        return { query, svc: new FaqsService({ $queryRawUnsafe: query } as any, {} as any,
+            { getSchemaName: jest.fn().mockResolvedValue('tenant_faq_search') } as any) };
+    };
+
+    it('strips mixed letter/digit tokens, long ids and XXX_YYY: prefixes', () => {
+        expect(stripFaqQueryNoise(prefixed)).toBe('Prueba QA ¿Cuál es el plazo de garantía QA del audífono de prueba?');
+        expect(stripFaqQueryNoise('Mi pedido 123456789 llegó roto, ¿cuál es la garantía?')).toBe('Mi pedido llegó roto, ¿cuál es la garantía?');
+        expect(stripFaqQueryNoise('ORD-8841X: ¿hacen envíos?')).toBe('¿hacen envíos?');
+        expect(stripFaqQueryNoise('¿Cuántos días tiene el plan 2025?')).toBe('¿Cuántos días tiene el plan 2025?');
+    });
+
+    it('extracts the last interrogative phrase', () => {
+        expect(lastInterrogativePhrase('Hola, soy Ana. ¿Hacen envíos? Gracias. ¿Cuál es la garantía?')).toBe('¿Cuál es la garantía?');
+        expect(lastInterrogativePhrase('what is the warranty? ok. how long is shipping?')).toBe('how long is shipping?');
+        expect(lastInterrogativePhrase('sin pregunta')).toBeNull();
+    });
+
+    it('finds the QA warranty FAQ when the message carries a test code prefix', async () => {
+        const { svc } = service([unrelatedFaq, warranty]);
+        const result = await svc.search('tenant', prefixed, 3, AGENT_TEST_EXECUTION_CONTEXT);
+        expect(result.map(r => r.id)).toEqual(['warranty']);
+    });
+
+    it('finds it from the cleaned message alone, without relying on the last-question retry', async () => {
+        const { svc } = service([unrelatedFaq, warranty]);
+        const result = await svc.search('tenant', 'Prueba QA QA_C20261006P_T01_1: cuál es el plazo de garantía QA del audífono de prueba',
+            3, AGENT_TEST_EXECUTION_CONTEXT);
+        expect(result.map(r => r.id)).toEqual(['warranty']);
+    });
+
+    it('retries with the last question when the first search is empty', async () => {
+        const { svc, query } = service([unrelatedFaq, warranty]);
+        const result = await svc.search('tenant',
+            'Prueba QA Quiero saber otra cosa sobre mi cuenta mensual de la tienda. ¿Cuál es el plazo de garantía QA del audífono de prueba?',
+            3, AGENT_TEST_EXECUTION_CONTEXT);
+        expect(result.map(r => r.id)).toEqual(['warranty']);
+        expect(query.mock.calls.length).toBeGreaterThan(2);
+    });
+
+    it('does not find the warranty FAQ for an unrelated question carrying a code', async () => {
+        const { svc } = service([warranty]);
+        expect(await svc.search('tenant', 'Prueba QA QA_C20261006P_T01_2: ¿Venden pizzas congeladas?', 3, AGENT_TEST_EXECUTION_CONTEXT)).toEqual([]);
     });
 });

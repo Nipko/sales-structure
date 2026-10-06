@@ -6157,6 +6157,19 @@ export class AIToolExecutorService {
         if (rows[0].status === 'cancelled') return { error: 'Cannot reschedule a cancelled appointment' };
 
         const apt = rows[0];
+        // A visit to a listing that has since been sold / rented / deactivated is
+        // not moved to a new slot (cancelling stays allowed; it is another tool).
+        const visitedListingId = apt.metadata?.listingId;
+        if (typeof visitedListingId === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(visitedListingId)) {
+            const listingRows: any[] = await this.prisma.$queryRawUnsafe(
+                `SELECT COALESCE(is_active = true AND status = 'available', false) AS bookable
+                   FROM "${schema}".real_estate_listings WHERE id = $1::uuid LIMIT 1`,
+                visitedListingId,
+            );
+            if (listingRows.length && listingRows[0].bookable !== true) {
+                return { ...this.listingUnavailable(), persisted: false };
+            }
+        }
         const svcRows: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT duration_minutes, buffer_minutes, duration_type, duration_minutes_max FROM "${schema}".services WHERE id = $1::uuid`,
             apt.service_id,

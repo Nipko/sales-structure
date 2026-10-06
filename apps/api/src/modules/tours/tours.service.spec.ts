@@ -251,7 +251,7 @@ describe('ToursService booking contact integrity', () => {
         const build = (rowsForDate: any[], scheduled: boolean, pkg: any = {}) => {
             const execute = jest.fn(async (_schema: string, sql: string) => {
                 if (sql.includes('FROM tour_packages')) return [{ id: packageId, is_active: true, ...pkg }];
-                if (sql.includes('FROM tour_inventory WHERE package_id = $1::uuid AND is_active')) return scheduled ? [{}] : [];
+                if (sql.includes('FROM tour_inventory WHERE package_id = $1::uuid LIMIT 1')) return scheduled ? [{}] : [];
                 if (sql.includes('FROM tour_inventory')) return rowsForDate;
                 throw new Error(`Unexpected SQL: ${sql}`);
             });

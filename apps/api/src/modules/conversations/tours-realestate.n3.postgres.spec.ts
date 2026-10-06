@@ -295,6 +295,45 @@ import { CRM_BASE_TABLES, N3_DATABASE_URL, openLive, seedCustomer } from './__fi
             expect(result.reason).toBe('party_size_required');
         });
 
+    it('TRIP-01b: deleting the last departure does not turn the package into an unlimited one', async () => {
+        const id = await pkg('Isla Borrada'); const inv = await seats(id, today, 9);
+        await h.q('UPDATE tour_inventory SET is_active=false WHERE id=$1::uuid', [inv]); // what deleteInventory does
+        const C = await seedCustomer(h.q, 'Viajero');
+        expect(await h.call(C.contactId, C.conversationId, 'check_package_availability', { packageId: id, date, partySize: 2 }, scope))
+            .toMatchObject({ available: false, reason: 'no_departure_on_date' });
+        expect((await h.call(C.contactId, C.conversationId, 'search_packages', { destination: 'Cartagena', date, partySize: 2 }, scope)).packages)
+            .toEqual([]);
+        const booked = await confirmed(C, 'create_tour_booking', { packageId: id, departureDate: date, partySize: 2, guestName: 'Ana' });
+        expect(booked.success).not.toBe(true);
+        expect(await h.q('SELECT id FROM tour_bookings')).toEqual([]);
+    });
+
+    it('TRIP-01: search_packages with a past date lists nothing', async () => {
+        await pkg('Isla A Medida'); // unscheduled: would be "unlimited" on any date if the past were not refused
+        const C = await seedCustomer(h.q, 'Viajero');
+        expect((await h.call(C.contactId, C.conversationId, 'search_packages', { destination: 'Cartagena', date: past, partySize: 2 }, scope)).packages)
+            .toEqual([]);
+    });
+
+    it('TRIP-01: search_packages without a traveller count filters by the package minimum', async () => {
+        const few = await pkg('Isla Grupo Corto', { min: 4 }); await seats(few, date, 3);
+        const enough = await pkg('Isla Grupo Lleno', { min: 4 }); await seats(enough, date, 5);
+        const C = await seedCustomer(h.q, 'Viajero');
+        const result = await h.call(C.contactId, C.conversationId, 'search_packages', { destination: 'Cartagena', date }, scope);
+        expect(result.packages.map((p: any) => p.name)).toEqual(['Isla Grupo Lleno']);
+    });
+
+    it('EST-03/04: a visit already booked cannot be rescheduled once its listing is sold', async () => {
+        const id = await listing('Casa Aurora', { agent: staffId });
+        const C = await seedCustomer(h.q, 'Comprador');
+        expect((await visit(C, id)).success).toBe(true);
+        const apt = (await h.q<any[]>('SELECT id::text AS id FROM appointments'))[0].id;
+        await h.q(`UPDATE real_estate_listings SET status='sold' WHERE id=$1::uuid`, [id]);
+        const result = await confirmed(C, 'reschedule_appointment', { appointmentId: apt, newDate: date, newTime: '11:00' });
+        expect(result.error).toBe('listing_unavailable');
+        expect((await h.q<any[]>(`SELECT to_char(start_at,'HH24:MI') AS t FROM appointments`))[0].t).toBe('10:00');
+    });
+
     it('TRIP-02: create_tour_booking refuses a departure date in the past', async () => {
         const id = await pkg('Isla Grande'); const inv = await seats(id, past, 5);
         const C = await seedCustomer(h.q, 'Viajero');

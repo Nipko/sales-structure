@@ -325,7 +325,10 @@ export class ToursService {
         packageId: string,
         query?: (sql: string, params?: any[]) => Promise<any>,
     ): Promise<boolean> {
-        const sql = `SELECT 1 FROM tour_inventory WHERE package_id = $1::uuid AND is_active = true LIMIT 1`;
+        // Deliberately NOT filtered by is_active: deleteInventory is a soft
+        // delete, and a package whose last departure was deleted has still been
+        // run on a schedule. Counting only live rows turned it into "unlimited".
+        const sql = `SELECT 1 FROM tour_inventory WHERE package_id = $1::uuid LIMIT 1`;
         const rows = query
             ? await query(sql, [packageId])
             : await this.prisma.executeInTenantSchema<any[]>(schemaName, sql, [packageId]);

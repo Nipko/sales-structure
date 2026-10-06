@@ -183,3 +183,43 @@ describe('claimsCompletedAction — operation subject across a long clause', () 
         expect(claimsCompletedAction('El precio de la cita está confirmado en 50.000.')).toBe(false);
     });
 });
+
+describe('claimsCompletedAction — offers, questions and agenda slots (regresion 6-oct)', () => {
+    it.each([
+        '¿Desea que le reserve la cita para el sábado a las 16:00?',
+        'Si quiere, ¿le reservo la cita? ¿Desea que le agende el corte?',
+        'Puedo hacerlo, pero antes: ¿quiere que cancele la cita del lunes?',
+        'Would you like me to book it? Is your booking confirmed?',
+        'El sábado a las 16:00 ya está reservado.',
+        'Ese horario ya está reservado, ¿le sirve otro?',
+        'El cupo de las 5 pm está reservado por otro cliente.',
+        'El turno de las 10:00 ya está reservado.',
+        'Si desea, le aviso para que le reserve la cita el sábado.',
+        '¿Su reserva está confirmada o aún falta el pago?',
+        'Si quiere que le reserve la cita, avíseme.',
+        '¿Desea usted que le agende el corte?',
+    ])('no es acción completada: %s', reply => {
+        expect(claimsCompletedAction(reply)).toBe(false);
+    });
+
+    it.each([
+        'Reservé la cita para el sábado a las 16:00.',
+        'Ya le agendé el corte. ¿Algo más?',
+        'Tu reserva está confirmada, ¿necesitas algo más?',
+        'Tu cita del sábado a las 16:00 quedó reservada.',
+        'Tu cita a las 16:00 ya está reservada.',
+        'Cancelé la cita del lunes.',
+        'Le confirmo que le reservé la cita para el sábado.',
+        'Le informo que le agendé la cita para el lunes.',
+        'Sí le reservé la cita.',
+        'Ya que le reservé la cita, le envío el recordatorio.',
+        'Your booking is confirmed — anything else I can help with?',
+        'Your appointment has been booked for Saturday at 4pm — anything else?',
+        'Sua reserva está confirmada — posso ajudar em algo mais?',
+        'Listo su cita quedó agendada algo más?',
+        'Listo, el sábado a las 16:00 ya está reservado para usted.',
+        'Listo, la hora de las 16:00 ya está agendada a su nombre.',
+    ])('sigue siendo acción completada: %s', reply => {
+        expect(claimsCompletedAction(reply)).toBe(true);
+    });
+});

@@ -396,6 +396,9 @@ export class PromptAssemblerService {
             for (const p of turn.catalog) {
                 const attrs: string[] = [`id="${this.attrEscape(p.id)}"`];
                 if (p.price != null) attrs.push(`price="${this.attrEscape(String(p.price))}"`);
+                // Own-catalog rows carry `priceStatus`; a product with no price states none ("missing").
+                const priceStatus = (p as { priceStatus?: string }).priceStatus;
+                if (priceStatus && priceStatus !== 'confirmed') attrs.push(`price_status="${this.attrEscape(priceStatus)}"`);
                 if (p.currency) attrs.push(`currency="${this.attrEscape(p.currency)}"`);
                 if (p.inStock != null) attrs.push(`in_stock="${this.attrEscape(String(p.inStock))}"`);
                 if (p.category) attrs.push(`category="${this.attrEscape(p.category)}"`);

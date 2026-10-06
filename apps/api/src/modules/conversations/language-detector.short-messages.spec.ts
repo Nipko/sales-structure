@@ -108,3 +108,37 @@ describe('"vos" (voseo) is not a French marker', () => {
         expect(detector.detect(t, 'en', 'en')).toBe('en');
     });
 });
+
+/**
+ * Regression campaign 2026-10-05 (N18, N19, N30): "Qual é o preço do ...?" scored a
+ * single pt marker (`qual`), so with an established `es` history the weak-evidence
+ * rule kept Spanish. "preço"/"prix"/"price" are discriminative price words.
+ */
+describe('price words are discriminative language markers', () => {
+    const detector = new LanguageDetectorService();
+
+    it.each([
+        ['Prueba QA QA_C20261005S_N18_1: Qual é o preço do Audífono QA Aurora?', 'pt'],
+        ['Prueba QA QA_C20261005S_N30_1: Qual é o preço do Audífono QA Aurora?', 'pt'],
+        ['Prueba QA QA_C20261005S_N19_1: Quel est le prix du Audífono QA Aurora ?', 'fr'],
+        ['Prueba QA QA_C20261005S_T18_1: How much does the QA Aurora headphone cost?', 'en'],
+        ['Prueba QA QA_C20261005S_T19_1: Quanto custa o fone Audífono QA Aurora?', 'pt'],
+        ['Qual o preco dos fones?', 'pt'],
+        ['What is the price of the QA Aurora?', 'en'],
+        ['Prueba QA QA_C20261005S_X01_1: price of the QA Aurora?', 'en'],
+        ['Prueba QA QA_C20261005S_X02_1: cost of the QA Aurora?', 'en'],
+        ['Prueba QA QA_C20261005S_X03_1: Quais os precos dos fones QA Aurora?', 'pt'],
+        ['Prueba QA QA_C20261005S_X04_1: Quel prix, le casque QA Aurora ?', 'fr'],
+    ])('with an es history, %s switches to %s and is persisted', (text, expected) => {
+        expect(detector.detectDetailed(text, 'es', 'es')).toEqual({ language: expected, persist: true });
+    });
+
+    it.each([
+        'Prueba QA QA_C20261005S_N01_1: ¿Cuánto cuesta el Audífono QA Aurora?',
+        'cuál es el precio del Audífono QA Aurora?',
+        'me pasas el price por favor',
+        'cuanto es el cost del envio',
+    ])('a single foreign price word never flips Spanish: %s', text => {
+        expect(detector.detect(text, 'es', 'es')).toBe('es');
+    });
+});

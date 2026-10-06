@@ -287,9 +287,9 @@ describe('ToursService booking contact integrity', () => {
             const execute = jest.fn(async () => [{ id: packageId, is_active: true }]);
             const { service } = buildService(execute);
             await expect(service.searchPackages(schemaName, { destination: 'Cartagena', date: '2020-01-01' }))
-                .rejects.toMatchObject({ response: expect.objectContaining({ error: 'departure_in_past' }) });
+                .rejects.toMatchObject({ response: expect.objectContaining({ error: 'departure_in_past', message: expect.stringContaining('ya pasó') }) });
             await expect(service.searchPackages(schemaName, { destination: 'Cartagena', date: '2026-02-31' }))
-                .rejects.toMatchObject({ response: expect.objectContaining({ error: 'invalid_departure_date' }) });
+                .rejects.toMatchObject({ response: expect.objectContaining({ error: 'invalid_departure_date', message: expect.stringContaining('fecha real') }) });
         });
 
         it('refuses past dates and dates with no departure on a scheduled package, but not on an unscheduled one', async () => {

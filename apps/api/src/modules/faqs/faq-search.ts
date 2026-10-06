@@ -35,31 +35,20 @@ const canonTerms = (value: string): string[] => {
     return [...new Set(raw.filter(t => !(hasDuration && DURATION_FILLER.has(t))).map(canon))];
 };
 
-/** Drops what a customer pastes next to the real question and no FAQ ever contains:
- * `XXX_YYY:` prefixes (test run codes, ticket tags), tokens mixing letters and digits
- * ("QA_C2026_T01_1", "ORD-8841X") and long numeric ids. Pure numbers up to five digits
- * ("plan 2025") stay: they are often part of the question itself. */
+/** Drops what a customer pastes next to the real question and no FAQ ever contains.
+ * Only three things go: a label prefix `XXX_YYY:` together with everything before it
+ * ("Prueba QA QA_C2026_T01_1: ¿...?"), any token that carries an underscore, and numbers
+ * of 6 or more digits. Tokens mixing letters and digits (24h, 4x4, COVID19, mp3...) and
+ * short numbers ("plan 2025") are real vocabulary and stay. */
 export function stripFaqQueryNoise(query: string): string {
-    const isNoise = (token: string): boolean =>
-        (/\p{L}/u.test(token) && /\p{N}/u.test(token))
-        || /^\p{N}{6,}$/u.test(token)
-        || (token.includes('_') && /[\p{L}\p{N}]/u.test(token));
-    return query
-        .replace(/(^|\s)[\p{L}\p{N}]+(?:_[\p{L}\p{N}]+)+\s*:/gu, '$1')
-        .replace(/[\p{L}\p{N}_-]+/gu, token => isNoise(token) ? '' : token)
+    const label = /[\p{L}\p{N}]+(?:_[\p{L}\p{N}]+)+\s*:/u.exec(query);
+    const body = label ? query.slice(label.index + label[0].length) : query;
+    return body
+        .replace(/[\p{L}\p{N}_-]+/gu, token => token.includes('_') || /^\p{N}{6,}$/u.test(token) ? '' : token)
         .replace(/[ \t]{2,}/g, ' ')
         .replace(/\s+([,.;:?!])/g, '$1')
         .replace(/^[\s:,;.-]+/, '')
         .trim();
-}
-
-/** The last sentence that ends in a question mark, for a message that opens with
- * context ("Hola, soy Ana. ¿Hacen envíos?"). Null when there is no question. */
-export function lastInterrogativePhrase(query: string): string | null {
-    const inverted = [...query.matchAll(/¿[^¿?]*\?/g)].pop()?.[0];
-    if (inverted) return inverted.trim();
-    const plain = [...query.matchAll(/[^.?!¿\n]+\?/g)].pop()?.[0];
-    return plain ? plain.trim() : null;
 }
 
 export function faqSearchTerms(query: string): string[] {

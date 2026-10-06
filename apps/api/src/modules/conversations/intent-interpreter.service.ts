@@ -71,6 +71,7 @@ export class IntentInterpreterService {
     ): Promise<InterpretedIntent> {
         const interpreted = await this.interpretMessage(
             userText, currentBookingStep, availableServices, todayDate, upcomingDays, tenantId, operatingCountry, acceptedReferents,
+            businessWindowFor,
         );
         // Mid-mission, "¿cuánto cuesta el corte?" names a service and "¿a qué hora
         // abren?" resembles an availability request, so the extractors label them
@@ -95,6 +96,7 @@ export class IntentInterpreterService {
         tenantId?: string,
         operatingCountry?: string | null,
         acceptedReferents?: readonly string[],
+        businessWindowFor?: BusinessWindowResolver,
     ): Promise<InterpretedIntent> {
         // First try deterministic extraction (fast, no LLM cost)
         const deterministicResult = this.deterministicExtract(

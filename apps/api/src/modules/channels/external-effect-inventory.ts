@@ -2237,6 +2237,9 @@ export const EGRESS_INFRASTRUCTURE: readonly EgressInfrastructure[] = Object.fre
             + 'publishes it. Every decision about whether the message may be sent belongs to the '
             + 'processor that picks the row up, so this originates nothing of its own' },
     { source: 'modules/channels/channels.module.ts', kind: 'road', reason: 'dependency injection wiring' },
+    { source: 'common/__fixtures__/n3-lane-harness.ts', kind: 'road',
+        reason: 'test scaffold for the durable-lane suites: it wires the real outbox to a RECORDER in '
+            + 'place of the queue, so nothing it "publishes" leaves the process and it originates no effect' },
     // ── THE SHARED CUSTOMER-RECEIPT SENDER ──────────────────────────
     //
     // Nine `emailConfirmations` controls needed the same five-step decision —

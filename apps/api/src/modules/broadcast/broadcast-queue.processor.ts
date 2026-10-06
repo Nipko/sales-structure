@@ -13,6 +13,7 @@ import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription
 import {
     ProactiveDispatchService, effectIsDurable, producerMayAdvance,
 } from '../channels/proactive-dispatch.service';
+import { isRecipientOptedOut, RECIPIENT_OPTED_OUT_CODE } from '../../common/policies/opt-out-register';
 
 /** The job that closes a WhatsApp recipient once its effect has settled. */
 export const BROADCAST_SETTLE_JOB = 'settle-whatsapp';
@@ -91,6 +92,19 @@ export class BroadcastQueueProcessor extends WorkerHost {
             return `skipped:${reason}`;
         }
 
+        // ── SOMEBODY WHO ASKED US TO STOP, WHILE THIS WAITED FOR A WORKER ───
+        //
+        // Every channel, before anything is prepared or sent. The campaign
+        // asked at creation and again at launch; a job can sit in the queue
+        // long enough for a person to reply STOP in between. The recipient is
+        // CLOSED (skipped, with the reason) rather than left queued, or the
+        // campaign would never be reported finished. The outbox asks once more
+        // when it grants the lease, for the person who opts out after this.
+        if (await this.recipientOptedOut(job.data)) {
+            await this.skipOptedOut(job.data);
+            return 'skipped:recipient_opted_out';
+        }
+
         // ── WHATSAPP IS ITS OWN SHAPE NOW: COMMIT, THEN CLOSE LATER ─────────
         if (channel === 'whatsapp') return this.dispatchWhatsApp(job);
 
@@ -131,6 +145,24 @@ export class BroadcastQueueProcessor extends WorkerHost {
 
         this.logger.log(`Broadcast sent: campaign=${campaignId} channel=${channel} messageId=${messageId}`);
         return messageId;
+    }
+
+    /**
+     * Close a recipient who opted out: `skipped`, not `failed`. It is not a
+     * delivery failure, so it must not count as one in the campaign's numbers
+     * or in an A/B variant's stats.
+     */
+    private async skipOptedOut(data: BroadcastJobData): Promise<void> {
+        const { schemaName, campaignId, recipientId } = data;
+        this.logger.warn(`Broadcast dropped (recipient_opted_out): campaign=${campaignId} recipient=${recipientId}`);
+        await this.broadcastService.updateRecipientStatus(schemaName, recipientId, 'skipped', 'recipient_opted_out');
+        await this.broadcastService.checkCampaignCompletion(schemaName, campaignId);
+    }
+
+    private recipientOptedOut(data: BroadcastJobData): Promise<boolean> {
+        return isRecipientOptedOut(
+            (text, params) => this.prisma.executeInTenantSchema<any>(data.schemaName, text, params || []),
+            { channel: data.channel || 'whatsapp', phone: data.phone, ids: [data.contactId] });
     }
 
     /** Mark a recipient failed + update A/B stats + check campaign completion. */
@@ -193,6 +225,18 @@ export class BroadcastQueueProcessor extends WorkerHost {
             channelAccountId: sender, entityId: recipientId,
         });
         if (!operationalScope) {
+            // ── AN OPT-OUT THAT LANDED AFTER THE GATE ABOVE ─────────────────
+            //
+            // The authority's revision answers "nothing is owed" for a person
+            // who opted out, and from here that is indistinguishable from a
+            // paused campaign, which is left alone on purpose. A paused
+            // campaign gets resumed; a person who said stop never does, so this
+            // recipient is CLOSED (skipped) and the campaign told, or it would
+            // sit `queued` for ever and never be reported finished.
+            if (await this.recipientOptedOut(data)) {
+                await this.skipOptedOut(data);
+                return 'skipped:recipient_opted_out';
+            }
             // The recipient is no longer owed a message: already sent or
             // failed, or the campaign is paused, cancelled or finished. The row
             // is left exactly as it is — a paused campaign is one somebody
@@ -310,6 +354,12 @@ export class BroadcastQueueProcessor extends WorkerHost {
             return `settled:sent:${recipientId}`;
         }
         if (String(row.state) === 'suppressed') {
+            // The admission suppressed it because the person opted out after it
+            // was queued: skipped, not a failure.
+            if (String(row.error_code) === RECIPIENT_OPTED_OUT_CODE) {
+                await this.skipOptedOut(data);
+                return `settled:skipped:${recipientId}`;
+            }
             await this.markFailed(schemaName, campaignId, recipientId, data.variantId,
                 String(row.error_code ?? 'suppressed').slice(0, 200));
             return `settled:suppressed:${recipientId}`;

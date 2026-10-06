@@ -6,6 +6,7 @@ import { AgentDispatchOutboxStore } from '../channels/agent-dispatch-outbox.stor
 import { ProactiveDispatchService } from '../channels/proactive-dispatch.service';
 import { DISPATCH_OUTBOX_DDL, DispatchOutboxError } from '../channels/agent-dispatch-outbox';
 import { ensureSyntheticGlobalTables } from '../../common/__fixtures__/synthetic-global-tables';
+import { OPT_OUT_REGISTER_DDL } from '../../common/__fixtures__/opt-out-register-ddl';
 
 /**
  * ═══ THE REACTIVATION, THROUGH THE REAL STORE ═══
@@ -133,6 +134,7 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             name TEXT, phone TEXT, channel_type TEXT, email TEXT,
             last_appointment_at TIMESTAMP, next_recall_at TIMESTAMP,
             last_contact_at TIMESTAMP DEFAULT NOW())`);
+        for (const ddl of OPT_OUT_REGISTER_DDL) await sql(ddl);
         await sql(`CREATE TABLE conversations(id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             contact_id UUID REFERENCES contacts(id), channel_type TEXT, channel_account_id TEXT,
             status TEXT DEFAULT 'active', metadata JSONB DEFAULT '{}',

@@ -1149,7 +1149,8 @@ export class AppointmentsService {
             const [startH, startM] = win.start_time.split(':').map(Number);
             const [endH, endM] = win.end_time.split(':').map(Number);
             const windowStart = startH * 60 + startM;
-            const windowEnd = endH * 60 + endM;
+            // 00:00 as an end is midnight, the end of that day.
+            const windowEnd = (endH * 60 + endM) || 1440;
 
             // Generate slots every 30 min (or duration if shorter).
             // Piso de 5: un servicio de duración ABIERTA llega con

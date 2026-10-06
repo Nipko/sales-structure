@@ -30,7 +30,7 @@ import { ToursService } from '../tours/tours.service';
 import { TreatmentPlansService } from '../treatment-plans/treatment-plans.service';
 import { ListingsService } from '../listings/listings.service';
 import { PetsService } from '../pets/pets.service';
-import { RestaurantsService } from '../restaurants/restaurants.service';
+import { RestaurantsService, normalizeMenuLabel, toLabelList } from '../restaurants/restaurants.service';
 import { GymsService } from '../gyms/gyms.service';
 import { EducationService } from '../education/education.service';
 import { InsuranceService } from '../insurance/insurance.service';
@@ -1467,7 +1467,7 @@ export class AIToolExecutorService {
         conds.push(`is_available = true`);
         if (typeof maxPrice === 'number' && Number.isFinite(maxPrice)) {
             // The customer's budget holds on every path; an unpriced product cannot be shown to fit it.
-            conds.push(`price <= $${params.length + 1}`);
+            conds.push(`(price > 0 AND price <= $${params.length + 1})`);
             params.push(maxPrice);
         }
         params.push(limit);
@@ -2600,14 +2600,24 @@ export class AIToolExecutorService {
     private async recommendProducts(
         schema: string,
         search?: string,
-        maxPrice?: number,
+        rawMaxPrice?: unknown,
         category?: string,
         readOnly = false,
     ): Promise<any> {
+        // The model may send the budget as text ("50000"): a budget that is silently dropped
+        // recommends what the customer said they cannot pay.
+        const numeric = typeof rawMaxPrice === 'number' || (typeof rawMaxPrice === 'string' && rawMaxPrice.trim() !== '');
+        const maxPrice = numeric ? Number(rawMaxPrice) : NaN;
+        const budget = rawMaxPrice !== undefined && rawMaxPrice !== null && Number.isFinite(maxPrice) && maxPrice >= 0 ? maxPrice : undefined;
+        if (rawMaxPrice !== undefined && rawMaxPrice !== null && budget === undefined) {
+            return readFailed(TOOL_READ_ERROR_CODES.READ_FAILED, {
+                message: 'El presupuesto indicado no es un número válido. Pide al cliente el monto máximo en cifras.',
+            });
+        }
         try {
             const rows = await this.ecommerceService.searchProductsForAI(schema, {
                 search: search || undefined,
-                maxPrice: typeof maxPrice === 'number' ? Math.round(maxPrice * 100) : undefined,
+                maxPrice: budget !== undefined ? Math.round(budget * 100) : undefined,
                 category: category || undefined,
             }, { createTablesIfMissing: !readOnly });
             if (rows && rows.length > 0) {
@@ -2627,7 +2637,7 @@ export class AIToolExecutorService {
             this.logger.warn(`[Tool] recommend_products store catalog unavailable: ${e.message}`);
         }
         // Fallback to the internal catalog so the agent still grounds recommendations.
-        const fallback = await this.searchProducts(schema, search || '', 5, category, typeof maxPrice === 'number' ? maxPrice : undefined);
+        const fallback = await this.searchProducts(schema, search || '', 5, category, budget);
         return { ...fallback, source: 'catalog' };
     }
 
@@ -4709,25 +4719,26 @@ export class AIToolExecutorService {
 
     private async getMenu(schemaName: string, args: any): Promise<any> {
         try {
+            // A model may send one string instead of a list.
+            const excludeAllergens = toLabelList(args.excludeAllergens);
             const items = await this.restaurantsService.searchMenu(schemaName, {
                 query: args.query,
                 category: args.category,
                 tag: args.tag,
-                excludeAllergens: args.excludeAllergens,
+                excludeAllergens,
                 maxPrice: args.maxPrice,
                 limit: 30,
             });
             if (!items.length) {
                 return { items: [], message: 'No items match those criteria. Suggest broadening the search.' };
             }
-            const excludedAllergens = Array.isArray(args.excludeAllergens) && args.excludeAllergens.length > 0;
-            return {
-                count: items.length,
-                ...(excludedAllergens ? {
-                    // The filter only knows what the kitchen recorded; it is not a guarantee.
-                    allergenNotice: 'These dishes do not list the requested allergen in the recorded data. Never promise a dish is allergen-free or safe: tell the customer the kitchen must confirm it.',
-                } : {}),
-                items: items.map(i => ({
+            const filtering = excludeAllergens.some(a => normalizeMenuLabel(a) !== '');
+            const allergensOf = (raw: unknown): string[] => Array.isArray(raw)
+                ? raw.map(String).filter(a => a.trim() !== '')
+                : typeof raw === 'string' && raw.trim() ? [raw] : [];
+            const mapped = items.map(i => {
+                const allergens = allergensOf(i.allergens);
+                return {
                     id: i.id,
                     name: i.name,
                     description: i.description,
@@ -4735,9 +4746,21 @@ export class AIToolExecutorService {
                     currency: i.currency,
                     category: i.category_name,
                     tags: i.tags || [],
-                    allergens: i.allergens || [],
+                    allergens,
+                    // Only reported while filtering: an empty list is "nothing recorded", not "no allergens".
+                    ...(filtering ? { allergensDeclared: allergens.length > 0 } : {}),
                     prepTimeMinutes: i.prep_time_minutes,
-                })),
+                };
+            });
+            const undeclared = filtering && mapped.some(m => m.allergensDeclared === false);
+            return {
+                count: items.length,
+                ...(filtering ? {
+                    // The filter only knows what the kitchen recorded; it is not a guarantee.
+                    allergenNotice: 'These dishes do not list the requested allergen in the recorded data. Never promise a dish is allergen-free or safe: tell the customer the kitchen must confirm it.'
+                        + (undeclared ? ' Dishes with allergensDeclared=false have NO allergen data recorded (an empty list means nothing was entered, not that the dish has no allergens): do not recommend them as safe for this customer without the kitchen confirming it first.' : ''),
+                } : {}),
+                items: mapped,
             };
         } catch (e: any) {
             return this.safeToolFailure('get_menu', e, 'read');

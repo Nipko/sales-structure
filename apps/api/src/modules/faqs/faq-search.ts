@@ -14,19 +14,26 @@ const tokens = (value: string) => fold(value).match(/[\p{L}\p{N}]+/gu) || [];
 // An answer may express duration as "20 minutes" without repeating "how long".
 // Only these specific follow-up words may be absent. A missing topic/name
 // anywhere in the query (including a later question) must still reject it.
-// "tiempo/time" belongs to the family: "cuanto tiempo dura" asks what "cuanto dura"
-// asks, and "duracion" is the noun of "dura". All of them compare as one concept.
-const DURATION_WORDS = new Set([
-    'dura', 'duran', 'durar', 'duracion', 'tiempo', 'long', 'duration', 'time', 'lasts', 'last',
-    'duracao', 'tempo', 'duree', 'temps',
-]);
+// "duracion" is the noun of "dura": the words that MEAN duration compare as one concept.
+// "tiempo"/"time" do not: "what time" asks for a schedule and "cuanto tiempo antes" for a
+// lead time. They are only filler ("cuanto tiempo dura") when the same question already
+// holds a duration word, so they are dropped from the query in that case and stay ordinary
+// words otherwise. "last"/"lasts" mean both "the final one" and "continues for", so they never
+// take part in the comparison.
+const DURATION_WORDS = new Set(['dura', 'duran', 'durar', 'duracion', 'long', 'duration', 'duracao', 'duree']);
+const DURATION_FILLER = new Set(['tiempo', 'time', 'tempo', 'temps']);
+const AMBIGUOUS_WORDS = new Set(['last', 'lasts']);
 const DURATION = 'duration';
 // Comparison form of a term: duration words collapse into one concept and a plural
 // "s" is dropped ("visitas" = "visita"). Only for ranking; the SQL candidates keep raw terms.
 const canon = (term: string): string => DURATION_WORDS.has(term) ? DURATION
     : term.length > 4 && term.endsWith('s') ? term.slice(0, -1) : term;
-const canonTokens = (value: string): Set<string> => new Set(tokens(value).map(canon));
-const canonTerms = (value: string): string[] => [...new Set(faqSearchTerms(value).map(canon))];
+const canonTokens = (value: string): Set<string> => new Set(tokens(value).filter(t => !AMBIGUOUS_WORDS.has(t)).map(canon));
+const canonTerms = (value: string): string[] => {
+    const raw = faqSearchTerms(value).filter(t => !AMBIGUOUS_WORDS.has(t));
+    const hasDuration = raw.some(t => DURATION_WORDS.has(t));
+    return [...new Set(raw.filter(t => !(hasDuration && DURATION_FILLER.has(t))).map(canon))];
+};
 
 export function faqSearchTerms(query: string): string[] {
     return [...new Set(tokens(query).filter(term => term.length > 1 && !FUNCTION_WORDS.has(term)))].slice(0, 32);

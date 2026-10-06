@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
-import { RestaurantsService, normalizeMenuLabel } from './restaurants.service';
+import { RestaurantsService, normalizeMenuLabel, toLabelList } from './restaurants.service';
+import { MENU_LABEL_CASES } from './menu-label.cases';
 
 describe('RestaurantsService.createOrder', () => {
     const schemaName = 'tenant_restaurant';
@@ -210,20 +211,33 @@ describe('RestaurantsService.updateOrderStatus events', () => {
 });
 
 describe('menu label normalisation and allergen filter', () => {
-    it.each([
-        ['Mariscos', 'marisco'], ['MARISCOS', 'marisco'], ['  mariscos ', 'marisco'], ['Mariscós', 'marisco'],
-        ['Glúten', 'gluten'], ['Frutos  secos', 'frutos seco'], ['maní', 'mani'], ['Nuez', 'nuez'], ['', ''], ['  ', ''],
-    ])('normalises %p to %p', (raw, expected) => {
+    it.each(MENU_LABEL_CASES)('normalises %p to %p', (raw, expected) => {
         expect(normalizeMenuLabel(raw)).toBe(expected);
     });
 
-    it('builds a filter that keeps only dishes with a known allergen list and compares normalised labels', async () => {
+    it.each([[null, ''], [undefined, ''], [42, '42']])('normalises the non-text value %p', (raw, expected) => {
+        expect(normalizeMenuLabel(raw)).toBe(expected);
+    });
+
+    it.each([['mani', ['mani']], ['  ', []], [undefined, []], [['a', 3, 'b'], ['a', 'b']]])('toLabelList(%p)', (raw, expected) => {
+        expect(toLabelList(raw)).toEqual(expected);
+    });
+
+    it('accepts a single string as the allergen list', async () => {
+        const calls: Array<any[]> = [];
+        const prisma = { executeInTenantSchema: jest.fn(async (_s: string, _sql: string, params: any[]) => { calls.push(params); return []; }) };
+        const service = new RestaurantsService(prisma as any, { emit: jest.fn() } as any);
+        await service.searchMenu('tenant_x', { excludeAllergens: 'Nueces' });
+        expect(calls[0]).toEqual(['nuez']);
+    });
+
+    it('builds a filter that keeps dishes without data and compares normalised labels', async () => {
         const calls: Array<[string, any[]]> = [];
         const prisma = { executeInTenantSchema: jest.fn(async (_s: string, sql: string, params: any[]) => { calls.push([sql, params]); return []; }) };
         const service = new RestaurantsService(prisma as any, { emit: jest.fn() } as any);
         await service.searchMenu('tenant_x', { excludeAllergens: ['Mariscos', '  ', ' GLÚTEN '], tag: 'Vegano' });
         const [sql, params] = calls[0];
-        expect(sql).toContain("jsonb_typeof(mi.allergens) = 'array'");
+        expect(sql).toContain('jsonb_typeof(mi.allergens)');
         expect(sql).toContain('NOT EXISTS');
         expect(params).toEqual(['vegano', 'marisco', 'gluten']);
     });

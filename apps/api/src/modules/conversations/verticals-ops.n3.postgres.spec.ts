@@ -2,7 +2,9 @@ import { randomUUID } from 'crypto';
 import { GymsService } from '../gyms/gyms.service';
 import { InsuranceService } from '../insurance/insurance.service';
 import { RepairOrdersService } from '../repair-orders/repair-orders.service';
-import { RestaurantsService } from '../restaurants/restaurants.service';
+import { RestaurantsService, normalizeMenuLabel } from '../restaurants/restaurants.service';
+import { menuLabelSql } from '../restaurants/menu-label.util';
+import { MENU_LABEL_CASES } from '../restaurants/menu-label.cases';
 import { PropertiesService } from '../vacation-rental/properties.service';
 import { CRM_BASE_TABLES, N3_DATABASE_URL, openLive, seedCustomer } from './__fixtures__/n3-live-harness';
 
@@ -99,15 +101,56 @@ import { CRM_BASE_TABLES, N3_DATABASE_URL, openLive, seedCustomer } from './__fi
         expect(result.items.map((i: any) => i.name)).toEqual(['Ensalada']);
     });
 
-    it('REST-ALLERGEN: a dish with no allergen data (NULL) is not presented as safe when allergens are excluded', async () => {
+    it('REST-ALLERGEN: dishes with an empty or NULL allergen list are kept but marked as undeclared, never as safe', async () => {
         await dish('Plato sin ficha', 20000, { allergens: [] });
         await h.q(`UPDATE menu_items SET allergens = NULL WHERE name = 'Plato sin ficha'`);
         await dish('Arroz', 8000, { allergens: [] });
+        await dish('Sopa de mani', 9000, { allergens: ['maní'] });
+        await dish('Pan', 4000, { allergens: ['gluten'] });
         const C = await seedCustomer(h.q, 'Cliente');
         const filtered = await h.call(C.contactId, C.conversationId, 'get_menu', { excludeAllergens: ['mani'] }, scope);
-        expect(filtered.items.map((i: any) => i.name)).toEqual(['Arroz']);
+        const byName = Object.fromEntries(filtered.items.map((i: any) => [i.name, i.allergensDeclared]));
+        expect(byName).toEqual({ Arroz: false, 'Plato sin ficha': false, Pan: true });
+        expect(filtered.allergenNotice).toMatch(/allergensDeclared=false/);
+        expect(filtered.allergenNotice).toMatch(/kitchen/);
         const plain = await h.call(C.contactId, C.conversationId, 'get_menu', {}, scope);
-        expect(plain.items.map((i: any) => i.name).sort()).toEqual(['Arroz', 'Plato sin ficha']);
+        expect(plain.items.map((i: any) => i.name).sort()).toEqual(['Arroz', 'Pan', 'Plato sin ficha', 'Sopa de mani']);
+        expect(plain.allergenNotice).toBeUndefined();
+        expect(plain.items[0].allergensDeclared).toBeUndefined();
+    });
+
+    it('REST-ALLERGEN: a malformed allergen value (a bare JSON string) still counts as a recorded allergen', async () => {
+        await dish('Plato raro', 20000, { allergens: [] });
+        await h.q(`UPDATE menu_items SET allergens = '"Mariscos"'::jsonb WHERE name = 'Plato raro'`);
+        const C = await seedCustomer(h.q, 'Cliente');
+        const result = await h.call(C.contactId, C.conversationId, 'get_menu', { excludeAllergens: ['mariscos'] }, scope);
+        expect(result.items ?? []).toEqual([]);
+    });
+
+    it.each([['nueces', ['Pasta']], ['Frutos secos', ['Pasta']], ['trigo', ['Ensalada', 'Postre']], ['LÁCTEOS', ['Ensalada', 'Postre']]])(
+        'REST-ALLERGEN: %p is matched through plurals and the minimum synonyms', async (typed, expected) => {
+            await dish('Postre', 9000, { allergens: ['Nuez'] });
+            await dish('Pasta', 9000, { allergens: ['Gluten', 'Lactosa'] });
+            await dish('Ensalada', 9000, { allergens: ['frutos secos'] });
+            const C = await seedCustomer(h.q, 'Cliente');
+            const result = await h.call(C.contactId, C.conversationId, 'get_menu', { excludeAllergens: [typed] }, scope);
+            expect(result.items.map((i: any) => i.name).sort()).toEqual([...expected].sort());
+        });
+
+    it('REST-ALLERGEN: one string instead of a list excludes the dish too', async () => {
+        await dish('Ceviche', 30000, { allergens: ['mariscos'] });
+        await dish('Pollo asado', 25000, { allergens: ['soja'] });
+        const C = await seedCustomer(h.q, 'Cliente');
+        const result = await h.call(C.contactId, C.conversationId, 'get_menu', { excludeAllergens: 'Mariscos' } as any, scope);
+        expect(result.items.map((i: any) => i.name)).toEqual(['Pollo asado']);
+    });
+
+    it('REST-ALLERGEN: the SQL normaliser gives the same label as the JavaScript one for every case of the shared table', async () => {
+        for (const [raw, expected] of MENU_LABEL_CASES) {
+            const [row] = await h.q<any[]>(`SELECT ${menuLabelSql('$1::text')} AS v`, [raw]);
+            expect([raw, row.v]).toEqual([raw, expected]);
+            expect(normalizeMenuLabel(raw)).toBe(expected);
+        }
     });
 
     it('REST-ORDER: place_order prices every line from the menu, ignoring the price the customer or model sent', async () => {

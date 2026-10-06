@@ -15,20 +15,16 @@ import { resolveNativeEvidenceOpportunity } from '../../common/utils/native-evid
 import type { EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
 import { OperationConfirmationService } from '../email-templates/operation-confirmation.service';
 import { escapeReceiptHtml, receiptMoney } from '../email-templates/receipt-format.util';
+import { menuLabelSql, normalizeMenuLabel } from './menu-label.util';
 
-/**
- * Canonical form of a menu label (allergen, dietary tag): trimmed, lower-cased, accent-free,
- * single-spaced, and without a plural "s" ("Mariscos" and "marisco" compare equal).
- * MENU_LABEL_SQL must stay equivalent so stored values compare the same way.
- */
-export function normalizeMenuLabel(value: unknown): string {
-    return String(value ?? '')
-        .normalize('NFD').replace(/\p{M}/gu, '')
-        .toLowerCase().replace(/\s+/g, ' ').trim()
-        .replace(/^(.{3,})s$/, '$1');
+export { normalizeMenuLabel };
+
+/** A model may send a single string where a list is expected. */
+export function toLabelList(value: unknown): string[] {
+    if (typeof value === 'string') return value.trim() ? [value] : [];
+    return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
 }
-const MENU_LABEL_SQL = (col: string): string =>
-    `regexp_replace(regexp_replace(lower(translate(btrim(${col}), 'ÁÀÄÂÉÈËÊÍÌÏÎÓÒÖÔÚÙÜÛÑáàäâéèëêíìïîóòöôúùüûñ', 'AAAAEEEEIIIIOOOOUUUUNaaaaeeeeiiiioooouuuun')), '\\s+', ' ', 'g'), '^(.{3,})s$', '\\1')`;
+
 
 /**
  * Restaurants module — menu catalog, food orders, and promotions.
@@ -289,7 +285,7 @@ export class RestaurantsService {
         query?: string;
         category?: string;
         tag?: string;
-        excludeAllergens?: string[];
+        excludeAllergens?: string[] | string;
         maxPrice?: number;
         limit?: number;
     } = {}): Promise<any[]> {
@@ -308,7 +304,7 @@ export class RestaurantsService {
         }
         if (opts.tag) {
             // Same normalised comparison as allergens: "Vegano" must find a dish tagged "vegano".
-            where.push(`EXISTS (SELECT 1 FROM jsonb_array_elements_text(CASE WHEN jsonb_typeof(mi.tags) = 'array' THEN mi.tags ELSE '[]'::jsonb END) AS te(v) WHERE ${MENU_LABEL_SQL('te.v')} = $${i}::text)`);
+            where.push(`EXISTS (SELECT 1 FROM jsonb_array_elements_text(CASE WHEN jsonb_typeof(mi.tags) = 'array' THEN mi.tags ELSE '[]'::jsonb END) AS te(v) WHERE ${menuLabelSql('te.v')} = $${i}::text)`);
             params.push(normalizeMenuLabel(opts.tag));
             i++;
         }
@@ -317,15 +313,18 @@ export class RestaurantsService {
             params.push(opts.maxPrice);
             i++;
         }
-        if (opts.excludeAllergens && opts.excludeAllergens.length > 0) {
-            // Safety-first: a dish is kept only when its allergen list is KNOWN (a JSON array;
-            // an empty array means the kitchen declared "none") and no entry matches a requested
-            // allergen after case/accent/whitespace/plural normalisation. NULL or non-array
-            // allergen data is unknown, so it is never presented as safe.
-            for (const a of opts.excludeAllergens) {
+        const excluded = toLabelList(opts.excludeAllergens);
+        if (excluded.length > 0) {
+            // A dish is dropped when ANY recorded allergen matches a requested one after
+            // normalisation (case, accents, spaces, plurals, minimum synonyms). A dish whose
+            // allergen list is empty or NULL is KEPT but is not "free of allergens": it has no
+            // data. The caller marks it `allergensDeclared: false` and the tool tells the model
+            // not to present it as safe. Dropping them would empty almost every menu, because
+            // every dish is created with allergens = '[]'. A bare JSON string counts as one entry.
+            for (const a of excluded) {
                 const wanted = normalizeMenuLabel(a);
                 if (!wanted) continue;
-                where.push(`(jsonb_typeof(mi.allergens) = 'array' AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements_text(mi.allergens) AS ae(v) WHERE ${MENU_LABEL_SQL('ae.v')} = $${i}::text))`);
+                where.push(`NOT EXISTS (SELECT 1 FROM jsonb_array_elements_text(CASE jsonb_typeof(mi.allergens) WHEN 'array' THEN mi.allergens WHEN 'string' THEN jsonb_build_array(mi.allergens) ELSE '[]'::jsonb END) AS ae(v) WHERE ${menuLabelSql('ae.v')} = $${i}::text)`);
                 params.push(wanted);
                 i++;
             }

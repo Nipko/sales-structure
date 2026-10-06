@@ -112,6 +112,32 @@ describe('FAQ lexical matching of rephrased questions', () => {
         expect(rankPartialFaqMatches([visitDuration], query, 3)).toEqual([]);
     });
 
+    // "time" and "last" are ordinary words: "what time" asks for a schedule and "the last tour" is
+    // the final one. Only "how long" / "dura" / "duracion" / "duration" mean duration.
+    const tourDuration = faq('tdur', 'How long does the tour last?', 'The tour lasts 90 minutes.');
+    const tourStart = faq('tstart', 'What time does the tour start?', 'The tour starts at 9 am.');
+    const arrival = faq('arr', '¿A qué hora y cuánto tiempo antes debo llegar al tour?', 'Llega 15 minutos antes de la hora del tour.');
+    const returns = faq('ret', '¿Cuánto tiempo tengo para devolver un producto?', 'Tienes 15 días para devolver tu producto.');
+
+    it.each([
+        ['How long does the tour last?', tourStart],
+        ['When is the last tour?', tourDuration],
+        ['What time is the tour?', tourDuration],
+        ['cuanto dura el tour', arrival],
+        ['cuanto dura el producto', returns],
+    ])('does not answer %p with an unrelated FAQ (%#)', (query, wrong) => {
+        expect(rankPartialFaqMatches([wrong], query, 3)).toEqual([]);
+    });
+
+    it.each([
+        ['How long does the tour last?', tourDuration],
+        ['how long is the tour', tourDuration],
+        ['What time does the tour start?', tourStart],
+        ['cuanto tiempo antes debo llegar al tour', arrival],
+    ])('still answers %p with its own FAQ', (query, right) => {
+        expect(rankPartialFaqMatches([right], query, 3)).toEqual([right]);
+    });
+
     it('keeps each FAQ for its own question', () => {
         expect(rankPartialFaqMatches([visitDuration, visitPrice], 'cuanto cuesta la visita guiada', 3)).toEqual([visitPrice]);
         expect(rankPartialFaqMatches([visitPrice, visitDuration], 'cuanto tiempo dura la visita guiada', 3).map(f => f.id)).toEqual(['dur']);

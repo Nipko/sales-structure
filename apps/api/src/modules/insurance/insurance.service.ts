@@ -183,7 +183,9 @@ export class InsuranceService {
             }
             return;
         }
-        const n = Number(age);
+        // Only a number or numeric text is an age: Number(" ") is 0 and Number(true) is 1.
+        const numeric = typeof age === 'number' || (typeof age === 'string' && age.trim() !== '');
+        const n = numeric ? Number(age) : NaN;
         if (!Number.isFinite(n) || n < 0 || n > 120) {
             throw new BadRequestException({
                 error: 'insurance_applicant_age_invalid',

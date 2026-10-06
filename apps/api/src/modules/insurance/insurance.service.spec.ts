@@ -143,6 +143,7 @@ describe('InsuranceService applicant age', () => {
         [82, 'insurance_applicant_age_out_of_range'], [61, 'insurance_applicant_age_out_of_range'], [17, 'insurance_applicant_age_out_of_range'],
         [undefined, 'insurance_applicant_age_required'], [null, 'insurance_applicant_age_required'],
         [-3, 'insurance_applicant_age_invalid'], [Number.NaN, 'insurance_applicant_age_invalid'], [200, 'insurance_applicant_age_invalid'],
+        [' ', 'insurance_applicant_age_invalid'], [true, 'insurance_applicant_age_invalid'], ['abc', 'insurance_applicant_age_invalid'],
     ])('refuses age %p with %s and stores nothing', async (age, code) => {
         const { service, prisma } = build(ranged);
         await expect(service.createQuote('t', { planId, applicantAge: age as any }))

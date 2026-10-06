@@ -60,6 +60,11 @@ export async function enqueueOperationalPushNotices(query: NoticeQuery, schema: 
  * Snapshot one durable intent per active operator. A role may have many users,
  * and each SMTP transaction needs its own authority and receipt; one row per
  * role would hide several remote effects behind one state.
+ *
+ * The idempotency key is `kind:entity:user:revision`. The entity is part of it so
+ * two different events of the same kind (two escalated conversations, two emergency
+ * requests) never collide; `revision` distinguishes a new occurrence on the same
+ * entity (e.g. the `startedAt` of a handoff that is escalated again later).
  */
 export async function enqueueOperationalNoticesForTenantRoles(query: NoticeQuery, schema: string, input: {
     kind: 'home_service.emergency' | 'handoff.sla_escalated'; entityId: string; contactId?: string | null;
@@ -68,12 +73,12 @@ export async function enqueueOperationalNoticesForTenantRoles(query: NoticeQuery
     if (!operationalNoticesAllowed(schema)) return [];
     const rows = await query<any[]>(`INSERT INTO operational_notice_outbox(
             event_key,kind,entity_id,contact_id,conversation_id,recipient_user_id,state)
-        SELECT $1 || ':' || u.id::text || ':' || $7,$2,$3::uuid,$4::uuid,$5::uuid,u.id,'pending'
+        SELECT $1 || ':' || $3::uuid::text || ':' || u.id::text || ':' || $7,$2,$3::uuid,$4::uuid,$5::uuid,u.id,'pending'
           FROM public.tenants t
           JOIN public.users u ON u.tenant_id=t.id
          WHERE t.schema_name=$6 AND t.is_active=true AND u.is_active=true AND u.role=ANY($8::text[])
         ON CONFLICT(event_key) DO NOTHING RETURNING id`, [input.kind, input.kind, input.entityId,
-        input.contactId || null, input.conversationId || null, schema, input.revision || '1', input.roles]);
+        input.contactId || null, input.conversationId || null, schema, String(input.revision || '1').slice(0, 40), input.roles]);
     return rows.map(row => row.id);
 }
 

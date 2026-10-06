@@ -124,8 +124,12 @@ const url = process.env.PARALLLY_ISOLATION_TEST_URL;
         await expect(appointments.update(schema, first.id, { startAt: `${date}T10:15:00`, endAt: `${date}T10:45:00` }))
             .rejects.toMatchObject({ response: { error: 'test_drive_vehicle_slot_unavailable' } });
         expect((await appointments.getById(schema, first.id)).startAt).toBe(`${date}T10:00:00`);
+        await q('UPDATE appointments SET reminder_24h_sent=true, reminder_2h_sent=true, no_show_followed_up=true WHERE id=$1::uuid', [first.id]);
         const moved = await appointments.update(schema, first.id, { startAt: `${date}T11:00:00`, endAt: `${date}T11:30:00` });
         expect(moved).toMatchObject({ id: first.id, status: 'pending', metadata: { vehicleId } });
+        // AUT-01: a moved appointment is reminded (and asked about attendance) for its NEW time.
+        expect((await q('SELECT reminder_24h_sent AS a, reminder_2h_sent AS b, no_show_followed_up AS c FROM appointments WHERE id=$1::uuid', [first.id]))[0])
+            .toEqual({ a: false, b: false, c: false });
         await appointments.cancel(schema, first.id);
         const cancellations = events.emit.mock.calls.filter(call => call[0] === 'appointment.cancelled').length;
         const notifications = outbox.enqueueWithQuery.mock.calls.length;
@@ -176,8 +180,12 @@ const url = process.env.PARALLLY_ISOLATION_TEST_URL;
         executor.checkAvailability = async () => ({ slots: [] });
         expect(await executor.getAppointmentDetails(schema, contactId, item.id)).toMatchObject({ id: item.id, vehicleId, status: 'pending' });
         expect((await executor.listCustomerAppointments(schema, contactId)).appointments).toEqual([expect.objectContaining({ id: item.id, vehicleId })]);
+        await q('UPDATE appointments SET reminder_24h_sent=true, reminder_2h_sent=true, no_show_followed_up=true WHERE id=$1::uuid', [item.id]);
         const moved = await executor.rescheduleAppointment(schema, contactId, item.id, date, '11:00');
         expect(moved).toMatchObject({ success: true, appointment: { id: item.id, status: 'pending', vehicleId, time: '11:00' } });
+        // AUT-01: the agent's reschedule re-arms the reminders for the new time.
+        expect((await q('SELECT reminder_24h_sent AS a, reminder_2h_sent AS b, no_show_followed_up AS c FROM appointments WHERE id=$1::uuid', [item.id]))[0])
+            .toEqual({ a: false, b: false, c: false });
         expect(await executor.rescheduleAppointment(schema, contactId, item.id, date, '11:00')).toMatchObject({ success: true, alreadyRescheduled: true });
         expect(await executor.getAppointmentDetails(schema, randomUUID(), item.id)).toHaveProperty('error');
         expect(await executor.cancelAppointment(schema, contactId, item.id)).toMatchObject({ success: true });

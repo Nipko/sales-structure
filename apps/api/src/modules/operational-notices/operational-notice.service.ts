@@ -22,8 +22,22 @@ import { emailConfirmationsForOperation } from '../../common/utils/served-confir
 import { escapeReceiptHtml, receiptMoney } from '../email-templates/receipt-format.util';
 import { agentAvailI18n } from '../agent-console/agent-availability-i18n';
 import { SlackService } from '../slack/slack.service';
+import { RegionalProfileService } from '../tenants/regional-profile.service';
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+
+
+/**
+ * `appointments.start_at/end_at` are naive wall clocks of the TENANT's zone. Reading them
+ * with `new Date()` treats them as UTC and, at UTC-5, expires a notice five hours early.
+ * Compared in SQL against the current wall clock of the tenant zone (UTC when unknown).
+ */
+export async function wallClockHasPassed(regionalProfile: RegionalProfileService | undefined, query: NoticeQuery, tenantId: string, naive: string | null): Promise<boolean> {
+    if (!naive) return false;
+    const timezone = (await regionalProfile?.timezoneFor(tenantId)) || 'UTC';
+    const [row] = await query<any[]>('SELECT ($1::timestamp <= (NOW() AT TIME ZONE $2::text)) AS past', [naive, timezone]);
+    return row?.past === true;
+}
 
 
 @Injectable()
@@ -34,7 +48,8 @@ export class OperationalNoticeService {
         private readonly email: EmailService, private readonly push: PushService, private readonly cronLock: CronLockService,
         @InjectQueue('outbound-messages') private readonly queue: Queue<any>,
         @Optional() private readonly emailTemplates?: EmailTemplatesService,
-        @Optional() private readonly slack?: SlackService) {}
+        @Optional() private readonly slack?: SlackService,
+        @Optional() private readonly regionalProfile?: RegionalProfileService) {}
 
     @Cron('21 * * * * *')
     async recoverCron(): Promise<void> {
@@ -286,18 +301,18 @@ export class OperationalNoticeService {
         }
         let facts: any;
         if (notice.kind === 'appointment.operator_slack') {
-            facts=(await query<any[]>(`SELECT a.*,a.service_name AS name
+            facts=(await query<any[]>(`SELECT a.*,a.service_name AS name,to_char(a.end_at,'YYYY-MM-DD"T"HH24:MI:SS') AS end_naive
                 FROM appointments a WHERE a.id=$1::uuid FOR SHARE`,[notice.entity_id]))[0];
-            if (!facts || facts.status==='cancelled' || new Date(facts.end_at).getTime()<=Date.now()) {
+            if (!facts || facts.status==='cancelled' || await wallClockHasPassed(this.regionalProfile,query,tenantId,facts.end_naive)) {
                 throw new NoticeSuppressed('notice_domain_state_changed');
             }
         } else if (notice.kind.startsWith('appointment.')) {
-            facts=(await query<any[]>(`SELECT a.*,to_char(a.start_at,'YYYY-MM-DD HH24:MI') AS when_text,a.service_name AS name
+            facts=(await query<any[]>(`SELECT a.*,to_char(a.start_at,'YYYY-MM-DD HH24:MI') AS when_text,to_char(a.start_at,'YYYY-MM-DD"T"HH24:MI:SS') AS start_naive,a.service_name AS name
                 FROM appointments a WHERE a.id=$1::uuid FOR SHARE`,[notice.entity_id]))[0];
             const required=notice.kind==='appointment.payment_review'?'review':'confirmed';
             if (!facts || facts.metadata?.source==='eval_gate' || facts.payment_status!=='paid'
                 || (required==='confirmed' ? facts.status!=='confirmed' : !facts.metadata?.paymentConfirmationIssue)) throw new NoticeSuppressed('notice_domain_state_changed');
-            if (required==='confirmed' && new Date(facts.start_at).getTime()<=Date.now()) throw new NoticeSuppressed('notice_event_expired');
+            if (required==='confirmed' && await wallClockHasPassed(this.regionalProfile,query,tenantId,facts.start_naive)) throw new NoticeSuppressed('notice_event_expired');
         } else if (notice.kind==='gym.waitlist_promoted') {
             const ref=(await query<any[]>('SELECT class_id FROM class_bookings WHERE id=$1::uuid',[notice.entity_id]))[0];
             const fc=ref && (await query<any[]>(`SELECT *,to_char(scheduled_at,'YYYY-MM-DD HH24:MI') AS when_text FROM fitness_classes WHERE id=$1::uuid FOR SHARE`,[ref.class_id]))[0];

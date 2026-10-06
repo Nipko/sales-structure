@@ -1681,11 +1681,22 @@ export class AIToolExecutorService {
         return urls.map((url, i) => ({ url, caption: i === 0 ? caption : undefined }));
     }
 
+    /** Answer for a listing that exists but is sold / rented / reserved / inactive: no data about it. */
+    private listingUnavailable(): { error: string; message: string } {
+        return {
+            error: 'listing_unavailable',
+            message: 'That listing is no longer available. Do not describe it, quote its price or send its photos; '
+                + 'offer similar listings with search_listings or a human handoff.',
+        };
+    }
+
     /** Send a real-estate listing's real photos (URLs from the DB, never the LLM). */
     private async sendListingImage(schema: string, listingId: string): Promise<any> {
         try {
-            const l = await this.listingsService.getById(schema, listingId);
-            if (!l) return { error: 'listing_not_found' };
+            const read = await this.listingsService.getAvailableById(schema, listingId);
+            if (read.state === 'not_found') return { error: 'listing_not_found' };
+            if (read.state === 'unavailable') return this.listingUnavailable();
+            const l = read.listing;
             const media = this.toMediaSet(l.images, l.name || undefined);
             if (!media.length) {
                 return { error: 'Ese inmueble no tiene una imagen disponible.' };
@@ -4000,7 +4011,12 @@ export class AIToolExecutorService {
             let found: any[];
             try {
                 found = await this.prisma.$queryRawUnsafe(
-                    `SELECT ${c.select} AS label FROM "${schema}".${c.table} WHERE id = $1::uuid LIMIT 1`,
+                    // A listing the customer cannot see (sold, rented, reserved,
+                    // inactive) is not a place to send an advisor to: same
+                    // predicate as search_listings / isListingBookable.
+                    `SELECT ${c.select} AS label${c.key === 'listingId'
+                        ? `, COALESCE(is_active = true AND status = 'available', false) AS bookable`
+                        : ''} FROM "${schema}".${c.table} WHERE id = $1::uuid LIMIT 1`,
                     c.value,
                 ) as any[];
             } catch (error: any) {
@@ -4010,6 +4026,15 @@ export class AIToolExecutorService {
                     error: 'appointment_subject_unavailable',
                     message: 'The appointment subject could not be verified. Do not create a generic booking; offer a human handoff instead.',
                     shouldHandoff: true,
+                };
+            }
+            if (found.length && c.key === 'listingId' && found[0].bookable !== true) {
+                return {
+                    metadata, labels,
+                    error: 'listing_unavailable',
+                    persisted: false,
+                    message: 'That listing is no longer available for visits. Nothing was saved. Do not describe it or offer a visit; '
+                        + 'offer similar listings with search_listings or a human handoff.',
                 };
             }
             if (found.length) {
@@ -4357,7 +4382,7 @@ export class AIToolExecutorService {
         schemaName: string,
         packageId: string,
         date: string,
-        partySize: number,
+        partySize: unknown,
     ): Promise<any> {
         try {
             return await this.toursService.checkAvailability(schemaName, packageId, date, partySize);
@@ -4502,8 +4527,10 @@ export class AIToolExecutorService {
 
     private async getListingDetails(schemaName: string, listingId: string): Promise<any> {
         try {
-            const l = await this.listingsService.getById(schemaName, listingId);
-            if (!l) return { error: 'listing_not_found' };
+            const read = await this.listingsService.getAvailableById(schemaName, listingId);
+            if (read.state === 'not_found') return { error: 'listing_not_found' };
+            if (read.state === 'unavailable') return this.listingUnavailable();
+            const l = read.listing;
             return {
                 id: l.id,
                 name: l.name,
@@ -6130,6 +6157,19 @@ export class AIToolExecutorService {
         if (rows[0].status === 'cancelled') return { error: 'Cannot reschedule a cancelled appointment' };
 
         const apt = rows[0];
+        // A visit to a listing that has since been sold / rented / deactivated is
+        // not moved to a new slot (cancelling stays allowed; it is another tool).
+        const visitedListingId = apt.metadata?.listingId;
+        if (typeof visitedListingId === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(visitedListingId)) {
+            const listingRows: any[] = await this.prisma.$queryRawUnsafe(
+                `SELECT COALESCE(is_active = true AND status = 'available', false) AS bookable
+                   FROM "${schema}".real_estate_listings WHERE id = $1::uuid LIMIT 1`,
+                visitedListingId,
+            );
+            if (listingRows.length && listingRows[0].bookable !== true) {
+                return { ...this.listingUnavailable(), persisted: false };
+            }
+        }
         const svcRows: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT duration_minutes, buffer_minutes, duration_type, duration_minutes_max FROM "${schema}".services WHERE id = $1::uuid`,
             apt.service_id,

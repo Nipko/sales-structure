@@ -303,6 +303,10 @@ export class WhatsAppAdapter implements IChannelAdapter, StrictDispatchTransport
             }
 
             const message = value.messages[0];
+            // A reaction (emoji on an earlier message) is not a new customer turn.
+            // It used to fall through to parseMessageContent's default and reach the
+            // agent as "[Unsupported message type: reaction]", i.e. a reply per emoji.
+            if (message.type === 'reaction') return null;
             const contact = value.contacts?.[0];
             const metadata = value.metadata;
 

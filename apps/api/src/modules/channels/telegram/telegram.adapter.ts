@@ -138,9 +138,14 @@ export class TelegramAdapter implements IChannelAdapter, StrictDispatchTransport
      */
     async handleWebhook(payload: any, _accountId: string): Promise<NormalizedMessage | null> {
         try {
-            const message = payload?.message || payload?.edited_message;
+            // `edited_message` is deliberately NOT read. Telegram sends an edit as a
+            // NEW update (new update_id, same message_id), so treating it as inbound
+            // queued a second agent turn, a second reply and a second quota charge
+            // for one sentence the customer only corrected. The turn already ran on
+            // the original text; an edit is ignored (CHAN-TG-03).
+            const message = payload?.message;
             if (!message) {
-                // Could be callback_query, inline_query, etc. — skip for now
+                // edited_message, callback_query, inline_query, etc. — skip for now
                 return null;
             }
 
@@ -297,7 +302,7 @@ export class TelegramAdapter implements IChannelAdapter, StrictDispatchTransport
 
         const body: any = {
             url: webhookUrl,
-            allowed_updates: ['message', 'edited_message', 'callback_query'],
+            allowed_updates: ['message', 'callback_query'],
             drop_pending_updates: false,
         };
         if (secretToken) {

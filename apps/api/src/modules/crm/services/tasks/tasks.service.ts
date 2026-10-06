@@ -79,7 +79,7 @@ export class TasksService {
         const result = await this.prisma.executeInTenantSchema<any[]>(schema, `
             INSERT INTO tasks (
                 lead_id, opportunity_id, title, description, type, due_at, assigned_to, created_by
-            ) VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8)
+            ) VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6::timestamptz, $7, $8)
             RETURNING *
         `, [
             data.leadId, data.opportunityId || null, data.title, data.description || null,
@@ -133,7 +133,7 @@ export class TasksService {
             const inserted = await query<any[]>(`
                 INSERT INTO tasks (
                     lead_id, opportunity_id, title, description, type, due_at, assigned_to, created_by
-                ) VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8)
+                ) VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6::timestamptz, $7, $8)
                 RETURNING *
             `, [
                 data.leadId, data.opportunityId || null, data.title, data.description || null,

@@ -1,29 +1,12 @@
-import { WhatsAppAdapter } from './whatsapp/whatsapp.adapter';
 import { InstagramAdapter } from './instagram/instagram.adapter';
 import { TelegramAdapter } from './telegram/telegram.adapter';
 
 /**
- * An edit or a reaction is not a new customer turn: none of the adapters may turn one
- * into an inbound message (that would be a second agent reply and a second quota charge).
- * CHAN-TG-03 covers Telegram's `edited_message`; WhatsApp reactions used to reach the agent
- * as "[Unsupported message type: reaction]".
+ * An edit or a reaction is not a new customer turn: Instagram and Telegram adapters must not turn one into an
+ * inbound message. (WhatsApp is covered on its real ingress: whatsapp-webhook-non-turn.spec.ts and the worker spec.)
  */
 describe('inbound edits and reactions are ignored by every adapter', () => {
     const config = { get: () => undefined } as any;
-    const wa = (message: any) => ({ entry: [{ changes: [{ value: {
-        metadata: { phone_number_id: 'pn1' }, contacts: [{ profile: { name: 'Ana' } }], messages: [message] } }] }] });
-
-    it('WhatsApp: a text message is still normalized', async () => {
-        const out = await new WhatsAppAdapter(config).handleWebhook(wa({ id: 'wamid.1', from: '573001112233', timestamp: '1800000000', type: 'text', text: { body: 'hola' } }), 'pn1');
-        expect(out?.content).toMatchObject({ type: 'text', text: 'hola' });
-    });
-
-    it('WhatsApp: a reaction is not an inbound message', async () => {
-        const out = await new WhatsAppAdapter(config).handleWebhook(
-            wa({ id: 'wamid.2', from: '573001112233', timestamp: '1800000001', type: 'reaction', reaction: { message_id: 'wamid.1', emoji: '👍' } }), 'pn1');
-        expect(out).toBeNull();
-    });
-
     it('Instagram: a reaction and a message edit carry no `message` and are ignored', async () => {
         const adapter = new InstagramAdapter(config);
         const base = { sender: { id: 'u1' }, recipient: { id: 'ig1' }, timestamp: 1_800_000_000_000 };

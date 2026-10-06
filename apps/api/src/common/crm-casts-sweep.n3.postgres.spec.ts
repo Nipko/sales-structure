@@ -6,6 +6,8 @@ import { NotesService } from '../modules/crm/services/notes/notes.service';
 import { ActivityService } from '../modules/crm/services/activity/activity.service';
 import { CustomAttributesService } from '../modules/crm/services/custom-attributes/custom-attributes.service';
 import { CatalogService } from '../modules/catalog/catalog.service';
+import { PipelineService } from '../modules/pipeline/pipeline.service';
+import { ToursService } from '../modules/tours/tours.service';
 import { ComplianceService } from '../modules/analytics/compliance.service';
 
 /**
@@ -42,6 +44,10 @@ import { ComplianceService } from '../modules/analytics/compliance.service';
             `CREATE TABLE commercial_offers(id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id VARCHAR(255), course_id UUID,
                 campaign_id UUID, offer_type VARCHAR(50), title VARCHAR(255), conditions_json JSONB DEFAULT '{}',
                 valid_from TIMESTAMP, valid_to TIMESTAMP, active BOOLEAN DEFAULT true)`,
+            `CREATE TABLE tour_inventory(id UUID PRIMARY KEY DEFAULT gen_random_uuid(), package_id UUID NOT NULL, departure_date DATE NOT NULL,
+                departure_time TIME, available_seats INTEGER DEFAULT 0, total_seats INTEGER DEFAULT 0, price_override NUMERIC(15,2),
+                is_active BOOLEAN DEFAULT true, notes TEXT, updated_at TIMESTAMP DEFAULT NOW(), UNIQUE(package_id, departure_date, departure_time))`,
+            `CREATE TABLE deals(id UUID PRIMARY KEY DEFAULT gen_random_uuid(), title VARCHAR(255), expected_close_date DATE, updated_at TIMESTAMP DEFAULT NOW())`,
         ]);
         redis = { get: async () => lane.schema, set: async () => undefined, del: async () => undefined };
     });
@@ -102,5 +108,21 @@ import { ComplianceService } from '../modules/analytics/compliance.service';
             leadId: lead, phone: '+573001112233', channel: 'whatsapp', triggerMessage: 'no mas', detectedFrom: 'keyword' });
         expect(row).toMatchObject({ lead_id: lead });
         expect((await lane.sql('SELECT opted_out FROM leads'))[0].opted_out).toBe(true);
+    });
+
+    it('tours: createInventory writes departure_time as time', async () => {
+        const tours: any = Object.create(ToursService.prototype);
+        Object.assign(tours, { prisma: lane.prisma });
+        const row = await tours.createInventory(lane.schema, randomUUID(), { departureDate: '2026-11-01', departureTime: '09:30', totalSeats: 8 });
+        expect(row).toMatchObject({ departure_time: new Date('1970-01-01T09:30:00.000Z'), total_seats: 8 });
+    });
+
+    it('pipeline: updateDeal writes expected_close_date as date', async () => {
+        const id = randomUUID();
+        await lane.sql("INSERT INTO deals(id,title) VALUES($1::uuid,'D')", [id]);
+        const pipeline: any = Object.create(PipelineService.prototype);
+        Object.assign(pipeline, { prisma: lane.prisma, getTenantSchema: async () => lane.schema });
+        await pipeline.updateDeal(lane.tenantId, id, { expectedCloseDate: '2026-12-31' });
+        expect(await lane.sql('SELECT expected_close_date::text AS d FROM deals')).toEqual([{ d: '2026-12-31' }]);
     });
 });

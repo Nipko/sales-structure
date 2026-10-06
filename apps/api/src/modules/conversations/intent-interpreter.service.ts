@@ -7,6 +7,7 @@ import {
 } from '../../common/conversation/intent-normalizer';
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { BusinessWindowResolver, disambiguateBareHour } from './business-window';
+import { isInformationalDetour } from './informational-detour';
 
 /**
  * INTERPRET phase — extracts structured intent from user messages.
@@ -67,6 +68,33 @@ export class IntentInterpreterService {
         acceptedReferents?: readonly string[],
         /** Business hours per date; without them an unqualified hour is never reinterpreted. */
         businessWindowFor?: BusinessWindowResolver,
+    ): Promise<InterpretedIntent> {
+        const interpreted = await this.interpretMessage(
+            userText, currentBookingStep, availableServices, todayDate, upcomingDays, tenantId, operatingCountry, acceptedReferents,
+        );
+        // Mid-mission, "¿cuánto cuesta el corte?" names a service and "¿a qué hora
+        // abren?" resembles an availability request, so the extractors label them
+        // select_service / ask_availability and the booking flow takes them as its
+        // own. They are questions about the business: label them as such
+        // (`ask_services` is already the right label and stays). At idle
+        // the established behaviour (service list, flow start) is unchanged.
+        const missionOpen = currentBookingStep !== 'idle' && currentBookingStep !== 'booked';
+        if (missionOpen && isInformationalDetour(userText, interpreted)
+            && ['ask_availability', 'select_service', 'select_time', 'provide_info', 'unknown'].includes(interpreted.intent)) {
+            return { ...interpreted, intent: 'general_question', isConfirmation: false, questionTopic: userText };
+        }
+        return interpreted;
+    }
+
+    private async interpretMessage(
+        userText: string,
+        currentBookingStep: string,
+        availableServices: string[],
+        todayDate: string,
+        upcomingDays: Array<{ date: string; weekday: string; label?: string }>,
+        tenantId?: string,
+        operatingCountry?: string | null,
+        acceptedReferents?: readonly string[],
     ): Promise<InterpretedIntent> {
         // First try deterministic extraction (fast, no LLM cost)
         const deterministicResult = this.deterministicExtract(

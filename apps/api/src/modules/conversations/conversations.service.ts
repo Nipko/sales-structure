@@ -66,6 +66,7 @@ import { buildUnverifiedPriceReply, enforceVerifiedPriceReply, ResponseValidator
 import { AgentTurnSession } from './agent-turn-session';
 import { sessionCanExecute, sessionLlmRouter, sessionToolExecutor } from './agent-turn-adapters';
 import { restoreBookingMission } from './booking-state-continuity';
+import { deriveInformationalHours, hasConfiguredHours, promptHoursStatus, resolvePromptBusinessHours, UNKNOWN_INFORMATIONAL_HOURS, type InformationalHours } from './informational-hours';
 import { resolveEvaluationSnapshot } from './agent-evaluation-snapshot';
 import { AGENT_TEST_EXECUTION_CONTEXT, DRAFT_EXECUTION_CONTEXT, type ServiceExecutionContext } from '../../common/types/execution-context';
 import { EVALUATION_CONTEXT_LANGUAGES, evaluationContextLanguage, projectBusinessTurnContext,
@@ -1986,6 +1987,54 @@ export class ConversationsService {
         return { contact, lead, conversation };
     }
 
+    /**
+     * Hours for the `<business_hours>` prompt block. Configured hours (tenant
+     * schedule, 24/7, agent schedule) are returned untouched; otherwise the
+     * appointment agenda describes them. Never feeds `isWithinBusinessHours`.
+     * A failed read leaves the prompt as it was: absence is never invented.
+     */
+    private async resolvePromptBusinessHours(
+        tenantId: string, config: TenantConfig, bizHours: any, evaluationContext: EvaluationTurnContextInputs | null,
+        turnTimezone: string,
+    ): Promise<any> {
+        // The identity check means "something configured already describes the hours".
+        if (resolvePromptBusinessHours(bizHours, config.hours, UNKNOWN_INFORMATIONAL_HOURS) === (bizHours ?? null)) return bizHours;
+        const derived = await this.loadInformationalHours(tenantId, config, evaluationContext);
+        // The agenda is wall-clock time of the tenant: stamp the turn's resolved zone
+        // here, never in the cache or the sealed snapshot.
+        return derived ? resolvePromptBusinessHours(bizHours, config.hours, { ...derived, timezone: turnTimezone }) : bizHours;
+    }
+
+    private async loadInformationalHours(
+        tenantId: string, config: TenantConfig, evaluationContext: EvaluationTurnContextInputs | null,
+    ): Promise<InformationalHours | null> {
+        if (evaluationContext) return evaluationContext.appointmentHours ?? null;
+        const cacheKey = `biz_hours_info:${tenantId}`;
+        try {
+            const cached = await this.redis.getJson(cacheKey);
+            if (cached) return cached as InformationalHours;
+            const schema = await this.tenantSchema(tenantId);
+            const derived = await this.readInformationalHours(schema);
+            await this.redis.setJson(cacheKey, derived, 300);
+            return derived;
+        } catch (error: any) {
+            this.logger.warn(`[Hours] Appointment hours unavailable for the prompt: ${error?.message}`);
+            return null;
+        }
+    }
+
+    /** Throws when the agenda cannot be read; an empty agenda is a real answer. */
+    private async readInformationalHours(schema: string): Promise<InformationalHours> {
+        // Same eligibility as check_availability: a slot of a deactivated user is not bookable.
+        const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
+            `SELECT a.user_id, a.day_of_week, a.start_time::text AS start_time, a.end_time::text AS end_time
+               FROM availability_slots a
+               JOIN public.tenants tenant_owner ON tenant_owner.schema_name = $1 AND tenant_owner.is_active = true
+               JOIN public.users u ON u.id = a.user_id AND u.tenant_id = tenant_owner.id AND u.is_active = true
+              WHERE a.is_active = true`, [schema]);
+        return deriveInformationalHours(rows) ?? UNKNOWN_INFORMATIONAL_HOURS;
+    }
+
     private async loadTenantBusinessHours(tenantId: string, session?: AgentTurnSession): Promise<any | null> {
         if (session) return resolveEvaluationTurnContext(session.snapshot.contextInputs, tenantId).businessHours;
         const cacheKey = `biz_hours:${tenantId}`;
@@ -2491,6 +2540,16 @@ export class ConversationsService {
     /** Captured between the revision service's initial and final dependency checks.
      * Every source read is uncached/read-only; failures cannot become empty facts.
      * The global manifest remains required until all other ports are isolated. */
+    /** Informational hours for the sealed preview context; absent when unreadable. */
+    private async captureAppointmentHours(tenantId: string, config: TenantConfig): Promise<InformationalHours | null> {
+        try {
+            return await this.readInformationalHours(await this.prisma.getTenantSchemaName(tenantId));
+        } catch (error: any) {
+            this.logger.warn(`[Hours] Appointment hours not captured for the evaluation context: ${error?.message}`);
+            return null;
+        }
+    }
+
     async captureEvaluationContext(tenantId: string, config: TenantConfig): Promise<EvaluationTurnContextInputs> {
         if (!this.regionalProfile || !this.verticalTurnContext) throw new Error('evaluation_context_services_unavailable');
         const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true, industry: true } });
@@ -2504,6 +2563,7 @@ export class ConversationsService {
         ]);
         return resolveEvaluationTurnContext({ version: 1, tenantId,
             businessHours: (tenant.settings as any)?.businessHours ?? null,
+            appointmentHours: await this.captureAppointmentHours(tenantId, config),
             regional, business: projectBusinessTurnContext(identity),
             activeObjectPolicy: tenantActiveObjectPolicyContext(tenant),
             vertical: Object.fromEntries(verticalEntries) as EvaluationTurnContextInputs['vertical'],
@@ -4238,10 +4298,19 @@ export class ConversationsService {
         await refreshLearningExamples(preExecutedStyleOperation ? { toolName: preExecutedStyleOperation.name, status: 'succeeded' } : undefined);
         let lastStyleOperation = preExecutedStyleOperation;
 
+        // Opening hours as the prompt describes them. `bizHours` keeps deciding
+        // open/closed; this only adds an informational schedule when the tenant
+        // configured none, so the agent can answer "¿a qué hora abren?".
+        const promptHours = await this.resolvePromptBusinessHours(tenantId, config, bizHours, evaluationContext, turnContext.timezone);
+        // `isWithinBusinessHours` answers `open` when no hours exist; the prompt must not
+        // repeat that as a fact. Configured hours keep their verdict; otherwise the agenda
+        // decides, and without one the status is `unknown`.
+        turnContext.businessHoursStatus = promptHoursStatus(turnContext.businessHoursStatus as 'open' | 'closed',
+            hasConfiguredHours(bizHours, config.hours), promptHours, turnContext.timezone);
         // Assemble with a cache boundary: the contract+persona prefix is stable
         // across turns and can be cached by the provider (90% off on Anthropic;
         // better OpenAI auto-cache hit-rate). Only the <turn> block changes.
-        let { systemPrompt, cachePrefixChars } = this.promptAssembler.assembleWithCacheBoundary(config, turnContext, bizHours);
+        let { systemPrompt, cachePrefixChars } = this.promptAssembler.assembleWithCacheBoundary(config, turnContext, promptHours);
         if (session) { session.trace.systemPrompt = systemPrompt; session.trace.turnContext = turnContext; }
 
         // Hoisted (also used inside the tool loop): the agent's reply-token cap, if pinned.
@@ -4301,7 +4370,7 @@ export class ConversationsService {
                     if(!(error instanceof LLMSourceAuthorityUnavailable)||session||replyProvenance)throw error;
                     learningSuppressed=true;learningFootprint.clear();turnContext.learningExamples=[];
                     currentMessages.splice(0,currentMessages.length,...learningRecoveryMessages(messages,executedToolsThisTurn,userLanguage));
-                    ({systemPrompt,cachePrefixChars}=this.promptAssembler.assembleWithCacheBoundary(config,turnContext,bizHours));
+                    ({systemPrompt,cachePrefixChars}=this.promptAssembler.assembleWithCacheBoundary(config,turnContext,promptHours));
                     turnTrace.add('decision','learning_source_unavailable',{recoveredWithoutLearning:true});
                     // A replacement answer may explain already committed results;
                     // it cannot request another effect or repeat a previous one.
@@ -4361,7 +4430,7 @@ export class ConversationsService {
                 if (styleOperation && styleOperation !== lastStyleOperation) {
                     await refreshLearningExamples({ toolName: styleOperation.name, status: 'succeeded' });
                     lastStyleOperation = styleOperation;
-                    ({ systemPrompt, cachePrefixChars } = this.promptAssembler.assembleWithCacheBoundary(config, turnContext, bizHours));
+                    ({ systemPrompt, cachePrefixChars } = this.promptAssembler.assembleWithCacheBoundary(config, turnContext, promptHours));
                     if (session) session.trace.systemPrompt = systemPrompt;
                 }
 

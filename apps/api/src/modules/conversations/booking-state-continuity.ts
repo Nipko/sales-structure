@@ -12,6 +12,13 @@ export function restoreBookingMission(
     if (!saved?.step || saved.step === 'idle') return { state: { step: 'idle' }, requiresRevalidation: false };
     const stamp = Date.parse(savedAt || saved.savedAt || '');
     const age = now - stamp;
+    // `savedAt` is rewritten on every turn, including turns the engine declines
+    // (an informational question answered by the model). A dormant mission is
+    // therefore bounded by the moment it went dormant, not by the last write.
+    const dormantAt = Date.parse(saved.dormantSince || '');
+    if (Number.isFinite(dormantAt) && now - dormantAt > BOOKING_MISSION_RETENTION_MS) {
+        return { state: { step: 'idle' }, requiresRevalidation: false };
+    }
     if (Number.isFinite(age) && age >= 0 && age <= BOOKING_PROPOSAL_TTL_MS) {
         return { state: structuredClone(saved), requiresRevalidation: false };
     }
@@ -31,6 +38,11 @@ export function restoreBookingMission(
         // engine re-reads services and slots and obtains a new confirmation.
         date: /^\d{4}-\d{2}-\d{2}$/.test(saved.date || '') ? saved.date : undefined,
         resumedAfterExpiry: true,
+        // Past the continuity window the mission is dormant: kept, but the next
+        // booking turn asks whether to resume it instead of continuing silently.
+        resumeOffer: saved.resumeOffer ?? 'pending',
+        dormantSince: saved.dormantSince
+            ?? new Date(Number.isFinite(stamp) ? stamp : now).toISOString(),
     };
     return { state, requiresRevalidation: true };
 }

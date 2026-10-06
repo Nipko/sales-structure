@@ -14,7 +14,19 @@ const tokens = (value: string) => fold(value).match(/[\p{L}\p{N}]+/gu) || [];
 // An answer may express duration as "20 minutes" without repeating "how long".
 // Only these specific follow-up words may be absent. A missing topic/name
 // anywhere in the query (including a later question) must still reject it.
-const OPTIONAL_DURATION_WORDS = new Set(['dura', 'duracion', 'long', 'duration', 'duracao', 'duree']);
+// "tiempo/time" belongs to the family: "cuanto tiempo dura" asks what "cuanto dura"
+// asks, and "duracion" is the noun of "dura". All of them compare as one concept.
+const DURATION_WORDS = new Set([
+    'dura', 'duran', 'durar', 'duracion', 'tiempo', 'long', 'duration', 'time', 'lasts', 'last',
+    'duracao', 'tempo', 'duree', 'temps',
+]);
+const DURATION = 'duration';
+// Comparison form of a term: duration words collapse into one concept and a plural
+// "s" is dropped ("visitas" = "visita"). Only for ranking; the SQL candidates keep raw terms.
+const canon = (term: string): string => DURATION_WORDS.has(term) ? DURATION
+    : term.length > 4 && term.endsWith('s') ? term.slice(0, -1) : term;
+const canonTokens = (value: string): Set<string> => new Set(tokens(value).map(canon));
+const canonTerms = (value: string): string[] => [...new Set(faqSearchTerms(value).map(canon))];
 
 export function faqSearchTerms(query: string): string[] {
     return [...new Set(tokens(query).filter(term => term.length > 1 && !FUNCTION_WORDS.has(term)))].slice(0, 32);
@@ -23,23 +35,26 @@ export function faqSearchTerms(query: string): string[] {
 /** Conservative fallback for questions with added detail. A single shared
  * word such as "visita" cannot pull unrelated vertical seeds into a reply. */
 export function rankPartialFaqMatches(rows: FAQ[], query: string, limit: number): FAQ[] {
-    const terms = faqSearchTerms(query);
-    const minimumMatches = Math.max(2, Math.ceil(terms.length * 0.75));
+    const allTerms = canonTerms(query);
     // The fallback may tolerate an ADDED question, never replace the topic of
     // the first one. Keep its full lexical anchor in the FAQ question itself.
     // This is deliberately stricter than fuzzy matching: "Faro Rojo" must not
     // become "Faro Azul" because their answers share "incluye/dura/visita".
     const firstQuestion = fold(query).split(/[?？;]|\b(?:y|and|e|et)\s+(?=(?:cuanto|cuanta|cuantos|cuantas|que|como|donde|what|how|when|where|quanto|qual|quais|quel|quelle|quels|quelles|combien|comment)\b)/u)[0];
-    const anchor = faqSearchTerms(firstQuestion);
+    const anchor = canonTerms(firstQuestion);
     if (anchor.length < 2) return [];
     return rows.map((faq, index) => {
-        const question = new Set(tokens(faq.question));
-        const content = new Set([...question, ...tokens(faq.answer)]);
+        const question = canonTokens(faq.question);
+        const content = new Set([...question, ...canonTokens(faq.answer)]);
+        // The duration concept is optional in the ANSWER only: when the FAQ never
+        // mentions it, it is neither required nor counted.
+        const terms = allTerms.filter(term => term !== DURATION || content.has(DURATION));
+        const minimumMatches = Math.max(2, Math.ceil(terms.length * 0.75));
         const matched = terms.filter(term => content.has(term)).length;
         const questionMatches = terms.filter(term => question.has(term)).length;
-        const topicPreserved = terms.every(term => content.has(term) || OPTIONAL_DURATION_WORDS.has(term));
-        return { faq, index, matched, anchored: topicPreserved && anchor.every(term => question.has(term)), score: matched + questionMatches };
-    }).filter(row => row.anchored && row.matched >= minimumMatches)
+        const topicPreserved = terms.every(term => content.has(term));
+        return { faq, index, matched, minimumMatches, anchored: topicPreserved && anchor.every(term => question.has(term)), score: matched + questionMatches };
+    }).filter(row => row.anchored && row.matched >= row.minimumMatches)
         .sort((a, b) => b.score - a.score || a.index - b.index)
         .slice(0, limit).map(row => row.faq);
 }

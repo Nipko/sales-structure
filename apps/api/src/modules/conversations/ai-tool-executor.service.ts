@@ -1451,7 +1451,7 @@ export class AIToolExecutorService {
      * classes. A catalog search now answers about the catalog, or says nothing
      * matched — and a query that throws says so instead of returning zero rows.
      */
-    private async searchProducts(schema: string, query: string, limit = 5, category?: string): Promise<any> {
+    private async searchProducts(schema: string, query: string, limit = 5, category?: string, maxPrice?: number): Promise<any> {
         // `%` and `_` typed by the customer are text, not wildcards.
         const q = `%${foldQueryText(query).replace(/[\\%_]/g, '\\$&')}%`;
         const conds: string[] = [];
@@ -1465,6 +1465,11 @@ export class AIToolExecutorService {
             params.push(foldQueryText(category));
         }
         conds.push(`is_available = true`);
+        if (typeof maxPrice === 'number' && Number.isFinite(maxPrice)) {
+            // The customer's budget holds on every path; an unpriced product cannot be shown to fit it.
+            conds.push(`price <= $${params.length + 1}`);
+            params.push(maxPrice);
+        }
         params.push(limit);
         const sql = `SELECT id, name, description, category, price, currency, stock, is_available, images,
                             requires_prescription
@@ -1839,7 +1844,9 @@ export class AIToolExecutorService {
                     priceStatus: productPriceStatus(p.price),
                     currency: p.currency || null,
                     stock: p.stock ?? null,
-                    inStock: p.stock == null ? p.is_available : Number(p.stock) > 0,
+                    // An inactive product is not for sale whatever units remain.
+                    isAvailable: p.is_available === true,
+                    inStock: p.is_available === true && (p.stock == null || Number(p.stock) > 0),
                     // Haber stock y poder venderlo por chat no son lo mismo.
                     requiresPrescription: !!p.requires_prescription,
                 });
@@ -2620,7 +2627,7 @@ export class AIToolExecutorService {
             this.logger.warn(`[Tool] recommend_products store catalog unavailable: ${e.message}`);
         }
         // Fallback to the internal catalog so the agent still grounds recommendations.
-        const fallback = await this.searchProducts(schema, search || '', 5, category);
+        const fallback = await this.searchProducts(schema, search || '', 5, category, typeof maxPrice === 'number' ? maxPrice : undefined);
         return { ...fallback, source: 'catalog' };
     }
 
@@ -4713,8 +4720,13 @@ export class AIToolExecutorService {
             if (!items.length) {
                 return { items: [], message: 'No items match those criteria. Suggest broadening the search.' };
             }
+            const excludedAllergens = Array.isArray(args.excludeAllergens) && args.excludeAllergens.length > 0;
             return {
                 count: items.length,
+                ...(excludedAllergens ? {
+                    // The filter only knows what the kitchen recorded; it is not a guarantee.
+                    allergenNotice: 'These dishes do not list the requested allergen in the recorded data. Never promise a dish is allergen-free or safe: tell the customer the kitchen must confirm it.',
+                } : {}),
                 items: items.map(i => ({
                     id: i.id,
                     name: i.name,

@@ -87,3 +87,33 @@ describe('FAQ search with added question details', () => {
         expect(query).toHaveBeenCalledTimes(1);
     });
 });
+
+describe('FAQ lexical matching of rephrased questions', () => {
+    const visitDuration = faq('dur', '¿Cuánto dura la visita guiada?', 'La visita guiada dura 45 minutos.');
+    const visitPrice = faq('price', '¿Cuánto cuesta la visita guiada?', 'La visita guiada cuesta 20 mil pesos y dura 45 minutos.');
+
+    it.each([
+        'cuanto tiempo dura la visita guiada',
+        'duración de la visita guiada?',
+        'cuál es la duración de la visita guiada',
+        'cuánto dura la visita guiada',
+        'cuanto duran las visitas guiadas',
+    ])('finds the duration FAQ for %p', query => {
+        expect(rankPartialFaqMatches([visitDuration], query, 3)).toEqual([visitDuration]);
+    });
+
+    it.each([
+        ['a price question', 'cuanto cuesta la visita guiada'],
+        ['another kind of visit', 'cuanto dura la visita privada'],
+        ['another topic with duration', 'duración de la entrega'],
+        ['only the duration word', 'cuanto tiempo dura'],
+        ['a different named topic', 'cuanto dura la visita guiada nocturna'],
+    ])('does not answer %s (%p) with the duration FAQ', (_label, query) => {
+        expect(rankPartialFaqMatches([visitDuration], query, 3)).toEqual([]);
+    });
+
+    it('keeps each FAQ for its own question', () => {
+        expect(rankPartialFaqMatches([visitDuration, visitPrice], 'cuanto cuesta la visita guiada', 3)).toEqual([visitPrice]);
+        expect(rankPartialFaqMatches([visitPrice, visitDuration], 'cuanto tiempo dura la visita guiada', 3).map(f => f.id)).toEqual(['dur']);
+    });
+});

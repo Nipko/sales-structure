@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import { RestaurantsService } from './restaurants.service';
+import { RestaurantsService, normalizeMenuLabel } from './restaurants.service';
 
 describe('RestaurantsService.createOrder', () => {
     const schemaName = 'tenant_restaurant';
@@ -206,5 +206,25 @@ describe('RestaurantsService.updateOrderStatus events', () => {
         expect(result.status).toBe('cancelled');
         expect(query).toHaveBeenCalledTimes(1);
         expect(eventEmitter.emit).not.toHaveBeenCalled();
+    });
+});
+
+describe('menu label normalisation and allergen filter', () => {
+    it.each([
+        ['Mariscos', 'marisco'], ['MARISCOS', 'marisco'], ['  mariscos ', 'marisco'], ['Mariscós', 'marisco'],
+        ['Glúten', 'gluten'], ['Frutos  secos', 'frutos seco'], ['maní', 'mani'], ['Nuez', 'nuez'], ['', ''], ['  ', ''],
+    ])('normalises %p to %p', (raw, expected) => {
+        expect(normalizeMenuLabel(raw)).toBe(expected);
+    });
+
+    it('builds a filter that keeps only dishes with a known allergen list and compares normalised labels', async () => {
+        const calls: Array<[string, any[]]> = [];
+        const prisma = { executeInTenantSchema: jest.fn(async (_s: string, sql: string, params: any[]) => { calls.push([sql, params]); return []; }) };
+        const service = new RestaurantsService(prisma as any, { emit: jest.fn() } as any);
+        await service.searchMenu('tenant_x', { excludeAllergens: ['Mariscos', '  ', ' GLÚTEN '], tag: 'Vegano' });
+        const [sql, params] = calls[0];
+        expect(sql).toContain("jsonb_typeof(mi.allergens) = 'array'");
+        expect(sql).toContain('NOT EXISTS');
+        expect(params).toEqual(['vegano', 'marisco', 'gluten']);
     });
 });

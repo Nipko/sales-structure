@@ -163,6 +163,43 @@ export class InsuranceService {
         return { monthly, annual: monthly * 12 };
     }
 
+    /**
+     * The applicant's age must be known whenever it decides the price or the eligibility,
+     * and must sit inside the plan's range when the plan has one. Pricing a missing age as
+     * the youngest applicant, or an 82-year-old as 60, would store a formal 'sent' quote
+     * the carrier will not honour.
+     */
+    private assertApplicantAge(plan: any, age: unknown): void {
+        const hasMin = plan.min_age !== null && plan.min_age !== undefined;
+        const hasMax = plan.max_age !== null && plan.max_age !== undefined;
+        const priceVaries = Number(plan.monthly_premium_max || 0) > Number(plan.monthly_premium_min || 0);
+        const missing = age === undefined || age === null || age === '';
+        if (missing) {
+            if (priceVaries || hasMin || hasMax) {
+                throw new BadRequestException({
+                    error: 'insurance_applicant_age_required',
+                    message: 'Falta la edad del solicitante: este plan depende de la edad. Pregunta la edad al cliente antes de cotizar; no estimes ni asumas una.',
+                });
+            }
+            return;
+        }
+        const n = Number(age);
+        if (!Number.isFinite(n) || n < 0 || n > 120) {
+            throw new BadRequestException({
+                error: 'insurance_applicant_age_invalid',
+                message: 'La edad del solicitante no es válida. Pide al cliente su edad en años.',
+            });
+        }
+        if ((hasMin && n < Number(plan.min_age)) || (hasMax && n > Number(plan.max_age))) {
+            const range = hasMin && hasMax ? `entre ${plan.min_age} y ${plan.max_age} años`
+                : hasMin ? `desde los ${plan.min_age} años` : `hasta los ${plan.max_age} años`;
+            throw new BadRequestException({
+                error: 'insurance_applicant_age_out_of_range',
+                message: `Este plan solo admite solicitantes ${range}; no se puede cotizar para una persona de ${n} años. Ofrece otro plan o pasa con un asesor.`,
+            });
+        }
+    }
+
     async createQuote(schemaName: string, data: {
         contactId?: string;
         planId: string;
@@ -194,6 +231,7 @@ export class InsuranceService {
             });
         }
 
+        this.assertApplicantAge(plan, data.applicantAge);
         const premium = this.calculatePremium(plan, data.applicantAge);
         const validUntil = new Date();
         validUntil.setDate(validUntil.getDate() + (data.validDays || 30));

@@ -17,6 +17,20 @@ import { OperationConfirmationService } from '../email-templates/operation-confi
 import { escapeReceiptHtml, receiptMoney } from '../email-templates/receipt-format.util';
 
 /**
+ * Canonical form of a menu label (allergen, dietary tag): trimmed, lower-cased, accent-free,
+ * single-spaced, and without a plural "s" ("Mariscos" and "marisco" compare equal).
+ * MENU_LABEL_SQL must stay equivalent so stored values compare the same way.
+ */
+export function normalizeMenuLabel(value: unknown): string {
+    return String(value ?? '')
+        .normalize('NFD').replace(/\p{M}/gu, '')
+        .toLowerCase().replace(/\s+/g, ' ').trim()
+        .replace(/^(.{3,})s$/, '$1');
+}
+const MENU_LABEL_SQL = (col: string): string =>
+    `regexp_replace(regexp_replace(lower(translate(btrim(${col}), 'ÁÀÄÂÉÈËÊÍÌÏÎÓÒÖÔÚÙÜÛÑáàäâéèëêíìïîóòöôúùüûñ', 'AAAAEEEEIIIIOOOOUUUUNaaaaeeeeiiiioooouuuun')), '\\s+', ' ', 'g'), '^(.{3,})s$', '\\1')`;
+
+/**
  * Restaurants module — menu catalog, food orders, and promotions.
  *
  * Reservations of tables go through the generic appointments module;
@@ -293,8 +307,9 @@ export class RestaurantsService {
             i++;
         }
         if (opts.tag) {
-            where.push(`mi.tags @> $${i}::jsonb`);
-            params.push(JSON.stringify([opts.tag]));
+            // Same normalised comparison as allergens: "Vegano" must find a dish tagged "vegano".
+            where.push(`EXISTS (SELECT 1 FROM jsonb_array_elements_text(CASE WHEN jsonb_typeof(mi.tags) = 'array' THEN mi.tags ELSE '[]'::jsonb END) AS te(v) WHERE ${MENU_LABEL_SQL('te.v')} = $${i}::text)`);
+            params.push(normalizeMenuLabel(opts.tag));
             i++;
         }
         if (opts.maxPrice !== undefined) {
@@ -303,10 +318,15 @@ export class RestaurantsService {
             i++;
         }
         if (opts.excludeAllergens && opts.excludeAllergens.length > 0) {
-            // Items where allergens does NOT contain any of the excluded ones
+            // Safety-first: a dish is kept only when its allergen list is KNOWN (a JSON array;
+            // an empty array means the kitchen declared "none") and no entry matches a requested
+            // allergen after case/accent/whitespace/plural normalisation. NULL or non-array
+            // allergen data is unknown, so it is never presented as safe.
             for (const a of opts.excludeAllergens) {
-                where.push(`NOT (mi.allergens @> $${i}::jsonb)`);
-                params.push(JSON.stringify([a]));
+                const wanted = normalizeMenuLabel(a);
+                if (!wanted) continue;
+                where.push(`(jsonb_typeof(mi.allergens) = 'array' AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements_text(mi.allergens) AS ae(v) WHERE ${MENU_LABEL_SQL('ae.v')} = $${i}::text))`);
+                params.push(wanted);
                 i++;
             }
         }

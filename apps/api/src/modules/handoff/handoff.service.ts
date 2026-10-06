@@ -9,6 +9,7 @@ import { EmailTemplatesService } from '../email-templates/email-templates.servic
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { AiResolutionService } from '../analytics/ai-resolution.service';
 import { normalizeCustomerIntent } from '../../common/conversation/intent-normalizer';
+import { isPolicyQuestion, POLICY_TOPIC_KEYWORDS } from './handoff-policy-question';
 import { hasDispatchOutbox, noHumanReplySql } from './handoff-human-reply';
 import {
     normalizeForIntent,
@@ -199,12 +200,23 @@ export class HandoffService {
             'queja', 'reclamo', 'reclamacion', 'molesto', 'furioso', 'inaceptable',
             'devolucion', 'reembolso', 'pesimo', 'horrible', 'terrible',
             'no funciona', 'estafa', 'demanda', 'abogado',
+            // A person asking to send something back, or reporting it broke on arrival.
+            'quiero devolver', 'quisiera devolver', 'necesito devolver', 'llego danado', 'llego roto',
             // Portuguese
             'reclamacao', 'reembolso', 'pessimo', 'golpe', 'nao funciona', 'advogado',
+            'quero devolver', 'chegou danificado', 'chegou quebrado',
             // French
             'plainte', 'remboursement', 'inacceptable', 'ne fonctionne pas', 'avocat',
+            'je veux retourner', 'est arrive endommage',
         ];
-        if (enabled('complaint') && complaintKeywords.some(kw => text.includes(kw))) {
+        // A question ABOUT the refund/return policy is informational: the agent
+        // answers it. Only the policy-topic words are neutralised; any other
+        // complaint word in the same message still escalates.
+        const policyQuestion = isPolicyQuestion(message);
+        const escalates = (keywords: string[]) => keywords
+            .filter(kw => text.includes(kw))
+            .some(kw => !(policyQuestion && POLICY_TOPIC_KEYWORDS.has(kw)));
+        if (enabled('complaint') && escalates(complaintKeywords)) {
             return 'complaint';
         }
 
@@ -216,7 +228,7 @@ export class HandoffService {
             // Portuguese / French
             'desconto', 'mais barato', 'melhor preco', 'remise', 'moins cher',
         ];
-        if (enabled('discount_request') && discountKeywords.some(kw => text.includes(kw))) {
+        if (enabled('discount_request') && escalates(discountKeywords)) {
             return 'discount_request';
         }
 

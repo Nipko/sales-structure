@@ -294,3 +294,56 @@ describe('custom handoff triggers match however the word is spelled', () => {
         expect(service.shouldHandoff('hola, quiero info', conversation, config(['   ']))).toBeNull();
     });
 });
+
+/**
+ * Production (Telegram, store): "¿Cuál es la política de devoluciones del
+ * audífono QA de prueba?" was escalated as a complaint and the bot went mute.
+ * A question ABOUT a policy is informational; a real complaint still escalates.
+ */
+describe('policy questions are answered, real complaints still escalate', () => {
+    const service: any = Object.create(HandoffService.prototype);
+    const conversation = { metadata: {} };
+    const config = { behavior: { handoffTriggers: [] } } as any;
+    const ask = (m: string) => service.shouldHandoff(m, conversation, config);
+
+    it.each([
+        '¿Cuál es la política de devoluciones del audífono QA de prueba?',
+        '¿Aceptan devoluciones?',
+        '¿Hacen reembolsos?',
+        '¿Tienen descuentos?',
+        'do you have a refund policy?',
+        'Do you accept returns? what is your discount policy?',
+        'qual é a política de reembolso?',
+        'tem desconto para pagamento à vista?',
+        'quelle est votre politique de remboursement ?',
+        'avez-vous des remises ?',
+        'cual es la politica de devolucion',
+    ])('does not hand off on %s', (m) => {
+        expect(ask(m)).toBeNull();
+    });
+
+    it.each([
+        ['quiero devolver el audífono, llegó dañado', 'complaint'],
+        ['exijo un reembolso', 'complaint'],
+        ['quiero mi dinero de vuelta, esto es una estafa', 'complaint'],
+        ['esto es una estafa', 'complaint'],
+        ['¿Cuál es la política de devoluciones? el audífono llegó dañado', 'complaint'],
+        ['¿cuál es la política de devoluciones? esto es una estafa', 'complaint'],
+        ['¿por qué no me han hecho el reembolso?', 'complaint'],
+        ['je veux un remboursement', 'complaint'],
+        ['quero devolver o aparelho, chegou danificado', 'complaint'],
+        ['je veux retourner le produit, il est arrivé endommagé', 'complaint'],
+        ['quero meu reembolso agora', 'complaint'],
+        ['¿me hace un descuento?', 'discount_request'],
+        ['¿me lo deja más barato?', 'discount_request'],
+        ['¿tienen descuentos? ¿me lo deja más barato?', 'discount_request'],
+        ['¿me pueden hacer un descuento?', 'discount_request'],
+        ['¿me hacen un descuento?', 'discount_request'],
+        ['el audífono está defectuoso, ¿cuál es la política de devoluciones?', 'complaint'],
+        ['ustedes no aceptan devoluciones', 'complaint'],
+        ['¿me hacen un reembolso?', 'complaint'],
+        ['¿hacen reembolsos? tengo una queja', 'complaint'],
+    ])('still hands off on %s', (m, reason) => {
+        expect(ask(m)).toBe(reason);
+    });
+});

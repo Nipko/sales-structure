@@ -31,6 +31,8 @@ const ATTEND_DAY = /\batienden? (?:los |el |la |las )?(?:hoy|manana|domingos?|sa
 const CLOCK_OR_ME = /\d|\bme\b|\ba las?\b/;
 
 const PRICE_TOPIC =/\b(?:cuanto (?:cuesta|cuestan|vale|valen|cobran|cobra|sale|salen|es)|precios?|tarifas?|costos?|cuanto me (?:cobran|saldria)|how much|prices?|pricing|cost|quanto (?:custa|custam|cobram)|precos?|combien|prix|tarifs?|coute)\b/;
+/** How long a service lasts is a fact about the business, not a request to book it. */
+const DURATION_TOPIC = /\b(?:cuanto (?:dura|duran|demora|demoran|tarda|tardan|tiempo)|duracion|how long|combien de temps|quanto tempo)\b/;
 const SERVICES_TOPIC = /\b(?:que servicios|cuales servicios|servicios (?:ofrecen|tienen|ofrece|tiene|disponibles)|que (?:ofrecen|tratamientos tienen|hacen|manejan)|catalogo|what services|which services|services do you|quels services|que servicos|quais servicos)\b/;
 const LOCATION_TOPIC = /\b(?:donde (?:estan|queda|quedan|se ubican|se encuentran|es|puedo encontrar)|direccion|ubicacion|ubicados?|como llego|where are you|where is|your address|located|adresse|ou etes vous|onde fica|onde voces|endereco|localizacao)\b/;
 const POLICY_TOPIC = /\b(?:politicas?|cancelacion(?:es)?|reembolsos?|devoluciones?|metodos? de pago|formas? de pago|aceptan (?:tarjeta|efectivo|transferencia)|garantias?|promociones?|descuentos?|parqueadero|estacionamiento|refund|cancellation policy|payment methods|promotions?|politique|remboursement|politica de)\b/;
@@ -70,7 +72,7 @@ function informationalTopic(raw: unknown): 'hours' | 'other' | null {
     const asksSomething = isInformationSeekingMessage(raw) || asks(unGreeted) || INFORMATION_IMPERATIVE.test(text);
     if (!asksSomething) return null;
     if (HOURS_TOPIC.test(text) || (ATTEND_DAY.test(text) && !CLOCK_OR_ME.test(text))) return 'hours';
-    if (PRICE_TOPIC.test(text) || SERVICES_TOPIC.test(text) || LOCATION_TOPIC.test(text) || POLICY_TOPIC.test(text)) return 'other';
+    if (PRICE_TOPIC.test(text) || DURATION_TOPIC.test(text) || SERVICES_TOPIC.test(text) || LOCATION_TOPIC.test(text) || POLICY_TOPIC.test(text)) return 'other';
     return null;
 }
 

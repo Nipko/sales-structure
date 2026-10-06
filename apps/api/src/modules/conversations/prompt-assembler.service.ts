@@ -401,6 +401,7 @@ export class PromptAssemblerService {
                 if (priceStatus && priceStatus !== 'confirmed') attrs.push(`price_status="${this.attrEscape(priceStatus)}"`);
                 if (p.currency) attrs.push(`currency="${this.attrEscape(p.currency)}"`);
                 if (p.inStock != null) attrs.push(`in_stock="${this.attrEscape(String(p.inStock))}"`);
+                if (typeof p.stock === 'number' && Number.isFinite(p.stock)) attrs.push(`stock="${this.attrEscape(String(p.stock))}"`);
                 if (p.category) attrs.push(`category="${this.attrEscape(p.category)}"`);
                 lines.push(`    <product ${attrs.join(' ')}>${this.attrEscape(p.title)}</product>`);
             }

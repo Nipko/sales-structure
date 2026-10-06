@@ -502,6 +502,16 @@ export class BookingEngineService {
         const { authority, flowCapable = false, flowData, conversationId } = turn;
         const state = { ...currentState };
         if (turn.startSelected && state.step === 'idle' && (!intent.intent || intent.intent === 'unknown')) intent = { ...intent, intent: 'ask_availability' };
+        // "¿Cuánto dura color y tratamiento?" names a service, so the interpreter labels it
+        // `select_service`; with no mission open the engine used to adopt that service and open one
+        // the customer never asked for, which later surfaced as a phantom "reserva pendiente". A
+        // question about the business (duration, price, policy) is answered by the model; only a
+        // booking wish (commitment verb, date, time) starts a mission.
+        if ((!currentState.step || ['idle', 'booked'].includes(currentState.step))
+            && intent.intent === 'select_service' && isInformationalDetour(rawText, intent)) {
+            this.logger.log('[Decide] Informational question about a service with no mission open, letting the LLM answer (no mission started)');
+            return { handled: false, state };
+        }
         state.missionId ||= turn.missionScope?.missionId || randomUUID();
         const L = language; // shorthand for msg() calls
         const domains = mentionedMissionDomains(rawText);

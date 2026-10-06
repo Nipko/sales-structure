@@ -66,7 +66,8 @@ import { AIToolExecutorService } from './ai-tool-executor.service';
 import { buildUnverifiedPriceReply, correctivePriceInstruction, enforceVerifiedPriceReply, ResponseValidatorService } from './response-validator.service';
 import { AgentTurnSession } from './agent-turn-session';
 import { sessionCanExecute, sessionLlmRouter, sessionToolExecutor } from './agent-turn-adapters';
-import { restoreBookingMission } from './booking-state-continuity';
+import { projectOwnCatalogRow } from './catalog-turn-projection';
+import { projectBookingStateForPrompt, restoreBookingMission } from './booking-state-continuity';
 import { deriveInformationalHours, hasConfiguredHours, promptHoursStatus, resolvePromptBusinessHours, UNKNOWN_INFORMATIONAL_HOURS, type InformationalHours } from './informational-hours';
 import { resolveEvaluationSnapshot } from './agent-evaluation-snapshot';
 import { AGENT_TEST_EXECUTION_CONTEXT, DRAFT_EXECUTION_CONTEXT, type ServiceExecutionContext } from '../../common/types/execution-context';
@@ -2029,19 +2030,7 @@ export class ConversationsService {
         );
         return (rows ?? [])
             .filter(row => row.mentioned === true || Number(row.total) <= SMALL_CATALOG)
-            .map(row => {
-                const price = Number(row.price);
-                const priced = Number.isFinite(price) && price > 0;
-                return {
-                    id: String(row.id),
-                    title: String(row.name),
-                    ...(priced ? { price } : {}),
-                    priceStatus: priced ? 'confirmed' as const : 'missing' as const,
-                    currency: row.currency || undefined,
-                    inStock: row.stock == null || Number(row.stock) > 0,
-                    category: row.category || undefined,
-                };
-            });
+            .map(projectOwnCatalogRow);
     }
 
     /**
@@ -4082,21 +4071,8 @@ export class ConversationsService {
             return isAgentTestSafeToolName(name) || (!!draftScope && isDraftProposableToolName(name));
         });
 
-        if (bookingState.step && bookingState.step !== 'idle') {
-            const selectedService = bookingState.serviceId
-                ? bookingState.services?.find(s => s.id === bookingState.serviceId)
-                : undefined;
-            turnContext.bookingState = {
-                step: bookingState.step,
-                service: bookingState.serviceId ? {
-                    id: bookingState.serviceId,
-                    name: bookingState.serviceName || selectedService?.name || '',
-                    durationMinutes: selectedService?.durationMinutes,
-                } : undefined,
-                date: bookingState.date,
-                slot: bookingState.time,
-            };
-        }
+        const promptBookingState = projectBookingStateForPrompt(bookingState);
+        if (promptBookingState) turnContext.bookingState = promptBookingState;
 
         // `<available_services>` was only filled when the booking engine ran and judged the turn "not
         // booking related". With a mission open on another route the block never ran, and the model
@@ -4239,6 +4215,7 @@ export class ConversationsService {
                         price: p.price_cents != null ? Number(p.price_cents) / 100 : undefined,
                         currency: p.currency || 'USD',
                         inStock: (p.inventory_quantity ?? 0) > 0,
+                        ...(p.inventory_quantity != null && Number.isFinite(Number(p.inventory_quantity)) ? { stock: Number(p.inventory_quantity) } : {}),
                         category: p.product_type || undefined,
                     }));
                 }

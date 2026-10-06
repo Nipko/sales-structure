@@ -46,3 +46,29 @@ export function restoreBookingMission(
     };
     return { state, requiresRevalidation: true };
 }
+
+/**
+ * The mission as the model sees it in `<booking_state>`. A dormant mission (untouched past the
+ * continuity window, waiting for the customer to say whether to resume it) is not shown: the
+ * model read it as an open task and told the customer "tengo una reserva pendiente" about a
+ * service they had only asked about. The engine owns the resume question.
+ */
+export function projectBookingStateForPrompt(state: BookingState | null | undefined): {
+    step: BookingState['step'];
+    service?: { id: string; name: string; durationMinutes?: number };
+    date?: string;
+    slot?: string;
+} | undefined {
+    if (!state?.step || state.step === 'idle' || state.resumeOffer) return undefined;
+    const selected = state.serviceId ? state.services?.find(s => s.id === state.serviceId) : undefined;
+    return {
+        step: state.step,
+        service: state.serviceId ? {
+            id: state.serviceId,
+            name: state.serviceName || selected?.name || '',
+            durationMinutes: selected?.durationMinutes,
+        } : undefined,
+        date: state.date,
+        slot: state.time,
+    };
+}

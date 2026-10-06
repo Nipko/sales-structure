@@ -1040,6 +1040,8 @@ export interface TurnContext {
         price?: number;
         currency?: string;
         inStock?: boolean;
+        /** Units on hand when the catalog tracks them; absent when unknown or untracked. */
+        stock?: number;
         category?: string;
     }>;
     /** The current customer's recent orders (T2.17) for support/sales context. */

@@ -4,7 +4,7 @@ import { InsuranceService } from '../insurance/insurance.service';
 import { RepairOrdersService } from '../repair-orders/repair-orders.service';
 import { RestaurantsService } from '../restaurants/restaurants.service';
 import { menuLabelCandidates, menuLabelCandidatesSql } from '../restaurants/menu-label.util';
-import { MENU_LABEL_ALL, MENU_LABEL_MATCHES, MENU_LABEL_MISSES } from '../restaurants/menu-label.cases';
+import { MENU_LABEL_ALL, MENU_LABEL_MATCHES, MENU_LABEL_MISSES } from '../restaurants/__fixtures__/menu-label.cases';
 import { PropertiesService } from '../vacation-rental/properties.service';
 import { CRM_BASE_TABLES, N3_DATABASE_URL, openLive, seedCustomer } from './__fixtures__/n3-live-harness';
 

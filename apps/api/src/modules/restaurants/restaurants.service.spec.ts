@@ -1,6 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { RestaurantsService, menuLabelCandidates, toLabelList } from './restaurants.service';
-import { MENU_LABEL_MATCHES, MENU_LABEL_MISSES } from './menu-label.cases';
+import { MENU_LABEL_MATCHES, MENU_LABEL_MISSES } from './__fixtures__/menu-label.cases';
 
 describe('RestaurantsService.createOrder', () => {
     const schemaName = 'tenant_restaurant';

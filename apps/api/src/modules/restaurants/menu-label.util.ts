@@ -10,7 +10,7 @@
  * the minimum synonyms of any candidate. Two labels match when their sets intersect.
  *
  * `menuLabelCandidates` (JS, for the customer's words) and `menuLabelCandidatesSql` (SQL, for
- * the stored labels) must produce the same set: `menu-label.cases.ts` is the shared table that
+ * the stored labels) must produce the same set: `__fixtures__/menu-label.cases.ts` is the shared table that
  * proves it, in a unit test for JS and a Postgres test for SQL.
  */
 

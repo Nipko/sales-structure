@@ -167,4 +167,26 @@ import { LANE_CHAT_DDL, N3_LANE_URL, openLane } from '../../common/__fixtures__/
         console.log(`[DEFECT-EVIDENCE AUT-01 D4] wall clock=${h}:${m} expected="${expected}" shown="${shown}"`);
         expect(shown).toBe(expected);
     });
+
+    it('AUT-01: the attendance check names the wall-clock time and is flagged only because it was sent', async () => {
+        const a = await book('-105 minutes', '-45 minutes');
+        await service.sendAttendanceChecks();
+        const rows = await rowsFor(a.contactId);
+        expect(rows).toHaveLength(1);
+        expect(await att(a.id)).toBe(true);
+        const [{ h, m }] = await lane.sql('SELECT EXTRACT(HOUR FROM start_at)::int AS h, EXTRACT(MINUTE FROM start_at)::int AS m FROM appointments WHERE id=$1::uuid', [a.id]);
+        const expected = new Date(2000, 0, 1, h, m).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true });
+        expect(rows[0].payload.components[0].parameters[3].text).toBe(expected);
+    });
+
+    it('AUT-03: an appointment moved after its attendance check was sent is asked again for the new time (the origin key carries the time)', async () => {
+        const a = await book('-105 minutes', '-45 minutes');
+        await service.sendAttendanceChecks();
+        expect(await rowsFor(a.contactId)).toHaveLength(1);
+        // Rescheduled (flags re-armed as `update` does) to a different, still-elapsed time.
+        await lane.sql(`UPDATE appointments SET no_show_followed_up=false, start_at = start_at - interval '7 minutes',
+            end_at = end_at - interval '7 minutes' WHERE id=$1::uuid`, [a.id]);
+        await service.sendAttendanceChecks();
+        expect(await rowsFor(a.contactId)).toHaveLength(2);
+    });
 });

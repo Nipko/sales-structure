@@ -161,9 +161,13 @@ const TABLES = [...CRM_BASE_TABLES, 'staff_members', 'operational_locations', 'o
         it('moves inside the window (control)', async () => {
             const C = await seedCustomer(h.q, 'Cliente');
             const id = await seedAppointment(C, staffId);
+            await h.q('UPDATE appointments SET reminder_24h_sent=true, reminder_2h_sent=true, no_show_followed_up=true WHERE id=$1::uuid', [id]);
             const result = await confirmed(C, 'reschedule_appointment', { appointmentId: id, newDate: date, newTime: '11:00', reason: 'prefiero más tarde' });
             expect(result.success).toBe(true);
             expect((await rows())[0].start_at).toBe(`${date} 11:00:00`);
+            // AUT-01: the agent's reschedule re-arms the reminders and the attendance check for the new time.
+            expect((await h.q<any[]>('SELECT reminder_24h_sent AS a, reminder_2h_sent AS b, no_show_followed_up AS c FROM appointments WHERE id=$1::uuid', [id]))[0])
+                .toEqual({ a: false, b: false, c: false });
         });
 
         it('refuses 03:00 and leaves the appointment where it was', async () => {

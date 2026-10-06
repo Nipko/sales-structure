@@ -88,4 +88,21 @@ import { LANE_CHAT_DDL, N3_LANE_URL, openLane } from '../../common/__fixtures__/
             { phone: phones[0], status: 'sent' }, { phone: phones[1], status: 'skipped' }, { phone: phones[2], status: 'queued' },
         ]);
     });
+
+    it('AUT-23: an email or SMS recipient left queued is NOT re-queued on resume (its original job is still alive and has no durable key)', async () => {
+        const phone = '+573009990011';
+        await lane.sql("INSERT INTO contacts(id,name,phone,channel_type) VALUES($1::uuid,'E1',$2,'whatsapp')", [randomUUID(), phone]);
+        const created = await service.createCampaign(lane.tenantId,
+            { name: 'Mixed', channels: ['whatsapp'], templateName: 'promo', recipientPhones: [phone], channelAccountId: '15550002222' }, actorId);
+        await service.launchCampaign(lane.tenantId, created.id, actorId);
+        jobs.length = 0;
+        for (const channel of ['email', 'sms'])
+            await lane.sql("INSERT INTO campaign_recipients(id,campaign_id,contact_id,phone,email,channel,status) VALUES($1::uuid,$2::uuid,$3::uuid,$4,$5,$6,'queued')",
+                [randomUUID(), created.id, randomUUID(), channel === 'sms' ? '+573009990012' : '', channel === 'email' ? 'x@example.com' : '', channel]);
+        await lane.sql("UPDATE campaigns SET status = 'paused' WHERE id=$1::uuid", [created.id]);
+        await service.launchCampaign(lane.tenantId, created.id, actorId);
+        expect(jobs.map((j: any) => j.data.channel)).toEqual(['whatsapp']);
+        const rows = await lane.sql("SELECT channel, status FROM campaign_recipients WHERE campaign_id=$1::uuid AND channel IN ('email','sms')", [created.id]);
+        expect(rows.every((r: any) => r.status === 'queued')).toBe(true);
+    });
 });

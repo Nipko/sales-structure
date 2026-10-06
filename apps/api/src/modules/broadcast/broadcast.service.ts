@@ -247,15 +247,19 @@ export class BroadcastService {
 
         // Resuming a paused campaign: its workers found it paused and left every recipient
         // exactly as it was, i.e. `queued` with no live job to send it. Those are re-queued
-        // here. Nothing is duplicated: a recipient that did get its message already has its
-        // durable effect under the (campaign, recipient) origin key, and the lane returns
-        // that row instead of sending again; sent/failed/skipped recipients are not selected.
-        const launchableStatuses = campaign.status === 'paused' ? ['pending', 'queued'] : ['pending'];
+        // here, WhatsApp only. Nothing is duplicated there: a recipient that did get its message
+        // already has its durable effect under the (campaign, recipient) origin key, and the lane
+        // returns that row instead of sending again; sent/failed/skipped recipients are not selected.
+        // Email/SMS recipients are NOT re-queued: their jobs have no durable key and do not look at
+        // the pause, so the original jobs are still live in BullMQ and a second one would send twice.
+        const resuming = campaign.status === 'paused';
         const recipients = await this.prisma.executeInTenantSchema<any[]>(
             schema,
             `SELECT id, contact_id, phone, email, channel, variant_id FROM campaign_recipients
-             WHERE campaign_id = $1::uuid AND status = ANY($2::text[])`,
-            [campaignId, launchableStatuses],
+             WHERE campaign_id = $1::uuid
+               AND (status = 'pending'
+                    OR ($2::boolean AND status = 'queued' AND COALESCE(channel, 'whatsapp') = 'whatsapp'))`,
+            [campaignId, resuming],
         );
 
         if (!recipients?.length) {
@@ -294,8 +298,10 @@ export class BroadcastService {
             const updatedRecipients = await this.prisma.executeInTenantSchema<any[]>(
                 schema,
                 `SELECT id, contact_id, phone, email, channel, variant_id FROM campaign_recipients
-                 WHERE campaign_id = $1::uuid AND status = ANY($2::text[])`,
-                [campaignId, launchableStatuses],
+                 WHERE campaign_id = $1::uuid
+                   AND (status = 'pending'
+                        OR ($2::boolean AND status = 'queued' AND COALESCE(channel, 'whatsapp') = 'whatsapp'))`,
+                [campaignId, resuming],
             );
             recipients.length = 0;
             recipients.push(...(updatedRecipients || []));

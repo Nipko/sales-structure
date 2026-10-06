@@ -15,7 +15,7 @@ import { procedureDialogueMessages } from './procedure-dialogue-messages';
 import { containsMissionDirective, isCollectionCancellation, isDirectedCorrection, isNamedMissionResume, mentionedMissionDomains, missionDialogue, parseDirectedSlotCorrection } from './mission-focus';
 import { coerceProcedureSlot } from './procedure-slot-interpolation';
 import { nearestSlots, selectSlotWindow } from './slot-window';
-import { asksDuration, isInformationalDetour, namesBookingRequest } from './informational-detour';
+import { asksDuration, isInformationalDetour, isQuestionLike } from './informational-detour';
 
 /**
  * Lo que el motor necesita saber del turno además del estado de la reserva.
@@ -392,6 +392,13 @@ export interface BookingState {
      */
     resumeOffer?: 'pending' | 'offered' | 'lapsed';
     /**
+     * `question`: the mission was opened by a message that was a question ("¿cuánto dura X?"),
+     * so it is an interest, not yet a booking. It becomes a real mission when the customer gives
+     * a booking datum or answers with a statement; until then it expires instead of going dormant
+     * and is never shown to the model or the customer as a pending reservation.
+     */
+    origin?: 'question';
+    /**
      * Last real customer activity before the mission went dormant. Retention is
      * measured from here: `savedAt` is refreshed on every turn (even turns the
      * engine declines), so it cannot bound the life of a mission by itself.
@@ -491,6 +498,41 @@ export class BookingEngineService {
         language: string = 'es',
         turn: BookingTurnContext,
     ): Promise<EngineResult> {
+        const isOpen = (s: BookingState) => !!s.step && !['idle', 'booked'].includes(s.step);
+        const wasOpen = isOpen(currentState);
+        const datum = !!(intent.dateMentioned || intent.timeMentioned || intent.nameProvided || intent.emailProvided
+            || intent.isConfirmation || /^(?:svc_|slot_|confirm_|__flow)/.test(rawText));
+        const questionLike = isQuestionLike(rawText, intent);
+        // A tentative mission stays tentative only while the customer keeps asking questions.
+        const stillTentative = wasOpen && currentState.origin === 'question' && !datum && questionLike;
+        const entering: BookingState = currentState.origin && !stillTentative ? { ...currentState, origin: undefined } : currentState;
+        const result = await this.processCore(schemaName, tenantId, contactId, intent, rawText, entering,
+            customerProfile, todayDate, language, turn);
+        if (!isOpen(result.state)) { result.state.origin = undefined; return result; }
+        const tentative = wasOpen ? stillTentative : questionLike && !datum;
+        result.state.origin = tentative ? 'question' : undefined;
+        // The engine's next-step prompt ("Perfecto, agendaremos...") asserts a booking the customer
+        // only asked about. For a tentative mission the model answers the question with its tools
+        // and offers the booking; the engine says nothing.
+        if (tentative && result.handled && !result.handoff && !result.flowMessage
+            && result.state.step === 'ask_date' && !result.state.date) {
+            return { ...result, handled: false, text: undefined };
+        }
+        return result;
+    }
+
+    private async processCore(
+        schemaName: string,
+        tenantId: string,
+        contactId: string,
+        intent: InterpretedIntent,
+        rawText: string,
+        currentState: BookingState,
+        customerProfile: { name?: string; email?: string; phone?: string },
+        todayDate: string,
+        language: string = 'es',
+        turn: BookingTurnContext,
+    ): Promise<EngineResult> {
         // ═══ LA AUTORIDAD ES UN PARÁMETRO, NO UN DETALLE OPCIONAL ═══
         //
         // Este motor escribe citas POR FUERA del bucle de tools, así que
@@ -502,17 +544,6 @@ export class BookingEngineService {
         const { authority, flowCapable = false, flowData, conversationId } = turn;
         const state = { ...currentState };
         if (turn.startSelected && state.step === 'idle' && (!intent.intent || intent.intent === 'unknown')) intent = { ...intent, intent: 'ask_availability' };
-        // "¿Cuánto dura color y tratamiento?" names a service, so the interpreter labels it
-        // `select_service`; with no mission open the engine used to adopt that service and open one
-        // the customer never asked for, which later surfaced as a phantom "reserva pendiente". A
-        // question about the business (duration, price, policy) is answered by the model; only a
-        // booking wish (commitment verb, date, time) starts a mission.
-        if ((!currentState.step || ['idle', 'booked'].includes(currentState.step))
-            && intent.intent === 'select_service' && !namesBookingRequest(rawText) && !intent.timeMentioned
-            && isInformationalDetour(rawText, intent)) {
-            this.logger.log('[Decide] Informational question about a service with no mission open, letting the LLM answer (no mission started)');
-            return { handled: false, state };
-        }
         state.missionId ||= turn.missionScope?.missionId || randomUUID();
         const L = language; // shorthand for msg() calls
         const domains = mentionedMissionDomains(rawText);

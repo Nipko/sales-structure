@@ -15,6 +15,11 @@ export function restoreBookingMission(
     // `savedAt` is rewritten on every turn, including turns the engine declines
     // (an informational question answered by the model). A dormant mission is
     // therefore bounded by the moment it went dormant, not by the last write.
+    // A mission opened by a question and never confirmed with a datum is not a task to resume:
+    // past the continuity window it simply expires.
+    if (saved.origin === 'question' && !(Number.isFinite(age) && age >= 0 && age <= BOOKING_PROPOSAL_TTL_MS)) {
+        return { state: { step: 'idle' }, requiresRevalidation: false };
+    }
     const dormantAt = Date.parse(saved.dormantSince || '');
     if (Number.isFinite(dormantAt) && now - dormantAt > BOOKING_MISSION_RETENTION_MS) {
         return { state: { step: 'idle' }, requiresRevalidation: false };
@@ -59,7 +64,7 @@ export function projectBookingStateForPrompt(state: BookingState | null | undefi
     date?: string;
     slot?: string;
 } | undefined {
-    if (!state?.step || state.step === 'idle' || state.resumeOffer) return undefined;
+    if (!state?.step || state.step === 'idle' || state.resumeOffer || state.origin === 'question') return undefined;
     const selected = state.serviceId ? state.services?.find(s => s.id === state.serviceId) : undefined;
     return {
         step: state.step,

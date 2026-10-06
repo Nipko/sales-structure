@@ -9,6 +9,10 @@ import { authorityFor } from './__fixtures__/tool-authority.fixture';
  * "cuanto dura color y tratamiento?" and never asked to book. The engine read the
  * service name as a service selection, opened a mission, and a later turn made the
  * model say "tengo una reserva pendiente para corte y estilo".
+ *
+ * A message that names a service still opens the flow (no booking is lost), but when that
+ * message is a question the mission is TENTATIVE: the engine does not assert a booking, the
+ * model never sees it as pending, and it expires unless the customer gives a booking datum.
  */
 const authority = authorityFor('list_services', 'check_availability', 'create_appointment');
 const services = [
@@ -17,6 +21,8 @@ const services = [
 ];
 const today = '2026-10-05';
 const upcoming = [{ date: '2026-10-10', weekday: 'sabado' }];
+const T0 = Date.parse('2026-10-05T12:00:00Z');
+const MIN = 60_000;
 
 function harness(llmIntent: Record<string, unknown> = {}) {
     const execute = jest.fn(async (_s: string, _t: string, _c: string, name: string) => {
@@ -43,61 +49,56 @@ function harness(llmIntent: Record<string, unknown> = {}) {
     return { turn };
 }
 
-describe('an informational question about a service never opens a booking mission', () => {
-    it.each([
-        '¿Cuánto dura color y tratamiento?',
-        'Cuánto demora el corte y estilo',
-        'How long does color y tratamiento take?',
-    ])('"%s" is an informational question', text => {
-        expect(isInformationalDetour(text)).toBe(true);
-    });
+/** What the next turn loads: the state saved at T0, restored `minutes` later. */
+const restoredAfter = (state: BookingState, minutes: number): BookingState => {
+    const savedAt = new Date(T0).toISOString();
+    return restoreBookingMission({ ...state, savedAt }, savedAt, T0 + minutes * MIN).state;
+};
 
-    it('does not select the service nor leave idle when the customer only asks how long it lasts', async () => {
-        const { turn } = harness();
-        const { result } = await turn('¿Cuánto dura color y tratamiento?', { step: 'idle' });
-        expect(result.handled).toBe(false);
-        expect(result.state.step).toBe('idle');
-        expect(result.state.serviceId).toBeUndefined();
-        expect(result.state.serviceName).toBeUndefined();
-    });
-
-    it('does not replace a mission of another service when asked how long a service lasts', async () => {
-        const { turn } = harness();
-        const open: BookingState = { missionId: 'm1', step: 'ask_date', serviceId: 'svc-corte', serviceName: 'Corte y estilo', services };
-        const { result } = await turn('¿Cuánto dura color y tratamiento?', open);
-        expect(result.handled).toBe(false);
-        expect(result.state).toMatchObject({ step: 'ask_date', serviceId: 'svc-corte' });
-    });
-
-    it('still starts the flow when the customer asks to book the service', async () => {
-        const { turn } = harness();
-        const { result } = await turn('Quiero agendar color y tratamiento', { step: 'idle' });
-        expect(result.handled).toBe(true);
-        expect(result.state).toMatchObject({ step: 'ask_date', serviceId: 'svc-color' });
-    });
-});
-
-describe('a booking request that also asks for the duration keeps the flow (idle)', () => {
+describe('a message that names a service never loses the booking (idle)', () => {
     it.each([
         '¿Puedo pedir una cita para color y tratamiento? ¿cuánto dura?',
         '¿Me dan turno para color y tratamiento? ¿cuánto demora?',
-        '¿tienen cupo a las 16:00 para color y tratamiento? ¿cuánto dura?',
         'Quiero reservar color y tratamiento, ¿cuánto dura?',
-    ])('"%s" starts the flow', async text => {
+        'me regala una cita para color y tratamiento? cuánto cuesta?',
+        'me anotas para color y tratamiento? cuánto dura?',
+        'quería saber si me pueden atender para color y tratamiento, cuánto cuesta?',
+        'Quisiera color y tratamiento, ¿cuánto cuesta?',
+        '¿Se puede hacer color y tratamiento? ¿cuánto demora?',
+        '¿Me pueden hacer color y tratamiento? ¿cuánto cuesta?',
+        'can you fit me in for color y tratamiento? how long does it take?',
+        'Can I get color y tratamiento? how much is it?',
+        'dá pra marcar color y tratamiento? quanto custa?',
+        'Quero fazer color y tratamiento, quanto custa?',
+        'Je voudrais color y tratamiento, combien ça coûte ?',
+        'Me interesa color y tratamiento, ¿cuánto cuesta?',
+    ])('"%s" keeps the service and the next datum continues the flow', async text => {
+        const { turn } = harness();
+        const first = await turn(text, { step: 'idle' });
+        expect(first.result.state).toMatchObject({ serviceId: 'svc-color', step: 'ask_date' });
+        const second = await turn('el sábado', first.result.state);
+        expect(second.result.handled).toBe(true);
+        expect(second.result.state.origin).toBeUndefined();
+    });
+
+    it.each([
+        'Quiero agendar color y tratamiento',
+        'Necesito agendar color y tratamiento',
+        '¿tienen cupo a las 16:00 para color y tratamiento? ¿cuánto dura?',
+        'Hola, quiero reservar un color y tratamiento mañana. ¿Cuánto cuesta?',
+    ])('"%s" is a real request: the engine answers and the mission is not tentative', async text => {
         const { turn } = harness();
         const { result } = await turn(text, { step: 'idle' });
         expect(result.handled).toBe(true);
-        expect(result.state).toMatchObject({ serviceId: 'svc-color' });
         expect(result.state.step).not.toBe('idle');
-    });
-
-    it('keeps a time next to a duration question with the engine', () => {
-        expect(isInformationalDetour('¿cuánto dura color y tratamiento a las 16:00?', { timeMentioned: '16:00' })).toBe(false);
+        expect(result.state.origin).toBeUndefined();
     });
 });
 
-describe('a bare question never opens a mission (idle), whatever booking word it uses', () => {
-    it.each([
+describe('a question that opens a mission opens only a tentative one', () => {
+    const questions = [
+        '¿Cuánto dura color y tratamiento?',
+        '¿Cuánto cuesta color y tratamiento?',
         '¿Cuánto tiempo necesito para color y tratamiento?',
         'Necesito saber cuánto dura color y tratamiento',
         '¿Cuánto dura la cita de color y tratamiento?',
@@ -105,28 +106,69 @@ describe('a bare question never opens a mission (idle), whatever booking word it
         '¿Cuánto cuesta la cita de color y tratamiento?',
         '¿Hay que reservar para color y tratamiento o puedo llegar?',
         '¿Está disponible color y tratamiento los domingos?',
+        '¿Necesito cita previa para color y tratamiento?',
+        '¿Cuánto cuesta sacar una cita para color y tratamiento?',
+        '¿Qué incluye color y tratamiento?',
+        '¿Color y tratamiento sirve para cabello teñido?',
+        '¿Puedo pagar color y tratamiento con tarjeta?',
+        "What's your schedule for color y tratamiento?",
         'Hola, para color y tratamiento cuánto tiempo necesito?',
-        'What is your schedule for color y tratamiento? How long does it take?',
-    ])('"%s" stays idle with no mission', async text => {
+    ];
+
+    it.each(questions)('"%s" says nothing for the engine and is never a pending booking', async text => {
         const { turn } = harness();
         const { result } = await turn(text, { step: 'idle' });
         expect(result.handled).toBe(false);
-        expect(result.state.step).toBe('idle');
-        expect(result.state.serviceId).toBeUndefined();
+        expect(result.text).toBeUndefined();
+        if (result.state.step !== 'idle') expect(result.state.origin).toBe('question');
+        // Never shown to the model as pending, live or after the continuity window.
+        expect(projectBookingStateForPrompt(restoredAfter(result.state, 5))).toBeUndefined();
+        // Past the window it expires: no dormant mission, so no "reserva sin terminar" offer.
+        expect(restoredAfter(result.state, 31)).toEqual({ step: 'idle' });
     });
 
-    it.each([
-        ['Quiero una cita para color y tratamiento'],
-        ['Necesito agendar color y tratamiento'],
-        ['Agéndame color y tratamiento'],
-        ['Me dan un turno para color y tratamiento?'],
-        ['Hay cupo para color y tratamiento el sábado?'],
-        ["I'd like to book color y tratamiento"],
-    ])('"%s" is a request and starts the flow', async text => {
+    it('does not turn a bare question that names the service into a booking text', async () => {
         const { turn } = harness();
-        const { result } = await turn(text, { step: 'idle' });
-        expect(result.handled).toBe(true);
-        expect(result.state.step).not.toBe('idle');
+        const { result } = await turn('¿Cuánto dura color y tratamiento?', { step: 'idle' });
+        expect(result.state).toMatchObject({ serviceId: 'svc-color', origin: 'question' });
+        expect(result.text).toBeUndefined();
+    });
+
+    it('C14 then C25: a later question about another service never mentions a pending booking', async () => {
+        const { turn } = harness();
+        const c14 = await turn('¿Cuánto dura color y tratamiento?', { step: 'idle' });
+        const restored = restoredAfter(c14.result.state, 31);
+        expect(projectBookingStateForPrompt(restored)).toBeUndefined();
+        const c25 = await turn('¿Cuánto dura corte y estilo y tienen cupo el sábado a las 16:00?', restored);
+        expect(c25.result.text ?? '').not.toMatch(/reserva|sin terminar|pendiente/i);
+        expect(projectBookingStateForPrompt(c25.result.state)).not.toMatchObject({ service: { name: 'Color y tratamiento' } });
+    });
+
+    it('stays tentative while the customer keeps asking, and a statement makes it real', async () => {
+        const { turn } = harness();
+        const first = await turn('¿Cuánto dura color y tratamiento?', { step: 'idle' });
+        const again = await turn('¿Y cuánto cuesta color y tratamiento?', first.result.state);
+        expect(again.result.state.origin).toBe('question');
+        const real = await turn('Sí, quiero agendar', again.result.state);
+        expect(real.result.state.origin).toBeUndefined();
+    });
+});
+
+describe('a tentative mission that receives a booking datum becomes a real mission', () => {
+    it('keeps the normal dormant treatment afterwards', async () => {
+        const { turn } = harness();
+        const first = await turn('¿Cuánto dura color y tratamiento?', { step: 'idle' });
+        expect(first.result.state.origin).toBe('question');
+        const second = await turn('el sábado', first.result.state);
+        expect(second.result.handled).toBe(true);
+        expect(second.result.state).toMatchObject({ serviceId: 'svc-color' });
+        expect(second.result.state.origin).toBeUndefined();
+        const dormant = restoredAfter(second.result.state, 31);
+        expect(dormant).toMatchObject({ serviceId: 'svc-color', resumeOffer: 'pending' });
+        expect(projectBookingStateForPrompt(dormant)).toBeUndefined();
+        const offer = await turn('ok', dormant);
+        expect(offer.result.handled).toBe(true);
+        expect(offer.result.text).toMatch(/sin terminar/i);
     });
 });
 
@@ -137,6 +179,13 @@ describe('a duration question riding with the answer to the current step', () =>
         expect(intent.intent).toBe('select_service');
         expect(result.handled).toBe(true);
         expect(result.state).toMatchObject({ serviceId: 'svc-color', step: 'ask_date' });
+    });
+
+    it('at show_services "¿Está disponible X?" still selects the service', async () => {
+        const { turn } = harness();
+        const { result } = await turn('¿Está disponible color y tratamiento?', { step: 'show_services', missionId: 'm1', services });
+        expect(result.handled).toBe(true);
+        expect(result.state).toMatchObject({ serviceId: 'svc-color' });
     });
 
     it('at show_slots the named time is still selected', async () => {
@@ -152,6 +201,10 @@ describe('a duration question riding with the answer to the current step', () =>
 
     it('a pure duration question mid-mission at another step still goes to the model', () => {
         expect(isInformationalDetour('¿Cuánto dura color y tratamiento?', { serviceMentioned: 'Color y tratamiento' }, 'ask_date')).toBe(true);
+    });
+
+    it('keeps a time next to a duration question with the engine', () => {
+        expect(isInformationalDetour('¿cuánto dura color y tratamiento a las 16:00?', { timeMentioned: '16:00' })).toBe(false);
     });
 });
 
@@ -170,6 +223,11 @@ describe('a dormant mission is not shown to the model as a pending reservation',
         expect(projectBookingStateForPrompt(live)).toMatchObject({
             step: 'show_slots', service: { id: 'svc-corte', name: 'Corte y estilo', durationMinutes: 45 }, date: '2026-10-10',
         });
+    });
+
+    it('never projects a tentative mission, even while live', () => {
+        const live = restoreBookingMission({ ...saved, origin: 'question' }, '2026-10-05T11:50:00Z', now).state;
+        expect(projectBookingStateForPrompt(live)).toBeUndefined();
     });
 
     it('projects nothing at idle', () => {

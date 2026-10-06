@@ -231,7 +231,7 @@ mensajes entregados, y un indicador de "escribiendo" no lo es.
 
 | Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
 |---:|---|---|---|---|---|---|---|
-| 553 | `createBooking` | `enqueueOperationalNotice` | `operational_notice` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 555 | `createBooking` | `enqueueOperationalNotice` | `operational_notice` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
 
 ### `apps/api/src/modules/vacation-rental/properties.service.ts`
 
@@ -328,7 +328,7 @@ buscar una llamada a la autoridad economica en el codigo del archivo.
 | `modules/orders/catalog-order-commands.ts:113` | `create` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/orders/catalog-order-commands.ts:227` | `advance` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/recall/recall.service.ts:255` | `recallOne` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
-| `modules/tours/tours.service.ts:553` | `createBooking` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
+| `modules/tours/tours.service.ts:555` | `createBooking` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/vacation-rental/properties.service.ts:723` | `createBooking` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/whatsapp/whatsapp.controller.ts:921` | `dispatchRest` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
 

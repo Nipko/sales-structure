@@ -188,6 +188,30 @@ describe('FAQ search with identifier noise in the message', () => {
         expect(stripFaqQueryNoise('Compré el tour Faro Rojo ayer. ¿Cuánto dura?')).toBe('Compré el tour Faro Rojo ayer. ¿Cuánto dura?');
     });
 
+    it('drops the text before a label only when it is made of generic markers', () => {
+        expect(stripFaqQueryNoise('Pedido ORD_123: ¿cuándo llega?')).toBe('¿cuándo llega?');
+        expect(stripFaqQueryNoise('Tour Faro Rojo, reserva RES_77: ¿Cuánto dura?')).toBe('Tour Faro Rojo ¿Cuánto dura?');
+        expect(stripFaqQueryNoise('Plan Premium REF_9: ¿Cuánto cuesta?')).toBe('Plan Premium ¿Cuánto cuesta?');
+        expect(stripFaqQueryNoise('¿Cuánto cuesta el envío? ref ORD_1: gracias')).toContain('¿Cuánto cuesta el envío?');
+    });
+
+    it('never answers with another topic when a label follows the topic', async () => {
+        const faroAzul = faq('azul', '¿Cuánto dura el tour Faro Azul?', 'El tour Faro Azul dura 3 horas.');
+        const basic = faq('basic', '¿Cuánto cuesta el plan Básico?', 'El plan Básico cuesta 10 dólares.');
+        const ship = faq('ship', '¿Cuánto cuesta el envío?', 'El envío cuesta 5 dólares.');
+        const { svc } = service([faroAzul, basic, ship]);
+        expect(await svc.search('tenant', 'Tour Faro Rojo, reserva RES_77: ¿Cuánto dura?', 3, AGENT_TEST_EXECUTION_CONTEXT)).toEqual([]);
+        expect(await svc.search('tenant', 'Plan Premium REF_9: ¿Cuánto cuesta?', 3, AGENT_TEST_EXECUTION_CONTEXT)).toEqual([]);
+        const trailing = await svc.search('tenant', '¿Cuánto cuesta el envío? ref ORD_1: gracias', 3, AGENT_TEST_EXECUTION_CONTEXT);
+        expect(trailing.every(r => r.id === 'ship')).toBe(true);
+    });
+
+    it('still cleans a generic marker before the label', async () => {
+        const arrival = faq('arrival', '¿Cuándo llega mi pedido?', 'Llega en 3 días hábiles.');
+        const { svc } = service([unrelatedFaq, arrival]);
+        expect((await svc.search('tenant', 'Pedido ORD_123: ¿cuándo llega?', 3, AGENT_TEST_EXECUTION_CONTEXT)).map(r => r.id)).toEqual(['arrival']);
+    });
+
     it('does not answer another topic when the question follows a statement', async () => {
         const faroAzul = faq('azul', '¿Cuánto dura el tour Faro Azul?', 'El tour Faro Azul dura 3 horas.');
         const { svc } = service([faroAzul]);

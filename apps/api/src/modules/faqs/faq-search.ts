@@ -35,16 +35,33 @@ const canonTerms = (value: string): string[] => {
     return [...new Set(raw.filter(t => !(hasDuration && DURATION_FILLER.has(t))).map(canon))];
 };
 
-/** Drops what a customer pastes next to the real question and no FAQ ever contains.
- * Only three things go: a label prefix `XXX_YYY:` together with everything before it
- * ("Prueba QA QA_C2026_T01_1: ¿...?"), any token that carries an underscore, and numbers
- * of 6 or more digits. Tokens mixing letters and digits (24h, 4x4, COVID19, mp3...) and
+// Words that only introduce a code ("Prueba QA QA_C1_T01:", "Pedido ORD_123:"). Text before a
+// label made only of these carries no topic, so it can be dropped with the label.
+const GENERIC_MARKERS = ['prueba', 'qa', 'test', 'pedido', 'orden', 'ref', 'referencia', 'ticket', 'caso', 'reserva', 'order', 'booking'];
+const GENERIC_SET = new Set(GENERIC_MARKERS);
+const TRAILING_MARKERS = new RegExp(`(?:[\\s,.;:-]+(?:${GENERIC_MARKERS.join('|')}))+[\\s,.;:-]*$`, 'iu');
+
+/** Drops what a customer pastes next to the real question and no FAQ ever contains:
+ * the token of a label `XXX_YYY:`, any other token that carries an underscore, and numbers
+ * of 6 or more digits. The text around a label stays (it may hold the topic: "Tour Faro
+ * Rojo, reserva RES_77: ¿Cuánto dura?"); the part BEFORE the label is dropped only when it is
+ * empty or made only of generic markers ("Prueba QA QA_C1_T01_1: ¿...?"), and the part AFTER
+ * only when it is generic. Tokens mixing letters and digits (24h, 4x4, COVID19, mp3...) and
  * short numbers ("plan 2025") are real vocabulary and stay. */
 export function stripFaqQueryNoise(query: string): string {
+    const noiseTokens = (text: string) => text
+        .replace(/[\p{L}\p{N}_-]+/gu, token => token.includes('_') || /^\p{N}{6,}$/u.test(token) ? '' : token);
+    const generic = (text: string) => faqSearchTerms(noiseTokens(text)).every(term => GENERIC_SET.has(term));
     const label = /[\p{L}\p{N}]+(?:_[\p{L}\p{N}]+)+\s*:/u.exec(query);
-    const body = label ? query.slice(label.index + label[0].length) : query;
-    return body
-        .replace(/[\p{L}\p{N}_-]+/gu, token => token.includes('_') || /^\p{N}{6,}$/u.test(token) ? '' : token)
+    let body = query;
+    if (label) {
+        const before = query.slice(0, label.index);
+        const after = query.slice(label.index + label[0].length);
+        if (generic(before)) body = after;
+        else if (generic(after)) body = before;
+        else body = `${before.replace(TRAILING_MARKERS, '')} ${after}`;
+    }
+    return noiseTokens(body)
         .replace(/[ \t]{2,}/g, ' ')
         .replace(/\s+([,.;:?!])/g, '$1')
         .replace(/^[\s:,;.-]+/, '')

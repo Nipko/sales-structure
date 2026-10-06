@@ -264,6 +264,8 @@ export class ProactiveDispatchService {
         readonly channelType: string;
         readonly channelAccountId: string;
         readonly entityId: string;
+        /** Who the message is for, when the entity is not the person (a rule). */
+        readonly contactId?: string;
     }) {
         return this.prisma.transactionInTenantSchema(schemaName, query =>
             proactivePolicyAuthority(query as any, schemaName, input));

@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import { optedOutSql } from '../../common/policies/opt-out-register';
 import { PrismaService } from '../prisma/prisma.service';
 import { replaceTenantSettingsBranch } from '../../common/utils/tenant-settings-branch.util';
 import { ProactiveSendConnection } from '../channels/proactive-connection';
@@ -132,8 +133,12 @@ export class RecallService {
                    -- "has this cooldown expired" asked of a frozen clock
                    -- answers about a moment that has already passed.
                    AND (next_recall_at IS NULL OR next_recall_at <= clock_timestamp())
+                   -- Dropped HERE, before the LIMIT, and not in the loop: a
+                   -- page of a hundred people who all asked to stop would
+                   -- otherwise fill the batch and starve everybody behind them.
+                   AND NOT ${optedOutSql({ phone: 'contacts.phone', id: 'contacts.id', channel: '$2::text' })}
                  LIMIT 100`,
-                [daysThreshold],
+                [daysThreshold, channelType],
             );
         } catch (e: any) {
             this.logger.warn(`Failed to query recall contacts for ${tenantId}: ${e.message}`);

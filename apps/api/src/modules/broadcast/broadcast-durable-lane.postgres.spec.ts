@@ -6,6 +6,7 @@ import { AgentDispatchOutboxStore } from '../channels/agent-dispatch-outbox.stor
 import { ProactiveDispatchService } from '../channels/proactive-dispatch.service';
 import { DISPATCH_OUTBOX_DDL, DispatchOutboxError } from '../channels/agent-dispatch-outbox';
 import { ensureSyntheticGlobalTables } from '../../common/__fixtures__/synthetic-global-tables';
+import { OPT_OUT_REGISTER_DDL } from '../../common/__fixtures__/opt-out-register-ddl';
 
 /**
  * ═══ A CAMPAIGN MESSAGE, THROUGH THE REAL STORE ═══
@@ -110,6 +111,7 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
 
         await sql(`CREATE TABLE contacts(id UUID PRIMARY KEY, name TEXT, phone TEXT,
             channel_type TEXT, email TEXT)`);
+        for (const ddl of OPT_OUT_REGISTER_DDL) await sql(ddl);
         await sql(`CREATE TABLE conversations(id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             contact_id UUID REFERENCES contacts(id), channel_type TEXT, channel_account_id TEXT,
             status TEXT DEFAULT 'active', updated_at TIMESTAMPTZ DEFAULT NOW())`);
@@ -168,7 +170,7 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         published = [];
         scheduled = [];
         await sql(`TRUNCATE agent_dispatch_outbox, messages, conversations, contacts,
-            campaign_recipients, campaigns CASCADE`);
+            campaign_recipients, campaigns, opt_out_records, leads CASCADE`);
     });
 
     // ── THE DEFECT THIS SHAPE EXISTS TO AVOID ───────────────────────────────
@@ -336,6 +338,32 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         expect(String((await outboxRows())[0].error_code)).toContain('proactive_gone');
     });
 
+    // ── A PERSON WHO ASKED US TO STOP ───────────────────────────────────────
+
+    it('suppresses one whose contact opted out after preparing', async () => {
+        const c = await campaign();
+        await send(c);
+        const [row] = await outboxRows();
+        expect(row.state).toBe('queued');
+        await sql("INSERT INTO opt_out_records(phone,channel,status) VALUES('573001112233','whatsapp','confirmed')");
+
+        await expect(store.admit(tenantId, row.id))
+            .rejects.toMatchObject({ code: 'dispatch_effect_superseded' });
+        const [after] = await outboxRows();
+        expect(after.state).toBe('suppressed');
+        expect(after.error_code).toBe('recipient_opted_out');
+    });
+
+    it('prepares nothing for a recipient who opted out before the worker got to them', async () => {
+        const c = await campaign();
+        await sql("INSERT INTO leads(contact_id,phone,opted_out) VALUES($1::uuid,'+573009990000',true)", [c.contactId]);
+        expect(await send(c)).toBe('skipped:recipient_opted_out');
+        expect(await outboxRows()).toEqual([]);
+        expect(scheduled).toEqual([]);
+        // Closed, not left queued: otherwise the campaign is never reported finished.
+        expect(await recipient(c.recipientId)).toMatchObject({ status: 'skipped' });
+    });
+
     // ── THE SENDER THAT HAS TO BE NAMED ─────────────────────────────────────
 
     it('refuses a campaign that never named the account that pays', async () => {
@@ -489,6 +517,38 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         const closed = await recipient(c.recipientId);
         expect(closed.status).toBe('failed');
         expect(String(closed.error_message)).toContain('proactive_gone');
+    });
+
+    it('closes an opted-out recipient as SKIPPED at settle, not failed, and finishes the campaign', async () => {
+        const c = await campaign();
+        await send(c);
+        const [row] = await outboxRows();
+        await sql("INSERT INTO opt_out_records(phone,channel,status) VALUES('573001112233','whatsapp','confirmed')");
+        await expect(store.admit(tenantId, row.id)).rejects.toThrow();
+
+        const completion = jest.spyOn((processor as any).broadcastService, 'checkCampaignCompletion');
+        expect(await settle(c)).toContain('settled:skipped');
+        expect(completion).toHaveBeenCalledWith(schema, c.campaignId);
+        completion.mockRestore();
+        const closed = await recipient(c.recipientId);
+        expect(closed.status).toBe('skipped');
+        expect(closed.error_message).toBe('recipient_opted_out');
+    });
+
+    it('closes the recipient when the opt-out lands AFTER the worker gate but before the authority is read', async () => {
+        const c = await campaign();
+        await sql("INSERT INTO opt_out_records(phone,channel,status) VALUES('573001112233','whatsapp','confirmed')");
+        // The gate at the top of process() sees nobody opted out; the authority
+        // built a moment later does.
+        const gate = jest.spyOn(processor as any, 'recipientOptedOut').mockResolvedValueOnce(false);
+        const completion = jest.spyOn((processor as any).broadcastService, 'checkCampaignCompletion');
+        try {
+            expect(await send(c)).toBe('skipped:recipient_opted_out');
+        } finally { gate.mockRestore(); }
+        expect(await outboxRows()).toEqual([]);
+        expect(await recipient(c.recipientId)).toMatchObject({ status: 'skipped' });
+        expect(completion).toHaveBeenCalledWith(schema, c.campaignId);
+        completion.mockRestore();
     });
 
     it('retries rather than inventing an answer when the row is gone', async () => {

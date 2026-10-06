@@ -29,6 +29,7 @@ import {
 import {
     revalidateHumanOperator, validHumanOperatorAuthority, type HumanOperatorAuthority,
 } from '../persona/human-operator-authority';
+import { RECIPIENT_OPTED_OUT_CODE } from '../../common/policies/opt-out-register';
 import { assertRuntimeLearningFootprint, type RuntimeLearningFootprint } from '../learning/learning-runtime-footprint';
 
 /**
@@ -295,7 +296,12 @@ export class AgentDispatchOutboxStore {
                     || scope.channelAccountId !== current.binding.channelAccountId) {
                     throw new DispatchOutboxError('dispatch_binding_changed');
                 }
-                const verdict = await revalidateProactivePolicy(query, schema, scope);
+                // The contact is the ROW's own binding, not something the
+                // policy's entity can name (a rule has no contact): it is what
+                // lets the policy suppress a person who opted out after this
+                // effect was queued.
+                const verdict = await revalidateProactivePolicy(query, schema, scope,
+                    { contactId: current.binding.contactId });
                 if (verdict.kind !== 'current') {
                     // ── SUPPRESSED, AND THE SUPPRESSION HAS TO COMMIT ───────
                     //
@@ -313,7 +319,12 @@ export class AgentDispatchOutboxStore {
                     return settleDispatch(query, schema, {
                         dispatchId, leaseToken,
                         outcome: { kind: 'suppressed',
-                            errorCode: `proactive_${verdict.kind}:${verdict.detail}`.slice(0, 120) },
+                            // An opt-out keeps its own plain code: a campaign's
+                            // settling pass reads it to close the recipient as
+                            // skipped rather than failed.
+                            errorCode: verdict.kind === 'opted_out'
+                                ? RECIPIENT_OPTED_OUT_CODE
+                                : `proactive_${verdict.kind}:${verdict.detail}`.slice(0, 120) },
                     });
                 }
             } else if (validHumanOperatorAuthority(scope, schema, tenantId)) {

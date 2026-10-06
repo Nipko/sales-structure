@@ -10,6 +10,7 @@ import { AbTestService } from './ab-test.service';
 import { CronLockService } from '../redis/cron-lock.service';
 import { WhatsappSpendService } from '../billing/whatsapp-spend/whatsapp-spend.service';
 import { wabaCalendarMonth } from '../billing/whatsapp-rates';
+import { optedOutRecipientKeys } from '../../common/policies/opt-out-register';
 
 export const BROADCAST_QUEUE = 'broadcast-messages';
 
@@ -152,7 +153,7 @@ export class BroadcastService {
                 metadata, scheduled_at, created_at, updated_at
             ) VALUES (
                 gen_random_uuid(), $1, $2, $3, $4,
-                $5, $6::timestamptz, NOW(), NOW()
+                $5::jsonb, $6::timestamptz, NOW(), NOW()
             ) RETURNING id`,
             [
                 data.name,
@@ -254,6 +255,17 @@ export class BroadcastService {
         if (!recipients?.length) {
             throw new BadRequestException('No pending recipients found for this campaign');
         }
+
+        // ── THE REGISTER, BEFORE ANYTHING IS ASSIGNED OR QUEUED ─────────────
+        //
+        // It may have grown since the recipient rows were written (a scheduled
+        // campaign waits days). Asked BEFORE the A/B assignment so an opted-out
+        // person is never given a variant, and so a variant's share is not
+        // computed over people who will not receive it.
+        const eligible = [...await this.skipOptedOutRecipients(schema, campaignId, recipients)];
+        if (!eligible.length) return this.finishWithoutRecipients(schema, campaignId);
+        recipients.length = 0;
+        recipients.push(...eligible);
 
         const metadata = campaignMetadata;
 
@@ -588,7 +600,7 @@ export class BroadcastService {
     async updateRecipientStatus(
         schemaName: string,
         recipientId: string,
-        status: 'sent' | 'delivered' | 'read' | 'failed',
+        status: 'sent' | 'delivered' | 'read' | 'failed' | 'skipped',
         errorMessage?: string,
         providerMessageId?: string,
     ) {
@@ -764,7 +776,87 @@ export class BroadcastService {
             }
         }
 
-        return result;
+        // Somebody who asked us to stop is not an audience, on the channel
+        // they asked on (a lead-level unsubscribe covers every channel). Done
+        // here so they never become a recipient row; `launchCampaign` asks
+        // again, because a campaign can sit scheduled for days after this.
+        const blocked = await this.optedOutRecipientIds(
+            schema, result.map(r => ({ key: r.id, contactId: r.id, phone: r.phone, channel: r.channel })));
+        return result.filter(r => !blocked.has(r.id));
+    }
+
+    /**
+     * Of these recipients, the keys of the ones on the opt-out register for
+     * the channel each one would be sent on.
+     */
+    private async optedOutRecipientIds(
+        schema: string,
+        recipients: Array<{ key: string; contactId?: string | null; phone?: string | null; channel: string }>,
+    ): Promise<Set<string>> {
+        const blocked = new Set<string>();
+        const byChannel = new Map<string, typeof recipients>();
+        for (const recipient of recipients) {
+            const channel = recipient.channel || 'whatsapp';
+            byChannel.set(channel, [...(byChannel.get(channel) || []), recipient]);
+        }
+        const query = (text: string, params?: any[]) =>
+            this.prisma.executeInTenantSchema<any[]>(schema, text, params || []) as Promise<any>;
+        for (const [channel, group] of byChannel) {
+            const dropped = await optedOutRecipientKeys(query, channel,
+                group.map(r => ({ key: r.key, id: r.contactId, phone: r.phone })));
+            for (const key of dropped) blocked.add(key);
+        }
+        return blocked;
+    }
+
+    /**
+     * A campaign whose every pending recipient opted out has nothing to send and
+     * never will. It is CLOSED, with the reason, and the launch returns instead of
+     * throwing: the scheduler launches a due campaign every minute and an error
+     * leaves it `scheduled`, so it would fail again every minute for ever.
+     */
+    private async finishWithoutRecipients(schema: string, campaignId: string) {
+        await this.prisma.executeInTenantSchema(
+            schema,
+            `UPDATE campaigns
+                SET status = 'finished', ends_at = NOW(),
+                    metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb,
+                    updated_at = NOW()
+              WHERE id = $1::uuid AND status IN ('draft', 'paused', 'scheduled')`,
+            [campaignId, JSON.stringify({
+                finishedWithoutSending: {
+                    code: 'all_recipients_opted_out',
+                    at: new Date().toISOString(),
+                },
+            })],
+        );
+        this.logger.warn(`Campaign ${campaignId} finished without sending: every recipient opted out`);
+        return { queued: 0, finished: 'all_recipients_opted_out' as const };
+    }
+
+    /**
+     * Pending recipients created before somebody opted out are taken out of the
+     * send. They are marked rather than deleted so the campaign's totals still
+     * add up and an operator can see why a name on the list got nothing.
+     */
+    private async skipOptedOutRecipients(
+        schema: string,
+        campaignId: string,
+        recipients: any[],
+    ): Promise<any[]> {
+        const blocked = await this.optedOutRecipientIds(schema, recipients.map(r => ({
+            key: String(r.id), contactId: r.contact_id, phone: r.phone, channel: r.channel || 'whatsapp',
+        })));
+        if (!blocked.size) return recipients;
+        await this.prisma.executeInTenantSchema(
+            schema,
+            `UPDATE campaign_recipients
+                SET status = 'skipped', error_message = 'recipient_opted_out', updated_at = NOW()
+              WHERE campaign_id = $1::uuid AND status = 'pending' AND id = ANY($2::uuid[])`,
+            [campaignId, [...blocked]],
+        );
+        this.logger.warn(`Campaign ${campaignId}: ${blocked.size} recipient(s) skipped, opted out since they were added`);
+        return recipients.filter(r => !blocked.has(String(r.id)));
     }
 
     private async resolveRawContacts(

@@ -76,7 +76,7 @@ function normalize(text: string): string {
  * indistinguishable from the preterite "reservé", so the `que (le|te|lo|la)?`
  * lead-in is the only thing that tells them apart.
  */
-const OFFER_LEAD_IN = /\b(?:que|if|si)\s+(?:(?:le|te|lo|la|les|los|las|se|me|nos)\s+)?$/;
+const OFFER_LEAD_IN = /\b(?:desea|deseas|desean|quiere|quieres|quieren|quisiera|quisieras|gustaria|prefiere|prefieres|necesita|necesitas|para)\b(?:\s+(?:usted|ustedes|tu|vos))?\s+que\s+(?:(?:le|te|lo|la|les|los|las|se|me|nos)\s+)?$/;
 
 /**
  * The calendar itself as the subject: "el sabado a las 16:00 ya esta reservado"
@@ -84,16 +84,17 @@ const OFFER_LEAD_IN = /\b(?:que|if|si)\s+(?:(?:le|te|lo|la|les|los|las|se|me|nos
  * Only the "esta" form is read this way: "quedo reservado" keeps meaning a deed.
  */
 const AGENDA_SUBJECT = /\b(?:horario|hora|espacio|cupo|turno|hueco|franja|slot|disponibilidad)\b|\ba las? \d|\b\d{1,2}:\d{2}\b/;
+/** "ya esta reservado PARA USTED" / "agendada A SU NOMBRE": the slot was taken on the customer's behalf. */
+const FOR_THE_CUSTOMER = /\b(?:para (?:usted|ustedes|ti|vos)|a (?:su|tu) nombre)\b/;
 const OPERATION_SUBJECT_BEFORE = new RegExp('\\b' + OPERATION_SUBJECT + '\\b');
 
 /** Is the match inside a question: "¿...?" or the clause that ends in "?" with no break in between. */
 function insideQuestion(sentence: string, index: number, end: number): boolean {
     const opener = sentence.lastIndexOf('¿', index);
     if (opener >= 0 && !sentence.slice(opener, index).includes('?')) return true;
-    const closer = sentence.indexOf('?', end);
-    if (closer < 0) return false;
-    // Without an inverted opener (en/pt/fr) only the clause holding the match counts.
-    return !sentence.includes('¿') && !/[,;:]/.test(sentence.slice(end, closer));
+    // A trailing "?" without an inverted opener (en/pt/fr, or a dash-joined tag question) is NOT
+    // presumed to cover the claim: "Your booking is confirmed — anything else?" states a fact.
+    return false;
 }
 
 export function claimsCompletedAction(reply: unknown): boolean {
@@ -107,7 +108,8 @@ export function claimsCompletedAction(reply: unknown): boolean {
             if (OFFER_LEAD_IN.test(before) || insideQuestion(sentence, m.index, m.index + m[0].length)) continue;
             if (/\besta\b/.test(m[0])) {
                 const subject = sentence.slice(Math.max(0, m.index - 60), m.index);
-                if (AGENDA_SUBJECT.test(subject) && !OPERATION_SUBJECT_BEFORE.test(subject)) continue;
+                if (AGENDA_SUBJECT.test(subject) && !OPERATION_SUBJECT_BEFORE.test(subject)
+                    && !FOR_THE_CUSTOMER.test(sentence.slice(m.index))) continue;
             }
             return true;
         }

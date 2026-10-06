@@ -196,6 +196,8 @@ describe('claimsCompletedAction — offers, questions and agenda slots (regresio
         'El turno de las 10:00 ya está reservado.',
         'Si desea, le aviso para que le reserve la cita el sábado.',
         '¿Su reserva está confirmada o aún falta el pago?',
+        'Si quiere que le reserve la cita, avíseme.',
+        '¿Desea usted que le agende el corte?',
     ])('no es acción completada: %s', reply => {
         expect(claimsCompletedAction(reply)).toBe(false);
     });
@@ -207,6 +209,16 @@ describe('claimsCompletedAction — offers, questions and agenda slots (regresio
         'Tu cita del sábado a las 16:00 quedó reservada.',
         'Tu cita a las 16:00 ya está reservada.',
         'Cancelé la cita del lunes.',
+        'Le confirmo que le reservé la cita para el sábado.',
+        'Le informo que le agendé la cita para el lunes.',
+        'Sí le reservé la cita.',
+        'Ya que le reservé la cita, le envío el recordatorio.',
+        'Your booking is confirmed — anything else I can help with?',
+        'Your appointment has been booked for Saturday at 4pm — anything else?',
+        'Sua reserva está confirmada — posso ajudar em algo mais?',
+        'Listo su cita quedó agendada algo más?',
+        'Listo, el sábado a las 16:00 ya está reservado para usted.',
+        'Listo, la hora de las 16:00 ya está agendada a su nombre.',
     ])('sigue siendo acción completada: %s', reply => {
         expect(claimsCompletedAction(reply)).toBe(true);
     });

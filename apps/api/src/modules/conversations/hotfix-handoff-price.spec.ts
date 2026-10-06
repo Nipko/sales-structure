@@ -206,6 +206,16 @@ describe('a partial product name resolves when it identifies a single product (r
         expect(ambiguous.product ?? null).toBeNull();
     });
 
+    it('matches whole words only and needs four characters: "urora" is not inside "Aurora"', async () => {
+        const stub = executor([], [row]);
+        expect((await (stub as any).getProduct('tenant_x', 'urora')).id).toBeUndefined();
+        const tiny = executor([]);
+        await (tiny as any).getProduct('tenant_x', 'ora');
+        expect(tiny.prisma.$queryRawUnsafe).toHaveBeenCalledTimes(1);
+        expect((await (executor([], [row]) as any).getProduct('tenant_x', 'qa aurora')).id).toBe('p1');
+        expect((await (executor([], [row]) as any).getProduct('tenant_x', 'AUDIFONO')).id).toBe('p1');
+    });
+
     it('an exact hit does not run the fallback, and a uuid never does', async () => {
         const exact = executor([row]);
         await (exact as any).getProduct('tenant_x', 'Audífono QA Aurora');

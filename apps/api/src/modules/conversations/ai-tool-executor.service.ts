@@ -1513,14 +1513,18 @@ export class AIToolExecutorService {
      */
     private async soleProductContaining(schema: string, columns: string, name: string): Promise<any[]> {
         const text = foldQueryText(name);
-        if (text.length < 3) return [];
+        // Four characters and whole words: "ora" is not a name, and it sits inside "Aurora".
+        if (text.length < 4) return [];
         const rows: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT ${columns} FROM "${schema}".products
               WHERE is_available = true AND ${foldedSql('name')} LIKE ${foldedSql('$1::text')}
-              ORDER BY name ASC, id ASC LIMIT 2`,
+              ORDER BY name ASC, id ASC LIMIT 20`,
             `%${text.replace(/[\\%_]/g, '\\$&')}%`,
         );
-        return Array.isArray(rows) && rows.length === 1 ? rows : [];
+        const fold = (value: string) => value.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+        const needle = new RegExp(`(?:^|[^a-z0-9])${fold(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:$|[^a-z0-9])`);
+        const whole = (Array.isArray(rows) ? rows : []).filter(row => needle.test(fold(String(row.name ?? ''))));
+        return whole.length === 1 ? whole : [];
     }
 
     private async getProduct(schema: string, productIdOrName: string): Promise<any> {

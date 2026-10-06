@@ -107,3 +107,114 @@ describe('"a las 4" is the afternoon only when the hours say so (minor, regresio
         expect(resolveBusinessWindow({ schedule: { saturday: { enabled: false } } }, undefined, '2026-10-10')).toBeNull();
     });
 });
+
+describe('the hours derived from the agenda feed the "a las 4" resolver (regresion2)', () => {
+    const informational = (rows: Record<string, any>) => ({ informational: true, source: 'appointment_availability', is247: false, schedule: rows });
+    const nineToSeven = informational({
+        saturday: { windows: [{ open: '09:00', close: '19:00' }] },
+        sunday: { enabled: false },
+    });
+
+    it('uses the derived agenda when nothing else is configured', () => {
+        expect(resolveBusinessWindow(null, undefined, '2026-10-10', nineToSeven)).toEqual({ openMin: 540, closeMin: 1140 });
+    });
+    it('takes the earliest opening and the latest closing of a split day', () => {
+        for (const windows of [
+            [{ open: '09:00', close: '12:00' }, { open: '14:00', close: '18:00' }],
+            [{ open: '14:00', close: '18:00' }, { open: '09:00', close: '12:00' }],
+        ]) {
+            const split = informational({ saturday: { windows } });
+            expect(resolveBusinessWindow(null, undefined, '2026-10-10', split)).toEqual({ openMin: 540, closeMin: 1080 });
+        }
+    });
+    it('a day without windows, an unknown agenda or no agenda yield nothing', () => {
+        expect(resolveBusinessWindow(null, undefined, '2026-10-11', nineToSeven)).toBeNull();
+        expect(resolveBusinessWindow(null, undefined, '2026-10-10', { informational: true, unknown: true, schedule: {} } as any)).toBeNull();
+        expect(resolveBusinessWindow(null, undefined, '2026-10-10', null)).toBeNull();
+        expect(resolveBusinessWindow(null, undefined, '2026-10-10')).toBeNull();
+    });
+    it('configured hours always win over the agenda', () => {
+        const configured = { schedule: { saturday: { enabled: true, open: '10:00', close: '14:00' } } };
+        expect(resolveBusinessWindow(configured, undefined, '2026-10-10', nineToSeven)).toEqual({ openMin: 600, closeMin: 840 });
+        const agent = { schedule: { sab: { enabled: true, open: '11:00', close: '15:00' } } };
+        expect(resolveBusinessWindow(null, agent, '2026-10-10', nineToSeven)).toEqual({ openMin: 660, closeMin: 900 });
+        expect(resolveBusinessWindow({ is247: true }, undefined, '2026-10-10', nineToSeven)).toBeNull();
+        expect(resolveBusinessWindow({ schedule: { saturday: { enabled: false } } }, undefined, '2026-10-10', nineToSeven)).toBeNull();
+    });
+});
+
+describe('the period qualifier of "a las N" needs a word boundary (regresion2)', () => {
+    const upcoming = [{ date: '2026-10-10', weekday: 'Saturday' }, { date: '2026-10-06', weekday: 'Tuesday' }];
+    const window = () => ({ openMin: 540, closeMin: 1140 });
+    const interpret = (text: string) => new IntentInterpreterService({ execute: jest.fn() } as any)
+        .interpret(text, 'idle', ['Corte y estilo'], '2026-10-05', upcoming, 't', undefined, undefined, window);
+
+    it.each([
+        '¿Tienen cupo el sábado a las 4 para corte?',
+        'mañana a las 4 hay espacio?',
+        'el sábado a las 4 hay cupo',
+        'el sábado a las 4 hoy no, hmm',
+    ])('"%s" is 16:00', async text => {
+        expect((await interpret(text)).timeMentioned).toBe('16:00');
+    });
+    it.each([
+        ['el sábado a las 4h', '04:00'],
+        ['el sábado a las 4 hs', '04:00'],
+        ['el sábado a las 4 hrs', '04:00'],
+        ['el sábado a las 16h', '16:00'],
+        ['el sábado a las 4pm', '16:00'],
+        ['el sábado a las 4 pm.', '16:00'],
+        ['el sábado a las 4 de la tarde?', '16:00'],
+        ['el sábado a las 4 am', '04:00'],
+        ['el sábado a las 4 de la mañana', '04:00'],
+    ])('a real qualifier still counts: %s', async (text, expected) => {
+        expect((await interpret(text)).timeMentioned).toBe(expected);
+    });
+});
+
+describe('a partial product name resolves when it identifies a single product (regresion2)', () => {
+    const row = { id: 'p1', name: 'Audífono QA Aurora', description: null, category: 'audio', price: '119900', currency: 'COP',
+        stock: 3, is_available: true, images: [], requires_prescription: false };
+    const executor = (...answers: any[][]) => {
+        const e: any = Object.create(AIToolExecutorService.prototype);
+        e.logger = { warn: jest.fn() };
+        const query = jest.fn();
+        for (const rows of answers) query.mockResolvedValueOnce(rows);
+        e.prisma = { $queryRawUnsafe: query };
+        return e;
+    };
+
+    it.each([
+        ['getProduct', (e: any) => e.getProduct('tenant_x', 'QA Aurora')],
+        ['checkStock', (e: any) => e.checkStock('tenant_x', 'QA Aurora')],
+    ])('%s falls back to containment when the exact name finds nothing and one product matches', async (_name, call) => {
+        const e = executor([], [row]);
+        const result = await call(e);
+        expect(result).toMatchObject({ id: 'p1', price: 119900, priceStatus: 'confirmed' });
+        const fallback = String(e.prisma.$queryRawUnsafe.mock.calls[1][0]);
+        expect(fallback).toMatch(/is_available = true/);
+        expect(fallback).toMatch(/LIKE/);
+        expect(e.prisma.$queryRawUnsafe.mock.calls[1][1]).toBe('%QA Aurora%');
+    });
+
+    it.each([
+        ['getProduct', (e: any) => e.getProduct('tenant_x', 'Aurora')],
+        ['checkStock', (e: any) => e.checkStock('tenant_x', 'Aurora')],
+    ])('%s never guesses between two candidates', async (_name, call) => {
+        const ambiguous = await call(executor([], [row, { ...row, id: 'p2' }]));
+        expect(ambiguous.id).toBeUndefined();
+        expect(ambiguous.product ?? null).toBeNull();
+    });
+
+    it('an exact hit does not run the fallback, and a uuid never does', async () => {
+        const exact = executor([row]);
+        await (exact as any).getProduct('tenant_x', 'Audífono QA Aurora');
+        expect(exact.prisma.$queryRawUnsafe).toHaveBeenCalledTimes(1);
+        const uuid = executor([]);
+        await (uuid as any).getProduct('tenant_x', '11111111-1111-4111-8111-111111111111');
+        expect(uuid.prisma.$queryRawUnsafe).toHaveBeenCalledTimes(1);
+        const short = executor([]);
+        await (short as any).getProduct('tenant_x', 'ab');
+        expect(short.prisma.$queryRawUnsafe).toHaveBeenCalledTimes(1);
+    });
+});

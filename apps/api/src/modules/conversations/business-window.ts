@@ -27,8 +27,33 @@ function windowOf(entry: any): BusinessWindow | null {
     return { openMin, closeMin };
 }
 
-/** Tenant business hours first (English day keys), then the agent schedule (Spanish keys). */
-export function resolveBusinessWindow(bizHours: any, agentHours: any, dateISO: string): BusinessWindow | null {
+const hasEntries = (value: unknown): boolean =>
+    !!value && typeof value === 'object' && Object.keys(value as object).length > 0;
+
+/**
+ * The agenda-derived day (`{ windows: [{ open, close }] }`, see informational-hours.ts)
+ * as one window: earliest opening to latest closing. A day without windows is closed.
+ */
+function derivedWindowOf(entry: any): BusinessWindow | null {
+    const windows: any[] = Array.isArray(entry?.windows) ? entry.windows : [];
+    let openMin: number | null = null;
+    let closeMin: number | null = null;
+    for (const w of windows) {
+        const open = toMinutes(w?.open);
+        const close = toMinutes(w?.close);
+        if (open == null || close == null || close <= open) continue;
+        openMin = openMin == null ? open : Math.min(openMin, open);
+        closeMin = closeMin == null ? close : Math.max(closeMin, close);
+    }
+    return openMin == null || closeMin == null ? null : { openMin, closeMin };
+}
+
+/**
+ * Tenant business hours first (English day keys), then the agent schedule (Spanish keys).
+ * Only when neither is configured does the schedule derived from the appointment
+ * agenda (`derivedHours`) describe the window: a configured policy is never overridden by an agenda.
+ */
+export function resolveBusinessWindow(bizHours: any, agentHours: any, dateISO: string, derivedHours?: any): BusinessWindow | null {
     const date = new Date(`${dateISO}T00:00:00.000Z`);
     if (Number.isNaN(date.getTime())) return null;
     const dow = date.getUTCDay();
@@ -38,6 +63,10 @@ export function resolveBusinessWindow(bizHours: any, agentHours: any, dateISO: s
     const schedule = agentHours?.schedule;
     if (!bizHours && schedule && typeof schedule === 'object' && Object.keys(schedule).length) {
         return windowOf(schedule[ES_DAYS[dow]] ?? schedule[EN_DAYS[dow]]);
+    }
+    const configured = !!bizHours?.is247 || hasEntries(bizHours?.schedule) || hasEntries(schedule);
+    if (!configured && derivedHours && !derivedHours.unknown && hasEntries(derivedHours.schedule)) {
+        return derivedWindowOf(derivedHours.schedule[EN_DAYS[dow]]);
     }
     return null;
 }

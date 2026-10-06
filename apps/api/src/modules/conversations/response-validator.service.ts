@@ -60,7 +60,13 @@ export class ResponseValidatorService {
     /** Currency-adjacent amounts: "$50.000", "49 USD", "1,200 pesos", "S/ 80". */
     private extractMoneyAmounts(text: string): MoneyMention[] {
         const out: MoneyMention[] = [];
-        const re = /(R\$|S\/|\$|€|£|COP|USD|MXN|ARS|CLP|PEN|EUR|BRL)\s?(\d[\d.,]*)|(\d[\d.,]*)\s?(pesos|d[oó]lares?|d[oó]lar|euros?|reales|soles|COP|USD|MXN|ARS|CLP|PEN|EUR|BRL)/gi;
+        // A thousands group may be separated by a space, NBSP or NNBSP ("119 900 COP", what
+        // French/Portuguese locales and some models write) as well as by "." or ",": reading
+        // only "900" blocked a price the tool had returned. Space-separated groups take an
+        // optional decimal tail; "49.900 450 unidades" stays 49900 + a quantity.
+        const amount = '((?:\\d{1,3}(?:[ \\u00a0\\u202f]\\d{3})+(?:[.,]\\d{1,2})?(?!\\d)|\\d[\\d.,]*))';
+        const re = new RegExp(
+            `(R\\$|S\\/|\\$|€|£|COP|USD|MXN|ARS|CLP|PEN|EUR|BRL)\\s?${amount}|${amount}\\s?(pesos|d[oó]lares?|d[oó]lar|euros?|reales|soles|COP|USD|MXN|ARS|CLP|PEN|EUR|BRL)`, 'gi');
         let m: RegExpExecArray | null;
         while ((m = re.exec(text)) !== null) {
             const n = this.normalize(m[2] || m[3]);
@@ -128,6 +134,23 @@ export class ResponseValidatorService {
         }
         return false;
     }
+}
+
+const CORRECTIVE_PRICE_INSTRUCTION: Record<string, string> = {
+    es: 'Tu respuesta anterior mencionó uno o más precios que NO aparecen en la información que tienes. Reescríbela usando ÚNICAMENTE precios presentes en el contexto; si no tienes el precio exacto, dilo con naturalidad y ofrece confirmarlo. Devuelve solo el mensaje corregido.',
+    en: 'Your previous reply mentioned one or more prices that do NOT appear in the information you have. Rewrite it using ONLY prices present in the context; if you do not have the exact price, say so naturally and offer to confirm it. Return only the corrected message.',
+    pt: 'Sua resposta anterior mencionou um ou mais preços que NÃO aparecem nas informações que você tem. Reescreva-a usando APENAS preços presentes no contexto; se você não tem o preço exato, diga isso com naturalidade e ofereça confirmá-lo. Devolva apenas a mensagem corrigida.',
+    fr: "Ta réponse précédente mentionnait un ou plusieurs prix qui n'apparaissent PAS dans les informations dont tu disposes. Réécris-la en utilisant UNIQUEMENT des prix présents dans le contexte ; si tu n'as pas le prix exact, dis-le naturellement et propose de le confirmer. Renvoie uniquement le message corrigé.",
+};
+
+/**
+ * The corrective price retry, written in the turn's language: an instruction in
+ * Spanish pulls the rewritten reply into Spanish even when the customer wrote
+ * in another language. Unknown languages fall back to Spanish, the base language.
+ */
+export function correctivePriceInstruction(lang?: string): string {
+    const code = String(lang || 'es').slice(0, 2).toLowerCase();
+    return CORRECTIVE_PRICE_INSTRUCTION[code] ?? CORRECTIVE_PRICE_INSTRUCTION.es;
 }
 
 export interface VerifiedPriceReply {

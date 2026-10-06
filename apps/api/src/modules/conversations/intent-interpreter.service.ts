@@ -379,7 +379,8 @@ export class IntentInterpreterService {
             // with 'p', so "a las 3 de la tarde" was parsed as 03:00 instead of 15:00.
             // Prefixes for es/pt/fr/en ("a las", "às", "at", "à") + multilingual
             // period qualifiers, so "amanhã às 15h" / "at 3 pm" / "à 15h" parse.
-            const hourMatch = t.match(/(?:a las |las |às |as |at |à )(\d{1,2})(?:[:h]\s*(\d{2}))?\s*(am|pm|de la tarde|de la noche|de la mañana|de la manana|de la madrugada|tarde|noche|mañana|manana|madrugada|da tarde|da noite|da manha|du soir|du matin|de l'apres-midi|in the afternoon|in the evening|in the morning|a\.?m|p\.?m|h|hs|hrs?)?/i);
+            const hourMatch = t.match(/(?:a las |las |às |as |at |à )(\d{1,2})(?:[:h]\s*(\d{2}))?\s*(am|pm|de la tarde|de la noche|de la mañana|de la manana|de la madrugada|tarde|noche|mañana|manana|madrugada|da tarde|da noite|da manha|du soir|du matin|de l'apres-midi|in the afternoon|in the evening|in the morning|a\.?m|p\.?m|h|hs|hrs?)?(?![a-zñ])/i);
+            // The trailing (?![a-zñ]) keeps the "h" of "hay" in "a las 4 hay espacio" from being read as an hour marker.
             if (hourMatch) {
                 let h = parseInt(hourMatch[1]);
                 const min = hourMatch[2] || '00';

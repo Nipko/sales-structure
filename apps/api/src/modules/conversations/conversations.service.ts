@@ -4,6 +4,7 @@ import { demoAllowanceExhaustedText } from '../widget/widget-demo-link';
 import { recordFirstReply } from '../../common/utils/first-reply.util';
 import { stripInternalMarkers } from '../../common/utils/internal-markers.util';
 import { projectAvailableService } from '../appointments/service-price-status';
+import { foldedSql, foldQueryText } from '../../common/utils/sql-accent-fold.util';
 import { servedAgentAuthority, type ServedAgentAuthority } from '../persona/served-agent-authority';
 import { LearningService } from '../learning/learning.service';
 import { WidgetAgentReplyStore, type WidgetAgentReplyReceipt } from '../widget/widget-agent-reply.store';
@@ -62,7 +63,7 @@ import { outboundDedupeId, providerMessageId } from '../../common/utils/provider
 import { legacyTurnReplyKey, turnReplyKey } from './turn-reply-cache';
 import { IdentityService } from '../identity/identity.service';
 import { AIToolExecutorService } from './ai-tool-executor.service';
-import { buildUnverifiedPriceReply, enforceVerifiedPriceReply, ResponseValidatorService } from './response-validator.service';
+import { buildUnverifiedPriceReply, correctivePriceInstruction, enforceVerifiedPriceReply, ResponseValidatorService } from './response-validator.service';
 import { AgentTurnSession } from './agent-turn-session';
 import { sessionCanExecute, sessionLlmRouter, sessionToolExecutor } from './agent-turn-adapters';
 import { restoreBookingMission } from './booking-state-continuity';
@@ -2009,6 +2010,72 @@ export class ConversationsService {
         return derived ? resolvePromptBusinessHours(bizHours, config.hours, { ...derived, timezone: turnTimezone }) : bizHours;
     }
 
+    /**
+     * Products for the turn's `<catalog>`: the ones whose (accent- and case-folded) name appears in
+     * the customer's message, or every product when the catalog is small. Only products for sale.
+     * One query: `total` tells a small catalog from a large one, `mentioned` orders the matches first.
+     */
+    private async loadOwnCatalogForTurn(schemaName: string, userText: string): Promise<Array<NonNullable<TurnContext['catalog']>[number] & { priceStatus: 'confirmed' | 'missing' }>> {
+        const SMALL_CATALOG = 12;
+        const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            `SELECT id, name, price, currency, stock, category,
+                    (char_length(btrim(name)) >= 3 AND position(${foldedSql('name')} IN ${foldedSql('$1::text')}) > 0) AS mentioned,
+                    count(*) OVER () AS total
+               FROM products
+              WHERE is_available = true
+              ORDER BY mentioned DESC, name ASC, id ASC
+              LIMIT ${SMALL_CATALOG}`,
+            [foldQueryText(userText).slice(0, 2000)],
+        );
+        return (rows ?? [])
+            .filter(row => row.mentioned === true || Number(row.total) <= SMALL_CATALOG)
+            .map(row => {
+                const price = Number(row.price);
+                const priced = Number.isFinite(price) && price > 0;
+                return {
+                    id: String(row.id),
+                    title: String(row.name),
+                    ...(priced ? { price } : {}),
+                    priceStatus: priced ? 'confirmed' as const : 'missing' as const,
+                    currency: row.currency || undefined,
+                    inStock: row.stock == null || Number(row.stock) > 0,
+                    category: row.category || undefined,
+                };
+            });
+    }
+
+    /**
+     * The tenant's bookable services (with duration) for `<available_services>` on routes where the
+     * booking engine did not run: without them the model invents durations. Conversation state first,
+     * then the tenant cache the engine fills, then the read-only `list_services`.
+     */
+    private async loadServicesForPrompt(input: {
+        known?: any[]; cache: any; toolExecutor: any; schemaName: string; tenantId: string; contactId: string;
+        conversationId: string; authority: any;
+    }): Promise<any[]> {
+        if (input.known?.length) return input.known;
+        const key = `booking:services:${input.tenantId}`;
+        try {
+            const cached = await input.cache.get(key);
+            if (cached) {
+                const parsed = JSON.parse(cached);
+                if (Array.isArray(parsed) && parsed.length) return parsed;
+            }
+            const result = await input.toolExecutor.execute(
+                input.schemaName, input.tenantId, input.contactId, 'list_services', {},
+                input.conversationId, { authority: input.authority },
+            );
+            if (result?.error || !Array.isArray(result?.services) || !result.services.length) return [];
+            await input.cache.set(key, JSON.stringify(result.services), 300).catch(() => {});
+            return result.services;
+        } catch (error: any) {
+            // A revoked evaluation source must still stop the turn; any other failure only costs the durations.
+            if (error instanceof LLMSourceAuthorityUnavailable) throw error;
+            this.logger.warn(`[Booking] Services for the prompt unavailable: ${error?.message}`);
+            return [];
+        }
+    }
+
     private async loadInformationalHours(
         tenantId: string, config: TenantConfig, evaluationContext: EvaluationTurnContextInputs | null,
     ): Promise<InformationalHours | null> {
@@ -3456,11 +3523,17 @@ export class ConversationsService {
             // ═══ PHASE 1: INTERPRET — extract structured intent ═══
             const serviceNames = bookingState.services?.map(s => s.name) || [];
             const upcoming = turnContext.upcomingDays || [];
+            // "a las 4" is read against the opening window. With no configured hours the
+            // window comes from the appointment agenda, the same source the prompt describes
+            // (cached 5 min); it is only read when the message has a number to place.
+            const agendaHours = /\d/.test(userText) && !hasConfiguredHours(bizHours, config.hours)
+                ? await this.loadInformationalHours(tenantId, config, evaluationContext).catch(() => null)
+                : null;
             const intent = await intentInterpreter.interpret(
                 userText, bookingState.step, serviceNames, todayISO, upcoming, tenantId,
                 regional?.operatingCountry.value,
                 bookingState.step === 'confirm' && bookingState.serviceName ? [bookingState.serviceName] : [],
-                dateISO => resolveBusinessWindow(bizHours, config.hours, dateISO),
+                dateISO => resolveBusinessWindow(bizHours, config.hours, dateISO, agendaHours),
             );
             turnTrace.add('intent','interpreted',{intent:intent.intent,bookingStep:bookingState.step});
             await observeMission({kind:'intent',intent:intent.intent});
@@ -4025,6 +4098,19 @@ export class ConversationsService {
             };
         }
 
+        // `<available_services>` was only filled when the booking engine ran and judged the turn "not
+        // booking related". With a mission open on another route the block never ran, and the model
+        // invented durations ("90 min" for a 120 min service). Every other route gets the services
+        // here, from the same sources. Same gate as the engine: appointments on, booking authorised.
+        if (!draftMode && toolsEnabled && bookingAuthority.allowed && !turnContext.availableServices?.length) {
+            const services = await this.loadServicesForPrompt({
+                known: bookingState.services, cache, toolExecutor, schemaName, tenantId,
+                contactId: conversation.contact_id || '', conversationId: conversation.id,
+                authority: engineAuthority,
+            });
+            if (services.length) turnContext.availableServices = services.map(projectAvailableService);
+        }
+
         // Published FAQs are an independent source: an empty document corpus
         // must not leave their use to the model's optional tool selection. Use
         // the normal executor so capability, mission and evaluation snapshot
@@ -4158,6 +4244,22 @@ export class ConversationsService {
                 }
             } catch (e: any) {
                 this.logger.debug(`[T2.17] catalog injection skipped: ${e.message}`);
+            }
+        }
+
+        // 5c. The tenant's OWN catalog (`products`: what search_products/get_product read).
+        // The verified-price corpus only trusts the turn's catalog, retrieved knowledge and the
+        // tools executed THIS turn. A price already in the history made the model answer with no
+        // tool call, the guardrail blocked the figure, and the corrective retry (no tools) apologised
+        // instead: the price came and went from one turn to the next. The products the customer names
+        // (or the whole catalog when it is small) now travel in the turn, so their price is authorised
+        // whether or not the model calls a tool. Only products for sale; best-effort like the block above.
+        if (cfgTools?.catalog?.enabled === true) {
+            try {
+                const own = await this.loadOwnCatalogForTurn(schemaName, userText);
+                if (own.length) turnContext.catalog = [...(turnContext.catalog ?? []), ...own];
+            } catch (e: any) {
+                this.logger.debug(`[Catalog] own catalog injection skipped: ${e.message}`);
             }
         }
         // 6. Assemble system prompt.
@@ -5673,7 +5775,7 @@ export class ConversationsService {
                 messages: [
                     ...currentMessages,
                     { role: 'assistant', content: response },
-                    { role: 'user', content: 'Tu respuesta anterior mencionó uno o más precios que NO aparecen en la información que tienes. Reescríbela usando ÚNICAMENTE precios presentes en el contexto; si no tienes el precio exacto, dilo con naturalidad y ofrece confirmarlo. Devuelve solo el mensaje corregido.' },
+                    { role: 'user', content: correctivePriceInstruction(lang ?? (trustedContext as any)?.language) },
                 ],
                 systemPrompt,
                 temperature: 0.3,

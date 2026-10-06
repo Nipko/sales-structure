@@ -1505,15 +1505,35 @@ export class AIToolExecutorService {
         }
     }
 
+    /**
+     * A partial name ("QA Aurora" for "Audífono QA Aurora") found nothing under the exact lookup and
+     * the agent told the customer the product did not exist. When the exact name matches nothing,
+     * a product whose name CONTAINS the text is used, but only if it is the single one for sale:
+     * two candidates are ambiguous, and picking one would quote the wrong price.
+     */
+    private async soleProductContaining(schema: string, columns: string, name: string): Promise<any[]> {
+        const text = foldQueryText(name);
+        if (text.length < 3) return [];
+        const rows: any[] = await this.prisma.$queryRawUnsafe(
+            `SELECT ${columns} FROM "${schema}".products
+              WHERE is_available = true AND ${foldedSql('name')} LIKE ${foldedSql('$1::text')}
+              ORDER BY name ASC, id ASC LIMIT 2`,
+            `%${text.replace(/[\\%_]/g, '\\$&')}%`,
+        );
+        return Array.isArray(rows) && rows.length === 1 ? rows : [];
+    }
+
     private async getProduct(schema: string, productIdOrName: string): Promise<any> {
         const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(productIdOrName);
         try {
-            const rows: any[] = await this.prisma.$queryRawUnsafe(
+            const columns = 'id, name, description, category, price, currency, stock, is_available, images, metadata, requires_prescription';
+            let rows: any[] = await this.prisma.$queryRawUnsafe(
                 isUuid
-                    ? `SELECT id, name, description, category, price, currency, stock, is_available, images, metadata, requires_prescription FROM "${schema}".products WHERE id = $1::uuid LIMIT 1`
-                    : `SELECT id, name, description, category, price, currency, stock, is_available, images, metadata, requires_prescription FROM "${schema}".products WHERE ${foldedSql('name')} = ${foldedSql('$1::text')} ORDER BY ${EXACT_NAME_FIRST} LIMIT 1`,
+                    ? `SELECT ${columns} FROM "${schema}".products WHERE id = $1::uuid LIMIT 1`
+                    : `SELECT ${columns} FROM "${schema}".products WHERE ${foldedSql('name')} = ${foldedSql('$1::text')} ORDER BY ${EXACT_NAME_FIRST} LIMIT 1`,
                 isUuid ? productIdOrName : foldQueryText(productIdOrName),
             );
+            if (!rows.length && !isUuid) rows = await this.soleProductContaining(schema, columns, productIdOrName);
             if (rows.length > 0) {
                 const p = rows[0];
                 return readOk({
@@ -1838,12 +1858,14 @@ export class AIToolExecutorService {
     private async checkStock(schema: string, productIdOrName: string): Promise<any> {
         const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(productIdOrName);
         try {
-            const rows: any[] = await this.prisma.$queryRawUnsafe(
+            const columns = 'id, name, price, currency, stock, is_available, requires_prescription';
+            let rows: any[] = await this.prisma.$queryRawUnsafe(
                 isUuid
-                    ? `SELECT id, name, price, currency, stock, is_available, requires_prescription FROM "${schema}".products WHERE id = $1::uuid LIMIT 1`
-                    : `SELECT id, name, price, currency, stock, is_available, requires_prescription FROM "${schema}".products WHERE ${foldedSql('name')} = ${foldedSql('$1::text')} ORDER BY ${EXACT_NAME_FIRST} LIMIT 1`,
+                    ? `SELECT ${columns} FROM "${schema}".products WHERE id = $1::uuid LIMIT 1`
+                    : `SELECT ${columns} FROM "${schema}".products WHERE ${foldedSql('name')} = ${foldedSql('$1::text')} ORDER BY ${EXACT_NAME_FIRST} LIMIT 1`,
                 isUuid ? productIdOrName : foldQueryText(productIdOrName),
             );
+            if (!rows.length && !isUuid) rows = await this.soleProductContaining(schema, columns, productIdOrName);
             if (rows.length > 0) {
                 const p = rows[0];
                 return readOk({

@@ -29,6 +29,8 @@ function harness(paymentPolicy = 'deposit', suppressEffects = false) {
         temporalContracts: { normalize: () => ({ kind: 'appointment', endsAtLocal: input.endAt }) },
         getTenantTimezone: async () => 'America/Bogota', resolveAppointmentSubject: async () => ({ labels: [], metadata: {} }),
         acquireSlotLock: async () => ({ key: 'lock', token: 'token' }), redis: { releaseLockToken: jest.fn() },
+        // Opening hours are covered by appointment-hours-listing.postgres.spec.ts; this suite is about the payment terms.
+        assertWithinBusinessHours: async () => null,
     });
     const createTool = () => executor.createAppointment('tenant_test', id, contactId,
         { serviceId: id, date: '2027-09-08', time: '10:00', customerName: 'Ana', appointmentTerms: appointmentServiceTerms(serviceRow) }, undefined, suppressEffects);

@@ -10,12 +10,13 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription-entitlement.util';
 import { EmailTemplatesService } from '../email-templates/email-templates.service';
 import { APPOINTMENT_EMAIL_SLUGS } from '../email-templates/appointment-email-layout';
-import { formatDuration, normaliseLang, LANG_LOCALE } from './appointment-notifications-i18n';
+import { apptMsg, formatDuration, normaliseLang, LANG_LOCALE } from './appointment-notifications-i18n';
 import { servedEmailConfirmationsEnabled } from '../../common/utils/served-confirmation-policy.util';
 import { appointmentConfirmationFamilies } from './appointment-confirmation-subject';
 import {
     ProactiveDispatchService, producerMayAdvance, type ProactiveSendResult,
 } from '../channels/proactive-dispatch.service';
+import type { DispatchItem } from '../channels/agent-dispatch-outbox';
 
 /**
  * Nothing durable was written, so the appointment must stay unflagged.
@@ -112,13 +113,12 @@ export class AppointmentRemindersService {
      *     ever against an appointment that was cancelled;
      *   · deferred / refused — nothing was written. The flag stays false.
      */
-    private async dispatchTemplate(tenantId: string, schemaName: string, appt: any, input: {
+    private async dispatchReminder(tenantId: string, schemaName: string, appt: any, input: {
         readonly originKey: string;
         readonly producer: string;
         readonly sender: string | undefined;
-        readonly templateName: string;
-        readonly language: string;
-        readonly components: any[];
+        /** Exactly one remote effect: a WhatsApp template, or free text where the channel allows it. */
+        readonly item: DispatchItem;
     }): Promise<ProactiveSendResult> {
         const channelType = (appt.contact_channel || 'whatsapp') as string;
         // ONLY what `senderOf` allowed. Falling back to the raw column would
@@ -134,6 +134,13 @@ export class AppointmentRemindersService {
             // task `ProactiveSendConnection` raises is what moves this.
             this.logger.warn(`[Reminders] appointment ${appt.id} has no sender — nothing dispatched`);
             return { kind: 'refused', reason: 'no_sender' };
+        }
+        // WhatsApp is addressed by phone; a Telegram chat by the contact's chat id (`external_id`),
+        // which is what the adapter sends as `chat_id`. A phone is not a Telegram address.
+        const recipient = String((channelType === 'telegram' ? appt.contact_external_id : appt.contact_phone) ?? '').trim();
+        if (!recipient) {
+            this.logger.warn(`[Reminders] appointment ${appt.id} has no ${channelType} address — nothing dispatched`);
+            return { kind: 'refused', reason: 'no_recipient' };
         }
         const conversationId = appt.conversation_id
             ?? await this.proactive.conversationFor(schemaName, {
@@ -168,13 +175,28 @@ export class AppointmentRemindersService {
             conversationId: String(conversationId),
             contactId: String(appt.contact_id),
             channelType, channelAccountId: sender,
-            recipient: String(appt.contact_phone ?? ''),
-            items: [{ kind: 'template', payload: {
+            recipient,
+            items: [input.item],
+            operationalScope,
+        });
+    }
+
+    /** The WhatsApp-template form of `dispatchReminder`. */
+    private dispatchTemplate(tenantId: string, schemaName: string, appt: any, input: {
+        readonly originKey: string;
+        readonly producer: string;
+        readonly sender: string | undefined;
+        readonly templateName: string;
+        readonly language: string;
+        readonly components: any[];
+    }): Promise<ProactiveSendResult> {
+        return this.dispatchReminder(tenantId, schemaName, appt, {
+            originKey: input.originKey, producer: input.producer, sender: input.sender,
+            item: { kind: 'template', payload: {
                 templateName: input.templateName,
                 language: input.language,
                 components: input.components,
-            } }],
-            operationalScope,
+            } },
         });
     }
 
@@ -320,7 +342,7 @@ export class AppointmentRemindersService {
             `SELECT a.id, a.service_name, a.start_at, a.end_at, a.location, a.metadata,
                     a.contact_id, a.assigned_to, a.customer_name, a.customer_email,
                     c.name as contact_name, c.phone as contact_phone, c.email as contact_email,
-                    c.channel_type as contact_channel,
+                    c.channel_type as contact_channel, c.external_id AS contact_external_id,
                     cv.channel_account_id AS conversation_account_id,
                     cv.channel_type AS conversation_channel,
                     u.first_name || ' ' || u.last_name AS staff_name
@@ -346,7 +368,11 @@ export class AppointmentRemindersService {
                AND a.start_at > (NOW() AT TIME ZONE '${tz}')
                AND a.start_at <= (NOW() AT TIME ZONE '${tz}') + interval '${maxHours} hours'
                AND a.start_at >= (NOW() AT TIME ZONE '${tz}') + interval '${minHours} hours'
-               AND (c.phone IS NOT NULL OR c.email IS NOT NULL OR a.customer_email IS NOT NULL)`,
+               AND (c.phone IS NOT NULL OR c.email IS NOT NULL OR a.customer_email IS NOT NULL
+                    -- A Telegram contact has no phone to filter on: the bot thread it
+                    -- booked in is the address.
+                    OR (c.channel_type = 'telegram' AND c.external_id IS NOT NULL
+                        AND cv.channel_type = 'telegram' AND cv.channel_account_id IS NOT NULL))`,
             [schemaName],
         );
 
@@ -355,13 +381,31 @@ export class AppointmentRemindersService {
 
         for (const appt of appointments) {
             try {
-                if (appt.contact_phone) {
-                    await this.sendReminderTemplate(tenantId, schemaName, appt, type);
+                // ── THE FLAG FOLLOWS THE EFFECT ─────────────────────────────
+                // `settled` is true only when the customer was (or will be, from a
+                // durable row) told, or when the policy says nothing is owed. A
+                // channel this sweep has no message for used to fall through to the
+                // UPDATE below: a Telegram contact was "reminded" without a word.
+                let settled = false;
+                if (appt.contact_phone || appt.contact_channel === 'telegram') {
+                    // A refused/deferred message must not take the email down with it: the
+                    // email is its own effect, and the flag follows whichever one happened.
+                    try {
+                        settled = await this.sendReminderMessage(tenantId, schemaName, appt, type);
+                    } catch (err: any) {
+                        if (!(err instanceof ReminderNotDispatched)) throw err;
+                        this.logger.warn(`Reminder message for appointment ${appt.id} not dispatched: ${err.message}`);
+                    }
                 }
                 // Email only on the 24h pass: a second copy two hours out is noise,
                 // and by then nobody is reading mail to decide whether to show up.
                 if (type === '24h') {
-                    await this.sendReminderEmail(tenantId, schemaName, appt);
+                    settled = await this.sendReminderEmail(tenantId, schemaName, appt) || settled;
+                }
+                if (!settled) {
+                    this.logger.warn(`No ${type} reminder could be sent for appointment ${appt.id} `
+                        + `(channel=${appt.contact_channel || 'whatsapp'}) — left unflagged`);
+                    continue;
                 }
                 await this.prisma.executeInTenantSchema(schemaName,
                     `UPDATE appointments SET ${flagColumn} = true, updated_at = NOW() WHERE id = $1::uuid`,
@@ -380,15 +424,15 @@ export class AppointmentRemindersService {
      * nothing ever sent it — the reminder path was WhatsApp-template-only, so a
      * customer who booked by email heard nothing until the appointment itself.
      */
-    private async sendReminderEmail(tenantId: string, schemaName: string, appt: any): Promise<void> {
+    private async sendReminderEmail(tenantId: string, schemaName: string, appt: any): Promise<boolean> {
         const to = (appt.contact_email || appt.customer_email || '').trim();
-        if (!to) return;
+        if (!to) return false;
 
         try {
             await this.assertTenantCanSend(tenantId);
             // Same switch the confirmation honours: a tenant who turned appointment
             // emails off must not keep getting reminders through the back door.
-            if (!await this.appointmentEmailsEnabled(schemaName, appt)) return;
+            if (!await this.appointmentEmailsEnabled(schemaName, appt)) return false;
             // getTenantLanguage returns the full locale ('es-CO'); template lookup
             // and the i18n maps are keyed by the 2-char code.
             const lang = normaliseLang(await this.getTenantLanguage(tenantId));
@@ -397,7 +441,7 @@ export class AppointmentRemindersService {
 
             const startAt = this.toNaive(appt.start_at);
             const endAt = this.toNaive(appt.end_at);
-            if (!startAt) return;
+            if (!startAt) return false;
 
             const tzSuffix = timezoneLabel(startAt, tz, locale);
             const timeStr = formatWallClockTime(startAt, locale);
@@ -449,9 +493,11 @@ export class AppointmentRemindersService {
                 { attachments },
             );
             this.logger.log(`Sent 24h email reminder to ${to} for appointment ${appt.id}`);
+            return true;
         } catch (err: any) {
             // Non-critical: the WhatsApp reminder (if any) already went out.
             this.logger.warn(`Reminder email failed for appointment ${appt.id}: ${err?.message}`);
+            return false;
         }
     }
 
@@ -497,12 +543,77 @@ export class AppointmentRemindersService {
         return String(value).replace(' ', 'T').slice(0, 19);
     }
 
-    private async sendReminderTemplate(tenantId: string, schemaName: string, appt: any, type: '24h' | '2h') {
-        await this.assertTenantCanSend(tenantId);
-        if ((appt.contact_channel || 'whatsapp') !== 'whatsapp') {
-            this.logger.debug(`Skipping template for non-WhatsApp contact ${appt.contact_phone}`);
-            return;
+    /**
+     * The reminder for the contact's own channel. Returns whether the sweep may
+     * flag the appointment: true when a durable effect exists or the policy says
+     * nothing is owed, false when nothing was (or could be) sent here.
+     *
+     *   · WhatsApp — the approved `appointment_reminder` template (works outside
+     *     the 24h window);
+     *   · Telegram — plain text from the bot: Telegram has no template catalogue
+     *     and no service window, so a free message is the reminder;
+     *   · anything else (Instagram, Messenger, web) — no message exists for the
+     *     channel, so nothing is sent and the flag is NOT written. The email on
+     *     the 24h pass can still settle it.
+     */
+    private async sendReminderMessage(tenantId: string, schemaName: string, appt: any,
+        type: '24h' | '2h'): Promise<boolean> {
+        const channel = String(appt.contact_channel || 'whatsapp');
+        if (channel === 'telegram') return this.sendReminderText(tenantId, schemaName, appt, type);
+        if (channel !== 'whatsapp') {
+            this.logger.debug(`No reminder message exists for channel ${channel} (contact ${appt.contact_id})`);
+            return false;
         }
+        return this.sendReminderTemplate(tenantId, schemaName, appt, type);
+    }
+
+    /**
+     * Telegram reminder as free text on the durable lane. Same producer, same
+     * origin key shape and same policy authority as the WhatsApp template, so a
+     * cancelled appointment suppresses it and a retry finds its own row.
+     * The sender is the bot account of the conversation the appointment was
+     * booked in; without that conversation there is no bot to speak as and the
+     * lane refuses rather than guessing (the flag stays false).
+     */
+    private async sendReminderText(tenantId: string, schemaName: string, appt: any,
+        type: '24h' | '2h'): Promise<boolean> {
+        await this.assertTenantCanSend(tenantId);
+        const sender = String(appt.conversation_channel ?? '') === 'telegram'
+            ? String(appt.conversation_account_id ?? '').trim() || undefined
+            : undefined;
+        const lang = normaliseLang(await this.getTenantLanguage(tenantId));
+        const locale = LANG_LOCALE[lang] ?? 'es-CO';
+        const startAt = this.toNaive(appt.start_at);
+        if (!startAt) return false;
+        const staffName = appt.assigned_to ? await this.getStaffName(schemaName, appt.assigned_to) : '-';
+        const text = [
+            apptMsg(lang, 'reminderTitle'),
+            '',
+            apptMsg(lang, 'reminderBody', {
+                name: appt.contact_name || appt.customer_name || '',
+                service: appt.service_name || '',
+                date: formatWallClockDate(startAt, locale),
+                time: formatWallClockTime(startAt, locale),
+            }),
+            staffName !== '-' ? apptMsg(lang, 'reminderStaff', { staff: staffName }) : null,
+            appt.location ? apptMsg(lang, 'confirmLocation', { location: appt.location }) : null,
+            '',
+            apptMsg(lang, 'reminderFooter'),
+        ].filter((line): line is string => line !== null).join('\n');
+        const result = await this.dispatchReminder(tenantId, schemaName, appt, {
+            originKey: `appointment_reminder:${appt.id}:${type}`,
+            producer: 'appointment_reminder',
+            sender,
+            item: { kind: 'text', payload: { text } },
+        });
+        if (!producerMayAdvance(result)) throw new ReminderNotDispatched(String(appt.id), result);
+        this.logger.log(`${result.kind} the ${type} Telegram reminder for appointment ${appt.id}`);
+        return true;
+    }
+
+    private async sendReminderTemplate(tenantId: string, schemaName: string, appt: any,
+        type: '24h' | '2h'): Promise<boolean> {
+        await this.assertTenantCanSend(tenantId);
 
         // The catalogue belongs to the SENDER's WABA, so the sender is resolved
         // before the template rather than after: a template approved on a
@@ -514,7 +625,7 @@ export class AppointmentRemindersService {
         if (!template) {
             this.logger.warn(`No approved appointment_reminder template on the WABA of `
                 + `${sender ?? 'this tenant'} (${tenantId}) — skipping`);
-            return;
+            return false;
         }
 
         const tz = await this.getTenantTimezone(tenantId);
@@ -569,6 +680,7 @@ export class AppointmentRemindersService {
             throw new ReminderNotDispatched(String(appt.id), result);
         }
         this.logger.log(`${result.kind} the ${type} reminder for appointment ${appt.id}`);
+        return true;
     }
 
     private async processAttendanceChecks(tenantId: string, schemaName: string) {

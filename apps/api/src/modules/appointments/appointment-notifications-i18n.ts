@@ -20,6 +20,11 @@ const APPT_MESSAGES: Record<string, Record<string, string>> = {
         cancelReason:   'Motivo: {reason}',
         cancelFooter:   'Si deseas reprogramar, no dudes en escribirnos.',
 
+        reminderTitle:  '⏰ *Recordatorio de cita*',
+        reminderBody:   'Hola {name}! Te recordamos tu cita de *{service}* el {date} a las {time}.',
+        reminderStaff:  '👤 Te atenderá: {staff}',
+        reminderFooter: 'Si no puedes asistir, escríbenos con anticipación para reprogramar.',
+
         customerFallback: 'Cliente',
         durationHours:    '{h} h',
         durationMinutes:  '{m} min',
@@ -36,6 +41,11 @@ const APPT_MESSAGES: Record<string, Record<string, string>> = {
         cancelBody:     'Your *{service}* appointment on {date} has been cancelled.',
         cancelReason:   'Reason: {reason}',
         cancelFooter:   'Feel free to reach out if you would like to reschedule.',
+
+        reminderTitle:  '⏰ *Appointment reminder*',
+        reminderBody:   'Hi {name}! This is a reminder of your *{service}* appointment on {date} at {time}.',
+        reminderStaff:  '👤 You will be seen by: {staff}',
+        reminderFooter: 'If you cannot make it, please let us know in advance to reschedule.',
 
         customerFallback: 'Customer',
         durationHours:    '{h} h',
@@ -54,6 +64,11 @@ const APPT_MESSAGES: Record<string, Record<string, string>> = {
         cancelReason:   'Motivo: {reason}',
         cancelFooter:   'Se desejar reagendar, não hesite em nos escrever.',
 
+        reminderTitle:  '⏰ *Lembrete de agendamento*',
+        reminderBody:   'Olá {name}! Lembramos do seu agendamento de *{service}* em {date} às {time}.',
+        reminderStaff:  '👤 Quem vai atender: {staff}',
+        reminderFooter: 'Se não puder comparecer, avise com antecedência para reagendar.',
+
         customerFallback: 'Cliente',
         durationHours:    '{h} h',
         durationMinutes:  '{m} min',
@@ -70,6 +85,11 @@ const APPT_MESSAGES: Record<string, Record<string, string>> = {
         cancelBody:     'Votre rendez-vous *{service}* du {date} a été annulé.',
         cancelReason:   'Motif : {reason}',
         cancelFooter:   'N\'hésitez pas à nous écrire si vous souhaitez reporter.',
+
+        reminderTitle:  '⏰ *Rappel de rendez-vous*',
+        reminderBody:   'Bonjour {name} ! Nous vous rappelons votre rendez-vous *{service}* le {date} à {time}.',
+        reminderStaff:  '👤 Vous serez reçu par : {staff}',
+        reminderFooter: 'Si vous ne pouvez pas venir, prévenez-nous à l\'avance pour reporter.',
 
         customerFallback: 'Client',
         durationHours:    '{h} h',

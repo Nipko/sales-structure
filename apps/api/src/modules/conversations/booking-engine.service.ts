@@ -346,7 +346,9 @@ export function formatPriceWithCurrency(lang: string, value: unknown, currency?:
  * Answering "no availability, try another date" to these loops forever, so the
  * engine tells the truth and escalates to a human instead.
  */
-const UNRECOVERABLE_TOOL_ERRORS = new Set(['appointments_not_configured', 'tool_failed']);
+const UNRECOVERABLE_TOOL_ERRORS = new Set(['appointments_not_configured', 'tool_failed', 'outside_business_hours']);
+/** `appointment_subject_*`: the engine collects no listing/pet/vehicle, so it cannot repair these itself. */
+const UNRECOVERABLE_TOOL_ERROR_PREFIXES = ['appointment_subject_'];
 
 export interface BookingState {
     missionId?: string;
@@ -1193,7 +1195,8 @@ export class BookingEngineService {
      */
     private unrecoverableToolError(result: any): string | null {
         const code = typeof result?.error === 'string' ? result.error : null;
-        return code && UNRECOVERABLE_TOOL_ERRORS.has(code) ? code : null;
+        return code && (UNRECOVERABLE_TOOL_ERRORS.has(code)
+            || UNRECOVERABLE_TOOL_ERROR_PREFIXES.some(prefix => code.startsWith(prefix))) ? code : null;
     }
 
     /**

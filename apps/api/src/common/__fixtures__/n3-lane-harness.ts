@@ -71,7 +71,7 @@ export async function openLane(prefix: string, ddl: string[]) {
 /** Skinny tenant tables, with the column types the lane's revisions depend on. */
 export const LANE_CHAT_DDL = [
     `CREATE TABLE contacts(id UUID PRIMARY KEY DEFAULT gen_random_uuid(), name TEXT, phone TEXT,
-        channel_type TEXT, email TEXT, last_appointment_at TIMESTAMP, next_recall_at TIMESTAMP,
+        channel_type TEXT, email TEXT, external_id TEXT, last_appointment_at TIMESTAMP, next_recall_at TIMESTAMP,
         last_contact_at TIMESTAMP DEFAULT NOW())`,
     `CREATE TABLE conversations(id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         contact_id UUID REFERENCES contacts(id), channel_type TEXT, channel_account_id TEXT,

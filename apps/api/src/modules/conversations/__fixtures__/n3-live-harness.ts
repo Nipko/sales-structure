@@ -11,6 +11,7 @@ import type { ServedAgentAuthority } from '../../persona/served-agent-authority'
 import { ensureSyntheticGlobalTables } from '../../../common/__fixtures__/synthetic-global-tables';
 import { isDisposableDatabaseUrl } from '../../../common/__fixtures__/disposable-database';
 import { authorityFor } from './tool-authority.fixture';
+import * as commitmentProposal from '../commitment-proposal';
 
 /**
  * Live-path harness for the N3 functional suites.
@@ -58,6 +59,19 @@ export interface LiveOptions {
     executorDeps?: Record<string, any>;
     /** ChatIdentityService (real or double). Default: always verified. */
     chatIdentity?: any;
+    /**
+     * Known product defects the suite steps around so a DIFFERENT contract can be
+     * observed. Each one is pinned by its own red `*.defect.postgres.spec.ts`;
+     * a suite that does not opt in sees the product exactly as shipped.
+     *
+     *  - commitmentDdl     `resolveCommitment` runs `CREATE TABLE IF NOT EXISTS
+     *                      commitment_proposals` inside the preflight transaction,
+     *                      which the schema-lock rule forbids: the "yes" of every
+     *                      commitment-family write ends in `tool_failed`.
+     *  - contactsIsActive  the canonical `contacts` has no `is_active`, which
+     *                      `ChatIdentityService` selects: no code is ever sent.
+     */
+    workarounds?: { commitmentDdl?: boolean; contactsIsActive?: boolean };
     /** `public.tenants` language/country defaults. */
     language?: string;
 }
@@ -135,6 +149,13 @@ export async function openLive(options: LiveOptions) {
 
     const q = <T = any[]>(sql: string, params: any[] = []) => prisma.executeInTenantSchema(schema, sql, params) as Promise<T>;
     const restorers: Array<() => void> = [];
+    if (options.workarounds?.contactsIsActive) {
+        await q('ALTER TABLE contacts ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true');
+    }
+    if (options.workarounds?.commitmentDdl) {
+        const spy = jest.spyOn(commitmentProposal, 'ensureCommitmentProposals').mockResolvedValue(undefined);
+        restorers.push(() => spy.mockRestore());
+    }
     const redis = options.redis ?? memoryRedis();
     const events = { emit: jest.fn() };
     const calendarOutbox = { enqueueWithQuery: jest.fn(async () => undefined) };

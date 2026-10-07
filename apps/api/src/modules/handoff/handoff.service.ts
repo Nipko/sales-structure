@@ -9,7 +9,13 @@ import { EmailTemplatesService } from '../email-templates/email-templates.servic
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { AiResolutionService } from '../analytics/ai-resolution.service';
 import { normalizeCustomerIntent } from '../../common/conversation/intent-normalizer';
-import { isPolicyQuestion, POLICY_TOPIC_KEYWORDS } from './handoff-policy-question';
+import {
+    DEFECT_ON_ARRIVAL_KEYWORDS,
+    isDefectOnArrivalKeyword,
+    isHypotheticalDefectQuestion,
+    isPolicyQuestion,
+    POLICY_TOPIC_KEYWORDS,
+} from './handoff-policy-question';
 import { hasDispatchOutbox, noHumanReplySql } from './handoff-human-reply';
 import {
     normalizeForIntent,
@@ -200,22 +206,26 @@ export class HandoffService {
             'queja', 'reclamo', 'reclamacion', 'molesto', 'furioso', 'inaceptable',
             'devolucion', 'reembolso', 'pesimo', 'horrible', 'terrible',
             'no funciona', 'estafa', 'demanda', 'abogado',
-            // A person asking to send something back, or reporting it broke on arrival.
-            'quiero devolver', 'quisiera devolver', 'necesito devolver', 'llego danado', 'llego roto',
+            // A report that it broke on arrival. A bare "quiero devolver…" is NOT here:
+            // "devolver la llamada / las llaves / el carro" is an ordinary request, so
+            // a return escalates only together with a defect, a grievance or a topic word.
+            ...DEFECT_ON_ARRIVAL_KEYWORDS,
             // Portuguese
             'reclamacao', 'reembolso', 'pessimo', 'golpe', 'nao funciona', 'advogado',
-            'quero devolver', 'chegou danificado', 'chegou quebrado',
             // French
             'plainte', 'remboursement', 'inacceptable', 'ne fonctionne pas', 'avocat',
-            'je veux retourner', 'est arrive endommage',
         ];
         // A question ABOUT the refund/return policy is informational: the agent
         // answers it. Only the policy-topic words are neutralised; any other
-        // complaint word in the same message still escalates.
+        // complaint word in the same message still escalates. Likewise a
+        // hypothetical ("¿qué hago si el producto llegó roto?") is a question,
+        // while "me llegó roto" is a report.
         const policyQuestion = isPolicyQuestion(message);
+        const hypotheticalDefect = isHypotheticalDefectQuestion(message);
         const escalates = (keywords: string[]) => keywords
             .filter(kw => text.includes(kw))
-            .some(kw => !(policyQuestion && POLICY_TOPIC_KEYWORDS.has(kw)));
+            .some(kw => !(policyQuestion && POLICY_TOPIC_KEYWORDS.has(kw))
+                && !(hypotheticalDefect && isDefectOnArrivalKeyword(kw)));
         if (enabled('complaint') && escalates(complaintKeywords)) {
             return 'complaint';
         }
@@ -257,6 +267,11 @@ export class HandoffService {
         // by being written without accents.
         for (const trigger of triggers) {
             const needle = normalizeForIntent(trigger);
+            // The platform seeds `reembolso` as a trigger on most personas. Asked
+            // as a general policy question ("¿hacen reembolsos?") it is the same
+            // informational question as above, so the same exemption applies;
+            // any other trigger, or a personal case, is unchanged.
+            if (policyQuestion && POLICY_TOPIC_KEYWORDS.has(needle)) continue;
             if (needle && text.includes(needle)) {
                 return `custom_trigger:${trigger}`;
             }

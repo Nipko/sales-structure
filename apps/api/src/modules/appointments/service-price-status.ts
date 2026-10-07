@@ -58,8 +58,11 @@ export function servicePriceNote(status: ServicePriceStatus): string | undefined
  * knows why there is no number.
  */
 export function projectAvailableService(service: {
-    id: string; name: string; durationMinutes?: number | null; price?: number | null; currency?: string | null; priceStatus?: ServicePriceStatus | null;
-}): { id: string; name: string; durationMinutes?: number; price?: number; priceStatus?: ServicePriceStatus; currency?: string } {
+    id: string; name: string; description?: string | null; durationMinutes?: number | null; price?: number | null; currency?: string | null; priceStatus?: ServicePriceStatus | null;
+}): { id: string; name: string; description?: string; durationMinutes?: number; price?: number; priceStatus?: ServicePriceStatus; currency?: string } {
+    // What the service includes, as the owner wrote it: without it "¿qué incluye X?" has no answer in the
+    // prompt and the model falls back to a "let me check" it can never keep.
+    const description = typeof service.description === 'string' ? service.description.replace(/\s+/g, ' ').trim().slice(0, 280) : '';
     // A service object that says "confirmed" and carries a null price (a cached
     // list from before FX1) has nothing to state: same reading as
     // `customerFacingPrice`. `undefined` is a caller that sent no price at all.
@@ -68,6 +71,7 @@ export function projectAvailableService(service: {
     return {
         id: service.id,
         name: service.name,
+        description: description || undefined,
         durationMinutes: service.durationMinutes ?? undefined,
         price: status !== 'confirmed' ? undefined : (service.price ?? undefined),
         priceStatus: status,

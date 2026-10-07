@@ -2125,13 +2125,19 @@ export class ConversationsService {
             const cached = await input.cache.get(key);
             if (cached) {
                 const parsed = JSON.parse(cached);
-                if (Array.isArray(parsed) && parsed.length) return parsed;
+                // A tenant with no services is remembered briefly too ("[]", 60 s; creating a service clears the
+                // key): otherwise every idle turn of such a tenant would query the catalog again.
+                if (Array.isArray(parsed)) return parsed;
             }
             const result = await input.toolExecutor.execute(
                 input.schemaName, input.tenantId, input.contactId, 'list_services', {},
                 input.conversationId, { authority: input.authority },
             );
-            if (result?.error || !Array.isArray(result?.services) || !result.services.length) return [];
+            if (result?.error || !Array.isArray(result?.services)) return [];
+            if (!result.services.length) {
+                await input.cache.set(key, '[]', 60).catch(() => {});
+                return [];
+            }
             await input.cache.set(key, JSON.stringify(result.services), 300).catch(() => {});
             return result.services;
         } catch (error: any) {

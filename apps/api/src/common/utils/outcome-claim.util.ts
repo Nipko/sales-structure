@@ -300,6 +300,9 @@ const WAIT_FILLER = new Set([
     'be', 'right', 'back', 'soon', 'bien', 'entonces', 'mismo', 'ahora', 'now', 'agora', 'maintenant', 's', 'il', 'plait',
 ]);
 
+/** A closing "is there anything else I can help with?" in the four languages. */
+const IDLE_COURTESY_QUESTION = /[¿]?[^.!?¿]*\b(?:algo m[aá]s|otra cosa|alguna otra|something else|anything else|mais alguma coisa|algo mais|autre chose)\b[^.!?¿]*\?/giu;
+
 /** Fewer words than this after the wait phrase is stripped is "no content". */
 const WAIT_MAX_CONTENT_WORDS = 1;
 
@@ -317,8 +320,12 @@ const BARE_WAIT_MAX_WORDS = 18;
  * caso en que NO se llamó a ninguna herramienta: ahí la espera es una promesa
  * sin entrega posible.
  */
-export function isBareWaitPromise(text: string | null | undefined): boolean {
-    if (!text || !text.trim()) return false;
+export function isBareWaitPromise(raw: string | null | undefined): boolean {
+    if (!raw || !raw.trim()) return false;
+    // "Déjame verificar eso. ¿Puedo ayudarte con algo más?" (a persona template's fallback): the closing
+    // "anything else?" is courtesy, not a question that advances the turn, so it does not rescue the promise.
+    const text = raw.replace(IDLE_COURTESY_QUESTION, ' ').trim();
+    if (!text) return false;
     if (/[?¿]/.test(text) || /\d/.test(text)) return false;
     const words = text.trim().split(/\s+/).filter(Boolean);
     if (words.length > BARE_WAIT_MAX_WORDS) return false;

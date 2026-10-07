@@ -97,6 +97,9 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         switchOfferDate: '¿Desea cambiar su cita de {from} por {service} el {date}? Si es así, indíqueme el horario que prefiere.',
         switchOfferSlot: '¿Desea cambiar su cita de {from} por {service} el {date} a las {time}?',
         switchOfferOtherDate: '¿Desea cambiar su cita de {from} por {service} para otra fecha?',
+        changeOfferSlot: '¿Desea cambiar su cita de {service} al {date} a las {time}?',
+        changeOfferDate: '¿Desea cambiar su cita de {service} al {date}? Si es así, indíqueme el horario que prefiere.',
+        draftStays: 'Su cita de {service} sigue como estaba.',
         servicesHeader: 'Estos son nuestros servicios:',
         servicesFooter: '¿Cuál te interesa?',
         slotsAvailable: 'Horarios disponibles para {service} el {date}: {slots}. ¿Cuál horario prefieres?',
@@ -168,6 +171,9 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         switchOfferDate: 'Would you like to change your {from} appointment to {service} on {date}? If so, tell me which time you prefer.',
         switchOfferSlot: 'Would you like to change your {from} appointment to {service} on {date} at {time}?',
         switchOfferOtherDate: 'Would you like to change your {from} appointment to {service} on another date?',
+        changeOfferSlot: 'Would you like to move your {service} appointment to {date} at {time}?',
+        changeOfferDate: 'Would you like to move your {service} appointment to {date}? If so, tell me which time you prefer.',
+        draftStays: 'Your {service} appointment stays as it was.',
         servicesHeader: 'These are our services:',
         servicesFooter: 'Which one interests you?',
         slotsAvailable: 'Available times for {service} on {date}: {slots}. Which time do you prefer?',
@@ -229,6 +235,9 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         switchOfferDate: 'Deseja trocar o seu agendamento de {from} por {service} em {date}? Se sim, diga-me o horário que prefere.',
         switchOfferSlot: 'Deseja trocar o seu agendamento de {from} por {service} em {date} às {time}?',
         switchOfferOtherDate: 'Deseja trocar o seu agendamento de {from} por {service} para outra data?',
+        changeOfferSlot: 'Deseja mudar o seu agendamento de {service} para {date} às {time}?',
+        changeOfferDate: 'Deseja mudar o seu agendamento de {service} para {date}? Se sim, diga-me o horário que prefere.',
+        draftStays: 'O seu agendamento de {service} continua como estava.',
         servicesHeader: 'Estes são nossos serviços:',
         servicesFooter: 'Qual te interessa?',
         slotsAvailable: 'Horários disponíveis para {service} em {date}: {slots}. Qual horário prefere?',
@@ -290,6 +299,9 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         switchOfferDate: "Souhaitez-vous remplacer votre rendez-vous pour {from} par {service} le {date} ? Si oui, indiquez-moi l'horaire souhaité.",
         switchOfferSlot: 'Souhaitez-vous remplacer votre rendez-vous pour {from} par {service} le {date} à {time} ?',
         switchOfferOtherDate: 'Souhaitez-vous remplacer votre rendez-vous pour {from} par {service} pour une autre date ?',
+        changeOfferSlot: 'Souhaitez-vous déplacer votre rendez-vous pour {service} au {date} à {time} ?',
+        changeOfferDate: "Souhaitez-vous déplacer votre rendez-vous pour {service} au {date} ? Si oui, indiquez-moi l'horaire souhaité.",
+        draftStays: 'Votre rendez-vous pour {service} reste tel quel.',
         servicesHeader: 'Voici nos services :',
         servicesFooter: 'Lequel vous intéresse ?',
         slotsAvailable: 'Créneaux disponibles pour {service} le {date} : {slots}. Quel horaire préférez-vous ?',
@@ -665,8 +677,11 @@ export class BookingEngineService {
         const L = language; // shorthand for msg() calls
         const domains = mentionedMissionDomains(rawText);
         const active = !['idle', 'booked'].includes(state.step);
-        // A dormant, paused or tentative mission is not a draft the customer is working on right now.
-        const draftIsLive = liveDraft && active && !state.resumeOffer && !state.resumedAfterExpiry && !state.pausedAt;
+        // A draft the customer built (not a tentative interest, not paused) is theirs to change: a question
+        // about another service, or about another day, never rewrites it. A dormant draft counts too: the
+        // customer who comes back with such a question gets the same offer instead of a silent switch.
+        const draftIsLive = liveDraft && active && !state.pausedAt;
+        const draftWasDormant = !!state.resumeOffer || !!state.resumedAfterExpiry;
         // The answer to the switch offer made last turn. Any message that is not a clear yes/no drops the
         // offer (a "no" must not read as cancelling the whole draft, and a later yes must not revive it).
         let acceptedSwitch: NonNullable<BookingState['pendingSwitch']> | undefined;
@@ -674,7 +689,7 @@ export class BookingEngineService {
             const pending = state.pendingSwitch;
             state.pendingSwitch = undefined;
             const age = Date.now() - Date.parse(pending.offeredAt);
-            const answer = draftIsLive && Number.isFinite(age) && age >= 0 && age <= BOOKING_OFFER_TTL_MS
+            const answer = draftIsLive && !draftWasDormant && Number.isFinite(age) && age >= 0 && age <= BOOKING_OFFER_TTL_MS
                 ? answerToOffer(rawText, intent) : null;
             if (answer === 'yes') acceptedSwitch = pending;
             if (answer === 'no') {
@@ -721,29 +736,6 @@ export class BookingEngineService {
                 return this.repromptCurrentStep(state, L);
             }
         }
-        if (active && isDirectedCorrection(rawText)) {
-            const correction = parseDirectedSlotCorrection(rawText, [
-                { field: 'customerName', type: 'name' }, { field: 'customerEmail', type: 'email' },
-                { field: 'customerPhone', type: 'phone' }, { field: 'date', type: 'date' }, { field: 'time', type: 'time' },
-            ]);
-            const type = correction?.field === 'customerName' ? 'name' : correction?.field === 'customerEmail' ? 'email'
-                : correction?.field === 'customerPhone' ? 'phone' : 'string';
-            const value = correction ? coerceProcedureSlot(correction.value, type) : null;
-            const temporalValid = correction?.field === 'date' ? /^\d{4}-\d{2}-\d{2}$/.test(correction.value) && correction.value >= todayDate
-                : correction?.field === 'time' ? /^([01]\d|2[0-3]):[0-5]\d$/.test(correction.value) : true;
-            if (!correction || !value?.ok || !temporalValid) return { handled: true, state, text: missionDialogue(L, 'invalidCorrection') };
-            (state as any)[correction.field] = value.value;
-            invalidateBookingProposal(state);
-            if (correction.field === 'date') { state.time = undefined; state.slots = undefined; state.suggestedSlots = undefined; state.staffId = undefined; state.staffName = undefined; }
-            if (correction.field === 'date' || correction.field === 'time') {
-                // Revalidate availability on a later selection turn, never book
-                // merely because this correction contains a previously valid time.
-                state.step = 'ask_date';
-                return { handled: true, state, text: missionDialogue(L, 'correction') };
-            }
-            return { ...this.repromptCurrentStep(state, L), handled: true };
-        }
-
         // Defense in depth: the orchestrator checks this before entering the
         // engine, and the engine checks again before reading cached services or
         // collecting customer data. A stale appointments toggle must not start a
@@ -821,10 +813,13 @@ export class BookingEngineService {
         // for it (what was free a moment ago is not evidence), never booked from the earlier peek.
         if (acceptedSwitch) {
             const target = state.services?.find(s => s.id === acceptedSwitch!.serviceId);
-            if (target && target.id !== state.serviceId) {
+            if (target) {
                 const date = [intent.dateMentioned, acceptedSwitch.date].find(d => !!d && d >= todayDate) || undefined;
-                const time = intent.timeMentioned ?? acceptedSwitch.time;
-                this.logger.log(`[Decide] Customer accepted the offered switch to ${target.name}`);
+                // "sí, pero el domingo": a different day without an hour of its own does not inherit the hour
+                // that was offered for the old one.
+                const newDay = !!intent.dateMentioned && intent.dateMentioned !== acceptedSwitch.date;
+                const time = intent.timeMentioned ?? (newDay ? undefined : acceptedSwitch.time);
+                this.logger.log(`[Decide] Customer accepted the offered change (${target.id === state.serviceId ? 'day/hour' : `switch to ${target.name}`})`);
                 Object.assign(state, {
                     serviceId: target.id, serviceName: target.name, date, slots: undefined, suggestedSlots: undefined,
                     time: undefined, staffId: undefined, staffName: undefined,
@@ -842,9 +837,46 @@ export class BookingEngineService {
         // "¿Cuánto dura color y tratamiento y tienen cupo el sábado a las 16:00?" with a draft for
         // another service is not a change of mind: the date and time belong to the question. The draft
         // stays as the customer built it until they agree to move it.
+        let serviceSwitchOrdered = false;
         if (draftIsLive) {
             const offered = await this.offerServiceSwitch(schemaName, tenantId, contactId, state, intent, rawText, L, todayDate, authority, conversationId);
             if (offered) return offered;
+            // An ORDER to change service ("mejor cámbiala a X", "quiero X el sábado a las 16:00"): at the late
+            // steps the interpreter does not read service names, so hand it the one found by full name. The
+            // text is the order, not a name or e-mail answer, and not a correction of a slot.
+            const ordered = this.directSwitchTarget(state, intent, rawText);
+            if (ordered) {
+                intent = {
+                    ...intent, serviceMentioned: ordered.name, nameProvided: null, isConfirmation: false,
+                    intent: ['unknown', 'provide_info', 'general_question', 'confirm'].includes(intent.intent) ? 'select_service' : intent.intent,
+                };
+                serviceSwitchOrdered = true;
+            }
+        }
+
+        // ── Directed correction of a collected slot ("el correo es x@y.com", "cambia la hora a las 5") ──
+        // After the service check: "cambia mi cita a color y tratamiento" is a switch, not a slot to correct.
+        if (active && !serviceSwitchOrdered && isDirectedCorrection(rawText)) {
+            const correction = parseDirectedSlotCorrection(rawText, [
+                { field: 'customerName', type: 'name' }, { field: 'customerEmail', type: 'email' },
+                { field: 'customerPhone', type: 'phone' }, { field: 'date', type: 'date' }, { field: 'time', type: 'time' },
+            ]);
+            const type = correction?.field === 'customerName' ? 'name' : correction?.field === 'customerEmail' ? 'email'
+                : correction?.field === 'customerPhone' ? 'phone' : 'string';
+            const value = correction ? coerceProcedureSlot(correction.value, type) : null;
+            const temporalValid = correction?.field === 'date' ? /^\d{4}-\d{2}-\d{2}$/.test(correction.value) && correction.value >= todayDate
+                : correction?.field === 'time' ? /^([01]\d|2[0-3]):[0-5]\d$/.test(correction.value) : true;
+            if (!correction || !value?.ok || !temporalValid) return { handled: true, state, text: missionDialogue(L, 'invalidCorrection') };
+            (state as any)[correction.field] = value.value;
+            invalidateBookingProposal(state);
+            if (correction.field === 'date') { state.time = undefined; state.slots = undefined; state.suggestedSlots = undefined; state.staffId = undefined; state.staffName = undefined; }
+            if (correction.field === 'date' || correction.field === 'time') {
+                // Revalidate availability on a later selection turn, never book
+                // merely because this correction contains a previously valid time.
+                state.step = 'ask_date';
+                return { handled: true, state, text: missionDialogue(L, 'correction') };
+            }
+            return { ...this.repromptCurrentStep(state, L), handled: true };
         }
 
         // ── Incoming WhatsApp Flow completion (opt-in) ──
@@ -1288,11 +1320,12 @@ export class BookingEngineService {
                     state.serviceId = newSvc.id; state.serviceName = newSvc.name;
                     state.date = undefined; state.slots = undefined; state.suggestedSlots = undefined; state.time = undefined; state.staffId = undefined; state.staffName = undefined;
                     state.step = 'ask_date';
-                    // "Mejor el masaje a las 17:30": la fecha y la hora siguen valiendo
-                    // con el servicio nuevo.
-                    if (intent.timeMentioned && keptDate) {
+                    invalidateBookingProposal(state);
+                    // "Mejor el masaje a las 17:30" / "mejor el masaje el sábado": la fecha y la hora
+                    // que el cliente dio siguen valiendo con el servicio nuevo.
+                    if (keptDate && (intent.timeMentioned || intent.dateMentioned)) {
                         state.date = keptDate;
-                        return this.checkAvailability(schemaName, tenantId, contactId, state, L, authority, conversationId, intent.timeMentioned);
+                        return this.checkAvailability(schemaName, tenantId, contactId, state, L, authority, conversationId, intent.timeMentioned ?? undefined);
                     }
                     this.logger.log(`[Decide] Changed service to: ${newSvc.name}`);
                     return { handled: true, state, text: msg(L, 'switchedService', { service: newSvc.name }) };
@@ -1416,9 +1449,21 @@ export class BookingEngineService {
         if (!state.serviceId || !['ask_date', 'show_slots', 'ask_name', 'ask_email', 'confirm'].includes(state.step)) return null;
         const draft = state.services?.find(s => s.id === state.serviceId);
         if (!draft || !isInformationSeekingMessage(rawText) || isServiceSwitchDirective(rawText)) return null;
-        const target = this.otherServiceNamed(state, draft.id, intent, rawText);
-        if (!target) return null;
-        this.logger.log(`[Decide] Question about ${target.name} with a draft for ${draft.name} open — offering the switch instead of applying it`);
+        let target = this.otherServiceNamed(state, draft.id, intent, rawText, false);
+        // `slot`: the same question about the draft's own service on ANOTHER day or hour. Only once the
+        // customer has a slot (the late steps): earlier, the day and hour are what the engine is asking for.
+        let kind: 'service' | 'slot' = 'service';
+        if (!target) {
+            if (!['ask_name', 'ask_email', 'confirm'].includes(state.step)) return null;
+            const movesDay = !!intent.dateMentioned && intent.dateMentioned !== state.date;
+            const movesHour = !!intent.timeMentioned && intent.timeMentioned !== state.time;
+            if ((!movesDay && !movesHour) || (!!intent.dateMentioned && intent.dateMentioned < todayDate)) return null;
+            target = draft;
+            kind = 'slot';
+        }
+        this.logger.log(kind === 'service'
+            ? `[Decide] Question about ${target.name} with a draft for ${draft.name} open — offering the switch instead of applying it`
+            : `[Decide] Question about another day/hour for ${draft.name} with the draft at ${state.step} — answering and offering the change, draft untouched`);
 
         const from = state.serviceName || draft.name;
         const parts: string[] = [];
@@ -1441,7 +1486,7 @@ export class BookingEngineService {
         const date = intent.dateMentioned ? (intent.dateMentioned >= todayDate ? intent.dateMentioned : undefined)
             : intent.timeMentioned ? state.date : undefined;
         const time = intent.timeMentioned ?? undefined;
-        let offerKey: 'switchOffer' | 'switchOfferDate' | 'switchOfferSlot' | 'switchOfferOtherDate' = 'switchOffer';
+        let offerKey: 'switchOffer' | 'switchOfferDate' | 'switchOfferSlot' | 'switchOfferOtherDate' | 'changeOfferSlot' | 'changeOfferDate' | 'draftStays' = 'switchOffer';
         let offeredDate: string | undefined;
         let offeredTime: string | undefined;
         if (date) {
@@ -1455,30 +1500,47 @@ export class BookingEngineService {
             const slots = result.available && result.slots?.length ? selectSlotWindow<{ time: string }>(result.slots, time) : [];
             const times = (list: Array<{ time: string }>) => Array.from(new Set(list.map(s => s.time))).join(', ');
             const vars = { service: target.name, date: friendlyDate(lang, date), time: time || '' };
+            const slotKind = kind === 'slot';
             if (!slots.length) {
                 parts.push(msg(lang, 'switchDayFull', vars));
-                offerKey = 'switchOfferOtherDate';
+                offerKey = slotKind ? 'draftStays' : 'switchOfferOtherDate';
             } else if (time && slots.some(s => s.time === time)) {
                 parts.push(msg(lang, 'switchSlotFree', vars));
-                offerKey = 'switchOfferSlot'; offeredDate = date; offeredTime = time;
+                offerKey = slotKind ? 'changeOfferSlot' : 'switchOfferSlot'; offeredDate = date; offeredTime = time;
             } else if (time) {
                 const near = nearestSlots(slots, time);
                 parts.push(msg(lang, 'switchSlotTaken', { ...vars, slots: times(near.length ? near : slots) }));
-                offerKey = 'switchOfferDate'; offeredDate = date;
+                offerKey = slotKind ? 'changeOfferDate' : 'switchOfferDate'; offeredDate = date;
             } else {
                 parts.push(msg(lang, 'switchDayFree', { ...vars, slots: times(slots) }));
-                offerKey = 'switchOfferDate'; offeredDate = date;
+                offerKey = slotKind ? 'changeOfferDate' : 'switchOfferDate'; offeredDate = date;
             }
         }
+        // A question about another day with no way to change to it (no availability, or nothing to ask the
+        // customer, e.g. a time but no day) only says so: the draft simply stays.
+        if (kind === 'slot' && offerKey === 'switchOffer') offerKey = 'draftStays';
         parts.push(msg(lang, offerKey, {
             from, service: target.name, date: offeredDate ? friendlyDate(lang, offeredDate) : '', time: offeredTime || '',
         }));
-        state.pendingSwitch = {
-            serviceId: target.id, serviceName: target.name,
-            ...(offeredDate ? { date: offeredDate } : {}), ...(offeredTime ? { time: offeredTime } : {}),
-            offeredAt: new Date().toISOString(),
-        };
+        if (offerKey !== 'draftStays') {
+            state.pendingSwitch = {
+                serviceId: target.id, serviceName: target.name,
+                ...(offeredDate ? { date: offeredDate } : {}), ...(offeredTime ? { time: offeredTime } : {}),
+                offeredAt: new Date().toISOString(),
+            };
+        }
         return { handled: true, state, text: parts.join(' ') };
+    }
+
+    /**
+     * The customer ORDERS a change of service ("mejor cámbiala a X", "prefiero X", "quiero X el sábado a
+     * las 16:00", "X el sábado") with a draft open. At the late steps the interpreter does not read service
+     * names (a surname must not be taken for one), so the engine finds the other service by its FULL name.
+     */
+    private directSwitchTarget(state: BookingState, intent: InterpretedIntent, rawText: string): NonNullable<BookingState['services']>[number] | undefined {
+        if (!state.serviceId || !['ask_date', 'show_slots', 'ask_name', 'ask_email', 'confirm'].includes(state.step)) return undefined;
+        if (isInformationSeekingMessage(rawText) && !isServiceSwitchDirective(rawText)) return undefined;
+        return this.otherServiceNamed(state, state.serviceId, intent, rawText, isServiceSwitchDirective(rawText));
     }
 
     /**
@@ -1486,7 +1548,9 @@ export class BookingEngineService {
      * extracted, or (for the late steps, where the interpreter deliberately does not read service names so
      * a surname is not taken for one) a service whose full name appears in the text.
      */
-    private otherServiceNamed(state: BookingState, draftId: string, intent: InterpretedIntent, rawText: string): NonNullable<BookingState['services']>[number] | undefined {
+    private otherServiceNamed(
+        state: BookingState, draftId: string, intent: InterpretedIntent, rawText: string, orderedChange: boolean,
+    ): NonNullable<BookingState['services']>[number] | undefined {
         const services = state.services ?? [];
         const fold = (value: string) => normalizeForIntent(value).replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
         if (intent.serviceMentioned) {
@@ -1494,11 +1558,17 @@ export class BookingEngineService {
             const named = services.find(s => fold(s.name) === wanted) ?? services.find(s => fold(s.name).includes(wanted));
             if (named) return named.id === draftId ? undefined : named;
         }
+        // Full name only: a customer called "Cortés" is not asking for "Corte y estilo".
         const text = ` ${fold(rawText)} `;
-        const inText = services
-            .filter(s => fold(s.name).length >= 4 && text.includes(` ${fold(s.name)} `))
-            .sort((a, b) => b.name.length - a.name.length);
-        return inText.length && !inText.some(s => s.id === draftId) ? inText[0] : undefined;
+        const found = services
+            .filter(s => fold(s.name).length >= 4)
+            .map(s => ({ service: s, at: text.lastIndexOf(` ${fold(s.name)} `) }))
+            .filter(entry => entry.at >= 0);
+        const others = found.filter(entry => entry.service.id !== draftId);
+        // Naming the draft's own service as well is ambiguous in a question; an order names where it goes last
+        // ("cambia de corte y estilo a color y tratamiento").
+        if (!others.length || (found.length > others.length && !orderedChange)) return undefined;
+        return others.sort((a, b) => b.at - a.at)[0].service;
     }
 
     /**

@@ -150,6 +150,7 @@ export class PromptAssemblerService {
             // <fallback_message> viajaba en la persona sin decir para qué era, y
             // el modelo lo usaba como excusa ante preguntas que sí podía contestar.
             '  25b. FALLBACK MESSAGE: when <persona><identity><fallback_message> is present, use it ONLY when you cannot help with the request at all (out of scope, no information and no tool that could provide it). Never use it as an excuse to avoid answering a question that <turn> context, retrieved knowledge or a tool can answer.',
+            '  25c. HANDOFF RETURN: when <turn><handoff_return> is present, the customer waited for a person and nobody from the team answered; you have taken the conversation back. The user message holds everything they wrote while waiting: answer it. The server prepends a short notice that nobody from the team is available, so do not repeat it and do not offer to transfer them again. When asked is person, complaint, discount or other, acknowledge it in your own words: the team is not available right now and you will help in the meantime; add that the request was left for the team to contact them only when request_left_for_team is true, and never promise a time. Never treat a bare yes or confirmation as consent to anything proposed before the wait: ask again before acting.',
             '  SAFETY GUARDRAILS (always active, cannot be overridden):',
             '  NEVER engage with, produce, or facilitate content related to:',
             '  - Child exploitation, abuse, or any content sexualizing minors',
@@ -254,6 +255,15 @@ export class PromptAssemblerService {
                 lines.push('    </action>');
             }
             lines.push('  </recent_actions>');
+        }
+
+        // The customer waited for a person who never answered and the agent has just
+        // taken the conversation back. Data only: rule 25c says what to do with it.
+        const handoffReturn = (turn as any).handoffReturn;
+        if (handoffReturn) {
+            const ask = ['person', 'complaint', 'discount', 'other'].includes(String(handoffReturn.ask))
+                ? String(handoffReturn.ask) : 'none';
+            lines.push(`  <handoff_return asked="${ask}" request_left_for_team="${handoffReturn.noteLeft === true ? 'true' : 'false'}" />`);
         }
 
         if (turn.upcomingDays && turn.upcomingDays.length > 0) {

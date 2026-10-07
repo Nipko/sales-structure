@@ -620,6 +620,25 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
     }),
 
     producer({
+        id: 'handoff.return_replay.operator_notice',
+        effect: 'The email telling a supervisor that a customer asked for a person (or complained) while the '
+            + 'handoff went unanswered and the agent took the conversation back',
+        lane: 'operational_notice',
+        status: 'live',
+        derivation: 'census',
+        source: 'modules/conversations/conversations.service.ts',
+        symbol: 'leaveHandoffReturnNote',
+        egress: 'the replay turn snapshots one `handoff.sla_escalated` notice per active admin or supervisor '
+            + '(revision `<startedAt>:returned`, so once per handoff episode); delivery re-reads the conversation '
+            + '(active, returned to the agent for that same episode) and that nobody from the team has answered',
+        reach: {
+            class: 'operator_notification', audience: 'tenant_operator', personalData: true,
+            channels: ['email'],
+        },
+        properties: OPERATIONAL_NOTICE_PROPERTIES,
+    }),
+
+    producer({
         id: 'handoff.agent_sms',
         effect: 'An SMS to the assigned agent, or to the tenant\'s admins, when a conversation escalates',
         lane: 'handoff_effects',

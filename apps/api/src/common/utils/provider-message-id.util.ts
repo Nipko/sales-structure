@@ -69,3 +69,11 @@ export function outboundDedupeId(
 export function sanitizeJobId(raw: string): string {
     return raw.replace(/[^A-Za-z0-9_.=-]/g, '-');
 }
+
+/**
+ * "This inbound message was already answered to the end" marker. One namespace,
+ * shared by the turn that writes it and by whoever must deliberately re-open a
+ * turn (the handoff return replay), so the two can never drift apart.
+ */
+export const turnDoneKey = (tenantId: string, providerMsgId: string): string =>
+    `turn:done:${tenantId}:${providerMsgId}`;

@@ -24,6 +24,36 @@ export const HUMAN_OFFER_QUESTION: Record<string, string> = {
     pt: 'Quer que eu peça a alguém da equipe para confirmar?',
     fr: "Souhaitez-vous que je demande à quelqu'un de l'équipe de la confirmer ?",
 };
+/**
+ * The offer that follows the answer to a refund / return policy question: the
+ * agent states the policy and the customer who wants the refund itself says yes
+ * once, instead of being escalated without asking.
+ */
+export const POLICY_PERSON_OFFER_QUESTION: Record<string, string> = {
+    es: '¿Desea que le pida a una persona del equipo que se encargue de su caso?',
+    en: 'Would you like me to ask someone from the team to take care of your case?',
+    pt: 'Deseja que eu peça a alguém da equipe para cuidar do seu caso?',
+    fr: "Souhaitez-vous que je demande à quelqu'un de l'équipe de s'occuper de votre dossier ?",
+};
+export const policyPersonOfferText = (lang?: string): string =>
+    POLICY_PERSON_OFFER_QUESTION[(lang || 'es').slice(0, 2).toLowerCase()] || POLICY_PERSON_OFFER_QUESTION.es;
+
+/** True when the reply's last sentence is a question (a "sí" would answer THAT one). */
+export function endsWithQuestion(text: unknown): boolean {
+    return typeof text === 'string' && /[?？]["'”’)\]\s]*$/.test(text.trimEnd());
+}
+
+/**
+ * The reply to a policy question, followed by the offer of a person. Left alone
+ * when it already offers one, and when it already ends with a question of its
+ * own: two questions in a row would make the customer's "sí" ambiguous.
+ */
+export function withPolicyPersonOffer(response: string, lang?: string): string {
+    if (!response || !response.trim()) return response;
+    if (containsHumanOffer(response) || offersHumanHandoff(response) || endsWithQuestion(response)) return response;
+    return `${response.trimEnd()}\n\n${policyPersonOfferText(lang)}`;
+}
+
 export const humanOfferQuestionText = (lang?: string): string =>
     HUMAN_OFFER_QUESTION[(lang || 'es').slice(0, 2).toLowerCase()] || HUMAN_OFFER_QUESTION.es;
 
@@ -42,7 +72,7 @@ export const noDataNoOfferText = (lang?: string): string =>
 
 /** True when the stored outbound text contains one of our offers. */
 export function containsHumanOffer(text: unknown): boolean {
-    return typeof text === 'string' && Object.values(HUMAN_OFFER_QUESTION).some(o => text.includes(o));
+    return typeof text === 'string' && [...Object.values(HUMAN_OFFER_QUESTION), ...Object.values(POLICY_PERSON_OFFER_QUESTION)].some(o => text.includes(o));
 }
 
 export function isHumanOfferText(text: unknown): boolean {
@@ -65,7 +95,7 @@ const AFFIRM_FILL = new Set([
 /** A short message that is only agreement ("sí", "dale", "yes please", "sim, por favor"). */
 export function isAffirmation(text: unknown): boolean {
     if (typeof text !== 'string') return false;
-    const tokens = text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    const tokens = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
         .replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(Boolean);
     if (tokens.length === 0 || tokens.length > 4) return false;
     return tokens.every(t => AFFIRM_CORE.has(t) || AFFIRM_FILL.has(t)) && tokens.some(t => AFFIRM_CORE.has(t));

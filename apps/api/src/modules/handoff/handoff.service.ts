@@ -9,7 +9,31 @@ import { EmailTemplatesService } from '../email-templates/email-templates.servic
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { AiResolutionService } from '../analytics/ai-resolution.service';
 import { normalizeCustomerIntent } from '../../common/conversation/intent-normalizer';
+import {
+    DEFECT_ON_ARRIVAL_KEYWORDS,
+    isAnswerableCustomTrigger,
+    isAnswerableTopicWord,
+    isDefectOnArrivalKeyword,
+    isHypotheticalDefectQuestion,
+    policyOverrideLabel,
+    policyQuestionScope,
+    POLICY_TOPIC_KEYWORDS,
+    SOFT_DEFECT_KEYWORDS,
+    softDefectAsFact,
+} from './handoff-policy-question';
+import {
+    buildPolicyClassifierRequest,
+    parsePolicyLabel,
+    policyCacheKey,
+    policyTopicsIn,
+    reasonForPolicyLabel,
+    type PolicyLabel,
+} from './handoff-policy-classifier';
 import { hasDispatchOutbox, noHumanReplySql } from './handoff-human-reply';
+import { MAX_REPLAY_CLAIMS } from './handoff-return-replay.service';
+
+/** The catch-up for lost replays runs on one sweep in this many (the sweep itself runs every minute). */
+export const REPLAY_CATCH_UP_EVERY_SWEEPS = 5;
 import {
     normalizeForIntent,
     ConversationAssignedEvent,
@@ -129,6 +153,9 @@ function classifyHandoffEffectFailure(error: any): HandoffEffectOutcome {
         : { kind: 'rejected', errorCode: code };
 }
 
+/** The router's execution context, so a read-only turn (Agent Test, evaluation, draft) is passed through to the model call. */
+type ClassifierExecutionContext = Parameters<LLMRouterService['execute']>[0]['executionContext'];
+
 @Injectable()
 export class HandoffService {
     private readonly logger = new Logger(HandoffService.name);
@@ -146,9 +173,142 @@ export class HandoffService {
         private cronLock: CronLockService,
     ) {}
 
+    /** How long a classification of the same message is reused (one turn is read two or three times). */
+    private static readonly POLICY_LABEL_TTL_MS = 60_000;
+    /** A failed classification is remembered briefly so the same turn does not wait on a dead model twice. */
+    private static readonly POLICY_LABEL_FAILURE_TTL_MS = 15_000;
+    /** The model has this long; after that the deterministic rules decide. */
+    private static readonly POLICY_CLASSIFIER_TIMEOUT_MS = 2_500;
+    private policyLabelCache?: Map<string, { label: PolicyLabel | null; at: number }>;
+    private policyLabelInflight?: Map<string, Promise<PolicyLabel | null>>;
+    /** Test hook: overrides the classifier timeout. */
+    policyClassifierTimeoutMs?: number;
+
     /**
-     * Evaluate if a conversation should be escalated to a human agent.
-     * Returns the reason string if handoff should trigger, null otherwise.
+     * Decide whether a message escalates. The deterministic rules go first: a request
+     * for a person, a strong grievance, VIP, failed attempts and every custom trigger
+     * that is not a refund / return / discount word never wait for a model. Only a
+     * message that is otherwise answerable AND mentions that topic is classified (one
+     * small model call, cached per message), because the same words are a policy
+     * question, a how-to, a personal case or a price negotiation.
+     *
+     * The model never has the last word against the customer: what a message says about
+     * the customer's OWN case ("me cobraron dos veces", "quiero mi reembolso", "llegó
+     * roto", "¿me hace un descuento?") is a high-precision rule that escalates before the
+     * model is asked, so a wrong label cannot hide it. The model clears only the soft
+     * cases (a bare topic word, a hypothetical). A `none` label does not silence a defect
+     * main escalated ("la app no funciona, ¿me devuelven la llamada?"). When the model is
+     * unavailable, times out or answers nonsense, `shouldHandoff` (the regular
+     * expressions) decides.
+     */
+    async decideHandoff(
+        message: string,
+        conversation: any,
+        config: TenantConfig,
+        operatingCountry?: string | null,
+        tenantId?: string,
+        /** The turn's execution context (Agent Test, evaluation, draft): the router keeps it read-only and accounts the spend. */
+        executionContext?: ClassifierExecutionContext,
+    ): Promise<string | null> {
+        const topics = policyTopicsIn(message, config.behavior?.handoffTriggers || []);
+        // No refund / return / discount word: nothing for a model to read, the rules decide.
+        if (!topics) return this.shouldHandoff(message, conversation, config, operatingCountry);
+        const strong = this.evaluateHandoff(message, conversation, config, operatingCountry, 'ignore_topics');
+        if (strong) return strong;
+        const enabled = (cat: string) => this.categoryEnabled(config, cat);
+        // Nothing this tenant could route the answer to: no reason to ask the model.
+        if (!enabled('complaint') && !enabled('discount_request') && !topics.customTrigger) return null;
+        const own = policyOverrideLabel(message, topics);
+        if (own) {
+            const reason = reasonForPolicyLabel(own, topics, enabled);
+            if (reason) return reason;
+        }
+        const label = await this.classifyPolicyMessage(message, tenantId, executionContext);
+        if (!label) return this.shouldHandoff(message, conversation, config, operatingCountry);
+        const reason = reasonForPolicyLabel(label, topics, enabled);
+        if (reason) return reason;
+        // `none` means the topic word was incidental ("¿me devuelven la llamada?"): the
+        // rest of the message is judged as it always was, defects included.
+        return label === 'none'
+            ? this.evaluateHandoff(message, conversation, config, operatingCountry, 'keep_defects')
+            : null;
+    }
+
+    /** Whether `decideHandoff` is about to wait on the model for this message (so the turn can show it is typing). */
+    needsPolicyClassification(message: string, config: TenantConfig, tenantId?: string): boolean {
+        return !!policyTopicsIn(message, config.behavior?.handoffTriggers || []) && !this.peekPolicyLabel(message, tenantId);
+    }
+
+    /** The label already decided for this message (this turn read it before), without a model call. */
+    peekPolicyLabel(message: string, tenantId?: string): PolicyLabel | null {
+        const hit = this.policyLabelCache?.get(policyCacheKey(tenantId, message));
+        return hit && hit.label && Date.now() - hit.at < HandoffService.POLICY_LABEL_TTL_MS ? hit.label : null;
+    }
+
+    /** One model call per message: later readers of the same turn get the cached label (or the in-flight call). */
+    async classifyPolicyMessage(message: string, tenantId?: string, executionContext?: ClassifierExecutionContext): Promise<PolicyLabel | null> {
+        const key = policyCacheKey(tenantId, message);
+        const cache = this.policyLabelCache ??= new Map();
+        const inflight = this.policyLabelInflight ??= new Map();
+        const hit = cache.get(key);
+        if (hit) {
+            const ttl = hit.label ? HandoffService.POLICY_LABEL_TTL_MS : HandoffService.POLICY_LABEL_FAILURE_TTL_MS;
+            if (Date.now() - hit.at < ttl) return hit.label;
+        }
+        const pending = inflight.get(key);
+        if (pending) return pending;
+        const run = this.runPolicyClassifier(message, tenantId, executionContext).then((label) => {
+            cache.set(key, { label, at: Date.now() });
+            if (cache.size > 500) cache.delete(cache.keys().next().value as string);
+            return label;
+        }).finally(() => inflight.delete(key));
+        inflight.set(key, run);
+        return run;
+    }
+
+    private async runPolicyClassifier(message: string, tenantId?: string, executionContext?: ClassifierExecutionContext): Promise<PolicyLabel | null> {
+        if (!this.llmRouter || typeof this.llmRouter.execute !== 'function') return null;
+        const { systemPrompt, userContent } = buildPolicyClassifierRequest(message);
+        let timer: NodeJS.Timeout | undefined;
+        try {
+            const response = await Promise.race([
+                // Same route as the intent interpreter's small extraction call; the
+                // router accounts the spend to the tenant and applies its budget.
+                this.llmRouter.execute({
+                    model: 'grok-4-1-fast-non-reasoning',
+                    messages: [{ role: 'user', content: userContent }],
+                    systemPrompt,
+                    temperature: 0,
+                    maxTokens: 24,
+                    tenantId,
+                    executionContext,
+                    traceContext: { stage: 'handoff_policy_classifier' },
+                }),
+                new Promise<never>((_, reject) => {
+                    timer = setTimeout(() => reject(new Error('policy_classifier_timeout')),
+                        this.policyClassifierTimeoutMs ?? HandoffService.POLICY_CLASSIFIER_TIMEOUT_MS);
+                }),
+            ]);
+            const label = parsePolicyLabel(response?.content);
+            if (!label) this.logger?.warn('[Handoff] policy classifier answered something that is not a label; using the rules');
+            return label;
+        } catch (e: any) {
+            this.logger?.warn(`[Handoff] policy classifier unavailable (${e?.message}); using the rules`);
+            return null;
+        } finally {
+            if (timer) clearTimeout(timer);
+        }
+    }
+
+    private categoryEnabled(config: TenantConfig, category: string): boolean {
+        const categoriesCfg = (config.behavior as any)?.handoffCategories as Record<string, boolean> | undefined;
+        return !categoriesCfg || categoriesCfg[category] !== false;
+    }
+
+    /**
+     * Evaluate if a conversation should be escalated to a human agent, by rules alone.
+     * Returns the reason string if handoff should trigger, null otherwise. This is the
+     * decision when no model is available; `decideHandoff` is what the turn uses.
      */
     shouldHandoff(
         message: string,
@@ -156,6 +316,23 @@ export class HandoffService {
         config: TenantConfig,
         /** Operating country, so national ways of asking for a person are heard. */
         operatingCountry?: string | null,
+    ): string | null {
+        return this.evaluateHandoff(message, conversation, config, operatingCountry, 'rules');
+    }
+
+    /**
+     * `rules`: refund / return / discount words are answered or escalated by the
+     * regular expressions. `ignore_topics`: those words, the tenant triggers that are
+     * only those words, "no funciona" and "llegó roto" are set aside for the classifier,
+     * so what is left is the strong signals (a person, a grievance, VIP, failed attempts,
+     * any other trigger).
+     */
+    private evaluateHandoff(
+        message: string,
+        conversation: any,
+        config: TenantConfig,
+        operatingCountry: string | null | undefined,
+        mode: 'rules' | 'ignore_topics' | 'keep_defects',
     ): string | null {
         const triggers = config.behavior?.handoffTriggers || [];
         // Accent-stripped, because the raw `toLowerCase()` meant `devolución`
@@ -199,12 +376,36 @@ export class HandoffService {
             'queja', 'reclamo', 'reclamacion', 'molesto', 'furioso', 'inaceptable',
             'devolucion', 'reembolso', 'pesimo', 'horrible', 'terrible',
             'no funciona', 'estafa', 'demanda', 'abogado',
+            // A report that it broke on arrival. A bare "quiero devolver…" is NOT here:
+            // "devolver la llamada / las llaves / el carro" is an ordinary request, so
+            // a return escalates only together with a defect, a grievance or a topic word.
+            ...DEFECT_ON_ARRIVAL_KEYWORDS,
             // Portuguese
             'reclamacao', 'reembolso', 'pessimo', 'golpe', 'nao funciona', 'advogado',
             // French
             'plainte', 'remboursement', 'inacceptable', 'ne fonctionne pas', 'avocat',
         ];
-        if (enabled('complaint') && complaintKeywords.some(kw => text.includes(kw))) {
+        // A question ABOUT the refund/return policy is informational: the agent
+        // answers it. Only the policy-topic words are neutralised; any other
+        // complaint word in the same message still escalates. Likewise a
+        // hypothetical ("¿qué hago si el producto llegó roto?") is a question,
+        // while "me llegó roto" is a report.
+        const policyScope = mode === 'rules' ? policyQuestionScope(message) : null;
+        const hypotheticalDefect = isHypotheticalDefectQuestion(message);
+        // What is left to the classifier instead of escalating. `ignore_topics`: the topic
+        // words and the defects (a model reads them). `keep_defects` (after a `none`
+        // label): only the topic words; a defect stated as fact still escalates.
+        const setAside = (kw: string): boolean => {
+            if (mode === 'rules') return isAnswerableTopicWord(policyScope, kw);
+            if (POLICY_TOPIC_KEYWORDS.has(kw)) return true;
+            if (SOFT_DEFECT_KEYWORDS.has(kw)) return mode === 'ignore_topics' || !softDefectAsFact(message);
+            if (isDefectOnArrivalKeyword(kw)) return mode === 'ignore_topics';
+            return false;
+        };
+        const escalates = (keywords: string[]) => keywords
+            .filter(kw => text.includes(kw))
+            .some(kw => !setAside(kw) && !(hypotheticalDefect && isDefectOnArrivalKeyword(kw)));
+        if (enabled('complaint') && escalates(complaintKeywords)) {
             return 'complaint';
         }
 
@@ -216,7 +417,7 @@ export class HandoffService {
             // Portuguese / French
             'desconto', 'mais barato', 'melhor preco', 'remise', 'moins cher',
         ];
-        if (enabled('discount_request') && discountKeywords.some(kw => text.includes(kw))) {
+        if (enabled('discount_request') && escalates(discountKeywords)) {
             return 'discount_request';
         }
 
@@ -245,6 +446,11 @@ export class HandoffService {
         // by being written without accents.
         for (const trigger of triggers) {
             const needle = normalizeForIntent(trigger);
+            // The platform seeds `reembolso` as a trigger on most personas. Asked
+            // as a general policy question ("¿hacen reembolsos?") it is the same
+            // informational question as above, so the same exemption applies;
+            // any other trigger, or a personal case, is unchanged.
+            if (mode !== 'rules' ? POLICY_TOPIC_KEYWORDS.has(needle) : isAnswerableCustomTrigger(policyScope, needle, message)) continue;
             if (needle && text.includes(needle)) {
                 return `custom_trigger:${trigger}`;
             }
@@ -768,7 +974,16 @@ export class HandoffService {
         );
     }
 
+    /**
+     * How often the sweep also re-asks for waiting-message replays that never happened. It is only a
+     * safety net for a lost event, and its query walks the tenant's active conversations (there is
+     * no index on the handoff flags, and a new one would take a lock on the largest table at every
+     * deploy), so it runs on one sweep in five instead of every minute.
+     */
+    private sweepsSeen = 0;
+
     async returnUnattendedHandoffs(): Promise<void> {
+        const catchUp = ((this.sweepsSeen = (this.sweepsSeen ?? 0) + 1) - 1) % REPLAY_CATCH_UP_EVERY_SWEEPS === 0;
         try {
             const tenants = await this.prisma.tenant.findMany({
                 where: { isActive: true },
@@ -776,7 +991,7 @@ export class HandoffService {
             });
             for (const tenant of tenants) {
                 try {
-                    await this.returnUnattendedHandoffsForTenant(tenant.id, tenant.schemaName);
+                    await this.returnUnattendedHandoffsForTenant(tenant.id, tenant.schemaName, catchUp);
                 } catch (e: any) {
                     this.logger.warn(`[Handoff] Unattended sweep failed for ${tenant.id}: ${e.message}`);
                 }
@@ -786,7 +1001,7 @@ export class HandoffService {
         }
     }
 
-    private async returnUnattendedHandoffsForTenant(tenantId: string, schemaName: string): Promise<void> {
+    private async returnUnattendedHandoffsForTenant(tenantId: string, schemaName: string, catchUp = true): Promise<void> {
         const run = (sql: string, params: any[]) => this.prisma.executeInTenantSchema<any[]>(schemaName, sql, params);
         const hasOutbox = await hasDispatchOutbox(run, schemaName);
         // The same conditions pick the rows AND guard the UPDATE: between the two a
@@ -822,7 +1037,10 @@ export class HandoffService {
         );
         // Only the rows this statement really changed are announced: a conversation a
         // person answered in the meantime comes back empty and is left alone.
-        if (!returned?.length) return;
+        if (!returned?.length) {
+            if (catchUp) await this.reemitPendingReplays(tenantId, schemaName, run, hasOutbox, []);
+            return;
+        }
 
         const hasAssignments = !!(await run('SELECT to_regclass($1)::text AS t',
             [`${schemaName}.conversation_assignments`]).catch(() => []))?.[0]?.t;
@@ -835,9 +1053,47 @@ export class HandoffService {
                 ).catch(e => this.logger.warn(`[Handoff] Could not close the assignment of ${row.id}: ${e.message}`));
             }
             await this.redis.del(`handoff:${tenantId}:${row.id}`).catch(() => {});
-            this.eventEmitter.emit('handoff.returned_unattended', { tenantId, conversationId: row.id });
+            this.eventEmitter.emit('handoff.returned_unattended', { tenantId, schemaName, conversationId: row.id });
         }
         this.logger.warn(`[Handoff] Returned ${returned.length} unattended conversation(s) to the AI in tenant ${tenantId}`);
+        if (catchUp) await this.reemitPendingReplays(tenantId, schemaName, run, hasOutbox, returned.map((r: any) => String(r.id)));
+    }
+
+    /**
+     * The catch-up for the customer's waiting message. The event above is emitted
+     * once, in this process: a crash between the UPDATE and the listener, or an
+     * enqueue that failed and gave its claim back, would leave a returned
+     * conversation whose waiting message is never answered (the sweep itself no
+     * longer selects it). This asks for the replay again, for conversations
+     * returned in the last day whose replay was never claimed. The claim in the
+     * listener makes asking twice harmless, and `MAX_REPLAY_CLAIMS` stops a
+     * failure that never heals.
+     */
+    private async reemitPendingReplays(
+        tenantId: string, schemaName: string,
+        run: (sql: string, params: any[]) => Promise<any[]>, hasOutbox: boolean, alreadyEmitted: string[],
+    ): Promise<void> {
+        let pending: any[] = [];
+        try {
+            pending = await run(
+                `SELECT c.id FROM conversations c
+                  WHERE c.status = 'active'
+                    AND c.metadata->'handoff'->>'returnedToAi' = 'true'
+                    AND c.metadata->'handoff'->>'returnNoticePending' = 'true'
+                    AND c.metadata->'handoff'->>'startedAt' IS NOT NULL
+                    AND COALESCE(c.metadata->'handoff'->>'returnReplayFor', '') <> c.metadata->'handoff'->>'startedAt'
+                    AND COALESCE((c.metadata->'handoff'->>'returnReplayClaims')::int, 0) < ${MAX_REPLAY_CLAIMS}
+                    AND c.updated_at > NOW() - interval '24 hours'
+                    ${noHumanReplySql('c', hasOutbox)}
+                  ORDER BY c.updated_at DESC LIMIT 50`, []) || [];
+        } catch (e: any) {
+            this.logger.warn(`[Handoff] Replay catch-up could not be read for ${tenantId}: ${e.message}`);
+            return;
+        }
+        for (const row of pending) {
+            if (alreadyEmitted.includes(String(row.id))) continue;
+            this.eventEmitter.emit('handoff.returned_unattended', { tenantId, schemaName, conversationId: row.id });
+        }
     }
 
     /**

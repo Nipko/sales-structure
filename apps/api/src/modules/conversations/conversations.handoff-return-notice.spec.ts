@@ -286,7 +286,7 @@ describe('the replay turn of an unattended handoff return', () => {
         returnReplayFor: '2026-10-05T20:00:00Z', returnReplayClaimedAt: '2026-10-05T20:10:00Z',
     };
     function build(opts: { reason?: string | null; text?: string; stale?: boolean; optOut?: boolean; replay?: boolean;
-        withTasks?: boolean } = {}) {
+        withTasks?: boolean; notify?: boolean; optOutLine?: string } = {}) {
         const f = fixture({ status: 'active', handoff: claimed, text: opts.text ?? 'necesito hablar con un asesor\n¿hola?' });
         const service: any = f.service;
         const inner = service.prisma.executeInTenantSchema;
@@ -299,7 +299,17 @@ describe('the replay turn of an unattended handoff return', () => {
             return inner(schema, sql, params);
         });
         const tasks = { createTaskIdempotently: jest.fn().mockResolvedValue({ task: { id: 't1' }, created: true }) };
+        // The durable operator notices (the SLA alert's own mechanism) run through this query.
+        const noticeSql: string[] = [];
+        service.prisma.transactionInTenantSchema = jest.fn(async (_s: string, cb: (q: any) => Promise<unknown>) =>
+            cb(async (sql: string, params?: any[]) => {
+                noticeSql.push(sql);
+                if (sql.includes('INSERT INTO operational_notice_outbox') && opts.notify !== false) return [{ id: 'n1' }, { id: 'n2' }];
+                return [];
+            }));
+        const events = { emit: jest.fn() };
         Object.assign(service, {
+            eventEmitter: events,
             saveMessage: jest.fn().mockResolvedValue({ id: '88888888-8888-4888-8888-888888888888', duplicate: true }),
             dispatchOutbox: { findBatchForInbound: jest.fn().mockResolvedValue(null), publishBatch: jest.fn() },
             outboundQueue: { enqueueDispatch: jest.fn().mockResolvedValue(undefined) },
@@ -309,13 +319,13 @@ describe('the replay turn of an unattended handoff return', () => {
                 executeHandoff: jest.fn().mockResolvedValue({ assignedTo: null }),
             },
             complianceService: {
-                detectOptOut: jest.fn().mockReturnValue(opts.optOut === true),
+                detectOptOut: jest.fn((t: string) => opts.optOutLine ? t.trim() === opts.optOutLine : opts.optOut === true),
                 processOptOut: jest.fn().mockResolvedValue(undefined),
             },
             ...(opts.withTasks ? { tasksService: tasks } : {}),
         });
         f.message.metadata = opts.replay === false ? {} : { handoffReturnReplay: true };
-        return { ...f, service, sqls, tasks };
+        return { ...f, service, sqls, tasks, events, noticeSql };
     }
 
     it('does not escalate «necesito hablar con un asesor» again: notice + answer, one batch, no second transfer', async () => {
@@ -331,7 +341,8 @@ describe('the replay turn of an unattended handoff return', () => {
         const { service, message } = build({ reason: 'complaint', text: 'esto es pésimo, nadie responde' });
         await service.runTurn(message);
         const msg = service.generateResponse.mock.calls[0][2];
-        expect(msg.handoffReturn).toEqual({ ask: 'complaint', noteLeft: false });
+        // the supervisors' alert went out, so a true sentence can say the request was left
+        expect(msg.handoffReturn).toEqual({ ask: 'complaint', noteLeft: true });
         expect(service.handoffService.executeHandoff).not.toHaveBeenCalled();
     });
 
@@ -405,5 +416,94 @@ describe('the replay turn of an unattended handoff return', () => {
         const { service, message } = build({ reason: null, text: 'sí', replay: false });
         await service.runTurn(message);
         expect(service.generateResponse).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('the replay: opt-out per line, and the team actually sees the request', () => {
+    const claimed = {
+        startedAt: '2026-10-05T20:00:00Z', returnedToAi: true, returnNoticePending: true,
+        returnReplayFor: '2026-10-05T20:00:00Z', returnReplayClaimedAt: '2026-10-05T20:10:00Z',
+    };
+    function build(opts: { text: string; reason?: string | null; optOutLine?: string; notify?: boolean; withTasks?: boolean }) {
+        const f = fixture({ status: 'active', handoff: claimed, text: opts.text });
+        const service: any = f.service;
+        const noticeSql: string[] = [];
+        service.prisma.transactionInTenantSchema = jest.fn(async (_s: string, cb: (q: any) => Promise<unknown>) =>
+            cb(async (sql: string) => {
+                noticeSql.push(sql);
+                return sql.includes('INSERT INTO operational_notice_outbox') && opts.notify !== false ? [{ id: 'n1' }] : [];
+            }));
+        const events = { emit: jest.fn() };
+        const tasks = { createTaskIdempotently: jest.fn().mockResolvedValue({ task: { id: 't1' }, created: true }) };
+        Object.assign(service, {
+            eventEmitter: events,
+            saveMessage: jest.fn().mockResolvedValue({ id: '88888888-8888-4888-8888-888888888888', duplicate: true }),
+            dispatchOutbox: { findBatchForInbound: jest.fn().mockResolvedValue(null), publishBatch: jest.fn() },
+            outboundQueue: { enqueueDispatch: jest.fn().mockResolvedValue(undefined) },
+            handoffService: {
+                isInHandoff: jest.fn().mockResolvedValue(false),
+                shouldHandoff: jest.fn().mockReturnValue(opts.reason === undefined ? 'human_request' : opts.reason),
+                executeHandoff: jest.fn(),
+            },
+            complianceService: {
+                detectOptOut: jest.fn((t: string) => opts.optOutLine !== undefined && t.trim() === opts.optOutLine),
+                processOptOut: jest.fn().mockResolvedValue(undefined),
+            },
+            ...(opts.withTasks ? { tasksService: tasks } : {}),
+        });
+        f.message.metadata = { handoffReturnReplay: true };
+        return { ...f, service, events, noticeSql, tasks };
+    }
+
+    it.each([
+        ['hola\n¿hay alguien?\nSTOP', 'STOP'],
+        ['¿hola?\nbaja', 'baja'],
+        ['basta\nquiero ver precios', 'basta'],
+    ])('finds the opt-out in «%s» although the folded text is long', async (text, line) => {
+        const { service, message } = build({ text, optOutLine: line });
+        await service.runTurn(message);
+        expect(service.complianceService.processOptOut).toHaveBeenCalledWith(TENANT_ID, expect.objectContaining({
+            triggerMessage: line, leadId: LEAD_ID, detectedFrom: 'keyword',
+        }));
+        // what the normal opt-out path does: nothing is sent
+        expect(service.dispatchReplyThroughOutbox).not.toHaveBeenCalled();
+        expect(service.generateResponse).not.toHaveBeenCalled();
+    });
+
+    it('no opt-out in any line: the turn answers', async () => {
+        const { service, message } = build({ text: 'hola\n¿hay alguien?', reason: null });
+        await service.runTurn(message);
+        expect(service.complianceService.processOptOut).not.toHaveBeenCalled();
+        expect(service.dispatchReplyThroughOutbox).toHaveBeenCalledTimes(1);
+    });
+
+    it('alerts the tenant admins and supervisors the way the unattended-handoff SLA escalation does, once per episode', async () => {
+        const { service, message, noticeSql, events } = build({ text: 'necesito hablar con un asesor' });
+        await service.runTurn(message);
+        const insert = noticeSql.find(sql => sql.includes('INSERT INTO operational_notice_outbox'))!;
+        expect(insert).toBeTruthy();
+        expect(service.prisma.transactionInTenantSchema).toHaveBeenCalled();
+        expect(events.emit).toHaveBeenCalledWith('handoff.escalated_supervisor', expect.objectContaining({
+            tenantId: TENANT_ID, conversationId: CONVERSATION_ID, reason: 'unattended_return:person',
+        }));
+    });
+
+    it('tells the customer the request was left when the alert went out, even without a CRM lead task', async () => {
+        const { service, message } = build({ text: 'necesito hablar con un asesor' });
+        await service.runTurn(message);
+        expect(service.generateResponse.mock.calls[0][2].handoffReturn).toEqual({ ask: 'person', noteLeft: true });
+    });
+
+    it('says nothing was left when neither the task nor the alert exists', async () => {
+        const { service, message, events } = build({ text: 'necesito hablar con un asesor', notify: false });
+        await service.runTurn(message);
+        expect(events.emit).not.toHaveBeenCalledWith('handoff.escalated_supervisor', expect.anything());
+        expect(service.generateResponse.mock.calls[0][2].handoffReturn).toEqual({ ask: 'person', noteLeft: false });
+    });
+
+    it('no request heard: nobody is alerted', async () => {
+        const { service, message, events } = build({ text: '¿hasta qué hora atienden?', reason: null });
+        await service.runTurn(message);
+        expect(events.emit).not.toHaveBeenCalled();
     });
 });

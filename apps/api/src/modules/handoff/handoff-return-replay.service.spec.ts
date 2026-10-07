@@ -20,6 +20,7 @@ describe('handoff return replay (service behavior)', () => {
         contact?: any;
         enqueueFails?: number;
         widgetFails?: boolean;
+        widgetNull?: boolean;
     } = {}) {
         const state = { claimed: false };
         const calls: Array<{ sql: string; params: any[] }> = [];
@@ -50,7 +51,10 @@ describe('handoff return replay (service behavior)', () => {
             enqueue: jest.fn(async () => { if (failures-- > 0) throw new Error('redis down'); }),
         };
         const widget = {
-            processWidgetMessage: jest.fn(async () => { if (opts.widgetFails) throw new Error('model down'); return { status: 'stored', messages: [] }; }),
+            processWidgetMessage: jest.fn(async () => {
+                if (opts.widgetFails) throw new Error('model down');
+                return opts.widgetNull ? null : { status: 'stored', messages: [] };
+            }),
         };
         const service = new HandoffReturnReplayService(prisma, redis as any, queue as any, {} as any);
         (service as any).logger = { log: jest.fn(), warn: jest.fn(), error: jest.fn() };
@@ -206,6 +210,21 @@ describe('handoff return replay (service behavior)', () => {
         });
         await expect(h.service.replayWaitingMessages(event)).rejects.toThrow('model down');
         expect(h.released()).toBe(true);
+    });
+
+    it('a web chat turn that returns nothing (plan or persona cannot answer) is reported as skipped, and the claim stays', async () => {
+        const h = harness({
+            channel: 'web_widget', widgetNull: true,
+            waiting: [{ id: 'm9', content_type: 'text', content_text: 'hola', external_id: null, metadata: {}, created_at: new Date() }],
+        });
+        expect(await h.service.replayWaitingMessages(event)).toEqual({ kind: 'skipped', reason: 'widget_turn_returned_nothing' });
+        expect(h.released()).toBe(false);
+    });
+
+    it('reads up to the 20 most recent waiting messages', async () => {
+        const h = harness();
+        await h.service.replayWaitingMessages(event);
+        expect(h.calls.find(c => c.sql.startsWith('SELECT id, content_type'))!.sql).toContain('LIMIT 20');
     });
 
     it('the event listener never throws into the emitter', async () => {

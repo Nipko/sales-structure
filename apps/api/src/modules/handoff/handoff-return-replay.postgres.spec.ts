@@ -2,6 +2,8 @@ import { randomUUID } from 'crypto';
 import { PrismaClient } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { HandoffReturnReplayService } from './handoff-return-replay.service';
+import { ConversationsService } from '../conversations/conversations.service';
+import { conversationHistorySql } from '../conversations/conversation-history-query';
 import { ensureSyntheticGlobalTables } from '../../common/__fixtures__/synthetic-global-tables';
 
 /**
@@ -43,8 +45,8 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         for (let i = 0; i < count; i++) {
             const external = over.externalId === undefined ? `tgu${1000 + i}` : over.externalId;
             await sql(`INSERT INTO messages(conversation_id, direction, content_type, content_text, external_id, metadata, created_at)
-                VALUES($1::uuid, 'inbound', 'text', $2, $3, $4::jsonb, NOW() - ($5 || ' minutes')::interval)`,
-                [id, `mensaje ${i}`, external, JSON.stringify({ updateId: 1000 + i }), String(5 - i)]);
+                VALUES($1::uuid, 'inbound', 'text', $2, $3, $4::jsonb, NOW() - ($5 || ' seconds')::interval)`,
+                [id, `mensaje ${i}`, external, JSON.stringify({ updateId: 1000 + i }), String((count - i) * 5)]);
         }
         return id;
     }
@@ -71,7 +73,7 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             direction TEXT, content_type TEXT DEFAULT 'text', content_text TEXT, media_url TEXT, media_mime_type TEXT,
             caption TEXT, external_id VARCHAR(255), metadata JSONB DEFAULT '{}', created_at TIMESTAMP DEFAULT NOW())`);
         await sql(`CREATE TABLE agent_dispatch_outbox(id UUID PRIMARY KEY DEFAULT gen_random_uuid(), conversation_id UUID,
-            operational_scope JSONB NOT NULL DEFAULT '{}', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
+            message_id UUID, operational_scope JSONB NOT NULL DEFAULT '{}', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
         await sql('INSERT INTO contacts(id, external_id) VALUES($1::uuid, $2)', [contactId, '555000']);
         queue = { enqueue: jest.fn().mockResolvedValue(undefined) };
         redis = { del: jest.fn().mockResolvedValue(1) };
@@ -205,5 +207,110 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         expect(widget.processWidgetMessage.mock.calls[0][5]).toMatchObject({
             inboundMessageId: lastMessage, handoffReturnReplay: true, allowHumanHandoff: false });
         expect(queue.enqueue).not.toHaveBeenCalled();
+    });
+    it('folds at most the 20 most recent waiting messages, oldest first among them', async () => {
+        const id = await returned({ waiting: 25 });
+        await service.replayWaitingMessages(event(id));
+        const [msg] = queue.enqueue.mock.calls[0];
+        const lines = String(msg.content.text).split('\n');
+        expect(lines).toHaveLength(20);
+        expect(lines[0]).toBe('mensaje 5');
+        expect(lines[19]).toBe('mensaje 24');
+        expect(msg.metadata.updateId).toBe(1024);
+    });
+
+    // ── The race guard: only a reply to the customer counts ──
+    describe('has somebody already answered the customer since the claim?', () => {
+        const conversations: any = Object.create(ConversationsService.prototype);
+        const stale = (conversationId: string, inboundId: string) =>
+            (conversations as any).returnReplayIsStale(schema, conversationId, inboundId);
+        async function claimed() {
+            const id = await returned();
+            await sql(`UPDATE conversations SET metadata = jsonb_set(metadata, '{handoff,returnReplayClaimedAt}',
+                to_jsonb(to_char(NOW() AT TIME ZONE 'UTC' - interval '1 minute', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))) WHERE id=$1::uuid`, [id]);
+            const inbound = (await sql('SELECT id FROM messages WHERE conversation_id=$1::uuid ORDER BY created_at DESC LIMIT 1', [id]))[0].id;
+            return { id, inbound };
+        }
+        const outbound = (id: string, metadata: object = {}) => sql(
+            `INSERT INTO messages(conversation_id, direction, content_text, metadata, created_at)
+             VALUES($1::uuid, 'outbound', 'x', $2::jsonb, NOW()) RETURNING id`, [id, JSON.stringify(metadata)]);
+        const viaOutbox = async (id: string, kind: string) => {
+            const [m] = await outbound(id);
+            await sql(`INSERT INTO agent_dispatch_outbox(conversation_id, message_id, operational_scope) VALUES($1::uuid, $2::uuid, $3::jsonb)`,
+                [id, m.id, JSON.stringify({ kind })]);
+        };
+
+        beforeAll(() => { (conversations as any).prisma = prisma; });
+
+        it('nothing sent since the claim: not stale', async () => {
+            const { id, inbound } = await claimed();
+            expect(await stale(id, inbound)).toBe(false);
+        });
+        it.each(['agent', 'legacy', 'human_operator'])('a reply of scope «%s» through the durable lane: stale', async kind => {
+            const { id, inbound } = await claimed();
+            await viaOutbox(id, kind);
+            expect(await stale(id, inbound)).toBe(true);
+        });
+        it('a reminder or campaign (proactive scope) answers nobody: not stale', async () => {
+            const { id, inbound } = await claimed();
+            await viaOutbox(id, 'proactive_policy');
+            expect(await stale(id, inbound)).toBe(false);
+        });
+        it('an outbound row with no author at all (an automation) answers nobody: not stale', async () => {
+            const { id, inbound } = await claimed();
+            await outbound(id);
+            expect(await stale(id, inbound)).toBe(false);
+        });
+        it.each([{ source: 'agent' }, { source: 'ai' }, { sender_type: 'agent' }])('a web chat or console reply (%j): stale', async metadata => {
+            const { id, inbound } = await claimed();
+            await outbound(id, metadata);
+            expect(await stale(id, inbound)).toBe(true);
+        });
+        it('a reply sent BEFORE the claim is not an answer to the replay', async () => {
+            const { id, inbound } = await claimed();
+            await sql(`INSERT INTO messages(conversation_id, direction, content_text, metadata, created_at)
+                VALUES($1::uuid, 'outbound', 'x', '{"source":"agent"}', NOW() - interval '10 minutes')`, [id]);
+            expect(await stale(id, inbound)).toBe(false);
+        });
+        it('a newer customer message whose turn already took the notice: stale; while the notice is pending: not', async () => {
+            const { id, inbound } = await claimed();
+            await sql(`INSERT INTO messages(conversation_id, direction, content_text, external_id, created_at)
+                VALUES($1::uuid, 'inbound', 'otra', 'tgu9999', NOW())`, [id]);
+            expect(await stale(id, inbound)).toBe(false);
+            await sql(`UPDATE conversations SET metadata = jsonb_set(metadata, '{handoff,returnNoticePending}', 'false'::jsonb) WHERE id=$1::uuid`, [id]);
+            expect(await stale(id, inbound)).toBe(true);
+        });
+        it('works on a schema without the durable outbox table', async () => {
+            const { id, inbound } = await claimed();
+            await sql('ALTER TABLE agent_dispatch_outbox RENAME TO agent_dispatch_outbox_off');
+            try {
+                expect(await stale(id, inbound)).toBe(false);
+                await outbound(id, { source: 'agent' });
+                expect(await stale(id, inbound)).toBe(true);
+            } finally { await sql('ALTER TABLE agent_dispatch_outbox_off RENAME TO agent_dispatch_outbox'); }
+        });
+    });
+
+    // ── The model's history on the replay: the waiting messages are the live turn, not history ──
+    it('the history drops only the inbound messages written after the handoff started, and keeps everything else', async () => {
+        const id = await returned({ waiting: 0 });
+        const ids: Record<string, string> = {};
+        const add = async (key: string, direction: string, ago: string) => {
+            ids[key] = (await sql(`INSERT INTO messages(conversation_id, direction, content_text, created_at)
+                VALUES($1::uuid, $2, $3, NOW() - ($4 || ' seconds')::interval) RETURNING id`, [id, direction, key, ago]))[0].id;
+        };
+        await add('before-in', 'inbound', '3000');
+        await add('before-out', 'outbound', '2900');
+        await add('handoff-notice-out', 'outbound', '1200');
+        await add('waiting-in-1', 'inbound', '300');
+        await add('waiting-in-2', 'inbound', '200');
+        await add('waiting-out', 'outbound', '100');
+        await add('live', 'inbound', '50');
+        const startedAt = (await metadata(id)).handoff.startedAt;
+        const rows = (await sql(conversationHistorySql(false), [id, ids.live, startedAt])).map((r: any) => r.content_text).sort();
+        expect(rows).toEqual(['before-in', 'before-out', 'handoff-notice-out', 'waiting-out']);
+        // an ordinary turn (no replay) keeps the waiting inbound messages
+        const ordinary = (await sql(conversationHistorySql(false), [id, ids.live, null])).map((r: any) => r.content_text).sort();
+        expect(ordinary).toEqual(['before-in', 'before-out', 'handoff-notice-out', 'waiting-in-1', 'waiting-in-2', 'waiting-out']);
     });
 });

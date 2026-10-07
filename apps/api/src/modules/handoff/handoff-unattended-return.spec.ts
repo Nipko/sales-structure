@@ -180,3 +180,36 @@ describe('unattended handoff return: catch-up of the waiting message', () => {
         expect(h.events.emit).not.toHaveBeenCalled();
     });
 });
+
+describe('the catch-up is cheap: one sweep in five, and no new index', () => {
+    const catchUpSelects = (calls: Array<{ sql: string }>) => calls.filter(c => c.sql.startsWith('SELECT c.id FROM conversations c')).length;
+    function service() {
+        const calls: Array<{ sql: string }> = [];
+        const prisma: any = {
+            tenant: { findMany: jest.fn().mockResolvedValue([{ id: 't1', schemaName: 'tenant_t1' }]) },
+            executeInTenantSchema: jest.fn(async (_s: string, sql: string) => {
+                calls.push({ sql });
+                return sql.includes('to_regclass') ? [{ t: 'x' }] : [];
+            }),
+        };
+        return { calls, svc: new HandoffService(prisma, { del: jest.fn() } as any, { emit: jest.fn() } as any, {} as any, {} as any, {} as any, {} as any, { runExclusive: jest.fn() } as any) };
+    }
+
+    it('asks on the first sweep and then on every fifth, not every minute', async () => {
+        const { calls, svc } = service();
+        const asked: number[] = [];
+        for (let sweep = 1; sweep <= 11; sweep++) {
+            const before = catchUpSelects(calls);
+            await svc.returnUnattendedHandoffs();
+            if (catchUpSelects(calls) > before) asked.push(sweep);
+        }
+        expect(asked).toEqual([1, 6, 11]);
+    });
+
+    it('the schema gets no index for it (a build would lock the largest table on every deploy)', () => {
+        const { readFileSync } = jest.requireActual('fs');
+        const { resolve } = jest.requireActual('path');
+        const schemaSql = readFileSync(resolve(__dirname, '../../../prisma/tenant-schema.sql'), 'utf8');
+        expect(schemaSql).not.toContain('returnNoticePending');
+    });
+});

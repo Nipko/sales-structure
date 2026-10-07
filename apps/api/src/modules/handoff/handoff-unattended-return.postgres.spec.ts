@@ -94,11 +94,9 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         expect(row.metadata.handoff.returnNoticePending).toBe(true);
         const returned = (await status(id)).metadata;
         await sweep();
-        // Not returned a second time: the row is unchanged. The only thing the next
-        // sweep may do is ask again for the waiting message's replay (nobody claims
-        // it in this harness), which the listener's claim makes harmless.
+        // Not returned a second time: the row is unchanged and nothing is announced again.
         expect((await status(id)).metadata).toEqual(returned);
-        expect(returnedIds()).toEqual([id]);
+        expect(returnedIds()).toEqual([]);
     });
 
     it('leaves a handoff younger than 10 minutes, and one with no customer message since', async () => {
@@ -172,6 +170,8 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         }
     });
     // ── The catch-up for the waiting message (event lost, or its claim given back) ──
+    // It runs on one sweep in five; these tests ask for the sweep that includes it.
+    const sweepWithCatchUp = async () => { (service as any).sweepsSeen = 0; await sweep(); };
     async function returnedRow(handoff: Record<string, unknown>, over: { updatedHoursAgo?: number; status?: string } = {}) {
         const id = randomUUID();
         await sql(`INSERT INTO conversations(id, status, metadata, updated_at)
@@ -185,8 +185,15 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
 
     it('asks again for a returned conversation whose replay was never claimed', async () => {
         const id = await returnedRow({});
-        await sweep();
+        await sweepWithCatchUp();
         expect(returnedIds()).toEqual([id]);
+    });
+
+    it('is not asked on the sweeps in between', async () => {
+        await returnedRow({});
+        (service as any).sweepsSeen = 1;
+        await sweep();
+        expect(returnedIds()).toEqual([]);
     });
 
     it('does not ask for one whose replay is claimed for this episode, over the claim cap, older than a day, not active or answered by a person', async () => {
@@ -201,13 +208,13 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         const answered = await returnedRow({});
         await outboxRow(answered, 'human_operator');
         expect(claimedFor).toBeTruthy();
-        await sweep();
+        await sweepWithCatchUp();
         expect(returnedIds()).toEqual([]);
     });
 
     it('a conversation the sweep returns now is announced once, not once by the sweep and again by the catch-up', async () => {
         const id = await conversation();
-        await sweep();
+        await sweepWithCatchUp();
         expect(returnedIds()).toEqual([id]);
     });
 });

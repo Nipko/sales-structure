@@ -1,4 +1,6 @@
 import { normalizeCustomerIntent } from '../../common/conversation/intent-normalizer';
+import { removeHandoffPromiseSentences } from '../../common/utils/outcome-claim.util';
+import { noDataNoOfferText } from './human-offer';
 
 /**
  * ═══ THE TURN THAT ANSWERS WHAT THE CUSTOMER WROTE WHILE NOBODY ANSWERED ═══
@@ -108,4 +110,17 @@ export function returnNoteTask(ask: ReturnAsk, waitingText: string): { title: st
         title: NOTE_TITLE[ask],
         description: `Escribió mientras nadie del equipo atendía y el agente retomó la conversación: «${excerpt}»`,
     };
+}
+
+/**
+ * The agent's own promise of a transfer ("un asesor se comunicará con usted") on a
+ * replay turn. The conversation has just come back because nobody answered: honouring
+ * the promise would put it in the queue again for another ten minutes. The promise
+ * sentence goes; when the request WAS left for the team, one true sentence says so
+ * (no time promised); otherwise the rest of the answer stands on its own.
+ */
+export function rewriteReplayPromise(response: string, lang: string | undefined, noteLeft: boolean): string {
+    const kept = removeHandoffPromiseSentences(response);
+    const note = noteLeft ? pick(NOTE_LEFT, lang) : '';
+    return [kept, note].filter(Boolean).join('\n\n') || noDataNoOfferText(lang);
 }

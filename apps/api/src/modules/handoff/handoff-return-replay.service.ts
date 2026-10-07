@@ -12,7 +12,9 @@ import { RETURN_REPLAY_MESSAGE_FLAG } from '../conversations/handoff-return-repl
 import { hasDispatchOutbox, noHumanReplySql } from './handoff-human-reply';
 
 /** How many of the customer's waiting messages are folded into the one answer. */
-const MAX_WAITING_MESSAGES = 8;
+// A customer who waited ten minutes can have written a lot. The turn answers the most recent
+// ones (oldest first among them); older ones stay in the inbox for whoever reads it.
+const MAX_WAITING_MESSAGES = 20;
 const MAX_WAITING_CHARS = 4000;
 const ENQUEUE_ATTEMPTS = 3;
 /** A replay that keeps failing is given up after this many claims. */
@@ -153,7 +155,9 @@ export class HandoffReturnReplayService {
             if (episode.channel_type === 'web_widget') {
                 const conversations = await this.conversationsService();
                 if (!conversations?.processWidgetMessage) throw new Error('widget_turn_unavailable');
-                await conversations.processWidgetMessage(
+                // Never `trialTurn`: the listener cannot read the widget's mode, so a trial
+                // widget's replay is charged to the plan instead of the demo allowance.
+                const receipt = await conversations.processWidgetMessage(
                     tenantId, schemaName, conversationId, String(episode.contact_id), content.text ?? '',
                     {
                         channelAccountId: String(episode.channel_account_id || 'widget'),
@@ -161,6 +165,9 @@ export class HandoffReturnReplayService {
                         allowHumanHandoff: false,
                         handoffReturnReplay: true,
                     });
+                // Null: the plan or the persona cannot answer, or somebody answered first. Nothing
+                // was sent, and retrying cannot change it, so the claim stays and the log says so.
+                if (!receipt) return { kind: 'skipped', reason: 'widget_turn_returned_nothing' };
                 this.logger.log(`[HandoffReplay] Answered ${waiting.length} waiting widget message(s) of ${conversationId}`);
                 return { kind: 'answered_in_widget' };
             }

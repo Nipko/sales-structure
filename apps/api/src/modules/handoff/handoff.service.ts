@@ -12,6 +12,9 @@ import { normalizeCustomerIntent } from '../../common/conversation/intent-normal
 import { isPolicyQuestion, POLICY_TOPIC_KEYWORDS } from './handoff-policy-question';
 import { hasDispatchOutbox, noHumanReplySql } from './handoff-human-reply';
 import { MAX_REPLAY_CLAIMS } from './handoff-return-replay.service';
+
+/** The catch-up for lost replays runs on one sweep in this many (the sweep itself runs every minute). */
+export const REPLAY_CATCH_UP_EVERY_SWEEPS = 5;
 import {
     normalizeForIntent,
     ConversationAssignedEvent,
@@ -781,7 +784,16 @@ export class HandoffService {
         );
     }
 
+    /**
+     * How often the sweep also re-asks for waiting-message replays that never happened. It is only a
+     * safety net for a lost event, and its query walks the tenant's active conversations (there is
+     * no index on the handoff flags, and a new one would take a lock on the largest table at every
+     * deploy), so it runs on one sweep in five instead of every minute.
+     */
+    private sweepsSeen = 0;
+
     async returnUnattendedHandoffs(): Promise<void> {
+        const catchUp = ((this.sweepsSeen = (this.sweepsSeen ?? 0) + 1) - 1) % REPLAY_CATCH_UP_EVERY_SWEEPS === 0;
         try {
             const tenants = await this.prisma.tenant.findMany({
                 where: { isActive: true },
@@ -789,7 +801,7 @@ export class HandoffService {
             });
             for (const tenant of tenants) {
                 try {
-                    await this.returnUnattendedHandoffsForTenant(tenant.id, tenant.schemaName);
+                    await this.returnUnattendedHandoffsForTenant(tenant.id, tenant.schemaName, catchUp);
                 } catch (e: any) {
                     this.logger.warn(`[Handoff] Unattended sweep failed for ${tenant.id}: ${e.message}`);
                 }
@@ -799,7 +811,7 @@ export class HandoffService {
         }
     }
 
-    private async returnUnattendedHandoffsForTenant(tenantId: string, schemaName: string): Promise<void> {
+    private async returnUnattendedHandoffsForTenant(tenantId: string, schemaName: string, catchUp = true): Promise<void> {
         const run = (sql: string, params: any[]) => this.prisma.executeInTenantSchema<any[]>(schemaName, sql, params);
         const hasOutbox = await hasDispatchOutbox(run, schemaName);
         // The same conditions pick the rows AND guard the UPDATE: between the two a
@@ -836,7 +848,7 @@ export class HandoffService {
         // Only the rows this statement really changed are announced: a conversation a
         // person answered in the meantime comes back empty and is left alone.
         if (!returned?.length) {
-            await this.reemitPendingReplays(tenantId, schemaName, run, hasOutbox, []);
+            if (catchUp) await this.reemitPendingReplays(tenantId, schemaName, run, hasOutbox, []);
             return;
         }
 
@@ -854,7 +866,7 @@ export class HandoffService {
             this.eventEmitter.emit('handoff.returned_unattended', { tenantId, schemaName, conversationId: row.id });
         }
         this.logger.warn(`[Handoff] Returned ${returned.length} unattended conversation(s) to the AI in tenant ${tenantId}`);
-        await this.reemitPendingReplays(tenantId, schemaName, run, hasOutbox, returned.map((r: any) => String(r.id)));
+        if (catchUp) await this.reemitPendingReplays(tenantId, schemaName, run, hasOutbox, returned.map((r: any) => String(r.id)));
     }
 
     /**

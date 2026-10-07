@@ -41,10 +41,12 @@ import {
 import { burstBufferKeys } from './burst-debounce-key';
 import { foldedContent, fragmentFor, mergeBurst, type BurstFragment } from './burst-fragments';
 import {
-    isBareConsent, returnAskOf, returnNoteTask, returnReplayTurn, staleConsentReply,
+    isBareConsent, returnAskOf, returnNoteTask, returnReplayTurn, rewriteReplayPromise, staleConsentReply,
     type ReturnAsk,
 } from './handoff-return-replay-turn';
 import { TasksService } from '../crm/services/tasks/tasks.service';
+import { conversationHistorySql } from './conversation-history-query';
+import { enqueueOperationalNoticesForTenantRoles, ensureOperationalNoticeOutbox } from '../operational-notices/operational-notice-outbox';
 import { resolveTurnOutcome } from './turn-outcome-wait';
 import { ChannelTokenService } from '../channels/channel-token.service';
 import { ConversationsGateway } from './conversations.gateway';
@@ -128,6 +130,7 @@ import {
     ASYNC_GATED_TOOL_NAMES,
     getToolPolicy,
     isBusinessWriteTool,
+    toolHasHandoffEffect,
     isConfirmableWriteTool,
     isDraftProposableToolName,
     isNonCommittalTool,
@@ -1262,8 +1265,15 @@ export class ConversationsService {
 
         // 4.5 Opt-out detection (all channels). The request itself is enough to
         // stop this turn; human review may reverse a false positive later.
+        // The waiting texts are folded into one, and the opt-out matcher only accepts a
+        // bare word in a SHORT text ("hola\n¿hay alguien?\nSTOP" would be missed), so on
+        // the replay every line the customer wrote is read on its own.
+        const optOutText = replayTurn
+            ? (String(content?.text ?? '').split('\n').map(line => line.trim()).filter(Boolean)
+                .find(line => this.complianceService.detectOptOut(line)) ?? content?.text)
+            : content?.text;
         if (await this.suppressDetectedOptOut({
-            tenantId, leadId: lead?.id, contactId, channelType, text: content?.text,
+            tenantId, leadId: lead?.id, contactId, channelType, text: optOutText,
         })) {
             // Recorded by the call above. The return notice must not wait weeks
             // for a customer who asked to be left alone.
@@ -1288,7 +1298,10 @@ export class ConversationsService {
             (normalizedMsg as any).handoffReturn = {
                 ask,
                 noteLeft: !draftMode && ask
-                    ? await this.leaveHandoffReturnNote(tenantId, lead?.id, ask, content?.text) : false,
+                    ? await this.leaveHandoffReturnNote({
+                        tenantId, schemaName, conversation, contact, leadId: lead?.id, ask, text: content?.text,
+                        startedAt: replayTurn.startedAt,
+                    }) : false,
             };
         }
         if (handoffReason && !draftMode) {
@@ -2795,7 +2808,10 @@ export class ConversationsService {
             },
         }) : this.procedureEngine.forExecution({ toolExecutor: missionExecutor('procedure') });
         const intentInterpreter = session ? new IntentInterpreterService(llmRouter) : this.intentInterpreter;
-        const allowHumanHandoff = !session && !draftMode
+        // The replay of what the customer wrote while nobody answered (set by the caller,
+        // never by the message): this turn must not put the conversation back in the queue.
+        const handoffReturn = (msg as any).handoffReturn as { ask: string | null; noteLeft: boolean } | undefined;
+        const allowHumanHandoff = !session && !draftMode && !handoffReturn
             && (msg.channelType !== 'web_widget' || (msg.metadata as any)?.allowHumanHandoff === true);
         let userText = msg.content.text || '';
 
@@ -4132,6 +4148,9 @@ export class ConversationsService {
         // above re-adds tools from the agent's feature flags, overriding the
         // `tools = []` set in the express phase, so enforce it as the last word.
         if (engineProducedText) tools = [];
+        // The replay never transfers: a tool whose success ends with a person taking the
+        // conversation over is not offered for this one turn (the customer can ask again).
+        if (handoffReturn) tools = tools.filter(tool => !toolHasHandoffEffect(tool?.name ?? tool?.function?.name));
         if (draftMode) tools = tools.filter(tool => {
             const name = tool?.name ?? tool?.function?.name;
             return isAgentTestSafeToolName(name) || (!!draftScope && isDraftProposableToolName(name));
@@ -4337,14 +4356,9 @@ export class ConversationsService {
         // On the replay of an unattended handoff the customer's waiting messages are
         // ALREADY the live turn (folded into `msg`); leaving them in the history as
         // well put every one of them in the prompt twice.
-        const handoffReturn = (msg as any).handoffReturn as { ask: string | null; noteLeft: boolean } | undefined;
         const replayWaitingSince = handoffReturn ? ((conversation.metadata as any)?.handoff?.startedAt ?? null) : null;
         const historyDesc = session ? [...session.history].reverse().slice(0, 30).map((row, i) => ({ id: String(i), direction: row.role === 'user' ? 'inbound' : 'outbound', content_text: row.content })) : await this.prisma.executeInTenantSchema<any[]>(schemaName,
-            `SELECT id, direction, content_text, metadata FROM messages WHERE conversation_id = $1::uuid
-               AND ($2::uuid IS NULL OR id <> $2::uuid)
-               AND ($3::timestamptz IS NULL OR NOT (direction = 'inbound' AND created_at > $3::timestamptz))
-               ${replyProvenance ? "AND content_type<>'redacted' AND content_text IS NOT NULL AND BTRIM(content_text)<>''" : ''}
-             ORDER BY created_at DESC, id DESC LIMIT 30`,
+            conversationHistorySql(!!replyProvenance),
             [conversation.id, inboundMessageId || null, replayWaitingSince],
         );
         let history = (historyDesc || []).reverse();
@@ -4943,7 +4957,8 @@ export class ConversationsService {
             // datos; recién ahora se pasa a un humano, con el caso creado. El orden
             // importa — al revés (keyword antes de la IA) el humano recibía la
             // conversación sin el siniestro/solicitud registrado.
-            if (postToolHandoff && !draftMode) {
+            // (never on the replay: a write it performed stands, but the queue is not re-entered)
+            if (postToolHandoff && !draftMode && !handoffReturn) {
                 try {
                     if (!allowHumanHandoff) throw new Error('human_delivery_unavailable');
                     this.logger.warn(`[Pipeline] HANDOFF post-intake (${postToolHandoff}) para conversación ${conversation.id}`);
@@ -4993,7 +5008,13 @@ export class ConversationsService {
                 .find((row: any) => row?.direction === 'outbound')?.content_text;
             const humanHandoffAuthorized = !!this.handoffService.shouldHandoff?.(userText, conversation, config)
                 || isAffirmationOfHumanOffer(userText, lastOutboundText);
-            if (!draftMode && !postToolHandoff && !humanHandoffAuthorized && promisesHumanHandoff(finalResponse)) {
+            if (handoffReturn && !draftMode && promisesHumanHandoff(finalResponse)) {
+                // Never honoured on the replay, however the customer's words read: the team
+                // was not available, and a promise of a transfer would repeat the wait.
+                this.logger.warn(`[Pipeline] Promesa de traspaso en el reintento de ${conversation.id} — reescrita, sin escalar`);
+                this.recordAgentSignal(tenantId, 'handoff_promise_replay_rewritten', session);
+                finalResponse = rewriteReplayPromise(finalResponse, userLanguage, handoffReturn.noteLeft === true);
+            } else if (!draftMode && !postToolHandoff && !humanHandoffAuthorized && promisesHumanHandoff(finalResponse)) {
                 this.logger.warn(`[Pipeline] Promesa de traspaso SIN pedido del cliente en ${conversation.id} — reescrita como oferta, sin escalar`);
                 this.recordAgentSignal(tenantId, 'handoff_promise_unsolicited_rewritten', session);
                 // Only the promise sentence goes; the correct information around it
@@ -6313,7 +6334,10 @@ export class ConversationsService {
                 (msg as any).handoffReturn = {
                     ask,
                     noteLeft: !draftMode && ask
-                        ? await this.leaveHandoffReturnNote(tenantId, leads?.[0]?.id, ask, text) : false,
+                        ? await this.leaveHandoffReturnNote({
+                            tenantId, schemaName, conversation, contact, leadId: leads?.[0]?.id, ask, text,
+                            startedAt: replayTurn!.startedAt,
+                        }) : false,
                 };
             }
             let reply: string | null = null;
@@ -6702,15 +6726,31 @@ export class ConversationsService {
      */
     private async returnReplayIsStale(schemaName: string, conversationId: string, inboundMessageId: string): Promise<boolean> {
         if (!PERSISTED_ID.test(inboundMessageId)) return false;
-        const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+        const run = (sql: string, params: any[]) => this.prisma.executeInTenantSchema<any[]>(schemaName, sql, params);
+        const hasOutbox = await hasDispatchOutbox(run, schemaName);
+        // Only a reply to the customer counts: one written by a person, or by the agent. A
+        // reminder, a campaign or an automation sent meanwhile answers nobody, and letting it
+        // stand in for the answer left the customer in silence with the notice still pending.
+        // Durable lane rows say who wrote them in `operational_scope.kind`; the web chat and the
+        // macros say it in the message metadata.
+        const claimedAt = "(c.metadata->'handoff'->>'returnReplayClaimedAt')::timestamptz";
+        const answeredSince = `EXISTS (SELECT 1 FROM messages o
+                             WHERE o.conversation_id = c.id AND o.direction = 'outbound'
+                               AND c.metadata->'handoff'->>'returnReplayClaimedAt' IS NOT NULL
+                               AND o.created_at > ${claimedAt}
+                               AND (o.metadata->>'source' IN ('agent', 'ai') OR o.metadata->>'sender_type' = 'agent'))`
+            + (hasOutbox ? `
+                    OR EXISTS (SELECT 1 FROM agent_dispatch_outbox x JOIN messages o ON o.id = x.message_id
+                             WHERE x.conversation_id = c.id AND o.direction = 'outbound'
+                               AND c.metadata->'handoff'->>'returnReplayClaimedAt' IS NOT NULL
+                               AND o.created_at > ${claimedAt}
+                               AND x.operational_scope->>'kind' IN ('agent', 'legacy', 'human_operator'))` : '');
+        const rows = await run(
             `SELECT COALESCE(c.metadata->'handoff'->>'returnNoticePending', 'false') AS pending,
                     EXISTS (SELECT 1 FROM messages n
                              WHERE n.conversation_id = c.id AND n.direction = 'inbound' AND n.id <> $2::uuid
                                AND n.created_at > (SELECT created_at FROM messages WHERE id = $2::uuid)) AS newer_inbound,
-                    EXISTS (SELECT 1 FROM messages o
-                             WHERE o.conversation_id = c.id AND o.direction = 'outbound'
-                               AND c.metadata->'handoff'->>'returnReplayClaimedAt' IS NOT NULL
-                               AND o.created_at > (c.metadata->'handoff'->>'returnReplayClaimedAt')::timestamptz) AS answered_since
+                    (${answeredSince}) AS answered_since
                FROM conversations c WHERE c.id = $1::uuid`,
             [conversationId, inboundMessageId]);
         const row = rows?.[0];
@@ -6728,24 +6768,58 @@ export class ConversationsService {
     }
 
     /**
-     * Leave what the customer asked for, and nobody answered, on the team's
-     * follow-up list (the same task the agent's own `create_follow_up_task` writes).
-     * True only when the task exists: the customer is told the request was left
-     * only if it was.
+     * Make sure the team can see what the customer asked, and nobody answered.
+     *
+     * Two existing mechanisms, no new channel:
+     *  · the CRM follow-up the agent's own `create_follow_up_task` writes (an
+     *    unassigned task nobody is told about is only a record);
+     *  · the alert the unattended-handoff SLA escalation already sends to the
+     *    tenant's admins and supervisors (`handoff.sla_escalated` operational
+     *    notice per operator, plus the live `handoff.escalated_supervisor` inbox
+     *    alert), keyed by this handoff episode so it is sent once.
+     * True only when at least one of them exists: the customer is told the request
+     * was left for the team only if it was.
      */
-    private async leaveHandoffReturnNote(tenantId: string, leadId: unknown, ask: ReturnAsk, text?: string): Promise<boolean> {
-        if (!this.tasksService || !leadId || !PERSISTED_ID.test(String(leadId))) return false;
-        try {
-            const note = returnNoteTask(ask, text || '');
-            const outcome = await this.tasksService.createTaskIdempotently(tenantId, {
-                leadId: String(leadId), title: note.title, description: note.description,
-                type: 'follow_up', createdBy: 'handoff_return',
-            });
-            return !!outcome?.task?.id;
-        } catch (error: any) {
-            this.logger.warn(`[Handoff] follow-up for the unanswered request not created: ${error?.message}`);
-            return false;
+    private async leaveHandoffReturnNote(input: {
+        tenantId: string; schemaName: string; conversation: any; contact?: any; leadId: unknown;
+        ask: ReturnAsk; text?: string; startedAt: string;
+    }): Promise<boolean> {
+        const { tenantId, schemaName, conversation, ask } = input;
+        let left = false;
+        if (this.tasksService && input.leadId && PERSISTED_ID.test(String(input.leadId))) {
+            try {
+                const note = returnNoteTask(ask, input.text || '');
+                const outcome = await this.tasksService.createTaskIdempotently(tenantId, {
+                    leadId: String(input.leadId), title: note.title, description: note.description,
+                    type: 'follow_up', createdBy: 'handoff_return',
+                });
+                left = !!outcome?.task?.id;
+            } catch (error: any) {
+                this.logger.warn(`[Handoff] follow-up for the unanswered request not created: ${error?.message}`);
+            }
         }
+        try {
+            const contactId = PERSISTED_ID.test(String(input.conversation?.contact_id ?? '')) ? String(input.conversation.contact_id) : null;
+            await ensureOperationalNoticeOutbox(this.prisma, schemaName);
+            const notified = await this.prisma.transactionInTenantSchema(schemaName, query =>
+                enqueueOperationalNoticesForTenantRoles(query, schemaName, {
+                    kind: 'handoff.sla_escalated', entityId: String(input.conversation.id),
+                    contactId, conversationId: String(input.conversation.id),
+                    roles: ['tenant_admin', 'tenant_supervisor'], revision: `${input.startedAt}:returned`,
+                }));
+            if (notified.length) {
+                left = true;
+                this.eventEmitter.emit('handoff.escalated_supervisor', {
+                    tenantId, conversationId: String(input.conversation.id), contactId,
+                    contactName: input.contact?.name || input.contact?.external_id || 'Unknown',
+                    reason: `unattended_return:${ask}`,
+                    waitMinutes: Math.max(0, Math.round((Date.now() - Date.parse(input.startedAt)) / 60000)) || 0,
+                });
+            }
+        } catch (error: any) {
+            this.logger.warn(`[Handoff] supervisors not alerted about the unanswered request: ${error?.message}`);
+        }
+        return left;
     }
 
     /**

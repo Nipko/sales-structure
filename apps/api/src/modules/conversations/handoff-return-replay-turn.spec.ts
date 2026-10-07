@@ -1,6 +1,11 @@
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 import {
-    isBareConsent, returnAskOf, returnNoteTask, returnReplayTurn, staleConsentReply,
+    isBareConsent, returnAskOf, returnNoteTask, returnReplayTurn, rewriteReplayPromise, staleConsentReply,
 } from './handoff-return-replay-turn';
+import { promisesHumanHandoff } from '../../common/utils/outcome-claim.util';
+import { toolHasHandoffEffect } from './tool-policy-registry';
+import { noDataNoOfferText } from './human-offer';
 import { PromptAssemblerService } from './prompt-assembler.service';
 
 describe('returnReplayTurn: server state AND marker, never the message alone', () => {
@@ -80,5 +85,88 @@ describe('the prompt tells the model about the wait', () => {
         expect(prompt).toContain('25c. HANDOFF RETURN');
         expect(prompt).toContain('do not offer to transfer them again');
         expect(prompt).toContain('Never treat a bare yes or confirmation as consent');
+    });
+});
+
+/**
+ * The agent's own promise of a transfer must never be honoured on the replay: the team was not
+ * available, and `agent_promised_handoff` would put the conversation back in the queue for
+ * another ten minutes. Rule 25c leads the model to talk about the team, so these are exactly the
+ * sentences it will produce.
+ */
+describe('rewriteReplayPromise: the replay never promises a transfer', () => {
+    const PROMISES = [
+        'Nuestro equipo se pondrá en contacto con usted.',
+        'Un asesor se comunicará con usted en breve.',
+        'El equipo lo contactará cuando esté disponible.',
+        'The team will contact you as soon as possible.',
+    ];
+
+    it.each(PROMISES)('the real detector reads «%s» as a promise (so the rewrite is needed)', sentence => {
+        expect(promisesHumanHandoff(sentence)).toBe(true);
+    });
+
+    it.each(PROMISES)('«%s»: gone when nothing was left for the team', sentence => {
+        const reply = `Atendemos de lunes a viernes de 9 a 18. ${sentence}`;
+        const out = rewriteReplayPromise(reply, sentence.startsWith('The') ? 'en' : 'es', false);
+        expect(promisesHumanHandoff(out)).toBe(false);
+        expect(out).toContain('Atendemos de lunes a viernes de 9 a 18.');
+        expect(out).not.toMatch(/contacte|comunicar|pondr|will contact/i);
+    });
+
+    it.each(PROMISES)('«%s»: replaced by one true sentence when the request WAS left, with no time promised', sentence => {
+        const lang = sentence.startsWith('The') ? 'en' : 'es';
+        const out = rewriteReplayPromise(`Le ayudo con eso. ${sentence}`, lang, true);
+        expect(promisesHumanHandoff(out)).toBe(false);
+        expect(out).toContain(lang === 'en' ? 'I have left your request noted' : 'Dejé su solicitud anotada');
+        expect(out).not.toMatch(/\d+ ?(minutos|min|horas|hours)/i);
+    });
+
+    it('a reply that was only the promise becomes the honest no-data text, or the note', () => {
+        expect(rewriteReplayPromise('Un asesor se comunicará con usted.', 'es', false)).toBe(noDataNoOfferText('es'));
+        expect(rewriteReplayPromise('Un asesor se comunicará con usted.', 'es', true)).toBe(staleConsentReply('es', true).split(' Ha pasado')[0]);
+    });
+
+    it('the sentences the turn adds are not themselves promises', () => {
+        for (const lang of ['es', 'en', 'pt', 'fr']) {
+            expect(promisesHumanHandoff(staleConsentReply(lang, true))).toBe(false);
+        }
+    });
+});
+
+describe('the tools that end with a person taking over', () => {
+    it('are the ones the registry marks with the handoff effect', () => {
+        expect(toolHasHandoffEffect('file_claim')).toBe(true);
+        expect(toolHasHandoffEffect('create_service_request')).toBe(true);
+        expect(toolHasHandoffEffect('search_faqs')).toBe(false);
+        expect(toolHasHandoffEffect('does_not_exist')).toBe(false);
+        expect(toolHasHandoffEffect(undefined)).toBe(false);
+    });
+});
+
+/**
+ * `generateResponse` is too large to drive in a unit test, so the wiring that keeps the replay out
+ * of the queue is pinned the way the opt-out suppression is: by what the live code says and in
+ * which order.
+ */
+describe('generateResponse keeps the replay out of the queue (wiring)', () => {
+    const source = readFileSync(resolve(__dirname, 'conversations.service.ts'), 'utf8');
+    const generate = source.slice(source.indexOf('private async generateResponse('));
+
+    it('no human handoff is allowed on a replay turn', () => {
+        expect(generate).toMatch(/const allowHumanHandoff = !session && !draftMode && !handoffReturn\b/);
+    });
+    it('no tool that transfers is offered on a replay turn', () => {
+        expect(generate).toContain('if (handoffReturn) tools = tools.filter(tool => !toolHasHandoffEffect(');
+    });
+    it('a transfer promise is rewritten before, and instead of, being honoured', () => {
+        const rewrite = generate.indexOf('if (handoffReturn && !draftMode && promisesHumanHandoff(finalResponse))');
+        const honour = generate.indexOf("'agent_promised_handoff'");
+        expect(rewrite).toBeGreaterThan(0);
+        expect(rewrite).toBeLessThan(honour);
+        expect(generate.slice(rewrite, honour)).toContain('rewriteReplayPromise(finalResponse');
+    });
+    it('a write that asked for a transfer after the fact does not queue the conversation again', () => {
+        expect(generate).toContain('if (postToolHandoff && !draftMode && !handoffReturn)');
     });
 });

@@ -546,7 +546,23 @@ describe('ConversationsService widget containment', () => {
             expect(claimed).toHaveLength(1);
             expect((service as any).handoffService.executeHandoffOnce).not.toHaveBeenCalled();
             const msg = (service as any).generateResponse.mock.calls[0][2];
-            expect(msg.handoffReturn).toEqual({ ask: 'person', noteLeft: false });
+            expect(msg.handoffReturn).toEqual({ ask: 'person', noteLeft: false, fromEpisode: false });
+        });
+
+        it('never offers a person again, and counts the request that started the handoff', async () => {
+            const { service, prisma } = replayService({ reason: null });
+            (service as any).handoffService.shouldHandoff = jest.fn().mockReturnValue(null);
+            const inner = (prisma as any).executeInTenantSchema;
+            (prisma as any).executeInTenantSchema = jest.fn(async (s: string, sql: string, p: any[]) => sql.includes('SELECT * FROM conversations')
+                ? [{ id: C, contact_id: K, channel_account_id: 'widget', status: 'active', updated_at: new Date(),
+                    metadata: { handoff: { ...returnedHandoff, reason: 'human_request' } } }]
+                : inner(s, sql, p));
+            (service as any).generateResponse.mockResolvedValue(
+                'No tengo el horario de atención configurado. ¿Quiere que le pase con alguien del equipo para que le confirme?');
+            const text = await collect(replay(service, 'what are your hours?'));
+            expect(text).toBe('Nobody from the team is available right now; I will keep helping you.\n\nNo tengo el horario de atención configurado.');
+            expect((service as any).generateResponse.mock.calls[0][2].handoffReturn)
+                .toEqual({ ask: 'person', noteLeft: false, fromEpisode: true });
         });
 
         it('sends nothing when somebody answered since the claim', async () => {

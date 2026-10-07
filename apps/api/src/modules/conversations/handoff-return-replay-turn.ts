@@ -1,5 +1,6 @@
+import { normalizeForIntent } from '@parallext/shared';
 import { normalizeCustomerIntent } from '../../common/conversation/intent-normalizer';
-import { removeHandoffPromiseSentences } from '../../common/utils/outcome-claim.util';
+import { offersHumanHandoff, promisesHumanHandoff } from '../../common/utils/outcome-claim.util';
 
 /**
  * ═══ THE TURN THAT ANSWERS WHAT THE CUSTOMER WROTE WHILE NOBODY ANSWERED ═══
@@ -54,11 +55,31 @@ export function returnReplayTurn(conversation: any, msg: any): ReturnReplayTurn 
 /** Which kind of request the keyword classifier heard, or null when it heard none. */
 export function returnAskOf(reason: string | null | undefined): ReturnAsk | null {
     if (!reason) return null;
-    if (reason === 'human_request' || reason === 'customer_accepted_human_offer') return 'person';
+    // `agent_promised_handoff` only happens when the customer asked for a person or accepted the offer of one.
+    if (reason === 'human_request' || reason === 'customer_accepted_human_offer' || reason === 'agent_promised_handoff') return 'person';
     if (reason === 'complaint') return 'complaint';
     if (reason === 'discount_request') return 'discount';
     if (reason.startsWith('custom_trigger:')) return 'other';
     return null;
+}
+
+/**
+ * What the customer asked for, counting the request that STARTED the handoff.
+ *
+ * The waiting texts are what they wrote AFTER the transfer ("¿hola? mientras tanto, ¿hasta qué hora
+ * atienden?"); the request that put them in the queue ("necesito hablar con una persona") came
+ * before and is only on the conversation, as the handoff reason. Reading only the waiting texts
+ * lost it: no follow-up for the team, nothing true to say about it, and the model offered a person
+ * again right after saying nobody was available.
+ */
+export function replayAsk(waitingReason: string | null | undefined, handoff: unknown): {
+    ask: ReturnAsk | null; fromEpisode: boolean;
+} {
+    const waiting = returnAskOf(waitingReason);
+    if (waiting) return { ask: waiting, fromEpisode: false };
+    const reason = (handoff as { reason?: unknown } | null | undefined)?.reason;
+    const episode = typeof reason === 'string' ? returnAskOf(reason) : null;
+    return { ask: episode, fromEpisode: !!episode };
 }
 
 /**
@@ -103,11 +124,13 @@ const NOTE_TITLE: Record<Exclude<ReturnAsk, never>, string> = {
 };
 
 /** The internal follow-up the team sees when the customer's request went unanswered. */
-export function returnNoteTask(ask: ReturnAsk, waitingText: string): { title: string; description: string } {
-    const excerpt = String(waitingText || '').replace(/\s+/g, ' ').trim().slice(0, 400);
+export function returnNoteTask(ask: ReturnAsk, text: string, fromEpisode = false): { title: string; description: string } {
+    const excerpt = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 400);
     return {
         title: NOTE_TITLE[ask],
-        description: `Escribió mientras nadie del equipo atendía y el agente retomó la conversación: «${excerpt}»`,
+        description: fromEpisode
+            ? `Pidió atención humana y nadie del equipo respondió; el agente retomó la conversación.${excerpt ? ` Su solicitud: «${excerpt}»` : ''}`
+            : `Escribió mientras nadie del equipo atendía y el agente retomó la conversación: «${excerpt}»`,
     };
 }
 
@@ -119,7 +142,10 @@ export function returnNoteTask(ask: ReturnAsk, waitingText: string): { title: st
  * (no time promised); otherwise the rest of the answer stands on its own.
  */
 export function rewriteReplayPromise(response: string, lang: string | undefined, noteLeft: boolean): string {
-    const kept = removeHandoffPromiseSentences(response);
+    const kept = removePersonTransferSentences(response);
+    // Nothing in it names a transfer or an offer of a person (staff «will attend you on Saturday» is
+    // an answer, not a handoff): the reply stands exactly as the model wrote it.
+    if (response.trim() && kept === response.trim()) return response;
     const note = noteLeft ? pick(NOTE_LEFT, lang) : '';
     return [kept, note].filter(Boolean).join('\n\n') || pick(TEAM_UNAVAILABLE, lang);
 }
@@ -163,4 +189,94 @@ export const isPureHandoffTool = (name: unknown): boolean => typeof name === 'st
 /** The tools offered to the model on a replay turn. */
 export function toolsForReplay<T extends { name?: unknown; function?: { name?: unknown } }>(tools: readonly T[]): T[] {
     return tools.filter(tool => !isPureHandoffTool(tool?.name ?? tool?.function?.name));
+}
+
+/**
+ * What makes a sentence a transfer, a connection or a contact BY a person: the verbs of handing the
+ * conversation over or of somebody reaching out. A sentence that merely says staff will serve the
+ * customer at a time ("nuestro equipo de estilistas le atenderá el sábado", "our team will be with
+ * you on Saturday") is an answer about the service and does not match.
+ */
+const PERSON_CONTACT = new RegExp([
+    // es
+    'transfer', 'pase con', 'paso con', 'pasar(?:le|lo|la|te)? con', 'conect', 'comunic', 'contact', 'contat',
+    'poner(?:se|le|lo|la)? en contacto', 'pondra en contacto', '\\bllam(?:ar|ara|are|aremos|o)\\b', 'escrib(?:ir|ira|iremos)',
+    'deriv', 'encamin', 'remit',
+    // en
+    'reach out', 'get back to you', 'put you (?:through|in touch)', 'hand you', 'pass you', 'call you', 'text you',
+    'message you', 'email you',
+    // pt / fr
+    'entrar\\w* em contato', 'ligar', 'mettre en relation', 'rappel', 'appel',
+].join('|'));
+
+/** An offer in question or conditional form ("¿quiere que le pase…?", "si quiere, le paso…"). */
+const OFFER_FRAME = /(?:\b(?:si (?:lo |le |te )?(?:quiere|desea|prefiere|gusta)|if you (?:would )?(?:like|want|prefer)|se (?:voce )?(?:quiser|preferir|desejar)|si vous (?:voulez|souhaitez))\b)/;
+
+/**
+ * «Un asesor le atenderá en breve»: a person will attend the customer, and soon. After telling the
+ * customer that nobody from the team is available this is the same false promise as a transfer, only
+ * worded as service. What makes it one is the imminence («en breve», «enseguida», «shortly», «em
+ * breve»…): the same promise with a date («en su cita del martes a las 3», «el sábado de 9 a 6») is an
+ * answer about the service and stays.
+ */
+const PERSON_SUBJECT = /\b(?:asesor|asesora|agente|equipo|especialista|alguien|persona|atendente|equipe|alguem|pessoa|conseiller|conseillere|personne|team|agent|advisor|specialist|colleague|representative|staff|someone|person)\b/;
+const ATTENTION_PROMISE = /\b(?:atendera|atenderan|respondera|responderan|ayudara|ayudaran|will be with you|will (?:attend|assist|help|reply|answer|respond)|vai (?:te |lhe |o |a )?(?:atender|responder|ajudar)|vao (?:atender|responder|ajudar)|vous (?:repondra|aidera|prendra en charge)|sera avec vous)\b/;
+const IMMINENT = /\b(?:en breve|pronto|enseguida|en un momento|ahora mismo|de inmediato|shortly|soon|right away|in a moment|em breve|logo|ja|bientot|sous peu|tout de suite)\b/;
+
+/**
+ * Does this sentence offer a person, or promise that a person will take the customer over or
+ * contact them? Questions and conditional offers of a person always do; a statement does only
+ * when it also names the transfer/contact itself.
+ */
+function namesPersonTransfer(sentence: string): boolean {
+    const text = normalizeForIntent(sentence);
+    if (offersHumanHandoff(sentence) && (/[?\u00bf]/.test(sentence) || OFFER_FRAME.test(text))) return true;
+    if (PERSON_SUBJECT.test(text) && ATTENTION_PROMISE.test(text) && IMMINENT.test(text)) return true;
+    return promisesHumanHandoff(sentence) && PERSON_CONTACT.test(text);
+}
+
+/**
+ * The reply without the sentences that OFFER a person from the team ("¿Quiere que le pase con
+ * alguien del equipo para que le confirme?") or promise that one will take over or get in touch
+ * ("un asesor se comunicará con usted"). On a replay the customer has just been told nobody is
+ * available: offering or promising a person invites a "sí" that starts another handoff and another
+ * wait. Everything else the agent said stays, line breaks included. A sentence that is dropped but
+ * also states a figure, an hour or a date keeps the clauses that carry it.
+ */
+export function removePersonTransferSentences(reply: string): string {
+    const parts = reply.split(/((?<=[.!?])[ \t]+|\n+)/);
+    let out = '';
+    let pendingSeparator = '';
+    for (let i = 0; i < parts.length; i += 2) {
+        const sentence = parts[i];
+        const separator = parts[i + 1] ?? '';
+        let kept: string | null = sentence;
+        if (sentence.trim() && namesPersonTransfer(sentence)) {
+            const withData = sentence.split(/(?<=,)\s+|\s+(?:y|and|e|et)\s+/)
+                .filter(clause => !namesPersonTransfer(clause) && /\d/.test(clause))
+                .join(', ').replace(/[.!?,;:\s]+$/, '');
+            // One terminal full stop, and a capital letter: the clause was the middle of a sentence.
+            kept = withData ? `${withData.charAt(0).toUpperCase()}${withData.slice(1)}.` : null;
+        }
+        if (kept === null || !kept.trim()) {
+            pendingSeparator = pendingSeparator.includes('\n') ? pendingSeparator : separator.includes('\n') ? separator : pendingSeparator;
+            continue;
+        }
+        out += (out ? (pendingSeparator || ' ') : '') + kept;
+        pendingSeparator = separator;
+    }
+    return out.trim();
+}
+/** The same function under the name its first callers used. */
+export const removeHumanOfferSentences = removePersonTransferSentences;
+
+/**
+ * The model's reply on a replay turn: any offer of a person and any promise of a transfer or contact
+ * is taken out (see `rewriteReplayPromise`); an ordinary answer is returned as it is.
+ */
+export function sanitizeReplayReply(response: string, lang: string | undefined, noteLeft: boolean): string {
+    // Not gated by the generic detectors: «Um atendente vai te atender em breve» or «Someone from the
+    // team will assist you right away» are promises of a person none of them reads. The sentence
+    // check inside decides, and a reply with nothing to remove comes back as it was.
+    return response.trim() ? rewriteReplayPromise(response, lang, noteLeft) : response;
 }

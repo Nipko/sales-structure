@@ -22,22 +22,22 @@ type NoticeCatalog = Record<HandoffNoticeLanguage, string>;
 
 /** Kept identical to the conversation runtime copy, which imports these. */
 export const HANDOFF_QUEUE_HEAD: NoticeCatalog = Object.freeze({
-    es: 'Entiendo tu solicitud. Te estoy transfiriendo con nuestro equipo de atención. Un agente te responderá en breve. 🙋',
+    es: 'Entiendo su solicitud. Le estoy transfiriendo con nuestro equipo de atención. Un agente le responderá en breve. 🙋',
     en: `Got it. I'm transferring you to our support team. An agent will reply shortly. 🙋`,
-    pt: 'Entendi. Estou te transferindo para nossa equipe de atendimento. Um atendente responderá em breve. 🙋',
+    pt: 'Entendi a sua solicitação. Estou transferindo você para a nossa equipe de atendimento. Um atendente responderá em breve. 🙋',
     fr: 'Compris. Je vous transfère à notre équipe support. Un agent vous répondra sous peu. 🙋',
 });
 
 export const HANDOFF_TRANSFERRING: NoticeCatalog = Object.freeze({
-    es: 'Te voy a transferir con un agente de nuestro equipo.',
+    es: 'Le voy a transferir con un agente de nuestro equipo.',
     en: `I'll transfer you to an agent from our team.`,
-    pt: 'Vou te transferir para um atendente da nossa equipe.',
+    pt: 'Vou transferir você para um atendente da nossa equipe.',
     fr: 'Je vais vous transférer à un agent de notre équipe.',
 });
 
 /** Already used by the approved-effect handoff; shared so both paths agree. */
 export const HANDOFF_INBOX_NOTICE: NoticeCatalog = Object.freeze({
-    es: 'Tu conversación quedó en la bandeja de atención. Una persona podrá continuar por este chat.',
+    es: 'Su conversación quedó en la bandeja de atención. Una persona podrá continuar por este chat.',
     en: 'Your conversation is in the support inbox. A person can continue with you in this chat.',
     pt: 'Sua conversa está na caixa de atendimento. Uma pessoa poderá continuar por este chat.',
     fr: 'Votre conversation est dans la boîte de réception du service client. Une personne pourra continuer dans ce chat.',

@@ -128,6 +128,7 @@ describe('offersHumanHandoff names a PERSON, not any "team" word (H8)', () => {
     });
     it.each([
         '¿Quieres que le pida a una persona del equipo que lo confirme?',
+        '¿Quiere que le pida a una persona del equipo que lo confirme?',
         '¿Le gustaría que alguien del equipo lo contacte?',
         '¿Desea que lo comunique con un asesor?',
         'Would you like me to ask someone from the team?',

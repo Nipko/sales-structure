@@ -2,6 +2,7 @@ import {
     HANDOFF_NOTICE_KINDS, HANDOFF_NOTICE_LANGUAGES,
     handoffNoticeLanguage, handoffNoticeText, isHandoffNoticeKind,
 } from './handoff-notice';
+import { widgetHandoffNotice } from '../widget/widget-handoff-messages';
 
 describe('Deterministic handoff notice catalogue', () => {
     it('ships every notice kind in the four supported languages', () => {
@@ -41,6 +42,14 @@ describe('Deterministic handoff notice catalogue', () => {
         // would silently change what a transferred customer reads.
         expect(handoffNoticeText('queue_head', 'es')).toContain('Un agente le responderá en breve');
         expect(handoffNoticeText('transferring', 'es')).toBe('Le voy a transferir con un agente de nuestro equipo.');
+    });
+
+    it('the web chat notice agrees with the catalogue one, word for word, in every language', () => {
+        for (const lang of ['es', 'en', 'pt', 'fr'] as const) {
+            expect(widgetHandoffNotice(lang)).toBe(handoffNoticeText('inbox_notice', lang));
+        }
+        expect(widgetHandoffNotice('es')).toBe('Su conversación quedó en la bandeja de atención. Una persona podrá continuar por este chat.');
+        expect(widgetHandoffNotice(undefined)).toBe(widgetHandoffNotice('es'));
     });
 
     it('speaks to the customer with usted in Spanish, and without the colloquial «te» in Portuguese', () => {

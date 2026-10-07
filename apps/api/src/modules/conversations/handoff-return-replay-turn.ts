@@ -213,6 +213,17 @@ const PERSON_CONTACT = new RegExp([
 const OFFER_FRAME = /(?:\b(?:si (?:lo |le |te )?(?:quiere|desea|prefiere|gusta)|if you (?:would )?(?:like|want|prefer)|se (?:voce )?(?:quiser|preferir|desejar)|si vous (?:voulez|souhaitez))\b)/;
 
 /**
+ * «Un asesor le atenderá en breve»: a person will attend the customer, and soon. After telling the
+ * customer that nobody from the team is available this is the same false promise as a transfer, only
+ * worded as service. What makes it one is the imminence («en breve», «enseguida», «shortly», «em
+ * breve»…): the same promise with a date («en su cita del martes a las 3», «el sábado de 9 a 6») is an
+ * answer about the service and stays.
+ */
+const PERSON_SUBJECT = /\b(?:asesor|asesora|agente|equipo|especialista|alguien|persona|atendente|equipe|alguem|pessoa|conseiller|conseillere|personne|team|agent|advisor|specialist|colleague|representative|staff|someone|person)\b/;
+const ATTENTION_PROMISE = /\b(?:atendera|atenderan|respondera|responderan|ayudara|ayudaran|will be with you|will (?:attend|assist|help|reply|answer|respond)|vai (?:te |lhe |o |a )?(?:atender|responder|ajudar)|vao (?:atender|responder|ajudar)|vous (?:repondra|aidera|prendra en charge)|sera avec vous)\b/;
+const IMMINENT = /\b(?:en breve|pronto|enseguida|en un momento|ahora mismo|de inmediato|shortly|soon|right away|in a moment|em breve|logo|ja|bientot|sous peu|tout de suite)\b/;
+
+/**
  * Does this sentence offer a person, or promise that a person will take the customer over or
  * contact them? Questions and conditional offers of a person always do; a statement does only
  * when it also names the transfer/contact itself.
@@ -220,6 +231,7 @@ const OFFER_FRAME = /(?:\b(?:si (?:lo |le |te )?(?:quiere|desea|prefiere|gusta)|
 function namesPersonTransfer(sentence: string): boolean {
     const text = normalizeForIntent(sentence);
     if (offersHumanHandoff(sentence) && (/[?\u00bf]/.test(sentence) || OFFER_FRAME.test(text))) return true;
+    if (PERSON_SUBJECT.test(text) && ATTENTION_PROMISE.test(text) && IMMINENT.test(text)) return true;
     return promisesHumanHandoff(sentence) && PERSON_CONTACT.test(text);
 }
 
@@ -242,8 +254,9 @@ export function removePersonTransferSentences(reply: string): string {
         if (sentence.trim() && namesPersonTransfer(sentence)) {
             const withData = sentence.split(/(?<=,)\s+|\s+(?:y|and|e|et)\s+/)
                 .filter(clause => !namesPersonTransfer(clause) && /\d/.test(clause))
-                .join(', ').replace(/[,;:\s]+$/, '');
-            kept = withData ? `${withData}.` : null;
+                .join(', ').replace(/[.!?,;:\s]+$/, '');
+            // One terminal full stop, and a capital letter: the clause was the middle of a sentence.
+            kept = withData ? `${withData.charAt(0).toUpperCase()}${withData.slice(1)}.` : null;
         }
         if (kept === null || !kept.trim()) {
             pendingSeparator = pendingSeparator.includes('\n') ? pendingSeparator : separator.includes('\n') ? separator : pendingSeparator;
@@ -262,7 +275,8 @@ export const removeHumanOfferSentences = removePersonTransferSentences;
  * is taken out (see `rewriteReplayPromise`); an ordinary answer is returned as it is.
  */
 export function sanitizeReplayReply(response: string, lang: string | undefined, noteLeft: boolean): string {
-    return promisesHumanHandoff(response) || offersHumanHandoff(response)
-        ? rewriteReplayPromise(response, lang, noteLeft)
-        : response;
+    // Not gated by the generic detectors: «Um atendente vai te atender em breve» or «Someone from the
+    // team will assist you right away» are promises of a person none of them reads. The sentence
+    // check inside decides, and a reply with nothing to remove comes back as it was.
+    return response.trim() ? rewriteReplayPromise(response, lang, noteLeft) : response;
 }

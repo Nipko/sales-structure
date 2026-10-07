@@ -317,6 +317,37 @@ describe('the replay sanitiser keeps what is an answer', () => {
         expect(out).toBe('Atendemos de lunes a viernes.');
     });
 
+    it.each([
+        ['es', 'Un asesor le atenderá en breve.'],
+        ['es', 'Un agente le atenderá enseguida.'],
+        ['es', 'Nuestro equipo le atenderá pronto.'],
+        ['en', 'An agent will be with you shortly.'],
+        ['pt', 'Um atendente vai te atender em breve.'],
+        ['es', 'Una persona del equipo le atenderá ahora mismo.'],
+        ['en', 'Someone from the team will assist you right away.'],
+        ['fr', 'Un conseiller vous répondra bientôt.'],
+    ])('removes the imminent promise of a person «%s» «%s» (right after «nobody is available»)', (lang, promise) => {
+        const out = sanitizeReplayReply(`Atendemos de lunes a viernes. ${promise}`, lang, false);
+        expect(out).toBe('Atendemos de lunes a viernes.');
+        expect(sanitizeReplayReply(promise, lang, false)).toBe(rewriteReplayPromise(promise, lang, false));
+        expect(sanitizeReplayReply(promise, lang, false)).not.toBe(promise);
+    });
+
+    it.each([
+        ['es', 'Un especialista lo atenderá en su cita del martes a las 3.'],
+        ['es', 'Nuestro equipo de estilistas le atenderá con gusto el sábado de 9 a 6.'],
+        ['en', 'Our team of stylists will be with you on Saturday.'],
+        ['en', 'Your order will be with you soon.'],
+    ])('keeps the DATED (or non-person) promise «%s» «%s»', (lang, text) => {
+        expect(sanitizeReplayReply(text, lang, true)).toBe(text);
+    });
+
+    it('a kept clause ends with ONE full stop and starts with a capital', () => {
+        expect(sanitizeReplayReply('Un asesor se comunicará con usted mañana a las 10 y el costo es 50.', 'es', false)).toBe('El costo es 50.');
+        expect(sanitizeReplayReply('Un asesor se comunicará con usted, el costo es 50.', 'es', false)).toBe('El costo es 50.');
+        expect(sanitizeReplayReply('Un asesor se comunicará con usted y la cita es a las 10!', 'es', false)).toBe('La cita es a las 10.');
+    });
+
     it('keeps the figure a dropped sentence carried', () => {
         expect(sanitizeReplayReply('Su cita es el martes a las 3, un asesor se comunicará con usted.', 'es', false))
             .toBe('Su cita es el martes a las 3.');

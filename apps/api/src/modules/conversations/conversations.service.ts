@@ -41,7 +41,8 @@ import {
 import { burstBufferKeys } from './burst-debounce-key';
 import { foldedContent, fragmentFor, mergeBurst, type BurstFragment } from './burst-fragments';
 import {
-    isBareConsent, returnAskOf, returnNoteTask, returnReplayTurn, rewriteReplayPromise, staleConsentReply,
+    budgetExhaustedReplayText, BUDGET_EXHAUSTED_REPLAY_MSG, isBareConsent, returnAskOf, returnNoteTask, returnReplayTurn,
+    rewriteReplayPromise, staleConsentReply, toolsForReplay,
     type ReturnAsk,
 } from './handoff-return-replay-turn';
 import { TasksService } from '../crm/services/tasks/tasks.service';
@@ -130,7 +131,6 @@ import {
     ASYNC_GATED_TOOL_NAMES,
     getToolPolicy,
     isBusinessWriteTool,
-    toolHasHandoffEffect,
     isConfirmableWriteTool,
     isDraftProposableToolName,
     isNonCommittalTool,
@@ -229,7 +229,7 @@ const ERROR_FALLBACK_MSG: Record<string, string> = {
 };
 const errorFallbackText = (lang?: string) =>
     ERROR_FALLBACK_MSG[(lang || 'es').slice(0, 2).toLowerCase()] || ERROR_FALLBACK_MSG.es;
-const ERROR_FALLBACK_VALUES = new Set(Object.values(ERROR_FALLBACK_MSG));
+const ERROR_FALLBACK_VALUES = new Set([...Object.values(ERROR_FALLBACK_MSG), ...Object.values(BUDGET_EXHAUSTED_REPLAY_MSG)]);
 /** True when a pipeline result IS the error fallback (in any supported language). */
 const isErrorFallback = (text?: string | null): boolean => !!text && ERROR_FALLBACK_VALUES.has(text);
 
@@ -396,7 +396,7 @@ function isSystemFixedText(text: string): boolean {
     if (!t) return false;
     const fixed = [
         ...Object.values(UNVERIFIED_CLAIM_FALLBACK), ...Object.values(NO_DATA_WAIT_REPLACEMENT), ...Object.values(NO_DATA_NO_OFFER),
-        ...Object.values(PARTIAL_SUCCESS_MSG), ...Object.values(BUDGET_EXHAUSTED_MSG),
+        ...Object.values(PARTIAL_SUCCESS_MSG), ...Object.values(BUDGET_EXHAUSTED_MSG), ...Object.values(BUDGET_EXHAUSTED_REPLAY_MSG),
         ...Object.values(HANDOFF_MSG).flatMap(h => [h.transferring, h.unavailable, h.queueHead]),
         ...Object.values(HANDOFF_RETURN_MSG),
     ];
@@ -1625,7 +1625,7 @@ export class ConversationsService {
         if (this.turnLedger && priorTurn) {
             await this.turnLedger.recordOutcome(schemaName, ledgerInboundId, decision.outcome);
         }
-        if (decision.route) {
+        if (decision.route && !replayTurn) {
             // Not silence. Asking a third time for a datum two turns have failed
             // to collect is the loop; falling quiet instead is the same dead end
             // without the charge. So the conversation changes hands AND the
@@ -3426,7 +3426,7 @@ export class ConversationsService {
                 // unavailable. The model still receives writes=blocked, but we
                 // do not claim an operation succeeded.
                 this.logger.error(`[Capability] deterministic handoff failed (${reason}): ${error?.message}`);
-                engineProducedText = handoffText(userLanguage).unavailable;
+                if (!handoffReturn) engineProducedText = handoffText(userLanguage).unavailable;
             }
         }
 
@@ -3647,7 +3647,7 @@ export class ConversationsService {
                                 userLanguage, inboundMessageId, replyProvenance);
                         } catch (e: any) {
                             this.logger.warn(`[Booking] authority handoff failed: ${e.message}`);
-                            engineProducedText = handoffText(userLanguage).unavailable;
+                            if (!handoffReturn) engineProducedText = handoffText(userLanguage).unavailable;
                         }
                     }
                 }
@@ -3769,7 +3769,7 @@ export class ConversationsService {
                     // about it. `escalateToHuman` never returns a flowMessage, so the
                     // Flow short-circuit above can't skip this.
                     if (engineResult.handoff) {
-                        if (!engineProducedText) engineProducedText = handoffText(userLanguage).transferring;
+                        if (!engineProducedText && !handoffReturn) engineProducedText = handoffText(userLanguage).transferring;
                         try {
                             if (!allowHumanHandoff) throw new Error('human_delivery_unavailable');
                             await this.escalateWithinTurn(tenantId, conversation, msg,
@@ -3777,7 +3777,7 @@ export class ConversationsService {
                                 userLanguage, inboundMessageId, replyProvenance);
                         } catch (e: any) {
                             this.logger.warn(`[Booking] handoff failed: ${e.message}`);
-                            engineProducedText = handoffText(userLanguage).unavailable;
+                            if (!handoffReturn) engineProducedText = handoffText(userLanguage).unavailable;
                         }
                     }
                 } else {
@@ -3846,7 +3846,7 @@ export class ConversationsService {
                     tools = [];
                     if (procResult.text) engineProducedText = procResult.text;
                     if (procResult.handoff) {
-                        if (!engineProducedText) engineProducedText = handoffText(userLanguage).transferring;
+                        if (!engineProducedText && !handoffReturn) engineProducedText = handoffText(userLanguage).transferring;
                         try {
                             if (!allowHumanHandoff) throw new Error('human_delivery_unavailable');
                             await this.escalateWithinTurn(tenantId, conversation, msg,
@@ -3854,7 +3854,7 @@ export class ConversationsService {
                                 userLanguage, inboundMessageId, replyProvenance);
                         } catch (e: any) {
                             this.logger.warn(`[Procedure] handoff failed: ${e.message}`);
-                            engineProducedText = handoffText(userLanguage).unavailable;
+                            if (!handoffReturn) engineProducedText = handoffText(userLanguage).unavailable;
                         }
                     }
                     this.logger.log(`[Procedure] handled (proc="${procResult.procedureName}", completed=${!!procResult.completed}, handoff=${!!procResult.handoff})`);
@@ -4148,9 +4148,10 @@ export class ConversationsService {
         // above re-adds tools from the agent's feature flags, overriding the
         // `tools = []` set in the express phase, so enforce it as the last word.
         if (engineProducedText) tools = [];
-        // The replay never transfers: a tool whose success ends with a person taking the
-        // conversation over is not offered for this one turn (the customer can ask again).
-        if (handoffReturn) tools = tools.filter(tool => !toolHasHandoffEffect(tool?.name ?? tool?.function?.name));
+        // The replay never transfers. The tools that MAY end in a handoff (payment link, claim,
+        // emergency triage…) stay: their handoff only happens through the post-tool path, which is
+        // off for this turn. Only a tool whose sole effect is handing off is withheld.
+        if (handoffReturn) tools = toolsForReplay(tools);
         if (draftMode) tools = tools.filter(tool => {
             const name = tool?.name ?? tool?.function?.name;
             return isAgentTestSafeToolName(name) || (!!draftScope && isDraftProposableToolName(name));
@@ -5175,7 +5176,9 @@ export class ConversationsService {
                         tenantId, conversationId: conversation.id, at: new Date(),
                     });
                 } catch { /* avisar no puede romper el turno */ }
-                if (!session) {
+                // On the replay of an unattended handoff the conversation has just come back from the
+                // queue: it is not sent there again, and the text must not promise that it was.
+                if (!session && !handoffReturn) {
                     await this.handoffService
                         .executeHandoff(tenantId, conversation.id, msg, 'llm_budget_exhausted')
                         .catch((handoffError: any) => this.logger.error(
@@ -5183,7 +5186,7 @@ export class ConversationsService {
                         ));
                 }
                 try { if (session) session.trace.steps.push(turnTrace.toEvent()); else this.eventEmitter.emit('llm.turn.steps', turnTrace.toEvent()); } catch { /* ignore */ }
-                return budgetExhaustedText(userLanguage);
+                return handoffReturn ? budgetExhaustedReplayText(userLanguage) : budgetExhaustedText(userLanguage);
             }
 
             // Increment failed attempts for handoff threshold
@@ -6728,6 +6731,10 @@ export class ConversationsService {
         if (!PERSISTED_ID.test(inboundMessageId)) return false;
         const run = (sql: string, params: any[]) => this.prisma.executeInTenantSchema<any[]>(schemaName, sql, params);
         const hasOutbox = await hasDispatchOutbox(run, schemaName);
+        // Older tenant schemas lack `origin_kind`; there every durable row is a reply.
+        const hasOriginKind = hasOutbox && !!(await run(
+            `SELECT 1 FROM information_schema.columns
+              WHERE table_schema = current_schema() AND table_name = 'agent_dispatch_outbox' AND column_name = 'origin_kind'`, []))?.length;
         // Only a reply to the customer counts: one written by a person, or by the agent. A
         // reminder, a campaign or an automation sent meanwhile answers nobody, and letting it
         // stand in for the answer left the customer in silence with the notice still pending.
@@ -6744,7 +6751,9 @@ export class ConversationsService {
                              WHERE x.conversation_id = c.id AND o.direction = 'outbound'
                                AND c.metadata->'handoff'->>'returnReplayClaimedAt' IS NOT NULL
                                AND o.created_at > ${claimedAt}
-                               AND x.operational_scope->>'kind' IN ('agent', 'legacy', 'human_operator'))` : '');
+                               AND (x.operational_scope->>'kind' = 'human_operator'
+                                    OR (x.operational_scope->>'kind' IN ('agent', 'legacy')
+                                        ${hasOriginKind ? "AND x.origin_kind <> 'proactive'" : ''})))` : '');
         const rows = await run(
             `SELECT COALESCE(c.metadata->'handoff'->>'returnNoticePending', 'false') AS pending,
                     EXISTS (SELECT 1 FROM messages n
@@ -6809,6 +6818,11 @@ export class ConversationsService {
                 }));
             if (notified.length) {
                 left = true;
+            }
+            // The live inbox alert is the SLA escalation's own: when that one already fired for this
+            // handoff (`handoff.escalated`), a second badge would only repeat it.
+            const alreadyAlerted = String(input.conversation?.metadata?.handoff?.escalated) === 'true';
+            if (notified.length && !alreadyAlerted) {
                 this.eventEmitter.emit('handoff.escalated_supervisor', {
                     tenantId, conversationId: String(input.conversation.id), contactId,
                     contactName: input.contact?.name || input.contact?.external_id || 'Unknown',

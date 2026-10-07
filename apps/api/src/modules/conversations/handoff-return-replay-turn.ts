@@ -1,6 +1,5 @@
 import { normalizeCustomerIntent } from '../../common/conversation/intent-normalizer';
 import { removeHandoffPromiseSentences } from '../../common/utils/outcome-claim.util';
-import { noDataNoOfferText } from './human-offer';
 
 /**
  * ═══ THE TURN THAT ANSWERS WHAT THE CUSTOMER WROTE WHILE NOBODY ANSWERED ═══
@@ -122,5 +121,46 @@ export function returnNoteTask(ask: ReturnAsk, waitingText: string): { title: st
 export function rewriteReplayPromise(response: string, lang: string | undefined, noteLeft: boolean): string {
     const kept = removeHandoffPromiseSentences(response);
     const note = noteLeft ? pick(NOTE_LEFT, lang) : '';
-    return [kept, note].filter(Boolean).join('\n\n') || noDataNoOfferText(lang);
+    return [kept, note].filter(Boolean).join('\n\n') || pick(TEAM_UNAVAILABLE, lang);
+}
+
+/** What stands in for a reply that was nothing but a promise of a transfer. */
+const TEAM_UNAVAILABLE: Record<string, string> = {
+    es: 'En este momento el equipo no está disponible; con gusto le ayudo mientras tanto.',
+    en: 'The team is not available right now; I am happy to help you in the meantime.',
+    pt: 'Neste momento a equipe não está disponível; terei prazer em ajudar enquanto isso.',
+    fr: "L'équipe n'est pas disponible pour le moment ; je vous aide volontiers en attendant.",
+};
+
+/**
+ * The monthly model budget ran out while answering a replay. The ordinary text promises that a
+ * person will be told, which the replay cannot keep (it never transfers), so this one only says
+ * the truth. It is a fixed system text, not an answer: the return notice ("I keep helping you")
+ * is NOT put in front of it.
+ */
+export const BUDGET_EXHAUSTED_REPLAY_MSG: Record<string, string> = {
+    es: 'En este momento no puedo atenderle por este medio automático. Le pedimos que vuelva a escribirnos más tarde.',
+    en: 'I cannot help you through this automatic channel right now. Please write to us again later.',
+    pt: 'Neste momento não consigo atendê-lo por este meio automático. Por favor, escreva novamente mais tarde.',
+    fr: 'Je ne peux pas vous répondre par ce canal automatique pour le moment. Merci de nous écrire à nouveau plus tard.',
+};
+export const budgetExhaustedReplayText = (lang?: string): string =>
+    pick(BUDGET_EXHAUSTED_REPLAY_MSG, lang);
+
+/**
+ * Tools whose only effect is to hand the conversation to a person. None is registered today
+ * (handoffs reach a person through the post-tool path, the promise path and the engines, all of
+ * which the replay turn disables), so this is a guard for the day one appears: the replay must
+ * not offer the model a way back into the queue. Tools that merely MAY end in a handoff
+ * (payment links, claims, emergency triage…) stay available: what they do first is the answer.
+ */
+const PURE_HANDOFF_TOOLS: ReadonlySet<string> = new Set([
+    'request_human', 'escalate_to_human', 'handoff_to_human', 'transfer_to_human', 'transfer_to_agent',
+    'connect_to_human', 'talk_to_human', 'escalate_conversation', 'handoff',
+]);
+export const isPureHandoffTool = (name: unknown): boolean => typeof name === 'string' && PURE_HANDOFF_TOOLS.has(name);
+
+/** The tools offered to the model on a replay turn. */
+export function toolsForReplay<T extends { name?: unknown; function?: { name?: unknown } }>(tools: readonly T[]): T[] {
+    return tools.filter(tool => !isPureHandoffTool(tool?.name ?? tool?.function?.name));
 }

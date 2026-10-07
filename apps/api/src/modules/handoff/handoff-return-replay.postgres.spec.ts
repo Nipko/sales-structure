@@ -73,7 +73,8 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             direction TEXT, content_type TEXT DEFAULT 'text', content_text TEXT, media_url TEXT, media_mime_type TEXT,
             caption TEXT, external_id VARCHAR(255), metadata JSONB DEFAULT '{}', created_at TIMESTAMP DEFAULT NOW())`);
         await sql(`CREATE TABLE agent_dispatch_outbox(id UUID PRIMARY KEY DEFAULT gen_random_uuid(), conversation_id UUID,
-            message_id UUID, operational_scope JSONB NOT NULL DEFAULT '{}', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
+            message_id UUID, operational_scope JSONB NOT NULL DEFAULT '{}', origin_kind TEXT NOT NULL DEFAULT 'inbound_reply',
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
         await sql('INSERT INTO contacts(id, external_id) VALUES($1::uuid, $2)', [contactId, '555000']);
         queue = { enqueue: jest.fn().mockResolvedValue(undefined) };
         redis = { del: jest.fn().mockResolvedValue(1) };
@@ -234,10 +235,10 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         const outbound = (id: string, metadata: object = {}) => sql(
             `INSERT INTO messages(conversation_id, direction, content_text, metadata, created_at)
              VALUES($1::uuid, 'outbound', 'x', $2::jsonb, NOW()) RETURNING id`, [id, JSON.stringify(metadata)]);
-        const viaOutbox = async (id: string, kind: string) => {
+        const viaOutbox = async (id: string, kind: string, originKind = 'inbound_reply') => {
             const [m] = await outbound(id);
-            await sql(`INSERT INTO agent_dispatch_outbox(conversation_id, message_id, operational_scope) VALUES($1::uuid, $2::uuid, $3::jsonb)`,
-                [id, m.id, JSON.stringify({ kind })]);
+            await sql(`INSERT INTO agent_dispatch_outbox(conversation_id, message_id, operational_scope, origin_kind) VALUES($1::uuid, $2::uuid, $3::jsonb, $4)`,
+                [id, m.id, JSON.stringify({ kind }), originKind]);
         };
 
         beforeAll(() => { (conversations as any).prisma = prisma; });
@@ -255,6 +256,26 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             const { id, inbound } = await claimed();
             await viaOutbox(id, 'proactive_policy');
             expect(await stale(id, inbound)).toBe(false);
+        });
+        it('a proactive send under the agent\'s scope (the payment outcome notifier) answers nobody: not stale', async () => {
+            const { id, inbound } = await claimed();
+            await viaOutbox(id, 'agent', 'proactive');
+            expect(await stale(id, inbound)).toBe(false);
+        });
+        it('a person\'s console reply is a reply even though it is its own proactive-origin effect: stale', async () => {
+            const { id, inbound } = await claimed();
+            await viaOutbox(id, 'human_operator', 'proactive');
+            expect(await stale(id, inbound)).toBe(true);
+        });
+        it('on a schema that predates origin_kind every durable agent row is a reply: stale', async () => {
+            const { id, inbound } = await claimed();
+            await viaOutbox(id, 'agent', 'proactive');
+            await sql('ALTER TABLE agent_dispatch_outbox DROP COLUMN origin_kind');
+            try {
+                expect(await stale(id, inbound)).toBe(true);
+            } finally {
+                await sql(`ALTER TABLE agent_dispatch_outbox ADD COLUMN origin_kind TEXT NOT NULL DEFAULT 'inbound_reply'`);
+            }
         });
         it('an outbound row with no author at all (an automation) answers nobody: not stale', async () => {
             const { id, inbound } = await claimed();

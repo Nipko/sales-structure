@@ -800,9 +800,3 @@ export function getMissingToolControls(): Array<{
         return missing.length ? [{ name, missing }] : [];
     });
 }
-
-/** Does executing this tool end with a person taking the conversation over? */
-export function toolHasHandoffEffect(name: unknown): boolean {
-    const policy = getToolPolicy(name);
-    return !!policy && policy.downstreamEffects.includes('handoff');
-}

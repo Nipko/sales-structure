@@ -1,6 +1,7 @@
 import { ConversationsService } from './conversations.service';
 import { DEFAULT_PIPELINE_STAGES, PipelineService, TenantStageMapping } from '../pipeline/pipeline.service';
 import { containsHumanOffer, HUMAN_OFFER_QUESTION, offerInsteadOfPromise, withReturnNotice } from './human-offer';
+import { budgetExhaustedReplayText } from './handoff-return-replay-turn';
 
 /**
  * Behavior of the two customer-facing notices around an unattended handoff,
@@ -505,5 +506,59 @@ describe('the replay: opt-out per line, and the team actually sees the request',
         const { service, message, events } = build({ text: '¿hasta qué hora atienden?', reason: null });
         await service.runTurn(message);
         expect(events.emit).not.toHaveBeenCalled();
+    });
+});
+
+describe('the replay: one alert per episode, and a budget text that is not an answer', () => {
+    const claimed = {
+        startedAt: '2026-10-05T20:00:00Z', returnedToAi: true, returnNoticePending: true,
+        returnReplayFor: '2026-10-05T20:00:00Z', returnReplayClaimedAt: '2026-10-05T20:10:00Z',
+    };
+    function build(over: { escalated?: boolean; reply?: string } = {}) {
+        const f = fixture({ status: 'active', handoff: { ...claimed, ...(over.escalated ? { escalated: 'true' } : {}) },
+            text: 'necesito hablar con un asesor' });
+        const service: any = f.service;
+        service.prisma.transactionInTenantSchema = jest.fn(async (_s: string, cb: (q: any) => Promise<unknown>) =>
+            cb(async (sql: string) => sql.includes('INSERT INTO operational_notice_outbox') ? [{ id: 'n1' }] : []));
+        const events = { emit: jest.fn() };
+        Object.assign(service, {
+            eventEmitter: events,
+            saveMessage: jest.fn().mockResolvedValue({ id: '88888888-8888-4888-8888-888888888888', duplicate: true }),
+            dispatchOutbox: { findBatchForInbound: jest.fn().mockResolvedValue(null), publishBatch: jest.fn() },
+            outboundQueue: { enqueueDispatch: jest.fn().mockResolvedValue(undefined) },
+            handoffService: {
+                isInHandoff: jest.fn().mockResolvedValue(false),
+                shouldHandoff: jest.fn().mockReturnValue('human_request'),
+                executeHandoff: jest.fn(),
+            },
+            complianceService: { detectOptOut: jest.fn().mockReturnValue(false), processOptOut: jest.fn() },
+        });
+        if (over.reply) service.generateResponse.mockResolvedValue(over.reply);
+        f.message.metadata = { handoffReturnReplay: true };
+        return { ...f, service, events };
+    }
+
+    it('the live inbox alert is skipped when the SLA escalation already alerted this episode (the durable notice still goes)', async () => {
+        const { service, message, events } = build({ escalated: true });
+        await service.runTurn(message);
+        expect(events.emit).not.toHaveBeenCalledWith('handoff.escalated_supervisor', expect.anything());
+        // the notice was enqueued, so the request is honestly said to be left
+        expect(service.generateResponse.mock.calls[0][2].handoffReturn).toEqual({ ask: 'person', noteLeft: true });
+    });
+
+    it('the live inbox alert goes out when nobody was alerted before', async () => {
+        const { service, message, events } = build();
+        await service.runTurn(message);
+        expect(events.emit).toHaveBeenCalledWith('handoff.escalated_supervisor', expect.anything());
+    });
+
+    it('the budget-exhausted text is sent alone: no «I keep helping you» in front of «I cannot help you»', async () => {
+        const text = budgetExhaustedReplayText('es');
+        const { service, message } = build({ reply: text });
+        await service.runTurn(message);
+        expect(sentChunks(service).join('\n')).toBe(text);
+        // the notice stays pending for the next real answer
+        expect(service.prisma.executeInTenantSchema.mock.calls.some((c: any[]) =>
+            String(c[1]).includes("'{handoff,returnNoticePending}', 'false'::jsonb"))).toBe(false);
     });
 });

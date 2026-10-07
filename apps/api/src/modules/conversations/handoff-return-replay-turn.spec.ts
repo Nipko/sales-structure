@@ -1,11 +1,11 @@
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import {
-    isBareConsent, returnAskOf, returnNoteTask, returnReplayTurn, rewriteReplayPromise, staleConsentReply,
+    budgetExhaustedReplayText, isBareConsent, isPureHandoffTool, returnAskOf, returnNoteTask, returnReplayTurn,
+    rewriteReplayPromise, staleConsentReply, toolsForReplay,
 } from './handoff-return-replay-turn';
 import { promisesHumanHandoff } from '../../common/utils/outcome-claim.util';
-import { toolHasHandoffEffect } from './tool-policy-registry';
-import { noDataNoOfferText } from './human-offer';
+import { TOOL_POLICY_REGISTRY } from './tool-policy-registry';
 import { PromptAssemblerService } from './prompt-assembler.service';
 
 describe('returnReplayTurn: server state AND marker, never the message alone', () => {
@@ -122,8 +122,14 @@ describe('rewriteReplayPromise: the replay never promises a transfer', () => {
         expect(out).not.toMatch(/\d+ ?(minutos|min|horas|hours)/i);
     });
 
-    it('a reply that was only the promise becomes the honest no-data text, or the note', () => {
-        expect(rewriteReplayPromise('Un asesor se comunicará con usted.', 'es', false)).toBe(noDataNoOfferText('es'));
+    it('a reply that was only the promise becomes «the team is not available, I help meanwhile», or the note', () => {
+        expect(rewriteReplayPromise('Un asesor se comunicará con usted.', 'es', false))
+            .toBe('En este momento el equipo no está disponible; con gusto le ayudo mientras tanto.');
+        expect(rewriteReplayPromise('The team will contact you.', 'en', false)).toContain('The team is not available right now');
+        // nothing at all left of the reply, in every language the agent speaks
+        expect(rewriteReplayPromise('', 'pt', false)).toContain('a equipe não está disponível');
+        expect(rewriteReplayPromise('', 'fr', false)).toContain("L'équipe n'est pas disponible");
+        expect(rewriteReplayPromise('', 'xx', false)).toContain('el equipo no está disponible');
         expect(rewriteReplayPromise('Un asesor se comunicará con usted.', 'es', true)).toBe(staleConsentReply('es', true).split(' Ha pasado')[0]);
     });
 
@@ -134,13 +140,33 @@ describe('rewriteReplayPromise: the replay never promises a transfer', () => {
     });
 });
 
-describe('the tools that end with a person taking over', () => {
-    it('are the ones the registry marks with the handoff effect', () => {
-        expect(toolHasHandoffEffect('file_claim')).toBe(true);
-        expect(toolHasHandoffEffect('create_service_request')).toBe(true);
-        expect(toolHasHandoffEffect('search_faqs')).toBe(false);
-        expect(toolHasHandoffEffect('does_not_exist')).toBe(false);
-        expect(toolHasHandoffEffect(undefined)).toBe(false);
+describe('which tools the replay turn offers', () => {
+    const offered = (names: string[]) => toolsForReplay(names.map(name => ({ function: { name } }))).map(t => t.function!.name);
+
+    it('keeps the tools that only MAY end in a handoff: what they do first is the answer', () => {
+        const mayHandOff = ['create_payment_link', 'refund_payment', 'check_policy_status', 'list_my_claims',
+            'triage_pet_emergency', 'file_claim', 'create_service_request', 'search_faqs'];
+        expect(offered(mayHandOff)).toEqual(mayHandOff);
+    });
+    it('withholds a tool whose only effect is handing the conversation over, in either tool shape', () => {
+        expect(offered(['search_faqs', 'request_human', 'escalate_to_human'])).toEqual(['search_faqs']);
+        expect(toolsForReplay([{ name: 'handoff_to_human' }, { name: 'get_policy' }]).map(t => t.name)).toEqual(['get_policy']);
+        expect(isPureHandoffTool('request_human')).toBe(true);
+        expect(isPureHandoffTool('create_payment_link')).toBe(false);
+        expect(isPureHandoffTool(undefined)).toBe(false);
+    });
+    it('no registered tool is a pure handoff tool today (handoffs go through the paths the replay turn disables)', () => {
+        const registered = Object.keys(TOOL_POLICY_REGISTRY).filter(name => isPureHandoffTool(name));
+        expect(registered).toEqual([]);
+    });
+});
+
+describe('the budget text on a replay', () => {
+    it('promises nobody was told: the replay never transfers', () => {
+        for (const lang of ['es', 'en', 'pt', 'fr']) {
+            expect(budgetExhaustedReplayText(lang)).not.toMatch(/aviso|let(ting)? someone|avisando|préviens|pr[ée]viens/i);
+        }
+        expect(budgetExhaustedReplayText('es')).toContain('Le pedimos que vuelva a escribirnos más tarde');
     });
 });
 
@@ -156,8 +182,19 @@ describe('generateResponse keeps the replay out of the queue (wiring)', () => {
     it('no human handoff is allowed on a replay turn', () => {
         expect(generate).toMatch(/const allowHumanHandoff = !session && !draftMode && !handoffReturn\b/);
     });
-    it('no tool that transfers is offered on a replay turn', () => {
-        expect(generate).toContain('if (handoffReturn) tools = tools.filter(tool => !toolHasHandoffEffect(');
+    it('only a pure handoff tool is withheld on a replay turn', () => {
+        expect(generate).toContain('if (handoffReturn) tools = toolsForReplay(tools);');
+    });
+    it('the budget-exhausted path does not transfer on a replay, and says so truthfully', () => {
+        expect(generate).toContain('if (!session && !handoffReturn) {');
+        expect(generate).toContain('handoffReturn ? budgetExhaustedReplayText(userLanguage) : budgetExhaustedText(userLanguage)');
+    });
+    it('an engine or procedure that wanted a handoff does not say «transferring» or «unavailable» next to the return notice', () => {
+        expect(generate).not.toMatch(/(?<!if \(!handoffReturn\) )engineProducedText = handoffText\(userLanguage\)\.unavailable/);
+        expect(generate).not.toMatch(/if \(!engineProducedText\) engineProducedText = handoffText\(userLanguage\)\.transferring/);
+    });
+    it('the stalled-ask route does not hand a replay to a person', () => {
+        expect(source).toContain('if (decision.route && !replayTurn) {');
     });
     it('a transfer promise is rewritten before, and instead of, being honoured', () => {
         const rewrite = generate.indexOf('if (handoffReturn && !draftMode && promisesHumanHandoff(finalResponse))');

@@ -44,7 +44,7 @@ import { burstBufferKeys } from './burst-debounce-key';
 import { foldedContent, fragmentFor, mergeBurst, type BurstFragment } from './burst-fragments';
 import {
     budgetExhaustedReplayText, BUDGET_EXHAUSTED_REPLAY_MSG, isBareConsent, replayAsk, returnNoteTask, returnReplayTurn,
-    rewriteReplayPromise, sanitizeReplayReply, staleConsentReply, toolsForReplay,
+    rewriteReplayPromise, sanitizeReplayReply, staleConsentReply, toolsForReplay, withRequestLeftNote,
     type ReturnAsk,
 } from './handoff-return-replay-turn';
 import { TasksService } from '../crm/services/tasks/tasks.service';
@@ -1482,9 +1482,9 @@ export class ConversationsService {
         // it neither promises a transfer nor offers a person (a «sí» would start another wait).
         if (replayTurn && typeof response === 'string' && response && !recoveredEnvelope && !resumedReply
             && !isSystemFixedText(response) && !isErrorFallback(response)) {
-            response = sanitizeReplayReply(response,
-                this.languageDetector.detect(content?.text || '', config.language || 'es'),
-                (normalizedMsg as any).handoffReturn?.noteLeft === true);
+            const replayLanguage = this.languageDetector.detect(content?.text || '', config.language || 'es');
+            const noteLeft = (normalizedMsg as any).handoffReturn?.noteLeft === true;
+            response = withRequestLeftNote(sanitizeReplayReply(response, replayLanguage, noteLeft), replayLanguage, noteLeft);
         }
         // The handoff return notice leads the answer of the turn it is claimed in, in
         // the same durable batch. A recovered or resumed answer was composed by an
@@ -6542,7 +6542,8 @@ export class ConversationsService {
             if (!reply?.trim()) return null;
             // Whatever the model wrote, a replay neither promises a transfer nor offers a person.
             if (replayTurn && !isErrorFallback(reply) && !isSystemFixedText(reply)) {
-                reply = sanitizeReplayReply(reply, language, (msg as any).handoffReturn?.noteLeft === true);
+                const noteLeft = (msg as any).handoffReturn?.noteLeft === true;
+                reply = withRequestLeftNote(sanitizeReplayReply(reply, language, noteLeft), language, noteLeft);
             }
             // The same notice, in the same message, as on every other channel.
             if (replayTurn && !isErrorFallback(reply)) {
@@ -6907,15 +6908,21 @@ export class ConversationsService {
     }): Promise<boolean> {
         const { tenantId, schemaName, conversation, ask } = input;
         let left = false;
+        // What was left, for whoever reads the log of a live episode: each effect says why it did not happen.
+        const outcome: { task: string; notice: string } = { task: 'created', notice: 'none' };
+        if (!this.tasksService) outcome.task = 'no_tasks_service';
+        else if (!input.leadId || !PERSISTED_ID.test(String(input.leadId))) outcome.task = 'no_lead';
         if (this.tasksService && input.leadId && PERSISTED_ID.test(String(input.leadId))) {
             try {
                 const note = returnNoteTask(ask, input.text || '', input.fromEpisode === true);
-                const outcome = await this.tasksService.createTaskIdempotently(tenantId, {
+                const created = await this.tasksService.createTaskIdempotently(tenantId, {
                     leadId: String(input.leadId), title: note.title, description: note.description,
                     type: 'follow_up', createdBy: 'handoff_return',
                 });
-                left = !!outcome?.task?.id;
+                left = !!created?.task?.id;
+                if (!left) outcome.task = 'not_created';
             } catch (error: any) {
+                outcome.task = `failed:${error?.message}`;
                 this.logger.warn(`[Handoff] follow-up for the unanswered request not created: ${error?.message}`);
             }
         }
@@ -6928,6 +6935,7 @@ export class ConversationsService {
                     contactId, conversationId: String(input.conversation.id),
                     roles: ['tenant_admin', 'tenant_supervisor'], revision: `${input.startedAt}:returned`,
                 }));
+            outcome.notice = notified.length ? `enqueued:${notified.length}` : 'no_recipients_or_already_sent';
             if (notified.length) {
                 left = true;
             }
@@ -6943,8 +6951,11 @@ export class ConversationsService {
                 });
             }
         } catch (error: any) {
+            outcome.notice = `failed:${error?.message}`;
             this.logger.warn(`[Handoff] supervisors not alerted about the unanswered request: ${error?.message}`);
         }
+        this.logger.log(`[Handoff] unanswered request of ${conversation?.id} (${ask}${input.fromEpisode ? ', from the handoff' : ''}): `
+            + `follow-up ${outcome.task}, supervisors ${outcome.notice} → ${left ? 'left for the team' : 'NOTHING left'}`);
         return left;
     }
 

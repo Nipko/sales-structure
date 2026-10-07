@@ -565,6 +565,26 @@ describe('ConversationsService widget containment', () => {
                 .toEqual({ ask: 'person', noteLeft: false, fromEpisode: true });
         });
 
+        it('says the request was left when it was, and nobody is told to wait', async () => {
+            const { service, prisma } = replayService({ reason: null });
+            (service as any).handoffService.shouldHandoff = jest.fn().mockReturnValue(null);
+            const inner = (prisma as any).executeInTenantSchema;
+            (prisma as any).executeInTenantSchema = jest.fn(async (s: string, sql: string, p: any[]) => {
+                if (sql.includes('SELECT * FROM conversations')) {
+                    return [{ id: C, contact_id: K, channel_account_id: 'widget', status: 'active', updated_at: new Date(),
+                        metadata: { handoff: { ...returnedHandoff, reason: 'human_request' } } }];
+                }
+                if (sql.includes('SELECT * FROM leads')) return [{ id: '50000000-0000-4000-8000-000000000005' }];
+                return inner(s, sql, p);
+            });
+            (service as any).tasksService = { createTaskIdempotently: jest.fn().mockResolvedValue({ task: { id: 't1' }, created: true }) };
+            (service as any).generateResponse.mockResolvedValue('Abrimos de 9 a 6. Would you like help with anything else while you wait?');
+            const text = await collect(replay(service, 'what are your hours?'));
+            expect(text).toBe('Nobody from the team is available right now; I will keep helping you.\n\n'
+                + 'Abrimos de 9 a 6.\n\nI have left your request noted so the team can see it and contact you when they are available.\n\n'
+                + 'Would you like help with anything else?');
+        });
+
         it('sends nothing when somebody answered since the claim', async () => {
             const { service } = replayService({ stale: true });
             expect(await collect(replay(service))).toBe('');

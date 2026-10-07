@@ -216,7 +216,7 @@ describe('a question about another day or hour of the SAME service does not rewr
         const { result } = await turn('¿Tienen cupo el domingo a las 10 para corte y estilo?', structuredClone(open));
         expect(draftCore(result.state)).toEqual(draftCore(open));
         expect(result.text).toMatch(/no hay disponibilidad/i);
-        expect(result.text).toMatch(/sigue como estaba/i);
+        expect(result.text).toMatch(/sigue en curso/i);
         expect(result.state.pendingSwitch).toBeUndefined();
     });
 

@@ -4,6 +4,8 @@ import { demoAllowanceExhaustedText } from '../widget/widget-demo-link';
 import { recordFirstReply } from '../../common/utils/first-reply.util';
 import { stripInternalMarkers } from '../../common/utils/internal-markers.util';
 import { projectAvailableServices } from '../appointments/service-price-status';
+import { replyLanguageOf } from './reply-language';
+import { localeForReply, normalizeReplyAmounts } from './reply-price-format';
 import { foldedSql, foldQueryText } from '../../common/utils/sql-accent-fold.util';
 import { servedAgentAuthority, type ServedAgentAuthority } from '../persona/served-agent-authority';
 import { LearningService } from '../learning/learning.service';
@@ -399,6 +401,14 @@ const UNVERIFIED_CLAIM_FALLBACK: Record<string, string> = {
 };
 const unverifiedClaimFallbackText = (lang?: string) =>
     UNVERIFIED_CLAIM_FALLBACK[(lang || 'es').slice(0, 2).toLowerCase()] || UNVERIFIED_CLAIM_FALLBACK.es;
+
+/** The rewrite request, written in the language it asks for (an instruction in Spanish pulls the answer back to Spanish). */
+const REPLY_LANGUAGE_REWRITE: Record<string, string> = {
+    es: 'Tu respuesta anterior no está en español, que es el idioma del cliente en este turno. Reescríbela en español con exactamente el mismo contenido, sin cambiar ningún dato, precio ni nombre. Devuelve solo el mensaje.',
+    en: 'Your previous reply is not in English, which is the customer\'s language in this turn. Rewrite it in English with exactly the same content, without changing any fact, price or name. Return only the message.',
+    pt: 'Sua resposta anterior não está em português, que é o idioma do cliente neste turno. Reescreva-a em português com exatamente o mesmo conteúdo, sem mudar nenhum dado, preço ou nome. Devolva apenas a mensagem.',
+    fr: 'Votre réponse précédente n\'est pas en français, qui est la langue du client pour ce tour. Réécrivez-la en français avec exactement le même contenu, sans changer aucune donnée, aucun prix ni aucun nom. Renvoyez uniquement le message.',
+};
 
 // Fixed system texts must never be rewritten by the wait-promise guard.
 function isSystemFixedText(text: string): boolean {
@@ -4905,6 +4915,11 @@ export class ConversationsService {
                 executedToolsThisTurn, userLanguage, priorActions, turnContext, session, {execute:executeLearningModel},
                 allowHumanHandoff,
             );
+            // The model writes the thousands separator of a bare number as it pleases (119.900 one day,
+            // 119,900 the next): amounts that carry a currency are put in the reply language's grouping.
+            if (finalResponse && !isErrorFallback(finalResponse)) {
+                finalResponse = normalizeReplyAmounts(finalResponse, localeForReply(userLanguage, turnContext.regional?.locale));
+            }
             turnTrace.add('guardrail', 'output', { responseLength: finalResponse?.length || 0 });
             // A "how do I / can I" refund or return question ("¿puedo pedir un reembolso?")
             // is answered, not escalated. The answer also offers a person, so a customer
@@ -5722,6 +5737,38 @@ export class ConversationsService {
         return [...(executed || []), ...fromPrior];
     }
 
+    private async alignReplyLanguage(
+        response: string, lang: string | undefined, currentMessages: any[], systemPrompt: string, allowedTiers: ModelTier[],
+        tenantId: string, llmRouter: Pick<LLMRouterService, 'execute'>, trustedContext?: Partial<TurnContext>, session?: AgentTurnSession,
+    ): Promise<string> {
+        const code = String(lang || '').slice(0, 2).toLowerCase();
+        const instruction = REPLY_LANGUAGE_REWRITE[code];
+        // Engine/handoff directives and fixed system texts are already in the turn language by construction.
+        if (!instruction || (trustedContext as any)?.directive || isSystemFixedText(response)) return response;
+        if (response.trim().split(/\s+/).length < 8) return response;
+        // Only clear evidence of ANOTHER language (function words, see reply-language.ts) triggers the rewrite.
+        const written = replyLanguageOf(response);
+        if (!written || written === code) return response;
+        this.recordAgentSignal(tenantId, 'reply_language_mismatch', session);
+        this.logger.warn(`[Guardrail] Reply is not in the turn language (${code}) — one rewrite: "${response.slice(0, 80)}"`);
+        try {
+            const rewritten = await llmRouter.execute({
+                task: 'conversation',
+                messages: [...currentMessages, { role: 'assistant', content: response }, { role: 'user', content: instruction }],
+                systemPrompt,
+                temperature: 0.2,
+                allowedTiers,
+                tenantId,
+            });
+            const text = rewritten.content?.trim();
+            if (text && replyLanguageOf(text) !== written) return text;
+        } catch (e: any) {
+            if (e instanceof LLMSourceAuthorityUnavailable) throw e;
+            this.logger.warn(`[Guardrail] Language rewrite failed: ${e.message}`);
+        }
+        return response;
+    }
+
     private async applyOutputGuardrails(
         response: string,
         systemPrompt: string,
@@ -5739,6 +5786,11 @@ export class ConversationsService {
     ): Promise<string> {
         const llmRouter = modelRouter || (session ? sessionLlmRouter(this.llmRouter, session) : this.llmRouter);
         if (!response || isErrorFallback(response)) return response;
+
+        // Guardrail 0: the reply is in the customer's language. The turn language is decided by the detector
+        // and written into the prompt, yet a long history or knowledge in another language still pulled the
+        // model back (a Portuguese refund question answered in Spanish). One rewrite, only on clear evidence.
+        response = await this.alignReplyLanguage(response, lang, currentMessages, systemPrompt, allowedTiers, tenantId, llmRouter, trustedContext, session);
 
         // Guardrail 1: False completion claims (claiming an action happened when no tool ran/succeeded)
         //

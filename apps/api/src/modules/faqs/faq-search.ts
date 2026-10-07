@@ -52,17 +52,24 @@ export function stripFaqQueryNoise(query: string): string {
     const noiseTokens = (text: string) => text
         .replace(/[\p{L}\p{N}_-]+/gu, token => token.includes('_') || /^\p{N}{6,}$/u.test(token) ? '' : token);
     const generic = (text: string) => faqSearchTerms(noiseTokens(text)).every(term => GENERIC_SET.has(term));
-    const label = /[\p{L}\p{N}]+(?:_[\p{L}\p{N}]+)+\s*:/u.exec(query);
-    let body = query;
-    if (label) {
-        const before = query.slice(0, label.index);
-        const after = query.slice(label.index + label[0].length);
+    // Labels can be stacked ("Prueba QA QA_C1_1: Ref ABC_2: ¿…?"): each one is handled in turn.
+    // "Ref 1234567:" anywhere: generic words, a long number and a colon are a label with no topic in it.
+    const numberLabel = new RegExp(`(?<![\\p{L}\\p{N}])(?:(?:${GENERIC_MARKERS.join('|')})\\b[\\s,.;-]*)+\\p{N}{6,}\\s*:\\s*`, 'giu');
+    let body = query.replace(numberLabel, ' ');
+    for (let pass = 0; pass < 4; pass++) {
+        const label = /[\p{L}\p{N}]+(?:_[\p{L}\p{N}]+)+\s*:/u.exec(body);
+        if (!label) break;
+        const before = body.slice(0, label.index);
+        const after = body.slice(label.index + label[0].length);
         if (generic(before)) body = after;
         else if (generic(after)) body = before;
         else body = `${before.replace(TRAILING_MARKERS, '')} ${after}`;
     }
-    return noiseTokens(body)
-        .replace(/[ \t]{2,}/g, ' ')
+    // "Ref 1234567:" (the number was dropped as noise): a label made only of generic words and a colon.
+    const leadingLabel = new RegExp(`^[\\s:,;.-]*(?:(?:${GENERIC_MARKERS.join('|')})\\b[\\s,.;-]*)+:\\s*`, 'iu');
+    let cleaned = noiseTokens(body).replace(/[ \t]{2,}/g, ' ');
+    for (let pass = 0; pass < 4 && leadingLabel.test(cleaned); pass++) cleaned = cleaned.replace(leadingLabel, '');
+    return cleaned
         .replace(/\s+([,.;:?!])/g, '$1')
         .replace(/^[\s:,;.-]+/, '')
         .trim();

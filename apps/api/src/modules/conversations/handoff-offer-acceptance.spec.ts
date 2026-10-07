@@ -163,7 +163,7 @@ describe('agent-promised handoff is honoured only when the customer asked or acc
         const at = src.indexOf('const humanHandoffAuthorized =');
         expect(at).toBeGreaterThan(0);
         const block = src.slice(at, at + 4000);
-        expect(block).toContain('this.handoffService.shouldHandoff?.(userText');
+        expect(block).toContain('this.resolveHandoffReason(userText');
         expect(block).toContain('isAffirmationOfHumanOffer(userText, lastOutboundText)');
         const rewrite = block.indexOf('!humanHandoffAuthorized && promisesHumanHandoff(finalResponse)');
         const honour = block.indexOf('} else if (!draftMode && !postToolHandoff && promisesHumanHandoff(finalResponse))');

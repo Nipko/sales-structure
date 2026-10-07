@@ -1248,8 +1248,8 @@ export class ConversationsService {
         // A "yes" to our own offer of a person is a handoff request, decided here
         // from the mark the offer left — not from whatever the model says next.
         const acceptedOffer = await this.resolveHumanOfferAcceptance(schemaName, conversation, content?.text);
-        const handoffReason = this.handoffService.shouldHandoff(
-            content?.text || '', conversation, config,
+        const handoffReason = await this.resolveHandoffReason(
+            content?.text || '', conversation, config, tenantId, !draftMode,
         ) || (acceptedOffer ? 'customer_accepted_human_offer' : null);
         if (handoffReason && !draftMode) {
             // A configured handoff rule is an agent outcome even though it
@@ -4826,13 +4826,17 @@ export class ConversationsService {
                 allowHumanHandoff,
             );
             turnTrace.add('guardrail', 'output', { responseLength: finalResponse?.length || 0 });
-            // An action-oriented refund / return question ("¿puedo pedir un reembolso?")
-            // is answered, not escalated (`shouldHandoff` lets it through). The answer
-            // also offers a person, so a customer who really wants the refund says "yes"
-            // once and the acceptance below escalates for real. Not after a fallback,
-            // which is no answer; `withPolicyPersonOffer` also skips a reply that ends
-            // with a question of its own.
-            if (!session && !draftMode && allowHumanHandoff && isActionOrientedRefundQuestion(userText)
+            // A "how do I / can I" refund or return question ("¿puedo pedir un reembolso?")
+            // is answered, not escalated. The answer also offers a person, so a customer
+            // who really wants the refund says "yes" once and the acceptance below
+            // escalates for real. Which question it is was decided by the classifier at
+            // the top of the turn (`peekPolicyLabel`, no second model call); the rules
+            // decide only when no label was reached. Not after a fallback, which is no
+            // answer; `withPolicyPersonOffer` also skips a reply that ends with a
+            // question of its own (a "sí" would be ambiguous). That customer is not
+            // stranded: every next message is classified again, so a personal detail
+            // or "quiero mi reembolso" reaches a person directly.
+            if (!session && !draftMode && allowHumanHandoff && this.wantsPersonOffer(userText, tenantId)
                 && !isPipelineFallbackReply(finalResponse)) {
                 finalResponse = withPolicyPersonOffer(finalResponse, userLanguage);
             }
@@ -4947,7 +4951,7 @@ export class ConversationsService {
             // escala; el "si" siguiente si escala.
             const lastOutboundText = [...(history || [])].reverse()
                 .find((row: any) => row?.direction === 'outbound')?.content_text;
-            const humanHandoffAuthorized = !!this.handoffService.shouldHandoff?.(userText, conversation, config)
+            const humanHandoffAuthorized = !!(await this.resolveHandoffReason(userText, conversation, config, tenantId, !draftMode))
                 || isAffirmationOfHumanOffer(userText, lastOutboundText);
             if (!draftMode && !postToolHandoff && !humanHandoffAuthorized && promisesHumanHandoff(finalResponse)) {
                 this.logger.warn(`[Pipeline] Promesa de traspaso SIN pedido del cliente en ${conversation.id} — reescrita como oferta, sin escalar`);
@@ -6253,7 +6257,7 @@ export class ConversationsService {
                 metadata: { allowHumanHandoff: options?.allowHumanHandoff === true },
             } as NormalizedMessage;
             const language = this.languageDetector.detect(text, config.language || 'es');
-            const handoffReason = this.handoffService.shouldHandoff(text, conversation, config);
+            const handoffReason = await this.resolveHandoffReason(text, conversation, config, tenantId, !draftMode);
             let reply: string | null = null;
             if (handoffReason && !draftMode) {
                 await this.persistConversationPersonaResolution(schemaName, conversationId, personaResolution);
@@ -6644,6 +6648,27 @@ export class ConversationsService {
             this.logger.warn(`[Handoff] Return notice not claimed for ${conversation?.id}: ${error?.message}`);
             return null;
         }
+    }
+
+    /**
+     * Whether this turn escalates. The classifier-backed decision when the handoff
+     * service has one (cached per message, so the three readers of a turn cost one
+     * model call and only a refund / return / discount message costs any); the plain
+     * rules otherwise, and in draft mode, where nothing escalates and nothing is
+     * worth a model call.
+     */
+    private async resolveHandoffReason(text: string, conversation: any, config: any, tenantId: string, classify = true): Promise<string | null> {
+        const service: any = this.handoffService;
+        if (classify && typeof service?.decideHandoff === 'function') {
+            return service.decideHandoff(text, conversation, config, undefined, tenantId);
+        }
+        return service?.shouldHandoff?.(text, conversation, config) ?? null;
+    }
+
+    /** The reply to this question also offers a person: the classifier's `policy_howto`, or the rules when it never ran. */
+    private wantsPersonOffer(userText: string, tenantId: string): boolean {
+        const label = (this.handoffService as any)?.peekPolicyLabel?.(userText, tenantId);
+        return label ? label === 'policy_howto' : isActionOrientedRefundQuestion(userText);
     }
 
     /** Leave the short-lived "a person was offered" mark when the reply is our offer. */

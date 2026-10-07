@@ -37,12 +37,19 @@ export const POLICY_TOPIC_KEYWORDS: ReadonlySet<string> = new Set([
  * Phrases that report a product that arrived damaged. They escalate on their
  * own, except in a hypothetical question ("¿qué hago si el producto llegó roto?").
  */
+/**
+ * "No funciona" is a defect, not a strong grievance: said hypothetically ("¿aceptan
+ * devoluciones si no funciona?") it is a policy question. Without a refund / return /
+ * discount word it still escalates as always; with one, the classifier reads it.
+ */
+export const SOFT_DEFECT_KEYWORDS: ReadonlySet<string> = new Set(['no funciona', 'nao funciona', 'ne fonctionne pas']);
+
 export const DEFECT_ON_ARRIVAL_KEYWORDS: readonly string[] = [
     'llego danado', 'llego roto', 'chegou danificado', 'chegou quebrado', 'est arrive endommage',
 ];
 const DEFECT_ON_ARRIVAL_SET: ReadonlySet<string> = new Set(DEFECT_ON_ARRIVAL_KEYWORDS);
 
-const POLICY_FRAME_BASE = /\b(?:politicas?|politique|policy|policies|aceptan|aceptais|acepta|hacen|ofrecen|ofrece|manejan|tienen|tiene|hay|existe|existen|plazo|condiciones|condicoes|como funciona|cuanto tiempo|cuantos dias|do you (?:have|offer|accept|do|give)|are there|is there|what is|what['’ ]?s|what are|how (?:long|does)|ha(?:ve|s) you|avez[ -]vous|offrez[ -]vous|acceptez[ -]vous|faites[ -]vous|y a[ -]t[ -]il|quelle est|quelles sont|votre politique|aceitam|fazem|oferecem|tem|qual e|quais sao|a politica)\b/;
+const POLICY_FRAME_BASE = /\b(?:politicas?|politique|policy|policies|aceptan|aceptais|acepta|hacen|ofrecen|ofrece|manejan|tienen|tiene|hay|existe|existen|plazo|condiciones|condicoes|como funciona|cuanto tiempo|cuantos dias|do you (?:have|offer|accept|do|give)|are there|is there|what is|what['’ ]?s|what are|how (?:long|does)|ha(?:ve|s) you|avez[ -]vous|offrez[ -]vous|acceptez[ -]vous|faites[ -]vous|y a[ -]t[ -]il|quelle est|quelles sont|votre politique|aceitam|fazem|oferecem|tem|qual e|quais sao|a politica|proceso|procedimiento|requisitos|como es|como funcionan|que necesito|informacion (?:sobre|de))\b/;
 
 /**
  * "How do I / can I / is it possible / how long does it take" asks about the
@@ -102,7 +109,7 @@ const GRIEVANCE_DEFECT = /\b(?:danad[oa]s?|roto|rota|rotos|rotas|defectuos[oa]s?
 
 const GRIEVANCE_OTHER = /\b(?:no funciona|estafa|fraude|engano|enganaram|golpe|inaceptable|inacceptable|pesimo|pessimo|horrible|terrible|furios[oa]|molest[oa]|queja|reclamo|reclamacao|plainte|demanda|abogado|advogado|avocat|scam|fraud|unacceptable|awful|lawyer|arnaque|ne fonctionne pas|nao funciona)\b/;
 
-const PERSONAL_REQUEST = /\b(?:me (?:lo |la |los |las )?(?:hace|hacen|haces|da|dan|das|deja|dejan|dejas|rebaja|rebajan|rebajas|regala|regalan|puede|pueden|podria|podrian|puedes|podrias|tienen|tiene|dar|fazer|faire|faz|fazem|dao)|(?:puede|pueden|podria|podrian|puedes|podrias) (?:hacerme|darme|rebajarme|dejarmelo|devolverme)|(?:can|could|will|would) you (?:give|do|make|offer|refund)(?: it)? (?:me|us)|pouvez[ -]vous me|vous me (?:faites|donnez)|(?:podem|pode|voce pode) (?:me )?(?:dar|fazer)|para mi|pra mim|para mim|pour moi|for me|exijo|exigimos|i demand|je veux (?:etre )?rembours|quiero (?:que me|mi dinero|un reembolso|devolver|devolucion)|necesito (?:un reembolso|devolver)|i want (?:a refund|my money|to return))\b/;
+const PERSONAL_REQUEST = /\b(?:me (?:lo |la |los |las )?(?:hace|hacen|haces|da|dan|das|deja|dejan|dejas|rebaja|rebajan|rebajas|regala|regalan|puede|pueden|podria|podrian|puedes|podrias|puedan|hagan|den|dejen|tienen|tiene|dar|fazer|faire|faz|fazem|dao)|(?:puede|pueden|podria|podrian|puedes|podrias) (?:hacerme|darme|rebajarme|dejarmelo|devolverme)|(?:can|could|will|would) you (?:give|do|make|offer|refund)(?: it)? (?:me|us)|pouvez[ -]vous me|vous me (?:faites|donnez)|(?:podem|pode|voce pode) (?:me )?(?:dar|fazer)|pra mim|para mim|pour moi|for me|exijo|exigimos|i demand|je veux (?:etre )?rembours|quiero que me|quiero mi dinero|(?:quiero|quisiera|necesito|queremos|necesitamos) (?:(?:pedir|hacer|solicitar|tramitar|realizar) )?(?:(?:un|una|el|la|mi|algun|alguna) )?(?:reembolso|devolucion|devolver|remboursement|descuento|rebaja)|i want (?:a refund|my money|to return))\b/;
 
 /**
  * The customer is talking about THEIR case, not about the policy. One clause is
@@ -149,6 +156,9 @@ const PERSONAL_CASE_TERMS = [
     'not working',
     'ne (?:me )?plait pas',
     'nao (?:gostei|serve|funcionou)',
+    // what the customer already did or received
+    '(?:devolvi(?:mos)?|ya hice la devolucion|la compra que hice|recibi(?:mos)?|me arrepenti|no me queda (?:bien|chic[oa]|grande|pequen[oa]|apretad[oa])|me quedo (?:chic[oa]|grande|pequen[oa]))\\b',
+    'me (?:enviaron|llego|mandaron|entregaron|vendieron)',
 ];
 const PERSONAL_CASE = new RegExp(`\\b(?:${PERSONAL_CASE_TERMS.join('|')})`);
 
@@ -181,6 +191,8 @@ function conditionalText(raw: unknown): string {
 }
 
 /** Index of a real conditional ("si el producto llegó roto") in `ctext`, or -1. */
+const QUESTION_WORD = /(?:^|\s)(?:que|como|cual|cuales|cuando|donde|y|e|what|how|which|when|comment|quand|pourquoi|qual|quando|onde|por que|porque)(?:\s|$)/;
+
 function conditionalIndex(ctext: string): number {
     for (const m of ctext.matchAll(CONDITIONAL_FREE)) {
         if (m[1] !== 'si') return m.index ?? -1;
@@ -190,6 +202,10 @@ function conditionalIndex(ctext: string): number {
         const before = ctext.slice(0, m.index).replace(/^[\s,;:.!?]+/, '');
         const directlyBeforeVerb = new RegExp(`^si\\s+${ARRIVES}`).test(m[0]);
         if (before === '' && directlyBeforeVerb) continue;
+        // After a plain subject with no question word before it, «si» is emphatic
+        // ("el pedido si llegó roto", "oiga si llegó roto"); after one it is a condition
+        // ("¿qué pasa si llegó roto?", "¿y si llegó roto?").
+        if (before !== '' && directlyBeforeVerb && !QUESTION_WORD.test(before)) continue;
         if (/(?:^|\s)(?:pues|hola|que|bueno|ah|oh|buenas)[\s,;:.!]*$/.test(before)) continue;
         return m.index ?? -1;
     }
@@ -228,10 +244,27 @@ export function isDefectOnArrivalKeyword(keyword: string): boolean {
  */
 export type PolicyScope = 'all' | 'refund_return';
 
+/**
+ * «para mí» asks for oneself only when it ends the clause ("¿hacen descuento para mí?").
+ * "para mi papá" or "para mi negocio" is about someone or something else.
+ */
+const FOR_ME_AT_CLAUSE_END = /\bpara m[ií]\s*(?:[?.!,;:]|$)/i;
+
+/**
+ * WhatsApp style: a policy question without a question mark ("aceptan devoluciones",
+ * "politica de devoluciones", "hay descuento por pago en efectivo") when it opens with
+ * a policy frame. A statement that merely contains a frame word is not one.
+ */
+const POLICY_QUESTION_OPENING = /^(?:(?:hola|buenas?(?: dias| tardes| noches)?|buen dia)[ ]+)?(?:politicas? de|politica|aceptan|aceptais|hacen|tienen|manejan|ofrecen|hay|existe|informacion (?:sobre|de)|puedo (?:pedir|solicitar)|cuanto (?:tiempo )?(?:tarda|demora)|do you (?:have|offer|accept))\b/;
+
+/** "quería saber cuál es la política…": a question without a question mark, anywhere in the message. */
+const ASKING_TO_KNOW = /\b(?:queria|quiero|quisiera|me gustaria|necesito) (?:saber|conocer|preguntar|consultar)\b/;
+
 export function policyQuestionScope(raw: unknown): PolicyScope | null {
     const text = normalizeForIntent(raw);
     if (!text) return null;
-    if (!isInformationSeekingMessage(raw)) return null;
+    if (FOR_ME_AT_CLAUSE_END.test(String(raw ?? ''))) return null;
+    if (!isInformationSeekingMessage(raw) && !POLICY_QUESTION_OPENING.test(text) && !ASKING_TO_KNOW.test(text)) return null;
     if (GRIEVANCE_OTHER.test(text) || PERSONAL_REQUEST.test(text) || PERSONAL_CASE.test(text)) return null;
     if (GRIEVANCE_DEFECT.test(text) && !isHypotheticalDefectQuestion(raw)) return null;
     if (POLICY_FRAME_BASE.test(text)) return 'all';
@@ -254,7 +287,16 @@ export function isAnswerableTopicWord(scope: PolicyScope | null, word: string): 
  * "return" trigger still fires on "what is the return time for the shuttle?".
  */
 export function isAnswerableCustomTrigger(scope: PolicyScope | null, needle: string, raw: unknown): boolean {
-    if (!isAnswerableTopicWord(scope, needle)) return false;
+    return isAnswerableTopicWord(scope, needle) && isPolicyTopicTrigger(needle, raw);
+}
+
+/**
+ * Whether a tenant trigger is ONLY a policy-topic word in this message (so it is the
+ * classifier's to judge, not a rule that always fires). The bare English "return" /
+ * "returns" counts only as the refund / return topic itself.
+ */
+export function isPolicyTopicTrigger(needle: string, raw: unknown): boolean {
+    if (!POLICY_TOPIC_KEYWORDS.has(needle)) return false;
     if (needle === 'return' || needle === 'returns') return ENGLISH_RETURN_TOPIC.test(normalizeForIntent(raw));
     return true;
 }

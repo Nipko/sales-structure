@@ -237,3 +237,30 @@ describe('an unsolicited promise becomes an offer that agrees with the rest of t
         expect(offerInsteadOfPromise('Le paso con nuestro equipo.', 'es', false)).toBe('No tengo ese dato confirmado en este momento.');
     });
 });
+
+describe('the turn escalates through the classifier-backed decision', () => {
+    it('a personal refund case reaches a person before any reply is generated, and the decision is asked once', async () => {
+        const text = 'Quiero devolver el audífono';
+        const { service, message } = fixture({ status: 'active', handoff: {}, text });
+        service.handoffService.decideHandoff = jest.fn().mockResolvedValue('complaint');
+        service.handoffService.executeHandoff = jest.fn().mockResolvedValue({ assignedTo: null });
+        await service.runTurn(message);
+        expect(service.handoffService.decideHandoff).toHaveBeenCalledTimes(1);
+        expect(service.handoffService.decideHandoff.mock.calls[0]).toEqual([
+            text, expect.objectContaining({ id: CONVERSATION_ID }), expect.anything(), undefined, TENANT_ID,
+        ]);
+        expect(service.handoffService.executeHandoff).toHaveBeenCalledWith(TENANT_ID, CONVERSATION_ID, expect.anything(), 'complaint');
+        expect(service.generateResponse).not.toHaveBeenCalled();
+    });
+
+    it('a policy question is answered: the classifier said nothing escalates, and the turn goes on', async () => {
+        const { service, message } = fixture({ status: 'active', handoff: {}, text: '¿Cuál es la política de devoluciones?' });
+        service.handoffService.decideHandoff = jest.fn().mockResolvedValue(null);
+        service.handoffService.executeHandoff = jest.fn();
+        await service.runTurn(message);
+        expect(service.handoffService.decideHandoff).toHaveBeenCalledTimes(1);
+        expect(service.handoffService.executeHandoff).not.toHaveBeenCalled();
+        expect(service.generateResponse).toHaveBeenCalledTimes(1);
+        expect(sentChunks(service).join('\n')).toBe(ANSWER);
+    });
+});

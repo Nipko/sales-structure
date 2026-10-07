@@ -6,6 +6,7 @@ import { attributeKnowledgeResponse } from '../knowledge/knowledge-attribution';
 import { enrollmentTerms,enrollmentTermsReviewResult } from '../education/enrollment-terms';
 import { LLMSourceAuthorityUnavailable } from '../ai/interfaces/llm-source-authority';
 import { HUMAN_OFFER_MARK, policyPersonOfferText } from './human-offer';
+import { HandoffService } from '../handoff/handoff.service';
 
 describe('Shared runtime integrity', () => {
     const style=(id='style-one')=>({id,releaseId:'release',releaseHash:'hash',situation:'general',
@@ -369,6 +370,86 @@ describe('Shared runtime integrity', () => {
             draft.llm.mockResolvedValue({ content: 'La consulta cuesta COP 20000.' });
             expect(String(await draft.run('whatsapp', '¿Puedo pedir un reembolso?'))).not.toContain(OFFER);
             expect(markWritten(draft.query)).toBe(false);
+        });
+    });
+
+    // The refund / return / discount classifier at turn level: the turn reads its
+    // label once, the reply's offer follows it, and a message without the topic
+    // never pays for a model call.
+    describe('the classifier inside the turn', () => {
+        const OFFER = policyPersonOfferText('es');
+        const config: any = { behavior: { handoffTriggers: [] } };
+        const conv = { id: '33333333-3333-4333-8333-333333333333', metadata: {} };
+        const tenantId = '11111111-1111-4111-8111-111111111111';
+
+        function withClassifier(label: string | null) {
+            const t = fixture();
+            const classify = jest.fn().mockImplementation(async () => {
+                if (label === null) throw new Error('classifier down');
+                return { content: JSON.stringify({ label }) };
+            });
+            const handoff: any = Object.create(HandoffService.prototype);
+            Object.assign(handoff, { llmRouter: { execute: classify }, logger: { warn: jest.fn() },
+                executeHandoff: jest.fn(), isInHandoff: jest.fn().mockResolvedValue(false) });
+            t.service.handoffService = handoff;
+            t.llm.mockResolvedValue({ content: 'La consulta cuesta COP 20000.' });
+            return { ...t, classify, handoff };
+        }
+
+        it('is read once for the turn, however many readers it has, and drives the offer', async () => {
+            const { service, run, classify } = withClassifier('policy_howto');
+            const text = '¿Puedo pedir un reembolso?';
+            // the top of the turn decides whether to escalate…
+            expect(await (service as any).resolveHandoffReason(text, conv, config, tenantId)).toBeNull();
+            // …and the reply is built from the same label, plus the authorisation read inside it
+            expect(await run('whatsapp', text)).toBe('La consulta cuesta COP 20000.\n\n' + OFFER);
+            expect(classify).toHaveBeenCalledTimes(1);
+        });
+
+        it('a policy_info label means no offer, even for a sentence the rules would offer on', async () => {
+            const { service, run, classify } = withClassifier('policy_info');
+            const text = '¿Puedo pedir un reembolso?';
+            await (service as any).resolveHandoffReason(text, conv, config, tenantId);
+            expect(await run('whatsapp', text)).toBe('La consulta cuesta COP 20000.');
+            expect(classify).toHaveBeenCalledTimes(1);
+        });
+
+        it('a policy_howto label offers a person for wording the rules never heard of', async () => {
+            const { service, run } = withClassifier('policy_howto');
+            const text = '¿Qué hago si quiero que me devuelvan la plata del audífono?';
+            await (service as any).resolveHandoffReason(text, conv, config, tenantId);
+            expect(await run('whatsapp', text)).toBe('La consulta cuesta COP 20000.\n\n' + OFFER);
+        });
+
+        it('without a label (the model was down) the rules decide the offer', async () => {
+            const { service, run, classify } = withClassifier(null);
+            const text = '¿Puedo pedir un reembolso?';
+            expect(await (service as any).resolveHandoffReason(text, conv, config, tenantId)).toBeNull();
+            expect(await run('whatsapp', text)).toBe('La consulta cuesta COP 20000.\n\n' + OFFER);
+            expect(classify).toHaveBeenCalledTimes(1);
+        });
+
+        it('a message without the topic never calls the classifier', async () => {
+            const { service, run, classify } = withClassifier('policy_howto');
+            const text = '¿Cuál es el horario de atención?';
+            await (service as any).resolveHandoffReason(text, conv, config, tenantId);
+            expect(await run('whatsapp', text)).toBe('La consulta cuesta COP 20000.');
+            expect(classify).not.toHaveBeenCalled();
+        });
+
+        it('escalates for personal_case through the handoff service, and the turn asks the service, not the rules', async () => {
+            const { service, classify } = withClassifier('personal_case');
+            expect(await (service as any).resolveHandoffReason('Quiero devolver el audífono', conv, config, tenantId)).toBe('complaint');
+            expect(classify).toHaveBeenCalledTimes(1);
+        });
+
+        it('draft mode and handoff services without a classifier use the rules and never a model', async () => {
+            const { service, classify } = withClassifier('personal_case');
+            expect(await (service as any).resolveHandoffReason('Quiero devolver el audífono', conv, config, tenantId, false)).toBeNull();
+            expect(classify).not.toHaveBeenCalled();
+            (service as any).handoffService = { shouldHandoff: jest.fn().mockReturnValue('complaint') };
+            expect(await (service as any).resolveHandoffReason('quiero mi reembolso', conv, config, tenantId)).toBe('complaint');
+            expect((service as any).handoffService.shouldHandoff).toHaveBeenCalledWith('quiero mi reembolso', conv, config);
         });
     });
 });

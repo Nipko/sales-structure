@@ -841,3 +841,106 @@ describe('the refund / return questions that also offer a person', () => {
         expect(isActionOrientedRefundQuestion(m)).toBe(false);
     });
 });
+
+/**
+ * Round 4, the rules that decide when the classifier is unavailable.
+ */
+describe('fallback rules: requests for oneself, what the customer already did, «para mí» and «si» after a subject', () => {
+    const service: any = Object.create(HandoffService.prototype);
+    const conversation = { metadata: {} };
+    const config = { behavior: { handoffTriggers: [] } } as any;
+    const ask = (m: string) => service.shouldHandoff(m, conversation, config);
+
+    it.each([
+        '¿Hay descuentos? quiero un descuento',
+        '¿Hay descuentos? quisiera un descuento',
+        '¿Hay descuentos? necesito algún descuento',
+        '¿tienen descuento? ¿me puedan hacer uno?',
+        '¿tienen descuento? ¿me hagan uno?',
+        '¿tienen descuento? ¿me den uno?',
+        '¿tienen descuento? ¿me dejen uno?',
+    ])('keeps price negotiation with a person: %s', (m) => {
+        expect(ask(m)).toBe('discount_request');
+    });
+
+    it.each([
+        '¿Hay reembolsos? quiero pedir un reembolso',
+        '¿Hay reembolsos? quisiera hacer una devolución',
+        '¿Hay reembolsos? necesito solicitar el reembolso',
+        '¿Hay reembolsos? necesito tramitar la devolución',
+        '¿Cuál es la política de devoluciones? devolví el producto ayer',
+        '¿Cuál es la política de devoluciones? ya hice la devolución',
+        '¿Cuál es la política de devoluciones? la compra que hice no me sirve',
+        '¿Cuál es la política de devoluciones? recibí el paquete abierto',
+        '¿Cuál es la política de devoluciones? me enviaron otro color',
+        '¿Cuál es la política de devoluciones? me llegó otro color',
+        '¿Cuál es la política de devoluciones? me mandaron otro modelo',
+        '¿Cuál es la política de devoluciones? me arrepentí',
+        '¿Cuál es la política de devoluciones? no me queda bien',
+    ])('keeps a customer who already acted with a person: %s', (m) => {
+        expect(ask(m)).toBe('complaint');
+    });
+
+    it.each([
+        '¿Cuál es la política de devoluciones? ¿cuánto tarda en recibir el reembolso?',
+        '¿Cuál es la política de devoluciones? no me queda claro',
+    ])('does not read "recibir" or "no me queda claro" as a personal case: %s', (m) => {
+        expect(ask(m)).toBeNull();
+    });
+
+    it('«para mí» asks for oneself only at the end of the clause', () => {
+        expect(ask('¿hacen descuento para mí?')).toBe('discount_request');
+        expect(ask('¿hacen descuento para mí si compro tres?')).toBeNull();
+        expect(ask('¿Tienen descuentos? es para mi papá')).toBeNull();
+        expect(ask('¿Tienen descuentos para mi negocio?')).toBeNull();
+    });
+
+    it.each([
+        'El pedido si llegó roto, ¿qué hago?',
+        'Oiga si llegó roto el audífono, ¿qué hago?',
+        'El audífono si llegó roto ¿puedo cambiarlo?',
+    ])('«si» after a plain subject is emphatic: %s', (m) => {
+        expect(ask(m)).toBe('complaint');
+    });
+
+    it.each([
+        '¿Qué hago? Sí llegó roto',
+        'Hola, si el producto llegó roto ¿cómo lo cambio?',
+        'Pues si el producto llegó roto ¿qué hago?',
+        '¿Qué hago si mi audífono llegó roto?',
+        '¿Cuál es la política de devoluciones? el paquete no ha llegado',
+    ])('is a report, not a condition: %s', (m) => {
+        expect(ask(m)).toBe('complaint');
+    });
+
+    it.each([
+        '¿Qué pasa si llegó roto?',
+        '¿Y si llegó roto?',
+        'Disculpe, ¿qué hago si llegó roto?',
+        '¿Cómo lo cambio si llegó roto?',
+    ])('«si» after a question word stays a condition: %s', (m) => {
+        expect(ask(m)).toBeNull();
+    });
+
+    it.each([
+        'aceptan devoluciones',
+        'hacen reembolsos',
+        'politica de devoluciones',
+        'hay descuento por pago en efectivo',
+        'Información sobre devoluciones por favor',
+        'cuanto tarda un reembolso',
+        'puedo pedir reembolso',
+        'Hola buenas tardes, quería saber cuál es la política de devoluciones de los audífonos porque estoy pensando comprar unos para mi papá',
+        '¿Cuál es el proceso de devolución?',
+        '¿Cómo funcionan las devoluciones?',
+        '¿Qué necesito para hacer una devolución?',
+    ])('answers the question written without a question mark or with another frame: %s', (m) => {
+        expect(ask(m)).toBeNull();
+    });
+
+    it('a statement that only mentions a policy word is still escalated', () => {
+        expect(ask('quiero mi reembolso')).toBe('complaint');
+        expect(ask('necesito una devolución')).toBe('complaint');
+        expect(ask('el audífono no llegó, quiero la devolución')).toBe('complaint');
+    });
+});

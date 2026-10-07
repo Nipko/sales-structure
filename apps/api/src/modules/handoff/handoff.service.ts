@@ -11,12 +11,22 @@ import { AiResolutionService } from '../analytics/ai-resolution.service';
 import { normalizeCustomerIntent } from '../../common/conversation/intent-normalizer';
 import {
     DEFECT_ON_ARRIVAL_KEYWORDS,
-    isDefectOnArrivalKeyword,
-    isHypotheticalDefectQuestion,
     isAnswerableCustomTrigger,
     isAnswerableTopicWord,
+    isDefectOnArrivalKeyword,
+    isHypotheticalDefectQuestion,
     policyQuestionScope,
+    POLICY_TOPIC_KEYWORDS,
+    SOFT_DEFECT_KEYWORDS,
 } from './handoff-policy-question';
+import {
+    buildPolicyClassifierRequest,
+    parsePolicyLabel,
+    policyCacheKey,
+    policyTopicsIn,
+    reasonForPolicyLabel,
+    type PolicyLabel,
+} from './handoff-policy-classifier';
 import { hasDispatchOutbox, noHumanReplySql } from './handoff-human-reply';
 import {
     normalizeForIntent,
@@ -154,9 +164,116 @@ export class HandoffService {
         private cronLock: CronLockService,
     ) {}
 
+    /** How long a classification of the same message is reused (one turn is read two or three times). */
+    private static readonly POLICY_LABEL_TTL_MS = 60_000;
+    /** A failed classification is remembered briefly so the same turn does not wait on a dead model twice. */
+    private static readonly POLICY_LABEL_FAILURE_TTL_MS = 15_000;
+    /** The model has this long; after that the deterministic rules decide. */
+    private static readonly POLICY_CLASSIFIER_TIMEOUT_MS = 2_500;
+    private policyLabelCache?: Map<string, { label: PolicyLabel | null; at: number }>;
+    private policyLabelInflight?: Map<string, Promise<PolicyLabel | null>>;
+    /** Test hook: overrides the classifier timeout. */
+    policyClassifierTimeoutMs?: number;
+
     /**
-     * Evaluate if a conversation should be escalated to a human agent.
-     * Returns the reason string if handoff should trigger, null otherwise.
+     * Decide whether a message escalates. The deterministic rules go first: a request
+     * for a person, a strong grievance, VIP, failed attempts and every custom trigger
+     * that is not a refund / return / discount word never wait for a model. Only a
+     * message that is otherwise answerable AND mentions that topic is classified (one
+     * small model call, cached per message), because the same words are a policy
+     * question, a how-to, a personal case or a price negotiation. When the model is
+     * unavailable, times out or answers nonsense, `shouldHandoff` (the regular
+     * expressions) decides.
+     */
+    async decideHandoff(
+        message: string,
+        conversation: any,
+        config: TenantConfig,
+        operatingCountry?: string | null,
+        tenantId?: string,
+    ): Promise<string | null> {
+        const topics = policyTopicsIn(message, config.behavior?.handoffTriggers || []);
+        // No refund / return / discount word: nothing for a model to read, the rules decide.
+        if (!topics) return this.shouldHandoff(message, conversation, config, operatingCountry);
+        const strong = this.evaluateHandoff(message, conversation, config, operatingCountry, 'ignore_topics');
+        if (strong) return strong;
+        const enabled = (cat: string) => this.categoryEnabled(config, cat);
+        // Nothing this tenant could route the answer to: no reason to ask the model.
+        if (!enabled('complaint') && !enabled('discount_request') && !topics.customTrigger) return null;
+        const label = await this.classifyPolicyMessage(message, tenantId);
+        if (!label) return this.shouldHandoff(message, conversation, config, operatingCountry);
+        return reasonForPolicyLabel(label, topics, enabled);
+    }
+
+    /** The label already decided for this message (this turn read it before), without a model call. */
+    peekPolicyLabel(message: string, tenantId?: string): PolicyLabel | null {
+        const hit = this.policyLabelCache?.get(policyCacheKey(tenantId, message));
+        return hit && hit.label && Date.now() - hit.at < HandoffService.POLICY_LABEL_TTL_MS ? hit.label : null;
+    }
+
+    /** One model call per message: later readers of the same turn get the cached label (or the in-flight call). */
+    async classifyPolicyMessage(message: string, tenantId?: string): Promise<PolicyLabel | null> {
+        const key = policyCacheKey(tenantId, message);
+        const cache = this.policyLabelCache ??= new Map();
+        const inflight = this.policyLabelInflight ??= new Map();
+        const hit = cache.get(key);
+        if (hit) {
+            const ttl = hit.label ? HandoffService.POLICY_LABEL_TTL_MS : HandoffService.POLICY_LABEL_FAILURE_TTL_MS;
+            if (Date.now() - hit.at < ttl) return hit.label;
+        }
+        const pending = inflight.get(key);
+        if (pending) return pending;
+        const run = this.runPolicyClassifier(message, tenantId).then((label) => {
+            cache.set(key, { label, at: Date.now() });
+            if (cache.size > 500) cache.delete(cache.keys().next().value as string);
+            return label;
+        }).finally(() => inflight.delete(key));
+        inflight.set(key, run);
+        return run;
+    }
+
+    private async runPolicyClassifier(message: string, tenantId?: string): Promise<PolicyLabel | null> {
+        if (!this.llmRouter || typeof this.llmRouter.execute !== 'function') return null;
+        const { systemPrompt, userContent } = buildPolicyClassifierRequest(message);
+        let timer: NodeJS.Timeout | undefined;
+        try {
+            const response = await Promise.race([
+                // Same route as the intent interpreter's small extraction call; the
+                // router accounts the spend to the tenant and applies its budget.
+                this.llmRouter.execute({
+                    model: 'grok-4-1-fast-non-reasoning',
+                    messages: [{ role: 'user', content: userContent }],
+                    systemPrompt,
+                    temperature: 0,
+                    maxTokens: 24,
+                    tenantId,
+                    traceContext: { stage: 'handoff_policy_classifier' },
+                }),
+                new Promise<never>((_, reject) => {
+                    timer = setTimeout(() => reject(new Error('policy_classifier_timeout')),
+                        this.policyClassifierTimeoutMs ?? HandoffService.POLICY_CLASSIFIER_TIMEOUT_MS);
+                }),
+            ]);
+            const label = parsePolicyLabel(response?.content);
+            if (!label) this.logger?.warn('[Handoff] policy classifier answered something that is not a label; using the rules');
+            return label;
+        } catch (e: any) {
+            this.logger?.warn(`[Handoff] policy classifier unavailable (${e?.message}); using the rules`);
+            return null;
+        } finally {
+            if (timer) clearTimeout(timer);
+        }
+    }
+
+    private categoryEnabled(config: TenantConfig, category: string): boolean {
+        const categoriesCfg = (config.behavior as any)?.handoffCategories as Record<string, boolean> | undefined;
+        return !categoriesCfg || categoriesCfg[category] !== false;
+    }
+
+    /**
+     * Evaluate if a conversation should be escalated to a human agent, by rules alone.
+     * Returns the reason string if handoff should trigger, null otherwise. This is the
+     * decision when no model is available; `decideHandoff` is what the turn uses.
      */
     shouldHandoff(
         message: string,
@@ -164,6 +281,23 @@ export class HandoffService {
         config: TenantConfig,
         /** Operating country, so national ways of asking for a person are heard. */
         operatingCountry?: string | null,
+    ): string | null {
+        return this.evaluateHandoff(message, conversation, config, operatingCountry, 'rules');
+    }
+
+    /**
+     * `rules`: refund / return / discount words are answered or escalated by the
+     * regular expressions. `ignore_topics`: those words, the tenant triggers that are
+     * only those words, "no funciona" and "llegó roto" are set aside for the classifier,
+     * so what is left is the strong signals (a person, a grievance, VIP, failed attempts,
+     * any other trigger).
+     */
+    private evaluateHandoff(
+        message: string,
+        conversation: any,
+        config: TenantConfig,
+        operatingCountry: string | null | undefined,
+        mode: 'rules' | 'ignore_topics',
     ): string | null {
         const triggers = config.behavior?.handoffTriggers || [];
         // Accent-stripped, because the raw `toLowerCase()` meant `devolución`
@@ -221,11 +355,13 @@ export class HandoffService {
         // complaint word in the same message still escalates. Likewise a
         // hypothetical ("¿qué hago si el producto llegó roto?") is a question,
         // while "me llegó roto" is a report.
-        const policyScope = policyQuestionScope(message);
+        const policyScope = mode === 'rules' ? policyQuestionScope(message) : null;
         const hypotheticalDefect = isHypotheticalDefectQuestion(message);
         const escalates = (keywords: string[]) => keywords
             .filter(kw => text.includes(kw))
-            .some(kw => !isAnswerableTopicWord(policyScope, kw)
+            .some(kw => !(mode === 'ignore_topics'
+                    ? POLICY_TOPIC_KEYWORDS.has(kw) || SOFT_DEFECT_KEYWORDS.has(kw) || isDefectOnArrivalKeyword(kw)
+                    : isAnswerableTopicWord(policyScope, kw))
                 && !(hypotheticalDefect && isDefectOnArrivalKeyword(kw)));
         if (enabled('complaint') && escalates(complaintKeywords)) {
             return 'complaint';
@@ -272,7 +408,7 @@ export class HandoffService {
             // as a general policy question ("¿hacen reembolsos?") it is the same
             // informational question as above, so the same exemption applies;
             // any other trigger, or a personal case, is unchanged.
-            if (isAnswerableCustomTrigger(policyScope, needle, message)) continue;
+            if (mode === 'ignore_topics' ? POLICY_TOPIC_KEYWORDS.has(needle) : isAnswerableCustomTrigger(policyScope, needle, message)) continue;
             if (needle && text.includes(needle)) {
                 return `custom_trigger:${trigger}`;
             }

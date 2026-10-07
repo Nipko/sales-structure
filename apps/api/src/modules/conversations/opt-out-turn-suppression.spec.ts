@@ -20,7 +20,7 @@ describe('opt-out turn suppression', () => {
     it('returns before handoff and model work in the live turn', () => {
         const source = readFileSync(resolve(__dirname, 'conversations.service.ts'), 'utf8');
         const suppression = source.indexOf('if (await this.suppressDetectedOptOut');
-        const handoff = source.indexOf('const handoffReason = this.handoffService.shouldHandoff', suppression);
+        const handoff = source.indexOf('const handoffReason = await this.resolveHandoffReason', suppression);
 
         expect(suppression).toBeGreaterThan(0);
         expect(source.slice(suppression, handoff)).toContain(')) return;');

@@ -2,8 +2,8 @@ import { HandoffReturnReplayService } from './handoff-return-replay.service';
 
 /**
  * After the sweep returns an unattended handoff to the agent, the customer's
- * waiting message(s) are answered by the NORMAL inbound turn, exactly once.
- * The SQL of the claim is exercised against PostgreSQL in
+ * waiting message(s) are answered by the NORMAL turn, exactly once. The SQL of
+ * the claim is exercised against PostgreSQL in
  * handoff-return-replay.postgres.spec.ts; this suite pins what the service does
  * with the outcome, using a stateful stub of that claim.
  */
@@ -15,10 +15,11 @@ describe('handoff return replay (service behavior)', () => {
 
     function harness(opts: {
         claimable?: boolean;
+        channel?: string;
         waiting?: any[];
         contact?: any;
-        optOut?: (text: string) => boolean;
         enqueueFails?: number;
+        widgetFails?: boolean;
     } = {}) {
         const state = { claimed: false };
         const calls: Array<{ sql: string; params: any[] }> = [];
@@ -35,7 +36,7 @@ describe('handoff return replay (service behavior)', () => {
                     // The real claim is atomic: only the first caller wins.
                     if (opts.claimable === false || state.claimed) return [];
                     state.claimed = true;
-                    return [{ contact_id: 'ct1', channel_type: 'telegram', channel_account_id: 'bot-1', started_at: STARTED }];
+                    return [{ contact_id: 'ct1', channel_type: opts.channel ?? 'telegram', channel_account_id: 'bot-1', started_at: STARTED }];
                 }
                 if (sql.includes('#- \'{handoff,returnReplayFor}\'')) { state.claimed = false; return []; }
                 if (sql.includes('FROM messages')) return waiting;
@@ -48,11 +49,15 @@ describe('handoff return replay (service behavior)', () => {
         const queue = {
             enqueue: jest.fn(async () => { if (failures-- > 0) throw new Error('redis down'); }),
         };
-        const compliance = { detectOptOut: jest.fn((t: string) => (opts.optOut ? opts.optOut(t) : false)) };
-        const service = new HandoffReturnReplayService(prisma, redis as any, queue as any, compliance as any);
+        const widget = {
+            processWidgetMessage: jest.fn(async () => { if (opts.widgetFails) throw new Error('model down'); return { status: 'stored', messages: [] }; }),
+        };
+        const service = new HandoffReturnReplayService(prisma, redis as any, queue as any, {} as any);
         (service as any).logger = { log: jest.fn(), warn: jest.fn(), error: jest.fn() };
+        (service as any).conversationsService = async () => widget;
         const claimSql = () => calls.find(c => c.sql.startsWith('UPDATE conversations c'))!.sql;
-        return { service, calls, redis, queue, prisma, claimSql };
+        const released = () => calls.some(c => c.sql.includes("#- '{handoff,returnReplayFor}'"));
+        return { service, calls, redis, queue, prisma, widget, claimSql, released };
     }
     const event = { tenantId: TENANT, schemaName: SCHEMA, conversationId: CONV };
 
@@ -69,6 +74,7 @@ describe('handoff return replay (service behavior)', () => {
         });
         // Same provider identity as the stored row: the pipeline finds that row, so no duplicate inbound.
         expect(msg.metadata.updateId).toBe(77);
+        expect(msg.metadata.handoffReturnReplay).toBe(true);
         expect(options.jobIdSuffix).toContain('handoff-return');
     });
 
@@ -91,6 +97,32 @@ describe('handoff return replay (service behavior)', () => {
         expect(msg.metadata.updateId).toBe(79);
     });
 
+    it('keeps the texts the customer typed before a final photo: they travel as its caption', async () => {
+        const h = harness({
+            waiting: [
+                { id: 'm2', content_type: 'image', content_text: null, media_url: 'https://cdn/x.jpg', media_mime_type: 'image/jpeg',
+                    caption: null, external_id: 'tgu81', metadata: { updateId: 81 }, created_at: new Date('2026-10-05T20:47:00Z') },
+                { id: 'm1', content_type: 'text', content_text: 'me llegó roto', external_id: 'tgu80', metadata: { updateId: 80 }, created_at: new Date('2026-10-05T20:46:00Z') },
+            ],
+        });
+        await h.service.replayWaitingMessages(event);
+        const [msg] = h.queue.enqueue.mock.calls[0] as any[];
+        expect(msg.content).toMatchObject({ type: 'image', mediaUrl: 'https://cdn/x.jpg', mimeType: 'image/jpeg', caption: 'me llegó roto' });
+        expect(msg.metadata.updateId).toBe(81);
+    });
+
+    it('a photo the stored row no longer names is replayed as the words around it, not dropped', async () => {
+        const h = harness({
+            waiting: [
+                { id: 'm2', content_type: 'image', content_text: null, caption: null, external_id: 'tgu83', metadata: { updateId: 83 }, created_at: new Date('2026-10-05T20:47:00Z') },
+                { id: 'm1', content_type: 'text', content_text: 'me llegó roto', external_id: 'tgu82', metadata: { updateId: 82 }, created_at: new Date('2026-10-05T20:46:00Z') },
+            ],
+        });
+        await h.service.replayWaitingMessages(event);
+        const [msg] = h.queue.enqueue.mock.calls[0] as any[];
+        expect(msg.content).toEqual({ type: 'text', text: 'me llegó roto' });
+    });
+
     it('is claimed once per episode: a second event, or a second sweep process, enqueues nothing more', async () => {
         const h = harness();
         await h.service.replayWaitingMessages(event);
@@ -100,7 +132,7 @@ describe('handoff return replay (service behavior)', () => {
         expect(h.redis.del).toHaveBeenCalledTimes(1);
     });
 
-    it('the claim needs status active, a pending notice, no human reply since the handoff and no earlier claim', async () => {
+    it('the claim needs status active, a pending notice, no human reply since the handoff and no earlier claim, and is capped', async () => {
         const h = harness();
         await h.service.replayWaitingMessages(event);
         const sql = h.claimSql();
@@ -108,6 +140,8 @@ describe('handoff return replay (service behavior)', () => {
         expect(sql).toContain("c.metadata->'handoff'->>'returnedToAi' = 'true'");
         expect(sql).toContain("c.metadata->'handoff'->>'returnNoticePending' = 'true'");
         expect(sql).toContain("'returnReplayFor'");
+        expect(sql).toContain("'{handoff,returnReplayClaimedAt}'");
+        expect(sql).toContain("'returnReplayClaims'");
         expect(sql).toContain("m.metadata->>'source' = 'agent'");
         expect(sql).toContain("o.operational_scope->>'kind' = 'human_operator'");
     });
@@ -119,38 +153,30 @@ describe('handoff return replay (service behavior)', () => {
         expect(h.redis.del).not.toHaveBeenCalled();
     });
 
-    it('a customer who opted out while waiting gets nothing', async () => {
-        const hOpt = harness({
-            optOut: t => /stop/i.test(t),
+    it('the opt-out of a waiting text is NOT decided here: the turn records it with the normal compliance path', async () => {
+        const h = harness({
             waiting: [{ id: 'm1', content_type: 'text', content_text: 'STOP', external_id: 'tgu80', metadata: { updateId: 80 }, created_at: new Date() }],
         });
-        expect(await hOpt.service.replayWaitingMessages(event)).toEqual({ kind: 'skipped', reason: 'customer_opted_out' });
-        expect(hOpt.queue.enqueue).not.toHaveBeenCalled();
-        expect(hOpt.redis.del).not.toHaveBeenCalled();
+        expect((await h.service.replayWaitingMessages(event)).kind).toBe('enqueued');
     });
 
-    it('a message with no provider id cannot be deduplicated, so it is not replayed (and the claim is returned)', async () => {
-        const h = harness({
-            waiting: [{ id: 'm1', content_type: 'text', content_text: 'hola', external_id: null, metadata: {}, created_at: new Date() }],
-        });
-        expect(await h.service.replayWaitingMessages(event)).toEqual({ kind: 'skipped', reason: 'last_message_has_no_provider_id' });
-        expect(h.queue.enqueue).not.toHaveBeenCalled();
-        expect(h.calls.some(c => c.sql.includes("#- '{handoff,returnReplayFor}'"))).toBe(true);
+    it('a permanent skip keeps the claim, so the catch-up pass does not ask again every minute', async () => {
+        for (const waiting of [
+            [{ id: 'm1', content_type: 'text', content_text: 'hola', external_id: null, metadata: {}, created_at: new Date() }],
+            [{ id: 'm1', content_type: 'text', content_text: 'hola', external_id: 'tgu1', metadata: {}, created_at: new Date() }],
+        ]) {
+            const h = harness({ waiting });
+            expect((await h.service.replayWaitingMessages(event)).kind).toBe('skipped');
+            expect(h.queue.enqueue).not.toHaveBeenCalled();
+            expect(h.released()).toBe(false);
+        }
     });
 
-    it('refuses to replay when the provider id cannot be rebuilt from the stored metadata', async () => {
-        const h = harness({
-            waiting: [{ id: 'm1', content_type: 'text', content_text: 'hola', external_id: 'tgu1', metadata: {}, created_at: new Date() }],
-        });
-        expect(await h.service.replayWaitingMessages(event)).toEqual({ kind: 'skipped', reason: 'provider_id_not_recoverable' });
-        expect(h.queue.enqueue).not.toHaveBeenCalled();
-    });
-
-    it('an enqueue that keeps failing returns the claim so a later event can retry, and reports it', async () => {
+    it('an enqueue that keeps failing returns the claim so the catch-up can retry, and reports it', async () => {
         const h = harness({ enqueueFails: 3 });
         await expect(h.service.replayWaitingMessages(event)).rejects.toThrow('redis down');
         expect(h.queue.enqueue).toHaveBeenCalledTimes(3);
-        // claim released: the next event wins it again
+        expect(h.released()).toBe(true);
         await expect(h.service.replayWaitingMessages(event)).resolves.toMatchObject({ kind: 'enqueued' });
     });
 
@@ -158,18 +184,28 @@ describe('handoff return replay (service behavior)', () => {
         const h = harness({ enqueueFails: 1 });
         await expect(h.service.replayWaitingMessages(event)).resolves.toMatchObject({ kind: 'enqueued' });
         expect(h.queue.enqueue).toHaveBeenCalledTimes(2);
+        expect(h.released()).toBe(false);
     });
 
-    it('replays a media message as the media the customer sent', async () => {
+    it('the web chat has no queue: its own turn answers, keyed by the stored inbound, with human handoff off', async () => {
         const h = harness({
-            waiting: [{
-                id: 'm1', content_type: 'image', content_text: null, media_url: 'https://cdn/x.jpg', media_mime_type: 'image/jpeg',
-                caption: 'llegó roto', external_id: 'tgu81', metadata: { updateId: 81 }, created_at: new Date(),
-            }],
+            channel: 'web_widget',
+            waiting: [{ id: 'm9', content_type: 'text', content_text: 'quiero un asesor', external_id: null, metadata: {}, created_at: new Date() }],
         });
-        await h.service.replayWaitingMessages(event);
-        const [msg] = h.queue.enqueue.mock.calls[0] as any[];
-        expect(msg.content).toMatchObject({ type: 'image', mediaUrl: 'https://cdn/x.jpg', mimeType: 'image/jpeg', caption: 'llegó roto' });
+        expect(await h.service.replayWaitingMessages(event)).toEqual({ kind: 'answered_in_widget' });
+        expect(h.queue.enqueue).not.toHaveBeenCalled();
+        expect(h.widget.processWidgetMessage).toHaveBeenCalledWith(
+            TENANT, SCHEMA, CONV, 'ct1', 'quiero un asesor',
+            { channelAccountId: 'bot-1', inboundMessageId: 'm9', allowHumanHandoff: false, handoffReturnReplay: true });
+    });
+
+    it('a web chat turn that fails gives the claim back (its reply receipt keeps a retry from answering twice)', async () => {
+        const h = harness({
+            channel: 'web_widget', widgetFails: true,
+            waiting: [{ id: 'm9', content_type: 'text', content_text: 'hola', external_id: null, metadata: {}, created_at: new Date() }],
+        });
+        await expect(h.service.replayWaitingMessages(event)).rejects.toThrow('model down');
+        expect(h.released()).toBe(true);
     });
 
     it('the event listener never throws into the emitter', async () => {

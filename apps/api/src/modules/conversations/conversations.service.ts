@@ -40,6 +40,11 @@ import {
 } from './turn-outcome-effects';
 import { burstBufferKeys } from './burst-debounce-key';
 import { foldedContent, fragmentFor, mergeBurst, type BurstFragment } from './burst-fragments';
+import {
+    isBareConsent, returnAskOf, returnNoteTask, returnReplayTurn, staleConsentReply,
+    type ReturnAsk,
+} from './handoff-return-replay-turn';
+import { TasksService } from '../crm/services/tasks/tasks.service';
 import { resolveTurnOutcome } from './turn-outcome-wait';
 import { ChannelTokenService } from '../channels/channel-token.service';
 import { ConversationsGateway } from './conversations.gateway';
@@ -567,6 +572,8 @@ export class ConversationsService {
          * Redis as the only record of it.
          */
         @Optional() private readonly proactiveDispatch?: ProactiveDispatchService,
+        /** The team's follow-up list: where a request nobody answered is left. */
+        @Optional() private readonly tasksService?: TasksService,
     ) {}
 
     /**
@@ -1096,6 +1103,17 @@ export class ConversationsService {
                 return;
             }
         }
+        // The replay of what the customer wrote while nobody answered (see
+        // `HandoffReturnReplayService`). Recognised by server state, not by the message.
+        const replayTurn = returnReplayTurn(conversation, normalizedMsg);
+        // Another turn may have answered the customer between the claim and this
+        // turn taking the conversation lock (they wrote again and that turn went
+        // first, or a person replied): answering the stale text now would be a
+        // second reply.
+        if (replayTurn && await this.returnReplayIsStale(schemaName, String(conversation.id), ledgerInboundId)) {
+            this.logger.warn(`[Pipeline] Return replay of ${conversation.id} skipped: the customer was already answered`);
+            return;
+        }
         this.logger.log(`[Pipeline] Message saved for conversation ${conversation.id}`);
 
         // Customer language for the deterministic appointment-button replies below:
@@ -1246,15 +1264,33 @@ export class ConversationsService {
         // stop this turn; human review may reverse a false positive later.
         if (await this.suppressDetectedOptOut({
             tenantId, leadId: lead?.id, contactId, channelType, text: content?.text,
-        })) return;
+        })) {
+            // Recorded by the call above. The return notice must not wait weeks
+            // for a customer who asked to be left alone.
+            if (replayTurn) await this.clearReturnNoticePending(schemaName, String(conversation.id));
+            return;
+        }
 
         // 5. Check handoff triggers BEFORE generating AI response
         // A "yes" to our own offer of a person is a handoff request, decided here
         // from the mark the offer left — not from whatever the model says next.
         const acceptedOffer = await this.resolveHumanOfferAcceptance(schemaName, conversation, content?.text);
-        const handoffReason = this.handoffService.shouldHandoff(
+        const triggeredReason = this.handoffService.shouldHandoff(
             content?.text || '', conversation, config,
         ) || (acceptedOffer ? 'customer_accepted_human_offer' : null);
+        // On the replay of an unattended handoff nothing escalates by keyword: the
+        // agent has just taken the conversation back because nobody answered, and
+        // handing it off again would repeat the transfer notice and the wait. What
+        // the customer asked for is acknowledged by the turn instead.
+        const handoffReason = replayTurn ? null : triggeredReason;
+        if (replayTurn) {
+            const ask = returnAskOf(triggeredReason);
+            (normalizedMsg as any).handoffReturn = {
+                ask,
+                noteLeft: !draftMode && ask
+                    ? await this.leaveHandoffReturnNote(tenantId, lead?.id, ask, content?.text) : false,
+            };
+        }
         if (handoffReason && !draftMode) {
             // A configured handoff rule is an agent outcome even though it
             // deliberately avoids an LLM call.
@@ -1372,8 +1408,15 @@ export class ConversationsService {
         // A recovered envelope IS the answer, empty text included: a turn whose
         // whole output was an interactive form has no words, and falling through
         // to the model here would produce a second one.
+        // A waiting text that was only "sí" cannot be read as consent to what was
+        // proposed before the handoff: ask again instead of running the pending step.
+        const consentReply = replayTurn && !recoveredEnvelope && !resumedReply && isBareConsent(content?.text)
+            ? staleConsentReply(this.languageDetector.detect(content?.text || '', config.language || 'es'),
+                (normalizedMsg as any).handoffReturn?.noteLeft === true)
+            : null;
         let response = recoveredEnvelope ? recoveredEnvelope.text
             : resumedReply
+            || consentReply
             || await this.generateResponse(
                 tenantId,
                 conversation,
@@ -4291,12 +4334,18 @@ export class ConversationsService {
         // inbound message (already saved above), which is re-added separately as
         // the live user turn — otherwise it would be duplicated in the prompt.
         // Reverse back to chronological order (oldest→newest) for the builders below.
+        // On the replay of an unattended handoff the customer's waiting messages are
+        // ALREADY the live turn (folded into `msg`); leaving them in the history as
+        // well put every one of them in the prompt twice.
+        const handoffReturn = (msg as any).handoffReturn as { ask: string | null; noteLeft: boolean } | undefined;
+        const replayWaitingSince = handoffReturn ? ((conversation.metadata as any)?.handoff?.startedAt ?? null) : null;
         const historyDesc = session ? [...session.history].reverse().slice(0, 30).map((row, i) => ({ id: String(i), direction: row.role === 'user' ? 'inbound' : 'outbound', content_text: row.content })) : await this.prisma.executeInTenantSchema<any[]>(schemaName,
             `SELECT id, direction, content_text, metadata FROM messages WHERE conversation_id = $1::uuid
                AND ($2::uuid IS NULL OR id <> $2::uuid)
+               AND ($3::timestamptz IS NULL OR NOT (direction = 'inbound' AND created_at > $3::timestamptz))
                ${replyProvenance ? "AND content_type<>'redacted' AND content_text IS NOT NULL AND BTRIM(content_text)<>''" : ''}
              ORDER BY created_at DESC, id DESC LIMIT 30`,
-            [conversation.id, inboundMessageId || null],
+            [conversation.id, inboundMessageId || null, replayWaitingSince],
         );
         let history = (historyDesc || []).reverse();
         if (replyProvenance) history = await this.widgetHistoryWithProvenance(
@@ -4318,6 +4367,7 @@ export class ConversationsService {
         // Anti-repetition: tell the LLM how many messages exist in this conversation.
         // message_count > 1 means it's a CONTINUATION — don't re-introduce yourself.
         turnContext.messageCount = (history?.length || 0) + 1; // +1 for current message (excluded from history above)
+        if (handoffReturn) (turnContext as any).handoffReturn = { ask: handoffReturn.ask, noteLeft: handoffReturn.noteLeft };
 
         // D6 affective detection (Hume EVI style) — before assemble so it enters <turn>
         try {
@@ -6152,7 +6202,11 @@ export class ConversationsService {
         conversationId: string,
         contactId: string,
         text: string,
-        options?: { allowHumanHandoff?: boolean; channelAccountId?: string; inboundMessageId?: string; trialTurn?: boolean },
+        options?: {
+            allowHumanHandoff?: boolean; channelAccountId?: string; inboundMessageId?: string; trialTurn?: boolean;
+            /** Internal only (never read from a request): the replay of an unattended handoff's waiting messages. */
+            handoffReturnReplay?: boolean;
+        },
     ): Promise<WidgetAgentReplyReceipt | null> {
         const inboundMessageId = options?.inboundMessageId;
         if (!inboundMessageId || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(inboundMessageId))
@@ -6211,6 +6265,11 @@ export class ConversationsService {
             if (!conversation || (conversation.channel_account_id !== 'widget' && conversation.channel_account_id !== channelAccountId))
                 throw new Error('widget_conversation_scope_mismatch');
             if (conversation.status === 'waiting_human' || conversation.status === 'with_human') return null;
+            // The web chat has no queue to replay: its customer reads the reply from the
+            // store, so the same turn that answers the waiting message is run here.
+            const replayTurn = options?.handoffReturnReplay === true
+                ? returnReplayTurn(conversation, { metadata: { handoffReturnReplay: true } }) : null;
+            if (replayTurn && await this.returnReplayIsStale(schemaName, conversationId, inboundMessageId)) return null;
             const plan = await this.throttle.getPlanFeatures(tenantId);
             // The gateway passes the semantic mode read from the persisted
             // widget config. A plan change cannot silently turn a trial link
@@ -6247,7 +6306,16 @@ export class ConversationsService {
                 metadata: { allowHumanHandoff: options?.allowHumanHandoff === true },
             } as NormalizedMessage;
             const language = this.languageDetector.detect(text, config.language || 'es');
-            const handoffReason = this.handoffService.shouldHandoff(text, conversation, config);
+            const triggeredReason = this.handoffService.shouldHandoff(text, conversation, config);
+            const handoffReason = replayTurn ? null : triggeredReason;
+            if (replayTurn) {
+                const ask = returnAskOf(triggeredReason);
+                (msg as any).handoffReturn = {
+                    ask,
+                    noteLeft: !draftMode && ask
+                        ? await this.leaveHandoffReturnNote(tenantId, leads?.[0]?.id, ask, text) : false,
+                };
+            }
             let reply: string | null = null;
             if (handoffReason && !draftMode) {
                 await this.persistConversationPersonaResolution(schemaName, conversationId, personaResolution);
@@ -6282,7 +6350,9 @@ export class ConversationsService {
                         widgetQuotaHeld = true;
                         widgetQuotaLane = demoTurn ? 'demo' : 'plan';
                         await this.persistConversationPersonaResolution(schemaName, conversationId, personaResolution);
-                        reply = await this.generateResponse(
+                        reply = replayTurn && isBareConsent(text)
+                            ? staleConsentReply(language, (msg as any).handoffReturn?.noteLeft === true)
+                            : await this.generateResponse(
                             tenantId, conversation, msg, config, contact, leads?.[0],
                             conversation.updated_at || conversation.created_at, businessHours,
                             inboundMessageId, personaResolution.agentId ?? undefined,
@@ -6335,6 +6405,11 @@ export class ConversationsService {
                 }
             }
             if (!reply?.trim()) return null;
+            // The same notice, in the same message, as on every other channel.
+            if (replayTurn && !isErrorFallback(reply)) {
+                reply = withReturnNotice(
+                    await this.claimReturnNotice(schemaName, conversation, text, config.language || 'es'), reply, false) as string;
+            }
             return this.activateOnWidgetReply(tenantId, demoTurn, modelAnswered,
                 await this.widgetAgentReplies.commit({ tenantId, schemaName, ...binding,
                     operationalScope, learningFootprints: [...replyProvenance.getFootprints()], text: reply }));
@@ -6614,6 +6689,62 @@ export class ConversationsService {
         } catch (error: any) {
             // The notice is courtesy: it must never break the storage of the message.
             this.logger.warn(`[Handoff] Queue notice not sent for ${conversation?.id}: ${error?.message}`);
+        }
+    }
+
+    /**
+     * Has somebody else answered the customer since the replay was claimed?
+     *
+     * Stale when a message was sent after the claim (a person, or the turn of a
+     * newer customer message that went first), or when a newer customer message
+     * exists and its turn already took the return notice. A turn that merely
+     * failed after claiming its own notice finds neither and is retried.
+     */
+    private async returnReplayIsStale(schemaName: string, conversationId: string, inboundMessageId: string): Promise<boolean> {
+        if (!PERSISTED_ID.test(inboundMessageId)) return false;
+        const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            `SELECT COALESCE(c.metadata->'handoff'->>'returnNoticePending', 'false') AS pending,
+                    EXISTS (SELECT 1 FROM messages n
+                             WHERE n.conversation_id = c.id AND n.direction = 'inbound' AND n.id <> $2::uuid
+                               AND n.created_at > (SELECT created_at FROM messages WHERE id = $2::uuid)) AS newer_inbound,
+                    EXISTS (SELECT 1 FROM messages o
+                             WHERE o.conversation_id = c.id AND o.direction = 'outbound'
+                               AND c.metadata->'handoff'->>'returnReplayClaimedAt' IS NOT NULL
+                               AND o.created_at > (c.metadata->'handoff'->>'returnReplayClaimedAt')::timestamptz) AS answered_since
+               FROM conversations c WHERE c.id = $1::uuid`,
+            [conversationId, inboundMessageId]);
+        const row = rows?.[0];
+        if (!row) return false;
+        return row.answered_since === true || (String(row.pending) !== 'true' && row.newer_inbound === true);
+    }
+
+    private async clearReturnNoticePending(schemaName: string, conversationId: string): Promise<void> {
+        await this.prisma.executeInTenantSchema(schemaName,
+            `UPDATE conversations
+                SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{handoff,returnNoticePending}', 'false'::jsonb, true)
+              WHERE id = $1::uuid AND metadata->'handoff'->>'returnNoticePending' = 'true'`,
+            [conversationId],
+        ).catch(error => this.logger.warn(`[Handoff] return notice not cleared for ${conversationId}: ${error?.message}`));
+    }
+
+    /**
+     * Leave what the customer asked for, and nobody answered, on the team's
+     * follow-up list (the same task the agent's own `create_follow_up_task` writes).
+     * True only when the task exists: the customer is told the request was left
+     * only if it was.
+     */
+    private async leaveHandoffReturnNote(tenantId: string, leadId: unknown, ask: ReturnAsk, text?: string): Promise<boolean> {
+        if (!this.tasksService || !leadId || !PERSISTED_ID.test(String(leadId))) return false;
+        try {
+            const note = returnNoteTask(ask, text || '');
+            const outcome = await this.tasksService.createTaskIdempotently(tenantId, {
+                leadId: String(leadId), title: note.title, description: note.description,
+                type: 'follow_up', createdBy: 'handoff_return',
+            });
+            return !!outcome?.task?.id;
+        } catch (error: any) {
+            this.logger.warn(`[Handoff] follow-up for the unanswered request not created: ${error?.message}`);
+            return false;
         }
     }
 

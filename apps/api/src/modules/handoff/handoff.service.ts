@@ -11,6 +11,7 @@ import { AiResolutionService } from '../analytics/ai-resolution.service';
 import { normalizeCustomerIntent } from '../../common/conversation/intent-normalizer';
 import { isPolicyQuestion, POLICY_TOPIC_KEYWORDS } from './handoff-policy-question';
 import { hasDispatchOutbox, noHumanReplySql } from './handoff-human-reply';
+import { MAX_REPLAY_CLAIMS } from './handoff-return-replay.service';
 import {
     normalizeForIntent,
     ConversationAssignedEvent,
@@ -834,7 +835,10 @@ export class HandoffService {
         );
         // Only the rows this statement really changed are announced: a conversation a
         // person answered in the meantime comes back empty and is left alone.
-        if (!returned?.length) return;
+        if (!returned?.length) {
+            await this.reemitPendingReplays(tenantId, schemaName, run, hasOutbox, []);
+            return;
+        }
 
         const hasAssignments = !!(await run('SELECT to_regclass($1)::text AS t',
             [`${schemaName}.conversation_assignments`]).catch(() => []))?.[0]?.t;
@@ -850,6 +854,44 @@ export class HandoffService {
             this.eventEmitter.emit('handoff.returned_unattended', { tenantId, schemaName, conversationId: row.id });
         }
         this.logger.warn(`[Handoff] Returned ${returned.length} unattended conversation(s) to the AI in tenant ${tenantId}`);
+        await this.reemitPendingReplays(tenantId, schemaName, run, hasOutbox, returned.map((r: any) => String(r.id)));
+    }
+
+    /**
+     * The catch-up for the customer's waiting message. The event above is emitted
+     * once, in this process: a crash between the UPDATE and the listener, or an
+     * enqueue that failed and gave its claim back, would leave a returned
+     * conversation whose waiting message is never answered (the sweep itself no
+     * longer selects it). This asks for the replay again, for conversations
+     * returned in the last day whose replay was never claimed. The claim in the
+     * listener makes asking twice harmless, and `MAX_REPLAY_CLAIMS` stops a
+     * failure that never heals.
+     */
+    private async reemitPendingReplays(
+        tenantId: string, schemaName: string,
+        run: (sql: string, params: any[]) => Promise<any[]>, hasOutbox: boolean, alreadyEmitted: string[],
+    ): Promise<void> {
+        let pending: any[] = [];
+        try {
+            pending = await run(
+                `SELECT c.id FROM conversations c
+                  WHERE c.status = 'active'
+                    AND c.metadata->'handoff'->>'returnedToAi' = 'true'
+                    AND c.metadata->'handoff'->>'returnNoticePending' = 'true'
+                    AND c.metadata->'handoff'->>'startedAt' IS NOT NULL
+                    AND COALESCE(c.metadata->'handoff'->>'returnReplayFor', '') <> c.metadata->'handoff'->>'startedAt'
+                    AND COALESCE((c.metadata->'handoff'->>'returnReplayClaims')::int, 0) < ${MAX_REPLAY_CLAIMS}
+                    AND c.updated_at > NOW() - interval '24 hours'
+                    ${noHumanReplySql('c', hasOutbox)}
+                  ORDER BY c.updated_at DESC LIMIT 50`, []) || [];
+        } catch (e: any) {
+            this.logger.warn(`[Handoff] Replay catch-up could not be read for ${tenantId}: ${e.message}`);
+            return;
+        }
+        for (const row of pending) {
+            if (alreadyEmitted.includes(String(row.id))) continue;
+            this.eventEmitter.emit('handoff.returned_unattended', { tenantId, schemaName, conversationId: row.id });
+        }
     }
 
     /**

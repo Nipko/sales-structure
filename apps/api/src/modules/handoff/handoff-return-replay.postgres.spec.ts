@@ -21,6 +21,7 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
     let service: HandoffReturnReplayService;
     let queue: { enqueue: jest.Mock };
     let redis: { del: jest.Mock };
+    const widget = { processWidgetMessage: jest.fn().mockResolvedValue({ status: 'stored', messages: [] }) };
     jest.setTimeout(120_000);
 
     const sql = (text: string, params: any[] = []): Promise<any[]> =>
@@ -28,15 +29,16 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
 
     async function returned(over: {
         status?: string; pending?: boolean; returnedToAi?: boolean; startedMinutesAgo?: number;
-        externalId?: string | null; waiting?: number;
+        externalId?: string | null; waiting?: number; channel?: string; claims?: number;
     } = {}) {
         const id = randomUUID();
         const minutes = over.startedMinutesAgo ?? 15;
         await sql(`INSERT INTO conversations(id, contact_id, channel_type, channel_account_id, status, metadata)
-            VALUES($1::uuid, $2::uuid, 'telegram', 'bot-1', $3, jsonb_build_object('handoff', jsonb_build_object(
+            VALUES($1::uuid, $2::uuid, $7, 'bot-1', $3, jsonb_build_object('handoff', jsonb_build_object(
                 'startedAt', to_char((NOW() - ($4 || ' minutes')::interval) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
-                'returnedToAi', $5::boolean, 'returnNoticePending', $6::boolean)))`,
-            [id, contactId, over.status ?? 'active', String(minutes), over.returnedToAi ?? true, over.pending ?? true]);
+                'returnedToAi', $5::boolean, 'returnNoticePending', $6::boolean, 'returnReplayClaims', $8::int)))`,
+            [id, contactId, over.status ?? 'active', String(minutes), over.returnedToAi ?? true, over.pending ?? true,
+                over.channel ?? 'telegram', over.claims ?? 0]);
         const count = over.waiting ?? 1;
         for (let i = 0; i < count; i++) {
             const external = over.externalId === undefined ? `tgu${1000 + i}` : over.externalId;
@@ -73,8 +75,9 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         await sql('INSERT INTO contacts(id, external_id) VALUES($1::uuid, $2)', [contactId, '555000']);
         queue = { enqueue: jest.fn().mockResolvedValue(undefined) };
         redis = { del: jest.fn().mockResolvedValue(1) };
-        service = new HandoffReturnReplayService(prisma, redis as any, queue as any, { detectOptOut: () => false } as any);
+        service = new HandoffReturnReplayService(prisma, redis as any, queue as any, {} as any);
         (service as any).logger = { log: jest.fn(), warn: jest.fn(), error: jest.fn() };
+        (service as any).conversationsService = async () => widget;
     });
 
     afterAll(async () => {
@@ -91,6 +94,7 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         queue.enqueue.mockClear();
         queue.enqueue.mockResolvedValue(undefined);
         redis.del.mockClear();
+        widget.processWidgetMessage.mockClear();
     });
 
     it('replays the waiting messages once, as one turn, and records the episode it did it for', async () => {
@@ -102,7 +106,11 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         expect(msg.content.text).toBe('mensaje 0\nmensaje 1');
         expect(msg.contactId).toBe('555000');
         expect(msg.metadata.updateId).toBe(1001);
-        expect((await metadata(id)).handoff.returnReplayFor).toBe((await metadata(id)).handoff.startedAt);
+        const handoff = (await metadata(id)).handoff;
+        expect(handoff.returnReplayFor).toBe(handoff.startedAt);
+        expect(handoff.returnReplayClaims).toBe(1);
+        // the instant the race guard compares later outbound messages against
+        expect(Number.isNaN(Date.parse(handoff.returnReplayClaimedAt))).toBe(false);
     });
 
     it('a second event, or a second sweep process, does not replay again', async () => {
@@ -172,9 +180,30 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         expect((await service.replayWaitingMessages(event(id))).kind).toBe('enqueued');
     });
 
-    it('a message without a provider id is left alone and the claim returned', async () => {
+    it('a queue-channel message without a provider id is not replayed, and the claim stays (a permanent skip)', async () => {
         const id = await returned({ externalId: null });
         expect(await service.replayWaitingMessages(event(id))).toEqual({ kind: 'skipped', reason: 'last_message_has_no_provider_id' });
-        expect((await metadata(id)).handoff.returnReplayFor).toBeUndefined();
+        expect((await metadata(id)).handoff.returnReplayFor).toBeDefined();
+        expect(queue.enqueue).not.toHaveBeenCalled();
+    });
+
+    it('a replay that keeps failing is given up after five claims', async () => {
+        const id = await returned();
+        queue.enqueue.mockRejectedValue(new Error('redis down'));
+        for (let i = 0; i < 5; i++) await expect(service.replayWaitingMessages(event(id))).rejects.toThrow('redis down');
+        queue.enqueue.mockResolvedValue(undefined);
+        expect(await service.replayWaitingMessages(event(id))).toEqual({ kind: 'skipped', reason: 'not_claimable' });
+        expect((await metadata(id)).handoff.returnReplayClaims).toBe(5);
+    });
+
+    it('the web chat is answered by its own turn on the stored inbound message, once', async () => {
+        const id = await returned({ channel: 'web_widget', externalId: null });
+        const lastMessage = (await sql(`SELECT id FROM messages WHERE conversation_id=$1::uuid ORDER BY created_at DESC LIMIT 1`, [id]))[0].id;
+        expect(await service.replayWaitingMessages(event(id))).toEqual({ kind: 'answered_in_widget' });
+        expect(await service.replayWaitingMessages(event(id))).toEqual({ kind: 'skipped', reason: 'not_claimable' });
+        expect(widget.processWidgetMessage).toHaveBeenCalledTimes(1);
+        expect(widget.processWidgetMessage.mock.calls[0][5]).toMatchObject({
+            inboundMessageId: lastMessage, handoffReturnReplay: true, allowHumanHandoff: false });
+        expect(queue.enqueue).not.toHaveBeenCalled();
     });
 });

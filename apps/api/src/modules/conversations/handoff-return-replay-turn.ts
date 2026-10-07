@@ -285,29 +285,92 @@ export function sanitizeReplayReply(response: string, lang: string | undefined, 
 /**
  * «¿Le gustaría que le ayude con algo más mientras espera?»: on a replay the customer is not waiting
  * for anyone, the agent is helping them now. The phrase that says they are is taken out of the
- * sentence and the rest stays.
+ * sentence and the rest stays, but only when the phrase is bare («…mientras espera?», «Mientras
+ * espera, le cuento…»). With an object («mientras espera su cita del martes, puede…», «while you wait
+ * for your appointment…») the wait is for something else, and taking the phrase out would leave a
+ * broken sentence: those are left as they are.
  */
-const WAITING_IMPLICATION = new RegExp([
-    String.raw`\s*\b(?:mientras (?:usted )?(?:espera|aguarda|esperamos|aguardamos)|en lo que espera|mientras permanece en espera)\b`,
-    String.raw`\s*\b(?:while you(?:'re| are)? (?:wait|waiting)|while waiting|whilst you wait)\b`,
-    String.raw`\s*\b(?:enquanto (?:o senhor |a senhora |voce |você )?(?:aguarda|espera|aguardamos))\b`,
-    String.raw`\s*\b(?:pendant que vous attendez|pendant votre attente)\b`,
-].join('|'), 'gi');
+const WAITING_PHRASE = new RegExp([
+    String.raw`mientras (?:usted )?(?:espera|aguarda|esperamos|aguardamos)`,
+    String.raw`en lo que espera`,
+    String.raw`mientras permanece en espera`,
+    String.raw`while you(?:'re| are)? (?:wait|waiting)`,
+    String.raw`while waiting`,
+    String.raw`whilst you wait`,
+    String.raw`enquanto (?:o senhor |a senhora |voce |você )?(?:aguarda|espera|aguardamos)`,
+    String.raw`pendant que vous attendez`,
+    String.raw`pendant votre attente`,
+].map(alt => String.raw`\b(?:${alt})\b`).join('|'), 'gi');
+
 export function withoutWaitingImplication(reply: string): string {
-    return reply.replace(WAITING_IMPLICATION, '');
+    const matches = [...reply.matchAll(WAITING_PHRASE)];
+    let out = reply;
+    // Last to first, so the indexes of the earlier matches stay valid.
+    for (const match of matches.reverse()) {
+        const start = match.index ?? 0;
+        const end = start + match[0].length;
+        const before = out.slice(0, start);
+        const after = out.slice(end);
+        // With an object the phrase is part of what the sentence says: leave it.
+        if (/^\s*[\p{L}\p{N}]/u.test(after)) continue;
+        const startsSentence = /(?:^|[.!?]\s+|\n\s*|[¿¡]\s*)$/.test(before);
+        if (startsSentence) {
+            // «Mientras espera, le cuento…» -> «Le cuento…»; «Mientras espera.» goes whole.
+            const rest = after.replace(/^\s*[,.;:!?]*\s*/, '');
+            out = before + rest.charAt(0).toUpperCase() + rest.slice(1);
+            continue;
+        }
+        // Mid-sentence: the phrase and the space before it; one comma goes when it would double up.
+        const trimmedBefore = before.replace(/\s+$/, '');
+        const doubled = trimmedBefore.endsWith(',') && /^\s*,/.test(after);
+        out = trimmedBefore + (doubled ? after.replace(/^\s*,/, '') : after);
+    }
+    return out;
 }
+
+/**
+ * Abbreviations that end in a full stop without ending the sentence: a reply that says «el Sr. Pérez»
+ * or «filtros, etc. y más» is not cut there to make room for the note.
+ */
+const ABBREVIATION = /(?:^|[^\p{L}])(?:sr|sra|srta|sres|dr|dra|lic|ing|arq|prof|tel|av|cll|cra|nº|ud|uds|vs|etc|ej|aprox|mr|mrs|ms|st|jr|a\.m|p\.m|[\p{L}])\.$/iu;
+
+/** Where the closing question starts, or -1 when the reply does not end on one set apart from its answer. */
+function closingQuestionStart(text: string): number {
+    if (!/\?\s*$/.test(text)) return -1;
+    let start = -1;
+    for (const boundary of text.matchAll(/[.!?]\s+/g)) {
+        const index = boundary.index ?? 0;
+        const upToStop = text.slice(0, index + 1);
+        if (boundary[0].startsWith('.') && ABBREVIATION.test(upToStop)) continue;
+        start = index + boundary[0].length;
+    }
+    return start;
+}
+
+/** What says, in any of the four languages, that the request was left, passed on or recorded. */
+const SAYS_REQUEST_LEFT = new RegExp([
+    String.raw`\b(?:deje|he dejado|dejamos|registre|he registrado|registramos|anote|he anotado|transmiti|he transmitido|pase|he pasado|traslade|he trasladado|reenvie|he reenviado)\b.{0,50}\bsolicitud\b`,
+    String.raw`\bsolicitud\b.{0,40}\b(?:quedo|ha quedado|esta|fue|ha sido)\b.{0,20}\b(?:registrada|anotada|dejada|transmitida|trasladada|pasada)\b`,
+    String.raw`\b(?:i|we)(?:['’]?ve| have)? (?:left|passed|noted|recorded|forwarded|logged|sent)\b.{0,50}\brequest\b`,
+    String.raw`\brequest\b.{0,40}\b(?:has been|was|is) (?:left|passed|noted|recorded|forwarded|logged)\b`,
+    String.raw`\b(?:deixei|registrei|anotei|repassei|encaminhei|passei)\b.{0,50}\b(?:solicitacao|pedido)\b`,
+    String.raw`\b(?:j['’ ]?ai|nous avons) (?:transmis|laisse|note|enregistre|transfere|communique)\b.{0,50}\bdemande\b`,
+].join('|'));
 
 /**
  * The note that the request was left for the team, when it WAS left (`noteLeft`): put in the reply
  * by the server, not asked of the model. It was only said when a sentence had been removed, so a
  * reply that was fine as the model wrote it (the price, the hours) never told the customer their
  * request had been left. Before a closing question when there is one («¿Le ayudo con algo más?»), so
- * the reply still ends on the invitation; never twice.
+ * the reply still ends on the invitation. Never twice: not when the note is already in the reply, nor
+ * when the reply already says the same thing in its own words («He dejado su solicitud registrada…»).
  */
 export function withRequestLeftNote(response: string, lang: string | undefined, noteLeft: boolean): string {
     if (!noteLeft || !response.trim()) return response;
     const note = pick(NOTE_LEFT, lang);
     if (Object.values(NOTE_LEFT).some(sentence => response.includes(sentence))) return response;
-    const closing = /^([\s\S]*?[.!])\s+([^.!?]*\?)\s*$/.exec(response.trim());
-    return closing ? `${closing[1]}\n\n${note}\n\n${closing[2]}` : `${response.trim()}\n\n${note}`;
+    if (SAYS_REQUEST_LEFT.test(normalizeForIntent(response))) return response;
+    const text = response.trim();
+    const closing = closingQuestionStart(text);
+    return closing > 0 ? `${text.slice(0, closing).trimEnd()}\n\n${note}\n\n${text.slice(closing)}` : `${text}\n\n${note}`;
 }

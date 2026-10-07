@@ -419,3 +419,90 @@ describe('the request left for the team is said by the server, and nobody is tol
         expect(prompt).not.toContain('you will help in the meantime');
     });
 });
+
+/**
+ * Round 2 of the live episode of 2026-10-08: the server says the request was left, so the model must
+ * not say it as well («He dejado su solicitud registrada… Dejé su solicitud anotada…»); and the
+ * sentence-level edits (the waiting phrase, the note's place) must not break a reply.
+ */
+describe('the request left is said once', () => {
+    const service = new PromptAssemblerService({ buildSystemPrompt: jest.fn(() => '<persona/>') } as any);
+    const NOTE = 'Dejé su solicitud anotada para que el equipo la vea y le contacte cuando esté disponible.';
+
+    it('the contract tells the model NOT to say it: the system adds that sentence', () => {
+        const prompt = service.assemble({ tools: {} } as any, {
+            language: 'es', timezone: 'America/Bogota', now: '2026-10-08T18:00:00.000Z',
+            upcomingDays: [], businessHoursStatus: 'open', handoffReturn: { ask: 'person', noteLeft: true, fromEpisode: true },
+        } as any);
+        expect(prompt).toContain('do not say that their request was left for the team');
+        expect(prompt).not.toContain('add that the request was left');
+    });
+
+    it.each([
+        'Abrimos a las 9. He dejado su solicitud registrada para que el equipo la revise.',
+        'Abrimos a las 9. Registré su solicitud.',
+        'Abrimos a las 9. Su solicitud quedó registrada.',
+        'Abrimos a las 9. Ya anoté su solicitud para el equipo.',
+        "We open at 9. I've left your request with the team.",
+        'We open at 9. I have passed your request on to the team.',
+        'We open at 9. Your request has been noted.',
+        'Abrimos às 9. Deixei a sua solicitação registrada.',
+        'Abrimos às 9. Registrei sua solicitação.',
+        "Nous ouvrons à 9 h. J'ai transmis votre demande à l'équipe.",
+        "Nous ouvrons à 9 h. J'ai laissé votre demande à l'équipe.",
+    ])('does not add the note to a reply that already says it: «%s»', reply => {
+        expect(withRequestLeftNote(reply, 'es', true)).toBe(reply);
+    });
+
+    it('adds it when the reply only mentions a request without saying it was left', () => {
+        const reply = 'Su solicitud de cita está pendiente de pago.';
+        expect(withRequestLeftNote(reply, 'es', true)).toBe(`${reply}\n\n${NOTE}`);
+    });
+
+    it.each([
+        ['Le atiende el Sr. Pérez de lunes a viernes. ¿Le ayudo con algo más?',
+            `Le atiende el Sr. Pérez de lunes a viernes.\n\n${NOTE}\n\n¿Le ayudo con algo más?`],
+        ['Abrimos de 9 a 6. ¿Prefiere hablar con el Dr. Gómez o con la Dra. Ruiz?',
+            `Abrimos de 9 a 6.\n\n${NOTE}\n\n¿Prefiere hablar con el Dr. Gómez o con la Dra. Ruiz?`],
+        ['Ofrecemos filtros, estuches, etc. y baterías. ¿Le muestro alguno?',
+            `Ofrecemos filtros, estuches, etc. y baterías.\n\n${NOTE}\n\n¿Le muestro alguno?`],
+        ['Tenemos varios modelos, p. ej. el Aurora. ¿Algo más?',
+            `Tenemos varios modelos, p. ej. el Aurora.\n\n${NOTE}\n\n¿Algo más?`],
+    ])('puts the note before the closing question without cutting at an abbreviation: «%s»', (reply, expected) => {
+        expect(withRequestLeftNote(reply, 'es', true)).toBe(expected);
+    });
+
+    it('when no real sentence boundary precedes the question, the note goes at the end rather than in the middle of a sentence', () => {
+        const reply = 'Tenemos kits, filtros, etc. ¿Le muestro alguno?';
+        expect(withRequestLeftNote(reply, 'es', true)).toBe(`${reply}\n\n${NOTE}`);
+        expect(withRequestLeftNote('¿Le ayudo con algo más?', 'es', true)).toBe(`¿Le ayudo con algo más?\n\n${NOTE}`);
+    });
+});
+
+describe('the waiting phrase comes out without breaking the sentence', () => {
+    it.each([
+        ['Mientras espera, le cuento que abrimos a las 9.', 'Le cuento que abrimos a las 9.'],
+        ['Abrimos a las 9. Mientras espera, puede ver el catálogo.', 'Abrimos a las 9. Puede ver el catálogo.'],
+        ['Hola.\nMientras espera, le cuento algo.', 'Hola.\nLe cuento algo.'],
+        ['While you wait, I can show you the catalogue.', 'I can show you the catalogue.'],
+        ['Enquanto aguarda, posso mostrar o catálogo.', 'Posso mostrar o catálogo.'],
+        ['Pendant que vous attendez, je peux vous montrer le catalogue.', 'Je peux vous montrer le catalogue.'],
+        ['Le ayudo, mientras espera, con eso.', 'Le ayudo, con eso.'],
+        ['Le ayudo mientras espera, con lo que necesite.', 'Le ayudo, con lo que necesite.'],
+        ['Hola. Mientras espera. Abrimos a las 9.', 'Hola. Abrimos a las 9.'],
+        ['Mientras espera, abrimos a las 9. ¿Algo más mientras espera?', 'Abrimos a las 9. ¿Algo más?'],
+        ['Puis-je vous aider pendant que vous attendez ?', 'Puis-je vous aider ?'],
+    ])('«%s» -> «%s»', (text, expected) => {
+        expect(withoutWaitingImplication(text)).toBe(expected);
+    });
+
+    it.each([
+        'Mientras espera su cita del martes, puede ver el catálogo.',
+        'Mientras aguarda la confirmación de su pedido, le cuento el horario.',
+        'While you wait for your appointment, you can browse the catalogue.',
+        'Enquanto aguarda sua consulta, veja o catálogo.',
+        'Pendant que vous attendez votre rendez-vous, voici le catalogue.',
+    ])('leaves a wait for something else untouched: «%s»', text => {
+        expect(withoutWaitingImplication(text)).toBe(text);
+    });
+});

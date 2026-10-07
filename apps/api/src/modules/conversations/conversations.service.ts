@@ -3590,7 +3590,21 @@ export class ConversationsService {
             }
 
             // ═══ PHASE 1: INTERPRET — extract structured intent ═══
-            const serviceNames = bookingState.services?.map(s => s.name) || [];
+            let serviceNames = bookingState.services?.map(s => s.name) || [];
+            // A fresh (idle) conversation restores to `{ step: 'idle' }` WITHOUT the catalog, so the
+            // interpreter used to know no service name there: «quiero agendar color y tratamiento» showed
+            // the whole list instead of selecting the service, and nothing that depends on the service
+            // named in the message (real vs tentative mission, informational detection) ran as designed.
+            // Same gate, cache and tool as the engine's own list (`booking:services:{tenant}`, 5 min), and
+            // no LLM call; a tenant that cannot book gets no list at all.
+            if (!serviceNames.length && bookingAuthority.allowed) {
+                const catalog = await this.loadServicesForPrompt({
+                    known: bookingState.services, cache, toolExecutor, schemaName, tenantId,
+                    contactId: conversation.contact_id || '', conversationId: conversation.id,
+                    authority: engineAuthority,
+                });
+                serviceNames = catalog.map((service: any) => String(service?.name || '')).filter(Boolean);
+            }
             const upcoming = turnContext.upcomingDays || [];
             // "a las 4" is read against the opening window. With no configured hours the
             // window comes from the appointment agenda, the same source the prompt describes

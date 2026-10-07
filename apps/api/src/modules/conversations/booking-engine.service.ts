@@ -9,13 +9,13 @@ import { holdStillAliveSql } from '../../common/utils/payment-policy.util';
 import { bookingEngineAuthorityDecision, deniedOperationalIntent } from './turn-authority';
 import { bookingConfirmationHash } from './booking-confirmation';
 import { appointmentPriceSql, appointmentCurrencySql, type AppointmentServiceTerms } from '../appointments/appointment-service-terms';
-import { isPauseMessage, isResumeMessage } from '../../common/conversation/intent-normalizer';
+import { isInformationSeekingMessage, isPauseMessage, isResumeMessage } from '../../common/conversation/intent-normalizer';
 import { normalizeForIntent } from '@parallext/shared';
 import { procedureDialogueMessages } from './procedure-dialogue-messages';
 import { containsMissionDirective, isCollectionCancellation, isDirectedCorrection, isNamedMissionResume, mentionedMissionDomains, missionDialogue, parseDirectedSlotCorrection } from './mission-focus';
 import { coerceProcedureSlot } from './procedure-slot-interpolation';
 import { nearestSlots, selectSlotWindow } from './slot-window';
-import { asksDuration, bookingActKind, isAboutBooking, isInformationalDetour, isOnlyInquiry } from './informational-detour';
+import { answerToOffer, asksDuration, bookingActKind, isAboutBooking, isInformationalDetour, isOnlyInquiry, isServiceSwitchDirective } from './informational-detour';
 import { BOOKING_OFFER_TTL_MS } from './booking-offer';
 
 /**
@@ -83,6 +83,20 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         resumeOffer: 'Quedó a medio agendar una cita de {service}. ¿Desea continuar o prefiere empezar de nuevo?',
         resumeOfferNoService: 'Quedó una cita a medio agendar. ¿Desea continuar o prefiere empezar de nuevo?',
         resumeDiscarded: 'Listo, dejé esa reserva de lado. ¿En qué puedo ayudarte?',
+        switchDeclined: 'Está bien, dejamos su cita de {service} como estaba.',
+        switchDuration: '{service} dura {minutes} minutos.',
+        switchDurationRange: '{service} dura entre {min} y {max} minutos.',
+        switchDurationOpen: '{service} tiene un horario flexible.',
+        switchPrice: 'El precio de {service} es {amount}.',
+        switchPriceNote: 'Sobre el precio de {service}: {note}.',
+        switchSlotFree: 'Sí, hay cupo el {date} a las {time} para {service}.',
+        switchSlotTaken: 'El {date} a las {time} no hay cupo para {service}. Hay disponibilidad a las {slots}.',
+        switchDayFree: 'El {date} hay cupo para {service} a las {slots}.',
+        switchDayFull: 'El {date} no hay disponibilidad para {service}.',
+        switchOffer: '¿Desea cambiar su cita de {from} por {service}?',
+        switchOfferDate: '¿Desea cambiar su cita de {from} por {service} el {date}? Si es así, indíqueme el horario que prefiere.',
+        switchOfferSlot: '¿Desea cambiar su cita de {from} por {service} el {date} a las {time}?',
+        switchOfferOtherDate: '¿Desea cambiar su cita de {from} por {service} para otra fecha?',
         servicesHeader: 'Estos son nuestros servicios:',
         servicesFooter: '¿Cuál te interesa?',
         slotsAvailable: 'Horarios disponibles para {service} el {date}: {slots}. ¿Cuál horario prefieres?',
@@ -140,6 +154,20 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         resumeOffer: 'An appointment for {service} was left half-scheduled. Would you like to continue it or start over?',
         resumeOfferNoService: 'An appointment was left half-scheduled. Would you like to continue it or start over?',
         resumeDiscarded: 'Done, I set that booking aside. How can I help you?',
+        switchDeclined: 'Understood, your {service} appointment stays as it was.',
+        switchDuration: '{service} takes {minutes} minutes.',
+        switchDurationRange: '{service} takes between {min} and {max} minutes.',
+        switchDurationOpen: '{service} has a flexible duration.',
+        switchPrice: 'The price of {service} is {amount}.',
+        switchPriceNote: 'About the price of {service}: {note}.',
+        switchSlotFree: 'Yes, there is availability on {date} at {time} for {service}.',
+        switchSlotTaken: 'There is no availability for {service} on {date} at {time}. Available times: {slots}.',
+        switchDayFree: 'On {date} there is availability for {service} at {slots}.',
+        switchDayFull: 'There is no availability for {service} on {date}.',
+        switchOffer: 'Would you like to change your {from} appointment to {service}?',
+        switchOfferDate: 'Would you like to change your {from} appointment to {service} on {date}? If so, tell me which time you prefer.',
+        switchOfferSlot: 'Would you like to change your {from} appointment to {service} on {date} at {time}?',
+        switchOfferOtherDate: 'Would you like to change your {from} appointment to {service} on another date?',
         servicesHeader: 'These are our services:',
         servicesFooter: 'Which one interests you?',
         slotsAvailable: 'Available times for {service} on {date}: {slots}. Which time do you prefer?',
@@ -187,6 +215,20 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         resumeOffer: 'Ficou um agendamento de {service} pela metade. Deseja continuar ou prefere começar de novo?',
         resumeOfferNoService: 'Ficou um agendamento pela metade. Deseja continuar ou prefere começar de novo?',
         resumeDiscarded: 'Pronto, deixei essa reserva de lado. Como posso ajudar?',
+        switchDeclined: 'Tudo bem, mantemos o seu agendamento de {service} como estava.',
+        switchDuration: '{service} dura {minutes} minutos.',
+        switchDurationRange: '{service} dura entre {min} e {max} minutos.',
+        switchDurationOpen: '{service} tem horário flexível.',
+        switchPrice: 'O preço de {service} é {amount}.',
+        switchPriceNote: 'Sobre o preço de {service}: {note}.',
+        switchSlotFree: 'Sim, há vaga em {date} às {time} para {service}.',
+        switchSlotTaken: 'Não há vaga para {service} em {date} às {time}. Horários disponíveis: {slots}.',
+        switchDayFree: 'Em {date} há vaga para {service} nos horários: {slots}.',
+        switchDayFull: 'Não há disponibilidade para {service} em {date}.',
+        switchOffer: 'Deseja trocar o seu agendamento de {from} por {service}?',
+        switchOfferDate: 'Deseja trocar o seu agendamento de {from} por {service} em {date}? Se sim, diga-me o horário que prefere.',
+        switchOfferSlot: 'Deseja trocar o seu agendamento de {from} por {service} em {date} às {time}?',
+        switchOfferOtherDate: 'Deseja trocar o seu agendamento de {from} por {service} para outra data?',
         servicesHeader: 'Estes são nossos serviços:',
         servicesFooter: 'Qual te interessa?',
         slotsAvailable: 'Horários disponíveis para {service} em {date}: {slots}. Qual horário prefere?',
@@ -234,6 +276,20 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         resumeOffer: 'Un rendez-vous pour {service} est resté à moitié planifié. Voulez-vous continuer ou recommencer ?',
         resumeOfferNoService: 'Un rendez-vous est resté à moitié planifié. Voulez-vous continuer ou recommencer ?',
         resumeDiscarded: "C'est noté, j'ai mis cette réservation de côté. Comment puis-je vous aider ?",
+        switchDeclined: 'Très bien, votre rendez-vous pour {service} reste tel quel.',
+        switchDuration: '{service} dure {minutes} minutes.',
+        switchDurationRange: '{service} dure entre {min} et {max} minutes.',
+        switchDurationOpen: '{service} a une durée flexible.',
+        switchPrice: 'Le prix de {service} est de {amount}.',
+        switchPriceNote: 'À propos du prix de {service} : {note}.',
+        switchSlotFree: 'Oui, il y a de la disponibilité le {date} à {time} pour {service}.',
+        switchSlotTaken: "Il n'y a pas de disponibilité pour {service} le {date} à {time}. Créneaux disponibles : {slots}.",
+        switchDayFree: 'Le {date}, il y a de la disponibilité pour {service} : {slots}.',
+        switchDayFull: "Il n'y a pas de disponibilité pour {service} le {date}.",
+        switchOffer: 'Souhaitez-vous remplacer votre rendez-vous pour {from} par {service} ?',
+        switchOfferDate: "Souhaitez-vous remplacer votre rendez-vous pour {from} par {service} le {date} ? Si oui, indiquez-moi l'horaire souhaité.",
+        switchOfferSlot: 'Souhaitez-vous remplacer votre rendez-vous pour {from} par {service} le {date} à {time} ?',
+        switchOfferOtherDate: 'Souhaitez-vous remplacer votre rendez-vous pour {from} par {service} pour une autre date ?',
         servicesHeader: 'Voici nos services :',
         servicesFooter: 'Lequel vous intéresse ?',
         slotsAvailable: 'Créneaux disponibles pour {service} le {date} : {slots}. Quel horaire préférez-vous ?',
@@ -264,6 +320,19 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         flowCta: 'Réserver',
     },
 };
+
+/** The message asks what a service costs (already folded: lowercase, no accents). */
+const PRICE_QUESTION = /\b(?:cuanto (?:cuesta|vale|cobran|sale)|how much|quanto custa|combien|precio|price)\b/;
+
+/** "sábado 10 de octubre": how the customer reads a date, from the ISO day the engine keeps. */
+function friendlyDate(lang: string, iso: string): string {
+    try {
+        return new Intl.DateTimeFormat((lang || 'es').slice(0, 2), { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' })
+            .format(new Date(`${iso}T00:00:00Z`)).replace(',', '');
+    } catch {
+        return iso;
+    }
+}
 
 /** Get message in the given language, with variable substitution */
 function msg(lang: string, key: string, vars: Record<string, string> = {}): string {
@@ -402,6 +471,12 @@ export interface BookingState {
     /** When the model last offered to book while the mission was tentative: a bare "ok" then accepts it. */
     offeredBookingAt?: string;
     /**
+     * The customer ASKED about another service while this draft was open ("¿cuánto dura color y
+     * tratamiento y tienen cupo el sábado a las 16:00?"). The engine answered and offered the change; the
+     * draft itself is untouched. Only a yes right after the offer applies it; any other message drops it.
+     */
+    pendingSwitch?: { serviceId: string; serviceName: string; date?: string; time?: string; offeredAt: string };
+    /**
      * Last real customer activity before the mission went dormant. Retention is
      * measured from here: `savedAt` is refreshed on every turn (even turns the
      * engine declines), so it cannot bound the life of a mission by itself.
@@ -505,7 +580,8 @@ export class BookingEngineService {
         const wasOpen = isOpen(currentState);
         // "Solo consulto": information only. It never changes, starts or confirms a booking, so an
         // open mission (a draft the customer was building for another service) is left untouched.
-        if (isOnlyInquiry(rawText)) return { handled: false, state: currentState };
+        // The model answers next, so an offer the engine made last turn is no longer what a bare yes answers.
+        if (isOnlyInquiry(rawText)) return { handled: false, state: currentState.pendingSwitch ? { ...currentState, pendingSwitch: undefined } : currentState };
         const tentativeOpen = wasOpen && currentState.origin === 'question';
         const offeredAt = Date.parse(currentState.offeredBookingAt || '');
         const offerLive = tentativeOpen && Number.isFinite(offeredAt) && Date.now() - offeredAt >= 0 && Date.now() - offeredAt <= BOOKING_OFFER_TTL_MS;
@@ -520,9 +596,10 @@ export class BookingEngineService {
             if (act === 'none') return { handled: false, state: { ...currentState, offeredBookingAt: undefined } };
         }
         const entering: BookingState = currentState.origin || currentState.offeredBookingAt ? { ...currentState, origin: undefined, offeredBookingAt: undefined } : currentState;
+        // A draft the customer built (not an interest the engine opened for a question) is theirs to change.
         const result = await this.processCore(schemaName, tenantId, contactId, intent, rawText, entering,
-            customerProfile, todayDate, language, turn);
-        if (!isOpen(result.state)) { result.state.origin = undefined; result.state.offeredBookingAt = undefined; return result; }
+            customerProfile, todayDate, language, turn, wasOpen && currentState.origin !== 'question');
+        if (!isOpen(result.state)) { result.state.origin = undefined; result.state.offeredBookingAt = undefined; result.state.pendingSwitch = undefined; return result; }
         // Only a mission OPENED by this message can be tentative; one the customer already
         // confirmed (act) or that was real before stays real.
         const tentative = !wasOpen && act !== 'act';
@@ -553,7 +630,7 @@ export class BookingEngineService {
         if (!svc) return '';
         const parts: string[] = [];
         if (asksDuration(rawText) && svc.durationMinutes) parts.push(`${svc.name} lasts ${svc.durationMinutes} minutes`);
-        const asksPrice = /\b(?:cuanto (?:cuesta|vale|cobran|sale)|how much|quanto custa|combien|precio|price)\b/.test(normalizeForIntent(rawText));
+        const asksPrice = PRICE_QUESTION.test(normalizeForIntent(rawText));
         if (asksPrice && Number(svc.price) > 0 && (!svc.priceStatus || svc.priceStatus === 'confirmed')) {
             parts.push(`its price is ${formatPriceWithCurrency(lang, svc.price, svc.currency)}`);
         }
@@ -571,6 +648,7 @@ export class BookingEngineService {
         todayDate: string,
         language: string = 'es',
         turn: BookingTurnContext,
+        liveDraft = false,
     ): Promise<EngineResult> {
         // ═══ LA AUTORIDAD ES UN PARÁMETRO, NO UN DETALLE OPCIONAL ═══
         //
@@ -587,6 +665,23 @@ export class BookingEngineService {
         const L = language; // shorthand for msg() calls
         const domains = mentionedMissionDomains(rawText);
         const active = !['idle', 'booked'].includes(state.step);
+        // A dormant, paused or tentative mission is not a draft the customer is working on right now.
+        const draftIsLive = liveDraft && active && !state.resumeOffer && !state.resumedAfterExpiry && !state.pausedAt;
+        // The answer to the switch offer made last turn. Any message that is not a clear yes/no drops the
+        // offer (a "no" must not read as cancelling the whole draft, and a later yes must not revive it).
+        let acceptedSwitch: NonNullable<BookingState['pendingSwitch']> | undefined;
+        if (state.pendingSwitch) {
+            const pending = state.pendingSwitch;
+            state.pendingSwitch = undefined;
+            const age = Date.now() - Date.parse(pending.offeredAt);
+            const answer = draftIsLive && Number.isFinite(age) && age >= 0 && age <= BOOKING_OFFER_TTL_MS
+                ? answerToOffer(rawText, intent) : null;
+            if (answer === 'yes') acceptedSwitch = pending;
+            if (answer === 'no') {
+                const back = this.repromptCurrentStep(state, L);
+                return back.handled ? { ...back, text: `${msg(L, 'switchDeclined', { service: state.serviceName || '' })} ${back.text ?? ''}`.trim() } : { handled: false, state };
+            }
+        }
         // An informational question (hours, price, services, address, policy) is
         // not a step of the open mission: the engine has no tool to answer it and
         // used to re-prompt the step instead. Leave it to the model with its
@@ -719,6 +814,37 @@ export class BookingEngineService {
         } catch (err: any) {
             this.logger.warn(`[Engine] Failed to reload services (non-fatal): ${err.message}`);
             // Keep previous state.services as last resort — better than crashing
+        }
+
+        // ── The customer agreed to the service switch we offered ──
+        // Their yes is the consent: the draft moves to the other service and the slot is checked again
+        // for it (what was free a moment ago is not evidence), never booked from the earlier peek.
+        if (acceptedSwitch) {
+            const target = state.services?.find(s => s.id === acceptedSwitch!.serviceId);
+            if (target && target.id !== state.serviceId) {
+                const date = [intent.dateMentioned, acceptedSwitch.date].find(d => !!d && d >= todayDate) || undefined;
+                const time = intent.timeMentioned ?? acceptedSwitch.time;
+                this.logger.log(`[Decide] Customer accepted the offered switch to ${target.name}`);
+                Object.assign(state, {
+                    serviceId: target.id, serviceName: target.name, date, slots: undefined, suggestedSlots: undefined,
+                    time: undefined, staffId: undefined, staffName: undefined,
+                });
+                invalidateBookingProposal(state);
+                if (!date) {
+                    state.step = 'ask_date';
+                    return { handled: true, state, text: msg(L, 'switchedService', { service: target.name }) };
+                }
+                return this.checkAvailability(schemaName, tenantId, contactId, state, L, authority, conversationId, time);
+            }
+        }
+
+        // ── A QUESTION about another service while a draft is open: answer it, offer the change ──
+        // "¿Cuánto dura color y tratamiento y tienen cupo el sábado a las 16:00?" with a draft for
+        // another service is not a change of mind: the date and time belong to the question. The draft
+        // stays as the customer built it until they agree to move it.
+        if (draftIsLive) {
+            const offered = await this.offerServiceSwitch(schemaName, tenantId, contactId, state, intent, rawText, L, todayDate, authority, conversationId);
+            if (offered) return offered;
         }
 
         // ── Incoming WhatsApp Flow completion (opt-in) ──
@@ -1269,6 +1395,110 @@ export class BookingEngineService {
 
         // ── Not booking-related ──
         return { handled: false, state };
+    }
+
+    /**
+     * A QUESTION about another service while the customer's draft is open ("¿cuánto dura color y
+     * tratamiento y tienen cupo el sábado a las 16:00?"). The date and the time belong to the question:
+     * reading them as the draft's own data (the old behaviour) moved the booking to the other service and
+     * skipped asking for the slot. Here the question is answered with what the engine can verify (the
+     * service's duration, a read-only availability check for THAT service) and the change is offered; the
+     * draft is not touched. A yes right after (see `pendingSwitch`) applies it.
+     *
+     * Returns null when this is not that situation, so the normal flow runs (a statement such as "mejor
+     * cámbiala a X" still switches directly). When availability cannot be verified the draft is left
+     * alone and the model answers with its own tools.
+     */
+    private async offerServiceSwitch(
+        schema: string, tenantId: string, contactId: string, state: BookingState, intent: InterpretedIntent,
+        rawText: string, lang: string, todayDate: string, authority: ToolExecutionAuthority, conversationId?: string,
+    ): Promise<EngineResult | null> {
+        if (!state.serviceId || !['ask_date', 'show_slots', 'ask_name', 'ask_email', 'confirm'].includes(state.step)) return null;
+        const draft = state.services?.find(s => s.id === state.serviceId);
+        if (!draft || !isInformationSeekingMessage(rawText) || isServiceSwitchDirective(rawText)) return null;
+        const target = this.otherServiceNamed(state, draft.id, intent, rawText);
+        if (!target) return null;
+        this.logger.log(`[Decide] Question about ${target.name} with a draft for ${draft.name} open — offering the switch instead of applying it`);
+
+        const from = state.serviceName || draft.name;
+        const parts: string[] = [];
+        if (asksDuration(rawText)) {
+            const dtype = target.durationType || 'fixed';
+            if (dtype === 'open') parts.push(msg(lang, 'switchDurationOpen', { service: target.name }));
+            else if (dtype === 'flexible' && target.durationMinutesMax && target.durationMinutesMax !== target.durationMinutes) {
+                parts.push(msg(lang, 'switchDurationRange', { service: target.name, min: String(target.durationMinutes), max: String(target.durationMinutesMax) }));
+            } else if (target.durationMinutes > 0) parts.push(msg(lang, 'switchDuration', { service: target.name, minutes: String(target.durationMinutes) }));
+        }
+        if (PRICE_QUESTION.test(normalizeForIntent(rawText))) {
+            if (target.priceStatus && target.priceStatus !== 'confirmed') {
+                parts.push(msg(lang, 'switchPriceNote', { service: target.name, note: msg(lang, target.priceStatus === 'quote' ? 'servicePriceQuote' : 'servicePriceExample') }));
+            } else if (Number(target.price) > 0) {
+                parts.push(msg(lang, 'switchPrice', { service: target.name, amount: formatPriceWithCurrency(lang, target.price, target.currency) }));
+            }
+        }
+
+        // The customer's day: the one they name, or the draft's day when they only name an hour.
+        const date = intent.dateMentioned ? (intent.dateMentioned >= todayDate ? intent.dateMentioned : undefined)
+            : intent.timeMentioned ? state.date : undefined;
+        const time = intent.timeMentioned ?? undefined;
+        let offerKey: 'switchOffer' | 'switchOfferDate' | 'switchOfferSlot' | 'switchOfferOtherDate' = 'switchOffer';
+        let offeredDate: string | undefined;
+        let offeredTime: string | undefined;
+        if (date) {
+            const result = await this.toolExecutor.execute(
+                schema, tenantId, contactId, 'check_availability',
+                { date, serviceId: target.id, ...(time ? { time } : {}) },
+                conversationId, { authority },
+            );
+            // Nothing is claimed about a slot that could not be checked: the model answers, the draft stays.
+            if (!result || result.error) return { handled: false, state };
+            const slots = result.available && result.slots?.length ? selectSlotWindow<{ time: string }>(result.slots, time) : [];
+            const times = (list: Array<{ time: string }>) => Array.from(new Set(list.map(s => s.time))).join(', ');
+            const vars = { service: target.name, date: friendlyDate(lang, date), time: time || '' };
+            if (!slots.length) {
+                parts.push(msg(lang, 'switchDayFull', vars));
+                offerKey = 'switchOfferOtherDate';
+            } else if (time && slots.some(s => s.time === time)) {
+                parts.push(msg(lang, 'switchSlotFree', vars));
+                offerKey = 'switchOfferSlot'; offeredDate = date; offeredTime = time;
+            } else if (time) {
+                const near = nearestSlots(slots, time);
+                parts.push(msg(lang, 'switchSlotTaken', { ...vars, slots: times(near.length ? near : slots) }));
+                offerKey = 'switchOfferDate'; offeredDate = date;
+            } else {
+                parts.push(msg(lang, 'switchDayFree', { ...vars, slots: times(slots) }));
+                offerKey = 'switchOfferDate'; offeredDate = date;
+            }
+        }
+        parts.push(msg(lang, offerKey, {
+            from, service: target.name, date: offeredDate ? friendlyDate(lang, offeredDate) : '', time: offeredTime || '',
+        }));
+        state.pendingSwitch = {
+            serviceId: target.id, serviceName: target.name,
+            ...(offeredDate ? { date: offeredDate } : {}), ...(offeredTime ? { time: offeredTime } : {}),
+            offeredAt: new Date().toISOString(),
+        };
+        return { handled: true, state, text: parts.join(' ') };
+    }
+
+    /**
+     * The catalog service, other than the draft's, that the message is about: the one the interpreter
+     * extracted, or (for the late steps, where the interpreter deliberately does not read service names so
+     * a surname is not taken for one) a service whose full name appears in the text.
+     */
+    private otherServiceNamed(state: BookingState, draftId: string, intent: InterpretedIntent, rawText: string): NonNullable<BookingState['services']>[number] | undefined {
+        const services = state.services ?? [];
+        const fold = (value: string) => normalizeForIntent(value).replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
+        if (intent.serviceMentioned) {
+            const wanted = fold(intent.serviceMentioned);
+            const named = services.find(s => fold(s.name) === wanted) ?? services.find(s => fold(s.name).includes(wanted));
+            if (named) return named.id === draftId ? undefined : named;
+        }
+        const text = ` ${fold(rawText)} `;
+        const inText = services
+            .filter(s => fold(s.name).length >= 4 && text.includes(` ${fold(s.name)} `))
+            .sort((a, b) => b.name.length - a.name.length);
+        return inText.length && !inText.some(s => s.id === draftId) ? inText[0] : undefined;
     }
 
     /**

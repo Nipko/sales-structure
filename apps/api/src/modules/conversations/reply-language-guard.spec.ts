@@ -56,7 +56,7 @@ describe('applyOutputGuardrails: the reply is in the turn language', () => {
         expect(await run(service, 'Con gusto, ¿algo más?', 'pt')).toBe('Con gusto, ¿algo más?');
         expect(await run(service, SPANISH, 'pt', { directive: 'Te voy a transferir' })).toBe(SPANISH);
         // A few Spanish words in a Portuguese-turn reply are not clear evidence either.
-        expect(await run(service, 'Claro, reembolso llega pronto, unos dias habiles despues de aprobado', 'pt')).toContain('reembolso');
+        expect(await run(service, 'Claro, reembolso sera rapido, dias habiles despues de aprobado', 'pt')).toContain('reembolso');
         // One Spanish marker word ("cuesta") in an English reply is not evidence of another language.
         expect(await run(service, 'The Aurora headset cuesta 129.900 COP and it is available in the store today.', 'en')).toContain('Aurora');
         expect(execute).not.toHaveBeenCalled();

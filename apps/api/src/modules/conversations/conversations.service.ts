@@ -4,7 +4,7 @@ import { demoAllowanceExhaustedText } from '../widget/widget-demo-link';
 import { recordFirstReply } from '../../common/utils/first-reply.util';
 import { stripInternalMarkers } from '../../common/utils/internal-markers.util';
 import { projectAvailableServices } from '../appointments/service-price-status';
-import { replyLanguageOf } from './reply-language';
+import { catalogNamesOfTurn, replyLanguageOf, rewritePreserves } from './reply-language';
 import { localeForReply, normalizeReplyAmounts } from './reply-price-format';
 import { foldedSql, foldQueryText } from '../../common/utils/sql-accent-fold.util';
 import { servedAgentAuthority, type ServedAgentAuthority } from '../persona/served-agent-authority';
@@ -5740,14 +5740,17 @@ export class ConversationsService {
     private async alignReplyLanguage(
         response: string, lang: string | undefined, currentMessages: any[], systemPrompt: string, allowedTiers: ModelTier[],
         tenantId: string, llmRouter: Pick<LLMRouterService, 'execute'>, trustedContext?: Partial<TurnContext>, session?: AgentTurnSession,
+        executedTools?: Array<{ name: string; result: any }>,
     ): Promise<string> {
         const code = String(lang || '').slice(0, 2).toLowerCase();
         const instruction = REPLY_LANGUAGE_REWRITE[code];
         // Engine/handoff directives and fixed system texts are already in the turn language by construction.
         if (!instruction || (trustedContext as any)?.directive || isSystemFixedText(response)) return response;
         if (response.trim().split(/\s+/).length < 8) return response;
+        // Names of the business's own catalog (products, services) are not the reply's language and must survive a rewrite.
+        const names = catalogNamesOfTurn(trustedContext, executedTools);
         // Only clear evidence of ANOTHER language (function words, see reply-language.ts) triggers the rewrite.
-        const written = replyLanguageOf(response);
+        const written = replyLanguageOf(response, names);
         if (!written || written === code) return response;
         this.recordAgentSignal(tenantId, 'reply_language_mismatch', session);
         this.logger.warn(`[Guardrail] Reply is not in the turn language (${code}) — one rewrite: "${response.slice(0, 80)}"`);
@@ -5761,7 +5764,8 @@ export class ConversationsService {
                 tenantId,
             });
             const text = rewritten.content?.trim();
-            if (text && replyLanguageOf(text) !== written) return text;
+            // A translation may not change what the reply says: every figure, URL and catalog name must survive.
+            if (text && replyLanguageOf(text, names) !== written && rewritePreserves(response, text, names)) return text;
         } catch (e: any) {
             if (e instanceof LLMSourceAuthorityUnavailable) throw e;
             this.logger.warn(`[Guardrail] Language rewrite failed: ${e.message}`);
@@ -5790,7 +5794,7 @@ export class ConversationsService {
         // Guardrail 0: the reply is in the customer's language. The turn language is decided by the detector
         // and written into the prompt, yet a long history or knowledge in another language still pulled the
         // model back (a Portuguese refund question answered in Spanish). One rewrite, only on clear evidence.
-        response = await this.alignReplyLanguage(response, lang, currentMessages, systemPrompt, allowedTiers, tenantId, llmRouter, trustedContext, session);
+        response = await this.alignReplyLanguage(response, lang, currentMessages, systemPrompt, allowedTiers, tenantId, llmRouter, trustedContext, session, executedTools);
 
         // Guardrail 1: False completion claims (claiming an action happened when no tool ran/succeeded)
         //

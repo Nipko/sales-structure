@@ -101,7 +101,7 @@ describe('a booking mission cannot stay open indefinitely', () => {
     it('offers to resume instead of silently continuing, and the answer decides', async () => {
         const h = harness({ intent: 'unknown' });
         const dormant: BookingState = { ...base, step: 'ask_date', resumeOffer: 'pending', dormantSince: '2026-10-02T21:00:00.000Z' };
-        const offered = await h.turn('hola, sigo por aquí', dormant);
+        const offered = await h.turn('quiero retomar mi cita', dormant);
         expect(offered.result.handled).toBe(true);
         expect(offered.result.text).toMatch(/Corte y estilo/);
         expect(offered.result.state.resumeOffer).toBe('offered');
@@ -114,6 +114,35 @@ describe('a booking mission cannot stay open indefinitely', () => {
         const discarded = await h.turn('no, mejor empezar de nuevo', offered.result.state);
         expect(discarded.result.state.step).toBe('idle');
         expect(discarded.result.state.serviceId).toBeUndefined();
+    });
+
+    it.each([
+        'Prueba QA: mensaje de verificación',
+        'hola',
+        'Hola, ¿qué tipo de servicios manejan?',
+        'Hola, ¿qué tipo de inmuebles manejan?',
+    ])('"%s" gets no resume offer: the model answers and the offer stays pending', async text => {
+        const h = harness({ intent: 'unknown' });
+        const dormant: BookingState = { ...base, step: 'ask_date', resumeOffer: 'pending', dormantSince: '2026-10-02T21:00:00.000Z' };
+        const { result } = await h.turn(text, dormant);
+        expect(result.handled).toBe(false);
+        expect(result.text).toBeUndefined();
+        expect(result.state).toMatchObject({ resumeOffer: 'pending', serviceId: 'svc-corte' });
+    });
+
+    it.each([
+        'quiero retomar mi cita',
+        '¿En qué quedó mi reserva?',
+        'quisiera agendar de nuevo',
+        'necesito sacar un turno',
+    ])('"%s" is about booking, so it gets the offer in draft vocabulary', async text => {
+        const h = harness({ intent: 'unknown' });
+        const dormant: BookingState = { ...base, step: 'ask_date', resumeOffer: 'pending', dormantSince: '2026-10-02T21:00:00.000Z' };
+        const { result } = await h.turn(text, dormant);
+        expect(result.handled).toBe(true);
+        expect(result.text).toMatch(/a medio agendar/);
+        expect(result.text).not.toMatch(/reserva|tienes|quieres/i);
+        expect(result.state.resumeOffer).toBe('offered');
     });
 
     it('answers an informational question first and keeps the offer pending', async () => {

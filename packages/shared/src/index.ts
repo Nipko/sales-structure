@@ -1021,6 +1021,11 @@ export interface TurnContext {
         date?: string;
         slot?: string;
     };
+    /**
+     * The customer showed interest in a service (asked about it) but has NOT asked to book. The
+     * booking assistant is not running a booking; answer, then offer to book. Never a pending reservation.
+     */
+    bookingInterest?: { service?: { id: string; name: string; durationMinutes?: number } };
     availableServices?: Array<{
         id: string;
         name: string;
@@ -1040,6 +1045,8 @@ export interface TurnContext {
         price?: number;
         currency?: string;
         inStock?: boolean;
+        /** Units on hand when the catalog tracks them; absent when unknown or untracked. */
+        stock?: number;
         category?: string;
     }>;
     /** The current customer's recent orders (T2.17) for support/sales context. */

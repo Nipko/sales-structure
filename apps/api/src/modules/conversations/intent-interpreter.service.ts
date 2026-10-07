@@ -77,10 +77,12 @@ export class IntentInterpreterService {
         // abren?" resembles an availability request, so the extractors label them
         // select_service / ask_availability and the booking flow takes them as its
         // own. They are questions about the business: label them as such
-        // (`ask_services` is already the right label and stays). At idle
-        // the established behaviour (service list, flow start) is unchanged.
+        // (`ask_services` is already the right label and stays). At idle the label
+        // stays as extracted (service list, flow start); the engine itself declines a
+        // pure question about a named service ("¿cuánto dura X?") so it opens no
+        // mission, but a request to book, or a date or time, always starts the flow.
         const missionOpen = currentBookingStep !== 'idle' && currentBookingStep !== 'booked';
-        if (missionOpen && isInformationalDetour(userText, interpreted)
+        if (missionOpen && isInformationalDetour(userText, interpreted, currentBookingStep)
             && ['ask_availability', 'select_service', 'select_time', 'provide_info', 'unknown'].includes(interpreted.intent)) {
             return { ...interpreted, intent: 'general_question', isConfirmation: false, questionTopic: userText };
         }

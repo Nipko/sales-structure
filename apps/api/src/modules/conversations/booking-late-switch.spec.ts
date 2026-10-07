@@ -98,13 +98,16 @@ describe('an order to switch service works at the late steps', () => {
         it.each([
             'mejor cámbiala a color y tratamiento', 'prefiero color y tratamiento', 'En vez de corte, color y tratamiento',
             'cambia mi cita a color y tratamiento',
-        ])('"%s" (no day) moves the draft and asks for the day, without taking the order for a name or an e-mail', async text => {
-            const { turn } = harness();
+        ])('"%s" (no day) moves the draft NOW, keeps its day and hour (re-checked for the new service) and asks for what is missing', async text => {
+            const { turn, availabilityCalls } = harness();
             const { result } = await turn(text, structuredClone(open));
             expect(result.handled).toBe(true);
-            expect(result.text ?? '').not.toMatch(/identificar|corregir|correo/i);
-            expect(result.state).toMatchObject({ serviceId: COLOR.id, step: 'ask_date' });
+            expect(result.text ?? '').not.toMatch(/identificar|corregir/i);
+            // The same step as before the switch: the e-mail is asked AFTER the draft moved, never as its precondition.
+            expect(result.state).toMatchObject({ serviceId: COLOR.id, serviceName: COLOR.name, date: SATURDAY, time: '16:00', step: open.step });
+            expect(availabilityCalls()).toContainEqual({ date: SATURDAY, serviceId: COLOR.id, time: '16:00' });
             expect(result.state.customerName).toBe(open.customerName);
+            expect(result.state.pendingSwitch).toBeUndefined();
         });
 
         it('"¿puedo cambiar a color y tratamiento el sábado?" is a question: answered and offered, draft untouched', async () => {

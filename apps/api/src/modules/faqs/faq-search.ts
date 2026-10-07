@@ -79,6 +79,51 @@ export function faqSearchTerms(query: string): string[] {
     return [...new Set(tokens(query).filter(term => term.length > 1 && !FUNCTION_WORDS.has(term)))].slice(0, 32);
 }
 
+// Where a new question begins: «y qué garantía tiene», «and what warranty», «e qual a garantia», «et quelle garantie».
+const QUESTION_STARTERS = 'cu[aá]nt[oa]s?|qu[eé]|c[oó]mo|d[oó]nde|cu[aá]ndo|cu[aá]l(?:es)?|qui[eé]n(?:es)?|what|how|when|where|which|who|why|quant[oa]s?|qual|quais|quem|onde|quando|combien|comment|quel(?:le)?s?|quand|o[uù]|pourquoi';
+const COMPOUND_SPLIT = new RegExp(`[?？¿;,]+|\\b(?:y|and|e|et)\\s+(?=(?:${QUESTION_STARTERS})(?![\\p{L}]))`, 'iu');
+
+/**
+ * The questions of a message that asks several at once ("¿Cuánto cuesta X, cuántas unidades hay y qué garantía
+ * tiene?" is three). Split on question marks, commas, semicolons and an "and" that opens a new question; parts
+ * with no searchable word are dropped. A message with one question comes back as one part.
+ */
+export function splitCompoundQuery(query: string): string[] {
+    return String(query || '').split(COMPOUND_SPLIT)
+        .map(part => part.replace(/^[\s:.!-]+|[\s:.!-]+$/g, ''))
+        .filter(part => faqSearchTerms(part).length > 0)
+        .slice(0, 4);
+}
+
+// Words that only carry the question ("tiene", "hay", "cuesta", "have", "há"): a part is about what is left.
+const QUESTION_FILLER = new Set([
+    'tiene', 'tienen', 'tener', 'hay', 'cuesta', 'cuestan', 'vale', 'valen', 'dura', 'duran', 'incluye', 'incluyen', 'ofrece', 'ofrecen',
+    'cobran', 'cobra', 'son', 'estan', 'hacen', 'hace', 'have', 'has', 'there', 'cost', 'costs', 'much', 'many', 'tem', 'custa', 'custam',
+    'ha', 'coute', 'ont', 'combien', 'quantas', 'quantos', 'cuantas', 'cuantos',
+]);
+
+/** The topic words of ONE part of a message: what is left after the function words and the words that only ask. */
+export function topicTermsOf(part: string): string[] {
+    return faqSearchTerms(part).filter(term => !QUESTION_FILLER.has(term));
+}
+
+/**
+ * The FAQ a one-word topic ("garantía") points to: its QUESTION holds the word, and among several the one that
+ * shares most with the rest of the message ("Audífono QA") wins. Two equally good FAQs are a guess: none.
+ */
+export function pickTopicFaq(rows: FAQ[], topic: string, message: string): FAQ | null {
+    const term = canon(topic);
+    const own = rows.filter(row => canonTokens(row.question).has(term));
+    if (!own.length) return null;
+    const context = new Set(canonTerms(message).filter(t => t !== term && !QUESTION_FILLER.has(t)));
+    const scored = own.map(row => {
+        const doc = canonTokens(`${row.question} ${row.answer}`);
+        return { row, score: [...context].filter(t => doc.has(t)).length };
+    }).sort((a, b) => b.score - a.score);
+    if (scored.length > 1 && scored[0].score === scored[1].score) return null;
+    return scored[0].row;
+}
+
 /** Conservative fallback for questions with added detail. A single shared
  * word such as "visita" cannot pull unrelated vertical seeds into a reply. */
 export function rankPartialFaqMatches(rows: FAQ[], query: string, limit: number): FAQ[] {

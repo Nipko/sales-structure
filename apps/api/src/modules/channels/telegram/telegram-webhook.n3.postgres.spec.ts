@@ -12,7 +12,7 @@ import { TelegramAdapter } from './telegram.adapter';
  * No PostgreSQL is needed; the file keeps the N3 name so the same runner picks it up.
  */
 describe('N3 Telegram webhook intake', () => {
-    const SECRET = 's3cret-token-aaaa';
+    const SECRET = 'fixture-webhook-secret';
     const bots: any[] = [];
     const claimed = new Set<string>();
     const queued: any[] = [];
@@ -31,7 +31,7 @@ describe('N3 Telegram webhook intake', () => {
     beforeEach(() => {
         bots.length = 0; claimed.clear(); queued.length = 0; queueFailure = null; redisFailure = null;
         bots.push(bot('tienda_bot', 'tenant-a', SECRET), bot('otra_bot', 'tenant-b', 'other-secret'));
-        const adapter = new TelegramAdapter();
+        const adapter = new TelegramAdapter({ get: () => undefined } as any);
         const logger = { warn: jest.fn(), log: jest.fn(), error: jest.fn() };
         controller = Object.create(ChannelsController.prototype);
         Object.assign(controller, {

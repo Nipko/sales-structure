@@ -152,10 +152,10 @@ export function rewriteReplayPromise(response: string, lang: string | undefined,
 
 /** What stands in for a reply that was nothing but a promise of a transfer. */
 const TEAM_UNAVAILABLE: Record<string, string> = {
-    es: 'En este momento el equipo no está disponible; con gusto le ayudo mientras tanto.',
-    en: 'The team is not available right now; I am happy to help you in the meantime.',
-    pt: 'Neste momento a equipe não está disponível; terei prazer em ajudar enquanto isso.',
-    fr: "L'équipe n'est pas disponible pour le moment ; je vous aide volontiers en attendant.",
+    es: 'En este momento el equipo no está disponible; con gusto le ayudo yo.',
+    en: 'The team is not available right now; I am happy to help you myself.',
+    pt: 'Neste momento a equipe não está disponível; terei prazer em ajudar.',
+    fr: "L'équipe n'est pas disponible pour le moment ; je vous aide volontiers.",
 };
 
 /**
@@ -275,8 +275,39 @@ export const removeHumanOfferSentences = removePersonTransferSentences;
  * is taken out (see `rewriteReplayPromise`); an ordinary answer is returned as it is.
  */
 export function sanitizeReplayReply(response: string, lang: string | undefined, noteLeft: boolean): string {
+    if (!response.trim()) return response;
     // Not gated by the generic detectors: «Um atendente vai te atender em breve» or «Someone from the
     // team will assist you right away» are promises of a person none of them reads. The sentence
     // check inside decides, and a reply with nothing to remove comes back as it was.
-    return response.trim() ? rewriteReplayPromise(response, lang, noteLeft) : response;
+    return withoutWaitingImplication(rewriteReplayPromise(response, lang, noteLeft));
+}
+
+/**
+ * «¿Le gustaría que le ayude con algo más mientras espera?»: on a replay the customer is not waiting
+ * for anyone, the agent is helping them now. The phrase that says they are is taken out of the
+ * sentence and the rest stays.
+ */
+const WAITING_IMPLICATION = new RegExp([
+    String.raw`\s*\b(?:mientras (?:usted )?(?:espera|aguarda|esperamos|aguardamos)|en lo que espera|mientras permanece en espera)\b`,
+    String.raw`\s*\b(?:while you(?:'re| are)? (?:wait|waiting)|while waiting|whilst you wait)\b`,
+    String.raw`\s*\b(?:enquanto (?:o senhor |a senhora |voce |você )?(?:aguarda|espera|aguardamos))\b`,
+    String.raw`\s*\b(?:pendant que vous attendez|pendant votre attente)\b`,
+].join('|'), 'gi');
+export function withoutWaitingImplication(reply: string): string {
+    return reply.replace(WAITING_IMPLICATION, '');
+}
+
+/**
+ * The note that the request was left for the team, when it WAS left (`noteLeft`): put in the reply
+ * by the server, not asked of the model. It was only said when a sentence had been removed, so a
+ * reply that was fine as the model wrote it (the price, the hours) never told the customer their
+ * request had been left. Before a closing question when there is one («¿Le ayudo con algo más?»), so
+ * the reply still ends on the invitation; never twice.
+ */
+export function withRequestLeftNote(response: string, lang: string | undefined, noteLeft: boolean): string {
+    if (!noteLeft || !response.trim()) return response;
+    const note = pick(NOTE_LEFT, lang);
+    if (Object.values(NOTE_LEFT).some(sentence => response.includes(sentence))) return response;
+    const closing = /^([\s\S]*?[.!])\s+([^.!?]*\?)\s*$/.exec(response.trim());
+    return closing ? `${closing[1]}\n\n${note}\n\n${closing[2]}` : `${response.trim()}\n\n${note}`;
 }

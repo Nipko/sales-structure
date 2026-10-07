@@ -121,8 +121,14 @@ export function pickTopicFaq(rows: FAQ[], topic: string, message: string): FAQ |
         return { row, score: [...context].filter(t => doc.has(t)).length };
     }).sort((a, b) => b.score - a.score);
     if (scored.length > 1 && scored[0].score === scored[1].score) return null;
+    // A price FAQ that shares nothing else with the message is about something else ("¿qué precio tiene el
+    // Audífono?" is not "¿Cuál es el precio de la instalación?"), and its figure would pass the price guardrail as
+    // retrieved knowledge. Product prices come from the catalog tools, so a price topic needs real context.
+    if (scored[0].score === 0 && PRICE_TOPICS.has(term)) return null;
     return scored[0].row;
 }
+
+const PRICE_TOPICS = new Set(['precio', 'costo', 'coste', 'valor', 'tarifa', 'price', 'pricing', 'fee', 'preco', 'custo', 'prix', 'tarif', 'cout']);
 
 /** Conservative fallback for questions with added detail. A single shared
  * word such as "visita" cannot pull unrelated vertical seeds into a reply. */

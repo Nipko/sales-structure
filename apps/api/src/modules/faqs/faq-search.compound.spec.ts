@@ -81,6 +81,14 @@ describe('FAQ search with a multi-part message', () => {
         expect(await search([hours, shipping], '¿Cuánto cuesta el Audífono QA, cuántas unidades hay y qué garantía tiene?')).toEqual([]);
     });
 
+    it('never answers a product price with a price FAQ about something else (its figure would pass the price guardrail)', async () => {
+        const installation = faq('installation', '¿Cuál es el precio de la instalación?', 'La instalación cuesta 50.000 COP.');
+        expect(await search([installation, hours], 'Hola, quiero el Audífono QA Aurora, ¿qué precio tiene?')).toEqual([]);
+        expect(await search([installation, hours], '¿Tienen el Audífono QA Aurora en negro? ¿y el precio?')).toEqual([]);
+        // with real shared context the price FAQ is still found
+        expect(await search([installation, hours], '¿Hacen instalación a domicilio? ¿y el precio?')).toEqual(['installation']);
+    });
+
     it('keeps the earlier guarantees: another named tour or plan is never answered with a similar FAQ', async () => {
         const azul = faq('azul', '¿Cuánto dura el tour Faro Azul?', 'El tour Faro Azul dura 3 horas.');
         expect(await search([azul], 'Compré el tour Faro Rojo ayer. ¿Cuánto dura?')).toEqual([]);

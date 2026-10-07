@@ -64,7 +64,7 @@ describe('unattended handoff return (service behavior)', () => {
         const h = harness({ updated: [{ id: 'c1' }, { id: 'c2' }] });
         await h.service.returnUnattendedHandoffs();
         expect(h.events.emit).toHaveBeenCalledTimes(2);
-        expect(h.events.emit).toHaveBeenCalledWith('handoff.returned_unattended', { tenantId: 't1', conversationId: 'c2' });
+        expect(h.events.emit).toHaveBeenCalledWith('handoff.returned_unattended', { tenantId: 't1', schemaName: 'tenant_t1', conversationId: 'c2' });
         expect(h.redis.del).toHaveBeenCalledWith('handoff:t1:c1');
         const closes = h.calls.filter(c => c.sql.includes('UPDATE conversation_assignments'));
         expect(closes.map(c => c.params[0])).toEqual(['c1', 'c2']);

@@ -237,3 +237,39 @@ describe('an unsolicited promise becomes an offer that agrees with the rest of t
         expect(offerInsteadOfPromise('Le paso con nuestro equipo.', 'es', false)).toBe('No tengo ese dato confirmado en este momento.');
     });
 });
+
+/**
+ * The unattended-return replay: the inbound row the customer wrote while waiting
+ * is processed again (`saveMessage` reports a duplicate, `turn:done` cleared). It
+ * is a fresh turn for that message, so the notice and the answer leave together.
+ */
+describe('replay of the message the customer wrote while waiting', () => {
+    const returned = { startedAt: '2026-10-05T20:00:00Z', returnedToAi: true, returnNoticePending: true };
+    const replayFixture = (owned: unknown[] | null) => {
+        const f = fixture({ status: 'active', handoff: returned });
+        const findBatchForInbound = jest.fn().mockResolvedValue(owned);
+        Object.assign(f.service, {
+            saveMessage: jest.fn().mockResolvedValue({ id: '88888888-8888-4888-8888-888888888888', duplicate: true }),
+            dispatchOutbox: { findBatchForInbound, publishBatch: jest.fn() },
+            outboundQueue: { enqueueDispatch: jest.fn().mockResolvedValue(undefined) },
+        });
+        return { ...f, findBatchForInbound };
+    };
+
+    it('answers it once, with the return notice leading the answer, in one batch', async () => {
+        const { service, message, findBatchForInbound } = replayFixture(null);
+        await service.runTurn(message);
+        expect(findBatchForInbound).toHaveBeenCalledTimes(1);
+        expect(service.dispatchReplyThroughOutbox).toHaveBeenCalledTimes(1);
+        const text = sentChunks(service).join('\n');
+        expect(text).toBe(`${RETURN_NOTICE}\n\n${ANSWER}`);
+        expect(service.replyOnceThroughOutbox).not.toHaveBeenCalled();
+    });
+
+    it('a message whose answer is already committed is not answered a second time', async () => {
+        const { service, message } = replayFixture([{ id: 'row' }]);
+        await service.runTurn(message);
+        expect(service.dispatchReplyThroughOutbox).not.toHaveBeenCalled();
+        expect(service.generateResponse).not.toHaveBeenCalled();
+    });
+});

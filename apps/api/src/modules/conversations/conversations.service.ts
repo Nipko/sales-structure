@@ -59,7 +59,7 @@ import {
     isToolAuthorityDenial,
     type LocalizedTerm, type ToolExecutionAuthority,
 } from '@parallext/shared';
-import { outboundDedupeId, providerMessageId } from '../../common/utils/provider-message-id.util';
+import { outboundDedupeId, providerMessageId, turnDoneKey } from '../../common/utils/provider-message-id.util';
 import { legacyTurnReplyKey, turnReplyKey } from './turn-reply-cache';
 import { IdentityService } from '../identity/identity.service';
 import { AIToolExecutorService } from './ai-tool-executor.service';
@@ -491,7 +491,6 @@ const DEBOUNCE_MS = 800;
  * those answer "did we see this webhook", which a retry INSIDE the API sails
  * straight past. This answers "did we already finish answering it".
  */
-const turnDoneKey = (tenantId: string, providerMsgId: string) => `turn:done:${tenantId}:${providerMsgId}`;
 
 /**
  * The reply a turn decided on, stored before the first bubble is sent.
@@ -601,6 +600,14 @@ export class ConversationsService {
         readonly inboundMessageId?: string;
         /** What makes this effect THIS effect, when no inbound names it. */
         readonly originKey: string;
+        /**
+         * The effect answers `inboundMessageId` but is NOT the answer to it. It is
+         * identified by `originKey` alone and keeps the reactive (service reply)
+         * treatment, so the inbound stays free for the turn's real answer: the
+         * outbox identifies a batch by its origin, and a notice that took the
+         * inbound as its origin made the real answer look "already sent".
+         */
+        readonly ownIdentity?: boolean;
     }): Promise<boolean> {
         const contactId = String(input.conversation?.contact_id || '');
         const channelAccountId = String(input.msg.channelAccountId ?? '').trim();
@@ -627,9 +634,14 @@ export class ConversationsService {
             // soft stop meant for campaigns. The after-hours notice cannot say
             // it — its branch answers before the inbound is stored — so it goes
             // as what it can prove it is.
-            ...(answersInbound
-                ? { originKind: 'inbound_reply' as const, inboundMessageId: input.inboundMessageId }
-                : {}),
+            ...(answersInbound && input.ownIdentity
+                ? {
+                    originKind: 'proactive' as const, disposition: 'reactive' as const,
+                    replyToMessageId: input.inboundMessageId,
+                }
+                : answersInbound
+                    ? { originKind: 'inbound_reply' as const, inboundMessageId: input.inboundMessageId }
+                    : {}),
         });
         if (effectIsDurable(result)) return true;
         throw new Error(`durable_reply_not_committed:${result.kind}:${(result as any).reason}`);
@@ -6588,6 +6600,10 @@ export class ConversationsService {
                     tenantId, conversation, msg, operationalScope: scope, inboundMessageId,
                     item: { kind: 'text', payload: { text: handoffText(this.languageDetector.detect(text || '', defaultLanguage)).queueHead } },
                     originKey: `handoff-queue-notice:${conversation.id}:${startedAt}`,
+                    // The queue notice must not occupy the identity of the message
+                    // it answers: after the unattended return that very message
+                    // is re-processed and needs its own batch.
+                    ownIdentity: true,
                 });
             } catch (error) {
                 await run(

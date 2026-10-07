@@ -48,8 +48,13 @@ export class InboundQueueService {
         return null;
     }
 
-    async enqueue(msg: NormalizedMessage): Promise<void> {
+    async enqueue(msg: NormalizedMessage, options?: { jobIdSuffix?: string }): Promise<void> {
         const pmid = providerMessageId(msg);
+        // A deliberate second pass over a message the queue already completed (the
+        // handoff return replay) must not collapse onto the first job.
+        const jobIdOf = (): string => sanitizeJobId(
+            `in-${msg.tenantId}-${msg.channelType}-${msg.channelAccountId}-${pmid}`
+            + (options?.jobIdSuffix ? `-${options.jobIdSuffix}` : ''));
 
         // Frontera común a los 7 productores. Un mensaje sin remitente entraba a
         // la cola y recién reventaba en el INSERT de `contacts` (external_id NOT
@@ -115,9 +120,7 @@ export class InboundQueueService {
                 // Deterministic id → a provider redelivery collapses onto the
                 // same job instead of queueing a second turn. Sanitised because
                 // BullMQ rejects ':' in a jobId (it builds Redis keys with it).
-                ...(pmid
-                    ? { jobId: sanitizeJobId(`in-${msg.tenantId}-${msg.channelType}-${msg.channelAccountId}-${pmid}`) }
-                    : {}),
+                ...(pmid ? { jobId: jobIdOf() } : {}),
             },
         );
 
@@ -127,7 +130,7 @@ export class InboundQueueService {
         // to tell "enqueued, worker's turn" from "silently dropped here".
         this.logger.log(
             `[Inbound] Enqueued ${msg.channelType} from ${msg.contactId} tenant=${msg.tenantId} ` +
-            `job=${pmid ? sanitizeJobId(`in-${msg.tenantId}-${msg.channelType}-${msg.channelAccountId}-${pmid}`) : 'no-dedupe'} trace=${pmid || 'none'}`,
+            `job=${pmid ? jobIdOf() : 'no-dedupe'} trace=${pmid || 'none'}`,
         );
     }
 }

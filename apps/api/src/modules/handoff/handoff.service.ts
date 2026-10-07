@@ -847,7 +847,7 @@ export class HandoffService {
                 ).catch(e => this.logger.warn(`[Handoff] Could not close the assignment of ${row.id}: ${e.message}`));
             }
             await this.redis.del(`handoff:${tenantId}:${row.id}`).catch(() => {});
-            this.eventEmitter.emit('handoff.returned_unattended', { tenantId, conversationId: row.id });
+            this.eventEmitter.emit('handoff.returned_unattended', { tenantId, schemaName, conversationId: row.id });
         }
         this.logger.warn(`[Handoff] Returned ${returned.length} unattended conversation(s) to the AI in tenant ${tenantId}`);
     }

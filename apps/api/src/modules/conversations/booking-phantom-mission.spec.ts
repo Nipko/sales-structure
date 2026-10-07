@@ -85,9 +85,8 @@ describe('an explicit booking request is a real mission and the engine speaks, e
         'Quiero agendar color y tratamiento',
         'Necesito agendar color y tratamiento',
         'color y tratamiento por favor',
-        '¿Tienen disponible color y tratamiento?',
-        '¿Está disponible color y tratamiento los domingos?',
-        '¿Se puede hacer color y tratamiento? ¿cuánto demora?',
+        'Se puede hacer color y tratamiento',
+        '¿Tienen disponibilidad para el sábado para color y tratamiento?',
         'anótame para color y tratamiento',
         '¿tienen cupo a las 16:00 para color y tratamiento? ¿cuánto dura?',
         'Hola, quiero reservar un color y tratamiento mañana. ¿Cuánto cuesta?',
@@ -143,6 +142,11 @@ describe('a mission opened without a booking act is tentative and silent', () =>
         'quisiera info sobre color y tratamiento',
         'me interesa color y tratamiento',
         'Color y tratamiento',
+        '¿Tienen disponible color y tratamiento?',
+        '¿Está disponible color y tratamiento los domingos?',
+        '¿Está disponible el estacionamiento para color y tratamiento?',
+        '¿Se puede hacer color y tratamiento? ¿cuánto demora?',
+        '¿Y color y tratamiento se puede hacer con el cabello largo?',
     ];
 
     it.each(tentativeOpenings)('"%s" opens nothing the engine speaks for and nothing pending', async text => {
@@ -166,7 +170,7 @@ describe('a mission opened without a booking act is tentative and silent', () =>
             const later = restoredAfter(second.result.state, 31);
             expect(later).toEqual({ step: 'idle' });
             const third = await turn('hola', later);
-            expect(third.result.text ?? '').not.toMatch(/sin terminar|reserva/i);
+            expect(third.result.text ?? '').not.toMatch(/a medio agendar|reserva/i);
         });
 
     it('"¿qué servicios tienen?" then "gracias" does not leave a mission behind', async () => {
@@ -216,9 +220,9 @@ describe('a mission opened without a booking act is tentative and silent', () =>
         const dormant = restoredAfter(second.result.state, 31);
         expect(dormant).toMatchObject({ serviceId: 'svc-color', resumeOffer: 'pending' });
         expect(projectBookingStateForPrompt(dormant)).toBeUndefined();
-        const offer = await turn('ok', dormant);
+        const offer = await turn('quiero retomar mi cita', dormant);
         expect(offer.result.handled).toBe(true);
-        expect(offer.result.text).toMatch(/sin terminar/i);
+        expect(offer.result.text).toMatch(/a medio agendar/i);
     });
 
     it('C14 then C25: a later question about another service never mentions a pending booking', async () => {
@@ -227,7 +231,7 @@ describe('a mission opened without a booking act is tentative and silent', () =>
         const restored = restoredAfter(c14.result.state, 31);
         expect(projectBookingStateForPrompt(restored)).toBeUndefined();
         const c25 = await turn('¿Cuánto dura corte y estilo y tienen cupo el sábado a las 16:00?', restored);
-        expect(c25.result.text ?? '').not.toMatch(/reserva|sin terminar|pendiente/i);
+        expect(c25.result.text ?? '').not.toMatch(/reserva|a medio agendar|pendiente/i);
     });
 
     it('the model cannot write bookings while the mission is only an interest', () => {
@@ -243,12 +247,20 @@ describe('acts inside a tentative mission', () => {
         return { ...h, state: first.result.state };
     };
 
-    it.each(['Color y tratamiento', 'anótame', 'apúntame', 'vale', 'color y tratamiento por favor'])(
+    it.each(['Color y tratamiento', 'anótame', 'apúntame', 'color y tratamiento por favor', 'se puede hacer color y tratamiento'])(
         '"%s" makes it real', async reply => {
             const h = await tentative();
             const { result } = await h.turn(reply, h.state);
             expect(result.handled).toBe(true);
             expect(result.state.origin).toBeUndefined();
+        });
+
+    it.each(['¿Qué incluye color y tratamiento?', '¿Color y tratamiento sirve para cabello teñido?', '¿Y color y tratamiento se puede hacer con el cabello largo?'])(
+        'the question "%s" about the service keeps it tentative and silent', async reply => {
+            const h = await tentative();
+            const { result } = await h.turn(reply, h.state);
+            expect(result.handled).toBe(false);
+            expect(result.state.origin).toBe('question');
         });
 
     it('keeps the "Me interesa" opening tentative (documented: interest, not a request)', async () => {
@@ -258,7 +270,7 @@ describe('acts inside a tentative mission', () => {
         expect(result.state.origin).toBe('question');
     });
 
-    it.each(['ok', 'perfecto', 'listo', 'ok gracias', 'perfecto, gracias'])(
+    it.each(['ok', 'perfecto', 'listo', 'vale', 'ok gracias', 'perfecto, gracias'])(
         '"%s" accepts the booking offer only right after the model made one', async reply => {
             const h = await tentative();
             const silent = await h.turn(reply, h.state);
@@ -303,8 +315,18 @@ describe('acts inside a tentative mission', () => {
         const { turn } = harness();
         const { result } = await turn('Hola, ¿mañana a las 4 hay espacio para manicure y pedicure? Solo consulto', { step: 'idle' },
             { intent: 'ask_availability', dateMentioned: '2026-10-06', timeMentioned: '16:00', serviceMentioned: 'Manicure y pedicure' });
+        expect(result.handled).toBe(false);
         if (result.state.step !== 'idle') expect(result.state.origin).toBe('question');
         expect(restoredAfter(result.state, 31)).toEqual({ step: 'idle' });
+    });
+
+    it('"Solo consulto" at idle is left to the model: the engine neither answers with slots nor opens a mission', async () => {
+        const { turn } = harness();
+        const { result } = await turn('¿Tienen cupo mañana a las 4 para color y tratamiento? Solo consulto', { step: 'idle' },
+            { intent: 'ask_availability', dateMentioned: '2026-10-06', timeMentioned: '16:00', serviceMentioned: 'Color y tratamiento' });
+        expect(result.handled).toBe(false);
+        expect(result.text).toBeUndefined();
+        expect(result.state).toEqual({ step: 'idle' });
     });
 });
 

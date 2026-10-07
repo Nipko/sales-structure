@@ -15,7 +15,7 @@ import { procedureDialogueMessages } from './procedure-dialogue-messages';
 import { containsMissionDirective, isCollectionCancellation, isDirectedCorrection, isNamedMissionResume, mentionedMissionDomains, missionDialogue, parseDirectedSlotCorrection } from './mission-focus';
 import { coerceProcedureSlot } from './procedure-slot-interpolation';
 import { nearestSlots, selectSlotWindow } from './slot-window';
-import { asksDuration, bookingActKind, isInformationalDetour, isOnlyInquiry } from './informational-detour';
+import { asksDuration, bookingActKind, isAboutBooking, isInformationalDetour, isOnlyInquiry } from './informational-detour';
 import { BOOKING_OFFER_TTL_MS } from './booking-offer';
 
 /**
@@ -80,8 +80,8 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
             'Listo, ahora estamos agendando {service}. ¿Qué fecha te gustaría?'
         ],
         cancelled: '¡Sin problema! ¿Hay algo más en lo que pueda ayudarte?',
-        resumeOffer: 'Tienes una reserva de {service} sin terminar. ¿Quieres retomarla o prefieres empezar de nuevo?',
-        resumeOfferNoService: 'Tienes una reserva sin terminar. ¿Quieres retomarla o prefieres empezar de nuevo?',
+        resumeOffer: 'Quedó a medio agendar una cita de {service}. ¿Desea continuar o prefiere empezar de nuevo?',
+        resumeOfferNoService: 'Quedó una cita a medio agendar. ¿Desea continuar o prefiere empezar de nuevo?',
         resumeDiscarded: 'Listo, dejé esa reserva de lado. ¿En qué puedo ayudarte?',
         servicesHeader: 'Estos son nuestros servicios:',
         servicesFooter: '¿Cuál te interesa?',
@@ -137,8 +137,8 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         serviceSelected: '{service} selected. What date works for you?',
         switchedService: 'Switched to {service}. What date works for you?',
         cancelled: 'No problem! Is there anything else I can help you with?',
-        resumeOffer: 'You have an unfinished booking for {service}. Would you like to resume it or start over?',
-        resumeOfferNoService: 'You have an unfinished booking. Would you like to resume it or start over?',
+        resumeOffer: 'An appointment for {service} was left half-scheduled. Would you like to continue it or start over?',
+        resumeOfferNoService: 'An appointment was left half-scheduled. Would you like to continue it or start over?',
         resumeDiscarded: 'Done, I set that booking aside. How can I help you?',
         servicesHeader: 'These are our services:',
         servicesFooter: 'Which one interests you?',
@@ -184,8 +184,8 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         serviceSelected: '{service} selecionado. Qual data funciona para você?',
         switchedService: 'Mudamos para {service}. Qual data funciona para você?',
         cancelled: 'Sem problema! Posso ajudar com mais alguma coisa?',
-        resumeOffer: 'Você tem uma reserva de {service} em andamento. Quer retomá-la ou prefere começar de novo?',
-        resumeOfferNoService: 'Você tem uma reserva em andamento. Quer retomá-la ou prefere começar de novo?',
+        resumeOffer: 'Ficou um agendamento de {service} pela metade. Deseja continuar ou prefere começar de novo?',
+        resumeOfferNoService: 'Ficou um agendamento pela metade. Deseja continuar ou prefere começar de novo?',
         resumeDiscarded: 'Pronto, deixei essa reserva de lado. Como posso ajudar?',
         servicesHeader: 'Estes são nossos serviços:',
         servicesFooter: 'Qual te interessa?',
@@ -231,8 +231,8 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         serviceSelected: '{service} sélectionné. Quelle date vous convient ?',
         switchedService: 'Changé pour {service}. Quelle date vous convient ?',
         cancelled: 'Pas de problème ! Puis-je vous aider avec autre chose ?',
-        resumeOffer: 'Vous avez une réservation de {service} inachevée. Voulez-vous la reprendre ou recommencer ?',
-        resumeOfferNoService: 'Vous avez une réservation inachevée. Voulez-vous la reprendre ou recommencer ?',
+        resumeOffer: 'Un rendez-vous pour {service} est resté à moitié planifié. Voulez-vous continuer ou recommencer ?',
+        resumeOfferNoService: 'Un rendez-vous est resté à moitié planifié. Voulez-vous continuer ou recommencer ?',
         resumeDiscarded: "C'est noté, j'ai mis cette réservation de côté. Comment puis-je vous aider ?",
         servicesHeader: 'Voici nos services :',
         servicesFooter: 'Lequel vous intéresse ?',
@@ -505,7 +505,7 @@ export class BookingEngineService {
         const wasOpen = isOpen(currentState);
         // "Solo consulto": information only. It never changes, starts or confirms a booking, so an
         // open mission (a draft the customer was building for another service) is left untouched.
-        if (wasOpen && isOnlyInquiry(rawText)) return { handled: false, state: currentState };
+        if (isOnlyInquiry(rawText)) return { handled: false, state: currentState };
         const tentativeOpen = wasOpen && currentState.origin === 'question';
         const offeredAt = Date.parse(currentState.offeredBookingAt || '');
         const offerLive = tentativeOpen && Number.isFinite(offeredAt) && Date.now() - offeredAt >= 0 && Date.now() - offeredAt <= BOOKING_OFFER_TTL_MS;
@@ -1631,6 +1631,10 @@ export class BookingEngineService {
             if (['ask_availability', 'select_service', 'select_time'].includes(intent.intent)) { clear(); return null; }
             return { handled: false, state };
         }
+        // The offer is for a message about booking. "hola", a question about the business or an
+        // unrelated message gets the model's answer and the offer stays pending (the mission is
+        // already hidden from the prompt).
+        if (!isAboutBooking(rawText, intent)) return { handled: false, state };
         state.resumeOffer = 'offered';
         return {
             handled: true, state,

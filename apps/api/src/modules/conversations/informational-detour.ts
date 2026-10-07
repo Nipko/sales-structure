@@ -93,8 +93,7 @@ const REQUEST_FORMS: readonly RegExp[] = [
     /\bme (?:pueden|puedes|puede|podrian|podrias) (?:hacer|atender|agendar|reservar)\b/,
     /\b(?:hay|tienen|tiene|habra) (?:algun )?(?:cupos?|disponibilidad|espacios?|turnos?) (?:para|el|la|los|las|a|hoy|manana|este|esta)\b/,
     /\b(?:anotame|apuntame|anotenme|apuntenme)\b/,
-    /\bse puede (?:hacer|agendar|reservar)\b/,
-    /\b(?:tienen|tiene|hay|esta|estan) (?:disponible|disponibles|disponibilidad)\b/,
+    /\b(?:tienen|tiene|hay|esta|estan) (?:disponible|disponibles|disponibilidad) (?:para )?(?:el |la |los |las )?(?:hoy|manana|pasado manana|lunes|martes|miercoles|jueves|viernes|sabado|sabados|domingo|domingos|\d)/,
     /\bfit me in\b|\bmarcar\b|\bpuis je (?:reserver|prendre)\b/,
 ];
 /** Phrases holding a booking word that ask ABOUT booking rather than ask to book. */
@@ -116,10 +115,12 @@ export interface BookingActHint extends InterpretedHint {
 
 const REFUSAL = /^(?:(?:no|nao|non|nope)(?:[ ,.]+(?:gracias|thanks|thank you|obrigad[oa]|merci|por ahora|ahora|todavia|mejor no))?|ahora no|por ahora no|mejor no|todavia no|not now|no thanks)[\s,.!]*$/;
 /** A clear yes to the booking offer. A bare "ok" / "perfecto" / "listo" is NOT one on its own: it may just acknowledge the answer. */
-const STRONG_YES = /^(?:(?:hola|buenas)[ ,]+)?(?:si|sii|dale|claro|vale|por favor|yes|yeah|yep|sure|please|sim|oui|de una)\b/;
+const STRONG_YES = /^(?:(?:hola|buenas)[ ,]+)?(?:si|sii|dale|claro|por favor|yes|yeah|yep|sure|please|sim|oui|de una)\b/;
 /** A bare acknowledgement; it accepts a booking offer only right after the model made one. */
 const BARE_ACK = /^(?:ok|okay|okey|perfecto|listo|vale|bueno|genial|de acuerdo|esta bien|entendido|great|perfect|sounds good|certo|d accord)(?:[ ,.!]+(?:gracias|thanks|thank you|obrigad[oa]|merci))?[\s,.!]*$/;
 /** "color y tratamiento por favor": the courtesy closes a request. */
+/** "Se puede hacer X" as a statement is a request; as a question it asks about the service. */
+const SE_PUEDE = /\bse puede (?:hacer|agendar|reservar)\b/;
 const PLEASE_END = /\b(?:por favor|porfa|porfis|please|pls|s il vous plait|por gentileza)[\s.!]*$/;
 /** "Solo consulto": the customer says this is information only, whatever date or time it mentions. */
 const ONLY_INQUIRY = /\b(?:solo|solamente|nomas|unicamente) (?:consulto|consultando|pregunto|preguntando|averiguo|averiguando|miro|mirando|quiero (?:saber|consultar|preguntar|averiguar|informacion|info)|es una consulta|una pregunta)\b|\bjust (?:asking|checking|curious|looking|a question)\b|\bsomente (?:consultando|perguntando)\b|\bseulement (?:une question|me renseigner)\b/;
@@ -144,9 +145,11 @@ export function bookingActKind(raw: unknown, hint: BookingActHint, step?: string
     if (opts.offerLive && BARE_ACK.test(text)) return 'act';
     if (hasExplicitBookingRequest(raw)) return 'act';
     const informational = isInformationalDetour(raw, hint, step);
+    const isQuestion = /[?\u00bf]/.test(String(raw ?? '')) || isInformationSeekingMessage(String(raw ?? ''));
+    if (SE_PUEDE.test(text) && !isQuestion) return 'act';
     if (PLEASE_END.test(text) && hint.serviceMentioned && !informational) return 'act';
     // Choosing a service from the list the engine showed, or repeating it in a tentative mission, is a booking step.
-    if ((step === 'show_services' || opts.tentative) && hint.serviceMentioned && !informational) return 'act';
+    if ((step === 'show_services' || opts.tentative) && hint.serviceMentioned && !informational && !isQuestion) return 'act';
     return 'none';
 }
 
@@ -167,4 +170,12 @@ export function isInformationalDetour(raw: unknown, interpreted?: InterpretedHin
     if (topic === 'hours' && interpreted?.timeMentioned) return false;
     if (step === 'show_services' && interpreted?.serviceMentioned && asksDuration(raw)) return false;
     return true;
+}
+
+/** What the customer's message is about: their booking (an act, a booking noun, a booking intent). */
+const BOOKING_TOPIC = /\b(?:cita|citas|reserva|reservas|reservacion|turno|turnos|agenda|agendar|appointment|appointments|booking|bookings|rendez vous|agendamento|visita|visitas)\b/;
+export function isAboutBooking(raw: unknown, hint: BookingActHint): boolean {
+    if (['ask_availability', 'select_service', 'select_time'].includes(String(hint.intent))) return true;
+    if (hint.serviceMentioned || hint.dateMentioned || hint.timeMentioned) return true;
+    return hasExplicitBookingRequest(raw) || BOOKING_TOPIC.test(normalizeForIntent(raw));
 }

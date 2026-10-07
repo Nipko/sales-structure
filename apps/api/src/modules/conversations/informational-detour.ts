@@ -154,6 +154,35 @@ export function bookingActKind(raw: unknown, hint: BookingActHint, step?: string
 }
 
 /**
+ * The customer DIRECTS a change of service ("mejor cámbiala a X", "quiero X", "en vez de Y, X").
+ * Everything else that names another service while a draft is open is a question about it.
+ */
+const SWITCH_DIRECTIVE = /\b(?:cambi\w+|cambia\w*|en vez de|en lugar de|reemplaz\w+|sustitu\w+|prefiero|quiero (?!saber|conocer|preguntar|consultar|averiguar|entender|ver\b)\w+|necesito (?!saber|conocer|preguntar|consultar|decidir|ver\b|la direccion|el horario|los precios|informacion)\w+|quisiera (?!saber|conocer|preguntar|consultar|averiguar|ver\b)\w+|me gustaria (?!saber|conocer|preguntar|consultar|ver\b)\w+|instead|switch|change|i want (?!to know|to ask|to see)\w+|i would like (?!to know|to ask|to see)\w+|i['’ ]?d like (?!to know|to ask|to see)\w+|quero (?!saber|conhecer|perguntar)\w+|prefiro|je veux|je voudrais|je prefere|plutot)\b/;
+/** "¿puedo cambiar a X?", "¿me pueden hacer X?": asking whether it is possible is a question, not an order. */
+const POSSIBILITY_QUESTION = /\b(?:puedo|puede|pueden|podria|podrian|podrias|puedes|podemos|se puede|es posible|posible|can i|could i|may i|can you|could you|is it possible|posso|pode|podem|puis je|pouvez vous|peut on)\b/;
+
+/** The message tells the engine to switch the service (as opposed to asking about the other service). */
+export function isServiceSwitchDirective(raw: unknown): boolean {
+    const text = normalizeForIntent(raw);
+    if (POSSIBILITY_QUESTION.test(text)) return false;
+    if (SWITCH_DIRECTIVE.test(text)) return true;
+    return !/[?¿]/.test(String(raw ?? '')) && /\b(?:mejor|better|melhor|plutot)\b/.test(text);
+}
+
+/**
+ * The customer's answer to a yes/no offer the engine just made (switch the service?). `null` when the
+ * message is neither: a question, a booking button, new data, a cancellation of the whole booking.
+ */
+export function answerToOffer(raw: unknown, hint: BookingActHint): 'yes' | 'no' | null {
+    const text = normalizeForIntent(raw);
+    if (/^(?:svc_|slot_|confirm_|__flow)/.test(String(raw ?? '')) || !text) return null;
+    if (isInformationSeekingMessage(String(raw ?? ''))) return null;
+    if (REFUSAL.test(text) || (hint.isNegation && /^(?:no|nao|non|nope)\b/.test(text))) return 'no';
+    if (STRONG_YES.test(text) || BARE_ACK.test(text) || hint.isConfirmation) return 'yes';
+    return null;
+}
+
+/**
  * `step` is the open mission's step. While the customer is picking a service, the service they
  * name is the answer the engine must read; a duration question riding with it is left for the
  * model. (A time next to a question already stays with the engine, see below; the engine itself

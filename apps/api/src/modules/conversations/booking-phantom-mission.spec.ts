@@ -338,7 +338,7 @@ describe('production sequence N21 -> N22 -> C13 -> C14 -> C25 (same Telegram cha
         return layer.match(/<booking_state[\s\S]*?<\/booking_state>/)?.[0] ?? '';
     };
 
-    it('after N21 (a live draft for corte y estilo) the later turns never call it a reservation and C25 moves to the other service', async () => {
+    it('after N21 (a live draft for corte y estilo) the later turns never call it a reservation and C25 only OFFERS the other service', async () => {
         const h = harness({}, { productionNames: true });
         // What N21 left behind: a live (6 minutes old) mission with a date and a time, services in state.
         let state: BookingState = {
@@ -351,7 +351,9 @@ describe('production sequence N21 -> N22 -> C13 -> C14 -> C25 (same Telegram cha
             ['¿Cuánto dura el corte y estilo?', { intent: 'general_question', serviceMentioned: 'Corte y estilo' }, 'svc-corte'],
             ['¿Cuánto demora el servicio de color y tratamiento?', { intent: 'general_question', serviceMentioned: 'Color y tratamiento' }, 'svc-corte'],
             ['¿Cuánto dura color y tratamiento y tienen cupo el sábado a las 16:00?',
-                { intent: 'ask_availability', serviceMentioned: 'Color y tratamiento', dateMentioned: '2026-10-10', timeMentioned: '16:00' }, 'svc-color'],
+                { intent: 'ask_availability', serviceMentioned: 'Color y tratamiento', dateMentioned: '2026-10-10', timeMentioned: '16:00' }, 'svc-corte'],
+            // The customer answers the offer: only now does the draft move.
+            ['sí', { intent: 'confirm', isConfirmation: true }, 'svc-color'],
         ];
         expect(projectedBlock(state, 6)).toContain('status="draft"');
         for (const [text, llm, expectedService] of steps) {

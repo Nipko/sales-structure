@@ -138,6 +138,15 @@ describe('verticals whose bookings are not a service from the catalog', () => {
         expect(h.session().metadata.bookingState?.serviceId).toBeUndefined();
     });
 
+    it('a tenant with no services is remembered briefly: later idle turns do not query the catalog again', async () => {
+        const h = fixture({ services: [] });
+        await h.turn('¿Cuánto dura color y tratamiento?');
+        await h.turn('¿Cuánto dura corte y estilo?');
+        await h.turn('quiero agendar manicure');
+        expect(h.calls('list_services')).toHaveLength(1);
+        expect(await h.session().state.get('booking:services:tenant')).toBe('[]');
+    });
+
     it('a tenant with no services behaves as before (nothing to match, the engine lists nothing)', async () => {
         const h = fixture({ services: [] });
         const result = await h.turn('¿Cuánto dura color y tratamiento?');

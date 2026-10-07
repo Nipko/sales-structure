@@ -407,6 +407,7 @@ export class PromptAssemblerService {
                 if (s.price != null) attrs.push(`price="${this.attrEscape(String(s.price))}"`);
                 if (s.priceStatus && s.priceStatus !== 'confirmed') attrs.push(`price_status="${this.attrEscape(s.priceStatus)}"`);
                 if (s.currency) attrs.push(`currency="${this.attrEscape(s.currency)}"`);
+                if (s.description) attrs.push(`description="${this.attrEscape(s.description)}"`);
                 lines.push(`    <service ${attrs.join(' ')}>${this.xmlEscape(s.name)}</service>`);
             }
             lines.push('  </available_services>');

@@ -351,7 +351,9 @@ describe('the replay turn of an unattended handoff return', () => {
         expect(service.handoffService.executeHandoff).not.toHaveBeenCalled();
         expect(service.replyOnceThroughOutbox).not.toHaveBeenCalled();
         expect(service.dispatchReplyThroughOutbox).toHaveBeenCalledTimes(1);
-        expect(sentChunks(service).join('\n')).toBe(`${RETURN_NOTICE}\n\n${ANSWER}`);
+        // what they asked was left for the team (the alert went out), and the reply says so
+        expect(sentChunks(service).join('\n')).toBe(
+            `${RETURN_NOTICE}\n\n${ANSWER}\n\nDejé su solicitud anotada para que el equipo la vea y le contacte cuando esté disponible.`);
     });
 
     it('hands the model what was asked, so the answer can acknowledge it', async () => {
@@ -802,5 +804,106 @@ describe('the fixed handoff texts speak with usted', () => {
         await service.runTurn(message);
         expect(service.replyOnceThroughOutbox.mock.calls[0][0].item.payload.text)
             .toBe('Entiendo su solicitud. Le estoy transfiriendo con nuestro equipo de atención. Un agente le responderá en breve. 🙋');
+    });
+});
+
+/**
+ * Live episode of 2026-10-08 (store tenant, Telegram): the request that started the handoff was
+ * counted, but the reply never said it had been left. The customer is told only what is true, so
+ * every way the note can fail to exist is reproduced here with production-like data: a contact with
+ * and without a lead, a tenant with and without supervisors, a task service that throws.
+ */
+describe('the 2026-10-08 live episode: the request left for the team is said when it was left', () => {
+    const STARTED = '2026-10-08T18:29:40.000Z';
+    const T2 = 'Prueba QA 20261008: ¿hola? mientras tanto, ¿cuánto cuesta el Audífono QA?';
+    const PRICE = 'El Audífono QA Aurora cuesta 119.900 COP y hay 2 unidades disponibles en stock.';
+    const MODEL = `${PRICE} ¿Le gustaría que le ayude con algo más mientras espera?`;
+    const NOTE = 'Dejé su solicitud anotada para que el equipo la vea y le contacte cuando esté disponible.';
+
+    function episode(over: { lead?: boolean; tasks?: 'ok' | 'throws' | 'none'; recipients?: number } = {}) {
+        const { service, message } = fixture({
+            status: 'active', text: T2,
+            handoff: { startedAt: STARTED, reason: 'human_request', summary: 'necesito hablar con una persona del equipo, por favor',
+                returnedToAi: true, returnNoticePending: true, returnReplayFor: STARTED, returnReplayClaimedAt: '2026-10-08T18:40:00.000Z' },
+        });
+        const recipients = over.recipients ?? 1;
+        service.prisma.transactionInTenantSchema = jest.fn(async (_s: string, cb: (q: any) => Promise<unknown>) =>
+            cb(async (sql: string) => sql.includes('INSERT INTO operational_notice_outbox')
+                ? Array.from({ length: recipients }, (_v, i) => ({ id: `n${i}` })) : []));
+        const tasks = over.tasks === 'throws'
+            ? { createTaskIdempotently: jest.fn().mockRejectedValue(new Error('relation "tasks" does not exist')) }
+            : { createTaskIdempotently: jest.fn().mockResolvedValue({ task: { id: 't1' }, created: true }) };
+        Object.assign(service, {
+            eventEmitter: { emit: jest.fn() },
+            saveMessage: jest.fn().mockResolvedValue({ id: '88888888-8888-4888-8888-888888888888', duplicate: true }),
+            dispatchOutbox: { findBatchForInbound: jest.fn().mockResolvedValue(null), publishBatch: jest.fn() },
+            outboundQueue: { enqueueDispatch: jest.fn().mockResolvedValue(undefined) },
+            handoffService: {
+                isInHandoff: jest.fn().mockResolvedValue(false),
+                shouldHandoff: jest.fn().mockReturnValue(null),
+                executeHandoff: jest.fn(),
+            },
+            complianceService: { detectOptOut: jest.fn().mockReturnValue(false), processOptOut: jest.fn() },
+            ...(over.tasks === 'none' ? {} : { tasksService: tasks }),
+        });
+        if (over.lead === false) {
+            service.resolveConversation.mockResolvedValue({
+                contact: { id: CONTACT_ID, name: 'Cliente QA', external_id: '12345' }, lead: { id: undefined },
+                conversation: { id: CONVERSATION_ID, contact_id: CONTACT_ID, status: 'active', updated_at: new Date(),
+                    metadata: { handoff: { startedAt: STARTED, reason: 'human_request', returnedToAi: true, returnNoticePending: true,
+                        returnReplayFor: STARTED, returnReplayClaimedAt: '2026-10-08T18:40:00.000Z' } } },
+            });
+        }
+        service.generateResponse.mockResolvedValue(MODEL);
+        message.metadata = { handoffReturnReplay: true };
+        const logged = () => service.logger.log.mock.calls.map((c: any[]) => String(c[0])).filter((l: string) => l.includes('unanswered request'));
+        return { service, message, tasks, logged };
+    }
+    const FULL = `${RETURN_NOTICE}\n\n${PRICE}\n\n${NOTE}\n\n¿Le gustaría que le ayude con algo más?`;
+    const NO_NOTE = `${RETURN_NOTICE}\n\n${PRICE} ¿Le gustaría que le ayude con algo más?`;
+
+    it('the exact production reply: the price, the request left, the closing question, and nobody waiting', async () => {
+        const { service, message, logged } = episode();
+        await service.runTurn(message);
+        expect(sentChunks(service).join('\n')).toBe(FULL);
+        expect(service.generateResponse.mock.calls[0][2].handoffReturn).toEqual({ ask: 'person', noteLeft: true, fromEpisode: true });
+        expect(logged()[0]).toContain('follow-up created, supervisors enqueued:1 → left for the team');
+    });
+
+    it('a contact WITHOUT a lead: no task, but the supervisors were told, so the request IS left', async () => {
+        const { service, message, tasks, logged } = episode({ lead: false });
+        await service.runTurn(message);
+        expect(tasks.createTaskIdempotently).not.toHaveBeenCalled();
+        expect(sentChunks(service).join('\n')).toBe(FULL);
+        expect(logged()[0]).toContain('follow-up no_lead, supervisors enqueued:1');
+    });
+
+    it('a task service that fails: the supervisors were still told', async () => {
+        const { service, message, logged } = episode({ tasks: 'throws' });
+        await service.runTurn(message);
+        expect(sentChunks(service).join('\n')).toBe(FULL);
+        expect(logged()[0]).toContain('follow-up failed:relation "tasks" does not exist');
+    });
+
+    it('no task service wired: the supervisors were still told', async () => {
+        const { service, message, logged } = episode({ tasks: 'none' });
+        await service.runTurn(message);
+        expect(sentChunks(service).join('\n')).toBe(FULL);
+        expect(logged()[0]).toContain('follow-up no_tasks_service');
+    });
+
+    it('a lead but no supervisor to tell (the store tenant has none): the task alone leaves it', async () => {
+        const { service, message, logged } = episode({ recipients: 0 });
+        await service.runTurn(message);
+        expect(sentChunks(service).join('\n')).toBe(FULL);
+        expect(logged()[0]).toContain('supervisors no_recipients_or_already_sent');
+    });
+
+    it('nothing could be left (no lead, nobody to tell): nothing false is said, and the log says so', async () => {
+        const { service, message, logged } = episode({ lead: false, recipients: 0 });
+        await service.runTurn(message);
+        expect(sentChunks(service).join('\n')).toBe(NO_NOTE.replace(' mientras espera', ''));
+        expect(service.generateResponse.mock.calls[0][2].handoffReturn).toEqual({ ask: 'person', noteLeft: false, fromEpisode: true });
+        expect(logged()[0]).toContain('NOTHING left');
     });
 });

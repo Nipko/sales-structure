@@ -1,4 +1,5 @@
 import { HandoffService } from './handoff.service';
+import { isRefundReturnPolicyQuestion } from './handoff-policy-question';
 
 describe('HandoffService structured handoff', () => {
     const tenantId = '11111111-1111-4111-8111-111111111111';
@@ -555,8 +556,8 @@ describe('every personal-case signal escalates by itself', () => {
         expect(ask(m)).toBe('discount_request');
     });
 
-    it('does not answer a refund question that has no business framing', () => {
-        expect(ask('¿Puedo pedir un reembolso?')).toBe('complaint');
+    it('does not answer a refund question that has no policy framing', () => {
+        expect(ask('¿Dónde está el reembolso?')).toBe('complaint');
     });
 
     it('treats a conditional statement (not a question) as a report', () => {
@@ -605,5 +606,155 @@ describe('custom triggers: the policy-topic words and the personal-case signals'
         'do you have a refund for me?',
     ])('hands off on %s', (m) => {
         expect(ask(m, ['refund'])).toBe('custom_trigger:refund');
+    });
+});
+
+/**
+ * Round 2. An affirmative «sí» ("yes, it arrived broken") folds into the
+ * conditional «si», and the Spanish noun «caso» looks like the Portuguese
+ * conditional. Neither is a hypothetical: it is a damage report.
+ */
+describe('a damage report is not read as a hypothetical question', () => {
+    const service: any = Object.create(HandoffService.prototype);
+    const conversation = { metadata: {} };
+    const config = { behavior: { handoffTriggers: [] } } as any;
+    const ask = (m: string) => service.shouldHandoff(m, conversation, config);
+
+    it.each([
+        'Sí, llegó roto, ¿qué hago?',
+        'sí, llegó dañado ¿qué hago?',
+        'Hola, sí llegó roto ¿cómo lo cambio?',
+        'Pues sí, llegó roto. ¿Qué opciones hay?',
+        'Y si, llegó roto ¿qué hago?',
+        'El caso es que llegó roto, ¿qué hago?',
+        '¿qué hago? llegó roto',
+        'si, llegó roto',
+        '¿qué pasa si me llegó dañado y ya lo abrí?',
+        'sim, chegou quebrado, o que faço?',
+        'oui, il est arrivé endommagé, que faire ?',
+        'Hola si llegó roto ¿cómo lo cambio?',
+        'Hola, si llegó roto ¿cómo lo cambio?',
+        'Pues si llegó roto ¿qué hago?',
+        'El producto sí llegó roto ¿qué hago?',
+        'si llegó roto ¿qué hago?',
+        'llegó dañado, ¿qué pasa si llegó roto?',
+    ])('hands off on %s', (m) => {
+        expect(ask(m)).toBe('complaint');
+    });
+
+    it.each([
+        '¿Qué hago si el producto llegó roto?',
+        'e se chegou quebrado?',
+        'et si le colis est arrivé endommagé ?',
+        'o que faço caso o produto chegue quebrado?',
+        '¿y si llegó roto?',
+        '¿Qué hago en caso de que llegue roto?',
+        '¿Qué pasa si llegó dañado?',
+        // the damage word alone would hide a refund question, unless it is a condition
+        '¿Aceptan devoluciones en caso de que llegue roto?',
+        'tem reembolso caso o produto chegue quebrado?',
+        '¿Aceptan devoluciones si el producto llegó roto?',
+    ])('still answers the hypothetical %s', (m) => {
+        expect(ask(m)).toBeNull();
+    });
+});
+
+/**
+ * "How do I / can I / is it possible / how long" about a refund or return is a
+ * policy question: the agent answers it and offers a person. Explicit requests
+ * and personal cases still escalate directly.
+ */
+describe('how-do-I questions about refunds are answered', () => {
+    const service: any = Object.create(HandoffService.prototype);
+    const conversation = { metadata: {} };
+    const config = { behavior: { handoffTriggers: [] } } as any;
+    const ask = (m: string) => service.shouldHandoff(m, conversation, config);
+
+    it.each([
+        // cuánto tarda / demora
+        '¿cuánto tarda un reembolso?',
+        '¿Cuánto demora la devolución?',
+        // cómo solicito / pido / hago / tramito
+        '¿Cómo solicito una devolución?',
+        '¿Cómo pido un reembolso?',
+        '¿Cómo tramito una devolución?',
+        // se puede / es posible / puedo pedir
+        '¿Se puede hacer devolución?',
+        '¿Es posible un reembolso?',
+        '¿Puedo pedir un reembolso?',
+        '¿Puedo solicitar una devolución?',
+        // pt
+        'quanto tempo demora um reembolso?',
+        'como solicito um reembolso?',
+        'como peço um reembolso?',
+        'é possível reembolso?',
+        'posso pedir reembolso?',
+        // fr
+        'combien de temps prend un remboursement ?',
+        'comment demander un remboursement ?',
+        "est-il possible d'obtenir un remboursement ?",
+        'puis-je demander un remboursement ?',
+        // en (custom trigger tests below cover the English words)
+    ])('does not hand off on %s', (m) => {
+        expect(ask(m)).toBeNull();
+    });
+
+    it.each([
+        'necesito hacer una devolución',
+        'quiero mi reembolso',
+        'me pueden hacer la devolución',
+        'quiero devolver el audífono, llegó dañado',
+        '¿puedo pedir un reembolso? me cobraron dos veces',
+        '¿Cómo solicito mi reembolso?',
+        '¿cómo hago la devolución? el audífono llegó dañado',
+        '¿es posible un reembolso? esto es una estafa',
+        '¿se puede hacer devolución? compré el audífono ayer',
+        '¿cuánto tarda un reembolso? ya van 3 semanas',
+    ])('hands off on %s', (m) => {
+        expect(ask(m)).toBe('complaint');
+    });
+
+    it.each([
+        ['how do I request a refund?', 'refund'],
+        ['can I get a refund?', 'refund'],
+        ['is it possible to return it?', 'return'],
+        ['how much time does a refund take?', 'refund'],
+    ])('answers %s even with the seeded trigger', (m, trigger) => {
+        expect(service.shouldHandoff(m, conversation, { behavior: { handoffTriggers: [trigger] } } as any)).toBeNull();
+    });
+
+    it.each([
+        ['how do I request a refund? my order never arrived', 'refund'],
+        ['can I get a refund? i bought it yesterday', 'refund'],
+    ])('hands off on %s', (m, trigger) => {
+        expect(service.shouldHandoff(m, conversation, { behavior: { handoffTriggers: [trigger] } } as any))
+            .toBe('custom_trigger:' + trigger);
+    });
+});
+
+describe('the refund / return policy questions that also offer a person', () => {
+    it.each([
+        '¿cuánto tarda un reembolso?',
+        '¿Cómo solicito una devolución?',
+        '¿Se puede hacer devolución?',
+        '¿Es posible un reembolso?',
+        '¿Puedo pedir un reembolso?',
+        '¿Cuál es la política de devoluciones del audífono QA de prueba?',
+        '¿Hacen reembolsos?',
+        'quelle est votre politique de remboursement ?',
+        'is it possible to return it?',
+    ])('offers a person after answering %s', (m) => {
+        expect(isRefundReturnPolicyQuestion(m)).toBe(true);
+    });
+
+    it.each([
+        '¿tienen descuentos?',
+        '¿Hacen rebajas?',
+        '¿cuál es el horario?',
+        '¿hay reembolso? me cobraron dos veces',
+        'quiero mi reembolso',
+        'necesito hacer una devolución',
+    ])('does not apply to %s', (m) => {
+        expect(isRefundReturnPolicyQuestion(m)).toBe(false);
     });
 });

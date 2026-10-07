@@ -24,6 +24,27 @@ export const HUMAN_OFFER_QUESTION: Record<string, string> = {
     pt: 'Quer que eu peça a alguém da equipe para confirmar?',
     fr: "Souhaitez-vous que je demande à quelqu'un de l'équipe de la confirmer ?",
 };
+/**
+ * The offer that follows the answer to a refund / return policy question: the
+ * agent states the policy and the customer who wants the refund itself says yes
+ * once, instead of being escalated without asking.
+ */
+export const POLICY_PERSON_OFFER_QUESTION: Record<string, string> = {
+    es: '¿Desea que le pida a una persona del equipo que se encargue de su caso?',
+    en: 'Would you like me to ask someone from the team to take care of your case?',
+    pt: 'Deseja que eu peça a alguém da equipe para cuidar do seu caso?',
+    fr: "Souhaitez-vous que je demande à quelqu'un de l'équipe de s'occuper de votre dossier ?",
+};
+export const policyPersonOfferText = (lang?: string): string =>
+    POLICY_PERSON_OFFER_QUESTION[(lang || 'es').slice(0, 2).toLowerCase()] || POLICY_PERSON_OFFER_QUESTION.es;
+
+/** The reply to a policy question, followed by the offer of a person unless it already offers one. */
+export function withPolicyPersonOffer(response: string, lang?: string): string {
+    if (!response || !response.trim()) return response;
+    if (containsHumanOffer(response) || offersHumanHandoff(response)) return response;
+    return `${response.trimEnd()}\n\n${policyPersonOfferText(lang)}`;
+}
+
 export const humanOfferQuestionText = (lang?: string): string =>
     HUMAN_OFFER_QUESTION[(lang || 'es').slice(0, 2).toLowerCase()] || HUMAN_OFFER_QUESTION.es;
 
@@ -42,7 +63,7 @@ export const noDataNoOfferText = (lang?: string): string =>
 
 /** True when the stored outbound text contains one of our offers. */
 export function containsHumanOffer(text: unknown): boolean {
-    return typeof text === 'string' && Object.values(HUMAN_OFFER_QUESTION).some(o => text.includes(o));
+    return typeof text === 'string' && [...Object.values(HUMAN_OFFER_QUESTION), ...Object.values(POLICY_PERSON_OFFER_QUESTION)].some(o => text.includes(o));
 }
 
 export function isHumanOfferText(text: unknown): boolean {

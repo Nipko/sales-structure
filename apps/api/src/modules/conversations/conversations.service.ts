@@ -44,6 +44,7 @@ import { resolveTurnOutcome } from './turn-outcome-wait';
 import { ChannelTokenService } from '../channels/channel-token.service';
 import { ConversationsGateway } from './conversations.gateway';
 import { HandoffService } from '../handoff/handoff.service';
+import { isRefundReturnPolicyQuestion } from '../handoff/handoff-policy-question';
 import { KnowledgeService } from '../knowledge/knowledge.service';
 import { knowledgeHitToContext } from '../knowledge/knowledge-contracts';
 import { resolveKnowledgeReplica } from '../evaluation-revision/evaluation-knowledge-replica';
@@ -99,7 +100,7 @@ import { normalizePhoneE164 } from '../../common/utils/phone.util';
 import { PromptAssemblerService } from './prompt-assembler.service';
 import { resolveBusinessWindow } from './business-window';
 import { hasDispatchOutbox, noHumanReplySql } from '../handoff/handoff-human-reply';
-import { HUMAN_OFFER_MARK, HUMAN_OFFER_TTL_MS, NO_DATA_WAIT_REPLACEMENT, NO_DATA_NO_OFFER, noDataWaitReplacementText, noDataNoOfferText, containsHumanOffer, isHumanOfferText, isAffirmation, isAffirmationOfHumanOffer, isLiveHumanOffer, withReturnNotice, offerInsteadOfPromise } from './human-offer';
+import { HUMAN_OFFER_MARK, HUMAN_OFFER_TTL_MS, NO_DATA_WAIT_REPLACEMENT, NO_DATA_NO_OFFER, noDataWaitReplacementText, noDataNoOfferText, containsHumanOffer, isHumanOfferText, isAffirmation, isAffirmationOfHumanOffer, isLiveHumanOffer, withReturnNotice, offerInsteadOfPromise, withPolicyPersonOffer } from './human-offer';
 import { LanguageDetectorService } from './language-detector.service';
 import { BusinessInfoService } from '../business-info/business-info.service';
 import { PaymentOperationService } from './payment-operation.service';
@@ -4818,6 +4819,13 @@ export class ConversationsService {
                 allowHumanHandoff,
             );
             turnTrace.add('guardrail', 'output', { responseLength: finalResponse?.length || 0 });
+            // A refund / return POLICY question is answered, not escalated
+            // (`shouldHandoff` lets it through). The answer also offers a person, so a
+            // customer who really wants the refund says "yes" once and the
+            // acceptance below escalates for real.
+            if (!session && !draftMode && allowHumanHandoff && isRefundReturnPolicyQuestion(userText)) {
+                finalResponse = withPolicyPersonOffer(finalResponse, userLanguage);
+            }
             // The guard answered with an offer of a person: remember it so a
             // "yes" next turn escalates for real.
             if (!session && !draftMode && allowHumanHandoff) await this.rememberHumanOffer(schemaName, conversation.id, finalResponse);

@@ -42,7 +42,42 @@ export const DEFECT_ON_ARRIVAL_KEYWORDS: readonly string[] = [
 ];
 const DEFECT_ON_ARRIVAL_SET: ReadonlySet<string> = new Set(DEFECT_ON_ARRIVAL_KEYWORDS);
 
-const POLICY_FRAME = /\b(?:politicas?|politique|policy|policies|aceptan|aceptais|acepta|hacen|ofrecen|ofrece|manejan|tienen|tiene|hay|existe|existen|plazo|condiciones|condicoes|como funciona|cuanto tiempo|cuantos dias|do you (?:have|offer|accept|do|give)|are there|is there|what is|what['’ ]?s|what are|how (?:long|does)|ha(?:ve|s) you|avez[ -]vous|offrez[ -]vous|acceptez[ -]vous|faites[ -]vous|y a[ -]t[ -]il|quelle est|quelles sont|votre politique|aceitam|fazem|oferecem|tem|qual e|quais sao|a politica)\b/;
+const POLICY_FRAME_BASE = /\b(?:politicas?|politique|policy|policies|aceptan|aceptais|acepta|hacen|ofrecen|ofrece|manejan|tienen|tiene|hay|existe|existen|plazo|condiciones|condicoes|como funciona|cuanto tiempo|cuantos dias|do you (?:have|offer|accept|do|give)|are there|is there|what is|what['’ ]?s|what are|how (?:long|does)|ha(?:ve|s) you|avez[ -]vous|offrez[ -]vous|acceptez[ -]vous|faites[ -]vous|y a[ -]t[ -]il|quelle est|quelles sont|votre politique|aceitam|fazem|oferecem|tem|qual e|quais sao|a politica)\b/;
+
+/**
+ * "How do I / can I / is it possible / how long does it take" asks about the
+ * way something works, which is what a policy question is. Weak on their own,
+ * so everything above (personal case, grievance, request for oneself) is
+ * checked first: "¿puedo pedir un reembolso? me cobraron dos veces" still goes
+ * to a person.
+ */
+const POLICY_FRAME_HOW = [
+    // es
+    'cuanto (?:tarda|tardan|demora|demoran|se tarda|se demora)',
+    'como (?:solicito|solicitar|solicitan|pido|pedir|hago|tramito|tramitar|se solicita|se pide|se hace|puedo (?:solicitar|pedir|hacer|tramitar))',
+    'se puede',
+    'es posible',
+    'puedo (?:pedir|solicitar|hacer|tramitar|obtener)',
+    // pt
+    'quanto tempo',
+    'como (?:solicito|peco|pedir|solicitar|faco|fazer)',
+    'e possivel',
+    'posso (?:pedir|solicitar|fazer)',
+    // fr
+    'combien de temps',
+    'comment (?:demander|puis[ -]je|faire|obtenir)',
+    'est[ -]il possible',
+    'puis[ -]je (?:demander|obtenir|faire)',
+    // en
+    'how (?:do|can|should) i (?:request|ask|get|return|claim|apply)',
+    'can i (?:get|ask|request|return|have|apply)',
+    'is it possible',
+    'how much time',
+].join('|');
+const POLICY_FRAME_HOW_RE = new RegExp(`\\b(?:${POLICY_FRAME_HOW})\\b`);
+
+/** The refund / return topic words (not discounts): where the agent also offers a person. */
+const REFUND_RETURN_TOPIC = /\b(?:devolucion(?:es)?|devolucao|devolucoes|reembolsos?|remboursements?|refunds?|returns?)\b/;
 
 /** A damaged / broken product: a grievance, unless asked about hypothetically. */
 const GRIEVANCE_DEFECT = /\b(?:danad[oa]s?|roto|rota|rotos|rotas|defectuos[oa]s?|llego (?:mal|roto|danado|tarde)|damaged|broken|defective|faulty|casse|endommage|quebrado|chegou)\b/;
@@ -99,29 +134,66 @@ const PERSONAL_CASE_TERMS = [
 ];
 const PERSONAL_CASE = new RegExp(`\\b(?:${PERSONAL_CASE_TERMS.join('|')})`);
 
-const ARRIVES = '(?:llego|llega|llegan|llegaron|viene|vino|chegou|chega|vem|veio|arrive|arrives|arrived|comes|came|est arrive)';
+const ARRIVES = '(?:llego|llega|llegan|llegaron|llegue|viene|vino|chegou|chega|chegue|vem|veio|arrive|arrives|arrived|comes|came|est arrive)';
 const DEFECT_WORD = '(?:danad[oa]s?|roto|rota|rotos|rotas|defectuos[oa]s?|mal|danificad[oa]s?|quebrad[oa]s?|endommage\\w*|damaged|broken|defective|faulty|casse\\w*)';
+const DEFECT_TAIL = `\\s+(?:\\w+\\s+){0,2}?${DEFECT_WORD}\\b`;
 /** "si el producto llegó roto": a conditional about the arrival, not a report. */
-const CONDITIONAL_DEFECT = new RegExp(
-    `\\b(?:si|what if|if|et si|e se|caso|se (?:o|a|os|as|um|uma))\\s+(?:\\w+\\s+){0,4}?${ARRIVES}\\s+(?:\\w+\\s+){0,2}?${DEFECT_WORD}\\b`,
+const CONDITIONAL_FREE = new RegExp(
+    `\\b(si|what if|if|et si|e se|en caso de que|se (?:o|a|os|as|um|uma))\\s+(?:\\w+\\s+){0,4}?${ARRIVES}${DEFECT_TAIL}`, 'g',
 );
-const ARRIVED_DEFECTIVE = new RegExp(`\\b${ARRIVES}\\s+(?:\\w+\\s+){0,2}?${DEFECT_WORD}\\b`);
+/** Portuguese "caso o produto chegue quebrado"; the Spanish noun ("el caso es que…") never fits. */
+const CONDITIONAL_CASO = new RegExp(`\\bcaso\\s+(?:(?:o|a|os|as|meu|minha)\\s+)?(?:\\w+\\s+)?${ARRIVES}${DEFECT_TAIL}`);
+const ARRIVED_DEFECTIVE = new RegExp(`\\b${ARRIVES}${DEFECT_TAIL}`);
 /** A first-person marker that turns a conditional into a story ("si me llegó roto"). */
 const FIRST_PERSON = /\b(?:me|nos|mi|mis|nuestr[oa]s?|my|our|meu|meus|minha|minhas|mon|ma|mes|notre|j['’ ]?ai)\b/;
 
 /**
+ * The text the conditional is judged on. `normalizeForIntent` is not enough here:
+ * it folds the affirmative «sí» into the conditional «si» and turns commas into
+ * spaces, so "Sí, llegó roto, ¿qué hago?" read as "si llegó roto". This keeps
+ * what tells them apart: an accented «sí» becomes a word of its own and the
+ * commas and periods stay ("si, llegó roto" is a yes, not a condition).
+ */
+function conditionalText(raw: unknown): string {
+    return String(raw ?? '').toLowerCase()
+        .replace(/(?<![a-záéíóúüñ])sí(?![a-záéíóúüñ])/g, 'yes_')
+        .normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .replace(/[¿¡]/g, ' ')
+        .replace(/\s+/g, ' ').trim();
+}
+
+/** Index of a real conditional ("si el producto llegó roto") in `ctext`, or -1. */
+function conditionalIndex(ctext: string): number {
+    for (const m of ctext.matchAll(CONDITIONAL_FREE)) {
+        if (m[1] !== 'si') return m.index ?? -1;
+        // An unaccented «si» that is really "yes": at the start of the message
+        // straight before the verb ("si llegó roto"), or after a filler
+        // ("hola si llegó roto", "pues si llegó roto").
+        const before = ctext.slice(0, m.index).replace(/^[\s,;:.!?]+/, '');
+        const directlyBeforeVerb = new RegExp(`^si\\s+${ARRIVES}`).test(m[0]);
+        if (before === '' && directlyBeforeVerb) continue;
+        if (/(?:^|\s)(?:pues|hola|que|bueno|ah|oh|buenas)[\s,;:.!]*$/.test(before)) continue;
+        return m.index ?? -1;
+    }
+    const caso = CONDITIONAL_CASO.exec(ctext);
+    return caso ? caso.index : -1;
+}
+
+/**
  * "¿Qué hago si el producto llegó roto?": asking what would happen. Answered,
- * not escalated; "me llegó roto" / "llegó roto el audífono que compré" are
- * reports and still escalate.
+ * not escalated; "me llegó roto" / "llegó roto el audífono que compré" /
+ * "Sí, llegó roto, ¿qué hago?" are reports and still escalate.
  */
 export function isHypotheticalDefectQuestion(raw: unknown): boolean {
     const text = normalizeForIntent(raw);
     if (!text || !isInformationSeekingMessage(raw)) return false;
-    const conditional = CONDITIONAL_DEFECT.exec(text);
-    if (!conditional || FIRST_PERSON.test(text) || PERSONAL_CASE.test(text)) return false;
+    if (FIRST_PERSON.test(text) || PERSONAL_CASE.test(text)) return false;
+    const ctext = conditionalText(raw);
+    const at = conditionalIndex(ctext);
+    if (at < 0) return false;
     // "llegó dañado, ¿qué pasa si llegó roto?": a defect already stated before the
     // conditional is a report, and the conditional does not cancel it.
-    return !ARRIVED_DEFECTIVE.test(text.slice(0, conditional.index));
+    return !ARRIVED_DEFECTIVE.test(ctext.slice(0, at));
 }
 
 /** True when `keyword` only reports a defect on arrival (see {@link DEFECT_ON_ARRIVAL_KEYWORDS}). */
@@ -135,5 +207,14 @@ export function isPolicyQuestion(raw: unknown): boolean {
     if (!isInformationSeekingMessage(raw)) return false;
     if (GRIEVANCE_OTHER.test(text) || PERSONAL_REQUEST.test(text) || PERSONAL_CASE.test(text)) return false;
     if (GRIEVANCE_DEFECT.test(text) && !isHypotheticalDefectQuestion(raw)) return false;
-    return POLICY_FRAME.test(text);
+    return POLICY_FRAME_BASE.test(text) || POLICY_FRAME_HOW_RE.test(text);
+}
+
+/**
+ * A refund / return policy question the agent answers. The reply also offers a
+ * person, so a customer who really wants the refund reaches one in a single "sí"
+ * (the existing human-offer acceptance), instead of being escalated unasked.
+ */
+export function isRefundReturnPolicyQuestion(raw: unknown): boolean {
+    return isPolicyQuestion(raw) && REFUND_RETURN_TOPIC.test(normalizeForIntent(raw));
 }

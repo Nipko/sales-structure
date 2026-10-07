@@ -134,7 +134,7 @@ describe('Shared runtime integrity', () => {
         service.learning = { getRuntimeExamples: jest.fn().mockResolvedValue([{ ...provable(), releaseId: 'release' }]),
             runtimeSourceAuthority: jest.fn(() => async (invoke: any) => invoke()) };
         const sink: any = { paymentLinks: [], media: [], learningFootprints: [], writers: [] };
-        expect(await withSink(service, conversation, config, sink)).toBe('La consulta cuesta COP 20000.');
+        expect(await withSink(service, conversation, config, sink)).toBe('La consulta cuesta COP 20.000.');
 
         expect(llm.mock.calls[0][0].systemPrompt).not.toContain('REVIEWED_STYLE_');
         expect(llm.mock.calls[0][0].withSourceAuthority).toBeUndefined();
@@ -162,7 +162,7 @@ describe('Shared runtime integrity', () => {
 
     it.each(['whatsapp', 'web_widget'])('grounds the %s turn in the same business knowledge', async channel => {
         const { service, run, llm, query } = fixture();
-        expect(await run(channel)).toBe('La consulta cuesta COP 20000.');
+        expect(await run(channel)).toBe('La consulta cuesta COP 20.000.');
         expect(service.knowledgeService.searchRelevant).toHaveBeenCalledTimes(1);
         expect(llm.mock.calls[0][0].systemPrompt).toContain(`<channel>${channel}</channel>`);
         expect(query.mock.calls.some((call: any[]) => call[1].includes('id <> $2::uuid'))).toBe(true);
@@ -176,7 +176,7 @@ describe('Shared runtime integrity', () => {
                 :{content:'La consulta cuesta COP 20000.'};
             return request.withSourceAuthority?request.withSourceAuthority(invoke):invoke();
         });
-        expect(await run()).toBe('La consulta cuesta COP 20000.');
+        expect(await run()).toBe('La consulta cuesta COP 20.000.');
         expect(service.toolExecutor.execute).not.toHaveBeenCalled();
         expect(llm.mock.calls[0][0].systemPrompt).toContain('REVIEWED_STYLE_style-one');
         const recovery=llm.mock.calls[1][0];
@@ -214,7 +214,7 @@ describe('Shared runtime integrity', () => {
             const invoke=async()=>({content:++calls<3?'El precio es COP 1000.':'La consulta cuesta COP 20000.'});
             return request.withSourceAuthority?request.withSourceAuthority(invoke):invoke();
         });
-        expect(await run()).toBe('La consulta cuesta COP 20000.');
+        expect(await run()).toBe('La consulta cuesta COP 20.000.');
         expect(llm.mock.calls[1][0].withSourceAuthority).toBeInstanceOf(Function);
         expect(llm.mock.calls[2][0].systemPrompt).not.toContain('REVIEWED_STYLE_');
         expect(llm.mock.calls[2][0].tools).toBeUndefined();
@@ -231,7 +231,7 @@ describe('Shared runtime integrity', () => {
             };
             return request.withSourceAuthority?request.withSourceAuthority(invoke):invoke();
         });
-        expect(await run()).toBe('La consulta cuesta COP 20000.');
+        expect(await run()).toBe('La consulta cuesta COP 20.000.');
         expect(service.toolExecutor.execute).toHaveBeenCalledTimes(5);
         expect(llm.mock.calls[5][0].withSourceAuthority).toBeInstanceOf(Function);
         expect(llm.mock.calls[6][0].tools).toBeUndefined();
@@ -264,11 +264,11 @@ describe('Shared runtime integrity', () => {
             title: 'Tarifas', score: 0.95, chunk_text: 'La consulta cuesta COP 20000.', doc_version: 3 }]);
         llm.mockResolvedValue({ content: 'La consulta cuesta COP 20000. [Article: Tarifas]' });
         const reply = await run();
-        expect(reply).toBe('La consulta cuesta COP 20000.');
+        expect(reply).toBe('La consulta cuesta COP 20.000.');
         const hook = service.knowledgeService.recordResponseAttribution;
         expect(hook).toHaveBeenCalledTimes(1);
         // Attribution reads the raw reply; only the delivered text is clean.
-        expect(hook.mock.calls[0][2]).toBe('La consulta cuesta COP 20000. [Article: Tarifas]');
+        expect(hook.mock.calls[0][2]).toBe('La consulta cuesta COP 20.000. [Article: Tarifas]');
         expect(attributeKnowledgeResponse(hook.mock.calls[0][2], hook.mock.calls[0][3]).citedDocuments).toBe(1);
     });
 
@@ -319,7 +319,7 @@ describe('Shared runtime integrity', () => {
         it('is appended to the answer and leaves the mark the next "sí" is judged against', async () => {
             const { run, llm, query } = fixture();
             llm.mockResolvedValue({ content: 'La consulta cuesta COP 20000.' });
-            expect(await run('whatsapp', '¿Puedo pedir un reembolso?')).toBe('La consulta cuesta COP 20000.\n\n' + OFFER);
+            expect(await run('whatsapp', '¿Puedo pedir un reembolso?')).toBe('La consulta cuesta COP 20.000.\n\n' + OFFER);
             expect(markWritten(query)).toBe(true);
         });
 
@@ -332,14 +332,14 @@ describe('Shared runtime integrity', () => {
         ])('is not appended to the answer to %s', async (text) => {
             const { run, llm, query } = fixture();
             llm.mockResolvedValue({ content: 'La consulta cuesta COP 20000.' });
-            expect(await run('whatsapp', text)).toBe('La consulta cuesta COP 20000.');
+            expect(await run('whatsapp', text)).toBe('La consulta cuesta COP 20.000.');
             expect(markWritten(query)).toBe(false);
         });
 
         it('is not appended when the answer already ends with a question of its own', async () => {
             const { run, llm, query } = fixture();
             llm.mockResolvedValue({ content: 'La consulta cuesta COP 20000. ¿Le sirve ese valor?' });
-            expect(await run('whatsapp', '¿Cómo solicito una devolución?')).toBe('La consulta cuesta COP 20000. ¿Le sirve ese valor?');
+            expect(await run('whatsapp', '¿Cómo solicito una devolución?')).toBe('La consulta cuesta COP 20.000. ¿Le sirve ese valor?');
             expect(markWritten(query)).toBe(false);
         });
 
@@ -364,7 +364,7 @@ describe('Shared runtime integrity', () => {
         it('is not appended where nobody can be offered (a widget without handoff) or in draft mode', async () => {
             const widget = fixture();
             widget.llm.mockResolvedValue({ content: 'La consulta cuesta COP 20000.' });
-            expect(await widget.run('web_widget', '¿Puedo pedir un reembolso?')).toBe('La consulta cuesta COP 20000.');
+            expect(await widget.run('web_widget', '¿Puedo pedir un reembolso?')).toBe('La consulta cuesta COP 20.000.');
             expect(markWritten(widget.query)).toBe(false);
             const draft = fixture(true);
             draft.llm.mockResolvedValue({ content: 'La consulta cuesta COP 20000.' });
@@ -402,7 +402,7 @@ describe('Shared runtime integrity', () => {
             // the top of the turn decides whether to escalate…
             expect(await (service as any).resolveHandoffReason(text, conv, config, tenantId)).toBeNull();
             // …and the reply is built from the same label, plus the authorisation read inside it
-            expect(await run('whatsapp', text)).toBe('La consulta cuesta COP 20000.\n\n' + OFFER);
+            expect(await run('whatsapp', text)).toBe('La consulta cuesta COP 20.000.\n\n' + OFFER);
             expect(classify).toHaveBeenCalledTimes(1);
         });
 
@@ -410,7 +410,7 @@ describe('Shared runtime integrity', () => {
             const { service, run, classify } = withClassifier('policy_info');
             const text = '¿Puedo pedir un reembolso?';
             await (service as any).resolveHandoffReason(text, conv, config, tenantId);
-            expect(await run('whatsapp', text)).toBe('La consulta cuesta COP 20000.');
+            expect(await run('whatsapp', text)).toBe('La consulta cuesta COP 20.000.');
             expect(classify).toHaveBeenCalledTimes(1);
         });
 
@@ -418,14 +418,14 @@ describe('Shared runtime integrity', () => {
             const { service, run } = withClassifier('policy_howto');
             const text = '¿Qué pasos sigo para devolver un producto?';
             await (service as any).resolveHandoffReason(text, conv, config, tenantId);
-            expect(await run('whatsapp', text)).toBe('La consulta cuesta COP 20000.\n\n' + OFFER);
+            expect(await run('whatsapp', text)).toBe('La consulta cuesta COP 20.000.\n\n' + OFFER);
         });
 
         it('without a label (the model was down) the rules decide the offer', async () => {
             const { service, run, classify } = withClassifier(null);
             const text = '¿Puedo pedir un reembolso?';
             expect(await (service as any).resolveHandoffReason(text, conv, config, tenantId)).toBeNull();
-            expect(await run('whatsapp', text)).toBe('La consulta cuesta COP 20000.\n\n' + OFFER);
+            expect(await run('whatsapp', text)).toBe('La consulta cuesta COP 20.000.\n\n' + OFFER);
             expect(classify).toHaveBeenCalledTimes(1);
         });
 
@@ -433,7 +433,7 @@ describe('Shared runtime integrity', () => {
             const { service, run, classify } = withClassifier('policy_howto');
             const text = '¿Cuál es el horario de atención?';
             await (service as any).resolveHandoffReason(text, conv, config, tenantId);
-            expect(await run('whatsapp', text)).toBe('La consulta cuesta COP 20000.');
+            expect(await run('whatsapp', text)).toBe('La consulta cuesta COP 20.000.');
             expect(classify).not.toHaveBeenCalled();
         });
 

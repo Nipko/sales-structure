@@ -336,6 +336,18 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
 /** The message asks what a service costs (already folded: lowercase, no accents). */
 const PRICE_QUESTION = /\b(?:cuanto (?:cuesta|vale|cobran|sale)|how much|quanto custa|combien|precio|price)\b/;
 
+const EMAIL_IN_TEXT = /[\w.+-]+@[\w-]+\.[\w.]+/;
+
+/**
+ * The shape of an answer to "¿cuál es su nombre?": "Me llamo Carlos Barba", "soy Ana", or one to three
+ * capitalised words. Such a message is a name even when a word of it is also the name of a service.
+ */
+function looksLikeNameAnswer(raw: string): boolean {
+    const text = raw.trim().replace(/[.,!;:]+$/g, '');
+    if (/^(?:me llamo|mi nombre es|mi nombre completo es|soy|i am|i'm|my name is|je m'appelle|je suis|meu nome [eé]|me chamo|sou)\s+\S/iu.test(text)) return true;
+    return /^\p{Lu}[\p{L}'’.-]*(?:\s+\p{Lu}[\p{L}'’.-]*){0,2}$/u.test(text);
+}
+
 /** "sábado 10 de octubre": how the customer reads a date, from the ISO day the engine keeps. */
 function friendlyDate(lang: string, iso: string): string {
     try {
@@ -1539,8 +1551,20 @@ export class BookingEngineService {
      */
     private directSwitchTarget(state: BookingState, intent: InterpretedIntent, rawText: string): NonNullable<BookingState['services']>[number] | undefined {
         if (!state.serviceId || !['ask_date', 'show_slots', 'ask_name', 'ask_email', 'confirm'].includes(state.step)) return undefined;
-        if (isInformationSeekingMessage(rawText) && !isServiceSwitchDirective(rawText)) return undefined;
-        return this.otherServiceNamed(state, state.serviceId, intent, rawText, isServiceSwitchDirective(rawText));
+        const directive = isServiceSwitchDirective(rawText);
+        if (isInformationSeekingMessage(rawText) && !directive) return undefined;
+        const target = this.otherServiceNamed(state, state.serviceId, intent, rawText, directive);
+        if (!target || !['ask_name', 'ask_email', 'confirm'].includes(state.step)) return target;
+        // The late steps are where the customer types a NAME or an E-MAIL, and both can contain a service word
+        // ("Carlos Barba", "carlos.barba@gmail.com"): the name of a service inside the text is not an order.
+        if (EMAIL_IN_TEXT.test(rawText) || intent.emailProvided) return undefined;
+        if (state.step === 'ask_name' && !directive && looksLikeNameAnswer(rawText)) return undefined;
+        if (directive || intent.dateMentioned || intent.timeMentioned) return target;
+        // Otherwise only the bare service name, as the whole message, counts ("Barba por favor"), and only if
+        // the interpreter did not read it as a name.
+        const fold = (value: string) => normalizeForIntent(value).replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
+        const whole = fold(rawText).replace(/\b(?:por favor|porfa|gracias|please|obrigad[oa]|merci|el|la|un|una|para)\b/g, ' ').replace(/\s+/g, ' ').trim();
+        return whole === fold(target.name) && !intent.nameProvided ? target : undefined;
     }
 
     /**

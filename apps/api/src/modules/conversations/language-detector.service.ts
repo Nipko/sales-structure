@@ -25,9 +25,16 @@ export class LanguageDetectorService {
         // and collides with Spanish "tres personas".
         es: ['hola', 'gracias', 'quiero', 'necesito', 'puedo', 'tengo', 'usted', 'ustedes', 'nosotros', 'pero', 'muy', 'tambien', 'aqui', 'ahora', 'quisiera', 'disculpa', 'cuanto', 'cuesta', 'donde', 'tienen', 'buenas', 'buenos', 'busco', 'estoy', 'cual', 'cuales', 'tienes'],
         en: ['the', 'and', 'you', 'for', 'are', 'but', 'not', 'with', 'this', 'that', 'hello', 'thanks', 'thank', 'want', 'need', 'have', 'would', 'could', 'please', 'when', 'where', 'what', 'how', 'your', 'can', 'looking', "i'm", 'price', 'cost'],
-        pt: ['nao', 'obrigado', 'obrigada', 'voce', 'voces', 'preciso', 'isso', 'tambem', 'entao', 'ola', 'sim', 'quero', 'gostaria', 'muito', 'quanto', 'custa', 'tudo', 'bom', 'uma', 'qual', 'quais', 'procuro', 'meu', 'minha', 'pessoas', 'funcionamento', 'tem', 'preco', 'precos', 'onde', 'posso', 'tenho'],
+        pt: ['nao', 'obrigado', 'obrigada', 'voce', 'voces', 'preciso', 'isso', 'tambem', 'entao', 'ola', 'sim', 'quero', 'gostaria', 'muito', 'quanto', 'custa', 'tudo', 'bom', 'uma', 'qual', 'quais', 'procuro', 'meu', 'minha', 'pessoas', 'funcionamento', 'tem', 'preco', 'precos'],
         fr: ['bonjour', 'bonsoir', 'merci', 'vous', 'nous', 'veux', 'besoin', 'comment', 'aussi', "c'est", 'oui', 'est', 'sont', 'avec', 'pourquoi', 'voudrais', 'combien', 'salut', 'je', 'quel', 'quels', 'quelle', 'quelles', 'horaires', 'votre', 'pour', 'avez', 'une', 'dans', 'cherche', 'acheter', 'jusqu', 'prix'],
     };
+
+    /**
+     * Words that are Portuguese but one letter away from a Spanish word a typo or a regionalism produces
+     * ("onde queda el local?", "tenho una duda"): half a point each, so ONE of them never decides the
+     * language by itself while two ("onde fica", "onde posso") or one next to a real marker do.
+     */
+    private readonly weakMarkers: Record<string, string[]> = { pt: ['onde', 'posso', 'tenho', 'fica'] };
 
     /**
      * Distinctive diacritics, tested on the RAW text (normalize() strips accents).
@@ -83,6 +90,9 @@ export class LanguageDetectorService {
             let score = 0;
             for (const w of words) {
                 if (tokens.has(w)) score++;
+            }
+            for (const w of this.weakMarkers[lang] ?? []) {
+                if (tokens.has(w)) score += 0.5;
             }
             if (this.diacritics[lang]?.test(raw)) score++;
             scores[lang] = score;

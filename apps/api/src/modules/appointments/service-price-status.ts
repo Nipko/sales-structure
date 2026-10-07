@@ -78,3 +78,30 @@ export function projectAvailableService(service: {
         currency: service.currency ?? undefined,
     };
 }
+
+/** Total characters of service descriptions one prompt carries (the catalog can be long; names and prices always travel). */
+export const SERVICE_DESCRIPTION_BUDGET = 2048;
+
+/**
+ * The whole `<available_services>` list. Descriptions fit in a fixed budget, in the order of relevance:
+ * the services the customer's message names first, then the rest in catalog order; a service that no
+ * longer fits keeps its name, duration and price but loses its description.
+ */
+export function projectAvailableServices(
+    services: ReadonlyArray<Parameters<typeof projectAvailableService>[0]>,
+    userText?: string,
+): Array<ReturnType<typeof projectAvailableService>> {
+    const fold = (value: string) => value.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    const text = fold(String(userText ?? ''));
+    const mentioned = (name: string) => { const n = fold(name).trim(); return n.length >= 3 && text.includes(n); };
+    const projected = services.map(projectAvailableService);
+    const order = projected.map((_, index) => index)
+        .sort((a, b) => Number(mentioned(projected[b].name)) - Number(mentioned(projected[a].name)) || a - b);
+    let left = SERVICE_DESCRIPTION_BUDGET;
+    const keep = new Set<number>();
+    for (const index of order) {
+        const length = projected[index].description?.length ?? 0;
+        if (length > 0 && length <= left) { keep.add(index); left -= length; }
+    }
+    return projected.map((service, index) => (service.description && !keep.has(index) ? { ...service, description: undefined } : service));
+}

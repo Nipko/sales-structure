@@ -1,7 +1,7 @@
 import { BookingEngineService, type BookingState } from './booking-engine.service';
 import { IntentInterpreterService } from './intent-interpreter.service';
-import { isInformationalDetour } from './informational-detour';
-import { projectBookingStateForPrompt, restoreBookingMission } from './booking-state-continuity';
+import { hasExplicitBookingRequest, isInformationalDetour } from './informational-detour';
+import { projectBookingStateForPrompt, restoreBookingMission, TENTATIVE_BOOKING_BLOCKED_TOOLS } from './booking-state-continuity';
 import { authorityFor } from './__fixtures__/tool-authority.fixture';
 
 /**
@@ -10,9 +10,9 @@ import { authorityFor } from './__fixtures__/tool-authority.fixture';
  * service name as a service selection, opened a mission, and a later turn made the
  * model say "tengo una reserva pendiente para corte y estilo".
  *
- * A message that names a service still opens the flow (no booking is lost), but when that
- * message is a question the mission is TENTATIVE: the engine does not assert a booking, the
- * model never sees it as pending, and it expires unless the customer gives a booking datum.
+ * A message that names a service still opens the flow (no booking is lost). When it carries no
+ * booking act (explicit request, date/time) the mission is TENTATIVE: the engine stays silent,
+ * the model never sees a pending booking, and it expires unless the customer takes a booking act.
  */
 const authority = authorityFor('list_services', 'check_availability', 'create_appointment');
 const services = [
@@ -55,48 +55,57 @@ const restoredAfter = (state: BookingState, minutes: number): BookingState => {
     return restoreBookingMission({ ...state, savedAt }, savedAt, T0 + minutes * MIN).state;
 };
 
-describe('a message that names a service never loses the booking (idle)', () => {
+describe('an explicit booking request is a real mission and the engine speaks, even phrased as a question', () => {
     it.each([
+        '¿Me agendas color y tratamiento?',
         '¿Puedo pedir una cita para color y tratamiento? ¿cuánto dura?',
-        '¿Me dan turno para color y tratamiento? ¿cuánto demora?',
-        'Quiero reservar color y tratamiento, ¿cuánto dura?',
-        'me regala una cita para color y tratamiento? cuánto cuesta?',
-        'me anotas para color y tratamiento? cuánto dura?',
-        'quería saber si me pueden atender para color y tratamiento, cuánto cuesta?',
+        'Agendar color y tratamiento, ¿cuánto dura?',
+        "I'd like to book color y tratamiento, how long does it take?",
+        'agendame porfa color y tratamiento, cuánto dura?',
         'Quisiera color y tratamiento, ¿cuánto cuesta?',
-        '¿Se puede hacer color y tratamiento? ¿cuánto demora?',
-        '¿Me pueden hacer color y tratamiento? ¿cuánto cuesta?',
-        'can you fit me in for color y tratamiento? how long does it take?',
-        'Can I get color y tratamiento? how much is it?',
-        'dá pra marcar color y tratamiento? quanto custa?',
         'Quero fazer color y tratamiento, quanto custa?',
         'Je voudrais color y tratamiento, combien ça coûte ?',
-        'Me interesa color y tratamiento, ¿cuánto cuesta?',
-    ])('"%s" keeps the service and the next datum continues the flow', async text => {
-        const { turn } = harness();
-        const first = await turn(text, { step: 'idle' });
-        expect(first.result.state).toMatchObject({ serviceId: 'svc-color', step: 'ask_date' });
-        const second = await turn('el sábado', first.result.state);
-        expect(second.result.handled).toBe(true);
-        expect(second.result.state.origin).toBeUndefined();
-    });
-
-    it.each([
+        'Can I get color y tratamiento? how much is it?',
+        '¿Tienen cupo para color y tratamiento? ¿cuánto dura?',
+        '¿Me dan turno para color y tratamiento? ¿cuánto demora?',
+        'me regala una cita para color y tratamiento? cuánto cuesta?',
+        'me anotas para color y tratamiento? cuánto dura?',
+        '¿Me pueden hacer color y tratamiento? ¿cuánto cuesta?',
+        'can you fit me in for color y tratamiento? how long does it take?',
+        'dá pra marcar color y tratamiento? quanto custa?',
+        'Quiero reservar color y tratamiento, ¿cuánto dura?',
         'Quiero agendar color y tratamiento',
         'Necesito agendar color y tratamiento',
         '¿tienen cupo a las 16:00 para color y tratamiento? ¿cuánto dura?',
         'Hola, quiero reservar un color y tratamiento mañana. ¿Cuánto cuesta?',
-    ])('"%s" is a real request: the engine answers and the mission is not tentative', async text => {
+    ])('"%s"', async text => {
         const { turn } = harness();
         const { result } = await turn(text, { step: 'idle' });
         expect(result.handled).toBe(true);
+        expect(result.text).toBeTruthy();
+        expect(result.state).toMatchObject({ serviceId: 'svc-color' });
         expect(result.state.step).not.toBe('idle');
         expect(result.state.origin).toBeUndefined();
     });
+
+    it('also hands the voice the duration the customer asked for', async () => {
+        const { turn } = harness();
+        const { result } = await turn('Quiero reservar color y tratamiento, ¿cuánto dura?', { step: 'idle' });
+        expect(result.text).toContain('120 minutes');
+    });
+
+    it('is not fooled by questions ABOUT booking', () => {
+        for (const text of [
+            '¿Necesito cita previa para color y tratamiento?', '¿Cuánto cuesta sacar una cita para color y tratamiento?',
+            '¿Hay que reservar para color y tratamiento o puedo llegar?', "What's your schedule for color y tratamiento?",
+            '¿Cuánto tiempo necesito para color y tratamiento?', 'Necesito saber cuánto dura color y tratamiento',
+            'Quisiera info sobre color y tratamiento',
+        ]) expect([text, hasExplicitBookingRequest(text)]).toEqual([text, false]);
+    });
 });
 
-describe('a question that opens a mission opens only a tentative one', () => {
-    const questions = [
+describe('a mission opened without a booking act is tentative and silent', () => {
+    const tentativeOpenings = [
         '¿Cuánto dura color y tratamiento?',
         '¿Cuánto cuesta color y tratamiento?',
         '¿Cuánto tiempo necesito para color y tratamiento?',
@@ -113,25 +122,88 @@ describe('a question that opens a mission opens only a tentative one', () => {
         '¿Puedo pagar color y tratamiento con tarjeta?',
         "What's your schedule for color y tratamiento?",
         'Hola, para color y tratamiento cuánto tiempo necesito?',
+        'info de color y tratamiento',
+        'precio color y tratamiento',
+        'color y tratamiento precio',
+        'quisiera info sobre color y tratamiento',
+        'me interesa color y tratamiento',
+        'Color y tratamiento',
     ];
 
-    it.each(questions)('"%s" says nothing for the engine and is never a pending booking', async text => {
+    it.each(tentativeOpenings)('"%s" opens nothing the engine speaks for and nothing pending', async text => {
         const { turn } = harness();
         const { result } = await turn(text, { step: 'idle' });
         expect(result.handled).toBe(false);
         expect(result.text).toBeUndefined();
         if (result.state.step !== 'idle') expect(result.state.origin).toBe('question');
-        // Never shown to the model as pending, live or after the continuity window.
         expect(projectBookingStateForPrompt(restoredAfter(result.state, 5))).toBeUndefined();
-        // Past the window it expires: no dormant mission, so no "reserva sin terminar" offer.
         expect(restoredAfter(result.state, 31)).toEqual({ step: 'idle' });
     });
 
-    it('does not turn a bare question that names the service into a booking text', async () => {
+    it.each(['gracias', 'muchas gracias', 'chao', 'hola', 'ok gracias', 'perfecto, gracias', 'ok', 'thanks'])(
+        'question, then "%s": still tentative and silent, and 31 minutes later nothing is offered back', async reply => {
+            const { turn } = harness();
+            const first = await turn('¿Cuánto dura color y tratamiento?', { step: 'idle' });
+            const second = await turn(reply, first.result.state);
+            expect(second.result.handled).toBe(false);
+            expect(second.result.text).toBeUndefined();
+            expect(second.result.state.origin).toBe('question');
+            const later = restoredAfter(second.result.state, 31);
+            expect(later).toEqual({ step: 'idle' });
+            const third = await turn('hola', later);
+            expect(third.result.text ?? '').not.toMatch(/sin terminar|reserva/i);
+        });
+
+    it('"¿qué servicios tienen?" then "gracias" does not leave a mission behind', async () => {
         const { turn } = harness();
-        const { result } = await turn('¿Cuánto dura color y tratamiento?', { step: 'idle' });
-        expect(result.state).toMatchObject({ serviceId: 'svc-color', origin: 'question' });
-        expect(result.text).toBeUndefined();
+        const list = await turn('¿Qué servicios tienen?', { step: 'idle' });
+        expect(list.result.handled).toBe(true);
+        expect(list.result.state.origin).toBe('question');
+        const thanks = await turn('gracias', list.result.state);
+        expect(thanks.result.handled).toBe(false);
+        expect(restoredAfter(thanks.result.state, 31)).toEqual({ step: 'idle' });
+    });
+
+    it.each(['no gracias', 'no', 'ahora no', 'no thanks'])('question, then "%s": the interest is dropped', async reply => {
+        const { turn } = harness();
+        const first = await turn('¿Cuánto dura color y tratamiento?', { step: 'idle' });
+        const second = await turn(reply, first.result.state);
+        expect(second.result.handled).toBe(false);
+        expect(second.result.state).toEqual({ step: 'idle' });
+    });
+
+    it.each(['sí', 'dale', 'yes please', 'sim', 'oui', 'sí, el sábado', 'sí gracias', 'claro'])(
+        'question, then "%s": the booking act makes it real and the engine asks for the rest', async reply => {
+            const { turn } = harness();
+            const first = await turn('¿Cuánto dura color y tratamiento?', { step: 'idle' });
+            const second = await turn(reply, first.result.state);
+            expect(second.result.handled).toBe(true);
+            expect(second.result.text).toBeTruthy();
+            expect(second.result.state).toMatchObject({ serviceId: 'svc-color' });
+            expect(second.result.state.origin).toBeUndefined();
+        });
+
+    it('a service picked from the list is a booking act', async () => {
+        const { turn } = harness();
+        const list = await turn('¿Qué servicios tienen?', { step: 'idle' });
+        const pick = await turn('Color y tratamiento', list.result.state);
+        expect(pick.result.handled).toBe(true);
+        expect(pick.result.state).toMatchObject({ serviceId: 'svc-color', step: 'ask_date' });
+        expect(pick.result.state.origin).toBeUndefined();
+    });
+
+    it('a date makes it real and then it has the normal dormant treatment', async () => {
+        const { turn } = harness();
+        const first = await turn('¿Cuánto dura color y tratamiento?', { step: 'idle' });
+        const second = await turn('el sábado', first.result.state);
+        expect(second.result.handled).toBe(true);
+        expect(second.result.state.origin).toBeUndefined();
+        const dormant = restoredAfter(second.result.state, 31);
+        expect(dormant).toMatchObject({ serviceId: 'svc-color', resumeOffer: 'pending' });
+        expect(projectBookingStateForPrompt(dormant)).toBeUndefined();
+        const offer = await turn('ok', dormant);
+        expect(offer.result.handled).toBe(true);
+        expect(offer.result.text).toMatch(/sin terminar/i);
     });
 
     it('C14 then C25: a later question about another service never mentions a pending booking', async () => {
@@ -141,34 +213,10 @@ describe('a question that opens a mission opens only a tentative one', () => {
         expect(projectBookingStateForPrompt(restored)).toBeUndefined();
         const c25 = await turn('¿Cuánto dura corte y estilo y tienen cupo el sábado a las 16:00?', restored);
         expect(c25.result.text ?? '').not.toMatch(/reserva|sin terminar|pendiente/i);
-        expect(projectBookingStateForPrompt(c25.result.state)).not.toMatchObject({ service: { name: 'Color y tratamiento' } });
     });
 
-    it('stays tentative while the customer keeps asking, and a statement makes it real', async () => {
-        const { turn } = harness();
-        const first = await turn('¿Cuánto dura color y tratamiento?', { step: 'idle' });
-        const again = await turn('¿Y cuánto cuesta color y tratamiento?', first.result.state);
-        expect(again.result.state.origin).toBe('question');
-        const real = await turn('Sí, quiero agendar', again.result.state);
-        expect(real.result.state.origin).toBeUndefined();
-    });
-});
-
-describe('a tentative mission that receives a booking datum becomes a real mission', () => {
-    it('keeps the normal dormant treatment afterwards', async () => {
-        const { turn } = harness();
-        const first = await turn('¿Cuánto dura color y tratamiento?', { step: 'idle' });
-        expect(first.result.state.origin).toBe('question');
-        const second = await turn('el sábado', first.result.state);
-        expect(second.result.handled).toBe(true);
-        expect(second.result.state).toMatchObject({ serviceId: 'svc-color' });
-        expect(second.result.state.origin).toBeUndefined();
-        const dormant = restoredAfter(second.result.state, 31);
-        expect(dormant).toMatchObject({ serviceId: 'svc-color', resumeOffer: 'pending' });
-        expect(projectBookingStateForPrompt(dormant)).toBeUndefined();
-        const offer = await turn('ok', dormant);
-        expect(offer.result.handled).toBe(true);
-        expect(offer.result.text).toMatch(/sin terminar/i);
+    it('the model cannot write bookings while the mission is only an interest', () => {
+        expect(TENTATIVE_BOOKING_BLOCKED_TOOLS.has('create_appointment')).toBe(true);
     });
 });
 

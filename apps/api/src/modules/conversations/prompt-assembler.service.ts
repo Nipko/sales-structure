@@ -378,6 +378,17 @@ export class PromptAssemblerService {
             lines.push('  </booking_state>');
         }
 
+        if (turn.bookingInterest) {
+            lines.push('  <booking_interest>');
+            const svc = turn.bookingInterest.service;
+            if (svc) {
+                const d = svc.durationMinutes ? ` duration_minutes="${this.attrEscape(String(svc.durationMinutes))}"` : '';
+                lines.push(`    <service id="${this.attrEscape(svc.id)}"${d}>${this.xmlEscape(svc.name)}</service>`);
+            }
+            lines.push('    <note>The customer asked about this service but has NOT asked to book. Answer their question, then offer to book. Do not create, confirm or describe a booking or a pending reservation yourself: the booking assistant collects the date and details once the customer accepts.</note>');
+            lines.push('  </booking_interest>');
+        }
+
         if (turn.availableServices && turn.availableServices.length > 0) {
             lines.push('  <available_services>');
             for (const s of turn.availableServices) {

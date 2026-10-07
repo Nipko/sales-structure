@@ -82,13 +82,50 @@ export function asksDuration(raw: unknown): boolean {
 }
 
 /**
- * The message reads as a question rather than as a request or a datum. A heuristic on purpose: it
- * only decides whether a mission opened by this message is TENTATIVE (an interest, not yet a
- * booking), and a wrong guess costs at most a mission that expires unconfirmed.
+ * Booking acts. A mission opened WITHOUT one is tentative (an interest, not a booking); a tentative
+ * mission becomes real only through one. Heuristics on purpose: the cost of a miss is small now
+ * (a miss either delays a booking by one turn or leaves a tentative mission that expires).
  */
-export function isQuestionLike(raw: unknown, interpreted?: InterpretedHint): boolean {
-    const text = String(raw ?? '');
-    return /[?¿]/.test(text) || isInformationSeekingMessage(text) || isInformationalDetour(text, interpreted);
+const REQUEST_FORMS: readonly RegExp[] = [
+    /\b(?:quisiera|queria|quero|gostaria de|je voudrais|je veux|can i get|could i get|i d like|id like|i would like|i want) (?!info|saber|conocer|know|ask|ver |preguntar|consultar|entender)\w+/,
+    /\b(?:pedir|sacar|solicitar|tomar) (?:una |un |mi )?(?:cita|turno|reserva)\b/,
+    /\bme (?:regala|regalas|anotas|anota|apuntas|apunta|dan|da|das|puede dar|podria dar|pueden dar|podrian dar|puedes dar)(?: (?:una |un )?(?:cita|turno|cupo|espacio)| para)\b/,
+    /\bme (?:pueden|puedes|puede|podrian|podrias) (?:hacer|atender|agendar|reservar)\b/,
+    /\b(?:hay|tienen|tiene|habra) (?:algun )?(?:cupos?|disponibilidad|espacios?|turnos?) (?:para|el|la|los|las|a|hoy|manana|este|esta)\b/,
+    /\bfit me in\b|\bmarcar\b|\bpuis je (?:reserver|prendre)\b/,
+];
+/** Phrases holding a booking word that ask ABOUT booking rather than ask to book. */
+const NON_REQUEST_PHRASES = /\b(?:(?:hay que|tengo que|debo|hace falta|es necesario|toca|se debe|se necesita|es obligatorio) (?:agendar|reservar)|cuanto tiempo (?:necesito|necesitan|se necesita)|necesito (?:una )?(?:cita|reserva|turno) previa|cita previa|cuanto (?:cuesta|cuestan|vale|valen|cobran|cobra|demora|tarda|dura)(?: \w+){0,3} (?:pedir|sacar|solicitar|tomar|agendar|reservar)|(?:your|the|what s your|what is your) schedule)\b/g;
+
+/** The message explicitly asks to book (or to be attended), whatever else it asks. */
+export function hasExplicitBookingRequest(raw: unknown): boolean {
+    const text = normalizeForIntent(raw).replace(NON_REQUEST_PHRASES, ' ');
+    return BOOKING_COMMITMENT.test(text) || REQUEST_FORMS.some(re => re.test(text));
+}
+
+export interface BookingActHint extends InterpretedHint {
+    intent?: string;
+    isConfirmation?: boolean;
+    isNegation?: boolean;
+    nameProvided?: string | null;
+    emailProvided?: string | null;
+}
+
+const REFUSAL = /^(?:(?:no|nao|non|nope)(?:[ ,.]+(?:gracias|thanks|thank you|obrigad[oa]|merci|por ahora|ahora|todavia|mejor no))?|ahora no|por ahora no|mejor no|todavia no|not now|no thanks)[\s,.!]*$/;
+/** A clear yes to the booking offer. A bare "ok" / "perfecto" / "listo" is NOT one: it may just acknowledge the answer. */
+const STRONG_YES = /^(?:(?:hola|buenas)[ ,]+)?(?:si|sii|dale|claro|por favor|yes|yeah|yep|sure|please|sim|oui|de una)\b/;
+
+/** What a message does to a tentative mission: `refusal` drops it, `act` makes it real, `none` leaves it. */
+export function bookingActKind(raw: unknown, hint: BookingActHint, step?: string): 'refusal' | 'act' | 'none' {
+    const text = normalizeForIntent(raw);
+    if (REFUSAL.test(text) || hint.intent === 'cancel') return 'refusal';
+    if (hint.dateMentioned || hint.timeMentioned || hint.nameProvided || hint.emailProvided) return 'act';
+    if (/^(?:svc_|slot_|confirm_|__flow)/.test(String(raw ?? ''))) return 'act';
+    if (STRONG_YES.test(text)) return 'act';
+    if (hasExplicitBookingRequest(raw)) return 'act';
+    // Choosing a service from the list the engine showed is a booking step.
+    if (step === 'show_services' && hint.serviceMentioned && !isInformationalDetour(raw, hint, step)) return 'act';
+    return 'none';
 }
 
 /**

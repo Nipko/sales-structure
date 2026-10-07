@@ -1,5 +1,7 @@
 import type { BookingState } from './booking-engine.service';
 
+/** Booking-write tools the model must not use while the mission is only an interest. */
+export const TENTATIVE_BOOKING_BLOCKED_TOOLS: ReadonlySet<string> = new Set(['create_appointment', 'reschedule_appointment', 'send_booking_link']);
 export const BOOKING_PROPOSAL_TTL_MS = 30 * 60 * 1000;
 export const BOOKING_MISSION_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 

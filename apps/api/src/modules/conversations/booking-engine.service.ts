@@ -15,7 +15,7 @@ import { procedureDialogueMessages } from './procedure-dialogue-messages';
 import { containsMissionDirective, isCollectionCancellation, isDirectedCorrection, isNamedMissionResume, mentionedMissionDomains, missionDialogue, parseDirectedSlotCorrection } from './mission-focus';
 import { coerceProcedureSlot } from './procedure-slot-interpolation';
 import { nearestSlots, selectSlotWindow } from './slot-window';
-import { asksDuration, isInformationalDetour, isQuestionLike } from './informational-detour';
+import { asksDuration, bookingActKind, isInformationalDetour } from './informational-detour';
 
 /**
  * Lo que el motor necesita saber del turno además del estado de la reserva.
@@ -500,16 +500,23 @@ export class BookingEngineService {
     ): Promise<EngineResult> {
         const isOpen = (s: BookingState) => !!s.step && !['idle', 'booked'].includes(s.step);
         const wasOpen = isOpen(currentState);
-        const datum = !!(intent.dateMentioned || intent.timeMentioned || intent.nameProvided || intent.emailProvided
-            || intent.isConfirmation || /^(?:svc_|slot_|confirm_|__flow)/.test(rawText));
-        const questionLike = isQuestionLike(rawText, intent);
-        // A tentative mission stays tentative only while the customer keeps asking questions.
-        const stillTentative = wasOpen && currentState.origin === 'question' && !datum && questionLike;
-        const entering: BookingState = currentState.origin && !stillTentative ? { ...currentState, origin: undefined } : currentState;
+        const act = bookingActKind(rawText, intent, currentState.step);
+        // TENTATIVE mission (opened without a booking act, e.g. "¿cuánto dura color y tratamiento?"):
+        // the engine stays out of the way. It becomes real only through a booking act (a date or
+        // time, a clear yes, a service picked from the list, name/email, an explicit request);
+        // thanks, greetings, a bare "ok" or an unrelated question leave it tentative and silent, and
+        // a refusal ("no gracias") drops it. The model answers and offers the booking.
+        if (wasOpen && currentState.origin === 'question') {
+            if (act === 'refusal') return { handled: false, state: { step: 'idle' } };
+            if (act === 'none') return { handled: false, state: currentState };
+        }
+        const entering: BookingState = currentState.origin ? { ...currentState, origin: undefined } : currentState;
         const result = await this.processCore(schemaName, tenantId, contactId, intent, rawText, entering,
             customerProfile, todayDate, language, turn);
         if (!isOpen(result.state)) { result.state.origin = undefined; return result; }
-        const tentative = wasOpen ? stillTentative : questionLike && !datum;
+        // Only a mission OPENED by this message can be tentative; one the customer already
+        // confirmed (act) or that was real before stays real.
+        const tentative = !wasOpen && act !== 'act';
         result.state.origin = tentative ? 'question' : undefined;
         // The engine's next-step prompt ("Perfecto, agendaremos...") asserts a booking the customer
         // only asked about. For a tentative mission the model answers the question with its tools
@@ -518,7 +525,24 @@ export class BookingEngineService {
             && result.state.step === 'ask_date' && !result.state.date) {
             return { ...result, handled: false, text: undefined };
         }
+        // A real request that also asks how long or how much: the engine speaks (it asks for the
+        // date), so give the voice the facts it already has instead of dropping the question.
+        if (!tentative && result.handled && result.text && result.state.step === 'ask_date' && !result.state.date) {
+            const note = this.serviceFactsNote(result.state, rawText);
+            if (note) return { ...result, text: `${result.text} ${note}` };
+        }
         return result;
+    }
+
+    /** Duration / confirmed price of the chosen service, when the customer asked for them. */
+    private serviceFactsNote(state: BookingState, rawText: string): string {
+        const svc = state.services?.find(s => s.id === state.serviceId);
+        if (!svc) return '';
+        const parts: string[] = [];
+        if (asksDuration(rawText) && svc.durationMinutes) parts.push(`${svc.name} lasts ${svc.durationMinutes} minutes`);
+        const asksPrice = /\b(?:cuanto (?:cuesta|vale|cobran|sale)|how much|quanto custa|combien|precio|price)\b/.test(normalizeForIntent(rawText));
+        if (asksPrice && svc.price != null && (!svc.priceStatus || svc.priceStatus === 'confirmed')) parts.push(`it costs ${svc.price} ${svc.currency ?? ''}`.trim());
+        return parts.length ? `[Also answer the customer's question: ${parts.join(', ')}.]` : '';
     }
 
     private async processCore(

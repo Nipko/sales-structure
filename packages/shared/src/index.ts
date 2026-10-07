@@ -1021,6 +1021,11 @@ export interface TurnContext {
         date?: string;
         slot?: string;
     };
+    /**
+     * The customer showed interest in a service (asked about it) but has NOT asked to book. The
+     * booking assistant is not running a booking; answer, then offer to book. Never a pending reservation.
+     */
+    bookingInterest?: { service?: { id: string; name: string; durationMinutes?: number } };
     availableServices?: Array<{
         id: string;
         name: string;

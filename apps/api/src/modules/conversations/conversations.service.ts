@@ -67,7 +67,7 @@ import { buildUnverifiedPriceReply, correctivePriceInstruction, enforceVerifiedP
 import { AgentTurnSession } from './agent-turn-session';
 import { sessionCanExecute, sessionLlmRouter, sessionToolExecutor } from './agent-turn-adapters';
 import { projectEcommerceCatalogRow, projectOwnCatalogRow } from './catalog-turn-projection';
-import { projectBookingStateForPrompt, restoreBookingMission } from './booking-state-continuity';
+import { projectBookingStateForPrompt, TENTATIVE_BOOKING_BLOCKED_TOOLS, restoreBookingMission } from './booking-state-continuity';
 import { deriveInformationalHours, hasConfiguredHours, promptHoursStatus, resolvePromptBusinessHours, UNKNOWN_INFORMATIONAL_HOURS, type InformationalHours } from './informational-hours';
 import { resolveEvaluationSnapshot } from './agent-evaluation-snapshot';
 import { AGENT_TEST_EXECUTION_CONTEXT, DRAFT_EXECUTION_CONTEXT, type ServiceExecutionContext } from '../../common/types/execution-context';
@@ -4073,6 +4073,19 @@ export class ConversationsService {
 
         const promptBookingState = projectBookingStateForPrompt(bookingState);
         if (promptBookingState) turnContext.bookingState = promptBookingState;
+        // A mission opened by a question is only an interest: the engine is the single booking path, so
+        // the model gets no booking-write tool this turn and is told what the customer actually did.
+        if (bookingState.origin === 'question' && bookingState.step && !['idle', 'booked'].includes(bookingState.step)) {
+            const interest = bookingState.serviceId ? bookingState.services?.find(s => s.id === bookingState.serviceId) : undefined;
+            turnContext.bookingInterest = {
+                service: bookingState.serviceId ? {
+                    id: bookingState.serviceId,
+                    name: bookingState.serviceName || interest?.name || '',
+                    durationMinutes: interest?.durationMinutes,
+                } : undefined,
+            };
+            tools = tools.filter(tool => !TENTATIVE_BOOKING_BLOCKED_TOOLS.has(String(tool?.name ?? tool?.function?.name)));
+        }
 
         // `<available_services>` was only filled when the booking engine ran and judged the turn "not
         // booking related". With a mission open on another route the block never ran, and the model

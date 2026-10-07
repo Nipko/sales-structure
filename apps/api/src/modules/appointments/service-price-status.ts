@@ -58,8 +58,11 @@ export function servicePriceNote(status: ServicePriceStatus): string | undefined
  * knows why there is no number.
  */
 export function projectAvailableService(service: {
-    id: string; name: string; durationMinutes?: number | null; price?: number | null; currency?: string | null; priceStatus?: ServicePriceStatus | null;
-}): { id: string; name: string; durationMinutes?: number; price?: number; priceStatus?: ServicePriceStatus; currency?: string } {
+    id: string; name: string; description?: string | null; durationMinutes?: number | null; price?: number | null; currency?: string | null; priceStatus?: ServicePriceStatus | null;
+}): { id: string; name: string; description?: string; durationMinutes?: number; price?: number; priceStatus?: ServicePriceStatus; currency?: string } {
+    // What the service includes, as the owner wrote it: without it "¿qué incluye X?" has no answer in the
+    // prompt and the model falls back to a "let me check" it can never keep.
+    const description = typeof service.description === 'string' ? service.description.replace(/\s+/g, ' ').trim().slice(0, 280) : '';
     // A service object that says "confirmed" and carries a null price (a cached
     // list from before FX1) has nothing to state: same reading as
     // `customerFacingPrice`. `undefined` is a caller that sent no price at all.
@@ -68,9 +71,37 @@ export function projectAvailableService(service: {
     return {
         id: service.id,
         name: service.name,
+        description: description || undefined,
         durationMinutes: service.durationMinutes ?? undefined,
         price: status !== 'confirmed' ? undefined : (service.price ?? undefined),
         priceStatus: status,
         currency: service.currency ?? undefined,
     };
+}
+
+/** Total characters of service descriptions one prompt carries (the catalog can be long; names and prices always travel). */
+export const SERVICE_DESCRIPTION_BUDGET = 2048;
+
+/**
+ * The whole `<available_services>` list. Descriptions fit in a fixed budget, in the order of relevance:
+ * the services the customer's message names first, then the rest in catalog order; a service that no
+ * longer fits keeps its name, duration and price but loses its description.
+ */
+export function projectAvailableServices(
+    services: ReadonlyArray<Parameters<typeof projectAvailableService>[0]>,
+    userText?: string,
+): Array<ReturnType<typeof projectAvailableService>> {
+    const fold = (value: string) => value.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    const text = fold(String(userText ?? ''));
+    const mentioned = (name: string) => { const n = fold(name).trim(); return n.length >= 3 && text.includes(n); };
+    const projected = services.map(projectAvailableService);
+    const order = projected.map((_, index) => index)
+        .sort((a, b) => Number(mentioned(projected[b].name)) - Number(mentioned(projected[a].name)) || a - b);
+    let left = SERVICE_DESCRIPTION_BUDGET;
+    const keep = new Set<number>();
+    for (const index of order) {
+        const length = projected[index].description?.length ?? 0;
+        if (length > 0 && length <= left) { keep.add(index); left -= length; }
+    }
+    return projected.map((service, index) => (service.description && !keep.has(index) ? { ...service, description: undefined } : service));
 }

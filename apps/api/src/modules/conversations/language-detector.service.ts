@@ -30,6 +30,13 @@ export class LanguageDetectorService {
     };
 
     /**
+     * Words that are Portuguese but one letter away from a Spanish word a typo or a regionalism produces
+     * ("onde queda el local?", "tenho una duda"): half a point each, so ONE of them never decides the
+     * language by itself while two ("onde fica", "onde posso") or one next to a real marker do.
+     */
+    private readonly weakMarkers: Record<string, string[]> = { pt: ['onde', 'posso', 'tenho', 'fica'] };
+
+    /**
      * Distinctive diacritics, tested on the RAW text (normalize() strips accents).
      * Only characters that belong to ONE of the four languages count:
      * ã/õ are Portuguese only; è/ù/œ/ë/î/û are French only; ñ/¿/¡ are Spanish
@@ -37,7 +44,9 @@ export class LanguageDetectorService {
      * é/á/í/ó/ú are shared — those score for nobody.
      */
     private readonly diacritics: Record<string, RegExp> = {
-        pt: /[ãõ]/,
+        // A standalone "é" (is) is Portuguese only: "Qual é a política de reembolso?" carries a single
+        // marker word ("qual"), which never overrides an established Spanish conversation by itself.
+        pt: /[ãõ]|(?:^|[^\p{L}])é(?![\p{L}])/u,
         fr: /[èùœëîû]/,
         es: /[ñ¿¡]/,
     };
@@ -81,6 +90,9 @@ export class LanguageDetectorService {
             let score = 0;
             for (const w of words) {
                 if (tokens.has(w)) score++;
+            }
+            for (const w of this.weakMarkers[lang] ?? []) {
+                if (tokens.has(w)) score += 0.5;
             }
             if (this.diacritics[lang]?.test(raw)) score++;
             scores[lang] = score;

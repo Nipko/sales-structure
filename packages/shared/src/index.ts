@@ -1034,6 +1034,8 @@ export interface TurnContext {
         /** 'example' (recipe, unconfirmed) | 'confirmed' | 'quote' (no number, quoted case by case). */
         priceStatus?: 'example' | 'confirmed' | 'quote';
         currency?: string;
+        /** What the service includes, as the business wrote it (trimmed): lets the model answer "¿qué incluye X?". */
+        description?: string;
     }>;
     retrievedKnowledge?: RetrievedKnowledgeItem[];
     /** Probable but unverified knowledge; must be presented with uncertainty. */

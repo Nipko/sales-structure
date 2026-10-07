@@ -15,7 +15,7 @@ import { procedureDialogueMessages } from './procedure-dialogue-messages';
 import { containsMissionDirective, isCollectionCancellation, isDirectedCorrection, isNamedMissionResume, mentionedMissionDomains, missionDialogue, parseDirectedSlotCorrection } from './mission-focus';
 import { coerceProcedureSlot } from './procedure-slot-interpolation';
 import { nearestSlots, selectSlotWindow } from './slot-window';
-import { answerToOffer, asksDuration, bookingActKind, isAboutBooking, isInformationalDetour, isOnlyInquiry, isServiceSwitchDirective } from './informational-detour';
+import { answerToOffer, asksDuration, bookingActKind, isAboutBooking, isInformationalDetour, isOnlyInquiry, isPushingToBook, isServiceSwitchDirective } from './informational-detour';
 import { BOOKING_OFFER_TTL_MS } from './booking-offer';
 
 /**
@@ -755,9 +755,13 @@ export class BookingEngineService {
         const bookingAuthority = bookingEngineAuthorityDecision(authority);
         if (!bookingAuthority.allowed) {
             const activeFlow = !!state.step && !['idle', 'booked'].includes(state.step);
+            // With a draft open, only a customer who is pushing to book or confirm is handed to a person:
+            // thanks, a lone e-mail or name, a greeting or a question about the business go to the model,
+            // which answers (and may offer a person) without a transfer nobody asked for.
             const bookingRequested = activeFlow
-                || deniedOperationalIntent(rawText) === 'booking'
-                || ['ask_availability', 'select_service', 'select_time', 'confirm'].includes(intent.intent);
+                ? isPushingToBook(rawText, intent) || deniedOperationalIntent(rawText) === 'booking'
+                : deniedOperationalIntent(rawText) === 'booking'
+                    || ['ask_availability', 'select_service', 'select_time', 'confirm'].includes(intent.intent);
             if (bookingRequested) {
                 return this.escalateToHuman(
                     state,

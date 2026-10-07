@@ -131,6 +131,22 @@ export function isOnlyInquiry(raw: unknown): boolean {
 }
 
 /**
+ * The customer is pushing the booking forward (as opposed to chatting around it): an explicit request to book
+ * or be attended, a booking button, a clear yes, or a day/hour (a question about opening days or hours is not).
+ * Used where the engine cannot book (authority denied) to tell "hand this to a person" from "let the model
+ * answer": thanks, greetings, a lone e-mail or name, and questions about the business are not pushing.
+ */
+export function isPushingToBook(raw: unknown, hint: BookingActHint): boolean {
+    const original = String(raw ?? '');
+    if (/^(?:svc_|slot_|confirm_|__flow)/.test(original)) return true;
+    if (isOnlyInquiry(raw)) return false;
+    if (hasExplicitBookingRequest(raw)) return true;
+    if (isInformationSeekingMessage(original)) return false;
+    if (hint.dateMentioned || hint.timeMentioned) return true;
+    return STRONG_YES.test(normalizeForIntent(raw));
+}
+
+/**
  * What a message does to a tentative mission: `refusal` drops it, `act` makes it real, `none` leaves it.
  * `tentative`: a tentative mission is open (repeating the service name then counts).
  * `offerLive`: the model's last reply offered to book, so a bare "ok" accepts it.

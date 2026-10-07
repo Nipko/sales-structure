@@ -22,7 +22,7 @@ const OPPORTUNITY_ID = '55555555-5555-4555-8555-555555555555';
 const PIPELINE_ID = '66666666-6666-4666-8666-666666666666';
 const SCHEMA = 'tenant_handoff_return_notice';
 const ANSWER = 'Atendemos de lunes a viernes de 9 a 18.';
-const RETURN_NOTICE = 'No hay nadie del equipo disponible ahora; sigo ayudándote yo.';
+const RETURN_NOTICE = 'En este momento no hay nadie del equipo disponible; sigo ayudándole yo.';
 
 const stages: TenantStageMapping[] = DEFAULT_PIPELINE_STAGES.map((stage) => ({
     id: `stage-${stage.position}`, pipeline_id: PIPELINE_ID, name: stage.name,
@@ -159,8 +159,24 @@ describe('queue notice for a customer waiting on a handoff nobody serves', () =>
         const { service, message } = fixture({ status: 'waiting_human', handoff: waiting });
         await service.runTurn(message);
         expect(service.replyOnceThroughOutbox).toHaveBeenCalledTimes(1);
-        expect(service.replyOnceThroughOutbox.mock.calls[0][0].item.payload.text).toContain('transfiriendo con nuestro equipo');
+        // its own words: it is not the transfer notice said again
+        expect(service.replyOnceThroughOutbox.mock.calls[0][0].item.payload.text)
+            .toBe('Su solicitud sigue en espera; alguien del equipo le responderá apenas esté disponible.');
         expect(service.generateResponse).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        ['es', 'Su solicitud sigue en espera; alguien del equipo le responderá apenas esté disponible.'],
+        ['en', 'Your request is still waiting; someone from the team will reply as soon as they are available.'],
+        ['pt', 'Sua solicitação continua em espera; alguém da equipe responderá assim que estiver disponível.'],
+        ['fr', "Votre demande est toujours en attente ; quelqu'un de l'équipe vous répondra dès qu'il sera disponible."],
+    ])('the queue notice in %s is not the transfer text', async (lang, expected) => {
+        const { service, message } = fixture({ status: 'waiting_human', handoff: waiting });
+        service.languageDetector.detect.mockReturnValue(lang);
+        await service.runTurn(message);
+        const text = service.replyOnceThroughOutbox.mock.calls[0][0].item.payload.text;
+        expect(text).toBe(expected);
+        expect(text).not.toMatch(/transfi|transf[eé]r|transferring|transferindo/i);
     });
 
     it('does not repeat it once sent', async () => {
@@ -343,7 +359,7 @@ describe('the replay turn of an unattended handoff return', () => {
         await service.runTurn(message);
         const msg = service.generateResponse.mock.calls[0][2];
         // the supervisors' alert went out, so a true sentence can say the request was left
-        expect(msg.handoffReturn).toEqual({ ask: 'complaint', noteLeft: true });
+        expect(msg.handoffReturn).toEqual({ ask: 'complaint', noteLeft: true, fromEpisode: false });
         expect(service.handoffService.executeHandoff).not.toHaveBeenCalled();
     });
 
@@ -354,14 +370,14 @@ describe('the replay turn of an unattended handoff return', () => {
             leadId: LEAD_ID, createdBy: 'handoff_return', type: 'follow_up',
             title: 'Cliente pidió hablar con una persona y nadie respondió',
         }));
-        expect(service.generateResponse.mock.calls[0][2].handoffReturn).toEqual({ ask: 'person', noteLeft: true });
+        expect(service.generateResponse.mock.calls[0][2].handoffReturn).toEqual({ ask: 'person', noteLeft: true, fromEpisode: false });
     });
 
     it('no request heard, no task', async () => {
         const { service, message, tasks } = build({ withTasks: true, reason: null, text: '¿hasta qué hora atienden?' });
         await service.runTurn(message);
         expect(tasks.createTaskIdempotently).not.toHaveBeenCalled();
-        expect(service.generateResponse.mock.calls[0][2].handoffReturn).toEqual({ ask: null, noteLeft: false });
+        expect(service.generateResponse.mock.calls[0][2].handoffReturn).toEqual({ ask: null, noteLeft: false, fromEpisode: false });
     });
 
     it('a NEW message asking for a person after the return is an ordinary message and hands off normally', async () => {
@@ -492,14 +508,14 @@ describe('the replay: opt-out per line, and the team actually sees the request',
     it('tells the customer the request was left when the alert went out, even without a CRM lead task', async () => {
         const { service, message } = build({ text: 'necesito hablar con un asesor' });
         await service.runTurn(message);
-        expect(service.generateResponse.mock.calls[0][2].handoffReturn).toEqual({ ask: 'person', noteLeft: true });
+        expect(service.generateResponse.mock.calls[0][2].handoffReturn).toEqual({ ask: 'person', noteLeft: true, fromEpisode: false });
     });
 
     it('says nothing was left when neither the task nor the alert exists', async () => {
         const { service, message, events } = build({ text: 'necesito hablar con un asesor', notify: false });
         await service.runTurn(message);
         expect(events.emit).not.toHaveBeenCalledWith('handoff.escalated_supervisor', expect.anything());
-        expect(service.generateResponse.mock.calls[0][2].handoffReturn).toEqual({ ask: 'person', noteLeft: false });
+        expect(service.generateResponse.mock.calls[0][2].handoffReturn).toEqual({ ask: 'person', noteLeft: false, fromEpisode: false });
     });
 
     it('no request heard: nobody is alerted', async () => {
@@ -543,7 +559,7 @@ describe('the replay: one alert per episode, and a budget text that is not an an
         await service.runTurn(message);
         expect(events.emit).not.toHaveBeenCalledWith('handoff.escalated_supervisor', expect.anything());
         // the notice was enqueued, so the request is honestly said to be left
-        expect(service.generateResponse.mock.calls[0][2].handoffReturn).toEqual({ ask: 'person', noteLeft: true });
+        expect(service.generateResponse.mock.calls[0][2].handoffReturn).toEqual({ ask: 'person', noteLeft: true, fromEpisode: false });
     });
 
     it('the live inbox alert goes out when nobody was alerted before', async () => {
@@ -622,5 +638,120 @@ describe('typing is shown before the turn waits on the classifier', () => {
         await service.runTurn(message);
         expect(seenAtDecision).toEqual([0]);
         expect(sendTyping).toHaveBeenCalledTimes(1);
+    });
+});
+
+/**
+ * The live Telegram test of 2026-10-07 (store tenant), turn by turn, through the real `runTurn`:
+ *   08:36:53 «…necesito hablar con una persona del equipo, por favor» → transfer notice
+ *   08:39:19 «…¿hola? mientras tanto, ¿hasta qué hora atienden hoy?»  → queue notice (was the SAME text)
+ *   08:47:05 the replay: return notice + answer. The person request that STARTED the handoff was not
+ *            counted (the waiting text asks no such thing), so nothing was left for the team and the
+ *            model offered a person again right after saying nobody was available.
+ */
+describe('the 2026-10-07 live sequence', () => {
+    const STARTED = '2026-10-07T13:36:53Z';
+    const T1 = 'Prueba QA 20261007: necesito hablar con una persona del equipo, por favor';
+    const T2 = 'Prueba QA 20261007: ¿hola? mientras tanto, ¿hasta qué hora atienden hoy?';
+    const MODEL_REPLY = 'No tengo el horario de atención configurado. ¿Quiere que le pase con alguien del equipo para que le confirme?';
+
+    function wire(service: any, over: { reason: string | null; tasks?: any }) {
+        service.prisma.transactionInTenantSchema = jest.fn(async (_s: string, cb: (q: any) => Promise<unknown>) =>
+            cb(async (sql: string) => sql.includes('INSERT INTO operational_notice_outbox') ? [{ id: 'n1' }] : []));
+        Object.assign(service, {
+            eventEmitter: { emit: jest.fn() },
+            handoffService: {
+                isInHandoff: jest.fn().mockResolvedValue(false),
+                shouldHandoff: jest.fn().mockReturnValue(over.reason),
+                executeHandoff: jest.fn().mockResolvedValue({ assignedTo: null }),
+            },
+            complianceService: { detectOptOut: jest.fn().mockReturnValue(false), processOptOut: jest.fn() },
+            ...(over.tasks ? { tasksService: over.tasks } : {}),
+        });
+    }
+
+    it('T1 starts the handoff with the transfer notice', async () => {
+        const { service, message } = fixture({ status: 'active', handoff: {}, text: T1 });
+        wire(service, { reason: 'human_request' });
+        await service.runTurn(message);
+        expect(service.handoffService.executeHandoff).toHaveBeenCalledTimes(1);
+        expect(service.replyOnceThroughOutbox.mock.calls[0][0].item.payload.text)
+            .toBe('Entiendo tu solicitud. Te estoy transfiriendo con nuestro equipo de atención. Un agente te responderá en breve. 🙋');
+    });
+
+    it('T2 gets a queue notice that is NOT the transfer notice again', async () => {
+        const { service, message } = fixture({ status: 'waiting_human', handoff: { startedAt: STARTED, reason: 'human_request' }, text: T2 });
+        wire(service, { reason: null });
+        await service.runTurn(message);
+        const text = service.replyOnceThroughOutbox.mock.calls[0][0].item.payload.text;
+        expect(text).toBe('Su solicitud sigue en espera; alguien del equipo le responderá apenas esté disponible.');
+        expect(text).not.toContain('transfiriendo');
+    });
+
+    it('the replay counts the request that STARTED the handoff, leaves it for the team and never offers a person again', async () => {
+        const tasks = { createTaskIdempotently: jest.fn().mockResolvedValue({ task: { id: 't1' }, created: true }) };
+        const { service, message } = fixture({
+            status: 'active', text: T2,
+            handoff: { startedAt: STARTED, reason: 'human_request', summary: T1, returnedToAi: true, returnNoticePending: true,
+                returnReplayFor: STARTED, returnReplayClaimedAt: '2026-10-07T13:47:00Z' },
+        });
+        wire(service, { reason: null, tasks });
+        Object.assign(service, {
+            saveMessage: jest.fn().mockResolvedValue({ id: '88888888-8888-4888-8888-888888888888', duplicate: true }),
+            dispatchOutbox: { findBatchForInbound: jest.fn().mockResolvedValue(null), publishBatch: jest.fn() },
+            outboundQueue: { enqueueDispatch: jest.fn().mockResolvedValue(undefined) },
+        });
+        service.generateResponse.mockResolvedValue(MODEL_REPLY);
+        message.metadata = { handoffReturnReplay: true };
+        await service.runTurn(message);
+
+        // nothing escalated, one batch
+        expect(service.handoffService.executeHandoff).not.toHaveBeenCalled();
+        expect(service.replyOnceThroughOutbox).not.toHaveBeenCalled();
+        expect(service.dispatchReplyThroughOutbox).toHaveBeenCalledTimes(1);
+        // the request that started the handoff is counted: a follow-up for the team, and the model is told
+        expect(tasks.createTaskIdempotently).toHaveBeenCalledWith(TENANT_ID, expect.objectContaining({
+            title: 'Cliente pidió hablar con una persona y nadie respondió', createdBy: 'handoff_return',
+            description: expect.stringContaining(T1),
+        }));
+        expect(service.generateResponse.mock.calls[0][2].handoffReturn)
+            .toEqual({ ask: 'person', noteLeft: true, fromEpisode: true });
+        // one message: the notice, the part of the answer that was true, and the request left for the team
+        expect(sentChunks(service).join('\n')).toBe(
+            `${RETURN_NOTICE}\n\nNo tengo el horario de atención configurado.\n\n`
+            + 'Dejé su solicitud anotada para que el equipo la vea y le contacte cuando esté disponible.');
+    });
+
+    it('without a task or a notice the offer is still removed, and nothing false is said', async () => {
+        const { service, message } = fixture({
+            status: 'active', text: T2,
+            handoff: { startedAt: STARTED, reason: 'human_request', returnedToAi: true, returnNoticePending: true,
+                returnReplayFor: STARTED, returnReplayClaimedAt: '2026-10-07T13:47:00Z' },
+        });
+        wire(service, { reason: null });
+        service.prisma.transactionInTenantSchema = jest.fn(async (_s: string, cb: (q: any) => Promise<unknown>) => cb(async () => []));
+        Object.assign(service, {
+            saveMessage: jest.fn().mockResolvedValue({ id: '88888888-8888-4888-8888-888888888888', duplicate: true }),
+            dispatchOutbox: { findBatchForInbound: jest.fn().mockResolvedValue(null), publishBatch: jest.fn() },
+            outboundQueue: { enqueueDispatch: jest.fn().mockResolvedValue(undefined) },
+        });
+        service.generateResponse.mockResolvedValue(MODEL_REPLY);
+        message.metadata = { handoffReturnReplay: true };
+        await service.runTurn(message);
+        const text = sentChunks(service).join('\n');
+        expect(text).toBe(`${RETURN_NOTICE}\n\nNo tengo el horario de atención configurado.`);
+        expect(text).not.toMatch(/pase con alguien|Dejé su solicitud/);
+    });
+
+    it.each([
+        ['en', 'Nobody from the team is available right now; I will keep helping you.'],
+        ['pt', 'Neste momento não há ninguém da equipe disponível; continuo ajudando você.'],
+        ['fr', "Personne de l'équipe n'est disponible pour le moment ; je continue de vous aider."],
+    ])('the return notice in %s', async (lang, expected) => {
+        const { service, message } = fixture({ status: 'active', text: T2,
+            handoff: { startedAt: STARTED, returnedToAi: true, returnNoticePending: true } });
+        service.languageDetector.detect.mockReturnValue(lang);
+        await service.runTurn(message);
+        expect(sentChunks(service).join('\n')).toContain(expected);
     });
 });

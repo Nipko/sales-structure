@@ -1,5 +1,5 @@
 import { normalizeCustomerIntent } from '../../common/conversation/intent-normalizer';
-import { removeHandoffPromiseSentences } from '../../common/utils/outcome-claim.util';
+import { offersHumanHandoff, promisesHumanHandoff, removeHandoffPromiseSentences } from '../../common/utils/outcome-claim.util';
 
 /**
  * ═══ THE TURN THAT ANSWERS WHAT THE CUSTOMER WROTE WHILE NOBODY ANSWERED ═══
@@ -62,6 +62,25 @@ export function returnAskOf(reason: string | null | undefined): ReturnAsk | null
 }
 
 /**
+ * What the customer asked for, counting the request that STARTED the handoff.
+ *
+ * The waiting texts are what they wrote AFTER the transfer ("¿hola? mientras tanto, ¿hasta qué hora
+ * atienden?"); the request that put them in the queue ("necesito hablar con una persona") came
+ * before and is only on the conversation, as the handoff reason. Reading only the waiting texts
+ * lost it: no follow-up for the team, nothing true to say about it, and the model offered a person
+ * again right after saying nobody was available.
+ */
+export function replayAsk(waitingReason: string | null | undefined, handoff: unknown): {
+    ask: ReturnAsk | null; fromEpisode: boolean;
+} {
+    const waiting = returnAskOf(waitingReason);
+    if (waiting) return { ask: waiting, fromEpisode: false };
+    const reason = (handoff as { reason?: unknown } | null | undefined)?.reason;
+    const episode = typeof reason === 'string' ? returnAskOf(reason) : null;
+    return { ask: episode, fromEpisode: !!episode };
+}
+
+/**
  * Is every line the customer sent a bare confirmation ("sí", "dale", "ok")?
  * Such a text answers whatever was asked last, and after minutes of waiting
  * nobody can say what that was.
@@ -103,11 +122,13 @@ const NOTE_TITLE: Record<Exclude<ReturnAsk, never>, string> = {
 };
 
 /** The internal follow-up the team sees when the customer's request went unanswered. */
-export function returnNoteTask(ask: ReturnAsk, waitingText: string): { title: string; description: string } {
-    const excerpt = String(waitingText || '').replace(/\s+/g, ' ').trim().slice(0, 400);
+export function returnNoteTask(ask: ReturnAsk, text: string, fromEpisode = false): { title: string; description: string } {
+    const excerpt = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 400);
     return {
         title: NOTE_TITLE[ask],
-        description: `Escribió mientras nadie del equipo atendía y el agente retomó la conversación: «${excerpt}»`,
+        description: fromEpisode
+            ? `Pidió atención humana y nadie del equipo respondió; el agente retomó la conversación.${excerpt ? ` Su solicitud: «${excerpt}»` : ''}`
+            : `Escribió mientras nadie del equipo atendía y el agente retomó la conversación: «${excerpt}»`,
     };
 }
 
@@ -119,7 +140,7 @@ export function returnNoteTask(ask: ReturnAsk, waitingText: string): { title: st
  * (no time promised); otherwise the rest of the answer stands on its own.
  */
 export function rewriteReplayPromise(response: string, lang: string | undefined, noteLeft: boolean): string {
-    const kept = removeHandoffPromiseSentences(response);
+    const kept = removeHumanOfferSentences(removeHandoffPromiseSentences(response));
     const note = noteLeft ? pick(NOTE_LEFT, lang) : '';
     return [kept, note].filter(Boolean).join('\n\n') || pick(TEAM_UNAVAILABLE, lang);
 }
@@ -163,4 +184,38 @@ export const isPureHandoffTool = (name: unknown): boolean => typeof name === 'st
 /** The tools offered to the model on a replay turn. */
 export function toolsForReplay<T extends { name?: unknown; function?: { name?: unknown } }>(tools: readonly T[]): T[] {
     return tools.filter(tool => !isPureHandoffTool(tool?.name ?? tool?.function?.name));
+}
+
+/**
+ * The reply without the sentences that OFFER a person from the team ("¿Quiere que le pase con
+ * alguien del equipo para que le confirme?"). On a replay the customer has just been told nobody is
+ * available: offering a person again invites a "sí" that starts another handoff and another wait.
+ * Everything else the agent said stays, line breaks included.
+ */
+export function removeHumanOfferSentences(reply: string): string {
+    const parts = reply.split(/((?<=[.!?])[ \t]+|\n+)/);
+    let out = '';
+    let pendingSeparator = '';
+    for (let i = 0; i < parts.length; i += 2) {
+        const sentence = parts[i];
+        const separator = parts[i + 1] ?? '';
+        if (sentence.trim() && offersHumanHandoff(sentence)) {
+            pendingSeparator = pendingSeparator.includes('\n') ? pendingSeparator : separator.includes('\n') ? separator : pendingSeparator;
+            continue;
+        }
+        if (!sentence.trim()) { pendingSeparator = separator; continue; }
+        out += (out ? (pendingSeparator || ' ') : '') + sentence;
+        pendingSeparator = separator;
+    }
+    return out.trim();
+}
+
+/**
+ * The model's reply on a replay turn: any promise of a transfer or offer of a person is taken out
+ * (see `rewriteReplayPromise`); an ordinary answer is returned as it is.
+ */
+export function sanitizeReplayReply(response: string, lang: string | undefined, noteLeft: boolean): string {
+    return promisesHumanHandoff(response) || offersHumanHandoff(response)
+        ? rewriteReplayPromise(response, lang, noteLeft)
+        : response;
 }

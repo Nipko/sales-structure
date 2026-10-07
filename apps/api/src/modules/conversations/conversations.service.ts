@@ -41,8 +41,8 @@ import {
 import { burstBufferKeys } from './burst-debounce-key';
 import { foldedContent, fragmentFor, mergeBurst, type BurstFragment } from './burst-fragments';
 import {
-    budgetExhaustedReplayText, BUDGET_EXHAUSTED_REPLAY_MSG, isBareConsent, returnAskOf, returnNoteTask, returnReplayTurn,
-    rewriteReplayPromise, staleConsentReply, toolsForReplay,
+    budgetExhaustedReplayText, BUDGET_EXHAUSTED_REPLAY_MSG, isBareConsent, replayAsk, returnNoteTask, returnReplayTurn,
+    rewriteReplayPromise, sanitizeReplayReply, staleConsentReply, toolsForReplay,
     type ReturnAsk,
 } from './handoff-return-replay-turn';
 import { TasksService } from '../crm/services/tasks/tasks.service';
@@ -260,6 +260,8 @@ const HANDOFF_MSG: Record<string, {
     withAgent: (n: string) => string;
     queueHead: string;
     queueN: (p: number) => string;
+    /** The notice for a customer who writes AGAIN while still waiting: not the transfer notice repeated. */
+    queueWaiting: string;
     transferring: string;
     unavailable: string;
 }> = {
@@ -267,6 +269,7 @@ const HANDOFF_MSG: Record<string, {
         withAgent: n => `Entiendo tu solicitud. Te estoy transfiriendo con *${n}* de nuestro equipo. Te responderá en un momento. 🙋`,
         queueHead: 'Entiendo tu solicitud. Te estoy transfiriendo con nuestro equipo de atención. Un agente te responderá en breve. 🙋',
         queueN: p => `Entiendo tu solicitud. Te estoy transfiriendo con nuestro equipo de atención. Eres el #${p} en cola. Un agente te atenderá lo antes posible. 🙋`,
+        queueWaiting: 'Su solicitud sigue en espera; alguien del equipo le responderá apenas esté disponible.',
         transferring: 'Te voy a transferir con un agente de nuestro equipo.',
         unavailable: 'No pude conectarte con un agente en este momento. No realizaré la operación automáticamente; por favor, inténtalo de nuevo en unos minutos.',
     },
@@ -274,6 +277,7 @@ const HANDOFF_MSG: Record<string, {
         withAgent: n => `Got it. I'm transferring you to *${n}* from our team. They'll reply shortly. 🙋`,
         queueHead: `Got it. I'm transferring you to our support team. An agent will reply shortly. 🙋`,
         queueN: p => `Got it. I'm transferring you to our support team. You're #${p} in the queue. An agent will assist you as soon as possible. 🙋`,
+        queueWaiting: 'Your request is still waiting; someone from the team will reply as soon as they are available.',
         transferring: `I'll transfer you to an agent from our team.`,
         unavailable: `I couldn't connect you with an agent right now. I won't perform the operation automatically; please try again in a few minutes.`,
     },
@@ -281,6 +285,7 @@ const HANDOFF_MSG: Record<string, {
         withAgent: n => `Entendi. Estou te transferindo para *${n}* da nossa equipe. Em breve responderá. 🙋`,
         queueHead: 'Entendi. Estou te transferindo para nossa equipe de atendimento. Um atendente responderá em breve. 🙋',
         queueN: p => `Entendi. Estou te transferindo para nossa equipe. Você é o #${p} na fila. Um atendente vai te atender o quanto antes. 🙋`,
+        queueWaiting: 'Sua solicitação continua em espera; alguém da equipe responderá assim que estiver disponível.',
         transferring: 'Vou te transferir para um atendente da nossa equipe.',
         unavailable: 'Não consegui conectar você a um atendente agora. Não farei a operação automaticamente; tente novamente em alguns minutos.',
     },
@@ -288,6 +293,7 @@ const HANDOFF_MSG: Record<string, {
         withAgent: n => `Compris. Je vous transfère à *${n}* de notre équipe. Il/elle vous répondra dans un instant. 🙋`,
         queueHead: 'Compris. Je vous transfère à notre équipe support. Un agent vous répondra sous peu. 🙋',
         queueN: p => `Compris. Je vous transfère à notre équipe. Vous êtes #${p} dans la file. Un agent vous répondra dès que possible. 🙋`,
+        queueWaiting: "Votre demande est toujours en attente ; quelqu'un de l'équipe vous répondra dès qu'il sera disponible.",
         transferring: 'Je vais vous transférer à un agent de notre équipe.',
         unavailable: "Je n'ai pas pu vous mettre en relation avec un agent pour le moment. Je n'effectuerai pas l'opération automatiquement ; veuillez réessayer dans quelques minutes.",
     },
@@ -296,9 +302,9 @@ const handoffText = (lang?: string) => HANDOFF_MSG[(lang || 'es').slice(0, 2).to
 
 // Sent once when nobody from the team picked the handoff up and the agent resumes.
 const HANDOFF_RETURN_MSG: Record<string, string> = {
-    es: 'No hay nadie del equipo disponible ahora; sigo ayudándote yo.',
+    es: 'En este momento no hay nadie del equipo disponible; sigo ayudándole yo.',
     en: 'Nobody from the team is available right now; I will keep helping you.',
-    pt: 'Não há ninguém da equipe disponível agora; eu continuo te ajudando.',
+    pt: 'Neste momento não há ninguém da equipe disponível; continuo ajudando você.',
     fr: "Personne de l'équipe n'est disponible pour le moment ; je continue de vous aider.",
 };
 const handoffReturnText = (lang?: string) => HANDOFF_RETURN_MSG[(lang || 'es').slice(0, 2).toLowerCase()] || HANDOFF_RETURN_MSG.es;
@@ -407,7 +413,7 @@ function isSystemFixedText(text: string): boolean {
     const fixed = [
         ...Object.values(UNVERIFIED_CLAIM_FALLBACK), ...Object.values(NO_DATA_WAIT_REPLACEMENT), ...Object.values(NO_DATA_NO_OFFER),
         ...Object.values(PARTIAL_SUCCESS_MSG), ...Object.values(BUDGET_EXHAUSTED_MSG), ...Object.values(BUDGET_EXHAUSTED_REPLAY_MSG),
-        ...Object.values(HANDOFF_MSG).flatMap(h => [h.transferring, h.unavailable, h.queueHead]),
+        ...Object.values(HANDOFF_MSG).flatMap(h => [h.transferring, h.unavailable, h.queueHead, h.queueWaiting]),
         ...Object.values(HANDOFF_RETURN_MSG),
     ];
     return fixed.some(f => f.trim() === t);
@@ -1312,14 +1318,18 @@ export class ConversationsService {
         // the customer asked for is acknowledged by the turn instead.
         const handoffReason = replayTurn ? null : triggeredReason;
         if (replayTurn) {
-            const ask = returnAskOf(triggeredReason);
+            // What they asked while waiting, or else what they asked to be put in the queue.
+            const handoff = (conversation.metadata as any)?.handoff;
+            const { ask, fromEpisode } = replayAsk(triggeredReason, handoff);
             (normalizedMsg as any).handoffReturn = {
                 ask,
                 noteLeft: !draftMode && ask
                     ? await this.leaveHandoffReturnNote({
-                        tenantId, schemaName, conversation, contact, leadId: lead?.id, ask, text: content?.text,
-                        startedAt: replayTurn.startedAt,
+                        tenantId, schemaName, conversation, contact, leadId: lead?.id, ask,
+                        text: fromEpisode ? String(handoff?.summary ?? '') : content?.text,
+                        fromEpisode, startedAt: replayTurn.startedAt,
                     }) : false,
+                fromEpisode,
             };
         }
         if (handoffReason && !draftMode) {
@@ -1458,6 +1468,14 @@ export class ConversationsService {
             );
         // A recovered envelope or a cached reply may predate the strip.
         if (typeof response === 'string' && response) response = stripInternalMarkers(response);
+        // On the replay the customer has just been told nobody is available: whatever the model wrote,
+        // it neither promises a transfer nor offers a person (a «sí» would start another wait).
+        if (replayTurn && typeof response === 'string' && response && !recoveredEnvelope && !resumedReply
+            && !isSystemFixedText(response) && !isErrorFallback(response)) {
+            response = sanitizeReplayReply(response,
+                this.languageDetector.detect(content?.text || '', config.language || 'es'),
+                (normalizedMsg as any).handoffReturn?.noteLeft === true);
+        }
         // The handoff return notice leads the answer of the turn it is claimed in, in
         // the same durable batch. A recovered or resumed answer was composed by an
         // earlier attempt that already carried (or lost) it; prepending again would
@@ -2808,7 +2826,7 @@ export class ConversationsService {
         const intentInterpreter = session ? new IntentInterpreterService(llmRouter) : this.intentInterpreter;
         // The replay of what the customer wrote while nobody answered (set by the caller,
         // never by the message): this turn must not put the conversation back in the queue.
-        const handoffReturn = (msg as any).handoffReturn as { ask: string | null; noteLeft: boolean } | undefined;
+        const handoffReturn = (msg as any).handoffReturn as { ask: string | null; noteLeft: boolean; fromEpisode?: boolean } | undefined;
         const allowHumanHandoff = !session && !draftMode && !handoffReturn
             && (msg.channelType !== 'web_widget' || (msg.metadata as any)?.allowHumanHandoff === true);
         let userText = msg.content.text || '';
@@ -4387,7 +4405,7 @@ export class ConversationsService {
         // Anti-repetition: tell the LLM how many messages exist in this conversation.
         // message_count > 1 means it's a CONTINUATION — don't re-introduce yourself.
         turnContext.messageCount = (history?.length || 0) + 1; // +1 for current message (excluded from history above)
-        if (handoffReturn) (turnContext as any).handoffReturn = { ask: handoffReturn.ask, noteLeft: handoffReturn.noteLeft };
+        if (handoffReturn) (turnContext as any).handoffReturn = { ask: handoffReturn.ask, noteLeft: handoffReturn.noteLeft, fromEpisode: handoffReturn.fromEpisode === true };
 
         // D6 affective detection (Hume EVI style) — before assemble so it enters <turn>
         try {
@@ -6359,14 +6377,17 @@ export class ConversationsService {
             const triggeredReason = await this.resolveHandoffReason(text, conversation, config, tenantId, !draftMode);
             const handoffReason = replayTurn ? null : triggeredReason;
             if (replayTurn) {
-                const ask = returnAskOf(triggeredReason);
+                const handoff = (conversation.metadata as any)?.handoff;
+                const { ask, fromEpisode } = replayAsk(triggeredReason, handoff);
                 (msg as any).handoffReturn = {
                     ask,
                     noteLeft: !draftMode && ask
                         ? await this.leaveHandoffReturnNote({
-                            tenantId, schemaName, conversation, contact, leadId: leads?.[0]?.id, ask, text,
-                            startedAt: replayTurn!.startedAt,
+                            tenantId, schemaName, conversation, contact, leadId: leads?.[0]?.id, ask,
+                            text: fromEpisode ? String(handoff?.summary ?? '') : text,
+                            fromEpisode, startedAt: replayTurn!.startedAt,
                         }) : false,
+                    fromEpisode,
                 };
             }
             let reply: string | null = null;
@@ -6458,6 +6479,10 @@ export class ConversationsService {
                 }
             }
             if (!reply?.trim()) return null;
+            // Whatever the model wrote, a replay neither promises a transfer nor offers a person.
+            if (replayTurn && !isErrorFallback(reply) && !isSystemFixedText(reply)) {
+                reply = sanitizeReplayReply(reply, language, (msg as any).handoffReturn?.noteLeft === true);
+            }
             // The same notice, in the same message, as on every other channel.
             if (replayTurn && !isErrorFallback(reply)) {
                 reply = withReturnNotice(
@@ -6726,7 +6751,7 @@ export class ConversationsService {
             try {
                 await this.replyOnceThroughOutbox({
                     tenantId, conversation, msg, operationalScope: scope, inboundMessageId,
-                    item: { kind: 'text', payload: { text: handoffText(this.languageDetector.detect(text || '', defaultLanguage)).queueHead } },
+                    item: { kind: 'text', payload: { text: handoffText(this.languageDetector.detect(text || '', defaultLanguage)).queueWaiting } },
                     originKey: `handoff-queue-notice:${conversation.id}:${startedAt}`,
                     // The queue notice must not occupy the identity of the message
                     // it answers: after the unattended return that very message
@@ -6817,13 +6842,13 @@ export class ConversationsService {
      */
     private async leaveHandoffReturnNote(input: {
         tenantId: string; schemaName: string; conversation: any; contact?: any; leadId: unknown;
-        ask: ReturnAsk; text?: string; startedAt: string;
+        ask: ReturnAsk; text?: string; fromEpisode?: boolean; startedAt: string;
     }): Promise<boolean> {
         const { tenantId, schemaName, conversation, ask } = input;
         let left = false;
         if (this.tasksService && input.leadId && PERSISTED_ID.test(String(input.leadId))) {
             try {
-                const note = returnNoteTask(ask, input.text || '');
+                const note = returnNoteTask(ask, input.text || '', input.fromEpisode === true);
                 const outcome = await this.tasksService.createTaskIdempotently(tenantId, {
                     leadId: String(input.leadId), title: note.title, description: note.description,
                     type: 'follow_up', createdBy: 'handoff_return',

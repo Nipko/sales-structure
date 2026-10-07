@@ -1,8 +1,8 @@
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import {
-    budgetExhaustedReplayText, isBareConsent, isPureHandoffTool, returnAskOf, returnNoteTask, returnReplayTurn,
-    rewriteReplayPromise, staleConsentReply, toolsForReplay,
+    budgetExhaustedReplayText, isBareConsent, isPureHandoffTool, removeHumanOfferSentences, replayAsk, returnAskOf,
+    returnNoteTask, returnReplayTurn, rewriteReplayPromise, sanitizeReplayReply, staleConsentReply, toolsForReplay,
 } from './handoff-return-replay-turn';
 import { promisesHumanHandoff } from '../../common/utils/outcome-claim.util';
 import { TOOL_POLICY_REGISTRY } from './tool-policy-registry';
@@ -79,6 +79,15 @@ describe('the prompt tells the model about the wait', () => {
     });
     it('is absent on an ordinary turn', () => {
         expect(render(undefined)).not.toContain('<handoff_return');
+    });
+    it('says when the request is the one that started the handoff, not a waiting text', () => {
+        expect(render({ ask: 'person', noteLeft: true, fromEpisode: true }))
+            .toContain('<handoff_return asked="person" request_left_for_team="true" origin="handoff_request" />');
+    });
+    it('the contract forbids offering a person again, even to confirm a missing fact', () => {
+        const prompt = render({ ask: 'person', noteLeft: true, fromEpisode: true });
+        expect(prompt).toContain('never offer, ask about or suggest connecting them with someone from the team');
+        expect(prompt).toContain('if you lack a fact, say you do not have it confirmed');
     });
     it('the contract says what to do with it: acknowledge, never transfer again, never read a bare yes as consent', () => {
         const prompt = render({ ask: 'complaint', noteLeft: false });
@@ -205,5 +214,62 @@ describe('generateResponse keeps the replay out of the queue (wiring)', () => {
     });
     it('a write that asked for a transfer after the fact does not queue the conversation again', () => {
         expect(generate).toContain('if (postToolHandoff && !draftMode && !handoffReturn)');
+    });
+});
+
+describe('the request that STARTED the handoff counts', () => {
+    it('is the ask when the waiting texts carry none', () => {
+        expect(replayAsk(null, { reason: 'human_request' })).toEqual({ ask: 'person', fromEpisode: true });
+        expect(replayAsk(null, { reason: 'complaint' })).toEqual({ ask: 'complaint', fromEpisode: true });
+        expect(replayAsk(null, { reason: 'discount_request' })).toEqual({ ask: 'discount', fromEpisode: true });
+        expect(replayAsk(null, { reason: 'customer_accepted_human_offer' })).toEqual({ ask: 'person', fromEpisode: true });
+        expect(replayAsk(null, { reason: 'custom_trigger:garantía' })).toEqual({ ask: 'other', fromEpisode: true });
+    });
+    it('does not override what the waiting texts asked', () => {
+        expect(replayAsk('complaint', { reason: 'human_request' })).toEqual({ ask: 'complaint', fromEpisode: false });
+    });
+    it('is nothing for a handoff the customer did not ask for', () => {
+        for (const reason of ['vip', 'max_failed_attempts', 'agent_promised_handoff', 'llm_budget_exhausted', undefined, null, 42]) {
+            expect(replayAsk(null, { reason })).toEqual({ ask: null, fromEpisode: false });
+        }
+        expect(replayAsk(null, undefined)).toEqual({ ask: null, fromEpisode: false });
+    });
+    it('the follow-up says it is the original request', () => {
+        const note = returnNoteTask('person', 'necesito hablar con una persona', true);
+        expect(note.title).toBe('Cliente pidió hablar con una persona y nadie respondió');
+        expect(note.description).toContain('necesito hablar con una persona');
+        expect(note.description).toContain('atención humana');
+    });
+});
+
+describe('the replay never offers a person either', () => {
+    const PRODUCTION = 'No tengo el horario de atención configurado. ¿Quiere que le pase con alguien del equipo para que le confirme?';
+
+    it('removes the offer from the exact production reply', () => {
+        expect(removeHumanOfferSentences(PRODUCTION)).toBe('No tengo el horario de atención configurado.');
+    });
+    it.each([
+        'Atendemos de 9 a 18. ¿Quiere que le pase con alguien del equipo?',
+        'Atendemos de 9 a 18. Would you like me to ask someone from the team to confirm it?',
+        'Atendemos de 9 a 18. Quer que eu peça a alguém da equipe para confirmar?',
+        "Atendemos de 9 a 18. Souhaitez-vous que je demande à quelqu'un de l'équipe de la confirmer ?",
+        'Atendemos de 9 a 18. ¿Desea hablar con un asesor?',
+    ])('sanitizeReplayReply drops the offer in «%s»', reply => {
+        const out = sanitizeReplayReply(reply, 'es', false);
+        expect(out).toBe('Atendemos de 9 a 18.');
+    });
+    it('adds the true note instead when the request was left, and the unavailable line when nothing is left', () => {
+        expect(sanitizeReplayReply(PRODUCTION, 'es', true)).toBe(
+            'No tengo el horario de atención configurado.\n\nDejé su solicitud anotada para que el equipo la vea y le contacte cuando esté disponible.');
+        expect(sanitizeReplayReply('¿Quiere que le pase con alguien del equipo?', 'es', false))
+            .toBe('En este momento el equipo no está disponible; con gusto le ayudo mientras tanto.');
+    });
+    it('leaves an ordinary answer untouched, including handing over a THING', () => {
+        const ordinary = 'Atendemos de lunes a viernes de 9 a 18. ¿Le paso el menú del equipo?';
+        expect(sanitizeReplayReply(ordinary, 'es', true)).toBe(ordinary);
+        expect(sanitizeReplayReply('Con gusto le ayudo.', 'es', false)).toBe('Con gusto le ayudo.');
+    });
+    it('still rewrites a promise of a transfer', () => {
+        expect(promisesHumanHandoff(sanitizeReplayReply('Un asesor se comunicará con usted.', 'es', false))).toBe(false);
     });
 });

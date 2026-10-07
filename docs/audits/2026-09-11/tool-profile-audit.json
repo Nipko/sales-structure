@@ -2,7 +2,7 @@
   "version": 1,
   "evidenceKind": "structural_only",
   "sourceHashEncoding": "utf8-lf",
-  "sourceRevision": "d4607391f2fc6e24a022f15110923160f3a2690e",
+  "sourceRevision": "596834097476274049fedeb0c72b38aa53c6c7c1",
   "summary": {
     "verticals": 20,
     "profiles": 80,
@@ -51,7 +51,7 @@
     "apps/api/src/modules/conversations/tools/gyms-tools.ts": "c2e06c4aefdb3a58664324efc14aa0b7e59204ac7cbd811c833395221b317d06",
     "apps/api/src/modules/conversations/tools/insurance-tools.ts": "612f4bd8496a2218dd13bccd9acdd925ad56c2b2311df6fe2dbcad13dedeae2d",
     "apps/api/src/modules/conversations/tools/knowledge-tools.ts": "de2e488825a326fc22ae926e719f10632d69e1c860c04e07ba06d09b111c2113",
-    "apps/api/src/modules/conversations/tools/listings-tools.ts": "a8b010e7ecaaa85aa95ed934e21de0f29989d28c23e62ef829788a323bf55b5d",
+    "apps/api/src/modules/conversations/tools/listings-tools.ts": "57694856ed8bb9308c8fae2cca2aa6d515bd7f67947cb26513d93f8380ba3c6b",
     "apps/api/src/modules/conversations/tools/payment-tools.ts": "271c9fc9e9a47cace92c7d349c3d707f6ba5c3f5db66474f589c790d682b815d",
     "apps/api/src/modules/conversations/tools/pets-tools.ts": "f5cfdd5a1e4d438c0fbae49af02c1978af8eb77c0cd7fcc00499c2823a5b3ed4",
     "apps/api/src/modules/conversations/tools/repair-order-tools.ts": "2f03bbc94d8d28ba3ade80b8554d50d06378b1a8f66f3d16cf9cccfa69e6511b",

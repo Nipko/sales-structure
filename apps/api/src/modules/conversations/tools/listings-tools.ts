@@ -8,14 +8,14 @@ import { ToolDefinition } from '@parallext/shared';
 export const LISTINGS_TOOLS: ToolDefinition[] = [
     {
         name: 'search_listings',
-        description: 'Search the agency\'s real estate catalog. Use when the customer asks about properties for sale or rent. Returns listings with price, area, bedrooms, neighborhood and a status flag (only available listings are returned by default).',
+        description: 'Search the agency\'s real estate catalog. Use it AS SOON AS the customer gives any criteria (operation, neighborhood, bedrooms, kind, price): every parameter is optional and the budget is optional — do not ask for it before searching. An empty result is an answer: say nothing matched and offer to adjust. Returns listings with price, area, bedrooms, neighborhood and a status flag (only available listings are returned by default).',
         parameters: {
             type: 'object',
             properties: {
                 transactionType: {
                     type: 'string',
                     enum: ['sale', 'rent'],
-                    description: 'Whether the customer wants to buy (sale) or rent. Always ask if unclear.',
+                    description: 'sale = buy (compra, venta), rent = arriendo / alquiler / alugar. Read it from the message; ask only if the customer really did not say.',
                 },
                 propertyKind: {
                     type: 'string',

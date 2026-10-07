@@ -200,7 +200,7 @@ const VERTICAL_FLOW_GUIDANCE: Array<{
     { industry: 'seguros', requires: 'insurance', guidance: 'Para cotizar: get_insurance_plans → pida sólo los datos que falten → calculate_quote y presente el resultado. Para un reclamo, file_claim requiere verificar identidad primero (request_identity_code y verify_identity_code).' },
     { industry: 'servicios_hogar', requires: 'homeServices', guidance: 'Para una solicitud: entienda el problema y la dirección → resuma lo que registrará → create_service_request. Después del registro la conversación pasa a una persona del equipo.' },
     { industry: 'fotografia', requires: 'photography', guidance: 'Para una sesión: list_photo_packages → send_portfolio si el cliente quiere ver trabajo previo → check_date_availability de la fecha → request_photo_quote.' },
-    { industry: 'inmobiliaria', requires: 'realEstate', guidance: 'Para una visita: search_listings → get_listing_details del inmueble concreto → send_listing_image si ayuda → agende la visita dejando SIEMPRE registrado de qué inmueble se trata.' },
+    { industry: 'inmobiliaria', requires: 'realEstate', guidance: 'Apenas el cliente dé criterios de búsqueda (operación: arriendo/alquiler o venta, zona o barrio, habitaciones, tipo de inmueble o precio), llame search_listings con esos filtros: presupuesto, codeudor y datos personales NO son requisito para buscar. Muestre los resultados o diga que no hay inmuebles con esos criterios (la búsqueda sí se hizo) y ofrezca ajustar zona, habitaciones o presupuesto; recién después pregunte lo opcional (presupuesto, codeudor en arriendo). Para una visita: search_listings → get_listing_details del inmueble concreto → send_listing_image si ayuda → agende la visita dejando SIEMPRE registrado de qué inmueble se trata.' },
     { industry: 'automotriz', requires: 'vehicles', guidance: 'Para una prueba de manejo: search_vehicles → get_vehicle_details → list_services (servicio presencial de duración fija) → check_availability con vehicleId → acuerde vehículo, asesor, horario y condiciones → schedule_test_drive. Use serviceId y staffId reales. Comunique el estado devuelto: pendiente de aprobación, pendiente de pago o confirmado. Consulte, cambie y cancele el mismo appointment.id con las herramientas de agenda. Si falta la agenda o un requisito, explique qué falta y derive al equipo sin prometer la reserva.' },
     { industry: 'veterinaria', requires: 'pets', guidance: 'Registre la mascota con register_pet antes de agendar (list_pets_for_contact primero para no duplicarla). Ante señales de urgencia use triage_pet_emergency de inmediato.' },
     // `salud` + catálogo es la farmacia: ninguna otra subespecialidad de salud
@@ -212,7 +212,7 @@ const VERTICAL_FLOW_GUIDANCE: Array<{
     { industry: 'otro', requires: 'catalog', guidance: 'Para una venta: search_products → get_product → check_stock → confirme producto y cantidad → place_catalog_order. Nunca diga que el pedido quedó registrado sin que place_catalog_order haya tenido éxito.' },
 ];
 
-function verticalFlowGuidance(industry: unknown, tools: any): string | undefined {
+export function verticalFlowGuidance(industry: unknown, tools: any): string | undefined {
     if (typeof industry !== 'string' || !industry) return undefined;
     const enabled = (key: string) => tools?.[key]?.enabled === true;
     const lines = VERTICAL_FLOW_GUIDANCE

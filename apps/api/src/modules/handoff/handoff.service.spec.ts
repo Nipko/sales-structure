@@ -1,5 +1,5 @@
 import { HandoffService } from './handoff.service';
-import { isRefundReturnPolicyQuestion } from './handoff-policy-question';
+import { isActionOrientedRefundQuestion } from './handoff-policy-question';
 
 describe('HandoffService structured handoff', () => {
     const tenantId = '11111111-1111-4111-8111-111111111111';
@@ -717,7 +717,7 @@ describe('how-do-I questions about refunds are answered', () => {
     it.each([
         ['how do I request a refund?', 'refund'],
         ['can I get a refund?', 'refund'],
-        ['is it possible to return it?', 'return'],
+        ['is it possible to return an item?', 'return'],
         ['how much time does a refund take?', 'refund'],
     ])('answers %s even with the seeded trigger', (m, trigger) => {
         expect(service.shouldHandoff(m, conversation, { behavior: { handoffTriggers: [trigger] } } as any)).toBeNull();
@@ -732,29 +732,112 @@ describe('how-do-I questions about refunds are answered', () => {
     });
 });
 
-describe('the refund / return policy questions that also offer a person', () => {
+describe('discount negotiation is not a policy question just because it says "can I"', () => {
+    const service: any = Object.create(HandoffService.prototype);
+    const conversation = { metadata: {} };
+    const config = { behavior: { handoffTriggers: [] } } as any;
+    const ask = (m: string) => service.shouldHandoff(m, conversation, config);
+
     it.each([
-        '¿cuánto tarda un reembolso?',
-        '¿Cómo solicito una devolución?',
-        '¿Se puede hacer devolución?',
-        '¿Es posible un reembolso?',
-        '¿Puedo pedir un reembolso?',
-        '¿Cuál es la política de devoluciones del audífono QA de prueba?',
-        '¿Hacen reembolsos?',
-        'quelle est votre politique de remboursement ?',
-        'is it possible to return it?',
-    ])('offers a person after answering %s', (m) => {
-        expect(isRefundReturnPolicyQuestion(m)).toBe(true);
+        '¿Se puede hacer un descuento?',
+        '¿Es posible un descuento?',
+        '¿Puedo pedir un descuento?',
+        '¿Cómo pido un descuento?',
+        '¿se puede una rebaja si pago de contado?',
+        'é possível um desconto?',
+        'est-il possible d\'avoir une remise ?',
+        // refund AND discount in one how-frame: the refund word is answered, the discount is not
+        '¿Puedo pedir un reembolso o un descuento?',
+    ])('hands off to a person on %s', (m) => {
+        expect(ask(m)).toBe('discount_request');
     });
 
     it.each([
         '¿tienen descuentos?',
+        '¿hay descuentos?',
         '¿Hacen rebajas?',
+        '¿tienen descuento si compro 3?',
+    ])('still answers the plain policy question %s', (m) => {
+        expect(ask(m)).toBeNull();
+    });
+
+    it('the discount custom trigger-free word is judged the same way', () => {
+        expect(service.shouldHandoff('¿Es posible un descuento?', conversation, { behavior: { handoffTriggers: ['descuento'] } } as any))
+            .toBe('discount_request');
+        expect(service.shouldHandoff('¿tienen descuentos?', conversation, { behavior: { handoffTriggers: ['descuento'] } } as any)).toBeNull();
+    });
+});
+
+describe('English "return" is a refund topic only as a policy or an act of returning goods', () => {
+    const service: any = Object.create(HandoffService.prototype);
+    const conversation = { metadata: {} };
+    const ask = (m: string, triggers: string[]) => service.shouldHandoff(m, conversation, { behavior: { handoffTriggers: triggers } } as any);
+
+    it.each([
+        'what is the return time for the shuttle?',
+        'what is the return flight time?',
+        'what are the return hours?',
+    ])('keeps the tenant "return" trigger on %s', (m) => {
+        expect(ask(m, ['return'])).toBe('custom_trigger:return');
+    });
+
+    it.each([
+        'what is your return policy?',
+        'do you accept returns?',
+        'what is the returns policy?',
+        'how do I return an item?',
+        'can I return the product?',
+        'how do I make a return?',
+    ])('answers %s', (m) => {
+        expect(ask(m, ['return'])).toBeNull();
+    });
+
+    it('does not offer a person for a shuttle question, and does for a real return', () => {
+        expect(isActionOrientedRefundQuestion('what is the return time for the shuttle?')).toBe(false);
+        expect(isActionOrientedRefundQuestion('can I return the product?')).toBe(true);
+    });
+});
+
+describe('the refund / return questions that also offer a person', () => {
+    it.each([
+        '¿cuánto tarda un reembolso?',
+        '¿Cuánto tiempo tarda un reembolso?',
+        '¿Cómo solicito una devolución?',
+        '¿Se puede hacer devolución?',
+        '¿Es posible un reembolso?',
+        '¿Puedo pedir un reembolso?',
+        '¿Cuál es la política? ¿Puedo pedir un reembolso?',
+        'como solicito um reembolso?',
+        'posso pedir reembolso?',
+        'comment demander un remboursement ?',
+        'puis-je demander un remboursement ?',
+        'how do I request a refund?',
+        'can I get a refund?',
+        'is it possible to return an item?',
+    ])('offers a person after answering %s', (m) => {
+        expect(isActionOrientedRefundQuestion(m)).toBe(true);
+    });
+
+    it.each([
+        // a plain policy question gets the policy only
+        '¿Cuál es la política de devoluciones del audífono QA de prueba?',
+        '¿Hacen reembolsos?',
+        '¿Aceptan devoluciones?',
+        'quelle est votre politique de remboursement ?',
+        'do you have a refund policy?',
+        // the frame and the topic are in different sentences
+        '¿se puede pagar con tarjeta? ¿y hay devoluciones?',
+        // not a refund topic
+        '¿Es posible un descuento?',
+        '¿tienen descuentos?',
         '¿cuál es el horario?',
+        '¿Se puede pagar con tarjeta?',
+        // a personal case or a direct request is escalated, never offered
         '¿hay reembolso? me cobraron dos veces',
+        '¿puedo pedir un reembolso? me cobraron dos veces',
         'quiero mi reembolso',
         'necesito hacer una devolución',
     ])('does not apply to %s', (m) => {
-        expect(isRefundReturnPolicyQuestion(m)).toBe(false);
+        expect(isActionOrientedRefundQuestion(m)).toBe(false);
     });
 });

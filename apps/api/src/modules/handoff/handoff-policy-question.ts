@@ -46,14 +46,17 @@ const POLICY_FRAME_BASE = /\b(?:politicas?|politique|policy|policies|aceptan|ace
 
 /**
  * "How do I / can I / is it possible / how long does it take" asks about the
- * way something works, which is what a policy question is. Weak on their own,
- * so everything above (personal case, grievance, request for oneself) is
- * checked first: "¿puedo pedir un reembolso? me cobraron dos veces" still goes
- * to a person.
+ * way something works. Weak on their own, so everything above (personal case,
+ * grievance, request for oneself) is checked first: "¿puedo pedir un reembolso?
+ * me cobraron dos veces" still goes to a person.
+ *
+ * These frames neutralise ONLY the refund / return words. "¿Se puede hacer un
+ * descuento?" asks to negotiate a price and stays with a person; a discount
+ * word is neutralised only by the plain policy frames ("¿tienen descuentos?").
  */
 const POLICY_FRAME_HOW = [
     // es
-    'cuanto (?:tarda|tardan|demora|demoran|se tarda|se demora)',
+    'cuanto (?:tiempo )?(?:tarda|tardan|demora|demoran|se tarda|se demora|toma|lleva)',
     'como (?:solicito|solicitar|solicitan|pido|pedir|hago|tramito|tramitar|se solicita|se pide|se hace|puedo (?:solicitar|pedir|hacer|tramitar))',
     'se puede',
     'es posible',
@@ -69,15 +72,30 @@ const POLICY_FRAME_HOW = [
     'est[ -]il possible',
     'puis[ -]je (?:demander|obtenir|faire)',
     // en
-    'how (?:do|can|should) i (?:request|ask|get|return|claim|apply)',
+    'how (?:do|can|should) i (?:request|ask|get|return|claim|apply|make)',
     'can i (?:get|ask|request|return|have|apply)',
     'is it possible',
     'how much time',
 ].join('|');
 const POLICY_FRAME_HOW_RE = new RegExp(`\\b(?:${POLICY_FRAME_HOW})\\b`);
 
-/** The refund / return topic words (not discounts): where the agent also offers a person. */
-const REFUND_RETURN_TOPIC = /\b(?:devolucion(?:es)?|devolucao|devolucoes|reembolsos?|remboursements?|refunds?|returns?)\b/;
+/** The refund words, in the languages the keyword list and the seeded triggers use. */
+const REFUND_KEYWORDS: ReadonlySet<string> = new Set([
+    'devolucion', 'devoluciones', 'reembolso', 'reembolsos', 'remboursement', 'remboursements',
+    'refund', 'refunds', 'return', 'returns',
+]);
+
+/**
+ * English "return" is also a shuttle, a flight and a library book, so on its own
+ * (or with a weak "what is") it is not a refund question. It counts only as the
+ * policy or the act of returning goods.
+ */
+const ENGLISH_RETURN_TOPIC = /\b(?:returns? policy|(?:accept|accepts|allow|offer|take) returns|return (?:an? |the |my )?(?:item|product|order)s?|make a return)\b/;
+
+/** The refund / return topic (not discounts): where the agent may also offer a person. */
+const REFUND_RETURN_TOPIC = new RegExp(
+    '\\b(?:devolucion(?:es)?|devolucao|devolucoes|reembolsos?|remboursements?|refunds?)\\b|' + ENGLISH_RETURN_TOPIC.source,
+);
 
 /** A damaged / broken product: a grievance, unless asked about hypothetically. */
 const GRIEVANCE_DEFECT = /\b(?:danad[oa]s?|roto|rota|rotos|rotas|defectuos[oa]s?|llego (?:mal|roto|danado|tarde)|damaged|broken|defective|faulty|casse|endommage|quebrado|chegou)\b/;
@@ -157,7 +175,7 @@ const FIRST_PERSON = /\b(?:me|nos|mi|mis|nuestr[oa]s?|my|our|meu|meus|minha|minh
 function conditionalText(raw: unknown): string {
     return String(raw ?? '').toLowerCase()
         .replace(/(?<![a-záéíóúüñ])sí(?![a-záéíóúüñ])/g, 'yes_')
-        .normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
         .replace(/[¿¡]/g, ' ')
         .replace(/\s+/g, ' ').trim();
 }
@@ -201,20 +219,57 @@ export function isDefectOnArrivalKeyword(keyword: string): boolean {
     return DEFECT_ON_ARRIVAL_SET.has(keyword);
 }
 
-export function isPolicyQuestion(raw: unknown): boolean {
+/**
+ * What a question about a policy may cancel:
+ *  - `all`: the plain policy frames ("¿cuál es la política…?", "¿tienen descuentos?"),
+ *    so every policy-topic word is answered;
+ *  - `refund_return`: only a how-do-I / can-I frame ("¿puedo pedir…?", "¿se puede…?"),
+ *    so refund and return words are answered and a discount word still escalates.
+ */
+export type PolicyScope = 'all' | 'refund_return';
+
+export function policyQuestionScope(raw: unknown): PolicyScope | null {
     const text = normalizeForIntent(raw);
-    if (!text) return false;
-    if (!isInformationSeekingMessage(raw)) return false;
-    if (GRIEVANCE_OTHER.test(text) || PERSONAL_REQUEST.test(text) || PERSONAL_CASE.test(text)) return false;
-    if (GRIEVANCE_DEFECT.test(text) && !isHypotheticalDefectQuestion(raw)) return false;
-    return POLICY_FRAME_BASE.test(text) || POLICY_FRAME_HOW_RE.test(text);
+    if (!text) return null;
+    if (!isInformationSeekingMessage(raw)) return null;
+    if (GRIEVANCE_OTHER.test(text) || PERSONAL_REQUEST.test(text) || PERSONAL_CASE.test(text)) return null;
+    if (GRIEVANCE_DEFECT.test(text) && !isHypotheticalDefectQuestion(raw)) return null;
+    if (POLICY_FRAME_BASE.test(text)) return 'all';
+    return POLICY_FRAME_HOW_RE.test(text) ? 'refund_return' : null;
+}
+
+export function isPolicyQuestion(raw: unknown): boolean {
+    return policyQuestionScope(raw) !== null;
+}
+
+/** True when the policy-topic word `word` is answered (not escalated) under `scope`. */
+export function isAnswerableTopicWord(scope: PolicyScope | null, word: string): boolean {
+    if (!scope || !POLICY_TOPIC_KEYWORDS.has(word)) return false;
+    return scope === 'all' || REFUND_KEYWORDS.has(word);
 }
 
 /**
- * A refund / return policy question the agent answers. The reply also offers a
- * person, so a customer who really wants the refund reaches one in a single "sí"
- * (the existing human-offer acceptance), instead of being escalated unasked.
+ * A custom trigger that is only a policy-topic word. The bare English "return" /
+ * "returns" is further limited to the refund / return topic itself, so a tenant's
+ * "return" trigger still fires on "what is the return time for the shuttle?".
  */
-export function isRefundReturnPolicyQuestion(raw: unknown): boolean {
-    return isPolicyQuestion(raw) && REFUND_RETURN_TOPIC.test(normalizeForIntent(raw));
+export function isAnswerableCustomTrigger(scope: PolicyScope | null, needle: string, raw: unknown): boolean {
+    if (!isAnswerableTopicWord(scope, needle)) return false;
+    if (needle === 'return' || needle === 'returns') return ENGLISH_RETURN_TOPIC.test(normalizeForIntent(raw));
+    return true;
+}
+
+/**
+ * An action-oriented refund / return question ("¿puedo pedir un reembolso?",
+ * "¿cómo solicito una devolución?", "¿cuánto tarda un reembolso?") that the agent
+ * answers. Its reply also offers a person, so a customer who really wants the
+ * refund reaches one with a single "sí" instead of being escalated unasked. A
+ * plain "¿cuál es la política de devoluciones?" gets the policy only, and so does
+ * "¿se puede pagar con tarjeta? ¿y hay devoluciones?": the frame and the topic
+ * must sit in the same sentence.
+ */
+export function isActionOrientedRefundQuestion(raw: unknown): boolean {
+    if (!policyQuestionScope(raw)) return false;
+    return normalizeForIntent(raw).split(/[?!.]+/)
+        .some(sentence => POLICY_FRAME_HOW_RE.test(sentence) && REFUND_RETURN_TOPIC.test(sentence));
 }

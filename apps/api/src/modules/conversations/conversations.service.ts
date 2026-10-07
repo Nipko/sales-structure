@@ -44,7 +44,7 @@ import { resolveTurnOutcome } from './turn-outcome-wait';
 import { ChannelTokenService } from '../channels/channel-token.service';
 import { ConversationsGateway } from './conversations.gateway';
 import { HandoffService } from '../handoff/handoff.service';
-import { isRefundReturnPolicyQuestion } from '../handoff/handoff-policy-question';
+import { isActionOrientedRefundQuestion } from '../handoff/handoff-policy-question';
 import { KnowledgeService } from '../knowledge/knowledge.service';
 import { knowledgeHitToContext } from '../knowledge/knowledge-contracts';
 import { resolveKnowledgeReplica } from '../evaluation-revision/evaluation-knowledge-replica';
@@ -225,6 +225,13 @@ const errorFallbackText = (lang?: string) =>
 const ERROR_FALLBACK_VALUES = new Set(Object.values(ERROR_FALLBACK_MSG));
 /** True when a pipeline result IS the error fallback (in any supported language). */
 const isErrorFallback = (text?: string | null): boolean => !!text && ERROR_FALLBACK_VALUES.has(text);
+
+// What the pipeline falls back to when it has no answer of its own. They are not
+// answers, so nothing is offered after them.
+const TOOL_LOOP_FALLBACK_REPLY = 'Disculpa, estoy teniendo problemas para completar tu solicitud en este momento. ¿Podrías intentarlo de nuevo o reformular tu mensaje?';
+const GENERATION_ERROR_PLACEHOLDER = '[Error Generating AI Response]';
+const isPipelineFallbackReply = (text?: string | null): boolean =>
+    isErrorFallback(text) || text === TOOL_LOOP_FALLBACK_REPLY || text === GENERATION_ERROR_PLACEHOLDER;
 
 const WIDGET_HANDOFF_UNAVAILABLE: Record<string, string> = {
     es: 'En este canal todavía no puedo transferirte a una persona. Detuve la respuesta automática para no darte una expectativa falsa.',
@@ -4777,7 +4784,7 @@ export class ConversationsService {
                 }
 
                 // No tool calls — this is the final text response
-                finalResponse = response.content || '[Error Generating AI Response]';
+                finalResponse = response.content || GENERATION_ERROR_PLACEHOLDER;
                 break;
             }
 
@@ -4804,7 +4811,7 @@ export class ConversationsService {
                     this.logger.warn(`[Pipeline] Forced no-tools response failed: ${e.message}`);
                 }
                 if (!finalResponse) {
-                    finalResponse = 'Disculpa, estoy teniendo problemas para completar tu solicitud en este momento. ¿Podrías intentarlo de nuevo o reformular tu mensaje?';
+                    finalResponse = TOOL_LOOP_FALLBACK_REPLY;
                 }
             }
 
@@ -4819,11 +4826,14 @@ export class ConversationsService {
                 allowHumanHandoff,
             );
             turnTrace.add('guardrail', 'output', { responseLength: finalResponse?.length || 0 });
-            // A refund / return POLICY question is answered, not escalated
-            // (`shouldHandoff` lets it through). The answer also offers a person, so a
-            // customer who really wants the refund says "yes" once and the
-            // acceptance below escalates for real.
-            if (!session && !draftMode && allowHumanHandoff && isRefundReturnPolicyQuestion(userText)) {
+            // An action-oriented refund / return question ("¿puedo pedir un reembolso?")
+            // is answered, not escalated (`shouldHandoff` lets it through). The answer
+            // also offers a person, so a customer who really wants the refund says "yes"
+            // once and the acceptance below escalates for real. Not after a fallback,
+            // which is no answer; `withPolicyPersonOffer` also skips a reply that ends
+            // with a question of its own.
+            if (!session && !draftMode && allowHumanHandoff && isActionOrientedRefundQuestion(userText)
+                && !isPipelineFallbackReply(finalResponse)) {
                 finalResponse = withPolicyPersonOffer(finalResponse, userLanguage);
             }
             // The guard answered with an offer of a person: remember it so a

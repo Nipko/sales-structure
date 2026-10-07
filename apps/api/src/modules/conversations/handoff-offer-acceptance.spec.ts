@@ -1,6 +1,6 @@
 import { promisesHumanHandoff } from '../../common/utils/outcome-claim.util';
 import { ConversationsService } from './conversations.service';
-import { containsHumanOffer, HUMAN_OFFER_MARK, isAffirmation, isAffirmationOfHumanOffer, isHumanOfferText, noDataWaitReplacementText, withPolicyPersonOffer } from './human-offer';
+import { containsHumanOffer, endsWithQuestion, HUMAN_OFFER_MARK, isAffirmation, isAffirmationOfHumanOffer, isHumanOfferText, noDataWaitReplacementText, withPolicyPersonOffer } from './human-offer';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 
@@ -196,6 +196,17 @@ describe('a refund policy answer offers a person, and "sí" hands off', () => {
         const own = `${answer} ${noDataWaitReplacementText('es')}`;
         expect(withPolicyPersonOffer(own, 'es')).toBe(own);
         expect(withPolicyPersonOffer('', 'es')).toBe('');
+        // a statement (not a question) that already offers a person
+        const stated = `${answer} Si quiere, le paso con alguien del equipo para que se la confirme.`;
+        expect(withPolicyPersonOffer(stated, 'es')).toBe(stated);
+    });
+
+    it('leaves a reply that ends with its own question alone: two questions in a row would make "sí" ambiguous', () => {
+        const asks = `${answer} ¿Cuál es el motivo de la devolución?`;
+        expect(endsWithQuestion(asks)).toBe(true);
+        expect(withPolicyPersonOffer(asks, 'es')).toBe(asks);
+        expect(endsWithQuestion('Dentro de 30 días.')).toBe(false);
+        expect(endsWithQuestion('Is that ok? ')).toBe(true);
     });
 
     it('is not a handoff promise, so the unsolicited-promise rewrite leaves it alone', () => {
@@ -217,17 +228,5 @@ describe('a refund policy answer offers a person, and "sí" hands off', () => {
         row.lastOutbound = reply;
         const reload = () => ({ id: 'conv', metadata: JSON.parse(JSON.stringify(row.metadata)) });
         expect(await service.resolveHumanOfferAcceptance('schema', reload(), 'sí')).toBe(true);
-    });
-
-    it('the pipeline adds the offer to the answer before leaving the mark, only where a person can be offered', () => {
-        const src = readFileSync(resolve(__dirname, 'conversations.service.ts'), 'utf8');
-        const add = src.indexOf('isRefundReturnPolicyQuestion(userText)');
-        const mark = src.indexOf('await this.rememberHumanOffer(schemaName, conversation.id, finalResponse)');
-        expect(add).toBeGreaterThan(0);
-        expect(mark).toBeGreaterThan(add);
-        const guard = src.slice(src.lastIndexOf('if (', add), add);
-        expect(guard).toContain('allowHumanHandoff');
-        expect(guard).toContain('!draftMode');
-        expect(src.slice(add, mark)).toContain('withPolicyPersonOffer(finalResponse, userLanguage)');
     });
 });

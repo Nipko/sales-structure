@@ -38,10 +38,19 @@ export const POLICY_PERSON_OFFER_QUESTION: Record<string, string> = {
 export const policyPersonOfferText = (lang?: string): string =>
     POLICY_PERSON_OFFER_QUESTION[(lang || 'es').slice(0, 2).toLowerCase()] || POLICY_PERSON_OFFER_QUESTION.es;
 
-/** The reply to a policy question, followed by the offer of a person unless it already offers one. */
+/** True when the reply's last sentence is a question (a "sí" would answer THAT one). */
+export function endsWithQuestion(text: unknown): boolean {
+    return typeof text === 'string' && /[?？]["'”’)\]\s]*$/.test(text.trimEnd());
+}
+
+/**
+ * The reply to a policy question, followed by the offer of a person. Left alone
+ * when it already offers one, and when it already ends with a question of its
+ * own: two questions in a row would make the customer's "sí" ambiguous.
+ */
 export function withPolicyPersonOffer(response: string, lang?: string): string {
     if (!response || !response.trim()) return response;
-    if (containsHumanOffer(response) || offersHumanHandoff(response)) return response;
+    if (containsHumanOffer(response) || offersHumanHandoff(response) || endsWithQuestion(response)) return response;
     return `${response.trimEnd()}\n\n${policyPersonOfferText(lang)}`;
 }
 
@@ -86,7 +95,7 @@ const AFFIRM_FILL = new Set([
 /** A short message that is only agreement ("sí", "dale", "yes please", "sim, por favor"). */
 export function isAffirmation(text: unknown): boolean {
     if (typeof text !== 'string') return false;
-    const tokens = text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    const tokens = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
         .replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(Boolean);
     if (tokens.length === 0 || tokens.length > 4) return false;
     return tokens.every(t => AFFIRM_CORE.has(t) || AFFIRM_FILL.has(t)) && tokens.some(t => AFFIRM_CORE.has(t));

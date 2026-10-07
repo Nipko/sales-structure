@@ -13,8 +13,9 @@ import {
     DEFECT_ON_ARRIVAL_KEYWORDS,
     isDefectOnArrivalKeyword,
     isHypotheticalDefectQuestion,
-    isPolicyQuestion,
-    POLICY_TOPIC_KEYWORDS,
+    isAnswerableCustomTrigger,
+    isAnswerableTopicWord,
+    policyQuestionScope,
 } from './handoff-policy-question';
 import { hasDispatchOutbox, noHumanReplySql } from './handoff-human-reply';
 import {
@@ -220,11 +221,11 @@ export class HandoffService {
         // complaint word in the same message still escalates. Likewise a
         // hypothetical ("¿qué hago si el producto llegó roto?") is a question,
         // while "me llegó roto" is a report.
-        const policyQuestion = isPolicyQuestion(message);
+        const policyScope = policyQuestionScope(message);
         const hypotheticalDefect = isHypotheticalDefectQuestion(message);
         const escalates = (keywords: string[]) => keywords
             .filter(kw => text.includes(kw))
-            .some(kw => !(policyQuestion && POLICY_TOPIC_KEYWORDS.has(kw))
+            .some(kw => !isAnswerableTopicWord(policyScope, kw)
                 && !(hypotheticalDefect && isDefectOnArrivalKeyword(kw)));
         if (enabled('complaint') && escalates(complaintKeywords)) {
             return 'complaint';
@@ -271,7 +272,7 @@ export class HandoffService {
             // as a general policy question ("¿hacen reembolsos?") it is the same
             // informational question as above, so the same exemption applies;
             // any other trigger, or a personal case, is unchanged.
-            if (policyQuestion && POLICY_TOPIC_KEYWORDS.has(needle)) continue;
+            if (isAnswerableCustomTrigger(policyScope, needle, message)) continue;
             if (needle && text.includes(needle)) {
                 return `custom_trigger:${trigger}`;
             }

@@ -68,14 +68,46 @@ describe('handoff policy evaluation set', () => {
         expect(wrong).toEqual([]);
     });
 
-    it('falls back to the same score as the rules when the model answers nothing usable', async () => {
-        let same = 0;
+    it('with no usable model answer, scores at least as well as the rules alone (the high-precision rules still run)', async () => {
+        let rulesOk = 0;
+        let lostOk = 0;
         for (const row of rows) {
-            const rules = !!service().shouldHandoff(row.text, conversation, config(row));
+            if (!!service().shouldHandoff(row.text, conversation, config(row)) === row.expected_handoff) rulesOk++;
             const lost = service();
             lost.llmRouter.execute = jest.fn().mockResolvedValue({ content: 'no idea' });
-            if (!!(await lost.decideHandoff(row.text, conversation, config(row), undefined, 't')) === rules) same++;
+            if (!!(await lost.decideHandoff(row.text, conversation, config(row), undefined, 't')) === row.expected_handoff) lostOk++;
         }
-        expect(same).toBe(rows.length);
+        // eslint-disable-next-line no-console
+        console.info(`[handoff-policy-eval] no usable model answer: ${lostOk}/${rows.length} (rules alone ${rulesOk}/${rows.length})`);
+        expect(lostOk).toBeGreaterThanOrEqual(rulesOk);
+    });
+
+    // A model that is wrong, valid and confident is the case the high-precision rules exist for.
+    it('keeps escalating what is clearly the own case of the customer when the model gives the worst wrong label', async () => {
+        const escalations = rows.filter((r) => r.expected_handoff);
+        let kept = 0;
+        const lost: string[] = [];
+        for (const row of escalations) {
+            const asInfo = !!(await service('policy_info').decideHandoff(row.text, conversation, config(row), undefined, 't'));
+            const asNone = !!(await service('none').decideHandoff(row.text, conversation, config(row), undefined, 't'));
+            if (asInfo && asNone) kept++; else lost.push(row.text);
+        }
+        // eslint-disable-next-line no-console
+        console.info(`[handoff-policy-eval] worst wrong label (policy_info / none): ${kept}/${escalations.length} still escalate; not recovered by rules: ${JSON.stringify(lost)}`);
+        expect(kept / escalations.length).toBeGreaterThanOrEqual(0.92);
+    });
+
+    it('the rules that override the model never fire on a message that should be answered', async () => {
+        const answered = rows.filter((r) => !r.expected_handoff);
+        const falsePositives: string[] = [];
+        let escalatedOnlyByTheModel = 0;
+        for (const row of answered) {
+            // a model that is wrong in the other direction, and one that is right
+            if (await service('policy_info').decideHandoff(row.text, conversation, config(row), undefined, 't')) falsePositives.push(row.text);
+            if (await service('personal_case').decideHandoff(row.text, conversation, config(row), undefined, 't')) escalatedOnlyByTheModel++;
+        }
+        expect(falsePositives).toEqual([]);
+        // every one of them that reached the model was escalated by the model alone
+        expect(escalatedOnlyByTheModel).toBeGreaterThan(0);
     });
 });

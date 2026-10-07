@@ -416,7 +416,7 @@ describe('Shared runtime integrity', () => {
 
         it('a policy_howto label offers a person for wording the rules never heard of', async () => {
             const { service, run } = withClassifier('policy_howto');
-            const text = '¿Qué hago si quiero que me devuelvan la plata del audífono?';
+            const text = '¿Qué pasos sigo para devolver un producto?';
             await (service as any).resolveHandoffReason(text, conv, config, tenantId);
             expect(await run('whatsapp', text)).toBe('La consulta cuesta COP 20000.\n\n' + OFFER);
         });
@@ -439,13 +439,22 @@ describe('Shared runtime integrity', () => {
 
         it('escalates for personal_case through the handoff service, and the turn asks the service, not the rules', async () => {
             const { service, classify } = withClassifier('personal_case');
-            expect(await (service as any).resolveHandoffReason('Quiero devolver el audífono', conv, config, tenantId)).toBe('complaint');
+            expect(await (service as any).resolveHandoffReason('ojalá me reembolsen hoy', conv, config, tenantId)).toBe('complaint');
             expect(classify).toHaveBeenCalledTimes(1);
+        });
+
+        it('hands the turn execution context to the classifier (read-only turns, spend accounting)', async () => {
+            const { service } = withClassifier('policy_info');
+            const decide = jest.fn().mockResolvedValue(null);
+            (service as any).handoffService = { decideHandoff: decide };
+            const ctx = { mode: 'agent_test', persistence: 'disabled' };
+            await (service as any).resolveHandoffReason('¿Aceptan devoluciones?', conv, config, tenantId, true, ctx);
+            expect(decide).toHaveBeenCalledWith('¿Aceptan devoluciones?', conv, config, undefined, tenantId, ctx);
         });
 
         it('draft mode and handoff services without a classifier use the rules and never a model', async () => {
             const { service, classify } = withClassifier('personal_case');
-            expect(await (service as any).resolveHandoffReason('Quiero devolver el audífono', conv, config, tenantId, false)).toBeNull();
+            expect(await (service as any).resolveHandoffReason('ojalá me reembolsen hoy', conv, config, tenantId, false)).toBeNull();
             expect(classify).not.toHaveBeenCalled();
             (service as any).handoffService = { shouldHandoff: jest.fn().mockReturnValue('complaint') };
             expect(await (service as any).resolveHandoffReason('quiero mi reembolso', conv, config, tenantId)).toBe('complaint');

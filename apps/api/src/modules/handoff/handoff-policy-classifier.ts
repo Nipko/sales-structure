@@ -52,7 +52,7 @@ export function policyTopicsIn(raw: unknown, triggers: readonly string[] = []): 
         }
     }
     const refund = BUILTIN_REFUND.test(text);
-    const discount = BUILTIN_DISCOUNT.test(text);
+    const discount = BUILTIN_DISCOUNT.test(text) || DISCOUNT_GATE.test(text);
     if (!refund && !discount && !customTrigger && !REFUND_GATE.test(text) && !DISCOUNT_GATE.test(text)) return null;
     return { refund, discount, customTrigger };
 }

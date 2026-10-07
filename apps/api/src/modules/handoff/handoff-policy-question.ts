@@ -109,13 +109,16 @@ const GRIEVANCE_DEFECT = /\b(?:danad[oa]s?|roto|rota|rotos|rotas|defectuos[oa]s?
 
 const GRIEVANCE_OTHER = /\b(?:no funciona|estafa|fraude|engano|enganaram|golpe|inaceptable|inacceptable|pesimo|pessimo|horrible|terrible|furios[oa]|molest[oa]|queja|reclamo|reclamacao|plainte|demanda|abogado|advogado|avocat|scam|fraud|unacceptable|awful|lawyer|arnaque|ne fonctionne pas|nao funciona)\b/;
 
-const PERSONAL_REQUEST = /\b(?:me (?:lo |la |los |las )?(?:hace|hacen|haces|da|dan|das|deja|dejan|dejas|rebaja|rebajan|rebajas|regala|regalan|puede|pueden|podria|podrian|puedes|podrias|puedan|hagan|den|dejen|tienen|tiene|dar|fazer|faire|faz|fazem|dao)|(?:puede|pueden|podria|podrian|puedes|podrias) (?:hacerme|darme|rebajarme|dejarmelo|devolverme)|(?:can|could|will|would) you (?:give|do|make|offer|refund)(?: it)? (?:me|us)|pouvez[ -]vous me|vous me (?:faites|donnez)|(?:podem|pode|voce pode) (?:me )?(?:dar|fazer)|pra mim|para mim|pour moi|for me|exijo|exigimos|i demand|je veux (?:etre )?rembours|quiero que me|quiero mi dinero|(?:quiero|quisiera|necesito|queremos|necesitamos) (?:(?:pedir|hacer|solicitar|tramitar|realizar) )?(?:(?:un|una|el|la|mi|algun|alguna) )?(?:reembolso|devolucion|devolver|remboursement|descuento|rebaja)|i want (?:a refund|my money|to return))\b/;
+const PERSONAL_REQUEST = /\b(?:me (?:lo |la |los |las )?(?:hace|hacen|haces|da|dan|das|deja|dejan|dejas|rebaja|rebajan|rebajas|regala|regalan|puede|pueden|podria|podrian|puedes|podrias|puedan|hagan|den|dejen|tienen|tiene|dar|fazer|faire|faz|fazem|dao)|(?:puede|pueden|podria|podrian|puedes|podrias) (?:hacerme|darme|rebajarme|dejarmelo|devolverme)|(?:can|could|will|would) you (?:give|do|make|offer|refund)(?: it)? (?:me|us)|pouvez[ -]vous me|vous me (?:faites|donnez)|(?:podem|pode|voce pode) (?:me )?(?:dar|fazer)|pra mim|para mim|pour moi|for me|exijo|exigimos|i demand|je veux (?:etre )?rembours\w*|quiero que me|quiero mi dinero|(?:quiero|quisiera|necesito|queremos|necesitamos) (?:(?:pedir|hacer|solicitar|tramitar|realizar) )?(?:(?:un|una|el|la|mi|algun|alguna) )?(?:reembolso|devolucion|devolver|remboursement|descuento|rebaja)|i want (?:a refund|my money|to return))\b/;
 
 /**
  * The customer is talking about THEIR case, not about the policy. One clause is
  * enough; the sentence may still be shaped like a question. Matched against
  * `normalizeForIntent` output (lower case, accents removed).
  */
+/** "No me gustó / no sirve": a soft signal. As a fact it is a personal case; inside "si…" it is a condition. */
+const SOFT_DISLIKE_TERM = 'no (?:me )?(?:sirve|sirvio|sirven|gusto|gustaron|convencio)';
+
 const PERSONAL_CASE_TERMS = [
     // "why isn't it done yet": a delay is a complaint
     'por que (?:(?:todavia|aun|ya) )?no',
@@ -146,7 +149,7 @@ const PERSONAL_CASE_TERMS = [
     'never (?:arrived|came|got|received|showed)',
     '(?:has|have|did|was|were)(?:n[\'’ ]?t| not) (?:arrive|arrived|receive|received|get|got|delivered)',
     // it does not work / I did not like it
-    'no (?:me )?(?:sirve|sirvio|sirven|gusto|gustaron|convencio)',
+    SOFT_DISLIKE_TERM,
     'dejo de (?:funcionar|servir)',
     'se (?:me )?(?:rompio|dano|descompuso)',
     'defeito',
@@ -314,4 +317,78 @@ export function isActionOrientedRefundQuestion(raw: unknown): boolean {
     if (!policyQuestionScope(raw)) return false;
     return normalizeForIntent(raw).split(/[?!.]+/)
         .some(sentence => POLICY_FRAME_HOW_RE.test(sentence) && REFUND_RETURN_TOPIC.test(sentence));
+}
+
+// ---------------------------------------------------------------------------
+// High-precision signals the model can never clear
+//
+// The classifier reads the soft cases (a bare topic word, a hypothetical, a
+// plan). What a customer says about THEIR OWN case is not a judgement call:
+// "me cobraron dos veces", "QUIERO MI REEMBOLSO", "llegó roto", "¿me hace un
+// descuento?". Those escalate whatever the model answers, on the full text.
+// Everything here was measured on the evaluation fixture: zero hits on a
+// message that should be answered.
+// ---------------------------------------------------------------------------
+
+/** Everything in the personal-case list except the soft "no me gustó / no sirve". */
+const PERSONAL_CASE_HARD = new RegExp(`\\b(?:${PERSONAL_CASE_TERMS.filter((t) => t !== SOFT_DISLIKE_TERM).join('|')})`);
+
+const SOFT_DEFECT_RE = /\b(?:no funciona|nao funciona|ne fonctionne pas)\b/g;
+const DISLIKE_RE = new RegExp(`\\b${SOFT_DISLIKE_TERM}\\b`, 'g');
+const DEFECT_RE = new RegExp(GRIEVANCE_DEFECT.source, 'g');
+
+/** A conditional marker inside the clause: "si no funciona", "if it breaks", "se chegou quebrado". */
+const CONDITIONAL_MARK = /(?:^|\s)(?:si|if|se|caso|quand|cuando|et si|e se|what if)(?:\s|$)/;
+
+function clauseBefore(ctext: string, index: number): string {
+    const head = ctext.slice(0, index);
+    const cut = Math.max(head.lastIndexOf(','), head.lastIndexOf(';'), head.lastIndexOf('.'),
+        head.lastIndexOf('?'), head.lastIndexOf('!'), head.lastIndexOf(':'));
+    return head.slice(cut + 1);
+}
+
+/** True when the pattern occurs at least once OUTSIDE a conditional clause: reported as fact. */
+function reportedAsFact(raw: unknown, re: RegExp): boolean {
+    const ctext = conditionalText(raw);
+    for (const m of ctext.matchAll(re)) {
+        if (!CONDITIONAL_MARK.test(clauseBefore(ctext, m.index ?? 0))) return true;
+    }
+    return false;
+}
+
+/** "no funciona" said as a fact ("La app no funciona"), not as a condition ("si no funciona"). */
+export function softDefectAsFact(raw: unknown): boolean {
+    return reportedAsFact(raw, SOFT_DEFECT_RE);
+}
+
+/**
+ * A request for something for oneself. Narrower than `PERSONAL_REQUEST` (the rules
+ * fallback): "quiero/necesito pedir…" must take a refund/discount noun, "quiero devolver"
+ * must take an object that is not a call or a key, and a bare "me puede(n)" does not count.
+ */
+const PERSONAL_REQUEST_HIGH = /\b(?:me (?:lo |la |los |las )?(?:hace|hacen|haces|deja|dejan|dejas|rebaja|rebajan|rebajas|regala|regalan|puedan|hagan|den|dejen|tienen|tiene|dar|fazer|faire|faz|fazem|dao)|me (?:lo |la )?(?:da|dan|das) (?:un|una|algun|alguna|mi|el|la)|me (?:puede|pueden|puedes|podria|podrian|podrias) (?:hacer|dar|rebajar|dejar|regalar)|(?:puede|pueden|podria|podrian|puedes|podrias) (?:hacerme|darme|rebajarme|dejarmelo|devolverme)|(?:can|could|will|would) you (?:give|do|make|offer|refund)(?: it)? (?:me|us)|pouvez[ -]vous me|vous me (?:faites|donnez)|(?:podem|pode|voce pode) (?:me )?(?:dar|fazer)|pra mim|para mim|pour moi|for me|exijo|exigimos|i demand|je veux (?:etre )?rembours\w*|quiero que me|quiero mi dinero|(?:quiero|quisiera|necesito|queremos|necesitamos|quero|preciso) (?:(?:pedir|hacer|solicitar|tramitar|realizar) )?(?:(?:un|una|el|la|mi|algun|alguna|um|uma|meu) )?(?:reembolso|devolucion|descuento|rebaja|desconto|remboursement)|(?:quiero|quisiera|necesito|queremos|necesitamos|quero|preciso) devolver (?:el|la|los|las|mi|mis|un|una|o|a) (?!llamad|llave|ligacao|chave|carro|auto\b|coche|vehicul|moto\b|bicicleta|habitacion|apartament|cabana|casa\b|mesa\b|cancha|sala\b|salon)\w+|i want (?:a refund|my money|to return))\b/;
+
+/** A favour asked about a price: diminutives, "hay posibilidad de descuento", "se puede un descuento". */
+const NEGOTIATION_SIGNAL = new RegExp(
+    '\\b(?:descuent(?:ito|ico|azo)|rebajit[ao]|desconto(?:zinho|zito)|(?:posibilidad|chance|possibilidade|possibilite|possibility) (?:de|d|of) (?:un |uma? )?(?:descuento|desconto|rebaja|remise|discount)|'
+    + '(?:se puede|es posible|puedo (?:pedir|solicitar|obtener)|como (?:pido|solicito|consigo)|e possivel|posso (?:pedir|solicitar)|est[ -]il possible|puis[ -]je (?:demander|obtenir)|is it possible|can i (?:get|ask for|have)|hay (?:alguna )?(?:posibilidad|chance))\\b[^?.!]*\\b(?:descuent\\w*|rebaj\\w*|descont\\w*|remise\\w*|discount\\w*))',
+);
+const REFUND_NOW = /\b(?:devolucion|devolucao|reembolso|remboursement)s? (?:ya|ahora|hoy|ja|agora|maintenant|now|urgente)\b|\b(?:que|para que) me (?:devuelv\w+|reembols\w+|devolv\w+|rembours\w+)\b/;
+
+export type OverrideLabel = 'personal_case' | 'negotiation';
+
+/**
+ * The label a message gets from the rules that never need the model, or null.
+ * `discountOnly` (the message's only built-in topic is a discount) turns a request
+ * for oneself into a negotiation; any other topic is a personal refund / return case.
+ */
+export function policyOverrideLabel(raw: unknown, topics: { refund: boolean; discount: boolean }): OverrideLabel | null {
+    const text = normalizeForIntent(raw);
+    if (!text) return null;
+    const forOneself: OverrideLabel = topics.discount && !topics.refund ? 'negotiation' : 'personal_case';
+    if (NEGOTIATION_SIGNAL.test(text)) return 'negotiation';
+    if (FOR_ME_AT_CLAUSE_END.test(String(raw ?? '')) || PERSONAL_REQUEST_HIGH.test(text)) return forOneself;
+    if (PERSONAL_CASE_HARD.test(text) || REFUND_NOW.test(text)) return 'personal_case';
+    if (reportedAsFact(raw, DEFECT_RE) || reportedAsFact(raw, SOFT_DEFECT_RE) || reportedAsFact(raw, DISLIKE_RE)) return 'personal_case';
+    return null;
 }

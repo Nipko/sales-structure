@@ -15,9 +15,11 @@ import {
     isAnswerableTopicWord,
     isDefectOnArrivalKeyword,
     isHypotheticalDefectQuestion,
+    policyOverrideLabel,
     policyQuestionScope,
     POLICY_TOPIC_KEYWORDS,
     SOFT_DEFECT_KEYWORDS,
+    softDefectAsFact,
 } from './handoff-policy-question';
 import {
     buildPolicyClassifierRequest,
@@ -147,6 +149,9 @@ function classifyHandoffEffectFailure(error: any): HandoffEffectOutcome {
         : { kind: 'rejected', errorCode: code };
 }
 
+/** The router's execution context, so a read-only turn (Agent Test, evaluation, draft) is passed through to the model call. */
+type ClassifierExecutionContext = Parameters<LLMRouterService['execute']>[0]['executionContext'];
+
 @Injectable()
 export class HandoffService {
     private readonly logger = new Logger(HandoffService.name);
@@ -181,7 +186,14 @@ export class HandoffService {
      * that is not a refund / return / discount word never wait for a model. Only a
      * message that is otherwise answerable AND mentions that topic is classified (one
      * small model call, cached per message), because the same words are a policy
-     * question, a how-to, a personal case or a price negotiation. When the model is
+     * question, a how-to, a personal case or a price negotiation.
+     *
+     * The model never has the last word against the customer: what a message says about
+     * the customer's OWN case ("me cobraron dos veces", "quiero mi reembolso", "llegó
+     * roto", "¿me hace un descuento?") is a high-precision rule that escalates before the
+     * model is asked, so a wrong label cannot hide it. The model clears only the soft
+     * cases (a bare topic word, a hypothetical). A `none` label does not silence a defect
+     * main escalated ("la app no funciona, ¿me devuelven la llamada?"). When the model is
      * unavailable, times out or answers nonsense, `shouldHandoff` (the regular
      * expressions) decides.
      */
@@ -191,6 +203,8 @@ export class HandoffService {
         config: TenantConfig,
         operatingCountry?: string | null,
         tenantId?: string,
+        /** The turn's execution context (Agent Test, evaluation, draft): the router keeps it read-only and accounts the spend. */
+        executionContext?: ClassifierExecutionContext,
     ): Promise<string | null> {
         const topics = policyTopicsIn(message, config.behavior?.handoffTriggers || []);
         // No refund / return / discount word: nothing for a model to read, the rules decide.
@@ -200,9 +214,25 @@ export class HandoffService {
         const enabled = (cat: string) => this.categoryEnabled(config, cat);
         // Nothing this tenant could route the answer to: no reason to ask the model.
         if (!enabled('complaint') && !enabled('discount_request') && !topics.customTrigger) return null;
-        const label = await this.classifyPolicyMessage(message, tenantId);
+        const own = policyOverrideLabel(message, topics);
+        if (own) {
+            const reason = reasonForPolicyLabel(own, topics, enabled);
+            if (reason) return reason;
+        }
+        const label = await this.classifyPolicyMessage(message, tenantId, executionContext);
         if (!label) return this.shouldHandoff(message, conversation, config, operatingCountry);
-        return reasonForPolicyLabel(label, topics, enabled);
+        const reason = reasonForPolicyLabel(label, topics, enabled);
+        if (reason) return reason;
+        // `none` means the topic word was incidental ("¿me devuelven la llamada?"): the
+        // rest of the message is judged as it always was, defects included.
+        return label === 'none'
+            ? this.evaluateHandoff(message, conversation, config, operatingCountry, 'keep_defects')
+            : null;
+    }
+
+    /** Whether `decideHandoff` is about to wait on the model for this message (so the turn can show it is typing). */
+    needsPolicyClassification(message: string, config: TenantConfig, tenantId?: string): boolean {
+        return !!policyTopicsIn(message, config.behavior?.handoffTriggers || []) && !this.peekPolicyLabel(message, tenantId);
     }
 
     /** The label already decided for this message (this turn read it before), without a model call. */
@@ -212,7 +242,7 @@ export class HandoffService {
     }
 
     /** One model call per message: later readers of the same turn get the cached label (or the in-flight call). */
-    async classifyPolicyMessage(message: string, tenantId?: string): Promise<PolicyLabel | null> {
+    async classifyPolicyMessage(message: string, tenantId?: string, executionContext?: ClassifierExecutionContext): Promise<PolicyLabel | null> {
         const key = policyCacheKey(tenantId, message);
         const cache = this.policyLabelCache ??= new Map();
         const inflight = this.policyLabelInflight ??= new Map();
@@ -223,7 +253,7 @@ export class HandoffService {
         }
         const pending = inflight.get(key);
         if (pending) return pending;
-        const run = this.runPolicyClassifier(message, tenantId).then((label) => {
+        const run = this.runPolicyClassifier(message, tenantId, executionContext).then((label) => {
             cache.set(key, { label, at: Date.now() });
             if (cache.size > 500) cache.delete(cache.keys().next().value as string);
             return label;
@@ -232,7 +262,7 @@ export class HandoffService {
         return run;
     }
 
-    private async runPolicyClassifier(message: string, tenantId?: string): Promise<PolicyLabel | null> {
+    private async runPolicyClassifier(message: string, tenantId?: string, executionContext?: ClassifierExecutionContext): Promise<PolicyLabel | null> {
         if (!this.llmRouter || typeof this.llmRouter.execute !== 'function') return null;
         const { systemPrompt, userContent } = buildPolicyClassifierRequest(message);
         let timer: NodeJS.Timeout | undefined;
@@ -247,6 +277,7 @@ export class HandoffService {
                     temperature: 0,
                     maxTokens: 24,
                     tenantId,
+                    executionContext,
                     traceContext: { stage: 'handoff_policy_classifier' },
                 }),
                 new Promise<never>((_, reject) => {
@@ -297,7 +328,7 @@ export class HandoffService {
         conversation: any,
         config: TenantConfig,
         operatingCountry: string | null | undefined,
-        mode: 'rules' | 'ignore_topics',
+        mode: 'rules' | 'ignore_topics' | 'keep_defects',
     ): string | null {
         const triggers = config.behavior?.handoffTriggers || [];
         // Accent-stripped, because the raw `toLowerCase()` meant `devolución`
@@ -357,12 +388,19 @@ export class HandoffService {
         // while "me llegó roto" is a report.
         const policyScope = mode === 'rules' ? policyQuestionScope(message) : null;
         const hypotheticalDefect = isHypotheticalDefectQuestion(message);
+        // What is left to the classifier instead of escalating. `ignore_topics`: the topic
+        // words and the defects (a model reads them). `keep_defects` (after a `none`
+        // label): only the topic words; a defect stated as fact still escalates.
+        const setAside = (kw: string): boolean => {
+            if (mode === 'rules') return isAnswerableTopicWord(policyScope, kw);
+            if (POLICY_TOPIC_KEYWORDS.has(kw)) return true;
+            if (SOFT_DEFECT_KEYWORDS.has(kw)) return mode === 'ignore_topics' || !softDefectAsFact(message);
+            if (isDefectOnArrivalKeyword(kw)) return mode === 'ignore_topics';
+            return false;
+        };
         const escalates = (keywords: string[]) => keywords
             .filter(kw => text.includes(kw))
-            .some(kw => !(mode === 'ignore_topics'
-                    ? POLICY_TOPIC_KEYWORDS.has(kw) || SOFT_DEFECT_KEYWORDS.has(kw) || isDefectOnArrivalKeyword(kw)
-                    : isAnswerableTopicWord(policyScope, kw))
-                && !(hypotheticalDefect && isDefectOnArrivalKeyword(kw)));
+            .some(kw => !setAside(kw) && !(hypotheticalDefect && isDefectOnArrivalKeyword(kw)));
         if (enabled('complaint') && escalates(complaintKeywords)) {
             return 'complaint';
         }
@@ -408,7 +446,7 @@ export class HandoffService {
             // as a general policy question ("¿hacen reembolsos?") it is the same
             // informational question as above, so the same exemption applies;
             // any other trigger, or a personal case, is unchanged.
-            if (mode === 'ignore_topics' ? POLICY_TOPIC_KEYWORDS.has(needle) : isAnswerableCustomTrigger(policyScope, needle, message)) continue;
+            if (mode !== 'rules' ? POLICY_TOPIC_KEYWORDS.has(needle) : isAnswerableCustomTrigger(policyScope, needle, message)) continue;
             if (needle && text.includes(needle)) {
                 return `custom_trigger:${trigger}`;
             }

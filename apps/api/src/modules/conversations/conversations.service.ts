@@ -1248,6 +1248,14 @@ export class ConversationsService {
         // A "yes" to our own offer of a person is a handoff request, decided here
         // from the mark the offer left — not from whatever the model says next.
         const acceptedOffer = await this.resolveHumanOfferAcceptance(schemaName, conversation, content?.text);
+        // A message about a refund, a return or a discount waits on the classifier (up to a
+        // couple of seconds if the model is slow): show the customer we are typing first,
+        // without making the decision wait for it. Other messages never get here.
+        let typingShown = false;
+        if (!draftMode && (this.handoffService as any)?.needsPolicyClassification?.(content?.text || '', config, tenantId)) {
+            typingShown = true;
+            void this.sendTypingIndicatorQuietly(tenantId, channelType, normalizedMsg);
+        }
         const handoffReason = await this.resolveHandoffReason(
             content?.text || '', conversation, config, tenantId, !draftMode,
         ) || (acceptedOffer ? 'customer_accepted_human_offer' : null);
@@ -1298,15 +1306,7 @@ export class ConversationsService {
                 || (conversation.metadata as any)?.handoff?.returnNoticePending === 'true');
 
         // 5b. Send typing indicator before AI generates response
-        try {
-            const accessToken = await this.resolveAccessToken(tenantId, channelType, normalizedMsg.channelAccountId);
-            if (accessToken && !draftMode) {
-                await this.channelGateway.sendTypingIndicator(
-                    channelType as any, normalizedMsg.channelAccountId,
-                    normalizedMsg.contactId, accessToken,
-                );
-            }
-        } catch { /* non-blocking */ }
+        if (!typingShown && !draftMode) await this.sendTypingIndicatorQuietly(tenantId, channelType, normalizedMsg);
 
         // 6. AI message quota check (per-tenant, per-month)
         // Plans cap monthly AI volume (5K starter / 25K pro / 100K enterprise).
@@ -4951,7 +4951,7 @@ export class ConversationsService {
             // escala; el "si" siguiente si escala.
             const lastOutboundText = [...(history || [])].reverse()
                 .find((row: any) => row?.direction === 'outbound')?.content_text;
-            const humanHandoffAuthorized = !!(await this.resolveHandoffReason(userText, conversation, config, tenantId, !draftMode))
+            const humanHandoffAuthorized = !!(await this.resolveHandoffReason(userText, conversation, config, tenantId, !draftMode, executionContext))
                 || isAffirmationOfHumanOffer(userText, lastOutboundText);
             if (!draftMode && !postToolHandoff && !humanHandoffAuthorized && promisesHumanHandoff(finalResponse)) {
                 this.logger.warn(`[Pipeline] Promesa de traspaso SIN pedido del cliente en ${conversation.id} — reescrita como oferta, sin escalar`);
@@ -6657,12 +6657,28 @@ export class ConversationsService {
      * rules otherwise, and in draft mode, where nothing escalates and nothing is
      * worth a model call.
      */
-    private async resolveHandoffReason(text: string, conversation: any, config: any, tenantId: string, classify = true): Promise<string | null> {
+    private async resolveHandoffReason(
+        text: string, conversation: any, config: any, tenantId: string, classify = true,
+        /** The turn's execution context (Agent Test / evaluation / draft), so the classifier call is read-only and accounted like the interpreter's. */
+        executionContext?: unknown,
+    ): Promise<string | null> {
         const service: any = this.handoffService;
         if (classify && typeof service?.decideHandoff === 'function') {
-            return service.decideHandoff(text, conversation, config, undefined, tenantId);
+            return service.decideHandoff(text, conversation, config, undefined, tenantId, executionContext);
         }
         return service?.shouldHandoff?.(text, conversation, config) ?? null;
+    }
+
+    /** Typing indicator; it never blocks or fails the turn. */
+    private async sendTypingIndicatorQuietly(tenantId: string, channelType: string, msg: NormalizedMessage): Promise<void> {
+        try {
+            const accessToken = await this.resolveAccessToken(tenantId, channelType, msg.channelAccountId);
+            if (accessToken) {
+                await this.channelGateway.sendTypingIndicator(
+                    channelType as any, msg.channelAccountId, msg.contactId, accessToken,
+                );
+            }
+        } catch { /* non-blocking */ }
     }
 
     /** The reply to this question also offers a person: the classifier's `policy_howto`, or the rules when it never ran. */

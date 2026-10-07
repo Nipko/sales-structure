@@ -411,3 +411,77 @@ describe('the turn context and the typing hint', () => {
         expect(service.needsPolicyClassification('¿Aceptan devoluciones?', config, 'tenant-1')).toBe(false);
     });
 });
+
+describe('a defect word or a named discount is not, by itself, a reported case', () => {
+    // The model decides these: policy_info clears them, personal_case escalates them.
+    const modelDecides: Array<[string, string]> = [
+        ['¿Cuál es la política de devoluciones para productos defectuosos?', 'complaint'],
+        ['¿Aceptan devoluciones de productos dañados?', 'complaint'],
+        ['¿Cómo es el reembolso de un producto defectuoso?', 'complaint'],
+        ['¿Las devoluciones por producto roto tienen costo?', 'complaint'],
+        ['What is your refund policy for damaged items?', 'complaint'],
+        ['Qual é a política de devolução para produtos com defeito?', 'complaint'],
+        ['Quelle est la politique de remboursement pour les produits défectueux ?', 'complaint'],
+        ['¿Qué pasa cuando llega dañado? ¿hay devolución?', 'complaint'],
+        ['What if the item arrives damaged, can I get a refund?', 'complaint'],
+        ['¿Se puede devolver un producto que está dañado?', 'complaint'],
+        ['Los pedidos llegan dañados a veces, ¿hay devolución?', 'complaint'],
+        ['¿Qué hago cuando llegó dañado el pedido? ¿hay devolución?', 'complaint'],
+        ['O desconto de Black Friday já chegou?', 'discount_request'],
+        ['Can I get the student discount?', 'discount_request'],
+        ['¿Se puede combinar el descuento de estudiante con otras promociones?', 'discount_request'],
+        ['¿Cómo consigo el descuento del 10% que anuncian?', 'discount_request'],
+    ];
+
+    it.each(modelDecides)('%s: cleared by policy_info', async (message) => {
+        const execute = jest.fn().mockResolvedValue(answer('policy_info'));
+        const { decide } = harness(execute);
+        expect(await decide(message)).toBeNull();
+        expect(execute).toHaveBeenCalledTimes(1);
+    });
+
+    it.each(modelDecides)('%s: escalated by personal_case (%s)', async (message, reason) => {
+        const execute = jest.fn().mockResolvedValue(answer('personal_case'));
+        const { decide } = harness(execute);
+        expect(await decide(message)).toBe(reason);
+        expect(execute).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+        ['Mi audífono está dañado, ¿hacen devoluciones?', 'complaint'],
+        ['El audífono llegó roto, ¿hay reembolso?', 'complaint'],
+        ['Se me rompió, ¿hay devolución?', 'complaint'],
+        ['Mi audífono dañado, ¿hacen devoluciones?', 'complaint'],
+        ['Sé que llegó roto, ¿hay reembolso?', 'complaint'],
+        ['El audífono está dañado, ¿hay devolución?', 'complaint'],
+        ['El pedido llegó tarde, ¿puedo pedir un reembolso?', 'complaint'],
+        ['mi pedido dañado, ¿aceptan devoluciones?', 'complaint'],
+        ['El producto chegou quebrado, tem reembolso?', 'complaint'],
+        ['¿Se puede hacer un descuento?', 'discount_request'],
+        ['Can I get a discount?', 'discount_request'],
+        ['¿Es posible conseguir un descuento?', 'discount_request'],
+        ['¿Cuánto descuento me dan?', 'discount_request'],
+        ['¿Qué descuento me dan?', 'discount_request'],
+        ['¿Puedo pedir un reembolso o un descuento?', 'discount_request'],
+    ])('%s escalates whatever the model says, without asking it (%s)', async (message, reason) => {
+        const execute = jest.fn().mockResolvedValue(answer('policy_info'));
+        const { decide } = harness(execute);
+        expect(await decide(message)).toBe(reason);
+        expect(execute).not.toHaveBeenCalled();
+    });
+
+    it('a personal_case label whose only topic is a discount is a discount request', () => {
+        const enabled = () => true;
+        expect(reasonForPolicyLabel('personal_case', { refund: false, discount: true, customTrigger: null }, enabled)).toBe('discount_request');
+        expect(reasonForPolicyLabel('personal_case', { refund: true, discount: true, customTrigger: null }, enabled)).toBe('complaint');
+        expect(reasonForPolicyLabel('personal_case', { refund: true, discount: false, customTrigger: null }, enabled)).toBe('complaint');
+        expect(reasonForPolicyLabel('complaint', { refund: false, discount: true, customTrigger: null }, enabled)).toBe('complaint');
+        expect(reasonForPolicyLabel('personal_case', { refund: false, discount: true, customTrigger: null }, (c) => c !== 'discount_request')).toBeNull();
+    });
+
+    it('the prompt tells the model that a defect word naming a kind of product is policy_info', () => {
+        const { systemPrompt } = buildPolicyClassifierRequest('x');
+        expect(systemPrompt).toContain('productos defectuosos');
+        expect(systemPrompt).toContain('named discount');
+    });
+});

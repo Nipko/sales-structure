@@ -118,6 +118,8 @@ const PERSONAL_REQUEST = /\b(?:me (?:lo |la |los |las )?(?:hace|hacen|haces|da|d
  */
 /** "No me gustó / no sirve": a soft signal. As a fact it is a personal case; inside "si…" it is a condition. */
 const SOFT_DISLIKE_TERM = 'no (?:me )?(?:sirve|sirvio|sirven|gusto|gustaron|convencio)';
+/** A bare defect adjective may only name a kind of product ("com defeito", "produits défectueux"): the model decides. */
+const SOFT_DEFECT_ADJECTIVE_TERMS = ['defeito', 'defectueu(?:x|se|ses)'];
 
 const PERSONAL_CASE_TERMS = [
     // "why isn't it done yet": a delay is a complaint
@@ -166,7 +168,9 @@ const PERSONAL_CASE_TERMS = [
 const PERSONAL_CASE = new RegExp(`\\b(?:${PERSONAL_CASE_TERMS.join('|')})`);
 
 const ARRIVES = '(?:llego|llega|llegan|llegaron|llegue|viene|vino|chegou|chega|chegue|vem|veio|arrive|arrives|arrived|comes|came|est arrive)';
-const DEFECT_WORD = '(?:danad[oa]s?|roto|rota|rotos|rotas|defectuos[oa]s?|mal|danificad[oa]s?|quebrad[oa]s?|endommage\\w*|damaged|broken|defective|faulty|casse\\w*)';
+const DEFECT_WORD = '(?:danad[oa]s?|roto|rota|rotos|rotas|defectuos[oa]s?|mal|danificad[oa]s?|quebrad[oa]s?|defeituos[oa]s?|defeito|defectueu\\w*|endommage\\w*|damaged|broken|defective|faulty|casse\\w*)';
+/** The same adjectives without the arrival-only "mal" (llegó mal), for "está roto". */
+const DEFECT_ADJECTIVE = '(?:danad[oa]s?|roto|rota|rotos|rotas|defectuos[oa]s?|danificad[oa]s?|quebrad[oa]s?|defeituos[oa]s?|defectueu\\w*|endommage\\w*|damaged|broken|defective|faulty|casse\\w*)';
 const DEFECT_TAIL = `\\s+(?:\\w+\\s+){0,2}?${DEFECT_WORD}\\b`;
 /** "si el producto llegó roto": a conditional about the arrival, not a report. */
 const CONDITIONAL_FREE = new RegExp(
@@ -331,14 +335,28 @@ export function isActionOrientedRefundQuestion(raw: unknown): boolean {
 // ---------------------------------------------------------------------------
 
 /** Everything in the personal-case list except the soft "no me gustó / no sirve". */
-const PERSONAL_CASE_HARD = new RegExp(`\\b(?:${PERSONAL_CASE_TERMS.filter((t) => t !== SOFT_DISLIKE_TERM).join('|')})`);
+const PERSONAL_CASE_HARD = new RegExp(`\\b(?:${PERSONAL_CASE_TERMS.filter((t) => t !== SOFT_DISLIKE_TERM && !SOFT_DEFECT_ADJECTIVE_TERMS.includes(t)).join('|')})`);
 
 const SOFT_DEFECT_RE = /\b(?:no funciona|nao funciona|ne fonctionne pas)\b/g;
 const DISLIKE_RE = new RegExp(`\\b${SOFT_DISLIKE_TERM}\\b`, 'g');
-const DEFECT_RE = new RegExp(GRIEVANCE_DEFECT.source, 'g');
+/**
+ * A defect counts as REPORTED only in a report shape: an arrival verb and the defect
+ * ("llegó roto", "chegou quebrado"), "está / quedó / salió roto", or the customer's own
+ * thing ("mi audífono dañado"). A bare adjective ("productos defectuosos", "damaged
+ * items", "com defeito") and a bare "chegou" ("¿ya llegó el descuento?") name a kind of
+ * product or something else: the model decides those.
+ */
+/** Past arrival only: a present "llega roto" is how a policy is written ("si llega roto"), not a report. */
+const ARRIVED_PAST = '(?:llego|llegaron|vino|vinieron|chegou|chegaram|veio|vieram|arrived|came|est arrive|sont arrives)';
+const DEFECT_REPORT_SHAPES = [
+    new RegExp(`\\b${ARRIVED_PAST}${DEFECT_TAIL}`, 'g'),
+    /\b(?:llego|llegaron|chegou|chegaram|arrived)\s+(?:muy\s+|muito\s+|very\s+)?(?:tarde|atrasad[oa]s?|late)\b/g,
+    new RegExp(`\\b(?<!que\\s)(?:esta|estan|estaba|estaban|quedo|quedaron|salio|salieron)\\s+(?:\\w+\\s+){0,1}?${DEFECT_ADJECTIVE}\\b`, 'g'),
+    new RegExp(`\\b(?:mi|mis|my|meu|meus|minha|minhas|mon|ma|mes)\\s+(?:\\w+\\s+){1,2}?${DEFECT_ADJECTIVE}\\b`, 'g'),
+];
 
 /** A conditional marker inside the clause: "si no funciona", "if it breaks", "se chegou quebrado". */
-const CONDITIONAL_MARK = /(?:^|\s)(?:si|if|se|caso|quand|cuando|et si|e se|what if)(?:\s|$)/;
+const CONDITIONAL_MARK = /(?:^|\s)(?:si|if|se (?:o|a|os|as|um|uma|meu|minha|eu|ele|ela|chegou)|caso|quand|quando|cuando|when|whenever|in case|por si|et si|e se|what if|should|cada vez que|siempre que)(?:\s|$)/;
 
 function clauseBefore(ctext: string, index: number): string {
     const head = ctext.slice(0, index);
@@ -371,7 +389,12 @@ const PERSONAL_REQUEST_HIGH = /\b(?:me (?:lo |la |los |las )?(?:hace|hacen|haces
 /** A favour asked about a price: diminutives, "hay posibilidad de descuento", "se puede un descuento". */
 const NEGOTIATION_SIGNAL = new RegExp(
     '\\b(?:descuent(?:ito|ico|azo)|rebajit[ao]|desconto(?:zinho|zito)|(?:posibilidad|chance|possibilidade|possibilite|possibility) (?:de|d|of) (?:un |uma? )?(?:descuento|desconto|rebaja|remise|discount)|'
-    + '(?:se puede|es posible|puedo (?:pedir|solicitar|obtener)|como (?:pido|solicito|consigo)|e possivel|posso (?:pedir|solicitar)|est[ -]il possible|puis[ -]je (?:demander|obtenir)|is it possible|can i (?:get|ask for|have)|hay (?:alguna )?(?:posibilidad|chance))\\b[^?.!]*\\b(?:descuent\\w*|rebaj\\w*|descont\\w*|remise\\w*|discount\\w*))',
+    + '(?:se puede|es posible|puedo (?:pedir|solicitar|obtener)|como (?:pido|solicito|consigo)|e possivel|posso (?:pedir|solicitar)|est[ -]il possible|puis[ -]je (?:demander|obtenir)|is it possible|can i (?:get|ask for|have)|hay (?:alguna )?(?:posibilidad|chance))\\b'
+    // only an indefinite noun phrase, or nothing, may stand between the frame and the discount:
+    // "se puede hacer un descuento" asks for one; "can I get THE student discount" names an existing one
+    + '(?:\\s+(?:hacer|hacerme|dar|darme|conseguir|obtener|pedir|solicitar|tener|to|get|have|ask|for|make|give|fazer|ter|faire|avoir|obtenir|demander|de|un|una|algun|alguna|algunos|a|an|any|some|um|uma|algum|alguma|des|reembolso|devolucion|refund|remboursement|y|o|e|ou|and|or|et))*'
+    + '\\s+(?:descuent\\w*|rebaj\\w*|descont\\w*|remise\\w*|discount\\w*)'
+    + '|(?:cuanto|cuanta|que) (?:descuent\\w*|rebaj\\w*|descont\\w*) me (?:da|dan|das)|quanto (?:de )?desconto me dao)',
 );
 const REFUND_NOW = /\b(?:devolucion|devolucao|reembolso|remboursement)s? (?:ya|ahora|hoy|ja|agora|maintenant|now|urgente)\b|\b(?:que|para que) me (?:devuelv\w+|reembols\w+|devolv\w+|rembours\w+)\b/;
 
@@ -389,6 +412,7 @@ export function policyOverrideLabel(raw: unknown, topics: { refund: boolean; dis
     if (NEGOTIATION_SIGNAL.test(text)) return 'negotiation';
     if (FOR_ME_AT_CLAUSE_END.test(String(raw ?? '')) || PERSONAL_REQUEST_HIGH.test(text)) return forOneself;
     if (PERSONAL_CASE_HARD.test(text) || REFUND_NOW.test(text)) return 'personal_case';
-    if (reportedAsFact(raw, DEFECT_RE) || reportedAsFact(raw, SOFT_DEFECT_RE) || reportedAsFact(raw, DISLIKE_RE)) return 'personal_case';
+    if (DEFECT_REPORT_SHAPES.some((shape) => reportedAsFact(raw, shape))
+        || reportedAsFact(raw, SOFT_DEFECT_RE) || reportedAsFact(raw, DISLIKE_RE)) return 'personal_case';
     return null;
 }

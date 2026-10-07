@@ -11,7 +11,7 @@ import { hasDispatchOutbox, noHumanReplySql } from './handoff-human-reply';
  */
 describe('unattended handoff return (service behavior)', () => {
     const tenant = { id: 't1', schemaName: 'tenant_t1' };
-    function harness(opts: { updated?: any[]; outbox?: boolean; assignments?: boolean } = {}) {
+    function harness(opts: { updated?: any[]; outbox?: boolean; assignments?: boolean; pending?: any[] } = {}) {
         const calls: Array<{ sql: string; params: any[] }> = [];
         const prisma: any = {
             tenant: { findMany: jest.fn().mockResolvedValue([tenant]) },
@@ -23,6 +23,7 @@ describe('unattended handoff return (service behavior)', () => {
                     if (wants.endsWith('conversation_assignments')) return opts.assignments === false ? [{ t: null }] : [{ t: 'conversation_assignments' }];
                 }
                 if (sql.startsWith('UPDATE conversations c')) return opts.updated ?? [{ id: 'c1' }];
+                if (sql.startsWith('SELECT c.id FROM conversations c')) return opts.pending ?? [];
                 return [];
             }),
         };
@@ -64,7 +65,7 @@ describe('unattended handoff return (service behavior)', () => {
         const h = harness({ updated: [{ id: 'c1' }, { id: 'c2' }] });
         await h.service.returnUnattendedHandoffs();
         expect(h.events.emit).toHaveBeenCalledTimes(2);
-        expect(h.events.emit).toHaveBeenCalledWith('handoff.returned_unattended', { tenantId: 't1', conversationId: 'c2' });
+        expect(h.events.emit).toHaveBeenCalledWith('handoff.returned_unattended', { tenantId: 't1', schemaName: 'tenant_t1', conversationId: 'c2' });
         expect(h.redis.del).toHaveBeenCalledWith('handoff:t1:c1');
         const closes = h.calls.filter(c => c.sql.includes('UPDATE conversation_assignments'));
         expect(closes.map(c => c.params[0])).toEqual(['c1', 'c2']);
@@ -115,5 +116,100 @@ describe('human-reply evidence', () => {
         expect(await hasDispatchOutbox(async () => [{ t: null }], 'tenant_x')).toBe(false);
         expect(await hasDispatchOutbox(async () => [{ t: 'agent_dispatch_outbox' }], 'tenant_x')).toBe(true);
         expect(await hasDispatchOutbox(async () => { throw new Error('boom'); }, 'tenant_x')).toBe(false);
+    });
+});
+
+/**
+ * The event of the sweep is emitted once, in one process. The catch-up asks for
+ * the replay of the customer's waiting message again when it never happened.
+ */
+describe('unattended handoff return: catch-up of the waiting message', () => {
+    const tenant = { id: 't1', schemaName: 'tenant_t1' };
+    function build(pending: any[], updated: any[] = []) {
+        const calls: Array<{ sql: string; params: any[] }> = [];
+        const prisma: any = {
+            tenant: { findMany: jest.fn().mockResolvedValue([tenant]) },
+            executeInTenantSchema: jest.fn(async (_s: string, sql: string, params: any[]) => {
+                calls.push({ sql, params });
+                if (sql.includes('to_regclass')) return [{ t: 'x' }];
+                if (sql.startsWith('UPDATE conversations c')) return updated;
+                if (sql.startsWith('SELECT c.id FROM conversations c')) return pending;
+                return [];
+            }),
+        };
+        const events = { emit: jest.fn() };
+        const service = new HandoffService(prisma, { del: jest.fn().mockResolvedValue(undefined) } as any, events as any, {} as any, {} as any, {} as any, {} as any,
+            { runExclusive: jest.fn() } as any);
+        return { service, events, calls };
+    }
+
+    it('asks again for a returned conversation whose replay never happened, even when the sweep returned nothing', async () => {
+        const h = build([{ id: 'c9' }]);
+        await h.service.returnUnattendedHandoffs();
+        expect(h.events.emit).toHaveBeenCalledWith('handoff.returned_unattended', { tenantId: 't1', schemaName: 'tenant_t1', conversationId: 'c9' });
+    });
+
+    it('does not announce twice the conversation this very sweep just returned', async () => {
+        const h = build([{ id: 'c1' }, { id: 'c9' }], [{ id: 'c1' }]);
+        await h.service.returnUnattendedHandoffs();
+        const ids = h.events.emit.mock.calls.map(c => (c[1] as any).conversationId);
+        expect(ids).toEqual(['c1', 'c9']);
+    });
+
+    it('selects only a bounded set: active, notice pending, replay unclaimed, under the claim cap, last day, nobody human answered', async () => {
+        const h = build([]);
+        await h.service.returnUnattendedHandoffs();
+        const sql = h.calls.find(c => c.sql.startsWith('SELECT c.id FROM conversations c'))!.sql;
+        expect(sql).toContain("c.status = 'active'");
+        expect(sql).toContain("'returnNoticePending' = 'true'");
+        expect(sql).toContain("'returnReplayFor'");
+        expect(sql).toContain("'returnReplayClaims'");
+        expect(sql).toContain("interval '24 hours'");
+        expect(sql).toContain('LIMIT 50');
+        expect(sql).toContain("o.operational_scope->>'kind' = 'human_operator'");
+    });
+
+    it('an unreadable catch-up never breaks the sweep', async () => {
+        const h = build([]);
+        (h.service as any).prisma.executeInTenantSchema.mockImplementation(async (_s: string, sql: string) => {
+            if (sql.startsWith('SELECT c.id FROM conversations c')) throw new Error('boom');
+            if (sql.includes('to_regclass')) return [{ t: 'x' }];
+            return [];
+        });
+        await expect(h.service.returnUnattendedHandoffs()).resolves.toBeUndefined();
+        expect(h.events.emit).not.toHaveBeenCalled();
+    });
+});
+
+describe('the catch-up is cheap: one sweep in five, and no new index', () => {
+    const catchUpSelects = (calls: Array<{ sql: string }>) => calls.filter(c => c.sql.startsWith('SELECT c.id FROM conversations c')).length;
+    function service() {
+        const calls: Array<{ sql: string }> = [];
+        const prisma: any = {
+            tenant: { findMany: jest.fn().mockResolvedValue([{ id: 't1', schemaName: 'tenant_t1' }]) },
+            executeInTenantSchema: jest.fn(async (_s: string, sql: string) => {
+                calls.push({ sql });
+                return sql.includes('to_regclass') ? [{ t: 'x' }] : [];
+            }),
+        };
+        return { calls, svc: new HandoffService(prisma, { del: jest.fn() } as any, { emit: jest.fn() } as any, {} as any, {} as any, {} as any, {} as any, { runExclusive: jest.fn() } as any) };
+    }
+
+    it('asks on the first sweep and then on every fifth, not every minute', async () => {
+        const { calls, svc } = service();
+        const asked: number[] = [];
+        for (let sweep = 1; sweep <= 11; sweep++) {
+            const before = catchUpSelects(calls);
+            await svc.returnUnattendedHandoffs();
+            if (catchUpSelects(calls) > before) asked.push(sweep);
+        }
+        expect(asked).toEqual([1, 6, 11]);
+    });
+
+    it('the schema gets no index for it (a build would lock the largest table on every deploy)', () => {
+        const { readFileSync } = jest.requireActual('fs');
+        const { resolve } = jest.requireActual('path');
+        const schemaSql = readFileSync(resolve(__dirname, '../../../prisma/tenant-schema.sql'), 'utf8');
+        expect(schemaSql).not.toContain('returnNoticePending');
     });
 });

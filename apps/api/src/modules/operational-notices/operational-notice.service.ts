@@ -23,6 +23,7 @@ import { escapeReceiptHtml, receiptMoney } from '../email-templates/receipt-form
 import { agentAvailI18n } from '../agent-console/agent-availability-i18n';
 import { SlackService } from '../slack/slack.service';
 import { RegionalProfileService } from '../tenants/regional-profile.service';
+import { hasDispatchOutbox, noHumanReplySql } from '../handoff/handoff-human-reply';
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 
@@ -352,11 +353,28 @@ export class OperationalNoticeService {
                 FROM conversations c LEFT JOIN contacts ct ON ct.id=c.contact_id
                 WHERE c.id=$1::uuid FOR SHARE OF c`,[notice.entity_id]))[0];
             const startedAt=facts?.metadata?.handoff?.startedAt;
-            if (!facts || !['waiting_human','with_human'].includes(facts.status)
-                || String(facts.metadata?.handoff?.escalated)!=='true' || !startedAt) throw new NoticeSuppressed('notice_domain_state_changed');
-            const answered=await query<any[]>(`SELECT id FROM messages WHERE conversation_id=$1::uuid AND direction='outbound'
-                AND metadata->>'source'='agent' AND created_at>$2::timestamptz LIMIT 1`,[facts.id,startedAt]);
-            if (answered.length) throw new NoticeSuppressed('notice_domain_state_changed');
+            // The notice of an unattended handoff that came BACK to the agent (revision
+            // `<startedAt>:returned`, enqueued by the replay turn when the customer had asked for a
+            // person or complained). By then the conversation is active again, so the waiting-in-queue
+            // state the first notice needs is exactly what it no longer has: what it needs instead is
+            // the return of THIS handoff, and nobody from the team having answered.
+            const returned=!!startedAt && String(notice.event_key||'').endsWith(`:${startedAt}:returned`);
+            if (returned) {
+                const handoff=facts.metadata.handoff;
+                if (facts.status!=='active' || !(handoff.returnedToAi===true || handoff.returnedToAi==='true'))
+                    throw new NoticeSuppressed('notice_domain_state_changed');
+                const run=(sql:string,params:any[])=>query(sql,params);
+                const hasOutbox=await hasDispatchOutbox(run,schema);
+                const answered=await query<any[]>(`SELECT 1 FROM conversations c WHERE c.id=$1::uuid
+                    AND NOT (TRUE ${noHumanReplySql('c',hasOutbox)}) LIMIT 1`,[facts.id]);
+                if (answered.length) throw new NoticeSuppressed('notice_domain_state_changed');
+            } else {
+                if (!facts || !['waiting_human','with_human'].includes(facts.status)
+                    || String(facts.metadata?.handoff?.escalated)!=='true' || !startedAt) throw new NoticeSuppressed('notice_domain_state_changed');
+                const answered=await query<any[]>(`SELECT id FROM messages WHERE conversation_id=$1::uuid AND direction='outbound'
+                    AND metadata->>'source'='agent' AND created_at>$2::timestamptz LIMIT 1`,[facts.id,startedAt]);
+                if (answered.length) throw new NoticeSuppressed('notice_domain_state_changed');
+            }
         } else {
             throw new NoticeSuppressed('notice_kind_unsupported');
         }

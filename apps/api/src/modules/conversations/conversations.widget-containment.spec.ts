@@ -509,4 +509,75 @@ describe('ConversationsService widget containment', () => {
             await new Promise(resolve => setImmediate(resolve));
         });
     });
+    describe('the replay of what the visitor wrote while nobody answered (unattended handoff return)', () => {
+        const T = '10000000-0000-4000-8000-000000000001';
+        const C = '20000000-0000-4000-8000-000000000002';
+        const K = '30000000-0000-4000-8000-000000000003';
+        const I = '40000000-0000-4000-8000-000000000004';
+        const returnedHandoff = { startedAt: '2026-10-05T20:00:00Z', returnedToAi: true, returnNoticePending: true,
+            returnReplayFor: '2026-10-05T20:00:00Z', returnReplayClaimedAt: '2026-10-05T20:10:00Z' };
+        function replayService(opts: { stale?: boolean; reason?: string | null } = {}) {
+            const made = makeService();
+            const { prisma, service } = made;
+            const original = prisma.executeInTenantSchema;
+            const claimed: string[] = [];
+            (prisma as any).executeInTenantSchema = jest.fn(async (schema: string, sql: string, params: any[]) => {
+                if (sql.includes('SELECT * FROM conversations')) {
+                    return [{ id: C, contact_id: K, channel_account_id: 'widget', status: 'active', updated_at: new Date(),
+                        metadata: { handoff: returnedHandoff } }];
+                }
+                if (sql.includes("returnReplayClaimedAt")) {
+                    return [{ pending: 'true', newer_inbound: false, answered_since: opts.stale === true }];
+                }
+                if (sql.includes("'{handoff,returnNoticePending}'")) { claimed.push(sql); return [{ id: C }]; }
+                return original(schema, sql, params);
+            });
+            (service as any).handoffService.shouldHandoff = jest.fn().mockReturnValue(opts.reason ?? 'human_request');
+            return { ...made, claimed };
+        }
+        const replay = (service: any, text = 'I need to speak to an advisor', extra: Record<string, unknown> = {}) =>
+            service.processWidgetMessage(T, 'tenant_1', C, K, text,
+                { inboundMessageId: I, handoffReturnReplay: true, allowHumanHandoff: false, ...extra });
+
+        it('answers it with the return notice first, and never transfers again for the words it asked with', async () => {
+            const { service, claimed } = replayService();
+            const text = await collect(replay(service));
+            expect(text).toBe('Nobody from the team is available right now; I will keep helping you.\n\nsafe reply');
+            expect(claimed).toHaveLength(1);
+            expect((service as any).handoffService.executeHandoffOnce).not.toHaveBeenCalled();
+            const msg = (service as any).generateResponse.mock.calls[0][2];
+            expect(msg.handoffReturn).toEqual({ ask: 'person', noteLeft: false });
+        });
+
+        it('sends nothing when somebody answered since the claim', async () => {
+            const { service } = replayService({ stale: true });
+            expect(await collect(replay(service))).toBe('');
+            expect((service as any).generateResponse).not.toHaveBeenCalled();
+        });
+
+        it('does not run on a request that merely claims to be a replay (no claim on the conversation)', async () => {
+            const { service, prisma } = replayService();
+            const inner = (prisma as any).executeInTenantSchema;
+            (prisma as any).executeInTenantSchema = jest.fn(async (s: string, sql: string, p: any[]) => sql.includes('SELECT * FROM conversations')
+                ? [{ id: C, contact_id: K, channel_account_id: 'widget', status: 'active', updated_at: new Date(), metadata: { handoff: { startedAt: 'x', returnedToAi: true } } }]
+                : inner(s, sql, p));
+            await collect(replay(service, 'I need to speak to an advisor', { allowHumanHandoff: true }));
+            expect((service as any).handoffService.executeHandoffOnce).toHaveBeenCalled();
+        });
+
+        it('a bare yes is not consent to what was proposed before the wait: it asks again, without running the model', async () => {
+            const { service } = replayService({ reason: null });
+            const text = await collect(replay(service, 'yes'));
+            expect((service as any).generateResponse).not.toHaveBeenCalled();
+            expect(text).toContain('Nobody from the team is available right now');
+            expect(text).toContain('could you tell me again what you need');
+        });
+
+        it('an ordinary message of the visitor after the return still hands off normally (a new episode)', async () => {
+            const { service } = replayService();
+            await collect(service.processWidgetMessage(T, 'tenant_1', C, K, 'I need to speak to an advisor',
+                { inboundMessageId: '40000000-0000-4000-8000-000000000009', allowHumanHandoff: true }));
+            expect((service as any).handoffService.executeHandoffOnce).toHaveBeenCalledTimes(1);
+        });
+    });
 });

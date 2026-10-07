@@ -111,3 +111,36 @@ describe('InboundQueueService.enqueue', () => {
         expect(queue.add).toHaveBeenCalledTimes(1);
     });
 });
+
+/**
+ * The handoff return replay re-processes a stored message the queue already
+ * completed. Its job needs its own id (BullMQ would otherwise drop it as the
+ * first one), and still a deterministic one (so a repeat of the replay is
+ * dropped).
+ */
+describe('InboundQueueService.enqueue jobIdSuffix', () => {
+    const msg: any = {
+        id: 'm', tenantId: 'tenant-1', contactId: '1', channelType: 'telegram', channelAccountId: 'bot',
+        conversationId: '', direction: 'inbound', content: { type: 'text', text: 'hola' }, metadata: { updateId: 7 },
+    };
+    const make = () => {
+        const queue = { add: jest.fn().mockResolvedValue(undefined) };
+        return { queue, service: new InboundQueueService(queue as any, { getPriority: jest.fn().mockResolvedValue(5) } as any) };
+    };
+
+    it('the normal job id is unchanged', async () => {
+        const { queue, service } = make();
+        await service.enqueue(msg);
+        expect(queue.add.mock.calls[0][2].jobId).toBe('in-tenant-1-telegram-bot-tgu7');
+    });
+
+    it('a replay gets a distinct, deterministic, BullMQ-safe id', async () => {
+        const { queue, service } = make();
+        await service.enqueue(msg, { jobIdSuffix: 'handoff-return-1759696380000' });
+        await service.enqueue(msg, { jobIdSuffix: 'handoff-return-1759696380000' });
+        const [a, b] = queue.add.mock.calls.map(c => c[2].jobId);
+        expect(a).toBe('in-tenant-1-telegram-bot-tgu7-handoff-return-1759696380000');
+        expect(b).toBe(a);
+        expect(a).not.toContain(':');
+    });
+});

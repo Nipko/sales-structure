@@ -9,7 +9,12 @@ import { EmailTemplatesService } from '../email-templates/email-templates.servic
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { AiResolutionService } from '../analytics/ai-resolution.service';
 import { normalizeCustomerIntent } from '../../common/conversation/intent-normalizer';
+import { isPolicyQuestion, POLICY_TOPIC_KEYWORDS } from './handoff-policy-question';
 import { hasDispatchOutbox, noHumanReplySql } from './handoff-human-reply';
+import { MAX_REPLAY_CLAIMS } from './handoff-return-replay.service';
+
+/** The catch-up for lost replays runs on one sweep in this many (the sweep itself runs every minute). */
+export const REPLAY_CATCH_UP_EVERY_SWEEPS = 5;
 import {
     normalizeForIntent,
     ConversationAssignedEvent,
@@ -199,12 +204,23 @@ export class HandoffService {
             'queja', 'reclamo', 'reclamacion', 'molesto', 'furioso', 'inaceptable',
             'devolucion', 'reembolso', 'pesimo', 'horrible', 'terrible',
             'no funciona', 'estafa', 'demanda', 'abogado',
+            // A person asking to send something back, or reporting it broke on arrival.
+            'quiero devolver', 'quisiera devolver', 'necesito devolver', 'llego danado', 'llego roto',
             // Portuguese
             'reclamacao', 'reembolso', 'pessimo', 'golpe', 'nao funciona', 'advogado',
+            'quero devolver', 'chegou danificado', 'chegou quebrado',
             // French
             'plainte', 'remboursement', 'inacceptable', 'ne fonctionne pas', 'avocat',
+            'je veux retourner', 'est arrive endommage',
         ];
-        if (enabled('complaint') && complaintKeywords.some(kw => text.includes(kw))) {
+        // A question ABOUT the refund/return policy is informational: the agent
+        // answers it. Only the policy-topic words are neutralised; any other
+        // complaint word in the same message still escalates.
+        const policyQuestion = isPolicyQuestion(message);
+        const escalates = (keywords: string[]) => keywords
+            .filter(kw => text.includes(kw))
+            .some(kw => !(policyQuestion && POLICY_TOPIC_KEYWORDS.has(kw)));
+        if (enabled('complaint') && escalates(complaintKeywords)) {
             return 'complaint';
         }
 
@@ -216,7 +232,7 @@ export class HandoffService {
             // Portuguese / French
             'desconto', 'mais barato', 'melhor preco', 'remise', 'moins cher',
         ];
-        if (enabled('discount_request') && discountKeywords.some(kw => text.includes(kw))) {
+        if (enabled('discount_request') && escalates(discountKeywords)) {
             return 'discount_request';
         }
 
@@ -768,7 +784,16 @@ export class HandoffService {
         );
     }
 
+    /**
+     * How often the sweep also re-asks for waiting-message replays that never happened. It is only a
+     * safety net for a lost event, and its query walks the tenant's active conversations (there is
+     * no index on the handoff flags, and a new one would take a lock on the largest table at every
+     * deploy), so it runs on one sweep in five instead of every minute.
+     */
+    private sweepsSeen = 0;
+
     async returnUnattendedHandoffs(): Promise<void> {
+        const catchUp = ((this.sweepsSeen = (this.sweepsSeen ?? 0) + 1) - 1) % REPLAY_CATCH_UP_EVERY_SWEEPS === 0;
         try {
             const tenants = await this.prisma.tenant.findMany({
                 where: { isActive: true },
@@ -776,7 +801,7 @@ export class HandoffService {
             });
             for (const tenant of tenants) {
                 try {
-                    await this.returnUnattendedHandoffsForTenant(tenant.id, tenant.schemaName);
+                    await this.returnUnattendedHandoffsForTenant(tenant.id, tenant.schemaName, catchUp);
                 } catch (e: any) {
                     this.logger.warn(`[Handoff] Unattended sweep failed for ${tenant.id}: ${e.message}`);
                 }
@@ -786,7 +811,7 @@ export class HandoffService {
         }
     }
 
-    private async returnUnattendedHandoffsForTenant(tenantId: string, schemaName: string): Promise<void> {
+    private async returnUnattendedHandoffsForTenant(tenantId: string, schemaName: string, catchUp = true): Promise<void> {
         const run = (sql: string, params: any[]) => this.prisma.executeInTenantSchema<any[]>(schemaName, sql, params);
         const hasOutbox = await hasDispatchOutbox(run, schemaName);
         // The same conditions pick the rows AND guard the UPDATE: between the two a
@@ -822,7 +847,10 @@ export class HandoffService {
         );
         // Only the rows this statement really changed are announced: a conversation a
         // person answered in the meantime comes back empty and is left alone.
-        if (!returned?.length) return;
+        if (!returned?.length) {
+            if (catchUp) await this.reemitPendingReplays(tenantId, schemaName, run, hasOutbox, []);
+            return;
+        }
 
         const hasAssignments = !!(await run('SELECT to_regclass($1)::text AS t',
             [`${schemaName}.conversation_assignments`]).catch(() => []))?.[0]?.t;
@@ -835,9 +863,47 @@ export class HandoffService {
                 ).catch(e => this.logger.warn(`[Handoff] Could not close the assignment of ${row.id}: ${e.message}`));
             }
             await this.redis.del(`handoff:${tenantId}:${row.id}`).catch(() => {});
-            this.eventEmitter.emit('handoff.returned_unattended', { tenantId, conversationId: row.id });
+            this.eventEmitter.emit('handoff.returned_unattended', { tenantId, schemaName, conversationId: row.id });
         }
         this.logger.warn(`[Handoff] Returned ${returned.length} unattended conversation(s) to the AI in tenant ${tenantId}`);
+        if (catchUp) await this.reemitPendingReplays(tenantId, schemaName, run, hasOutbox, returned.map((r: any) => String(r.id)));
+    }
+
+    /**
+     * The catch-up for the customer's waiting message. The event above is emitted
+     * once, in this process: a crash between the UPDATE and the listener, or an
+     * enqueue that failed and gave its claim back, would leave a returned
+     * conversation whose waiting message is never answered (the sweep itself no
+     * longer selects it). This asks for the replay again, for conversations
+     * returned in the last day whose replay was never claimed. The claim in the
+     * listener makes asking twice harmless, and `MAX_REPLAY_CLAIMS` stops a
+     * failure that never heals.
+     */
+    private async reemitPendingReplays(
+        tenantId: string, schemaName: string,
+        run: (sql: string, params: any[]) => Promise<any[]>, hasOutbox: boolean, alreadyEmitted: string[],
+    ): Promise<void> {
+        let pending: any[] = [];
+        try {
+            pending = await run(
+                `SELECT c.id FROM conversations c
+                  WHERE c.status = 'active'
+                    AND c.metadata->'handoff'->>'returnedToAi' = 'true'
+                    AND c.metadata->'handoff'->>'returnNoticePending' = 'true'
+                    AND c.metadata->'handoff'->>'startedAt' IS NOT NULL
+                    AND COALESCE(c.metadata->'handoff'->>'returnReplayFor', '') <> c.metadata->'handoff'->>'startedAt'
+                    AND COALESCE((c.metadata->'handoff'->>'returnReplayClaims')::int, 0) < ${MAX_REPLAY_CLAIMS}
+                    AND c.updated_at > NOW() - interval '24 hours'
+                    ${noHumanReplySql('c', hasOutbox)}
+                  ORDER BY c.updated_at DESC LIMIT 50`, []) || [];
+        } catch (e: any) {
+            this.logger.warn(`[Handoff] Replay catch-up could not be read for ${tenantId}: ${e.message}`);
+            return;
+        }
+        for (const row of pending) {
+            if (alreadyEmitted.includes(String(row.id))) continue;
+            this.eventEmitter.emit('handoff.returned_unattended', { tenantId, schemaName, conversationId: row.id });
+        }
     }
 
     /**

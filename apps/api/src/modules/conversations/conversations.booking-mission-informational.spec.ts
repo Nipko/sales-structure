@@ -83,8 +83,8 @@ describe('a booking mission left untouched is offered back instead of continuing
         expect((lastModelCall(h.f).tools || []).length).toBeGreaterThan(0);
         expect(h.session().metadata.bookingState).toMatchObject({ resumeOffer: 'pending', serviceId: SERVICES[0].id });
 
-        const back = await h.turn('sigo por aquí');
-        expect(back.debug.turnContext.directive).toContain('sin terminar');
+        const back = await h.turn('quiero retomar mi cita');
+        expect(back.debug.turnContext.directive).toContain('a medio agendar');
         expect(h.session().metadata.bookingState).toMatchObject({ resumeOffer: 'offered' });
 
         await h.turn('no, empecemos de nuevo');

@@ -31,6 +31,8 @@ const ATTEND_DAY = /\batienden? (?:los |el |la |las )?(?:hoy|manana|domingos?|sa
 const CLOCK_OR_ME = /\d|\bme\b|\ba las?\b/;
 
 const PRICE_TOPIC =/\b(?:cuanto (?:cuesta|cuestan|vale|valen|cobran|cobra|sale|salen|es)|precios?|tarifas?|costos?|cuanto me (?:cobran|saldria)|how much|prices?|pricing|cost|quanto (?:custa|custam|cobram)|precos?|combien|prix|tarifs?|coute)\b/;
+/** How long a service lasts is a fact about the business, not a request to book it. */
+const DURATION_TOPIC = /\b(?:cuanto (?:dura|duran|demora|demoran|tarda|tardan|tiempo)|duracion|how long|combien de temps|quanto tempo)\b/;
 const SERVICES_TOPIC = /\b(?:que servicios|cuales servicios|servicios (?:ofrecen|tienen|ofrece|tiene|disponibles)|que (?:ofrecen|tratamientos tienen|hacen|manejan)|catalogo|what services|which services|services do you|quels services|que servicos|quais servicos)\b/;
 const LOCATION_TOPIC = /\b(?:donde (?:estan|queda|quedan|se ubican|se encuentran|es|puedo encontrar)|direccion|ubicacion|ubicados?|como llego|where are you|where is|your address|located|adresse|ou etes vous|onde fica|onde voces|endereco|localizacao)\b/;
 const POLICY_TOPIC = /\b(?:politicas?|cancelacion(?:es)?|reembolsos?|devoluciones?|metodos? de pago|formas? de pago|aceptan (?:tarjeta|efectivo|transferencia)|garantias?|promociones?|descuentos?|parqueadero|estacionamiento|refund|cancellation policy|payment methods|promotions?|politique|remboursement|politica de)\b/;
@@ -70,18 +72,110 @@ function informationalTopic(raw: unknown): 'hours' | 'other' | null {
     const asksSomething = isInformationSeekingMessage(raw) || asks(unGreeted) || INFORMATION_IMPERATIVE.test(text);
     if (!asksSomething) return null;
     if (HOURS_TOPIC.test(text) || (ATTEND_DAY.test(text) && !CLOCK_OR_ME.test(text))) return 'hours';
-    if (PRICE_TOPIC.test(text) || SERVICES_TOPIC.test(text) || LOCATION_TOPIC.test(text) || POLICY_TOPIC.test(text)) return 'other';
+    if (PRICE_TOPIC.test(text) || DURATION_TOPIC.test(text) || SERVICES_TOPIC.test(text) || LOCATION_TOPIC.test(text) || POLICY_TOPIC.test(text)) return 'other';
     return null;
 }
 
-export function isInformationalDetour(raw: unknown, interpreted?: InterpretedHint): boolean {
+/** The message asks how long something lasts. */
+export function asksDuration(raw: unknown): boolean {
+    return DURATION_TOPIC.test(normalizeForIntent(raw));
+}
+
+/**
+ * Booking acts. A mission opened WITHOUT one is tentative (an interest, not a booking); a tentative
+ * mission becomes real only through one. Heuristics on purpose: the cost of a miss is small now
+ * (a miss either delays a booking by one turn or leaves a tentative mission that expires).
+ */
+const REQUEST_FORMS: readonly RegExp[] = [
+    /\b(?:quisiera|queria|quero|gostaria de|je voudrais|je veux|can i get|could i get|i d like|id like|i would like|i want) (?!info|saber|conocer|know|ask|ver |preguntar|consultar|entender)\w+/,
+    /\b(?:pedir|sacar|solicitar|tomar) (?:una |un |mi )?(?:cita|turno|reserva)\b/,
+    /\bme (?:regala|regalas|anotas|anota|apuntas|apunta|dan|da|das|puede dar|podria dar|pueden dar|podrian dar|puedes dar)(?: (?:una |un )?(?:cita|turno|cupo|espacio)| para)\b/,
+    /\bme (?:pueden|puedes|puede|podrian|podrias) (?:hacer|atender|agendar|reservar)\b/,
+    /\b(?:hay|tienen|tiene|habra) (?:algun )?(?:cupos?|disponibilidad|espacios?|turnos?) (?:para|el|la|los|las|a|hoy|manana|este|esta)\b/,
+    /\b(?:anotame|apuntame|anotenme|apuntenme)\b/,
+    /\b(?:tienen|tiene|hay|esta|estan) (?:disponible|disponibles|disponibilidad) (?:para )?(?:el |la |los |las )?(?:hoy|manana|pasado manana|lunes|martes|miercoles|jueves|viernes|sabado|sabados|domingo|domingos|\d)/,
+    /\bfit me in\b|\bmarcar\b|\bpuis je (?:reserver|prendre)\b/,
+];
+/** Phrases holding a booking word that ask ABOUT booking rather than ask to book. */
+const NON_REQUEST_PHRASES = /\b(?:(?:hay que|tengo que|debo|hace falta|es necesario|toca|se debe|se necesita|es obligatorio) (?:agendar|reservar)|cuanto tiempo (?:necesito|necesitan|se necesita)|necesito (?:una )?(?:cita|reserva|turno) previa|cita previa|cuanto (?:cuesta|cuestan|vale|valen|cobran|cobra|demora|tarda|dura)(?: \w+){0,3} (?:pedir|sacar|solicitar|tomar|agendar|reservar)|(?:your|the|what s your|what is your) schedule)\b/g;
+
+/** The message explicitly asks to book (or to be attended), whatever else it asks. */
+export function hasExplicitBookingRequest(raw: unknown): boolean {
+    const text = normalizeForIntent(raw).replace(NON_REQUEST_PHRASES, ' ');
+    return BOOKING_COMMITMENT.test(text) || REQUEST_FORMS.some(re => re.test(text));
+}
+
+export interface BookingActHint extends InterpretedHint {
+    intent?: string;
+    isConfirmation?: boolean;
+    isNegation?: boolean;
+    nameProvided?: string | null;
+    emailProvided?: string | null;
+}
+
+const REFUSAL = /^(?:(?:no|nao|non|nope)(?:[ ,.]+(?:gracias|thanks|thank you|obrigad[oa]|merci|por ahora|ahora|todavia|mejor no))?|ahora no|por ahora no|mejor no|todavia no|not now|no thanks)[\s,.!]*$/;
+/** A clear yes to the booking offer. A bare "ok" / "perfecto" / "listo" is NOT one on its own: it may just acknowledge the answer. */
+const STRONG_YES = /^(?:(?:hola|buenas)[ ,]+)?(?:si|sii|dale|claro|por favor|yes|yeah|yep|sure|please|sim|oui|de una)\b/;
+/** A bare acknowledgement; it accepts a booking offer only right after the model made one. */
+const BARE_ACK = /^(?:ok|okay|okey|perfecto|listo|vale|bueno|genial|de acuerdo|esta bien|entendido|great|perfect|sounds good|certo|d accord)(?:[ ,.!]+(?:gracias|thanks|thank you|obrigad[oa]|merci))?[\s,.!]*$/;
+/** "color y tratamiento por favor": the courtesy closes a request. */
+/** "Se puede hacer X" as a statement is a request; as a question it asks about the service. */
+const SE_PUEDE = /\bse puede (?:hacer|agendar|reservar)\b/;
+const PLEASE_END = /\b(?:por favor|porfa|porfis|please|pls|s il vous plait|por gentileza)[\s.!]*$/;
+/** "Solo consulto": the customer says this is information only, whatever date or time it mentions. */
+const ONLY_INQUIRY = /\b(?:solo|solamente|nomas|unicamente) (?:consulto|consultando|pregunto|preguntando|averiguo|averiguando|miro|mirando|quiero (?:saber|consultar|preguntar|averiguar|informacion|info)|es una consulta|una pregunta)\b|\bjust (?:asking|checking|curious|looking|a question)\b|\bsomente (?:consultando|perguntando)\b|\bseulement (?:une question|me renseigner)\b/;
+
+/** The customer says the message is only a question: it never changes, starts or confirms a booking. */
+export function isOnlyInquiry(raw: unknown): boolean {
+    return ONLY_INQUIRY.test(normalizeForIntent(raw));
+}
+
+/**
+ * What a message does to a tentative mission: `refusal` drops it, `act` makes it real, `none` leaves it.
+ * `tentative`: a tentative mission is open (repeating the service name then counts).
+ * `offerLive`: the model's last reply offered to book, so a bare "ok" accepts it.
+ */
+export function bookingActKind(raw: unknown, hint: BookingActHint, step?: string, opts: { tentative?: boolean; offerLive?: boolean } = {}): 'refusal' | 'act' | 'none' {
+    const text = normalizeForIntent(raw);
+    if (REFUSAL.test(text) || hint.intent === 'cancel') return 'refusal';
+    if (ONLY_INQUIRY.test(text)) return 'none';
+    if (hint.dateMentioned || hint.timeMentioned || hint.nameProvided || hint.emailProvided) return 'act';
+    if (/^(?:svc_|slot_|confirm_|__flow)/.test(String(raw ?? ''))) return 'act';
+    if (STRONG_YES.test(text)) return 'act';
+    if (opts.offerLive && BARE_ACK.test(text)) return 'act';
+    if (hasExplicitBookingRequest(raw)) return 'act';
+    const informational = isInformationalDetour(raw, hint, step);
+    const isQuestion = /[?\u00bf]/.test(String(raw ?? '')) || isInformationSeekingMessage(String(raw ?? ''));
+    if (SE_PUEDE.test(text) && !isQuestion) return 'act';
+    if (PLEASE_END.test(text) && hint.serviceMentioned && !informational) return 'act';
+    // Choosing a service from the list the engine showed, or repeating it in a tentative mission, is a booking step.
+    if ((step === 'show_services' || opts.tentative) && hint.serviceMentioned && !informational && !isQuestion) return 'act';
+    return 'none';
+}
+
+/**
+ * `step` is the open mission's step. While the customer is picking a service, the service they
+ * name is the answer the engine must read; a duration question riding with it is left for the
+ * model. (A time next to a question already stays with the engine, see below; the engine itself
+ * keeps a slot pick that rides with a duration question.)
+ */
+export function isInformationalDetour(raw: unknown, interpreted?: InterpretedHint, step?: string): boolean {
     const topic = informationalTopic(raw);
     if (!topic) return false;
-    // A date the interpreter extracted next to a price/service/policy question is
+    // A date or time the interpreter extracted next to a price/service/policy question is
     // booking data the engine must keep. Opening hours mention weekdays by nature.
-    if (topic === 'other' && interpreted?.dateMentioned) return false;
+    if (topic === 'other' && (interpreted?.dateMentioned || interpreted?.timeMentioned)) return false;
     // A concrete time (or a professional/date asked together with it) is an
     // availability request the engine answers with its tool.
     if (topic === 'hours' && interpreted?.timeMentioned) return false;
+    if (step === 'show_services' && interpreted?.serviceMentioned && asksDuration(raw)) return false;
     return true;
+}
+
+/** What the customer's message is about: their booking (an act, a booking noun, a booking intent). */
+const BOOKING_TOPIC = /\b(?:cita|citas|reserva|reservas|reservacion|turno|turnos|agenda|agendar|appointment|appointments|booking|bookings|rendez vous|agendamento|visita|visitas)\b/;
+export function isAboutBooking(raw: unknown, hint: BookingActHint): boolean {
+    if (['ask_availability', 'select_service', 'select_time'].includes(String(hint.intent))) return true;
+    if (hint.serviceMentioned || hint.dateMentioned || hint.timeMentioned) return true;
+    return hasExplicitBookingRequest(raw) || BOOKING_TOPIC.test(normalizeForIntent(raw));
 }

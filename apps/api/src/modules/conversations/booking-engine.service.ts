@@ -15,7 +15,8 @@ import { procedureDialogueMessages } from './procedure-dialogue-messages';
 import { containsMissionDirective, isCollectionCancellation, isDirectedCorrection, isNamedMissionResume, mentionedMissionDomains, missionDialogue, parseDirectedSlotCorrection } from './mission-focus';
 import { coerceProcedureSlot } from './procedure-slot-interpolation';
 import { nearestSlots, selectSlotWindow } from './slot-window';
-import { isInformationalDetour } from './informational-detour';
+import { asksDuration, bookingActKind, isAboutBooking, isInformationalDetour, isOnlyInquiry } from './informational-detour';
+import { BOOKING_OFFER_TTL_MS } from './booking-offer';
 
 /**
  * Lo que el motor necesita saber del turno además del estado de la reserva.
@@ -79,8 +80,8 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
             'Listo, ahora estamos agendando {service}. ¿Qué fecha te gustaría?'
         ],
         cancelled: '¡Sin problema! ¿Hay algo más en lo que pueda ayudarte?',
-        resumeOffer: 'Tienes una reserva de {service} sin terminar. ¿Quieres retomarla o prefieres empezar de nuevo?',
-        resumeOfferNoService: 'Tienes una reserva sin terminar. ¿Quieres retomarla o prefieres empezar de nuevo?',
+        resumeOffer: 'Quedó a medio agendar una cita de {service}. ¿Desea continuar o prefiere empezar de nuevo?',
+        resumeOfferNoService: 'Quedó una cita a medio agendar. ¿Desea continuar o prefiere empezar de nuevo?',
         resumeDiscarded: 'Listo, dejé esa reserva de lado. ¿En qué puedo ayudarte?',
         servicesHeader: 'Estos son nuestros servicios:',
         servicesFooter: '¿Cuál te interesa?',
@@ -136,8 +137,8 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         serviceSelected: '{service} selected. What date works for you?',
         switchedService: 'Switched to {service}. What date works for you?',
         cancelled: 'No problem! Is there anything else I can help you with?',
-        resumeOffer: 'You have an unfinished booking for {service}. Would you like to resume it or start over?',
-        resumeOfferNoService: 'You have an unfinished booking. Would you like to resume it or start over?',
+        resumeOffer: 'An appointment for {service} was left half-scheduled. Would you like to continue it or start over?',
+        resumeOfferNoService: 'An appointment was left half-scheduled. Would you like to continue it or start over?',
         resumeDiscarded: 'Done, I set that booking aside. How can I help you?',
         servicesHeader: 'These are our services:',
         servicesFooter: 'Which one interests you?',
@@ -183,8 +184,8 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         serviceSelected: '{service} selecionado. Qual data funciona para você?',
         switchedService: 'Mudamos para {service}. Qual data funciona para você?',
         cancelled: 'Sem problema! Posso ajudar com mais alguma coisa?',
-        resumeOffer: 'Você tem uma reserva de {service} em andamento. Quer retomá-la ou prefere começar de novo?',
-        resumeOfferNoService: 'Você tem uma reserva em andamento. Quer retomá-la ou prefere começar de novo?',
+        resumeOffer: 'Ficou um agendamento de {service} pela metade. Deseja continuar ou prefere começar de novo?',
+        resumeOfferNoService: 'Ficou um agendamento pela metade. Deseja continuar ou prefere começar de novo?',
         resumeDiscarded: 'Pronto, deixei essa reserva de lado. Como posso ajudar?',
         servicesHeader: 'Estes são nossos serviços:',
         servicesFooter: 'Qual te interessa?',
@@ -230,8 +231,8 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         serviceSelected: '{service} sélectionné. Quelle date vous convient ?',
         switchedService: 'Changé pour {service}. Quelle date vous convient ?',
         cancelled: 'Pas de problème ! Puis-je vous aider avec autre chose ?',
-        resumeOffer: 'Vous avez une réservation de {service} inachevée. Voulez-vous la reprendre ou recommencer ?',
-        resumeOfferNoService: 'Vous avez une réservation inachevée. Voulez-vous la reprendre ou recommencer ?',
+        resumeOffer: 'Un rendez-vous pour {service} est resté à moitié planifié. Voulez-vous continuer ou recommencer ?',
+        resumeOfferNoService: 'Un rendez-vous est resté à moitié planifié. Voulez-vous continuer ou recommencer ?',
         resumeDiscarded: "C'est noté, j'ai mis cette réservation de côté. Comment puis-je vous aider ?",
         servicesHeader: 'Voici nos services :',
         servicesFooter: 'Lequel vous intéresse ?',
@@ -392,6 +393,15 @@ export interface BookingState {
      */
     resumeOffer?: 'pending' | 'offered' | 'lapsed';
     /**
+     * `question`: the mission was opened by a message that was a question ("¿cuánto dura X?"),
+     * so it is an interest, not yet a booking. It becomes a real mission when the customer gives
+     * a booking datum or answers with a statement; until then it expires instead of going dormant
+     * and is never shown to the model or the customer as a pending reservation.
+     */
+    origin?: 'question';
+    /** When the model last offered to book while the mission was tentative: a bare "ok" then accepts it. */
+    offeredBookingAt?: string;
+    /**
      * Last real customer activity before the mission went dormant. Retention is
      * measured from here: `savedAt` is refreshed on every turn (even turns the
      * engine declines), so it cannot bound the life of a mission by itself.
@@ -491,6 +501,77 @@ export class BookingEngineService {
         language: string = 'es',
         turn: BookingTurnContext,
     ): Promise<EngineResult> {
+        const isOpen = (s: BookingState) => !!s.step && !['idle', 'booked'].includes(s.step);
+        const wasOpen = isOpen(currentState);
+        // "Solo consulto": information only. It never changes, starts or confirms a booking, so an
+        // open mission (a draft the customer was building for another service) is left untouched.
+        if (isOnlyInquiry(rawText)) return { handled: false, state: currentState };
+        const tentativeOpen = wasOpen && currentState.origin === 'question';
+        const offeredAt = Date.parse(currentState.offeredBookingAt || '');
+        const offerLive = tentativeOpen && Number.isFinite(offeredAt) && Date.now() - offeredAt >= 0 && Date.now() - offeredAt <= BOOKING_OFFER_TTL_MS;
+        const act = bookingActKind(rawText, intent, currentState.step, { tentative: tentativeOpen, offerLive });
+        // TENTATIVE mission (opened without a booking act, e.g. "¿cuánto dura color y tratamiento?"):
+        // the engine stays out of the way. It becomes real only through a booking act (a date or
+        // time, a clear yes, a service picked from the list, name/email, an explicit request);
+        // thanks, greetings, a bare "ok" or an unrelated question leave it tentative and silent, and
+        // a refusal ("no gracias") drops it. The model answers and offers the booking.
+        if (wasOpen && currentState.origin === 'question') {
+            if (act === 'refusal') return { handled: false, state: { step: 'idle' } };
+            if (act === 'none') return { handled: false, state: { ...currentState, offeredBookingAt: undefined } };
+        }
+        const entering: BookingState = currentState.origin || currentState.offeredBookingAt ? { ...currentState, origin: undefined, offeredBookingAt: undefined } : currentState;
+        const result = await this.processCore(schemaName, tenantId, contactId, intent, rawText, entering,
+            customerProfile, todayDate, language, turn);
+        if (!isOpen(result.state)) { result.state.origin = undefined; result.state.offeredBookingAt = undefined; return result; }
+        // Only a mission OPENED by this message can be tentative; one the customer already
+        // confirmed (act) or that was real before stays real.
+        const tentative = !wasOpen && act !== 'act';
+        result.state.origin = tentative ? 'question' : undefined;
+        result.state.offeredBookingAt = undefined;
+        // The engine's next-step prompt ("Perfecto, agendaremos...") asserts a booking the customer
+        // only asked about. For a tentative mission the model answers the question with its tools
+        // and offers the booking; the engine says nothing.
+        if (tentative && result.handled && !result.handoff && !result.flowMessage
+            && result.state.step === 'ask_date' && !result.state.date) {
+            return { ...result, handled: false, text: undefined };
+        }
+        // A real request that also asks how long or how much: the engine speaks (it asks for the
+        // date), so give the voice the facts it already has instead of dropping the question.
+        if (!tentative && result.handled && result.text && result.state.step === 'ask_date' && !result.state.date) {
+            const note = this.serviceFactsNote(result.state, rawText, language);
+            if (note) return { ...result, text: `${result.text} ${note}` };
+        }
+        return result;
+    }
+
+    /**
+     * The duration / confirmed price the customer asked for, as a plain sentence for the voice that
+     * phrases the reply (price already formatted, so no raw "120000 COP" is copied).
+     */
+    private serviceFactsNote(state: BookingState, rawText: string, lang: string): string {
+        const svc = state.services?.find(s => s.id === state.serviceId);
+        if (!svc) return '';
+        const parts: string[] = [];
+        if (asksDuration(rawText) && svc.durationMinutes) parts.push(`${svc.name} lasts ${svc.durationMinutes} minutes`);
+        const asksPrice = /\b(?:cuanto (?:cuesta|vale|cobran|sale)|how much|quanto custa|combien|precio|price)\b/.test(normalizeForIntent(rawText));
+        if (asksPrice && Number(svc.price) > 0 && (!svc.priceStatus || svc.priceStatus === 'confirmed')) {
+            parts.push(`its price is ${formatPriceWithCurrency(lang, svc.price, svc.currency)}`);
+        }
+        return parts.length ? `The customer also asked about the service: ${parts.join(' and ')}. Answer that in your own words along with the next step.` : '';
+    }
+
+    private async processCore(
+        schemaName: string,
+        tenantId: string,
+        contactId: string,
+        intent: InterpretedIntent,
+        rawText: string,
+        currentState: BookingState,
+        customerProfile: { name?: string; email?: string; phone?: string },
+        todayDate: string,
+        language: string = 'es',
+        turn: BookingTurnContext,
+    ): Promise<EngineResult> {
         // ═══ LA AUTORIDAD ES UN PARÁMETRO, NO UN DETALLE OPCIONAL ═══
         //
         // Este motor escribe citas POR FUERA del bucle de tools, así que
@@ -510,7 +591,7 @@ export class BookingEngineService {
         // not a step of the open mission: the engine has no tool to answer it and
         // used to re-prompt the step instead. Leave it to the model with its
         // tools; the mission, dormant or not, is returned untouched.
-        if (active && isInformationalDetour(rawText, intent)) {
+        if (active && isInformationalDetour(rawText, intent, state.step)) {
             this.logger.log(`[Decide] Informational question mid-mission, letting the LLM answer (booking state preserved: ${state.step})`);
             // The model speaks next: a bare yes/no after its answer must not be
             // read as the reply to a resume offer that is no longer the last message.
@@ -1094,7 +1175,10 @@ export class BookingEngineService {
         }
 
         // ── GENERAL QUESTION mid-booking: let LLM answer BUT keep booking state ──
-        if (intent.intent === 'general_question' && state.step !== 'idle') {
+        // "a las 16:00, ¿cuánto dura?" while slots are shown: the time is the answer, the duration
+        // is left for the model; the engine advances.
+        const pickingSlotWithDurationQuestion = state.step === 'show_slots' && !!intent.timeMentioned && asksDuration(rawText);
+        if (intent.intent === 'general_question' && state.step !== 'idle' && !pickingSlotWithDurationQuestion) {
             // Don't handle — let LLM answer the general question.
             // But DON'T reset the booking state. Next message will resume the flow.
             this.logger.log(`[Decide] General question mid-booking, letting LLM handle (booking state preserved: ${state.step})`);
@@ -1547,6 +1631,10 @@ export class BookingEngineService {
             if (['ask_availability', 'select_service', 'select_time'].includes(intent.intent)) { clear(); return null; }
             return { handled: false, state };
         }
+        // The offer is for a message about booking. "hola", a question about the business or an
+        // unrelated message gets the model's answer and the offer stays pending (the mission is
+        // already hidden from the prompt).
+        if (!isAboutBooking(rawText, intent)) return { handled: false, state };
         state.resumeOffer = 'offered';
         return {
             handled: true, state,

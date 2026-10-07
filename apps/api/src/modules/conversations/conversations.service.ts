@@ -66,7 +66,9 @@ import { AIToolExecutorService } from './ai-tool-executor.service';
 import { buildUnverifiedPriceReply, correctivePriceInstruction, enforceVerifiedPriceReply, ResponseValidatorService } from './response-validator.service';
 import { AgentTurnSession } from './agent-turn-session';
 import { sessionCanExecute, sessionLlmRouter, sessionToolExecutor } from './agent-turn-adapters';
-import { restoreBookingMission } from './booking-state-continuity';
+import { containsBookingOffer } from './booking-offer';
+import { projectEcommerceCatalogRow, projectOwnCatalogRow } from './catalog-turn-projection';
+import { projectBookingStateForPrompt, TENTATIVE_BOOKING_BLOCKED_TOOLS, restoreBookingMission } from './booking-state-continuity';
 import { deriveInformationalHours, hasConfiguredHours, promptHoursStatus, resolvePromptBusinessHours, UNKNOWN_INFORMATIONAL_HOURS, type InformationalHours } from './informational-hours';
 import { resolveEvaluationSnapshot } from './agent-evaluation-snapshot';
 import { AGENT_TEST_EXECUTION_CONTEXT, DRAFT_EXECUTION_CONTEXT, type ServiceExecutionContext } from '../../common/types/execution-context';
@@ -2029,19 +2031,7 @@ export class ConversationsService {
         );
         return (rows ?? [])
             .filter(row => row.mentioned === true || Number(row.total) <= SMALL_CATALOG)
-            .map(row => {
-                const price = Number(row.price);
-                const priced = Number.isFinite(price) && price > 0;
-                return {
-                    id: String(row.id),
-                    title: String(row.name),
-                    ...(priced ? { price } : {}),
-                    priceStatus: priced ? 'confirmed' as const : 'missing' as const,
-                    currency: row.currency || undefined,
-                    inStock: row.stock == null || Number(row.stock) > 0,
-                    category: row.category || undefined,
-                };
-            });
+            .map(projectOwnCatalogRow);
     }
 
     /**
@@ -4082,20 +4072,20 @@ export class ConversationsService {
             return isAgentTestSafeToolName(name) || (!!draftScope && isDraftProposableToolName(name));
         });
 
-        if (bookingState.step && bookingState.step !== 'idle') {
-            const selectedService = bookingState.serviceId
-                ? bookingState.services?.find(s => s.id === bookingState.serviceId)
-                : undefined;
-            turnContext.bookingState = {
-                step: bookingState.step,
+        const promptBookingState = projectBookingStateForPrompt(bookingState);
+        if (promptBookingState) turnContext.bookingState = promptBookingState;
+        // A mission opened by a question is only an interest: the engine is the single booking path, so
+        // the model gets no booking-write tool this turn and is told what the customer actually did.
+        if (bookingState.origin === 'question' && bookingState.step && !['idle', 'booked'].includes(bookingState.step)) {
+            const interest = bookingState.serviceId ? bookingState.services?.find(s => s.id === bookingState.serviceId) : undefined;
+            turnContext.bookingInterest = {
                 service: bookingState.serviceId ? {
                     id: bookingState.serviceId,
-                    name: bookingState.serviceName || selectedService?.name || '',
-                    durationMinutes: selectedService?.durationMinutes,
+                    name: bookingState.serviceName || interest?.name || '',
+                    durationMinutes: interest?.durationMinutes,
                 } : undefined,
-                date: bookingState.date,
-                slot: bookingState.time,
             };
+            tools = tools.filter(tool => !TENTATIVE_BOOKING_BLOCKED_TOOLS.has(String(tool?.name ?? tool?.function?.name)));
         }
 
         // `<available_services>` was only filled when the booking engine ran and judged the turn "not
@@ -4233,14 +4223,7 @@ export class ConversationsService {
                     [],
                 );
                 if (products?.length) {
-                    turnContext.catalog = products.map((p: any) => ({
-                        id: String(p.external_id),
-                        title: p.title,
-                        price: p.price_cents != null ? Number(p.price_cents) / 100 : undefined,
-                        currency: p.currency || 'USD',
-                        inStock: (p.inventory_quantity ?? 0) > 0,
-                        category: p.product_type || undefined,
-                    }));
+                    turnContext.catalog = products.map(projectEcommerceCatalogRow);
                 }
             } catch (e: any) {
                 this.logger.debug(`[T2.17] catalog injection skipped: ${e.message}`);
@@ -4821,6 +4804,13 @@ export class ConversationsService {
             // The guard answered with an offer of a person: remember it so a
             // "yes" next turn escalates for real.
             if (!session && !draftMode && allowHumanHandoff) await this.rememberHumanOffer(schemaName, conversation.id, finalResponse);
+            // The reply offers to book while the mission is only an interest: remember it, so a bare
+            // "ok" / "perfecto" next turn is read as accepting that offer.
+            if (!draftMode && bookingState.origin === 'question' && bookingState.step && !['idle', 'booked'].includes(bookingState.step)
+                && containsBookingOffer(finalResponse)) {
+                bookingState.offeredBookingAt = new Date().toISOString();
+                await this.persistBookingState(schemaName, conversation.id, bookingState, session);
+            }
 
             // Long-term memory (#1): periodically distill the conversation into
             // durable facts (fire-and-forget, cheap tier). Cadence keeps cost low.

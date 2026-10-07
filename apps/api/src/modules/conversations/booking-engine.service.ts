@@ -9,7 +9,7 @@ import { holdStillAliveSql } from '../../common/utils/payment-policy.util';
 import { bookingEngineAuthorityDecision, deniedOperationalIntent } from './turn-authority';
 import { bookingConfirmationHash } from './booking-confirmation';
 import { appointmentPriceSql, appointmentCurrencySql, type AppointmentServiceTerms } from '../appointments/appointment-service-terms';
-import { isInformationSeekingMessage, isPauseMessage, isResumeMessage } from '../../common/conversation/intent-normalizer';
+import { isInformationSeekingMessage, isPauseMessage, isResumeMessage, normalizeCustomerIntent } from '../../common/conversation/intent-normalizer';
 import { normalizeForIntent } from '@parallext/shared';
 import { procedureDialogueMessages } from './procedure-dialogue-messages';
 import { containsMissionDirective, isCollectionCancellation, isDirectedCorrection, isNamedMissionResume, mentionedMissionDomains, missionDialogue, parseDirectedSlotCorrection } from './mission-focus';
@@ -119,6 +119,7 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         askName: '{time} seleccionado para {service}. ¿Cuál es tu nombre completo?',
         askEmail: '¡Gracias {name}! Necesito tu correo electrónico para la invitación del calendario.',
         confirmPrompt: 'Por favor confirma:\n{summary}\n¿Lo agendo?',
+        confirmShort: '¿Confirmo la cita? Responda sí o no.',
         confirmButton: '¿Confirmar cita?\n\n{summary}',
         btnConfirm: 'Confirmar',
         btnCancel: 'Cancelar',
@@ -188,6 +189,7 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         askName: '{time} selected for {service}. What is your full name?',
         askEmail: 'Thanks {name}! I need your email for the calendar invitation.',
         confirmPrompt: 'Please confirm:\n{summary}\nShall I book this?',
+        confirmShort: 'Shall I confirm the appointment? Please answer yes or no.',
         confirmButton: 'Confirm booking?\n\n{summary}',
         btnConfirm: 'Confirm',
         btnCancel: 'Cancel',
@@ -252,6 +254,7 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         askName: '{time} selecionado para {service}. Qual é seu nome completo?',
         askEmail: 'Obrigado {name}! Preciso do seu e-mail para o convite do calendário.',
         confirmPrompt: 'Por favor confirme:\n{summary}\nAgendar?',
+        confirmShort: 'Confirmo o agendamento? Responda sim ou não.',
         confirmButton: 'Confirmar agendamento?\n\n{summary}',
         btnConfirm: 'Confirmar',
         btnCancel: 'Cancelar',
@@ -316,6 +319,7 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         askName: '{time} sélectionné pour {service}. Quel est votre nom complet ?',
         askEmail: 'Merci {name} ! J\'ai besoin de votre e-mail pour l\'invitation du calendrier.',
         confirmPrompt: 'Veuillez confirmer :\n{summary}\nJe réserve ?',
+        confirmShort: 'Je confirme le rendez-vous ? Répondez oui ou non.',
         confirmButton: 'Confirmer le rendez-vous ?\n\n{summary}',
         btnConfirm: 'Confirmer',
         btnCancel: 'Annuler',
@@ -1407,6 +1411,11 @@ export class BookingEngineService {
                     'text_confirmation',
                 );
             }
+            // A yes the engine could not take as consent ("sí, pero a las 5", "sí, si hay descuento"): the whole summary
+            // is not sent again, only the question the customer has to answer. Nothing was booked this turn.
+            if (state.step === 'confirm' && !intent.isConfirmation && this.isNearYes(rawText)) {
+                return { handled: true, state, text: msg(L, 'confirmShort') };
+            }
             return this.collectMissingInfo(state, L);
         }
 
@@ -1569,6 +1578,12 @@ export class BookingEngineService {
         const fold = (value: string) => normalizeForIntent(value).replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
         const whole = fold(rawText).replace(/\b(?:por favor|porfa|gracias|please|obrigad[oa]|merci|el|la|un|una|para)\b/g, ' ').replace(/\s+/g, ' ').trim();
         return whole === fold(target.name) && !intent.nameProvided ? target : undefined;
+    }
+
+    /** The message opens with a yes (or an ok) but is not consent as a whole: a qualifier, a second task, leftover words. */
+    private isNearYes(rawText: string): boolean {
+        const read = normalizeCustomerIntent(rawText, { answeringExplicitQuestion: true });
+        return !!read.matched && read.intent === 'unclear';
     }
 
     /**

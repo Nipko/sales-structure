@@ -37,6 +37,23 @@ export class LanguageDetectorService {
     private readonly weakMarkers: Record<string, string[]> = { pt: ['onde', 'posso', 'tenho', 'fica'] };
 
     /**
+     * Words that ask for something or state a need, in each language: with no sign of the stored language in the same
+     * message they are enough to switch to theirs. Courtesy words (hola, gracias, please, merci) are NOT here: people
+     * sprinkle them across languages and one of them must never flip the conversation.
+     */
+    private readonly strongMarkers: Record<string, { words: string[]; chars?: RegExp }> = {
+        es: { words: ['quiero', 'quisiera', 'necesito', 'busco', 'tengo', 'puedo', 'cuanto', 'cuesta', 'donde', 'tienen', 'cual', 'cuales'], chars: /[ñ¿¡]/ },
+        en: { words: ['want', 'need', 'would', 'could', 'looking', 'what', 'where', 'when', 'how'] },
+        pt: { words: ['quero', 'gostaria', 'preciso', 'procuro', 'quanto', 'custa', 'voce', 'voces', 'nao'], chars: /[ãõ]/ },
+        fr: { words: ['veux', 'besoin', 'voudrais', 'cherche', 'combien'], chars: /[èùœëîû]/ },
+    };
+
+    private hasStrongMarker(lang: string, tokens: Set<string>, raw: string): boolean {
+        const strong = this.strongMarkers[lang];
+        return !!strong && (strong.words.some(word => tokens.has(word)) || !!strong.chars?.test(raw));
+    }
+
+    /**
      * Distinctive diacritics, tested on the RAW text (normalize() strips accents).
      * Only characters that belong to ONE of the four languages count:
      * ã/õ are Portuguese only; è/ù/œ/ë/î/û are French only; ñ/¿/¡ are Spanish
@@ -108,7 +125,13 @@ export class LanguageDetectorService {
         }
         if (winnerScore >= 1 && secondScore === 0) {
             const prev = previous ? this.short(previous) : null;
-            if (prev && prev !== winner) return { language: prev, persist: true };
+            if (prev && prev !== winner) {
+                // A REQUEST in another language ("quiero agendar corte y estilo" after "What are your opening hours?")
+                // is the customer's language now: the stored one holds only while the message shows a sign of it or
+                // has no strong marker of the new one. A courtesy word ("please", "gracias") never switches by itself.
+                if ((scores[prev] ?? 0) === 0 && this.hasStrongMarker(winner, tokens, raw)) return { language: winner, persist: true };
+                return { language: prev, persist: true };
+            }
             return { language: winner, persist: !!prev };
         }
         return { language: this.short(fallback), persist: true };

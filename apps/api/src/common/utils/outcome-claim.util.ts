@@ -338,6 +338,40 @@ export function isBareWaitPromise(raw: string | null | undefined): boolean {
 }
 
 /**
+ * «Estoy gestionando la confirmación de su cita… Le avisaré»: the reply says the work is under way and promises a
+ * notification. A turn is question → answer and nothing sends a second message, so when no tool ran in it the
+ * sentence is false whatever else the reply says (a date, a time or a service name in it does not make it true).
+ * Unlike `isBareWaitPromise` this ignores digits, questions and length.
+ */
+const WORK_UNDER_WAY_OR_NOTIFY = new RegExp(
+    [
+        // es
+        'estoy (gestionando|procesando|confirmando|agendando|reservando|registrando|tramitando|realizando|trabajando en)',
+        '(te|le|les) (avisare|aviso|notificare|notifico|informare|escribire|confirmare en breve|contactare)',
+        'en breve (te|le|les) (aviso|confirmo|notifico|escribo|llega)',
+        'una vez (que )?(se )?(confirme|procese|complete|termine|registre)[^.!?]{0,60}(te|le|les) (aviso|notifico|escribo|informo)',
+        // en
+        "i(?:'|’)?ll (?:let you know|notify you|keep you posted|update you)",
+        'i will (?:let you know|notify you|keep you posted|update you)',
+        "i(?:'|’)?m (?:processing|booking|confirming|working on|handling|registering)",
+        'i am (?:processing|booking|confirming|working on|handling|registering)',
+        // pt
+        'vou (?:te |lhe )?(?:avisar|notificar|informar)',
+        '(?:avisarei|notificarei|informarei)',
+        'estou (?:processando|agendando|confirmando|reservando|gerenciando|registrando|tratando)',
+        // fr
+        'je (?:vous |te )?(?:previendrai|tiendrai informe|informerai|avertirai|notifierai)',
+        'je suis en train de (?:confirmer|reserver|traiter|enregistrer)',
+    ].join('|'),
+    'i',
+);
+
+export function promisesActionWithoutTool(text: string | null | undefined): boolean {
+    if (!text) return false;
+    return WORK_UNDER_WAY_OR_NOTIFY.test(normalize(text).replace(/[’]/g, "'"));
+}
+
+/**
  * Destinatarios humanos. Sin acentos porque `normalize` ya los quitó
  * ("companero", no "compañero").
  */

@@ -18,6 +18,9 @@
  * and the like are NOT stripped: in a store they are a product reference
  * ("Ref [Artículo: 4512] disponible") and belong to the customer.
  */
+import { Logger } from '@nestjs/common';
+import { hasToolCallMarkup, stripToolCallMarkup } from './tool-call-markup.util';
+
 const LABEL = '(?:Article|kb_article|retrieval_?id|document_?id)';
 /** Title text, allowing one level of nested brackets: "[Article: Política [2024]]". */
 const BODY = '(?:[^\\[\\]\\n]|\\[[^\\[\\]\\n]*\\]){1,300}';
@@ -29,8 +32,17 @@ const MARKER = new RegExp(
 );
 const QUICK_CHECK = /\[\s*(?:article|kb_|retrieval|document)/i;
 
-export function stripInternalMarkers(text: string): string {
-    if (typeof text !== 'string' || !text) return text;
+const logger = new Logger('InternalMarkers');
+
+export function stripInternalMarkers(input: string): string {
+    if (typeof input !== 'string' || !input) return input;
+    // Last line of defence at egress: a tool call written as text (the turn guard should have caught it first).
+    // It is removed, never turned into a call, and logged loudly because it means a guard upstream was bypassed.
+    let text = input;
+    if (hasToolCallMarkup(text)) {
+        text = stripToolCallMarkup(text);
+        logger.error(`[Egress] tool-call markup removed from an outgoing message (${input.length - text.length} chars) — an upstream guard missed it`);
+    }
     if (!QUICK_CHECK.test(text)) return text;
     let removed = false;
     const lines: string[] = [];

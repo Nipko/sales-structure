@@ -87,3 +87,20 @@ describe('an explicit booking request (real mission)', () => {
         expect(h.session().trace.systemPrompt).not.toContain('<booking_interest>');
     });
 });
+
+describe('the model offers to book while the mission is tentative', () => {
+    it('remembers the offer, and a bare "ok" next turn accepts it through the engine', async () => {
+        const h = fixture();
+        await h.turn('hola');
+        await h.turn('¿Qué servicios tienen?');
+        h.f.llmRouter.execute.mockResolvedValue({ content: 'El corte y estilo dura 45 minutos. ¿Le gustaría agendar una cita para ese servicio?',
+            model: 'test', usage: { promptTokens: 20, completionTokens: 5 }, cost: 0.001 });
+        await h.turn('gracias');
+        expect(h.session().metadata.bookingState).toMatchObject({ origin: 'question' });
+        expect(h.session().metadata.bookingState.offeredBookingAt).toBeTruthy();
+        const accepted = await h.turn('ok');
+        expect(accepted.debug.turnContext.directive).toBeTruthy();
+        expect(h.session().metadata.bookingState.origin).toBeUndefined();
+        expect(h.session().metadata.bookingState.offeredBookingAt).toBeUndefined();
+    });
+});

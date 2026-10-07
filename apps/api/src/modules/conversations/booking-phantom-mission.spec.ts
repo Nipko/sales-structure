@@ -2,6 +2,8 @@ import { BookingEngineService, type BookingState } from './booking-engine.servic
 import { IntentInterpreterService } from './intent-interpreter.service';
 import { hasExplicitBookingRequest, isInformationalDetour } from './informational-detour';
 import { projectBookingStateForPrompt, restoreBookingMission, TENTATIVE_BOOKING_BLOCKED_TOOLS } from './booking-state-continuity';
+import { PromptAssemblerService } from './prompt-assembler.service';
+import { containsBookingOffer } from './booking-offer';
 import { authorityFor } from './__fixtures__/tool-authority.fixture';
 
 /**
@@ -18,30 +20,36 @@ const authority = authorityFor('list_services', 'check_availability', 'create_ap
 const services = [
     { id: 'svc-corte', name: 'Corte y estilo', durationMinutes: 45, price: 40000, currency: 'COP', priceStatus: 'example' as const },
     { id: 'svc-color', name: 'Color y tratamiento', durationMinutes: 120, price: 120000, currency: 'COP', priceStatus: 'example' as const },
+    { id: 'svc-mani', name: 'Manicure y pedicure', durationMinutes: 60, price: 50000, currency: 'COP', priceStatus: 'example' as const },
 ];
 const today = '2026-10-05';
 const upcoming = [{ date: '2026-10-10', weekday: 'sabado' }];
 const T0 = Date.parse('2026-10-05T12:00:00Z');
 const MIN = 60_000;
 
-function harness(llmIntent: Record<string, unknown> = {}) {
+function harness(llmIntent: Record<string, unknown> = {}, opts: { productionNames?: boolean; catalog?: any[] } = {}) {
+    const catalog = opts.catalog ?? services;
+    let llmNext: Record<string, unknown> = {};
     const execute = jest.fn(async (_s: string, _t: string, _c: string, name: string) => {
         if (name === 'check_availability') return { available: true, slots: [{ time: '16:00', endTime: '18:00' }] };
-        if (name === 'list_services') return { services };
+        if (name === 'list_services') return { services: catalog };
         return { success: true };
     });
     const engine = new BookingEngineService(
         { $queryRawUnsafe: jest.fn().mockResolvedValue([]) } as any,
-        { get: async () => JSON.stringify(services), set: async () => {} } as any,
+        { get: async () => JSON.stringify(catalog), set: async () => {} } as any,
         { execute } as any,
     );
     const llm = jest.fn(async () => ({ content: JSON.stringify({
         intent: 'unknown', serviceMentioned: null, dateMentioned: null, timeMentioned: null, isConfirmation: false,
-        isNegation: false, nameProvided: null, emailProvided: null, questionTopic: null, language: 'es', ...llmIntent,
+        isNegation: false, nameProvided: null, emailProvided: null, questionTopic: null, language: 'es', ...llmIntent, ...llmNext,
     }) }));
     const interpreter = new IntentInterpreterService({ execute: llm } as any);
-    const turn = async (text: string, state: BookingState) => {
-        const intent = await interpreter.interpret(text, state.step, services.map(s => s.name), today, upcoming);
+    const turn = async (text: string, state: BookingState, llmOverride: Record<string, unknown> = {}) => {
+        llmNext = llmOverride;
+        // In production a fresh (idle) state carries no service names: the interpreter only knows them mid-mission.
+        const names = opts.productionNames && (!state.step || state.step === 'idle') ? [] : catalog.map(s => s.name);
+        const intent = await interpreter.interpret(text, state.step, names, today, upcoming);
         const result = await engine.process('schema', 'tenant', 'contact', intent, text, state, {}, today, 'es',
             { authority, conversationId: 'conversation' });
         return { intent, result };
@@ -76,6 +84,11 @@ describe('an explicit booking request is a real mission and the engine speaks, e
         'Quiero reservar color y tratamiento, ¿cuánto dura?',
         'Quiero agendar color y tratamiento',
         'Necesito agendar color y tratamiento',
+        'color y tratamiento por favor',
+        '¿Tienen disponible color y tratamiento?',
+        '¿Está disponible color y tratamiento los domingos?',
+        '¿Se puede hacer color y tratamiento? ¿cuánto demora?',
+        'anótame para color y tratamiento',
         '¿tienen cupo a las 16:00 para color y tratamiento? ¿cuánto dura?',
         'Hola, quiero reservar un color y tratamiento mañana. ¿Cuánto cuesta?',
     ])('"%s"', async text => {
@@ -88,10 +101,13 @@ describe('an explicit booking request is a real mission and the engine speaks, e
         expect(result.state.origin).toBeUndefined();
     });
 
-    it('also hands the voice the duration the customer asked for', async () => {
-        const { turn } = harness();
-        const { result } = await turn('Quiero reservar color y tratamiento, ¿cuánto dura?', { step: 'idle' });
-        expect(result.text).toContain('120 minutes');
+    it('also hands the voice the duration and the formatted price as a plain sentence', async () => {
+        const confirmed = services.map(svc => ({ ...svc, priceStatus: 'confirmed' as const }));
+        const { turn } = harness({}, { catalog: confirmed });
+        const { result } = await turn('Quiero reservar color y tratamiento, ¿cuánto dura y cuánto cuesta?', { step: 'idle' });
+        expect(result.text).toContain('Color y tratamiento lasts 120 minutes');
+        expect(result.text).not.toMatch(/[[\]]|120000/);
+        expect(result.text).toMatch(/120[.,]000/);
     });
 
     it('is not fooled by questions ABOUT booking', () => {
@@ -114,7 +130,6 @@ describe('a mission opened without a booking act is tentative and silent', () =>
         '¿Cuánto dura el turno de color y tratamiento?',
         '¿Cuánto cuesta la cita de color y tratamiento?',
         '¿Hay que reservar para color y tratamiento o puedo llegar?',
-        '¿Está disponible color y tratamiento los domingos?',
         '¿Necesito cita previa para color y tratamiento?',
         '¿Cuánto cuesta sacar una cita para color y tratamiento?',
         '¿Qué incluye color y tratamiento?',
@@ -217,6 +232,143 @@ describe('a mission opened without a booking act is tentative and silent', () =>
 
     it('the model cannot write bookings while the mission is only an interest', () => {
         expect(TENTATIVE_BOOKING_BLOCKED_TOOLS.has('create_appointment')).toBe(true);
+    });
+});
+
+describe('acts inside a tentative mission', () => {
+    const tentative = async () => {
+        const h = harness();
+        const first = await h.turn('¿Cuánto dura color y tratamiento?', { step: 'idle' });
+        expect(first.result.state.origin).toBe('question');
+        return { ...h, state: first.result.state };
+    };
+
+    it.each(['Color y tratamiento', 'anótame', 'apúntame', 'vale', 'color y tratamiento por favor'])(
+        '"%s" makes it real', async reply => {
+            const h = await tentative();
+            const { result } = await h.turn(reply, h.state);
+            expect(result.handled).toBe(true);
+            expect(result.state.origin).toBeUndefined();
+        });
+
+    it('keeps the "Me interesa" opening tentative (documented: interest, not a request)', async () => {
+        const { turn } = harness();
+        const { result } = await turn('Me interesa color y tratamiento, ¿cuánto cuesta?', { step: 'idle' });
+        expect(result.handled).toBe(false);
+        expect(result.state.origin).toBe('question');
+    });
+
+    it.each(['ok', 'perfecto', 'listo', 'ok gracias', 'perfecto, gracias'])(
+        '"%s" accepts the booking offer only right after the model made one', async reply => {
+            const h = await tentative();
+            const silent = await h.turn(reply, h.state);
+            expect(silent.result.handled).toBe(false);
+            expect(silent.result.state.origin).toBe('question');
+            const offered = { ...h.state, offeredBookingAt: new Date().toISOString() };
+            const accepted = await h.turn(reply, offered);
+            expect(accepted.result.handled).toBe(true);
+            expect(accepted.result.state.origin).toBeUndefined();
+        });
+
+    it('a lone "gracias" after the offer is not an acceptance, and a stale offer does not count', async () => {
+        const h = await tentative();
+        const thanks = await h.turn('gracias', { ...h.state, offeredBookingAt: new Date().toISOString() });
+        expect(thanks.result.handled).toBe(false);
+        const stale = await h.turn('ok', { ...h.state, offeredBookingAt: new Date(Date.now() - 20 * MIN).toISOString() });
+        expect(stale.result.handled).toBe(false);
+    });
+
+    it('the offer is consumed by the next turn', async () => {
+        const h = await tentative();
+        const first = await h.turn('hola', { ...h.state, offeredBookingAt: new Date().toISOString() });
+        expect(first.result.state.offeredBookingAt).toBeUndefined();
+    });
+
+    it.each([
+        '¿Le gustaría agendar una cita para ese servicio?',
+        '¿Desea que le reserve esa cita?',
+        'Would you like to book it?',
+        'Gostaria de agendar?',
+        'Voulez-vous réserver ?',
+    ])('detects the model offering to book: "%s"', reply => {
+        expect(containsBookingOffer(reply)).toBe(true);
+    });
+
+    it.each(['El servicio dura 120 minutos.', 'Cuesta 120.000 pesos. ¿Algo más?', 'Quedó reservado para el sábado.'])(
+        'does not take "%s" for an offer', reply => {
+            expect(containsBookingOffer(reply)).toBe(false);
+        });
+
+    it('"Solo consulto" keeps an availability question with a date and time tentative', async () => {
+        const { turn } = harness();
+        const { result } = await turn('Hola, ¿mañana a las 4 hay espacio para manicure y pedicure? Solo consulto', { step: 'idle' },
+            { intent: 'ask_availability', dateMentioned: '2026-10-06', timeMentioned: '16:00', serviceMentioned: 'Manicure y pedicure' });
+        if (result.state.step !== 'idle') expect(result.state.origin).toBe('question');
+        expect(restoredAfter(result.state, 31)).toEqual({ step: 'idle' });
+    });
+});
+
+describe('production sequence N21 -> N22 -> C13 -> C14 -> C25 (same Telegram chat)', () => {
+    const assembler = new PromptAssemblerService({ buildSystemPrompt: () => '' } as any);
+    const projectedBlock = (state: BookingState, minutes: number): string => {
+        const projected = projectBookingStateForPrompt(restoredAfter(state, minutes));
+        const layer: string = (assembler as any).buildTurnLayer({ language: 'es', timezone: 'America/Bogota', bookingState: projected });
+        return layer.match(/<booking_state[\s\S]*?<\/booking_state>/)?.[0] ?? '';
+    };
+
+    it('after N21 (a live draft for corte y estilo) the later turns never call it a reservation and C25 moves to the other service', async () => {
+        const h = harness({}, { productionNames: true });
+        // What N21 left behind: a live (6 minutes old) mission with a date and a time, services in state.
+        let state: BookingState = {
+            missionId: 'm-n21', step: 'show_slots', serviceId: 'svc-corte', serviceName: 'Corte y estilo', date: '2026-10-10',
+            time: '16:00', slots: [{ time: '16:00', endTime: '16:45' }], services,
+        };
+        const steps: Array<[string, Record<string, unknown>, string]> = [
+            ['Hola, ¿mañana a las 4 hay espacio para manicure y pedicure? Solo consulto',
+                { intent: 'ask_availability', serviceMentioned: 'Manicure y pedicure', dateMentioned: '2026-10-06', timeMentioned: '16:00' }, 'svc-corte'],
+            ['¿Cuánto dura el corte y estilo?', { intent: 'general_question', serviceMentioned: 'Corte y estilo' }, 'svc-corte'],
+            ['¿Cuánto demora el servicio de color y tratamiento?', { intent: 'general_question', serviceMentioned: 'Color y tratamiento' }, 'svc-corte'],
+            ['¿Cuánto dura color y tratamiento y tienen cupo el sábado a las 16:00?',
+                { intent: 'ask_availability', serviceMentioned: 'Color y tratamiento', dateMentioned: '2026-10-10', timeMentioned: '16:00' }, 'svc-color'],
+        ];
+        expect(projectedBlock(state, 6)).toContain('status="draft"');
+        for (const [text, llm, expectedService] of steps) {
+            const out = await h.turn(text, state, llm);
+            state = out.result.state;
+            expect([text, state.serviceId]).toEqual([text, expectedService]);
+            const block = projectedBlock(state, 6);
+            expect(block).toContain('status="draft"');
+            expect(block).toContain('confirmed="false"');
+            expect(block).not.toMatch(/reserva|pendiente|pending/i);
+        }
+    });
+
+    it('"Solo consulto" about another service leaves the open draft exactly as it was', async () => {
+        const h = harness({}, { productionNames: true });
+        const open: BookingState = {
+            missionId: 'm-n21', step: 'show_slots', serviceId: 'svc-corte', serviceName: 'Corte y estilo', date: '2026-10-10',
+            time: '16:00', slots: [{ time: '16:00', endTime: '16:45' }], services,
+        };
+        const { result } = await h.turn('¿mañana a las 4 hay espacio para manicure y pedicure? Solo consulto', open,
+            { intent: 'ask_availability', serviceMentioned: 'Manicure y pedicure', dateMentioned: '2026-10-06', timeMentioned: '16:00' });
+        expect(result.handled).toBe(false);
+        expect(result.state).toEqual(open);
+    });
+
+    it('renders a projected mission as an unconfirmed draft, and only a booked one as confirmed', () => {
+        const render = (step: string): string => (assembler as any).buildTurnLayer({
+            language: 'es', timezone: 'America/Bogota',
+            bookingState: { step, service: { id: 'svc-corte', name: 'Corte y estilo', durationMinutes: 45 }, date: '2026-10-10', slot: '16:00' },
+        });
+        expect(render('show_slots')).toContain('<booking_state status="draft" confirmed="false">');
+        expect(render('confirm')).toContain('status="draft"');
+        expect(render('booked')).toContain('<booking_state status="booked" confirmed="true">');
+    });
+
+    it('the booking-draft rule tells the model to answer first and never to call it a reservation', () => {
+        const prompt: string = (assembler as any).assemble({ industry: 'salon' } as any, { language: 'es', timezone: 'America/Bogota', now: '2026-10-06T12:00:00.000Z', upcomingDays: [], businessHoursStatus: 'open' } as any);
+        expect(prompt).toContain('UNCONFIRMED DRAFT');
+        expect(prompt).toMatch(/Never call it a pending reservation/);
     });
 });
 

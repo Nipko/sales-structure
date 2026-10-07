@@ -92,6 +92,9 @@ const REQUEST_FORMS: readonly RegExp[] = [
     /\bme (?:regala|regalas|anotas|anota|apuntas|apunta|dan|da|das|puede dar|podria dar|pueden dar|podrian dar|puedes dar)(?: (?:una |un )?(?:cita|turno|cupo|espacio)| para)\b/,
     /\bme (?:pueden|puedes|puede|podrian|podrias) (?:hacer|atender|agendar|reservar)\b/,
     /\b(?:hay|tienen|tiene|habra) (?:algun )?(?:cupos?|disponibilidad|espacios?|turnos?) (?:para|el|la|los|las|a|hoy|manana|este|esta)\b/,
+    /\b(?:anotame|apuntame|anotenme|apuntenme)\b/,
+    /\bse puede (?:hacer|agendar|reservar)\b/,
+    /\b(?:tienen|tiene|hay|esta|estan) (?:disponible|disponibles|disponibilidad)\b/,
     /\bfit me in\b|\bmarcar\b|\bpuis je (?:reserver|prendre)\b/,
 ];
 /** Phrases holding a booking word that ask ABOUT booking rather than ask to book. */
@@ -112,19 +115,38 @@ export interface BookingActHint extends InterpretedHint {
 }
 
 const REFUSAL = /^(?:(?:no|nao|non|nope)(?:[ ,.]+(?:gracias|thanks|thank you|obrigad[oa]|merci|por ahora|ahora|todavia|mejor no))?|ahora no|por ahora no|mejor no|todavia no|not now|no thanks)[\s,.!]*$/;
-/** A clear yes to the booking offer. A bare "ok" / "perfecto" / "listo" is NOT one: it may just acknowledge the answer. */
-const STRONG_YES = /^(?:(?:hola|buenas)[ ,]+)?(?:si|sii|dale|claro|por favor|yes|yeah|yep|sure|please|sim|oui|de una)\b/;
+/** A clear yes to the booking offer. A bare "ok" / "perfecto" / "listo" is NOT one on its own: it may just acknowledge the answer. */
+const STRONG_YES = /^(?:(?:hola|buenas)[ ,]+)?(?:si|sii|dale|claro|vale|por favor|yes|yeah|yep|sure|please|sim|oui|de una)\b/;
+/** A bare acknowledgement; it accepts a booking offer only right after the model made one. */
+const BARE_ACK = /^(?:ok|okay|okey|perfecto|listo|vale|bueno|genial|de acuerdo|esta bien|entendido|great|perfect|sounds good|certo|d accord)(?:[ ,.!]+(?:gracias|thanks|thank you|obrigad[oa]|merci))?[\s,.!]*$/;
+/** "color y tratamiento por favor": the courtesy closes a request. */
+const PLEASE_END = /\b(?:por favor|porfa|porfis|please|pls|s il vous plait|por gentileza)[\s.!]*$/;
+/** "Solo consulto": the customer says this is information only, whatever date or time it mentions. */
+const ONLY_INQUIRY = /\b(?:solo|solamente|nomas|unicamente) (?:consulto|consultando|pregunto|preguntando|averiguo|averiguando|miro|mirando|quiero (?:saber|consultar|preguntar|averiguar|informacion|info)|es una consulta|una pregunta)\b|\bjust (?:asking|checking|curious|looking|a question)\b|\bsomente (?:consultando|perguntando)\b|\bseulement (?:une question|me renseigner)\b/;
 
-/** What a message does to a tentative mission: `refusal` drops it, `act` makes it real, `none` leaves it. */
-export function bookingActKind(raw: unknown, hint: BookingActHint, step?: string): 'refusal' | 'act' | 'none' {
+/** The customer says the message is only a question: it never changes, starts or confirms a booking. */
+export function isOnlyInquiry(raw: unknown): boolean {
+    return ONLY_INQUIRY.test(normalizeForIntent(raw));
+}
+
+/**
+ * What a message does to a tentative mission: `refusal` drops it, `act` makes it real, `none` leaves it.
+ * `tentative`: a tentative mission is open (repeating the service name then counts).
+ * `offerLive`: the model's last reply offered to book, so a bare "ok" accepts it.
+ */
+export function bookingActKind(raw: unknown, hint: BookingActHint, step?: string, opts: { tentative?: boolean; offerLive?: boolean } = {}): 'refusal' | 'act' | 'none' {
     const text = normalizeForIntent(raw);
     if (REFUSAL.test(text) || hint.intent === 'cancel') return 'refusal';
+    if (ONLY_INQUIRY.test(text)) return 'none';
     if (hint.dateMentioned || hint.timeMentioned || hint.nameProvided || hint.emailProvided) return 'act';
     if (/^(?:svc_|slot_|confirm_|__flow)/.test(String(raw ?? ''))) return 'act';
     if (STRONG_YES.test(text)) return 'act';
+    if (opts.offerLive && BARE_ACK.test(text)) return 'act';
     if (hasExplicitBookingRequest(raw)) return 'act';
-    // Choosing a service from the list the engine showed is a booking step.
-    if (step === 'show_services' && hint.serviceMentioned && !isInformationalDetour(raw, hint, step)) return 'act';
+    const informational = isInformationalDetour(raw, hint, step);
+    if (PLEASE_END.test(text) && hint.serviceMentioned && !informational) return 'act';
+    // Choosing a service from the list the engine showed, or repeating it in a tentative mission, is a booking step.
+    if ((step === 'show_services' || opts.tentative) && hint.serviceMentioned && !informational) return 'act';
     return 'none';
 }
 

@@ -15,7 +15,8 @@ import { procedureDialogueMessages } from './procedure-dialogue-messages';
 import { containsMissionDirective, isCollectionCancellation, isDirectedCorrection, isNamedMissionResume, mentionedMissionDomains, missionDialogue, parseDirectedSlotCorrection } from './mission-focus';
 import { coerceProcedureSlot } from './procedure-slot-interpolation';
 import { nearestSlots, selectSlotWindow } from './slot-window';
-import { asksDuration, bookingActKind, isInformationalDetour } from './informational-detour';
+import { asksDuration, bookingActKind, isInformationalDetour, isOnlyInquiry } from './informational-detour';
+import { BOOKING_OFFER_TTL_MS } from './booking-offer';
 
 /**
  * Lo que el motor necesita saber del turno además del estado de la reserva.
@@ -398,6 +399,8 @@ export interface BookingState {
      * and is never shown to the model or the customer as a pending reservation.
      */
     origin?: 'question';
+    /** When the model last offered to book while the mission was tentative: a bare "ok" then accepts it. */
+    offeredBookingAt?: string;
     /**
      * Last real customer activity before the mission went dormant. Retention is
      * measured from here: `savedAt` is refreshed on every turn (even turns the
@@ -500,7 +503,13 @@ export class BookingEngineService {
     ): Promise<EngineResult> {
         const isOpen = (s: BookingState) => !!s.step && !['idle', 'booked'].includes(s.step);
         const wasOpen = isOpen(currentState);
-        const act = bookingActKind(rawText, intent, currentState.step);
+        // "Solo consulto": information only. It never changes, starts or confirms a booking, so an
+        // open mission (a draft the customer was building for another service) is left untouched.
+        if (wasOpen && isOnlyInquiry(rawText)) return { handled: false, state: currentState };
+        const tentativeOpen = wasOpen && currentState.origin === 'question';
+        const offeredAt = Date.parse(currentState.offeredBookingAt || '');
+        const offerLive = tentativeOpen && Number.isFinite(offeredAt) && Date.now() - offeredAt >= 0 && Date.now() - offeredAt <= BOOKING_OFFER_TTL_MS;
+        const act = bookingActKind(rawText, intent, currentState.step, { tentative: tentativeOpen, offerLive });
         // TENTATIVE mission (opened without a booking act, e.g. "¿cuánto dura color y tratamiento?"):
         // the engine stays out of the way. It becomes real only through a booking act (a date or
         // time, a clear yes, a service picked from the list, name/email, an explicit request);
@@ -508,16 +517,17 @@ export class BookingEngineService {
         // a refusal ("no gracias") drops it. The model answers and offers the booking.
         if (wasOpen && currentState.origin === 'question') {
             if (act === 'refusal') return { handled: false, state: { step: 'idle' } };
-            if (act === 'none') return { handled: false, state: currentState };
+            if (act === 'none') return { handled: false, state: { ...currentState, offeredBookingAt: undefined } };
         }
-        const entering: BookingState = currentState.origin ? { ...currentState, origin: undefined } : currentState;
+        const entering: BookingState = currentState.origin || currentState.offeredBookingAt ? { ...currentState, origin: undefined, offeredBookingAt: undefined } : currentState;
         const result = await this.processCore(schemaName, tenantId, contactId, intent, rawText, entering,
             customerProfile, todayDate, language, turn);
-        if (!isOpen(result.state)) { result.state.origin = undefined; return result; }
+        if (!isOpen(result.state)) { result.state.origin = undefined; result.state.offeredBookingAt = undefined; return result; }
         // Only a mission OPENED by this message can be tentative; one the customer already
         // confirmed (act) or that was real before stays real.
         const tentative = !wasOpen && act !== 'act';
         result.state.origin = tentative ? 'question' : undefined;
+        result.state.offeredBookingAt = undefined;
         // The engine's next-step prompt ("Perfecto, agendaremos...") asserts a booking the customer
         // only asked about. For a tentative mission the model answers the question with its tools
         // and offers the booking; the engine says nothing.
@@ -528,21 +538,26 @@ export class BookingEngineService {
         // A real request that also asks how long or how much: the engine speaks (it asks for the
         // date), so give the voice the facts it already has instead of dropping the question.
         if (!tentative && result.handled && result.text && result.state.step === 'ask_date' && !result.state.date) {
-            const note = this.serviceFactsNote(result.state, rawText);
+            const note = this.serviceFactsNote(result.state, rawText, language);
             if (note) return { ...result, text: `${result.text} ${note}` };
         }
         return result;
     }
 
-    /** Duration / confirmed price of the chosen service, when the customer asked for them. */
-    private serviceFactsNote(state: BookingState, rawText: string): string {
+    /**
+     * The duration / confirmed price the customer asked for, as a plain sentence for the voice that
+     * phrases the reply (price already formatted, so no raw "120000 COP" is copied).
+     */
+    private serviceFactsNote(state: BookingState, rawText: string, lang: string): string {
         const svc = state.services?.find(s => s.id === state.serviceId);
         if (!svc) return '';
         const parts: string[] = [];
         if (asksDuration(rawText) && svc.durationMinutes) parts.push(`${svc.name} lasts ${svc.durationMinutes} minutes`);
         const asksPrice = /\b(?:cuanto (?:cuesta|vale|cobran|sale)|how much|quanto custa|combien|precio|price)\b/.test(normalizeForIntent(rawText));
-        if (asksPrice && svc.price != null && (!svc.priceStatus || svc.priceStatus === 'confirmed')) parts.push(`it costs ${svc.price} ${svc.currency ?? ''}`.trim());
-        return parts.length ? `[Also answer the customer's question: ${parts.join(', ')}.]` : '';
+        if (asksPrice && Number(svc.price) > 0 && (!svc.priceStatus || svc.priceStatus === 'confirmed')) {
+            parts.push(`its price is ${formatPriceWithCurrency(lang, svc.price, svc.currency)}`);
+        }
+        return parts.length ? `The customer also asked about the service: ${parts.join(' and ')}. Answer that in your own words along with the next step.` : '';
     }
 
     private async processCore(

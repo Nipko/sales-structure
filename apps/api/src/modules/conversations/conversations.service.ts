@@ -66,6 +66,7 @@ import { AIToolExecutorService } from './ai-tool-executor.service';
 import { buildUnverifiedPriceReply, correctivePriceInstruction, enforceVerifiedPriceReply, ResponseValidatorService } from './response-validator.service';
 import { AgentTurnSession } from './agent-turn-session';
 import { sessionCanExecute, sessionLlmRouter, sessionToolExecutor } from './agent-turn-adapters';
+import { containsBookingOffer } from './booking-offer';
 import { projectEcommerceCatalogRow, projectOwnCatalogRow } from './catalog-turn-projection';
 import { projectBookingStateForPrompt, TENTATIVE_BOOKING_BLOCKED_TOOLS, restoreBookingMission } from './booking-state-continuity';
 import { deriveInformationalHours, hasConfiguredHours, promptHoursStatus, resolvePromptBusinessHours, UNKNOWN_INFORMATIONAL_HOURS, type InformationalHours } from './informational-hours';
@@ -4803,6 +4804,13 @@ export class ConversationsService {
             // The guard answered with an offer of a person: remember it so a
             // "yes" next turn escalates for real.
             if (!session && !draftMode && allowHumanHandoff) await this.rememberHumanOffer(schemaName, conversation.id, finalResponse);
+            // The reply offers to book while the mission is only an interest: remember it, so a bare
+            // "ok" / "perfecto" next turn is read as accepting that offer.
+            if (!draftMode && bookingState.origin === 'question' && bookingState.step && !['idle', 'booked'].includes(bookingState.step)
+                && containsBookingOffer(finalResponse)) {
+                bookingState.offeredBookingAt = new Date().toISOString();
+                await this.persistBookingState(schemaName, conversation.id, bookingState, session);
+            }
 
             // Long-term memory (#1): periodically distill the conversation into
             // durable facts (fire-and-forget, cheap tier). Cadence keeps cost low.

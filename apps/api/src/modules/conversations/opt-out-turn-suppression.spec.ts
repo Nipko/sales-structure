@@ -24,7 +24,7 @@ describe('opt-out turn suppression', () => {
 
         expect(suppression).toBeGreaterThan(0);
         // The suppressed turn returns (after clearing the replay's pending notice) before any handoff or model work.
-        expect(source.slice(suppression, handoff)).toMatch(/\)\) \{[\s\S]*?\n\s+return;\n\s+\}/);
+        expect(source.slice(suppression, handoff)).toMatch(/\)\) \{[\s\S]*?\r?\n\s+return;\r?\n\s+\}/);
         expect(handoff).toBeGreaterThan(suppression);
     });
 });

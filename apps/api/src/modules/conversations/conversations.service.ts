@@ -43,8 +43,8 @@ import {
 import { burstBufferKeys } from './burst-debounce-key';
 import { foldedContent, fragmentFor, mergeBurst, type BurstFragment } from './burst-fragments';
 import {
-    budgetExhaustedReplayText, BUDGET_EXHAUSTED_REPLAY_MSG, isBareConsent, returnAskOf, returnNoteTask, returnReplayTurn,
-    rewriteReplayPromise, staleConsentReply, toolsForReplay,
+    budgetExhaustedReplayText, BUDGET_EXHAUSTED_REPLAY_MSG, isBareConsent, replayAsk, returnNoteTask, returnReplayTurn,
+    rewriteReplayPromise, sanitizeReplayReply, staleConsentReply, toolsForReplay,
     type ReturnAsk,
 } from './handoff-return-replay-turn';
 import { TasksService } from '../crm/services/tasks/tasks.service';
@@ -246,7 +246,7 @@ const isPipelineFallbackReply = (text?: string | null): boolean =>
     isErrorFallback(text) || text === TOOL_LOOP_FALLBACK_REPLY || text === GENERATION_ERROR_PLACEHOLDER;
 
 const WIDGET_HANDOFF_UNAVAILABLE: Record<string, string> = {
-    es: 'En este canal todavía no puedo transferirte a una persona. Detuve la respuesta automática para no darte una expectativa falsa.',
+    es: 'En este canal todavía no puedo transferirle a una persona. Detuve la respuesta automática para no darle una expectativa falsa.',
     en: 'I cannot transfer you to a person in this channel yet. I stopped the automated reply so I do not set a false expectation.',
     pt: 'Ainda não posso transferir você para uma pessoa neste canal. Interrompi a resposta automática para não criar uma expectativa falsa.',
     fr: "Je ne peux pas encore vous transférer à une personne sur ce canal. J'ai arrêté la réponse automatique pour ne pas créer de fausse attente.",
@@ -262,34 +262,40 @@ const HANDOFF_MSG: Record<string, {
     withAgent: (n: string) => string;
     queueHead: string;
     queueN: (p: number) => string;
+    /** The notice for a customer who writes AGAIN while still waiting: not the transfer notice repeated. */
+    queueWaiting: string;
     transferring: string;
     unavailable: string;
 }> = {
     es: {
-        withAgent: n => `Entiendo tu solicitud. Te estoy transfiriendo con *${n}* de nuestro equipo. Te responderá en un momento. 🙋`,
-        queueHead: 'Entiendo tu solicitud. Te estoy transfiriendo con nuestro equipo de atención. Un agente te responderá en breve. 🙋',
-        queueN: p => `Entiendo tu solicitud. Te estoy transfiriendo con nuestro equipo de atención. Eres el #${p} en cola. Un agente te atenderá lo antes posible. 🙋`,
-        transferring: 'Te voy a transferir con un agente de nuestro equipo.',
-        unavailable: 'No pude conectarte con un agente en este momento. No realizaré la operación automáticamente; por favor, inténtalo de nuevo en unos minutos.',
+        withAgent: n => `Entiendo su solicitud. Le estoy transfiriendo con *${n}* de nuestro equipo. Le responderá en un momento. 🙋`,
+        queueHead: 'Entiendo su solicitud. Le estoy transfiriendo con nuestro equipo de atención. Un agente le responderá en breve. 🙋',
+        queueN: p => `Entiendo su solicitud. Le estoy transfiriendo con nuestro equipo de atención. Es el #${p} en la cola. Un agente le atenderá lo antes posible. 🙋`,
+        queueWaiting: 'Su solicitud sigue en espera; alguien del equipo le responderá apenas esté disponible.',
+        transferring: 'Le voy a transferir con un agente de nuestro equipo.',
+        unavailable: 'No pude conectarle con un agente en este momento. No realizaré la operación automáticamente; por favor, inténtelo de nuevo en unos minutos.',
     },
     en: {
         withAgent: n => `Got it. I'm transferring you to *${n}* from our team. They'll reply shortly. 🙋`,
         queueHead: `Got it. I'm transferring you to our support team. An agent will reply shortly. 🙋`,
         queueN: p => `Got it. I'm transferring you to our support team. You're #${p} in the queue. An agent will assist you as soon as possible. 🙋`,
+        queueWaiting: 'Your request is still waiting; someone from the team will reply as soon as they are available.',
         transferring: `I'll transfer you to an agent from our team.`,
         unavailable: `I couldn't connect you with an agent right now. I won't perform the operation automatically; please try again in a few minutes.`,
     },
     pt: {
-        withAgent: n => `Entendi. Estou te transferindo para *${n}* da nossa equipe. Em breve responderá. 🙋`,
-        queueHead: 'Entendi. Estou te transferindo para nossa equipe de atendimento. Um atendente responderá em breve. 🙋',
-        queueN: p => `Entendi. Estou te transferindo para nossa equipe. Você é o #${p} na fila. Um atendente vai te atender o quanto antes. 🙋`,
-        transferring: 'Vou te transferir para um atendente da nossa equipe.',
+        withAgent: n => `Entendi a sua solicitação. Estou transferindo você para *${n}* da nossa equipe, que responderá em breve. 🙋`,
+        queueHead: 'Entendi a sua solicitação. Estou transferindo você para a nossa equipe de atendimento. Um atendente responderá em breve. 🙋',
+        queueN: p => `Entendi a sua solicitação. Estou transferindo você para a nossa equipe. Você é o #${p} na fila e um atendente responderá o quanto antes. 🙋`,
+        queueWaiting: 'Sua solicitação continua em espera; alguém da equipe responderá assim que estiver disponível.',
+        transferring: 'Vou transferir você para um atendente da nossa equipe.',
         unavailable: 'Não consegui conectar você a um atendente agora. Não farei a operação automaticamente; tente novamente em alguns minutos.',
     },
     fr: {
         withAgent: n => `Compris. Je vous transfère à *${n}* de notre équipe. Il/elle vous répondra dans un instant. 🙋`,
         queueHead: 'Compris. Je vous transfère à notre équipe support. Un agent vous répondra sous peu. 🙋',
         queueN: p => `Compris. Je vous transfère à notre équipe. Vous êtes #${p} dans la file. Un agent vous répondra dès que possible. 🙋`,
+        queueWaiting: "Votre demande est toujours en attente ; quelqu'un de l'équipe vous répondra dès qu'il sera disponible.",
         transferring: 'Je vais vous transférer à un agent de notre équipe.',
         unavailable: "Je n'ai pas pu vous mettre en relation avec un agent pour le moment. Je n'effectuerai pas l'opération automatiquement ; veuillez réessayer dans quelques minutes.",
     },
@@ -298,9 +304,9 @@ const handoffText = (lang?: string) => HANDOFF_MSG[(lang || 'es').slice(0, 2).to
 
 // Sent once when nobody from the team picked the handoff up and the agent resumes.
 const HANDOFF_RETURN_MSG: Record<string, string> = {
-    es: 'No hay nadie del equipo disponible ahora; sigo ayudándote yo.',
+    es: 'En este momento no hay nadie del equipo disponible; sigo ayudándole yo.',
     en: 'Nobody from the team is available right now; I will keep helping you.',
-    pt: 'Não há ninguém da equipe disponível agora; eu continuo te ajudando.',
+    pt: 'Neste momento não há ninguém da equipe disponível; continuo ajudando você.',
     fr: "Personne de l'équipe n'est disponible pour le moment ; je continue de vous aider.",
 };
 const handoffReturnText = (lang?: string) => HANDOFF_RETURN_MSG[(lang || 'es').slice(0, 2).toLowerCase()] || HANDOFF_RETURN_MSG.es;
@@ -394,7 +400,7 @@ const EXECUTED_OPERATION_MSG: Record<string, { done: string; doneNoDetails: stri
 // the corrective rewrite also insisted. Better a flat, honest sentence than a
 // confident lie about a booking that does not exist.
 const UNVERIFIED_CLAIM_FALLBACK: Record<string, string> = {
-    es: 'No puedo darte esa acción por confirmada: no tengo constancia de que se haya completado. ¿Quieres que le pida a una persona del equipo que lo confirme?',
+    es: 'No puedo darle esa acción por confirmada: no tengo constancia de que se haya completado. ¿Quiere que le pida a una persona del equipo que lo confirme?',
     en: 'I cannot treat that as done: I have no record that it was completed. Would you like me to ask someone from the team to confirm it?',
     pt: 'Não posso considerar isso concluído: não tenho registro de que foi finalizado. Quer que eu peça a alguém da equipe para confirmar?',
     fr: "Je ne peux pas considérer cela comme fait : je n'ai aucune trace que l'opération a abouti. Souhaitez-vous que je demande à quelqu'un de l'équipe de la confirmer ?",
@@ -417,7 +423,7 @@ function isSystemFixedText(text: string): boolean {
     const fixed = [
         ...Object.values(UNVERIFIED_CLAIM_FALLBACK), ...Object.values(NO_DATA_WAIT_REPLACEMENT), ...Object.values(NO_DATA_NO_OFFER),
         ...Object.values(PARTIAL_SUCCESS_MSG), ...Object.values(BUDGET_EXHAUSTED_MSG), ...Object.values(BUDGET_EXHAUSTED_REPLAY_MSG),
-        ...Object.values(HANDOFF_MSG).flatMap(h => [h.transferring, h.unavailable, h.queueHead]),
+        ...Object.values(HANDOFF_MSG).flatMap(h => [h.transferring, h.unavailable, h.queueHead, h.queueWaiting]),
         ...Object.values(HANDOFF_RETURN_MSG),
     ];
     return fixed.some(f => f.trim() === t);
@@ -426,7 +432,7 @@ function isSystemFixedText(text: string): boolean {
 // The turn broke AFTER something real was committed. The generic error would
 // have the customer believe nothing happened and ask for it all over again.
 const PARTIAL_SUCCESS_MSG: Record<string, string> = {
-    es: 'Tu solicitud quedó registrada correctamente, pero tuve un problema al terminar de responderte. No la repitas: alguien del equipo la revisa y te confirma los detalles enseguida.',
+    es: 'Su solicitud quedó registrada correctamente, pero tuve un problema al terminar de responderle. No la repita: alguien del equipo la revisa y le confirma los detalles enseguida.',
     en: 'Your request was recorded successfully, but I ran into a problem finishing my reply. Please do not send it again: someone from the team is checking it and will confirm the details shortly.',
     pt: 'Sua solicitação foi registrada corretamente, mas tive um problema ao terminar de responder. Não repita: alguém da equipe está verificando e confirma os detalhes em breve.',
     fr: "Votre demande a bien été enregistrée, mais j'ai eu un problème pour terminer ma réponse. Ne la renvoyez pas : quelqu'un de l'équipe vérifie et vous confirmera les détails sous peu.",
@@ -439,9 +445,9 @@ const partialSuccessText = (lang?: string) =>
 // corte que dura hasta el 1 del mes que viene. Se dice lo que pasa y se pasa a
 // una persona, que es la única salida real para el cliente.
 const BUDGET_EXHAUSTED_MSG: Record<string, string> = {
-    es: 'Ahora mismo no puedo seguir atendiéndote por este medio automático. No lo repitas, que no va a cambiar: aviso a una persona del equipo para que siga contigo.',
+    es: 'Ahora mismo no puedo seguir atendiéndole por este medio automático. No lo repita, que no va a cambiar: aviso a una persona del equipo para que siga con usted.',
     en: 'I can’t keep helping you automatically right now. Please don’t resend it — it won’t change: I’m letting someone from the team know so they can take over.',
-    pt: 'Agora não consigo continuar te atendendo por este meio automático. Não repita, não vai mudar: estou avisando alguém da equipe para continuar com você.',
+    pt: 'Agora não consigo continuar atendendo você por este meio automático. Não repita, não vai mudar: estou avisando alguém da equipe para continuar com você.',
     fr: "Je ne peux pas continuer à vous répondre automatiquement pour le moment. Ne renvoyez pas votre message, cela ne changera rien : je préviens quelqu'un de l'équipe pour prendre le relais.",
 };
 const budgetExhaustedText = (lang?: string) =>
@@ -1322,14 +1328,18 @@ export class ConversationsService {
         // the customer asked for is acknowledged by the turn instead.
         const handoffReason = replayTurn ? null : triggeredReason;
         if (replayTurn) {
-            const ask = returnAskOf(triggeredReason);
+            // What they asked while waiting, or else what they asked to be put in the queue.
+            const handoff = (conversation.metadata as any)?.handoff;
+            const { ask, fromEpisode } = replayAsk(triggeredReason, handoff);
             (normalizedMsg as any).handoffReturn = {
                 ask,
                 noteLeft: !draftMode && ask
                     ? await this.leaveHandoffReturnNote({
-                        tenantId, schemaName, conversation, contact, leadId: lead?.id, ask, text: content?.text,
-                        startedAt: replayTurn.startedAt,
+                        tenantId, schemaName, conversation, contact, leadId: lead?.id, ask,
+                        text: fromEpisode ? String(handoff?.summary ?? '') : content?.text,
+                        fromEpisode, startedAt: replayTurn.startedAt,
                     }) : false,
+                fromEpisode,
             };
         }
         if (handoffReason && !draftMode) {
@@ -1468,6 +1478,14 @@ export class ConversationsService {
             );
         // A recovered envelope or a cached reply may predate the strip.
         if (typeof response === 'string' && response) response = stripInternalMarkers(response);
+        // On the replay the customer has just been told nobody is available: whatever the model wrote,
+        // it neither promises a transfer nor offers a person (a «sí» would start another wait).
+        if (replayTurn && typeof response === 'string' && response && !recoveredEnvelope && !resumedReply
+            && !isSystemFixedText(response) && !isErrorFallback(response)) {
+            response = sanitizeReplayReply(response,
+                this.languageDetector.detect(content?.text || '', config.language || 'es'),
+                (normalizedMsg as any).handoffReturn?.noteLeft === true);
+        }
         // The handoff return notice leads the answer of the turn it is claimed in, in
         // the same durable batch. A recovered or resumed answer was composed by an
         // earlier attempt that already carried (or lost) it; prepending again would
@@ -2824,7 +2842,7 @@ export class ConversationsService {
         const intentInterpreter = session ? new IntentInterpreterService(llmRouter) : this.intentInterpreter;
         // The replay of what the customer wrote while nobody answered (set by the caller,
         // never by the message): this turn must not put the conversation back in the queue.
-        const handoffReturn = (msg as any).handoffReturn as { ask: string | null; noteLeft: boolean } | undefined;
+        const handoffReturn = (msg as any).handoffReturn as { ask: string | null; noteLeft: boolean; fromEpisode?: boolean } | undefined;
         const allowHumanHandoff = !session && !draftMode && !handoffReturn
             && (msg.channelType !== 'web_widget' || (msg.metadata as any)?.allowHumanHandoff === true);
         let userText = msg.content.text || '';
@@ -4403,7 +4421,7 @@ export class ConversationsService {
         // Anti-repetition: tell the LLM how many messages exist in this conversation.
         // message_count > 1 means it's a CONTINUATION — don't re-introduce yourself.
         turnContext.messageCount = (history?.length || 0) + 1; // +1 for current message (excluded from history above)
-        if (handoffReturn) (turnContext as any).handoffReturn = { ask: handoffReturn.ask, noteLeft: handoffReturn.noteLeft };
+        if (handoffReturn) (turnContext as any).handoffReturn = { ask: handoffReturn.ask, noteLeft: handoffReturn.noteLeft, fromEpisode: handoffReturn.fromEpisode === true };
 
         // D6 affective detection (Hume EVI style) — before assemble so it enters <turn>
         try {
@@ -5918,8 +5936,7 @@ export class ConversationsService {
             // the offer, state the transfer (a real handoff promise, honoured by
             // `promisesHumanHandoff` → `escalateWithinTurn`).
             const lastAssistant = [...(currentMessages || [])].reverse().find(m => m?.role === 'assistant');
-            const offeredBefore = typeof lastAssistant?.content === 'string'
-                && Object.values(NO_DATA_WAIT_REPLACEMENT).includes(lastAssistant.content.trim());
+            const offeredBefore = typeof lastAssistant?.content === 'string' && isHumanOfferText(lastAssistant.content);
             response = !humanOfferAvailable ? noDataNoOfferText(lang)
                 : offeredBefore ? handoffText(lang).transferring : noDataWaitReplacementText(lang);
         }
@@ -6296,7 +6313,7 @@ export class ConversationsService {
         }).catch(() => null);
         const lang = (tenant?.language || 'es').slice(0, 2).toLowerCase();
         const messages: Record<string, string> = {
-            es: 'Gracias por tu mensaje. La atención automática no está disponible en este momento. Por favor, inténtalo más tarde.',
+            es: 'Gracias por su mensaje. La atención automática no está disponible en este momento. Por favor, inténtelo más tarde.',
             en: 'Thanks for your message. Automated assistance is currently unavailable. Please try again later.',
             pt: 'Obrigado pela sua mensagem. O atendimento automático está indisponível no momento. Tente novamente mais tarde.',
             fr: 'Merci pour votre message. L’assistance automatique est indisponible pour le moment. Veuillez réessayer plus tard.',
@@ -6421,14 +6438,17 @@ export class ConversationsService {
             const triggeredReason = await this.resolveHandoffReason(text, conversation, config, tenantId, !draftMode);
             const handoffReason = replayTurn ? null : triggeredReason;
             if (replayTurn) {
-                const ask = returnAskOf(triggeredReason);
+                const handoff = (conversation.metadata as any)?.handoff;
+                const { ask, fromEpisode } = replayAsk(triggeredReason, handoff);
                 (msg as any).handoffReturn = {
                     ask,
                     noteLeft: !draftMode && ask
                         ? await this.leaveHandoffReturnNote({
-                            tenantId, schemaName, conversation, contact, leadId: leads?.[0]?.id, ask, text,
-                            startedAt: replayTurn!.startedAt,
+                            tenantId, schemaName, conversation, contact, leadId: leads?.[0]?.id, ask,
+                            text: fromEpisode ? String(handoff?.summary ?? '') : text,
+                            fromEpisode, startedAt: replayTurn!.startedAt,
                         }) : false,
+                    fromEpisode,
                 };
             }
             let reply: string | null = null;
@@ -6520,6 +6540,10 @@ export class ConversationsService {
                 }
             }
             if (!reply?.trim()) return null;
+            // Whatever the model wrote, a replay neither promises a transfer nor offers a person.
+            if (replayTurn && !isErrorFallback(reply) && !isSystemFixedText(reply)) {
+                reply = sanitizeReplayReply(reply, language, (msg as any).handoffReturn?.noteLeft === true);
+            }
             // The same notice, in the same message, as on every other channel.
             if (replayTurn && !isErrorFallback(reply)) {
                 reply = withReturnNotice(
@@ -6788,7 +6812,7 @@ export class ConversationsService {
             try {
                 await this.replyOnceThroughOutbox({
                     tenantId, conversation, msg, operationalScope: scope, inboundMessageId,
-                    item: { kind: 'text', payload: { text: handoffText(this.languageDetector.detect(text || '', defaultLanguage)).queueHead } },
+                    item: { kind: 'text', payload: { text: handoffText(this.languageDetector.detect(text || '', defaultLanguage)).queueWaiting } },
                     originKey: `handoff-queue-notice:${conversation.id}:${startedAt}`,
                     // The queue notice must not occupy the identity of the message
                     // it answers: after the unattended return that very message
@@ -6879,13 +6903,13 @@ export class ConversationsService {
      */
     private async leaveHandoffReturnNote(input: {
         tenantId: string; schemaName: string; conversation: any; contact?: any; leadId: unknown;
-        ask: ReturnAsk; text?: string; startedAt: string;
+        ask: ReturnAsk; text?: string; fromEpisode?: boolean; startedAt: string;
     }): Promise<boolean> {
         const { tenantId, schemaName, conversation, ask } = input;
         let left = false;
         if (this.tasksService && input.leadId && PERSISTED_ID.test(String(input.leadId))) {
             try {
-                const note = returnNoteTask(ask, input.text || '');
+                const note = returnNoteTask(ask, input.text || '', input.fromEpisode === true);
                 const outcome = await this.tasksService.createTaskIdempotently(tenantId, {
                     leadId: String(input.leadId), title: note.title, description: note.description,
                     type: 'follow_up', createdBy: 'handoff_return',

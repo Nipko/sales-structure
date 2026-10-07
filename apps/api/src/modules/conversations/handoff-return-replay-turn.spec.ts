@@ -225,11 +225,15 @@ describe('the request that STARTED the handoff counts', () => {
         expect(replayAsk(null, { reason: 'customer_accepted_human_offer' })).toEqual({ ask: 'person', fromEpisode: true });
         expect(replayAsk(null, { reason: 'custom_trigger:garantía' })).toEqual({ ask: 'other', fromEpisode: true });
     });
+    it('a promised handoff counts as a request for a person: it only happens when the customer asked or accepted', () => {
+        expect(replayAsk(null, { reason: 'agent_promised_handoff' })).toEqual({ ask: 'person', fromEpisode: true });
+        expect(returnAskOf('agent_promised_handoff')).toBe('person');
+    });
     it('does not override what the waiting texts asked', () => {
         expect(replayAsk('complaint', { reason: 'human_request' })).toEqual({ ask: 'complaint', fromEpisode: false });
     });
     it('is nothing for a handoff the customer did not ask for', () => {
-        for (const reason of ['vip', 'max_failed_attempts', 'agent_promised_handoff', 'llm_budget_exhausted', undefined, null, 42]) {
+        for (const reason of ['vip', 'max_failed_attempts', 'llm_budget_exhausted', undefined, null, 42]) {
             expect(replayAsk(null, { reason })).toEqual({ ask: null, fromEpisode: false });
         }
         expect(replayAsk(null, undefined)).toEqual({ ask: null, fromEpisode: false });
@@ -271,5 +275,50 @@ describe('the replay never offers a person either', () => {
     });
     it('still rewrites a promise of a transfer', () => {
         expect(promisesHumanHandoff(sanitizeReplayReply('Un asesor se comunicará con usted.', 'es', false))).toBe(false);
+    });
+});
+
+/**
+ * The promise detector also catches staff «will attend you» phrasing. That is an ANSWER about the
+ * service (who serves the customer, when), not a transfer: on a replay it must stay exactly as the
+ * model wrote it. Only a sentence that names a transfer, a connection or a contact by a person, or
+ * offers one, is taken out.
+ */
+describe('the replay sanitiser keeps what is an answer', () => {
+    const SERVICE_ANSWERS: Array<[string, string]> = [
+        ['es', 'Nuestro equipo de estilistas le atenderá con gusto el sábado de 9 a 6.'],
+        ['es', 'Un especialista lo atenderá en su cita del martes.'],
+        ['en', 'Our team of stylists will be with you on Saturday.'],
+    ];
+
+    it.each(SERVICE_ANSWERS)('keeps «%s» «%s» verbatim, with or without a note to leave', (lang, text) => {
+        expect(promisesHumanHandoff(text)).toBe(true); // the detector does catch it: this is the regression
+        expect(sanitizeReplayReply(text, lang, false)).toBe(text);
+        expect(sanitizeReplayReply(text, lang, true)).toBe(text);
+        expect(rewriteReplayPromise(text, lang, true)).toBe(text);
+    });
+
+    it('keeps it inside a longer answer, and still removes the contact promise next to it', () => {
+        const reply = 'Nuestro equipo de estilistas le atenderá el sábado de 9 a 6. Un asesor se comunicará con usted.';
+        expect(sanitizeReplayReply(reply, 'es', false)).toBe('Nuestro equipo de estilistas le atenderá el sábado de 9 a 6.');
+    });
+
+    it.each([
+        'Un asesor se comunicará con usted.',
+        'Nuestro equipo se pondrá en contacto con usted.',
+        'El equipo lo contactará cuando esté disponible.',
+        'The team will contact you as soon as possible.',
+        'Le paso con nuestro equipo especializado.',
+        "I'll transfer you to an agent from our team.",
+        '¿Quiere que le pase con alguien del equipo?',
+        'Si quiere, le paso con un asesor.',
+    ])('still removes «%s»', sentence => {
+        const out = sanitizeReplayReply(`Atendemos de lunes a viernes. ${sentence}`, 'es', false);
+        expect(out).toBe('Atendemos de lunes a viernes.');
+    });
+
+    it('keeps the figure a dropped sentence carried', () => {
+        expect(sanitizeReplayReply('Su cita es el martes a las 3, un asesor se comunicará con usted.', 'es', false))
+            .toBe('Su cita es el martes a las 3.');
     });
 });

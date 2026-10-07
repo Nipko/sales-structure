@@ -244,7 +244,7 @@ const isPipelineFallbackReply = (text?: string | null): boolean =>
     isErrorFallback(text) || text === TOOL_LOOP_FALLBACK_REPLY || text === GENERATION_ERROR_PLACEHOLDER;
 
 const WIDGET_HANDOFF_UNAVAILABLE: Record<string, string> = {
-    es: 'En este canal todavía no puedo transferirte a una persona. Detuve la respuesta automática para no darte una expectativa falsa.',
+    es: 'En este canal todavía no puedo transferirle a una persona. Detuve la respuesta automática para no darle una expectativa falsa.',
     en: 'I cannot transfer you to a person in this channel yet. I stopped the automated reply so I do not set a false expectation.',
     pt: 'Ainda não posso transferir você para uma pessoa neste canal. Interrompi a resposta automática para não criar uma expectativa falsa.',
     fr: "Je ne peux pas encore vous transférer à une personne sur ce canal. J'ai arrêté la réponse automatique pour ne pas créer de fausse attente.",
@@ -266,12 +266,12 @@ const HANDOFF_MSG: Record<string, {
     unavailable: string;
 }> = {
     es: {
-        withAgent: n => `Entiendo tu solicitud. Te estoy transfiriendo con *${n}* de nuestro equipo. Te responderá en un momento. 🙋`,
-        queueHead: 'Entiendo tu solicitud. Te estoy transfiriendo con nuestro equipo de atención. Un agente te responderá en breve. 🙋',
-        queueN: p => `Entiendo tu solicitud. Te estoy transfiriendo con nuestro equipo de atención. Eres el #${p} en cola. Un agente te atenderá lo antes posible. 🙋`,
+        withAgent: n => `Entiendo su solicitud. Le estoy transfiriendo con *${n}* de nuestro equipo. Le responderá en un momento. 🙋`,
+        queueHead: 'Entiendo su solicitud. Le estoy transfiriendo con nuestro equipo de atención. Un agente le responderá en breve. 🙋',
+        queueN: p => `Entiendo su solicitud. Le estoy transfiriendo con nuestro equipo de atención. Es el #${p} en la cola. Un agente le atenderá lo antes posible. 🙋`,
         queueWaiting: 'Su solicitud sigue en espera; alguien del equipo le responderá apenas esté disponible.',
-        transferring: 'Te voy a transferir con un agente de nuestro equipo.',
-        unavailable: 'No pude conectarte con un agente en este momento. No realizaré la operación automáticamente; por favor, inténtalo de nuevo en unos minutos.',
+        transferring: 'Le voy a transferir con un agente de nuestro equipo.',
+        unavailable: 'No pude conectarle con un agente en este momento. No realizaré la operación automáticamente; por favor, inténtelo de nuevo en unos minutos.',
     },
     en: {
         withAgent: n => `Got it. I'm transferring you to *${n}* from our team. They'll reply shortly. 🙋`,
@@ -282,11 +282,11 @@ const HANDOFF_MSG: Record<string, {
         unavailable: `I couldn't connect you with an agent right now. I won't perform the operation automatically; please try again in a few minutes.`,
     },
     pt: {
-        withAgent: n => `Entendi. Estou te transferindo para *${n}* da nossa equipe. Em breve responderá. 🙋`,
-        queueHead: 'Entendi. Estou te transferindo para nossa equipe de atendimento. Um atendente responderá em breve. 🙋',
-        queueN: p => `Entendi. Estou te transferindo para nossa equipe. Você é o #${p} na fila. Um atendente vai te atender o quanto antes. 🙋`,
+        withAgent: n => `Entendi a sua solicitação. Estou transferindo você para *${n}* da nossa equipe, que responderá em breve. 🙋`,
+        queueHead: 'Entendi a sua solicitação. Estou transferindo você para a nossa equipe de atendimento. Um atendente responderá em breve. 🙋',
+        queueN: p => `Entendi a sua solicitação. Estou transferindo você para a nossa equipe. Você é o #${p} na fila e um atendente responderá o quanto antes. 🙋`,
         queueWaiting: 'Sua solicitação continua em espera; alguém da equipe responderá assim que estiver disponível.',
-        transferring: 'Vou te transferir para um atendente da nossa equipe.',
+        transferring: 'Vou transferir você para um atendente da nossa equipe.',
         unavailable: 'Não consegui conectar você a um atendente agora. Não farei a operação automaticamente; tente novamente em alguns minutos.',
     },
     fr: {
@@ -398,7 +398,7 @@ const EXECUTED_OPERATION_MSG: Record<string, { done: string; doneNoDetails: stri
 // the corrective rewrite also insisted. Better a flat, honest sentence than a
 // confident lie about a booking that does not exist.
 const UNVERIFIED_CLAIM_FALLBACK: Record<string, string> = {
-    es: 'No puedo darte esa acción por confirmada: no tengo constancia de que se haya completado. ¿Quieres que le pida a una persona del equipo que lo confirme?',
+    es: 'No puedo darle esa acción por confirmada: no tengo constancia de que se haya completado. ¿Quiere que le pida a una persona del equipo que lo confirme?',
     en: 'I cannot treat that as done: I have no record that it was completed. Would you like me to ask someone from the team to confirm it?',
     pt: 'Não posso considerar isso concluído: não tenho registro de que foi finalizado. Quer que eu peça a alguém da equipe para confirmar?',
     fr: "Je ne peux pas considérer cela comme fait : je n'ai aucune trace que l'opération a abouti. Souhaitez-vous que je demande à quelqu'un de l'équipe de la confirmer ?",
@@ -422,7 +422,7 @@ function isSystemFixedText(text: string): boolean {
 // The turn broke AFTER something real was committed. The generic error would
 // have the customer believe nothing happened and ask for it all over again.
 const PARTIAL_SUCCESS_MSG: Record<string, string> = {
-    es: 'Tu solicitud quedó registrada correctamente, pero tuve un problema al terminar de responderte. No la repitas: alguien del equipo la revisa y te confirma los detalles enseguida.',
+    es: 'Su solicitud quedó registrada correctamente, pero tuve un problema al terminar de responderle. No la repita: alguien del equipo la revisa y le confirma los detalles enseguida.',
     en: 'Your request was recorded successfully, but I ran into a problem finishing my reply. Please do not send it again: someone from the team is checking it and will confirm the details shortly.',
     pt: 'Sua solicitação foi registrada corretamente, mas tive um problema ao terminar de responder. Não repita: alguém da equipe está verificando e confirma os detalhes em breve.',
     fr: "Votre demande a bien été enregistrée, mais j'ai eu un problème pour terminer ma réponse. Ne la renvoyez pas : quelqu'un de l'équipe vérifie et vous confirmera les détails sous peu.",
@@ -435,9 +435,9 @@ const partialSuccessText = (lang?: string) =>
 // corte que dura hasta el 1 del mes que viene. Se dice lo que pasa y se pasa a
 // una persona, que es la única salida real para el cliente.
 const BUDGET_EXHAUSTED_MSG: Record<string, string> = {
-    es: 'Ahora mismo no puedo seguir atendiéndote por este medio automático. No lo repitas, que no va a cambiar: aviso a una persona del equipo para que siga contigo.',
+    es: 'Ahora mismo no puedo seguir atendiéndole por este medio automático. No lo repita, que no va a cambiar: aviso a una persona del equipo para que siga con usted.',
     en: 'I can’t keep helping you automatically right now. Please don’t resend it — it won’t change: I’m letting someone from the team know so they can take over.',
-    pt: 'Agora não consigo continuar te atendendo por este meio automático. Não repita, não vai mudar: estou avisando alguém da equipe para continuar com você.',
+    pt: 'Agora não consigo continuar atendendo você por este meio automático. Não repita, não vai mudar: estou avisando alguém da equipe para continuar com você.',
     fr: "Je ne peux pas continuer à vous répondre automatiquement pour le moment. Ne renvoyez pas votre message, cela ne changera rien : je préviens quelqu'un de l'équipe pour prendre le relais.",
 };
 const budgetExhaustedText = (lang?: string) =>
@@ -5874,8 +5874,7 @@ export class ConversationsService {
             // the offer, state the transfer (a real handoff promise, honoured by
             // `promisesHumanHandoff` → `escalateWithinTurn`).
             const lastAssistant = [...(currentMessages || [])].reverse().find(m => m?.role === 'assistant');
-            const offeredBefore = typeof lastAssistant?.content === 'string'
-                && Object.values(NO_DATA_WAIT_REPLACEMENT).includes(lastAssistant.content.trim());
+            const offeredBefore = typeof lastAssistant?.content === 'string' && isHumanOfferText(lastAssistant.content);
             response = !humanOfferAvailable ? noDataNoOfferText(lang)
                 : offeredBefore ? handoffText(lang).transferring : noDataWaitReplacementText(lang);
         }
@@ -6252,7 +6251,7 @@ export class ConversationsService {
         }).catch(() => null);
         const lang = (tenant?.language || 'es').slice(0, 2).toLowerCase();
         const messages: Record<string, string> = {
-            es: 'Gracias por tu mensaje. La atención automática no está disponible en este momento. Por favor, inténtalo más tarde.',
+            es: 'Gracias por su mensaje. La atención automática no está disponible en este momento. Por favor, inténtelo más tarde.',
             en: 'Thanks for your message. Automated assistance is currently unavailable. Please try again later.',
             pt: 'Obrigado pela sua mensagem. O atendimento automático está indisponível no momento. Tente novamente mais tarde.',
             fr: 'Merci pour votre message. L’assistance automatique est indisponible pour le moment. Veuillez réessayer plus tard.',

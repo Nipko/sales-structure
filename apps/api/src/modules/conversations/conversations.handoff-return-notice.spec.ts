@@ -242,7 +242,7 @@ describe('an unsolicited promise becomes an offer that agrees with the rest of t
     });
     it('only the promise left: the whole honest reply and its question', () => {
         expect(offerInsteadOfPromise('Le paso con nuestro equipo especializado, espere un momento.', 'es', true))
-            .toBe('No tengo ese dato confirmado en este momento. ¿Quieres que le pida a una persona del equipo que lo confirme?');
+            .toBe('No tengo ese dato confirmado en este momento. ¿Quiere que le pida a una persona del equipo que lo confirme?');
     });
     it.each(['es', 'en', 'pt', 'fr'])('%s: the question alone is a human offer, so a "sí" still escalates', lang => {
         const out = offerInsteadOfPromise(lang === 'en' ? 'We open at 9 am. I will transfer you to our team now.' : 'Abrimos a las 9. Le paso con nuestro equipo ahora mismo.', lang, true);
@@ -676,7 +676,7 @@ describe('the 2026-10-07 live sequence', () => {
         await service.runTurn(message);
         expect(service.handoffService.executeHandoff).toHaveBeenCalledTimes(1);
         expect(service.replyOnceThroughOutbox.mock.calls[0][0].item.payload.text)
-            .toBe('Entiendo tu solicitud. Te estoy transfiriendo con nuestro equipo de atención. Un agente te responderá en breve. 🙋');
+            .toBe('Entiendo su solicitud. Le estoy transfiriendo con nuestro equipo de atención. Un agente le responderá en breve. 🙋');
     });
 
     it('T2 gets a queue notice that is NOT the transfer notice again', async () => {
@@ -753,5 +753,54 @@ describe('the 2026-10-07 live sequence', () => {
         service.languageDetector.detect.mockReturnValue(lang);
         await service.runTurn(message);
         expect(sentChunks(service).join('\n')).toContain(expected);
+    });
+});
+
+/**
+ * The platform talks to its customers with «usted» in Spanish, and without the colloquial «te» in
+ * Portuguese. The fixed handoff texts live in a table that no behaviour test reaches in every
+ * language, so the table itself is checked.
+ */
+describe('the fixed handoff texts speak with usted', () => {
+    const { readFileSync } = jest.requireActual('fs');
+    const { resolve } = jest.requireActual('path');
+    const source: string = readFileSync(resolve(__dirname, 'conversations.service.ts'), 'utf8');
+    const table = (start: string, end: string) => {
+        const from = source.indexOf(start);
+        return source.slice(from, source.indexOf(end, from));
+    };
+    const esLines = (block: string) => block.split(/\r?\n/).filter(line => /^\s*(?:es:|withAgent:|queueHead:|queueN:|queueWaiting:|transferring:|unavailable:)/.test(line));
+
+    it('HANDOFF_MSG: Spanish is usted, Portuguese has no «te»', () => {
+        const block = table('const HANDOFF_MSG', 'const handoffText');
+        const es = block.slice(block.indexOf('    es: {'), block.indexOf('    en: {'));
+        const pt = block.slice(block.indexOf('    pt: {'), block.indexOf('    fr: {'));
+        for (const line of esLines(es)) expect(line).not.toMatch(/\b(?:tu|tus|te|eres|puedes|inténtalo|conectarte)\b/i);
+        for (const line of pt.split(/\r?\n/)) expect(line).not.toMatch(/\b(?:te|teu|tua)\b/i);
+        expect(es).toContain('Le estoy transfiriendo');
+        expect(pt).toContain('transferindo você');
+    });
+
+    it.each(['UNVERIFIED_CLAIM_FALLBACK', 'PARTIAL_SUCCESS_MSG', 'BUDGET_EXHAUSTED_MSG', 'WIDGET_HANDOFF_UNAVAILABLE'])(
+        '%s: the Spanish text is usted', name => {
+            const block = table(`const ${name}`, '};');
+            const es = block.split(/\r?\n/).find(line => /^\s*es:/.test(line))!;
+            expect(es).toBeTruthy();
+            expect(es).not.toMatch(/\b(?:tu|tus|te|eres|puedes|repitas|inténtalo|quieres|darte|transferirte|contigo)\b/i);
+        });
+
+    it('the notice a transferred customer reads, in a full turn, is the usted one', async () => {
+        const { service, message } = fixture({ status: 'active', handoff: {}, text: 'necesito hablar con una persona' });
+        Object.assign(service, {
+            eventEmitter: { emit: jest.fn() },
+            handoffService: {
+                isInHandoff: jest.fn().mockResolvedValue(false),
+                shouldHandoff: jest.fn().mockReturnValue('human_request'),
+                executeHandoff: jest.fn().mockResolvedValue({ assignedTo: null }),
+            },
+        });
+        await service.runTurn(message);
+        expect(service.replyOnceThroughOutbox.mock.calls[0][0].item.payload.text)
+            .toBe('Entiendo su solicitud. Le estoy transfiriendo con nuestro equipo de atención. Un agente le responderá en breve. 🙋');
     });
 });

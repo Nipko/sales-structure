@@ -81,10 +81,19 @@ describe('applyOutputGuardrails: wait promise without a tool', () => {
         expect(await service.applyOutputGuardrails(wait, 'sys', [], [], 'tenant', 'conv', [], 'es', [], { directive: 'Te voy a transferir' })).toBe(wait);
     });
 
+    it('an offer sent with the wording the platform used before «usted» is still our offer (no loop, the «sí» still escalates)', async () => {
+        const service = build();
+        const legacy = 'No tengo ese dato confirmado en este momento. ¿Quieres que le pida a una persona del equipo que lo confirme?';
+        const history = [{ role: 'assistant', content: legacy }, { role: 'user', content: 'sí' }];
+        const reply = await service.applyOutputGuardrails('Un momento.', 'sys', history, [], 'tenant', 'conv', [], 'es', [], {});
+        expect(reply.startsWith('Le voy')).toBe(true);
+        expect(promisesHumanHandoff(reply)).toBe(true);
+    });
+
     it('does not loop the offer: after our offer, a bare wait becomes an honest transfer that escalates', async () => {
         const service = build();
-        const offer = 'No tengo ese dato confirmado en este momento. ¿Quieres que le pida a una persona del equipo que lo confirme?';
-        for (const [lang, expectedStart] of [['es', 'Te voy'], ['en', 'I'], ['pt', 'Vou'], ['fr', 'Je vais']] as const) {
+        const offer = 'No tengo ese dato confirmado en este momento. ¿Quiere que le pida a una persona del equipo que lo confirme?';
+        for (const [lang, expectedStart] of [['es', 'Le voy'], ['en', 'I'], ['pt', 'Vou'], ['fr', 'Je vais']] as const) {
             const history = [{ role: 'assistant', content: offer }, { role: 'user', content: 'sí' }];
             const reply = await service.applyOutputGuardrails('Un momento.', 'sys', history, [], 'tenant', 'conv', [], lang, [], {});
             expect(reply.startsWith(expectedStart)).toBe(true);

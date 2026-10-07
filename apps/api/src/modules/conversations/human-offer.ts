@@ -11,7 +11,7 @@ export const HUMAN_OFFER_MARK = 'pendingHumanOffer';
 export const HUMAN_OFFER_TTL_MS = 15 * 60 * 1000;
 
 export const NO_DATA_WAIT_REPLACEMENT: Record<string, string> = {
-    es: 'No tengo ese dato confirmado en este momento. ¿Quieres que le pida a una persona del equipo que lo confirme?',
+    es: 'No tengo ese dato confirmado en este momento. ¿Quiere que le pida a una persona del equipo que lo confirme?',
     en: 'I don’t have that information confirmed right now. Would you like me to ask someone from the team to confirm it?',
     pt: 'Não tenho essa informação confirmada neste momento. Quer que eu peça a alguém da equipe para confirmar?',
     fr: "Je n'ai pas cette information confirmée pour le moment. Souhaitez-vous que je demande à quelqu'un de l'équipe de la confirmer ?",
@@ -19,7 +19,7 @@ export const NO_DATA_WAIT_REPLACEMENT: Record<string, string> = {
 
 /** Only the offer, as a question: for a reply that already says everything else it has to say. */
 export const HUMAN_OFFER_QUESTION: Record<string, string> = {
-    es: '¿Quieres que le pida a una persona del equipo que lo confirme?',
+    es: '¿Quiere que le pida a una persona del equipo que lo confirme?',
     en: 'Would you like me to ask someone from the team to confirm it?',
     pt: 'Quer que eu peça a alguém da equipe para confirmar?',
     fr: "Souhaitez-vous que je demande à quelqu'un de l'équipe de la confirmer ?",
@@ -70,15 +70,27 @@ export const NO_DATA_NO_OFFER: Record<string, string> = {
 export const noDataNoOfferText = (lang?: string): string =>
     NO_DATA_NO_OFFER[(lang || 'es').slice(0, 2).toLowerCase()] || NO_DATA_NO_OFFER.es;
 
+/**
+ * The wording these offers had before the platform spoke to customers with «usted»
+ * («¿Quieres que le pida…»). A conversation that was offered a person with the old words
+ * must still read its customer's «sí» as accepting that offer for the 15 minutes the offer
+ * lives, so the detectors keep recognising them.
+ */
+const LEGACY_HUMAN_OFFER_QUESTION = '¿Quieres que le pida a una persona del equipo que lo confirme?';
+const LEGACY_NO_DATA_WAIT_REPLACEMENT =
+    'No tengo ese dato confirmado en este momento. ¿Quieres que le pida a una persona del equipo que lo confirme?';
+
 /** True when the stored outbound text contains one of our offers. */
 export function containsHumanOffer(text: unknown): boolean {
-    return typeof text === 'string' && [...Object.values(HUMAN_OFFER_QUESTION), ...Object.values(POLICY_PERSON_OFFER_QUESTION)].some(o => text.includes(o));
+    return typeof text === 'string' && [
+        ...Object.values(HUMAN_OFFER_QUESTION), ...Object.values(POLICY_PERSON_OFFER_QUESTION), LEGACY_HUMAN_OFFER_QUESTION,
+    ].some(o => text.includes(o));
 }
 
 export function isHumanOfferText(text: unknown): boolean {
     if (typeof text !== 'string') return false;
     const t = text.trim();
-    return Object.values(NO_DATA_WAIT_REPLACEMENT).some(o => o === t);
+    return t === LEGACY_NO_DATA_WAIT_REPLACEMENT || Object.values(NO_DATA_WAIT_REPLACEMENT).some(o => o === t);
 }
 
 const AFFIRM_CORE = new Set([

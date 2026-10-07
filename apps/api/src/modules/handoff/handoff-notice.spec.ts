@@ -39,7 +39,17 @@ describe('Deterministic handoff notice catalogue', () => {
     it('keeps the queue notice identical to the wording the runtime already sends', () => {
         // The conversation runtime imports these constants, so a divergence here
         // would silently change what a transferred customer reads.
-        expect(handoffNoticeText('queue_head', 'es')).toContain('Un agente te responderá en breve');
-        expect(handoffNoticeText('transferring', 'es')).toBe('Te voy a transferir con un agente de nuestro equipo.');
+        expect(handoffNoticeText('queue_head', 'es')).toContain('Un agente le responderá en breve');
+        expect(handoffNoticeText('transferring', 'es')).toBe('Le voy a transferir con un agente de nuestro equipo.');
+    });
+
+    it('speaks to the customer with usted in Spanish, and without the colloquial «te» in Portuguese', () => {
+        for (const kind of ['queue_head', 'transferring', 'inbox_notice'] as const) {
+            expect(handoffNoticeText(kind, 'es')).not.toMatch(/\b(?:tu|tus|te|eres|puedes)\b/i);
+            expect(handoffNoticeText(kind, 'pt')).not.toMatch(/\b(?:te|teu|tua)\b/i);
+        }
+        expect(handoffNoticeText('queue_head', 'es')).toBe(
+            'Entiendo su solicitud. Le estoy transfiriendo con nuestro equipo de atención. Un agente le responderá en breve. 🙋');
+        expect(handoffNoticeText('inbox_notice', 'es')).toContain('Su conversación quedó');
     });
 });

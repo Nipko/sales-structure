@@ -563,7 +563,7 @@ const ready = !!databaseUrl && !!redisUrl;
         const REPHRASED = '¿Cuál es tu número de documento?';
         const AGAIN = 'Para seguir necesito el documento, ¿me lo pasás?';
         /** The deterministic handover sentence, straight out of the catalog. */
-        const NOTICE = 'Te voy a transferir con un agente de nuestro equipo.';
+        const NOTICE = 'Le voy a transferir con un agente de nuestro equipo.';
         /** What `datumAskKey('cedula')` is. The token, never the field name. */
         const CEDULA = 'send:awaiting_same_datum:cb5984b1';
 

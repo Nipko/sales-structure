@@ -20,6 +20,8 @@ describe('handoff promise needs a human DESTINATION right after the verb', () =>
     it.each([
         'Le paso con nuestro equipo especializado, espere un momento.',
         'Te voy a transferir con un agente de nuestro equipo.',
+        'Le voy a transferir con un agente de nuestro equipo.',
+        'Vou transferir você para um atendente da nossa equipe.',
         "I'll transfer you to an agent from our team.",
         'I am transferring you to our team now.',
         "I'll connect you with a human advisor.",

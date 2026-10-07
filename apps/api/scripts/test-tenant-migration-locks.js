@@ -516,7 +516,20 @@ async function part2() {
         log: (m) => logs.push(m), logError: () => {},
       });
       // Once the migration is queued on t2, the live transaction reaches for t1: a cycle.
-      await new Promise((resolve) => setTimeout(resolve, 400));
+      // Not a fixed sleep: poll pg_locks (from a third connection) until a backend is
+      // actually waiting for t2, i.e. the migration already holds t1 exclusively.
+      const monitor = await holder();
+      const waitingOnT2 = async () => (await monitor.query(
+        `SELECT 1 FROM pg_locks WHERE locktype = 'relation' AND NOT granted AND relation = to_regclass($1)`,
+        [`"${schema}"."t2"`],
+      )).rowCount > 0;
+      const deadline = Date.now() + 20_000;
+      while (!(await waitingOnT2())) {
+        if (Date.now() > deadline) {
+          throw new Error(`the migration never queued for t2 within 20 s: ${logs.join('\n')}`);
+        }
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
       liveQuery = live.query(`SELECT 1 FROM "${schema}"."t1"`).catch((error) => error);
       const summary = await migration;
       const liveOutcome = await liveQuery;
@@ -590,12 +603,26 @@ function parseSummaryLikeTheWorkflow(output) {
     return match ? Number(match[1]) : null;
   };
   const parsed = { summary, skipped: field('skipped'), warnings: field('warnings'), ok: field('ok') };
+  // The exact pipeline deploy.yml runs, through a POSIX shell. Node's own spawn of
+  // `sed` mangles the `\(` / `\1` escapes on Windows (it printed nothing), so the
+  // expression goes through `sh -c` with the summary passed via the environment.
   const { spawnSync } = require('child_process');
-  const sed = spawnSync('sed', ['-n', 's/.*skipped=\\([0-9]*\\).*/\\1/p'], { input: `${summary}\n`, encoding: 'utf8' });
-  if (!sed.error && sed.status === 0) {
-    assert.equal(Number(sed.stdout.trim()), parsed.skipped, 'real sed must agree with the regex mirror');
-    const sedWarn = spawnSync('sed', ['-n', 's/.*warnings=\\([0-9]*\\).*/\\1/p'], { input: `${summary}\n`, encoding: 'utf8' });
-    assert.equal(Number(sedWarn.stdout.trim()), parsed.warnings);
+  const sedField = (name) => {
+    const script = `printf '%s\\n' "$SUMMARY" | sed -n 's/.*${name}=\\([0-9]*\\).*/\\1/p'`;
+    const result = spawnSync('sh', ['-c', script], { env: { ...process.env, SUMMARY: summary }, encoding: 'utf8' });
+    if (result.error || result.status !== 0) return undefined;
+    return result.stdout.trim();
+  };
+  for (const name of ['skipped', 'warnings']) {
+    const viaSed = sedField(name);
+    if (viaSed === undefined) {
+      // Only a developer's Windows box may lack a POSIX shell; CI (Linux) must assert.
+      assert.equal(process.platform, 'win32', `sh/sed must be available to cross-check ${name}=`);
+      console.log(`       (no POSIX sh/sed on this Windows host: ${name}= cross-check skipped, regex mirror only)`);
+      continue;
+    }
+    assert.match(viaSed, /^[0-9]+$/, `sed must extract a number for ${name}= from "${summary}", got "${viaSed}"`);
+    assert.equal(Number(viaSed), parsed[name], `real sed must agree with the regex mirror for ${name}=`);
   }
   return parsed;
 }
@@ -617,11 +644,19 @@ async function catalogSnapshot(prisma, schema) {
     Object.fromEntries(Object.entries(row).map(([key, value]) => [key, normalise(value)]))
   ));
   return {
-    columns: await rows(`SELECT table_name, column_name, data_type, udt_name, is_nullable, column_default,
-        character_maximum_length, numeric_precision, numeric_scale
+    columns: await rows(`SELECT table_name, column_name, ordinal_position, data_type, udt_name, is_nullable, column_default,
+        character_maximum_length, numeric_precision, numeric_scale, is_identity, identity_generation,
+        is_generated, generation_expression
       FROM information_schema.columns WHERE table_schema = $1 ORDER BY table_name, column_name`),
-    indexes: (await rows('SELECT tablename, indexname, indexdef FROM pg_indexes WHERE schemaname = $1'))
+    indexes: (await rows(`SELECT i.tablename, i.indexname, i.indexdef, x.indisvalid AS valid, x.indisunique AS uniq
+        FROM pg_indexes i
+        JOIN pg_class ic ON ic.relname = i.indexname AND ic.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = i.schemaname)
+        JOIN pg_index x ON x.indexrelid = ic.oid
+       WHERE i.schemaname = $1`))
       .sort((a, b) => `${a.tablename}.${a.indexname}`.localeCompare(`${b.tablename}.${b.indexname}`)),
+    views: (await rows(`SELECT viewname AS name, definition FROM pg_views WHERE schemaname = $1
+        UNION ALL SELECT matviewname, definition FROM pg_matviews WHERE schemaname = $1`))
+      .sort((a, b) => a.name.localeCompare(b.name)),
     constraints: (await rows(`SELECT c.conrelid::regclass::text AS tbl, c.conname, c.contype, c.convalidated,
         pg_get_constraintdef(c.oid) AS def
       FROM pg_constraint c JOIN pg_namespace n ON n.oid = c.connamespace WHERE n.nspname = $1`))
@@ -748,40 +783,102 @@ async function endToEnd(databaseUrl) {
     });
 
     // ---- 3b: skipping no-ops must be semantically neutral on the REAL template ----
+    let tpl = fs.readFileSync(path.join(__dirname, '..', 'prisma', 'tenant-schema.sql'), 'utf8');
+    if (!hasVector) {
+      // pgvector is not installed on every disposable instance (CI has it).
+      // The two statements that need it are not what is under test here.
+      tpl = tpl.replace(/^CREATE INDEX IF NOT EXISTS idx_ke_embedding_[^\n]*ivfflat[^\n]*$/gm, '')
+        .replace(/vector\(1536\)/g, 'float4[]');
+    }
+    const migrate = async (name, skipNoopDdl) => {
+      const logs = [];
+      const summary = await runTenantMigrations({
+        prisma, tpl, tenants: [{ schema_name: name, is_active: true }],
+        options: { ...DEFAULT_OPTIONS, skipNoopDdl, maxAttempts: 1 },
+        log: (m) => logs.push(m), logError: (m) => logs.push(m),
+      });
+      assert.deepEqual(summary, { ok: 1, skipped: 0, warnings: 0, retries: 0 }, logs.join('\n'));
+      return Number((/(\d+) no-op DDL statements skipped/.exec(logs.find((line) => line.includes(`[OK] ${name}`)) || '') || [])[1] || 0);
+    };
+
     await test('REAL tenant-schema.sql: skipNoopDdl on/off leave an identical schema, and the second run skips most statements', async () => {
-      let tpl = fs.readFileSync(path.join(__dirname, '..', 'prisma', 'tenant-schema.sql'), 'utf8');
-      if (!hasVector) {
-        // pgvector is not installed on every disposable instance (CI has it).
-        // The two statements that need it are not what is under test here.
-        tpl = tpl.replace(/^CREATE INDEX IF NOT EXISTS idx_ke_embedding_[^\n]*ivfflat[^\n]*$/gm, '')
-          .replace(/vector\(1536\)/g, 'float4[]');
-      }
       const schemas = { off: `tenant_ci_eq_off_${process.pid}`, on: `tenant_ci_eq_on_${process.pid}` };
       for (const name of Object.values(schemas)) await db.query(`CREATE SCHEMA "${name}"`);
-      const run = async (name, skipNoopDdl) => {
-        const logs = [];
-        const summary = await runTenantMigrations({
-          prisma, tpl, tenants: [{ schema_name: name, is_active: true }],
-          options: { ...DEFAULT_OPTIONS, skipNoopDdl, maxAttempts: 1 },
-          log: (m) => logs.push(m), logError: (m) => logs.push(m),
-        });
-        assert.deepEqual(summary, { ok: 1, skipped: 0, warnings: 0, retries: 0 }, logs.join('\n'));
-        return logs.find((line) => line.includes(`[OK] ${name}`)) || '';
-      };
-      await run(schemas.off, false);
-      await run(schemas.on, true);
+      await migrate(schemas.off, false);
+      await migrate(schemas.on, true);
       assertSameSchema(await catalogSnapshot(prisma, schemas.on), await catalogSnapshot(prisma, schemas.off), 'after the first run');
       const started = Date.now();
-      await run(schemas.off, false);
+      await migrate(schemas.off, false);
       const offMs = Date.now() - started;
       const onStarted = Date.now();
-      const okLine = await run(schemas.on, true);
+      const skipped = await migrate(schemas.on, true);
       const onMs = Date.now() - onStarted;
       assertSameSchema(await catalogSnapshot(prisma, schemas.on), await catalogSnapshot(prisma, schemas.off), 'after the second run');
-      const skipped = Number((/(\d+) no-op DDL statements skipped/.exec(okLine) || [])[1] || 0);
-      assert.ok(skipped >= 500, `second run should skip most add-column/create-index DDL, got: ${okLine}`);
+      assert.ok(skipped >= 500, `second run should skip most add-column/create-index DDL, got ${skipped}`);
       console.log(`       (second run on a migrated tenant: ${skipped} of 946 statements skipped; ${onMs} ms with skipping vs ${offMs} ms without)`);
     });
+
+    // ---- 3c: legacy shapes. A tenant created before some columns/indexes existed must
+    // be healed identically whether or not the no-op skipping is on. ----
+    /** Removes what the skippable statements would create, so the migration has real work to do. */
+    const degrade = async (schema, variant) => {
+      const stmts = splitSqlStatements(tpl.replace(/\{\{SCHEMA_NAME\}\}/g, schema).replace(/--.*$/gm, ''));
+      const primaryKey = new Set((await db.query(
+        `SELECT cl.relname || '.' || a.attname AS key
+           FROM pg_constraint c
+           JOIN pg_class cl ON cl.oid = c.conrelid
+           JOIN pg_namespace n ON n.oid = cl.relnamespace
+           JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)
+          WHERE n.nspname = $1 AND c.contype = 'p'`, [schema],
+      )).rows.map((row) => row.key));
+      const targets = new Map();
+      for (const stmt of stmts) {
+        const candidate = parseNoopCandidate(stmt, schema);
+        if (!candidate || candidate.kind !== 'columns') continue;
+        // partial: only the FIRST column of every multi-clause ALTER disappears, so
+        // that statement is half applied and must still run in full.
+        if (variant === 'partial' && candidate.columns.length < 2) continue;
+        const dropped = variant === 'partial' ? candidate.columns.slice(0, 1) : candidate.columns;
+        for (const column of dropped) {
+          if (!primaryKey.has(`${candidate.table}.${column}`)) targets.set(`${candidate.table}.${column}`, [candidate.table, column]);
+        }
+      }
+      for (const [table, column] of targets.values()) {
+        await db.query(`ALTER TABLE "${schema}"."${table}" DROP COLUMN IF EXISTS "${column}" CASCADE`);
+      }
+      const indexes = (await db.query(
+        `SELECT i.indexname FROM pg_indexes i
+          WHERE i.schemaname = $1
+            AND NOT EXISTS (SELECT 1 FROM pg_constraint c JOIN pg_class ic ON ic.oid = c.conindid
+                             WHERE ic.relname = i.indexname AND c.connamespace = (SELECT oid FROM pg_namespace WHERE nspname = $1))
+          ORDER BY i.indexname`, [schema],
+      )).rows.map((row) => row.indexname);
+      const doomed = variant === 'partial' ? indexes.filter((_, position) => position % 2 === 1) : indexes;
+      for (const name of doomed) await db.query(`DROP INDEX IF EXISTS "${schema}"."${name}"`);
+      return { columns: targets.size, indexes: doomed.length };
+    };
+
+    for (const variant of ['full', 'partial']) {
+      await test(`REAL legacy shape (${variant} removal): healing with skipNoopDdl on/off yields identical catalogs`, async () => {
+        const schemas = { off: `tenant_ci_lg_${variant}_off_${process.pid}`, on: `tenant_ci_lg_${variant}_on_${process.pid}` };
+        for (const name of Object.values(schemas)) await db.query(`CREATE SCHEMA "${name}"`);
+        await migrate(schemas.off, false);
+        await migrate(schemas.on, false);
+        const removed = await degrade(schemas.off, variant);
+        const removedOn = await degrade(schemas.on, variant);
+        assert.deepEqual(removedOn, removed);
+        assert.ok(removed.columns >= (variant === 'full' ? 100 : 5), `the legacy shape must really lack columns: ${JSON.stringify(removed)}`);
+        assert.ok(removed.indexes >= 50, `the legacy shape must really lack indexes: ${JSON.stringify(removed)}`);
+        // Both copies start from identical (degraded) catalogs ...
+        assertSameSchema(await catalogSnapshot(prisma, schemas.on), await catalogSnapshot(prisma, schemas.off), `legacy ${variant} before healing`);
+        await migrate(schemas.off, false);
+        const skipped = await migrate(schemas.on, true);
+        // ... and the skip-on run had to do real DDL, so it is not trivially equal.
+        assert.ok(skipped < 633, `the legacy tenant must not be all no-ops, skipped ${skipped}`);
+        assertSameSchema(await catalogSnapshot(prisma, schemas.on), await catalogSnapshot(prisma, schemas.off), `legacy ${variant} after healing`);
+        console.log(`       (${variant}: removed ${removed.columns} columns + ${removed.indexes} indexes; healing skipped only ${skipped} statements)`);
+      });
+    }
   } finally {
     await live.query('ROLLBACK').catch(() => {});
     await live.end().catch(() => {});

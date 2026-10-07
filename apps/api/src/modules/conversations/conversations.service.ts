@@ -52,6 +52,7 @@ import { resolveTurnOutcome } from './turn-outcome-wait';
 import { ChannelTokenService } from '../channels/channel-token.service';
 import { ConversationsGateway } from './conversations.gateway';
 import { HandoffService } from '../handoff/handoff.service';
+import { isActionOrientedRefundQuestion } from '../handoff/handoff-policy-question';
 import { KnowledgeService } from '../knowledge/knowledge.service';
 import { knowledgeHitToContext } from '../knowledge/knowledge-contracts';
 import { resolveKnowledgeReplica } from '../evaluation-revision/evaluation-knowledge-replica';
@@ -109,7 +110,7 @@ import { normalizePhoneE164 } from '../../common/utils/phone.util';
 import { PromptAssemblerService } from './prompt-assembler.service';
 import { resolveBusinessWindow } from './business-window';
 import { hasDispatchOutbox, noHumanReplySql } from '../handoff/handoff-human-reply';
-import { HUMAN_OFFER_MARK, HUMAN_OFFER_TTL_MS, NO_DATA_WAIT_REPLACEMENT, NO_DATA_NO_OFFER, noDataWaitReplacementText, noDataNoOfferText, containsHumanOffer, isHumanOfferText, isAffirmation, isAffirmationOfHumanOffer, isLiveHumanOffer, withReturnNotice, offerInsteadOfPromise } from './human-offer';
+import { HUMAN_OFFER_MARK, HUMAN_OFFER_TTL_MS, NO_DATA_WAIT_REPLACEMENT, NO_DATA_NO_OFFER, noDataWaitReplacementText, noDataNoOfferText, containsHumanOffer, isHumanOfferText, isAffirmation, isAffirmationOfHumanOffer, isLiveHumanOffer, withReturnNotice, offerInsteadOfPromise, withPolicyPersonOffer } from './human-offer';
 import { LanguageDetectorService } from './language-detector.service';
 import { BusinessInfoService } from '../business-info/business-info.service';
 import { PaymentOperationService } from './payment-operation.service';
@@ -234,6 +235,13 @@ const errorFallbackText = (lang?: string) =>
 const ERROR_FALLBACK_VALUES = new Set([...Object.values(ERROR_FALLBACK_MSG), ...Object.values(BUDGET_EXHAUSTED_REPLAY_MSG)]);
 /** True when a pipeline result IS the error fallback (in any supported language). */
 const isErrorFallback = (text?: string | null): boolean => !!text && ERROR_FALLBACK_VALUES.has(text);
+
+// What the pipeline falls back to when it has no answer of its own. They are not
+// answers, so nothing is offered after them.
+const TOOL_LOOP_FALLBACK_REPLY = 'Disculpa, estoy teniendo problemas para completar tu solicitud en este momento. ¿Podrías intentarlo de nuevo o reformular tu mensaje?';
+const GENERATION_ERROR_PLACEHOLDER = '[Error Generating AI Response]';
+const isPipelineFallbackReply = (text?: string | null): boolean =>
+    isErrorFallback(text) || text === TOOL_LOOP_FALLBACK_REPLY || text === GENERATION_ERROR_PLACEHOLDER;
 
 const WIDGET_HANDOFF_UNAVAILABLE: Record<string, string> = {
     es: 'En este canal todavía no puedo transferirte a una persona. Detuve la respuesta automática para no darte una expectativa falsa.',
@@ -1287,8 +1295,16 @@ export class ConversationsService {
         // A "yes" to our own offer of a person is a handoff request, decided here
         // from the mark the offer left — not from whatever the model says next.
         const acceptedOffer = await this.resolveHumanOfferAcceptance(schemaName, conversation, content?.text);
-        const triggeredReason = this.handoffService.shouldHandoff(
-            content?.text || '', conversation, config,
+        // A message about a refund, a return or a discount waits on the classifier (up to a
+        // couple of seconds if the model is slow): show the customer we are typing first,
+        // without making the decision wait for it. Other messages never get here.
+        let typingShown = false;
+        if (!draftMode && (this.handoffService as any)?.needsPolicyClassification?.(content?.text || '', config, tenantId)) {
+            typingShown = true;
+            void this.sendTypingIndicatorQuietly(tenantId, channelType, normalizedMsg);
+        }
+        const triggeredReason = await this.resolveHandoffReason(
+            content?.text || '', conversation, config, tenantId, !draftMode,
         ) || (acceptedOffer ? 'customer_accepted_human_offer' : null);
         // On the replay of an unattended handoff nothing escalates by keyword: the
         // agent has just taken the conversation back because nobody answered, and
@@ -1353,15 +1369,7 @@ export class ConversationsService {
                 || (conversation.metadata as any)?.handoff?.returnNoticePending === 'true');
 
         // 5b. Send typing indicator before AI generates response
-        try {
-            const accessToken = await this.resolveAccessToken(tenantId, channelType, normalizedMsg.channelAccountId);
-            if (accessToken && !draftMode) {
-                await this.channelGateway.sendTypingIndicator(
-                    channelType as any, normalizedMsg.channelAccountId,
-                    normalizedMsg.contactId, accessToken,
-                );
-            }
-        } catch { /* non-blocking */ }
+        if (!typingShown && !draftMode) await this.sendTypingIndicatorQuietly(tenantId, channelType, normalizedMsg);
 
         // 6. AI message quota check (per-tenant, per-month)
         // Plans cap monthly AI volume (5K starter / 25K pro / 100K enterprise).
@@ -4836,7 +4844,7 @@ export class ConversationsService {
                 }
 
                 // No tool calls — this is the final text response
-                finalResponse = response.content || '[Error Generating AI Response]';
+                finalResponse = response.content || GENERATION_ERROR_PLACEHOLDER;
                 break;
             }
 
@@ -4863,7 +4871,7 @@ export class ConversationsService {
                     this.logger.warn(`[Pipeline] Forced no-tools response failed: ${e.message}`);
                 }
                 if (!finalResponse) {
-                    finalResponse = 'Disculpa, estoy teniendo problemas para completar tu solicitud en este momento. ¿Podrías intentarlo de nuevo o reformular tu mensaje?';
+                    finalResponse = TOOL_LOOP_FALLBACK_REPLY;
                 }
             }
 
@@ -4878,6 +4886,20 @@ export class ConversationsService {
                 allowHumanHandoff,
             );
             turnTrace.add('guardrail', 'output', { responseLength: finalResponse?.length || 0 });
+            // A "how do I / can I" refund or return question ("¿puedo pedir un reembolso?")
+            // is answered, not escalated. The answer also offers a person, so a customer
+            // who really wants the refund says "yes" once and the acceptance below
+            // escalates for real. Which question it is was decided by the classifier at
+            // the top of the turn (`peekPolicyLabel`, no second model call); the rules
+            // decide only when no label was reached. Not after a fallback, which is no
+            // answer; `withPolicyPersonOffer` also skips a reply that ends with a
+            // question of its own (a "sí" would be ambiguous). That customer is not
+            // stranded: every next message is classified again, so a personal detail
+            // or "quiero mi reembolso" reaches a person directly.
+            if (!session && !draftMode && allowHumanHandoff && this.wantsPersonOffer(userText, tenantId)
+                && !isPipelineFallbackReply(finalResponse)) {
+                finalResponse = withPolicyPersonOffer(finalResponse, userLanguage);
+            }
             // The guard answered with an offer of a person: remember it so a
             // "yes" next turn escalates for real.
             if (!session && !draftMode && allowHumanHandoff) await this.rememberHumanOffer(schemaName, conversation.id, finalResponse);
@@ -4997,7 +5019,7 @@ export class ConversationsService {
             // escala; el "si" siguiente si escala.
             const lastOutboundText = [...(history || [])].reverse()
                 .find((row: any) => row?.direction === 'outbound')?.content_text;
-            const humanHandoffAuthorized = !!this.handoffService.shouldHandoff?.(userText, conversation, config)
+            const humanHandoffAuthorized = !!(await this.resolveHandoffReason(userText, conversation, config, tenantId, !draftMode, executionContext))
                 || isAffirmationOfHumanOffer(userText, lastOutboundText);
             if (handoffReturn && !draftMode && promisesHumanHandoff(finalResponse)) {
                 // Never honoured on the replay, however the customer's words read: the team
@@ -6320,7 +6342,7 @@ export class ConversationsService {
                 metadata: { allowHumanHandoff: options?.allowHumanHandoff === true },
             } as NormalizedMessage;
             const language = this.languageDetector.detect(text, config.language || 'es');
-            const triggeredReason = this.handoffService.shouldHandoff(text, conversation, config);
+            const triggeredReason = await this.resolveHandoffReason(text, conversation, config, tenantId, !draftMode);
             const handoffReason = replayTurn ? null : triggeredReason;
             if (replayTurn) {
                 const ask = returnAskOf(triggeredReason);
@@ -6851,6 +6873,43 @@ export class ConversationsService {
             this.logger.warn(`[Handoff] Return notice not claimed for ${conversation?.id}: ${error?.message}`);
             return null;
         }
+    }
+
+    /**
+     * Whether this turn escalates. The classifier-backed decision when the handoff
+     * service has one (cached per message, so the three readers of a turn cost one
+     * model call and only a refund / return / discount message costs any); the plain
+     * rules otherwise, and in draft mode, where nothing escalates and nothing is
+     * worth a model call.
+     */
+    private async resolveHandoffReason(
+        text: string, conversation: any, config: any, tenantId: string, classify = true,
+        /** The turn's execution context (Agent Test / evaluation / draft), so the classifier call is read-only and accounted like the interpreter's. */
+        executionContext?: unknown,
+    ): Promise<string | null> {
+        const service: any = this.handoffService;
+        if (classify && typeof service?.decideHandoff === 'function') {
+            return service.decideHandoff(text, conversation, config, undefined, tenantId, executionContext);
+        }
+        return service?.shouldHandoff?.(text, conversation, config) ?? null;
+    }
+
+    /** Typing indicator; it never blocks or fails the turn. */
+    private async sendTypingIndicatorQuietly(tenantId: string, channelType: string, msg: NormalizedMessage): Promise<void> {
+        try {
+            const accessToken = await this.resolveAccessToken(tenantId, channelType, msg.channelAccountId);
+            if (accessToken) {
+                await this.channelGateway.sendTypingIndicator(
+                    channelType as any, msg.channelAccountId, msg.contactId, accessToken,
+                );
+            }
+        } catch { /* non-blocking */ }
+    }
+
+    /** The reply to this question also offers a person: the classifier's `policy_howto`, or the rules when it never ran. */
+    private wantsPersonOffer(userText: string, tenantId: string): boolean {
+        const label = (this.handoffService as any)?.peekPolicyLabel?.(userText, tenantId);
+        return label ? label === 'policy_howto' : isActionOrientedRefundQuestion(userText);
     }
 
     /** Leave the short-lived "a person was offered" mark when the reply is our offer. */

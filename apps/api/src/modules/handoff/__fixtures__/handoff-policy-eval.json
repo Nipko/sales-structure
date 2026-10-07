@@ -1,0 +1,1084 @@
+[
+ {
+  "text": "¿Cuál es la política de devoluciones del audífono QA de prueba?",
+  "lang": "es",
+  "expected": "policy_info",
+  "expected_handoff": false,
+  "note": "production defect message"
+ },
+ {
+  "text": "¿Aceptan devoluciones?",
+  "lang": "es",
+  "expected": "policy_info",
+  "expected_handoff": false,
+  "note": "plain policy frame"
+ },
+ {
+  "text": "¿Hacen reembolsos?",
+  "lang": "es",
+  "expected": "policy_info",
+  "expected_handoff": false,
+  "note": "plain policy frame"
+ },
+ {
+  "text": "¿Tienen descuentos?",
+  "lang": "es",
+  "expected": "policy_info",
+  "expected_handoff": false,
+  "note": "discount policy, not negotiation"
+ },
+ {
+  "text": "¿Cuál es el plazo para devoluciones?",
+  "lang": "es",
+  "expected": "policy_info",
+  "expected_handoff": false,
+  "note": "plazo frame"
+ },
+ {
+  "text": "¿Cuál es el proceso de devolución?",
+  "lang": "es",
+  "expected": "policy_info",
+  "expected_handoff": false,
+  "note": "HEAD and main escalate: 'cual es el proceso' not a policy frame"
+ },
+ {
+  "text": "¿Cómo es el proceso de devolución?",
+  "lang": "es",
+  "expected": "policy_info",
+  "expected_handoff": false,
+  "note": "HEAD and main escalate: 'como es' not a frame"
+ },
+ {
+  "text": "¿Cómo funcionan las devoluciones?",
+  "lang": "es",
+  "expected": "policy_info",
+  "expected_handoff": false,
+  "note": "HEAD and main escalate: 'como funciona\\b' misses plural"
+ },
+ {
+  "text": "¿Qué necesito para hacer una devolución?",
+  "lang": "es",
+  "expected": "policy_info",
+  "expected_handoff": false,
+  "note": "HEAD and main escalate"
+ },
+ {
+  "text": "Información sobre devoluciones por favor",
+  "lang": "es",
+  "expected": "policy_info",
+  "expected_handoff": false,
+  "note": "no question mark; HEAD and main escalate"
+ },
+ {
+  "text": "¿Qué requisitos hay para un reembolso?",
+  "lang": "es",
+  "expected": "policy_info",
+  "expected_handoff": false,
+  "note": "'hay' frame"
+ },
+ {
+  "text": "politica de devoluciones?",
+  "lang": "es",
+  "expected": "policy_info",
+  "expected_handoff": false,
+  "note": "terse, no accents"
+ },
+ {
+  "text": "CUAL ES LA POLITICA DE DEVOLUCIONES",
+  "lang": "es",
+  "expected": "policy_info",
+  "expected_handoff": false,
+  "note": "all caps, no punctuation"
+ },
+ {
+  "text": "¿Cuál es la política de devoluciones? 🙏",
+  "lang": "es",
+  "expected": "policy_info",
+  "expected_handoff": false,
+  "note": "emoji"
+ },
+ {
+  "text": "Hola buenas tardes, quería saber cuál es la política de devoluciones de los audífonos porque estoy pensando comprar unos para mi papá",
+  "lang": "es",
+  "expected": "policy_info",
+  "expected_handoff": false,
+  "note": "long message; HEAD and main escalate: 'para mi' guard matches 'para mi papá'"
+ },
+ {
+  "text": "¿Las devoluciones tienen costo?",
+  "lang": "es",
+  "expected": "policy_info",
+  "expected_handoff": false,
+  "note": "'tienen' frame"
+ },
+ {
+  "text": "¿Los productos en oferta tienen devolución?",
+  "lang": "es",
+  "expected": "policy_info",
+  "expected_handoff": false,
+  "note": "'tienen' frame"
+ },
+ {
+  "text": "Qual é a política de devolução?",
+  "lang": "pt",
+  "expected": "policy_info",
+  "expected_handoff": false,
+  "note": "plain policy frame"
+ },
+ {
+  "text": "Vocês aceitam devoluções?",
+  "lang": "pt",
+  "expected": "policy_info",
+  "expected_handoff": false,
+  "note": "plain policy frame"
+ },
+ {
+  "text": "Quelle est votre politique de remboursement ?",
+  "lang": "fr",
+  "expected": "policy_info",
+  "expected_handoff": false,
+  "note": "plain policy frame"
+ },
+ {
+  "text": "Acceptez-vous les retours ?",
+  "lang": "fr",
+  "expected": "policy_info",
+  "expected_handoff": false,
+  "note": "plain policy frame"
+ },
+ {
+  "text": "What is your return policy?",
+  "lang": "en",
+  "expected": "policy_info",
+  "expected_handoff": false,
+  "note": "plain policy frame"
+ },
+ {
+  "text": "Do you offer refunds?",
+  "lang": "en",
+  "expected": "policy_info",
+  "expected_handoff": false,
+  "note": "with custom trigger 'refund'",
+  "triggers": [
+   "refund"
+  ]
+ },
+ {
+  "text": "¿Puedo pedir un reembolso?",
+  "lang": "es",
+  "expected": "policy_howto",
+  "expected_handoff": false,
+  "note": "answer + person offer"
+ },
+ {
+  "text": "¿Cómo solicito una devolución?",
+  "lang": "es",
+  "expected": "policy_howto",
+  "expected_handoff": false,
+  "note": "answer + person offer"
+ },
+ {
+  "text": "¿Cuánto tarda un reembolso?",
+  "lang": "es",
+  "expected": "policy_howto",
+  "expected_handoff": false,
+  "note": "answer + person offer"
+ },
+ {
+  "text": "¿Cuánto tiempo toma el reembolso?",
+  "lang": "es",
+  "expected": "policy_howto",
+  "expected_handoff": false,
+  "note": "answer + person offer"
+ },
+ {
+  "text": "¿Se puede hacer una devolución?",
+  "lang": "es",
+  "expected": "policy_howto",
+  "expected_handoff": false,
+  "note": "answer + person offer"
+ },
+ {
+  "text": "¿Es posible un reembolso?",
+  "lang": "es",
+  "expected": "policy_howto",
+  "expected_handoff": false,
+  "note": "answer + person offer"
+ },
+ {
+  "text": "puedo pedir reembolso",
+  "lang": "es",
+  "expected": "policy_howto",
+  "expected_handoff": false,
+  "note": "no question mark; HEAD and main escalate"
+ },
+ {
+  "text": "Posso pedir um reembolso?",
+  "lang": "pt",
+  "expected": "policy_howto",
+  "expected_handoff": false,
+  "note": "answer + person offer"
+ },
+ {
+  "text": "Comment demander un remboursement ?",
+  "lang": "fr",
+  "expected": "policy_howto",
+  "expected_handoff": false,
+  "note": "answer + person offer"
+ },
+ {
+  "text": "How do I request a refund?",
+  "lang": "en",
+  "expected": "policy_howto",
+  "expected_handoff": false,
+  "note": "with custom trigger 'refund'",
+  "triggers": [
+   "refund"
+  ]
+ },
+ {
+  "text": "Can I return an item?",
+  "lang": "en",
+  "expected": "policy_howto",
+  "expected_handoff": false,
+  "note": "with custom trigger 'return'",
+  "triggers": [
+   "return"
+  ]
+ },
+ {
+  "text": "Can I return it?",
+  "lang": "en",
+  "expected": "policy_howto",
+  "expected_handoff": false,
+  "note": "with custom trigger 'return'; HEAD and main fire the trigger (ENGLISH_RETURN_TOPIC needs item/product/order)",
+  "triggers": [
+   "return"
+  ]
+ },
+ {
+  "text": "Quiero un reembolso",
+  "lang": "es",
+  "expected": "personal_case",
+  "expected_handoff": true,
+  "note": "direct request"
+ },
+ {
+  "text": "Quiero hacer una devolución",
+  "lang": "es",
+  "expected": "personal_case",
+  "expected_handoff": true,
+  "note": "direct request, not a question"
+ },
+ {
+  "text": "Quiero hacer una devolución, ¿cómo hago?",
+  "lang": "es",
+  "expected": "personal_case",
+  "expected_handoff": true,
+  "note": "HEAD answers + offer; main escalated"
+ },
+ {
+  "text": "Necesito hacer una devolución, ¿cómo es el proceso?",
+  "lang": "es",
+  "expected": "personal_case",
+  "expected_handoff": true,
+  "note": "first-person need"
+ },
+ {
+  "text": "¿Cuánto tarda mi reembolso?",
+  "lang": "es",
+  "expected": "personal_case",
+  "expected_handoff": true,
+  "note": "possessive + topic"
+ },
+ {
+  "text": "¿Cuánto tarda el reembolso? Ya hice la devolución hace una semana",
+  "lang": "es",
+  "expected": "personal_case",
+  "expected_handoff": true,
+  "note": "status of own return; HEAD answers + offer; main escalated"
+ },
+ {
+  "text": "Hace 2 semanas devolví el producto, ¿cuánto tarda el reembolso?",
+  "lang": "es",
+  "expected": "personal_case",
+  "expected_handoff": true,
+  "note": "'devolví' not a personal marker; HEAD answers + offer; main escalated"
+ },
+ {
+  "text": "¿Cuánto tarda el reembolso de la compra que hice ayer?",
+  "lang": "es",
+  "expected": "personal_case",
+  "expected_handoff": true,
+  "note": "'la compra que hice'; HEAD answers + offer; main escalated"
+ },
+ {
+  "text": "¿Puedo pedir un reembolso? El audífono no se escucha bien",
+  "lang": "es",
+  "expected": "personal_case",
+  "expected_handoff": true,
+  "note": "defect not in vocabulary; HEAD answers + offer; main escalated"
+ },
+ {
+  "text": "¿Puedo pedir un reembolso? me cobraron dos veces",
+  "lang": "es",
+  "expected": "personal_case",
+  "expected_handoff": true,
+  "note": "charged twice"
+ },
+ {
+  "text": "¿Cuál es la política de devoluciones? Lo recibí ayer y no me queda",
+  "lang": "es",
+  "expected": "personal_case",
+  "expected_handoff": true,
+  "note": "HEAD answers (no offer, plain frame); main escalated"
+ },
+ {
+  "text": "¿Aceptan devoluciones? Es que el audífono no sirve",
+  "lang": "es",
+  "expected": "personal_case",
+  "expected_handoff": true,
+  "note": "'no sirve' guard"
+ },
+ {
+  "text": "¿Por qué no me han hecho el reembolso?",
+  "lang": "es",
+  "expected": "personal_case",
+  "expected_handoff": true,
+  "note": "delay"
+ },
+ {
+  "text": "¿Cuándo me hacen el reembolso?",
+  "lang": "es",
+  "expected": "personal_case",
+  "expected_handoff": true,
+  "note": "'me hacen'"
+ },
+ {
+  "text": "¿Me pueden hacer la devolución del dinero?",
+  "lang": "es",
+  "expected": "personal_case",
+  "expected_handoff": true,
+  "note": "'me pueden'"
+ },
+ {
+  "text": "¿Cómo pido el reembolso del pedido 4521?",
+  "lang": "es",
+  "expected": "personal_case",
+  "expected_handoff": true,
+  "note": "order number"
+ },
+ {
+  "text": "¿Se puede hacer la devolución? el audífono que me enviaron es de otro color",
+  "lang": "es",
+  "expected": "personal_case",
+  "expected_handoff": true,
+  "note": "wrong item; HEAD answers + offer; main escalated"
+ },
+ {
+  "text": "devolucion ya!!",
+  "lang": "es",
+  "expected": "personal_case",
+  "expected_handoff": true,
+  "note": "terse demand"
+ },
+ {
+  "text": "QUIERO MI REEMBOLSO",
+  "lang": "es",
+  "expected": "personal_case",
+  "expected_handoff": true,
+  "note": "all caps"
+ },
+ {
+  "text": "Quero um reembolso",
+  "lang": "pt",
+  "expected": "personal_case",
+  "expected_handoff": true,
+  "note": "direct request"
+ },
+ {
+  "text": "Je veux être remboursé",
+  "lang": "fr",
+  "expected": "personal_case",
+  "expected_handoff": true,
+  "note": "no keyword matches 'rembourse'; HEAD and main miss"
+ },
+ {
+  "text": "Posso pedir reembolso? comprei ontem e veio com defeito",
+  "lang": "pt",
+  "expected": "personal_case",
+  "expected_handoff": true,
+  "note": "bought + defect"
+ },
+ {
+  "text": "¿Cómo hago la devolución? lo compré por error",
+  "lang": "es",
+  "expected": "personal_case",
+  "expected_handoff": true,
+  "note": "'compré'"
+ },
+ {
+  "text": "¿Cómo hago para que me devuelvan la plata?",
+  "lang": "es",
+  "expected": "personal_case",
+  "expected_handoff": true,
+  "note": "no keyword (devuelvan); HEAD and main miss"
+ },
+ {
+  "text": "Quiero devolver el audífono",
+  "lang": "es",
+  "expected": "personal_case",
+  "expected_handoff": true,
+  "note": "no keyword (devolver); HEAD and main miss"
+ },
+ {
+  "text": "¿Se puede hacer un descuento?",
+  "lang": "es",
+  "expected": "negotiation",
+  "expected_handoff": true,
+  "note": "how-frame does not cancel discount"
+ },
+ {
+  "text": "¿Puedo pedir un descuento?",
+  "lang": "es",
+  "expected": "negotiation",
+  "expected_handoff": true,
+  "note": "how-frame does not cancel discount"
+ },
+ {
+  "text": "¿Puedo pedir un reembolso o un descuento?",
+  "lang": "es",
+  "expected": "negotiation",
+  "expected_handoff": true,
+  "note": "mixed refund + discount"
+ },
+ {
+  "text": "¿Hay forma de que me hagan un descuento?",
+  "lang": "es",
+  "expected": "negotiation",
+  "expected_handoff": true,
+  "note": "'me hagan' not in guard, 'hay' -> scope all; HEAD answers, main escalated"
+ },
+ {
+  "text": "¿Hay posibilidad de descuento?",
+  "lang": "es",
+  "expected": "negotiation",
+  "expected_handoff": true,
+  "note": "'hay' -> scope all; HEAD answers, main escalated"
+ },
+ {
+  "text": "¿Me hace un descuento?",
+  "lang": "es",
+  "expected": "negotiation",
+  "expected_handoff": true,
+  "note": "'me hace'"
+ },
+ {
+  "text": "¿Tienen descuento para mí?",
+  "lang": "es",
+  "expected": "negotiation",
+  "expected_handoff": true,
+  "note": "'para mí'"
+ },
+ {
+  "text": "¿Hacen descuento si llevo dos?",
+  "lang": "es",
+  "expected": "policy_info",
+  "expected_handoff": false,
+  "note": "volume discount policy; borderline"
+ },
+ {
+  "text": "Si llevo 3 ¿me lo dejas en 100?",
+  "lang": "es",
+  "expected": "negotiation",
+  "expected_handoff": true,
+  "note": "'me lo dejas'"
+ },
+ {
+  "text": "¿Es posible tener un descuento?",
+  "lang": "es",
+  "expected": "negotiation",
+  "expected_handoff": true,
+  "note": "how-frame"
+ },
+ {
+  "text": "Pode fazer um desconto?",
+  "lang": "pt",
+  "expected": "negotiation",
+  "expected_handoff": true,
+  "note": "'pode fazer'"
+ },
+ {
+  "text": "É possível um desconto?",
+  "lang": "pt",
+  "expected": "negotiation",
+  "expected_handoff": true,
+  "note": "how-frame"
+ },
+ {
+  "text": "Pouvez-vous me faire une remise ?",
+  "lang": "fr",
+  "expected": "negotiation",
+  "expected_handoff": true,
+  "note": "'pouvez-vous me'"
+ },
+ {
+  "text": "¿Cuánto descuento me dan?",
+  "lang": "es",
+  "expected": "negotiation",
+  "expected_handoff": true,
+  "note": "'me dan'"
+ },
+ {
+  "text": "¿No hay un descuentito?",
+  "lang": "es",
+  "expected": "negotiation",
+  "expected_handoff": true,
+  "note": "diminutive not a keyword; HEAD and main miss"
+ },
+ {
+  "text": "¿Hay rebaja?",
+  "lang": "es",
+  "expected": "policy_info",
+  "expected_handoff": false,
+  "note": "plain 'hay'; borderline"
+ },
+ {
+  "text": "¿Tiene un mejor precio?",
+  "lang": "es",
+  "expected": "negotiation",
+  "expected_handoff": true,
+  "note": "'mejor precio' keyword"
+ },
+ {
+  "text": "¿Hay descuento si pago de contado o me lo deja en 500?",
+  "lang": "es",
+  "expected": "negotiation",
+  "expected_handoff": true,
+  "note": "'me lo deja en'"
+ },
+ {
+  "text": "¿Qué hago si el producto llegó roto?",
+  "lang": "es",
+  "expected": "policy_info",
+  "expected_handoff": false,
+  "note": "hypothetical"
+ },
+ {
+  "text": "¿Qué pasa si llegó dañado?",
+  "lang": "es",
+  "expected": "policy_info",
+  "expected_handoff": false,
+  "note": "hypothetical"
+ },
+ {
+  "text": "¿Y si llegó roto, aceptan devoluciones?",
+  "lang": "es",
+  "expected": "policy_info",
+  "expected_handoff": false,
+  "note": "hypothetical + policy"
+ },
+ {
+  "text": "¿En caso de que llegó dañado hacen reembolso?",
+  "lang": "es",
+  "expected": "policy_info",
+  "expected_handoff": false,
+  "note": "hypothetical 'en caso de que'"
+ },
+ {
+  "text": "E se o produto chegou quebrado?",
+  "lang": "pt",
+  "expected": "policy_info",
+  "expected_handoff": false,
+  "note": "hypothetical"
+ },
+ {
+  "text": "¿Qué hago si me llegó roto?",
+  "lang": "es",
+  "expected": "complaint",
+  "expected_handoff": true,
+  "note": "first person turns conditional into report"
+ },
+ {
+  "text": "Sí llegó roto, ¿qué hago?",
+  "lang": "es",
+  "expected": "complaint",
+  "expected_handoff": true,
+  "note": "accented sí = yes"
+ },
+ {
+  "text": "Si, llegó roto, ¿qué hago?",
+  "lang": "es",
+  "expected": "complaint",
+  "expected_handoff": true,
+  "note": "si followed by comma = yes"
+ },
+ {
+  "text": "si llegó roto que hago",
+  "lang": "es",
+  "expected": "complaint",
+  "expected_handoff": true,
+  "note": "si at start = yes"
+ },
+ {
+  "text": "Hola si llegó dañado, ¿aceptan devoluciones?",
+  "lang": "es",
+  "expected": "complaint",
+  "expected_handoff": true,
+  "note": "si after filler = yes"
+ },
+ {
+  "text": "Pues si llegó roto ¿y ahora?",
+  "lang": "es",
+  "expected": "complaint",
+  "expected_handoff": true,
+  "note": "si after filler = yes"
+ },
+ {
+  "text": "El caso es que llegó dañado ¿qué hago?",
+  "lang": "es",
+  "expected": "complaint",
+  "expected_handoff": true,
+  "note": "es noun 'caso'"
+ },
+ {
+  "text": "llegó dañado",
+  "lang": "es",
+  "expected": "complaint",
+  "expected_handoff": true,
+  "note": "bare report"
+ },
+ {
+  "text": "Llegó roto el audífono que compré",
+  "lang": "es",
+  "expected": "complaint",
+  "expected_handoff": true,
+  "note": "report"
+ },
+ {
+  "text": "Oiga sí llegó roto",
+  "lang": "es",
+  "expected": "complaint",
+  "expected_handoff": true,
+  "note": "accented sí"
+ },
+ {
+  "text": "Claro si llegó roto, ¿me lo cambian?",
+  "lang": "es",
+  "expected": "complaint",
+  "expected_handoff": true,
+  "note": "first person 'me'"
+ },
+ {
+  "text": "ya le dije, si llegó roto. ¿qué hago?",
+  "lang": "es",
+  "expected": "complaint",
+  "expected_handoff": true,
+  "note": "unaccented si after 'ya le dije,' read as conditional; HEAD answers, main had no keyword logic for it (no handoff either)"
+ },
+ {
+  "text": "¿Me puede devolver la llamada?",
+  "lang": "es",
+  "expected": "none",
+  "expected_handoff": false,
+  "note": "unrelated devolver"
+ },
+ {
+  "text": "Quiero devolver las llaves del carro",
+  "lang": "es",
+  "expected": "none",
+  "expected_handoff": false,
+  "note": "unrelated devolver"
+ },
+ {
+  "text": "What is the return time for the shuttle?",
+  "lang": "en",
+  "expected": "none",
+  "expected_handoff": false,
+  "note": "unrelated return (fires only with a tenant 'return' trigger, by design)"
+ },
+ {
+  "text": "¿A qué hora es el return del tour?",
+  "lang": "es",
+  "expected": "none",
+  "expected_handoff": false,
+  "note": "unrelated return"
+ },
+ {
+  "text": "Esto es una estafa, ¿aceptan devoluciones?",
+  "lang": "es",
+  "expected": "complaint",
+  "expected_handoff": true,
+  "note": "grievance word"
+ },
+ {
+  "text": "¿Tienen política de devoluciones? pésimo servicio",
+  "lang": "es",
+  "expected": "complaint",
+  "expected_handoff": true,
+  "note": "grievance word"
+ },
+ {
+  "text": "no funciona, ¿hacen reembolsos?",
+  "lang": "es",
+  "expected": "complaint",
+  "expected_handoff": true,
+  "note": "grievance word"
+ },
+ {
+  "text": "aceptan devoluciones",
+  "lang": "es",
+  "expected": "policy_info",
+  "expected_handoff": false,
+  "note": "no question mark; HEAD and main escalate"
+ },
+ {
+  "text": "hacen reembolsos",
+  "lang": "es",
+  "expected": "policy_info",
+  "expected_handoff": false,
+  "note": "no question mark; HEAD and main escalate"
+ },
+ {
+  "text": "Quiero un descuento, ¿tienen alguno?",
+  "lang": "es",
+  "expected": "negotiation",
+  "expected_handoff": true,
+  "note": "'quiero un descuento' not in guard, 'tienen' -> scope all; HEAD answers, main escalated"
+ },
+ {
+  "text": "Necesito un descuento ¿hay alguno?",
+  "lang": "es",
+  "expected": "negotiation",
+  "expected_handoff": true,
+  "note": "HEAD answers, main escalated"
+ },
+ {
+  "text": "¿Aceptan devoluciones? Y quiero un descuento",
+  "lang": "es",
+  "expected": "negotiation",
+  "expected_handoff": true,
+  "note": "mixed; HEAD answers, main escalated"
+ },
+ {
+  "text": "¿Tienen algún descuento que me puedan hacer?",
+  "lang": "es",
+  "expected": "negotiation",
+  "expected_handoff": true,
+  "note": "subjunctive 'me puedan' not in guard; HEAD answers, main escalated"
+ },
+ {
+  "text": "¿Hay algún descuento que me puedan dar?",
+  "lang": "es",
+  "expected": "negotiation",
+  "expected_handoff": true,
+  "note": "subjunctive 'me puedan'; HEAD answers, main escalated"
+ },
+ {
+  "text": "Quiero una devolución, ¿cómo hago?",
+  "lang": "es",
+  "expected": "personal_case",
+  "expected_handoff": true,
+  "note": "'quiero una devolucion' not in guard; HEAD answers + offer, main escalated"
+ },
+ {
+  "text": "Quiero pedir un reembolso, ¿se puede?",
+  "lang": "es",
+  "expected": "personal_case",
+  "expected_handoff": true,
+  "note": "HEAD answers + offer, main escalated"
+ },
+ {
+  "text": "Quisiera un reembolso, ¿es posible?",
+  "lang": "es",
+  "expected": "personal_case",
+  "expected_handoff": true,
+  "note": "'quisiera' not in guard; HEAD answers + offer, main escalated"
+ },
+ {
+  "text": "Necesito pedir un reembolso ¿cómo hago?",
+  "lang": "es",
+  "expected": "personal_case",
+  "expected_handoff": true,
+  "note": "HEAD answers + offer, main escalated"
+ },
+ {
+  "text": "El paquete ya llegó rotulado, gracias",
+  "lang": "es",
+  "expected": "none",
+  "expected_handoff": false,
+  "note": "substring probe for 'llego roto'"
+ },
+ {
+  "text": "¿El pedido llegó rotulado con mi nombre?",
+  "lang": "es",
+  "expected": "none",
+  "expected_handoff": false,
+  "note": "substring probe for 'llego roto'"
+ },
+ {
+  "text": "el pedido si llegó pero vino dañado, ¿aceptan devoluciones?",
+  "lang": "es",
+  "expected": "complaint",
+  "expected_handoff": true,
+  "note": "unaccented affirmative si after subject read as conditional; HEAD answers, main escalated"
+ },
+ {
+  "text": "El audífono si llegó dañado, ¿hacen reembolso?",
+  "lang": "es",
+  "expected": "complaint",
+  "expected_handoff": true,
+  "note": "same; HEAD answers, main escalated"
+ },
+ {
+  "text": "Oiga si llegó roto, ¿qué hago?",
+  "lang": "es",
+  "expected": "complaint",
+  "expected_handoff": true,
+  "note": "ambiguous; 'oiga' not a filler; HEAD answers, main no keyword"
+ },
+ {
+  "text": "¿Aceptan devoluciones si el producto no funciona?",
+  "lang": "es",
+  "expected": "policy_info",
+  "expected_handoff": false,
+  "note": "hypothetical; HEAD and main escalate on 'no funciona'"
+ },
+ {
+  "text": "¿Aceptan devoluciones si no me gustó?",
+  "lang": "es",
+  "expected": "policy_info",
+  "expected_handoff": false,
+  "note": "hypothetical but past tense, borderline; HEAD and main escalate"
+ },
+ {
+  "text": "¿Cuál es el precio con descuento?",
+  "lang": "es",
+  "expected": "policy_info",
+  "expected_handoff": false,
+  "note": "HEAD and main escalate"
+ },
+ {
+  "text": "¿Hay descuento?",
+  "lang": "es",
+  "expected": "policy_info",
+  "expected_handoff": false,
+  "note": "plain 'hay'; borderline"
+ },
+ {
+  "text": "¿Tienen garantía o devoluciones? lo quiero para regalo",
+  "lang": "es",
+  "expected": "policy_info",
+  "expected_handoff": false,
+  "note": "pre-purchase"
+ },
+ {
+  "text": "¿Se puede devolver un producto en oferta? ¿cuánto tarda el reembolso?",
+  "lang": "es",
+  "expected": "policy_howto",
+  "expected_handoff": false,
+  "note": "two questions"
+ },
+ {
+  "text": "¿Cuánto tarda la devolución del dinero?",
+  "lang": "es",
+  "expected": "policy_howto",
+  "expected_handoff": false,
+  "note": "answer + offer"
+ },
+ {
+  "text": "¿Se puede pagar con tarjeta? ¿Y puedo pedir reembolso luego?",
+  "lang": "es",
+  "expected": "policy_howto",
+  "expected_handoff": false,
+  "note": "frame and topic in second sentence"
+ },
+ {
+  "text": "¿Puedo pedir un reembolso? Lo pagué con tarjeta",
+  "lang": "es",
+  "expected": "personal_case",
+  "expected_handoff": true,
+  "note": "'pagué'"
+ },
+ {
+  "text": "¿Puedo pedir un reembolso? El pedido llegó tarde",
+  "lang": "es",
+  "expected": "personal_case",
+  "expected_handoff": true,
+  "note": "late delivery"
+ },
+ {
+  "text": "¿Puedo pedir un reembolso? Me arrepentí",
+  "lang": "es",
+  "expected": "personal_case",
+  "expected_handoff": true,
+  "note": "HEAD answers + offer, main escalated"
+ },
+ {
+  "text": "¿Cómo pido un reembolso? recibí otro modelo",
+  "lang": "es",
+  "expected": "personal_case",
+  "expected_handoff": true,
+  "note": "'recibí' (affirmative) not a marker; HEAD answers + offer, main escalated"
+ },
+ {
+  "text": "Can I get a refund? I was charged twice",
+  "lang": "en",
+  "expected": "personal_case",
+  "expected_handoff": true,
+  "note": "with custom trigger 'refund'",
+  "triggers": [
+   "refund"
+  ]
+ },
+ {
+  "text": "how do i request a refund for my order",
+  "lang": "en",
+  "expected": "personal_case",
+  "expected_handoff": true,
+  "note": "with custom trigger 'refund'; 'my order'",
+  "triggers": [
+   "refund"
+  ]
+ },
+ {
+  "text": "tem um descontozinho?",
+  "lang": "pt",
+  "expected": "negotiation",
+  "expected_handoff": true,
+  "note": "diminutive"
+ },
+ {
+  "text": "Aceptan devoluciones si el producto no funciona",
+  "lang": "es",
+  "expected": "policy_info",
+  "expected_handoff": false,
+  "note": "no question mark; hypothetical with a defect word"
+ },
+ {
+  "text": "cuanto tarda un reembolso",
+  "lang": "es",
+  "expected": "policy_howto",
+  "expected_handoff": false,
+  "note": "no question mark"
+ },
+ {
+  "text": "politica de devoluciones",
+  "lang": "es",
+  "expected": "policy_info",
+  "expected_handoff": false,
+  "note": "no question mark, no accents"
+ },
+ {
+  "text": "hay descuento por pago en efectivo",
+  "lang": "es",
+  "expected": "policy_info",
+  "expected_handoff": false,
+  "note": "no question mark; payment-method policy"
+ },
+ {
+  "text": "Me cobraron dos veces quiero mi reembolso",
+  "lang": "es",
+  "expected": "personal_case",
+  "expected_handoff": true,
+  "note": "no question mark"
+ },
+ {
+  "text": "quiero devolver la llamada",
+  "lang": "es",
+  "expected": "none",
+  "expected_handoff": false,
+  "note": "unrelated devolver"
+ },
+ {
+  "text": "quero devolver o carro alugado amanhã",
+  "lang": "pt",
+  "expected": "none",
+  "expected_handoff": false,
+  "note": "unrelated devolver"
+ },
+ {
+  "text": "necesito devolver las llaves del apartamento",
+  "lang": "es",
+  "expected": "none",
+  "expected_handoff": false,
+  "note": "unrelated devolver"
+ },
+ {
+  "text": "je veux retourner au menu",
+  "lang": "fr",
+  "expected": "none",
+  "expected_handoff": false,
+  "note": "unrelated retourner"
+ },
+ {
+  "text": "Estoy pensando comprar para mi papá, ¿se puede devolver?",
+  "lang": "es",
+  "expected": "policy_info",
+  "expected_handoff": false,
+  "note": "gift plan, \"para mi papá\""
+ },
+ {
+  "text": "El pedido si llegó roto, ¿qué hago?",
+  "lang": "es",
+  "expected": "personal_case",
+  "expected_handoff": true,
+  "note": "emphatic «si» after a subject"
+ },
+ {
+  "text": "Oiga si llegó roto el audífono",
+  "lang": "es",
+  "expected": "personal_case",
+  "expected_handoff": true,
+  "note": "emphatic «si» after a vocative"
+ },
+ {
+  "text": "Sí, llegó roto, ¿qué hago?",
+  "lang": "es",
+  "expected": "personal_case",
+  "expected_handoff": true,
+  "note": "affirmative «sí»"
+ },
+ {
+  "text": "Pues sí, llegó roto. ¿Qué opciones hay?",
+  "lang": "es",
+  "expected": "personal_case",
+  "expected_handoff": true,
+  "note": "affirmative «sí»"
+ },
+ {
+  "text": "El caso es que llegó roto, ¿qué hago?",
+  "lang": "es",
+  "expected": "personal_case",
+  "expected_handoff": true,
+  "note": "noun «caso»"
+ },
+ {
+  "text": "Ya devolví el producto y no me han reembolsado",
+  "lang": "es",
+  "expected": "personal_case",
+  "expected_handoff": true,
+  "note": "already returned"
+ },
+ {
+  "text": "Quisiera un descuento",
+  "lang": "es",
+  "expected": "negotiation",
+  "expected_handoff": true,
+  "note": "personal request"
+ },
+ {
+  "text": "quiero pedir un reembolso",
+  "lang": "es",
+  "expected": "personal_case",
+  "expected_handoff": true,
+  "note": "direct request"
+ },
+ {
+  "text": "Necesito hacer una devolución",
+  "lang": "es",
+  "expected": "personal_case",
+  "expected_handoff": true,
+  "note": "direct request"
+ }
+]

@@ -262,7 +262,7 @@ export class OtroRecipeService {
             '}',
             '',
             'Cada texto lleva los cuatro idiomas: es, en, pt, fr. Ninguno puede quedar vacío. El español es el original; los otros tres son su traducción.',
-            'No uses las palabras: devolución, descuento, abogado, emergencia, reembolso — el motor las usa para pasar la conversación a una persona y una pregunta que las contenga nunca llega a contestarse.',
+            'No uses las palabras: devolución, descuento, abogado, emergencia, reembolso — el motor las usa para pasar la conversación a una persona (una pregunta general sobre la política de devoluciones, reembolsos o descuentos sí se contesta, pero evítalas en las preguntas frecuentes).',
             'No uses jerga de software: borrador, publicar, candidato, webhook, token, prospecto.',
             `El idioma principal del negocio es ${locale}.`,
         ].join('\n');

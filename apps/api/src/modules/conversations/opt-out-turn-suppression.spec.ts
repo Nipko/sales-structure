@@ -20,7 +20,7 @@ describe('opt-out turn suppression', () => {
     it('returns before handoff and model work in the live turn', () => {
         const source = readFileSync(resolve(__dirname, 'conversations.service.ts'), 'utf8');
         const suppression = source.indexOf('if (await this.suppressDetectedOptOut');
-        const handoff = source.indexOf('const triggeredReason = this.handoffService.shouldHandoff', suppression);
+        const handoff = source.indexOf('const triggeredReason = await this.resolveHandoffReason', suppression);
 
         expect(suppression).toBeGreaterThan(0);
         // The suppressed turn returns (after clearing the replay's pending notice) before any handoff or model work.

@@ -1,6 +1,6 @@
 import { promisesHumanHandoff } from '../../common/utils/outcome-claim.util';
 import { ConversationsService } from './conversations.service';
-import { HUMAN_OFFER_MARK, isAffirmation, isAffirmationOfHumanOffer, isHumanOfferText, noDataWaitReplacementText } from './human-offer';
+import { containsHumanOffer, endsWithQuestion, HUMAN_OFFER_MARK, isAffirmation, isAffirmationOfHumanOffer, isHumanOfferText, noDataWaitReplacementText, withPolicyPersonOffer } from './human-offer';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 
@@ -163,7 +163,8 @@ describe('agent-promised handoff is honoured only when the customer asked or acc
         const at = src.indexOf('const humanHandoffAuthorized =');
         expect(at).toBeGreaterThan(0);
         const block = src.slice(at, at + 4000);
-        expect(block).toContain('this.handoffService.shouldHandoff?.(userText');
+        expect(block).toContain('this.resolveHandoffReason(userText');
+        expect(block).toContain('!draftMode, executionContext)');
         expect(block).toContain('isAffirmationOfHumanOffer(userText, lastOutboundText)');
         const rewrite = block.indexOf('!humanHandoffAuthorized && promisesHumanHandoff(finalResponse)');
         const honour = block.indexOf('} else if (!draftMode && !postToolHandoff && promisesHumanHandoff(finalResponse))');
@@ -172,5 +173,61 @@ describe('agent-promised handoff is honoured only when the customer asked or acc
         expect(block.slice(rewrite, honour)).toContain('offerInsteadOfPromise(finalResponse, userLanguage, allowHumanHandoff)');
         expect(block.slice(rewrite, honour)).not.toContain('escalateWithinTurn');
         expect(block.slice(honour)).toContain('escalateWithinTurn');
+    });
+});
+
+/**
+ * A refund / return policy question is answered, not escalated; the answer also
+ * offers a person, and the customer's "sí" then reaches one (round 2).
+ */
+describe('a refund policy answer offers a person, and "sí" hands off', () => {
+    const answer = 'Aceptamos devoluciones dentro de los 30 días con el empaque original.';
+
+    it.each([['es', /¿Desea que le pida a una persona del equipo/], ['en', /Would you like me to ask someone from the team/], ['pt', /Deseja que eu peça a alguém da equipe/], ['fr', /Souhaitez-vous que je demande à quelqu'un de l'équipe/]])(
+        'adds the offer after the answer (%s)', (lang, expected) => {
+            const reply = withPolicyPersonOffer(answer, lang as string);
+            expect(reply.startsWith(answer)).toBe(true);
+            expect(reply).toMatch(expected);
+            expect(containsHumanOffer(reply)).toBe(true);
+        });
+
+    it('adds it once: a reply that already offers a person is left as it is', () => {
+        const once = withPolicyPersonOffer(answer, 'es');
+        expect(withPolicyPersonOffer(once, 'es')).toBe(once);
+        const own = `${answer} ${noDataWaitReplacementText('es')}`;
+        expect(withPolicyPersonOffer(own, 'es')).toBe(own);
+        expect(withPolicyPersonOffer('', 'es')).toBe('');
+        // a statement (not a question) that already offers a person
+        const stated = `${answer} Si quiere, le paso con alguien del equipo para que se la confirme.`;
+        expect(withPolicyPersonOffer(stated, 'es')).toBe(stated);
+    });
+
+    it('leaves a reply that ends with its own question alone: two questions in a row would make "sí" ambiguous', () => {
+        const asks = `${answer} ¿Cuál es el motivo de la devolución?`;
+        expect(endsWithQuestion(asks)).toBe(true);
+        expect(withPolicyPersonOffer(asks, 'es')).toBe(asks);
+        expect(endsWithQuestion('Dentro de 30 días.')).toBe(false);
+        expect(endsWithQuestion('Is that ok? ')).toBe(true);
+    });
+
+    it('is not a handoff promise, so the unsolicited-promise rewrite leaves it alone', () => {
+        expect(promisesHumanHandoff(withPolicyPersonOffer(answer, 'es'))).toBe(false);
+    });
+
+    it('offer → "sí" → handoff through the existing acceptance path', async () => {
+        const row: any = { id: 'conv', metadata: {} as Record<string, any>, lastOutbound: '' };
+        const service: any = Object.create(ConversationsService.prototype);
+        service.logger = { warn: jest.fn() };
+        service.prisma = { executeInTenantSchema: jest.fn(async (_s: string, sql: string, params: any[]) => {
+            if (sql.includes("'{" + HUMAN_OFFER_MARK + "}'")) row.metadata[HUMAN_OFFER_MARK] = JSON.parse(params[1]);
+            else if (sql.includes("- '" + HUMAN_OFFER_MARK + "'")) delete row.metadata[HUMAN_OFFER_MARK];
+            else if (/direction = 'outbound'/.test(sql)) return [{ content_text: row.lastOutbound }];
+            return [];
+        }) };
+        const reply = withPolicyPersonOffer(answer, 'es');
+        expect(await service.rememberHumanOffer('schema', 'conv', reply)).toBe(true);
+        row.lastOutbound = reply;
+        const reload = () => ({ id: 'conv', metadata: JSON.parse(JSON.stringify(row.metadata)) });
+        expect(await service.resolveHumanOfferAcceptance('schema', reload(), 'sí')).toBe(true);
     });
 });

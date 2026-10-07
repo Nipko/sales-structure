@@ -562,3 +562,65 @@ describe('the replay: one alert per episode, and a budget text that is not an an
             String(c[1]).includes("'{handoff,returnNoticePending}', 'false'::jsonb"))).toBe(false);
     });
 });
+
+describe('the turn escalates through the classifier-backed decision', () => {
+    it('a personal refund case reaches a person before any reply is generated, and the decision is asked once', async () => {
+        const text = 'Quiero devolver el audífono';
+        const { service, message } = fixture({ status: 'active', handoff: {}, text });
+        service.handoffService.decideHandoff = jest.fn().mockResolvedValue('complaint');
+        service.handoffService.executeHandoff = jest.fn().mockResolvedValue({ assignedTo: null });
+        await service.runTurn(message);
+        expect(service.handoffService.decideHandoff).toHaveBeenCalledTimes(1);
+        expect(service.handoffService.decideHandoff.mock.calls[0]).toEqual([
+            text, expect.objectContaining({ id: CONVERSATION_ID }), expect.anything(), undefined, TENANT_ID,
+        ]);
+        expect(service.handoffService.executeHandoff).toHaveBeenCalledWith(TENANT_ID, CONVERSATION_ID, expect.anything(), 'complaint');
+        expect(service.generateResponse).not.toHaveBeenCalled();
+    });
+
+    it('a policy question is answered: the classifier said nothing escalates, and the turn goes on', async () => {
+        const { service, message } = fixture({ status: 'active', handoff: {}, text: '¿Cuál es la política de devoluciones?' });
+        service.handoffService.decideHandoff = jest.fn().mockResolvedValue(null);
+        service.handoffService.executeHandoff = jest.fn();
+        await service.runTurn(message);
+        expect(service.handoffService.decideHandoff).toHaveBeenCalledTimes(1);
+        expect(service.handoffService.executeHandoff).not.toHaveBeenCalled();
+        expect(service.generateResponse).toHaveBeenCalledTimes(1);
+        expect(sentChunks(service).join('\n')).toBe(ANSWER);
+    });
+});
+
+describe('typing is shown before the turn waits on the classifier', () => {
+    const typingFixture = (text: string, topic: boolean) => {
+        const f = fixture({ status: 'active', handoff: {}, text });
+        const sendTyping = jest.fn().mockResolvedValue(undefined);
+        const seenAtDecision: number[] = [];
+        Object.assign(f.service, {
+            channelGateway: { sendTypingIndicator: sendTyping },
+            resolveAccessToken: jest.fn().mockResolvedValue('token'),
+        });
+        Object.assign(f.service.handoffService, {
+            needsPolicyClassification: jest.fn().mockReturnValue(topic),
+            decideHandoff: jest.fn(async () => {
+                await new Promise((resolve) => setTimeout(resolve, 5));
+                seenAtDecision.push(sendTyping.mock.calls.length);
+                return null;
+            }),
+        });
+        return { ...f, sendTyping, seenAtDecision };
+    };
+
+    it('a refund / return / discount message shows typing before the decision is back, and only once', async () => {
+        const { service, message, sendTyping, seenAtDecision } = typingFixture('¿Puedo pedir un reembolso?', true);
+        await service.runTurn(message);
+        expect(seenAtDecision).toEqual([1]);
+        expect(sendTyping).toHaveBeenCalledTimes(1);
+    });
+
+    it('any other message keeps the typing where it was, once, after the decision', async () => {
+        const { service, message, sendTyping, seenAtDecision } = typingFixture('¿A qué hora abren?', false);
+        await service.runTurn(message);
+        expect(seenAtDecision).toEqual([0]);
+        expect(sendTyping).toHaveBeenCalledTimes(1);
+    });
+});

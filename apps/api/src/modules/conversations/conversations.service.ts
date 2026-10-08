@@ -80,7 +80,7 @@ import { sessionCanExecute, sessionLlmRouter, sessionToolExecutor } from './agen
 import { containsBookingOffer } from './booking-offer';
 import { projectEcommerceCatalogRow, projectOwnCatalogRow } from './catalog-turn-projection';
 import { projectBookingStateForPrompt, TENTATIVE_BOOKING_BLOCKED_TOOLS, restoreBookingMission } from './booking-state-continuity';
-import { deriveInformationalHours, hasConfiguredHours, promptHoursStatus, resolvePromptBusinessHours, UNKNOWN_INFORMATIONAL_HOURS, type InformationalHours } from './informational-hours';
+import { businessHoursConfigured, deriveInformationalHours, hasConfiguredHours, promptHoursStatus, resolvePromptBusinessHours, UNKNOWN_INFORMATIONAL_HOURS, type InformationalHours } from './informational-hours';
 import { resolveEvaluationSnapshot } from './agent-evaluation-snapshot';
 import { AGENT_TEST_EXECUTION_CONTEXT, DRAFT_EXECUTION_CONTEXT, type ServiceExecutionContext } from '../../common/types/execution-context';
 import { EVALUATION_CONTEXT_LANGUAGES, evaluationContextLanguage, projectBusinessTurnContext,
@@ -2310,19 +2310,28 @@ export class ConversationsService {
         }
     }
 
+    /**
+     * Is the business open right now, for the after-hours gate (`aiOutsideHours = false`)?
+     *
+     * Same precedence as the hours the prompt quotes (informational-hours.ts):
+     *   1. business hours that really list a week (24/7, or at least one day) - decide;
+     *   2. else the agent's own schedule - decides;
+     *   3. else nothing configured -> open (the agent answers, as before).
+     * A business-hours record with no schedule (the wizard writes `{ is247:false, timezone,
+     * schedule: {} }`) is NOT configured: it used to answer "always open" and hid the agent schedule
+     * the prompt tells the customer about, so the after-hours reply never fired outside it.
+     * The appointment agenda is deliberately NOT a source here: it is bookable hours, not opening
+     * hours. Gating on it would silence the bot outside the slots (a salon answers questions at 8pm
+     * even if nobody is bookable), so it only informs the prompt.
+     */
     private isWithinBusinessHours(config: TenantConfig, bizHours?: any): boolean {
-        // Priority: tenant-level business hours > agent-level schedule (backward compat)
-        if (bizHours) {
+        if (bizHours && businessHoursConfigured(bizHours)) {
             if (bizHours.is247) return true;
-
-            const schedule = bizHours.schedule;
-            if (!schedule || Object.keys(schedule).length === 0) return true;
-
             const timezone = bizHours.timezone || config.hours?.timezone || 'America/Bogota';
-            return this.checkScheduleTime(schedule, timezone, 'english');
+            return this.checkScheduleTime(bizHours.schedule, timezone, 'english');
         }
 
-        // Fallback: agent-level schedule (legacy)
+        // Agent-level schedule
         if (!config.hours || !config.hours.schedule) return true;
 
         const schedule: Record<string, any> = config.hours.schedule as any;
@@ -2336,7 +2345,7 @@ export class ConversationsService {
             if (all247) return true;
         }
 
-        const timezone = config.hours.timezone || 'America/Bogota';
+        const timezone = config.hours.timezone || bizHours?.timezone || 'America/Bogota';
         return this.checkScheduleTime(schedule, timezone, 'spanish');
     }
 

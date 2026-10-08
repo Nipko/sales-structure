@@ -24,7 +24,9 @@ import {
   getNavigationRoute,
   NAVIGATION_ROUTES,
   navigationItemKeyFromTitleKey,
+  navigationRouteMatchesQuery,
   normalizeNavigationPath,
+  normalizeNavigationSearch,
   resolveNavigationDisplayLabel,
   sanitizeInternalReturnTo,
   type NavigationRouteDefinition,
@@ -60,13 +62,6 @@ interface PaletteSection {
 
 interface OpenNavigationCommandDetail {
   restoreFocus?: HTMLElement | null;
-}
-
-function normalizeSearch(value: string): string {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLocaleLowerCase();
 }
 
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -164,12 +159,10 @@ export default function NavigationCommandPalette() {
     })
     .filter((entry): entry is PaletteDestination => Boolean(entry)), [getLabel, isPathVisible, recents]);
 
-  const normalizedQuery = normalizeSearch(query.trim());
+  const normalizedQuery = normalizeNavigationSearch(query.trim());
   const filteredDestinations = useMemo(() => {
     if (!normalizedQuery) return destinations;
-    return destinations.filter((entry) => normalizeSearch(
-      `${entry.label} ${entry.route.id} ${entry.route.pattern.replaceAll("-", " ")} ${(entry.route.keywords ?? []).join(" ")}`,
-    ).includes(normalizedQuery));
+    return destinations.filter((entry) => navigationRouteMatchesQuery(entry.route, entry.label, normalizedQuery));
   }, [destinations, normalizedQuery]);
 
   const displaySections = useMemo<PaletteSection[]>(() => {

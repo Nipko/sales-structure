@@ -428,8 +428,10 @@ export class AppointmentsController {
         @Query('startDate') startDate?: string,
         @Query('endDate') endDate?: string,
     ) {
-        const data = await this.service.list(user.schemaName, { status, assignedTo, startDate, endDate });
-        return { success: true, data };
+        // Bounded: the agenda asks for months at a time. `meta.truncated` tells the
+        // screen the list stops short, so it can say so instead of looking complete.
+        const page = await this.service.listPage(user.schemaName, { status, assignedTo, startDate, endDate });
+        return { success: true, data: page.items, meta: { limit: page.limit, truncated: page.truncated } };
     }
 
     @Post(':tenantId')

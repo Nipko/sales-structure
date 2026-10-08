@@ -73,6 +73,8 @@ export class VerticalTurnContextService {
     async resolve(input: {
         tenantId: string;
         language: string;
+        /** Operating country: «turno» instead of «cita» in AR/UY/PY (see subtype-terminology). */
+        country?: string;
         toolsConfig?: unknown;
         executionContext?: ServiceExecutionContext;
     }): Promise<VerticalContext | undefined> {
@@ -103,7 +105,7 @@ export class VerticalTurnContextService {
             context.serviceNoun = configuredTerm('serviceNoun', configuredTerms.serviceNoun);
         }
 
-        const terms = subtypeTerminologyFor(config.industry, config.subType);
+        const terms = subtypeTerminologyFor(config.industry, config.subType, input.country);
         const pick = (term?: LocalizedTerm) => localizedTerm(term, language) || undefined;
         if (terms) {
             context.customerNoun = pick(terms.customerNoun) || context.customerNoun;

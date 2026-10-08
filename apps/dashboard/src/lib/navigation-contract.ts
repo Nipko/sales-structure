@@ -48,9 +48,47 @@ export function resolveNavigationDisplayLabel(
 ): string {
   if (!labelKey || !overrides?.[labelKey]) return translatedLabel;
   const baseLocale = locale.split("-")[0];
-  return overrides[labelKey][locale]
-    || overrides[labelKey][baseLocale]
-    || translatedLabel;
+  const override = overrides[labelKey][locale] || overrides[labelKey][baseLocale];
+  // Vertical terminology is written as a common noun ("turnos", "citas"), which
+  // is right inside a sentence and wrong as a menu entry: every other item in
+  // the menu starts with a capital, and the lowercase one read as a leftover.
+  return override ? capitalizeNavigationLabel(override) : translatedLabel;
+}
+
+/** First letter upper-case, the rest untouched ("citas" -> "Citas", "Mi CRM" stays). */
+export function capitalizeNavigationLabel(label: string): string {
+  const trimmed = label.trim();
+  if (!trimmed) return label;
+  return trimmed.charAt(0).toLocaleUpperCase() + trimmed.slice(1);
+}
+
+/** Lower-cased and accent-free, so "agenda", "Agénda" and "AGENDA" are one query. */
+export function normalizeNavigationSearch(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLocaleLowerCase();
+}
+
+/**
+ * Whether a destination answers a search query.
+ *
+ * The haystack is the visible label (after vertical overrides), the route id and
+ * path, and the synonyms declared on the route. The synonyms matter because the
+ * label is only one of the words people use: a salon calls the same screen
+ * "citas", "agenda" or "turnos" depending on where its owner learned the word,
+ * and the search used to answer only to whichever one the menu happened to show.
+ */
+export function navigationRouteMatchesQuery(
+  route: Pick<NavigationRouteDefinition, "id" | "pattern" | "keywords">,
+  label: string,
+  query: string,
+): boolean {
+  const normalizedQuery = normalizeNavigationSearch(query.trim());
+  if (!normalizedQuery) return true;
+  return normalizeNavigationSearch(
+    `${label} ${route.id} ${route.pattern.replaceAll("-", " ")} ${(route.keywords ?? []).join(" ")}`,
+  ).includes(normalizedQuery);
 }
 
 const NAVIGATION_ROUTE_DEFINITIONS = [
@@ -63,7 +101,8 @@ const NAVIGATION_ROUTE_DEFINITIONS = [
   { id: "contactDetail", pattern: "/admin/contacts/:leadId", titleKey: "navigation.routes.contactDetail", scope: "tenant", parentId: "contacts", dynamicTitleParam: "leadId" },
   { id: "organizations", pattern: "/admin/contacts/organizations", titleKey: "nav.items.organizations", scope: "tenant", parentId: "contacts" },
   { id: "segments", pattern: "/admin/contacts/segments", titleKey: "topbar.breadcrumbs.segments", scope: "tenant", parentId: "contacts" },
-  { id: "pipeline", pattern: "/admin/pipeline", titleKey: "nav.items.pipeline", scope: "tenant" },
+  { id: "pipeline", pattern: "/admin/pipeline", titleKey: "nav.items.pipeline", scope: "tenant",
+    keywords: ["embudo", "oportunidades", "negocios", "ventas", "funnel", "opportunities", "deals", "sales"] },
   { id: "pipelineDealDetail", pattern: "/admin/pipeline/:dealId", titleKey: "navigation.routes.pipelineDealDetail", scope: "tenant", parentId: "pipeline", dynamicTitleParam: "dealId" },
 
   // AI, knowledge and growth
@@ -124,7 +163,13 @@ const NAVIGATION_ROUTE_DEFINITIONS = [
   { id: "channelWhatsappTemplates", pattern: "/admin/channels/whatsapp/templates", titleKey: "navigation.routes.channelWhatsappTemplates", scope: "tenant", parentId: "channelWhatsapp" },
 
   // Vertical operations and catalogs
-  { id: "appointments", pattern: "/admin/appointments", titleKey: "nav.items.appointments", scope: "tenant" },
+  // The same screen is "citas" to one owner and "turnos" or "agenda" to another,
+  // and the services that can be booked live inside it, so every word finds it.
+  { id: "appointments", pattern: "/admin/appointments", titleKey: "nav.items.appointments", scope: "tenant",
+    keywords: ["cita", "citas", "agenda", "agendar", "turno", "turnos", "reserva", "reservas", "reservacion", "calendario", "servicio", "servicios", "horario", "disponibilidad",
+      "appointment", "appointments", "booking", "bookings", "schedule", "calendar", "services",
+      "agendamento", "agendamentos", "consulta", "servicos",
+      "rendez-vous", "reservation", "planning"] },
   { id: "catalog", pattern: "/admin/catalog", titleKey: "nav.items.catalog", scope: "tenant", discoverable: false },
   { id: "catalogCampaigns", pattern: "/admin/catalog/campaigns", titleKey: "navigation.routes.acquisitionCampaigns", scope: "tenant" },
   { id: "catalogCourses", pattern: "/admin/catalog/courses", titleKey: "nav.items.courses", scope: "tenant", parentId: "courses", discoverable: false },

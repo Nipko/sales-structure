@@ -44,6 +44,15 @@ describe('VerticalTurnContextService', () => {
     });
 
     it.each([
+        ['AR', 'turno', 'turnos'], ['UY', 'turno', 'turnos'], ['CO', 'cita', 'citas'], [undefined, 'cita', 'citas'],
+    ])('names the appointment object for the customer by tenant country (%s)', async (country, noun, plural) => {
+        verticals.getVerticalConfig.mockResolvedValueOnce({ industry: 'salud', subType: 'dental', terminology: {} });
+        const context = await service.resolve({ tenantId: 'tenant-id', language: 'es', country, toolsConfig: {} });
+        expect(context?.primaryObjectNoun).toBe(noun);
+        expect(context?.primaryObjectNounPlural).toBe(plural);
+    });
+
+    it.each([
         ['en', 'For an order'],
         ['pt', 'Para um pedido'],
         ['fr', 'Pour une commande'],

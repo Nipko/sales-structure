@@ -22,7 +22,14 @@ export function useVerticalTerms() {
     const industryTerm = (key: string, fallback: string) =>
         t?.[key]?.[locale] ?? t?.[key]?.es ?? fallback;
 
+    const customerNounSingular = localizedTerm(subtype?.customerNoun, locale)
+        ?? industryTerm("customerNoun", "contacto");
+    const customerNounPlural = localizedTerm(subtype?.customerNounPlural, locale)
+        ?? industryTerm("customerNounPlural", "contactos");
+
     return {
+        /** "1 cliente" / "3 clientes": the noun agrees with the number. */
+        countCustomers: (count: number) => `${count} ${count === 1 ? customerNounSingular : customerNounPlural}`,
         customerNoun: localizedTerm(subtype?.customerNoun, locale)
             ?? industryTerm("customerNoun", "contacto"),
         customerNounPlural: localizedTerm(subtype?.customerNounPlural, locale)

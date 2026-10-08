@@ -3,8 +3,12 @@
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
-import { CalendarDays, X, MapPin, FileText, UserCheck, Save, Repeat } from "lucide-react";
-import { Appointment, Service, fmt2 } from "./shared";
+import Link from "next/link";
+import { CalendarDays, X, MapPin, FileText, UserCheck, Save, Repeat, Bot } from "lucide-react";
+import {
+  Appointment, Service, fmt2, appointmentConversationHref, isAiCreatedAppointment, isCancelledAppointment,
+} from "./shared";
+import AppointmentStatusBadge from "./AppointmentStatusBadge";
 import {
   canSaveAppointmentWithContact,
   hasAppointmentContact,
@@ -58,6 +62,10 @@ export default function AppointmentModal({
     enabled: false, frequency: "weekly", count: 4,
   });
   const hasSelectedContact = hasAppointmentContact(form.contactId, contacts);
+  // A cancelled appointment is a record, not a form: opening it must not invite
+  // edits that would quietly keep a dead booking looking alive.
+  const readOnly = !!editingAppointment && isCancelledAppointment(editingAppointment);
+  const conversationHref = editingAppointment ? appointmentConversationHref(editingAppointment) : null;
 
   const handleSave = () => {
     if (recurrence.enabled && onSaveRecurring && !editingAppointment) {
@@ -83,10 +91,13 @@ export default function AppointmentModal({
               <CalendarDays size={18} className="text-primary" />
             </div>
             <h2 className="text-lg font-semibold text-neutral-900 dark:text-white">
-              {editingAppointment ? t('editAppointmentTitle') : t('newAppointmentTitle')}
+              {readOnly ? t('viewAppointmentTitle') : editingAppointment ? t('editAppointmentTitle') : t('newAppointmentTitle')}
             </h2>
+            {editingAppointment && <AppointmentStatusBadge status={editingAppointment.status} />}
           </div>
           <button
+            type="button"
+            aria-label={tc('close')}
             onClick={onClose}
             className="p-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer border-none bg-transparent text-neutral-400 hover:text-neutral-600"
           >
@@ -94,7 +105,28 @@ export default function AppointmentModal({
           </button>
         </div>
 
-        <div className="p-6 space-y-5">
+        {readOnly && (
+          <p role="status" className="mx-6 mt-5 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600 dark:border-neutral-700 dark:bg-neutral-800/60 dark:text-neutral-300">
+            {t('cancelledReadOnly')}
+          </p>
+        )}
+
+        {editingAppointment && isAiCreatedAppointment(editingAppointment) && (
+          <p
+            data-appointment-origin="ai"
+            className="mx-6 mt-5 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs text-indigo-800 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-200"
+          >
+            <Bot size={14} className="shrink-0" aria-hidden="true" />
+            <span className="font-medium">{t('createdByAssistant')}</span>
+            {conversationHref && (
+              <Link href={conversationHref} className="font-medium underline underline-offset-2 hover:no-underline">
+                {t('viewConversation')}
+              </Link>
+            )}
+          </p>
+        )}
+
+        <fieldset disabled={readOnly} className="m-0 min-w-0 space-y-5 border-0 p-6">
           {/* Service selector */}
           {services.length > 0 && (
             <div>
@@ -214,20 +246,19 @@ export default function AppointmentModal({
             />
           </div>
 
-          {/* Assigned agent */}
-          <div>
-            <label className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
-              <UserCheck size={14} className="inline mr-1.5 -mt-0.5" />
-              {t('assignedAgent')}
-            </label>
-            <input
-              type="text"
-              placeholder={t('agentIdPlaceholder')}
-              value={form.assignedTo}
-              onChange={(e) => onChange({ ...form, assignedTo: e.target.value })}
-              className="w-full px-3 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-primary/20"
-            />
-          </div>
+          {/* Assigned agent: the person's name, never the internal id. The id
+              is kept in the form so saving does not unassign anyone. */}
+          {editingAppointment?.assignedName && (
+            <div>
+              <p className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
+                <UserCheck size={14} className="inline mr-1.5 -mt-0.5" aria-hidden="true" />
+                {t('assignedAgent')}
+              </p>
+              <p className="w-full px-3 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm">
+                {editingAppointment.assignedName}
+              </p>
+            </div>
+          )}
 
           {/* Contact */}
           <div>
@@ -301,7 +332,7 @@ export default function AppointmentModal({
               </p>
             ) : null}
           </div>
-        </div>
+        </fieldset>
 
         {/* Recurrence (only for new appointments) */}
         {!editingAppointment && onSaveRecurring && (
@@ -358,16 +389,16 @@ export default function AppointmentModal({
             onClick={onClose}
             className="px-4 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-transparent text-neutral-700 dark:text-neutral-300 text-sm font-medium cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
           >
-            {t('cancel')}
+            {readOnly ? tc('close') : t('cancel')}
           </button>
-          <button
+          {!readOnly && <button
             onClick={handleSave}
             disabled={saving || !form.serviceName || !form.date || !canSaveAppointmentWithContact(Boolean(editingAppointment), form.contactId, contacts)}
             className="flex items-center gap-2 px-5 py-2.5 rounded-xl border-none bg-primary text-primary-foreground font-semibold text-sm cursor-pointer disabled:opacity-50 hover:opacity-90 transition-opacity"
           >
             <Save size={16} />
             {saving ? t("saving") : editingAppointment ? t("update") : recurrence.enabled ? t("createRecurringSeries") : t("createAppointment")}
-          </button>
+          </button>}
         </div>
       </div>
     </div>

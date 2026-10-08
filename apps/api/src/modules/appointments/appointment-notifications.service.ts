@@ -135,8 +135,17 @@ export class AppointmentNotificationsService {
             const dateStr = formatWallClockDate(facts.startAt, locale);
             const timeStr = formatWallClockTime(facts.startAt, locale);
 
+            // The agent already confirmed this booking INSIDE the live conversation, on the channel the customer is writing
+            // from: a second «Cita confirmada» in the same thread is a duplicate. The e-mail is a different channel and stays.
+            const channelType = (contact?.channel_type || 'whatsapp') as string;
+            const confirmedInConversation = appointment.source === 'ai'
+                && !!(await this.bookingThread(schemaName, facts.conversationId, channelType));
+            if (confirmedInConversation) {
+                this.logger.log(`Appointment ${facts.id} was confirmed by the agent in its own conversation — no second channel message`);
+            }
+
             // Channel confirmation still needs a phone; the email no longer does.
-            if (contact?.phone) {
+            if (contact?.phone && !confirmedInConversation) {
                 const shortDate = formatWallClockShortDate(facts.startAt, locale);
                 const text = [
                     apptMsg(lang, 'confirmTitle'),

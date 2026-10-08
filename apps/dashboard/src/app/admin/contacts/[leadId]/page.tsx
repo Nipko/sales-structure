@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { PageHeader } from "@/components/ui/page-header";
 import { useVerticalTerms } from "@/hooks/useVerticalTerms";
+import { interpretLeadProfile } from "@/lib/lead-profile";
 import {
     ArrowLeft, User, Phone, Mail, Building2, Star, Tag, Hash,
     MessageSquare, CheckSquare, StickyNote, Clock, Plus,
@@ -78,6 +79,9 @@ export default function Lead360Page() {
     // tiraban, asi que el agente leia "envio una imagen" sin poder verla.
     const [gallery, setGallery] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    // A contact that has no lead yet opens read-only: every write below is keyed on a lead id.
+    const [readOnly, setReadOnly] = useState(false);
+    const [loadError, setLoadError] = useState<string | null>(null);
 
     const [newNote, setNewNote] = useState("");
     const [addingNote, setAddingNote] = useState(false);
@@ -126,23 +130,46 @@ export default function Lead360Page() {
     const load = useCallback(async () => {
         if (!tenantId || !leadId) return;
         setLoading(true);
+        setLoadError(null);
+        let redirected = false;
         try {
-            const [d1, d2, d3, d4] = await Promise.all([
-                api.fetch(`/crm/leads/${tenantId}/${leadId}`),
-                api.fetch(`/crm/timeline/${tenantId}/${leadId}`),
-                api.fetch(`/crm/notes/${tenantId}/${leadId}`),
-                api.fetch(`/crm/tasks/${tenantId}?leadId=${leadId}`),
-            ]);
+            // The profile first: it says whether the URL id is a lead or a contact, and every other call
+            // (notes, tasks, score, custom fields) must be keyed on the LEAD id it resolves to.
+            const d1 = await api.fetch(`/crm/leads/${tenantId}/${leadId}`);
+            const view = interpretLeadProfile(leadId, d1?.data);
+            if (view.mode === 'invalid') {
+                setLead360(null);
+                setLoadError("invalid_profile");
+                return;
+            }
+            if (view.mode === 'redirect') {
+                // Opened with a contact id: continue on the lead's own URL.
+                redirected = true;
+                router.replace(`/admin/contacts/${view.leadId}`);
+                return;
+            }
+            const isReadOnly = view.mode === 'read_only';
+            setReadOnly(isReadOnly);
             setLead360(d1.data);
-            setTimeline(d2.data || []);
-            setNotes(d3.data || []);
-            setTasks(d4.data || []);
+
+            const [d2, d3, d4] = await Promise.allSettled([
+                api.fetch(`/crm/timeline/${tenantId}/${leadId}`),
+                isReadOnly ? Promise.resolve({ data: [] }) : api.fetch(`/crm/notes/${tenantId}/${leadId}`),
+                isReadOnly ? Promise.resolve({ data: [] }) : api.fetch(`/crm/tasks/${tenantId}?leadId=${leadId}`),
+            ]);
+            const rows = (r: PromiseSettledResult<any>) => (r.status === "fulfilled" && Array.isArray(r.value?.data) ? r.value.data : []);
+            setTimeline(rows(d2));
+            setNotes(rows(d3));
+            setTasks(rows(d4));
+            if ([d2, d3, d4].some(r => r.status === "rejected")) showToast(t("leadDetail.partialLoadError"));
 
             // Load score breakdown
-            try {
-                const scoreRes = await api.fetch(`/crm/leads/${tenantId}/${leadId}/score`);
-                setScoreData(scoreRes?.data);
-            } catch (e) { /* non-critical */ }
+            if (!isReadOnly) {
+                try {
+                    const scoreRes = await api.fetch(`/crm/leads/${tenantId}/${leadId}/score`);
+                    setScoreData(scoreRes?.data);
+                } catch (e) { /* non-critical */ }
+            }
 
             // Galería del contacto. Se cuelga del contact_id, no del lead: un
             // mismo cliente puede tener varios leads y las fotos son de la
@@ -156,28 +183,33 @@ export default function Lead360Page() {
             } catch (e) { /* non-critical */ }
 
             // Load custom field definitions first, then values (sequential to avoid showing values without type definitions)
-            try {
-                const defsRes = await api.fetch(`/crm/custom-attributes/${tenantId}?entityType=lead`);
-                setCustomDefs(defsRes?.data || []);
+            if (!isReadOnly) {
+                try {
+                    const defsRes = await api.fetch(`/crm/custom-attributes/${tenantId}?entityType=lead`);
+                    setCustomDefs(defsRes?.data || []);
 
-                if (defsRes?.data?.length) {
-                    const valsRes = await api.fetch(`/crm/custom-attribute-values/${tenantId}/lead/${leadId}`);
-                    const valMap: Record<string, any> = {};
-                    for (const v of (valsRes?.data || [])) {
-                        valMap[v.definition_id] = v.value_text ?? v.value_number ?? v.value_boolean ?? v.value_date ?? v.value_json ?? '';
+                    if (defsRes?.data?.length) {
+                        const valsRes = await api.fetch(`/crm/custom-attribute-values/${tenantId}/lead/${leadId}`);
+                        const valMap: Record<string, any> = {};
+                        for (const v of (valsRes?.data || [])) {
+                            valMap[v.definition_id] = v.value_text ?? v.value_number ?? v.value_boolean ?? v.value_date ?? v.value_json ?? '';
+                        }
+                        setCustomValues(valMap);
                     }
-                    setCustomValues(valMap);
+                    setCustomDirty(false);
+                } catch (e) {
+                    // Non-critical — custom fields may not exist yet
                 }
-                setCustomDirty(false);
-            } catch (e) {
-                // Non-critical — custom fields may not exist yet
             }
         } catch (e) {
             console.error("Error loading Lead 360:", e);
+            setLead360(null);
+            setLoadError(e instanceof Error && e.message ? e.message : "load_failed");
         } finally {
-            setLoading(false);
+            // A redirect keeps the spinner up until the lead's own URL loads.
+            if (!redirected) setLoading(false);
         }
-    }, [tenantId, leadId]);
+    }, [tenantId, leadId, router, t]);
 
     useEffect(() => { load(); }, [load]);
 
@@ -296,7 +328,35 @@ export default function Lead360Page() {
     }
 
     const { lead, opportunities = [], tags = [] } = lead360 || {};
-    if (!lead) return null;
+    if (!lead) {
+        // Never a blank page: say what happened and offer the two ways out.
+        return (
+            <div className="flex flex-col items-center justify-center gap-3 h-[400px] text-center px-6" role="alert">
+                <AlertCircle size={32} className="text-red-500" aria-hidden="true" />
+                <h2 className="m-0 text-lg font-semibold">{t("leadDetail.loadErrorTitle")}</h2>
+                <p className="m-0 text-sm text-muted-foreground max-w-md">{t("leadDetail.loadErrorBody")}</p>
+                {loadError && loadError !== "invalid_profile" && loadError !== "load_failed" && (
+                    <p className="m-0 text-xs text-muted-foreground max-w-md">{loadError}</p>
+                )}
+                <div className="flex gap-2">
+                    <button
+                        type="button"
+                        onClick={() => { void load(); }}
+                        className="px-4 py-2 rounded-lg border-none bg-primary text-white font-semibold text-[13px] cursor-pointer"
+                    >
+                        {t("leadDetail.loadRetry")}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => router.push("/admin/contacts")}
+                        className="px-4 py-2 rounded-lg border border-border bg-transparent text-muted-foreground font-semibold text-[13px] cursor-pointer hover:bg-muted"
+                    >
+                        {t("leadDetail.loadBack")}
+                    </button>
+                </div>
+            </div>
+        );
+    }
 
     const stageColor = STAGE_COLORS[lead.stage] || STAGE_COLORS.nuevo;
     const stageLabel = tc(`stages.${lead.stage}`) || lead.stage;
@@ -314,6 +374,13 @@ export default function Lead360Page() {
                     ]} />
                 }
             />
+
+            {readOnly && (
+                <div role="status" className="mb-4 flex items-start gap-2.5 rounded-xl border border-border bg-muted/50 px-4 py-3 text-[13px] text-muted-foreground">
+                    <AlertCircle size={16} className="mt-px shrink-0" aria-hidden="true" />
+                    <span>{t("leadDetail.contactOnlyNotice")}</span>
+                </div>
+            )}
 
             <div className="grid grid-cols-[340px_1fr] gap-5">
                 {/* === LEFT PANEL: Profile === */}
@@ -354,7 +421,7 @@ export default function Lead360Page() {
                                     </div>
                                 )}
                             </div>
-                            <div className="flex items-center gap-1 shrink-0">
+                            {!readOnly && <div className="flex items-center gap-1 shrink-0">
                                 {!editing ? (
                                     <>
                                         <button
@@ -391,7 +458,7 @@ export default function Lead360Page() {
                                         </button>
                                     </>
                                 )}
-                            </div>
+                            </div>}
                         </div>
 
                         {/* Score bar */}
@@ -569,9 +636,9 @@ export default function Lead360Page() {
 
                     {/* Opportunities */}
                     <div className="bg-card rounded-xl border border-border p-4">
-                        <h3 className="m-0 mb-3 text-sm font-semibold flex items-center gap-1.5">
+                        <h2 className="m-0 mb-3 text-sm font-semibold flex items-center gap-1.5">
                             <Briefcase size={14} className="text-primary" /> {t("leadDetail.opportunities")}
-                        </h3>
+                        </h2>
                         {opportunities.length === 0 ? (
                             <p className="text-[13px] text-muted-foreground m-0">{t("leadDetail.noOpportunities")}</p>
                         ) : opportunities.map((op: any) => (
@@ -592,9 +659,9 @@ export default function Lead360Page() {
                     {/* Custom Fields */}
                     {customDefs.length > 0 && (
                         <div className="bg-card rounded-xl border border-border p-4">
-                            <h3 className="m-0 mb-3 text-sm font-semibold flex items-center gap-1.5">
+                            <h2 className="m-0 mb-3 text-sm font-semibold flex items-center gap-1.5">
                                 <Hash size={14} className="text-primary" /> {t("leadDetail.customFields")}
-                            </h3>
+                            </h2>
                             <div className="flex flex-col gap-2.5">
                                 {customDefs.map((def: any) => {
                                     const val = customValues[def.id] ?? '';
@@ -694,8 +761,8 @@ export default function Lead360Page() {
                         </div>
                     )}
 
-                    {/* AI Insights */}
-                    <div className="rounded-xl border border-border bg-card overflow-hidden">
+                    {/* AI Insights (needs a lead) */}
+                    {!readOnly && <div className="rounded-xl border border-border bg-card overflow-hidden">
                         <button
                             onClick={() => {
                                 const next = !insightExpanded;
@@ -717,7 +784,7 @@ export default function Lead360Page() {
                         >
                             <div className="flex items-center gap-2.5">
                                 <Sparkles size={18} className="text-[#f39c12]" />
-                                <h3 className="text-sm font-semibold m-0">{t("leadDetail.aiInsights")}</h3>
+                                <h2 className="text-sm font-semibold m-0">{t("leadDetail.aiInsights")}</h2>
                             </div>
                             <ChevronDown size={16} className={cn("text-muted-foreground transition-transform", insightExpanded && "rotate-180")} />
                         </button>
@@ -732,16 +799,16 @@ export default function Lead360Page() {
                                 )}
                             </div>
                         )}
-                    </div>
+                    </div>}
 
                     {/* Treatment Plans (salud only) */}
                     {showTreatmentPlans && activeTenantId && (
-                        <TreatmentPlansCard tenantId={activeTenantId} contactId={leadId} />
+                        <TreatmentPlansCard tenantId={activeTenantId} contactId={lead.contact_id || leadId} />
                     )}
 
                     {/* Pets (veterinaria only — the contact is the tutor) */}
                     {showPets && activeTenantId && (
-                        <PetsCard tenantId={activeTenantId} contactId={leadId} />
+                        <PetsCard tenantId={activeTenantId} contactId={lead.contact_id || leadId} />
                     )}
                 </div>
 
@@ -800,7 +867,7 @@ export default function Lead360Page() {
                         {/* NOTES */}
                         {activeTab === "notes" && (
                             <div>
-                                <div className="mb-4 flex flex-col gap-2">
+                                {!readOnly && <div className="mb-4 flex flex-col gap-2">
                                     <textarea
                                         value={newNote}
                                         onChange={e => setNewNote(e.target.value)}
@@ -818,7 +885,7 @@ export default function Lead360Page() {
                                     >
                                         <Send size={14} /> {t("leadDetail.saveNote")}
                                     </button>
-                                </div>
+                                </div>}
                                 {notes.map((note: any) => (
                                     <div key={note.id} className="p-3 rounded-[10px] bg-muted mb-2.5 border-l-[3px] border-l-amber-500">
                                         <p className="m-0 mb-1 text-sm leading-relaxed">{note.content}</p>
@@ -837,7 +904,7 @@ export default function Lead360Page() {
                         {/* TASKS */}
                         {activeTab === "tasks" && (
                             <div>
-                                <div className="mb-4 p-3 bg-muted rounded-[10px] flex flex-col gap-2">
+                                {!readOnly && <div className="mb-4 p-3 bg-muted rounded-[10px] flex flex-col gap-2">
                                     <input
                                         value={newTask.title}
                                         onChange={e => setNewTask(tk => ({ ...tk, title: e.target.value }))}
@@ -873,11 +940,11 @@ export default function Lead360Page() {
                                             <Plus size={14} />
                                         </button>
                                     </div>
-                                </div>
+                                </div>}
 
                                 {tasks.map((task: any) => (
                                     <div key={task.id} className={cn("flex items-start gap-2.5 py-2.5 border-b border-border", task.status === "done" && "opacity-50")}>
-                                        <button onClick={() => handleCompleteTask(task.id)} className="bg-transparent border-none cursor-pointer p-0.5 mt-px">
+                                        <button onClick={() => handleCompleteTask(task.id)} disabled={readOnly} className="bg-transparent border-none cursor-pointer p-0.5 mt-px">
                                             {task.status === "done"
                                                 ? <CheckCircle size={18} color="#2ecc71" />
                                                 : <Circle size={18} className="text-muted-foreground" />
@@ -958,7 +1025,7 @@ export default function Lead360Page() {
                                 <Archive size={20} className="text-red-500" />
                             </div>
                             <div>
-                                <h3 className="m-0 text-base font-semibold">{t("leadDetail.archiveTitle")}</h3>
+                                <h2 className="m-0 text-base font-semibold">{t("leadDetail.archiveTitle")}</h2>
                                 <p className="m-0 text-[13px] text-muted-foreground">{t("leadDetail.archiveMessage")}</p>
                             </div>
                         </div>

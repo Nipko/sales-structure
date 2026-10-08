@@ -23,9 +23,10 @@
  * the prompt never saw, so "¿a qué hora abren?" had no answer. These helpers
  * produce a read-only description for the `<business_hours>` block.
  *
- * They are NOT used by `isWithinBusinessHours`: whether the agent answers is a
- * tenant setting (`schedule_mode: 24_7`), and an agenda is not an opening
- * policy. The derived object is marked `informational` so nothing downstream
+ * The agenda is NOT a source of `isWithinBusinessHours` (the after-hours gate), which uses only
+ * levels 1-2 above with "nothing configured = open": whether the agent answers is a tenant
+ * setting, and an agenda is bookable hours, not an opening policy - gating on it would silence
+ * the bot outside the slots. The derived object is marked `informational` so nothing downstream
  * confuses it with configured hours.
  */
 

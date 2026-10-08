@@ -48,7 +48,7 @@ export interface Appointment {
     contactId: string | null;
     contactName?: string;
     conversationId: string | null;
-    /** Who created the row: 'ai' (the assistant), 'manual', 'public_booking'... */
+    /** Who created it: 'ai' (the agent, inside a conversation), 'manual', 'api'… */
     source?: string | null;
     assignedTo: string | null;
     assignedName?: string;

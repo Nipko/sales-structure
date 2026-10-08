@@ -498,7 +498,7 @@ function TenantHelpAssistant() {
           id={guidedTourAnchorId("assistant")}
           onClick={openAssistant}
           aria-label={t("launcherTooltip")}
-          className={`group fixed bottom-4 right-4 z-40 flex cursor-pointer items-end justify-center drop-shadow-[0_6px_18px_rgba(56,151,240,0.35)] transition-[transform,opacity] duration-300 hover:scale-105 active:scale-95 sm:right-6 ${
+          className={`parallly-launcher group fixed bottom-4 right-4 z-40 flex cursor-pointer items-end justify-center drop-shadow-[0_6px_18px_rgba(56,151,240,0.35)] transition-[transform,opacity] duration-300 hover:scale-105 active:scale-95 sm:right-6 ${
             intro === "hidden" ? "pointer-events-none opacity-0" : "opacity-100"
           }`}
         >
@@ -524,7 +524,7 @@ function TenantHelpAssistant() {
             {t("launcherTooltip")}
           </span>
 
-          <span className={`relative flex items-end justify-center ${introMoving ? "parallly-pop" : ""}`}>
+          <span className={`relative flex origin-bottom-right scale-[0.7] items-end justify-center sm:scale-100 ${introMoving ? "parallly-pop" : ""}`}>
             {introMoving && (
               <>
                 <span className="parallly-ring pointer-events-none absolute bottom-4 left-1/2 -ml-8 size-16 rounded-full border-2 border-[#3897f0]/50" />

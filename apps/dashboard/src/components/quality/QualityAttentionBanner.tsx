@@ -281,11 +281,11 @@ export default function QualityAttentionBanner() {
   };
 
   return (
-    <div className="shrink-0 border-b border-red-200 bg-red-50 px-4 py-2.5 text-red-900 dark:border-red-900/70 dark:bg-red-950/35 dark:text-red-100" role="alert">
-      <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
+    <div className="shrink-0 border-b border-red-200 bg-red-50 px-3 py-2 text-red-900 sm:px-4 sm:py-2.5 dark:border-red-900/70 dark:bg-red-950/35 dark:text-red-100" role="alert">
+      <div className="flex items-center gap-2">
         <div className="flex min-w-0 flex-1 items-start gap-2">
           <AlertOctagon size={17} className="mt-0.5 shrink-0 text-red-600 dark:text-red-400" aria-hidden="true" />
-          <p className="min-w-0 text-sm">
+          <p className="line-clamp-2 min-w-0 text-sm sm:line-clamp-none">
             {/* A channel that cannot deliver leads, day 0 or not: say that,
                 and why when the signal knows, not a generic "critical action". */}
             <span className="font-semibold">{t(headline)}</span>{" "}
@@ -293,7 +293,7 @@ export default function QualityAttentionBanner() {
             <span className="text-red-800/85 dark:text-red-200/85">{t("bannerAgent", { agent: topAction.agentName })}</span>
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2 pl-6 lg:pl-0">
+        <div className="flex shrink-0 items-center gap-1 sm:gap-2">
           <Link href={reviewHref} className="inline-flex min-h-8 items-center justify-center rounded-md bg-red-700 px-3 text-xs font-semibold text-white hover:bg-red-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600 focus-visible:ring-offset-2 dark:bg-red-500 dark:text-neutral-950 dark:hover:bg-red-400">
             {t("review")}
           </Link>
@@ -309,7 +309,7 @@ export default function QualityAttentionBanner() {
             })}
             className="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-md px-2.5 text-xs font-semibold hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600 dark:hover:bg-red-900/50"
           >
-            <MessageCircle size={13} aria-hidden="true" /> {t("askAssist")}
+            <MessageCircle size={13} aria-hidden="true" /> <span className="sr-only sm:not-sr-only">{t("askAssist")}</span>
           </button>
           <button
             type="button"
@@ -317,7 +317,7 @@ export default function QualityAttentionBanner() {
             disabled={snoozing}
             className="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-md px-2.5 text-xs font-semibold hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600 disabled:cursor-wait disabled:opacity-60 dark:hover:bg-red-900/50"
           >
-            <Clock3 size={13} aria-hidden="true" /> {t("snooze24h")}
+            <Clock3 size={13} aria-hidden="true" /> <span className="sr-only sm:not-sr-only">{t("snooze24h")}</span>
           </button>
         </div>
       </div>

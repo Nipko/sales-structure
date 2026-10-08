@@ -339,6 +339,21 @@
   100% { opacity: 1; transform: translateY(0) scale(1); }
 }
 
+/* Lanzador flotante: no tapa botones de acción ni columnas.
+   - En pantallas angostas se sube para quedar sobre las barras de acción y la
+     última fila de las tablas (y es más chico, ver HelpAssistant).
+   - Donde la pantalla declara una barra de acciones fija (`data-sticky-actions`,
+     por ejemplo «Guardar» del agente) se sube sobre ella en cualquier ancho. */
+button.parallly-launcher {
+  transition: bottom 200ms ease;
+}
+@media (max-width: 767px) {
+  button.parallly-launcher { bottom: 5.25rem; }
+}
+body:has([data-sticky-actions]) button.parallly-launcher {
+  bottom: 5rem;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .parallly-pop,
   .parallly-bubble-in { animation: none; }

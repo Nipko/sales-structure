@@ -204,6 +204,8 @@ export default function AdminLayout({
           <MaintenanceBanner />
           <ImpersonationBanner />
           <TopBar onMobileMenuToggle={() => setMobileOpen(true)} />
+          {/* On a phone the banners shared the screen with the page and took a third of it: they get a capped, scrollable strip there, and are unconstrained from md up. */}
+          <div className="max-h-[22vh] shrink-0 overflow-y-auto overscroll-contain md:max-h-none md:overflow-visible">
           <TrialCountdownBanner restriction={restriction} />
           <EmailVerificationBanner />
           <FiscalBanner />
@@ -213,6 +215,7 @@ export default function AdminLayout({
           <Suspense fallback={null}>
             <QualityFocusBanner />
           </Suspense>
+          </div>
           <div className="flex-1 flex overflow-hidden">
             <main id="main-content" ref={mainRef} tabIndex={-1} className="flex-1 overflow-auto p-4 md:p-6"><AgentToolModuleNotice />{children}</main>
           </div>

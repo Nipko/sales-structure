@@ -527,8 +527,9 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
         const insertParams = insertCall![1] as any[];
         expect(insertParams[9]).toBe('Calle 10 # 20-30');
         expect(insertParams[10]).toBe(
-            'Customer: Cliente\nEmail: cliente@example.com\nPhone: +573001112233\n\n'
-            + 'Service: Consulta (N/A)\nDuration: 30 min\n\nNotes: Traer documentos',
+            // Written for the owner, in the tenant language (Spanish when it is unknown).
+            'Cliente: Cliente\nCorreo: cliente@example.com\nTeléfono: +573001112233\n\n'
+            + 'Servicio: Consulta (N/D)\nDuración: 30 min\n\nNotas: Traer documentos',
         );
         expect(JSON.parse(insertParams[11])).toEqual({
             isOnline: false,

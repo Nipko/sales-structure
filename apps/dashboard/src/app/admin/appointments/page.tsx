@@ -25,6 +25,7 @@ import { usePaginatedContacts } from "@/hooks/usePaginatedContacts";
 import {
   type Appointment, type Service, DAY_KEYS,
   toLocalDate, addDays, getMondayOfWeek, fmt2,
+  appointmentQueryWindow, appointmentsInWeek, isCurrentWeek, weekKpis,
 } from "@/components/appointments/shared";
 import {
   CalendarDays,
@@ -127,6 +128,7 @@ export default function AppointmentsPage() {
   // ---- Data state ----
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [truncatedAt, setTruncatedAt] = useState<number | null>(null);
   const [availabilitySlots, setAvailabilitySlots] = useState<AvailabilitySlot[]>(
     DAY_KEYS.map((_, i) => ({
       dayOfWeek: i + 1,
@@ -159,6 +161,8 @@ export default function AppointmentsPage() {
     }
   }, [searchParams, canManageSettings, canSeeGlobalAnalytics]);
   const [weekStart, setWeekStart] = useState<Date>(getMondayOfWeek(new Date()));
+  // Which window of appointments is loaded: the agenda needs more than a week.
+  const listTab: "calendar" | "agenda" = activeTab === "agenda" ? "agenda" : "calendar";
   const [toast, setToast] = useState<string | null>(null);
 
   // ---- Appointment modal ----
@@ -263,17 +267,21 @@ export default function AppointmentsPage() {
     if (!activeTenantId) return;
     setLoading(true);
     try {
-      const weekEnd = addDays(weekStart, 6);
-      const params = `startDate=${toLocalDate(weekStart)}&endDate=${toLocalDate(weekEnd)}`;
+      // The calendar asks for the visible week; the agenda is a list and asks
+      // for a longer window (see `appointmentQueryWindow`).
+      const { startDate, endDate } = appointmentQueryWindow(listTab, weekStart);
+      const params = `startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}`;
       const res = await api.getAppointments(activeTenantId, params);
       if (res?.success) {
         setAppointments(res.data || []);
+        // The endpoint caps a wide read and says so; the agenda shows that it is cut.
+        setTruncatedAt(res.meta?.truncated ? Number(res.meta.limit) || res.data?.length || null : null);
       }
     } catch {
       /* ignore */
     }
     setLoading(false);
-  }, [activeTenantId, weekStart]);
+  }, [activeTenantId, weekStart, listTab]);
 
   const loadAvailability = useCallback(async () => {
     if (!activeTenantId) return;
@@ -508,13 +516,18 @@ export default function AppointmentsPage() {
   /*  KPIs                                                             */
   /* ================================================================ */
 
-  const kpis = useMemo(() => {
-    const total = appointments.length;
-    const pending = appointments.filter((a) => a.status === "pending").length;
-    const confirmed = appointments.filter((a) => a.status === "confirmed").length;
-    const completed = appointments.filter((a) => a.status === "completed").length;
-    return { total, pending, confirmed, completed };
-  }, [appointments]);
+  // The strip is about the week the calendar is showing. The loaded list can be
+  // longer than a week (the agenda), so it is cut to the week here instead of
+  // counting whatever happens to be in memory.
+  const kpis = useMemo(
+    () => weekKpis(appointmentsInWeek(appointments, weekStart)),
+    [appointments, weekStart],
+  );
+  const kpiWeekLabel = isCurrentWeek(weekStart)
+    ? `${t("total")} ${t("thisWeek")}`
+    : t("totalWeekOf", {
+      range: `${weekStart.toLocaleDateString(dateLocale, { day: "numeric", month: "short" })} - ${addDays(weekStart, 6).toLocaleDateString(dateLocale, { day: "numeric", month: "short" })}`,
+    });
 
   /* ================================================================ */
   /*  Calendar helpers                                                 */
@@ -912,12 +925,13 @@ export default function AppointmentsPage() {
         />
 
         {/* ── KPI row (compact) ─────────────────────────────────── */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 animate-stagger">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 animate-stagger">
           {[
             { label: t("status.pending"), value: kpis.pending, color: "text-amber-500" },
             { label: t("status.confirmed"), value: kpis.confirmed, color: "text-emerald-500" },
             { label: t("status.completed"), value: kpis.completed, color: "text-blue-500" },
-            { label: `${t("total")} ${t("thisWeek")}`, value: kpis.total, color: "text-neutral-900 dark:text-neutral-100" },
+            { label: t("cancelledPlural"), value: kpis.cancelled, color: "text-neutral-500 dark:text-neutral-400" },
+            { label: kpiWeekLabel, value: kpis.total, color: "text-neutral-900 dark:text-neutral-100" },
           ].map(k => (
             <div key={k.label} className="flex items-center justify-between px-4 py-3 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
               <span className="text-xs text-neutral-500 dark:text-neutral-400">{k.label}</span>
@@ -1015,6 +1029,7 @@ export default function AppointmentsPage() {
             appointments={appointments}
             services={services}
             dateLocale={dateLocale}
+            truncatedAt={truncatedAt}
             onEditAppointment={openEditModal}
             onQuickAction={handleQuickAction}
           />

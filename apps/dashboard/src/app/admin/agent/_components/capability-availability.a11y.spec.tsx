@@ -84,7 +84,7 @@ describe("rendered tools match the business subtype", () => {
       const inputFor = (title: string) => Array.from(screen.container.querySelectorAll("label"))
         .find(label => label.textContent?.startsWith(title))?.querySelector<HTMLInputElement>('input[type="checkbox"]');
       expect(inputFor("Crear citas")?.checked).toBe(true);
-      expect(inputFor("Cancelar citas")?.checked).toBe(true);
+      expect(inputFor("Cancelar y reprogramar citas")?.checked).toBe(true);
       expect(inputFor("Permitir crear enlaces de pago")?.checked).toBe(false);
     } finally { screen.unmount(); }
   });

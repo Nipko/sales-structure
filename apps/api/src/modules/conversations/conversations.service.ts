@@ -89,12 +89,15 @@ import { isAgentTestSafeToolName } from './agent-test-tool-policy';
 import { buildTrustedPriceCorpus } from './trusted-price-context';
 import {
     auditTurnClaim,
+    claimsCompletedAction,
     promisesHumanHandoff,
     promisesLaterDelivery,
+    promisesActionWithoutTool,
     isBareWaitPromise,
     toolResultSucceeded,
 } from '../../common/utils/outcome-claim.util';
 import { sanitizeToolResultForModel } from '../../common/utils/tool-error-sanitizer.util';
+import { hasToolCallMarkup, stripToolCallMarkup } from '../../common/utils/tool-call-markup.util';
 import { CustomerMemoryService } from './customer-memory.service';
 import { GET_RESTAURANT_MENU_TOOL, GET_FITNESS_SCHEDULE_TOOL, LIST_CLINIC_SERVICES_TOOL, CHECK_CLINIC_AVAILABILITY_TOOL } from './tools/vertical-integration-tools';
 import { VerticalIntegrationsService } from '../vertical-integrations/vertical-integrations.service';
@@ -134,6 +137,7 @@ import { MediaProcessingService } from '../media-processing/media-processing.ser
 import { AiResolutionService } from '../analytics/ai-resolution.service';
 import {
     ASYNC_GATED_TOOL_NAMES,
+    STATIC_TOOL_NAMES,
     getToolPolicy,
     isBusinessWriteTool,
     isConfirmableWriteTool,
@@ -405,6 +409,39 @@ const UNVERIFIED_CLAIM_FALLBACK: Record<string, string> = {
     pt: 'Não posso considerar isso concluído: não tenho registro de que foi finalizado. Quer que eu peça a alguém da equipe para confirmar?',
     fr: "Je ne peux pas considérer cela comme fait : je n'ai aucune trace que l'opération a abouti. Souhaitez-vous que je demande à quelqu'un de l'équipe de la confirmer ?",
 };
+/**
+ * What the customer is told when the model wrote a tool call as text (or said it was handling something) in a turn where
+ * nothing was done: the truth, and a way forward that does not depend on the model.
+ */
+const ACTION_NOT_DONE_REPLY: Record<string, string> = {
+    es: 'No he podido completar esa acción en este mensaje. ¿Desea que lo intente de nuevo o que le pida a una persona del equipo que lo confirme?',
+    en: 'I could not complete that action in this message. Would you like me to try again, or to ask someone from the team to confirm it?',
+    pt: 'Não consegui concluir essa ação nesta mensagem. Quer que eu tente de novo ou que eu peça a alguém da equipe para confirmar?',
+    fr: "Je n'ai pas pu mener cette action à bien dans ce message. Souhaitez-vous que je réessaie ou que je demande à quelqu'un de l'équipe de la confirmer ?",
+};
+const actionNotDoneText = (lang?: string) =>
+    ACTION_NOT_DONE_REPLY[(lang || 'es').slice(0, 2).toLowerCase()] || ACTION_NOT_DONE_REPLY.es;
+/** Same situation but the customer asked for no action (a plain question): nothing was left undone, the answer was lost. */
+const ANSWER_LOST_REPLY: Record<string, string> = {
+    es: 'Disculpe, no pude responderle bien en este mensaje. ¿Puede escribirme su pregunta otra vez?',
+    en: 'Sorry, I could not answer that properly in this message. Could you send your question again?',
+    pt: 'Desculpe, não consegui responder direito nesta mensagem. Pode enviar sua pergunta novamente?',
+    fr: "Désolé, je n'ai pas pu répondre correctement dans ce message. Pouvez-vous m'envoyer votre question à nouveau ?",
+};
+const answerLostText = (lang?: string) =>
+    ANSWER_LOST_REPLY[(lang || 'es').slice(0, 2).toLowerCase()] || ANSWER_LOST_REPLY.es;
+/** Whether the customer's message asks for something to be DONE (book, cancel, pay, change, confirm), or is a yes. */
+const asksForAction = (text: string): boolean => {
+    const t = String(text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+    return /\b(?:agend\w*|reserv\w*|cancel\w*|confirm\w*|reprogram\w*|cambi\w*|paga\w*|compr\w*|apart\w*|marc\w*|book\w*|schedule|reschedule|pay|buy|order|change|marcar|annul\w*|reserv\w*)\b/.test(t)
+        || /^(?:si|yes|sim|oui|ok|okay|dale|listo|vale|claro|perfecto|de acuerdo)\b/.test(t);
+};
+const TOOL_MARKUP_NUDGE: Record<string, string> = {
+    es: 'Escribiste una llamada a una herramienta como texto. Nunca escribas llamadas como texto: si necesitas ejecutar una acción, usa la interfaz de herramientas; si no, responde al cliente en lenguaje natural.',
+    en: 'You wrote a tool call as text. Never write tool calls as text: if you need to run an action, use the tool interface; otherwise answer the customer in plain language.',
+    pt: 'Você escreveu uma chamada de ferramenta como texto. Nunca escreva chamadas como texto: se precisar executar uma ação, use a interface de ferramentas; senão, responda ao cliente em linguagem natural.',
+    fr: "Vous avez écrit un appel d'outil sous forme de texte. N'écrivez jamais d'appels en texte : si vous devez exécuter une action, utilisez l'interface d'outils ; sinon répondez au client en langage naturel.",
+};
 const unverifiedClaimFallbackText = (lang?: string) =>
     UNVERIFIED_CLAIM_FALLBACK[(lang || 'es').slice(0, 2).toLowerCase()] || UNVERIFIED_CLAIM_FALLBACK.es;
 
@@ -421,7 +458,7 @@ function isSystemFixedText(text: string): boolean {
     const t = (text || '').trim();
     if (!t) return false;
     const fixed = [
-        ...Object.values(UNVERIFIED_CLAIM_FALLBACK), ...Object.values(NO_DATA_WAIT_REPLACEMENT), ...Object.values(NO_DATA_NO_OFFER),
+        ...Object.values(UNVERIFIED_CLAIM_FALLBACK), ...Object.values(ACTION_NOT_DONE_REPLY), ...Object.values(ANSWER_LOST_REPLY), ...Object.values(NO_DATA_WAIT_REPLACEMENT), ...Object.values(NO_DATA_NO_OFFER),
         ...Object.values(PARTIAL_SUCCESS_MSG), ...Object.values(BUDGET_EXHAUSTED_MSG), ...Object.values(BUDGET_EXHAUSTED_REPLAY_MSG),
         ...Object.values(HANDOFF_MSG).flatMap(h => [h.transferring, h.unavailable, h.queueHead, h.queueWaiting]),
         ...Object.values(HANDOFF_RETURN_MSG),
@@ -3297,6 +3334,8 @@ export class ConversationsService {
         let tools: any[] = [];
         let bookingState: BookingState = await this.loadBookingState(conversation.id, conversation.metadata, session);
         let engineProducedText: string | null = null;
+        // The engine is waiting for the customer's explicit yes/no (summary shown, nothing booked this turn).
+        let engineAwaitsConsent = false;
         // Writes performed OUTSIDE the LLM tool loop (booking engine, server-side
         // confirmation). Without these the output guardrail audits a real booking
         // as an invented one and rewrites the reply to say it is still pending.
@@ -3800,6 +3839,8 @@ export class ConversationsService {
 
                     // ═══ PHASE 3: EXPRESS — LLM voices the engine's output naturally ═══
                     engineProducedText = engineResult.text || null;
+                    engineAwaitsConsent = bookingState.step === 'confirm'
+                        && !(engineResult.executedTools || []).some(tool => tool.name === 'create_appointment');
                     // The appointment the engine just created; reported so the
                     // claim guardrail knows "your appointment is booked" is true.
                     if (engineResult.executedTools?.length) {
@@ -4383,7 +4424,9 @@ export class ConversationsService {
         // This is directive-based, not template-based — the LLM converses, not translates.
         if (engineProducedText) {
             // Add directive to turn context — tells LLM what to communicate
-            turnContext.directive = engineProducedText;
+            turnContext.directive = engineAwaitsConsent
+                ? `${engineProducedText}\n\nIMPORTANT: nothing is booked in this turn and you cannot book in it. Do not say that you are booking, processing or confirming it, and do not promise to notify the customer. If the customer's message also asks something, answer it briefly with what you know (never invent a price, discount or policy), then ask for an explicit yes or no and stop.`
+                : engineProducedText;
         }
 
         // 3. Get Conversation History with smart truncation.
@@ -4646,6 +4689,13 @@ export class ConversationsService {
             // made, with its own idea of what to do next.
             let turnModel: { provider: string; model: string } | undefined;
 
+            // Tool names known to this turn: a tag named like one of them is a tool call written as text.
+            const markupToolNames = [...new Set([
+                ...tools.map((tool: any) => String(tool?.name ?? tool?.function?.name ?? '')).filter(Boolean),
+                ...STATIC_TOOL_NAMES,
+            ])];
+            let markupRetried = false;
+
             for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
                 const hasTools = tools.length > 0 && !learningSuppressed;
                 const styleOperation = [...executedToolsThisTurn].reverse().find(tool => isBusinessWriteTool(tool.name) && toolResultSucceeded(tool.result));
@@ -4892,7 +4942,24 @@ export class ConversationsService {
                 }
 
                 // No tool calls — this is the final text response
-                finalResponse = response.content || GENERATION_ERROR_PLACEHOLDER;
+                const writtenReply = response.content || '';
+                // A tool call written AS TEXT (« <create_appointment>… », DeepSeek's DSML) is never executed — running
+                // a call parsed from text would book without the consent step — and never reaches the customer.
+                if (hasToolCallMarkup(writtenReply, markupToolNames)) {
+                    this.recordAgentSignal(tenantId, 'tool_markup_in_reply', session);
+                    this.logger.error(`[Guardrail] The model wrote a tool call as text — not executed, not sent: "${writtenReply.slice(0, 120)}"`);
+                    // The engine decided what this turn says: that text, verbatim, is the reply.
+                    if (engineProducedText) { finalResponse = engineProducedText; break; }
+                    if (!markupRetried && hasTools && iteration + 1 < MAX_TOOL_ITERATIONS) {
+                        markupRetried = true;
+                        currentMessages.push({ role: 'assistant', content: stripToolCallMarkup(writtenReply, markupToolNames) || '…' });
+                        currentMessages.push({ role: 'user', content: TOOL_MARKUP_NUDGE[String(userLanguage).slice(0, 2).toLowerCase()] || TOOL_MARKUP_NUDGE.es });
+                        continue;
+                    }
+                    finalResponse = this.cleanToolMarkupReply(writtenReply, markupToolNames, userLanguage, asksForAction(userText));
+                    break;
+                }
+                finalResponse = writtenReply || GENERATION_ERROR_PLACEHOLDER;
                 break;
             }
 
@@ -4915,6 +4982,11 @@ export class ConversationsService {
                         traceContext: { conversationId: conversation.id, stage: 'conversation' },
                     });
                     finalResponse = closing.content || '';
+                    if (hasToolCallMarkup(finalResponse, markupToolNames)) {
+                        this.recordAgentSignal(tenantId, 'tool_markup_in_reply', session);
+                        this.logger.error(`[Guardrail] The forced no-tools reply held a tool call as text — not sent: "${finalResponse.slice(0, 120)}"`);
+                        finalResponse = engineProducedText || this.cleanToolMarkupReply(finalResponse, markupToolNames, userLanguage, asksForAction(userText));
+                    }
                 } catch (e: any) {
                     this.logger.warn(`[Pipeline] Forced no-tools response failed: ${e.message}`);
                 }
@@ -5755,6 +5827,20 @@ export class ConversationsService {
         return [...(executed || []), ...fromPrior];
     }
 
+    /**
+     * A reply that held a tool call written as text, with the call removed. If what is left is nothing, or still
+     * promises the action (done, under way, "te aviso"), the call WAS the reply and nothing was done: say so.
+     */
+    private cleanToolMarkupReply(text: string, names: readonly string[], lang?: string, actionRequested = true): string {
+        const kept = stripToolCallMarkup(text, names);
+        if (kept && !promisesActionWithoutTool(kept) && !promisesLaterDelivery(kept) && !isBareWaitPromise(kept) && !claimsCompletedAction(kept)) {
+            return kept;
+        }
+        // Nothing left, or what is left still promises/claims an action. If the customer asked for none, say that the
+        // answer was lost rather than that an action failed.
+        return actionRequested || (kept && !!kept.trim() && !!(promisesActionWithoutTool(kept) || claimsCompletedAction(kept))) ? actionNotDoneText(lang) : answerLostText(lang);
+    }
+
     private async alignReplyLanguage(
         response: string, lang: string | undefined, currentMessages: any[], systemPrompt: string, allowedTiers: ModelTier[],
         tenantId: string, llmRouter: Pick<LLMRouterService, 'execute'>, trustedContext?: Partial<TurnContext>, session?: AgentTurnSession,
@@ -5939,6 +6025,18 @@ export class ConversationsService {
             const offeredBefore = typeof lastAssistant?.content === 'string' && isHumanOfferText(lastAssistant.content);
             response = !humanOfferAvailable ? noDataNoOfferText(lang)
                 : offeredBefore ? handoffText(lang).transferring : noDataWaitReplacementText(lang);
+        }
+
+        // «Estoy gestionando la confirmación… Le avisaré» with no write behind it (the turn could not book): the work is not
+        // under way and nobody will be notified. When the engine gave the turn its text (a re-ask at confirm), that text
+        // is what the customer gets; otherwise the honest fixed one. A directive turn used to skip every guard here.
+        const wroteSomething = (executedTools || []).some(tool => isBusinessWriteTool(tool?.name) && toolResultSucceeded(tool?.result));
+        if (!wroteSomething && !(priorActions || []).some(action => action?.awaiting) && !isSystemFixedText(response) && !promisesHumanHandoff(response) && promisesActionWithoutTool(response)) {
+            this.recordAgentSignal(tenantId, 'action_promise_without_tool', session);
+            this.logger.warn(`[Guardrail] Respuesta promete una acción en curso sin herramienta — reemplazada: "${response.slice(0, 100)}"`);
+            // (the engine's own text; the instruction the model got after it is not for the customer)
+            const directive = String((trustedContext as any)?.directive ?? '').split('\n\nIMPORTANT:')[0].trim();
+            response = directive && !promisesActionWithoutTool(directive) ? directive : actionNotDoneText(lang);
         }
 
         // Lo que las herramientas DEVOLVIERON entra al corpus.

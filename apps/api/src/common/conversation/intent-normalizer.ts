@@ -110,6 +110,19 @@ export function isResumeMessage(raw: unknown): boolean {
  * to the currently displayed proposal. Explicit referents are allowed; new
  * terms require a new proposal and challenge from the domain workflow.
  */
+/**
+ * The verb that carries out a pending booking/confirmation, with its object pronoun, in normalised form (no
+ * accents). It only counts AFTER an affirmative ("si confirmala"), as the whole rest of the message: "si confirmala
+ * despues", "no confirmala" and "si pero agendala" never reach it (negation, qualifier and leftover words rule out).
+ */
+const CONSENT_ACTION = new RegExp('^(?:'
+    + 'confirm(?:ala|alo|ela|elo|ame|a|ar|o)|agend(?:ala|alo|ela|elo|ame|a|ar)|reserv(?:ala|alo|ela|elo|ame|a|ar)|hazla|hazlo|hagala|hagalo|'
+    + 'marcala|marcalo|anotala|anotalo|programala|programalo|apartala|apartalo|proceda|procede|adelante|'
+    + 'pode (?:marcar|agendar|confirmar|reservar|fazer)|marca|marque|agende|confirme|reserve|'
+    + '(?:please )?(?:book|confirm|schedule) it|go ahead(?: and (?:book|confirm)(?: it)?)?|book|confirm|do it|'
+    + 'reservez(?: la)?|confirmez(?: la)?|allez[ -]y(?: reservez| confirmez)?|vous pouvez (?:reserver|confirmer)'
+    + ')(?=\\s|$)');
+
 function isWholeConsentExpression(text: string, aliases: IntentAlias[], acceptedReferents: readonly string[] = []): boolean {
     const choices = aliases.filter(a => a.intent === 'affirm' || a.intent === 'acknowledge')
         .filter(a => !COURTESY.test(a.value)).sort((a, b) => b.value.length - a.value.length);
@@ -119,6 +132,11 @@ function isWholeConsentExpression(text: string, aliases: IntentAlias[], accepted
     for (let guard = 0; rest && guard < 12; guard++) {
         const courtesy = COURTESY.exec(rest);
         if (courtesy) { rest = rest.slice(courtesy[0].length).trim(); continue; }
+        // «sí, confírmala» / «dale, agéndala» / «yes, book it» / «sim, pode marcar» / «oui, réservez»: an affirmative followed
+        // by the verb that carries out the very thing being asked (and nothing else). Checked BEFORE the aliases because
+        // «confirm» and «go ahead» are aliases too and would leave «it» / «and book» behind.
+        const consentVerb = accepted ? CONSENT_ACTION.exec(rest) : null;
+        if (consentVerb) { rest = rest.slice(consentVerb[0].length).trim(); continue; }
         const alias = choices.find(a => rest === a.value || rest.startsWith(`${a.value} `));
         if (alias) {
             accepted = true;
@@ -255,7 +273,7 @@ export function normalizeCustomerIntent(
             && !!withoutAlias
             && /^si(?:\s|[,;])/i.test(rawLower)
             && !/^sí(?:\s|[,;])/i.test(rawLower);
-        if (unaccentedSiClause && !EXPLICIT_CONSENT_VERB.test(normalized)) {
+        if (unaccentedSiClause && !EXPLICIT_CONSENT_VERB.test(normalized) && !CONSENT_ACTION.test(withoutAlias)) {
             return { ...matched, intent: 'unclear', confidence: 'low' };
         }
         if (withoutAlias && NEGATION_ANYWHERE.test(withoutAlias)) {

@@ -46,7 +46,7 @@ describe('agenda list is bounded', () => {
         const [, sql, params] = executeInTenantSchema.mock.calls[0];
         expect(sql).toContain('ORDER BY a.start_at ASC LIMIT $');
         // One row more than the cap is requested, to know whether there is more.
-        expect(params[params.length - 1]).toBe(AGENDA_LIST_LIMIT + 1);
+        expect(params?.at(-1)).toBe(AGENDA_LIST_LIMIT + 1);
     });
 
     it('does not report a cut for exactly the cap', async () => {

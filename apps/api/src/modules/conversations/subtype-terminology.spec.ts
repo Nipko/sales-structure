@@ -96,6 +96,31 @@ describe('subtype terminology pack', () => {
         expect(avoidedTermsFor('salud', 'dental')).toEqual([]);
     });
 
+    // El panel dice «Citas»; al cliente final el agente le habla con la palabra
+    // de su país: «turno» en Argentina, Uruguay y Paraguay, «cita» en el resto.
+    it.each([
+        ['AR', 'turno', 'turnos'], ['UY', 'turno', 'turnos'], ['PY', 'turno', 'turnos'],
+        ['ar', 'turno', 'turnos'], ['ARG', 'turno', 'turnos'],
+        ['CO', 'cita', 'citas'], ['MX', 'cita', 'citas'], ['ES', 'cita', 'citas'],
+        [undefined, 'cita', 'citas'], ['', 'cita', 'citas'],
+    ])('el objeto primario de un perfil de citas en %s es «%s»', (country, singular, plural) => {
+        const terms = subtypeTerminologyFor('salud', 'dental', country);
+        expect(localizedTerm(terms?.primaryObject, 'es')).toBe(singular);
+        expect(localizedTerm(terms?.primaryObjectPlural, 'es')).toBe(plural);
+    });
+
+    it('el país sólo matiza el español del objeto de citas derivado', () => {
+        const ar = subtypeTerminologyFor('salud', 'dental', 'AR');
+        expect(localizedTerm(ar?.primaryObject, 'en')).toBe('appointment');
+        expect(localizedTerm(ar?.primaryObject, 'pt')).toBe('agendamento');
+        expect(localizedTerm(ar?.primaryObject, 'fr')).toBe('rendez-vous');
+        // Un perfil que declaró su vocabulario lo conserva en cualquier país.
+        expect(localizedTerm(subtypeTerminologyFor('turismo', 'hotel', 'AR')?.primaryObject, 'es')).toBe('Habitación');
+        // Otro objeto primario no cambia.
+        expect(localizedTerm(subtypeTerminologyFor('restaurantes', 'dark_kitchen', 'AR')?.primaryObject, 'es'))
+            .toBe(localizedTerm(subtypeTerminologyFor('restaurantes', 'dark_kitchen')?.primaryObject, 'es'));
+    });
+
     it('sin industria o sin subtipo no hay nada que derivar', () => {
         expect(subtypeTerminologyFor('turismo', null)).toBeNull();
         expect(subtypeTerminologyFor(null, 'hotel')).toBeNull();

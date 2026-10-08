@@ -24,7 +24,7 @@ import {
     commitmentProposalHash, commitmentReviewResult, ensureCommitmentProposals,
     type CommitmentProposal,
 } from './commitment-proposal';
-import { getToolPolicy, isCancellationTool, type ToolPolicy } from './tool-policy-registry';
+import { getToolPolicy, pendingActionForTool, type ToolPolicy } from './tool-policy-registry';
 import { reviewedMcpPolicy } from '../mcp/mcp-execution-policy';
 import type { McpToolApproval } from '../mcp/mcp-tool-approval';
 
@@ -223,7 +223,7 @@ export function classifyExplicitToolConfirmation(
         acceptedReferents: options.acceptedReferents,
         // «sí, cancélala» answers a pending cancellation, and only that: any other pending tool keeps reading the
         // cancel verb as a cancellation request.
-        pendingCancellation: isCancellationTool(options.pendingTool),
+        pendingAction: pendingActionForTool(options.pendingTool),
         // Every call site reads the message that answers a pending challenge.
         answeringExplicitQuestion: true,
     });

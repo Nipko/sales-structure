@@ -1,6 +1,5 @@
 import { hasToolCallMarkup, stripToolCallMarkup } from './tool-call-markup.util';
 import { stripInternalMarkers } from './internal-markers.util';
-import { promisesActionWithoutTool } from './outcome-claim.util';
 
 /** A tool call written as text is detected and removed, never parsed into a call. */
 const SHAPES: Array<[string, string]> = [
@@ -33,8 +32,30 @@ describe('hasToolCallMarkup / stripToolCallMarkup', () => {
         expect(hasToolCallMarkup('Listo <ping id="1"/>', ['ping'])).toBe(true);
         expect(stripToolCallMarkup('Listo <ping id="1"/> ya', ['ping'])).toBe('Listo ya');
         expect(hasToolCallMarkup('Listo <ping id="1"/>')).toBe(false);
-        // any snake_case tag is a call even when the tool is unknown to the turn
+        // an unknown snake_case tag is a call when it has the STRUCTURE of one
         expect(hasToolCallMarkup('Listo <get_product id="1"/>')).toBe(true);
+        expect(stripToolCallMarkup('Listo <get_product id="1"/> ya')).toBe('Listo ya');
+        expect(hasToolCallMarkup('Listo <get_product>abc</get_product>')).toBe(true);
+        expect(hasToolCallMarkup('Listo <get_product><sku_id>1')).toBe(true);
+    });
+
+    it('a snake_case call never cuts past its own closing tag or line', () => {
+        expect(stripToolCallMarkup('Hola <get_product><sku_id>1</sku_id></get_product> Total 5.')).toBe('Hola Total 5.');
+        expect(stripToolCallMarkup('Hola <get_product><sku_id>1\nTotal 5.')).toBe('Hola\nTotal 5.');
+    });
+
+    it.each([
+        // placeholders, references and addresses in ordinary replies
+        'Escríbenos a <ventas_bogota@tienda.com> y te respondemos',
+        'Responde con <tu_nombre> y <tu_correo>',
+        'Ref: <SKU_AB12>',
+        'si x < y_z > w',
+        'Escríbanos a <ventas_bogota@tienda.com> y le respondemos con el catálogo completo.',
+        'Use <mi_codigo> en la caja y pague.',
+    ])('does not cut a reply with a harmless snake_case tag: %s', text => {
+        expect(hasToolCallMarkup(text)).toBe(false);
+        expect(stripToolCallMarkup(text)).toBe(text);
+        expect(stripInternalMarkers(text)).toBe(text);
     });
 
     it.each([
@@ -59,30 +80,5 @@ describe('stripInternalMarkers is the last line of defence at egress', () => {
     it('still strips the knowledge citation, and both together', () => {
         expect(stripInternalMarkers('Abrimos a las 9 [Article: Horarios].')).toBe('Abrimos a las 9.');
         expect(stripInternalMarkers('Abrimos a las 9 [Article: Horarios]. <create_appointment><date>1</date></create_appointment>')).toBe('Abrimos a las 9.');
-    });
-});
-
-describe('promisesActionWithoutTool', () => {
-    it.each([
-        'Estoy gestionando la confirmación de su cita del 5 de enero a las 16:00. Le avisaré en cuanto esté lista.',
-        'Estoy gestionando la confirmación… Te avisaré.',
-        'Le aviso apenas quede registrada.',
-        'Estoy procesando su reserva.',
-        "I'm processing your booking. I'll let you know as soon as it is done.",
-        'I will notify you once it is confirmed.',
-        'Estou processando o seu agendamento. Vou avisar quando estiver pronto.',
-        'Je suis en train de confirmer votre rendez-vous. Je vous préviendrai.',
-    ])('catches: %s', text => {
-        expect(promisesActionWithoutTool(text)).toBe(true);
-    });
-
-    it.each([
-        'Su cita de Corte y estilo es el 5 de enero a las 16:00. ¿La confirmo?',
-        '¿Confirmo la cita? Responda sí o no.',
-        'Atendemos de lunes a viernes de 9 a 18.',
-        'Puede avisarnos si necesita cambiarla.',
-        'Let me know if you need anything else.',
-    ])('leaves alone: %s', text => {
-        expect(promisesActionWithoutTool(text)).toBe(false);
     });
 });

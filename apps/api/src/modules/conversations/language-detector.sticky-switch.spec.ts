@@ -31,8 +31,19 @@ describe('a strong marker switches the stored language when nothing of the store
         ['please send it', 'es'],
         ['quiero ver el menu please', 'en'],
         ['ok', 'es'],
+        // ONE strong word is a borrowed word, a brand or a typo, never a new language
+        ['what?', 'es'],
+        ['how?', 'es'],
+        ['When?', 'es'],
+        ['need', 'es'],
+        ['ok what', 'es'],
+        ['el Want Pack', 'es'],
+        ['cual', 'en'],
+        ['donde', 'en'],
+        ['tengo', 'en'],
     ])('"%s" keeps the stored language %s', (text, stored) => {
         expect(detector.detect(text, stored, stored)).toBe(stored);
+        expect(detector.detectDetailed(text, stored, stored)).toEqual({ language: stored, persist: true });
     });
 
     it('keeps the weak Portuguese rules of the first message', () => {

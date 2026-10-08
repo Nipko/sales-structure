@@ -37,20 +37,24 @@ export class LanguageDetectorService {
     private readonly weakMarkers: Record<string, string[]> = { pt: ['onde', 'posso', 'tenho', 'fica'] };
 
     /**
-     * Words that ask for something or state a need, in each language: with no sign of the stored language in the same
-     * message they are enough to switch to theirs. Courtesy words (hola, gracias, please, merci) are NOT here: people
-     * sprinkle them across languages and one of them must never flip the conversation.
+     * Words that ask for something or state a need, in each language. TWO of them in one message, with no sign of the
+     * stored language in it, switch to theirs («quiero agendar», «I need an appointment»): a single one never does,
+     * because a lone «what?», «how?», «need» or «cual» is just as often a borrowed word, a brand («Want Pack») or a typo.
+     * Courtesy words (hola, gracias, please, merci) are NOT here: people sprinkle them across languages.
      */
     private readonly strongMarkers: Record<string, { words: string[]; chars?: RegExp }> = {
-        es: { words: ['quiero', 'quisiera', 'necesito', 'busco', 'tengo', 'puedo', 'cuanto', 'cuesta', 'donde', 'tienen', 'cual', 'cuales'], chars: /[ñ¿¡]/ },
-        en: { words: ['want', 'need', 'would', 'could', 'looking', 'what', 'where', 'when', 'how'] },
-        pt: { words: ['quero', 'gostaria', 'preciso', 'procuro', 'quanto', 'custa', 'voce', 'voces', 'nao'], chars: /[ãõ]/ },
-        fr: { words: ['veux', 'besoin', 'voudrais', 'cherche', 'combien'], chars: /[èùœëîû]/ },
+        es: { words: ['quiero', 'quisiera', 'necesito', 'busco', 'tengo', 'puedo', 'cuanto', 'cuesta', 'donde', 'tienen', 'cual', 'cuales', 'agendar', 'reservar', 'cita', 'turno', 'disponibilidad', 'disponible', 'arriendo'], chars: /[ñ¿¡]/ },
+        en: { words: ['want', 'need', 'would', 'could', 'looking', 'what', 'where', 'when', 'how', 'book', 'booking', 'appointment', 'schedule', 'available', 'availability'] },
+        pt: { words: ['quero', 'gostaria', 'preciso', 'procuro', 'quanto', 'custa', 'voce', 'voces', 'nao', 'agendar', 'marcar', 'reservar', 'consulta', 'disponivel'], chars: /[ãõ]/ },
+        fr: { words: ['veux', 'besoin', 'voudrais', 'cherche', 'combien', 'reserver', 'rendez', 'disponible', 'disponibilite'], chars: /[èùœëîû]/ },
     };
 
+    /** Whether the message carries at least two DIFFERENT strong markers of the language (a diacritic counts as one). */
     private hasStrongMarker(lang: string, tokens: Set<string>, raw: string): boolean {
         const strong = this.strongMarkers[lang];
-        return !!strong && (strong.words.some(word => tokens.has(word)) || !!strong.chars?.test(raw));
+        if (!strong) return false;
+        const hits = strong.words.filter(word => tokens.has(word)).length + (strong.chars?.test(raw) ? 1 : 0);
+        return hits >= 2;
     }
 
     /**
@@ -128,7 +132,8 @@ export class LanguageDetectorService {
             if (prev && prev !== winner) {
                 // A REQUEST in another language ("quiero agendar corte y estilo" after "What are your opening hours?")
                 // is the customer's language now: the stored one holds only while the message shows a sign of it or
-                // has no strong marker of the new one. A courtesy word ("please", "gracias") never switches by itself.
+                // lacks TWO strong markers of the new one. A courtesy word ("please", "gracias") or a single borrowed
+                // word ("what?", "how?", "el Want Pack", "cual") never switches, nor persists, a language.
                 if ((scores[prev] ?? 0) === 0 && this.hasStrongMarker(winner, tokens, raw)) return { language: winner, persist: true };
                 return { language: prev, persist: true };
             }

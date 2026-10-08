@@ -69,7 +69,7 @@ When a resource hits its cap (agents, contacts, campaigns, AI messages, etc.), t
 
 ## The appointment doesn't appear in my calendar
 
-1. First confirm the appointment exists in Parallly: go to **Appointments** and look for it in the **Calendar** tab. If it isn't there, the booking wasn't completed (the customer may not have confirmed the last step).
+1. First confirm the appointment exists in Parallly: go to **Appointments** (in some trades the menu calls it **Schedule**, **Medical Schedule** or **Bookings**) and look for it in the **Calendar** tab. If it isn't there, the booking wasn't completed (the customer may not have confirmed the last step).
 2. If the appointment is in Parallly but not in your Google Calendar or Outlook, go to **Appointments → Settings → Connected calendars** and check that your calendar is still **connected**. If the connection expired, click **Reconnect**.
 3. If you have **several calendars connected**, the appointment may have synced to another one: each appointment goes first to the calendar assigned to the **service**, if there's none, to the assigned **staff member's**, and if not, to the business's **general** calendar. Review those assignments in the service settings.
 4. Syncing is fast but not always instant: wait a couple of minutes and refresh your calendar.

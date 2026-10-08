@@ -1,5 +1,7 @@
 # Cierre técnico previo al despliegue: qué intenté romper, qué se rompió y qué quedó
 
+> **Documento histórico (2026-09-10) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 Informe adversarial del trabajo pedido en
 `docs/handoffs/2026-09-10/claude-release-closure-after-pr-review.md`. Lo que sigue
 está ordenado por lo que se rompió, no por lo que se construyó, porque lo

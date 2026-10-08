@@ -8,6 +8,7 @@ import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useTenant } from "@/contexts/TenantContext";
 import { PageHeader } from "@/components/ui/page-header";
+import { HelpPanel } from "@/components/ui/help-panel";
 
 /**
  * Los casos del estudio, con el vocabulario del estudio.
@@ -43,6 +44,7 @@ interface ProfessionalCase {
 
 export default function CasesPage() {
     const t = useTranslations("cases");
+    const tHelp = useTranslations("help");
     const { activeTenantId } = useTenant();
     const [cases, setCases] = useState<ProfessionalCase[]>([]);
     const [filter, setFilter] = useState<"open" | "closed" | "all">("open");
@@ -63,6 +65,13 @@ export default function CasesPage() {
     return (
         <div className="space-y-5">
             <PageHeader icon={Briefcase} title={t("title")} subtitle={t("subtitle")} />
+
+            <HelpPanel
+                title={tHelp("cases.title")}
+                description={tHelp("cases.description")}
+                tips={tHelp.raw("cases.tips") as string[]}
+                mediaKey="cases"
+            />
 
             <div className="flex gap-2">
                 {(["open", "closed", "all"] as const).map((value) => (

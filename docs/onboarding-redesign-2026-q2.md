@@ -1,5 +1,7 @@
 # Rediseño de Onboarding — Investigación + Propuesta (Q2 2026)
 
+> **Documento histórico (31-may-2026) — no refleja el estado actual: el onboarding vigente es el de `onboarding-decisions-2026-09.md`, `onboarding-experience-design-2026-09.md` e `onboarding-implementation-closeout-2026-09-18.md`.**
+
 > **Objetivo de este documento.** Parallly tiene una premisa de marca: **fácil de configurar y rápido**. Hoy no la cumple en el momento que más importa — el primer valor. Este documento (1) diagnostica con honestidad el onboarding actual, (2) destila cómo lo resuelven 13 competidores + la ciencia UX, y (3) propone **un onboarding único, guiado y obligatorio en lo esencial** que lleve a un usuario nuevo desde el registro hasta **su primer canal conectado y su agente respondiendo**, sin abrumarlo, y **cohesionado con la pantalla de configuración inicial (`/onboarding`)** y con todas las features nuevas que hemos creado.
 >
 > **Alcance:** investigación + diseño. No incluye código. La Parte 8 entrega un roadmap por fases listo para una sesión de implementación.

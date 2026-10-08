@@ -1,5 +1,7 @@
 # Relevo a Claude: cierre real del runtime de WhatsApp y candidato
 
+> **Documento histórico (2026-09-10) — no refleja el estado actual; ver `docs/product-capabilities-reference.md` y `docs/README.md`.** Es una instrucción que se pasó a otro agente en esa fecha: lo que dice sobre no hacer push, merge o deploy ya no aplica (desde el 2026-10-07 un merge a `main` con CI verde despliega solo) y sus cifras (perfiles, escenarios, tareas) son las de ese día.
+
 ## Mandato
 
 Continúa desde `cee0cd5cc1f48bbf09ce48cdc7a7fa9672bc722a` y cierra **todo el

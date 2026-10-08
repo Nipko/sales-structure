@@ -10,7 +10,7 @@ keywords: ["rendez-vous", "agenda", "calendrier", "planifier", "réservations", 
 
 Parallly intègre un agenda complet : vous définissez vos services et vos horaires une seule fois, et à partir de là votre agent IA prend les rendez-vous tout seul au fil de la conversation, votre équipe les voit dans un calendrier partagé et tout peut se synchroniser avec Google Calendar ou Outlook.
 
-Tout se trouve dans la barre latérale, sous **Rendez-vous**. En entrant, vous verrez la page **Rendez-vous et planification** avec cinq onglets : **Calendrier** (vue par semaine ou par jour), **Agenda** (liste des rendez-vous), **Services** (services disponibles), **Configuration** et **Analytiques**. La configuration est réservée aux administrateurs et aux superviseurs ; les agents peuvent consulter le calendrier, créer des rendez-vous et s'en occuper.
+Tout se trouve dans la barre latérale, sous **Travail quotidien → Rendez-vous**. Selon votre type d'activité, le menu peut l'appeler **Agenda**, **Agenda Médicale** ou **Réservations**, et dans certains métiers il n'apparaît pas parce que l'entreprise ne prend pas de rendez-vous ; c'est le même écran. En entrant, vous verrez la page **Rendez-vous et planification** avec cinq onglets : **Calendrier** (vue par semaine ou par jour), **Agenda** (liste des rendez-vous), **Services** (services disponibles), **Configuration** et **Analytiques**. La configuration est réservée aux administrateurs et aux superviseurs ; les agents peuvent consulter le calendrier, créer des rendez-vous et s'en occuper.
 
 ## Comment créer vos services
 
@@ -93,9 +93,19 @@ Dans **Rendez-vous** → **Configuration** → section **Rappels et suivi**, vou
 
 Les rappels WhatsApp peuvent utiliser des modèles approuvés par Meta pour tenter l'envoi hors de la fenêtre de 24 heures. La livraison n'est pas garantie : elle dépend de l'état du modèle et du compte, de Meta et du destinataire.
 
+Le rappel part par le canal avec lequel le client vous a parlé : WhatsApp (avec un modèle approuvé) ou, s'il vous a écrit sur Telegram, sous forme de message texte dans cette conversation ; le rappel de 24 heures peut aussi être envoyé par email lorsque le client a laissé son adresse. Si le client n'a aucun moyen d'être joint, rien n'est envoyé.
+
+## Ce qu'affiche l'Agenda et ce qu'il advient des rendez-vous annulés
+
+- L'onglet **Agenda** liste les rendez-vous des 30 derniers jours et des 6 prochains mois, et l'indique dans une note au-dessus de la liste. S'il y a plus de rendez-vous que d'espace, l'écran prévient qu'il n'affiche que les premiers : utilisez le **Calendrier** pour voir une semaine précise.
+- Dans le **Calendrier**, les rendez-vous annulés sont visibles sur la grille ; le bouton **Masquer les annulés** (qui devient **Afficher les annulés**) les retire ou les remet.
+- Un rendez-vous annulé est en lecture seule : on ne peut ni le déplacer ni le modifier. Pour le reprendre, créez un nouveau rendez-vous.
+
 ## L'IA prend les rendez-vous seule dans la conversation
 
 Lorsqu'un client demande un rendez-vous par WhatsApp, Instagram ou n'importe quel canal connecté, l'agent IA le guide étape par étape : d'abord le service, puis une date avec disponibilité réelle, ensuite l'heure, et enfin une confirmation. À cette dernière étape, le système vérifie de nouveau l'horaire, de sorte que deux personnes ne peuvent pas se retrouver avec le même créneau.
+
+L'agent ne crée ou ne reprogramme un rendez-vous que s'il tient dans vos **horaires d'ouverture** (le rendez-vous entier, avec le temps entre deux rendez-vous) et ne tombe pas sur une **date bloquée**. Si l'entreprise n'a pas encore configuré d'horaires, l'agent ne peut pas prendre de rendez-vous : mieux vaut donc les enregistrer dans **Rendez-vous** → **Configuration**. De plus, si votre activité planifie autour d'un objet (un bien immobilier, un animal ou un véhicule), le rendez-vous enregistre lequel : dans une agence immobilière avec des biens saisis, l'agent doit indiquer le bien pour pouvoir planifier, et chez les vétérinaires et les concessionnaires il peut indiquer l'animal ou le véhicule. Cette information figure dans la description de l'événement de votre agenda externe.
 
 Au moment de la confirmation, tout se fait tout seul : le rendez-vous s'inscrit dans votre **Calendrier**, se synchronise avec votre Google Calendar ou Outlook, le client reçoit un e-mail de confirmation, le membre de l'équipe assigné reçoit un avis et, si le service est en ligne, le lien de réunion est inclus.
 

@@ -1,5 +1,7 @@
 # M4 — Decisión comercial aplicada
 
+> **Documento histórico (2026-09-12) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 **Estado: DECIDIDA Y APLICADA EN CÓDIGO.** No se cambió ningún precio, ninguna
 capacidad de plan ni ningún contrato aceptado. La política, los límites
 observables y las superficies dentro del producto están construidos; todavía

@@ -1,5 +1,7 @@
 # Runtime schema deadlock: pipeline repair
 
+> **Documento histórico (2026-09-14) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 The reported `40P01` is a regression in the lock protocol introduced by
 `c1d11a95`: acquiring the schema advisory lock lazily at the first DDL statement
 is too late if the transaction already holds relation or domain locks.

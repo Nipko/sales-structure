@@ -1,5 +1,7 @@
 # Auditoría de Onboarding & Plan de Rediseño (Jun 2026)
 
+> **Documento histórico (jun-2026) — supersedido por `onboarding-audit-2026-07.md` y luego por la generación de septiembre (`onboarding-diagnosis-2026-09.md`).**
+
 > **Objetivo:** que un usuario nuevo tenga **un canal (WhatsApp prioritario) conectado y 100% funcional en ≤10 min**, con un flujo **simple, coherente, profesional y guiado** que recolecte **y conecte** toda la info que el agente de chat necesita — seguido de un **tour guiado** que muestre primero las funcionalidades que impactan al agente y luego las de valor adicional.
 
 Basado en auditoría multi-agente (6 frentes: wizard actual, conexión de canal, readiness del agente, infra guiada/tour, docs de rediseño previos, best-practices 2025-2026).

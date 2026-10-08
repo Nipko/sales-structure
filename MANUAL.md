@@ -1,5 +1,7 @@
 # 📖 Parallext Engine — Manual de la Plataforma
 
+> **Documento histórico (marzo 2026) — no refleja el estado actual.** Esta es la versión 3.1.0 de marzo de 2026: solo WhatsApp, menú lateral anterior y nombre de marca previo. El manual vigente del negocio es [`docs/user-manual.md`](docs/user-manual.md); el mapa de capacidades, roles y planes es [`docs/product-capabilities-reference.md`](docs/product-capabilities-reference.md) y el índice de la documentación es [`docs/README.md`](docs/README.md).
+
 > Versión 3.1.0 · Actualizado: Marzo 29, 2026
 
 ---

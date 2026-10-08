@@ -1,5 +1,7 @@
 # Addendum de ejecución: herramientas, 76 tipos de negocio y Assist
 
+> **Documento histórico (2026-09-11) — no refleja el estado actual; ver `docs/product-capabilities-reference.md` y `docs/README.md`.** Es una instrucción que se pasó a otro agente en esa fecha: lo que dice sobre no hacer push, merge o deploy ya no aplica (desde el 2026-10-07 un merge a `main` con CI verde despliega solo) y sus cifras (perfiles, escenarios, tareas) son las de ese día.
+
 ## Mandato y relación con el cierre en curso
 
 Integra este frente en el cierre descrito en

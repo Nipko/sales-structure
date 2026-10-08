@@ -925,18 +925,61 @@ describe('Parallly Assist knowledge-base contract', () => {
     }
   });
 
-  it('does not let SMS guidance bypass the campaign release boundary', () => {
-    const markers: Record<(typeof LOCALES)[number], RegExp> = {
-      es: /guarda el borrador[^\n]+no lo envíes ni lo programes para producción/i,
-      en: /save the draft[^\n]+do not send or schedule it for production/i,
-      pt: /salve o rascunho[^\n]+não envie nem agende para produção/i,
-      fr: /enregistrez le brouillon[^\n]+ne l'envoyez pas et ne le programmez pas en production/i,
+  it('says SMS is a retired product and never sells credits, campaigns or reminders by SMS', () => {
+    // SMS is switched off for the whole platform (sms-kill-switch.service.ts,
+    // `sms_product_retired` in the credits, checkout and channel controllers).
+    const retiredMarkers: Record<(typeof LOCALES)[number], RegExp> = {
+      es: /ya no es un producto de Parallly/i,
+      en: /no longer a Parallly product/i,
+      pt: /deixou de ser um produto do Parallly/i,
+      fr: /n'est plus un produit de Parallly/i,
     };
+    // "1 credit = 1 segment" is the pricing sentence the old article and FAQs carried.
+    const creditPricing = /\b1 cr[eé]dit(?:o|s)?\s*=/i;
+    const buyingSms = /(?:comprar|recargar|buy|top up|acheter|recharger)[^\n.]{0,40}(?:cr[eé]ditos?|credits?)\s+(?:de\s+)?SMS/i;
 
     for (const locale of LOCALES) {
       const article = byLocale[locale].find((candidate) => candidate.id === 'sms-creditos');
       expect(article).toBeDefined();
-      expect(article!.body).toMatch(markers[locale]);
+      expect(article!.body).toMatch(retiredMarkers[locale]);
+      for (const candidate of byLocale[locale]) {
+        expect(candidate.body).not.toMatch(creditPricing);
+        if (candidate.id !== 'sms-creditos') expect(candidate.body).not.toMatch(buyingSms);
+      }
+    }
+  });
+
+  it('names the real tenant sidebar sections in the navigation article, never an Operations section', () => {
+    // nav.sections in apps/dashboard/messages/<locale>.json (tenantSections in AppSidebar.tsx).
+    const sections: Record<(typeof LOCALES)[number], string[]> = {
+      es: ['Esenciales', 'Clientes', 'Comercial', 'Trabajo diario', 'Catálogo y recursos', 'IA y crecimiento', 'Insights', 'Administración'],
+      en: ['Essentials', 'Customers', 'Commercial', 'Daily work', 'Catalogue & resources', 'AI & growth', 'Insights', 'Administration'],
+      pt: ['Essenciais', 'Clientes', 'Comercial', 'Trabalho do dia', 'Catálogo e recursos', 'IA e crescimento', 'Insights', 'Administração'],
+      fr: ['Essentiels', 'Clients', 'Commercial', 'Travail quotidien', 'Catalogue et ressources', 'IA et croissance', 'Insights', 'Administration'],
+    };
+    for (const locale of LOCALES) {
+      const article = byLocale[locale].find((candidate) => candidate.id === 'navegacion-configuracion');
+      expect(article).toBeDefined();
+      for (const section of sections[locale]) {
+        expect(article!.body).toContain(`**${section}**`);
+      }
+    }
+  });
+
+  it('keeps the same section structure (## and ### headings) in every locale', () => {
+    const headings = (body: string) => ({
+      h2: (body.match(/^## /gm) ?? []).length,
+      h3: (body.match(/^### /gm) ?? []).length,
+    });
+    const spanish = new Map(byLocale.es.map((article) => [article.id, headings(article.body)]));
+    for (const locale of LOCALES.slice(1)) {
+      for (const article of byLocale[locale]) {
+        expect({ locale, id: article.id, ...headings(article.body) }).toEqual({
+          locale,
+          id: article.id,
+          ...spanish.get(article.id),
+        });
+      }
     }
   });
 

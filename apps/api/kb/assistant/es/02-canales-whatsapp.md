@@ -257,7 +257,8 @@ Por número y por mes calendario, sin acumulación. No son por país, no son por
 **¿Instagram y Messenger también se cobran por mensaje?**
 Hoy no. El cobro por mensaje de servicio que empieza el 1 de octubre de 2026 es de WhatsApp; Instagram, Messenger y Telegram no tienen un cobro por mensaje de servicio de su proveedor.
 
+**Mi cuenta de WhatsApp Business ya existía: ¿cómo agrego el medio de pago?**
+Abre https://business.facebook.com/wa/manage/home/, selecciona la WABA indicada en Canales → WhatsApp y agrega el medio de pago en Información general / pagos. No reconectes los números. Vuelve al panel y pulsa Comprobar en Meta. Un estado desconocido no significa ausencia de tarjeta; un método asociado no garantiza fondos. Desde el 1 de octubre de 2026 una cuenta sin medio de pago deja de entregar los mensajes de servicio, y Meta no publica que los 1.000 gratis del mes sigan saliendo sin tarjeta, así que no cuentes con eso.
+
 ¿Te quedó alguna duda? Escríbenos en [soporte](https://parallly-chat.cloud/support).
 
-
-Para cuentas existentes: abre https://business.facebook.com/wa/manage/home/, selecciona la WABA indicada en Canales → WhatsApp y agrega el medio de pago en Información general / pagos. No reconectes los números. Vuelve al panel y pulsa Comprobar en Meta. Un estado desconocido no significa ausencia de tarjeta; un método asociado no garantiza fondos. Meta indica que, si la cuenta no tiene medio de pago al 30 de septiembre de 2026, deja de entregar los mensajes de servicio desde el 1 de octubre. No publica que los 1.000 gratis del mes sigan saliendo sin tarjeta, así que no cuentes con eso: agrega el medio de pago antes del 30 de septiembre.

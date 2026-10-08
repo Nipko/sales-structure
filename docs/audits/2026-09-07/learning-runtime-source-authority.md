@@ -1,5 +1,7 @@
 # Fuentes de aprendizaje durante la generación de respuestas
 
+> **Documento histórico (2026-09-07) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 Continuación: `learning-external-source-authority.md` comprueba embeddings y cada solicitud HTTP de los reintentos de generación. Los resultados de este documento son evidencia de la tanda anterior y conservan sus límites originales.
 
 7 de septiembre de 2026. Cambios locales posteriores a `b6db0507`, sin commit ni despliegue. Continúa `learning-inbox-source-authority.md`.

@@ -1,5 +1,7 @@
 # Entrega posterior a herramientas aprobadas
 
+> **Documento histórico (2026-09-07) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 La aprobación y ejecución del comando conservan su registro original. Al finalizar una reanudación, el resultado confirmado del ledger crea los efectos de entrega y el evento `tool.approval.effects_requested` en la misma transacción. El consumidor continúa la entrega; nunca vuelve a ejecutar el comando.
 
 ## Contrato y recuperación

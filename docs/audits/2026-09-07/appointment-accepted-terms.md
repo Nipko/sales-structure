@@ -1,5 +1,7 @@
 # Condiciones aceptadas de una cita
 
+> **Documento histórico (2026-09-07) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 Validación local del 7 de septiembre de 2026. Sin despliegue, migración sobre tenants existentes ni llamadas a proveedores.
 
 El ejecutor resuelve el servicio activo y sus condiciones antes de proponer una cita: precio, moneda, política de pago, anticipo, duración, modalidad y ubicación. Descarta los términos proporcionados por el modelo y liga un digest exacto al ledger y al consentimiento. Un nombre ambiguo no selecciona arbitrariamente un servicio. En borrador se hace esta lectura antes de registrar la propuesta; no se ejecuta el comando.

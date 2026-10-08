@@ -133,7 +133,7 @@ Oui, si votre compte dispose de la capacité nécessaire. Créez-en un avec le m
 C'est votre agent par défaut qui répond, s'il est actif ; sinon, personne ne répond sur ce canal et **Santé des agents** vous le signale. Vous verrez l'avis de canaux non assignés dans **Agent IA** pour corriger cela en un clic.
 
 **L'agent peut-il répondre par SMS ?**
-Non. Dans Parallly, le SMS n'est pas un canal de conversation : il sert uniquement aux notifications sortantes avec des crédits (1 crédit = 1 segment). Les surfaces conversationnelles en libre-service sont WhatsApp, Instagram, Messenger, Telegram et le chat web. Email conserve un adaptateur inbound interne, mais pas de configuration libre-service certifiée.
+Non. Le SMS est un produit retiré de Parallly et n'a jamais été un canal de conversation. Les surfaces conversationnelles en libre-service sont WhatsApp, Instagram, Messenger, Telegram et le chat web. Email conserve un adaptateur inbound interne, mais pas de configuration libre-service certifiée.
 
 **J'ai modifié les instructions et l'agent réagit toujours pareil, que dois-je vérifier ?**
 Vérifiez que l'enregistrement s'est terminé avec l'avis vert **Enregistré. Votre agent répond désormais ainsi.** ; si un champ obligatoire manquait, l'éditeur le marque en rouge et n'enregistre pas. Confirmez ensuite que cette connexion est affectée à cet agent et non à un autre, et que l'agent est **Actif**. En mode révisé, il faut en plus examiner et publier la version.

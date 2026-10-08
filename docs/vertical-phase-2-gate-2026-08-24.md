@@ -1,5 +1,7 @@
 # Gate 2 — contratos compartidos y compatibilidad de configuración
 
+> **Documento histórico (24-ago-2026) — no refleja el estado actual: habla de 76 perfiles canónicos y 81 IDs resolubles; hoy son 80 y 85. La lista vigente de industrias y tipos de negocio está en `business-types-catalog.md`.**
+
 Fecha de corte: 24 de agosto de 2026
 Estado: **código completo; la promoción conserva como gates el Browser E2E y CI remoto del commit**.
 

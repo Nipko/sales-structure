@@ -133,7 +133,7 @@ Yes, when your account has capacity. Create one with the **Sales Advisor** templ
 Your default agent replies, if it is active; if not, nobody answers on that channel and **Agent health** tells you. You'll see the unassigned-channels notice in **AI Agent** so you can fix it with one click.
 
 **Can the agent reply via SMS?**
-No. SMS in Parallly is not a conversation channel: it's used only for outbound notifications with credits (1 credit = 1 segment). The self-service conversational surfaces are WhatsApp, Instagram, Messenger, Telegram and web chat. Email retains an internal inbound adapter, but not certified self-service configuration.
+No. SMS is a retired Parallly product and was never a conversation channel. The self-service conversational surfaces are WhatsApp, Instagram, Messenger, Telegram and web chat. Email retains an internal inbound adapter, but not certified self-service configuration.
 
 **I changed the instructions and the agent behaves the same — what should I check?**
 Make sure the save finished with the green toast **Saved. Your agent now answers this way.**; if a required field was missing, the editor marks it in red and doesn't save. Then verify that connection is assigned to this agent and not another, and that the agent is **Active**. In reviewed mode, you also need to review and publish the version.

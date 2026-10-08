@@ -1,5 +1,7 @@
 # Revisiones editables separadas — persistencia y edición E3
 
+> **Documento histórico (2026-09-07) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 El almacén nuevo guarda revisiones de configuración en tablas propias, con un puntero al borrador actual. No modifica `agent_personas`, sus canales, su versión operativa ni el alcance de una aprobación pendiente. Cada revisión conserva el hash de la configuración completa y la versión/hash operativos desde los que se preparó.
 
 La escritura exige administrador, tenant propietario del esquema, versión operativa esperada, UUID del borrador esperado y clave de idempotencia. Dos editores concurrentes no sobrescriben el mismo borrador. Repetir una solicitud devuelve su revisión original; reutilizar su clave con otro contenido falla. El historial, el puntero y el comprobante de la solicitud comparten transacción. La lectura comprueba integridad y no crea tablas para ocultar un fallo.

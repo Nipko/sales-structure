@@ -1,5 +1,7 @@
 # Directiva para Claude: cerrar íntegramente el plan de agente de Parallly
 
+> **Documento histórico (2026-09-08) — no refleja el estado actual; ver `docs/product-capabilities-reference.md` y `docs/README.md`.** Es una instrucción que se pasó a otro agente en esa fecha: lo que dice sobre no hacer push, merge o deploy ya no aplica (desde el 2026-10-07 un merge a `main` con CI verde despliega solo) y sus cifras (perfiles, escenarios, tareas) son las de ese día.
+
 Fecha: 8 de septiembre de 2026. Punto de partida revisado: `ec430c5473da7f8a9de68667e3bf9a4d6ab469df` sobre `main`.
 
 ## Mandato del usuario

@@ -1,5 +1,7 @@
 # Qué cambia, para quien lo va a usar
 
+> **Documento histórico (2026-09-09) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 La tabla A1–H3 dice en qué estado está cada fila. Este documento dice otra cosa:
 qué se ve distinto, y para quién. Está ordenado por persona y por pantalla, no
 por módulo, porque un cambio que sólo se puede explicar nombrando un archivo es

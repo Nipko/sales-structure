@@ -1,5 +1,7 @@
 # Las suites rojas, clasificadas y cerradas
 
+> **Documento histórico (2026-09-08) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 8 de septiembre de 2026. Cierre de la [condición 9 de la directiva](../../handoffs/2026-09-08/claude-complete-plan-directive.md): ninguna suite roja se acepta como "baseline". Las 16 suites rojas registradas en `ec430c54` se clasificaron una por una y se corrigieron. Sin push, sin despliegue, sin llamadas a proveedores reales.
 
 ## Lo primero fue contar bien

@@ -1,8 +1,10 @@
 # Parallext Engine — Claude Code Context
 
 ## What is this project?
-Multi-tenant conversational AI SaaS platform (Parallly) for automating sales across WhatsApp, Instagram, Messenger, Telegram, and a Web Chat Widget. Email has an internal inbound adapter but no certified tenant self-service configuration; SMS is a one-way reseller-credits notification product, not a conversational channel.
-Monorepo with 5 apps (88 API module declaration files, 144 dashboard pages), deployed on Hostinger VPS via Docker + Cloudflare Tunnel.
+Multi-tenant conversational AI SaaS platform (Parallly) for automating sales across WhatsApp, Instagram, Messenger, Telegram, and a Web Chat Widget. Email has an internal inbound adapter but no certified tenant self-service configuration; SMS is a **retired product** (platform kill switch `sms.platform_enabled` defaults to off; credits, checkout and notifications answer `sms_product_retired`) and was never a conversational channel.
+Monorepo with 5 apps (101 API `*.module.ts` files, 163 dashboard pages), deployed on Hostinger VPS via Docker + Cloudflare Tunnel. Counters are a snapshot (2026-10-08) and drift: recompute them (see "Counters" below) instead of copying them into new docs.
+
+**Glossary (use it consistently).** *Vertical* = industry (20 in `VERTICAL_REGISTRY`, 18 selectable at sign-up). *Business type* (tipo de negocio) = industry/subtype profile (80 canonical = 72 selectable + 8 waitlist; 85 resolvable configurations including 5 `legacy_only`). The enumeration of every business type and its availability is `docs/business-types-catalog.md` (generated); the code authorities are `apps/api/src/modules/verticals/vertical-definitions.ts` and `packages/shared/src/subtype-experience-profile.ts`.
 
 ## Architecture (high-level)
 
@@ -23,8 +25,8 @@ For full message flow + module dependency graph see **`docs/architecture-detail.
 
 ```
 apps/
-  api/          — NestJS 10, port 3000. 88 module declaration files
-  dashboard/    — Next.js 16, port 3001. React 19, Tailwind + shadcn/ui + recharts. 144 pages
+  api/          — NestJS 10, port 3000. 101 `*.module.ts` files
+  dashboard/    — Next.js 16, port 3001. React 19, Tailwind + shadcn/ui + recharts. 163 pages (149 under /admin, 14 outside)
   whatsapp/     — NestJS 10, port 3002. Embedded Signup v4 + Meta webhook router
   landing/      — Next.js static export, port 80. parallly-chat.cloud, 4-language i18n
   mobile/       — React Native / Expo (@parallext/mobile). Agent inbox app. EAS build, Firebase, Sentry. Ships via EAS, NOT the web deploy pipeline (docs/ + apps/mobile are paths-ignored in deploy.yml)
@@ -42,7 +44,7 @@ docs/            — Detailed reference (see Index at bottom)
 - **Database queries**: `prisma.$queryRawUnsafe(sql, ...params)` — ALWAYS use `::uuid` casts. NO type arguments on `$queryRawUnsafe`
 - **Global tables**: Prisma client directly (`prisma.tenant.findUnique(...)`)
 - **Raw SQL column names**: snake_case (`is_active`, not `"isActive"`) — Prisma `@map` only applies to Prisma client. `users.name` is a generated column
-- **Auth**: JWT with refresh token rotation (Redis-backed). 4 roles: super_admin, tenant_admin, tenant_supervisor, tenant_agent. Session timeout 60min with warning modal
+- **Auth**: JWT with refresh token rotation (Redis-backed). 5 roles: super_admin, tenant_admin, tenant_supervisor, tenant_agent, tenant_viewer (`packages/shared/src/index.ts`). Session timeout 60min with warning modal
 - **Super_admin governance**: super_admin has NO implicit tenant (platform mode); `roles.ts` is deny-by-default — every new super_admin page/endpoint needs an explicit rule or access is denied. Acting on a tenant requires **impersonation** with a mandatory reason (`impersonate(superAdminId, tenantId, {reason, ticketId})`), 1h tokens, a paired session (`impersonationSid`), and audit writes attributed to the REAL super_admin (not the impersonated user). See `docs/superadmin-governance.md`
 - **Database pooling**: PgBouncer (transaction mode) between apps and PostgreSQL. Use `DIRECT_DATABASE_URL` for Prisma migrations. Multi-statement SQL must be split into individual queries
 - **Migraciones = expand-contract (OBLIGATORIO)**: el deploy migra ANTES de recrear contenedores, así que el código viejo corre contra el schema nuevo durante minutos. Solo cambios **aditivos** en un deploy (ADD COLUMN nullable, CREATE TABLE/INDEX, ampliar tipos). Un RENAME/DROP va en **dos deploys** (agregar + escribir en ambos lados → eliminar). Ver `docs/deploy-hardening-runbook.md` §6
@@ -56,13 +58,13 @@ docs/            — Detailed reference (see Index at bottom)
 - **LLM Router**: Task-based routing (conversation vs tool_calling). 4-tier fallback with circuit breaker. Plan-gated tier access
 - **Redis**: noeviction policy (never allkeys-lru). BullMQ jobs must not be silently evicted
 - **BigInt**: `BigInt.toJSON` polyfill in main.ts and worker.main.ts for PostgreSQL COUNT(*)
-- **Channels**: Adapter pattern via `IChannelAdapter` (WhatsApp, Instagram, Messenger, Telegram and Web Chat Widget). Email is currently an internal inbound adapter: `/admin/channels/email` calls tenant config routes that do not exist, so it is not a certified self-service conversational connection. **One AI agent per operational connection** — multi-account availability and limits come from the tenant's runtime plan; tokens are per-account (`channel_accounts.access_token`).
+- **Channels**: Adapter pattern via `IChannelAdapter` (WhatsApp, Instagram, Messenger, Telegram and Web Chat Widget). Email is currently an internal inbound adapter, not a certified self-service conversational connection: `/admin/channels/email` has redirected to `/admin/channels` since 2026-08-25. **One AI agent per operational connection** — multi-account availability and limits come from the tenant's runtime plan; tokens are per-account (`channel_accounts.access_token`).
 - **Conversation mutex**: Redis SETNX lock per conversation ID (`lock:conv:{conversationId}`, 30s TTL)
 - **Booking state**: Redis (`booking:{conversationId}`, 1h TTL) primary, PostgreSQL backup. In directive mode, only last 4 messages sent to LLM
 - **Multi-agent**: Plan-gated agent count. One agent per _connection_ (see Channels above)
 - **Subscription plans**: names, prices, billing cycles, quotas and feature flags come from the runtime `billing_plans` catalog plus authorized tenant overrides. Do not copy fixed prices or limits into prompts/docs. The seed is only a provisioning baseline; see `docs/billing-annual-cycle.md`
 - **Multi-calendar**: Capacity comes from the runtime plan/overrides. 3-tier resolution: service → staff → general fallback
-- **Vacation Rental**: `Propiedades` sidebar item visible only when `verticalConfig.industry === 'turismo'`
+- **Vacation Rental / vertical sidebar items**: visibility is decided by `apps/dashboard/src/lib/vertical-dashboard-resolver.ts` from the capabilities of the industry/subtype (e.g. `nightly_booking` → `stays` + `properties`), and `AppSidebar.tsx` gates each item with `verticalItem: "<key>"`, never with `industry === ...`
 - **Test in production**: User tests in production, never locally. Deploy via `git push` → GitHub Actions
 - **No mocks for DB**: Integration tests hit real database
 
@@ -106,16 +108,29 @@ See `.env.example`. Critical:
 
 - Landing: https://parallly-chat.cloud (static, nginx, 4-lang i18n)
 - Dashboard: https://admin.parallly-chat.cloud (Next.js)
-- API: https://api.parallly-chat.cloud (NestJS, 88 module declaration files)
+- API: https://api.parallly-chat.cloud (NestJS, 101 `*.module.ts` files)
 - WhatsApp: https://wa.parallly-chat.cloud (NestJS, Embedded Signup)
 - KB Portal: https://admin.parallly-chat.cloud/kb/{tenant-slug}
 - BI API: https://api.parallly-chat.cloud/api/v1/bi-api/ (X-API-Key auth)
 - GitHub: https://github.com/Nipko/sales-structure
 - VPS: Hostinger Ubuntu, Docker (~14 containers: api, worker, dashboard, whatsapp, landing, postgres, redis, pgbouncer, tunnel + observability stack: grafana, loki, promtail, uptime-kuma, dozzle), Cloudflare Tunnel. Watchtower fue eliminado (jul 2026): competía con el deploy script — reiniciaba contenedores con código nuevo ANTES de las migraciones
-- Deploy: Push to main → GitHub Actions → build 5 images → SSH (key-only auth) → `git reset --hard origin/main` → regenerate .env → migrate → rolling restart (worker→API→frontend). NOTE: `git reset --hard` restores tracked file modes — infra scripts MUST stay `100755` in git or cron loses the +x (see `docs/backup-restore-runbook.md`)
+- Deploy: Push to main → GitHub Actions (`deploy.yml`: `validate` — typecheck, migrations on a fresh DB, boot smoke, vertical contract matrix and generated-artefact checks, blocks the build — → `build-and-push` (which also waits for the Playwright smoke, `e2e-smoke`) → `deploy`). **Since 2026-10-07 there is no manual approval in `production`: after CI is green and the review is done, merging to `main` deploys.** The deploy steps: build 5 images → SSH (key-only auth) → `git reset --hard origin/main` → regenerate .env → migrate → rolling restart (worker→API→frontend). NOTE: `git reset --hard` restores tracked file modes — infra scripts MUST stay `100755` in git or cron loses the +x (see `docs/backup-restore-runbook.md`)
 - Backups: Daily 2AM (DB public+tenant schemas + media + fiscal invoices + Redis), 7/4/2 daily/weekly/monthly rotation, offsite S3-compatible via rclone (Cloudflare R2). Honest heartbeat `backup:last_success` watched by the Ops Center (alerts if stale >26h). See `docs/backup-restore-runbook.md`
 - Ops Center: super_admin `/admin/ops` + `health/platform-monitor.service.ts` — monitors disk/RAM/Redis/PgBouncer/queues/Sentry/LLM/SLA/backup-heartbeat/channel-tokens/payment-webhooks, raises incidents, Telegram/SMS/email alerts
 - Cleanup: Weekly Sunday 5AM (Docker prune, temp files, journal logs)
+- Other workflows in `.github/workflows/`: `candidate.yml` (manual: builds images for a commit that is NOT on main, publishes immutable digests, never deploys), `release.yml` (release-please: release PR + tags; its config points at a root `CHANGELOG.md`), `playwright.yml` (browser E2E on PRs touching dashboard/landing/e2e, plus nightly) and `vertical-quality.yml` (vertical evidence tiers `contract|integration|weekly|release`; only the manual `release` tier fails closed on missing external evidence — an ordinary deploy does not block on it, `REQUIRE_EXTERNAL_GATES: 'false'`).
+
+## Counters (snapshot 2026-10-08 — recompute, do not copy)
+
+| What | Value | Command |
+|------|-------|---------|
+| API module files | 101 | `find apps/api/src -name "*.module.ts" \| wc -l` |
+| API controllers | 132 | `find apps/api/src -name "*.controller.ts" \| wc -l` |
+| Dashboard pages | 163 (149 admin + 14 outside) | `find apps/dashboard/src/app -name page.tsx \| wc -l` (add `/admin` for the admin subset) |
+| BullMQ queues | 13 | `grep -rhoE "name: '[a-z-]+'" apps/api/src --include=*.module.ts` filtered to `registerQueue`: agent-release-evaluation, agent-simulation, automation-jobs, broadcast-messages, conversation-snooze, crm-import, crm-sync, eval-gate, fiscal-invoice, inbound-messages, nurturing, outbound-messages, quality-scoring |
+| `@Cron` decorators | 93 | `grep -rn "@Cron(" apps/api/src --include=*.ts \| grep -v spec \| wc -l` |
+| Prisma models | 49 | `grep -c "^model " apps/api/prisma/schema.prisma` |
+| Production containers | 14 | services in `infra/docker/docker-compose.prod.yml` |
 
 ---
 
@@ -126,17 +141,19 @@ When you need depth on a topic, read the relevant file. Don't load these proacti
 | Topic | File |
 |-------|------|
 | **Detailed architecture, prompt layers (3-tier), 5-tier knowledge, language detection, auth/sessions, OAuth flows, calendar, observability, BullMQ, pipeline hardening, production resilience, LLM Router task-based routing** | `docs/architecture-detail.md` |
-| **Inventario técnico: 88 archivos de módulo API, 144 páginas dashboard, 11 colas BullMQ y crons documentados (snapshot ago 2026)** | `docs/modules-reference.md` |
+| **Inventario técnico: archivos de módulo API, páginas dashboard, colas BullMQ y crons (snapshot; las cifras vigentes y cómo recalcularlas están en "Counters" arriba)** | `docs/modules-reference.md` |
+| **Índice completo de `docs/` (agrupado por tema, con los históricos marcados) — este índice de CLAUDE.md es solo una selección** | `docs/README.md` |
+| **Catálogo generado de industrias y tipos de negocio (20 industrias, 80 tipos canónicos: seleccionables, en espera y legacy)** | `docs/business-types-catalog.md` |
 | **Platform audit (May 2026, ARCHIVED — historical snapshot)** | `docs/archive/platform-audit-2026-05.md` |
 | **Analytics endpoints (12 dashboard + 7 BI), Redis keys, tenant/global schemas, billing, offboarding, financials, super admin, vertical adaptation, vacation rental, CRM overhaul, handoff system, AI usage dashboard** | `docs/analytics-billing-reference.md` |
 | **Historical changelog (Session entries, navigation redesigns, security fixes, UX overhauls)** | `docs/CHANGELOG.md` |
-| **Vertical adaptation strategy** | `docs/vertical-strategy.md` |
+| **Vertical adaptation strategy (visión; la lista vigente de tipos de negocio está en `docs/business-types-catalog.md`)** | `docs/vertical-strategy.md` |
 | **Auditoría del bootstrap por vertical (Jul 2026): qué de lo sembrado por industria llega al runtime y qué no. La persona vertical se escribía en la raíz de `config_json` y nadie la leía; el setup wizard hacía REPLACE y borraba los flags de herramienta; las verticales con agenda salían sin `availability_slots` → bucle de "no hay disponibilidad" al cliente final. Arreglado en `95f758f3`** | `docs/vertical-bootstrap-audit-2026-07.md` |
-| **Auditoría de madurez de las 18 verticales (Jul 2026): matriz 18×12, 1 profunda / 9 medias / 8 superficiales. Inversión invertida vs demanda (belleza #1 sin nada dedicado; turismo la más rica); mucho valor construido y dormido (automotriz apagada por 1 flag, education con tabla colisionada, trigger inactivity sin listener); motor de reservas mono-recurso como hueco estructural. Datos crudos en `docs/vertical-audit-workdir/`** | `docs/vertical-maturity-audit-2026-07.md` |
-| **Deep-dives por vertical (Jul 2026) — 18/18 dossiers, uno por industria: radiografía end-to-end, la experiencia real del dueño y del cliente final, huecos finos, lo que el rubro necesita, competencia y plan de inversión propio. Empezar por `_TEMPLATE.md` (spec + contexto de fixes ya desplegados) y `_PROGRESS.md` (los 18 veredictos en una línea). Tesis de cierre: *thin vertical, deep horizontal*** | `docs/vertical-deep-dives/` |
-| **⭐ PLAN CONSOLIDADO de verticales (Jul 2026) — EMPEZAR ACÁ para ejecutar: los 390 ítems de los 18 dossiers deduplicados en 24 arreglos horizontales (ordenados por verticales-desbloqueadas/esfuerzo) + backlog por vertical + 13 decisiones que bloquean trabajo + 3 olas con criterio de "listo" + lo que NO se hace y por qué** | `docs/vertical-consolidated-plan-2026-07.md` |
-| **⭐ AUDITORÍA VIGENTE de las 18 verticales (Ago 2026): inventario canónico, madurez actual, trazabilidad UI→API→DB→IA, benchmark competitivo, 12 P0 y 23 P1 con evidencia y criterio de cierre. Reemplaza los puntajes de julio como diagnóstico de estado actual** | `docs/vertical-system-audit-2026-08.md` |
-| **Plan maestro de pruebas de las 18 verticales (Ago 2026): 75 subtipos canónicos + otro, 4 idiomas, 5 planes, 1.520 escenarios deterministas de bootstrap, contratos de tools, IA, seguridad, UI, integraciones, performance y quality gates de certificación** | `docs/vertical-master-test-plan-2026-08.md` |
+| **Auditoría de madurez de las 18 verticales (Jul 2026, HISTÓRICA): matriz 18×12, 1 profunda / 9 medias / 8 superficiales. Inversión invertida vs demanda (belleza #1 sin nada dedicado; turismo la más rica); mucho valor construido y dormido (automotriz apagada por 1 flag, education con tabla colisionada, trigger inactivity sin listener); motor de reservas mono-recurso como hueco estructural. Datos crudos en `docs/vertical-audit-workdir/`** | `docs/vertical-maturity-audit-2026-07.md` |
+| **Deep-dives por vertical (Jul 2026, HISTÓRICO; cubren 18 de las 20 industrias) — 18/18 dossiers, uno por industria: radiografía end-to-end, la experiencia real del dueño y del cliente final, huecos finos, lo que el rubro necesita, competencia y plan de inversión propio. Empezar por `_TEMPLATE.md` (spec + contexto de fixes ya desplegados) y `_PROGRESS.md` (los 18 veredictos en una línea). Tesis de cierre: *thin vertical, deep horizontal*** | `docs/vertical-deep-dives/` |
+| **PLAN CONSOLIDADO de verticales (Jul 2026, supersedido por el plan aprobado del 24-ago y la bitácora de ejecución): los 390 ítems de los 18 dossiers deduplicados en 24 arreglos horizontales (ordenados por verticales-desbloqueadas/esfuerzo) + backlog por vertical + 13 decisiones que bloquean trabajo + 3 olas con criterio de "listo" + lo que NO se hace y por qué** | `docs/vertical-consolidated-plan-2026-07.md` |
+| **Auditoría de las 18 verticales (Ago 2026, point-in-time del 6-ago; no refleja los 80 tipos de negocio actuales): inventario canónico, madurez actual, trazabilidad UI→API→DB→IA, benchmark competitivo, 12 P0 y 23 P1 con evidencia y criterio de cierre. Reemplaza los puntajes de julio, no el estado de hoy** | `docs/vertical-system-audit-2026-08.md` |
+| **Plan maestro de pruebas de las 18 verticales (Ago 2026, HISTÓRICO: 75 subtipos canónicos + otro; hoy son 80 tipos de negocio): 4 idiomas, 5 planes, escenarios deterministas de bootstrap, contratos de tools, IA, seguridad, UI, integraciones, performance y quality gates de certificación** | `docs/vertical-master-test-plan-2026-08.md` |
 | **Ejecución Ola 0 de verticales (Ago 2026): matriz P0, fencing/provisioning, outcomes, SSRF, verdad comercial, manifest v1, evidencia y gates de integración pendientes** | `docs/wave-0-execution-2026-08.md` |
 | **⭐ BITÁCORA DE EJECUCIÓN del programa de verticales (Ago 2026) — EMPEZAR ACÁ para saber qué está hecho: unidad por unidad con el defecto que cerró, los ADR tomados, las pruebas que lo fijan y la verificación. Al final: estado por fase, Gate 3 y Gate 4 criterio por criterio, y la tabla de bloqueos con qué falta de afuera y de quién depende** | `docs/vertical-implementation-execution-log.md` |
 | **Auditoría de iniciativas abiertas (ago 2026): 8 iniciativas fuera del plan de verticales, 37 hallazgos confirmados contra refutador (24 ya cerrados). Los 12 que quedan, con evidencia archivo:línea y el matiz del refutador — que en varios casos acota el alcance real** | `docs/audit-open-initiatives-2026-08.md` |
@@ -160,9 +177,9 @@ When you need depth on a topic, read the relevant file. Don't load these proacti
 | **Security policies** | `docs/SECURITY.md` |
 | **Server installation** | `docs/server-installation.md` |
 | **Infrastructure capacity, scaling projections, cost analysis, 1000-tenant scenario, provider comparison** | `docs/infrastructure-capacity-analysis.md` |
-| **Manual web tenant v4.4 (navegación, roles, flujos y 18 verticales)** | `docs/user-manual.md` |
-| **Arquitectura de navegación dashboard (orden, retorno, tour y contrato de acceso)** | `docs/dashboard-navigation-architecture-2026-08.md` |
-| **Referencia canónica de capacidades, roles, planes, superficies web/móvil y 18 verticales** | `docs/product-capabilities-reference.md` |
+| **Manual web tenant (navegación, roles, flujos e industrias)** | `docs/user-manual.md` |
+| **Arquitectura de navegación dashboard (contratos técnicos: orden, retorno, tour y contrato de acceso; los grupos vigentes del menú están en `docs/product-capabilities-reference.md`)** | `docs/dashboard-navigation-architecture-2026-08.md` |
+| **Referencia canónica de capacidades, roles, planes y superficies web/móvil (la lista de tipos de negocio es `docs/business-types-catalog.md`)** | `docs/product-capabilities-reference.md` |
 | **Contrato documental de Parallly Assist: KB runtime, alcance, roles y publicación** | `docs/platform-assistant-knowledge.md` |
 | **Competitive analysis (Q2 2026 — historical snapshot, not a current capability source)** | `docs/competitive-analysis-2026-q2.md`; use `docs/product-capabilities-reference.md` for current scope |
 | **Platform test plan (May 2026, ARCHIVED — historical snapshot)** | `docs/archive/test-plan-2026-05.md` |
@@ -172,8 +189,8 @@ When you need depth on a topic, read the relevant file. Don't load these proacti
 | **Merchant of Record (Ago 2026): investigación verificada Paddle/FastSpring/PayPro/2CO/Polar/Dodo/Creem + plan B local (Wompi/ePayco/Rebill/dLocal Go) tras el bloqueo de suscripciones de MP (`collector_non_compliant` = gate interno, no norma). Recomendación: híbrido geo-separado — riel local Colombia (Wompi 2,65%+700, falta SÍ comercial) + MoR solo exterior (FastSpring 1º LatAm, Paddle 2º con riesgo AUP); MoR ≈ 2-3× el costo local; IVA +19% a no-responsables vía MoR; concepto tributarista = bloqueante** | `docs/merchant-of-record-research-2026-08.md` |
 | **Pasarela Wompi (Ago 2026) — investigación técnica profunda: qué hace y qué NO hace Wompi (sin suscripciones nativas, PSE no tokenizable, sin refund por API, todo asíncrono), diseño del motor de cobros propio (billing_charge_attempts, scheduler, dunning, prorrateo), switch L0-L3, mapeo de webhooks, migración de cohortes MP y las trampas (defaults silenciosos, checksum dinámico, doc EN vs ES)** | `docs/pasarela-wompi-research-2026-08.md` |
 | **⭐ PLAN DE EJECUCIÓN Wompi + operador conmutable + geo-routing (Ago 2026): decisiones del dueño tomadas (solo self-service, switch runtime por país, motor propio, Agregador), alcance v1 (CARD núcleo + Nequi flag; sin Daviplata/3DS), matriz fiscal DIAN (CO=FEV Factus sin cambios; exterior=exportación o recibo LLC/MoR), fases F0-F4 file-by-file con gates + Fase EXT dormida; verificaciones empíricas que reemplazan las 9 preguntas a Wompi; tope $10M/tx vs Enterprise anual** | `docs/wompi-provider-routing-implementation-plan-2026-08.md` |
-| **Notificaciones por SMS (Jul 2026): plan de implementación por fases (alertas super admin → handoff → OTP/2FA → suscriptores); WhatsApp‑first + SMS fallback; operador Twilio + Verify; planos plataforma vs tenant; gating por plan + cuotas; deuda del canal SMS a cerrar** | `docs/sms-notifications-implementation-plan-2026-07.md` |
-| **SMS monetizado por paquetes (Jul 2026, IMPLEMENTADO F0-F3): modelo reseller — tenants compran créditos (1=1 segmento) para notificar one-way a sus clientes vía Twilio de plataforma; balance/ledger atómico, envío medido (broadcast + cola), compra por pago único, UI tenant + super admin (tiers editables); canal conversacional descartado. **Checkout NEUTRALIZADO ago 2026**: cobraba con MercadoPago, que salió de la plataforma, y SMS está apagado** | `docs/sms-monetization-packages-2026-07.md` |
+| **Notificaciones por SMS (Jul 2026, HISTÓRICO: el producto SMS está retirado): plan de implementación por fases (alertas super admin → handoff → OTP/2FA → suscriptores); WhatsApp‑first + SMS fallback; operador Twilio + Verify; planos plataforma vs tenant; gating por plan + cuotas; deuda del canal SMS a cerrar** | `docs/sms-notifications-implementation-plan-2026-07.md` |
+| **SMS monetizado por paquetes (Jul 2026, implementado y luego RETIRADO): modelo reseller — tenants compran créditos (1=1 segmento) para notificar one-way a sus clientes vía Twilio de plataforma; balance/ledger atómico, envío medido (broadcast + cola), compra por pago único, UI tenant + super admin (tiers editables); canal conversacional descartado. **Checkout NEUTRALIZADO ago 2026**: cobraba con MercadoPago, que salió de la plataforma, y SMS está apagado** | `docs/sms-monetization-packages-2026-07.md` |
 | **Multi-cuenta por tipo de canal (Jul 2026): N conexiones del mismo tipo (2 números WhatsApp, 2 IG…) gateado por plan×canal (`features.maxChannelAccounts`, default 1) + override por tenant; tokens por-cuenta vía `channel_accounts.access_token` (sin migración global); agente por conexión (`agent_personas.channel_bindings`); anti-conflación de conversaciones; UI editor adaptativa + overview con contador/límite + disconnect por-cuenta. Fases 1-5 codificadas. Contratos + checklist + limitaciones v1** | `docs/multi-channel-per-type-implementation-2026-07.md` |
 | **WhatsApp coexistence manual** | `docs/coexistence-manual.md` |
 | **Operations runbook + Ops Center (platform-monitor: disk/RAM/Redis/PgBouncer/queues/Sentry/LLM/SLA/backup/tokens/webhooks)** | `docs/operations-runbook.md` |
@@ -186,7 +203,7 @@ When you need depth on a topic, read the relevant file. Don't load these proacti
 | **⭐ WhatsApp: Meta cobra el mensaje de servicio desde el 1-oct-2026 — EMPEZAR ACÁ antes de tocar canales, planes o pricing**: reglas exactas con su fecha, tarifas LatAm de las tarjetas oficiales, franquicia de 1.000 por número y mes sin acumulación, país del DESTINATARIO, tarjeta en la WABA antes del 30-sep, qué hace el código hoy, qué NO está encendido y qué no se puede afirmar. Reconstruido el 12-sep-2026 desde la evidencia preservada: el original se perdió sin comitear | `docs/whatsapp-meta-pricing-2026-10.md` |
 | **App móvil (`apps/mobile`, React Native/Expo): manual vigente, plan, EAS build, Sentry sourcemaps, GATE 0, Play Store y audit** | `docs/mobile-user-manual.md`, `apps/mobile/README.md`, `docs/mobile-app-plan.md`, `docs/mobile-eas-build.md`, `docs/mobile-sentry-sourcemaps.md`, `docs/mobile-gate0-checklist.md`, `docs/play-store-publish-checklist.md`, `docs/mobile-app-audit-2026-q2.md`, `docs/mobile-functional-test-2026-08.md` |
 | **Onboarding audit (Jun 2026, estado fases 0-4)** | `docs/onboarding-audit-2026-06.md` |
-| **Auditoría del onboarding (Jul 2026 — VIGENTE, supersede a la de jun): recorrido real end-to-end, nota 4.5/10. Causa raíz = `/onboarding` y `/admin/setup-wizard` son dos flujos que se pisan + el estado vive en 3 lugares sin autoridad. Camino canónico elegido: `/onboarding` extendido, setup-wizard degradado a editor de agente. Bloques "Ahora" y casi todo "Después" ya implementados** | `docs/onboarding-audit-2026-07.md` |
+| **Auditoría del onboarding (Jul 2026 — supersedida por el diagnóstico de sept-2026 y sus decisiones; supersede a la de jun): recorrido real end-to-end, nota 4.5/10. Causa raíz = `/onboarding` y `/admin/setup-wizard` son dos flujos que se pisan + el estado vive en 3 lugares sin autoridad. Camino canónico elegido: `/onboarding` extendido, setup-wizard degradado a editor de agente. Bloques "Ahora" y casi todo "Después" ya implementados** | `docs/onboarding-audit-2026-07.md` |
 | **Marketing/contenido (Jul 2026): capacidades de creación de contenido operables desde Claude Code — stack local $0 (satori/sharp + Playwright + Remotion + ffmpeg), APIs de imagen/video/voz (fal.ai, Kling 3.0 es-LA, Veo 3.1, ElevenLabs, HeyGen), publicación (Meta directo + Postiz), precios verificados y fases** | `docs/marketing-content-capabilities-2026-07.md` |
 | **Research: mercado LatAm, CRM externo, feature board** | `docs/market-research-latam.md`, `docs/external-crm-integration-research.md`, `docs/feature-board-research.md` |
 | **Histórico / superseded** | `docs/archive/` (competitive-05/-enhanced, platform-audit, test-plan, security-audit, platform-excellence, roadmap/*, specs/*, billing-plan, add_parallly_arquitectura, guia-tema-visual) |

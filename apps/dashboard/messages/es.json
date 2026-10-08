@@ -8760,7 +8760,7 @@
         "Arrastra una tarjeta entre columnas para cambiar su etapa; por ejemplo, mueve un lead de 'Contactado' a 'Calificado' cuando confirme interés.",
         "Al soltar una tarjeta en una etapa terminal (Ganado/Perdido) se puede pedir aprobación; las pendientes muestran un badge amarillo.",
         "El valor y la probabilidad de cada etapa alimentan el pronóstico de ventas que ves sobre el tablero.",
-        "Personaliza nombres, colores y probabilidades de las etapas en Configuración → Herramientas → Etapas del pipeline.",
+        "Personaliza nombres, colores y probabilidades de las etapas en Configuración → CRM y operación → Etapas del pipeline.",
         "Usa el buscador y los filtros para enfocarte en un agente, un canal o deals con SLA en riesgo."
       ]
     },
@@ -8788,12 +8788,12 @@
     },
     "broadcast": {
       "title": "¿Cómo crear y enviar una campaña de broadcast?",
-      "description": "Broadcast te permite enviar mensajes masivos a tus contactos por WhatsApp o Email de una sola vez, con seguimiento de entrega y lecturas en tiempo real. Úsalo para promociones, avisos importantes o reactivación de clientes inactivos.",
+      "description": "Broadcast te permite enviar mensajes masivos a tus contactos por WhatsApp, con seguimiento de entrega y lecturas. Las campañas salen como plantillas aprobadas por Meta, y el editor actual no está certificado de punta a punta para producción: prepara borradores y coordina el primer envío real con soporte.",
       "tips": [
-        "Haz clic en '+ Crear' y elige el canal (WhatsApp o Email); para WhatsApp escribe el nombre exacto de tu plantilla aprobada por Meta en el campo 'Plantilla'.",
+        "Haz clic en '+ Crear'. El único canal disponible es WhatsApp: en 'Plantilla WhatsApp' escribe el nombre exacto de una plantilla ya aprobada por Meta (la ves en Canales › WhatsApp › Ver todas las plantillas). Un texto escrito a mano no es una plantilla y WhatsApp lo rechaza.",
         "En 'Audiencia', elige 'Todos los contactos' para llegar a toda tu base, o selecciona un 'Segmento' guardado para apuntar a un grupo específico (ej.: leads calificados de este mes).",
         "Activa el interruptor 'A/B Test' (disponible en planes Pro+) para probar dos versiones del mensaje y dejar que la plataforma identifique al ganador según tasa de lectura.",
-        "Deja el campo de fecha vacío para guardar como borrador y enviar manualmente con el botón 'Enviar ahora', o programa la fecha y hora exacta para que salga automáticamente.",
+        "Deja el campo de fecha vacío para guardar como borrador. Una campaña programada no tiene acción de cancelación y 'Enviar ahora' comparte la misma limitación del editor: no los uses en producción sin haberlo probado antes con soporte.",
         "Una vez enviada, haz clic en la campaña para ver las métricas: destinatarios, entregados (verde) y leídos (azul) en la barra de progreso.",
         "Desde el 1 de octubre de 2026 Meta le cobra a TU cuenta de WhatsApp Business cada mensaje entregado, y una campaña sale como plantilla aprobada: no usa las entregas de servicio gratuitas del mes. Antes de confirmar el envío vas a ver cuántas entregas puede generar; el gasto por número y por mes está en Canales › WhatsApp."
       ]
@@ -8870,7 +8870,7 @@
       "tips": [
         "En la sección 'Cuenta' puedes cambiar tu contraseña, activar 2FA (doble factor) y configurar el horario de notificaciones para no ser interrumpido fuera de turno.",
         "En 'Empresa' encontrarás 'Horario de atención': configúralo con tus días y horas reales para que el agente IA sepa cuándo puede ofrecer atención humana.",
-        "En 'Operaciones' personaliza las etapas del embudo ('Etapas del pipeline') y el peso del scoring de leads, adaptándolos a tu proceso de ventas.",
+        "En 'CRM y operación' personaliza las etapas del embudo ('Etapas del pipeline') y el peso del scoring de leads, adaptándolos a tu proceso de ventas.",
         "En 'Comunicación' crea macros con respuestas frecuentes para que tus agentes humanos respondan más rápido desde el Inbox.",
         "En 'Integraciones' conecta webhooks salientes, tu Web Chat o una integración vertical (Toast, Mindbody, Cliniko) para sincronizar datos con tus herramientas externas."
       ]
@@ -9866,6 +9866,77 @@
         "Haz clic en 'Sincronizar desde Meta' para importar plantillas ya aprobadas en tu cuenta de Meta Business Manager. Esto actualiza el estado (APPROVED / PENDING / REJECTED) de cada plantilla.",
         "Una plantilla en estado PENDING puede tardar de minutos a 24 horas en ser revisada por Meta. Las plantillas APPROVED aparecen en verde y ya pueden usarse en campañas de broadcast o en el agente de IA.",
         "Si una plantilla fue REJECTED, revisa la razón de rechazo que aparece en la tarjeta (ej. 'Contenido promocional en categoría UTILITY'). Ajusta el contenido para que coincida con la categoría correcta y crea una nueva versión."
+      ]
+    },
+    "stays": {
+      "title": "¿Cómo gestiono las reservas de alojamiento?",
+      "description": "Esta pantalla reúne las estadías de todos tus alojamientos con su huésped, fechas, estado y origen: Agente si la tomó el agente de IA, Manual si la cargó tu equipo. Úsala para atender el día a día sin abrir la ficha de cada alojamiento.",
+      "tips": [
+        "Busca por nombre, correo o teléfono del huésped y filtra por estado: Confirmada, Pendiente, Espera pago o Cancelada.",
+        "Pulsa 'Nueva reserva' para cargar una estadía a mano: elige el alojamiento, la entrada, la salida y los datos del huésped. La pantalla verifica en el momento que esas fechas estén libres.",
+        "Al cancelar una reserva, las fechas quedan libres de inmediato y el agente puede volver a ofrecerlas.",
+        "La columna Origen te dice si la reserva la creó el agente de IA o tu equipo; las dos conviven en la misma lista."
+      ]
+    },
+    "tourBookings": {
+      "title": "¿Cómo veo las reservas de mis tours?",
+      "description": "Esta pantalla agrupa las reservas por día de salida y suma cuántos viajeros salen cada día, sin abrir cada paquete. Cada fila muestra al viajero, su teléfono, el tour, el estado y si la reserva la tomó el agente de IA o se cargó a mano.",
+      "tips": [
+        "Busca por viajero, teléfono o nombre del tour y filtra por estado: Confirmada, Reservada, Espera pago o Cancelada.",
+        "Cada día de salida muestra el total de viajeros: úsalo para confirmar cupos y coordinar guías o transporte.",
+        "Una reserva en 'Espera pago' todavía no está pagada: haz seguimiento con el cliente antes de contar con ese cupo.",
+        "Esta pantalla es de consulta. Los paquetes, su capacidad y sus precios se configuran en 'Tours y Paquetes', dentro de Catálogo y recursos."
+      ]
+    },
+    "serviceCatalog": {
+      "title": "¿Cómo administro mis paquetes y servicios?",
+      "description": "Aquí defines lo que vende tu negocio: cada paquete o servicio con su duración, su precio y su capacidad. El agente de IA solo ofrece lo que está cargado y activo, así que sin al menos un paquete responde que no tiene nada para ofrecer.",
+      "tips": [
+        "Pulsa 'Nuevo servicio' y completa el nombre, la duración y el precio. Si no cobras un monto fijo, elige 'Es gratis' o 'Se cotiza según el caso'.",
+        "Un precio de ejemplo que trajo la receta de tu rubro no se dice en voz alta: confírmalo con 'Confirmar precio' o escribe el tuyo para que el agente pueda informarlo.",
+        "Desactiva un servicio en lugar de borrarlo si solo quieres dejar de ofrecerlo por un tiempo.",
+        "La capacidad de cada servicio limita cuántas reservas admite a la vez."
+      ]
+    },
+    "repairOrders": {
+      "title": "¿Cómo llevo las órdenes del taller?",
+      "description": "Cada orden sigue un vehículo desde la recepción hasta la entrega. Separa lo que el cliente reportó del diagnóstico técnico y guarda el estimado y la decisión del cliente con su evidencia. El agente puede abrir la recepción, pero el diagnóstico lo escribe siempre tu equipo.",
+      "tips": [
+        "Pulsa 'Nueva orden', elige el contacto y registra la placa o el VIN: uno de los dos es obligatorio para identificar el vehículo. Anota los síntomas tal como los cuenta el cliente.",
+        "El estado avanza así: Recepción, En diagnóstico/cotización, Esperando aprobación, Aprobada, En reparación, Lista para entregar y Entregada. También existen Estimado rechazado y Cancelada.",
+        "Al publicar el estimado, la orden queda esperando la aprobación del cliente. Usa 'Registrar aprobación' o 'Registrar rechazo' e indica cómo y cuándo respondió (por ejemplo, una llamada). El agente no puede cambiar el importe.",
+        "Los indicadores de arriba cuentan las órdenes abiertas, las que esperan aprobación, las listas para entregar y las entregadas en 30 días. Busca por placa, VIN, vehículo o motivo.",
+        "El historial de cada orden es inmutable: cada cambio queda registrado."
+      ]
+    },
+    "cases": {
+      "title": "¿Cómo veo los casos del estudio?",
+      "description": "Un caso es el expediente de un cliente: en qué etapa está y cuándo se movió por última vez. Se abre cuando una consulta avanza en el embudo, y el agente puede informar su estado por chat en cuanto existe.",
+      "tips": [
+        "Filtra por Abiertos, Cerrados o Todos; por defecto ves los abiertos.",
+        "Cada fila muestra la referencia, el cliente, la etapa y el último movimiento.",
+        "Usa 'Ver conversación' para abrir el chat con ese cliente.",
+        "Esta pantalla es de consulta: los casos se abren a partir del embudo."
+      ]
+    },
+    "resourceRentals": {
+      "title": "¿Cómo gestiono alquileres de vehículos y estadías de mascotas?",
+      "description": "Aquí operas las reservas de vehículos y de estadías de mascotas (hotel o guardería): revisas solicitudes, registras entregas, devoluciones, ingresos y salidas, y cancelas cuando hace falta. Según tu tipo de negocio verás el tipo de operación que te corresponde.",
+      "tips": [
+        "Filtra por tipo de operación y por estado: Pendiente de revisión, Reservada, Vehículo entregado o devuelto, Mascota ingresada o retirada, Rechazada o Cancelada.",
+        "Una solicitud de vehículo llega como 'Pendiente de revisión': valida los requisitos antes de reservarlo.",
+        "Cada fila ofrece solo las acciones que corresponden a su estado, como 'Entregar vehículo', 'Registrar devolución', 'Registrar ingreso' o 'Registrar salida'. 'Datos' abre el detalle.",
+        "Antes de crear una reserva configura los recursos: los vehículos en Vehículos, las mascotas en Mascotas y, para estadías, un servicio de Citas con categoría hotel o guardería y capacidad mayor a cero."
+      ]
+    },
+    "vehicles": {
+      "title": "¿Cómo gestiono el inventario de vehículos?",
+      "description": "Esta pantalla tiene el inventario de vehículos que el agente de IA muestra a los interesados y, en la pestaña Test drives, las pruebas de manejo agendadas. Mantén el estado de cada vehículo al día para que el agente no ofrezca uno ya vendido.",
+      "tips": [
+        "Pulsa 'Agregar vehículo' y completa marca y modelo (obligatorios), año, precio, kilometraje y descripción. Para cargar muchos de una vez usa la importación desde archivo.",
+        "Filtra por Disponibles, Reservados o Vendidos. El estado 'En taller' marca un vehículo en mantenimiento.",
+        "Al marcar un vehículo como vendido, la pantalla te pide confirmar el precio final de venta.",
+        "En la pestaña Test drives ves las últimas 100 pruebas de manejo. Las nuevas reservas usan la agenda de Citas; los registros antiguos se muestran como históricos."
       ]
     },
     "showMe": "Mostrarme cómo",

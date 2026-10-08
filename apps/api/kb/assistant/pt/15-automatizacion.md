@@ -89,7 +89,7 @@ Se você prefere não começar do zero, vá em **IA e crescimento → Modelos**:
 ## Horários: quando as mensagens automáticas são enviadas?
 
 - Os tempos de uma sequência ou de uma ação com espera contam a partir do evento que a disparou (ex.: "2 dias depois de capturar o lead").
-- O horário de funcionamento do seu negócio é configurado à parte, em **Configurações** → **Horário de Atendimento**. Lá você define os dias e horários de atendimento e a mensagem de fora do horário.
+- O horário de funcionamento do seu negócio é configurado à parte, em **Configurações** → **Horário de Atendimento**. Lá você define os dias e horários de atendimento e a mensagem de fora do horário. As regras que verificam o horário usam o mesmo horário que o agente nas conversas.
 - Na galeria de modelos, a categoria **Fora do horário** traz regras prontas para responder automaticamente quando escrevem para você fora do seu horário.
 
 ## Disponibilidade e capacidade

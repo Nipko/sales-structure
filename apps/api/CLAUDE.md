@@ -2,7 +2,7 @@
 _Actualizado: jul 2026_
 
 ## Overview
-NestJS 10 backend with 83 modules (folders in `src/modules/`). Port 3000. Global prefix: `/api/v1`.
+NestJS 10 backend with 101 `*.module.ts` files across 95 folders in `src/modules/` (2026-10-08 snapshot; recompute with `find apps/api/src -name "*.module.ts" | wc -l`). Port 3000. Global prefix: `/api/v1`.
 
 ## Module categories
 
@@ -34,7 +34,7 @@ NestJS 10 backend with 83 modules (folders in `src/modules/`). Port 3000. Global
 
 **AI**:
 - `ai/router/` — LLM Router. Task-based routing (conversation vs tool_calling) with ordered fallback chains. 4 tiers, 5 providers. Circuit breaker per provider (2min cooldown, Redis failure tracking). Plan-gated tier access (starter=tier_3+4, pro=tier_2+3+4, enterprise=all). Unified AI usage tracking
-- `ai/tool-executor.service.ts` — Executes tool calls from LLM. Emits `appointment.created` event on booking. Triggers calendar sync. Adds conversation context to calendar event description. Event summary format: "Service — Customer Name"
+- `conversations/ai-tool-executor.service.ts` — Executes tool calls from LLM. Emits `appointment.created` event on booking. Triggers calendar sync. Adds conversation context to calendar event description. Event summary format: "Service — Customer Name"
 - `ai/providers/` — OpenAI, Anthropic, Gemini, DeepSeek, xAI implementations
 - `persona/` — YAML/JSON config with versioning. REST API for dashboard. Default fallback for new tenants
 - `knowledge/` — RAG with pgvector + public KB portal endpoints
@@ -66,7 +66,7 @@ NestJS 10 backend with 83 modules (folders in `src/modules/`). Port 3000. Global
 - `offboarding/offboarding-cron.service.ts` — Trial expiry detector (*/30min), grace enforcer (3AM), archive cleaner (4AM), stale channel purge (5AM). All event emitters dedup via billing_events UNIQUE(provider, providerEventId)
 
 **Operations**:
-- `broadcast/` — Multi-channel campaigns (WA/Email/SMS), BullMQ (80msg/s rate limit), smart recipient resolution, per-channel stats
+- `broadcast/` — Campaigns (WhatsApp only in the self-service editor: `assertSelfServiceBroadcastChannels`; SMS is a retired product), BullMQ (80msg/s rate limit), smart recipient resolution, per-channel stats
 - `catalog/` — Products/courses/campaigns
 - `inventory/` — Stock management
 - `orders/` — Order tracking

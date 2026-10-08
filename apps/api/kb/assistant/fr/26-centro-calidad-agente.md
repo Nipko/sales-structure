@@ -84,8 +84,8 @@ connectées et lesquelles n'ont aucune connexion.
 
 Un troisième contrôle critique, à part, vise les affectations qui ne correspondent pas à un
 canal conversationnel certifié : **Portée opérationnelle du canal** rejette un agent
-affecté à un type de canal qui ne porte pas de conversations (par exemple le SMS, qui
-n'envoie que des notifications, ou l'e-mail, qui n'a pas aujourd'hui de configuration en
+affecté à un type de canal qui ne porte pas de conversations (par exemple le SMS, un produit
+retiré, ou l'e-mail, qui n'a pas aujourd'hui de configuration en
 libre-service certifiée). Le déconnecter ne suffit pas : décochez ce type dans l'éditeur de
 l'agent et ne laissez que des canaux certifiés — WhatsApp, Instagram, Messenger, Telegram
 ou le chat web.

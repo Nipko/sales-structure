@@ -1,5 +1,7 @@
 # Tanda de runtime WhatsApp — informe derivado
 
+> **Documento histórico (2026-09-10) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 **Rango exacto:** `584d15c3..e2d621b0` (18 commits nuevos en esta ejecución;
 `584d15c3` era el HEAD al emitir la instrucción).
 **Estado:** NO es cierre local. Quedan brechas locales enumeradas abajo.

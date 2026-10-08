@@ -1,5 +1,7 @@
 # Outbox durable de la salida normal, transporte estricto y recuperación
 
+> **Documento histórico (2026-09-08) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 8 de septiembre de 2026. Bloques 2 y 3 (parcial) del [plan de despacho de salida normal](../2026-09-07/normal-agent-dispatch-authority-plan.md), después de cerrar el bloque 6 (Web Chat) documentado [aquí](normal-widget-admission-and-handoff-receipt.md). Sin push, sin despliegue, sin llamadas a proveedores reales.
 
 ## Commits

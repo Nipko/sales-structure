@@ -110,6 +110,6 @@ Yes. Set up skills in your team's profiles (**Users** menu) for automatic routin
 It's not lost: the conversation reappears automatically on the date you chose and the full history is preserved.
 
 **Do SMS messages arrive in this inbox?**
-No. The inbox receives WhatsApp, Instagram, Messenger, Telegram, and your website chat. Text messages only go out as one-way notifications to your customers, or as alerts to your team; they do not open a conversation here.
+No. The inbox receives WhatsApp, Instagram, Messenger, Telegram, and your website chat. SMS is a retired product and does not open conversations here.
 
 Need more help? Write to us at https://parallly-chat.cloud/support

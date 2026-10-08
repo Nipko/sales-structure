@@ -1,5 +1,7 @@
 # La certificación deja de ser una constante
 
+> **Documento histórico (2026-09-08) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 8 de septiembre de 2026. Cierra la parte implementable de la [condición 2 de la directiva](../../handoffs/2026-09-08/claude-complete-plan-directive.md) y del punto 2 de la [revisión adversarial](../../handoffs/2026-09-08/claude-final-completion-review.md). Sin push, sin despliegue, sin llamadas a proveedores.
 
 ## Qué estaba mal

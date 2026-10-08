@@ -3,7 +3,7 @@
 _Última actualización: jul-2026_
 
 ## Overview
-Next.js 16 admin panel. Port 3001. React 19. App Router. Tailwind + shadcn/ui + CSS variables, temas dark/light/system vía next-themes. i18n next-intl (es/en/pt/fr). 126 páginas admin (139 `page.tsx` en total). Nota: la app mobile React Native/Expo (`@parallext/mobile`) es un proyecto aparte que sale por EAS, no por el deploy web.
+Next.js 16 admin panel. Port 3001. React 19. App Router. Tailwind + shadcn/ui + CSS variables, temas dark/light/system vía next-themes. i18n next-intl (es/en/pt/fr). 149 páginas admin (163 `page.tsx` en total, 2026-10-08). Nota: la app mobile React Native/Expo (`@parallext/mobile`) es un proyecto aparte que sale por EAS, no por el deploy web.
 
 ## Structure
 ```
@@ -17,7 +17,7 @@ src/
     forgot-password/page.tsx — Password reset (OTP + new password)
     setup-password/page.tsx  — Google OAuth password setup
     verify-email/page.tsx    — 6-digit OTP verification  
-    onboarding/page.tsx      — Wizard trial-first (3 pasos: empresa → audiencia → objetivos), vertical-aware (18 industrias + sub-tipos). Arranca trial plan "emprendedor" sin tarjeta; el upgrade vive en Configuración → Billing
+    onboarding/page.tsx      — Wizard trial-first (4 pasos: empresa → audiencia → objetivos → plan; `STEP_KEYS` en el archivo), vertical-aware (18 industrias seleccionables de 20 + tipos de negocio; ver `docs/business-types-catalog.md`). Arranca trial plan "emprendedor" sin tarjeta; el upgrade vive en Configuración → Billing
     accept-invite/page.tsx   — Aceptar invitación de usuario
     auth/                    — Callbacks OAuth (Google, etc.)
     book/                    — Reserva pública (booking sin auth)
@@ -97,7 +97,7 @@ src/
       coupons/           — Cupones de descuento
       feature-requests/  — Feature requests board (tenant + platform)
       carla/             — Copiloto interno super_admin
-      ... (126 páginas admin; 139 `page.tsx` en total)
+      ... (149 páginas admin; 163 `page.tsx` en total)
   components/
     layout/TopBar.tsx       — Breadcrumbs, theme toggle, notification bell (7 categories), tenant selector, user menu
     layout/AppSidebar.tsx — Navegación seccionada + capability-based. `tenantSections` (operation/growth/management/config) vs `platformSections` (super_admin platform mode). ~60 hrefs; items filtrados por capability y por vertical del tenant; accordions

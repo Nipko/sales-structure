@@ -1,5 +1,7 @@
 # El canario de certificación: preparado, con precio, sin ejecutar
 
+> **Documento histórico (2026-09-10) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 Antes de pedir autorización para la matriz completa —78.120 casos y entre
 US$258,80 y US$5.466,20 según el modelo— hay una pregunta más barata: **¿el
 ejecutor, el ledger, la guarda de presupuesto y el verificador sobreviven al

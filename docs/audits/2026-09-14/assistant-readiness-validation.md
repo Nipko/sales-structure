@@ -1,5 +1,7 @@
 # Validación de puesta en marcha, Calidad y Assist
 
+> **Documento histórico (2026-09-14) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 Fecha: 2026-09-14. Código revisado: `76d79a9a1b5c2fc2afc21402b2a0936c770dd3d8`.
 
 Actualización: los hallazgos siguientes documentan el diagnóstico **anterior a la corrección**. Se implementaron las correcciones de la sección final y el reproductor ahora verifica el comportamiento corregido.

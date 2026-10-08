@@ -10,7 +10,7 @@ keywords: ["appointments", "scheduling", "calendar", "book", "booking", "reserva
 
 Parallly comes with a full scheduling system: you define your services and hours once, and from then on your AI agent books appointments on its own inside the conversation, your team sees them on a shared calendar, and everything can sync with Google Calendar or Outlook.
 
-It all lives in the sidebar, under **Appointments**. When you open it you'll see the **Appointments & Scheduling** page with five tabs: **Calendar** (week or day view), **Agenda** (appointment list), **Services**, **Settings**, and **Analytics**. Settings are for admins and supervisors; agents can view the calendar, create appointments, and handle them.
+It all lives in the sidebar, under **Daily work → Appointments**. Depending on your business type the menu may call it **Schedule**, **Medical Schedule** or **Bookings**, and in some trades it does not appear because that business does not book appointments; it is the same screen. When you open it you'll see the **Appointments & Scheduling** page with five tabs: **Calendar** (week or day view), **Agenda** (appointment list), **Services**, **Settings**, and **Analytics**. Settings are for admins and supervisors; agents can view the calendar, create appointments, and handle them.
 
 ## How to create your services
 
@@ -93,9 +93,19 @@ In **Appointments** → **Settings** → **Reminders & follow-up** section you c
 
 WhatsApp reminders can use Meta-approved templates to attempt delivery outside the 24-hour window. Delivery is not guaranteed; it depends on the template and account status, Meta, and the recipient.
 
+The reminder goes out over the channel the customer used to talk to you: WhatsApp (with an approved template) or, if they wrote to you on Telegram, as a text message in that conversation; the 24-hour reminder can also be sent by email when the customer left an email address. If the customer has no way of being reached, nothing is sent.
+
+## What the Agenda shows and what happens to cancelled appointments
+
+- The **Agenda** tab lists the appointments of the last 30 days and the next 6 months, and says so in a note above the list. If there are more appointments than fit, the page warns that it shows only the first ones: use the **Calendar** to see a specific week.
+- On the **Calendar**, cancelled appointments are visible on the grid; the **Hide cancelled** button (which turns into **Show cancelled**) removes or restores them.
+- A cancelled appointment is read-only: it cannot be moved or edited. To book it again, create a new appointment.
+
 ## The AI books on its own in the conversation
 
 When a customer asks for an appointment over WhatsApp, Instagram, or any connected channel, the AI agent guides them step by step: first the service, then a date with real availability, then the time, and finally a confirmation. On that last step the system re-checks the slot, so two people can't end up with the same spot.
+
+The agent only creates or reschedules an appointment if it fits inside your **business hours** (the whole appointment, including the buffer between appointments) and does not fall on a **blocked date**. If the business has not configured hours yet, the agent cannot book: that is why it pays to save them under **Appointments** → **Settings**. In addition, if your business books against an object (a property, a pet or a vehicle), the appointment records which one: in a real-estate business with listings loaded the agent must name the property to book, and at veterinary clinics and dealerships it can name the pet or the vehicle. That detail appears in the description of the event in your external calendar.
 
 Once confirmed, everything happens on its own: the appointment lands on your **Calendar**, syncs with your Google Calendar or Outlook, the customer gets a confirmation email, the assigned team member is notified, and, if the service is online, the meeting link is included.
 

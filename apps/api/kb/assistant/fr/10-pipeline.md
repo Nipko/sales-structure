@@ -8,7 +8,7 @@ keywords: ["entonnoir", "pipeline", "tunnel de vente", "kanban", "étapes", "opp
 
 # Entonnoir de ventes (pipeline)
 
-L'entonnoir de ventes est votre tableau kanban d'opportunités : chaque carte est une affaire en cours liée à un contact, et les colonnes sont les étapes de votre processus de vente. Vous le trouvez dans la barre latérale, sous **Entonnoir de ventes**.
+L'entonnoir de ventes est votre tableau kanban d'opportunités : chaque carte est une affaire en cours liée à un contact, et les colonnes sont les étapes de votre processus de vente. Vous le trouvez dans la barre latérale, sous **Commercial → Entonnoir de ventes**. Selon votre type d'activité, le menu peut l'appeler **Opportunités**, **Négociations**, **Suivi** ou **Ventes** : c'est le même écran, et son titre suit le nom que vous voyez dans le menu.
 
 Pour éviter de dupliquer l'information, le tableau affiche **une carte par contact**, même si cette personne a plusieurs conversations avec vous.
 

@@ -1,5 +1,7 @@
 # E3 — Autoridad y admisión de la salida normal del agente
 
+> **Documento histórico (2026-09-07) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 Fecha: 2026-09-07. Estado: **integración de salida normal pendiente; prerrequisito de fuentes implementado por separado**. `54379f90` registra la [procedencia de aprendizaje y guard en la misma conexión](runtime-learning-footprint.md), con lectura integrada; la admisión todavía no tiene consumidores de mensajes ni outbox.
 
 Actualización del 8 de septiembre: `1f704ddc` incorpora retención/borrado de respuestas derivadas Widget; `735a0511`, colector acumulado y lector privado de procedencia histórica. Ambos bloques están validados por separado. La integración normal core/Gateway/store estuvo preservada como parche de seis archivos, sin activar, a la espera de un recibo canónico de handoff. [Traspaso para Claude, evidencia y recuperación del borrador](../../handoffs/2026-09-08/claude-execution-handoff.md).

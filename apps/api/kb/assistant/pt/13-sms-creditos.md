@@ -1,41 +1,26 @@
 ---
 id: sms-creditos
-title: "Créditos SMS e notificações por SMS"
+title: "SMS (produto descontinuado)"
 routes: ["/admin/settings/billing", "/admin/broadcast"]
 roles: ["tenant_admin", "tenant_supervisor"]
-keywords: ["sms", "creditos", "creditos sms", "pacote sms", "comprar creditos", "saldo sms", "recarga", "mensagens de texto", "notificacoes sms", "segmento", "campanhas sms", "lembretes sms", "saldo esgotado", "sms desabilitado", "texto para clientes"]
+keywords: ["sms", "creditos sms", "comprar creditos", "pacote sms", "saldo sms", "campanhas sms", "notificacoes sms", "lembretes sms", "mensagens de texto", "sms descontinuado", "sms indisponivel", "texto para clientes", "enviar sms"]
 ---
 
-# Créditos SMS e notificações por SMS
+# SMS (produto descontinuado)
 
-SMS é um recurso de **notificações de saída**, não um canal de conversa com o agente de IA. Disponibilidade, cobertura, identidade do remetente e forma de provisionar créditos dependem da integração habilitada para a conta e o país.
+O SMS **deixou de ser um produto do Parallly**: foi descontinuado por completo. Você não pode comprar créditos, não há pacotes nem saldo para recarregar, e o SMS não aparece como canal nem como opção de campanha. Ele também nunca serviu para falar com o agente de IA: nunca foi um canal de conversa.
 
-## Segmentos e consumo
+## O que muda para o seu negócio
 
-Um crédito representa um segmento de SMS. Texto simples geralmente comporta mais caracteres do que uma mensagem com certos símbolos ou emojis, e uma mensagem longa pode ser dividida em vários segmentos. O contador do editor é a referência antes do envio: revise a estimativa, pois a codificação do texto pode alterar o total.
+- **Créditos e compra**: a seção de créditos SMS não é oferecida e o servidor recusa qualquer tentativa de comprar ou ativar SMS. Se você vir um saldo de uma época anterior, fale com o suporte para saber o que fazer com ele; não espere poder gastá-lo.
+- **Campanhas**: o editor de **IA e crescimento → Campanhas** trabalha apenas com **WhatsApp**. Para chegar a um grupo de clientes, use um modelo de WhatsApp aprovado pela Meta (veja **Campanhas e disparo**).
+- **Lembretes e automações**: nenhuma ação envia SMS. Os lembretes de agendamento saem por WhatsApp ou Telegram, conforme o canal por onde o cliente escreveu, e, o de 24 horas, também por email quando o cliente deixou o endereço.
+- **Avisos para a sua equipe**: não espere receber avisos por SMS. Use as notificações do painel e do app móvel.
 
-## Saldo ou compra de créditos
+## O que não é SMS
 
-O administrador pode abrir **Administração → Plano e faturamento**. Se a seção **Créditos SMS** aparecer, ela mostra saldo, consumo e opções ativas. Quando existir uma ação de compra ou recarga, a página informa pacotes, preço, moeda, provedor, condições e confirmação; use somente esse fluxo seguro.
+Os códigos que chegam por SMS ou ligação ao registrar um número de WhatsApp são enviados pela Meta para verificar que o número é seu. Eles não passam pelo Parallly e não têm relação com o produto descontinuado.
 
-Se a seção ou o botão não aparecer, a compra não está habilitada para essa conta. Não presuma provedor, tipo de pagamento, crédito imediato ou regra de validade: a página e a confirmação da operação são a fonte atual.
+## Se alguém oferecer SMS pelo Parallly
 
-## Preparar um rascunho de campanha SMS
-
-Um administrador ou supervisor pode usar **IA e crescimento → Campanhas** quando SMS aparecer como opção:
-
-1. Crie a campanha e selecione **SMS**.
-2. Escreva o texto e revise a quantidade estimada de segmentos.
-3. Escolha um público autorizado e confirme o respeito aos opt-outs.
-4. Revise o resumo e salve o rascunho. Não envie nem agende para produção pelo editor atual: ele compartilha o fluxo de campanhas ainda não certificado e uma campanha agendada não tem ação de cancelamento. Consulte **Campanhas e disparo**.
-
-Lembretes e automações também podem consumir créditos quando a ação SMS está habilitada. Códigos de segurança enviados pela Parallly a usuários não fazem parte das campanhas da empresa.
-
-## Se SMS aparecer desabilitado
-
-- Se SMS não aparecer em **Campanhas**, o serviço não está disponível para essa conta, país ou configuração.
-- Se o saldo for insuficiente, o envio fica bloqueado; confira a página antes de tentar novamente.
-- O supervisor pode preparar ou operar campanhas permitidas, mas somente o administrador acessa faturamento ou uma compra habilitada.
-- Se uma operação confirmada não aparecer, atualize a página e fale com o suporte informando data e estado, sem compartilhar dados sensíveis de pagamento.
-
-O número ou identificador do remetente depende da integração e pode variar por país. Não prometa respostas recebidas por SMS a menos que a própria tela indique mensagens bidirecionais habilitadas.
+Não prometa SMS a um cliente nem à sua equipe. Se um contato precisa receber uma mensagem fora da janela de 24 horas do WhatsApp, o caminho é um modelo aprovado de WhatsApp; se precisar de outro caminho, consulte o suporte.

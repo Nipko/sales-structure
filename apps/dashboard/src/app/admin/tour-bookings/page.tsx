@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useTenant } from "@/contexts/TenantContext";
+import { HelpPanel } from "@/components/ui/help-panel";
 import { api } from "@/lib/api";
 import {
     Compass, RefreshCw, Loader2, Search, CalendarDays, Users, Bot, Hand,
@@ -54,6 +55,7 @@ const STATUS_STYLE: Record<string, string> = {
 
 export default function TourBookingsPage() {
     const t = useTranslations("tourBookings");
+    const tHelp = useTranslations("help");
     const tc = useTranslations("common");
     const { activeTenantId } = useTenant();
 
@@ -126,6 +128,13 @@ export default function TourBookingsPage() {
                     {tc("refresh")}
                 </button>
             </div>
+
+            <HelpPanel
+                title={tHelp("tourBookings.title")}
+                description={tHelp("tourBookings.description")}
+                tips={tHelp.raw("tourBookings.tips") as string[]}
+                mediaKey="tourBookings"
+            />
 
             <div className="flex flex-wrap items-center gap-2">
                 <div className="relative flex-1 min-w-[220px]">

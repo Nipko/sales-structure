@@ -1,5 +1,7 @@
 # Conocimiento administrado en evaluaciones
 
+> **Documento histórico (2026-09-07) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 La captura de Agent Test incorpora una referencia privada y sellada a una copia de conocimiento en PostgreSQL. El contexto RAG automático y `search_knowledge_base` seleccionan esa misma copia. Los argumentos del modelo y el DTO público no pueden sustituirla. Una referencia ausente, vencida, retirada o alterada impide continuar; no habilita una consulta al corpus operativo como alternativa.
 
 La copia conserva siete proyecciones revisadas, incluidas las fuentes de conflictos. El gestor reutiliza hasta cuatro espacios por tenant con propiedad exacta y referencias independientes. Cada espacio admite hasta 512 MiB de datos lógicos proyectados, sin truncar. Esto no constituye un límite de 2 GiB de disco físico ni una cuota comercial. Los índices y el almacenamiento tienen costes adicionales.

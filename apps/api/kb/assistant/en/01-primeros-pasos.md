@@ -128,7 +128,7 @@ Open **Administration → Plan & Billing** for current prices, currency, billing
 Yes, when your account has capacity available. Each connection uses its own agent; check the current allowance in **Plan & Billing**.
 
 **What about the SMS channel?**
-SMS is not a conversation channel: it's used to send notifications to your customers using credits (1 credit = 1 message segment).
+SMS no longer exists in Parallly: it is a retired product and was never a conversation channel. The agent's channels are WhatsApp, Instagram, Messenger, Telegram and web chat.
 
 **What is "your agent's link"?**
 It's a public page that exists from day 0, before you connect any channel, where anyone can chat with your agent just like a customer would. If your plan does not include web chat, it is for trying the agent and showing it to someone: the platform pays for its messages up to a per-account allowance, each page has a daily message cap, and the conversation doesn't go to a person. When the day's cap is reached, the chat itself says so and continues the next day; if the allowance runs out, the chat says it works again once the business turns on web chat. With a plan that includes web chat, the same link is a real channel: no daily cap, your plan's quota, and handoff to your team. Either way it doesn't count as a connected channel: the **Getting started** card keeps asking for a real channel (WhatsApp, Instagram, Messenger, Telegram, or your site's web chat).

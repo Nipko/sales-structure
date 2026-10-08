@@ -39,13 +39,19 @@ Fuentes primarias:
 
 ## Jerarquía canónica
 
-1. **Esenciales** — Inicio, Conversaciones y CRM.
-2. **IA y crecimiento** — Agente IA, Procedimientos, Conocimiento,
-   Automatización y Campañas.
-3. **Operación** — módulos habilitados por la vertical.
-4. **Insights** — Análisis y rendimiento.
-5. **Administración** — canales, usuarios, cumplimiento y facturación.
-6. **Zona estable del pie** — Ayuda, Novedades y Configuración.
+> **Actualizado el 2026-10-08.** La primera versión de este documento (ago-2026) describía seis grupos con una sección «Operación». Desde el 20–21 de agosto la barra lateral del negocio se divide en ocho grupos más Configuración; la fuente es `tenantSections` en `apps/dashboard/src/components/layout/AppSidebar.tsx` y los rótulos están en `nav.sections` de `apps/dashboard/messages/*.json`. Los nombres de ciertos ítems además cambian según el tipo de negocio (`sidebar.labelOverrides` en `vertical-definitions.ts`: el embudo puede leerse Oportunidades, Negociaciones, Seguimiento o Ventas; Citas puede leerse Agenda, Agenda médica, Reservas o Reservaciones).
+
+1. **Esenciales** — Inicio y Conversaciones.
+2. **Clientes** — CRM y Organizaciones.
+3. **Comercial** — Embudo de ventas y Ofertas.
+4. **Trabajo diario** — los registros que se atienden cada día: Citas y, según el tipo de negocio, reservas, pedidos, órdenes de taller, casos, clases, sesiones, membresías, etc. (`verticalItem` resuelto por `vertical-dashboard-resolver.ts`).
+5. **Catálogo y recursos** — lo que configura esos registros (propiedades, inmuebles, vehículos, menú, cursos, paquetes y servicios, inventario…); solo administradores y supervisores.
+6. **IA y crecimiento** — Agente IA, Procedimientos, Base de Conocimiento, Automatización y Campañas.
+7. **Insights** — Análisis, Ventas, Salud de agentes y Rendimiento de agentes.
+8. **Administración** — Canales, Usuarios, Privacidad/Compliance, Facturación y Mejoras.
+9. **Configuración** — al pie, para que siempre tenga una ubicación estable.
+
+La descripción de producto de estos grupos (con roles y planes) está en `docs/product-capabilities-reference.md`.
 
 Los grupos secundarios son plegables y recuerdan la preferencia. El grupo activo
 se abre automáticamente. El sidebar completo puede reducirse a rail en desktop;

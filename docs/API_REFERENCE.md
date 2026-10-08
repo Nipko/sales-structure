@@ -10,14 +10,14 @@
 > Base pública: `https://api.parallly-chat.cloud/api/v1`. El servicio WhatsApp (puerto 3002)
 > también usa `api/v1` bajo `https://wa.parallly-chat.cloud/api/v1`.
 
-> **Cobertura.** El API tiene **88 archivos `*.module.ts`** en `apps/api/src/modules`; este documento detalla
-> los ~28 más usados. Muchos módulos verticales (`restaurants`, `gyms`, `pets`, `education`,
+> **Cobertura.** El API tiene **101 archivos `*.module.ts`** y 132 controladores en `apps/api/src` (snapshot del 2026-10-08); este documento detalla
+> los módulos más usados y **no es exhaustivo**: faltan, por ejemplo, `whatsapp/spend` (gasto y admisión de WhatsApp), `platform-communications`, `billing-admin/coupons`, `billing/public`, `quality/.../regressions`, agent-release y `verticals/audit`. Para el inventario completo, `docs/modules-reference.md` y los controladores. Muchos módulos verticales (`restaurants`, `gyms`, `pets`, `education`,
 > `insurance`, `tours`, `photography`, `home-services`, `procedures`, `treatment-plans`,
 > `recall`, `policies`, `intake`, `faqs`, `reviews`, `attribution`, `crm-b2b`, `mcp`,
 > `vertical-integrations`, `vertical-analytics`, `simulation`, `slack`, `push`,
 > `trace`, `carla`, etc.) exponen endpoints propios no listados aquí. El dashboard (Next.js,
-> puerto 3001) tiene **144 páginas** (`page.tsx`): 131 bajo `/admin` y 13 fuera de ese árbol.
-> Estos conteos son un snapshot del filesystem, no un contrato de producto.
+> puerto 3001) tiene **163 páginas** (`page.tsx`): 149 bajo `/admin` y 14 fuera de ese árbol.
+> Estos conteos son un snapshot del filesystem, no un contrato de producto; se recalculan con `find apps/api/src -name "*.module.ts" | wc -l` y `find apps/dashboard/src/app -name page.tsx | wc -l`.
 
 ---
 
@@ -568,9 +568,9 @@ configuración autoservicio del canal Email.
 | POST | `/channels/email/inbound` | JSON + secret compartido en header (por defecto `X-Email-Webhook-Secret`) | — | Ingreso técnico de email para una integración previamente administrada |
 | GET | `/channels/email/config` | JWT + TenantGuard | Contexto tenant autenticado | Handler genérico `/:channelType/config`; devuelve instrucciones de webhook, no configuración ni credenciales del tenant |
 
-No existen handlers `GET`/`PUT /channels/email/config/:tenantId`. La pantalla
-`/admin/channels/email` intenta usar esas rutas, por lo que leer o guardar una
-configuración desde esa UI no está soportado ni certificado. El endpoint genérico
+No existen handlers `GET`/`PUT /channels/email/config/:tenantId`. Desde el 2026-08-25 la pantalla
+`/admin/channels/email` ya no intenta usar esas rutas: hace `redirect("/admin/channels")`, así que no hay
+configuración de Email desde la UI y no está soportada ni certificada. El endpoint genérico
 `POST /channels/:channelType/connect` tampoco configura el servicio Email de extremo
 a extremo y no debe documentarse como sustituto del contrato faltante.
 
@@ -713,9 +713,11 @@ general del tenant recibe señales de refresco, no el contenido sensible del hil
 
 ## Migraciones SQL
 
+> Las migraciones vigentes viven en `apps/api/prisma/migrations/` (113 entradas al 2026-10-08: siete archivos `.sql` numerados y el resto carpetas con marca de tiempo, `20260301000000_init` en adelante) y en `apps/api/prisma/tenant-schema.sql` para el esquema por tenant. La tabla de abajo es el arranque histórico de los archivos numerados, no la lista completa; `001_base_schema.sql` ya no existe.
+
 | # | Archivo | Tablas |
 |---|---------|--------|
-| 001 | `001_base_schema.sql` | conversations, contacts, messages |
+| 001 | `001_platform_settings.sql` | platform_settings |
 | 002 | `002_crm_agent_console.sql` | internal_notes, canned_responses, conversation_assignments |
 | 003 | `003_pipeline_automation.sql` | pipeline_stages, deals, automation_rules |
 | 004 | `004_csat_surveys.sql` | csat_surveys |

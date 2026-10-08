@@ -6,6 +6,7 @@ import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { useTranslations } from "next-intl";
 import { PageHeader } from "@/components/ui/page-header";
+import { HelpPanel } from "@/components/ui/help-panel";
 import {
     Car, Plus, X, Gauge, Fuel, Pencil, BadgeDollarSign, CalendarClock, Star,
     FileSpreadsheet,
@@ -124,6 +125,7 @@ function VehiclesWorkspace() {
     const t = useTranslations("vehicles");
     const tc = useTranslations("common");
     const tImport = useTranslations("bulkImport");
+    const tHelp = useTranslations("help");
 
     const [tab, setTab] = useState<"inventory" | "testDrives">("inventory");
     const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -211,6 +213,13 @@ function VehiclesWorkspace() {
                         </button>
                     </div>
                 }
+            />
+
+            <HelpPanel
+                title={tHelp("vehicles.title")}
+                description={tHelp("vehicles.description")}
+                tips={tHelp.raw("vehicles.tips") as string[]}
+                mediaKey="vehicles"
             />
 
             {/* Stats strip */}

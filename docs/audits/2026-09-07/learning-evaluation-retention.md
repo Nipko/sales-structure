@@ -1,5 +1,7 @@
 # Autoridad de fuentes y retiro de copias en evaluaciones de aprendizaje
 
+> **Documento histórico (2026-09-07) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 7 de septiembre de 2026. Cambios locales posteriores a `b6db0507`; sin commit, push, despliegue ni migración sobre tenants existentes. Continúa `learning-runtime-source-authority.md`.
 
 ## Problema y comportamiento

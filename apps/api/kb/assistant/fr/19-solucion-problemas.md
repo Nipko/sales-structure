@@ -69,8 +69,8 @@ Lorsqu'une ressource atteint son plafond (agents, contacts, campagnes, messages 
 
 ## Le rendez-vous n'apparaît pas dans mon calendrier
 
-1. Confirmez d'abord que le rendez-vous existe dans Parallly : ouvrez **Agenda** et cherchez-le dans l'onglet **Calendrier**. S'il ne s'y trouve pas, la réservation n'a pas été finalisée (le client n'a peut-être pas confirmé la dernière étape).
-2. Si le rendez-vous est dans Parallly mais pas dans votre Google Calendar ou Outlook, allez dans **Agenda → Paramètres → Calendriers connectés** et vérifiez que votre calendrier est toujours **connecté**. Si la connexion a expiré, appuyez sur **Reconnecter**.
+1. Confirmez d'abord que le rendez-vous existe dans Parallly : ouvrez **Rendez-vous** (dans certains métiers, le menu l'appelle **Agenda** ou **Réservations**) et cherchez-le dans l'onglet **Calendrier**. S'il ne s'y trouve pas, la réservation n'a pas été finalisée (le client n'a peut-être pas confirmé la dernière étape).
+2. Si le rendez-vous est dans Parallly mais pas dans votre Google Calendar ou Outlook, allez dans **Rendez-vous → Paramètres → Calendriers connectés** et vérifiez que votre calendrier est toujours **connecté**. Si la connexion a expiré, appuyez sur **Reconnecter**.
 3. Si vous avez **plusieurs calendriers connectés**, le rendez-vous a pu se synchroniser sur un autre : chaque rendez-vous va d'abord au calendrier assigné au **service**, sinon à celui du **professionnel** assigné, et à défaut au calendrier **général** de l'entreprise. Vérifiez ces affectations dans l'édition du service.
 4. La synchronisation est rapide mais pas toujours instantanée : attendez deux minutes et actualisez votre calendrier.
 

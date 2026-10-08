@@ -157,32 +157,36 @@ describe('a status question at the confirmation step keeps the pending confirmat
 describe('the executed-operation directive is never sent to the customer', () => {
     const INTERNAL = /NO se pudo completar|Motivo interno|Explícaselo|Confírmasela|Confirmala|usando estos datos|IMPORTANT/i;
 
-    async function pendingOrder(result: any, modelReply: string) {
+    /** A pending operation the customer just confirmed, executed by the SERVER; the model only voices the outcome. */
+    async function pendingOperation(tool: string, result: any, modelReply: string) {
         const h = fixture();
         await h.turn('hola');
         const base = h.f.toolExecutor.execute.getMockImplementation();
-        h.f.toolExecutor.execute.mockImplementation(async (...args: any[]) => (args[3] === 'place_order' ? result : base!(...args)));
-        h.f.toolExecutionControl.findPendingConfirmation.mockResolvedValueOnce({ toolName: 'place_order', ledgerId: 'ledger-1', args: { items: [{ sku: 'a', qty: 1 }] } });
+        h.f.toolExecutor.execute.mockImplementation(async (...args: any[]) => (args[3] === tool ? result : base!(...args)));
+        h.f.toolExecutionControl.findPendingConfirmation.mockResolvedValueOnce({ toolName: tool, ledgerId: 'ledger-1', args: { items: [{ sku: 'a', qty: 1 }] } });
+        h.f.llmRouter.execute.mockClear();
         h.f.llmRouter.execute.mockResolvedValue(answer(modelReply));
         const reply = (await h.turn('sí')).reply;
-        const ran = h.f.toolExecutor.execute.mock.calls.filter((call: any[]) => call[3] === 'place_order').length;
-        return { reply, ran };
+        const prompts = h.f.llmRouter.execute.mock.calls.map((call: any[]) => String(call[0].systemPrompt ?? ''));
+        return { reply, prompts };
     }
 
     it.each([
         '¡Listo, su pedido está confirmado!',
         'Estoy procesando su pedido. Le avisaré en cuanto esté lista.',
     ])('a failed operation and a model that claims or promises it: no internal text reaches the customer (%s)', async modelReply => {
-        const { reply, ran } = await pendingOrder({ success: false, error: 'out_of_stock', message: 'Sin stock del artículo a' }, modelReply);
-        expect(ran).toBe(1);
+        // create_order is not a published tool of this tenant: the server-side execution comes back denied, and the model
+        // is still told (in its instructions) that the operation could NOT be completed
+        const { reply, prompts } = await pendingOperation('create_order', { error: 'out_of_stock', message: 'Sin stock del artículo a' }, modelReply);
+        expect(prompts.some((prompt: string) => /NO se pudo completar/.test(prompt))).toBe(true);
         expect(reply).not.toMatch(INTERNAL);
         expect(reply).not.toBe(modelReply);
     });
 
     it('a done operation: the model voices it, and no instruction text is sent', async () => {
-        const { reply, ran } = await pendingOrder({ success: true, order: { id: 'o-1', total: 5000 } }, '¡Listo, su pedido quedó confirmado! El total es 5.000.');
-        expect(ran).toBe(1);
+        const { reply, prompts } = await pendingOperation('create_appointment', { success: true, appointment: { id: 'apt-77', status: 'confirmed' } }, '¡Listo, su cita quedó confirmada!');
+        expect(prompts.some((prompt: string) => prompt.includes('apt-77'))).toBe(true);
         expect(reply).not.toMatch(INTERNAL);
-        expect(reply).toContain('quedó confirmado');
+        expect(reply).toContain('quedó confirmada');
     });
 });

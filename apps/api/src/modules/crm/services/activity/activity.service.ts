@@ -1,6 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { RedisService } from '../../../redis/redis.service';
+import { optionalSection, resolveLeadReference } from '../lead-reference';
 
 @Injectable()
 export class ActivityService {
@@ -28,54 +29,47 @@ export class ActivityService {
     /**
      * Consolidated Activity Timeline for a Lead.
      * Merges: analytics_events, messages (via conversations), notes, tasks, stage_history
+     *
+     * `ref` is a lead id or a contact id (see `lead-reference.ts`). A contact with no lead
+     * still has a timeline: its events and messages. Every source is optional - one that a
+     * legacy tenant cannot serve is logged and left out, the rest of the timeline is served.
      */
-    async getTimeline(tenantId: string, leadId: string) {
+    async getTimeline(tenantId: string, ref: string) {
         const schema = await this.getTenantSchema(tenantId);
-        if (!schema) throw new Error('Tenant not found');
+        if (!schema) throw new NotFoundException({ error: 'tenant_not_found', message: 'Tenant not found' });
 
-        // Get lead contact_id for linking conversations
-        const lead = await this.prisma.executeInTenantSchema<any[]>(schema,
-            `SELECT id, contact_id, phone FROM leads WHERE id = $1::uuid LIMIT 1`,
-            [leadId]
-        );
-        if (!lead || lead.length === 0) throw new Error('Lead not found');
-        const contactId = lead[0].contact_id;
+        const { leadId, contactId } = await resolveLeadReference(this.prisma, schema, ref);
+        const read = (label: string, sql: string, params: any[]) =>
+            optionalSection<any[]>(label, [], () => this.prisma.executeInTenantSchema<any[]>(schema, sql, params));
 
         // Sequential queries to avoid PgBouncer transaction timeout from 5 parallel connections
-        const notes = await this.prisma.executeInTenantSchema<any[]>(schema,
+        const notes = leadId ? await read('notes',
             `SELECT 'note' as event_type, id, created_at, content as description, created_by as actor
              FROM notes WHERE lead_id = $1::uuid ORDER BY created_at DESC LIMIT 50`,
-            [leadId],
-        );
-        const tasks = await this.prisma.executeInTenantSchema<any[]>(schema,
+            [leadId]) : [];
+        const tasks = leadId ? await read('tasks',
             `SELECT 'task' as event_type, id, created_at, title as description, created_by as actor, status, due_at
              FROM tasks WHERE lead_id = $1::uuid ORDER BY created_at DESC LIMIT 50`,
-            [leadId],
-        );
-        const stageHistory = await this.prisma.executeInTenantSchema<any[]>(schema,
+            [leadId]) : [];
+        const stageHistory = leadId ? await read('stage_history',
             `SELECT 'stage_change' as event_type, id, created_at,
-                (from_stage || ' → ' || to_stage) as description, triggered_by as actor
+                (CASE WHEN from_stage IS NULL THEN to_stage ELSE from_stage || ' → ' || to_stage END) as description, triggered_by as actor
              FROM stage_history WHERE lead_id = $1::uuid ORDER BY created_at DESC LIMIT 50`,
-            [leadId],
-        );
-        const analyticsEvents = await this.prisma.executeInTenantSchema<any[]>(schema,
-            `SELECT 'event' as event_type, id, created_at, event_type as description, NULL as actor
+            [leadId]) : [];
+        const analyticsEvents = contactId ? await read('analytics_events',
+            `SELECT 'event' as event_type, id, created_at, event_type as description, NULL::text as actor
              FROM analytics_events WHERE contact_id = $1::uuid ORDER BY created_at DESC LIMIT 50`,
-            [contactId],
-        );
-        const messages = contactId
-            ? await this.prisma.executeInTenantSchema<any[]>(schema,
-                `SELECT 'message' as event_type, m.id, m.created_at,
-                    COALESCE(m.content_text, '[media]') as description, m.direction as actor
-                 FROM messages m
-                 JOIN conversations c ON c.id = m.conversation_id
-                 WHERE c.contact_id = $1::uuid
-                 ORDER BY m.created_at DESC LIMIT 30`,
-                [contactId],
-            )
-            : [];
+            [contactId]) : [];
+        const messages = contactId ? await read('messages',
+            `SELECT 'message' as event_type, m.id, m.created_at,
+                COALESCE(m.content_text, '[media]') as description, m.direction as actor
+             FROM messages m
+             JOIN conversations c ON c.id = m.conversation_id
+             WHERE c.contact_id = $1::uuid
+             ORDER BY m.created_at DESC LIMIT 30`,
+            [contactId]) : [];
 
-        const all = [...(notes || []), ...(tasks || []), ...(stageHistory || []), ...(analyticsEvents || []), ...(messages || [])];
+        const all = [...notes, ...tasks, ...stageHistory, ...analyticsEvents, ...messages];
         all.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
         return all.slice(0, 100);
     }

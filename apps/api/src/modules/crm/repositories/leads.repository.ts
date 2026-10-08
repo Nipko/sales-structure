@@ -1,10 +1,11 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../redis/redis.service';
 import { Lead } from '../interfaces/lead.interface';
 import { normalizePhoneE164 } from '../../../common/utils/phone.util';
 import { RegionalProfileService } from '../../tenants/regional-profile.service';
 import { PipelineService } from '../../pipeline/pipeline.service';
+import { optionalSection, resolveLeadReference } from '../services/lead-reference';
 import { isolatedEvalNamespaceForPrisma, type EvalNamespaceLease } from '../../simulation/isolated-eval-namespace';
 
 /**
@@ -215,12 +216,56 @@ export class LeadsRepository {
     };
   }
 
-  async getLead360(tenantId: string, leadId: string) {
+  /**
+   * Customer profile ("Ver cliente"). `ref` is a lead id OR a contact id (see
+   * `lead-reference.ts`: the inbox and the vertical modules link by contact).
+   *
+   * Never a 500 for a thin lead: only the lead row itself is mandatory. The enriched joins,
+   * opportunities and tags degrade to "nothing" (logged) when a legacy tenant cannot serve
+   * them. A contact that has no lead yet gets a read-only, contact-backed profile (`lead.id`
+   * is null, `resolved.kind` is 'contact_only') instead of an error.
+   */
+  async getLead360(tenantId: string, ref: string) {
     const schema = await this.getTenantSchema(tenantId);
-    if (!schema) throw new Error('Tenant not found');
+    if (!schema) throw new NotFoundException({ error: 'tenant_not_found', message: 'Tenant not found' });
 
-    const [leads, opportunities, tags] = await Promise.all([
-        this.prisma.executeInTenantSchema<any[]>(schema, `
+    const resolved = await resolveLeadReference(this.prisma, schema, ref);
+
+    if (!resolved.leadId) {
+      const contacts = await this.prisma.executeInTenantSchema<any[]>(schema,
+        `SELECT id, name, phone, phone_normalized, email, avatar_url, metadata, created_at, updated_at
+           FROM contacts WHERE id = $1::uuid LIMIT 1`,
+        [resolved.contactId]);
+      const contact = contacts?.[0];
+      if (!contact) throw new NotFoundException({ error: 'lead_not_found', message: 'Cliente no encontrado' });
+      const nameParts = String(contact.name || '').trim().split(/\s+/).filter(Boolean);
+      return {
+        lead: {
+          id: null,
+          contact_id: contact.id,
+          first_name: nameParts[0] || null,
+          last_name: nameParts.slice(1).join(' ') || null,
+          phone: contact.phone_normalized || contact.phone || null,
+          email: contact.email || null,
+          stage: null,
+          score: 0,
+          is_vip: false,
+          metadata: contact.metadata ?? {},
+          contact_name: contact.name || null,
+          contact_avatar: contact.avatar_url || null,
+          created_at: contact.created_at,
+          updated_at: contact.updated_at,
+        },
+        opportunities: [],
+        tags: [],
+        resolved,
+      };
+    }
+
+    const leadId = resolved.leadId;
+    // Sequential on purpose (see ActivityService.getTimeline): three parallel connections per
+    // page load is what PgBouncer's transaction timeout punishes.
+    let lead: any = (await optionalSection<any[]>('lead_joins', [], () => this.prisma.executeInTenantSchema<any[]>(schema, `
             SELECT l.*,
                 co.name as contact_name, co.avatar_url as contact_avatar,
                 c.name as company_name, c.industry as company_industry,
@@ -232,23 +277,23 @@ export class LeadsRepository {
             LEFT JOIN courses crs ON crs.id = l.course_id
             LEFT JOIN campaigns cam ON cam.id = l.campaign_id
             WHERE l.id = $1::uuid LIMIT 1`,
-            [leadId]
-        ),
-        this.prisma.executeInTenantSchema<any[]>(schema,
-            `SELECT o.*, crs.name as course_name FROM opportunities o
-             LEFT JOIN courses crs ON crs.id = o.course_id
-             WHERE o.lead_id = $1::uuid ORDER BY o.created_at DESC`,
-            [leadId]
-        ),
-        this.prisma.executeInTenantSchema<any[]>(schema,
-            `SELECT t.name, t.color FROM lead_tags lt JOIN tags t ON t.id = lt.tag_id WHERE lt.lead_id = $1::uuid`,
-            [leadId]
-        ),
-    ]);
+      [leadId])))[0];
+    if (!lead) {
+      // The enriched read failed or raced a delete: the bare row is still a valid profile.
+      lead = (await this.prisma.executeInTenantSchema<any[]>(schema,
+        `SELECT * FROM leads WHERE id = $1::uuid LIMIT 1`, [leadId]))?.[0];
+    }
+    if (!lead) throw new NotFoundException({ error: 'lead_not_found', message: 'Cliente no encontrado' });
 
-    const leadsArray = leads as any[];
-    if (!leadsArray || leadsArray.length === 0) throw new Error('Lead not found');
-    return { lead: leadsArray[0], opportunities, tags };
+    const opportunities = await optionalSection<any[]>('opportunities', [], () => this.prisma.executeInTenantSchema<any[]>(schema,
+      `SELECT o.*, crs.name as course_name FROM opportunities o
+         LEFT JOIN courses crs ON crs.id = o.course_id
+        WHERE o.lead_id = $1::uuid ORDER BY o.created_at DESC`,
+      [leadId]));
+    const tags = await optionalSection<any[]>('tags', [], () => this.prisma.executeInTenantSchema<any[]>(schema,
+      `SELECT t.name, t.color FROM lead_tags lt JOIN tags t ON t.id = lt.tag_id WHERE lt.lead_id = $1::uuid`,
+      [leadId]));
+    return { lead, opportunities, tags, resolved };
   }
 
   async getLeadById(tenantId: string, id: string): Promise<Lead | null> {

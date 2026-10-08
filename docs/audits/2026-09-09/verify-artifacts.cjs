@@ -36,6 +36,10 @@ const GENERATORS = [
     // artefact is what claims 20 verticals, 76 profiles and 268 tasks, and
     // nothing was checking that the claim still matched its sources.
     '2026-09-11/generate-tool-profile-audit.cjs',
+    // The one list of industries and business types, derived from the same
+    // registries. Seven documents had each counted them differently; this one
+    // is generated, so its count can only be wrong while this check is red.
+    '../../apps/api/scripts/business-types-catalog.cjs',
 ];
 
 function verify() {

@@ -1,6 +1,6 @@
 # Referencia de capacidades del producto
 
-_Estado documental: septiembre de 2026; comunicaciones y pagos de WhatsApp revisados el 30 de septiembre._
+_Estado documental: septiembre de 2026; comunicaciones y pagos de WhatsApp revisados el 30 de septiembre; industrias y tipos de negocio alineados con el catálogo generado el 8 de octubre._
 
 Esta referencia explica qué parte de Parallly puede esperar cada tipo de usuario y
 cómo se decide qué aparece en web y móvil. No es una promesa comercial ni una
@@ -16,10 +16,11 @@ indicados abajo.
 | Acceso por rol | `apps/dashboard/src/lib/roles.ts` y `navigation-access.ts` |
 | Orden del menú | `apps/dashboard/src/components/layout/AppSidebar.tsx` |
 | Hub de Configuración | `apps/dashboard/src/app/admin/settings/_settings-config.ts` |
-| Capacidades verticales | `packages/shared/src/vertical-capability-manifest.ts` |
-| Estado de certificación vertical | `packages/shared/src/vertical-product-policy.ts` |
+| Capacidades por industria y tipo de negocio | `packages/shared/src/vertical-capability-manifest.ts` |
+| Estado de certificación por industria | `packages/shared/src/vertical-product-policy.ts` |
+| Industrias y tipos de negocio (ids, nombres, disponibilidad, menú, herramientas) | [`docs/business-types-catalog.md`](business-types-catalog.md), generado desde el código |
 | Contrato efectivo por turno | `effective-capability.service.ts` + `turn-capability-composer.service.ts` |
-| Backlog vertical comprobable | endpoint `/verticals/audit/native-backlog` y ruta de plataforma `/admin/vertical-audit` |
+| Backlog comprobable por industria | endpoint `/verticals/audit/native-backlog` y ruta de plataforma `/admin/vertical-audit` |
 | Workspace móvil | `apps/mobile/src/lib/verticalWorkspace.ts` |
 | Acciones móviles por rol | `apps/mobile/src/lib/verticalOperationPolicy.ts` |
 | Límites y precios de planes | Filas activas de `billing_plans`; el seed solo es un valor inicial |
@@ -31,7 +32,7 @@ indicados abajo.
 | Superficie | Alcance |
 |------------|---------|
 | Web tenant | Configuración completa del negocio, canales, agentes IA, CRM, operación, analítica y facturación según rol/plan |
-| App móvil | Compañera operativa: inbox, CRM, pipeline, tareas, disponibilidad y workspace vertical seguro; no replica toda la administración web |
+| App móvil | Compañera operativa: inbox, CRM, pipeline, tareas, disponibilidad y workspace seguro del tipo de negocio; no replica toda la administración web |
 | Consola de plataforma | Operación cross-tenant para `super_admin`; separada de los workspaces tenant salvo impersonación explícita |
 | Comunicaciones de plataforma | `/admin/communications`: borradores de correo administrativo, selección de usuarios activos, vista previa de audiencia, prueba al operador y resultados de aceptación SMTP. Requiere migración/despliegue; no acredita entrega ni lectura. Ver [manual operativo](platform-communications.md). |
 | Portal público | Reserva, base de conocimiento y otras experiencias públicas habilitadas por el tenant |
@@ -208,7 +209,7 @@ El menú tenant prioriza el trabajo diario y agrupa los destinos en:
 
 `Ctrl/Cmd+K` abre la búsqueda global. Favoritos, recientes, breadcrumbs y atajos se
 filtran por el mismo contrato de acceso; no deben revelar rutas incompatibles con el
-rol o la vertical.
+rol o el tipo de negocio.
 
 ## Planes
 
@@ -218,48 +219,71 @@ valores mostrados en **Configuración → Facturación** son los aplicables a la
 Las tablas de seeds o documentos fechados son referencias de fábrica, no una fuente
 contractual de límites vigentes.
 
-## Matriz de verticales y perfiles de negocio
+## Matriz de industrias y tipos de negocio
 
-El contrato técnico contiene **20 industrias y 76 perfiles canónicos de negocio**. No
-son dos nombres para lo mismo: una vertical agrupa capacidades compartidas; cada perfil
+**Autoridad para los tipos de negocio:** [`docs/business-types-catalog.md`](business-types-catalog.md).
+Ese catálogo se **genera desde el código** (`node apps/api/scripts/business-types-catalog.cjs --write`)
+y el CI comprueba que coincida; lista cada tipo de negocio con su id, nombre,
+disponibilidad, modo de producto, menú, familias y herramientas del agente. Esta sección
+solo resume: si una cifra o una lista de aquí difiere del catálogo, manda el catálogo.
+
+Vocabulario: **industria** (en el código y en documentos antiguos, «vertical») es el
+sector; **tipo de negocio** (en el código, «subtipo» o «perfil») es la especialidad
+dentro de la industria. Son los dos selectores del alta, rotulados «Industria» y «Tipo
+de negocio».
+
+El contrato técnico contiene **20 industrias y 80 tipos de negocio canónicos** (72
+seleccionables y 8 en lista de espera), más 5 configuraciones que solo existen para
+cuentas anteriores (`legacy_only` o alias): 85 resolubles en total. No son dos nombres
+para lo mismo: una industria agrupa capacidades compartidas; cada tipo de negocio
 combina esa industria con un subtipo y decide qué herramientas, términos, rutas,
-readiness y límites corresponden. Hoy **18 industrias tienen al menos un perfil
-seleccionable**. `event_planning/weddings` y
-`construccion/contratista_general` permanecen en lista de espera y no se ofrecen en el
-alta. Además, cinco de las 18 industrias seleccionables contienen algún subtipo puntual
-en espera. El API entrega el catálogo completo con su disponibilidad para conservar a
-cuentas existentes; onboarding y creación administrativa filtran esa disponibilidad y
-el servidor vuelve a validarla al guardar.
+readiness y límites corresponden. Hoy **18 industrias tienen al menos un tipo
+seleccionable**. `event_planning/weddings` y `construccion/contratista_general`
+permanecen en lista de espera y no se ofrecen en el alta. Además, cinco de las 18
+industrias seleccionables (inmobiliaria, finanzas, retail, tecnología y seguros)
+contienen algún tipo puntual en espera: `inmobiliaria/promotora`,
+`finanzas/pagos_recaudos`, `retail/marketplace`, `technology/soporte_ti_msp`,
+`seguros/aseguradora` y `seguros/salud`. Los 5 tipos que solo existen para cuentas
+anteriores son `inmobiliaria/construccion`, `finanzas/fintech`,
+`technology/consultoria_ti`, `veterinaria/peluqueria_canina` (alias de
+`pet_services/peluqueria`) y `fotografia/wedding_planner`. El API entrega el catálogo
+completo con su disponibilidad para conservar a cuentas existentes; onboarding y
+creación administrativa filtran esa disponibilidad y el servidor vuelve a validarla al
+guardar.
 
-El estado de producto de los perfiles implementados sigue siendo
+El estado de producto de los tipos de negocio implementados sigue siendo
 **`implemented_not_certified`**: existe comportamiento respaldado por código, sin
 certificación E2E completa ni autorización para prometer paridad total con referentes
-del sector. La pantalla exacta depende del perfil, capacidades publicadas, rol y plan.
+del sector. La pantalla exacta depende del tipo de negocio, capacidades publicadas, rol
+y plan.
 
-| ID canónico | Nombre | Base funcional / operación principal |
-|-------------|--------|--------------------------------------|
+Resumen por industria (nombre tal como lo muestra el selector del alta). El detalle por
+tipo de negocio está en el catálogo.
+
+| ID de industria | Nombre | Base funcional / operación principal |
+|-----------------|--------|--------------------------------------|
 | `salud` | Salud | CRM, FAQs, agenda; tratamientos cuando la capacidad está habilitada |
-| `moda_belleza` | Moda y belleza | CRM, agenda o pedidos para subtipos de catálogo |
-| `inmobiliaria` | Inmobiliaria | CRM, agenda y listings |
-| `restaurantes` | Restaurantes | Menú, pedidos y reservas |
-| `automotriz` | Automotriz | Inventario vehicular; agenda, pedidos o alquiler según subtipo |
-| `turismo` | Turismo | Tours o estadías/propiedades según subtipo |
+| `moda_belleza` | Belleza y estética | CRM, agenda o pedidos para tipos de catálogo |
+| `inmobiliaria` | Inmobiliaria | CRM, agenda e inmuebles |
+| `restaurantes` | Restaurantes / Gastronomía | Menú, pedidos y reservas |
+| `automotriz` | Automotriz | Inventario vehicular; agenda, pedidos, órdenes de taller o alquiler según tipo de negocio |
+| `turismo` | Turismo | Tours o estadías/propiedades según tipo de negocio |
 | `education` | Educación | Cursos, cohortes e inscripciones |
-| `finanzas` | Finanzas | Preset horizontal de CRM, FAQs y agenda; sin decisiones financieras automatizadas |
+| `finanzas` | Finanzas / Banca | Preset horizontal de CRM, FAQs y agenda; sin decisiones financieras automatizadas |
 | `servicios_profesionales` | Servicios profesionales | CRM, FAQs, agenda y consulta de casos cuando esté publicada |
-| `retail` | Retail | Catálogo, inventario y pedidos |
+| `retail` | Retail / Comercio | Catálogo, inventario y pedidos |
 | `technology` | Tecnología | CRM y agenda; pedidos para hardware cuando corresponda |
 | `veterinaria` | Veterinaria | Agenda y fichas de mascotas |
-| `gimnasios` | Gimnasios | Membresías, clases y reservas |
+| `gimnasios` | Gimnasios y Fitness | Membresías, clases y reservas |
 | `seguros` | Seguros | Planes, cotizaciones, pólizas y reclamos con controles de rol |
 | `servicios_hogar` | Servicios del hogar | Solicitudes y despacho operativo |
-| `pet_services` | Servicios para mascotas | Agenda o hospedaje según subtipo |
-| `fotografia` | Fotografía | Sesiones fotográficas y seguimiento de entrega |
+| `pet_services` | Servicios para mascotas | Agenda o hospedaje según tipo de negocio |
+| `fotografia` | Fotografía / Eventos | Sesiones fotográficas y seguimiento de entrega |
 | `otro` | Otro | Fallback genérico de CRM, catálogo y pedidos |
 
-Las otras dos entradas del manifiesto son `event_planning` y `construccion`. Sus
-perfiles actuales son de lista de espera y publican únicamente el alcance horizontal
-seguro; no se cuentan entre las 18 opciones que una cuenta nueva puede elegir.
+Las otras dos entradas del registro son `event_planning` y `construccion`. Sus tipos
+actuales son de lista de espera y publican únicamente el alcance horizontal seguro; no
+se cuentan entre las 18 opciones que una cuenta nueva puede elegir.
 
 Para `turismo/hotel` y `turismo/alquiler_vacacional`, **Reservas** abre el registro
 directo `/admin/stays`; **Propiedades** es su catálogo. Si una unidad está vinculada
@@ -285,7 +309,7 @@ fail-closed con motivo y ruta de reparación hasta recibir evidencia real.
 ### Qué significa `implemented_not_certified`
 
 - Sí puede documentarse el flujo que existe y su ruta actual.
-- No debe afirmarse que la vertical está completa, certificada, regulatoriamente
+- No debe afirmarse que la industria está completa, certificada, regulatoriamente
   validada o que reemplaza todas las herramientas especializadas del sector.
 - Finanzas, tecnología y servicios profesionales operan como presets horizontales
   mientras no se implemente y certifique un ciclo de dominio más profundo.
@@ -306,9 +330,13 @@ una decisión de seguridad o de alcance de la app compañera.
 
 ## Mantenimiento
 
-Al cambiar navegación, roles, planes o verticales se deben revisar conjuntamente:
+Al cambiar navegación, roles, planes, industrias o tipos de negocio se deben revisar conjuntamente:
 
 1. Este documento y `docs/user-manual.md`.
 2. `docs/mobile-user-manual.md` si cambia la superficie móvil.
 3. `docs/API_REFERENCE.md` y `docs/modules-reference.md` si cambia API o inventario.
 4. La base runtime del asistente según `docs/platform-assistant-knowledge.md`.
+5. `docs/business-types-catalog.md` si cambian industrias, tipos de negocio, menú o
+   herramientas: no se edita a mano; se regenera con
+   `node apps/api/scripts/business-types-catalog.cjs --write` y el CI falla si queda
+   desactualizado.

@@ -27,13 +27,15 @@ import { PetsController } from '../../modules/pets/pets.controller';
 import { ResourceRentalsController } from '../../modules/resource-rentals/resource-rentals.controller';
 import { VehicleInventoryController } from '../../modules/verticals/vehicle-inventory.controller';
 
+type AnyClass = abstract new (...args: never[]) => unknown;
+
 /**
  * Same capability sets the dashboard uses to decide whether a vertical's page
  * is visible (CAPABILITY_ITEMS in vertical-dashboard-resolver.ts). If a
  * controller drifts from this table, a tenant that sees the page would get a
  * 403 from its API, or a tenant that must not reach it would pass.
  */
-const GUARDED: Array<[string, Function, VerticalCapability[]]> = [
+const GUARDED: Array<[string, AnyClass, VerticalCapability[]]> = [
     ['restaurants', RestaurantsController, ['restaurant_ordering']],
     ['gyms', GymsController, ['membership_management']],
     ['tours', ToursController, ['tour_booking']],
@@ -53,7 +55,7 @@ const GUARDED: Array<[string, Function, VerticalCapability[]]> = [
 describe('vertical endpoints check the tenant industry server-side', () => {
     it.each(GUARDED)('%s declares its capability and runs the guard', (_name, controller, capabilities) => {
         expect(Reflect.getMetadata(REQUIRE_VERTICAL_CAPABILITY_KEY, controller)).toEqual(capabilities);
-        const guards: Function[] = Reflect.getMetadata('__guards__', controller) ?? [];
+        const guards: AnyClass[] = Reflect.getMetadata('__guards__', controller) ?? [];
         expect(guards).toContain(VerticalCapabilityGuard);
     });
 

@@ -338,37 +338,65 @@ export function isBareWaitPromise(raw: string | null | undefined): boolean {
 }
 
 /**
- * «Estoy gestionando la confirmación de su cita… Le avisaré»: the reply says the work is under way and promises a
- * notification. A turn is question → answer and nothing sends a second message, so when no tool ran in it the
- * sentence is false whatever else the reply says (a date, a time or a service name in it does not make it true).
- * Unlike `isBareWaitPromise` this ignores digits, questions and length.
+ * «Estoy gestionando la confirmación de su cita… Le avisaré»: the reply says the booking/order work is under way, or
+ * that the customer will be told when it is done. A turn is question → answer and nothing sends a second message, so
+ * when no tool ran in it the sentence is false whatever else the reply says.
+ *
+ * It must stay narrow: «Le aviso que abrimos a las 9:00», «Le avisaremos por correo cuando su pedido se envíe» or
+ * «Estoy confirmando que tenemos disponibilidad» are plain information and must never be replaced. So a sentence only
+ * counts when it
+ *   - says work is under way («estoy gestionando») AND names an operation («la confirmación de su cita», «su reserva»),
+ *     and is not «estoy confirmando QUE …»; or
+ *   - promises to notify AND ties it to that pending work finishing («le aviso en cuanto esté lista», «once it is
+ *     confirmed»), without being about a payment, an order or stock.
+ * Each verb stands on a word boundary. Unlike `isBareWaitPromise` this ignores digits, questions and length.
  */
-const WORK_UNDER_WAY_OR_NOTIFY = new RegExp(
-    [
-        // es
-        'estoy (gestionando|procesando|confirmando|agendando|reservando|registrando|tramitando|realizando|trabajando en)',
-        '(te|le|les) (avisare|aviso|notificare|notifico|informare|escribire|confirmare en breve|contactare)',
-        'en breve (te|le|les) (aviso|confirmo|notifico|escribo|llega)',
-        'una vez (que )?(se )?(confirme|procese|complete|termine|registre)[^.!?]{0,60}(te|le|les) (aviso|notifico|escribo|informo)',
-        // en
-        "i(?:'|’)?ll (?:let you know|notify you|keep you posted|update you)",
-        'i will (?:let you know|notify you|keep you posted|update you)',
-        "i(?:'|’)?m (?:processing|booking|confirming|working on|handling|registering)",
-        'i am (?:processing|booking|confirming|working on|handling|registering)',
-        // pt
-        'vou (?:te |lhe )?(?:avisar|notificar|informar)',
-        '(?:avisarei|notificarei|informarei)',
-        'estou (?:processando|agendando|confirmando|reservando|gerenciando|registrando|tratando)',
-        // fr
-        'je (?:vous |te )?(?:previendrai|tiendrai informe|informerai|avertirai|notifierai)',
-        'je suis en train de (?:confirmer|reserver|traiter|enregistrer)',
-    ].join('|'),
-    'i',
-);
+const OPERATION_NOUN = '(?:cita|reserva|reservacion|turno|agendamiento|agenda|confirmacion|solicitud|registro|pedido|orden|pago|compra|'
+    + 'appointment|booking|reservation|order|payment|request|'
+    + 'agendamento|consulta|marcacao|pagamento|solicitacao|'
+    + 'rendez-vous|rendez vous|reservation|commande|paiement|demande)';
+
+const UNDER_WAY = [
+    // es
+    `\\bestoy (?:gestionando|procesando|confirmando|agendando|reservando|registrando|tramitando|realizando|trabajando en)\\b(?! que\\b)[^.!?]{0,60}\\b${OPERATION_NOUN}\\b`,
+    // en
+    `\\bi(?:'m| am) (?:processing|booking|confirming|working on|handling|registering|scheduling)\\b(?! that\\b)[^.!?]{0,60}\\b${OPERATION_NOUN}\\b`,
+    // pt
+    `\\bestou (?:processando|agendando|confirmando|reservando|gerenciando|registrando|tratando)\\b(?! que\\b)[^.!?]{0,60}\\b${OPERATION_NOUN}\\b`,
+    // fr
+    `\\bje suis en train de (?:confirmer|reserver|traiter|enregistrer)\\b[^.!?]{0,60}\\b${OPERATION_NOUN}\\b`,
+].map(source => new RegExp(source));
+
+const NOTIFY_PROMISE = new RegExp([
+    '\\b(?:te|le|les) (?:avisare|aviso|avisaremos|notificare|notifico|notificaremos|informare|escribire|escribo)\\b',
+    "\\bi(?:'ll| will) (?:let you know|notify you|keep you posted|update you|message you|tell you)\\b",
+    '\\b(?:vou|irei) (?:te |lhe )?(?:avisar|notificar|informar)\\b|\\b(?:avisarei|notificarei|informarei)\\b',
+    '\\bje (?:vous |te )?(?:previendrai|tiendrai informe|informerai|avertirai|notifierai)\\b',
+].join('|'));
+
+const WORK_FINISHED = new RegExp([
+    // es: «en cuanto esté lista», «apenas quede registrada», «una vez que se confirme»
+    '\\b(?:apenas|en cuanto|tan pronto(?: como)?|una vez(?: que)?|cuando)(?: ya)? (?:(?:este|quede|quedo|sea) (?:lista|listo|confirmada|confirmado|registrada|registrado|agendada|agendado|procesada|procesado|completada|completado|terminada|terminado|hecha|hecho)|se (?:confirme|procese|complete|registre|termine))\\b',
+    // en
+    "\\b(?:as soon as|once|when|after) (?:it(?:'s| is| has been| was)|this is|that is|everything is) (?:done|confirmed|ready|booked|registered|complete|completed|processed|finished)\\b",
+    // pt
+    '\\b(?:assim que|logo que|quando) (?:estiver|esteja|for|ficar) (?:pronto|pronta|confirmado|confirmada|registrado|registrada|agendado|agendada|concluido|concluida|processado|processada)\\b',
+    // fr
+    "\\b(?:des que|une fois que|lorsque|quand) (?:ce sera|c'est|cela sera|il sera|elle sera|tout sera) (?:pret|prete|confirme|confirmee|termine|terminee|enregistre|enregistree|fait)\\b",
+].join('|'));
+
+/** The notification is about something that is not the booking being worked on: shipping, a payment, stock, a price. */
+const NOT_THE_BOOKING = /\b(?:pago|pagos|pedido|pedidos|envio|despacho|compra|stock|inventario|precio|horario|factura|payment|order|shipping|delivery|price|invoice|pagamento|paiement|commande|livraison)\b/;
 
 export function promisesActionWithoutTool(text: string | null | undefined): boolean {
     if (!text) return false;
-    return WORK_UNDER_WAY_OR_NOTIFY.test(normalize(text).replace(/[’]/g, "'"));
+    const sentences = normalize(text).replace(/[’]/g, "'").split(/[.!?…\n]+/);
+    for (const sentence of sentences) {
+        if (!sentence.trim()) continue;
+        if (UNDER_WAY.some(pattern => pattern.test(sentence))) return true;
+        if (NOTIFY_PROMISE.test(sentence) && WORK_FINISHED.test(sentence) && !NOT_THE_BOOKING.test(sentence)) return true;
+    }
+    return false;
 }
 
 /**

@@ -940,6 +940,10 @@ export class HandoffService {
         actorId: string,
         actorRole: string,
     ): Promise<void> {
+        // The route's @Roles keeps super_admin out of plain tenant calls; an
+        // impersonating or platform super_admin that reaches here keeps the
+        // access it always had.
+        if (actorRole === 'super_admin') return;
         if (!['tenant_admin', 'tenant_supervisor', 'tenant_agent'].includes(actorRole)) {
             throw new ForbiddenException('Role cannot complete handoffs');
         }

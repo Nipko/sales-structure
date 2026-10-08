@@ -42,6 +42,13 @@ describe('POST /handoff/:id/complete is limited to the assigned agent or tenant 
         }
     });
 
+    it('keeps super_admin allowed, as before', async () => {
+        const { service } = buildService([{ assigned_to: ASSIGNED_AGENT }]);
+        await expect(service.assertCanCompleteHandoff(
+            TENANT_ID, CONVERSATION_ID, ADMIN, 'super_admin',
+        )).resolves.toBeUndefined();
+    });
+
     it('denies another agent completing a colleague\'s handoff', async () => {
         const { service } = buildService([{ assigned_to: ASSIGNED_AGENT }]);
         await expect(service.assertCanCompleteHandoff(

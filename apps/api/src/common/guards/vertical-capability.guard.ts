@@ -90,6 +90,11 @@ export function decideVerticalCapabilityAccess(input: {
 @Injectable()
 export class VerticalCapabilityGuard implements CanActivate {
     private readonly logger = new Logger(VerticalCapabilityGuard.name);
+    /** Tenants already reported as having an unrecognised industry (warn once, not per request). */
+    private readonly warnedTenants = new Set<string>();
+    /** Short-lived tenant lookup cache: vertical pages fire several calls in a row. */
+    private readonly tenantCache = new Map<string, { at: number; value: { industry: string; settings: unknown } | null }>();
+    static readonly TENANT_CACHE_TTL_MS = 60_000;
 
     constructor(
         private readonly reflector: Reflector,
@@ -117,10 +122,7 @@ export class VerticalCapabilityGuard implements CanActivate {
             });
         }
 
-        const tenant = await this.prisma.tenant.findUnique({
-            where: { id: tenantId },
-            select: { industry: true, settings: true },
-        });
+        const tenant = await this.loadTenant(tenantId);
         // No row: nothing to compare against. The handler's own tenant lookup
         // reports the missing tenant; this guard only rules on industries.
         if (!tenant) return true;
@@ -131,7 +133,8 @@ export class VerticalCapabilityGuard implements CanActivate {
             required,
         });
         if (decision.allowed) {
-            if (decision.reason === 'industry_unresolved') {
+            if (decision.reason === 'industry_unresolved' && !this.warnedTenants.has(tenantId)) {
+                this.warnedTenants.add(tenantId);
                 this.logger.warn(`Tenant ${tenantId} has an unrecognised industry; allowing ${required.join('|')} (legacy behaviour)`);
             }
             return true;
@@ -142,5 +145,18 @@ export class VerticalCapabilityGuard implements CanActivate {
             industry: decision.industry,
             message: 'Esta funcionalidad no está disponible para el rubro de tu negocio.',
         });
+    }
+
+    private async loadTenant(tenantId: string): Promise<{ industry: string; settings: unknown } | null> {
+        const now = Date.now();
+        const hit = this.tenantCache.get(tenantId);
+        if (hit && now - hit.at < VerticalCapabilityGuard.TENANT_CACHE_TTL_MS) return hit.value;
+        const value = await this.prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { industry: true, settings: true },
+        });
+        if (this.tenantCache.size > 500) this.tenantCache.clear();
+        this.tenantCache.set(tenantId, { at: now, value });
+        return value;
     }
 }

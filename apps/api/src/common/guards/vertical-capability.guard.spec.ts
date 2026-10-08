@@ -163,6 +163,16 @@ describe('vertical endpoints check the tenant industry server-side', () => {
             });
         });
 
+        it('caches the tenant lookup briefly and warns once per tenant about an unrecognised industry', async () => {
+            const { guard, context, prisma } = run({ industry: 'algo_viejo', required: ['repair_orders'] });
+            const warn = jest.spyOn((guard as any).logger, 'warn').mockImplementation(() => undefined);
+            await guard.canActivate(context);
+            await guard.canActivate(context);
+            await guard.canActivate(context);
+            expect(prisma.tenant.findUnique).toHaveBeenCalledTimes(1);
+            expect(warn).toHaveBeenCalledTimes(1);
+        });
+
         it('passes the right industry, super_admin, undecorated routes and a missing tenant row', async () => {
             const own = run({ industry: 'restaurantes', required: ['restaurant_ordering'] });
             await expect(own.guard.canActivate(own.context)).resolves.toBe(true);

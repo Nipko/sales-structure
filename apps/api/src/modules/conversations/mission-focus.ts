@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import { normalizeForIntent, type ConversationMissionFocusV1, type ConversationMissionRefV1, type MissionExecutionScopeV1 } from '@parallext/shared';
 import { isInformationSeekingMessage, isPauseMessage, isResumeMessage, normalizeCustomerIntent } from '../../common/conversation/intent-normalizer';
+import { isBookingStatusQuestion } from './booking-status-question';
 
 export interface MissionCandidate {
     ref: ConversationMissionRefV1;
@@ -166,9 +167,11 @@ export function arbitrateMissionFocus(input: {
         route = 'tools'; selected = null;
         if (['affirm', 'continue', 'acknowledge'].includes(dialogue.intent)) { route = 'clarify'; action = 'clarify'; }
         invalidate = true;
-    } else if (isInformationSeekingMessage(input.text)) {
+    } else if (isInformationSeekingMessage(input.text)
+        && !(current?.ref.kind === 'booking' && !current.paused && isBookingStatusQuestion(input.text))) {
         // A question is not an answer to a pending authorization challenge.
-        // Retain the task, but any later yes needs a new proposal.
+        // Retain the task, but any later yes needs a new proposal. The exception: «¿en qué quedó mi cita?» asks where the
+        // booking stands and changes nothing about the proposal, so the next yes still belongs to it.
         invalidate = true;
     }
     if (selected?.id !== state.selected?.id) invalidate = true;

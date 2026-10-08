@@ -39,6 +39,23 @@ describe('AutomationListenerService.isWithinBusinessHours', () => {
         at(WED_20); expect(await service.isWithinBusinessHours(config, 't1')).toBe(false);
     });
 
+    it('reads Monday (lun) and the closing-minute boundary', async () => {
+        const { service } = build(undefined);
+        const config = { hours: { timezone: TZ, schedule: { lun: { start: '08:00', end: '12:00' } } } };
+        at(new Date('2026-10-05T11:00:00-05:00')); expect(await service.isWithinBusinessHours(config, 't1')).toBe(true);
+        at(new Date('2026-10-05T12:00:00-05:00')); expect(await service.isWithinBusinessHours(config, 't1')).toBe(true);
+        at(new Date('2026-10-05T12:01:00-05:00')); expect(await service.isWithinBusinessHours(config, 't1')).toBe(false);
+        at(new Date('2026-10-06T11:00:00-05:00')); expect(await service.isWithinBusinessHours(config, 't1')).toBe(false);
+    });
+
+    it('honours an overnight agent window', async () => {
+        const { service } = build(undefined);
+        const config = { hours: { timezone: TZ, schedule: { lun: { start: '22:00', end: '02:00' } } } };
+        at(new Date('2026-10-05T23:00:00-05:00')); expect(await service.isWithinBusinessHours(config, 't1')).toBe(true);
+        at(new Date('2026-10-06T01:00:00-05:00')); expect(await service.isWithinBusinessHours(config, 't1')).toBe(true);
+        at(new Date('2026-10-06T03:00:00-05:00')); expect(await service.isWithinBusinessHours(config, 't1')).toBe(false);
+    });
+
     it('still reads English-abbreviated keys', async () => {
         const { service } = build(undefined);
         at(WED_15);

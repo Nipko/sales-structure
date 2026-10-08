@@ -216,8 +216,16 @@ function localClock(now: Date, timezone: string): { day: number; minutes: number
 function withinSchedule(schedule: unknown, timezone: string, fallbackTimezone: string, now: Date): boolean {
     let clock: { day: number; minutes: number };
     try { clock = localClock(now, timezone); } catch { clock = localClock(now, fallbackTimezone); }
-    const window = scheduleEntryWindow(scheduleEntryForDay(schedule, clock.day));
-    return !!window && clock.minutes >= window[0] && clock.minutes <= window[1];
+    const today = scheduleEntryWindow(scheduleEntryForDay(schedule, clock.day));
+    if (today) {
+        const [open, close] = today;
+        // Same-day window; or an overnight one (open > close, "22:00-02:00", "18:00-00:00"): its evening
+        // half belongs to today.
+        if (open <= close ? clock.minutes >= open && clock.minutes <= close : clock.minutes >= open) return true;
+    }
+    // The small-hours half of yesterday's overnight window belongs to yesterday's entry.
+    const yesterday = scheduleEntryWindow(scheduleEntryForDay(schedule, (clock.day + 6) % 7));
+    return !!yesterday && yesterday[0] > yesterday[1] && clock.minutes <= yesterday[1];
 }
 
 /**
@@ -228,7 +236,9 @@ function withinSchedule(schedule: unknown, timezone: string, fallbackTimezone: s
  *   2. else the agent's own schedule decides (7 days 00:00-23:59 is 24/7);
  *   3. else nothing is configured -> open.
  * The appointment agenda is not a source: it is bookable hours, not opening hours.
- * The end minute is inclusive (18:00 is still open at 18:00). Time zone: the source that decides, then
+ * The end minute is inclusive (18:00 is still open at 18:00). A window whose close is before its open
+ * is overnight: "22:00-02:00" is open Monday 23:00 and Tuesday 01:00 (Monday's entry); "18:00-00:00" ends at
+ * midnight; "24:00" is also read as midnight. Time zone: the source that decides, then
  * the other one, then `fallbackTimezone`.
  */
 export function isWithinOpeningHours(

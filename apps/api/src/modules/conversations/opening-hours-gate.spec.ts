@@ -92,6 +92,99 @@ describe('level 2: the agent schedule decides when the business record lists no 
     });
 });
 
+/** Bogota is UTC-5: a Bogota wall-clock time as an instant. */
+const bogota = (date: string, time: string) => new Date(`${date}T${time}:00-05:00`);
+
+describe('every weekday alias is read (Monday, not only the Wednesday/Sunday the other cases pin)', () => {
+    const MON = '2026-10-05';
+    it.each([
+        ['lun', { lun: { start: '08:00', end: '12:00' } }],
+        ['lunes', { lunes: { start: '08:00', end: '12:00' } }],
+        ['mon', { mon: { start: '08:00', end: '12:00' } }],
+        ['monday', { monday: { start: '08:00', end: '12:00' } }],
+    ])('agent key %s', (_alias, schedule) => {
+        const agent = { timezone: TZ, schedule };
+        expect(isWithinOpeningHours(null, agent, bogota(MON, '11:00'))).toBe(true);
+        expect(isWithinOpeningHours(null, agent, bogota(MON, '13:00'))).toBe(false);
+        // Another day of the same week is not Monday's entry.
+        expect(isWithinOpeningHours(null, agent, bogota('2026-10-06', '11:00'))).toBe(false);
+    });
+
+    it('business hours key monday', () => {
+        const week = business({ monday: { enabled: true, open: '08:00', close: '12:00' } });
+        expect(isWithinOpeningHours(week, undefined, bogota(MON, '11:00'))).toBe(true);
+        expect(isWithinOpeningHours(week, undefined, bogota(MON, '13:00'))).toBe(false);
+    });
+});
+
+describe('the closing minute is inclusive, the minute after is closed', () => {
+    const agent = { timezone: TZ, schedule: { mie: { start: '14:00', end: '18:00' } } };
+    it('opening and closing boundaries', () => {
+        expect(isWithinOpeningHours(null, agent, bogota('2026-10-07', '13:59'))).toBe(false);
+        expect(isWithinOpeningHours(null, agent, bogota('2026-10-07', '14:00'))).toBe(true);
+        expect(isWithinOpeningHours(null, agent, bogota('2026-10-07', '18:00'))).toBe(true);
+        expect(isWithinOpeningHours(null, agent, bogota('2026-10-07', '18:01'))).toBe(false);
+    });
+
+    it('business hours have the same boundary', () => {
+        const week = business({ wednesday: { enabled: true, open: '14:00', close: '18:00' } });
+        expect(isWithinOpeningHours(week, undefined, bogota('2026-10-07', '18:00'))).toBe(true);
+        expect(isWithinOpeningHours(week, undefined, bogota('2026-10-07', '18:01'))).toBe(false);
+    });
+});
+
+describe('overnight windows (close before open)', () => {
+    // Monday 2026-10-05 22:00 -> Tuesday 02:00. Tuesday has no entry of its own.
+    const night = { timezone: TZ, schedule: { lun: { start: '22:00', end: '02:00' } } };
+
+    it('22:00-02:00 is open Monday evening and Tuesday small hours, closed outside', () => {
+        expect(isWithinOpeningHours(null, night, bogota('2026-10-05', '21:59'))).toBe(false);
+        expect(isWithinOpeningHours(null, night, bogota('2026-10-05', '22:00'))).toBe(true);
+        expect(isWithinOpeningHours(null, night, bogota('2026-10-05', '23:00'))).toBe(true);
+        expect(isWithinOpeningHours(null, night, bogota('2026-10-06', '01:00'))).toBe(true);
+        expect(isWithinOpeningHours(null, night, bogota('2026-10-06', '02:00'))).toBe(true);
+        expect(isWithinOpeningHours(null, night, bogota('2026-10-06', '02:01'))).toBe(false);
+        expect(isWithinOpeningHours(null, night, bogota('2026-10-06', '12:00'))).toBe(false);
+    });
+
+    it('the small hours belong to the day that opened: Monday 01:00 is not Monday-night overflow', () => {
+        expect(isWithinOpeningHours(null, night, bogota('2026-10-05', '01:00'))).toBe(false);
+    });
+
+    it('a disabled day contributes no overflow', () => {
+        const off = { timezone: TZ, schedule: { lun: { enabled: false, start: '22:00', end: '02:00' } } };
+        expect(isWithinOpeningHours(null, off, bogota('2026-10-06', '01:00'))).toBe(false);
+        expect(isWithinOpeningHours(null, off, bogota('2026-10-05', '23:00'))).toBe(false);
+    });
+
+    it('the week wraps: Sunday night spills into Monday', () => {
+        const sunday = { timezone: TZ, schedule: { dom: { start: '22:00', end: '02:00' } } };
+        expect(isWithinOpeningHours(null, sunday, bogota('2026-10-05', '01:00'))).toBe(true); // Monday 01:00
+        expect(isWithinOpeningHours(null, sunday, bogota('2026-10-04', '23:00'))).toBe(true); // Sunday 23:00
+    });
+
+    it('works for business hours too', () => {
+        const week = business({ monday: { enabled: true, open: '22:00', close: '02:00' } });
+        expect(isWithinOpeningHours(week, undefined, bogota('2026-10-05', '23:00'))).toBe(true);
+        expect(isWithinOpeningHours(week, undefined, bogota('2026-10-06', '01:00'))).toBe(true);
+        expect(isWithinOpeningHours(week, undefined, bogota('2026-10-06', '03:00'))).toBe(false);
+    });
+
+    it.each(['00:00', '24:00'])('a close of %s means midnight: 18:00-%s is open at 23:30', (close) => {
+        const evening = { timezone: TZ, schedule: { lun: { start: '18:00', end: close } } };
+        expect(isWithinOpeningHours(null, evening, bogota('2026-10-05', '17:59'))).toBe(false);
+        expect(isWithinOpeningHours(null, evening, bogota('2026-10-05', '23:30'))).toBe(true);
+        expect(isWithinOpeningHours(null, evening, bogota('2026-10-05', '23:59'))).toBe(true);
+        expect(isWithinOpeningHours(null, evening, bogota('2026-10-06', '00:01'))).toBe(false);
+    });
+
+    it('a close of 00:00 includes the midnight minute itself, nothing after it', () => {
+        const evening = { timezone: TZ, schedule: { lun: { start: '18:00', end: '00:00' } } };
+        expect(isWithinOpeningHours(null, evening, bogota('2026-10-06', '00:00'))).toBe(true);
+        expect(isWithinOpeningHours(null, evening, bogota('2026-10-06', '00:01'))).toBe(false);
+    });
+});
+
 describe('level 3: nothing configured -> open', () => {
     it.each([
         ['nothing at all', undefined, undefined],

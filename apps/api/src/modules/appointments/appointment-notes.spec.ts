@@ -1,6 +1,7 @@
 import {
     buildAppointmentNotes,
     classifyContactPhone,
+    isPlatformIdChannel,
     normaliseNotesLanguage,
     truncateAtWord,
 } from './appointment-notes';
@@ -70,31 +71,67 @@ describe('appointment notes language', () => {
     });
 });
 
-describe('a platform id is never labelled as a phone', () => {
-    it('labels a bare Telegram user id as that id', () => {
-        const text = buildAppointmentNotes({ ...base, language: 'es', customerPhone: '1234567890', channelType: 'telegram' });
+describe('a platform id is never labelled as a phone, and a typed phone is never taken for an id', () => {
+    it('labels the contact\'s own Telegram user id as that id', () => {
+        const text = buildAppointmentNotes({
+            ...base, language: 'es', customerPhone: '1234567890', channelType: 'telegram', ownExternalId: '1234567890',
+        });
         expect(text).toContain('ID de Telegram: 1234567890');
         expect(text).not.toContain('Teléfono:');
         expect(text).not.toContain('Phone:');
     });
 
-    it('keeps a real phone, on any channel', () => {
-        expect(buildAppointmentNotes({ ...base, language: 'es', customerPhone: '+57 300 111 2233', channelType: 'telegram' }))
-            .toContain('Teléfono: +57 300 111 2233');
+    it.each([
+        ['webchat', '3001234567'],
+        ['telegram', '3001234567'],
+        ['instagram', '300 123 4567'],
+        ['web', '(601) 555 1234'],
+        ['messenger', '+57 300 123 4567'],
+    ])('keeps a phone typed on %s without a country code: %s', (channelType, typed) => {
+        // The contact's own id is some other value, so this is what the customer typed.
+        const text = buildAppointmentNotes({
+            ...base, language: 'es', customerPhone: typed, channelType, ownExternalId: '987654321',
+        });
+        expect(text).toContain(`Teléfono: ${typed}`);
+        expect(text).not.toMatch(/ID de /);
+        expect(classifyContactPhone(typed, channelType, '987654321')).toEqual({ phone: typed });
+        // Even when the lookup of the own id found nothing.
+        expect(classifyContactPhone(typed, channelType, null)).toEqual({ phone: typed });
+    });
+
+    it('never labels or stores an e-mail or free text as an id or a phone', () => {
+        expect(classifyContactPhone('juan@x.com', 'telegram', '1234567890')).toEqual({});
+        expect(classifyContactPhone('juan@x.com', 'telegram', null)).toEqual({});
+        const text = buildAppointmentNotes({
+            ...base, language: 'es', customerPhone: 'juan@x.com', channelType: 'telegram', ownExternalId: '1234567890',
+        });
+        expect(text).not.toMatch(/ID de|Teléfono:/);
+    });
+
+    it('keeps a real phone on a phone channel', () => {
         expect(buildAppointmentNotes({ ...base, language: 'en', customerPhone: '+573001112233', channelType: 'whatsapp' }))
             .toContain('Phone: +573001112233');
     });
 
     it('classifies what may be stored as the booking phone', () => {
-        expect(classifyContactPhone('1234567890', 'telegram')).toEqual({
+        expect(classifyContactPhone('1234567890', 'telegram', '1234567890')).toEqual({
             channelId: { channel: 'Telegram', value: '1234567890' },
         });
+        expect(classifyContactPhone('@juan', 'telegram', 'juan')).toEqual({
+            channelId: { channel: 'Telegram', value: '@juan' },
+        });
         expect(classifyContactPhone('3001112233', 'whatsapp')).toEqual({ phone: '3001112233' });
-        expect(classifyContactPhone('+57 300 111 2233', 'instagram')).toEqual({ phone: '+57 300 111 2233' });
         expect(classifyContactPhone('abc', 'whatsapp')).toEqual({});
         expect(classifyContactPhone('12', undefined)).toEqual({});
         expect(classifyContactPhone('', 'telegram')).toEqual({});
         expect(classifyContactPhone(undefined, 'telegram')).toEqual({});
+    });
+
+    it('only asks for the contact\'s own id on channels where it can be mistaken for a phone', () => {
+        expect(isPlatformIdChannel('telegram')).toBe(true);
+        expect(isPlatformIdChannel('WebChat')).toBe(true);
+        expect(isPlatformIdChannel('whatsapp')).toBe(false);
+        expect(isPlatformIdChannel(undefined)).toBe(false);
     });
 });
 

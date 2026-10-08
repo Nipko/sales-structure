@@ -1,6 +1,6 @@
 import { withRuntimeSchemaLock } from '../../common/utils/runtime-schema-lock';
 import { customerFacingPrice, servicePriceNote, servicePriceStatus } from '../appointments/service-price-status';
-import { buildAppointmentNotes, classifyContactPhone, normaliseNotesLanguage, type NotesLanguage } from '../appointments/appointment-notes';
+import { buildAppointmentNotes, classifyContactPhone, isPlatformIdChannel, normaliseNotesLanguage, type NotesLanguage } from '../appointments/appointment-notes';
 import { enrollmentTermsHash, enrollmentTermsReviewResult } from '../education/enrollment-terms';
 import { LLMSourceAuthorityUnavailable } from '../ai/interfaces/llm-source-authority';
 import { appointmentVehicleId, vehicleAppointmentTerms, vehicleAppointmentBusyIntervals, VehicleAppointmentError, type VehicleAppointmentTerms } from '../appointments/vehicle-appointment-capacity';
@@ -3431,6 +3431,19 @@ export class AIToolExecutorService {
         return null;
     }
 
+    /** The contact's own user id on the channel it writes from (null when unknown). */
+    private async getContactExternalId(schema: string, contactId: string, channelType?: string): Promise<string | null> {
+        try {
+            const rows: any[] = await this.prisma.$queryRawUnsafe(
+                `SELECT external_id FROM "${schema}".contacts WHERE id = $1::uuid AND channel_type = $2 LIMIT 1`,
+                contactId, channelType,
+            );
+            return rows?.[0]?.external_id ? String(rows[0].external_id) : null;
+        } catch {
+            return null;
+        }
+    }
+
     /** Language the owner reads appointment notes in: the tenant's, Spanish if unknown. */
     private async getTenantNotesLanguage(tenantId: string): Promise<NotesLanguage> {
         try {
@@ -3543,12 +3556,19 @@ export class AIToolExecutorService {
             }
         }
         const priceStatus = servicePriceStatus(svc);
+        // A value is the platform user id only when it IS the contact's own
+        // external id on that channel; a phone typed in a Telegram or web chat
+        // is a phone. The lookup only happens where the question can arise.
+        const ownExternalId = args.customerPhone && isPlatformIdChannel(channelType)
+            ? await this.getContactExternalId(schema, contactId, channelType)
+            : null;
         const description = buildAppointmentNotes({
             language: await this.getTenantNotesLanguage(tenantId),
             customerName: args.customerName,
             customerEmail: args.customerEmail,
             customerPhone: args.customerPhone,
             channelType,
+            ownExternalId,
             serviceName: svc.name,
             priceStatus,
             priceText: svc.price ? [Number(svc.price).toLocaleString(), svc.currency].filter(Boolean).join(' ') : null,
@@ -3558,7 +3578,7 @@ export class AIToolExecutorService {
             notes: args.notes,
         });
         // Only a dialable number is stored as the customer's phone.
-        const bookingPhone = classifyContactPhone(args.customerPhone, channelType).phone;
+        const bookingPhone = classifyContactPhone(args.customerPhone, channelType, ownExternalId).phone;
         const isOnline = svc.location_type === 'online';
         const location = svc.location_type === 'in_person' && svc.location_address
             ? svc.location_address

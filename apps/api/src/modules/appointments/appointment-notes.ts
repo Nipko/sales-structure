@@ -63,9 +63,11 @@ export function normaliseNotesLanguage(raw: unknown): NotesLanguage {
 }
 
 /**
- * Channels whose user identifier is a platform id, not a phone number. A bare
- * number that arrives on one of them is that id, however much it looks like a
- * phone: a Telegram user id is eight to ten digits.
+ * Channels whose user identifier is a platform id, not a phone number. A
+ * Telegram user id is eight to ten digits and looks like a phone, so on these
+ * channels a value is only the id when it IS the contact's own id for the
+ * channel (see `classifyContactPhone`): customers type their phone there too,
+ * usually without a "+", and those are phones.
  */
 const PLATFORM_ID_CHANNELS: Readonly<Record<string, string>> = Object.freeze({
     telegram: 'Telegram',
@@ -86,23 +88,37 @@ export interface ClassifiedContactPoint {
 /**
  * Decide whether the "phone" the model supplied is a phone.
  *
- * Without a leading "+" on a platform-id channel it is the channel's user id.
- * On any channel, something that is not plausibly a phone number (7-15 digits,
- * ordinary separators) is not stored as one.
+ * The value is the channel's user id ONLY when it equals the contact's own
+ * external id for a platform-id channel (`ownExternalId`). Anything else that
+ * is plausibly a phone number (optional "+", digits, spaces, parentheses,
+ * dashes, 7-15 digits) is a phone, with or without country code. A value that
+ * is neither (an e-mail, free text) is dropped: it is never labelled as an id
+ * and never stored as a phone.
  */
 export function classifyContactPhone(
     value: string | null | undefined,
     channelType?: string | null,
+    ownExternalId?: string | null,
 ): ClassifiedContactPoint {
     const raw = (value ?? '').trim();
     if (!raw) return {};
     const channel = PLATFORM_ID_CHANNELS[(channelType ?? '').trim().toLowerCase()];
-    const digits = raw.replace(/\D/g, '');
-    const plausible = /^\+?[\d\s().-]+$/.test(raw) && digits.length >= 7 && digits.length <= 15;
-    if (channel && !(raw.startsWith('+') && plausible)) {
+    if (channel && ownExternalId && sameIdentifier(raw, ownExternalId)) {
         return { channelId: { channel, value: raw } };
     }
+    const digits = raw.replace(/\D/g, '');
+    const plausible = /^\+?[\d\s().-]+$/.test(raw) && digits.length >= 7 && digits.length <= 15;
     return plausible ? { phone: raw } : {};
+}
+
+/** Whether the channel's user id is one a lookup against the contact is needed for. */
+export function isPlatformIdChannel(channelType?: string | null): boolean {
+    return Boolean(PLATFORM_ID_CHANNELS[(channelType ?? '').trim().toLowerCase()]);
+}
+
+function sameIdentifier(a: string, b: string): boolean {
+    const clean = (s: string) => s.trim().replace(/^@/, '').toLowerCase();
+    return clean(a) === clean(b);
 }
 
 /** Cut at a word boundary, so a note never ends in the middle of a word. */
@@ -120,6 +136,8 @@ export interface AppointmentNotesInput {
     customerEmail?: string | null;
     customerPhone?: string | null;
     channelType?: string | null;
+    /** The contact's own external id on that channel, to tell the platform id from a typed phone. */
+    ownExternalId?: string | null;
     serviceName: string;
     /** 'confirmed' prints `priceText`; 'quote' and anything else print a sentence instead of a number. */
     priceStatus: 'confirmed' | 'quote' | string;
@@ -136,7 +154,7 @@ export function buildAppointmentNotes(input: AppointmentNotesInput): string {
     const d = DICTIONARY[normaliseNotesLanguage(input.language)];
     const lines: string[] = [`${d.customer}: ${input.customerName}`];
     if (input.customerEmail) lines.push(`${d.email}: ${input.customerEmail}`);
-    const contact = classifyContactPhone(input.customerPhone, input.channelType);
+    const contact = classifyContactPhone(input.customerPhone, input.channelType, input.ownExternalId);
     if (contact.phone) lines.push(`${d.phone}: ${contact.phone}`);
     if (contact.channelId) {
         lines.push(`${d.channelId.replace('{channel}', contact.channelId.channel)}: ${contact.channelId.value}`);

@@ -712,6 +712,20 @@ export function isCancellationTool(name: unknown): boolean {
     return typeof name === 'string' && /^cancel_[a-z_]+$/.test(name) && !!TOOL_POLICY_REGISTRY[name];
 }
 
+const APPOINTMENT_LIKE = new Set(['cancel_appointment', 'cancel_property_booking', 'cancel_tour_booking', 'cancel_class_booking', 'cancel_photo_session']);
+const ORDER_LIKE = new Set(['cancel_catalog_order', 'cancel_order']);
+
+/**
+ * What a pending proposal is, for the verbs that may answer it («sí, cancélala» for a cancellation, «sí, muévela» for a
+ * reschedule) and the object it is about. Undefined for every other tool: no extra verb authorises anything there.
+ */
+export function pendingActionForTool(name: unknown): { verb: 'cancel' | 'reschedule'; object: 'order' | 'appointment' | 'other' } | undefined {
+    if (typeof name !== 'string') return undefined;
+    if (isCancellationTool(name)) return { verb: 'cancel', object: APPOINTMENT_LIKE.has(name) ? 'appointment' : ORDER_LIKE.has(name) ? 'order' : 'other' };
+    if (/^reschedule_[a-z_]+$/.test(name) && TOOL_POLICY_REGISTRY[name]) return { verb: 'reschedule', object: 'appointment' };
+    return undefined;
+}
+
 /**
  * Si esta tool puede publicarse y ejecutarse cuando el negocio no puede
  * comprometerse — perfil `stop`, rol que no opera, canal que no cierra

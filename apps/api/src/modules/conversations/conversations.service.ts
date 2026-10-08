@@ -91,6 +91,7 @@ import {
     auditTurnClaim,
     claimsCompletedAction,
     promisesHumanHandoff,
+    offersHumanHandoff,
     promisesLaterDelivery,
     promisesActionWithoutTool,
     isBareWaitPromise,
@@ -5034,7 +5035,7 @@ export class ConversationsService {
                 finalResponse = withPolicyPersonOffer(finalResponse, userLanguage);
             }
             // An open booking summary must not take the "yes" that answers an offer of a person.
-            if (!draftMode && containsHumanOffer(finalResponse) && bookingState.step && !['idle', 'booked'].includes(bookingState.step)) {
+            if (!draftMode && (containsHumanOffer(finalResponse) || offersHumanHandoff(finalResponse)) && bookingState.step && !['idle', 'booked'].includes(bookingState.step)) {
                 bookingState.personOfferedAt = new Date().toISOString();
                 await this.persistBookingState(schemaName, conversation.id, bookingState, session);
             }

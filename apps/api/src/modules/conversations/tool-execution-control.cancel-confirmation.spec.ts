@@ -98,3 +98,66 @@ describe('the strength the pending action already requires is unchanged', () => 
         }
     });
 });
+
+describe('a confirmation that names ANOTHER object is not consent', () => {
+    const ORDER_YES = ['sí, cancela el pedido', 'sí, cancélalo, el pedido', 'sí, cancela la orden', 'yes, cancel the order', 'sí, cancela mi pedido', 'sí, cancelar la compra'];
+    const APPOINTMENT_YES = ['sí, cancela la cita', 'sí, cancela mi cita', 'sí, cancela el turno', 'yes, cancel the appointment', 'sí, cancela la reserva', 'sí, cancelar la cita'];
+
+    it.each(ORDER_YES)('"%s" does NOT confirm a pending cancel_appointment', async reply => {
+        expect(await pendingFor('cancel_appointment', { appointmentId: 'apt-1' })(reply)).toBeNull();
+        expect(classifyExplicitToolConfirmation(reply, { effect: 'transactional', pendingTool: 'cancel_appointment' })).not.toBe('confirmed');
+        expect(classifyExplicitToolConfirmation(reply, { effect: 'high_impact', pendingTool: 'cancel_appointment' })).not.toBe('confirmed');
+    });
+    it.each(APPOINTMENT_YES)('"%s" does NOT confirm a pending cancel_catalog_order', async reply => {
+        expect(await pendingFor('cancel_catalog_order', { orderId: 'ord-1' })(reply)).toBeNull();
+        expect(await pendingFor('cancel_order', { orderId: 'ord-1' })(reply)).toBeNull();
+    });
+    it.each(ORDER_YES)('"%s" still confirms a pending cancel_catalog_order', async reply => {
+        expect(await pendingFor('cancel_catalog_order', { orderId: 'ord-1' })(reply)).toMatchObject({ toolName: 'cancel_catalog_order' });
+    });
+    it.each(APPOINTMENT_YES)('"%s" still confirms a pending cancel_appointment', async reply => {
+        expect(await pendingFor('cancel_appointment', { appointmentId: 'apt-1' })(reply)).toMatchObject({ toolName: 'cancel_appointment' });
+    });
+    it('a bare yes naming the wrong object is not consent either, and the generic noun fits both', async () => {
+        expect(await pendingFor('cancel_appointment', { appointmentId: 'apt-1' })('sí, el pedido')).toBeNull();
+        expect(await pendingFor('cancel_catalog_order', { orderId: 'ord-1' })('sí, la cita')).toBeNull();
+        expect(await pendingFor('cancel_appointment', { appointmentId: 'apt-1' })('sí, cancela la operación')).toMatchObject({ toolName: 'cancel_appointment' });
+        expect(await pendingFor('cancel_catalog_order', { orderId: 'ord-1' })('sí, cancela la operación')).toMatchObject({ toolName: 'cancel_catalog_order' });
+    });
+    it('a mismatch is "unclear" (ask which), not a rejection of the pending cancellation', () => {
+        expect(classifyExplicitToolConfirmation('sí, cancela el pedido', { effect: 'transactional', pendingTool: 'cancel_appointment' })).toBe('unclear');
+    });
+});
+
+const RESCHEDULE_YES = ['sí, muévela', 'sí, cámbiala', 'sí, reprográmala', 'si, reprogramala', 'sí, reagéndala', 'sí, mueve la cita', 'sí, reprograma mi cita', 'yes, move it', 'yes, reschedule it', 'sim, pode remarcar', 'oui, déplacez-la'.replace('-la', ' la')];
+
+describe('«sí + reschedule verb» answers a pending reschedule, gated on the pending tool like the cancel verbs', () => {
+    it.each(RESCHEDULE_YES)('"%s" confirms a pending reschedule_appointment', async reply => {
+        expect(await pendingFor('reschedule_appointment', { appointmentId: 'apt-1', date: '2027-01-08' })(reply)).toMatchObject({ toolName: 'reschedule_appointment' });
+    });
+    it.each(['sí, muévela mañana', 'sí, muévela pero a las 5', 'no, muévela', 'muévela', 'sí, muévela y cancela la otra', 'sí, mueve el pedido', '¿sí, la muevo?'])('"%s" confirms nothing', async reply => {
+        expect(await pendingFor('reschedule_appointment', { appointmentId: 'apt-1' })(reply)).toBeNull();
+    });
+    it.each(RESCHEDULE_YES)('"%s" authorises NOTHING for any other pending effect', async reply => {
+        for (const [tool, args] of [['create_payment_link', { amount: 5000 }], ['cancel_appointment', { appointmentId: 'apt-1' }], ['place_catalog_order', { items: [] }],
+            ['send_product_image', { sku: 'a' }], ['create_appointment', { serviceId: 's' }]] as Array<[string, Record<string, unknown>]>) {
+            expect(await pendingFor(tool, args)(reply)).toBeNull();
+        }
+    });
+    it('the cancel verbs do not confirm a pending reschedule', async () => {
+        for (const reply of CANCEL_YES) expect(await pendingFor('reschedule_appointment', { appointmentId: 'apt-1' })(reply)).toBeNull();
+    });
+    it('the strength is the bare opener\'s: «ok, muévela» is as unclear as «ok» for a high-impact effect', () => {
+        const opts = { pendingTool: 'reschedule_appointment' };
+        expect(classifyExplicitToolConfirmation('ok, muévela', { ...opts, effect: 'high_impact' })).toBe('unclear');
+        expect(classifyExplicitToolConfirmation('dale, reprográmala', { ...opts, effect: 'high_impact' })).toBe('unclear');
+        expect(classifyExplicitToolConfirmation('sí, reprográmala', { ...opts, effect: 'high_impact' })).toBe('confirmed');
+        expect(classifyExplicitToolConfirmation('ok, muévela', { ...opts, effect: 'transactional' })).toBe(classifyExplicitToolConfirmation('ok', { ...opts, effect: 'transactional' }));
+    });
+    it('without the pending reschedule the phrase is not consent at any strength', () => {
+        for (const effect of ['high_impact', 'transactional'] as const) {
+            expect(classifyExplicitToolConfirmation('sí, muévela', { effect })).not.toBe('confirmed');
+            expect(classifyExplicitToolConfirmation('sí, muévela', { effect, pendingTool: 'create_payment_link' })).not.toBe('confirmed');
+        }
+    });
+});

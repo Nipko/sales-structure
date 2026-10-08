@@ -3,7 +3,7 @@ import { normalizeForIntent, type ConversationMissionFocusV1, type ConversationM
 import { isInformationSeekingMessage, isPauseMessage, isResumeMessage, normalizeCustomerIntent } from '../../common/conversation/intent-normalizer';
 import { isBookingStatusQuestion } from './booking-status-question';
 import { appointmentChangeRequest } from './appointment-transition';
-import { isCancellationTool } from './tool-policy-registry';
+import { pendingActionForTool } from './tool-policy-registry';
 
 export interface MissionCandidate {
     ref: ConversationMissionRefV1;
@@ -111,9 +111,11 @@ export function arbitrateMissionFocus(input: {
     };
     const normalized = normalizeForIntent(input.text);
     // «sí, cancélalo» answers a pending CANCELLATION proposal; read anywhere else the cancel verb is a cancellation request.
-    const pendingCancellation = state.expectedReply?.kind === 'confirmation' && state.selected?.kind === 'tool'
-        && state.expectedReply.missionId === state.selected.id && isCancellationTool(state.selected.toolName);
-    const dialogue = normalizeCustomerIntent(input.text, { pendingCancellation });
+    const pendingAction = state.expectedReply?.kind === 'confirmation' && state.selected?.kind === 'tool'
+        && state.expectedReply.missionId === state.selected.id ? pendingActionForTool(state.selected.toolName) : undefined;
+    const dialogue = normalizeCustomerIntent(input.text, { pendingAction });
+    // «sí, reprográmala» answering the pending reschedule is the answer, not a new request to change an appointment.
+    const answersPending = !!pendingAction && (dialogue.intent === 'affirm' || dialogue.intent === 'acknowledge') && dialogue.consentEligible === true;
     const domains = mentionedMissionDomains(input.text);
     const candidates = [...input.candidates, ...(state.pausedTools || []).map(item => ({ ref: item.ref, aliases: toolMissionAliases(item.ref), paused: true, saved: true }))];
     if (state.selected?.kind === 'tool' && state.selected.reference && !candidates.some(candidate => candidate.ref.id === state.selected!.id)) {
@@ -145,8 +147,8 @@ export function arbitrateMissionFocus(input: {
     // new task. Keeping the slots intact is preferable to inventing ownership.
     if ((taskDirective || resume) && (domains.length > 1 || unique.length > 1)) {
         action = 'clarify'; route = 'clarify'; invalidate = true;
-    } else if (appointmentChangeRequest(input.text) === 'explicit'
-        || appointmentChangeRequest(input.text) === 'ambiguous' && !(current?.ref.kind === 'booking' && !current.paused)) {
+    } else if (!answersPending && (appointmentChangeRequest(input.text) === 'explicit'
+        || appointmentChangeRequest(input.text) === 'ambiguous' && !(current?.ref.kind === 'booking' && !current.paused))) {
         // Changing an appointment that EXISTS is a task of the appointment tools (reschedule_appointment, after its normal
         // confirmation), not a new booking: the booking engine only creates, and opening one here duplicates the appointment.
         const same = current?.ref.kind === 'tool' && current.ref.domain === 'appointment' && !current.paused;

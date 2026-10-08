@@ -64,11 +64,18 @@ export interface NormalizeOptions {
     /** Exact object names/identifiers from the authenticated pending proposal. */
     acceptedReferents?: readonly string[];
     /**
-     * The pending proposal IS a cancellation (cancel_appointment, cancel_catalog_order…). Only then does «sí, cancélala»
-     * answer it: the cancel verb is the very thing being asked, so the phrase is read exactly as its affirmative alone
-     * («sí»), at the same strength. For any other pending effect the verb stays a cancellation request, never consent.
+     * The pending proposal is a cancellation (cancel_appointment, cancel_catalog_order…) or a reschedule. Only then does
+     * «sí, cancélala» / «sí, muévela» answer it: the verb is the very thing being asked, so the phrase is read exactly as its
+     * affirmative alone («sí»), at the same strength. For any other pending effect the verb stays a request, never consent.
+     * `object` is what the proposal is about: a message that names ANOTHER object («sí, cancela el pedido» while an
+     * appointment cancellation is pending) is not consent to it.
      */
-    pendingCancellation?: boolean;
+    pendingAction?: PendingConsentAction;
+}
+
+export interface PendingConsentAction {
+    verb: 'cancel' | 'reschedule';
+    object: 'order' | 'appointment' | 'other';
 }
 
 const DEFAULT_MAX_LENGTH = 120;
@@ -129,7 +136,22 @@ const CONSENT_ACTION = new RegExp('^(?:'
     + 'reservez(?: la)?|confirmez(?: la)?|allez[ -]y(?: reservez| confirmez)?|vous pouvez (?:reserver|confirmer)'
     + ')(?=\\s|$)');
 
-function isWholeConsentExpression(text: string, aliases: IntentAlias[], acceptedReferents: readonly string[] = [], extraVerb?: RegExp): boolean {
+const REFERENT_LEAD = '(?:(?:la|el|mi|esta|este|esa|ese|a|o|minha|meu|the|my|this|that|le|mon|ma|cette|ce)\\s+)?';
+const DEFAULT_REFERENT_NOUNS = 'cita|reserva|operacion|pago|compra|pedido|appointment|booking|reservation|operation|payment|order|rendez-vous|paiement|commande|agendamento|pagamento|compra';
+const referentRegex = (nouns: string) => new RegExp('^' + REFERENT_LEAD + '(?:' + nouns + ')(?:\\s+|$)');
+const DEFAULT_REFERENT = referentRegex(DEFAULT_REFERENT_NOUNS);
+const ORDER_NOUNS = 'pedido|orden|compra|order|purchase|commande|encomenda';
+const APPOINTMENT_NOUNS = 'cita|turno|consulta|reserva|reservacion|appointment|booking|reservation|rendez-vous|agendamento|agendamiento';
+const GENERIC_NOUNS = 'operacion|operation|operacao|operation';
+/** The objects a confirmation of THIS pending action may name; anything else it names is another object. */
+const OBJECT_NOUNS: Record<PendingConsentAction['object'], string> = {
+    order: ORDER_NOUNS + '|' + GENERIC_NOUNS,
+    appointment: APPOINTMENT_NOUNS + '|' + GENERIC_NOUNS,
+    other: GENERIC_NOUNS,
+};
+const ANY_OBJECT_NOUNS = [DEFAULT_REFERENT_NOUNS, ORDER_NOUNS, APPOINTMENT_NOUNS].join('|');
+
+function isWholeConsentExpression(text: string, aliases: IntentAlias[], acceptedReferents: readonly string[] = [], extraVerb?: RegExp, referentNouns?: string): boolean {
     const choices = aliases.filter(a => a.intent === 'affirm' || a.intent === 'acknowledge')
         .filter(a => !COURTESY.test(a.value)).sort((a, b) => b.value.length - a.value.length);
     let rest = text;
@@ -149,7 +171,7 @@ function isWholeConsentExpression(text: string, aliases: IntentAlias[], accepted
             rest = rest.slice(alias.value.length).trim();
             continue;
         }
-        const referent = /^(?:(?:la|el|mi|esta|este|esa|ese|a|o|minha|meu|the|my|this|that|le|mon|ma|cette|ce)\s+)?(?:cita|reserva|operacion|pago|compra|pedido|appointment|booking|reservation|operation|payment|order|rendez-vous|paiement|commande|agendamento|pagamento|compra)(?:\s+|$)/.exec(rest);
+        const referent = (referentNouns ? referentRegex(referentNouns) : DEFAULT_REFERENT).exec(rest);
         if (accepted && referent) { rest = rest.slice(referent[0].length).trim(); continue; }
         if (accepted) {
             const referenceText = rest.replace(/^(?:de la|de|del|para|for|of|du|do|da)\s+/, '');
@@ -180,9 +202,20 @@ const CONFIDENCE_RANK: Record<IntentConfidence, number> = { low: 0, medium: 1, h
 const CANCEL_ACTION = new RegExp('^(?:'
     + 'cancel(?:ala|alo|ela|elo|ame|a|ar|e)|anul(?:ala|alo|ela|elo|a|ar|e)|'
     + 'pode cancelar|cancele|'
-    + '(?:please )?cancel(?: it| the (?:appointment|booking|order|reservation))?|'
+    + '(?:please )?cancel(?: it)?|'
     + 'annulez(?: la| le)?|annuler|vous pouvez annuler'
     + ')(?=\\s|$)');
+
+/** The verb that carries out a pending RESCHEDULE: «sí, muévela», «sí, cámbiala», «sí, reprográmala» (normalised). */
+const RESCHEDULE_ACTION = new RegExp('^(?:'
+    + 'mueve(?:la|lo|me)?|muev(?:ala|alo|ame)|mover(?:la|lo)?|cambia(?:la|lo|me)?|cambi(?:ela|elo|ame)|cambiar(?:la|lo)?|'
+    + 'reprograma(?:la|lo|me)?|reprogram(?:ela|elo|ame)|reprogramar(?:la|lo)?|reagenda(?:la|lo|me)?|reagend(?:ela|elo|ame)|reagendar(?:la|lo)?|'
+    + 'remarca(?:la|lo)?|remarcar(?:la|lo)?|pasa(?:la|lo)|pasela|paselo|'
+    + '(?:please )?(?:move|reschedule|change) it|(?:please )?reschedule|'
+    + 'pode (?:remarcar|reagendar|mudar|alterar)|remarque|deplacez(?: la| le)?|reportez(?: la| le)?|vous pouvez (?:deplacer|reporter)'
+    + ')(?=\\s|$)');
+
+const PENDING_VERB: Record<PendingConsentAction['verb'], RegExp> = { cancel: CANCEL_ACTION, reschedule: RESCHEDULE_ACTION };
 
 const EXPLICIT_CONSENT_VERB = /\b(confirmo|confirmar|confirmado|autorizo|acepto|procede|proceda|hazlo|i confirm|confirm|go ahead|confirmo sim|concordo|aceito|pode confirmar|pode fazer|je confirme|allez-y)\b/;
 
@@ -252,19 +285,31 @@ export function normalizeCustomerIntent(
     }
 
     if (isInformationSeekingMessage(raw)) return base;
-    // «sí, cancélala» answering a pending CANCELLATION: read as «sí» (same alias, same strength, same checks below).
-    // Everything else about the message must still be an acceptance; a leftover («sí, cancélala mañana») is not one.
-    if (options.pendingCancellation && normalized.length <= maxLength) {
+    // «sí, cancélala» / «sí, muévela» answering the pending CANCELLATION / RESCHEDULE: read as «sí» (same alias, same
+    // strength, same checks below). Everything else about the message must still be an acceptance; a leftover («sí,
+    // cancélala mañana») is not one, and neither is naming ANOTHER object («sí, cancela el pedido» for an appointment).
+    const pending = options.pendingAction;
+    if (pending && normalized.length <= maxLength) {
         const opener = matchAlias(normalized, aliases);
-        if ((opener?.intent === 'affirm' || opener?.intent === 'acknowledge')
-            && isWholeConsentExpression(normalized, aliases, options.acceptedReferents, CANCEL_ACTION)) {
-            const words = normalized.split(' ');
-            const at = words.findIndex((_, index) => CANCEL_ACTION.test(words.slice(index).join(' ')));
-            if (at > 0) {
-                const rest = words.slice(at).join(' ');
-                const verb = CANCEL_ACTION.exec(rest)![0];
-                normalized = [...words.slice(0, at), ...rest.slice(verb.length).trim().split(' ')].filter(Boolean).join(' ');
-                base.normalized = normalized;
+        const verbRegex = PENDING_VERB[pending.verb];
+        if (opener?.intent === 'affirm' || opener?.intent === 'acknowledge') {
+            if (isWholeConsentExpression(normalized, aliases, options.acceptedReferents, verbRegex, OBJECT_NOUNS[pending.object])) {
+                const words = normalized.split(' ');
+                const at = words.findIndex((_, index) => verbRegex.test(words.slice(index).join(' ')));
+                if (at > 0) {
+                    const rest = words.slice(at).join(' ');
+                    const verb = verbRegex.exec(rest)![0];
+                    let remainder = rest.slice(verb.length).trim();
+                    // «cancela el pedido»: the object the proposal is about is the whole rest, so it is part of the verb phrase
+                    // (the default referent list would not know «orden» or «turno»).
+                    const named = remainder ? referentRegex(OBJECT_NOUNS[pending.object]).exec(remainder) : null;
+                    if (named && named[0].trim().length === remainder.length) remainder = '';
+                    normalized = [...words.slice(0, at), ...remainder.split(' ')].filter(Boolean).join(' ');
+                    base.normalized = normalized;
+                }
+            } else if (isWholeConsentExpression(normalized, aliases, options.acceptedReferents, verbRegex, ANY_OBJECT_NOUNS)) {
+                // An acceptance that names a different object: not consent to this one (and not a cancel request either).
+                return { ...base, intent: 'unclear', confidence: 'low', consentEligible: false };
             }
         }
     }

@@ -149,3 +149,40 @@ describe('a status question at the confirmation step keeps the pending confirmat
         expect(h.writes()).toHaveLength(0);
     });
 });
+
+/**
+ * The server-side «sí» path (a pending operation executed by the server) fills the turn directive with an INSTRUCTION to
+ * the model. A guard must never send that to the customer: only the booking engine's own text may be a reply.
+ */
+describe('the executed-operation directive is never sent to the customer', () => {
+    const INTERNAL = /NO se pudo completar|Motivo interno|Explícaselo|Confírmasela|Confirmala|usando estos datos|IMPORTANT/i;
+
+    async function pendingOrder(result: any, modelReply: string) {
+        const h = fixture();
+        await h.turn('hola');
+        const base = h.f.toolExecutor.execute.getMockImplementation();
+        h.f.toolExecutor.execute.mockImplementation(async (...args: any[]) => (args[3] === 'place_order' ? result : base!(...args)));
+        h.f.toolExecutionControl.findPendingConfirmation.mockResolvedValueOnce({ toolName: 'place_order', ledgerId: 'ledger-1', args: { items: [{ sku: 'a', qty: 1 }] } });
+        h.f.llmRouter.execute.mockResolvedValue(answer(modelReply));
+        const reply = (await h.turn('sí')).reply;
+        const ran = h.f.toolExecutor.execute.mock.calls.filter((call: any[]) => call[3] === 'place_order').length;
+        return { reply, ran };
+    }
+
+    it.each([
+        '¡Listo, su pedido está confirmado!',
+        'Estoy procesando su pedido. Le avisaré en cuanto esté lista.',
+    ])('a failed operation and a model that claims or promises it: no internal text reaches the customer (%s)', async modelReply => {
+        const { reply, ran } = await pendingOrder({ success: false, error: 'out_of_stock', message: 'Sin stock del artículo a' }, modelReply);
+        expect(ran).toBe(1);
+        expect(reply).not.toMatch(INTERNAL);
+        expect(reply).not.toBe(modelReply);
+    });
+
+    it('a done operation: the model voices it, and no instruction text is sent', async () => {
+        const { reply, ran } = await pendingOrder({ success: true, order: { id: 'o-1', total: 5000 } }, '¡Listo, su pedido quedó confirmado! El total es 5.000.');
+        expect(ran).toBe(1);
+        expect(reply).not.toMatch(INTERNAL);
+        expect(reply).toContain('quedó confirmado');
+    });
+});

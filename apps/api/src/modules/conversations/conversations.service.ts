@@ -3336,6 +3336,9 @@ export class ConversationsService {
         let engineProducedText: string | null = null;
         // The engine is waiting for the customer's explicit yes/no (summary shown, nothing booked this turn).
         let engineAwaitsConsent = false;
+        // The text in `engineProducedText` is the booking engine's own customer-facing text (not an instruction to the
+        // model such as the executed-operation directive): only then may a guard send it as the reply.
+        let engineTextIsReply = false;
         // Writes performed OUTSIDE the LLM tool loop (booking engine, server-side
         // confirmation). Without these the output guardrail audits a real booking
         // as an invented one and rewrites the reply to say it is still pending.
@@ -3839,6 +3842,7 @@ export class ConversationsService {
 
                     // ═══ PHASE 3: EXPRESS — LLM voices the engine's output naturally ═══
                     engineProducedText = engineResult.text || null;
+                    engineTextIsReply = !!engineResult.text;
                     engineAwaitsConsent = bookingState.step === 'confirm'
                         && !(engineResult.executedTools || []).some(tool => tool.name === 'create_appointment');
                     // The appointment the engine just created; reported so the
@@ -4058,6 +4062,7 @@ export class ConversationsService {
                         engineProducedText = this.buildExecutedOperationDirective(
                             pending.toolName, result, userLanguage,
                         );
+                        engineTextIsReply = false; // an instruction for the model, never for the customer
                         this.recordAgentSignal(tenantId, 'pending_confirmation_executed', session);
                         if (toolResultSucceeded(result)) {
                             tools = [];
@@ -4427,6 +4432,8 @@ export class ConversationsService {
             turnContext.directive = engineAwaitsConsent
                 ? `${engineProducedText}\n\nIMPORTANT: nothing is booked in this turn and you cannot book in it. Do not say that you are booking, processing or confirming it, and do not promise to notify the customer. If the customer's message also asks something, answer it briefly with what you know (never invent a price, discount or policy), then ask for an explicit yes or no and stop.`
                 : engineProducedText;
+            // Only the booking engine's own text may be sent as the reply by a guard (see applyOutputGuardrails).
+            (turnContext as any).engineReplyText = engineTextIsReply ? engineProducedText : undefined;
         }
 
         // 3. Get Conversation History with smart truncation.
@@ -5916,7 +5923,7 @@ export class ConversationsService {
         // The engine decided what this turn says (a re-ask at the confirmation step, a summary, a question): when the
         // model claims a booking outcome that no tool backed, the engine's own text is the reply, word for word. No
         // rewrite round trip, which a model that insists would turn into the generic fallback.
-        const engineText = String((trustedContext as any)?.directive ?? '').split('\n\nIMPORTANT:')[0].trim();
+        const engineText = String((trustedContext as any)?.engineReplyText ?? '').trim();
         if (claimAudit.falseClaim && engineText && !claimsCompletedAction(engineText)) {
             this.recordAgentSignal(tenantId, 'claim_unbacked', session);
             this.logger.warn(`[Guardrail] The model claimed a completed action on an engine turn with nothing booked — the engine text is the reply: "${response.slice(0, 100)}"`);
@@ -6043,7 +6050,7 @@ export class ConversationsService {
             this.recordAgentSignal(tenantId, 'action_promise_without_tool', session);
             this.logger.warn(`[Guardrail] Respuesta promete una acción en curso sin herramienta — reemplazada: "${response.slice(0, 100)}"`);
             // (the engine's own text; the instruction the model got after it is not for the customer)
-            const directive = String((trustedContext as any)?.directive ?? '').split('\n\nIMPORTANT:')[0].trim();
+            const directive = String((trustedContext as any)?.engineReplyText ?? '').trim();
             response = directive && !promisesActionWithoutTool(directive) ? directive : actionNotDoneText(lang);
         }
 

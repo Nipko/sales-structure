@@ -7,6 +7,7 @@ import { RegionalProfileService } from '../tenants/regional-profile.service';
 import { PersonaService } from '../persona/persona.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { LeadCapturedEvent } from './events/lead-captured.event';
+import { isWithinOpeningHours } from '../conversations/informational-hours';
 
 export const AUTOMATION_JOBS_QUEUE = 'automation-jobs';
 
@@ -518,38 +519,28 @@ export class AutomationListenerService {
     }
 
     /**
-     * Verifica si estamos dentro del horario comercial configurado en la persona.
+     * Verifica si estamos dentro del horario de atencion. Misma regla que la compuerta de la
+     * conversacion (`isWithinOpeningHours`, informational-hours.ts): el horario del negocio si lista
+     * dias, si no el del agente, si no abierto. Antes leia SOLO el horario del agente y buscaba el dia
+     * con claves cortas en ingles (`mon`) mientras el agente las guarda en espanol (`lun`): sin entrada
+     * para hoy respondia "cerrado" toda la semana, y con un horario vacio (`{}`) tambien.
      */
     private async isWithinBusinessHours(config: any, tenantId: string): Promise<boolean> {
-        if (!config.hours || !config.hours.schedule) return true;
+        let businessHours: any = null;
+        try {
+            const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
+            businessHours = (tenant?.settings as any)?.businessHours ?? null;
+        } catch (error: any) {
+            // Sin el horario del negocio decide el del agente; no se inventa uno.
+            this.logger.warn(`[AutomationListener] No se pudo leer el horario del negocio: ${error?.message}`);
+        }
 
-        // El literal decidía cuándo un negocio mexicano está "abierto": a las 8
-        // de la mañana en Bogotá son las 7 en Ciudad de México, así que una
-        // secuencia de nurturing salía una hora antes de abrir. Ahora, sin
-        // horario propio en la persona, se usa la zona del negocio.
-        const timezone = config.hours.timezone
+        // El literal decidia cuando un negocio mexicano esta "abierto": a las 8
+        // de la manana en Bogota son las 7 en Ciudad de Mexico, asi que una
+        // secuencia de nurturing salia una hora antes de abrir. Sin zona en el
+        // horario del negocio ni en el del agente se usa la zona del negocio.
+        const fallbackTimezone = businessHours?.timezone || config?.hours?.timezone
             || await this.regionalProfile.timezoneFor(tenantId);
-        const localTime = new Intl.DateTimeFormat('en-US', {
-            timeZone: timezone,
-            weekday: 'short',
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: false,
-        }).formatToParts(new Date());
-
-        const dayPart = localTime.find(p => p.type === 'weekday')?.value?.toLowerCase();
-        const hourPart = localTime.find(p => p.type === 'hour')?.value || '0';
-        const minutePart = localTime.find(p => p.type === 'minute')?.value || '0';
-        const currentMinutes = parseInt(hourPart) * 60 + parseInt(minutePart);
-
-        const schedule: Record<string, { start: string; end: string } | string> = config.hours.schedule;
-        const todaySchedule = schedule[dayPart || ''];
-
-        if (!todaySchedule || typeof todaySchedule === 'string') return false;
-
-        const [startH, startM] = todaySchedule.start.split(':').map(Number);
-        const [endH, endM] = todaySchedule.end.split(':').map(Number);
-
-        return currentMinutes >= (startH * 60 + startM) && currentMinutes < (endH * 60 + endM);
+        return isWithinOpeningHours(businessHours, config?.hours, new Date(), fallbackTimezone);
     }
 }

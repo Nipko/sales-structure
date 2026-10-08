@@ -1,3 +1,5 @@
+import { businessHoursConfigured, scheduleEntryForDay, scheduleEntryWindow } from './informational-hours';
+
 /**
  * The business opening window for a calendar date, in minutes since midnight.
  *
@@ -9,7 +11,6 @@ export interface BusinessWindow { openMin: number; closeMin: number }
 export type BusinessWindowResolver = (dateISO: string) => BusinessWindow | null;
 
 const EN_DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-const ES_DAYS = ['dom', 'lun', 'mar', 'mie', 'jue', 'vie', 'sab'];
 
 function toMinutes(value: unknown): number | null {
     if (typeof value !== 'string') return null;
@@ -19,12 +20,8 @@ function toMinutes(value: unknown): number | null {
 }
 
 function windowOf(entry: any): BusinessWindow | null {
-    if (!entry || typeof entry !== 'object') return null;
-    if ('enabled' in entry && !entry.enabled) return null;
-    const openMin = toMinutes(entry.open ?? entry.start);
-    const closeMin = toMinutes(entry.close ?? entry.end);
-    if (openMin == null || closeMin == null || closeMin <= openMin) return null;
-    return { openMin, closeMin };
+    const window = scheduleEntryWindow(entry);
+    return window && window[1] > window[0] ? { openMin: window[0], closeMin: window[1] } : null;
 }
 
 const hasEntries = (value: unknown): boolean =>
@@ -49,23 +46,23 @@ function derivedWindowOf(entry: any): BusinessWindow | null {
 }
 
 /**
- * Tenant business hours first (English day keys), then the agent schedule (Spanish keys).
- * Only when neither is configured does the schedule derived from the appointment
- * agenda (`derivedHours`) describe the window: a configured policy is never overridden by an agenda.
+ * Same precedence as the after-hours gate (`isWithinOpeningHours`, informational-hours.ts): business
+ * hours that list a week, else the agent schedule, whichever spelling the day keys use. An empty
+ * business record (the wizard's `schedule: {}`) is not configured and does not hide the agent
+ * schedule. Only when neither is configured does the schedule derived from the appointment agenda
+ * (`derivedHours`) describe the window: a configured policy is never overridden by an agenda.
  */
 export function resolveBusinessWindow(bizHours: any, agentHours: any, dateISO: string, derivedHours?: any): BusinessWindow | null {
     const date = new Date(`${dateISO}T00:00:00.000Z`);
     if (Number.isNaN(date.getTime())) return null;
     const dow = date.getUTCDay();
-    if (bizHours && !bizHours.is247 && bizHours.schedule && Object.keys(bizHours.schedule).length) {
-        return windowOf(bizHours.schedule[EN_DAYS[dow]]);
+    if (businessHoursConfigured(bizHours)) {
+        // 24/7 has no window to read the hour against.
+        return bizHours.is247 ? null : windowOf(scheduleEntryForDay(bizHours.schedule, dow));
     }
     const schedule = agentHours?.schedule;
-    if (!bizHours && schedule && typeof schedule === 'object' && Object.keys(schedule).length) {
-        return windowOf(schedule[ES_DAYS[dow]] ?? schedule[EN_DAYS[dow]]);
-    }
-    const configured = !!bizHours?.is247 || hasEntries(bizHours?.schedule) || hasEntries(schedule);
-    if (!configured && derivedHours && !derivedHours.unknown && hasEntries(derivedHours.schedule)) {
+    if (hasEntries(schedule)) return windowOf(scheduleEntryForDay(schedule, dow));
+    if (derivedHours && !derivedHours.unknown && hasEntries(derivedHours.schedule)) {
         return derivedWindowOf(derivedHours.schedule[EN_DAYS[dow]]);
     }
     return null;

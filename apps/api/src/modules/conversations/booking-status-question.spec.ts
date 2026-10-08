@@ -11,7 +11,7 @@ describe('isBookingStatusQuestion', () => {
 
     it.each([
         'sí', 'sí, confírmala', 'ya está', 'ok', 'me quedo con las 5', '¿me quedo con las 5?', '¿cuánto cuesta?', '¿a qué hora abren?',
-        '¿en qué quedó el precio de mi cita?', '¿ya quedó mi cita y cuánto cuesta?', 'what happened with my booking, how much is it?', '¿quedó pago?', 'quiero cambiar la hora', '¿tienen estacionamiento?', '',
+        '¿en qué quedó el precio de mi cita?', '¿ya está abierto?', '¿cómo va el clima?', '¿qué pasó con mi pedido?', '¿ya está todo?', 'is it open?', '¿qué pasó con mi pago?', '¿ya quedó mi cita y cuánto cuesta?', 'what happened with my booking, how much is it?', '¿quedó pago?', 'quiero cambiar la hora', '¿tienen estacionamiento?', '',
         'Quedó muy bien el corte que me hicieron la última vez y quisiera saber si puedo repetirlo con el mismo estilista de siempre',
     ])('"%s" is not', text => {
         expect(isBookingStatusQuestion(text)).toBe(false);

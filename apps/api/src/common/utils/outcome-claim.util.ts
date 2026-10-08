@@ -32,6 +32,7 @@ const SUBJECT_GAP = '(?:(?!precio|tarifa|valor|price|cost|horario|disponibilidad
  * order...) is the subject. The verbs that carry the operation themselves
  * (reservado, pagado, cancelado, agendado) stay generic.
  */
+const BOOKING_SUBJECT = '(cita|citas|reserva|reservas|reservacion|turno|agendamiento|booking|reservation|appointment|agendamento|rendez-vous)';
 const COMPLETION_CLAIM = new RegExp(
     [
         // es — "tu reserva está confirmada", "quedó reservado", "ya está pagado"
@@ -51,21 +52,22 @@ const COMPLETION_CLAIM = new RegExp(
         // fr — "votre reservation est confirmee"
         'reservation est (confirmee|creee|effectuee)',
         'a ete (confirmee|reservee|annulee|payee)',
-        // The booking outcome stated in other words: "su cita está lista", "he reservado", "I've booked", "agendei", "j'ai réservé".
-        OPERATION_SUBJECT + ' ' + SUBJECT_GAP + '(esta|quedo|fue) (lista|listo|programada|programado|apartada|apartado|registrada|registrado|asegurada|asegurado|creada|creado|anotada|anotado)',
+        // The BOOKING outcome stated in other words: "su cita está lista", "he reservado", "I've booked", "agendei",
+        // "j'ai réservé". Booking subjects only: «su pedido está listo para recoger» or «su solicitud está registrada»
+        // are order/ticket status, true without a write this turn.
+        BOOKING_SUBJECT + ' ' + SUBJECT_GAP + '(esta|quedo|fue) (lista|listo|programada|programado)',
         '\\b(he|hemos) (reservado|agendado|programado|apartado)\\b',
-        '\\b(he|hemos) confirmado (tu|su|la|el) ' + OPERATION_SUBJECT,
+        '\\b(he|hemos) confirmado (tu|su|la|el) ' + BOOKING_SUBJECT,
         '\\bya (te |le )?(reserve|agende|aparte) ',
         "\\b(i've|i have|we've|we have) (booked|scheduled|reserved|confirmed) (your|the) ",
-        "\\byou('re|\\s+are) (all set|booked|confirmed)\\b",
-        OPERATION_SUBJECT + ' ' + SUBJECT_GAP + '(is|was) (all set|ready)\\b',
-        OPERATION_SUBJECT + ' ' + SUBJECT_GAP + '(ficou|foi|esta) (agendado|agendada|marcado|marcada|pronto|pronta)',
+        "\\byou('re|\\s+are) (booked|confirmed)\\b",
+        BOOKING_SUBJECT + ' ' + SUBJECT_GAP + '(is|was) (all set|ready)\\b',
+        BOOKING_SUBJECT + ' ' + SUBJECT_GAP + '(ficou|foi|esta) (agendado|agendada|marcado|marcada|pronto|pronta)',
         '\\bficou (agendad|reservad|confirmad|marcad)',
         '\\b(agendei|reservei|marquei) (a|o|sua|seu|suas|seus) ',
         "\\bj['’]ai (reserve|programme) ",
         "\\bj['’]ai confirme (votre|le|la) ",
-        OPERATION_SUBJECT + ' ' + SUBJECT_GAP + '(est|a ete) (confirme|confirmee|reserve|reservee|pris|prise|enregistre|enregistree|valide|validee)\\b',
-        "\\bc['’]est (reserve|confirme)\\b",
+        BOOKING_SUBJECT + ' ' + SUBJECT_GAP + '(est|a ete) (confirme|confirmee|reserve|reservee|pris|prise|valide|validee)\\b',
     ].join('|'),
     'g',
 );
@@ -119,8 +121,9 @@ function insideQuestion(sentence: string, index: number, end: number): boolean {
 const HEADLINE_CLAIM = new RegExp(
     '^\\W*(?:(?:listo|perfecto|genial|excelente|hecho|done|great|perfect|all set|pronto|parfait|voila)\\W+)*'
     + '(?:(?:su|tu|la|el|mi|your|the|votre|sua|seu|a|o)\\s+)?'
-    + '(?:cita|reserva|reservacion|pedido|pago|orden|appointment|booking|reservation|order|payment|agendamento|consulta|pagamento|rendez-vous|reservation|commande|paiement)'
-    + '\\s+(?:confirmada|confirmado|agendada|agendado|reservada|reservado|confirmed|booked|scheduled|confirmee|confirme|reserve|reservee|pris|prise|marcada|marcado)\\b',
+    + '(?:cita|reserva|reservacion|appointment|booking|reservation|agendamento|rendez-vous)'
+    // not «Reserva confirmada: se requiere un depósito…» / «Cita confirmada: llegue 10 minutos antes»: that is information
+    + '\\s+(?:confirmada|confirmado|agendada|agendado|reservada|reservado|confirmed|booked|scheduled|confirmee|confirme|reserve|reservee|pris|prise|marcada|marcado)\\b(?!\\s*:)',
 );
 
 export function claimsCompletedAction(reply: unknown): boolean {

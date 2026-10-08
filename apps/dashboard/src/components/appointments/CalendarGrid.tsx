@@ -259,7 +259,7 @@ export default function CalendarGrid({
           </button>
         </div>
 
-        <span className="font-semibold text-sm text-neutral-900 dark:text-white capitalize">
+        <span className="font-semibold text-sm text-neutral-900 dark:text-white block first-letter:uppercase">
           {navTitle}
         </span>
 

@@ -3556,7 +3556,8 @@
       "average": "Média"
     },
     "stages": "Etapas",
-    "deals": "Negocios",
+    "deals": "Negócios",
+    "dealsCount": "{count, plural, one {# negócio} other {# negócios}}",
     "newDeal": "Nova oportunidade",
     "value": "Valor",
     "stage": "Etapa",
@@ -4703,7 +4704,7 @@
     "templateName": "Modelo de {name}",
     "templateDescription": "Modelo baseado em {name}",
     "scheduleDaily": "Diário {start}-{end}",
-    "scheduleDaysPerWeek": "{count} dias/semana",
+    "scheduleDaysPerWeek": "{count, plural, one {# dia} other {# dias}}/semana",
     "setupBannerTitle": "Personalize seu agente de IA",
     "setupBannerDesc": "Seu agente foi criado a partir de um modelo. Personalize o nome, a personalidade e as regras para combinar com sua marca.",
     "configureNow": "Personalizar agora",
@@ -5476,7 +5477,7 @@
     "lastLogin": "Ultimo acesso",
     "resetPassword": "Redefinir senha",
     "subtitle": "Gerencie usuarios, funcoes e permissoes",
-    "subtitleStats": "{total} usuários · {active} ativos · {agents} agentes",
+    "subtitleStats": "{total, plural, one {# usuário} other {# usuários}} · {active, plural, one {# ativo} other {# ativos}} · {agents, plural, one {# agente} other {# agentes}}",
     "stats": {
       "total": "Total",
       "admins": "Administradores",

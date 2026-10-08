@@ -417,7 +417,7 @@ export default function PipelinePage() {
                                     </button>
                                 </div>
                             )}
-                            <span className="text-sm text-muted-foreground">{forecast.dealCount} {t('deals')}</span>
+                            <span className="text-sm text-muted-foreground">{t('dealsCount', { count: forecast.dealCount })}</span>
                             <button
                                 onClick={openCreateDeal}
                                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 text-sm font-medium cursor-pointer hover:opacity-90 transition-opacity press-effect"

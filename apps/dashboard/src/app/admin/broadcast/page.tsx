@@ -287,7 +287,7 @@ export default function BroadcastPage() {
                     title={t('title')}
                     subtitle={loadFailed
                         ? tc('loadFailed')
-                        : t('subtitleStats', { campaigns: stats.total, recipients: stats.totalRecipients }).replace(/destinatarios|destinatários|destinataires|recipients/i, vt.customerNounPlural)}
+                        : t('subtitleStats', { campaigns: stats.total, recipients: stats.totalRecipients }).replace(/destinatarios|destinatários|destinataires|recipients/i, stats.totalRecipients === 1 ? vt.customerNoun : vt.customerNounPlural)}
                     icon={Megaphone}
                     badge={<DataSourceBadge state={loadFailed ? "unavailable" : (loading ? "unverified" : "live")} />}
                     action={
@@ -398,7 +398,7 @@ export default function BroadcastPage() {
                                         </div>
                                         <div className="text-[13px] text-muted-foreground mb-2">
                                             <span className="flex items-center gap-1">
-                                                <Target size={12} /> <strong>{campaign.totalRecipients}</strong> {vt.customerNounPlural}
+                                                <Target size={12} /> <strong>{vt.countCustomers(campaign.totalRecipients)}</strong>
                                                 {campaign.sentCount > 0 && <span className="ml-2 text-emerald-500">{deliveryRate}% {t('delivered')}</span>}
                                                 {campaign.readCount > 0 && <span className="ml-2 text-blue-500">{readRate}% {t('read')}</span>}
                                             </span>
@@ -795,7 +795,7 @@ export default function BroadcastPage() {
                                     <option value="">{t('modal.selectSegment')}</option>
                                     {segments.map(s => (
                                         <option key={s.id} value={s.id}>
-                                            {s.name} ({s.contact_count ?? 0} {vt.customerNounPlural})
+                                            {s.name} ({vt.countCustomers(s.contact_count ?? 0)})
                                         </option>
                                     ))}
                                 </select>

@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  Versión 4.5 — Agosto 2026
+  Versión 4.6 — Octubre 2026
 </p>
 
 <p align="center">
@@ -43,7 +43,7 @@
 | 18 | [Configuración general](#18-configuración-general) |
 | 19 | [Gestión de usuarios](#19-gestión-de-usuarios) |
 | 20 | [Facturación y planes](#20-facturación-y-planes) |
-| 21 | [Adaptación por industria — verticales](#21-adaptación-por-industria--verticales) |
+| 21 | [Adaptación por industria y tipo de negocio](#21-adaptación-por-industria-y-tipo-de-negocio) |
 | 22 | [Sistema de recall (recordatorios)](#22-sistema-de-recall) |
 | 23 | [Sistema de ayuda contextual](#23-sistema-de-ayuda-contextual) |
 | 24 | [Conversaciones resueltas](#24-conversaciones-resueltas) |
@@ -86,7 +86,7 @@ Parallly es una plataforma SaaS que permite a negocios automatizar y centralizar
   permanece deshabilitado por procedimiento hasta cerrar los controles descritos en
   la sección 12
 - Analizar métricas de rendimiento
-- Adaptar la experiencia a 18 industrias seleccionables y a su perfil de negocio dentro del contrato técnico de 20 industrias y 76 perfiles
+- Adaptar la experiencia a 18 industrias seleccionables y a su tipo de negocio dentro del contrato técnico de 20 industrias y 80 tipos de negocio canónicos (72 seleccionables y 8 en lista de espera); la lista completa está en [`business-types-catalog.md`](business-types-catalog.md)
 
 ---
 
@@ -105,48 +105,57 @@ Parallly es una plataforma SaaS que permite a negocios automatizar y centralizar
 4. Al enviar el formulario se entra **directo** al asistente de onboarding (sección 2.2).
    No hay ningún código que esperar en ese momento: el correo de verificación sale en
    segundo plano y **no bloquea** la puesta en marcha (sección 2.4)
-5. Al terminar el onboarding, el panel abre el asistente **Conocé a tu agente** de
+5. Al terminar el onboarding, el panel abre el asistente **Conoce a tu agente** de
    3 pasos (sección 2.2)
 
 ## 2.2 Asistente de Onboarding
 
 Al crear tu cuenta, un asistente de **4 pasos** configura tu negocio.
 
-### Paso 1 — Perfil de empresa
+Los cuatro pasos se rotulan **Tu empresa**, **Tus clientes**, **Objetivos** y **Plan**.
+
+### Paso 1 — Tu empresa
+
+Título «Tu empresa» («Cuéntanos sobre tu negocio»).
 
 | Campo | Obligatorio |
 |-------|:-----------:|
 | Nombre de la empresa | ✅ |
-| Sitio web | No |
-| Teléfono | No |
-| Email comercial | No |
-| Descripción | No |
 | Industria | ✅ |
-| Sub-tipo de negocio | Adapta el agente |
-| Tamaño | No |
-| Zona horaria | ✅ |
+| Tipo de negocio (aparece al elegir una industria que ofrece tipos) | ✅ |
+| Sobre tu empresa (descripción breve; el agente la usa para responder sobre tu negocio) | ✅ |
+| Tamaño de la empresa | ✅ |
+| Zona horaria (se detecta sola y puedes cambiarla) | ✅ |
+| Más detalles (opcional): sitio web, teléfono, email de contacto, redes sociales y código promocional | No |
 
-### Paso 2 — Audiencia
+Los dos selectores se rotulan **Industria** y **Tipo de negocio**. El tipo de negocio
+adapta el agente, el menú y las herramientas; solo se ofrecen los tipos seleccionables
+(ver la sección 21 y el [catálogo](business-types-catalog.md)).
 
-Las opciones se adaptan a tu industria. Por ejemplo:
-- **Salud**: Pacientes particulares, Por derivación, Obra social/prepaga
-- **Inmobiliaria**: Compradores, Inversores, Arrendatarios
-- **Restaurantes**: Comensales locales, Turistas, Corporativo
+### Paso 2 — Tus clientes
+
+Título «Tus clientes» y pregunta «¿A quién le vendes?». Eliges una o más opciones, y
+se adaptan a tu industria. Por ejemplo:
+- **Salud**: Pacientes particulares, Empresas y convenios, Pacientes con seguro médico
+- **Inmobiliaria**: Compradores, Arrendatarios, Inversionistas
+- **Restaurantes**: Comensales individuales, Eventos corporativos y privados, Clientes de delivery
 
 ### Paso 3 — Objetivos
 
-El título y opciones se adaptan al nombre del agente IA recomendado:
-- **Salud**: "¿Cómo ayudará Sofía a tus pacientes?"
-- **Inmobiliaria**: "¿Cómo ayudará Carlos a tus clientes?"
-- **Restaurantes**: "¿Cómo ayudará Luca a tus comensales?"
+Título «¿Qué quieres lograr con Parallly?». Eliges una o más opciones, y se adaptan
+a tu industria. Por ejemplo:
+- **Salud**: Agendar citas médicas, Responder preguntas de pacientes, Atención y seguimiento post-consulta, Recordatorios de citas y tratamientos
+- **Inmobiliaria**: Calificar interesados (presupuesto, zona), Agendar visitas a propiedades, Informar sobre portafolio y financiación, Seguimiento de prospectos
+- **Restaurantes**: Gestionar reservas de mesa, Mostrar menú y recomendaciones, Procesar pedidos a domicilio, Enviar ofertas y eventos especiales
 
 ### Paso 4 — Plan
 
-Selecciona país de facturación, ciclo mensual/anual cuando esté disponible y una
-opción del catálogo vivo. Los planes reconocidos son Emprendedor, Starter, Pro,
-Enterprise y Custom; la elegibilidad, precio, periodo de prueba y forma de
-contratación que devuelve el catálogo son la fuente vigente. Puedes revisar o cambiar
-tu plan desde **Configuración → Facturación**.
+Título «Elige tu plan». Selecciona país de facturación, ciclo mensual/anual cuando
+esté disponible y una opción del catálogo vivo. Los planes reconocidos son
+Emprendedor, Starter, Pro, Enterprise y Custom; la elegibilidad, precio, periodo de
+prueba y forma de contratación que devuelve el catálogo son la fuente vigente. Puedes
+revisar o cambiar tu plan desde **Administración → Facturación** (la pantalla se
+llama **Plan y facturación**).
 
 ### Configuración automática al terminar
 
@@ -154,22 +163,28 @@ tu plan desde **Configuración → Facturación**.
 - **Agente IA** con nombre, rol, tono y herramientas pre-configurados
 - **FAQs base** de tu sector
 - **Servicios** ejemplo según tu tipo de negocio
-- **Tablas verticales** activadas (menú, planes, propiedades, etc. según corresponda)
+- **Módulos de tu tipo de negocio** activados (menú, planes, propiedades, etc. según corresponda)
 
-### Después del onboarding: «Conocé a tu agente»
+### Después del onboarding: «Conoce a tu agente»
 
-El panel abre un segundo asistente de **3 pasos**, reabrible desde
-**Configuración → Asistente de configuración** (ruta `/admin/setup-wizard`, solo
-`tenant_admin`):
+El panel abre un segundo asistente de **3 pasos** (título **Conoce a tu agente**),
+reabrible desde **Configuración → Asistente de configuración** (ruta
+`/admin/setup-wizard`, solo `tenant_admin`). Los pasos se rotulan **Tu agente**,
+**Conecta tu canal** y **Listo**:
 
 1. **Tu agente** — no se elige plantilla: el agente ya viene derivado de la industria y
    los objetivos declarados, con nombre, rol y saludo. El paso sirve para confirmarlo o
    ajustarlo (nombre y mensaje de bienvenida) y probarlo en el chat de al lado.
    **Cambiar plantilla** es un botón secundario que lleva a la lista de agentes.
-2. **Conectá WhatsApp** — requisitos, ruta de conexión (coexistencia recomendada, número
-   nuevo o migración; **no** hay ruta de número de prueba) y el botón que abre la ventana
-   de Meta. **Conectar después** persiste el estado y se recuerda desde Inicio.
-3. **Listo** — los mismos esenciales de la tarjeta **Puesta en marcha**.
+2. **Conecta tu canal** — pregunta «¿Por dónde te escriben tus clientes?». El asistente
+   recomienda primero el canal que corresponde a tu rubro («Para tu negocio, empieza
+   por…»); si tu plan no lo incluye, lo muestra bloqueado y sugiere otro mientras
+   tanto. En WhatsApp muestra los requisitos, la ruta de conexión (coexistencia
+   recomendada, número nuevo o migración; **no** hay ruta de número de prueba) y el
+   botón que abre la ventana de Meta. **Conectar después** persiste el estado y se
+   recuerda desde Inicio.
+3. **Listo** — título «Configuración inicial guardada»; muestra los mismos esenciales
+   de la tarjeta **Puesta en marcha**.
 
 El asistente prepara un **borrador**. Conectar WhatsApp no lo publica ni asigna por sí
 solo. Si existe el workspace del agente, el cierre ofrece **Revisar y publicar mi
@@ -217,7 +232,7 @@ invitaciones aceptadas registran estado `verified`.
 
 # 3. Roles y Permisos
 
-Parallly tiene **3 roles para tenants**, cada uno con permisos específicos. Los administradores definen quién es qué desde Configuración → Usuarios.
+Parallly tiene **3 roles para tenants**, cada uno con permisos específicos. Los administradores definen quién es qué desde Administración → Usuarios.
 
 También puede aparecer `tenant_viewer` en cuentas heredadas. Es un rol de
 compatibilidad limitado a Configuración personal; no se ofrece como rol normal al
@@ -299,12 +314,12 @@ invitar o editar miembros.
 
 Solo un **Tenant Admin** puede cambiar roles:
 
-1. Configuración → **Usuarios**
+1. Administración → **Usuarios**
 2. Click en el usuario
 3. Selecciona el nuevo rol
 4. Guarda
 
-> **Importante:** Si bajás de Admin a Supervisor a alguien que tiene canales conectados, los canales siguen funcionando — solo se le quita la habilidad de modificarlos.
+> **Importante:** Si bajas de Admin a Supervisor a alguien que tiene canales conectados, los canales siguen funcionando — solo se le quita la habilidad de modificarlos.
 
 > **Nota sobre métricas personales:** el modelo de permisos contempla indicadores
 > propios para Agent y la app móvil puede mostrarlos cuando el endpoint los autoriza,
@@ -315,13 +330,13 @@ Solo un **Tenant Admin** puede cambiar roles:
 
 # 4. Dashboard
 
-**Ruta:** Menú → Dashboard
+**Ruta:** Esenciales → Inicio
 **Roles:** Admin/Supervisor. Agent inicia en Conversaciones. Una cuenta heredada
 `tenant_viewer` sólo puede abrir sus ajustes personales.
 
 El dashboard es tu vista general al iniciar sesión y se adapta a tu industria.
 
-### Mensaje de bienvenida vertical
+### Mensaje de bienvenida por industria
 
 - **Salud**: "Bienvenido a tu consultorio virtual"
 - **Restaurantes**: "Tu restaurante está listo"
@@ -342,7 +357,7 @@ El dashboard es tu vista general al iniciar sesión y se adapta a tu industria.
 | **Servicios hogar** | Solicitudes hoy | Emergencias | Técnicos disponibles |
 | **General** | Conversaciones hoy | Leads nuevos | Tasa respuesta |
 
-### Vista principal (homepage vertical)
+### Vista principal (inicio por industria)
 
 Para algunas industrias el dashboard muestra una vista contextualizada:
 - **Salud / Veterinaria / Belleza**: agenda del día con citas
@@ -382,34 +397,55 @@ orden no cambia entre páginas ni sesiones:
 ### ESENCIALES
 - **Inicio** — resumen del negocio (admin/supervisor)
 - **Conversaciones** — inbox y atención diaria
-- **CRM** — contactos; contiene Embudo y Organizaciones cuando el rol lo permite
+
+### CLIENTES
+- **CRM** — las personas: contactos y su ficha
+- **Organizaciones** — cuentas B2B (admin/supervisor)
+
+### COMERCIAL
+- **Embudo de ventas** — el pipeline de oportunidades (el nombre cambia según la
+  industria: por ejemplo «Seguimiento», «Oportunidades» o «Negociaciones»)
+- **Ofertas** (admin/supervisor)
+
+### TRABAJO DIARIO
+- Los **registros** que se operan cada día, según el tipo de negocio: Citas (o Agenda,
+  Reservas, Reservaciones), Reservas (las estadías de hoteles y alquileres
+  vacacionales), Reservas de tours, Alquileres y estadías, Órdenes de taller, Pedidos
+  (de comida o de catálogo), Solicitudes, Clases, Sesiones fotográficas, Mascotas,
+  Casos, Membresías y Seguros
+- Solo aparecen los módulos que respalda tu tipo de negocio y tu rol
+
+### CATÁLOGO Y RECURSOS
+- Lo que **configura** el trabajo diario, según el tipo de negocio: Propiedades, Tours
+  y Paquetes, Inmuebles, Vehículos, Menú, Cursos, Planes de tratamiento, Paquetes y
+  servicios e Inventario (admin/supervisor)
 
 ### IA Y CRECIMIENTO
-- **Agente IA** — personalidad, capacidades y simulación (admin)
+- **Agente IA** — personalidad, capacidades y simulación (admin); incluye **Probar agente**
 - **Procedimientos** y **Base de conocimiento**
-- **Automatización** — reglas, secuencias y plantillas (admin/supervisor)
+- **Automatización** — reglas, secuencias drip y plantillas (admin/supervisor)
 - **Campañas** — broadcasts (admin/supervisor)
 
-### OPERACIÓN
-- Destinos propios del rubro: Agenda, Propiedades, Tours, Inmuebles, Vehículos,
-  Alquileres, Menú, Pedidos, Membresías, Clases, Cursos, Seguros, Solicitudes,
-  Mascotas, Sesiones fotográficas, Inventario y Órdenes
-- Solo aparecen los módulos respaldados por la vertical y el rol actual
-
 ### INSIGHTS
-- **Análisis**, analítica CRM, atribución e informes (admin/supervisor)
-- **Rendimiento del equipo** (admin/supervisor)
-- **Salud de agentes** y Centro de calidad (admin/supervisor, lectura y diagnóstico)
+- **Análisis** (con Analíticas CRM, Atribución y Reportes personalizados), **Ventas**,
+  **Salud de agentes** y **Rendimiento de agentes**. Análisis, Salud de agentes y
+  Rendimiento están disponibles para admin/supervisor; **Ventas** solo para admin
 
 ### ADMINISTRACIÓN
-- Canales, usuarios, cumplimiento, facturación y solicitudes de funciones según rol
+- **Canales**, **Usuarios**, **Privacidad**, **Facturación** y **Mejoras** (solicitudes de
+  funciones), según rol. Canales, Usuarios, Privacidad y Facturación son de admin
 
-### Configuración (zona estable al fondo)
-- Abre el hub local de Configuración y conserva la página de origen para poder volver
+### CONFIGURACIÓN (zona estable al fondo)
+- **Configuración** abre el hub local de Configuración y conserva la página de origen
+  para poder volver
+
+Los nombres del trabajo diario y del catálogo cambian según la industria y el tipo
+de negocio (la lista exacta de cada tipo de negocio está en el
+[catálogo](business-types-catalog.md)): son el mismo módulo con otro rótulo.
 
 > **Ayudas de navegación:** `Ctrl/Cmd+K` abre la búsqueda global; `Alt+1`,
 > `Alt+2` y `Alt+3` abren destinos frecuentes permitidos. Favoritos y recientes
-> nunca muestran rutas incompatibles con el rol o la vertical.
+> nunca muestran rutas incompatibles con el rol o el tipo de negocio.
 
 ## 5.2 Configuración — áreas por responsabilidad
 
@@ -431,20 +467,26 @@ botón “Volver a la sección anterior” restaura también filtros, query y ha
 
 ## 5.3 Analítica — pestañas
 
-Acceso solo para admin/supervisor. Pestañas disponibles:
+Ruta: Insights → **Análisis**. Acceso solo para admin/supervisor. La pantalla tiene
+**12 pestañas**:
 
 | Pestaña | Contenido |
 |---------|-----------|
-| Resumen | KPIs principales |
-| Conversaciones | Volumen, resolución, tiempo respuesta |
+| Vista General | Conversaciones, mensajes, resolución IA, tiempo de respuesta, CSAT promedio y costo LLM; volumen por canal, tiempos de respuesta (mediana y P90) y horas pico |
+| IA & Bot | Resolución IA, tasa de contención, conversaciones resueltas por la IA, escalaciones y sus razones, costo total y uso por modelo |
+| Resolución IA | Tasa de resolución por la IA (ver 15.4) |
+| Calidad (QA) | Puntaje promedio sobre 10 de las conversaciones evaluadas, subpuntajes, distribución, tasa de resolución verificada y conversaciones marcadas para revisión |
+| CRM & Ventas | Acceso a **CRM Analytics** (embudo de ventas, velocidad del pipeline, win/loss y leaderboard) |
+| Agentes | Acceso a **Reportes de Agentes** (rendimiento por agente, tiempos de respuesta, CSAT y leaderboard) |
+| Automatización | Reglas totales y activas, ejecuciones, tasa de éxito y rendimiento por regla |
+| Campañas | Embudo de campañas (enviados, entregados, leídos y fallidos) y tasas de entrega y lectura por campaña |
+| Canales | Volumen por canal y rendimiento por cuenta operativa |
 | CSAT | Valoraciones de satisfacción ya registradas |
-| Embudo | Funnel de conversión |
-| Velocidad | Días por etapa del pipeline |
-| Win/Loss | Tasa de cierre y motivos |
-| Agentes | Leaderboard, performance |
-| Canales | Por canal de mensajería |
-| Fuentes | Origen de leads |
-| AI Insights | Análisis IA de tendencias |
+| Anomalías | Anomalías detectadas en el período |
+| Cohortes | Retención por cohortes |
+
+Embudo, velocidad por etapa y win/loss **no** son pestañas de esta pantalla: viven en
+CRM Analytics (Insights → Análisis → Analíticas CRM).
 
 ---
 
@@ -539,7 +581,7 @@ Cuando varios agentes humanos abren la misma conversación al mismo tiempo, Para
 
 ## 7.1 Contactos
 
-**Ruta:** Esenciales → CRM → Contactos
+**Ruta:** Clientes → CRM
 **Roles:** Admin/Supervisor/Agent (con limitaciones de edición según rol)
 
 ### Ver contactos
@@ -596,11 +638,11 @@ Pestañas:
 - **Notas**: anotaciones del equipo
 - **Actividades**: timeline de tareas y eventos
 - **Documentos**: archivos compartidos
-- *(verticales)* Planes de tratamiento, Mascotas, Pólizas, Cursos inscritos
+- *(según el tipo de negocio)* Planes de tratamiento, Mascotas, Pólizas, Cursos inscritos
 
 ## 7.2 Pipeline (Kanban)
 
-**Ruta:** Esenciales → CRM → Embudo
+**Ruta:** Comercial → Embudo de ventas
 
 Vista kanban con etapas configurables. Cada deal una tarjeta arrastrable.
 
@@ -697,7 +739,7 @@ Drawer con chips combinables. Multi-criterio (AND), guardable como segmento.
 ## 7.9 Alcance actual del Pipeline
 
 **Roles:** Admin/Supervisor/Agent para operar; Admin/Supervisor para configurar etapas
-**Ruta:** Esenciales → CRM → Embudo
+**Ruta:** Comercial → Embudo de ventas
 
 La experiencia vigente garantiza el embudo activo del tenant: consultar etapas y
 deals, crear o editar oportunidades y moverlas mediante la transición canónica. La
@@ -747,7 +789,7 @@ Si tienes canales conectados sin agente asignado, aparece banner rojo: "Tienes X
 
 El número de agentes y el acceso a plantillas se obtienen del catálogo vigente y de
 los overrides autorizados del tenant. La pantalla bloquea nuevas altas al alcanzar
-la capacidad. Confirma el valor aplicable en **Configuración → Facturación** antes
+la capacidad. Confirma el valor aplicable en **Administración → Facturación** antes
 de planificar una expansión.
 
 ## 8.2 Editor del agente
@@ -781,7 +823,7 @@ Selector de **conexiones** que este agente debe atender. La regla es **un agente
 conexión** (`agent_personas.channel_bindings`): cada agente se enlaza a cuentas
 concretas, no a un canal genérico. La selección se guarda en el borrador; la
 reasignación ocurre al publicar la revisión aprobada. Cuántas conexiones del mismo
-tipo podés tener lo define tu plan (ver 9.8).
+tipo puedes tener lo define tu plan (ver 9.8).
 
 ### Herramientas
 
@@ -828,7 +870,7 @@ Parallly Assist puede revisar los controles guiados y proponer cambios seguros. 
 aceptarlos también guarda un borrador: nunca publica, activa ni cambia conexiones por
 su cuenta y no recibe credenciales o secretos.
 
-## 8.3 Plantillas verticales
+## 8.3 Plantillas por industria
 
 Al crear un agente nuevo, "Recomendados para tu negocio" aparece destacado según tu industria.
 
@@ -854,7 +896,7 @@ Al crear un agente nuevo, "Recomendados para tu negocio" aparece destacado segú
 
 ## 8.4 Test del agente
 
-Modo simulador: chateá con la versión operativa o con el borrador guardado sin afectar
+Modo simulador: chatea con la versión operativa o con el borrador guardado sin afectar
 contactos reales. Úsalo antes de preparar, aprobar y publicar una revisión.
 
 Los pasos pendientes de una cuenta nueva son **puesta en marcha**, no deterioro del
@@ -965,7 +1007,7 @@ autorizadas. Solo evidencia nueva puede resolver la causa.
 1. Canales → WhatsApp → "Conectar"
 2. Se abre flujo de Meta
 3. Login con Facebook
-4. Selecciona/creá tu WhatsApp Business Account (WABA)
+4. Selecciona o crea tu WhatsApp Business Account (WABA)
 5. Selecciona/agrega un número de teléfono
 6. Verificación SMS o llamada
 7. Aprobar permisos
@@ -990,9 +1032,12 @@ credencial cubre todas las WABA ya conectadas.
 ### Templates de WhatsApp
 
 Para enviar fuera de la ventana de 24h, necesitas plantillas aprobadas por Meta:
-1. Configuración → Empresa → Templates
-2. Crear plantilla → categoría (transactional/marketing) + idioma + variables
-3. Enviar a Meta para aprobación (24-72h típicamente)
+1. Canales → WhatsApp → **Ver todas las plantillas** (`/admin/channels/whatsapp/templates`)
+2. **Crear plantilla** → nombre (solo minúsculas, números y guiones bajos), número o
+   cuenta, idioma, categoría (`UTILITY`, `MARKETING` o `AUTHENTICATION`), encabezado y
+   pie opcionales, cuerpo con variables (`{{1}}`, `{{2}}`…) y hasta 3 botones
+3. **Enviar a Meta** para aprobación; el estado pasa a aprobada cuando Meta la revisa
+   y el tiempo de revisión lo determina Meta
 
 ### Costo de entrega: Meta le cobra a la cuenta del tenant
 
@@ -1016,14 +1061,16 @@ consumen la cuota). La cifra y la fecha viven en
 copian a mano en ningún otro lado.
 
 **Tarifas**: este manual no las transcribe. Meta revisa sus tarjetas por trimestre y cobra
-según el país de **quien recibe**, así que cualquier número escrito acá queda viejo en la
+según el país de **quien recibe**, así que cualquier número escrito aquí queda viejo en la
 próxima revisión. La fuente vigente es la tabla generada citada arriba y
 `docs/whatsapp-meta-pricing-2026-10.md`.
 
 **Qué ve el tenant.** En **Canales → WhatsApp**, la tarjeta **Cobro de WhatsApp (Meta)**
 muestra el avance de la cuota gratis, el gasto del período separado por moneda, los
-contactos más costosos, los envíos sin confirmar y los números con envío pausado. La leen
-Tenant Admin y Tenant Supervisor; **Reanudar envíos** es sólo de Tenant Admin. Endpoints:
+contactos más costosos, los envíos sin confirmar y los números con envío pausado. La
+pantalla **Canales** solo la abre el Tenant Admin, así que en el panel la ve él y es
+quien puede **Reanudar envíos**; la API de lectura (`GET /whatsapp/spend/*`) también
+admite al Tenant Supervisor, pero solo mediante la API. Endpoints:
 `GET /whatsapp/spend/summary`, `/consumption`, `/awaiting-resolution`, `/pauses`, `/policy`,
 `POST /whatsapp/spend/resolve` y `/pauses/:channelAccountId/resume`.
 
@@ -1109,9 +1156,9 @@ Si tu organización necesita correo integrado, solicita una evaluación técnica
 
 ## 9.7 Desconectar un canal
 
-La desconexión es **por cuenta/conexión**: si tenés varios números o cuentas del mismo tipo, cada uno se desconecta de forma independiente sin afectar a los demás.
+La desconexión es **por cuenta/conexión**: si tienes varios números o cuentas del mismo tipo, cada uno se desconecta de forma independiente sin afectar a los demás.
 
-1. Canales → click en el canal → elegí la conexión → "Desconectar"
+1. Canales → click en el canal → elige la conexión → "Desconectar"
 2. Modal confirmación con resultado real:
    - **Verde** ✅ "Desconectado completamente": proveedor confirmó la desuscripción
    - **Amarillo** ⚠️ "Desconectado en plataforma — revisar el proveedor": tu BD se actualizó pero el proveedor podría seguir enviando. Causas: token expirado, cambio de permisos. Hay que entrar manualmente al proveedor (Meta Business Suite, etc.)
@@ -1119,39 +1166,46 @@ La desconexión es **por cuenta/conexión**: si tenés varios números o cuentas
 
 ## 9.8 Varias conexiones del mismo tipo (multi-cuenta)
 
-Podés conectar **más de una cuenta del mismo canal** — por ejemplo dos números de WhatsApp, dos cuentas de Instagram o dos bots de Telegram — sin que sus conversaciones se mezclen.
+Puedes conectar **más de una cuenta del mismo canal** — por ejemplo dos números de WhatsApp, dos cuentas de Instagram o dos bots de Telegram — sin que sus conversaciones se mezclen.
 
-- **Límite por plan y canal**: el catálogo y los overrides vigentes determinan cuántas conexiones admite cada tipo para tu cuenta. Consulta **Configuración → Facturación**; este manual no fija cantidades.
-- **Contador visible**: cada tarjeta de canal en **Canales** muestra "**X de Y cuentas**" (Y = tu límite; ∞ si es ilimitado) y un enlace **"Conectar otra"** cuando todavía tenés cupo.
+- **Límite por plan y canal**: el catálogo y los overrides vigentes determinan cuántas conexiones admite cada tipo para tu cuenta. Consulta **Administración → Facturación**; este manual no fija cantidades.
+- **Contador visible**: cada tarjeta de canal en **Canales** muestra "**X de Y cuentas**" (Y = tu límite; ∞ si es ilimitado) y un enlace **"Conectar otra"** cuando todavía tienes cupo.
 - **Tokens por cuenta**: cada conexión guarda su propio token de acceso (`channel_accounts.access_token`), de modo que los mensajes salen por el número o cuenta correctos.
-- **Un agente por conexión**: podés asignar un agente IA distinto a cada cuenta (ver 8.2).
-- **Emisor previsto en borradores de campaña**: cuando tenés más de una conexión,
+- **Un agente por conexión**: puedes asignar un agente IA distinto a cada cuenta (ver 8.2).
+- **Emisor previsto en borradores de campaña**: cuando tienes más de una conexión,
   el borrador permite indicar desde qué número/cuenta debería salir. No lances una
   campaña real hasta que el selector de plantilla/emisor y la cancelación estén
   certificados según la sección 12.
 
-La tarjeta del canal y **Configuración → Facturación** muestran el cupo efectivo. Si ambos difieren, no intentes inferir un valor desde tablas de seed o documentos históricos: solicita validación a soporte.
+La tarjeta del canal y **Administración → Facturación** muestran el cupo efectivo. Si ambos difieren, no intentes inferir un valor desde tablas de seed o documentos históricos: solicita validación a soporte.
 
 ---
 
 # 10. Citas y Agenda
 
-**Ruta:** Operación → Agenda
+**Ruta:** Trabajo diario → **Citas** (según el tipo de negocio el menú la rotula
+«Agenda», «Reservas» o «Reservaciones»; es el mismo módulo)
 **Roles:** Admin/Supervisor/Agent (configuración solo Admin/Supervisor)
+
+La pantalla **Citas y Agendamiento** tiene cinco pestañas: **Calendario**, **Agenda**
+(lista de citas), **Servicios disponibles**, **Configuración** y **Analíticas**.
 
 ## 10.1 Calendario
 
-Vista mensual / semanal / diaria con todas las citas. Colores por servicio.
+Pestaña **Calendario**: vista **semanal** o **diaria** con las citas (no hay vista
+mensual). Puedes ocultar o mostrar las canceladas.
 
 Acciones:
-- Click en día → ver citas del día
-- Click en cita → detalle (paciente, servicio, hora, ubicación)
-- Reprogramar arrastrando
+- Click en el encabezado de un día → pasa a la vista diaria de ese día
+- Click en un espacio libre → crear una cita en ese día y hora
+- Click en una cita → abrirla para ver o editar sus datos
+- Reprogramar arrastrando la cita a otro espacio
 - Cancelar con motivo
 
 ## 10.2 Servicios
 
 **Roles:** Admin/Supervisor
+**Dónde:** Citas → pestaña **Servicios disponibles** → **Nuevo servicio**
 
 Define los servicios que ofreces:
 - Nombre, descripción, duración (minutos)
@@ -1168,17 +1222,21 @@ Define los servicios que ofreces:
 
 ### Horario semanal
 
-Configura por día de la semana qué horas estás disponible. Por staff o general.
+En Citas → pestaña **Configuración** → sección **Horario de atención**: elige
+**Disponible 24/7** u **Horario personalizado** y marca, día por día, las horas en que
+atiendes. Guarda los cambios: sin horario guardado el agente no tiene disponibilidad
+real que ofrecer.
 
 ### Fechas bloqueadas
 
-Bloquea días específicos (vacaciones, feriados) — el agente IA no ofrecerá esos slots.
+En la misma pestaña **Configuración**, sección **Fechas bloqueadas** → **Bloquear
+fecha** (vacaciones, feriados): el agente IA no ofrecerá esos horarios.
 
 ## 10.4 Calendarios conectados
 
 ### Google Calendar
 
-1. Configuración → Agenda → Calendarios → "Conectar Google Calendar"
+1. Citas → pestaña **Configuración** → sección **Calendarios conectados** → **Conectar Google Calendar** (o **Conectar Outlook**)
 2. OAuth con Google
 3. Selecciona qué calendario sincronizar
 4. Listo — citas se crean en ambos lados
@@ -1186,7 +1244,7 @@ Bloquea días específicos (vacaciones, feriados) — el agente IA no ofrecerá 
 ### Multi-calendar (según capacidad vigente)
 
 La cantidad de calendarios se obtiene del plan activo y sus overrides. La pantalla
-muestra el uso y el cupo aplicable; revísalo en **Configuración → Facturación**.
+muestra el uso y el cupo aplicable; revísalo en **Administración → Facturación**.
 
 Resolución 3-tier al sincronizar:
 1. Calendario específico del **servicio**
@@ -1383,7 +1441,7 @@ una prueba controlada, coordina primero con soporte.
 ## 12.2 Preparar un borrador
 
 1. Crea la campaña y asigna un nombre interno sin datos sensibles.
-2. Elige **Todos los contactos** o un segmento de **CRM → Segmentos**.
+2. Elige **Todos los contactos** o un segmento de **Clientes → CRM → Segmentos**.
 3. Revisa el número de destinatarios y las bajas de comunicación.
 4. Guarda sin fecha de envío.
 
@@ -1463,7 +1521,7 @@ El sistema de brechas se nutre de dos fuentes:
 
 ## 14.1 Plantillas predeterminadas
 
-Auto-creadas la primera vez que entrás:
+Auto-creadas la primera vez que entras:
 - `appointment_confirmation` — confirmación de cita
 - `appointment_reminder` — recordatorio antes de la cita
 - `order_confirmation` — confirmación de orden
@@ -1557,7 +1615,7 @@ herramientas, los handoffs y los vacíos de conocimiento se muestran por separad
 
 # 16. Inventario y Pedidos
 
-**Ruta:** Operación → Inventario / Pedidos
+**Ruta:** Catálogo y recursos → **Inventario** (en algunos rubros se rotula «Productos», «Repuestos» o «Equipos») · Trabajo diario → **Pedidos**
 **Roles:** Inventario, Admin/Supervisor; Pedidos, Admin/Supervisor/Agent
 
 ## 16.1 Inventario
@@ -1668,14 +1726,14 @@ Parallly soporta 2FA para proteger tu cuenta con un segundo paso al iniciar sesi
 
 **Métodos disponibles:**
 1. **App autenticadora (TOTP)** — Google Authenticator, Authy, 1Password, etc. Escanea el QR y confirma el código de 6 dígitos
-2. **Código por email** — recibís un código temporal de 6 dígitos a tu email registrado
+2. **Código por email** — recibes un código temporal de 6 dígitos a tu email registrado
 3. **Códigos de respaldo** — 10 códigos de un solo uso que se generan al activar 2FA. Guardalos en un lugar seguro
 
 **Activar 2FA:**
 1. Configuración → Seguridad → "Activar 2FA"
 2. Escanea el QR con tu app autenticadora
-3. Ingresá el código de 6 dígitos para confirmar
-4. Descargá los códigos de respaldo (solo se muestran una vez)
+3. Ingresa el código de 6 dígitos para confirmar
+4. Descarga los códigos de respaldo (solo se muestran una vez)
 
 **Desactivar 2FA:**
 1. Configuración → Seguridad → "Desactivar 2FA"
@@ -1683,11 +1741,11 @@ Parallly soporta 2FA para proteger tu cuenta con un segundo paso al iniciar sesi
 
 ### Dispositivos de confianza
 
-Cuando inicias sesión con 2FA, podés marcar **"Confiar en este dispositivo"**. Esto evita que te pida el segundo factor durante **30 días** en ese navegador.
+Cuando inicias sesión con 2FA, puedes marcar **"Confiar en este dispositivo"**. Esto evita que te pida el segundo factor durante **30 días** en ese navegador.
 
 - Cada dispositivo de confianza aparece en la lista con nombre, navegador y fecha
-- Podés revocar dispositivos individualmente desde Configuración → Seguridad
-- Al confiar un nuevo dispositivo, recibís un email de notificación de seguridad
+- Puedes revocar dispositivos individualmente desde Configuración → Seguridad
+- Al confiar un nuevo dispositivo, recibes un email de notificación de seguridad
 - Si cambias tu contraseña, todos los dispositivos de confianza se revocan automáticamente
 
 ## 18.6 Canales, gobierno y desarrolladores
@@ -1722,7 +1780,7 @@ Las claves de API permiten que sistemas externos se conecten con tu cuenta de Pa
 
 ### Advertencia de copia única
 
-> **IMPORTANTE:** La clave se muestra completa solo en el momento de creación. Después solo verás los últimos 4 caracteres. Si la perdés, deberás revocarla y crear una nueva.
+> **IMPORTANTE:** La clave se muestra completa solo en el momento de creación. Después solo verás los últimos 4 caracteres. Si la pierdes, deberás revocarla y crear una nueva.
 
 ### Revocar o rotar una clave
 
@@ -1866,7 +1924,7 @@ Cada conversación asignada tiene un SLA de 5 minutos por defecto:
 
 # 20. Facturación y Planes
 
-**Ruta:** Configuración → Facturación
+**Ruta:** Administración → Facturación
 **Roles:** Tenant Admin
 
 ## 20.1 Catálogo vigente de planes
@@ -1896,7 +1954,7 @@ ahorro aplicable. No asumas una moneda, descuento ni conversión fija fuera de e
 
 ## 20.3 Cambiar de plan
 
-1. Abre **Configuración → Facturación**.
+1. Abre **Administración → Facturación**.
 2. Selecciona una tarjeta cuyo botón de acción esté habilitado.
 3. Revisa plan, ciclo, importe y fecha de efecto en el resumen.
 4. Confirma solo si esos datos coinciden con lo esperado.
@@ -1905,9 +1963,15 @@ La API decide si el cambio es inmediato, programado o requiere contacto comercia
 La respuesta y el estado mostrados después de confirmar prevalecen sobre cualquier
 regla histórica de upgrade o downgrade.
 
-## 20.4 Método de pago Wompi
+## 20.4 Método de pago (Wompi en Colombia, Stripe en el resto)
 
-Las suscripciones de Parallly se procesan con Wompi. La pantalla ofrece únicamente
+Las suscripciones nuevas de Parallly se procesan según el país de facturación que
+confirmas: **Colombia usa Wompi** y los demás países admitidos usan **Stripe**
+(sección 20.15). Una suscripción existente conserva su proveedor. Lo que sigue
+describe Wompi; con Stripe continúas en la página segura de Stripe para autorizar el
+pago o administrar la suscripción, y los datos de la tarjeta se ingresan allí.
+
+La pantalla de Wompi ofrece únicamente
 los medios que Billing Ops haya habilitado; si todos están apagados, bloquea el
 checkout en lugar de mostrar una tarjeta por defecto.
 
@@ -1923,7 +1987,7 @@ la autorización de datos personales. Un medio pendiente o rechazado no activa e
 plan. Solo una fuente marcada como disponible permite un cobro.
 
 No pegues llaves privadas ni credenciales del comercio en este formulario. Las
-cuentas Wompi o Mercado Pago de **Integraciones → Pagos** pertenecen a otro flujo:
+cuentas Wompi o Mercado Pago de **Configuración → Cobros a clientes** pertenecen a otro flujo:
 sirven para que tu negocio cobre a sus clientes mediante enlaces, nunca para pagar
 la suscripción de Parallly. Cada cuenta es del tenant, usa un webhook separado y
 el agente sólo confirma un pago después de la validación canónica del proveedor.
@@ -2059,56 +2123,108 @@ solos el cumplimiento tributario de todos los países.
 
 ---
 
-# 21. Adaptación por Industria — Verticales
+# 21. Adaptación por Industria y Tipo de Negocio
 
-Parallly mantiene un contrato técnico de **20 industrias y 76 perfiles canónicos de
-negocio**. Una vertical agrupa capacidades; el perfil combina industria y subtipo y
-determina las herramientas, rutas, términos y requisitos efectivos. Hoy el onboarding
-ofrece **18 industrias con al menos un perfil seleccionable**. Planeación de eventos y
-construcción están presentes en el manifiesto para conservar identidad y evolución del
-producto, pero sus perfiles actuales permanecen en lista de espera. Algunos subtipos de
-las otras industrias también pueden estar en espera y por eso no aparecen en un alta
-nueva.
+Al crear la cuenta eliges una **Industria** y un **Tipo de negocio** (así se rotulan los
+dos selectores del alta). Parallly mantiene un contrato técnico de **20 industrias y
+80 tipos de negocio canónicos** (72 seleccionables y 8 en lista de espera), más 5
+configuraciones que solo existen para cuentas anteriores: 85 resolubles en total.
+(En el código y en documentos antiguos la industria se llama «vertical» y el tipo de
+negocio «subtipo» o «perfil».) La industria agrupa capacidades; el tipo de negocio
+combina industria y subtipo y determina las herramientas, rutas, términos y requisitos
+efectivos. Hoy el onboarding ofrece **18 industrias con al menos un tipo de negocio
+seleccionable**. Planeación de eventos y construcción están presentes en el manifiesto
+para conservar identidad y evolución del producto, pero sus tipos actuales permanecen
+en lista de espera.
 
-> **Alcance honesto:** los perfiles ofrecidos tienen comportamiento implementado, pero
-> a septiembre de 2026 ninguno cuenta todavía con certificación E2E completa. Usa estas
-> secciones para operar lo que aparece habilitado en tu cuenta, no como garantía de
-> cobertura total del sector. En actividades reguladas, decisiones sensibles y
-> excepciones, interviene una persona autorizada.
+> **Lista autorizada:** la lista completa de industrias y tipos de negocio —con id,
+> nombre, disponibilidad, menú, familias y herramientas del agente— está en
+> [`business-types-catalog.md`](business-types-catalog.md), un documento **generado
+> desde el código** que el CI mantiene al día. Esta sección resume y explica cómo
+> operar cada módulo; si algo difiere, manda el catálogo.
 
-| Vertical | Superficie principal posible |
-|----------|------------------------------|
-| Salud | Agenda y, según subtipo, planes de tratamiento |
-| Moda y belleza | Agenda; catálogo/pedidos para boutique heredada |
-| Inmobiliaria | Agenda e inmuebles |
-| Restaurantes | Menú, pedidos y reservas |
-| Automotriz | Vehículos; agenda, repuestos o alquiler según subtipo |
-| Turismo | Tours o propiedades/estadías según subtipo |
-| Educación | Cursos, cohortes e inscripciones |
-| Finanzas | CRM y agenda, con handoff para decisiones financieras |
-| Servicios profesionales | CRM, agenda y consulta contextual de casos |
-| Retail | Inventario y pedidos |
-| Tecnología | CRM/agenda; inventario y pedidos para hardware |
-| Veterinaria | Agenda y mascotas |
-| Gimnasios | Membresías y clases |
-| Seguros | Cotizaciones, pólizas y reclamos con controles de rol |
-| Servicios del hogar | Solicitudes de servicio |
-| Servicios para mascotas | Agenda u hospedaje según subtipo |
-| Fotografía | Sesiones fotográficas |
+> **Alcance honesto:** los tipos de negocio ofrecidos tienen comportamiento
+> implementado, pero a octubre de 2026 ninguno cuenta todavía con certificación E2E
+> completa. Usa estas secciones para operar lo que aparece habilitado en tu cuenta, no
+> como garantía de cobertura total del sector. En actividades reguladas, decisiones
+> sensibles y excepciones, interviene una persona autorizada.
+
+### Tipos de negocio por industria
+
+Los ids son los de `industria/tipo` (por ejemplo `salud/dental`).
+
+| Industria (`id`) | Tipos de negocio seleccionables (`id` y nombre) | En lista de espera | Solo cuentas existentes |
+|---|---|---|---|
+| Salud (`salud`) | `dental` Odontología · `medica_general` Medicina general · `dermatologia` Dermatología y medicina estética · `psicologia` Psicología y terapia · `farmacia` Farmacia | — | — |
+| Belleza y estética (`moda_belleza`) | `salon_belleza` Salón de belleza · `barberia` Barbería · `spa` Spa y bienestar · `estetica` Centro de estética | — | — |
+| Inmobiliaria (`inmobiliaria`) | `venta` Venta de inmuebles · `arriendo` Arriendo · `comercial` Inmuebles comerciales | `promotora` Promotora inmobiliaria | `construccion` Construcción y proyectos |
+| Restaurantes / Gastronomía (`restaurantes`) | `casual_dining` Restaurante casual · `comida_rapida` Comida rápida · `cafeteria` Cafetería · `dark_kitchen` Dark kitchen / Delivery | — | — |
+| Automotriz (`automotriz`) | `concesionario` Concesionario · `taller` Taller mecánico · `repuestos` Repuestos y accesorios · `alquiler` Alquiler de vehículos | — | — |
+| Turismo (`turismo`) | `agencia_viajes` Agencia de viajes · `hotel` Hotel / Hostal · `tours` Tours y actividades · `alquiler_vacacional` Alquiler vacacional | — | — |
+| Educación (`education`) | `idiomas` Escuela de idiomas · `universitaria` Universidad / Instituto · `online` Cursos online · `capacitacion` Capacitación empresarial · `academia_baile` Academia de baile · `academia_musica` Academia de música o arte · `clases_particulares` Clases particulares y tutorías · `autoescuela` Autoescuela | — | — |
+| Finanzas / Banca (`finanzas`) | `asesoria` Asesoría financiera · `creditos` Créditos y préstamos | `pagos_recaudos` Pagos y recaudos | `fintech` Fintech |
+| Servicios profesionales (`servicios_profesionales`) | `abogados` Abogados · `contadores` Contadores · `arquitectos` Arquitectos · `consultores` Consultores | — | — |
+| Retail / Comercio (`retail`) | `moda` Moda y ropa · `electronica` Electrónica · `hogar` Hogar y decoración | `marketplace` Marketplace / E-commerce | — |
+| Tecnología (`technology`) | `saas` SaaS · `desarrollo` Desarrollo de software · `hardware` Hardware y redes | `soporte_ti_msp` Soporte TI y MSP | `consultoria_ti` Consultoría TI |
+| Veterinaria (`veterinaria`) | `clinica_general` Clínica de pequeñas especies · `hospital_24h` Hospital veterinario 24h · `exoticos` Animales exóticos | — | `peluqueria_canina` Peluquería canina / felina (hoy es `pet_services/peluqueria`) |
+| Gimnasios y Fitness (`gimnasios`) | `gimnasio_general` Gimnasio tradicional · `crossfit` Box CrossFit · `yoga_pilates` Estudio de yoga / pilates · `cycling` Cycling / spinning · `martial_arts` Artes marciales | — | — |
+| Seguros (`seguros`) | `broker` Broker / Corredor · `vida` Especialista en vida · `auto` Especialista en auto | `aseguradora` Aseguradora · `salud` Especialista en salud | — |
+| Servicios del hogar (`servicios_hogar`) | `plomeria` Plomería · `electricidad` Electricidad · `fumigacion` Fumigación · `limpieza` Limpieza · `jardineria` Jardinería · `cerrajeria` Cerrajería · `pintura` Pintura | — | — |
+| Servicios para mascotas (`pet_services`) | `peluqueria` Peluquería canina/felina · `guarderia` Guardería diurna · `hotel` Hotel canino · `paseos` Paseos · `adiestramiento` Adiestramiento | — | — |
+| Fotografía / Eventos (`fotografia`) | `estudio` Estudio fotográfico · `bodas` Wedding photography · `eventos` Eventos sociales y corporativos · `producto` Fotografía de producto | — | `wedding_planner` Wedding planner |
+| Planeación de eventos (`event_planning`; oculta en el alta) | — | `weddings` Planeación de bodas | — |
+| Construcción (`construccion`; oculta en el alta) | — | `contratista_general` Contratista general | — |
+| Otro (`otro`) | (sin tipo de negocio) | — | — |
+
+Un tipo **en lista de espera** existe como tipo pero no se ofrece en el alta y su
+operación completa sigue cerrada. Un tipo **solo para cuentas existentes** ya no se
+ofrece, pero sigue funcionando en las cuentas que lo tenían.
+
+### Superficie principal por industria
+
+| Industria | Superficie principal posible |
+|-----------|------------------------------|
+| Salud | Citas; Planes de tratamiento en odontología, dermatología y psicología; Pedidos e Inventario en farmacia |
+| Belleza y estética | Citas; Planes de tratamiento en spa y centro de estética |
+| Inmobiliaria | Citas (visitas) e Inmuebles |
+| Restaurantes | Menú y Pedidos; reservas de mesa (Citas) en restaurante casual y cafetería |
+| Automotriz | Concesionario: Vehículos y Citas; taller: Órdenes de taller y Citas; repuestos: Inventario y Pedidos; alquiler: Alquileres y Vehículos |
+| Turismo | Agencia de viajes y tours: Reservas de tours y Tours y Paquetes; hotel y alquiler vacacional: Reservas (estadías) y Propiedades |
+| Educación | Citas y Cursos (cohortes e inscripciones) |
+| Finanzas | CRM y Citas, con traspaso a una persona para decisiones financieras |
+| Servicios profesionales | CRM, Casos y Citas |
+| Retail | Inventario y Pedidos; hogar y decoración suma Citas y Paquetes y servicios |
+| Tecnología | CRM y Citas; Inventario y Pedidos para hardware |
+| Veterinaria | Citas y Mascotas |
+| Gimnasios | Membresías, Clases y reservas |
+| Seguros | Planes, cotizaciones, pólizas y reclamos con controles de rol |
+| Servicios del hogar | Solicitudes de servicio y Paquetes y servicios |
+| Servicios para mascotas | Citas y Mascotas; guardería y hotel: Alquileres y estadías, Mascotas y Paquetes y servicios |
+| Fotografía | Sesiones fotográficas y Paquetes y servicios |
 | Otro | CRM, catálogo y pedidos genéricos |
+
+Los nombres exactos del menú cambian según el tipo de negocio (por ejemplo el taller
+mecánico ve «Órdenes de trabajo» y el hotel ve «Reservas» y «Habitaciones»); están en
+el [catálogo](business-types-catalog.md), línea «Menú» de cada ficha.
 
 ## 21.1 Turismo — Tours, Paquetes y Alquiler Vacacional
 
 **Para quién:** agencias de viajes, operadores de tours, hoteles con experiencias, alquiler vacacional (Airbnb-style).
 
-**Sub-tipos:**
-- `tours` — agencias de día / multi-día
-- `agencia_viajes` — operador full
-- `alquiler_vacacional` — propiedades estilo Airbnb
+**Tipos de negocio:**
+- `turismo/tours` — tours y actividades (de día o multi-día)
+- `turismo/agencia_viajes` — agencia de viajes
+- `turismo/hotel` — hotel / hostal
+- `turismo/alquiler_vacacional` — propiedades estilo Airbnb
+
+Tours y agencia de viajes usan **Tours y Paquetes** y **Reservas de tours**; hotel y
+alquiler vacacional usan **Propiedades** y **Reservas** (estadías).
 
 ### 21.1.1 Tours y Paquetes
 
-**Ruta:** Operación → Tours
+**Ruta:** Catálogo y recursos → **Tours y Paquetes** (en el menú de la agencia se
+rotula «Paquetes» y en el de tours, «Tours»); las salidas del día con sus viajeros
+están en Trabajo diario → **Reservas de tours** (`/admin/tour-bookings`)
 
 **Cómo crear paquetes:**
 1. Tours → "Crear paquete"
@@ -2125,27 +2241,29 @@ nueva.
 **Cómo el agente IA usa esto:**
 "¿Qué tours tienen el sábado para 2 personas?" → llama `search_packages` → muestra opciones con disponibilidad → al confirmar llama `create_tour_booking`.
 
-### 21.1.2 Propiedades (Alquiler vacacional)
+### 21.1.2 Propiedades (hotel y alquiler vacacional)
 
-**Ruta:** Catálogo y recursos → Propiedades
+**Ruta:** Catálogo y recursos → Propiedades (en el menú del hotel se rotula
+«Habitaciones» y en el del alquiler vacacional, «Alojamientos»)
 
 **Crear propiedad:**
-1. Propiedades → "Crear propiedad"
-2. Datos: nombre, dirección, capacidad, habitaciones, baños
-3. **Amenidades** — 30 opciones en 6 categorías (acordeón):
-   - Esenciales: WiFi, A/C, calefacción, agua caliente
-   - Cocina: nevera, microondas, lavavajillas, cafetera
-   - Confort: TV, Smart TV, Netflix, juegos
-   - Espacio: piscina, jacuzzi, terraza, parrilla, estacionamiento
-   - Seguridad: detector humo, caja fuerte, cámaras exteriores
-   - Accesibilidad: rampa, baño accesible, ascensor
+1. Propiedades → "Agregar propiedad"
+2. Datos: nombre, dirección, ciudad, huéspedes máximos, habitaciones, baños, precio por
+   noche, tarifa de limpieza, noches mínimas y moneda
+3. **Amenidades** — 32 opciones en 6 categorías:
+   - Esenciales: WiFi, aire acondicionado, calefacción, cocina, lavadora, secadora, TV, plancha
+   - Baños: jacuzzi, bañera, secador de cabello, artículos de aseo
+   - Exterior: piscina, estacionamiento, jardín, BBQ/parrilla, balcón, terraza, vista al mar, vista a la montaña
+   - Seguridad: cámaras de seguridad, detector de humo, botiquín, caja fuerte
+   - Entretenimiento: gimnasio, sala de juegos, Netflix/streaming, libros
+   - Especiales: acepta mascotas, ascensor, accesible, espacio de trabajo
 
 **Galería de imágenes:**
 - Drag & drop, máximo 5 fotos, 2 MB cada una
 - Reordenar, elegir foto portada
 - Botones flecha para mover, ✓ para portada
 
-**Límites por plan:** consulta **Configuración → Facturación**. Las cuotas de
+**Límites por plan:** consulta **Administración → Facturación**. Las cuotas de
 propiedades se administran en runtime y pueden cambiar; una tabla histórica o un seed
 del repositorio no reemplaza el límite mostrado para tu cuenta.
 
@@ -2163,30 +2281,30 @@ del repositorio no reemplaza el límite mostrado para tu cuenta.
 
 **Exportar tu calendario:**
 1. Mismo tab → bloque "URL de exportación"
-2. Click "Copiar" → pegá esa URL en Airbnb → "Sincronizar calendario"
+2. Click "Copiar" → pega esa URL en Airbnb → "Sincronizar calendario"
 3. Airbnb lee tu calendario aprox cada hora
 
 **Anti-doble-booking:**
 - Verificación en tiempo real al confirmar reserva
 - iCal tiene delay 3-6h — para máxima protección, acepta reservas con 24h+ de anticipación
 
-### 21.1.4 Registro directo de reservas
+### 21.1.4 Registro de estadías
 
-**Ruta:** Trabajo diario → Reservas (`/admin/stays`)
+**Ruta:** Trabajo diario → Reservas (`/admin/stays`; en inglés, «Stays»)
 
 Esta pantalla es el registro operativo de estadías y no el Kanban del embudo. Permite
 buscar, paginar, crear y cancelar reservas dentro de los permisos vigentes. La columna
 de origen distingue las creadas por el agente de las creadas manualmente. **Propiedades**
 permanece separada como catálogo y configuración del alojamiento.
 
-### 21.1.4 Reservas directas
+### 21.1.5 Reservas directas
 
 1. Detalle de propiedad → tab "Reservas" → "Nueva reserva"
 2. Fechas, huésped, teléfono, número de huéspedes
 3. Precio se calcula automáticamente
 4. Aparece en feed de exportación (Airbnb la ve)
 
-### 21.1.5 Check-in
+### 21.1.6 Check-in
 
 Tab "Check-in" en cada propiedad:
 - Instrucciones (código de puerta, WiFi, parking)
@@ -2196,9 +2314,9 @@ Tab "Check-in" en cada propiedad:
 
 ## 21.2 Inmobiliaria — Listings de venta y arriendo
 
-**Para quién:** inmobiliarias, asesores independientes, constructores con catálogo. NO para vacacional (eso es 21.1).
+**Para quién:** inmobiliarias y asesores independientes: `inmobiliaria/venta`, `inmobiliaria/arriendo` e `inmobiliaria/comercial`. NO para vacacional (eso es 21.1). Promotora inmobiliaria (`inmobiliaria/promotora`) está en lista de espera y Construcción y proyectos (`inmobiliaria/construccion`) solo existe para cuentas anteriores.
 
-**Sidebar:** Inmuebles
+**Menú:** Catálogo y recursos → Inmuebles (en algunos tipos se rotula «Propiedades»); las visitas se agendan en Citas
 
 **Cargar un inmueble:**
 1. Inmuebles → "Crear inmueble"
@@ -2214,19 +2332,26 @@ Tab "Check-in" en cada propiedad:
 **Cómo el agente IA usa esto:**
 "Busco apto en Chapinero menos de 800M, 3 hab" → llama `search_listings` con esos filtros → muestra opciones reales → "¿Más info del segundo?" → llama `get_listing_details`.
 
-**Filtros del agente:**
-- transactionType, propertyKind, maxPrice/minPrice, minBedrooms, minAreaM2, neighborhood (búsqueda parcial), city.
+**Filtros del agente** (todos opcionales):
+- tipo de operación (venta o arriendo), tipo de inmueble, precio máximo, mínimo de habitaciones, barrio y ciudad.
 
 ## 21.3 Salud — Citas + Planes de Tratamiento
 
-**Sub-tipos:** `dental`, `medico`, `fisioterapia`, `estetica`, `psicologia`, `general`
+**Tipos de negocio:** `salud/dental`, `salud/medica_general`, `salud/dermatologia`,
+`salud/psicologia` y `salud/farmacia`.
+
+- Todos usan **Citas** salvo farmacia, que usa **Pedidos** e **Inventario**
+  («Productos»).
+- **Planes de tratamiento** están disponibles en odontología, dermatología y medicina
+  estética, y psicología y terapia (y, en Belleza y estética, en spa y bienestar y en
+  centro de estética). Medicina general no los incluye.
 
 ### 21.3.1 Planes de tratamiento
 
-Para tratamientos multi-sesión (ortodoncia, fisioterapia, series estéticas, psicoterapia, etc.).
+Para tratamientos multi-sesión (ortodoncia, series estéticas, psicoterapia, etc.).
 
 **Vista global:**
-**Ruta:** Operación → Planes de tratamiento
+**Ruta:** Catálogo y recursos → Planes de tratamiento
 
 Tabla con todos los planes activos/pausados/completados de la clínica:
 - Paciente, plan, progreso (barra), estado, fecha inicio, costo
@@ -2234,7 +2359,7 @@ Tabla con todos los planes activos/pausados/completados de la clínica:
 - Búsqueda por paciente o nombre del plan
 
 **Vista por paciente:**
-1. CRM → entra al lead/paciente
+1. Clientes → CRM → entra al lead/paciente
 2. Tarjeta "Planes de tratamiento" en el panel izquierdo (collapsible)
 3. "Crear plan" → tipo + sesiones totales + frecuencia + costo
 4. Aparece la barra de progreso "0/N sesiones"
@@ -2247,13 +2372,16 @@ Tabla con todos los planes activos/pausados/completados de la clínica:
 **Cómo el agente IA usa esto:**
 "¿Cuántas sesiones me faltan?" → `get_treatment_plan` → "Te quedan 5 sesiones de tu ortodoncia. Próxima 15 de mayo."
 
-## 21.4 Veterinaria — Mascotas + Tratamientos
+## 21.4 Veterinaria — Citas y Mascotas
 
-**Sub-tipos:** `clinica_general`, `especialidad`, `peluqueria_canina`, `daycare`
+**Tipos de negocio:** `veterinaria/clinica_general`, `veterinaria/hospital_24h` y
+`veterinaria/exoticos`. La peluquería canina que antes colgaba de veterinaria
+(`veterinaria/peluqueria_canina`) hoy es `pet_services/peluqueria` (sección 21.10).
 
 ### 21.4.1 Fichas de mascotas
 
-**Ruta:** Operación → Mascotas
+**Ruta:** Trabajo diario → Mascotas (junto a la agenda, que en veterinaria se rotula
+«Agenda»)
 
 Grid de cards de mascotas con:
 - Foto / emoji por especie (🐕 perro, 🐈 gato, 🦜 ave, 🐰 conejo, 🦎 reptil)
@@ -2275,303 +2403,411 @@ Desde el detalle del contacto (dueño) → tarjeta "Mascotas" → "Agregar masco
 **Vacunaciones:**
 Detalle de la mascota → tab "Vacunas" → "Registrar vacuna" con tipo + fecha + lote + próxima fecha → el agente IA puede responder "¿Cuándo es la próxima vacuna de Toby?"
 
-### 21.4.2 Planes de tratamiento veterinarios
+### 21.4.2 Qué hace el agente
 
-Igual que 21.3 — sirve para tratamientos veterinarios multi-sesión (oncología, fisio, dietas).
+Con la familia **Veterinaria** el agente consulta las fichas de mascotas del cliente
+(`list_pets_for_contact`), puede registrar o actualizar una mascota
+(`register_pet`, `update_pet`), consulta el estado de vacunación
+(`get_vaccination_status`) y clasifica la urgencia de una emergencia
+(`triage_pet_emergency`) para pasarla al equipo. Los tipos de veterinaria no incluyen
+**Planes de tratamiento**.
 
 ## 21.5 Restaurantes — Menú + Pedidos
 
-**Sub-tipos:** `restaurante`, `cafeteria`, `bar`, `delivery`, `cloud_kitchen`
+**Tipos de negocio:** `restaurantes/casual_dining`, `restaurantes/comida_rapida`,
+`restaurantes/cafeteria` y `restaurantes/dark_kitchen`. Restaurante casual y cafetería
+suman la agenda de mesas (en el menú, «Reservaciones»); comida rápida y dark kitchen no.
 
 ### 21.5.1 Menú
 
-**Ruta:** Operación → Menú
+**Ruta:** Catálogo y recursos → Menú
 
 **Crear categoría:**
-1. Menú → "Categoría" → nombre, orden visual
+1. Menú → campo **Nueva categoría…** → escribe el nombre
 
 **Crear plato:**
-1. "Crear plato" → categoría, nombre, descripción, precio
-2. Foto (opcional)
-3. Tags: vegetariano, vegano, sin gluten, picante, popular
-4. Disponibilidad por horario
-5. Ingredientes / opcionales con precio extra
+1. **Agregar plato** → nombre del plato, descripción, categoría, precio y tiempo de
+   preparación (min)
+2. Etiquetas: vegetariano, vegano, sin gluten, picante, saludable, popular
+3. Alérgenos
+4. Marca un plato como **Agotado** o **Disponible** durante el servicio
 
-### 21.5.2 Pedidos de comida (Kanban tipo cocina)
+### 21.5.2 Pedidos en cocina (kanban)
 
-**Ruta:** Operación → Pedidos
+**Ruta:** Trabajo diario → Pedidos (`/admin/food-orders`); la pantalla se titula
+**Pedidos en cocina**
 
-Vista kanban con columnas:
-- **Recibido** — entró pedido
-- **En cocina** — preparándose
-- **Listo** — para entregar / recoger
-- **En camino** (delivery) — en ruta
-- **Entregado** — completado
-- **Cancelado**
+Vista kanban en tiempo real con cinco columnas:
+- **Recibidos** — entró el pedido
+- **Preparando** — se está preparando
+- **Listos** — para entregar o recoger
+- **Entregados** — completado
+- **Cancelados**
 
-Cada tarjeta muestra: número de pedido, items, total, tiempo desde creación, dirección (delivery), notas especiales.
-
-Drag entre columnas para avanzar. Sonido de notificación al entrar nuevo pedido.
+Al abrir una tarjeta ves los ítems, subtotal, domicilio, dirección de entrega, descuento,
+total, cliente y pago, y puedes avanzar el pedido (**Marcar como preparando**,
+**Marcar como listo**, **Marcar como entregado**) o cancelarlo.
 
 ### 21.5.3 Promociones
 
-Crear promos con dto. % o fijo, vigencia, condiciones (mín de pedido), aplicación automática vs código.
+En la pantalla **Menú**, sección **Promociones**: crea promociones con un título, un
+descuento en porcentaje o de monto fijo, una vigencia («Válida hasta») y un horario
+opcional. El agente las menciona cuando el cliente pregunta por ofertas.
 
 **Cómo el agente IA usa esto:**
-"¿Tienen pizza?" → `list_menu_items(category: 'pizza')` → muestra opciones → al ordenar llama `create_food_order` → aparece en kanban de cocina.
+"¿Tienen pizza?" → `get_menu` (por texto, categoría o etiqueta) → muestra opciones → al ordenar llama `place_order` → aparece en kanban de cocina. El agente también puede consultar el estado de un pedido (`check_order_status`), cancelarlo (`cancel_order`) y listar los del cliente (`list_my_orders`).
 
 ## 21.6 Gimnasios — Membresías + Clases
 
-**Sub-tipos:** `gimnasio`, `crossfit`, `yoga`, `pilates`, `boxeo`, `funcional`
+**Tipos de negocio:** `gimnasios/gimnasio_general`, `gimnasios/crossfit`,
+`gimnasios/yoga_pilates`, `gimnasios/cycling` y `gimnasios/martial_arts`. Todos usan
+**Membresías**, **Clases** y la agenda de reservas (en el menú, «Reservas»).
 
 ### 21.6.1 Planes de membresía
 
-**Ruta:** Operación → Membresías
+**Ruta:** Trabajo diario → Membresías (pestañas **Planes**, **Miembros** y **Clases**)
 
 **Crear plan:**
-1. "Crear plan" → nombre (ej: Mensual, Trimestral), precio, duración (días)
-2. Beneficios incluidos (clases, acceso fitness, parking, etc.)
-3. Política de congelamiento (cuántos días puede pausar)
+1. **Crear plan** → nombre (ej: Mensual, Trimestral), descripción, precio y duración (días)
+2. Créditos de clases (vacío = ilimitado), sesiones de personal training, pases de invitado
+   y días de congelamiento
+3. Estado del precio: confirmado, gratis o se cotiza. El agente solo dice los precios
+   confirmados; un precio de ejemplo de la receta no se dice hasta que lo confirmes
 
 ### 21.6.2 Miembros
 
-Lista de miembros con:
-- Nombre, plan actual, fecha inicio, vencimiento
-- Estado: activo, congelado, expirado
-- Check-ins recientes
-- Plan congelado / despertar
+Pestaña **Miembros**, con búsqueda por nombre, teléfono o número:
+- Miembro, plan actual, estado (activo, congelado, vencido, cancelado), vencimiento y créditos
+- **Nuevo miembro** (el número de socio se genera solo si lo dejas vacío)
+- **Congelar** (días a congelar; el vencimiento se extiende el mismo número de días al
+  reactivar) y **Reactivar**
 
 ### 21.6.3 Clases programadas
 
-**Ruta:** Operación → Clases
+**Ruta:** Trabajo diario → Clases (`/admin/classes`, «Clases programadas»); también en
+la pestaña **Clases** de Membresías.
 
-Calendario con clases:
-- Tipo (yoga, crossfit, spinning, funcional)
-- Coach asignado
-- Capacidad máxima + cupos disponibles
-- Recurrencia (lunes/miércoles/viernes 7am)
-
-### 21.6.4 Reservas y check-ins
-
-- Miembros reservan clases via WhatsApp / Instagram
-- Check-in al llegar al gym (manual o QR)
-- Sistema de tasa de fill (% de ocupación) por clase
-- Recall a inactivos (>30 días sin check-in)
+**Crear clase:** nombre, tipo, nivel, instructor (opcional), fecha y hora, duración,
+capacidad, créditos y sala (opcional). En Membresías puedes **repetir semanas** para crear
+la misma clase cada semana. **Cancelar clase** libera a quienes la habían reservado.
 
 **Cómo el agente IA usa esto:**
-"¿Hay yoga mañana?" → `list_classes(date: tomorrow, type: 'yoga')` → ofrece horarios con cupos → al confirmar llama `book_class`.
+"¿Hay yoga mañana?" → `get_class_schedule` → ofrece horarios con cupos → al confirmar llama `book_class`. También consulta planes (`get_membership_plans`), la membresía y las reservas del cliente (`get_my_membership`, `get_my_class_bookings`), congela la membresía (`freeze_membership`) y cancela reservas de clase (`cancel_class_booking`).
 
 ## 21.7 Educación — Cursos y Cohortes
 
-**Sub-tipos:** `escuela`, `instituto`, `idiomas`, `coaching`, `cursos_online`, `tutorias`
+**Tipos de negocio:** `education/idiomas`, `education/universitaria`,
+`education/online`, `education/capacitacion`, `education/academia_baile`,
+`education/academia_musica`, `education/clases_particulares` y
+`education/autoescuela`. Los ocho usan **Citas** y **Cursos**.
 
 ### 21.7.1 Cursos
 
-**Ruta:** Operación → Cursos
+**Ruta:** Catálogo y recursos → Cursos (pantalla «Cursos y cohortes», con pestañas
+**Cursos**, **Cohortes** e **Inscripciones**)
 
-**Crear curso:**
-1. Nombre, descripción, duración (semanas), precio total
-2. Modalidad: presencial / online / híbrido
-3. Nivel: básico / intermedio / avanzado
-4. Imagen de portada
+**Crear curso:** **Crear curso** → nombre, descripción, materia, nivel (A1, B2,
+principiante, etc.), horas y semanas de duración, precio y certificación.
 
-### 21.7.2 Cohortes (camadas)
+### 21.7.2 Cohortes (grupos)
 
-Cada curso tiene cohortes (versiones que arrancan en diferentes fechas):
-- Fecha inicio / fin
-- Capacidad máxima
-- Docentes asignados
-- Horario semanal
-- Estado: planeada, abierta inscripciones, en curso, completada
+Cada curso tiene cohortes (grupos que arrancan en diferentes fechas). En la pestaña
+**Cohortes** → **Nueva cohorte**:
+- Código (por ejemplo 2026-A2-MAÑANA), instructor y horario
+- Fecha de inicio y de fin
+- Capacidad y aula
+- Estado: abierta, llena, cancelada o finalizada
 
 ### 21.7.3 Inscripciones
 
-Lista de estudiantes inscritos a cada cohorte:
-- Datos del alumno
-- Estado pago: pendiente / pagado / parcial / vencido
-- Tasa de pago general por cohorte
+Pestaña **Inscripciones** → **Inscribir alumno** (eliges grupo, contacto del CRM y
+nombre del alumno):
+- Estado: inscrito, cursando, completado, dado de baja o reembolsado
+- Pago: pendiente, parcial, pagado o reembolsado, con el monto pagado
 
-### 21.7.4 Pruebas de nivel
+### 21.7.4 Prueba de nivel
 
-Para idiomas / coaching técnico:
-- El agente IA toma datos básicos
-- Asigna nivel sugerido
-- Recomienda curso adecuado
+Para idiomas y otras materias con nivel, el agente IA puede compartir el enlace de la
+prueba de nivel del contacto (`get_placement_test_link`, con la materia opcional). El
+agente **entrega el enlace**; no toma la prueba ni calcula el nivel por sí mismo.
 
 **Cómo el agente IA usa esto:**
-"Quiero aprender inglés" → `take_placement_test` → preguntas básicas → "Te recomiendo el nivel B1, este es el curso más cercano que arranca el 15 de junio".
+"Quiero aprender inglés" → `get_courses` y `get_course_schedule` → muestra cursos y horarios disponibles → si el alumno quiere saber su nivel, comparte el enlace de la prueba (`get_placement_test_link`) → al confirmar, inscribe (`enroll_student`). También puede cancelar una inscripción (`cancel_enrollment`) y listar las del alumno (`list_my_enrollments`).
 
 ## 21.8 Seguros — Planes, Cotizaciones, Pólizas y Reclamos
 
-**Sub-tipos:** `salud`, `auto`, `hogar`, `vida`, `viaje`
+**Tipos de negocio:** `seguros/broker`, `seguros/vida` y `seguros/auto`.
+`seguros/aseguradora` y `seguros/salud` están en lista de espera: no se ofrecen en el
+alta y su operación completa sigue cerrada.
+
+**Ruta:** Trabajo diario → **Seguros** (en el menú de seguros se rotula «Pólizas»). La
+pantalla tiene cuatro pestañas: **Planes**, **Cotizaciones**, **Pólizas** y **Reclamos**.
 
 ### 21.8.1 Planes
 
-**Ruta:** Operación → Seguros → Planes
-
-**Crear plan:**
-1. Nombre, tipo (salud/auto/hogar/vida/viaje)
-2. Cobertura, exclusiones, precio mensual/anual
-3. Edad mínima/máxima
-4. Documentación requerida
+**Crear plan:** **Crear plan** → nombre, tipo de seguro (por ejemplo vida, salud, auto,
+hogar o viaje), descripción, prima mínima y máxima (mensual), cobertura máxima, deducible
+y edad mínima y máxima.
 
 ### 21.8.2 Cotizaciones
 
-Cliente pide cotización:
-1. Agente IA toma datos básicos (edad, situación, intereses)
-2. Llama `quote_insurance(planId, customerData)` → calcula prima
-3. Genera cotización formal con vigencia (típicamente 15 días)
-4. Cliente puede aceptar → pasa a póliza
+Cuando el cliente pide una cotización:
+1. El agente IA consulta los planes (`get_insurance_plans`) y toma los datos necesarios
+2. Calcula la prima con `calculate_quote`
+3. La cotización aparece en la pestaña **Cotizaciones** con su estado (enviada, aceptada,
+   rechazada o vencida)
+4. Si el cliente acepta, el equipo emite la póliza con **Emitir póliza**; una cotización
+   ya aceptada no se vuelve a emitir
 
-### 21.8.3 Pólizas activas
+El agente también puede cancelar una cotización (`cancel_quote`).
 
-Lista de pólizas vigentes:
-- Cliente, plan, prima mensual
-- Fecha emisión, vigencia
-- Estado: activa, suspendida (impago), cancelada
-- Número de póliza
+### 21.8.3 Pólizas
 
-### 21.8.4 Reclamos (claims)
+Pestaña **Pólizas**: lista de pólizas con su número, asegurado, plan, prima y estado
+(activa, suspendida, vencida o cancelada). **Nueva póliza** exige número de póliza,
+contacto vinculado, asegurado y prima; sin contacto vinculado el cliente no puede
+consultar su póliza por WhatsApp (`check_policy_status`).
 
-**Ruta:** Operación → Seguros → Reclamos
+### 21.8.4 Reclamos (siniestros)
 
-Cliente reporta siniestro:
-1. Datos del incidente (fecha, lugar, descripción)
-2. Fotos / documentos
-3. Estado: recibido → en revisión → aprobado / rechazado → pagado
-4. Tracking del cliente: "¿Cómo va mi reclamo del 5 de mayo?"
+Pestaña **Reclamos**: número de reclamo, tipo de siniestro, fecha de radicación, monto
+reclamado y estado (radicado, en revisión, aprobado, rechazado o pagado). El cliente
+reporta el siniestro por el chat (`file_claim`) y puede consultar sus reclamos
+(`list_my_claims`): "¿Cómo va mi reclamo del 5 de mayo?".
 
 ## 21.9 Servicios del hogar — Despacho de técnicos
 
-**Sub-tipos:** `plomeria`, `electricidad`, `fumigacion`, `limpieza`, `jardineria`, `aire_acondicionado`, `general`
+**Tipos de negocio:** `servicios_hogar/plomeria`, `servicios_hogar/electricidad`,
+`servicios_hogar/fumigacion`, `servicios_hogar/limpieza`, `servicios_hogar/jardineria`,
+`servicios_hogar/cerrajeria` y `servicios_hogar/pintura`. Usan **Solicitudes** y
+**Paquetes y servicios**.
 
 ### 21.9.1 Solicitudes de servicio
 
-**Ruta:** Operación → Solicitudes
+**Ruta:** Trabajo diario → **Solicitudes** (en el menú de servicios del hogar se rotula
+«Servicios»; la pantalla se titula «Solicitudes de servicio»)
 
-Vista priorizada por urgencia + scheduled_at:
-- 🔴 Emergencia (fugas, sin luz)
-- 🟠 Alta (urgente pero no crítico)
-- 🟢 Normal
-- 🔵 Flexible
+Filtros: **Todas**, **Activas** y **Emergencias**. Las solicitudes llevan una urgencia
+(emergencia, alta, normal o flexible) que el agente fija según lo que cuenta el cliente:
+emergencia = inundación, sin luz o riesgo de seguridad; alta = el mismo día; normal =
+en 2-3 días; flexible = cuando convenga.
 
 **Cada solicitud:**
-- Cliente (nombre, teléfono)
-- Tipo de servicio
-- Dirección + notas (referencia, "casa amarilla")
-- Descripción del problema
-- Fotos del problema
-- Fecha/franja preferida ("mañana en la mañana", "14:00-16:00")
-- Costo estimado (rango)
+- Cliente (nombre, teléfono) y dirección con sus notas
+- Tipo de servicio y problema reportado
+- Fecha y franja preferidas
+- Fecha programada y costo estimado
 - Técnico asignado
 - Estado: pendiente → cotizado → agendado → despachado → en curso → completado
+  (**Avanzar** pasa al siguiente estado; para pasar a agendado hay que fijar la fecha)
 
 ### 21.9.2 Asignación de técnicos
 
-Drag manual a un técnico, o el agente IA lo asigna automáticamente según skills (plomero / electricista) y carga.
+La asignación es **manual**: en cada solicitud eliges o escribes el técnico. La lista usa
+el equipo activo configurado en Citas → Personal. No hay asignación automática por habilidades ni por carga.
+
+### 21.9.3 Paquetes y servicios
+
+**Ruta:** Catálogo y recursos → **Paquetes y servicios** (`/admin/service-catalog`): lo
+que el negocio vende, con su duración, su precio y su capacidad. Sin al menos un
+paquete cargado, el agente responde que no hay nada para ofrecer.
 
 **Cómo el agente IA usa esto:**
-"Tengo una fuga en el baño" → `create_service_request(type: 'plomeria', urgency: 'emergencia', address, photos)` → confirma "Iván llega entre 9:00-11:00".
+"Tengo una fuga en el baño" → `list_home_services` y `check_home_service_availability` → `create_service_request` con tipo de servicio, urgencia, dirección y descripción del problema → la solicitud queda registrada y el equipo la cotiza y la agenda. El agente también consulta el estado (`check_request_status`), lista las solicitudes del cliente (`list_my_requests`) y puede cancelarlas (`cancel_service_request`). Una fecha preferida es solo información de recepción: no promete una visita.
 
-## 21.10 Servicios para mascotas — Daycare y peluquería canina
+## 21.10 Servicios para mascotas — Peluquería, guardería, hotel, paseos y adiestramiento
 
-**Sub-tipo:** `pet_services`
+**Tipos de negocio:** `pet_services/peluqueria`, `pet_services/guarderia`,
+`pet_services/hotel`, `pet_services/paseos` y `pet_services/adiestramiento`.
 
-Comparte ficha de mascotas (sección 21.4.1) + agenda de citas pero con servicios específicos:
-- Baño y peluquería
-- Daycare diario
-- Hospedaje (boarding)
-- Adiestramiento
+- Peluquería, paseos y adiestramiento usan la agenda de reservas (en el menú,
+  «Reservas») y las fichas de **Mascotas** (en el menú de peluquería se rotulan
+  «Servicios»); la ficha funciona como en la sección 21.4.1.
+- Guardería diurna y hotel canino usan **Alquileres y estadías** (en el menú,
+  «Estadías»), **Mascotas** y **Paquetes y servicios**.
+
+**Ruta de estadías:** Trabajo diario → Alquileres y estadías (`/admin/resource-rentals`),
+sección **Estadías de mascotas**: reservas, ingresos y salidas de cada mascota (estados
+reservada, mascota ingresada, mascota retirada, rechazada, cancelada). Antes de crear una
+estadía registra la mascota y su contacto responsable, y en Citas → Servicios define un
+servicio con categoría hotel o guardería y una capacidad mayor a cero.
+
+El agente consulta los servicios (`list_pet_services`) y la disponibilidad de guardería
+(`check_daycare_availability`) y, en guardería y hotel, crea, consulta y cancela
+estadías (`create_pet_boarding`, `get_pet_boarding`, `list_my_pet_boardings`,
+`cancel_pet_boarding`).
+
+La peluquería canina que antes figuraba bajo veterinaria (`veterinaria/peluqueria_canina`)
+solo existe para cuentas anteriores; una cuenta nueva elige `pet_services/peluqueria`.
 
 ## 21.11 Fotografía — Sesiones y galerías
 
-**Sub-tipos:** `bodas`, `productos`, `eventos`, `retrato`, `familia`, `recien_nacido`
+**Tipos de negocio:** `fotografia/estudio`, `fotografia/bodas`, `fotografia/eventos` y
+`fotografia/producto`. `fotografia/wedding_planner` solo existe para cuentas
+anteriores (un wedding planner opera evento, presupuesto y proveedores, que no es la
+operación de fotografía). Usan **Sesiones fotográficas** y **Paquetes y servicios**.
 
 ### 21.11.1 Sesiones
 
-**Ruta:** Operación → Sesiones fotográficas
+**Ruta:** Trabajo diario → Sesiones fotográficas (`/admin/photo-sessions`; en el menú de
+fotografía se rotula «Sesiones» o «Paquetes»)
 
-Cards por sesión con:
-- Cliente, paquete contratado
-- Tipo (boda / retrato / evento / producto / familia / recién nacido)
-- Fecha programada, ubicación
-- Estado: agendada → en curso → entregada → cancelada
-- Precio + depósito pagado
-- Tracking de entrega: "X / Y fotos entregadas"
-- Link de galería (Pixieset, Pic-Time, Drive) cuando se entrega
+Tabla de sesiones con:
+- Cliente, tipo (boda, retrato, evento, producto, familia, recién nacido u otro), paquete,
+  fecha, estado, precio y galería
+- Estados: solicitada → agendada → en curso → entregada, o cancelada
+- Acciones: **Confirmar fecha**, **Empezar** y **Entregar**
 
-**Tabs por estado:** Todas, Agendadas, En curso, Entregadas, Canceladas. Búsqueda por cliente o paquete.
+**Tabs por estado:** Todas, Solicitadas, Agendadas, En curso, Entregadas, Canceladas.
+Búsqueda por cliente o paquete.
 
 ### 21.11.2 Reserva por IA
 
-"Quiero una sesión de boda para junio" → el agente toma fecha, paquete, ubicación → crea registro en `photo_sessions` con estado "agendada" → el equipo del estudio la confirma y completa con depósito.
+"Quiero una sesión de boda para junio" → el agente consulta los paquetes
+(`list_photo_packages`), puede enviar el portafolio (`send_portfolio`), consulta la
+disponibilidad de una fecha (`check_date_availability`) y registra la solicitud
+(`request_photo_quote`). La sesión queda **solicitada** y el equipo del estudio la
+confirma con **Confirmar fecha**. El agente también puede cancelar una sesión
+(`cancel_photo_session`).
 
 ### 21.11.3 Entrega de galería
 
-1. Detalle de la sesión → "Marcar como entregada"
-2. Pega URL de la galería (con contraseña opcional)
-3. El sistema cambia a `delivered`, registra `deliveredAt`
-4. El agente puede mandar el link al cliente automáticamente
+1. En la sesión → **Entregar**
+2. Pega el link de la galería (con contraseña opcional) e indica las fotos entregadas
+3. La sesión pasa a entregada
 
-## 21.12 Moda y belleza — Agenda, tratamientos y catálogo
+### 21.11.4 Paquetes y servicios
 
-**Subtipos vigentes:** salón de belleza, barbería, spa y estética. El subtipo
-`boutique` se conserva para tenants heredados.
+**Ruta:** Catálogo y recursos → **Paquetes y servicios**: los paquetes que ofrece el
+estudio, con su duración, precio y capacidad.
 
-- Salón, barbería, spa y estética usan **Agenda** para servicios y disponibilidad.
-- Spa y estética pueden habilitar **Planes de tratamiento**.
-- Una boutique heredada usa catálogo/inventario y pedidos en vez de agenda.
+## 21.12 Belleza y estética — Agenda, tratamientos y catálogo
+
+**Tipos de negocio** (industria `moda_belleza`, que el selector rotula «Belleza y
+estética»): `moda_belleza/salon_belleza`, `moda_belleza/barberia`,
+`moda_belleza/spa` y `moda_belleza/estetica`.
+
+- Los cuatro usan **Citas** para servicios y disponibilidad.
+- Spa y bienestar y centro de estética añaden **Planes de tratamiento**.
+- El id antiguo `moda_belleza/boutique` ya no se ofrece y se resuelve como
+  `retail/moda` (sección 21.16).
 
 El agente puede orientar y reservar con la información configurada, pero no debe
 diagnosticar, garantizar resultados ni recomendar productos no autorizados.
 
-## 21.13 Automotriz — Vehículos, citas, repuestos y alquiler
+## 21.13 Automotriz — Vehículos, citas, repuestos, taller y alquiler
 
-**Subtipos:** concesionario, taller, repuestos y alquiler.
+**Tipos de negocio:** `automotriz/concesionario`, `automotriz/taller`,
+`automotriz/repuestos` y `automotriz/alquiler`.
 
-- Concesionario y taller combinan inventario vehicular con agenda para visitas,
-  revisiones o pruebas de manejo.
-- Repuestos usa inventario y pedidos.
-- Alquiler usa el workspace de alquileres de vehículos.
+- **Concesionario**: **Citas** y **Vehículos** (Catálogo y recursos). El agente busca
+  vehículos (`search_vehicles`), muestra su ficha e imágenes (`get_vehicle_details`,
+  `send_vehicle_image`) y puede agendar una prueba de manejo (`schedule_test_drive`),
+  que además necesita la familia de citas.
+- **Taller mecánico**: **Órdenes de taller** (sección 21.13.1) y **Citas**. El taller no
+  usa el inventario de vehículos.
+- **Repuestos**: **Inventario** (en el menú, «Repuestos») y **Pedidos**.
+- **Alquiler de vehículos**: **Alquileres y estadías** (sección 21.13.2) y **Vehículos**
+  (en el menú, «Flota»).
 
-La pantalla exacta se deriva del subtipo y capacidades publicadas. Una prueba de
-manejo creada no implica aprobación de financiación ni reserva definitiva del vehículo.
+La pantalla exacta se deriva del tipo de negocio y las capacidades publicadas. Una
+prueba de manejo creada no implica aprobación de financiación ni reserva definitiva del
+vehículo.
+
+### 21.13.1 Órdenes de taller
+
+**Ruta:** Trabajo diario → **Órdenes de taller** (`/admin/repair-orders`; en el menú
+del taller mecánico se rotula «Órdenes de trabajo»). El técnico asignado se elige del
+equipo activo configurado en Citas → Personal.
+
+- Tablero con las métricas **Órdenes abiertas**, **Esperando aprobación**, **Listas para
+  entregar** y **Entregadas en 30 días**; búsqueda por placa, VIN, vehículo o motivo.
+- **Nueva orden**: contacto, vehículo (marca, modelo, año, kilometraje y **placa o VIN**,
+  uno de los dos es obligatorio), motivo y síntomas reportados por el cliente.
+- Estados: recepción → en diagnóstico/cotización → esperando aprobación → aprobada → en
+  reparación → lista para entregar → entregada (también estimado rechazado y cancelada).
+- **Publicar estimado**: el estimado pasa a aprobación del cliente. El equipo puede
+  **Registrar aprobación** o **Registrar rechazo** indicando cómo y cuándo decidió el
+  cliente.
+- El motivo reportado es el relato del cliente, no un diagnóstico técnico ni una
+  promesa de reparación; el diagnóstico del técnico solo lo escribe el equipo del taller.
+
+**Cómo el agente IA usa esto:** abre la recepción cuando el cliente identifica su
+vehículo (`create_repair_order`), consulta las órdenes del cliente
+(`list_my_repair_orders`, `get_repair_order`), registra la decisión explícita del cliente
+sobre el estimado vigente (`approve_repair`) y puede cancelar una orden mientras aún se
+permita (`cancel_repair_order`). Nunca convierte síntomas en diagnóstico, precio ni
+duración de reparación.
+
+### 21.13.2 Alquiler de vehículos
+
+**Ruta:** Trabajo diario → **Alquileres y estadías** (`/admin/resource-rentals`; en el
+menú del alquiler de vehículos se rotula «Reservas»), sección **Reservas de vehículos**:
+solicitudes, requisitos y control de entrega, devolución y daños.
+
+- Estados: pendiente de revisión, reservada, vehículo entregado, vehículo devuelto,
+  rechazada y cancelada.
+- Acciones: **Entregar vehículo**, **Registrar devolución** y **Cancelar**.
+- La solicitud del agente queda para revisión antes de reservar el vehículo.
+- Configuración previa: agrega los vehículos y márcalos disponibles en **Vehículos**
+  («Flota»).
+
+El agente consulta la disponibilidad (`check_vehicle_rental_availability`) y crea,
+consulta, lista y cancela alquileres (`create_vehicle_rental`, `get_vehicle_rental`,
+`list_my_vehicle_rentals`, `cancel_vehicle_rental`).
 
 ## 21.14 Finanzas — CRM y agenda con límites regulados
 
-**Subtipos:** asesoría, fintech y créditos.
+**Tipos de negocio:** `finanzas/asesoria` y `finanzas/creditos`.
+`finanzas/pagos_recaudos` está en lista de espera y `finanzas/fintech` solo existe
+para cuentas anteriores («Fintech» no es un producto: pagos, wallet, remesas, neobanco e
+inversión tienen licencias, ledgers y riesgos incompatibles).
 
-Esta vertical ofrece un preset horizontal de CRM, FAQs y agenda. Sirve para captar,
+Esta industria ofrece un preset horizontal de CRM, FAQs y agenda. Sirve para captar,
 calificar y coordinar consultas; no automatiza aprobación de crédito, recomendaciones
 de inversión, rentabilidades ni asesoría tributaria individual. Esas decisiones deben
 pasar a una persona autorizada.
 
 ## 21.15 Servicios profesionales — Consultas y casos
 
-**Subtipos:** abogados, contadores, arquitectos y consultores.
+**Tipos de negocio:** `servicios_profesionales/abogados`, `/contadores`, `/arquitectos`
+y `/consultores`.
 
-Combina CRM, FAQs y agenda. Cuando el tenant publica la capacidad correspondiente, el
-agente puede consultar el estado contextual de un caso tras validar la identidad
-requerida. No existe una promesa de expediente jurídico/contable completo ni de
-asesoría profesional automática.
+Combina CRM, FAQs, agenda y **Casos**.
+
+**Ruta:** Trabajo diario → **Casos** (`/admin/cases`): los expedientes del estudio, con
+referencia, cliente, etapa y último movimiento; filtros **Abiertos**, **Cerrados** y
+**Todos**, y acceso a la conversación. Un caso se abre cuando una consulta avanza en el
+embudo, y el agente puede consultar su estado por chat (`get_case_status`, solo
+lectura) tras validar la identidad requerida. No existe una promesa de expediente
+jurídico/contable completo, de cotización o propuesta por chat, ni de asesoría
+profesional automática.
 
 ## 21.16 Retail — Inventario y pedidos
 
-**Subtipos:** moda, electrónica, hogar y marketplace.
+**Tipos de negocio:** `retail/moda` (Moda y ropa), `retail/electronica` y
+`retail/hogar` (Hogar y decoración). `retail/marketplace` está en lista de espera
+(operar un marketplace exige merchant of record, alta de vendedores, órdenes
+multi-vendedor, comisiones, pagos a vendedores y disputas). Los ids antiguos
+`moda_belleza/boutique` y `pet_services/tienda` se resuelven como `retail/moda`.
 
-La operación principal usa **Inventario** y **Pedidos**. El catálogo permite consultar
+La operación principal usa **Inventario** (en el menú, «Productos») y **Pedidos**; hogar y
+decoración suma **Citas** y **Paquetes y servicios**. El catálogo permite consultar
 productos disponibles y el flujo de órdenes usa los estados habilitados por el backend.
 Precios, stock y condiciones deben venir de los datos vigentes del tenant; el agente no
 debe inventarlos.
 
 ## 21.17 Tecnología — Demos, servicios y hardware
 
-**Subtipos:** SaaS, consultoría TI, desarrollo y hardware.
+**Tipos de negocio:** `technology/saas`, `technology/desarrollo` y
+`technology/hardware`. `technology/soporte_ti_msp` está en lista de espera y
+`technology/consultoria_ti` solo existe para cuentas anteriores (la mesa de servicio
+MSP y la consultoría por proyectos son dos productos distintos).
 
-- SaaS, consultoría y desarrollo usan CRM y agenda para demos o reuniones.
-- Hardware usa inventario y pedidos.
+- SaaS y desarrollo de software usan CRM y agenda para demos o reuniones.
+- Hardware y redes usa inventario (en el menú, «Equipos») y pedidos.
 
-La vertical ayuda a organizar el ciclo comercial, pero no sustituye herramientas de
+La industria ayuda a organizar el ciclo comercial, pero no sustituye herramientas de
 gestión de proyectos, soporte técnico o licenciamiento si esas capacidades no aparecen
 habilitadas en la cuenta.
 
@@ -2580,7 +2816,10 @@ habilitadas en la cuenta.
 Cuando una empresa no encaja en las categorías anteriores, Parallly usa un preset
 estable de CRM, FAQs, catálogo y pedidos. El nombre de la operación se mantiene
 genérico y no se infieren módulos especializados. Un Admin puede completar identidad,
-pipeline, conocimiento y catálogo desde la web.
+pipeline, conocimiento y catálogo desde la web. La receta inicial de esta industria no
+se escribe a mano: Parallly propone una generada con IA a partir de la frase que pusiste
+en el alta sobre qué hace tu negocio; aparece como sugerencia y no reemplaza lo que ya
+cambiaste.
 
 ---
 
@@ -2640,8 +2879,8 @@ global **Parallly Assist**. No todas las pantallas tienen un tutorial propio.
 ## 23.2 Parallly Assist
 
 El botón flotante abre un chat que responde preguntas sobre el uso de la plataforma
-con la base de ayuda versionada y el contexto autorizado de página, rol, plan y
-vertical. También ofrece sugerencias rápidas y, para los roles habilitados, puede
+con la base de ayuda versionada y el contexto autorizado de página, rol, plan,
+industria y tipo de negocio. También ofrece sugerencias rápidas y, para los roles habilitados, puede
 reiniciar el tour. Sus respuestas siguen los permisos del usuario: conocer una
 función no concede acceso a su pantalla.
 
@@ -2700,7 +2939,7 @@ Dentro de la conversación resuelta:
 
 ## 24.3 Cuándo conviene reabrir
 
-- Cliente respondió por otro canal y querés continuar en chat
+- Cliente respondió por otro canal y quieres continuar en chat
 - Necesitas hacer follow-up manual
 - Te equivocaste al cerrarla
 
@@ -2727,13 +2966,15 @@ Parallly Mobile es una compañera operativa para Inbox, CRM, embudo, tareas,
 disponibilidad y el workspace de la industria. No replica la configuración completa
 del dashboard web.
 
-- **Tabs:** Inbox, CRM, Operación adaptada y Más.
+- **Tabs:** Inbox, CRM, la pestaña de trabajo diario (se rotula «Citas» y cambia de nombre según el tipo de negocio) y Más.
 - **Conversación:** asignar/tomar control, devolver a IA, resolver, notas, macros,
   sugerencias y resumen, según rol y estado; los mensajes sin conexión pueden quedar
   en una outbox local aislada por cuenta hasta reconectar.
 - **CRM:** consultar o crear leads y mover deals cuando el backend lo autoriza.
-- **Operación:** agenda, estadías, tours, pedidos, clases, matrículas, seguros,
-  solicitudes, sesiones, alquileres o mascotas según capacidades publicadas.
+- **Trabajo diario:** agenda, estadías, tours, pedidos, clases, matrículas, seguros,
+  solicitudes, sesiones, alquileres o mascotas según capacidades publicadas. El
+  workspace móvil no incluye **Órdenes de taller** ni **Casos** (servicios
+  profesionales): se operan en la web.
 - **Más:** disponibilidad, tareas, indicadores permitidos, idioma, push y cuenta.
 
 La configuración de canales, agentes IA, usuarios, facturación, empresa e
@@ -2794,11 +3035,11 @@ Además hay protecciones automáticas contra abuso:
 - El mensaje multimedia se registra normalmente en la conversación
 - Pero NO se transcribe ni analiza — el agente IA recibe un texto genérico: "El cliente envió un audio" / "El cliente envió una imagen"
 - El agente responde pidiendo que el cliente lo describa por texto
-- Puedes monitorear tu uso en **Configuración → Facturación** (barras de uso multimedia)
+- Puedes monitorear tu uso en **Administración → Facturación** (barras de uso multimedia)
 
 ## 27.5 Monitoreo de uso
 
-En la página de **Facturación** (Configuración → Facturación) verás:
+En la página de **Facturación** (Administración → Facturación) verás:
 
 - **Barra de audio**: uso mensual con porcentaje (icono de micrófono)
 - **Barra de imagen**: uso mensual con porcentaje (icono de ojo)
@@ -2990,7 +3231,7 @@ mapeo nunca habilita escrituras externas por sí solo.
 
 Agrupa contactos por **empresa/cuenta** y proyecta tus ingresos.
 
-**Dónde:** menú → **CRM → Organizaciones** (`/admin/contacts/organizations`).
+**Dónde:** menú → **Clientes → Organizaciones** (`/admin/contacts/organizations`).
 
 ## 34.1 Organizaciones
 
@@ -3057,7 +3298,7 @@ Pulsa **Conectar Google Business** y autoriza el acceso. Luego configura tu Acco
 ## General
 
 **¿Cuánto cuesta Parallly?**
-Depende del país, plan y ciclo disponibles. Consulta **Configuración → Facturación**:
+Depende del país, plan y ciclo disponibles. Consulta **Administración → Facturación**:
 las tarjetas se cargan desde el catálogo activo y muestran el importe, moneda, cuotas y
 modalidad aplicables a tu cuenta.
 
@@ -3070,7 +3311,7 @@ La disponibilidad comercial, moneda y método de cobro dependen del catálogo ac
 el país de facturación. Verifica la opción que muestra el checkout o consulta ventas.
 
 **¿Cómo cambio de plan?**
-Configuración → Facturación → selecciona una tarjeta habilitada y revisa el resumen. La
+Administración → Facturación → selecciona una tarjeta habilitada y revisa el resumen. La
 pantalla confirma si el cambio es inmediato, programado o requiere contacto comercial.
 
 **¿Puedo pausar mi suscripción?**
@@ -3100,7 +3341,7 @@ Solo para mensajes salientes fuera de la ventana de 24h. Para conversaciones que
 No — solo Instagram Business. Es un requisito de Meta, no de Parallly.
 
 **¿Cuántos canales puedo conectar?**
-Podés conectar los canales autoservicio habilitados para tu cuenta y, cuando el plan vigente lo permita, **varias conexiones del mismo tipo** (p. ej. dos números de WhatsApp). Cada conexión puede tener su propio agente. Revisa el cupo aplicable en **Configuración → Facturación** y consulta las secciones 9.8 y 8.2.
+Puedes conectar los canales autoservicio habilitados para tu cuenta y, cuando el plan vigente lo permita, **varias conexiones del mismo tipo** (p. ej. dos números de WhatsApp). Cada conexión puede tener su propio agente. Revisa el cupo aplicable en **Administración → Facturación** y consulta las secciones 9.8 y 8.2.
 
 ## Citas
 
@@ -3123,7 +3364,7 @@ Los mensajes se reciben pero no se procesan con IA. El agente responde pidiendo 
 
 **¿Me cobran extra por multimedia?**
 La disponibilidad, cuota y cualquier cargo aplicable son los que muestra tu plan
-vigente en **Configuración → Facturación**.
+vigente en **Administración → Facturación**.
 
 ## Seguridad
 
@@ -3131,7 +3372,7 @@ vigente en **Configuración → Facturación**.
 Sí — Configuración → Seguridad. Soporta app autenticadora (TOTP), código por email y códigos de respaldo.
 
 **¿Qué son los dispositivos de confianza?**
-Al marcar "Confiar en este dispositivo" al iniciar sesión con 2FA, no te pedirá el segundo factor por 30 días en ese navegador. Podés revocarlos en cualquier momento.
+Al marcar "Confiar en este dispositivo" al iniciar sesión con 2FA, no te pedirá el segundo factor por 30 días en ese navegador. Puedes revocarlos en cualquier momento.
 
 ## Integraciones y API
 
@@ -3146,7 +3387,7 @@ plan vigente. Recomendamos una clave separada por integración.
 Email tiene un adaptador inbound interno para integraciones administradas, pero no es
 un canal conversacional configurable en autoservicio. Su ruta heredada redirige al
 inventario certificado y el servidor rechaza conexiones, asignaciones y campañas
-nuevas de Email. Si necesitás la integración, solicita una evaluación técnica a
+nuevas de Email. Si necesitas la integración, solicita una evaluación técnica a
 soporte; ver sección 9.6.
 
 **¿Puedo hacer pruebas A/B en campañas?**

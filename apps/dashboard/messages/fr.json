@@ -3194,6 +3194,14 @@
       "complete": "Terminer"
     },
     "thisWeek": "Cette semaine",
+    "totalWeekOf": "Total semaine du {range}",
+    "cancelledPlural": "Annulés",
+    "hideCancelled": "Masquer les annulés",
+    "showCancelled": "Afficher les annulés",
+    "cancelledBlockHint": "Annulé, ne peut pas être déplacé",
+    "cancelledReadOnly": "Ce rendez-vous est annulé : il est en lecture seule. Pour le reprendre, créez un nouveau rendez-vous.",
+    "viewAppointmentTitle": "Détail du rendez-vous",
+    "agendaRangeNote": "Rendez-vous des 30 derniers jours et des 6 prochains mois.",
     "total": "Total",
     "servicesSection": {
       "title": "Services disponibles",

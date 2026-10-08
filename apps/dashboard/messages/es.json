@@ -3194,6 +3194,14 @@
       "complete": "Completar"
     },
     "thisWeek": "Esta semana",
+    "totalWeekOf": "Total semana {range}",
+    "cancelledPlural": "Canceladas",
+    "hideCancelled": "Ocultar canceladas",
+    "showCancelled": "Mostrar canceladas",
+    "cancelledBlockHint": "Cancelada, no se puede mover",
+    "cancelledReadOnly": "Esta cita está cancelada, por eso solo puedes consultarla. Para volver a agendarla, crea una cita nueva.",
+    "viewAppointmentTitle": "Detalle de la cita",
+    "agendaRangeNote": "Se muestran las citas de los últimos 30 días y de los próximos 6 meses.",
     "total": "Total",
     "servicesSection": {
       "title": "Servicios disponibles",

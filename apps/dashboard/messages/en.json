@@ -3194,6 +3194,14 @@
       "complete": "Complete"
     },
     "thisWeek": "This week",
+    "totalWeekOf": "Total week of {range}",
+    "cancelledPlural": "Cancelled",
+    "hideCancelled": "Hide cancelled",
+    "showCancelled": "Show cancelled",
+    "cancelledBlockHint": "Cancelled, cannot be moved",
+    "cancelledReadOnly": "This appointment is cancelled, so it is read-only. To book it again, create a new appointment.",
+    "viewAppointmentTitle": "Appointment details",
+    "agendaRangeNote": "Showing appointments from the last 30 days and the next 6 months.",
     "total": "Total",
     "servicesSection": {
       "title": "Available services",

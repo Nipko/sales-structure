@@ -6,7 +6,8 @@ import { cn } from "@/lib/utils";
 import {
   Search, CalendarDays, CheckCircle2, CalendarCheck, Ban, Eye,
 } from "lucide-react";
-import { Appointment, Service, STATUS_CONFIG, formatDate, formatTime } from "./shared";
+import { Appointment, Service, STATUS_CONFIG, formatDate, formatTime, isCancelledAppointment } from "./shared";
+import AppointmentStatusBadge from "./AppointmentStatusBadge";
 
 interface AgendaTabProps {
   appointments: Appointment[];
@@ -103,6 +104,7 @@ export default function AgendaTab({
 
       {/* Date range */}
       <div className="flex gap-3 items-center flex-wrap">
+        <p className="basis-full text-xs text-neutral-500 dark:text-neutral-400">{t('agendaRangeNote')}</p>
         <div className="flex items-center gap-2">
           <label className="text-xs font-medium text-neutral-500 dark:text-neutral-400">{t('from')}</label>
           <input
@@ -168,10 +170,16 @@ export default function AgendaTab({
             </thead>
             <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800/50">
               {filteredAppointments.map((appt) => {
-                const sc = STATUS_CONFIG[appt.status];
                 const svc = services.find((s) => s.name === appt.serviceName);
+                const cancelled = isCancelledAppointment(appt);
                 return (
-                  <tr key={appt.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/30 transition-colors">
+                  <tr
+                    key={appt.id}
+                    className={cn(
+                      "hover:bg-neutral-50 dark:hover:bg-neutral-800/30 transition-colors",
+                      cancelled && "opacity-60 [&_td:nth-child(-n+4)]:line-through",
+                    )}
+                  >
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-2.5">
                         <div
@@ -202,15 +210,7 @@ export default function AgendaTab({
                       )}
                     </td>
                     <td className="px-5 py-4">
-                      <span
-                        className={cn(
-                          "inline-flex items-center text-[11px] px-2.5 py-1 rounded-full font-semibold",
-                          sc.twBg,
-                          sc.twText
-                        )}
-                      >
-                        {t(sc.i18nKey)}
-                      </span>
+                      <AppointmentStatusBadge status={appt.status} />
                     </td>
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-1">

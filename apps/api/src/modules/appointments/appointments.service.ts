@@ -44,6 +44,8 @@ export interface Appointment {
     contactId: string | null;
     contactName?: string;
     conversationId: string | null;
+    /** Who created the row: 'ai' (the assistant), 'manual', 'public_booking'... */
+    source?: string | null;
     assignedTo: string | null;
     assignedName?: string;
     serviceId?: string | null;
@@ -1067,6 +1069,7 @@ export class AppointmentsService {
             contactId: row.contact_id,
             contactName: row.contact_name,
             conversationId: row.conversation_id,
+            source: row.source || null,
             assignedTo: row.assigned_user_id || null,
             assignedName: row.assigned_name,
             // serviceId: sin él, el cliente móvil no puede pedir slots para

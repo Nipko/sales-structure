@@ -3,10 +3,11 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
-import { ChevronLeft, ChevronRight, CalendarDays, Clock, Repeat, RefreshCw } from "lucide-react";
+import { ChevronLeft, ChevronRight, CalendarDays, Clock, Repeat, RefreshCw, Ban, Eye, EyeOff } from "lucide-react";
 import {
   Appointment, Service, STATUS_CONFIG, DAY_KEYS, HOURS,
   fmt2, toLocalDate, addDays, getMondayOfWeek, formatTime, formatWeekRange,
+  canRescheduleAppointment, isCancelledAppointment,
 } from "./shared";
 
 interface ExternalEvent {
@@ -48,6 +49,7 @@ export default function CalendarGrid({
   const [viewMode, setViewMode] = useState<ViewMode>("week");
   const [selectedDay, setSelectedDay] = useState<Date>(new Date());
   const [dragApptId, setDragApptId] = useState<string | null>(null);
+  const [hideCancelled, setHideCancelled] = useState(false);
   const gridRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to current hour on mount
@@ -67,9 +69,10 @@ export default function CalendarGrid({
   const getAppointmentsForDay = useCallback(
     (day: Date) => {
       const dayStr = toLocalDate(day);
-      return appointments.filter((a) => a.startAt.startsWith(dayStr));
+      return appointments.filter((a) => a.startAt.startsWith(dayStr)
+        && !(hideCancelled && isCancelledAppointment(a)));
     },
-    [appointments]
+    [appointments, hideCancelled]
   );
 
   const getExternalEventsForDay = useCallback(
@@ -133,12 +136,19 @@ export default function CalendarGrid({
   const renderAppointment = (appt: Appointment, isDayView: boolean) => {
     const pos = getAppointmentPosition(appt);
     const svc = services.find((s) => s.name === appt.serviceName);
-    const blockColor = svc?.color || STATUS_CONFIG[appt.status]?.color || "#6c5ce7";
+    const cancelled = isCancelledAppointment(appt);
+    // A cancelled booking is history, so it loses the service colour: the same
+    // purple as a live one is what let people read it as still happening.
+    const blockColor = cancelled ? "#6b7280" : (svc?.color || STATUS_CONFIG[appt.status]?.color || "#6c5ce7");
+    const movable = !!onReschedule && canRescheduleAppointment(appt);
     return (
       <div
         key={appt.id}
-        draggable={!!onReschedule}
+        data-appointment-status={appt.status}
+        draggable={movable}
+        title={cancelled ? `${t("status.cancelled")}: ${t("cancelledBlockHint")}` : undefined}
         onDragStart={(e) => {
+          if (!movable) { e.preventDefault(); return; }
           setDragApptId(appt.id);
           e.dataTransfer.effectAllowed = 'move';
           e.dataTransfer.setData('text/plain', appt.id);
@@ -148,28 +158,38 @@ export default function CalendarGrid({
           "absolute rounded-lg px-2.5 py-1.5 overflow-hidden cursor-pointer z-10 border-l-[3px] shadow-sm hover:shadow-md transition-shadow",
           isDayView ? "left-2 right-2 text-xs" : "left-1 right-1 text-[10px]",
           dragApptId === appt.id && "opacity-50",
-          onReschedule && "cursor-grab active:cursor-grabbing"
+          movable && "cursor-grab active:cursor-grabbing",
+          cancelled && "opacity-60 border-dashed"
         )}
         style={{
           top: `${pos.top}px`,
           height: `${pos.height}px`,
-          background: `${blockColor}15`,
+          background: cancelled ? "#6b728010" : `${blockColor}15`,
           borderLeftColor: blockColor,
           color: blockColor,
         }}
         onClick={(e) => { e.stopPropagation(); onEditAppointment(appt); }}
       >
-        <div className="font-semibold truncate flex items-center gap-1">
+        <div className={cn("font-semibold truncate flex items-center gap-1", cancelled && "line-through")}>
+          {cancelled && <Ban size={isDayView ? 11 : 9} className="shrink-0" aria-hidden="true" />}
           {appt.recurringGroupId && <Repeat size={isDayView ? 11 : 9} className="shrink-0 opacity-70" />}
           {appt.serviceName}
         </div>
         {pos.height > 24 && (
-          <div className="truncate opacity-80">
+          <div className={cn("truncate opacity-80", cancelled && "line-through")}>
             {formatTime(appt.startAt)} - {formatTime(appt.endAt)}
           </div>
         )}
         {pos.height > 38 && appt.contactName && (
-          <div className="truncate opacity-70">{appt.contactName}</div>
+          <div className={cn("truncate opacity-70", cancelled && "line-through")}>{appt.contactName}</div>
+        )}
+        {cancelled && (
+          <span className={cn(
+            "inline-block rounded-full bg-neutral-200 dark:bg-neutral-700 px-1.5 text-[9px] font-semibold uppercase tracking-wide text-neutral-600 dark:text-neutral-300",
+            pos.height <= 38 && "sr-only",
+          )}>
+            {t("status.cancelled")}
+          </span>
         )}
         {isDayView && pos.height > 50 && appt.assignedName && (
           <div className="truncate opacity-60 mt-0.5">{appt.assignedName}</div>
@@ -244,6 +264,18 @@ export default function CalendarGrid({
         </span>
 
         <div className="flex items-center gap-2">
+        {/* Cancelled bookings stay visible by default; this lets a busy day hide them. */}
+        {appointments.some(isCancelledAppointment) && (
+          <button
+            type="button"
+            onClick={() => setHideCancelled((v) => !v)}
+            aria-pressed={hideCancelled}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-neutral-200 dark:border-neutral-700 bg-transparent text-neutral-600 dark:text-neutral-300 cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
+          >
+            {hideCancelled ? <Eye size={13} aria-hidden="true" /> : <EyeOff size={13} aria-hidden="true" />}
+            {hideCancelled ? t("showCancelled") : t("hideCancelled")}
+          </button>
+        )}
         {/* Sync button */}
         {hasConnectedCalendar && onSync && (
           <button
@@ -362,7 +394,7 @@ export default function CalendarGrid({
                     const apptId = e.dataTransfer.getData('text/plain');
                     if (!apptId || !onReschedule) return;
                     const appt = appointments.find(a => a.id === apptId);
-                    if (!appt) return;
+                    if (!appt || !canRescheduleAppointment(appt)) { setDragApptId(null); return; }
                     const start = new Date(appt.startAt);
                     const end = new Date(appt.endAt);
                     const durationMs = end.getTime() - start.getTime();

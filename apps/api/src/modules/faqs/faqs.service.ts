@@ -11,7 +11,7 @@ import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-eve
 import { structuredKnowledgeRelation, type StructuredKnowledgeCapture } from '../evaluation-revision/evaluation-structured-knowledge';
 import { onboardingOnceKey } from '@parallext/shared';
 import { recordOnboardingEvent } from '../../common/utils/onboarding-event.util';
-import { faqSearchTerms, rankPartialFaqMatches, stripFaqQueryNoise } from './faq-search';
+import { faqSearchTerms, pickTopicFaq, rankPartialFaqMatches, splitCompoundQuery, stripFaqQueryNoise, topicTermsOf } from './faq-search';
 
 /**
  * Plegado de diacríticos para la búsqueda de FAQs.
@@ -234,8 +234,65 @@ export class FaqsService {
         const found = await this.searchOnce(tenantId, query, limit, executionContext, captured);
         if (found.length) return found;
         const cleaned = stripFaqQueryNoise(query);
-        if (!cleaned || cleaned === query.trim()) return [];
-        return this.searchOnce(tenantId, cleaned, limit, executionContext, captured);
+        if (cleaned && cleaned !== query.trim()) {
+            const again = await this.searchOnce(tenantId, cleaned, limit, executionContext, captured);
+            if (again.length) return again;
+        }
+        return this.searchParts(tenantId, cleaned || query, limit, executionContext, captured);
+    }
+
+    /**
+     * A message with several questions ("¿Cuánto cuesta X, cuántas unidades hay y qué garantía tiene?"): the
+     * search above needs EVERY word of the whole message (and its fallback anchors on the first question), so
+     * it found nothing even though one FAQ answers one of the parts. Each part is searched on its own; a part
+     * that names a single topic word ("qué garantía tiene" is "garantía") may match a FAQ whose QUESTION holds
+     * that word, picked by the overlap with the rest of the message, and never by guessing between equals.
+     */
+    private async searchParts(
+        tenantId: string, message: string, limit: number,
+        executionContext?: ServiceExecutionContext, captured?: StructuredKnowledgeCapture,
+    ): Promise<FAQ[]> {
+        const parts = splitCompoundQuery(message);
+        if (parts.length < 2) return [];
+        const out = new Map<string, FAQ>();
+        for (const part of parts) {
+            const topic = topicTermsOf(part);
+            let rows: FAQ[] = [];
+            if (topic.length === 1) {
+                // One topic word ("garantía"): the FAQs about it compete and the rest of the message decides, so the
+                // warranty of the product the customer names beats the warranty of a tour with the same words.
+                const candidates = await this.candidatesFor(tenantId, [topic[0]], limit, executionContext, captured);
+                const picked = pickTopicFaq(candidates, topic[0], message);
+                rows = picked ? [picked] : [];
+            } else if (topic.length > 1) {
+                rows = await this.searchOnce(tenantId, part, limit, executionContext, captured);
+            }
+            for (const row of rows) if (!out.has(row.id)) out.set(row.id, row);
+        }
+        return [...out.values()].slice(0, limit);
+    }
+
+    /** FAQs holding ANY of the terms (the broad candidate set the ranking functions then narrow). */
+    private async candidatesFor(
+        tenantId: string, terms: string[], limit: number,
+        executionContext?: ServiceExecutionContext, captured?: StructuredKnowledgeCapture,
+    ): Promise<FAQ[]> {
+        const frozen = captured ? structuredKnowledgeRelation(captured, tenantId, 'faqs', 3, executionContext) : null;
+        const schemaName = frozen ? null : persistenceDisabled(executionContext)
+            ? await this.tenantsService.getSchemaName(tenantId, executionContext)
+            : await this.ensureSchema(tenantId);
+        const fold = (expr: string) => `translate(${expr}, '${FOLD_FROM}', '${FOLD_TO}')`;
+        const rows = await this.prisma.$queryRawUnsafe(
+            `SELECT id, question, answer, category, tags, order_index, is_published, views, created_at, updated_at,
+                    ts_rank(to_tsvector('simple', ${fold("question || ' ' || answer")}), to_tsquery('simple', $1)) AS rank
+             FROM ${frozen?.relation || `"${schemaName}"."faqs"`}
+             WHERE is_published = true
+               AND to_tsvector('simple', ${fold("question || ' ' || answer")}) @@ to_tsquery('simple', $1)
+             ORDER BY rank DESC, order_index ASC, id ASC
+             LIMIT $2`,
+            terms.join(' | '), Math.max(20, Math.min(limit, 10)), ...(frozen ? [frozen.json] : []),
+        ) as any[];
+        return rows.map(this.rowToFaq);
     }
 
     private async searchOnce(

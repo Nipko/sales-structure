@@ -69,20 +69,20 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         bookingPending: "La solicitud de cita para {service} el {date} a las {time} quedó registrada y pendiente de confirmación.",
         bookingAwaitingPayment: "La cita para {service} el {date} a las {time} está pendiente del pago de {amount}. El horario se retiene temporalmente; la confirmación llegará cuando se acredite el pago.",
         serviceSelected: [
-            '{service} seleccionado. ¿Qué fecha te queda bien?',
-            '¡Excelente elección! Reservaremos {service}. ¿Qué día te gustaría agendar?',
-            'Listo, he seleccionado {service} para ti. ¿Para qué fecha deseas la cita?',
-            'Perfecto, agendaremos {service}. Cuéntame, ¿qué día te viene mejor?'
+            '{service} seleccionado. ¿Qué fecha le queda bien?',
+            '¡Excelente elección! Reservaremos {service}. ¿Qué día le gustaría agendar?',
+            'Listo, he seleccionado {service} para usted. ¿Para qué fecha desea la cita?',
+            'Perfecto, agendaremos {service}. Cuénteme, ¿qué día le viene mejor?'
         ],
         switchedService: [
-            'Cambiamos a {service}. ¿Qué fecha te queda bien?',
-            'Entendido, cambiamos al servicio {service}. ¿Qué día prefieres para la cita?',
-            'Listo, ahora estamos agendando {service}. ¿Qué fecha te gustaría?'
+            'Cambiamos a {service}. ¿Qué fecha le queda bien?',
+            'Entendido, cambiamos al servicio {service}. ¿Qué día prefiere para la cita?',
+            'Listo, ahora estamos agendando {service}. ¿Qué fecha le gustaría?'
         ],
-        cancelled: '¡Sin problema! ¿Hay algo más en lo que pueda ayudarte?',
+        cancelled: '¡Sin problema! ¿Hay algo más en lo que pueda ayudarle?',
         resumeOffer: 'Quedó a medio agendar una cita de {service}. ¿Desea continuar o prefiere empezar de nuevo?',
         resumeOfferNoService: 'Quedó una cita a medio agendar. ¿Desea continuar o prefiere empezar de nuevo?',
-        resumeDiscarded: 'Listo, dejé esa reserva de lado. ¿En qué puedo ayudarte?',
+        resumeDiscarded: 'Listo, dejé esa reserva de lado. ¿En qué puedo ayudarle?',
         switchDeclined: 'Está bien, dejamos su cita en curso de {service} como estaba.',
         switchDuration: '{service} dura {minutes} minutos.',
         switchDurationRange: '{service} dura entre {min} y {max} minutos.',
@@ -101,24 +101,24 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         changeOfferDate: '¿Desea cambiar su cita de {service} al {date}? Si es así, indíqueme el horario que prefiere.',
         draftStays: 'Su cita de {service} sigue en curso, tal como estaba (todavía sin confirmar).',
         servicesHeader: 'Estos son nuestros servicios:',
-        servicesFooter: '¿Cuál te interesa?',
-        slotsAvailable: 'Horarios disponibles para {service} el {date}: {slots}. ¿Cuál horario prefieres?',
+        servicesFooter: '¿Cuál le interesa?',
+        slotsAvailable: 'Horarios disponibles para {service} el {date}: {slots}. ¿Cuál horario prefiere?',
         noAvailability: [
-            'No hay disponibilidad el {date}. ¿Te gustaría probar otra fecha?',
+            'No hay disponibilidad el {date}. ¿Le gustaría probar otra fecha?',
             'El {date} ya está completamente lleno. ¿Qué tal si intentamos con otro día?',
-            'Lamentablemente no tenemos horarios libres el {date}. ¿Te sirve alguna otra fecha?',
-            'Disculpa, no encontré espacios el {date}. ¿Qué otro día te gustaría intentar?'
+            'Lamentablemente no tenemos horarios libres el {date}. ¿Le sirve alguna otra fecha?',
+            'Disculpe, no encontré espacios el {date}. ¿Qué otro día le gustaría intentar?'
         ],
-        slotUnavailable: 'El horario de las {time} no está disponible. Horarios disponibles: {slots}. ¿Cuál te funciona?',
-        slotSuggest: 'El horario de las {time} no está disponible. Te recomiendo {suggestion}. ¿Te sirve?',
-        slotSuggestMany: 'El horario de las {time} no está disponible. Te recomiendo {suggestion}. ¿Cuál te sirve?',
+        slotUnavailable: 'El horario de las {time} no está disponible. Horarios disponibles: {slots}. ¿Cuál le funciona?',
+        slotSuggest: 'El horario de las {time} no está disponible. Le recomiendo {suggestion}. ¿Le sirve?',
+        slotSuggestMany: 'El horario de las {time} no está disponible. Le recomiendo {suggestion}. ¿Cuál le sirve?',
         slotSuggestOr: 'o',
         slotSuggestItem: 'las {t}',
-        schedulingUnavailable: 'Todavía no tenemos la agenda disponible por acá. Te paso con alguien del equipo para coordinar tu cita.',
-        bookingFailedHandoff: 'No pude completar la reserva por acá. Te paso con alguien del equipo para confirmarla contigo.',
-        askName: '{time} seleccionado para {service}. ¿Cuál es tu nombre completo?',
-        askEmail: '¡Gracias {name}! Necesito tu correo electrónico para la invitación del calendario.',
-        confirmPrompt: 'Por favor confirma:\n{summary}\n¿Lo agendo?',
+        schedulingUnavailable: 'Todavía no tenemos la agenda disponible por acá. Le paso con alguien del equipo para coordinar su cita.',
+        bookingFailedHandoff: 'No pude completar la reserva por acá. Le paso con alguien del equipo para confirmarla con usted.',
+        askName: '{time} seleccionado para {service}. ¿Cuál es su nombre completo?',
+        askEmail: '¡Gracias {name}! Necesito su correo electrónico para la invitación del calendario.',
+        confirmPrompt: 'Por favor confirme:\n{summary}\n¿Lo agendo?',
         confirmShort: '¿Confirmo la cita? Responda sí o no.',
         confirmButton: '¿Confirmar cita?\n\n{summary}',
         btnConfirm: 'Confirmar',
@@ -126,18 +126,18 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         booked: '¡Cita confirmada!\nServicio: {service}\nFecha: {date} a las {time}\nNombre: {name}\n¿Algo más?',
         bookingError: 'Error al crear la cita: {error}. ¿Probamos otro horario?',
         askDate: [
-            '¿Qué fecha te gustaría para {service}?',
-            '¿Para qué día quieres programar {service}?',
-            '¿Qué fecha tienes disponible en tu agenda para {service}?',
-            'Dime qué día te queda mejor para {service} y revisamos horarios.'
+            '¿Qué fecha le gustaría para {service}?',
+            '¿Para qué día quiere programar {service}?',
+            '¿Qué fecha tiene disponible en su agenda para {service}?',
+            'Dígame qué día le queda mejor para {service} y revisamos horarios.'
         ],
         whichTime: '¿Cuál horario? {slots}',
-        whichName: '¿Cuál es tu nombre completo?',
-        whichEmail: '¿Cuál es tu correo electrónico?',
+        whichName: '¿Cuál es su nombre completo?',
+        whichEmail: '¿Cuál es su correo electrónico?',
         minutes: 'minutos',
         flexibleTime: 'horario libre',
-        flowHeader: 'Agenda tu cita',
-        flowBody: 'Toca el botón para elegir servicio, fecha y hora en un solo paso.',
+        flowHeader: 'Agende su cita',
+        flowBody: 'Toque el botón para elegir servicio, fecha y hora en un solo paso.',
         flowCta: 'Agendar',
     },
     en: {
@@ -241,7 +241,7 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         changeOfferDate: 'Deseja mudar o seu agendamento de {service} para {date}? Se sim, diga-me o horário que prefere.',
         draftStays: 'O seu agendamento de {service} continua em andamento, como estava (ainda sem confirmação).',
         servicesHeader: 'Estes são nossos serviços:',
-        servicesFooter: 'Qual te interessa?',
+        servicesFooter: 'Qual deles interessa a você?',
         slotsAvailable: 'Horários disponíveis para {service} em {date}: {slots}. Qual horário prefere?',
         noAvailability: 'Sem disponibilidade em {date}. Gostaria de tentar outra data?',
         slotUnavailable: 'O horário das {time} não está disponível. Horários disponíveis: {slots}. Qual funciona para você?',
@@ -249,8 +249,8 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         slotSuggestMany: 'O horário das {time} não está disponível. Recomendo {suggestion}. Qual serve para você?',
         slotSuggestOr: 'ou',
         slotSuggestItem: 'as {t}',
-        schedulingUnavailable: 'Ainda não temos a agenda disponível por aqui. Vou te passar para alguém da equipe para combinar seu horário.',
-        bookingFailedHandoff: 'Não consegui concluir o agendamento por aqui. Vou te passar para alguém da equipe para confirmar com você.',
+        schedulingUnavailable: 'Ainda não temos a agenda disponível por aqui. Vou encaminhar você para alguém da equipe para combinar seu horário.',
+        bookingFailedHandoff: 'Não consegui concluir o agendamento por aqui. Vou encaminhar você para alguém da equipe para confirmar com você.',
         askName: '{time} selecionado para {service}. Qual é seu nome completo?',
         askEmail: 'Obrigado {name}! Preciso do seu e-mail para o convite do calendário.',
         confirmPrompt: 'Por favor confirme:\n{summary}\nAgendar?',
@@ -1337,15 +1337,18 @@ export class BookingEngineService {
                 const newSvc = state.services?.find(s => norm(s.name).includes(norm(intent.serviceMentioned!)));
                 if (newSvc) {
                     const keptDate = state.date;
+                    // The draft's own hour travels with its day: «mejor cámbiala a X» keeps «el sábado a las 16:00».
+                    const keptTime = intent.timeMentioned ?? state.time;
                     state.serviceId = newSvc.id; state.serviceName = newSvc.name;
                     state.date = undefined; state.slots = undefined; state.suggestedSlots = undefined; state.time = undefined; state.staffId = undefined; state.staffName = undefined;
                     state.step = 'ask_date';
                     invalidateBookingProposal(state);
-                    // "Mejor el masaje a las 17:30" / "mejor el masaje el sábado": la fecha y la hora
-                    // que el cliente dio siguen valiendo con el servicio nuevo.
-                    if (keptDate && (intent.timeMentioned || intent.dateMentioned)) {
+                    // "Mejor el masaje a las 17:30" / "mejor el masaje el sábado" / "mejor cámbiala al masaje": the day
+                    // and the hour the customer already gave stay valid for the new service, which is checked for
+                    // them right now (never carried over unverified); what is still missing is asked next.
+                    if (keptDate) {
                         state.date = keptDate;
-                        return this.checkAvailability(schemaName, tenantId, contactId, state, L, authority, conversationId, intent.timeMentioned ?? undefined);
+                        return this.checkAvailability(schemaName, tenantId, contactId, state, L, authority, conversationId, keptTime ?? undefined);
                     }
                     this.logger.log(`[Decide] Changed service to: ${newSvc.name}`);
                     return { handled: true, state, text: msg(L, 'switchedService', { service: newSvc.name }) };

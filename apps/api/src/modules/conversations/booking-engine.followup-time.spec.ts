@@ -183,7 +183,7 @@ describe('text of the recommendation', () => {
     };
 
     it.each([
-        ['es', /recomiendo las 15:30 o las 16:30/, /¿Cuál te sirve\?/],
+        ['es', /recomiendo las 15:30 o las 16:30/, /¿Cuál le sirve\?/],
         ['en', /recommend 15:30 or 16:30/, /Which one works/],
         ['pt', /Recomendo as 15:30 ou as 16:30/, /Qual serve/],
         ['fr', /recommande 15:30 ou 16:30/, /Lequel vous convient/],

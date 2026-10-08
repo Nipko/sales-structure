@@ -80,7 +80,7 @@ import { sessionCanExecute, sessionLlmRouter, sessionToolExecutor } from './agen
 import { containsBookingOffer } from './booking-offer';
 import { projectEcommerceCatalogRow, projectOwnCatalogRow } from './catalog-turn-projection';
 import { projectBookingStateForPrompt, TENTATIVE_BOOKING_BLOCKED_TOOLS, restoreBookingMission } from './booking-state-continuity';
-import { businessHoursConfigured, deriveInformationalHours, hasConfiguredHours, promptHoursStatus, resolvePromptBusinessHours, UNKNOWN_INFORMATIONAL_HOURS, type InformationalHours } from './informational-hours';
+import { deriveInformationalHours, isWithinOpeningHours, hasConfiguredHours, promptHoursStatus, resolvePromptBusinessHours, UNKNOWN_INFORMATIONAL_HOURS, type InformationalHours } from './informational-hours';
 import { resolveEvaluationSnapshot } from './agent-evaluation-snapshot';
 import { AGENT_TEST_EXECUTION_CONTEXT, DRAFT_EXECUTION_CONTEXT, type ServiceExecutionContext } from '../../common/types/execution-context';
 import { EVALUATION_CONTEXT_LANGUAGES, evaluationContextLanguage, projectBusinessTurnContext,
@@ -2325,83 +2325,8 @@ export class ConversationsService {
      * even if nobody is bookable), so it only informs the prompt.
      */
     private isWithinBusinessHours(config: TenantConfig, bizHours?: any): boolean {
-        if (bizHours && businessHoursConfigured(bizHours)) {
-            if (bizHours.is247) return true;
-            const timezone = bizHours.timezone || config.hours?.timezone || 'America/Bogota';
-            return this.checkScheduleTime(bizHours.schedule, timezone, 'english');
-        }
-
-        // Agent-level schedule
-        if (!config.hours || !config.hours.schedule) return true;
-
-        const schedule: Record<string, any> = config.hours.schedule as any;
-        if (Object.keys(schedule).length === 0) return true;
-
-        const values = Object.values(schedule);
-        if (values.length >= 7) {
-            const all247 = values.every(v =>
-                v && typeof v === 'object' && (v as any).start === '00:00' && (v as any).end === '23:59'
-            );
-            if (all247) return true;
-        }
-
-        const timezone = config.hours.timezone || bizHours?.timezone || 'America/Bogota';
-        return this.checkScheduleTime(schedule, timezone, 'spanish');
-    }
-
-    private checkScheduleTime(schedule: Record<string, any>, timezone: string, keyFormat: 'english' | 'spanish'): boolean {
-        const now = new Date();
-        const localTime = new Intl.DateTimeFormat('en-US', {
-            timeZone: timezone,
-            weekday: 'long',
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: false,
-        }).formatToParts(now);
-
-        const dayFull = localTime.find(p => p.type === 'weekday')?.value?.toLowerCase() || '';
-        const hourPart = localTime.find(p => p.type === 'hour')?.value || '0';
-        const minutePart = localTime.find(p => p.type === 'minute')?.value || '0';
-        const currentMinutes = parseInt(hourPart) * 60 + parseInt(minutePart);
-
-        let todaySchedule: any;
-
-        if (keyFormat === 'english') {
-            // Tenant business hours use English day keys (monday, tuesday, etc.)
-            todaySchedule = schedule[dayFull];
-            // New format: { enabled, open, close }
-            if (todaySchedule && typeof todaySchedule === 'object' && 'enabled' in todaySchedule) {
-                if (!todaySchedule.enabled) return false;
-                const openKey = todaySchedule.open || todaySchedule.start;
-                const closeKey = todaySchedule.close || todaySchedule.end;
-                if (!openKey || !closeKey) return false;
-                const [startH, startM] = openKey.split(':').map(Number);
-                const [endH, endM] = closeKey.split(':').map(Number);
-                return currentMinutes >= (startH * 60 + startM) && currentMinutes <= (endH * 60 + endM);
-            }
-        }
-
-        if (keyFormat === 'spanish') {
-            // Agent schedule uses Spanish keys (lun, mar, etc.)
-            const dayMapToSpanish: Record<string, string> = {
-                sunday: 'dom', monday: 'lun', tuesday: 'mar', wednesday: 'mie',
-                thursday: 'jue', friday: 'vie', saturday: 'sab',
-            };
-            const dayKey = dayMapToSpanish[dayFull] || dayFull;
-            todaySchedule = schedule[dayKey] || schedule[dayFull];
-        }
-
-        this.logger.debug(`[BusinessHours] day=${dayFull} time=${hourPart}:${minutePart} schedule=${JSON.stringify(todaySchedule)} format=${keyFormat}`);
-
-        if (!todaySchedule || typeof todaySchedule === 'string') return false;
-
-        const startKey = todaySchedule.start || todaySchedule.open;
-        const endKey = todaySchedule.end || todaySchedule.close;
-        if (!startKey || !endKey) return false;
-
-        const [startH, startM] = startKey.split(':').map(Number);
-        const [endH, endM] = endKey.split(':').map(Number);
-        return currentMinutes >= (startH * 60 + startM) && currentMinutes <= (endH * 60 + endM);
+        // One implementation shared with the automation listener (informational-hours.ts).
+        return isWithinOpeningHours(bizHours, config.hours, new Date(), 'America/Bogota');
     }
 
     private async sendAfterHoursMessage(tenantId: string, msg: NormalizedMessage, config: TenantConfig,

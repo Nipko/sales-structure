@@ -149,6 +149,7 @@ export const BASE_INTENT_ALIASES: readonly IntentAlias[] = Object.freeze([
 
     // ---- acknowledgement: comprehension, never consent ------------------
     { value: 'ok', intent: 'acknowledge', confidence: 'high' },
+    { value: 'vale', intent: 'acknowledge', confidence: 'high', notes: 'Spain/Andean "ok": understood, never consent by itself.' },
     { value: 'oka', intent: 'acknowledge', confidence: 'high' },
     { value: 'okay', intent: 'acknowledge', confidence: 'high' },
     { value: 'perfecto', intent: 'acknowledge', confidence: 'high' },

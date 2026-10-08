@@ -166,7 +166,7 @@ const CONFIDENCE_RANK: Record<IntentConfidence, number> = { low: 0, medium: 1, h
  * only AFTER negation, qualification and correction have been ruled out, so
  * "no confirmo" and "sí, pero…" can never reach it.
  */
-const EXPLICIT_CONSENT_VERB = /\b(confirmo|confirmar|confirmado|autorizo|acepto|procede|proceda|hazlo|i confirm|confirm|go ahead|confirmo sim|concordo|aceito|pode confirmar|pode fazer|je confirme|allez-y|confirmala|confirmalo|confirmela|confirmelo|agendala|agendalo|agendela|agendelo|reservala|reservalo|reservela|reservelo|hazla|hagala|hagalo|marcala|marcalo|programala|pode marcar|pode agendar|pode reservar|book it|confirm it|schedule it|reservez|confirmez|allez y)\b/;
+const EXPLICIT_CONSENT_VERB = /\b(confirmo|confirmar|confirmado|autorizo|acepto|procede|proceda|hazlo|i confirm|confirm|go ahead|confirmo sim|concordo|aceito|pode confirmar|pode fazer|je confirme|allez-y)\b/;
 
 function aliasesFor(country?: string | null): IntentAlias[] {
     const pack = packForCountry(country);
@@ -273,7 +273,7 @@ export function normalizeCustomerIntent(
             && !!withoutAlias
             && /^si(?:\s|[,;])/i.test(rawLower)
             && !/^sí(?:\s|[,;])/i.test(rawLower);
-        if (unaccentedSiClause && !EXPLICIT_CONSENT_VERB.test(normalized)) {
+        if (unaccentedSiClause && !EXPLICIT_CONSENT_VERB.test(normalized) && !CONSENT_ACTION.test(withoutAlias)) {
             return { ...matched, intent: 'unclear', confidence: 'low' };
         }
         if (withoutAlias && NEGATION_ANYWHERE.test(withoutAlias)) {

@@ -1,4 +1,4 @@
-import { authorizesEffect, normalizeCustomerIntent } from './intent-normalizer';
+import { authorizesEffect, classifyConfirmation, normalizeCustomerIntent } from './intent-normalizer';
 
 /**
  * Production 2026-10-08: at the confirmation of a booking, «sí, confírmala», «si, agéndala», «dale, agéndala» were not
@@ -32,8 +32,39 @@ describe('an affirmative plus the verb that carries it out is consent', () => {
         expect(consents(text)).toBe(false);
     });
 
-    it('the verb makes the affirmative explicit (high confidence), so it also covers a stricter effect than a bare ok', () => {
+    it('«sí» plus the verb stays a strong yes (the «sí» carries it)', () => {
         const intent = normalizeCustomerIntent('sí, confírmala', { country: 'CO', answeringExplicitQuestion: true });
         expect(intent).toMatchObject({ intent: 'affirm', confidence: 'high', consentEligible: true });
+        expect(classifyConfirmation('sí, agéndala', { country: 'CO', effect: 'high_impact', answeringExplicitQuestion: true })).toBe('confirmed');
     });
+
+    it('«vale» counts like «ok»', () => {
+        expect(consents('vale, confírmala')).toBe(true);
+        expect(consents('vale, agéndala')).toBe(true);
+        expect(consents('vale')).toBe(consents('ok'));
+    });
+});
+
+/**
+ * The booking verbs make a contextual opener enough for a BOOKING summary, never for what gates payments, penalised
+ * cancellations or media consent: those need an unambiguous yes («sí», «confirmo»), exactly as «ok» or «dale» alone.
+ */
+describe('a booking verb after a contextual opener never authorises a high-impact effect', () => {
+    const highImpact = (text: string) =>
+        classifyConfirmation(text, { country: 'CO', effect: 'high_impact', answeringExplicitQuestion: true });
+
+    it.each([
+        'ok, agéndala', 'listo, márcala', 'dale, resérvala', 'perfecto, hazla', 'ok, book it', 'ok, márcalo',
+        'vale, confírmala', 'dale, confírmala', 'claro, agéndala',
+    ])('"%s" is not a high-impact yes but still books at the summary', text => {
+        expect(highImpact(text)).toBe('unclear');
+        expect(consents(text)).toBe(true);
+    });
+
+    it.each(['sí', 'sí, agéndala', 'sí, confírmala', 'ok confirmo', 'dale, confirmo', 'yes, book it', 'sim, pode marcar', 'oui, réservez'])(
+        '"%s" is still a high-impact yes',
+        text => {
+            expect(highImpact(text)).toBe('confirmed');
+        },
+    );
 });

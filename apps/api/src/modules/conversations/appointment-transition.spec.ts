@@ -13,13 +13,14 @@ describe('appointmentChangeRequest', () => {
     it.each([
         'quiero cambiar mi cita al viernes', 'necesito mover mi cita para otro día', 'quiero pasar mi cita para el lunes', 'can you move my appointment to friday?',
         'change my appointment please', 'je veux déplacer mon rendez-vous', 'quero mudar a minha consulta',
+        'necesito cambiar de cita', 'quiero cambiar de cita', 'Quiero cambiar de turno', 'quero mudar de consulta', 'je veux changer de rendez-vous',
     ])('"%s" is an ambiguous change (a draft correction when a booking is open)', text => {
         expect(appointmentChangeRequest(text)).toBe('ambiguous');
     });
 
     it.each([
         'quiero agendar una cita', 'quiero cancelar mi cita', 'cambia la hora a las 5', 'cambiar mi pedido', 'reprogramar mi pedido', 'quiero reportar un problema',
-        'hola', 'mejor el sábado', 'el reporte de ventas', '¿a qué hora abren?', 'quiero cambiar de plan', 'move on please',
+        'hola', 'mejor el sábado', 'el reporte de ventas', '¿a qué hora abren?', 'quiero cambiar de plan', 'move on please', 'quiero cambiar de servicio', 'necesito cambiar de color', 'quiero agendar y cambiar de servicio', 'cambiar de pedido',
     ])('"%s" is not', text => {
         expect(appointmentChangeRequest(text)).toBeNull();
     });
@@ -60,6 +61,23 @@ describe('«sí, cancélalo» answers a pending cancellation in the arbiter', ()
         expect(d.route).toBe('tools');
         expect(d.invalidateConfirmation).toBe(false);
         expect(d.state.expectedReply).not.toBeNull();
+    });
+    it.each(['sí, reprográmala', 'sí, muévela', 'sí, cámbiala', 'sí, reagéndala'])('pending reschedule + "%s": the answer, not a new change request', text => {
+        const d = arbitrate(text, pending('reschedule_appointment'));
+        expect(d.action).toBe('continue');
+        expect(d.state.selected?.id).toBe('t-1');
+        expect(d.invalidateConfirmation).toBe(false);
+        expect(d.state.expectedReply).not.toBeNull();
+    });
+    it('a new request to reschedule still replaces the pending proposal', () => {
+        const d = arbitrate('mejor quiero reprogramar mi cita para el lunes', pending('reschedule_appointment'));
+        expect(d.invalidateConfirmation).toBe(true);
+    });
+    it('naming another object keeps the pending proposal untouched and unconfirmed (the model asks which)', () => {
+        const d = arbitrate('sí, cancela el pedido', pending('cancel_appointment'));
+        expect(d.route).toBe('tools');
+        expect(d.state.expectedReply).not.toBeNull();
+        expect(d.state.selected?.toolName).toBe('cancel_appointment');
     });
     it('the same phrase with another pending effect is a cancel request (clarify, no domain)', () => {
         const state = pending('create_payment_link');

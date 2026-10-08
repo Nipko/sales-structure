@@ -1,6 +1,8 @@
 import { agentTurnFixture, publishTools } from './__fixtures__/agent-turn.fixture';
 import { randomUUID } from 'crypto';
 import { classifyExplicitToolConfirmation } from './tool-execution-control.service';
+import { containsHumanOffer } from './human-offer';
+import { offersHumanHandoff } from '../../common/utils/outcome-claim.util';
 
 /**
  * Round-2 end-to-end write test (2026-10-08), service level through ConversationsService:
@@ -232,5 +234,54 @@ describe('a yes that answers an offer of a person is not consent to the open boo
         expect(created(h)).toBe(1);
         // the booked confirmation the model voices carries the short reference
         expect(h.f.llmRouter.execute.mock.calls.some((c: any[]) => String(c[0].systemPrompt ?? '').includes('Referencia: APT1'))).toBe(true);
+    });
+});
+
+describe('follow-ups', () => {
+    it.each(['sí, muévela', 'sí, cámbiala', 'sí, reprográmala', 'si, reagendala'])('"%s" after the reschedule summary confirms the same change once', async yes => {
+        const h = world(RESCHEDULE);
+        await h.turn('hola');
+        await h.turn('quiero reprogramar mi cita para el viernes 8 de enero a las 10:00');
+        const result = await h.turn(yes);
+        expect(result.debug.runtimeError).toBeUndefined();
+        expect(h.ran('reschedule_appointment').map(item => item.result.success ?? item.result.error)).toEqual(['confirmation_required', true]);
+        expect(h.ran('create_appointment')).toHaveLength(0);
+    });
+
+    it.each(['sí, cancela el pedido', 'sí, cancélalo, el pedido', 'sí, cancela mi orden'])('"%s" does not cancel the appointment whose cancellation is pending', async yes => {
+        const h = world(CANCEL_APPOINTMENT);
+        await h.turn('hola');
+        await h.turn('quiero cancelar mi cita del viernes');
+        await h.turn(yes);
+        expect(h.ran('cancel_appointment').filter(item => item.result.success === true)).toHaveLength(0);
+    });
+
+    it('«sí, cancela el pedido» does not execute the pending order cancellation when it names an appointment', async () => {
+        const h = world(CANCEL_ORDER);
+        await h.turn('hola');
+        await h.turn('quiero cancelar mi pedido ORD-1');
+        await h.turn('sí, cancela la cita');
+        expect(h.ran('cancel_catalog_order').filter(item => item.result.success === true)).toHaveLength(0);
+    });
+
+    it('a free-text offer of a person («¿Quiere que le pida a alguien del equipo que lo revise?») is remembered: the next «sí» is not booking consent', async () => {
+        const offer = 'Entiendo su duda. ¿Quiere que le pida a alguien del equipo que lo revise?';
+        expect(containsHumanOffer(offer)).toBe(false);
+        expect(offersHumanHandoff(offer)).toBe(true);
+        const h = world({ ...BOOKING, pendingTool: 'none' });
+        for (const text of ['hola', 'Quiero agendar Corte y estilo', 'el 5 de enero a las 16:00', 'Joaquin Sosa', 'joaquin@example.com']) await h.turn(text);
+        h.f.llmRouter.execute.mockImplementation(async (request: any) => !['conversation', 'tool_calling'].includes(request.task) ? answer('{}') : answer(offer));
+        await h.turn('tengo una duda sobre el pago con tarjeta');
+        await h.turn('sí');
+        expect(h.f.toolExecutor.execute.mock.calls.filter((c: any[]) => c[3] === 'create_appointment')).toHaveLength(0);
+    });
+
+    it.each([
+        ['pending', { success: true, appointment: { id: '3f9a1c2b-0000-4000-8000-000000000000', status: 'pending' } }],
+        ['awaiting payment', { success: true, appointment: { id: '3f9a1c2b-0000-4000-8000-000000000000', status: 'pending_payment', awaitingPayment: true, amountDueToConfirm: 10000, currency: 'COP' } }],
+    ])('the %s booking text carries the short reference too', async (_label, result) => {
+        const h = world({ ...BOOKING, pendingTool: 'none', results: { create_appointment: result } });
+        for (const text of ['hola', 'Quiero agendar Corte y estilo', 'el 5 de enero a las 16:00', 'Joaquin Sosa', 'joaquin@example.com', 'sí']) await h.turn(text);
+        expect(h.f.llmRouter.execute.mock.calls.some((c: any[]) => String(c[0].systemPrompt ?? '').includes('Referencia: 3F9A1C2B'))).toBe(true);
     });
 });

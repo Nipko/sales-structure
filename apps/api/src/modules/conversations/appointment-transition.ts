@@ -18,6 +18,8 @@ const OTHER_DOMAIN = /\b(?:pedido|orden de compra|order|commande|encomenda|curso
 
 const EXPLICIT_RE = new RegExp(`\\b${EXPLICIT_VERB}\\b`);
 const GENERIC_NEAR_RE = new RegExp(`\\b${GENERIC_VERB}\\b(?:\\s+\\w+){0,4}?\\s+${MY_APPOINTMENT}`);
+/** «cambiar de cita» / «mudar de consulta» / «changer de rendez-vous»: the appointment itself, with no determiner. «Cambiar de servicio» is not one. */
+const CHANGE_OF_APPOINTMENT_RE = /\b(?:cambi\w*|mud(?:ar|e|a)|troc(?:ar|a)|chang(?:er|ez|e))\s+(?:de|d|of)\s+(?:cita|citas|turno|consulta|appointment|rendez vous|agendamento)\b/;
 const APPOINTMENT_NOUN_RE = /\b(?:cita|citas|turno|consulta|appointment|appointments|rendez vous|agendamento)\b/;
 
 export type AppointmentChange = 'explicit' | 'ambiguous' | null;
@@ -33,6 +35,6 @@ export function appointmentChangeRequest(text: unknown): AppointmentChange {
         // «reprogramar» alone, or on an appointment noun/possessive: an existing appointment.
         return 'explicit';
     }
-    if (GENERIC_NEAR_RE.test(normalized)) return 'ambiguous';
+    if (GENERIC_NEAR_RE.test(normalized) || CHANGE_OF_APPOINTMENT_RE.test(normalized)) return 'ambiguous';
     return null;
 }

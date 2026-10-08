@@ -1,5 +1,6 @@
 import { renderScreen } from "@/test/a11y";
 import AppointmentModal from "./AppointmentModal";
+import AgendaTab from "./AgendaTab";
 import type { Appointment } from "./shared";
 
 jest.mock("@/lib/api", () => ({ __esModule: true, api: {} }));
@@ -102,6 +103,35 @@ describe("origin of the appointment", () => {
     try {
       expect(screen.container.querySelector('[data-appointment-origin="ai"]')).toBeNull();
       expect(screen.container.textContent).not.toContain("Creada por el asistente IA");
+    } finally { screen.unmount(); }
+  });
+});
+
+describe("agenda list cut by the server", () => {
+  const render = (truncatedAt?: number | null) => renderScreen(
+    <AgendaTab
+      appointments={[appointment()]}
+      services={[]}
+      dateLocale="es-MX"
+      truncatedAt={truncatedAt}
+      onEditAppointment={() => {}}
+      onQuickAction={() => {}}
+    />,
+  );
+
+  it("says that only the first N appointments are shown", async () => {
+    const screen = await render(500);
+    try {
+      expect(screen.container.querySelector('[role="status"]')?.textContent)
+        .toContain("Se muestran solo las primeras 500 citas");
+    } finally { screen.unmount(); }
+  });
+
+  it("says nothing when the list is complete", async () => {
+    const screen = await render(null);
+    try {
+      expect(screen.container.querySelector('[role="status"]')).toBeNull();
+      expect(screen.container.textContent).not.toContain("hay más");
     } finally { screen.unmount(); }
   });
 });

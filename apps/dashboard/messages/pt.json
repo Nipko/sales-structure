@@ -3202,6 +3202,7 @@
     "cancelledReadOnly": "Este agendamento está cancelado, por isso só pode ser consultado. Para agendar novamente, crie um novo agendamento.",
     "viewAppointmentTitle": "Detalhes do agendamento",
     "agendaRangeNote": "Mostrando agendamentos dos últimos 30 dias e dos próximos 6 meses.",
+    "agendaTruncated": "Mostrando apenas os primeiros {count} agendamentos do período; há mais. Use o calendário para ver uma semana específica.",
     "createdByAssistant": "Criado pelo assistente de IA",
     "viewConversation": "Ver conversa",
     "total": "Total",

@@ -3202,6 +3202,7 @@
     "cancelledReadOnly": "This appointment is cancelled, so it is read-only. To book it again, create a new appointment.",
     "viewAppointmentTitle": "Appointment details",
     "agendaRangeNote": "Showing appointments from the last 30 days and the next 6 months.",
+    "agendaTruncated": "Showing only the first {count} appointments of the period; there are more. Use the calendar to see a specific week.",
     "createdByAssistant": "Created by the AI assistant",
     "viewConversation": "View conversation",
     "total": "Total",

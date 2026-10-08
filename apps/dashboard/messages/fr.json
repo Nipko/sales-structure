@@ -3202,6 +3202,7 @@
     "cancelledReadOnly": "Ce rendez-vous est annulé : il est en lecture seule. Pour le reprendre, créez un nouveau rendez-vous.",
     "viewAppointmentTitle": "Détail du rendez-vous",
     "agendaRangeNote": "Rendez-vous des 30 derniers jours et des 6 prochains mois.",
+    "agendaTruncated": "Seuls les {count} premiers rendez-vous de la période sont affichés ; il y en a davantage. Utilisez le calendrier pour voir une semaine précise.",
     "createdByAssistant": "Créé par l'assistant IA",
     "viewConversation": "Voir la conversation",
     "total": "Total",

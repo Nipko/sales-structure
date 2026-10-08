@@ -13,12 +13,14 @@ interface AgendaTabProps {
   appointments: Appointment[];
   services: Service[];
   dateLocale: string;
+  /** Set when the list was cut at this many rows; the agenda says so. */
+  truncatedAt?: number | null;
   onEditAppointment: (appt: Appointment) => void;
   onQuickAction: (apptId: string, action: "confirm" | "cancel" | "complete") => void;
 }
 
 export default function AgendaTab({
-  appointments, services, dateLocale, onEditAppointment, onQuickAction,
+  appointments, services, dateLocale, truncatedAt, onEditAppointment, onQuickAction,
 }: AgendaTabProps) {
   const t = useTranslations("appointments");
   const [searchQuery, setSearchQuery] = useState("");
@@ -105,6 +107,11 @@ export default function AgendaTab({
       {/* Date range */}
       <div className="flex gap-3 items-center flex-wrap">
         <p className="basis-full text-xs text-neutral-500 dark:text-neutral-400">{t('agendaRangeNote')}</p>
+        {truncatedAt ? (
+          <p role="status" className="basis-full rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+            {t('agendaTruncated', { count: truncatedAt })}
+          </p>
+        ) : null}
         <div className="flex items-center gap-2">
           <label className="text-xs font-medium text-neutral-500 dark:text-neutral-400">{t('from')}</label>
           <input

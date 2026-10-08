@@ -128,6 +128,7 @@ export default function AppointmentsPage() {
   // ---- Data state ----
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [truncatedAt, setTruncatedAt] = useState<number | null>(null);
   const [availabilitySlots, setAvailabilitySlots] = useState<AvailabilitySlot[]>(
     DAY_KEYS.map((_, i) => ({
       dayOfWeek: i + 1,
@@ -273,6 +274,8 @@ export default function AppointmentsPage() {
       const res = await api.getAppointments(activeTenantId, params);
       if (res?.success) {
         setAppointments(res.data || []);
+        // The endpoint caps a wide read and says so; the agenda shows that it is cut.
+        setTruncatedAt(res.meta?.truncated ? Number(res.meta.limit) || res.data?.length || null : null);
       }
     } catch {
       /* ignore */
@@ -1026,6 +1029,7 @@ export default function AppointmentsPage() {
             appointments={appointments}
             services={services}
             dateLocale={dateLocale}
+            truncatedAt={truncatedAt}
             onEditAppointment={openEditModal}
             onQuickAction={handleQuickAction}
           />

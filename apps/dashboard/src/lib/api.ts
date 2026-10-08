@@ -2944,6 +2944,8 @@ export interface ApiEnvelope<T> {
     success: boolean;
     data?: T;
     error?: string;
+    /** Paging facts a bounded list read reports (see the appointments list endpoint). */
+    meta?: { limit?: number; truncated?: boolean };
     errorCode?: string;
     fields?: ApiFieldError[];
 }

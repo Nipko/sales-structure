@@ -24,7 +24,7 @@ import {
     commitmentProposalHash, commitmentReviewResult, ensureCommitmentProposals,
     type CommitmentProposal,
 } from './commitment-proposal';
-import { getToolPolicy, type ToolPolicy } from './tool-policy-registry';
+import { getToolPolicy, isCancellationTool, type ToolPolicy } from './tool-policy-registry';
 import { reviewedMcpPolicy } from '../mcp/mcp-execution-policy';
 import type { McpToolApproval } from '../mcp/mcp-tool-approval';
 
@@ -214,13 +214,16 @@ interface ConfirmationClaims {
  */
 export function classifyExplicitToolConfirmation(
     value: unknown,
-    options: { effect?: ConfirmationEffect; country?: string | null; acceptedReferents?: readonly string[] } = {},
+    options: { effect?: ConfirmationEffect; country?: string | null; acceptedReferents?: readonly string[]; pendingTool?: string } = {},
 ): ConfirmationDisposition {
     if (typeof value !== 'string') return 'unclear';
     return classifyConfirmation(value, {
         effect: options.effect ?? 'high_impact',
         country: options.country,
         acceptedReferents: options.acceptedReferents,
+        // «sí, cancélala» answers a pending cancellation, and only that: any other pending tool keeps reading the
+        // cancel verb as a cancellation request.
+        pendingCancellation: isCancellationTool(options.pendingTool),
         // Every call site reads the message that answers a pending challenge.
         answeringExplicitQuestion: true,
     });
@@ -1926,6 +1929,7 @@ export class ToolExecutionControlService {
             effect: confirmationEffectForPolicy(getToolPolicy(request.toolName)),
             country: operatingCountry,
             acceptedReferents,
+            pendingTool: request.toolName,
         });
         if (latest.id === ledger.confirmation_source_message_id) {
             // A retry in the inbound turn that CAUSED the challenge cannot
@@ -2934,6 +2938,7 @@ export class ToolExecutionControlService {
                     effect: confirmationEffectForPolicy(getToolPolicy(row.tool_name)),
                     country: await this.resolveOperatingCountry(claims.tenantId),
                     acceptedReferents: claims.acceptedReferents,
+                    pendingTool: row.tool_name,
                 }) !== 'confirmed') return null;
             }
             return { ledgerId: row.id, toolName: row.tool_name, args: args as Record<string, unknown> };

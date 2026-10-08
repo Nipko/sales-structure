@@ -63,6 +63,12 @@ export interface NormalizeOptions {
     answeringExplicitQuestion?: boolean;
     /** Exact object names/identifiers from the authenticated pending proposal. */
     acceptedReferents?: readonly string[];
+    /**
+     * The pending proposal IS a cancellation (cancel_appointment, cancel_catalog_order…). Only then does «sí, cancélala»
+     * answer it: the cancel verb is the very thing being asked, so the phrase is read exactly as its affirmative alone
+     * («sí»), at the same strength. For any other pending effect the verb stays a cancellation request, never consent.
+     */
+    pendingCancellation?: boolean;
 }
 
 const DEFAULT_MAX_LENGTH = 120;
@@ -123,7 +129,7 @@ const CONSENT_ACTION = new RegExp('^(?:'
     + 'reservez(?: la)?|confirmez(?: la)?|allez[ -]y(?: reservez| confirmez)?|vous pouvez (?:reserver|confirmer)'
     + ')(?=\\s|$)');
 
-function isWholeConsentExpression(text: string, aliases: IntentAlias[], acceptedReferents: readonly string[] = []): boolean {
+function isWholeConsentExpression(text: string, aliases: IntentAlias[], acceptedReferents: readonly string[] = [], extraVerb?: RegExp): boolean {
     const choices = aliases.filter(a => a.intent === 'affirm' || a.intent === 'acknowledge')
         .filter(a => !COURTESY.test(a.value)).sort((a, b) => b.value.length - a.value.length);
     let rest = text;
@@ -135,7 +141,7 @@ function isWholeConsentExpression(text: string, aliases: IntentAlias[], accepted
         // «sí, confírmala» / «dale, agéndala» / «yes, book it» / «sim, pode marcar» / «oui, réservez»: an affirmative followed
         // by the verb that carries out the very thing being asked (and nothing else). Checked BEFORE the aliases because
         // «confirm» and «go ahead» are aliases too and would leave «it» / «and book» behind.
-        const consentVerb = accepted ? CONSENT_ACTION.exec(rest) : null;
+        const consentVerb = accepted ? (CONSENT_ACTION.exec(rest) || extraVerb?.exec(rest) || null) : null;
         if (consentVerb) { rest = rest.slice(consentVerb[0].length).trim(); continue; }
         const alias = choices.find(a => rest === a.value || rest.startsWith(`${a.value} `));
         if (alias) {
@@ -166,6 +172,18 @@ const CONFIDENCE_RANK: Record<IntentConfidence, number> = { low: 0, medium: 1, h
  * only AFTER negation, qualification and correction have been ruled out, so
  * "no confirmo" and "sí, pero…" can never reach it.
  */
+/**
+ * The cancel verb that carries out a pending CANCELLATION, with its object pronoun (normalised, no accents). Same rule
+ * as CONSENT_ACTION: it only counts after an affirmative, as the whole rest of the message, and only when the proposal on
+ * the table is a cancellation (see `pendingCancellation`).
+ */
+const CANCEL_ACTION = new RegExp('^(?:'
+    + 'cancel(?:ala|alo|ela|elo|ame|a|ar|e)|anul(?:ala|alo|ela|elo|a|ar|e)|'
+    + 'pode cancelar|cancele|'
+    + '(?:please )?cancel(?: it| the (?:appointment|booking|order|reservation))?|'
+    + 'annulez(?: la| le)?|annuler|vous pouvez annuler'
+    + ')(?=\\s|$)');
+
 const EXPLICIT_CONSENT_VERB = /\b(confirmo|confirmar|confirmado|autorizo|acepto|procede|proceda|hazlo|i confirm|confirm|go ahead|confirmo sim|concordo|aceito|pode confirmar|pode fazer|je confirme|allez-y)\b/;
 
 function aliasesFor(country?: string | null): IntentAlias[] {
@@ -208,7 +226,7 @@ export function normalizeCustomerIntent(
     options: NormalizeOptions = {},
 ): NormalizedIntent {
     const rawLower = String(raw ?? '').trim().toLowerCase();
-    const normalized = normalizeForIntent(raw).replace(/^¡+/, '').trim();
+    let normalized = normalizeForIntent(raw).replace(/^¡+/, '').trim();
     const base: NormalizedIntent = { intent: 'unclear', confidence: 'low', normalized };
     if (!normalized) return base;
 
@@ -234,6 +252,22 @@ export function normalizeCustomerIntent(
     }
 
     if (isInformationSeekingMessage(raw)) return base;
+    // «sí, cancélala» answering a pending CANCELLATION: read as «sí» (same alias, same strength, same checks below).
+    // Everything else about the message must still be an acceptance; a leftover («sí, cancélala mañana») is not one.
+    if (options.pendingCancellation && normalized.length <= maxLength) {
+        const opener = matchAlias(normalized, aliases);
+        if ((opener?.intent === 'affirm' || opener?.intent === 'acknowledge')
+            && isWholeConsentExpression(normalized, aliases, options.acceptedReferents, CANCEL_ACTION)) {
+            const words = normalized.split(' ');
+            const at = words.findIndex((_, index) => CANCEL_ACTION.test(words.slice(index).join(' ')));
+            if (at > 0) {
+                const rest = words.slice(at).join(' ');
+                const verb = CANCEL_ACTION.exec(rest)![0];
+                normalized = [...words.slice(0, at), ...rest.slice(verb.length).trim().split(' ')].filter(Boolean).join(' ');
+                base.normalized = normalized;
+            }
+        }
+    }
     if (NEGATED_CANCELLATION.test(normalized) && !/\bno\s*,\s*cancela/i.test(rawLower)) return base;
 
     if (CANCEL_ANYWHERE.test(normalized)) {

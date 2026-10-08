@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
@@ -922,6 +922,42 @@ export class HandoffService {
             const recorded = await this.lookupHandoffReceipt(tenantId, lookup).catch(() => null);
             if (recorded) return recorded;
             throw error;
+        }
+    }
+
+    /**
+     * Who may hand a conversation back to the AI: the agent it is assigned to, or
+     * a tenant admin / supervisor. `POST /handoff/:id/complete` previously only
+     * checked the role, so any agent of the tenant could complete (and thereby
+     * unassign and re-arm the bot on) a conversation another agent was working.
+     * Same rule as `AgentConsoleService.assertCanActOnConversation`, which guards
+     * the equivalent `return-to-ai` route. A conversation nobody holds is not
+     * "assigned to the caller", so a plain agent cannot complete it either.
+     */
+    async assertCanCompleteHandoff(
+        tenantId: string,
+        conversationId: string,
+        actorId: string,
+        actorRole: string,
+    ): Promise<void> {
+        // The route's @Roles keeps super_admin out of plain tenant calls; an
+        // impersonating or platform super_admin that reaches here keeps the
+        // access it always had.
+        if (actorRole === 'super_admin') return;
+        if (!['tenant_admin', 'tenant_supervisor', 'tenant_agent'].includes(actorRole)) {
+            throw new ForbiddenException('Role cannot complete handoffs');
+        }
+        const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+        if (!schemaName) throw new NotFoundException('Tenant not found');
+        const rows = await this.prisma.executeInTenantSchema<Array<{ assigned_to: string | null }>>(
+            schemaName,
+            `SELECT assigned_to FROM conversations WHERE id = $1::uuid LIMIT 1`,
+            [conversationId],
+        );
+        if (!rows?.length) throw new NotFoundException('Conversation not found');
+        const elevated = actorRole === 'tenant_admin' || actorRole === 'tenant_supervisor';
+        if (!elevated && rows[0].assigned_to !== actorId) {
+            throw new ForbiddenException('Conversation is not assigned to the authenticated agent');
         }
     }
 

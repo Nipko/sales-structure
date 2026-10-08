@@ -3,6 +3,8 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
+import { VerticalCapabilityGuard } from '../../common/guards/vertical-capability.guard';
+import { RequireVerticalCapability } from '../../common/decorators/require-vertical-capability.decorator';
 import { FeatureGuard } from '../../common/guards/feature.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RequireFeature } from '../../common/decorators/require-feature.decorator';
@@ -13,8 +15,9 @@ import { bulkImportRows } from '../../common/utils/bulk-import.util';
 
 @ApiTags('vehicles')
 @Controller('vehicles')
-@UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard, FeatureGuard)
+@UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard, FeatureGuard, VerticalCapabilityGuard)
 @RequireFeature('vehicleInventory')
+@RequireVerticalCapability('vehicle_inventory')
 @ApiBearerAuth()
 export class VehicleInventoryController {
     constructor(

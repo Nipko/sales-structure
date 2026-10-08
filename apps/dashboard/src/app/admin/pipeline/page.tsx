@@ -12,6 +12,7 @@ import { api } from "@/lib/api";
 import { DataSourceBadge } from "@/hooks/useApiData";
 import { useVerticalTerms } from "@/hooks/useVerticalTerms";
 import { usePlanLimits } from "@/hooks/usePlanLimits";
+import { MULTI_PIPELINE_BOARD_READY, opportunityMoveRequest } from "./board-contract";
 import { cn } from "@/lib/utils";
 import {
     DollarSign,
@@ -283,6 +284,13 @@ export default function PipelinePage() {
     useEffect(() => {
         async function loadPipelines() {
             if (!activeTenantId) return;
+            if (!MULTI_PIPELINE_BOARD_READY) {
+                // The board is not pipeline-aware yet (see board-contract.ts): no tabs, no list.
+                setPipelines([]);
+                setActivePipelineId(null);
+                await loadKanban(null);
+                return;
+            }
             try {
                 const res = await api.listPipelines(activeTenantId);
                 if (res.success && Array.isArray(res.data) && res.data.length > 0) {
@@ -441,7 +449,7 @@ export default function PipelinePage() {
                     mediaKey="pipeline"
                 />
 
-                {pipelines.length > 0 && (
+                {MULTI_PIPELINE_BOARD_READY && pipelines.length > 0 && (
                     <div className="flex items-center gap-1 mb-4 pb-2 border-b border-border overflow-x-auto">
                         {pipelines.map((pl) => (
                             <div key={pl.id} className="relative flex items-center group">
@@ -571,17 +579,9 @@ export default function PipelinePage() {
                                             };
                                         });
                                         try {
-                                             if (activePipelineId) {
-                                                 await api.fetch(`/pipeline/deals/${activeTenantId}/${draggedDeal}/move`, {
-                                                     method: "PUT",
-                                                     body: JSON.stringify({ stageId: stage.id }),
-                                                 });
-                                             } else {
-                                                 await api.fetch(`/crm/kanban/${activeTenantId}/${draggedDeal}/move`, {
-                                                     method: "PUT",
-                                                     body: JSON.stringify({ stage: stage.id }),
-                                                 });
-                                             }
+                                             // The board holds opportunities: always the opportunity route.
+                                             const move = opportunityMoveRequest(activeTenantId, draggedDeal, stage.id);
+                                             await api.fetch(move.path, move.init);
                                              const stageName = KNOWN_STAGE_KEYS.includes(stage.id) ? tc(`stages.${stage.id}`) : stage.name;
                                              setToast(t('movedTo', { stage: stageName }));
                                              setTimeout(() => setToast(null), 2000);

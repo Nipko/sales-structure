@@ -903,6 +903,88 @@ export class AgentConsoleService {
     }
 
     /**
+     * Fields the inbox side panel lets an agent type on the contact card. They are
+     * stored in `contacts.metadata` (the same JSON the conversation detail returns
+     * as `contact.customFields`). Custom attributes defined for contacts are also
+     * accepted, under either their definition id or their attribute key.
+     */
+    static readonly CONTACT_CARD_FIELDS = [
+        'empresa', 'ciudad', 'sitio_web', 'instagram', 'facebook', 'linkedin', 'notas_rapidas',
+    ] as const;
+    private static readonly CONTACT_METADATA_MAX_KEYS = 50;
+    private static readonly CONTACT_METADATA_MAX_VALUE = 2000;
+
+    /**
+     * Merge the contact-card fields of a conversation's contact. The inbox used to
+     * `PATCH /crm/contacts/:tenant/:contact`, a route that does not exist, so the
+     * Save button failed silently. The write is addressed by conversation (the
+     * authorisation unit of the inbox) and resolves the contact server-side, so the
+     * client never names a contact id it could get wrong or forge.
+     *
+     * Only known keys are written (a free-form body would let an agent overwrite
+     * system keys kept in the same JSON), values must be strings, and an empty
+     * string clears the key.
+     */
+    async updateContactMetadata(
+        tenantId: string,
+        conversationId: string,
+        input: unknown,
+    ): Promise<Record<string, string>> {
+        if (!input || typeof input !== 'object' || Array.isArray(input)) {
+            throw new BadRequestException('metadata must be an object');
+        }
+        const entries = Object.entries(input as Record<string, unknown>);
+        if (entries.length === 0) throw new BadRequestException('metadata has no fields');
+        if (entries.length > AgentConsoleService.CONTACT_METADATA_MAX_KEYS) {
+            throw new BadRequestException('metadata has too many fields');
+        }
+        for (const [key, value] of entries) {
+            if (typeof value !== 'string') {
+                throw new BadRequestException(`metadata.${key} must be a string`);
+            }
+            if (value.length > AgentConsoleService.CONTACT_METADATA_MAX_VALUE) {
+                throw new BadRequestException(`metadata.${key} is too long`);
+            }
+        }
+
+        const schemaName = await this.getTenantSchema(tenantId);
+        if (!schemaName) throw new NotFoundException('Tenant not found');
+
+        const allowed = new Set<string>(AgentConsoleService.CONTACT_CARD_FIELDS);
+        const definitions = await this.prisma.executeInTenantSchema<Array<{ id: string; attribute_key: string }>>(
+            schemaName,
+            `SELECT id, attribute_key FROM custom_attribute_definitions WHERE entity_type = 'contact'`,
+            [],
+        ).catch(() => [] as Array<{ id: string; attribute_key: string }>);
+        for (const definition of definitions || []) {
+            allowed.add(String(definition.id));
+            allowed.add(String(definition.attribute_key));
+        }
+        const rejected = entries.map(([key]) => key).filter((key) => !allowed.has(key));
+        if (rejected.length > 0) {
+            throw new BadRequestException(`Unknown contact fields: ${rejected.join(', ')}`);
+        }
+
+        const toSet: Record<string, string> = {};
+        const toClear: string[] = [];
+        for (const [key, value] of entries as Array<[string, string]>) {
+            const trimmed = value.trim();
+            if (trimmed) toSet[key] = trimmed; else toClear.push(key);
+        }
+
+        const rows = await this.prisma.executeInTenantSchema<Array<{ metadata: Record<string, string> }>>(
+            schemaName,
+            `UPDATE contacts
+                SET metadata = (COALESCE(metadata, '{}'::jsonb) || $2::jsonb) - $3::text[]
+              WHERE id = (SELECT contact_id FROM conversations WHERE id = $1::uuid)
+          RETURNING metadata`,
+            [conversationId, JSON.stringify(toSet), toClear],
+        );
+        if (!rows?.length) throw new NotFoundException('Conversation or contact not found');
+        return rows[0].metadata || {};
+    }
+
+    /**
      * Get AI suggestion for an agent response
      */
     async getAISuggestion(tenantId: string, conversationId: string): Promise<string> {

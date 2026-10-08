@@ -232,8 +232,8 @@ const PRIMARY_OBJECT_TERMS: Readonly<Record<string, {
         plural: { es: 'consultas', en: 'enquiries', pt: 'consultas', fr: 'demandes' },
     },
     appointment: {
-        singular: { es: 'turno', en: 'appointment', pt: 'agendamento', fr: 'rendez-vous' },
-        plural: { es: 'turnos', en: 'appointments', pt: 'agendamentos', fr: 'rendez-vous' },
+        singular: { es: 'cita', en: 'appointment', pt: 'agendamento', fr: 'rendez-vous' },
+        plural: { es: 'citas', en: 'appointments', pt: 'agendamentos', fr: 'rendez-vous' },
     },
     catalog_item: {
         singular: { es: 'producto', en: 'product', pt: 'produto', fr: 'produit' },

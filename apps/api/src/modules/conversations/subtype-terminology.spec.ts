@@ -85,10 +85,10 @@ describe('subtype terminology pack', () => {
      * Sólo faltaba su nombre en los cuatro idiomas, y eso se deriva.
      */
     it('un perfil sin palabra propia hereda el nombre de su objeto primario', () => {
-        // `salud` administra turnos: eso lo dice el manifiesto, no una
+        // `salud` administra citas: eso lo dice el manifiesto, no una
         // suposición sobre odontología.
         expect(localizedTerm(subtypeTerminologyFor('salud', 'dental')?.primaryObject, 'es'))
-            .toBe('turno');
+            .toBe('cita');
         expect(localizedTerm(subtypeTerminologyFor('salud', 'dental')?.primaryObject, 'pt'))
             .toBe('agendamento');
         // Y no inventa una lista de términos a evitar: eso sí es criterio de

@@ -51,6 +51,21 @@ const COMPLETION_CLAIM = new RegExp(
         // fr — "votre reservation est confirmee"
         'reservation est (confirmee|creee|effectuee)',
         'a ete (confirmee|reservee|annulee|payee)',
+        // The booking outcome stated in other words: "su cita está lista", "he reservado", "I've booked", "agendei", "j'ai réservé".
+        OPERATION_SUBJECT + ' ' + SUBJECT_GAP + '(esta|quedo|fue) (lista|listo|programada|programado|apartada|apartado|registrada|registrado|asegurada|asegurado|creada|creado|anotada|anotado)',
+        '\\b(he|hemos) (reservado|agendado|programado|apartado)\\b',
+        '\\b(he|hemos) confirmado (tu|su|la|el) ' + OPERATION_SUBJECT,
+        '\\bya (te |le )?(reserve|agende|aparte) ',
+        "\\b(i've|i have|we've|we have) (booked|scheduled|reserved|confirmed) (your|the) ",
+        "\\byou('re|\\s+are) (all set|booked|confirmed)\\b",
+        OPERATION_SUBJECT + ' ' + SUBJECT_GAP + '(is|was) (all set|ready)\\b',
+        OPERATION_SUBJECT + ' ' + SUBJECT_GAP + '(ficou|foi|esta) (agendado|agendada|marcado|marcada|pronto|pronta)',
+        '\\bficou (agendad|reservad|confirmad|marcad)',
+        '\\b(agendei|reservei|marquei) (a|o|sua|seu|suas|seus) ',
+        "\\bj['’]ai (reserve|programme) ",
+        "\\bj['’]ai confirme (votre|le|la) ",
+        OPERATION_SUBJECT + ' ' + SUBJECT_GAP + '(est|a ete) (confirme|confirmee|reserve|reservee|pris|prise|enregistre|enregistree|valide|validee)\\b',
+        "\\bc['’]est (reserve|confirme)\\b",
     ].join('|'),
     'g',
 );
@@ -97,10 +112,22 @@ function insideQuestion(sentence: string, index: number, end: number): boolean {
     return false;
 }
 
+/**
+ * «¡Cita confirmada!» / «Reserva confirmada.» / «Perfecto, appointment booked»: the outcome as the HEADLINE of a sentence,
+ * with no verb. Only at the start of a sentence (so «para dejar su cita confirmada…» and questions are not claims).
+ */
+const HEADLINE_CLAIM = new RegExp(
+    '^\\W*(?:(?:listo|perfecto|genial|excelente|hecho|done|great|perfect|all set|pronto|parfait|voila)\\W+)*'
+    + '(?:(?:su|tu|la|el|mi|your|the|votre|sua|seu|a|o)\\s+)?'
+    + '(?:cita|reserva|reservacion|pedido|pago|orden|appointment|booking|reservation|order|payment|agendamento|consulta|pagamento|rendez-vous|reservation|commande|paiement)'
+    + '\\s+(?:confirmada|confirmado|agendada|agendado|reservada|reservado|confirmed|booked|scheduled|confirmee|confirme|reserve|reservee|pris|prise|marcada|marcado)\\b',
+);
+
 export function claimsCompletedAction(reply: unknown): boolean {
     if (typeof reply !== 'string' || !reply.trim()) return false;
     // Per sentence: a negation in one clause must not cancel a claim in another.
     return normalize(reply).split(/(?<=[.!?;])\s+|\n+/).some(sentence => {
+        if (!/^\W*\u00bf/.test(sentence) && HEADLINE_CLAIM.test(sentence)) return true;
         COMPLETION_CLAIM.lastIndex = 0;
         for (let m = COMPLETION_CLAIM.exec(sentence); m; m = COMPLETION_CLAIM.exec(sentence)) {
             const before = sentence.slice(Math.max(0, m.index - 30), m.index);

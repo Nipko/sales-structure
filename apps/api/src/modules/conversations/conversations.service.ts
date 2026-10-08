@@ -5913,7 +5913,15 @@ export class ConversationsService {
         );
         const backing = this.backingEvidence(executedTools, priorActions);
         const claimAudit = auditTurnClaim(response, backing, { isBackingTool });
-        if (claimAudit.falseClaim) {
+        // The engine decided what this turn says (a re-ask at the confirmation step, a summary, a question): when the
+        // model claims a booking outcome that no tool backed, the engine's own text is the reply, word for word. No
+        // rewrite round trip, which a model that insists would turn into the generic fallback.
+        const engineText = String((trustedContext as any)?.directive ?? '').split('\n\nIMPORTANT:')[0].trim();
+        if (claimAudit.falseClaim && engineText && !claimsCompletedAction(engineText)) {
+            this.recordAgentSignal(tenantId, 'claim_unbacked', session);
+            this.logger.warn(`[Guardrail] The model claimed a completed action on an engine turn with nothing booked — the engine text is the reply: "${response.slice(0, 100)}"`);
+            response = engineText;
+        } else if (claimAudit.falseClaim) {
             this.recordAgentSignal(tenantId, 'claim_unbacked', session);
             this.logger.warn(`[Guardrail] Response claimed completed action without backing tool execution — corrective retry: "${response.slice(0, 100)}"`);
             try {

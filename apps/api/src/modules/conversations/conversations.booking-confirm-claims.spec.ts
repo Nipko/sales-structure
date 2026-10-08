@@ -168,8 +168,21 @@ describe('the executed-operation directive is never sent to the customer', () =>
         h.f.llmRouter.execute.mockResolvedValue(answer(modelReply));
         const reply = (await h.turn('sí')).reply;
         const prompts = h.f.llmRouter.execute.mock.calls.map((call: any[]) => String(call[0].systemPrompt ?? ''));
-        return { reply, prompts };
+        const history = h.session().history.map(row => String(row.content)).join('\n');
+        return { reply, prompts, history };
     }
+
+    it.each([
+        ['failed', 'create_order', { error: 'out_of_stock', message: 'Sin stock del artículo a' }],
+        ['succeeded', 'create_appointment', { success: true, appointment: { id: 'apt-77', status: 'confirmed' } }],
+    ])('a %s pending operation and a model that writes a tool call as text: no instruction text in the reply or the history', async (_label, tool, result) => {
+        const markup = `Listo.\n<${tool}><item>1</item></${tool}>`;
+        const { reply, history } = await pendingOperation(tool as string, result, markup);
+        expect(reply).not.toMatch(/Explícaselo|Motivo interno|Confírmasela|NO se pudo completar|YA quedó realizada|IMPORTANT/i);
+        expect(history).not.toMatch(/Explícaselo|Motivo interno|Confírmasela|NO se pudo completar|YA quedó realizada|IMPORTANT/i);
+        expect(reply).not.toMatch(/[<>]/);
+        expect(history).not.toMatch(/[<>]/);
+    });
 
     it.each([
         '¡Listo, su pedido está confirmado!',

@@ -4955,8 +4955,9 @@ export class ConversationsService {
                 if (hasToolCallMarkup(writtenReply, markupToolNames)) {
                     this.recordAgentSignal(tenantId, 'tool_markup_in_reply', session);
                     this.logger.error(`[Guardrail] The model wrote a tool call as text — not executed, not sent: "${writtenReply.slice(0, 120)}"`);
-                    // The engine decided what this turn says: that text, verbatim, is the reply.
-                    if (engineProducedText) { finalResponse = engineProducedText; break; }
+                    // The booking engine decided what this turn says: that text, verbatim, is the reply. (Not the executed-operation
+                    // directive, which is an instruction to the model.)
+                    if (engineProducedText && engineTextIsReply) { finalResponse = engineProducedText; break; }
                     if (!markupRetried && hasTools && iteration + 1 < MAX_TOOL_ITERATIONS) {
                         markupRetried = true;
                         currentMessages.push({ role: 'assistant', content: stripToolCallMarkup(writtenReply, markupToolNames) || '…' });
@@ -4992,7 +4993,7 @@ export class ConversationsService {
                     if (hasToolCallMarkup(finalResponse, markupToolNames)) {
                         this.recordAgentSignal(tenantId, 'tool_markup_in_reply', session);
                         this.logger.error(`[Guardrail] The forced no-tools reply held a tool call as text — not sent: "${finalResponse.slice(0, 120)}"`);
-                        finalResponse = engineProducedText || this.cleanToolMarkupReply(finalResponse, markupToolNames, userLanguage, asksForAction(userText));
+                        finalResponse = (engineTextIsReply && engineProducedText) || this.cleanToolMarkupReply(finalResponse, markupToolNames, userLanguage, asksForAction(userText));
                     }
                 } catch (e: any) {
                     this.logger.warn(`[Pipeline] Forced no-tools response failed: ${e.message}`);

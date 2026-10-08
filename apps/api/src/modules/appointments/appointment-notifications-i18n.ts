@@ -10,20 +10,20 @@
 const APPT_MESSAGES: Record<string, Record<string, string>> = {
     es: {
         confirmTitle:   '✅ *Cita confirmada*',
-        confirmGreeting: 'Hola {name}! Tu cita ha sido agendada:',
+        confirmGreeting: 'Hola {name}! Su cita ha sido agendada:',
         confirmLocation: '📍 {location}',
         confirmMeeting:  '💻 Enlace de reunión: {url}',
-        confirmFooter:   'Si necesitas cancelar o reprogramar, escríbenos con anticipación.',
+        confirmFooter:   'Si necesita cancelar o reprogramar, escríbanos con anticipación.',
 
         cancelTitle:    '❌ *Cita cancelada*',
-        cancelBody:     'Tu cita de *{service}* del {date} ha sido cancelada.',
+        cancelBody:     'Su cita de *{service}* del {date} ha sido cancelada.',
         cancelReason:   'Motivo: {reason}',
-        cancelFooter:   'Si deseas reprogramar, no dudes en escribirnos.',
+        cancelFooter:   'Si desea reprogramar, no dude en escribirnos.',
 
         reminderTitle:  '⏰ *Recordatorio de cita*',
-        reminderBody:   'Hola {name}! Te recordamos tu cita de *{service}* el {date} a las {time}.',
-        reminderStaff:  '👤 Te atenderá: {staff}',
-        reminderFooter: 'Si no puedes asistir, escríbenos con anticipación para reprogramar.',
+        reminderBody:   'Hola {name}! Le recordamos su cita de *{service}* el {date} a las {time}.',
+        reminderStaff:  '👤 Le atenderá: {staff}',
+        reminderFooter: 'Si no puede asistir, escríbanos con anticipación para reprogramar.',
 
         customerFallback: 'Cliente',
         durationHours:    '{h} h',

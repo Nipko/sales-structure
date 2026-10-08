@@ -11,6 +11,8 @@ import { bookingConfirmationHash } from './booking-confirmation';
 import { appointmentPriceSql, appointmentCurrencySql, type AppointmentServiceTerms } from '../appointments/appointment-service-terms';
 import { isInformationSeekingMessage, isPauseMessage, isResumeMessage, normalizeCustomerIntent } from '../../common/conversation/intent-normalizer';
 import { isBookingStatusQuestion } from './booking-status-question';
+import { appointmentChangeRequest } from './appointment-transition';
+import { HUMAN_OFFER_TTL_MS, isAffirmation } from './human-offer';
 import { normalizeForIntent } from '@parallext/shared';
 import { procedureDialogueMessages } from './procedure-dialogue-messages';
 import { containsMissionDirective, isCollectionCancellation, isDirectedCorrection, isNamedMissionResume, mentionedMissionDomains, missionDialogue, parseDirectedSlotCorrection } from './mission-focus';
@@ -67,8 +69,8 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         bookingLocation: 'Lugar: {location}',
         bookingOnline: 'En línea',
         bookingPaymentDue: "Pago para confirmar: {amount}",
-        bookingPending: "La solicitud de cita para {service} el {date} a las {time} quedó registrada y pendiente de confirmación.",
-        bookingAwaitingPayment: "La cita para {service} el {date} a las {time} está pendiente del pago de {amount}. El horario se retiene temporalmente; la confirmación llegará cuando se acredite el pago.",
+        bookingPending: "La solicitud de cita para {service} el {date} a las {time} quedó registrada y pendiente de confirmación.{refLine}",
+        bookingAwaitingPayment: "La cita para {service} el {date} a las {time} está pendiente del pago de {amount}. El horario se retiene temporalmente; la confirmación llegará cuando se acredite el pago.{refLine}",
         serviceSelected: [
             '{service} seleccionado. ¿Qué fecha le queda bien?',
             '¡Excelente elección! Reservaremos {service}. ¿Qué día le gustaría agendar?',
@@ -125,7 +127,7 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         confirmButton: '¿Confirmar cita?\n\n{summary}',
         btnConfirm: 'Confirmar',
         btnCancel: 'Cancelar',
-        booked: '¡Cita confirmada!\nServicio: {service}\nFecha: {date} a las {time}\nNombre: {name}\n¿Algo más?',
+        booked: '¡Cita confirmada!\nServicio: {service}\nFecha: {date} a las {time}\nNombre: {name}{refLine}\n¿Algo más?',
         bookingError: 'Error al crear la cita: {error}. ¿Probamos otro horario?',
         askDate: [
             '¿Qué fecha le gustaría para {service}?',
@@ -152,8 +154,8 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         bookingLocation: 'Location: {location}',
         bookingOnline: 'Online',
         bookingPaymentDue: "Payment to confirm: {amount}",
-        bookingPending: "Your appointment request for {service} on {date} at {time} was recorded and is awaiting confirmation.",
-        bookingAwaitingPayment: "Your appointment for {service} on {date} at {time} is awaiting payment of {amount}. The slot is held temporarily; confirmation follows verified payment.",
+        bookingPending: "Your appointment request for {service} on {date} at {time} was recorded and is awaiting confirmation.{refLine}",
+        bookingAwaitingPayment: "Your appointment for {service} on {date} at {time} is awaiting payment of {amount}. The slot is held temporarily; confirmation follows verified payment.{refLine}",
         serviceSelected: '{service} selected. What date works for you?',
         switchedService: 'Switched to {service}. What date works for you?',
         cancelled: 'No problem! Is there anything else I can help you with?',
@@ -196,7 +198,7 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         confirmButton: 'Confirm booking?\n\n{summary}',
         btnConfirm: 'Confirm',
         btnCancel: 'Cancel',
-        booked: 'Appointment confirmed!\nService: {service}\nDate: {date} at {time}\nName: {name}\nAnything else?',
+        booked: 'Appointment confirmed!\nService: {service}\nDate: {date} at {time}\nName: {name}{refLine}\nAnything else?',
         bookingError: 'Issue creating appointment: {error}. Try another time?',
         askDate: 'What date would you like for {service}?',
         whichTime: 'Which time? {slots}',
@@ -218,8 +220,8 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         bookingLocation: 'Local: {location}',
         bookingOnline: 'Online',
         bookingPaymentDue: "Pagamento para confirmar: {amount}",
-        bookingPending: "A solicitação de agendamento de {service} em {date} às {time} foi registrada e aguarda confirmação.",
-        bookingAwaitingPayment: "O agendamento de {service} em {date} às {time} aguarda o pagamento de {amount}. O horário fica reservado temporariamente; a confirmação ocorre após a aprovação do pagamento.",
+        bookingPending: "A solicitação de agendamento de {service} em {date} às {time} foi registrada e aguarda confirmação.{refLine}",
+        bookingAwaitingPayment: "O agendamento de {service} em {date} às {time} aguarda o pagamento de {amount}. O horário fica reservado temporariamente; a confirmação ocorre após a aprovação do pagamento.{refLine}",
         serviceSelected: '{service} selecionado. Qual data funciona para você?',
         switchedService: 'Mudamos para {service}. Qual data funciona para você?',
         cancelled: 'Sem problema! Posso ajudar com mais alguma coisa?',
@@ -262,7 +264,7 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         confirmButton: 'Confirmar agendamento?\n\n{summary}',
         btnConfirm: 'Confirmar',
         btnCancel: 'Cancelar',
-        booked: 'Agendamento confirmado!\nServiço: {service}\nData: {date} às {time}\nNome: {name}\nMais alguma coisa?',
+        booked: 'Agendamento confirmado!\nServiço: {service}\nData: {date} às {time}\nNome: {name}{refLine}\nMais alguma coisa?',
         bookingError: 'Erro ao criar agendamento: {error}. Tentar outro horário?',
         askDate: 'Qual data gostaria para {service}?',
         whichTime: 'Qual horário? {slots}',
@@ -284,8 +286,8 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         bookingLocation: 'Lieu : {location}',
         bookingOnline: 'En ligne',
         bookingPaymentDue: "Paiement pour confirmer : {amount}",
-        bookingPending: "Votre demande de rendez-vous pour {service} le {date} à {time} est enregistrée et attend une confirmation.",
-        bookingAwaitingPayment: "Le rendez-vous pour {service} le {date} à {time} attend le paiement de {amount}. Le créneau est retenu temporairement ; la confirmation suivra le paiement vérifié.",
+        bookingPending: "Votre demande de rendez-vous pour {service} le {date} à {time} est enregistrée et attend une confirmation.{refLine}",
+        bookingAwaitingPayment: "Le rendez-vous pour {service} le {date} à {time} attend le paiement de {amount}. Le créneau est retenu temporairement ; la confirmation suivra le paiement vérifié.{refLine}",
         serviceSelected: '{service} sélectionné. Quelle date vous convient ?',
         switchedService: 'Changé pour {service}. Quelle date vous convient ?',
         cancelled: 'Pas de problème ! Puis-je vous aider avec autre chose ?',
@@ -328,7 +330,7 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         confirmButton: 'Confirmer le rendez-vous ?\n\n{summary}',
         btnConfirm: 'Confirmer',
         btnCancel: 'Annuler',
-        booked: 'Rendez-vous confirmé !\nService : {service}\nDate : {date} à {time}\nNom : {name}\nAutre chose ?',
+        booked: 'Rendez-vous confirmé !\nService : {service}\nDate : {date} à {time}\nNom : {name}{refLine}\nAutre chose ?',
         bookingError: 'Erreur lors de la création : {error}. Essayer un autre horaire ?',
         askDate: 'Quelle date souhaitez-vous pour {service} ?',
         whichTime: 'Quel horaire ? {slots}',
@@ -518,9 +520,19 @@ export interface BookingState {
     confirmationId?: string;
     confirmationHash?: string;
     confirmationIssuedAt?: string;
+    /** The last reply offered to pass the customer to a person: a bare yes next turn answers THAT, not this booking. */
+    personOfferedAt?: string;
 }
 
 /** Revoking a proposal does not erase collected customer/service preferences. */
+/** «Referencia: 3F9A1C2B»: the short code the customer can quote (the first 8 characters of the appointment id). */
+export function appointmentReferenceLine(lang: string, appointmentId: unknown): string {
+    const ref = String(appointmentId ?? '').replace(/-/g, '').slice(0, 8).toUpperCase();
+    if (!ref) return '';
+    const label: Record<string, string> = { es: 'Referencia', en: 'Reference', pt: 'Referência', fr: 'Référence' };
+    return `\n${label[lang] ?? label.es}${lang === 'fr' ? ' :' : ':'} ${ref}`;
+}
+
 export function invalidateBookingProposal(state: BookingState): void {
     state.confirmationId = undefined;
     state.confirmationHash = undefined;
@@ -615,6 +627,19 @@ export class BookingEngineService {
         // open mission (a draft the customer was building for another service) is left untouched.
         // The model answers next, so an offer the engine made last turn is no longer what a bare yes answers.
         if (isOnlyInquiry(rawText)) return { handled: false, state: currentState.pendingSwitch ? { ...currentState, pendingSwitch: undefined } : currentState };
+        // A yes that answers our OFFER OF A PERSON («¿desea que le pida a alguien del equipo…?») is not consent to the booking
+        // summary that happens to be open: the offer is consumed here and the turn goes on to the handoff / the model.
+        if (currentState.personOfferedAt) {
+            const offeredAt = Date.parse(currentState.personOfferedAt);
+            currentState = { ...currentState, personOfferedAt: undefined };
+            if (isAffirmation(rawText) && Number.isFinite(offeredAt) && Date.now() - offeredAt >= 0 && Date.now() - offeredAt <= HUMAN_OFFER_TTL_MS) {
+                return { handled: false, state: currentState };
+            }
+        }
+        // Changing an appointment that already EXISTS is the appointment tools' job (reschedule_appointment, after its normal
+        // confirmation). The engine only creates: taking it would open a second booking for the same customer.
+        const changeOfExisting = appointmentChangeRequest(rawText);
+        if (changeOfExisting === 'explicit' || changeOfExisting === 'ambiguous' && !isOpen(currentState)) return { handled: false, state: currentState };
         const tentativeOpen = wasOpen && currentState.origin === 'question';
         const offeredAt = Date.parse(currentState.offeredBookingAt || '');
         const offerLive = tentativeOpen && Number.isFinite(offeredAt) && Date.now() - offeredAt >= 0 && Date.now() - offeredAt <= BOOKING_OFFER_TTL_MS;
@@ -1945,6 +1970,7 @@ export class BookingEngineService {
                 : appointment.status === 'confirmed' ? 'booked' : 'bookingPending', {
                 service: state.serviceName || '', date: state.date || '', time: state.time || '',
                 name: state.customerName || '', email: state.customerEmail || '',
+                refLine: appointmentReferenceLine(lang, state.appointmentId),
                 // Mismo formateo que la propuesta que el cliente acaba de leer:
                 // el importe a pagar no puede cambiar de aspecto entre la
                 // pantalla donde lo aceptó y la que le dice cuánto pagar.

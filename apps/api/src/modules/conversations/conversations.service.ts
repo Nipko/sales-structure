@@ -91,6 +91,7 @@ import {
     auditTurnClaim,
     claimsCompletedAction,
     promisesHumanHandoff,
+    offersHumanHandoff,
     promisesLaterDelivery,
     promisesActionWithoutTool,
     isBareWaitPromise,
@@ -3545,7 +3546,7 @@ export class ConversationsService {
             if (missionDecision.pauseBooking || missionDecision.invalidateConfirmation && bookingProposalActive) await this.persistBookingState(schemaName, conversation.id, bookingState, session);
             if (missionDecision.pauseProcedure) await procedureEngine.pauseMission(schemaName, conversation.id);
             if (missionDecision.route === 'clarify' || missionDecision.action === 'pause' || missionDecision.action === 'replay') {
-                engineProducedText = missionDialogue(userLanguage, missionDecision.action === 'replay' ? 'replay' : missionDecision.action === 'pause' ? 'paused' : 'clarify');
+                engineProducedText = missionDialogue(userLanguage, missionDecision.action === 'replay' ? 'replay' : missionDecision.action === 'pause' ? 'paused' : 'clarify', missionDecision.clarifyOptions);
                 tools = [];
             }
             await saveMission();
@@ -5032,6 +5033,11 @@ export class ConversationsService {
             if (!session && !draftMode && allowHumanHandoff && this.wantsPersonOffer(userText, tenantId)
                 && !isPipelineFallbackReply(finalResponse)) {
                 finalResponse = withPolicyPersonOffer(finalResponse, userLanguage);
+            }
+            // An open booking summary must not take the "yes" that answers an offer of a person.
+            if (!draftMode && (containsHumanOffer(finalResponse) || offersHumanHandoff(finalResponse)) && bookingState.step && !['idle', 'booked'].includes(bookingState.step)) {
+                bookingState.personOfferedAt = new Date().toISOString();
+                await this.persistBookingState(schemaName, conversation.id, bookingState, session);
             }
             // The guard answered with an offer of a person: remember it so a
             // "yes" next turn escalates for real.

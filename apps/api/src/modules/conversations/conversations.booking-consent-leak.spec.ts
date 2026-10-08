@@ -74,7 +74,7 @@ describe('a tool call written as text never reaches the customer or the history'
         const h = fixture();
         await h.toConfirm();
         h.f.llmRouter.execute.mockResolvedValue(answer(markup));
-        const result = await h.turn('sí, si hay descuento');
+        const result = await h.turn('sí, pero déjeme pensarlo');
         expect(result.debug.runtimeError).toBeUndefined();
         expect(result.reply).toBe(ASK_AGAIN);
         expect(h.writes()).toHaveLength(0);
@@ -82,7 +82,7 @@ describe('a tool call written as text never reaches the customer or the history'
         expect(h.session().metadata.bookingState).toMatchObject({ step: 'confirm' });
     });
 
-    it.each(MARKUP_SHAPES)('in a plain turn with tools (%s): one retry with the tool interface, then the honest fixed text', async (_label, markup) => {
+    it.each(MARKUP_SHAPES)('in a plain turn with tools (%s): one retry with the tool interface, then the honest fixed text', async (label, markup) => {
         const h = fixture();
         await h.turn('hola');
         h.f.llmRouter.execute.mockClear();
@@ -93,9 +93,16 @@ describe('a tool call written as text never reaches the customer or the history'
         // The first answer and the retry: never a third call for it.
         const modelCalls = h.f.llmRouter.execute.mock.calls.filter((call: any[]) => (call[0].messages || []).length > 0);
         expect(modelCalls.length).toBeLessThanOrEqual(3);
-        expect(result.reply).toMatch(/no he podido completar esa acción/i);
+        // A plain question: no action was asked, so the text must not claim that an action failed.
+        // (the DSML shape carries a sentence that still promises work: that one is the action-not-done text)
+        if (label === 'DeepSeek DSML') expect(result.reply).toMatch(/no he podido completar esa acción/i);
+        else {
+            expect(result.reply).toMatch(/no pude responderle/i);
+            expect(result.reply).not.toMatch(/acción/i);
+        }
         expect(h.session().history.every(row => noMarkup(row.content))).toBe(true);
     });
+
 
     it('the retry gets a chance: a clean second answer is the reply', async () => {
         const h = fixture();
@@ -135,11 +142,44 @@ describe('only a real consent books, and exactly once', () => {
         await h.toConfirm();
         h.f.llmRouter.execute.mockClear();
         h.f.llmRouter.execute.mockResolvedValue(answer('Estoy gestionando la confirmación de su cita del 5 de enero a las 16:00. Le avisaré en cuanto esté lista.'));
-        const result = await h.turn('sí, si hay descuento');
+        const result = await h.turn('sí, pero déjeme pensarlo');
         expect(result.reply).toBe(ASK_AGAIN);
         const prompt = h.f.llmRouter.execute.mock.calls.map((call: any[]) => String(call[0].systemPrompt ?? '')).find((text: string) => text.includes('IMPORTANT')) ?? '';
         expect(prompt).toMatch(/nothing is booked in this turn and you cannot book in it/i);
         expect(prompt).toMatch(/explicit yes or no/i);
+        expect(prompt).toMatch(/also asks something, answer it briefly/i);
+    });
+
+    it('«sí, si hay descuento» does not drop the question: the model answers it and the summary is asked again', async () => {
+        const h = fixture();
+        await h.toConfirm();
+        h.f.llmRouter.execute.mockClear();
+        h.f.llmRouter.execute.mockResolvedValue(answer('No tengo información de descuentos para este servicio. Su cita de Corte y estilo es el 5 de enero a las 16:00. ¿La confirmo?'));
+        const result = await h.turn('sí, si hay descuento');
+        expect(result.reply).toContain('No tengo información de descuentos');
+        expect(result.reply).not.toBe(ASK_AGAIN);
+        expect(h.writes()).toHaveLength(0);
+        expect(h.session().metadata.bookingState).toMatchObject({ step: 'confirm' });
+    });
+
+    it.each(['sí, y el descuento', 'sí, con descuento', 'sí, pero el precio'])('"%s" is a yes carrying a question: the model answers it, nothing is booked', async text => {
+        const h = fixture();
+        await h.toConfirm();
+        h.f.llmRouter.execute.mockClear();
+        h.f.llmRouter.execute.mockResolvedValue(answer('No tengo información de descuentos para este servicio. Su cita de Corte y estilo es el 5 de enero a las 16:00. ¿La confirmo?'));
+        const result = await h.turn(text);
+        expect(result.reply).toContain('No tengo información de descuentos');
+        expect(result.reply).not.toBe(ASK_AGAIN);
+        expect(h.writes()).toHaveLength(0);
+    });
+
+    it('ok/listo/dale/perfecto + a booking verb still book at the summary', async () => {
+        for (const text of ['ok, agéndala', 'listo, márcala', 'dale, resérvala', 'perfecto, hazla', 'ok, márcalo', 'vale, confírmala']) {
+            const h = fixture();
+            await h.toConfirm();
+            await h.turn(text);
+            expect({ text, writes: h.writes().length }).toEqual({ text, writes: 1 });
+        }
     });
 });
 
@@ -147,6 +187,14 @@ describe('what is left of a reply once its tool call is removed', () => {
     const service: any = Object.create(ConversationsService.prototype);
     const clean = (text: string) => service.cleanToolMarkupReply(text, ['create_appointment'], 'es');
     const FIXED = /no he podido completar esa acción/i;
+
+    it('a plain question that lost its answer is told so, without claiming an action failed', () => {
+        const lost = service.cleanToolMarkupReply('<create_appointment><date>1</date></create_appointment>', ['create_appointment'], 'es', false);
+        expect(lost).toMatch(/no pude responderle/i);
+        expect(lost).not.toMatch(FIXED);
+        // a leftover that claims an action is still the "action not done" text, whatever was asked
+        expect(service.cleanToolMarkupReply('Estoy procesando su reserva. <create_appointment><date>1</date></create_appointment>', ['create_appointment'], 'es', false)).toMatch(FIXED);
+    });
 
     it('keeps an honest sentence and drops the call', () => {
         expect(clean('Con gusto le ayudo con eso. <create_appointment><date>1</date></create_appointment>')).toBe('Con gusto le ayudo con eso.');

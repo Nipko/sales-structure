@@ -421,6 +421,21 @@ const ACTION_NOT_DONE_REPLY: Record<string, string> = {
 };
 const actionNotDoneText = (lang?: string) =>
     ACTION_NOT_DONE_REPLY[(lang || 'es').slice(0, 2).toLowerCase()] || ACTION_NOT_DONE_REPLY.es;
+/** Same situation but the customer asked for no action (a plain question): nothing was left undone, the answer was lost. */
+const ANSWER_LOST_REPLY: Record<string, string> = {
+    es: 'Disculpe, no pude responderle bien en este mensaje. ¿Puede escribirme su pregunta otra vez?',
+    en: 'Sorry, I could not answer that properly in this message. Could you send your question again?',
+    pt: 'Desculpe, não consegui responder direito nesta mensagem. Pode enviar sua pergunta novamente?',
+    fr: "Désolé, je n'ai pas pu répondre correctement dans ce message. Pouvez-vous m'envoyer votre question à nouveau ?",
+};
+const answerLostText = (lang?: string) =>
+    ANSWER_LOST_REPLY[(lang || 'es').slice(0, 2).toLowerCase()] || ANSWER_LOST_REPLY.es;
+/** Whether the customer's message asks for something to be DONE (book, cancel, pay, change, confirm), or is a yes. */
+const asksForAction = (text: string): boolean => {
+    const t = String(text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+    return /\b(?:agend\w*|reserv\w*|cancel\w*|confirm\w*|reprogram\w*|cambi\w*|paga\w*|compr\w*|apart\w*|marc\w*|book\w*|schedule|reschedule|pay|buy|order|change|marcar|annul\w*|reserv\w*)\b/.test(t)
+        || /^(?:si|yes|sim|oui|ok|okay|dale|listo|vale|claro|perfecto|de acuerdo)\b/.test(t);
+};
 const TOOL_MARKUP_NUDGE: Record<string, string> = {
     es: 'Escribiste una llamada a una herramienta como texto. Nunca escribas llamadas como texto: si necesitas ejecutar una acción, usa la interfaz de herramientas; si no, responde al cliente en lenguaje natural.',
     en: 'You wrote a tool call as text. Never write tool calls as text: if you need to run an action, use the tool interface; otherwise answer the customer in plain language.',
@@ -443,7 +458,7 @@ function isSystemFixedText(text: string): boolean {
     const t = (text || '').trim();
     if (!t) return false;
     const fixed = [
-        ...Object.values(UNVERIFIED_CLAIM_FALLBACK), ...Object.values(ACTION_NOT_DONE_REPLY), ...Object.values(NO_DATA_WAIT_REPLACEMENT), ...Object.values(NO_DATA_NO_OFFER),
+        ...Object.values(UNVERIFIED_CLAIM_FALLBACK), ...Object.values(ACTION_NOT_DONE_REPLY), ...Object.values(ANSWER_LOST_REPLY), ...Object.values(NO_DATA_WAIT_REPLACEMENT), ...Object.values(NO_DATA_NO_OFFER),
         ...Object.values(PARTIAL_SUCCESS_MSG), ...Object.values(BUDGET_EXHAUSTED_MSG), ...Object.values(BUDGET_EXHAUSTED_REPLAY_MSG),
         ...Object.values(HANDOFF_MSG).flatMap(h => [h.transferring, h.unavailable, h.queueHead, h.queueWaiting]),
         ...Object.values(HANDOFF_RETURN_MSG),
@@ -4410,7 +4425,7 @@ export class ConversationsService {
         if (engineProducedText) {
             // Add directive to turn context — tells LLM what to communicate
             turnContext.directive = engineAwaitsConsent
-                ? `${engineProducedText}\n\nIMPORTANT: nothing is booked in this turn and you cannot book in it. Do not say that you are booking, processing or confirming it, and do not promise to notify the customer. Ask for an explicit yes or no and stop.`
+                ? `${engineProducedText}\n\nIMPORTANT: nothing is booked in this turn and you cannot book in it. Do not say that you are booking, processing or confirming it, and do not promise to notify the customer. If the customer's message also asks something, answer it briefly with what you know (never invent a price, discount or policy), then ask for an explicit yes or no and stop.`
                 : engineProducedText;
         }
 
@@ -4941,7 +4956,7 @@ export class ConversationsService {
                         currentMessages.push({ role: 'user', content: TOOL_MARKUP_NUDGE[String(userLanguage).slice(0, 2).toLowerCase()] || TOOL_MARKUP_NUDGE.es });
                         continue;
                     }
-                    finalResponse = this.cleanToolMarkupReply(writtenReply, markupToolNames, userLanguage);
+                    finalResponse = this.cleanToolMarkupReply(writtenReply, markupToolNames, userLanguage, asksForAction(userText));
                     break;
                 }
                 finalResponse = writtenReply || GENERATION_ERROR_PLACEHOLDER;
@@ -4970,7 +4985,7 @@ export class ConversationsService {
                     if (hasToolCallMarkup(finalResponse, markupToolNames)) {
                         this.recordAgentSignal(tenantId, 'tool_markup_in_reply', session);
                         this.logger.error(`[Guardrail] The forced no-tools reply held a tool call as text — not sent: "${finalResponse.slice(0, 120)}"`);
-                        finalResponse = engineProducedText || this.cleanToolMarkupReply(finalResponse, markupToolNames, userLanguage);
+                        finalResponse = engineProducedText || this.cleanToolMarkupReply(finalResponse, markupToolNames, userLanguage, asksForAction(userText));
                     }
                 } catch (e: any) {
                     this.logger.warn(`[Pipeline] Forced no-tools response failed: ${e.message}`);
@@ -5816,12 +5831,14 @@ export class ConversationsService {
      * A reply that held a tool call written as text, with the call removed. If what is left is nothing, or still
      * promises the action (done, under way, "te aviso"), the call WAS the reply and nothing was done: say so.
      */
-    private cleanToolMarkupReply(text: string, names: readonly string[], lang?: string): string {
+    private cleanToolMarkupReply(text: string, names: readonly string[], lang?: string, actionRequested = true): string {
         const kept = stripToolCallMarkup(text, names);
-        if (!kept || promisesActionWithoutTool(kept) || promisesLaterDelivery(kept) || isBareWaitPromise(kept) || claimsCompletedAction(kept)) {
-            return actionNotDoneText(lang);
+        if (kept && !promisesActionWithoutTool(kept) && !promisesLaterDelivery(kept) && !isBareWaitPromise(kept) && !claimsCompletedAction(kept)) {
+            return kept;
         }
-        return kept;
+        // Nothing left, or what is left still promises/claims an action. If the customer asked for none, say that the
+        // answer was lost rather than that an action failed.
+        return actionRequested || (kept && !!kept.trim() && !!(promisesActionWithoutTool(kept) || claimsCompletedAction(kept))) ? actionNotDoneText(lang) : answerLostText(lang);
     }
 
     private async alignReplyLanguage(

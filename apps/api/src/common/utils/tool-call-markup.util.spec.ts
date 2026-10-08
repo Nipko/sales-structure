@@ -52,6 +52,7 @@ describe('hasToolCallMarkup / stripToolCallMarkup', () => {
         'si x < y_z > w',
         'Escríbanos a <ventas_bogota@tienda.com> y le respondemos con el catálogo completo.',
         'Use <mi_codigo> en la caja y pague.',
+        'Escríbanos a <ventas_bogota@tienda.com><info_ventas@tienda.com> o llámenos.',
     ])('does not cut a reply with a harmless snake_case tag: %s', text => {
         expect(hasToolCallMarkup(text)).toBe(false);
         expect(stripToolCallMarkup(text)).toBe(text);

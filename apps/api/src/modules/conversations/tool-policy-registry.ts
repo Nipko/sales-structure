@@ -707,6 +707,11 @@ export function getToolPolicy(name: unknown): ToolPolicy | undefined {
     return TOOL_POLICY_REGISTRY[name];
 }
 
+/** A registered tool that cancels something (cancel_appointment, cancel_catalog_order…): the pending proposal is a cancellation. */
+export function isCancellationTool(name: unknown): boolean {
+    return typeof name === 'string' && /^cancel_[a-z_]+$/.test(name) && !!TOOL_POLICY_REGISTRY[name];
+}
+
 /**
  * Si esta tool puede publicarse y ejecutarse cuando el negocio no puede
  * comprometerse — perfil `stop`, rol que no opera, canal que no cierra

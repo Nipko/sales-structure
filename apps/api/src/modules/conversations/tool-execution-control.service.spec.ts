@@ -255,6 +255,8 @@ function createHarness(identityVerified = true) {
             state.ledger.status = 'rejected';
             return [];
         }
+        // A commitment family's tables are "not there" in this fake: no commitment terms are built.
+        if (normalized.startsWith('SELECT to_regclass')) return [{}];
         throw new Error(`Unhandled SQL in fake: ${normalized}`);
     };
     const executeInTenantSchema = jest.fn(async (_schema: string, sql: string, params: any[] = []) => (
@@ -1188,6 +1190,28 @@ describe('Draft action consent and human review', () => {
         state.agentVersion = 3;
         state.ticket.expires_at = new Date(Date.now() - 1).toISOString();
         expect(await service.preflight({ ...mediaRequest, draftMode: false })).toMatchObject({ allowed: false, result: { error: 'approval_expired' } });
+        expect(state.ledger.status).not.toBe('executing');
+    });
+});
+
+describe('the central guard reads «sí, cancélala» as the answer to a pending CANCELLATION only', () => {
+    const cancelRequest = { schemaName, tenantId, contactId, conversationId, toolName: 'cancel_appointment', args: { appointmentId: 'apt-9' } };
+    const bookRequest = { schemaName, tenantId, contactId, conversationId, toolName: 'create_appointment',
+        args: { serviceId: 'service-1', date: '2026-08-10', time: '10:00' } };
+
+    it.each(['sí, cancélala', 'sí, anúlala', 'si cancelala'])('"%s" confirms the pending cancel_appointment', async reply => {
+        const { service, state } = createHarness();
+        expect(await service.preflight(cancelRequest)).toMatchObject({ allowed: false, result: { error: 'confirmation_required' } });
+        state.latestMessage = { id: secondMessageId, content_text: reply };
+        expect(await service.preflight(cancelRequest)).toMatchObject({ allowed: true });
+        expect(state.ledger.status).toBe('executing');
+    });
+
+    it('the same phrase does not confirm a pending booking', async () => {
+        const { service, state } = createHarness();
+        expect(await service.preflight(bookRequest)).toMatchObject({ allowed: false, result: { error: 'confirmation_required' } });
+        state.latestMessage = { id: secondMessageId, content_text: 'sí, cancélala' };
+        expect((await service.preflight(bookRequest)).allowed).toBe(false);
         expect(state.ledger.status).not.toBe('executing');
     });
 });

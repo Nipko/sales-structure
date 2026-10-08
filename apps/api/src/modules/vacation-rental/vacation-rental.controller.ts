@@ -6,6 +6,8 @@ import { AuthGuard } from '@nestjs/passport';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
+import { VerticalCapabilityGuard } from '../../common/guards/vertical-capability.guard';
+import { RequireVerticalCapability } from '../../common/decorators/require-vertical-capability.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { PropertiesService } from './properties.service';
 import { IcalSyncService } from './ical-sync.service';
@@ -14,7 +16,8 @@ import { prepareSafeHttpsTarget } from '../../common/utils/safe-outbound-url.uti
 
 @ApiTags('vacation-rental')
 @Controller('vacation-rental')
-@UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
+@UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard, VerticalCapabilityGuard)
+@RequireVerticalCapability('nightly_booking')
 @ApiBearerAuth()
 export class VacationRentalController {
     constructor(

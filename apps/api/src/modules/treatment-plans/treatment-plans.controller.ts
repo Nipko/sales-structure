@@ -7,12 +7,15 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
+import { VerticalCapabilityGuard } from '../../common/guards/vertical-capability.guard';
+import { RequireVerticalCapability } from '../../common/decorators/require-vertical-capability.decorator';
 import { TreatmentPlansService } from './treatment-plans.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 @ApiTags('treatment-plans')
 @Controller('treatment-plans')
-@UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
+@UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard, VerticalCapabilityGuard)
+@RequireVerticalCapability('treatment_management')
 @ApiBearerAuth()
 export class TreatmentPlansController {
     constructor(

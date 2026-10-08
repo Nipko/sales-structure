@@ -16,11 +16,73 @@ export class PipelineController {
         private automationService: AutomationService,
     ) {}
 
+    // ---- Pipelines (multi) ----
+    //
+    // The dashboard's pipeline page lists/creates/renames/deletes pipelines at
+    // `/pipeline/pipelines/:tenantId`. PipelineService has implemented all four
+    // operations (plan limit `maxPipelines`, primary-pipeline protection, tenant
+    // scoped lookups) but the controller never exposed them, so the page got a
+    // 404 on every load. Reads are open to every inbox role like the other
+    // pipeline reads; writes follow the stage/automation writers.
+
+    @Get('pipelines/:tenantId')
+    async listPipelines(@Param('tenantId') tenantId: string) {
+        const pipelines = await this.pipelineService.listPipelines(tenantId);
+        return { success: true, data: pipelines };
+    }
+
+    @Post('pipelines/:tenantId')
+    @Roles('tenant_admin', 'tenant_supervisor')
+    async createPipeline(
+        @Param('tenantId') tenantId: string,
+        @Body() body: { name: string; description?: string },
+    ) {
+        const name = typeof body?.name === 'string' ? body.name.trim() : '';
+        if (!name || name.length > 120) {
+            throw new BadRequestException('Pipeline name is required (max 120 characters)');
+        }
+        const pipeline = await this.pipelineService.createPipeline(tenantId, {
+            name,
+            description: typeof body?.description === 'string' ? body.description : undefined,
+        });
+        return { success: true, data: pipeline };
+    }
+
+    @Put('pipelines/:tenantId/:pipelineId')
+    @Roles('tenant_admin', 'tenant_supervisor')
+    async updatePipeline(
+        @Param('tenantId') tenantId: string,
+        @Param('pipelineId') pipelineId: string,
+        @Body() body: { name?: string; description?: string },
+    ) {
+        if (body?.name !== undefined && (typeof body.name !== 'string' || !body.name.trim() || body.name.length > 120)) {
+            throw new BadRequestException('Pipeline name must be a non-empty string (max 120 characters)');
+        }
+        const result = await this.pipelineService.updatePipeline(tenantId, pipelineId, {
+            name: body?.name?.trim(),
+            description: body?.description,
+        });
+        return { success: true, data: result };
+    }
+
+    @Delete('pipelines/:tenantId/:pipelineId')
+    @Roles('tenant_admin', 'tenant_supervisor')
+    async deletePipeline(
+        @Param('tenantId') tenantId: string,
+        @Param('pipelineId') pipelineId: string,
+    ) {
+        const result = await this.pipelineService.deletePipeline(tenantId, pipelineId);
+        return { success: true, data: result };
+    }
+
     // ---- Kanban ----
 
     @Get('kanban/:tenantId')
-    async getKanban(@Param('tenantId') tenantId: string) {
-        const kanban = await this.pipelineService.getKanban(tenantId);
+    async getKanban(
+        @Param('tenantId') tenantId: string,
+        @Query('pipelineId') pipelineId?: string,
+    ) {
+        const kanban = await this.pipelineService.getKanban(tenantId, pipelineId);
         return { success: true, data: kanban };
     }
 

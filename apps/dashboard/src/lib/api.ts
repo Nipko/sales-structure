@@ -851,6 +851,14 @@ export const api = {
     resolveConversation: (tenantId: string, id: string) =>
         apiPut(`/agent-console/conversation/${tenantId}/${id}/resolve`, {}),
 
+    // "Devolver al bot": unassigns the conversation and hands it back to the AI.
+    returnConversationToAI: (tenantId: string, id: string) =>
+        apiPut(`/agent-console/conversation/${tenantId}/${id}/return-to-ai`, {}),
+
+    // Contact card of the inbox side panel (empresa, ciudad, redes, notas rapidas).
+    updateInboxContactMetadata: (tenantId: string, conversationId: string, metadata: Record<string, string>) =>
+        apiPut(`/agent-console/conversation/${tenantId}/${conversationId}/contact-metadata`, { metadata }),
+
     addNote: (tenantId: string, id: string, content: string) =>
         apiPost(`/agent-console/conversation/${tenantId}/${id}/note`, { content }),
 

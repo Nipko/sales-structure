@@ -3202,6 +3202,8 @@
     "cancelledReadOnly": "Esta cita está cancelada, por eso solo puedes consultarla. Para volver a agendarla, crea una cita nueva.",
     "viewAppointmentTitle": "Detalle de la cita",
     "agendaRangeNote": "Se muestran las citas de los últimos 30 días y de los próximos 6 meses.",
+    "createdByAssistant": "Creada por el asistente IA",
+    "viewConversation": "Ver conversación",
     "total": "Total",
     "servicesSection": {
       "title": "Servicios disponibles",

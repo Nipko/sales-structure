@@ -1,5 +1,6 @@
 import { withRuntimeSchemaLock } from '../../common/utils/runtime-schema-lock';
 import { customerFacingPrice, servicePriceNote, servicePriceStatus } from '../appointments/service-price-status';
+import { buildAppointmentNotes, classifyContactPhone, normaliseNotesLanguage, type NotesLanguage } from '../appointments/appointment-notes';
 import { enrollmentTermsHash, enrollmentTermsReviewResult } from '../education/enrollment-terms';
 import { LLMSourceAuthorityUnavailable } from '../ai/interfaces/llm-source-authority';
 import { appointmentVehicleId, vehicleAppointmentTerms, vehicleAppointmentBusyIntervals, VehicleAppointmentError, type VehicleAppointmentTerms } from '../appointments/vehicle-appointment-capacity';
@@ -729,13 +730,13 @@ export class AIToolExecutorService {
                     return this.checkAvailability(schemaName, args.date, args.serviceId, args.staffId, canonicalSandbox, args.vehicleId, typeof args.time === 'string' ? args.time : undefined);
 
                 case 'create_appointment':
-                    return this.createAppointment(schemaName, tenantId, contactId, args as any, conversationId, opts?.evalMode, canonicalSandbox, operationalScope, executionIdempotencyKey);
+                    return this.createAppointment(schemaName, tenantId, contactId, args as any, conversationId, opts?.evalMode, canonicalSandbox, operationalScope, executionIdempotencyKey, opts?.channelType);
 
                 case 'schedule_test_drive':
                     return this.createAppointment(schemaName, tenantId, contactId, {
                         ...args, date: args.scheduledDate, time: args.scheduledTime,
                         customerName: args.contactName, customerPhone: args.contactPhone, customerEmail: args.contactEmail,
-                    } as any, conversationId, opts?.evalMode, canonicalSandbox, operationalScope, executionIdempotencyKey);
+                    } as any, conversationId, opts?.evalMode, canonicalSandbox, operationalScope, executionIdempotencyKey, opts?.channelType);
 
                 case 'cancel_appointment':
                     return this.cancelAppointment(schemaName, contactId, args.appointmentId, args.reason, canonicalSandbox, operationalScope);
@@ -3430,6 +3431,20 @@ export class AIToolExecutorService {
         return null;
     }
 
+    /** Language the owner reads appointment notes in: the tenant's, Spanish if unknown. */
+    private async getTenantNotesLanguage(tenantId: string): Promise<NotesLanguage> {
+        try {
+            // Same lookup the appointment notifications use for the tenant language.
+            const tenant = await this.prisma.tenant.findUnique({
+                where: { id: tenantId },
+                select: { language: true },
+            });
+            return normaliseNotesLanguage(tenant?.language);
+        } catch {
+            return 'es';
+        }
+    }
+
     private async createAppointment(
         schema: string, tenantId: string, contactId: string,
         args: { serviceId: string; staffId?: string; date: string; time: string; customerName: string; customerPhone?: string; customerEmail?: string; notes?: string; appointmentTerms?: AppointmentServiceTerms; vehicleTerms?: VehicleAppointmentTerms; vehicleId?: string },
@@ -3438,6 +3453,7 @@ export class AIToolExecutorService {
         namespace?: EvalNamespaceLease,
         operationalScope?: ServedAgentAuthority,
         executionIdempotencyKey?: string,
+        channelType?: string,
     ): Promise<any> {
         // Resolve serviceId — LLM may pass name instead of UUID
         const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(args.serviceId);
@@ -3511,42 +3527,38 @@ export class AIToolExecutorService {
         // Build the immutable calendar snapshot before the appointment INSERT.
         // The outbox reads the just-inserted row in the same transaction, so a
         // later best-effort UPDATE would permanently enqueue stale calendar data.
-        const descriptionParts: string[] = [];
-        descriptionParts.push(`Customer: ${args.customerName}`);
-        if (args.customerEmail) descriptionParts.push(`Email: ${args.customerEmail}`);
-        if (args.customerPhone) descriptionParts.push(`Phone: ${args.customerPhone}`);
-        descriptionParts.push('');
-        const priceStr = servicePriceStatus(svc) !== 'confirmed'
-            ? (servicePriceStatus(svc) === 'quote' ? 'se cotiza según el caso' : 'precio por confirmar')
-            : (svc.price ? [Number(svc.price).toLocaleString(), svc.currency].filter(Boolean).join(' ') : 'N/A');
-        descriptionParts.push(`Service: ${svc.name} (${priceStr})`);
-        descriptionParts.push(`Duration: ${svc.duration_minutes} min`);
-        for (const label of subject.labels) descriptionParts.push(label);
-
+        // The notes are read by the owner, so they are written in the tenant's
+        // language (see appointment-notes.ts), and a platform id supplied as
+        // "phone" is labelled as that id instead of being passed off as a phone.
+        let conversationForNotes: { direction: string; text: string | null }[] = [];
         if (conversationId) {
             try {
                 const msgs: any[] = await this.prisma.$queryRawUnsafe(
                     `SELECT direction, content_text FROM "${schema}".messages WHERE conversation_id = $1::uuid ORDER BY created_at DESC LIMIT 5`,
                     conversationId,
                 );
-                if (msgs.length > 0) {
-                    descriptionParts.push('');
-                    descriptionParts.push('Conversation context:');
-                    for (const m of msgs.reverse()) {
-                        const role = m.direction === 'inbound' ? 'Customer' : 'Agent';
-                        const text = (m.content_text || '').slice(0, 200);
-                        if (text) descriptionParts.push(`- ${role}: "${text}"`);
-                    }
-                }
+                conversationForNotes = msgs.reverse().map((m) => ({ direction: m.direction, text: m.content_text }));
             } catch (e: any) {
                 this.logger.warn(`[Tool] Failed to fetch conversation context: ${e.message}`);
             }
         }
-        if (args.notes) {
-            descriptionParts.push('');
-            descriptionParts.push(`Notes: ${args.notes}`);
-        }
-        const description = descriptionParts.join('\n');
+        const priceStatus = servicePriceStatus(svc);
+        const description = buildAppointmentNotes({
+            language: await this.getTenantNotesLanguage(tenantId),
+            customerName: args.customerName,
+            customerEmail: args.customerEmail,
+            customerPhone: args.customerPhone,
+            channelType,
+            serviceName: svc.name,
+            priceStatus,
+            priceText: svc.price ? [Number(svc.price).toLocaleString(), svc.currency].filter(Boolean).join(' ') : null,
+            durationMinutes: Number(svc.duration_minutes),
+            subjectLabels: subject.labels,
+            conversation: conversationForNotes,
+            notes: args.notes,
+        });
+        // Only a dialable number is stored as the customer's phone.
+        const bookingPhone = classifyContactPhone(args.customerPhone, channelType).phone;
         const isOnline = svc.location_type === 'online';
         const location = svc.location_type === 'in_person' && svc.location_address
             ? svc.location_address
@@ -3577,7 +3589,7 @@ export class AIToolExecutorService {
                 contactId, conversationId, serviceId: args.serviceId,
                 serviceName: svc.name, assignedTo: assignedTo || undefined,
                 startAt, endAt, customerName: args.customerName,
-                customerPhone: args.customerPhone, customerEmail: args.customerEmail,
+                customerPhone: bookingPhone, customerEmail: args.customerEmail,
                 location: location || undefined, notes: description,
                 metadata: appointmentMetadata, source: 'ai',
             }, { suppressEffects: evalMode === true, confirmWithoutPayment: true, sandboxNamespace: namespace,

@@ -3,8 +3,11 @@
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
-import { CalendarDays, X, MapPin, FileText, UserCheck, Save, Repeat } from "lucide-react";
-import { Appointment, Service, fmt2, isCancelledAppointment } from "./shared";
+import Link from "next/link";
+import { CalendarDays, X, MapPin, FileText, UserCheck, Save, Repeat, Bot } from "lucide-react";
+import {
+  Appointment, Service, fmt2, appointmentConversationHref, isAiCreatedAppointment, isCancelledAppointment,
+} from "./shared";
 import AppointmentStatusBadge from "./AppointmentStatusBadge";
 import {
   canSaveAppointmentWithContact,
@@ -62,6 +65,7 @@ export default function AppointmentModal({
   // A cancelled appointment is a record, not a form: opening it must not invite
   // edits that would quietly keep a dead booking looking alive.
   const readOnly = !!editingAppointment && isCancelledAppointment(editingAppointment);
+  const conversationHref = editingAppointment ? appointmentConversationHref(editingAppointment) : null;
 
   const handleSave = () => {
     if (recurrence.enabled && onSaveRecurring && !editingAppointment) {
@@ -104,6 +108,21 @@ export default function AppointmentModal({
         {readOnly && (
           <p role="status" className="mx-6 mt-5 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600 dark:border-neutral-700 dark:bg-neutral-800/60 dark:text-neutral-300">
             {t('cancelledReadOnly')}
+          </p>
+        )}
+
+        {editingAppointment && isAiCreatedAppointment(editingAppointment) && (
+          <p
+            data-appointment-origin="ai"
+            className="mx-6 mt-5 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs text-indigo-800 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-200"
+          >
+            <Bot size={14} className="shrink-0" aria-hidden="true" />
+            <span className="font-medium">{t('createdByAssistant')}</span>
+            {conversationHref && (
+              <Link href={conversationHref} className="font-medium underline underline-offset-2 hover:no-underline">
+                {t('viewConversation')}
+              </Link>
+            )}
           </p>
         )}
 
@@ -227,20 +246,19 @@ export default function AppointmentModal({
             />
           </div>
 
-          {/* Assigned agent */}
-          <div>
-            <label className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
-              <UserCheck size={14} className="inline mr-1.5 -mt-0.5" />
-              {t('assignedAgent')}
-            </label>
-            <input
-              type="text"
-              placeholder={t('agentIdPlaceholder')}
-              value={form.assignedTo}
-              onChange={(e) => onChange({ ...form, assignedTo: e.target.value })}
-              className="w-full px-3 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-primary/20"
-            />
-          </div>
+          {/* Assigned agent: the person's name, never the internal id. The id
+              is kept in the form so saving does not unassign anyone. */}
+          {editingAppointment?.assignedName && (
+            <div>
+              <p className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
+                <UserCheck size={14} className="inline mr-1.5 -mt-0.5" aria-hidden="true" />
+                {t('assignedAgent')}
+              </p>
+              <p className="w-full px-3 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm">
+                {editingAppointment.assignedName}
+              </p>
+            </div>
+          )}
 
           {/* Contact */}
           <div>

@@ -3202,6 +3202,8 @@
     "cancelledReadOnly": "This appointment is cancelled, so it is read-only. To book it again, create a new appointment.",
     "viewAppointmentTitle": "Appointment details",
     "agendaRangeNote": "Showing appointments from the last 30 days and the next 6 months.",
+    "createdByAssistant": "Created by the AI assistant",
+    "viewConversation": "View conversation",
     "total": "Total",
     "servicesSection": {
       "title": "Available services",

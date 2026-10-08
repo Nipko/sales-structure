@@ -334,7 +334,7 @@ export default function ContactsPage() {
         <div className="space-y-6">
             <PageHeader
                 title={vt.customerNounPlural.charAt(0).toUpperCase() + vt.customerNounPlural.slice(1)}
-                subtitle={`${contacts.length} ${vt.customerNounPlural} · $${totalValue.toLocaleString()}`}
+                subtitle={`${vt.countCustomers(contacts.length)} · $${totalValue.toLocaleString()}`}
                 badge={<DataSourceBadge state={isLive ? "live" : "unverified"} />}
                 action={
                     <div className="flex flex-wrap items-center gap-2">

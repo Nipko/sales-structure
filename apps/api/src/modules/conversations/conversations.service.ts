@@ -3208,6 +3208,7 @@ export class ConversationsService {
             const subtypeTerms = subtypeTerminologyFor(
                 verticalConfig?.industry,
                 verticalConfig?.subType,
+                turnContext.regional?.operatingCountry,
             );
             // Lo que el perfil declara que NO hace. Se resuelve aparte de la
             // terminología porque un perfil puede tener límites sin tener
@@ -3301,6 +3302,7 @@ export class ConversationsService {
             const sharedVerticalContext = await this.verticalTurnContext?.resolve({
                 tenantId,
                 language: userLanguage,
+                country: turnContext.regional?.operatingCountry,
                 toolsConfig: (config.tools ?? (config as any)?.tools) as any,
                 executionContext,
             });

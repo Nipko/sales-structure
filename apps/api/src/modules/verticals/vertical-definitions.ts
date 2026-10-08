@@ -150,7 +150,7 @@ const MODA_BELLEZA: VerticalDefinition = {
         customerNounPlural: { es: 'clientes', en: 'clients', pt: 'clientes', fr: 'clients' },
         transactionNoun: { es: 'cita', en: 'appointment', pt: 'agendamento', fr: 'rendez-vous' },
         serviceNoun: { es: 'servicio', en: 'service', pt: 'serviço', fr: 'service' },
-        pipelineNoun: { es: 'citas', en: 'appointments', pt: 'agendamentos', fr: 'rendez-vous' },
+        pipelineNoun: { es: 'oportunidades', en: 'opportunities', pt: 'oportunidades', fr: 'opportunités' },
     },
     agent: {
         name: { es: 'Luna', en: 'Luna', pt: 'Luna', fr: 'Luna' },

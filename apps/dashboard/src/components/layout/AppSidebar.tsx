@@ -1205,7 +1205,7 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
 
         <TooltipProvider delayDuration={200}>
           <nav aria-label={tTopbar("menu")} className="flex min-h-0 flex-1 flex-col">
-            <div className="flex-1 overflow-y-auto px-2 py-3 custom-scrollbar">
+            <div className="flex-1 overflow-y-auto px-2 pt-3 custom-scrollbar">
               {favoriteItems.length > 0 && (
                 <section
                   aria-labelledby={expanded ? `sidebar-${mode}-favorites-label` : undefined}
@@ -1285,9 +1285,7 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
                   </section>
                 );
               })}
-            </div>
-
-            <div className="shrink-0 space-y-1 border-t border-border/40 p-2">
+            <div className="-mx-2 mt-2 space-y-1 border-t border-border/40 bg-white p-2 dark:bg-neutral-950 [@media(min-height:700px)]:sticky [@media(min-height:700px)]:bottom-0">
               {expanded ? (
                 <button
                   type="button"
@@ -1367,11 +1365,12 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
                 </ul>
               )}
             </div>
+            </div>
           </nav>
         </TooltipProvider>
 
         {expanded ? (
-          <div className="shrink-0 border-t border-border/30 px-3 py-3">
+          <div className="hidden shrink-0 border-t border-border/30 px-3 py-3 [@media(min-height:640px)]:block">
             <div className="flex items-center gap-2.5">
               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-neutral-200 bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-800">
                 <span className="text-[11px] font-semibold uppercase text-neutral-600 dark:text-neutral-300">
@@ -1385,7 +1384,7 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
             </div>
           </div>
         ) : (
-          <div className="flex shrink-0 justify-center border-t border-border/30 py-3">
+          <div className="hidden shrink-0 justify-center border-t border-border/30 py-3 [@media(min-height:640px)]:flex">
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>

@@ -95,4 +95,21 @@ describe('subtype-aware navigation config', () => {
             governance: { stage: 'mechanically_complete' },
         });
     });
+
+    // Review of 2026-10-08: the salon's menu said "turnos" (derived lowercase
+    // regionalism) and its sales pipeline page was titled "Citas".
+    it('names the appointments entry "citas" for beauty and for any appointment-first profile', () => {
+        for (const [industry, subType] of [['moda_belleza', 'salon_belleza'], ['salud', 'dental']] as const) {
+            const base = config(industry, subType);
+            const resolved = (service() as any).withSubtypeNavigation(base);
+            expect(resolved.sidebar.labelOverrides.appointments.es).toBe('citas');
+            expect(JSON.stringify(resolved.sidebar.labelOverrides.appointments)).not.toMatch(/turno/i);
+        }
+    });
+
+    it('never gives the sales pipeline the appointments word', () => {
+        const beauty = getVerticalDefinition('moda_belleza');
+        expect(beauty.terminology.pipelineNoun.es).not.toMatch(/cita/i);
+        expect(beauty.sidebar.labelOverrides.pipeline.es).not.toMatch(/cita/i);
+    });
 });

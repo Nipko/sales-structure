@@ -568,7 +568,7 @@ export default function PipelineSettingsPage() {
 
             {/* Sticky save bar */}
             {dirty && (
-                <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card/95 backdrop-blur-sm px-6 py-3 flex items-center justify-end gap-3">
+                <div data-sticky-actions className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card/95 backdrop-blur-sm px-6 py-3 flex items-center justify-end gap-3">
                     <span className={cn(
                         "text-xs mr-auto",
                         saveMsg?.type === 'error' ? "text-red-600 dark:text-red-400" : "text-muted-foreground",

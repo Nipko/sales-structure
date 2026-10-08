@@ -39,6 +39,10 @@ import {
     resolvePaymentPolicy,
 } from '../../common/utils/payment-policy.util';
 
+/** Rows a paged agenda read returns by default, and the most it will ever return. */
+export const AGENDA_LIST_LIMIT = 500;
+export const AGENDA_LIST_LIMIT_MAX = 1000;
+
 export interface Appointment {
     id: string;
     contactId: string | null;
@@ -194,10 +198,25 @@ export class AppointmentsService {
 
     // ── Appointments CRUD ─────────────────────────────────────
 
+    /**
+     * A bounded page of the list, oldest first, for screens that load a wide
+     * window (the dashboard agenda asks for seven months). Fetches one row more
+     * than the cap so the caller can say the list was cut without a second count
+     * query; the extra row is never returned.
+     */
+    async listPage(schemaName: string, filters?: {
+        status?: string; assignedTo?: string;
+        startDate?: string; endDate?: string;
+    }, limit: number = AGENDA_LIST_LIMIT): Promise<{ items: Appointment[]; truncated: boolean; limit: number }> {
+        const cap = Number.isFinite(limit) ? Math.min(Math.max(Math.floor(limit), 1), AGENDA_LIST_LIMIT_MAX) : AGENDA_LIST_LIMIT;
+        const rows = await this.list(schemaName, filters, cap + 1);
+        return { items: rows.slice(0, cap), truncated: rows.length > cap, limit: cap };
+    }
+
     async list(schemaName: string, filters?: {
         status?: string; assignedTo?: string;
         startDate?: string; endDate?: string;
-    }): Promise<Appointment[]> {
+    }, limit?: number): Promise<Appointment[]> {
         if (filters?.assignedTo) {
             await assertActiveTenantUser(this.prisma, schemaName, filters.assignedTo);
         }
@@ -236,6 +255,10 @@ export class AppointmentsService {
         }
 
         sql += ` ORDER BY a.start_at ASC`;
+        if (limit !== undefined) {
+            sql += ` LIMIT $${idx++}`;
+            params.push(limit);
+        }
 
         const rows = await this.prisma.executeInTenantSchema(schemaName, sql, params);
         // Arrow obligatoria: pasar this.mapRow sin bind pierde `this` y

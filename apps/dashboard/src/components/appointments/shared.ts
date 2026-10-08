@@ -15,6 +15,10 @@ export interface Appointment {
   createdAt: string;
   recurringGroupId?: string | null;
   recurrenceRule?: Record<string, any> | null;
+  /** Conversation the appointment was created from, when there is one. */
+  conversationId?: string | null;
+  /** Who created it: "ai" (the assistant), "manual", "public_booking"... */
+  source?: string | null;
 }
 
 export type DurationType = "fixed" | "flexible" | "open";
@@ -161,4 +165,87 @@ export function formatWeekRange(start: Date, end: Date, loc: string) {
   const s = start.toLocaleDateString(loc, { day: "numeric", month: "long" });
   const e = end.toLocaleDateString(loc, { day: "numeric", month: "long", year: "numeric" });
   return `${s} - ${e}`;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Appointment state rules                                            */
+/* ------------------------------------------------------------------ */
+
+/** A cancelled appointment is history: it is shown, but it is not a live booking. */
+export function isCancelledAppointment(appt: Pick<Appointment, "status">): boolean {
+  return appt.status === "cancelled";
+}
+
+/**
+ * Only a booking that is still going to happen can be moved. A cancelled,
+ * completed or no-show appointment dragged to another slot would resurrect or
+ * rewrite history, and the calendar used to let it happen by accident.
+ */
+export function canRescheduleAppointment(appt: Pick<Appointment, "status">): boolean {
+  return appt.status === "pending" || appt.status === "confirmed";
+}
+
+/** The appointment was booked by the AI assistant (and not typed in by a person). */
+export function isAiCreatedAppointment(appt: Pick<Appointment, "source">): boolean {
+  return appt.source === "ai";
+}
+
+/** Inbox deep link for the conversation an appointment came from, or null. */
+export function appointmentConversationHref(appt: Pick<Appointment, "conversationId">): string | null {
+  return appt.conversationId ? `/admin/inbox?conversation=${encodeURIComponent(appt.conversationId)}` : null;
+}
+
+/** The seven calendar days (YYYY-MM-DD) starting at `weekStart`. */
+export function weekDateStrings(weekStart: Date): string[] {
+  return Array.from({ length: 7 }, (_, i) => toLocalDate(addDays(weekStart, i)));
+}
+
+/** Appointments whose start falls inside the week that starts at `weekStart`. */
+export function appointmentsInWeek<T extends Pick<Appointment, "startAt">>(appts: T[], weekStart: Date): T[] {
+  const days = new Set(weekDateStrings(weekStart));
+  return appts.filter((a) => days.has(a.startAt.slice(0, 10)));
+}
+
+export function isCurrentWeek(weekStart: Date, today: Date = new Date()): boolean {
+  return toLocalDate(weekStart) === toLocalDate(getMondayOfWeek(today));
+}
+
+/**
+ * The window the appointments endpoint is asked for.
+ *
+ * The end is the last second of the last day: the endpoint compares against a
+ * timestamp, and a bare date means midnight at the START of that day, which
+ * silently dropped everything booked on the Sunday of the week.
+ *
+ * The calendar loads the visible week. The agenda is a list, not a week, so it
+ * loads from a month back to half a year ahead; it used to show the calendar's
+ * week and read "0 appointments" until somebody advanced the calendar.
+ */
+export function appointmentQueryWindow(
+  tab: "calendar" | "agenda",
+  weekStart: Date,
+  today: Date = new Date(),
+): { startDate: string; endDate: string } {
+  if (tab === "agenda") {
+    return {
+      startDate: toLocalDate(addDays(today, -30)),
+      endDate: `${toLocalDate(addDays(today, 180))}T23:59:59`,
+    };
+  }
+  return {
+    startDate: toLocalDate(weekStart),
+    endDate: `${toLocalDate(addDays(weekStart, 6))}T23:59:59`,
+  };
+}
+
+/** Counters for the strip above the tabs, for the appointments of ONE week. */
+export function weekKpis(appts: Pick<Appointment, "status">[]) {
+  const count = (status: Appointment["status"]) => appts.filter((a) => a.status === status).length;
+  return {
+    total: appts.length,
+    pending: count("pending"),
+    confirmed: count("confirmed"),
+    completed: count("completed"),
+    cancelled: count("cancelled"),
+  };
 }

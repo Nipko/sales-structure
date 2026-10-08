@@ -4,7 +4,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { HelpPanel } from "@/components/ui/help-panel";
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
+import { pipelinePageTitle } from "@/lib/pipeline-title";
 import { useTenant } from "@/contexts/TenantContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/lib/api";
@@ -41,7 +42,8 @@ export default function PipelinePage() {
     const tHelp = useTranslations("help");
     const vt = useVerticalTerms();
     const { activeTenantId } = useTenant();
-    const { hasRole } = useAuth();
+    const { hasRole, verticalConfig } = useAuth();
+    const locale = useLocale();
     const router = useRouter();
     const { canCreate, getLimit } = usePlanLimits();
     const [kanban, setKanban] = useState<any>(null);
@@ -379,7 +381,7 @@ export default function PipelinePage() {
         <>
             <div>
                 <PageHeader
-                    title={vt.pipelineNoun.charAt(0).toUpperCase() + vt.pipelineNoun.slice(1)}
+                    title={pipelinePageTitle(vt.pipelineNoun, locale, verticalConfig?.sidebar?.labelOverrides as Record<string, Record<string, string>> | undefined)}
                     subtitle={t('subtitle')}
                     badge={<DataSourceBadge state={isLive ? "live" : "unverified"} />}
                     action={
@@ -415,7 +417,7 @@ export default function PipelinePage() {
                                     </button>
                                 </div>
                             )}
-                            <span className="text-sm text-muted-foreground">{forecast.dealCount} {t('deals')}</span>
+                            <span className="text-sm text-muted-foreground">{t('dealsCount', { count: forecast.dealCount })}</span>
                             <button
                                 onClick={openCreateDeal}
                                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 text-sm font-medium cursor-pointer hover:opacity-90 transition-opacity press-effect"

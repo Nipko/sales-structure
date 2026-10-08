@@ -232,8 +232,8 @@ const PRIMARY_OBJECT_TERMS: Readonly<Record<string, {
         plural: { es: 'consultas', en: 'enquiries', pt: 'consultas', fr: 'demandes' },
     },
     appointment: {
-        singular: { es: 'turno', en: 'appointment', pt: 'agendamento', fr: 'rendez-vous' },
-        plural: { es: 'turnos', en: 'appointments', pt: 'agendamentos', fr: 'rendez-vous' },
+        singular: { es: 'cita', en: 'appointment', pt: 'agendamento', fr: 'rendez-vous' },
+        plural: { es: 'citas', en: 'appointments', pt: 'agendamentos', fr: 'rendez-vous' },
     },
     catalog_item: {
         singular: { es: 'producto', en: 'product', pt: 'produto', fr: 'produit' },
@@ -319,19 +319,41 @@ export const NAMED_PRIMARY_OBJECTS: readonly string[] = Object.freeze(
  */
 export function primaryObjectTerminology(
     primaryObject: unknown,
+    country?: unknown,
 ): SubtypeTerminology | null {
     if (typeof primaryObject !== 'string') return null;
     const entry = PRIMARY_OBJECT_TERMS[primaryObject];
     if (!entry) return null;
+    const regional = primaryObject === 'appointment' && usesTurnoForAppointments(country)
+        ? RIOPLATENSE_APPOINTMENT : null;
     return Object.freeze({
-        primaryObject: entry.singular,
-        primaryObjectPlural: entry.plural,
+        primaryObject: regional ? { ...entry.singular, es: regional.singular } : entry.singular,
+        primaryObjectPlural: regional ? { ...entry.plural, es: regional.plural } : entry.plural,
     });
+}
+
+/**
+ * ═══ «CITA» EN EL PANEL, «TURNO» DONDE ASÍ SE DICE ═══
+ *
+ * El español neutro para una reserva con hora es «cita» y es lo que dice el
+ * menú del panel. En Argentina, Uruguay y Paraguay ese mismo objeto se llama
+ * «turno», y es la palabra que el cliente final usa y espera oír del agente.
+ * Sólo cambia el español del objeto primario derivado: un perfil que declaró su
+ * propia terminología la conserva, y los otros idiomas no se tocan.
+ */
+const RIOPLATENSE_APPOINTMENT = Object.freeze({ singular: 'turno', plural: 'turnos' });
+const TURNO_COUNTRIES: ReadonlySet<string> = new Set(['AR', 'ARG', 'UY', 'URY', 'PY', 'PRY']);
+
+/** Países (ISO 3166-1 alfa-2 o alfa-3) donde la cita se llama «turno». */
+export function usesTurnoForAppointments(country: unknown): boolean {
+    return typeof country === 'string' && TURNO_COUNTRIES.has(country.trim().toUpperCase());
 }
 
 export function subtypeTerminologyFor(
     industry: unknown,
     subtype: unknown,
+    /** País de operación del negocio: sólo matiza el sustantivo derivado (ver `usesTurnoForAppointments`). */
+    country?: unknown,
 ): SubtypeTerminology | null {
     if (typeof industry !== 'string' || !industry) return null;
     if (typeof subtype !== 'string' || !subtype) return null;
@@ -357,7 +379,7 @@ export function subtypeTerminologyFor(
             canonIndustry,
             canonSubtype === '__none__' || !canonSubtype ? undefined : canonSubtype,
         );
-        return primaryObjectTerminology(manifest?.primaryObject);
+        return primaryObjectTerminology(manifest?.primaryObject, country);
     } catch {
         return null;
     }

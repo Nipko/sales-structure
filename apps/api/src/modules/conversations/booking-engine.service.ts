@@ -10,6 +10,7 @@ import { bookingEngineAuthorityDecision, deniedOperationalIntent } from './turn-
 import { bookingConfirmationHash } from './booking-confirmation';
 import { appointmentPriceSql, appointmentCurrencySql, type AppointmentServiceTerms } from '../appointments/appointment-service-terms';
 import { isInformationSeekingMessage, isPauseMessage, isResumeMessage, normalizeCustomerIntent } from '../../common/conversation/intent-normalizer';
+import { isBookingStatusQuestion } from './booking-status-question';
 import { normalizeForIntent } from '@parallext/shared';
 import { procedureDialogueMessages } from './procedure-dialogue-messages';
 import { containsMissionDirective, isCollectionCancellation, isDirectedCorrection, isNamedMissionResume, mentionedMissionDomains, missionDialogue, parseDirectedSlotCorrection } from './mission-focus';
@@ -120,6 +121,7 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         askEmail: '¡Gracias {name}! Necesito su correo electrónico para la invitación del calendario.',
         confirmPrompt: 'Por favor confirme:\n{summary}\n¿Lo agendo?',
         confirmShort: '¿Confirmo la cita? Responda sí o no.',
+        confirmStatus: 'Su cita todavía no está confirmada: falta su respuesta.',
         confirmButton: '¿Confirmar cita?\n\n{summary}',
         btnConfirm: 'Confirmar',
         btnCancel: 'Cancelar',
@@ -190,6 +192,7 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         askEmail: 'Thanks {name}! I need your email for the calendar invitation.',
         confirmPrompt: 'Please confirm:\n{summary}\nShall I book this?',
         confirmShort: 'Shall I confirm the appointment? Please answer yes or no.',
+        confirmStatus: 'Your appointment is not confirmed yet: I am waiting for your answer.',
         confirmButton: 'Confirm booking?\n\n{summary}',
         btnConfirm: 'Confirm',
         btnCancel: 'Cancel',
@@ -255,6 +258,7 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         askEmail: 'Obrigado {name}! Preciso do seu e-mail para o convite do calendário.',
         confirmPrompt: 'Por favor confirme:\n{summary}\nAgendar?',
         confirmShort: 'Confirmo o agendamento? Responda sim ou não.',
+        confirmStatus: 'O seu agendamento ainda não está confirmado: falta a sua resposta.',
         confirmButton: 'Confirmar agendamento?\n\n{summary}',
         btnConfirm: 'Confirmar',
         btnCancel: 'Cancelar',
@@ -320,6 +324,7 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         askEmail: 'Merci {name} ! J\'ai besoin de votre e-mail pour l\'invitation du calendrier.',
         confirmPrompt: 'Veuillez confirmer :\n{summary}\nJe réserve ?',
         confirmShort: 'Je confirme le rendez-vous ? Répondez oui ou non.',
+        confirmStatus: "Votre rendez-vous n'est pas encore confirmé : j'attends votre réponse.",
         confirmButton: 'Confirmer le rendez-vous ?\n\n{summary}',
         btnConfirm: 'Confirmer',
         btnCancel: 'Annuler',
@@ -1354,6 +1359,15 @@ export class BookingEngineService {
                     return { handled: true, state, text: msg(L, 'switchedService', { service: newSvc.name }) };
                 }
             }
+        }
+
+        // ── STATUS QUESTION at the summary: «¿En qué quedó mi cita?», «¿ya está?» ──
+        // Answered by the engine, before the general-question hand-off: the booking waits for the customer's yes. The
+        // summary is restated with the SAME confirmation (nothing about the proposal changed), so the next «sí» books.
+        if (state.step === 'confirm' && state.serviceId && state.date && state.time && state.customerName && state.customerEmail
+            && !intent.isConfirmation && isBookingStatusQuestion(rawText)) {
+            const summary = this.collectMissingInfo(state, L);
+            return { ...summary, text: `${msg(L, 'confirmStatus')}\n${summary.text}` };
         }
 
         // ── GENERAL QUESTION mid-booking: let LLM answer BUT keep booking state ──

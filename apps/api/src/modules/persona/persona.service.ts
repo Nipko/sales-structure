@@ -23,7 +23,7 @@ import { normalizeRequiredFields } from './required-fields.util';
 import { VERTICAL_REGISTRY } from '../verticals/vertical-definitions';
 import { PERSONA_CACHE_CHANNELS, personaChannelCacheKeys } from '../../common/utils/persona-cache.util';
 import { escapeXmlAttribute, escapeXmlText } from '../../common/utils/xml.util';
-import { unknownHoursInstruction } from '../conversations/informational-hours';
+import { businessHoursConfigured, hasScheduleEntries, unknownHoursInstruction } from '../conversations/informational-hours';
 import type { ServiceExecutionContext } from '../../common/types/execution-context';
 import { persistenceDisabled } from '../../common/types/execution-context';
 import {
@@ -360,8 +360,13 @@ export class PersonaService {
             lines.push('  </business_hours>');
             return;
         }
-        // Business hours: prefer tenant-level settings, fall back to agent schedule
-        if (tenantBusinessHours) {
+        // Precedence (see informational-hours.ts): business hours that really list a week, then the
+        // agent's own schedule. A tenant record that is present but carries no schedule (the wizard
+        // writes `{ is247: false, timezone, schedule: {} }`) must not shadow the agent's schedule: the
+        // block used to print only a timezone, and the model answered "no tengo el horario".
+        const tenantConfigured = !!tenantBusinessHours && businessHoursConfigured(tenantBusinessHours);
+        const agentConfigured = hasScheduleEntries(hours?.schedule);
+        if (tenantConfigured) {
             lines.push('  <business_hours>');
             if (tenantBusinessHours.is247) {
                 lines.push('    <mode>24/7</mode>');
@@ -385,9 +390,11 @@ export class PersonaService {
             const aiOutside = hours?.aiOutsideHours ?? true;
             lines.push(`    <ai_outside_hours>${escapeXmlText(aiOutside)}</ai_outside_hours>`);
             lines.push('  </business_hours>');
-        } else if (hours?.schedule && Object.keys(hours.schedule).length > 0) {
+        } else if (agentConfigured) {
             lines.push('  <business_hours>');
-            if (hours.timezone) lines.push(`    <timezone>${escapeXmlText(hours.timezone)}</timezone>`);
+            if (hours.timezone || tenantBusinessHours?.timezone) {
+                lines.push(`    <timezone>${escapeXmlText(hours.timezone || tenantBusinessHours.timezone)}</timezone>`);
+            }
             for (const [day, value] of Object.entries(hours.schedule)) {
                 if (typeof value === 'string') {
                     lines.push(`    <day name="${escapeXmlAttribute(day)}">${escapeXmlText(value)}</day>`);
@@ -396,9 +403,17 @@ export class PersonaService {
                     lines.push(`    <day name="${escapeXmlAttribute(day)}" start="${escapeXmlAttribute(v.start)}" end="${escapeXmlAttribute(v.end)}" />`);
                 }
             }
-            if (hours.afterHoursMessage) {
-                lines.push(`    <after_hours_message>${escapeXmlText(hours.afterHoursMessage)}</after_hours_message>`);
+            const afterMsg = hours.afterHoursMessageOverride || tenantBusinessHours?.afterHoursMessage || hours.afterHoursMessage;
+            if (afterMsg) {
+                lines.push(`    <after_hours_message>${escapeXmlText(afterMsg)}</after_hours_message>`);
             }
+            lines.push('  </business_hours>');
+        } else if (tenantBusinessHours) {
+            // A tenant record with no schedule, no agent schedule and (the caller found) no agenda to
+            // describe: say so instead of printing an empty block the model fills with a guess.
+            lines.push('  <business_hours>');
+            lines.push('    <status>unknown</status>');
+            lines.push(`    <instruction>${escapeXmlText(unknownHoursInstruction(language))}</instruction>`);
             lines.push('  </business_hours>');
         }
     }

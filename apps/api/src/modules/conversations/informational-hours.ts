@@ -1,4 +1,21 @@
 /**
+ * Opening hours the customer-facing agent may state - and where they come from.
+ *
+ * A tenant can describe its hours in three places that the dashboard shows on three
+ * different screens: the business hours (Configuración > Horarios de atención,
+ * `tenants.settings.businessHours`), the agent's own schedule (`config.hours`) and the
+ * appointment agenda (`availability_slots`, turnos > Configuración). They used to disagree:
+ * a salon that had only filled the agenda was answered "no tengo el horario configurado".
+ *
+ * PRECEDENCE (first source that really carries a schedule wins; see `hoursSource`):
+ *   1. business hours   - `is247`, or a non-empty `schedule`        (source 'business')
+ *   2. the agent's own schedule - a non-empty `config.hours.schedule` (source 'agent')
+ *   3. the appointment agenda - bookable hours, read-only            (source 'appointment_availability')
+ *   4. nothing anywhere -> the honest "not configured, offer a person" instruction (source 'none')
+ * An explicit schedule is never overridden by a lower source, and a source that is merely
+ * present but empty (`{ is247: false, timezone, schedule: {} }` written by the wizard) does
+ * not count as configured and does not shadow a lower one.
+ *
  * Informational opening hours for the prompt, derived from `availability_slots`.
  *
  * Tenants that only configured their appointment agenda (no
@@ -82,6 +99,28 @@ export function deriveInformationalHours(rows: AvailabilityRow[] | null | undefi
 const hasEntries = (value: unknown): boolean =>
     !!value && typeof value === 'object' && Object.keys(value as object).length > 0;
 
+/** A schedule that actually lists days. `{}` / null / a non-object is "no schedule". */
+export const hasScheduleEntries = hasEntries;
+
+export type HoursSource = 'business' | 'agent' | 'appointment_availability' | 'none';
+
+/** Business hours that describe the week (24/7, or at least one listed day). */
+export function businessHoursConfigured(tenantHours: any): boolean {
+    return !!tenantHours?.is247 || hasEntries(tenantHours?.schedule);
+}
+
+/**
+ * Which source the customer-facing hours come from (precedence in the header).
+ * `promptHours` is what `resolvePromptBusinessHours` produced for the prompt; only its
+ * `informational` marker matters here.
+ */
+export function hoursSource(tenantHours: any, agentHours: any, promptHours?: any): HoursSource {
+    if (businessHoursConfigured(tenantHours)) return 'business';
+    if (hasEntries(agentHours?.schedule)) return 'agent';
+    if (promptHours?.informational === true && promptHours.unknown !== true) return 'appointment_availability';
+    return 'none';
+}
+
 /**
  * The hours object the PROMPT should describe. Configured hours always win:
  * tenant hours with a schedule, 24/7 mode and an agent schedule are returned
@@ -93,7 +132,8 @@ export function resolvePromptBusinessHours(
     agentHours: any,
     derived: InformationalHours | null | undefined,
 ): any {
-    if (tenantHours?.is247 || hasEntries(tenantHours?.schedule)) return tenantHours;
+    if (businessHoursConfigured(tenantHours)) return tenantHours;
+    // The agent's own schedule is the answer; `buildSystemPrompt` reads it from `config.hours`.
     if (hasEntries(agentHours?.schedule)) return tenantHours ?? null;
     if (!derived) return tenantHours ?? null;
     return {
@@ -120,7 +160,7 @@ export type HoursStatus = 'open' | 'closed' | 'unknown';
 
 /** Are the hours of this tenant/agent configured by a person (not derived)? */
 export function hasConfiguredHours(tenantHours: any, agentHours: any): boolean {
-    return !!tenantHours?.is247 || hasEntries(tenantHours?.schedule) || hasEntries(agentHours?.schedule);
+    return businessHoursConfigured(tenantHours) || hasEntries(agentHours?.schedule);
 }
 
 /** Open/closed right now according to the agenda hours, in the given time zone. */

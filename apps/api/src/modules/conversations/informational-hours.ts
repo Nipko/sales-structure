@@ -157,6 +157,94 @@ export function unknownHoursInstruction(language?: string): string {
     return UNKNOWN_HOURS_INSTRUCTION[code] ?? UNKNOWN_HOURS_INSTRUCTION.es;
 }
 
+/**
+ * Every spelling of a weekday key found in stored schedules, indexed by `Date#getDay()` (0 = Sunday).
+ * Business hours are written with English full names (`monday`, by the settings page); the agent's own
+ * schedule with Spanish abbreviations (`lun`, by the agent editor and the templates); vertical defaults
+ * and older records use English abbreviations (`mon`) or Spanish full names. A reader that knows only
+ * one spelling finds no entry for "today" and answers "closed" for the whole week.
+ */
+const DAY_KEY_ALIASES: readonly (readonly string[])[] = [
+    ['sunday', 'sun', 'dom', 'domingo'],
+    ['monday', 'mon', 'lun', 'lunes'],
+    ['tuesday', 'tue', 'mar', 'martes'],
+    ['wednesday', 'wed', 'mie', 'miercoles', 'mi\u00e9', 'mi\u00e9rcoles'],
+    ['thursday', 'thu', 'jue', 'jueves'],
+    ['friday', 'fri', 'vie', 'viernes'],
+    ['saturday', 'sat', 'sab', 'sabado', 's\u00e1b', 's\u00e1bado'],
+];
+
+/** The entry of a stored schedule for a weekday (0 = Sunday), whichever spelling the key uses. */
+export function scheduleEntryForDay(schedule: unknown, dayIndex: number): unknown {
+    if (!schedule || typeof schedule !== 'object') return undefined;
+    const record = schedule as Record<string, unknown>;
+    for (const key of DAY_KEY_ALIASES[dayIndex] ?? []) {
+        if (record[key] !== undefined && record[key] !== null) return record[key];
+    }
+    return undefined;
+}
+
+/** [openMin, closeMin] of one schedule entry, or null when that day is closed or unreadable. */
+export function scheduleEntryWindow(entry: unknown): [number, number] | null {
+    if (typeof entry === 'string') {
+        // "08:00-18:00" (vertical defaults); "closed"/"cerrado" is a closed day.
+        const match = /^\s*(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})\s*$/.exec(entry);
+        if (!match) return null;
+        const open = toMinutes(match[1]);
+        const close = toMinutes(match[2]);
+        return open === null || close === null ? null : [open, close];
+    }
+    if (!entry || typeof entry !== 'object') return null;
+    const day = entry as Record<string, unknown>;
+    if ('enabled' in day && !day.enabled) return null;
+    const open = toMinutes(day.open ?? day.start);
+    const close = toMinutes(day.close ?? day.end);
+    return open === null || close === null ? null : [open, close];
+}
+
+/** The weekday (0 = Sunday) and minutes since midnight at `now` in `timezone`. */
+function localClock(now: Date, timezone: string): { day: number; minutes: number } {
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone: timezone, weekday: 'long', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(now);
+    const name = (parts.find(p => p.type === 'weekday')?.value || '').toLowerCase();
+    return {
+        day: DAY_KEY_ALIASES.findIndex(aliases => aliases[0] === name),
+        minutes: (parseInt(parts.find(p => p.type === 'hour')?.value || '0', 10) % 24) * 60
+            + parseInt(parts.find(p => p.type === 'minute')?.value || '0', 10),
+    };
+}
+
+function withinSchedule(schedule: unknown, timezone: string, fallbackTimezone: string, now: Date): boolean {
+    let clock: { day: number; minutes: number };
+    try { clock = localClock(now, timezone); } catch { clock = localClock(now, fallbackTimezone); }
+    const window = scheduleEntryWindow(scheduleEntryForDay(schedule, clock.day));
+    return !!window && clock.minutes >= window[0] && clock.minutes <= window[1];
+}
+
+/**
+ * THE after-hours gate: is the business open at `now`? Used by the conversation pipeline
+ * (`aiOutsideHours = false` -> after-hours reply) and by the automation listener, so the two can never
+ * disagree about the same tenant. Precedence, as for the prompt (see the header):
+ *   1. business hours that list a week (24/7, or at least one day) decide;
+ *   2. else the agent's own schedule decides (7 days 00:00-23:59 is 24/7);
+ *   3. else nothing is configured -> open.
+ * The appointment agenda is not a source: it is bookable hours, not opening hours.
+ * The end minute is inclusive (18:00 is still open at 18:00). Time zone: the source that decides, then
+ * the other one, then `fallbackTimezone`.
+ */
+export function isWithinOpeningHours(
+    tenantHours: any, agentHours: any, now: Date = new Date(), fallbackTimezone = 'America/Bogota',
+): boolean {
+    if (businessHoursConfigured(tenantHours)) {
+        if (tenantHours.is247) return true;
+        return withinSchedule(tenantHours.schedule, tenantHours.timezone || agentHours?.timezone || fallbackTimezone, fallbackTimezone, now);
+    }
+    const schedule = agentHours?.schedule;
+    if (!hasEntries(schedule)) return true;
+    const values = Object.values(schedule as Record<string, any>);
+    if (values.length >= 7 && values.every(v => v && typeof v === 'object' && v.start === '00:00' && v.end === '23:59')) return true;
+    return withinSchedule(schedule, agentHours?.timezone || tenantHours?.timezone || fallbackTimezone, fallbackTimezone, now);
+}
+
 export type HoursStatus = 'open' | 'closed' | 'unknown';
 
 /** Are the hours of this tenant/agent configured by a person (not derived)? */

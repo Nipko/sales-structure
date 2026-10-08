@@ -2,6 +2,8 @@ import { randomUUID } from 'crypto';
 import { normalizeForIntent, type ConversationMissionFocusV1, type ConversationMissionRefV1, type MissionExecutionScopeV1 } from '@parallext/shared';
 import { isInformationSeekingMessage, isPauseMessage, isResumeMessage, normalizeCustomerIntent } from '../../common/conversation/intent-normalizer';
 import { isBookingStatusQuestion } from './booking-status-question';
+import { appointmentChangeRequest } from './appointment-transition';
+import { isCancellationTool } from './tool-policy-registry';
 
 export interface MissionCandidate {
     ref: ConversationMissionRefV1;
@@ -95,6 +97,8 @@ export interface MissionFocusDecision {
     pauseBooking: boolean;
     pauseProcedure: boolean;
     invalidateConfirmation: boolean;
+    /** When the answer is a clarification: the missions the customer can pick from (domains), to list them. */
+    clarifyOptions?: string[];
 }
 
 /** Chooses ownership only. Capability/identity/terms/ledger remain authoritative. */
@@ -106,7 +110,10 @@ export function arbitrateMissionFocus(input: {
         state, route: 'dialogue', action: 'replay', pauseBooking: false, pauseProcedure: false, invalidateConfirmation: false,
     };
     const normalized = normalizeForIntent(input.text);
-    const dialogue = normalizeCustomerIntent(input.text);
+    // «sí, cancélalo» answers a pending CANCELLATION proposal; read anywhere else the cancel verb is a cancellation request.
+    const pendingCancellation = state.expectedReply?.kind === 'confirmation' && state.selected?.kind === 'tool'
+        && state.expectedReply.missionId === state.selected.id && isCancellationTool(state.selected.toolName);
+    const dialogue = normalizeCustomerIntent(input.text, { pendingCancellation });
     const domains = mentionedMissionDomains(input.text);
     const candidates = [...input.candidates, ...(state.pausedTools || []).map(item => ({ ref: item.ref, aliases: toolMissionAliases(item.ref), paused: true, saved: true }))];
     if (state.selected?.kind === 'tool' && state.selected.reference && !candidates.some(candidate => candidate.ref.id === state.selected!.id)) {
@@ -138,6 +145,13 @@ export function arbitrateMissionFocus(input: {
     // new task. Keeping the slots intact is preferable to inventing ownership.
     if ((taskDirective || resume) && (domains.length > 1 || unique.length > 1)) {
         action = 'clarify'; route = 'clarify'; invalidate = true;
+    } else if (appointmentChangeRequest(input.text) === 'explicit'
+        || appointmentChangeRequest(input.text) === 'ambiguous' && !(current?.ref.kind === 'booking' && !current.paused)) {
+        // Changing an appointment that EXISTS is a task of the appointment tools (reschedule_appointment, after its normal
+        // confirmation), not a new booking: the booking engine only creates, and opening one here duplicates the appointment.
+        const same = current?.ref.kind === 'tool' && current.ref.domain === 'appointment' && !current.paused;
+        selected = same ? current!.ref : { id: randomUUID(), kind: 'tool', domain: 'appointment' };
+        route = 'tools'; action = same ? 'continue' : 'select'; invalidate = true;
     } else if (resume) {
         const targets = isNamedMissionResume(input.text) ? unique.filter(candidate => candidate.saved) : saved;
         if (targets.length === 1) choose(targets[0]);
@@ -145,7 +159,10 @@ export function arbitrateMissionFocus(input: {
     } else if (isPauseMessage(input.text)) {
         action = 'pause'; route = 'dialogue'; invalidate = true;
     } else if (dialogue.intent === 'cancel' && !unqualifiedCancel) {
-        if (domains.length !== 1) { route = 'clarify'; action = 'clarify'; }
+        if (domains.length === 0 && current && !current.paused) {
+            // «cancélalo» names nothing but there is ONE current mission: that is the one.
+            action = 'cancel';
+        } else if (domains.length !== 1) { route = 'clarify'; action = 'clarify'; }
         else {
             selected = { id: randomUUID(), kind: 'tool', domain: domains[0] };
             route = 'tools'; action = 'cancel';
@@ -187,7 +204,10 @@ export function arbitrateMissionFocus(input: {
     state.selected = selected;
     if (!state.selected && route === 'tools') state.selected = { id: randomUUID(), kind: 'tool' };
     const switching = action === 'select' || (action as MissionFocusDecision['action']) === 'resume' || action === 'cancel';
-    return { state, route, action,
+    const clarifyOptions = route === 'clarify'
+        ? [...new Set(saved.map(candidate => candidate.ref.domain || (candidate.ref.kind === 'booking' ? 'appointment' : candidate.ref.kind)))]
+        : undefined;
+    return { state, route, action, clarifyOptions,
         selectedProcedureId: selected?.kind === 'procedure' ? selected.reference : undefined,
         pauseBooking: saved.some(candidate => candidate.ref.kind === 'booking' && !candidate.paused)
             && (route === 'clarify' || action === 'pause' || (switching && route !== 'booking')),
@@ -197,14 +217,33 @@ export function arbitrateMissionFocus(input: {
     };
 }
 
-export function missionDialogue(language: string, kind: 'clarify' | 'paused' | 'correction' | 'invalidCorrection' | 'replay'): string {
+const DOMAIN_LABEL: Record<string, Record<string, string>> = {
+    es: { appointment: 'su cita', order: 'su pedido', education: 'su inscripción', gym: 'su clase', property: 'su reserva de alojamiento', repair: 'su reparación', tour: 'su tour', booking: 'su cita', procedure: 'el trámite en curso' },
+    en: { appointment: 'your appointment', order: 'your order', education: 'your enrollment', gym: 'your class', property: 'your stay', repair: 'your repair', tour: 'your tour', booking: 'your appointment', procedure: 'the procedure in progress' },
+    pt: { appointment: 'o seu agendamento', order: 'o seu pedido', education: 'a sua inscrição', gym: 'a sua aula', property: 'a sua reserva', repair: 'o seu reparo', tour: 'o seu passeio', booking: 'o seu agendamento', procedure: 'o procedimento em andamento' },
+    fr: { appointment: 'votre rendez-vous', order: 'votre commande', education: 'votre inscription', gym: 'votre cours', property: 'votre séjour', repair: 'votre réparation', tour: 'votre excursion', booking: 'votre rendez-vous', procedure: 'la démarche en cours' },
+};
+const OPTIONS_JOIN: Record<string, string> = { es: ' o ', en: ' or ', pt: ' ou ', fr: ' ou ' };
+const CLARIFY_WITH_OPTIONS: Record<string, string> = {
+    es: 'Hay más de una gestión posible: {options}. ¿Sobre cuál desea continuar?',
+    en: 'There is more than one possible task: {options}. Which one would you like to continue?',
+    pt: 'Há mais de uma tarefa possível: {options}. Sobre qual deseja continuar?',
+    fr: 'Plusieurs démarches sont possibles : {options}. Laquelle souhaitez-vous poursuivre ?',
+};
+
+export function missionDialogue(language: string, kind: 'clarify' | 'paused' | 'correction' | 'invalidCorrection' | 'replay', options?: readonly string[]): string {
+    if (kind === 'clarify' && options && options.length > 1) {
+        const lang = (language in DOMAIN_LABEL ? language : 'es');
+        const labels = options.map(option => DOMAIN_LABEL[lang][option]).filter(Boolean);
+        if (labels.length > 1) return CLARIFY_WITH_OPTIONS[lang].replace('{options}', labels.join(OPTIONS_JOIN[lang]));
+    }
     const messages = {
-        es: { clarify: 'Hay más de una gestión posible. ¿Cuál quieres continuar?', paused: 'La gestión queda pausada y conserva sus datos. ¿Qué necesitas hacer ahora?', correction: 'Actualicé ese dato. Revisa la propuesta de nuevo antes de confirmar.', invalidCorrection: 'Necesito identificar un solo dato para corregirlo. ¿Qué campo quieres cambiar y cuál es el valor correcto?' },
+        es: { clarify: 'Hay más de una gestión posible. ¿Cuál desea continuar?', paused: 'La gestión queda pausada y conserva sus datos. ¿Qué necesita hacer ahora?', correction: 'Actualicé ese dato. Revise la propuesta de nuevo antes de confirmar.', invalidCorrection: 'Necesito identificar un solo dato para corregirlo. ¿Qué campo desea cambiar y cuál es el valor correcto?' },
         en: { clarify: 'There is more than one possible task. Which one would you like to continue?', paused: 'The task is paused and its details are saved. What would you like to do now?', correction: 'I updated that detail. Review the proposal again before confirming.', invalidCorrection: 'I need to identify a single detail to correct. Which field would you like to change, and what is its correct value?' },
         pt: { clarify: 'Há mais de uma tarefa possível. Qual você quer continuar?', paused: 'A tarefa está pausada e os dados foram mantidos. O que você precisa fazer agora?', correction: 'Atualizei esse dado. Revise a proposta novamente antes de confirmar.', invalidCorrection: 'Preciso identificar um único dado para corrigir. Qual campo você quer alterar e qual é o valor correto?' },
         fr: { clarify: 'Plusieurs démarches sont possibles. Laquelle souhaitez-vous poursuivre ?', paused: 'La démarche est en pause et ses informations sont conservées. Que souhaitez-vous faire maintenant ?', correction: 'Cette information a été mise à jour. Vérifiez à nouveau la proposition avant de confirmer.', invalidCorrection: 'Je dois identifier une seule information à corriger. Quel champ souhaitez-vous modifier et quelle est sa valeur correcte ?' },
     };
-    if (kind === 'replay') return ({ es: 'Este mensaje ya se procesó. ¿Qué necesitas hacer ahora?', en: 'This message has already been processed. What would you like to do now?', pt: 'Esta mensagem já foi processada. O que você precisa fazer agora?', fr: 'Ce message a déjà été traité. Que souhaitez-vous faire maintenant ?' } as Record<string, string>)[language] || 'Este mensaje ya se procesó. ¿Qué necesitas hacer ahora?';
+    if (kind === 'replay') return ({ es: 'Este mensaje ya se procesó. ¿Qué necesita hacer ahora?', en: 'This message has already been processed. What would you like to do now?', pt: 'Esta mensagem já foi processada. O que você precisa fazer agora?', fr: 'Ce message a déjà été traité. Que souhaitez-vous faire maintenant ?' } as Record<string, string>)[language] || 'Este mensaje ya se procesó. ¿Qué necesitas hacer ahora?';
     return (messages[language as keyof typeof messages] || messages.es)[kind];
 }
 

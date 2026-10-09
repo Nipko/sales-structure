@@ -14,6 +14,16 @@ export interface VerticalSubtypePersonaContract {
     /** Exact Spanish template rules that v1 persisted before localization/bootstrap. */
     legacyTemplateRules: Readonly<Record<string, readonly string[]>>;
     nativeRules: Readonly<Record<VerticalPersonaLocale, readonly string[]>>;
+    /**
+     * Conduct the default agent is BORN with, instead of the generic sales
+     * template's SPIN method and "hot lead" hand-off. Applied once, at agent
+     * creation, by `applyNativeSubtypeBirthBehavior`; never to an agent that
+     * already exists.
+     */
+    birthBehavior: Readonly<Record<VerticalPersonaLocale, {
+        rules: readonly string[];
+        handoffTriggers: readonly string[];
+    }>>;
 }
 
 interface ReconcileVerticalSubtypePersonaRulesInput {
@@ -194,12 +204,97 @@ const PET_SHOP_RULES = [
     'Si no hay stock, sugiere alternativas similares disponibles',
 ] as const;
 
+/**
+ * What the six native-operation agents are born with in place of the generic
+ * sales template's behaviour (SPIN discovery, objection scripts, "hot lead"
+ * hand-off). Two generic conduct rules plus the hand-offs that fit a business
+ * that sells from a catalogue, rents by date range or boards pets. Everything
+ * subtype-specific is in `nativeRules`; this block never mentions scheduling,
+ * demos or test drives because none of the six operates them.
+ */
+const NATIVE_BIRTH_BEHAVIOR: VerticalSubtypePersonaContract['birthBehavior'] = {
+    es: {
+        rules: [
+            'Nunca inventes precios ni disponibilidad: consúltalos en el sistema o indica que el equipo los confirmará.',
+            'Si tras dos preguntas no logras resolver lo que el cliente necesita, resume lo que sabes y ofrece pasar la conversación a una persona del equipo.',
+        ],
+        handoffTriggers: [
+            'El cliente pide hablar con una persona del equipo',
+            'Queja o reclamo del cliente',
+            'Solicitud que el sistema no permite confirmar o registrar',
+        ],
+    },
+    en: {
+        rules: [
+            'Never invent prices or availability: check them in the system or say the team will confirm them.',
+            'If two questions in a row do not resolve what the customer needs, summarize what you know and offer to hand the conversation to a team member.',
+        ],
+        handoffTriggers: [
+            'The customer asks to speak with a team member',
+            'Customer complaint',
+            'Request the system cannot confirm or record',
+        ],
+    },
+    pt: {
+        rules: [
+            'Nunca invente preços nem disponibilidade: consulte-os no sistema ou informe que a equipe os confirmará.',
+            'Se, após duas perguntas, não conseguir resolver o que o cliente precisa, resuma o que sabe e ofereça passar a conversa a uma pessoa da equipe.',
+        ],
+        handoffTriggers: [
+            'O cliente pede para falar com uma pessoa da equipe',
+            'Reclamação do cliente',
+            'Pedido que o sistema não permite confirmar ou registrar',
+        ],
+    },
+    fr: {
+        rules: [
+            'N’inventez jamais de prix ni de disponibilité : consultez-les dans le système ou indiquez que l’équipe les confirmera.',
+            'Si deux questions de suite ne permettent pas de résoudre le besoin du client, résumez ce que vous savez et proposez de passer la conversation à un membre de l’équipe.',
+        ],
+        handoffTriggers: [
+            'Le client demande à parler à un membre de l’équipe',
+            'Réclamation du client',
+            'Demande que le système ne permet pas de confirmer ou d’enregistrer',
+        ],
+    },
+};
+
+/**
+ * The pharmacy catalogue flags products that need a prescription
+ * (`requires_prescription`): the agent still shows them in search and stock
+ * checks, but `place_catalog_order` refuses them with
+ * `catalog_prescription_review_required` and a hand-off, so a person reviews
+ * the prescription. The born agent is told that, instead of learning it from a
+ * refused order.
+ */
+const PHARMACY_BIRTH_RULES: Record<VerticalPersonaLocale, readonly string[]> = {
+    es: ['Los productos que requieren fórmula médica no se venden por chat: indica si hay existencias y pasa la conversación a una persona del equipo para que revise la receta.'],
+    en: ['Products that require a prescription are not sold by chat: say whether it is in stock and hand the conversation to a team member to review the prescription.'],
+    pt: ['Produtos que exigem receita médica não são vendidos por chat: informe se há estoque e passe a conversa a uma pessoa da equipe para revisar a receita.'],
+    fr: ['Les produits sur ordonnance ne se vendent pas par chat : indiquez s’ils sont en stock et passez la conversation à un membre de l’équipe pour qu’il vérifie l’ordonnance.'],
+};
+
+/** The shared birth behaviour, plus subtype-specific rules appended after the generic ones. */
+function birthBehaviorFor(
+    extraRules?: Record<VerticalPersonaLocale, readonly string[]>,
+): VerticalSubtypePersonaContract['birthBehavior'] {
+    if (!extraRules) return NATIVE_BIRTH_BEHAVIOR;
+    const withExtra = (locale: VerticalPersonaLocale) => ({
+        rules: [...NATIVE_BIRTH_BEHAVIOR[locale].rules, ...extraRules[locale]],
+        handoffTriggers: NATIVE_BIRTH_BEHAVIOR[locale].handoffTriggers,
+    });
+    return Object.freeze({
+        es: withExtra('es'), en: withExtra('en'), pt: withExtra('pt'), fr: withExtra('fr'),
+    });
+}
+
 function contract(
     industry: string,
     subType: string,
     managedTemplateIds: readonly string[],
     legacyTemplateRules: VerticalSubtypePersonaContract['legacyTemplateRules'],
     nativeRules: VerticalSubtypePersonaContract['nativeRules'],
+    extraBirthRules?: Record<VerticalPersonaLocale, readonly string[]>,
 ): VerticalSubtypePersonaContract {
     return Object.freeze({
         version: VERTICAL_SUBTYPE_PERSONA_CONTRACT_VERSION,
@@ -209,6 +304,7 @@ function contract(
         managedTemplateIds: Object.freeze([...managedTemplateIds, 'tpl_sales']),
         legacyTemplateRules: Object.freeze({ ...legacyTemplateRules }),
         nativeRules: Object.freeze({ ...nativeRules }),
+        birthBehavior: birthBehaviorFor(extraBirthRules),
     });
 }
 
@@ -230,7 +326,7 @@ const PET_LEGACY = {
 };
 
 export const VERTICAL_SUBTYPE_PERSONA_CONTRACTS: readonly VerticalSubtypePersonaContract[] = Object.freeze([
-    contract('salud', 'farmacia', Object.keys(HEALTH_LEGACY), HEALTH_LEGACY, PHARMACY_RULES),
+    contract('salud', 'farmacia', Object.keys(HEALTH_LEGACY), HEALTH_LEGACY, PHARMACY_RULES, PHARMACY_BIRTH_RULES),
     contract('automotriz', 'repuestos', Object.keys(AUTO_LEGACY), AUTO_LEGACY, AUTO_PARTS_RULES),
     contract('automotriz', 'alquiler', Object.keys(AUTO_LEGACY), AUTO_LEGACY, VEHICLE_RENTAL_RULES),
     contract('technology', 'hardware', Object.keys(TECHNOLOGY_LEGACY), TECHNOLOGY_LEGACY, HARDWARE_RULES),

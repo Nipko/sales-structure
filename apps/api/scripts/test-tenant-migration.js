@@ -21,15 +21,23 @@ const archivedSchemaName = `tenant_ci_archived_${suffix}`;
 const missingActiveSchemaName = `tenant_ci_missing_${suffix}`;
 const tenantSlug = `ci-legacy-${suffix}`;
 const tenantIds = [];
+const RENTAL_VERTICAL = { verticalConfig: { industry: 'automotriz', subType: 'alquiler' } };
+const agentIds = {
+  neverSet: require('crypto').randomUUID(),
+  ownerOff: require('crypto').randomUUID(),
+  inactive: require('crypto').randomUUID(),
+  retainedNeverSet: require('crypto').randomUUID(),
+};
 
-async function createTenant({ name, slug, schemaName: tenantSchema, isActive }) {
+async function createTenant({ name, slug, schemaName: tenantSchema, isActive, industry = 'other', settings }) {
   const tenant = await prisma.tenant.create({
     data: {
       name,
       slug,
-      industry: 'other',
+      industry,
       schemaName: tenantSchema,
       isActive,
+      ...(settings ? { settings } : {}),
     },
   });
   tenantIds.push(tenant.id);
@@ -141,18 +149,78 @@ async function assertPhotoHoldMigration(tenantSchema) {
   );
 }
 
+// Agents of a pre-PR #77 vehicle-rental tenant, plus one of a retained (inactive) tenant.
+async function seedRentalAgents() {
+  const insert = (schema, id, name, config, active, version) => prisma.$executeRawUnsafe(
+    `INSERT INTO "${schema}"."agent_personas" (id, name, config_json, is_active, version)
+     VALUES ($1::uuid, $2, $3::jsonb, $4, $5)`,
+    id, name, JSON.stringify(config), active, version,
+  );
+  await insert(schemaName, agentIds.neverSet, 'CI rental never set', { tools: { faqs: { enabled: true } } }, true, 3);
+  await insert(schemaName, agentIds.ownerOff, 'CI rental owner off', { tools: { vehicleRentals: { enabled: false } } }, true, 5);
+  await insert(schemaName, agentIds.inactive, 'CI rental inactive', { tools: {} }, false, 7);
+  await insert(retainedSchemaName, agentIds.retainedNeverSet, 'CI retained never set', { tools: {} }, true, 2);
+}
+
+async function readAgent(schema, id) {
+  const [row] = await prisma.$queryRawUnsafe(
+    `SELECT config_json, version FROM "${schema}"."agent_personas" WHERE id = $1::uuid`, id,
+  );
+  return row;
+}
+
+// The additive tool-family backfill (scripts/tool-family-backfill.js) against real
+// PostgreSQL: it enables the missing family, keeps an owner's explicit off, never
+// touches an inactive agent or tenant, and a second deploy writes nothing.
+async function assertToolFamilyBackfill(firstOutput, rerun) {
+  assert.match(
+    firstOutput,
+    /TOOL_FAMILY_BACKFILL_SUMMARY tenants=1 tenants_changed=1 agents_changed=1 families_enabled=1 already_on=0 preserved_off=1 errors=0/,
+    'the first deploy must enable vehicleRentals on exactly the never-set agent of the active rental tenant',
+  );
+  const neverSet = await readAgent(schemaName, agentIds.neverSet);
+  assert.deepEqual(neverSet.config_json.tools, { faqs: { enabled: true }, vehicleRentals: { enabled: true } });
+  assert.equal(neverSet.version, 4, 'the backfill bumps the agent version once');
+
+  const ownerOff = await readAgent(schemaName, agentIds.ownerOff);
+  assert.deepEqual(ownerOff.config_json, { tools: { vehicleRentals: { enabled: false } } }, 'an explicit off belongs to the owner');
+  assert.equal(ownerOff.version, 5);
+
+  const inactive = await readAgent(schemaName, agentIds.inactive);
+  assert.deepEqual(inactive.config_json, { tools: {} }, 'an inactive agent is never read or written');
+  assert.equal(inactive.version, 7);
+
+  const retained = await readAgent(retainedSchemaName, agentIds.retainedNeverSet);
+  assert.deepEqual(retained.config_json, { tools: {} }, 'an inactive tenant is never backfilled');
+  assert.equal(retained.version, 2);
+
+  const secondOutput = rerun(1);
+  assert.match(
+    secondOutput,
+    /TOOL_FAMILY_BACKFILL_SUMMARY tenants=1 tenants_changed=0 agents_changed=0 families_enabled=0 already_on=1 preserved_off=1 errors=0/,
+    'the second deploy must be a no-op',
+  );
+  const again = await readAgent(schemaName, agentIds.neverSet);
+  assert.equal(again.version, 4, 'a second run must not bump the version');
+  assert.deepEqual(again.config_json, neverSet.config_json);
+}
+
 async function main() {
   await createTenant({
     name: 'CI legacy tenant',
     slug: tenantSlug,
     schemaName,
     isActive: true,
+    industry: 'automotriz',
+    settings: RENTAL_VERTICAL,
   });
   await createTenant({
     name: 'CI retained inactive tenant',
     slug: `ci-retained-${suffix}`,
     schemaName: retainedSchemaName,
     isActive: false,
+    industry: 'automotriz',
+    settings: RENTAL_VERTICAL,
   });
   await createTenant({
     name: 'CI archived inactive tenant',
@@ -205,6 +273,8 @@ async function main() {
       "updated_at" TIMESTAMP DEFAULT NOW()
     )
   `);
+
+  await seedRentalAgents();
 
   const output = runMigration(1);
 
@@ -275,6 +345,8 @@ async function main() {
     retainedSchemaName,
   );
   assert.equal(retainedIndex.exists, true, 'retained inactive schema index was not upgraded');
+
+  await assertToolFamilyBackfill(output, runMigration);
 
   // A data-integrity violation is not an "already exists" condition. Keep both
   // duplicate services referenced so the safe cleanup cannot delete either,

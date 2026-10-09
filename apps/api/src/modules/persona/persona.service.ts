@@ -34,7 +34,7 @@ import {
 } from './vertical-agent-defaults.util';
 import type { ResolvedVerticalAgentDefaults } from './vertical-agent-defaults.util';
 import { resolveOnboardingPersonaTemplate } from './onboarding-persona-resolver';
-import { applySubtypeRecipeIdentity } from './subtype-recipe-identity';
+import { applyNativeSubtypeBirthBehavior, applySubtypeRecipeIdentity } from './subtype-recipe-identity';
 
 const AGENT_TOOL_FLAGS = new Map<string, Set<string>>(
     AGENT_CONFIG_TOOL_FAMILIES.map(family => [family, new Set(['enabled'])]),
@@ -3167,6 +3167,11 @@ export class PersonaService {
         // plantilla de la industria; ver subtype-recipe-identity.ts.
         const identity = applySubtypeRecipeIdentity(configJson.persona, industry, subType, tenantLang);
         if (identity.applied) configJson.persona = identity.persona;
+        // Los seis subtipos de operación nativa nacen de la plantilla genérica
+        // tpl_sales; su guion SPIN y su traspaso de «lead caliente» no son lo
+        // que hacen. Se reemplazan por la conducta del contrato del subtipo.
+        const nativeBehavior = applyNativeSubtypeBirthBehavior(configJson, industry, subType, template.id, tenantLang);
+        if (nativeBehavior.applied) configJson.behavior = nativeBehavior.config.behavior;
 
         // Gate de prerrequisitos de agenda, versión BLANDA. Este método corre durante el
         // alta y ANTES del bootstrap vertical (auth.service: primero el agente, después

@@ -190,7 +190,7 @@ export function detectTransition(ctx: DetectContext): Detected {
         const moveAt = MOVE_VERB.exec(text);
         if (pendingTransition.verb === 'cancel') {
             // «cancélala, cambié de opinión» is not a request to move it
-            const idiom = /(?:de opinion|de idea|de parecer|de planes)/.test(text) || REPORTED_OR_PAST.test(raw.toLowerCase().normalize('NFC'));
+            const idiom = /\b(?:de opinion|de idea|de parecer|de planes)\b/.test(text) || REPORTED_OR_PAST.test(raw.toLowerCase().normalize('NFC'));
             const moves = !idiom && ((!!moveAt && !negatedAt(text, moveAt.index)) || !!appointmentChangeRequest(raw));
             if (moves && can('reschedule', pendingTransition.domain) && pendingTransition.domain === 'appointment' && !isInformationSeekingMessage(raw)) {
                 return { kind: 'request', request: { verb: 'reschedule', domain: 'appointment' }, continuation: false };

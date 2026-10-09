@@ -39,7 +39,7 @@ function world(options: Options) {
     publishTools(f, options.tools);
     const calls: Array<{ name: string; args: any; result: any }> = [];
     let pending: { tool: string; args: any } | null = null;
-    let done: Record<string, any> = {};
+    const done: Record<string, any> = {};
     f.toolExecutor.execute.mockImplementation(async (_s: string, _t: string, _c: string, name: string, args: any) => {
         let result: any;
         if (name === 'list_customer_appointments') result = { appointments: options.appointments ?? [] };

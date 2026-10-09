@@ -146,6 +146,14 @@ export default function LoginPage() {
         }
     };
 
+    // El backend contesta con un código estable; el texto que trae va en un
+    // solo idioma, así que lo que se muestra se arma acá, en el del usuario.
+    const loginErrorMessage = (result: { error?: string; errorCode?: string }) => {
+        if (result.errorCode === "invalid_credentials") return t('loginInvalidCredentials');
+        if (result.errorCode === "google_account_only") return t('loginGoogleOnly');
+        return result.error || t('loginError');
+    };
+
     const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
         setError("");
@@ -158,7 +166,7 @@ export default function LoginPage() {
         } else if (result.success) {
             router.push(result.redirect || "/admin");
         } else if (result.error !== "session_conflict") {
-            setError(result.error || t('loginError'));
+            setError(loginErrorMessage(result));
         }
         setIsSubmitting(false);
     };

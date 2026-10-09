@@ -868,10 +868,14 @@ describe('VerticalsService resumable bootstrap', () => {
     });
 
     it('requires the appointments tool whenever booking is effectively enabled', () => {
-        expect((service as any).requiredTools('retail', 'marketplace', true))
+        expect((service as any).requiredTools('retail', 'hogar', true))
             .toEqual(expect.arrayContaining(['faqs', 'appointments', 'catalog']));
         expect((service as any).requiredTools('retail', 'marketplace', false))
             .not.toContain('appointments');
+        // The tool families come from the capability manifest: marketplace is a
+        // lead-capture profile there (no catalog_search), so it is not required.
+        expect((service as any).requiredTools('retail', 'marketplace', true))
+            .not.toContain('catalog');
     });
 
     it('re-verifies a completed specialized engine from its published config after pending is cleared', async () => {

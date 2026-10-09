@@ -43,6 +43,7 @@ import { resolveVerticalSelection } from './vertical-identifiers';
 import { buildVerticalOperationContract } from './vertical-operation-contract';
 import { VerticalIntegrationsService } from '../vertical-integrations/vertical-integrations.service';
 import { withSubtypeNavigation } from './subtype-navigation';
+import { planVerticalToolSeed, requiredToolFamilies } from './vertical-tool-seed-plan';
 import { buildVerticalAuthoringPackage } from './vertical-authoring-package';
 import { persistenceDisabled, type ServiceExecutionContext } from '../../common/types/execution-context';
 
@@ -457,7 +458,7 @@ const ROUND_THE_CLOCK_SCHEDULE: Record<ScheduleDay, string> = {
     sat: '00:00-23:59',
 };
 
-function resolveSubtypeBootstrap(industry: string, subType?: string | null): SubtypeBootstrap | undefined {
+export function resolveSubtypeBootstrap(industry: string, subType?: string | null): SubtypeBootstrap | undefined {
     if (!subType) return undefined;
     return SUBTYPE_BOOTSTRAP_BY_INDUSTRY[industry]?.[subType];
 }
@@ -1168,49 +1169,27 @@ export class VerticalsService {
         executor?: TenantQueryExecutor,
         country?: string | null,
     ): Promise<void> {
-        for (const tool of bootstrapMode?.extraTools || []) {
-            await this.enableSimpleTool(schemaName, tool, executor);
-        }
+        // Which families the business owns comes from the capability manifest
+        // (see vertical-tool-seed-plan.ts). Only the content that has to exist
+        // before the agent can use a family is seeded here by hand.
         if (industry === 'turismo' && (subType === 'tours' || subType === 'agencia_viajes')) {
             await this.seedToursExtras(tenantId, schemaName, lang, executor);
-            await this.enableSimpleTool(schemaName, 'tours', executor);
-        }
-        if (industry === 'turismo' && (subType === 'hotel' || subType === 'alquiler_vacacional')) {
-            await this.enableSimpleTool(schemaName, 'properties', executor);
         }
         if (industry === 'salud' && subType === 'dental') {
             await this.seedDentalExtras(tenantId, schemaName, lang, executor);
-            await this.enableSimpleTool(schemaName, 'treatments', executor);
         }
         if (industry === 'inmobiliaria') {
             await this.seedInmobiliariaExtras(tenantId, schemaName, lang, executor);
-            await this.enableSimpleTool(schemaName, 'realEstate', executor);
         }
-        if (industry === 'automotriz' && !['repuestos', 'taller'].includes(subType || '')) {
-            await this.enableSimpleTool(schemaName, 'vehicles', executor);
-        }
-        if (industry === 'automotriz' && ['repuestos', 'taller'].includes(subType || '')) {
-            await this.disableSimpleTool(schemaName, 'vehicles', executor);
-        }
-        if (industry === 'automotriz' && subType === 'taller') {
-            await this.enableSimpleTool(schemaName, 'repairOrders', executor);
-        }
-
-        const toolsByIndustry: Record<string, string[]> = {
-            veterinaria: ['pets'],
-            restaurantes: ['restaurants'],
-            gimnasios: ['gyms'],
-            education: ['education'],
-            seguros: ['insurance'],
-            servicios_hogar: ['homeServices'],
-            pet_services: ['petServices', 'pets'],
-            fotografia: ['photography'],
-            servicios_profesionales: ['professionalServices'],
-            retail: ['catalog'],
-            otro: ['catalog'],
-        };
-        for (const tool of toolsByIndustry[industry] || []) {
+        const plan = planVerticalToolSeed(
+            this.resolveCapabilityManifest(industry, subType),
+            bootstrapMode?.extraTools,
+        );
+        for (const tool of plan.enable) {
             await this.enableSimpleTool(schemaName, tool, executor);
+        }
+        for (const tool of plan.disable) {
+            await this.disableSimpleTool(schemaName, tool, executor);
         }
         if (industry === 'gimnasios') {
             await this.seedMembershipPlans(schemaName, lang, executor, country);
@@ -1223,22 +1202,11 @@ export class VerticalsService {
         effectiveBooking: boolean,
         bootstrapMode?: SubtypeBootstrap,
     ): string[] {
-        const required = new Set<string>(['faqs', ...(bootstrapMode?.extraTools || [])]);
-        if (effectiveBooking) required.add('appointments');
-        if (industry === 'turismo' && (subType === 'tours' || subType === 'agencia_viajes')) required.add('tours');
-        if (industry === 'turismo' && (subType === 'hotel' || subType === 'alquiler_vacacional')) required.add('properties');
-        if (industry === 'salud' && subType === 'dental') required.add('treatments');
-        if (industry === 'inmobiliaria') required.add('realEstate');
-        if (industry === 'automotriz' && !['repuestos', 'taller'].includes(subType || '')) required.add('vehicles');
-        if (industry === 'automotriz' && subType === 'taller') required.add('repairOrders');
-        const toolsByIndustry: Record<string, string[]> = {
-            veterinaria: ['pets'], restaurantes: ['restaurants'], gimnasios: ['gyms'],
-            education: ['education'], seguros: ['insurance'], servicios_hogar: ['homeServices'],
-            pet_services: ['petServices', 'pets'], fotografia: ['photography'],
-            servicios_profesionales: ['professionalServices'], retail: ['catalog'], otro: ['catalog'],
-        };
-        for (const tool of toolsByIndustry[industry] || []) required.add(tool);
-        return [...required];
+        return requiredToolFamilies(
+            this.resolveCapabilityManifest(industry, subType),
+            effectiveBooking,
+            bootstrapMode?.extraTools,
+        );
     }
 
     private async assertProvisioningInvariants(

@@ -594,17 +594,22 @@ export class AuthService {
             include: { tenant: true },
         });
 
+        // Stable `error` codes: the dashboard localizes them (es/en/pt/fr) and
+        // falls back to `message` for clients that only read the English text.
         if (!user || !user.isActive) {
-            throw new UnauthorizedException('Invalid credentials');
+            throw new UnauthorizedException({ error: 'invalid_credentials', message: 'Invalid credentials' });
         }
 
         if (!user.password) {
-            throw new UnauthorizedException('This account uses Google sign-in. Please log in with Google.');
+            throw new UnauthorizedException({
+                error: 'google_account_only',
+                message: 'This account uses Google sign-in. Please log in with Google.',
+            });
         }
 
         const isPasswordValid = await bcrypt.compare(password, user.password);
         if (!isPasswordValid) {
-            throw new UnauthorizedException('Invalid credentials');
+            throw new UnauthorizedException({ error: 'invalid_credentials', message: 'Invalid credentials' });
         }
 
         // Enforce single-session + tenant session limits
@@ -1303,12 +1308,19 @@ export class AuthService {
         return this.prisma.$transaction(async (tx: any) => {
             const user = await tx.user.findUnique({ where: { id: userId } });
             if (!user) throw new NotFoundException('User not found');
-            if (!user.emailVerifyCode || !user.emailVerifyExpires
-                || user.emailVerifyExpires < new Date()
-                || !this.timingSafeEqual(user.emailVerifyCode, code)) {
+            // Expired (or no code pending) and wrong are different situations for
+            // the person typing: retyping never fixes an expired code, so the
+            // screen has to offer a new one instead of "try again".
+            if (!user.emailVerifyCode || !user.emailVerifyExpires || user.emailVerifyExpires < new Date()) {
+                throw new BadRequestException({
+                    error: 'verification_code_expired',
+                    message: 'El código venció. Solicita uno nuevo.',
+                });
+            }
+            if (!this.timingSafeEqual(user.emailVerifyCode, code)) {
                 throw new BadRequestException({
                     error: 'invalid_verification_code',
-                    message: 'El código es incorrecto o ya venció.',
+                    message: 'El código es incorrecto.',
                 });
             }
             await tx.user.update({

@@ -1,5 +1,7 @@
 # Directiva para Claude: cerrar todo el remanente local antes de pedir gates externos
 
+> **Documento histórico (2026-09-09) — no refleja el estado actual; ver `docs/product-capabilities-reference.md` y `docs/README.md`.** Es una instrucción que se pasó a otro agente en esa fecha: lo que dice sobre no hacer push, merge o deploy ya no aplica (desde el 2026-10-07 un merge a `main` con CI verde despliega solo) y sus cifras (perfiles, escenarios, tareas) son las de ese día.
+
 Fecha: 9 de septiembre de 2026. Punto de partida revisado: `30a79102..8ec67797` (94 commits locales). Esta directiva no autoriza push, despliegue, migraciones fuera de instancias desechables, activación de flags, llamadas a proveedores reales ni gasto en modelos o alternativas.
 
 ## Veredicto de la revisión

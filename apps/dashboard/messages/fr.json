@@ -8764,7 +8764,7 @@
         "Faites glisser une carte d'une colonne à l'autre pour changer d'étape ; par exemple, déplacez un lead de « Contacté » à « Qualifié » dès qu'il confirme son intérêt.",
         "Déposer une carte dans une étape terminale (Gagné/Perdu) peut exiger une approbation ; les cartes en attente affichent un badge jaune.",
         "La valeur et la probabilité de chaque étape alimentent la prévision de ventes affichée au-dessus du tableau.",
-        "Personnalisez les noms, couleurs et probabilités des étapes dans Paramètres → Outils → Étapes du pipeline.",
+        "Personnalisez les noms, couleurs et probabilités des étapes dans Paramètres → CRM et opérations → Étapes du pipeline.",
         "Utilisez la recherche et les filtres pour vous concentrer sur un agent, un canal ou des affaires dont le SLA est menacé."
       ]
     },
@@ -8792,12 +8792,12 @@
     },
     "broadcast": {
       "title": "Comment créer et envoyer une campagne de broadcast ?",
-      "description": "Le Broadcast vous permet d'envoyer des messages en masse à vos contacts via WhatsApp ou Email en une seule fois, avec suivi de livraison et de lecture en temps réel. Utilisez-le pour des promotions, des annonces importantes ou la réactivation de clients inactifs.",
+      "description": "Le Broadcast vous permet d'envoyer des messages en masse à vos contacts via WhatsApp, avec suivi de livraison et de lecture. Les campagnes partent comme des modèles approuvés par Meta, et l'éditeur actuel n'est pas certifié de bout en bout pour la production : préparez des brouillons et coordonnez le premier envoi réel avec le support.",
       "tips": [
-        "Cliquez sur '+ Créer' et choisissez le canal (WhatsApp ou Email) ; pour WhatsApp, saisissez le nom exact de votre modèle approuvé par Meta dans le champ 'Modèle'.",
+        "Cliquez sur '+ Créer'. WhatsApp est le seul canal disponible : dans 'Modèle WhatsApp', saisissez le nom exact d'un modèle déjà approuvé par Meta (vous les voyez dans Canaux › WhatsApp › Voir tous les modèles). Un texte écrit à la main n'est pas un modèle et WhatsApp le rejette.",
         "Dans 'Audience', choisissez 'Tous les contacts' pour toucher toute votre base, ou sélectionnez un 'Segment' enregistré pour cibler un groupe précis (ex. : leads qualifiés ce mois-ci).",
         "Activez le bouton 'A/B Test' (disponible sur les plans Pro+) pour tester deux versions du message et laisser la plateforme identifier le gagnant selon le taux de lecture.",
-        "Laissez le champ de date vide pour enregistrer comme brouillon et envoyer manuellement avec 'Envoyer maintenant', ou planifiez une date et heure précises pour un envoi automatique.",
+        "Laissez le champ de date vide pour enregistrer comme brouillon. Une campagne planifiée n'a pas d'action d'annulation et 'Envoyer maintenant' partage la même limite de l'éditeur : ne les utilisez pas en production sans test préalable avec le support.",
         "Une fois envoyée, cliquez sur la campagne pour voir les métriques : destinataires, livrés (vert) et lus (bleu) dans la barre de progression.",
         "Depuis le 1er octobre 2026, Meta facture VOTRE propre compte WhatsApp Business pour chaque message livré, et une campagne part comme modèle approuvé : elle n'utilise pas les livraisons de service gratuites du mois. Avant de confirmer l'envoi, vous verrez combien de livraisons il peut produire ; la dépense par numéro et par mois se trouve dans Canaux › WhatsApp."
       ]
@@ -8874,7 +8874,7 @@
       "tips": [
         "Sous 'Compte' vous pouvez changer votre mot de passe, activer le 2FA et configurer votre calendrier de notifications pour ne pas être interrompu hors de votre plage de travail.",
         "Sous 'Entreprise' vous trouverez 'Horaires d'ouverture' : configurez vos jours et heures réels pour que l'agent IA sache quand le support humain est disponible.",
-        "Sous 'Opérations' personnalisez les étapes du pipeline et les pondérations du scoring de leads pour les adapter à votre processus de vente.",
+        "Sous 'CRM et opérations' personnalisez les étapes du pipeline et les pondérations du scoring de leads pour les adapter à votre processus de vente.",
         "Sous 'Communication' créez des macros avec vos réponses fréquentes pour que vos agents humains répondent plus vite depuis l'Inbox.",
         "Sous 'Intégrations' connectez des webhooks sortants, votre Web Chat ou une intégration verticale (Toast, Mindbody, Cliniko) pour synchroniser vos données avec vos outils externes."
       ]
@@ -9870,6 +9870,77 @@
         "Cliquez sur 'Synchroniser depuis Meta' pour importer les modèles déjà approuvés dans votre compte Meta Business Manager. Cela met à jour le statut (APPROVED / PENDING / REJECTED) de chaque modèle.",
         "Un modèle PENDING peut prendre de quelques minutes à 24 heures pour être examiné par Meta. Les modèles APPROVED apparaissent en vert et peuvent déjà être utilisés dans des campagnes de diffusion ou dans l'agent IA.",
         "Si un modèle est REJECTED, consultez la raison du rejet affichée sur la carte (ex. : 'Contenu promotionnel dans la catégorie UTILITY'). Ajustez le contenu pour correspondre à la bonne catégorie et créez une nouvelle version."
+      ]
+    },
+    "stays": {
+      "title": "Comment gérer les réservations d'hébergement ?",
+      "description": "Cet écran réunit les séjours de tous vos hébergements avec le client, les dates, le statut et l'origine : Agent si l'agent IA l'a enregistré, Manuel si votre équipe l'a saisi. Utilisez-le au quotidien sans ouvrir la fiche de chaque hébergement.",
+      "tips": [
+        "Recherchez par nom, e-mail ou téléphone du client et filtrez par statut : Confirmé, En attente, Paiement attendu ou Annulé.",
+        "Cliquez sur 'Nouvelle réservation' pour saisir un séjour à la main : choisissez l'hébergement, l'arrivée, le départ et les coordonnées du client. L'écran vérifie aussitôt que ces dates sont libres.",
+        "Quand vous annulez une réservation, les dates sont libérées immédiatement et l'agent peut les proposer à nouveau.",
+        "La colonne Origine indique si la réservation a été créée par l'agent IA ou par votre équipe ; les deux cohabitent dans la même liste."
+      ]
+    },
+    "tourBookings": {
+      "title": "Comment voir les réservations de mes tours ?",
+      "description": "Cet écran regroupe les réservations par jour de départ et additionne les voyageurs qui partent chaque jour, sans ouvrir chaque forfait. Chaque ligne montre le voyageur, son téléphone, le tour, le statut et si la réservation a été prise par l'agent IA ou saisie à la main.",
+      "tips": [
+        "Recherchez par voyageur, téléphone ou nom du tour et filtrez par statut : Confirmé, Réservé, Paiement attendu ou Annulé.",
+        "Chaque jour de départ affiche le total de voyageurs : utilisez-le pour confirmer les places et coordonner guides ou transport.",
+        "Une réservation en 'Paiement attendu' n'est pas encore payée : relancez le client avant de compter sur cette place.",
+        "Cet écran est en lecture seule. Les forfaits, leur capacité et leurs prix se configurent dans 'Tours et Forfaits', sous Catalogue et ressources."
+      ]
+    },
+    "serviceCatalog": {
+      "title": "Comment gérer mes forfaits et services ?",
+      "description": "Vous définissez ici ce que vend votre entreprise : chaque forfait ou service avec sa durée, son prix et sa capacité. L'agent IA ne propose que ce qui est saisi et actif ; sans au moins un forfait, il répond qu'il n'a rien à proposer.",
+      "tips": [
+        "Cliquez sur 'Nouveau service' et renseignez le nom, la durée et le prix. Si vous ne facturez pas un montant fixe, choisissez 'C'est gratuit' ou 'Sur devis, selon le cas'.",
+        "Un prix d'exemple fourni par la recette de votre métier n'est jamais annoncé à voix haute : confirmez-le avec 'Confirmer le prix' ou saisissez le vôtre pour que l'agent puisse l'indiquer.",
+        "Désactivez un service plutôt que de le supprimer si vous voulez seulement cesser de le proposer pour un temps.",
+        "La capacité de chaque service limite le nombre de réservations acceptées en même temps."
+      ]
+    },
+    "repairOrders": {
+      "title": "Comment suivre les ordres d'atelier ?",
+      "description": "Chaque ordre suit un véhicule de la réception à la livraison. Il sépare ce que le client a signalé du diagnostic technique et conserve le devis et la décision du client avec sa preuve. L'agent peut ouvrir la réception, mais le diagnostic est toujours rédigé par votre équipe.",
+      "tips": [
+        "Cliquez sur 'Nouvel ordre', choisissez le contact et saisissez la plaque ou le VIN : l'un des deux est obligatoire pour identifier le véhicule. Notez les symptômes comme le client les décrit.",
+        "Le statut avance ainsi : Réception, Diagnostic/devis, En attente d'approbation, Approuvé, En réparation, Prêt à livrer et Livré. Devis refusé et Annulé existent aussi.",
+        "En publiant le devis, l'ordre attend l'approbation du client. Utilisez 'Enregistrer l'approbation' ou 'Enregistrer le refus' et indiquez comment et quand il a répondu (par exemple un appel). L'agent ne peut pas modifier le montant.",
+        "Les indicateurs du haut comptent les ordres ouverts, ceux en attente d'approbation, ceux prêts à livrer et ceux livrés sur 30 jours. Recherchez par plaque, VIN, véhicule ou motif.",
+        "L'historique de chaque ordre est immuable : chaque changement est enregistré."
+      ]
+    },
+    "cases": {
+      "title": "Comment voir les dossiers du cabinet ?",
+      "description": "Un dossier est le suivi d'un client : à quelle étape il se trouve et quand il a bougé pour la dernière fois. Il s'ouvre lorsqu'une demande avance dans l'entonnoir, et l'agent peut en indiquer l'état par chat dès qu'il existe.",
+      "tips": [
+        "Filtrez par Ouverts, Clos ou Tous ; vous voyez les ouverts par défaut.",
+        "Chaque ligne affiche la référence, le client, l'étape et le dernier mouvement.",
+        "Utilisez 'Voir la conversation' pour ouvrir le chat avec ce client.",
+        "Cet écran est en lecture seule : les dossiers s'ouvrent à partir de l'entonnoir."
+      ]
+    },
+    "resourceRentals": {
+      "title": "Comment gérer les locations de véhicules et les séjours d'animaux ?",
+      "description": "Vous gérez ici les réservations de véhicules et de séjours d'animaux (hôtel ou garderie) : examiner les demandes, enregistrer remises, retours, arrivées et départs, et annuler si besoin. Selon votre type d'activité, vous verrez le type d'opération qui vous concerne.",
+      "tips": [
+        "Filtrez par type d'opération et par statut : En attente de vérification, Réservée, Véhicule remis ou rendu, Animal arrivé ou récupéré, Refusée ou Annulée.",
+        "Une demande de véhicule arrive en 'En attente de vérification' : validez les conditions avant de le réserver.",
+        "Chaque ligne ne propose que les actions qui correspondent à son statut, comme 'Remettre le véhicule', 'Enregistrer le retour', 'Enregistrer l'arrivée' ou 'Enregistrer le départ'. 'Détails' ouvre le détail.",
+        "Avant de créer une réservation, configurez les ressources : les véhicules dans Véhicules, les animaux dans Animaux et, pour les séjours, un service de Rendez-vous de catégorie hôtel ou garderie avec une capacité supérieure à zéro."
+      ]
+    },
+    "vehicles": {
+      "title": "Comment gérer l'inventaire de véhicules ?",
+      "description": "Cet écran contient l'inventaire de véhicules que l'agent IA présente aux personnes intéressées et, dans l'onglet Essais routiers, les essais planifiés. Gardez le statut de chaque véhicule à jour pour que l'agent ne propose pas un véhicule déjà vendu.",
+      "tips": [
+        "Cliquez sur 'Ajouter un véhicule' et renseignez la marque et le modèle (obligatoires), l'année, le prix, le kilométrage et la description. Pour en charger beaucoup d'un coup, utilisez l'import depuis un fichier.",
+        "Filtrez par Disponibles, Réservés ou Vendus. Le statut 'En atelier' signale un véhicule en entretien.",
+        "Quand vous marquez un véhicule comme vendu, l'écran vous demande de confirmer le prix de vente final.",
+        "L'onglet Essais routiers affiche les 100 derniers essais. Les nouvelles réservations passent par l'agenda des Rendez-vous ; les anciens enregistrements apparaissent comme historiques."
       ]
     },
     "showMe": "Montrez-moi comment",
@@ -12217,7 +12288,7 @@
       "enrolling": "Inscription…",
       "enrolledToast": "{enrolled} inscrits · {optout} désinscrits · {dup} déjà inscrits",
       "enrollError": "Impossible d'inscrire le segment.",
-      "hint": "Respecte les désinscriptions et ne double pas les inscriptions. Limite de 500 par envoi."
+      "hint": "Respecte les désinscriptions et ne double pas les inscriptions. Limite de 300 par envoi."
     }
   },
   "knowledgeGap": {

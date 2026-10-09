@@ -79,7 +79,7 @@ connected, and which ones have no connection.
 
 A separate critical check covers assignments that are not a certified conversational
 channel at all: **Operational channel scope** rejects an agent assigned to a channel type
-that does not carry conversations (for example SMS, which only sends notifications, or
+that does not carry conversations (for example SMS, a retired product, or
 email, which has no certified self-service configuration today). Disconnecting it is not
 enough: untick that type in the agent editor and leave only certified channels — WhatsApp,
 Instagram, Messenger, Telegram, or the web chat.

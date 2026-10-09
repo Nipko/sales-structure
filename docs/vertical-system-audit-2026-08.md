@@ -1,5 +1,7 @@
 # Auditoría integral de las 18 verticales — agosto de 2026
 
+> **Documento histórico (corte del 6-ago-2026) — no refleja el estado actual: audita 18 verticales y 75 subtipos; hoy el registro tiene 20 industrias y 80 tipos de negocio canónicos (72 seleccionables). Ver `product-capabilities-reference.md`; la lista vigente de industrias y tipos de negocio está en `business-types-catalog.md`.**
+
 **Sistema:** Parallly / Parallext Engine  
 **Corte:** 6 de agosto de 2026  
 **Código auditado:** `1af29db5607581e8fe5e52e57ba757f7e5dd631f`  

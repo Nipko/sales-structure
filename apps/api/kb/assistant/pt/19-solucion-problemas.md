@@ -69,8 +69,8 @@ Quando um recurso chega ao seu limite (agentes, contatos, campanhas, mensagens d
 
 ## O agendamento não aparece no meu calendário
 
-1. Primeiro confirme que o agendamento existe na Parallly: acesse a **Agenda** e procure-o na aba **Calendário**. Se não estiver ali, a reserva não chegou a se concretizar (o cliente pode não ter confirmado a última etapa).
-2. Se o agendamento está na Parallly, mas não no seu Google Calendar ou Outlook, vá em **Agenda → Configurações → Calendários conectados** e verifique se o seu calendário continua **conectado**. Se a conexão venceu, clique em **Reconectar**.
+1. Primeiro confirme que o agendamento existe na Parallly: acesse **Agendamentos** (em alguns ramos o menu o chama de **Agenda** ou **Reservas**) e procure-o na aba **Calendário**. Se não estiver ali, a reserva não chegou a se concretizar (o cliente pode não ter confirmado a última etapa).
+2. Se o agendamento está na Parallly, mas não no seu Google Calendar ou Outlook, vá em **Agendamentos → Configurações → Calendários conectados** e verifique se o seu calendário continua **conectado**. Se a conexão venceu, clique em **Reconectar**.
 3. Se você tem **vários calendários conectados**, o agendamento pode ter sido sincronizado em outro: cada agendamento vai primeiro para o calendário atribuído ao **serviço**; se não houver, para o do **profissional** atribuído; e, se também não houver, para o calendário **geral** do negócio. Confira essas atribuições na edição do serviço.
 4. A sincronização é rápida, mas nem sempre instantânea: aguarde alguns minutos e atualize o seu calendário.
 

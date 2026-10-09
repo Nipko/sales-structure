@@ -1,5 +1,7 @@
 # Autoridad del agente al guardar entregas aprobadas de Web Chat
 
+> **Documento histórico (2026-09-07) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 La entrega aprobada de una imagen o un enlace de pago debe conservar la autoridad del agente que originó la propuesta hasta que el mensaje y el recibo `stored` quedan confirmados en PostgreSQL. El scope proviene del ledger del servidor, fuera de los argumentos del modelo y del trabajo de cola.
 
 ## Frontera del cambio

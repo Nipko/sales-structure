@@ -15,7 +15,7 @@ Les secteurs actuellement proposés sont la santé, la mode et beauté (appelée
 ## Types d'activité que vous ne pouvez pas choisir aujourd'hui
 
 - **Sur liste d'attente (8)** : Organisation de mariages (organisation d'événements), Entrepreneur général (construction), Promoteur immobilier, Paiements et encaissements (finance), Marketplace / E-commerce (commerce de détail), Support informatique et MSP (technologie), Compagnie d'assurance et Spécialiste santé (assurances). Ils existent en tant que types, mais leur fonctionnement complet reste fermé et l'inscription ne les propose pas.
-- **Comptes existants uniquement (5)** : Construction et projets (immobilier), Fintech (finance), Conseil IT (technologie), Toilettage côté vétérinaire (c'est désormais Services pour animaux → Toilettage) et Wedding planner (photographie). Un compte qui les avait déjà continue de fonctionner ; un nouveau compte ne peut pas les choisir.
+- **Comptes existants uniquement (5)** : Construction et projets (immobilier), Fintech (finance), Conseil IT (technologie), Toilettage côté vétérinaire (c'est désormais Services pour animaux → Toilettage) et Wedding planner (photographie). Un compte qui les avait déjà continue de fonctionner ; un nouveau compte ne peut pas les choisir. De plus, les anciens comptes de boutique et d'animalerie apparaissent désormais comme Commerce de détail → Mode et vêtements, et ceux de livraison comme Restaurants → Restauration rapide.
 
 ## Où apparaissent les modules
 
@@ -44,7 +44,7 @@ Le nom d'un module change selon le secteur et le type d'activité. Le module de 
 - **Assurances** : **Assurances** (dans le menu, « Polices ») pour courtier, vie et auto.
 - **Services à domicile** : **Demandes** (dans le menu, « Interventions ») et **Forfaits et services**.
 - **Services animaliers** : toilettage, promenades et dressage utilisent l'agenda des réservations et **Animaux** ; garderie et hôtel pour animaux utilisent **Locations et séjours** (dans le menu, « Séjours »), **Animaux** et **Forfaits et services**.
-- **Photographie** : **Séances photo** (dans le menu, « Séances » ou « Forfaits ») et **Forfaits et services**.
+- **Photographie** : **Séances photo** (dans le menu, « Séances » ; pour la photographie de mariage, « Séances photo ») et **Forfaits et services**.
 - **Autre** : **Commandes** et **Inventaire**.
 
 **Forfaits et services** est le catalogue de ce que l'entreprise vend, avec sa durée, son prix et sa capacité, pour les activités qui ne se réservent pas par créneaux. Les écrans **Séjours**, **Réservations de tours**, **Ordres d'atelier** et **Dossiers** sont des registres du travail quotidien : c'est là que vous gérez les séjours, les départs de tours, les interventions d'atelier et les dossiers.

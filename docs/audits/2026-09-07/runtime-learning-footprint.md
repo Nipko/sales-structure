@@ -1,5 +1,7 @@
 # Procedencia privada de aprendizaje en runtime
 
+> **Documento histórico (2026-09-07) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 Fecha: 2026-09-07. Estado: **implementado y registrado en `54379f90`, con revisión y validación exacta del índice**. Este bloque es un prerrequisito de la admisión de mensajes; todavía no conecta consumidores de admisión ni crea un outbox. El wrapper de fuentes del modelo sí reutiliza el helper de lectura.
 
 ## Contrato implementado

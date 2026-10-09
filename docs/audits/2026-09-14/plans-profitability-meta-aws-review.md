@@ -1,3 +1,5 @@
+> **Documento histórico (2026-09-14) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 > Actualización de ejecución (14-sep-2026): el usuario autorizó un catálogo único también para tenants existentes. La recomendación anterior de conservar precios/cuotas antiguos queda sustituida por esa decisión. La implementación y las limitaciones verificadas se detallan en `plan-economics-implementation.md`. Este documento conserva la investigación y sus supuestos; no es evidencia de despliegue ni de margen observado.
 
 # Planes, rentabilidad, financiación de WhatsApp y crecimiento a AWS

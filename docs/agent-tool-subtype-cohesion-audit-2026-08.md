@@ -1,5 +1,7 @@
 # Auditoría integral de herramientas, datos y agentes por subtipo — agosto de 2026
 
+> **Documento histórico (corte del 20-ago-2026) — no refleja el estado actual: habla de 95 tools estáticas y 75 subtipos; hoy hay 123 tools estáticas y 80 tipos de negocio. Las hojas `*-scorecard-2026-08.csv` asociadas usan la taxonomía anterior. La lista vigente de industrias y tipos de negocio está en `business-types-catalog.md`.**
+
 **Producto:** Parallly / Parallext Engine  
 **Corte:** 20 de agosto de 2026  
 **Alcance:** 95 tools estáticas, integraciones dinámicas, procedimientos, contexto/RAG, 18 verticales, 75 subtipos y `otro`  

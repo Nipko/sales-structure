@@ -1,5 +1,7 @@
 # Catálogo — ausencia de producto y fallo de consulta
 
+> **Documento histórico (2026-09-07) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 Fecha: 2026-09-07. Corrección registrada en `e3ac0917`, posterior a `b6db0507`.
 
 `get_product` atrapaba cualquier fallo de la consulta y devolvía `Product not found`. Esto confundía una base no disponible con un producto ausente. Además, `send_product_image` reducía el error de su lector al campo `error`, perdiendo los datos de estado y recuperación.

@@ -10,7 +10,7 @@ keywords: ["agendamentos", "agenda", "calendário", "agendar", "reservas", "rese
 
 O Parallly inclui uma agenda completa: você define seus serviços e horários uma única vez e, a partir daí, seu agente de IA marca agendamentos sozinho dentro da conversa, sua equipe os vê num calendário compartilhado e tudo pode ser sincronizado com o Google Calendar ou o Outlook.
 
-Tudo fica na barra lateral, em **Agendamentos**. Ao entrar, você verá a página **Agendamentos** com cinco abas: **Calendário** (visão por semana ou por dia), **Agenda** (lista de agendamentos), **Serviços**, **Configurações** e **Analytics**. As configurações são para administradores e supervisores; os agentes podem ver o calendário, criar agendamentos e atendê-los.
+Tudo fica na barra lateral, em **Trabalho do dia → Agendamentos**. Conforme o seu tipo de negócio, o menu pode chamá-lo de **Agenda** ou **Reservas**, e em alguns ramos ele não aparece porque esse negócio não agenda compromissos; é a mesma tela. Ao entrar, você verá a página **Agendamentos** com cinco abas: **Calendário** (visão por semana ou por dia), **Agenda** (lista de agendamentos), **Serviços**, **Configurações** e **Analytics**. As configurações são para administradores e supervisores; os agentes podem ver o calendário, criar agendamentos e atendê-los.
 
 ## Como criar seus serviços
 
@@ -93,9 +93,19 @@ Em **Agendamentos** → **Configurações** → seção **Lembretes e acompanham
 
 Os lembretes por WhatsApp podem usar modelos aprovados pela Meta para tentar o envio fora da janela de 24 horas. A entrega não é garantida: depende do status do modelo e da conta, da Meta e do destinatário.
 
+O lembrete sai pelo canal com o qual o cliente falou com você: pelo WhatsApp (com modelo aprovado) ou, se ele escreveu pelo Telegram, como mensagem de texto nessa conversa; o lembrete de 24 horas também pode ser enviado por email quando o cliente deixou o endereço. Se o cliente não tem nenhuma forma de contato, nada é enviado.
+
+## O que a Agenda mostra e o que acontece com os agendamentos cancelados
+
+- A aba **Agenda** lista os agendamentos dos últimos 30 dias e dos próximos 6 meses, e avisa isso numa nota sobre a lista. Se houver mais agendamentos do que cabem, a tela avisa que mostra só os primeiros: use o **Calendário** para ver uma semana específica.
+- No **Calendário**, os agendamentos cancelados aparecem na grade; o botão **Ocultar cancelados** (que vira **Mostrar cancelados**) os remove ou os devolve.
+- Um agendamento cancelado é somente leitura: não pode ser movido nem editado. Para marcá-lo de novo, crie um novo agendamento.
+
 ## A IA agenda sozinha na conversa
 
 Quando um cliente pede um agendamento pelo WhatsApp, Instagram ou qualquer canal conectado, o agente de IA o guia passo a passo: primeiro o serviço, depois uma data com disponibilidade real, depois o horário e, por fim, uma confirmação. Nesse último passo o sistema verifica o horário de novo, então duas pessoas não podem ficar com a mesma vaga.
+
+O agente só cria ou remarca um agendamento se ele couber dentro do seu **horário de atendimento** (o agendamento inteiro, com o intervalo entre agendamentos) e não cair numa **data bloqueada**. Se o negócio ainda não configurou horários, o agente não consegue agendar: por isso vale salvá-los em **Agendamentos** → **Configurações**. Além disso, se o seu negócio agenda sobre um objeto (um imóvel, um pet ou um veículo), o agendamento registra qual é: numa imobiliária com imóveis cadastrados o agente precisa indicar o imóvel para agendar, e em clínicas veterinárias e concessionárias pode indicar o pet ou o veículo. Esse dado aparece na descrição do evento no seu calendário externo.
 
 Ao confirmar, tudo acontece sozinho: o agendamento entra no seu **Calendário**, é sincronizado com seu Google Calendar ou Outlook, o cliente recebe um e-mail de confirmação, o membro da equipe designado é avisado e, se o serviço for online, o link de reunião é incluído.
 

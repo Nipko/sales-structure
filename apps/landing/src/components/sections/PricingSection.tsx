@@ -35,8 +35,9 @@ function planHighlights(plan: ApiPlan, locale: string, t: any): string[] {
     : [];
   const unlimited = t("valueUnlimited");
 
-  if (channels.length > 0) {
-    highlights.push(t("liveChannels", { channels: formatChannelNames(channels) }));
+  const channelNames = formatChannelNames(channels);
+  if (channelNames) {
+    highlights.push(t("liveChannels", { channels: channelNames }));
   }
   highlights.push(t("liveAiMessages", {
     count: formatLimit(plan.maxAiMessages, locale, unlimited),

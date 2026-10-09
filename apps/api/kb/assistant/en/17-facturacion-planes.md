@@ -3,7 +3,7 @@ id: facturacion-planes
 title: "Plans, billing, and tax details"
 routes: ["/admin/settings/billing", "/admin/settings/fiscal"]
 roles: ["tenant_admin"]
-keywords: ["plans", "pricing", "billing", "payment", "payment method", "change plan", "trial", "cycle", "invoice", "payment history", "tax details", "plan limit", "sms credits", "coupon", "cancel subscription", "meta charges separately", "does the plan include whatsapp", "whatsapp charges", "two payments", "meta invoice"]
+keywords: ["plans", "pricing", "billing", "payment", "payment method", "change plan", "trial", "cycle", "invoice", "payment history", "tax details", "plan limit", "coupon", "cancel subscription", "meta charges separately", "does the plan include whatsapp", "whatsapp charges", "two payments", "meta invoice"]
 ---
 
 # Plans, billing, and tax details
@@ -18,7 +18,7 @@ Depending on account configuration, the page may show:
 - prices, currency, cycle, renewal, and trial terms;
 - options to change plan or billing cycle;
 - a payment method, charge status, and history;
-- coupons, SMS credits, or billing documents.
+- coupons or billing documents.
 
 A platform capability is not necessarily active for every account. If a block or button is absent, do not assume the flow is available: follow the message on the page or contact support.
 
@@ -30,15 +30,17 @@ Enter payment data only in the secure flow opened by Parallly. The provider and 
 
 ## History, invoices, and tax details
 
-When history is enabled, each movement shows its status and offers a download only when a document exists. Under **Settings → Tax details**, complete the fields requested for the account. Electronic invoicing, formats, and fiscal validity depend on the country and an enabled integration; saving tax details alone does not guarantee that a document will be issued.
+When history is enabled, each movement shows its status and offers a download only when a document exists. Under **Settings → Electronic invoicing**, complete the fields requested for the account. Electronic invoicing, formats, and fiscal validity depend on the country and an enabled integration; saving tax details alone does not guarantee that a document will be issued.
 
-## Pause, cancellation, coupons, and SMS credits
+## Pause, cancellation, and coupons
 
-These actions are available only when they appear on the page. Before pausing or cancelling, read the effective date, retained access, and reactivation terms. If coupons or SMS-credit purchases are enabled, the interface shows their validity, price, payment method, and result. SMS is an outbound notification feature and may be disabled for an account.
+These actions are available only when they appear on the page. Before pausing or cancelling, read the effective date, retained access, and reactivation terms. If coupons are enabled, the interface shows their validity, price, payment method, and result. SMS is a retired product: there are no credits to buy and no balance to top up (see **SMS (retired product)**).
 
 ## Limits and usage
 
 Usage bars state the applicable period and current capacity. When a limit is reached, behavior depends on the resource: the page explains whether to free space, wait for the next period, or choose another option. Do not use quotas copied from a different account.
+
+Included replies are subject to the plan’s monthly AI spending limit. Long conversations, tools and advanced models consume more budget: AI may pause before the reply quota is exhausted. WhatsApp messages are paid separately to Meta.
 
 ## What Meta charges separately for WhatsApp
 
@@ -62,9 +64,7 @@ It depends on the available option. Registration and **Plan & Billing** show the
 No. They are two separate payments: the plan is the software, and the messages WhatsApp delivers are paid by your business to Meta with the payment method on your WhatsApp Business account.
 
 **How do I get an invoice?**
-Check the history and **Tax details**. If no download or issuance status appears, contact support; do not assume a fiscal integration is active.
+Check the history and **Settings → Electronic invoicing**. If no download or issuance status appears, contact support; do not assume a fiscal integration is active.
 
 Need help with an operation? Write to https://parallly-chat.cloud/support and include the status message, without sharing sensitive payment information.
 
-
-Included replies are subject to the plan’s monthly AI spending limit. Long conversations, tools and advanced models consume more budget: AI may pause before the reply quota is exhausted. WhatsApp messages are paid separately to Meta.

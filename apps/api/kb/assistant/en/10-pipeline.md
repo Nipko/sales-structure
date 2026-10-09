@@ -8,20 +8,15 @@ keywords: ["funnel", "sales funnel", "pipeline", "kanban", "stages", "opportunit
 
 # Sales funnel (pipeline)
 
-The sales funnel is your kanban board: every sales opportunity is a card and every column is a stage in your process (for example: new → qualified → proposal → won). You'll find it in the sidebar under **Sales Funnel**.
+The sales funnel is your kanban board: every sales opportunity is a card and every column is a stage in your process (for example: new → qualified → proposal → won). You'll find it in the sidebar under **Commercial → Sales Funnel**. Depending on your business type the menu may call it **Opportunities**, **Deals**, **Patient Journey** or **Sales**: it is the same screen, and its title follows the name you see in the menu.
 
 Each contact shows up as **a single card**, even if they message you through several channels, so the board doesn't fill up with duplicates.
 
-At the top of the board you'll see four indicators: **Total value** (the sum of all open opportunities), **Weighted** (value × probability of each opportunity's current stage), **Opportunities** (how many there are) and **Average** (average value per opportunity).
+## What you see on the board
 
-## How to create an opportunity
-
-1. Go to **Sales Funnel** in the sidebar.
-2. Click **New deal**.
-3. Fill in the form: **Contact**, **Title** (e.g. "Product X sale"), **Value ($)**, initial **Stage** and optional **Notes**.
-4. Save. The card appears in the column of the stage you chose.
-
-On top of that, when your customers chat with the AI agent, opportunities are created and moved forward automatically (see "Auto-advance" below).
+- **Indicators at the top**: **Total value** (the sum of all open opportunities), **Weighted** (value × probability of each opportunity's current stage), **Opportunities** (how many there are) and **Average** (average value per opportunity).
+- **Columns**: your stages, each with its color and its cards.
+- **Cards**: clicking one opens the deal detail: value, **Probability**, **Days in stage**, **Stage history**, assigned owner, and shortcuts to **View conversation** and **View contact**. From there you can also **Archive** the opportunity (it gets marked as lost).
 
 ## How to move an opportunity to another stage
 
@@ -29,7 +24,14 @@ Simply **drag the card** to the column you want. All roles (admin, supervisor an
 
 Configured **stage conditions** can block the move. If the target stage requires certain data (email, phone, full name, minimum score, assigned rep, booked appointment or an active quote), you'll see a message telling you exactly what's missing.
 
-Clicking a card opens the deal detail: value, **Probability**, **Days in stage**, **Stage history**, assigned owner, and shortcuts to **View conversation** and **View contact**. From there you can also **Archive** the opportunity (it gets marked as lost).
+## How to create an opportunity manually
+
+Most opportunities are created on their own from your conversations (when your customers chat with the AI agent, they are created and moved forward automatically: see "Auto-advance" below), but you can also add them by hand:
+
+1. Go to **Sales Funnel** in the sidebar.
+2. Click **New deal**.
+3. Fill in the form: **Contact**, **Title** (e.g. "Product X sale"), **Value ($)**, initial **Stage** and optional **Notes**.
+4. Save. The card appears in the column of the stage you chose.
 
 ## How to customize the stages (order, color and probability)
 

@@ -1,5 +1,7 @@
 # Reanudación de commits incrementales
 
+> **Documento histórico (2026-09-07) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 7 de septiembre de 2026. A petición del usuario, se retomó el registro de los cambios locales acumulados después de `b6db0507`. La revisión automática volvió a autorizar las operaciones normales de Git. No se utilizó un mecanismo alternativo para eludirla.
 
 ## Bloques registrados

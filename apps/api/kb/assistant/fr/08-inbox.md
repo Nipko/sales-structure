@@ -110,6 +110,6 @@ Oui. Configurez des compétences dans les profils de l'équipe (menu **Utilisate
 Elle n'est pas perdue : la conversation réapparaît automatiquement à la date que vous avez choisie et l'historique complet est conservé.
 
 **Des messages SMS arrivent-ils dans cette boîte ?**
-Non. La boîte reçoit WhatsApp, Instagram, Messenger, Telegram et le chat de votre site web. Les SMS partent uniquement comme notification à sens unique vers vos clients, ou comme alerte à votre équipe ; ils n'ouvrent pas de conversation ici.
+Non. La boîte reçoit WhatsApp, Instagram, Messenger, Telegram et le chat de votre site web. Le SMS est un produit retiré et n'ouvre pas de conversations ici.
 
 Besoin d'aide supplémentaire ? Écrivez-nous sur https://parallly-chat.cloud/support

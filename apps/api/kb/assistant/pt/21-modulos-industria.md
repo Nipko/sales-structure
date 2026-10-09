@@ -15,7 +15,7 @@ Os setores com oferta atual são saúde, moda e beleza (no cadastro aparece como
 ## Tipos de negócio que você não pode escolher hoje
 
 - **Na lista de espera (8)**: Planejamento de casamentos (planejamento de eventos), Empreiteiro geral (construção), Incorporadora imobiliária, Pagamentos e cobranças (finanças), Marketplace / E-commerce (varejo), Suporte de TI e MSP (tecnologia), Seguradora e Especialista em saúde (seguros). Existem como tipos, mas a operação completa continua fechada e o cadastro não os oferece.
-- **Somente contas existentes (5)**: Construção e projetos (imobiliário), Fintech (finanças), Consultoria TI (tecnologia), Banho e tosa de veterinária (hoje é Serviços para pets → Banho e tosa) e Wedding planner (fotografia). Uma conta que já os tinha continua funcionando; uma conta nova não pode escolhê-los.
+- **Somente contas existentes (5)**: Construção e projetos (imobiliário), Fintech (finanças), Consultoria TI (tecnologia), Banho e tosa de veterinária (hoje é Serviços para pets → Banho e tosa) e Wedding planner (fotografia). Uma conta que já os tinha continua funcionando; uma conta nova não pode escolhê-los. Além disso, as contas antigas de boutique e de pet shop agora aparecem como Varejo → Moda e roupas, e as de delivery como Restaurantes → Fast food.
 
 ## Onde os módulos aparecem
 
@@ -44,7 +44,7 @@ O nome do módulo muda conforme o setor e o tipo de negócio. O módulo de agend
 - **Seguros**: **Seguros** (no menu, «Apólices») em corretor, vida e auto.
 - **Serviços domésticos**: **Solicitações** (no menu, «Serviços») e **Pacotes e serviços**.
 - **Serviços para pets**: banho e tosa, passeios e adestramento usam a agenda de reservas e **Pets**; creche e hotel canino usam **Aluguéis e estadias** (no menu, «Estadias»), **Pets** e **Pacotes e serviços**.
-- **Fotografia**: **Sessões fotográficas** (no menu, «Sessões» ou «Pacotes») e **Pacotes e serviços**.
+- **Fotografia**: **Sessões fotográficas** (no menu, «Sessões»; na fotografia de casamentos, «Sessões fotográficas») e **Pacotes e serviços**.
 - **Outros**: **Pedidos** e **Inventário**.
 
 **Pacotes e serviços** é o catálogo do que o negócio vende, com duração, preço e capacidade, para atividades que não agendam por faixas de horário. As telas **Estadias**, **Reservas de tours**, **Ordens da oficina** e **Casos** são registros do trabalho do dia: é ali que você opera as estadias, as saídas de tours, os serviços da oficina e os processos.

@@ -8764,7 +8764,7 @@
         "Drag a card between columns to change its stage; for example, move a lead from 'Contacted' to 'Qualified' once they confirm interest.",
         "Dropping a card into a terminal stage (Won/Lost) can require approval; pending ones show a yellow badge.",
         "Each stage's value and probability feed the sales forecast shown above the board.",
-        "Customize stage names, colors and probabilities in Settings → Tools → Pipeline stages.",
+        "Customize stage names, colors and probabilities in Settings → CRM & operations → Pipeline stages.",
         "Use the search and filters to focus on an agent, a channel, or deals with an SLA at risk."
       ]
     },
@@ -8792,12 +8792,12 @@
     },
     "broadcast": {
       "title": "How do I create and send a broadcast campaign?",
-      "description": "Broadcast lets you send bulk messages to your contacts via WhatsApp or Email in one shot, with real-time delivery and read tracking. Use it for promotions, important announcements, or re-engaging inactive customers.",
+      "description": "Broadcast lets you send bulk messages to your contacts via WhatsApp, with delivery and read tracking. Campaigns go out as Meta-approved templates, and the current editor is not certified end to end for production: prepare drafts and coordinate the first real send with support.",
       "tips": [
-        "Click '+ Create' and choose the channel (WhatsApp or Email); for WhatsApp, enter the exact name of your Meta-approved template in the 'Template' field.",
+        "Click '+ Create'. WhatsApp is the only channel available: in 'WhatsApp template' enter the exact name of a template already approved by Meta (you can see them under Channels › WhatsApp › View all templates). Hand-written text is not a template and WhatsApp rejects it.",
         "Under 'Audience', pick 'All contacts' to reach your entire base, or select a saved 'Segment' to target a specific group (e.g., qualified leads from this month).",
         "Toggle 'A/B Test' (available on Pro+ plans) to test two message versions and let the platform identify the winner based on read rate.",
-        "Leave the date field empty to save as a draft and send manually with 'Send now', or schedule an exact date and time for automatic delivery.",
+        "Leave the date field empty to save as a draft. A scheduled campaign has no cancel action and 'Send now' shares the same editor limitation: do not use them in production without testing with support first.",
         "Once sent, click the campaign to see metrics: recipients, delivered (green), and read (blue) on the progress bar.",
         "From 1 October 2026 Meta charges YOUR own WhatsApp Business account for every delivered message, and a campaign goes out as an approved template: it does not use the month's free service deliveries. Before confirming the send you will see how many deliveries it may produce; the spend per number per month is in Channels › WhatsApp."
       ]
@@ -8874,7 +8874,7 @@
       "tips": [
         "Under 'Account' you can change your password, enable 2FA, and set your notification schedule so you are not interrupted outside your shift.",
         "Under 'Company' you will find 'Business Hours': configure your actual working days and times so the AI agent knows when human support is available.",
-        "Under 'Operations' customize the pipeline stages and the lead scoring weights to match your own sales process.",
+        "Under 'CRM & operations' customize the pipeline stages and the lead scoring weights to match your own sales process.",
         "Under 'Communication' create macros with frequent replies so your human agents can respond faster from the Inbox.",
         "Under 'Integrations' connect outbound webhooks, your Web Chat, or a vertical integration (Toast, Mindbody, Cliniko) to sync data with your external tools."
       ]
@@ -9870,6 +9870,77 @@
         "Click 'Sync from Meta' to import templates already approved in your Meta Business Manager account. This updates the status (APPROVED / PENDING / REJECTED) of each template.",
         "A PENDING template can take from minutes to 24 hours to be reviewed by Meta. APPROVED templates appear in green and can already be used in broadcast campaigns or the AI agent.",
         "If a template is REJECTED, check the rejection reason shown on the card (e.g. 'Promotional content in UTILITY category'). Adjust the content to match the correct category and create a new version."
+      ]
+    },
+    "stays": {
+      "title": "How do I manage accommodation bookings?",
+      "description": "This screen gathers the stays of all your accommodations with their guest, dates, status and origin: Agent if the AI agent took it, Manual if your team entered it. Use it for day-to-day work without opening each accommodation.",
+      "tips": [
+        "Search by guest name, email or phone and filter by status: Confirmed, Pending, Awaiting payment or Cancelled.",
+        "Click 'New booking' to enter a stay by hand: pick the accommodation, check-in, check-out and the guest's details. The screen checks on the spot that those dates are free.",
+        "When you cancel a booking, the dates are freed immediately and the agent can offer them again.",
+        "The Origin column tells you whether the AI agent or your team created the booking; both live in the same list."
+      ]
+    },
+    "tourBookings": {
+      "title": "How do I see my tour bookings?",
+      "description": "This screen groups bookings by departure day and adds up how many travellers leave each day, without opening each package. Each row shows the traveller, their phone, the tour, the status and whether the AI agent took the booking or it was entered by hand.",
+      "tips": [
+        "Search by traveller, phone or tour name and filter by status: Confirmed, Reserved, Awaiting payment or Cancelled.",
+        "Each departure day shows the total of travellers: use it to confirm seats and coordinate guides or transport.",
+        "A booking in 'Awaiting payment' is not paid yet: follow up with the customer before counting on that seat.",
+        "This screen is read-only. Packages, their capacity and their prices are set up in 'Tours & Packages', under Catalogue & resources."
+      ]
+    },
+    "serviceCatalog": {
+      "title": "How do I manage my packages and services?",
+      "description": "This is where you define what your business sells: each package or service with its duration, price and capacity. The AI agent only offers what is loaded and active, so without at least one package it answers that it has nothing to offer.",
+      "tips": [
+        "Click 'New service' and fill in the name, duration and price. If you do not charge a fixed amount, choose 'It's free' or 'Quoted case by case'.",
+        "An example price that came with your trade's recipe is never said out loud: confirm it with 'Confirm price' or type your own so the agent can state it.",
+        "Deactivate a service instead of deleting it if you only want to stop offering it for a while.",
+        "The capacity of each service limits how many bookings it accepts at the same time."
+      ]
+    },
+    "repairOrders": {
+      "title": "How do I run the workshop orders?",
+      "description": "Each order follows a vehicle from intake to delivery. It keeps what the customer reported apart from the technical diagnosis and stores the estimate and the customer's decision with its evidence. The agent can open the intake, but the diagnosis is always written by your team.",
+      "tips": [
+        "Click 'New order', pick the contact and enter the license plate or the VIN: one of the two is required to identify the vehicle. Write the symptoms as the customer tells them.",
+        "The status moves like this: Intake, Diagnosis/estimate, Awaiting approval, Approved, In repair, Ready for delivery and Delivered. Estimate rejected and Cancelled also exist.",
+        "When you publish the estimate, the order waits for the customer's approval. Use 'Record approval' or 'Record rejection' and state how and when they answered (for example, a phone call). The agent cannot change the amount.",
+        "The indicators at the top count open orders, orders awaiting approval, orders ready for delivery and orders delivered in 30 days. Search by plate, VIN, vehicle or reason.",
+        "The history of each order is immutable: every change is recorded."
+      ]
+    },
+    "cases": {
+      "title": "How do I see the firm's cases?",
+      "description": "A case is a client's file: which stage it is in and when it last moved. It is opened when an inquiry moves forward in the funnel, and the agent can report its status over chat once it exists.",
+      "tips": [
+        "Filter by Open, Closed or All; you see the open ones by default.",
+        "Each row shows the reference, the client, the stage and the last movement.",
+        "Use 'Open conversation' to open the chat with that client.",
+        "This screen is read-only: cases are opened from the funnel."
+      ]
+    },
+    "resourceRentals": {
+      "title": "How do I manage vehicle rentals and pet stays?",
+      "description": "This is where you run vehicle bookings and pet stays (hotel or day care): review requests, record hand-overs, returns, check-ins and check-outs, and cancel when needed. Depending on your business type you will see the type of operation that applies to you.",
+      "tips": [
+        "Filter by operation type and status: Pending review, Reserved, Vehicle picked up or returned, Pet checked in or out, Rejected or Cancelled.",
+        "A vehicle request arrives as 'Pending review': validate the requirements before reserving it.",
+        "Each row offers only the actions that fit its status, such as 'Hand over vehicle', 'Record return', 'Check in' or 'Check out'. 'Details' opens the detail.",
+        "Before creating a booking, set up the resources: vehicles under Vehicles, pets under Pets and, for stays, an Appointments service with the hotel or day-care category and a capacity above zero."
+      ]
+    },
+    "vehicles": {
+      "title": "How do I manage the vehicle inventory?",
+      "description": "This screen holds the vehicle inventory the AI agent shows to interested people and, in the Test drives tab, the scheduled test drives. Keep the status of each vehicle up to date so the agent does not offer one that is already sold.",
+      "tips": [
+        "Click 'Add vehicle' and fill in make and model (required), year, price, mileage and description. To load many at once, use the file import.",
+        "Filter by Available, Reserved or Sold. The 'In service' status marks a vehicle under maintenance.",
+        "When you mark a vehicle as sold, the screen asks you to confirm the final sale price.",
+        "The Test drives tab shows the last 100 test drives. New bookings use the Appointments agenda; older records are shown as historical."
       ]
     },
     "showMe": "Show me how",
@@ -12217,7 +12288,7 @@
       "enrolling": "Enrolling…",
       "enrolledToast": "{enrolled} enrolled · {optout} opted-out · {dup} already in",
       "enrollError": "Couldn't enroll the segment.",
-      "hint": "Respects opt-outs and never double-enrolls. Cap of 500 per run."
+      "hint": "Respects opt-outs and never double-enrolls. Cap of 300 per run."
     }
   },
   "knowledgeGap": {

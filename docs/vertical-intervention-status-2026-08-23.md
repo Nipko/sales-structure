@@ -1,5 +1,7 @@
 # Cierre autoritativo de la intervención vertical — 23 de agosto de 2026
 
+> **Documento histórico (corte del 23-ago-2026) — no refleja el estado actual: las cifras de perfiles y alertas son las de esa fecha. El plan vigente es `vertical-approved-implementation-plan-2026-08-24.md` y la bitácora `vertical-implementation-execution-log.md`; la lista vigente de industrias y tipos de negocio está en `business-types-catalog.md`.**
+
 ## 1. Dictamen
 
 La intervención interna quedó **cerrada y verificada localmente para el alcance declarado en el ledger** de los perfiles `build` y `hybrid`: el ledger ejecutable no reporta trabajo de código abierto y el sello agregado de pruebas, tipos, builds, lint y workflows de esta tanda quedó verde con resultados observados en la sección 6. El ledger reconcilia las alertas registradas; no sustituye una nueva auditoría de mercado ni puede descubrir una omisión que nunca se declaró. Esto **no** significa que 54 subtipos estén certificados en producción ni que las 18 verticales hayan alcanzado paridad comercial con sus benchmarks. Significa algo más preciso: las brechas históricas registradas que dependían únicamente del repositorio tienen contrato ejecutable y regresión verde; lo que queda está clasificado como decisión, revisión experta, evidencia de proveedor, migración/preflight de producción o piloto.

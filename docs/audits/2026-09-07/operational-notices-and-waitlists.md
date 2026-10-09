@@ -1,5 +1,7 @@
 # Confirmación, listas de espera y entrega durable
 
+> **Documento histórico (2026-09-07) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 ## Resultado y alcance
 
 La confirmación de una cita pagada conserva `calendar_sync_outbox` y añade el aviso al cliente en la misma transacción que confirma la cita. Una caída posterior de Redis ya no elimina el aviso. La promoción de una reserva de gimnasio y la promoción educativa también escriben su aviso dentro de la transacción que asigna el cupo y ajusta créditos/capacidad.

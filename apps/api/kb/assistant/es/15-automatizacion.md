@@ -61,7 +61,7 @@ Las **Secuencias Drip** envían varios mensajes espaciados en el tiempo: ideales
 3. Con **Agregar paso** crea cada mensaje. Cada paso tiene:
    - **Espera**: cuánto esperar antes de enviarlo (**Minutos**, **Horas** o **Días**).
    - **Tipo de mensaje**: **Plantilla WhatsApp**, **Mensaje personalizado** o **Generado por IA** (el agente redacta el mensaje según el contexto de ese lead).
-4. En **Detener si**, usa **El contacto responde** para no insistirle a alguien que ya te está hablando. Si pide no recibir más mensajes (opt-out), la plataforma también detiene los envíos. La opción visual **El contacto convierte** aún no se ejecuta automáticamente en esta versión: desinscribe manualmente al contacto cuando convierta.
+4. En **Detener si**, deja marcadas las condiciones de parada, en especial **El contacto responde**, para no insistirle a alguien que ya te está hablando (abajo, cuándo se detiene la secuencia).
 5. Activa la secuencia con el interruptor **Activa**.
 
 En cada tarjeta verás el contador **Inscritos**: cuántos contactos están dentro de ese flujo en este momento.
@@ -72,12 +72,29 @@ En cada tarjeta verás el contador **Inscritos**: cuántos contactos están dent
 - Día 2 — mensaje de valor (beneficio, financiación, novedad)
 - Día 5 — invitación concreta ("¿Agendamos una llamada? Responde SÍ")
 
+### Cuándo se detiene la secuencia para un contacto
+
+- **El contacto responde** a un mensaje de la serie, cuando la condición de parada por respuesta está activada.
+- El contacto pide no recibir más mensajes (opt-out).
+
+La opción visible **El contacto convierte** aún no se ejecuta automáticamente en esta versión. Desinscribe manualmente al contacto cuando convierta.
+
+### Prospectar un segmento con una secuencia
+
+Dentro de una secuencia activa encontrarás **Prospectar desde el CRM**: eliges un segmento de leads y pulsas **Inscribir segmento** para inscribirlos de una vez (hasta 300 por envío). El primer paso debe ser una plantilla de WhatsApp aprobada, porque WhatsApp solo permite plantillas para iniciar una conversación en frío. La plataforma respeta los opt-outs y nunca inscribe a nadie dos veces.
+
 ## Cómo instalar una plantilla lista para usar
 
 1. Ve a **Automatización → Plantillas**.
 2. Usa el buscador y los filtros de **Categoría** e **Industria** para encontrar la ideal. Hay plantillas de **Nutrición de leads**, **Recordatorios de citas**, **Carrito abandonado**, **Secuencia de bienvenida**, **Reactivación**, **Recolección de feedback**, **Tratamiento VIP** y **Fuera de horario**. Si tu negocio es de salud, inmobiliaria, restaurante, etc., verás primero las de tu industria.
 3. Haz clic en **Instalar**: un modal te muestra el disparador, las acciones y las **Variables** que puedes ajustar (textos, tiempos) antes de confirmar con **Instalar plantilla**.
 4. Al terminar, usa **Ver reglas** para ir directo a tus reglas. La regla instalada queda **inactiva** por defecto: revisa los textos y actívala cuando estés listo.
+
+## Horarios: cuándo salen los mensajes automáticos
+
+- El tiempo de una secuencia, o de una acción con espera, cuenta desde el evento que la disparó (por ejemplo, "2 días después de capturar el lead").
+- Tu horario de atención se configura aparte, en **Configuración → Horarios de atención**. Ahí defines los días y horas en que atiendes y el mensaje de fuera de horario. Las reglas que revisan el horario usan el mismo horario que el agente en las conversaciones.
+- En la galería de plantillas, la categoría **Fuera de horario** trae reglas listas para responder automáticamente cuando te escriben fuera de tu horario.
 
 ## Disponibilidad y capacidad
 

@@ -1,5 +1,7 @@
 # Registro, corrección y evidencia de mascotas
 
+> **Documento histórico (2026-09-07) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 Estado: implementación preparada como bloque incremental sobre `6925009c` y la consolidación de vehículos, sin despliegue ni migración de tenants existentes. Fecha de la auditoría original: 7 de septiembre de 2026. Continúa la ejecución del plan completo.
 
 ## Problemas corregidos

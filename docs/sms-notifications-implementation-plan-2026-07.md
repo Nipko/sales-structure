@@ -1,5 +1,7 @@
 # Notificaciones por SMS — Plan de implementación (Jul 2026)
 
+> **Documento histórico (jul-2026) — el producto SMS fue RETIRADO (ago-2026; `sms_product_retired`). El plan no se continúa.**
+
 > Estado: **Fases 1-3 completadas** (1-2 backend+dashboard; 3 backend verificado, falta el botón "enviar SMS" en el login del dashboard). Fase 4 siguiente. Documento vivo; actualizar el checklist por fase al avanzar.
 
 ## 1. Objetivo

@@ -1,5 +1,7 @@
 # Costo local de las firmas de evaluación
 
+> **Documento histórico (2026-09-07) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 Medición del 7 de septiembre de 2026 a las 15:14 UTC, con PostgreSQL, pgvector y PrismaClient reales en un contenedor desechable. Se ejecutó el método de producción `EvaluationRevisionService.capture` y su comprobación `assertCurrent`; la firma del router fue una constante de prueba y no hubo llamadas a modelos.
 
 | Mensajes de 1.024 caracteres | Documentos de 4.096 caracteres | Vectores de 1.536 dimensiones | Primera captura (ms) | Capturas posteriores (ms) | Comprobar vigencia (ms) |

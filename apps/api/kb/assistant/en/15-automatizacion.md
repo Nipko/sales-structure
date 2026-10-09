@@ -74,7 +74,7 @@ The visible **The contact converts** option is not yet enforced automatically in
 
 ### Prospecting a segment with a sequence
 
-Inside an active sequence you'll find **"Prospect from CRM"**: you pick a lead segment and click **"Enroll segment"** to enroll them all at once (up to 500 per batch). The first step must be an approved WhatsApp template, because WhatsApp only allows templates to start a cold conversation. The platform honors opt-outs and never enrolls anyone twice.
+Inside an active sequence you'll find **"Prospect from CRM"**: you pick a lead segment and click **"Enroll segment"** to enroll them all at once (up to 300 per batch). The first step must be an approved WhatsApp template, because WhatsApp only allows templates to start a cold conversation. The platform honors opt-outs and never enrolls anyone twice.
 
 ## How to install an automation template
 
@@ -89,7 +89,7 @@ If you'd rather not start from scratch, go to **AI & Growth → Templates**:
 ## Timing: when do automatic messages go out?
 
 - The timing of a sequence, or of an action with a delay, counts from the event that triggered it (e.g. "2 days after the lead was captured").
-- Your business hours are configured separately, in **Settings** → **Business Hours**. That's where you set your open days and hours and the after-hours message.
+- Your business hours are configured separately, in **Settings** → **Business Hours**. That's where you set your open days and hours and the after-hours message. Rules that check the hours use the same schedule as the agent in conversations.
 - In the template gallery, the **After hours** category comes with ready-made rules to reply automatically when people message you outside your hours.
 
 ## Availability and capacity

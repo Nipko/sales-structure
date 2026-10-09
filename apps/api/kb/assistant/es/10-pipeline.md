@@ -8,7 +8,7 @@ keywords: ["embudo", "pipeline", "kanban", "etapas", "oportunidades", "negocios"
 
 # Embudo de ventas (pipeline)
 
-El embudo de ventas es tu tablero kanban de oportunidades: cada tarjeta es un negocio en curso con un contacto, y las columnas son las etapas de tu proceso de venta. Lo encuentras en la barra lateral, en **Embudo de ventas**.
+El embudo de ventas es tu tablero kanban de oportunidades: cada tarjeta es un negocio en curso con un contacto, y las columnas son las etapas de tu proceso de venta. Lo encuentras en la barra lateral, en **Comercial → Embudo de ventas**. Según tu tipo de negocio el menú puede llamarlo **Oportunidades**, **Negociaciones**, **Seguimiento** o **Ventas**: es la misma pantalla, y su título sigue al nombre que ves en el menú.
 
 Para no duplicar información, el tablero muestra **una tarjeta por contacto**, aunque esa persona tenga varias conversaciones contigo.
 

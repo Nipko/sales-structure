@@ -1,5 +1,7 @@
 # Auditoría del bootstrap por vertical — Julio 2026
 
+> **Documento histórico (jul-2026) — no refleja el estado actual: los defectos de bootstrap que describe se corrigieron en `95f758f3`. Ver `vertical-implementation-execution-log.md`.**
+
 > ¿Lo que sembramos por industria llega realmente a la IA y al cliente final del tenant?
 > Método: 4 rastreadores paralelos siguiendo cada dato desde su INSERT hasta su lector en runtime, + ronda de refutación adversarial sobre los hallazgos graves.
 > Resultado: 32 hallazgos, 12 graves, 6 verificados adversarialmente, 0 refutados (la verificación bajó severidad en 3 al encontrar mitigantes reales).

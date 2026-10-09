@@ -1,5 +1,7 @@
 # Revisión independiente del cierre de Claude y preparación de octubre
 
+> **Documento histórico (2026-09-10) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 Fecha: 10 de septiembre de 2026. Revisión focalizada de código, herramientas de ensayo, contratos y evidencia; no es una nueva ejecución de toda la regresión ni una auditoría exhaustiva de cada archivo del PR.
 
 ## Dictamen

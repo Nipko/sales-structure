@@ -28,8 +28,12 @@ Una plataforma SaaS completa que permite a empresas en Latinoamerica automatizar
 - Telegram Bot API
 - Web Chat Widget
 - Email tiene adaptador e ingreso tecnico interno, pero no configuracion autoservicio ni certificacion conversacional E2E
-- SMS se ofrece por separado para notificaciones one-way con creditos; no es un canal conversacional
+- SMS es un producto retirado (apagado en toda la plataforma); nunca fue un canal conversacional
 - Arquitectura de adaptadores extensible para agregar nuevos canales
+
+**Que negocios soporta**
+- 20 industrias ("verticales"; 18 se pueden elegir al registrarse) y 80 tipos de negocio canonicos (72 seleccionables y 8 en lista de espera; 5 configuraciones mas siguen operando solo para cuentas existentes). La lista completa y su disponibilidad esta en [docs/business-types-catalog.md](docs/business-types-catalog.md).
+- El agente, las etapas del embudo y las pantallas del menu se adaptan a la industria y al tipo de negocio que se eligen al registrarse.
 
 **Agente de IA**
 - LLM Router inteligente con 5 proveedores (OpenAI, Anthropic, Google Gemini, DeepSeek, xAI Grok)
@@ -91,7 +95,7 @@ Una plataforma SaaS completa que permite a empresas en Latinoamerica automatizar
 - Session timeout 60min con warning modal + sync multi-tab
 - Google OAuth + email 2FA + password reset
 - Cifrado AES-256-GCM para tokens de canales
-- 4 roles: super_admin, tenant_admin, tenant_supervisor, tenant_agent
+- 5 roles: super_admin, tenant_admin, tenant_supervisor, tenant_agent, tenant_viewer
 - Opt-out detection automatico + consent tracking
 - Audit logging
 
@@ -114,7 +118,7 @@ Una plataforma SaaS completa que permite a empresas en Latinoamerica automatizar
 Internet -> Cloudflare (SSL + Zero Trust Tunnel) -> Docker Stack (VPS 8GB RAM)
     |-- Landing           (Next.js static, port 80)
     |-- Dashboard         (Next.js 16, port 3001)
-    |-- API               (NestJS 10, port 3000, 88 module declaration files, Pino + Bull Board)
+    |-- API               (NestJS 10, port 3000, 101 archivos `*.module.ts`, Pino + Bull Board)
     |-- Worker            (BullMQ processors + cron jobs)
     |-- WhatsApp Service  (NestJS 10, port 3002)
     |-- PostgreSQL        (pgvector, schema-per-tenant)
@@ -169,8 +173,8 @@ Cliente (WhatsApp/IG/Messenger/Telegram/Web Chat)
 
 ```
 apps/
-  api/          -- NestJS 10, 88 module declaration files. Core business logic
-  dashboard/    -- Next.js 16, 143 filesystem routes. Admin panel + agent inbox
+  api/          -- NestJS 10, 101 archivos `*.module.ts`. Core business logic
+  dashboard/    -- Next.js 16, 163 paginas (149 en /admin, 14 fuera). Admin panel + agent inbox
   whatsapp/     -- NestJS 10. Embedded Signup + Meta webhook router
   landing/      -- Next.js static export. Marketing site (4 idiomas)
   mobile/       -- Expo / React Native. App movil distribuida mediante EAS/stores
@@ -185,7 +189,7 @@ docs/           -- Architecture specs, analytics manual, API reference
 
 ---
 
-## API Modules (88 module declaration files)
+## API Modules (101 archivos `*.module.ts`)
 
 | Categoria | Modulos |
 |-----------|---------|
@@ -199,11 +203,11 @@ docs/           -- Architecture specs, analytics manual, API reference
 | **Media** | media (upload, resize webp, tags, logo, serve) |
 | **Scheduling** | appointments (CRUD, availability, blocked dates, conflicts) |
 | **Identidad** | identity (perfiles unificados, merge suggestions) |
-| **Analytics** | analytics, dashboard-analytics (12 endpoints), agent-analytics, alerts, scheduled-reports, metrics-aggregation, bi-api, csat-trigger, compliance, audit |
+| **Analytics** | analytics, dashboard-analytics (14 endpoints), agent-analytics, alerts, scheduled-reports, metrics-aggregation, bi-api, csat-trigger, compliance, audit |
 
 ---
 
-## Dashboard (143 filesystem routes)
+## Dashboard (163 paginas: 149 en /admin, 14 fuera)
 
 | Seccion | Paginas |
 |---------|---------|
@@ -214,7 +218,7 @@ docs/           -- Architecture specs, analytics manual, API reference
 | **IA** | Agent Config (wizard 6 pasos + modo custom), AI Settings |
 | **Automatizacion** | Rules wizard (4 pasos), Settings |
 | **Analytics** | Analytics V2 (8 tabs), Agent Performance (4 tabs legacy) |
-| **Canales** | Overview, WhatsApp, Instagram, Messenger, Telegram y Web Chat; la pantalla Email no tiene configuracion autoservicio certificada; SMS es one-way |
+| **Canales** | Overview, WhatsApp, Instagram, Messenger, Telegram y Web Chat; `/admin/channels/email` redirige a Canales (Email no tiene configuracion autoservicio certificada); SMS esta retirado |
 | **Identidad** | Merge Suggestions |
 | **Settings** | General, Custom Attributes, Macros, Pre-Chat Forms, Media, Email Templates, Change Password, Alertas & Reportes |
 | **Scheduling** | Appointments (calendario, lista, disponibilidad) |
@@ -223,7 +227,7 @@ docs/           -- Architecture specs, analytics manual, API reference
 
 ---
 
-## BullMQ Queues (5)
+## BullMQ Queues (13 registradas; se detallan las 5 originales)
 
 | Queue | Concurrencia | Rate Limit | Proposito |
 |-------|-------------|-----------|---------|
@@ -233,9 +237,11 @@ docs/           -- Architecture specs, analytics manual, API reference
 | nurturing | 5 | 10/s | Secuencias de follow-up |
 | conversation-snooze | 1 | -- | Wake-up de conversaciones snoozeadas |
 
+Las otras ocho: `inbound-messages` (ingreso durable: cada webhook encola y luego confirma), `agent-release-evaluation`, `agent-simulation`, `eval-gate`, `quality-scoring`, `crm-import`, `crm-sync` y `fiscal-invoice`.
+
 ---
 
-## Cron Jobs (7)
+## Cron Jobs (muestra de 7; hay 93 decoradores `@Cron` en el API)
 
 | Horario | Que hace |
 |---------|----------|
@@ -291,9 +297,9 @@ cd apps/landing && npx tsc --noEmit    # Landing types
 
 ## Deploy (Produccion)
 
-Push a `main` -> GitHub Actions -> build 5 Docker images -> SSH deploy -> migrate (DIRECT_DATABASE_URL) -> restart containers
+Push a `main` -> GitHub Actions (`validate` -> `build-and-push` -> `deploy`; desde el 2026-10-07 el environment `production` no pide aprobacion manual) -> build 5 Docker images -> SSH deploy -> migrate (DIRECT_DATABASE_URL) -> restart containers
 
-VPS: Hostinger Ubuntu, Docker (10 containers incl. PgBouncer), Cloudflare Tunnel
+VPS: Hostinger Ubuntu, Docker (14 servicios en `infra/docker/docker-compose.prod.yml`, incluido PgBouncer), Cloudflare Tunnel
 
 ---
 
@@ -307,7 +313,9 @@ VPS: Hostinger Ubuntu, Docker (10 containers incl. PgBouncer), Cloudflare Tunnel
 | [docs/observability-manual.md](docs/observability-manual.md) | Manual de observabilidad: Pino, Bull Board, Grafana, Loki, Uptime Kuma |
 | [docs/SECURITY.md](docs/SECURITY.md) | Autenticacion, JWT, RBAC, cifrado |
 | [docs/API_REFERENCE.md](docs/API_REFERENCE.md) | Endpoints REST, WebSocket, BullMQ |
-| [docs/CHANGELOG.md](docs/CHANGELOG.md) | Historial de cambios |
+| [docs/CHANGELOG.md](docs/CHANGELOG.md) | Historial de cambios (congelado en ago-2026; ver el aviso al inicio del archivo) |
+| [docs/README.md](docs/README.md) | Indice completo de la documentacion, agrupado por tema |
+| [docs/product-capabilities-reference.md](docs/product-capabilities-reference.md) | Capacidades, roles, planes y superficies vigentes |
 
 ---
 

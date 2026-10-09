@@ -1,5 +1,7 @@
 # Los dos canales que faltaban, el turno entero y los tenants que ya existen
 
+> **Documento histórico (2026-09-08) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 8 de septiembre de 2026. Continuación del [bloque de bloqueos cerrados](dispatch-blockers-closed.md), sobre los tres huecos que ese documento dejaba anotados de E3. Sin push, sin despliegue, sin activación productiva, sin llamadas a proveedores reales.
 
 ## Commits

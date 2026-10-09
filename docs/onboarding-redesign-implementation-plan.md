@@ -1,5 +1,7 @@
 # Plan técnico de implementación — Onboarding guiado (Q2 2026)
 
+> **Documento histórico (31-may-2026) — su «plan listo para ejecución» ya se ejecutó y fue superado; el onboarding vigente está en `onboarding-implementation-closeout-2026-09-18.md`.**
+
 > **Qué es esto.** El plan de ejecución, file-by-file, del rediseño descrito en `docs/onboarding-redesign-2026-q2.md`. Convierte la Parte 8 (roadmap) en tareas concretas con archivos, endpoints, claves i18n y verificación. **Cuando se implemente, cada cambio de UI actualiza i18n en los 4 idiomas (es/en/pt/fr)** y se verifica con `tsc --noEmit` + `test:bootstrap`.
 >
 > **Hallazgo clave del recon:** casi todo el stack de conexión **ya existe**. Este plan es mayormente **cablear y reordenar componentes existentes**, no construir. La sección 1 es el inventario de reuso.

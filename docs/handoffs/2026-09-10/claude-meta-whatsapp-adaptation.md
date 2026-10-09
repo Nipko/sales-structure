@@ -1,5 +1,7 @@
 # Adenda para Claude: adaptación Meta/WhatsApp, costos y planes
 
+> **Documento histórico (2026-09-10) — no refleja el estado actual; ver `docs/product-capabilities-reference.md` y `docs/README.md`.** Es una instrucción que se pasó a otro agente en esa fecha: lo que dice sobre no hacer push, merge o deploy ya no aplica (desde el 2026-10-07 un merge a `main` con CI verde despliega solo) y sus cifras (perfiles, escenarios, tareas) son las de ese día.
+
 Fecha: 10 de septiembre de 2026. Se agrega a [la directiva de cierre del release](claude-release-closure-after-pr-review.md). Investigación de partida: [informe completo](../../research/2026-09-10/meta-whatsapp-impacto-rentabilidad-plan.md), con fuentes primarias, auditorías, tarifas oficiales y modelo editable.
 
 ## Mandato y continuidad

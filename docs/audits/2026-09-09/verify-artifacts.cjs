@@ -61,7 +61,7 @@ if (require.main === module) {
     const stale = verify();
     if (stale.length) {
         console.error(`${stale.length} artefacto(s) desactualizado(s): ${stale.join(', ')}.`);
-        console.error('Regenerá con los mismos scripts sin --check.');
+        console.error('Regenera con cada script indicado arriba (sin --check, o con --write según el script).');
         process.exit(1);
     }
     console.log(`todos los artefactos (${GENERATORS.length}) reflejan el codigo actual`);

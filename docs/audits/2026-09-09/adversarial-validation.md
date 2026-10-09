@@ -1,5 +1,7 @@
 # Validación adversarial de los hallazgos previos al despliegue
 
+> **Documento histórico (2026-09-09) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 La directiva pide validar cada hallazgo **con una prueba que reproduzca la
 condición**, no cerrarlo con una explicación. Esto es lo que se ejecutó antes de
 tocar una línea de producción, y lo que respondió el código tal como estaba en

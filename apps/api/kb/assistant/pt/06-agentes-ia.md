@@ -86,7 +86,7 @@ No cabeçalho do editor há um interruptor **Ativo / Inativo**. Um agente **inat
 
 ## Como definir o horário do agente
 
-1. Configure os dias, faixas e fuso de toda a conta em **Configurações → Horário comercial**.
+1. Configure os dias, faixas e fuso de toda a conta em **Configurações → Horário de atendimento**.
 2. No editor do agente, abra **Horário** para revisar esse calendário e decidir se a IA continua respondendo fora dele.
 3. Se desativar a IA fora do horário, escreva a mensagem específica desse agente e salve.
 
@@ -133,7 +133,7 @@ Sim, quando sua conta tiver capacidade. Crie um com o modelo **Consultor de Vend
 Responde o seu agente padrão, se estiver ativo; se não, ninguém responde nesse canal e a **Saúde dos agentes** avisa. Você verá o aviso de canais sem atribuição em **Agente IA** para corrigir com um clique.
 
 **O agente pode responder por SMS?**
-Não. O SMS no Parallly não é um canal de conversa: é usado apenas para notificações de saída com créditos (1 crédito = 1 segmento). As superfícies de conversa em autosserviço são WhatsApp, Instagram, Messenger, Telegram e chat web. Email mantém um adaptador inbound interno, mas não uma configuração de autosserviço certificada.
+Não. O SMS é um produto descontinuado do Parallly e nunca foi um canal de conversa. As superfícies de conversa em autosserviço são WhatsApp, Instagram, Messenger, Telegram e chat web. Email mantém um adaptador inbound interno, mas não uma configuração de autosserviço certificada.
 
 **Mudei as instruções e o agente continua igual, o que eu verifico?**
 Confirme que o salvamento terminou com o aviso verde **Salvo. Seu agente já responde assim.**; se faltava um campo obrigatório, o editor o marca em vermelho e não salva. Depois verifique se essa conexão está atribuída a este agente e não a outro, e se o agente está **Ativo**. No modo revisado, também é preciso revisar e publicar a versão.

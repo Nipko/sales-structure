@@ -110,6 +110,6 @@ Sim. Configure habilidades nos perfis da equipe (menu **Usuários**) para o enca
 Não se perde: a conversa reaparece automaticamente na data que você escolheu e o histórico completo é preservado.
 
 **Chegam mensagens de SMS nesta caixa?**
-Não. A caixa recebe WhatsApp, Instagram, Messenger, Telegram e o chat do seu site. Os SMS só saem como notificação de mão única para seus clientes, ou como aviso para sua equipe; eles não abrem uma conversa aqui.
+Não. A caixa recebe WhatsApp, Instagram, Messenger, Telegram e o chat do seu site. O SMS é um produto descontinuado e não abre conversas aqui.
 
 Precisa de mais ajuda? Fale com a gente em https://parallly-chat.cloud/support

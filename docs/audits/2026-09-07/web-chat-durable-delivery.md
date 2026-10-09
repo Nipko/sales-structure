@@ -1,5 +1,7 @@
 # Transporte durable de Web Chat
 
+> **Documento histórico (2026-09-07) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 El Web Chat utiliza `WidgetMessageStore` como límite común para las respuestas del asistente, las respuestas humanas y las imágenes, enlaces de pago y traspasos derivados de herramientas aprobadas. Un mensaje se confirma en PostgreSQL antes de anunciarlo al gateway. El anuncio entre trabajador y API contiene únicamente tenant, conversación e identificador del mensaje.
 
 ## Identidad y recuperación

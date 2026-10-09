@@ -20,6 +20,7 @@ import { useTranslations } from "next-intl";
 import { Tag } from "lucide-react";
 import { useTenant } from "@/contexts/TenantContext";
 import { PageHeader } from "@/components/ui/page-header";
+import { HelpPanel } from "@/components/ui/help-panel";
 import ServicesTab from "@/components/appointments/ServicesTab";
 import ServiceModal from "@/components/appointments/ServiceModal";
 import { useServiceCatalog } from "@/hooks/useServiceCatalog";
@@ -27,6 +28,7 @@ import { useOperatingCurrency } from "@/hooks/useOperatingCurrency";
 
 export default function ServiceCatalogPage() {
     const t = useTranslations("serviceCatalog");
+    const tHelp = useTranslations("help");
     const ta = useTranslations("appointments");
     const { activeTenantId } = useTenant();
     // La moneda sale del perfil regional del negocio, no del idioma del panel.
@@ -61,6 +63,13 @@ export default function ServiceCatalogPage() {
                 title={t("title")}
                 subtitle={t("subtitle")}
                 icon={Tag}
+            />
+
+            <HelpPanel
+                title={tHelp("serviceCatalog.title")}
+                description={tHelp("serviceCatalog.description")}
+                tips={tHelp.raw("serviceCatalog.tips") as string[]}
+                mediaKey="serviceCatalog"
             />
 
             {/* Un catálogo vacío no es un estado neutro: el agente queda sin

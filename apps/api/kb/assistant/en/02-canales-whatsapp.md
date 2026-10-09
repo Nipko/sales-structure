@@ -256,7 +256,8 @@ Per number and per calendar month, with no carry-over. Not per country, not per 
 **Are Instagram and Messenger charged per message too?**
 Not today. The per-service-message charge starting on 1 October 2026 is WhatsApp's; Instagram, Messenger and Telegram have no per-service-message charge from their provider.
 
+**My WhatsApp Business account already existed: how do I add the payment method?**
+Open https://business.facebook.com/wa/manage/home/, select the WABA listed under Channels → WhatsApp and add a payment method in Overview / payments. Do not reconnect the numbers. Return to the dashboard and select Check with Meta. Unknown does not mean no card; an attached method does not guarantee funds. Since 1 October 2026 an account without a payment method stops delivering service messages, and Meta does not publish that the 1,000 free messages of the month keep going out without a card, so do not count on it.
+
 Still have questions? Write to us at [support](https://parallly-chat.cloud/support).
 
-
-For existing accounts: open https://business.facebook.com/wa/manage/home/, select the WABA listed under Channels → WhatsApp and add a payment method in Overview / payments. Do not reconnect the numbers. Return to the dashboard and select Check with Meta. Unknown does not mean no card; an attached method does not guarantee funds. Meta states that if the account has no payment method on file by September 30, 2026, it stops delivering service messages from October 1. It does not publish that the 1,000 free messages of the month keep going out without a card, so do not count on it: add the payment method before September 30.

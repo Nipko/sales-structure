@@ -8,20 +8,15 @@ keywords: ["funil", "funil de vendas", "pipeline", "kanban", "etapas", "oportuni
 
 # Funil de vendas (pipeline)
 
-O funil de vendas é o seu quadro kanban: cada oportunidade de venda é um cartão e cada coluna é uma etapa do seu processo (por exemplo: novo → qualificado → proposta → ganho). Você o encontra na barra lateral, em **Funil de vendas**.
+O funil de vendas é o seu quadro kanban: cada oportunidade de venda é um cartão e cada coluna é uma etapa do seu processo (por exemplo: novo → qualificado → proposta → ganho). Você o encontra na barra lateral, em **Comercial → Funil de vendas**. Conforme o seu tipo de negócio, o menu pode chamá-lo de **Oportunidades**, **Negociações**, **Acompanhamento** ou **Vendas**: é a mesma tela, e o título dela segue o nome que você vê no menu.
 
 Cada contato aparece com **um único cartão**, mesmo que ele fale com você por vários canais — assim o quadro não fica cheio de duplicados.
 
-Na parte de cima do quadro você vê quatro indicadores: **Valor total** (a soma de todas as oportunidades abertas), **Ponderado** (valor × probabilidade da etapa em que cada uma está), **Oportunidades** (quantas existem) e **Média** (valor médio por oportunidade).
+## O que você vê no quadro
 
-## Como criar uma oportunidade
-
-1. Vá em **Funil de vendas** na barra lateral.
-2. Clique em **Nova oportunidade**.
-3. Preencha o formulário: **Contato**, **Título** (ex.: "Venda do produto X"), **Valor ($)**, **Etapa** inicial e **Notas** opcionais.
-4. Salve. O cartão aparece na coluna da etapa escolhida.
-
-Além disso, quando seus clientes conversam com o agente de IA, as oportunidades são criadas e avançam sozinhas (veja "Auto-avanço" mais abaixo).
+- **Indicadores no topo**: **Valor total** (a soma de todas as oportunidades abertas), **Ponderado** (valor × probabilidade da etapa em que cada uma está), **Oportunidades** (quantas existem) e **Média** (valor médio por oportunidade).
+- **Colunas**: suas etapas, cada uma com sua cor e seus cartões.
+- **Cartões**: ao clicar em um, você abre o detalhe do negócio: valor, **Probabilidade**, **Dias na etapa**, **Histórico de etapas**, responsável atribuído e atalhos para **Ver conversa** e **Ver contato**. De lá você também pode **Arquivar** a oportunidade (ela é marcada como perdida).
 
 ## Como mover uma oportunidade de etapa
 
@@ -29,7 +24,14 @@ Além disso, quando seus clientes conversam com o agente de IA, as oportunidades
 
 As **Condições da etapa** configuradas podem travar o movimento. Se a etapa de destino exige certos dados (e-mail, telefone, nome completo, pontuação mínima, consultor atribuído, agendamento marcado ou cotação ativa), você verá uma mensagem explicando exatamente o que falta.
 
-Ao clicar em um cartão, você abre o detalhe do negócio: valor, **Probabilidade**, **Dias na etapa**, **Histórico de etapas**, responsável atribuído e atalhos para **Ver conversa** e **Ver contato**. De lá você também pode **Arquivar** a oportunidade (ela é marcada como perdida).
+## Como criar uma oportunidade manualmente
+
+A maioria das oportunidades é criada sozinha a partir das suas conversas (quando seus clientes conversam com o agente de IA, elas são criadas e avançam sozinhas: veja "Auto-avanço" mais abaixo), mas você também pode adicioná-las à mão:
+
+1. Vá em **Funil de vendas** na barra lateral.
+2. Clique em **Nova oportunidade**.
+3. Preencha o formulário: **Contato**, **Título** (ex.: "Venda do produto X"), **Valor ($)**, **Etapa** inicial e **Notas** opcionais.
+4. Salve. O cartão aparece na coluna da etapa escolhida.
 
 ## Como personalizar as etapas (ordem, cor e probabilidade)
 

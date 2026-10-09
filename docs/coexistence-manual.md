@@ -1,6 +1,6 @@
 # WhatsApp Coexistence Mode — Manual Técnico
 
-> **Actualizado**: 2026-08-09 — Verificado contra el código. Ingesta de coexistencia en `apps/whatsapp` (puerto 3002); el procesamiento de IA vive en la API (`apps/api`, puerto 3000). Incluye multi-canal por tipo (gate de plan) y marca los guards `metadata.source` que **todavía no** están implementados en la API.
+> **Actualizado**: 2026-09-13 (último cambio de código documentado: partner solution opcional; revisado el 2026-10-08 sin cambios de contenido posteriores). Base verificada contra el código el 2026-08-09. Ingesta de coexistencia en `apps/whatsapp` (puerto 3002); el procesamiento de IA vive en la API (`apps/api`, puerto 3000). Incluye multi-canal por tipo (gate de plan) y marca los guards `metadata.source` que **todavía no** están implementados en la API.
 
 ## Resumen
 

@@ -80,7 +80,7 @@ quais ficaram sem conexão.
 
 Há um terceiro controle crítico, à parte, para atribuições que não correspondem a um canal
 conversacional certificado: **Alcance operacional do canal** rejeita o agente atribuído a
-um tipo de canal que não atende conversas (por exemplo, SMS, que só envia notificações, ou
+um tipo de canal que não atende conversas (por exemplo, SMS, um produto descontinuado, ou
 e-mail, que hoje não tem configuração de autosserviço certificada). Não basta desconectar:
 é preciso desmarcar esse tipo no editor do agente e deixar só canais certificados —
 WhatsApp, Instagram, Messenger, Telegram ou o chat web.

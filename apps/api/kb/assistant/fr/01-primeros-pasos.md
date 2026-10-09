@@ -128,7 +128,7 @@ Ouvrez **Administration → Forfait et facturation** pour connaître les tarifs,
 Oui, si votre compte dispose de la capacité nécessaire. Chaque connexion utilise son propre agent ; consultez la limite actuelle dans **Forfait et facturation**.
 
 **Et le canal SMS ?**
-Le SMS n'est pas un canal de conversation : il sert à envoyer des notifications à vos clients à l'aide de crédits (1 crédit = 1 segment de message).
+Le SMS n'existe plus dans Parallly : c'est un produit retiré et il n'a jamais été un canal de conversation. Les canaux de l'agent sont WhatsApp, Instagram, Messenger, Telegram et le chat web.
 
 **Qu'est-ce que « le lien de votre agent » ?**
 C'est une page publique qui existe dès le jour 0, avant de connecter le moindre canal, où n'importe qui peut discuter avec votre agent exactement comme un client. Si votre forfait n'inclut pas le chat web, elle sert à l'essayer et à le montrer à quelqu'un : la plateforme paie ses messages jusqu'à un quota par compte, chaque page a un plafond de messages par jour et la conversation ne passe pas à une personne. Une fois le plafond du jour atteint, le chat le dit lui-même et reprend le lendemain ; si le quota est épuisé, le chat indique qu'il fonctionnera de nouveau quand l'entreprise activera le chat web. Avec un forfait qui inclut le chat web, le même lien est un vrai canal : sans plafond quotidien, avec le quota de votre forfait et avec transfert à votre équipe. Dans aucun cas il ne compte comme un canal connecté : la carte **Mise en route** continue de demander un vrai canal (WhatsApp, Instagram, Messenger, Telegram ou le chat web de votre site).

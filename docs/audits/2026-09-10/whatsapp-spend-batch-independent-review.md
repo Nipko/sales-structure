@@ -1,5 +1,7 @@
 # Revisión independiente de la primera tanda de control de gasto de WhatsApp
 
+> **Documento histórico (2026-09-10) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 Fecha: 2026-09-10
 Revisión: `80f56077..2df6922af5e3b1893fc84ae0845231467745e25a` (31 commits)
 

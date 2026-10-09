@@ -67,13 +67,18 @@ const CHANNEL_NAMES: Record<string, string> = {
     instagram: 'Instagram',
     messenger: 'Messenger',
     telegram: 'Telegram',
-    sms: 'SMS',
-    email: 'Email',
     web_widget: 'Web Widget',
 };
 
+// The plan catalogue can still carry these keys (the factory seed lists them
+// on the upper plans). SMS is a retired one-way credit product and email is an
+// internal inbound adapter: neither is a conversational channel a plan sells,
+// so they never reach a pricing card or the comparison table.
+const NON_CONVERSATIONAL_CHANNELS = new Set(['sms', 'email']);
+
 export function formatChannelNames(channels: string[]): string {
     return channels
+        .filter((channel) => !NON_CONVERSATIONAL_CHANNELS.has(channel.toLowerCase()))
         .map((channel) => CHANNEL_NAMES[channel.toLowerCase()] ?? channel)
         .join(', ');
 }

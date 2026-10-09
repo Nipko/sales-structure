@@ -1,5 +1,7 @@
 # Claude: bloqueo de despliegue y siguiente ejecución
 
+> **Documento histórico (2026-09-09) — no refleja el estado actual; ver `docs/product-capabilities-reference.md` y `docs/README.md`.** Es una instrucción que se pasó a otro agente en esa fecha: lo que dice sobre no hacer push, merge o deploy ya no aplica (desde el 2026-10-07 un merge a `main` con CI verde despliega solo) y sus cifras (perfiles, escenarios, tareas) son las de ese día.
+
 Fecha: 9 de septiembre de 2026. HEAD revisado: `1422f491`. No autoriza push, deploy, migraciones externas, activación de flags, llamadas a canales, modelos ni alternativas.
 
 ## Veredicto

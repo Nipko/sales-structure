@@ -5,9 +5,11 @@ import {
   VERTICAL_MANIFEST_INDUSTRIES,
   dashboardRoleCanOpen,
   listCanonicalSubtypeExperienceProfileIds,
+  listSubtypeExperienceProfileIds,
   resolveSubtypeExperienceProfile,
 } from '@parallext/shared';
 import * as path from 'path';
+import { VERTICAL_REGISTRY } from '../verticals/vertical-definitions';
 
 const LOCALES = ['es', 'en', 'pt', 'fr'] as const;
 const ALLOWED_ROLES = new Set([
@@ -534,6 +536,34 @@ describe('Parallly Assist knowledge-base contract', () => {
     // fija el momento en que se escribió, no el contrato del que sale.
     expect(normalizedBody).toMatch(/\b80\b/);
     expect(normalizedBody).toMatch(/\b18\b/);
+
+    // The 72 / 8 / 5 figures and the names of the business types the owner
+    // cannot pick are derived from the registries, not typed here: adding a
+    // waitlist or legacy type without updating the article turns this red.
+    const canonicalIds = new Set(listCanonicalSubtypeExperienceProfileIds());
+    const legacyIds = listSubtypeExperienceProfileIds().filter((id) => !canonicalIds.has(id));
+    const selectableCount = profiles.filter((profile) => profile.availability === 'selectable').length;
+    const waitlistIds = [...canonicalIds].filter((id) => {
+      const [industry, subtype] = id.split('/');
+      return resolveSubtypeExperienceProfile(industry, subtype === '__none__' ? null : subtype).availability === 'waitlist';
+    });
+    expect(selectableCount + waitlistIds.length).toBe(profiles.length);
+    // Anchored on the wording of each locale, so a bare "8" elsewhere cannot satisfy them.
+    const countPatterns: Record<(typeof LOCALES)[number], RegExp[]> = {
+      es: [new RegExp(`\\(${selectableCount} seleccionables y ${waitlistIds.length} en lista de espera\\)`), new RegExp(`lista de espera \\(${waitlistIds.length}\\)`), new RegExp(`cuentas existentes \\(${legacyIds.length}\\)`)],
+      en: [new RegExp(`\\(${selectableCount} selectable and ${waitlistIds.length} on a waitlist\\)`), new RegExp(`waitlisted \\(${waitlistIds.length}\\)`), new RegExp(`existing accounts only \\(${legacyIds.length}\\)`)],
+      pt: [new RegExp(`\\(${selectableCount} selecionáveis e ${waitlistIds.length} na lista de espera\\)`), new RegExp(`lista de espera \\(${waitlistIds.length}\\)`), new RegExp(`contas existentes \\(${legacyIds.length}\\)`)],
+      fr: [new RegExp(`\\(${selectableCount} sélectionnables et ${waitlistIds.length} sur liste d'attente\\)`), new RegExp(`liste d'attente \\(${waitlistIds.length}\\)`), new RegExp(`comptes existants uniquement \\(${legacyIds.length}\\)`)],
+    };
+    for (const pattern of countPatterns[locale]) expect(normalizedBody).toMatch(pattern);
+    const compact = (text: string) => text.toLocaleLowerCase(locale).replace(/\s*\/\s*/g, '/');
+    const bodyForNames = compact(article!.body);
+    for (const id of [...waitlistIds, ...legacyIds]) {
+      const [industry, subtype] = id.split('/');
+      const entry = VERTICAL_REGISTRY[industry]?.subTypes.find((sub) => sub.key === subtype);
+      expect({ id, hasLabel: Boolean(entry) }).toEqual({ id, hasLabel: true });
+      expect({ id, named: bodyForNames.includes(compact(entry!.label[locale])) }).toEqual({ id, named: true });
+    }
   });
 
   it.each(LOCALES)('%s keeps sensitive and shared workflows scoped to the right roles', (locale) => {
@@ -925,18 +955,74 @@ describe('Parallly Assist knowledge-base contract', () => {
     }
   });
 
-  it('does not let SMS guidance bypass the campaign release boundary', () => {
-    const markers: Record<(typeof LOCALES)[number], RegExp> = {
-      es: /guarda el borrador[^\n]+no lo envíes ni lo programes para producción/i,
-      en: /save the draft[^\n]+do not send or schedule it for production/i,
-      pt: /salve o rascunho[^\n]+não envie nem agende para produção/i,
-      fr: /enregistrez le brouillon[^\n]+ne l'envoyez pas et ne le programmez pas en production/i,
+  it('says SMS is a retired product and never sells credits, campaigns or reminders by SMS', () => {
+    // SMS is switched off for the whole platform (sms-kill-switch.service.ts,
+    // `sms_product_retired` in the credits, checkout and channel controllers).
+    const retiredMarkers: Record<(typeof LOCALES)[number], RegExp> = {
+      es: /ya no es un producto de Parallly/i,
+      en: /no longer a Parallly product/i,
+      pt: /deixou de ser um produto do Parallly/i,
+      fr: /n'est plus un produit de Parallly/i,
     };
+    // "1 credit = 1 segment" is the pricing sentence the old article and FAQs carried.
+    const creditPricing = /\b1 cr[eé]dit(?:o|s)?\s*=/i;
+    const buyingSms = /(?:comprar|recargar|buy|top up|acheter|recharger)[^\n.]{0,40}(?:cr[eé]ditos?|credits?)\s+(?:de\s+)?SMS/i;
 
     for (const locale of LOCALES) {
       const article = byLocale[locale].find((candidate) => candidate.id === 'sms-creditos');
       expect(article).toBeDefined();
-      expect(article!.body).toMatch(markers[locale]);
+      expect(article!.body).toMatch(retiredMarkers[locale]);
+      for (const candidate of byLocale[locale]) {
+        expect(candidate.body).not.toMatch(creditPricing);
+        if (candidate.id !== 'sms-creditos') expect(candidate.body).not.toMatch(buyingSms);
+      }
+    }
+  });
+
+  it('names the real tenant sidebar sections in the navigation article, never an Operations section', () => {
+    // The sections come from the code, not from a list typed here: the titleKeys of
+    // tenantSections in AppSidebar.tsx, named by nav.sections in each locale's messages.
+    // "config" (Settings) sits at the bottom and the article calls it by its own name.
+    const sidebarSource = fs.readFileSync(
+      path.resolve(__dirname, '../../../../dashboard/src/components/layout/AppSidebar.tsx'),
+      'utf8',
+    );
+    const tenantStart = sidebarSource.indexOf('const tenantSections');
+    const tenantPart = sidebarSource.slice(tenantStart, sidebarSource.indexOf('];', tenantStart));
+    const sectionKeys = [...tenantPart.matchAll(/titleKey:\s*"(\w+)"/g)]
+      .map((match) => match[1])
+      .filter((key) => key !== 'config');
+    expect(sectionKeys).toHaveLength(8);
+    const sections = Object.fromEntries(LOCALES.map((locale) => {
+      const navSections = JSON.parse(fs.readFileSync(
+        path.resolve(__dirname, '../../../../dashboard/messages/' + locale + '.json'),
+        'utf8',
+      )).nav.sections as Record<string, string>;
+      return [locale, sectionKeys.map((key) => navSections[key])];
+    })) as Record<(typeof LOCALES)[number], string[]>;
+    for (const locale of LOCALES) {
+      const article = byLocale[locale].find((candidate) => candidate.id === 'navegacion-configuracion');
+      expect(article).toBeDefined();
+      for (const section of sections[locale]) {
+        expect(article!.body).toContain(`**${section}**`);
+      }
+    }
+  });
+
+  it('keeps the same section structure (## and ### headings) in every locale', () => {
+    const headings = (body: string) => ({
+      h2: (body.match(/^## /gm) ?? []).length,
+      h3: (body.match(/^### /gm) ?? []).length,
+    });
+    const spanish = new Map(byLocale.es.map((article) => [article.id, headings(article.body)]));
+    for (const locale of LOCALES.slice(1)) {
+      for (const article of byLocale[locale]) {
+        expect({ locale, id: article.id, ...headings(article.body) }).toEqual({
+          locale,
+          id: article.id,
+          ...spanish.get(article.id),
+        });
+      }
     }
   });
 

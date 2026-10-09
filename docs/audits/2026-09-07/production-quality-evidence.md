@@ -1,5 +1,7 @@
 # H2 — Production quality evidence
 
+> **Documento histórico (2026-09-07) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 The previous scorer read the first 40 text messages, treated a text-only judge's `resolved` opinion as operational verification, and inserted another row each time a resolved conversation was queued again. It had no privacy fence or comparison against a transcript changed while the provider was working.
 
 ## Implemented contract

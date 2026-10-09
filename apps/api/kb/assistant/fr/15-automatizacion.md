@@ -61,7 +61,7 @@ Les **Séquences Drip** envoient plusieurs messages espacés dans le temps : id�
 3. Avec **Ajouter une étape**, créez chaque message. Chaque étape comporte :
    - **Attente** : combien de temps attendre avant de l'envoyer (**Minutes**, **Heures** ou **Jours**).
    - **Type de message** : **Modèle WhatsApp**, **Message personnalisé** ou **Généré par l'IA** (l'agent rédige le message selon le contexte de ce lead).
-4. Dans **Arrêter si**, utilisez **Le contact répond** pour ne pas insister auprès de quelqu'un qui vous parle déjà. Si le client demande à ne plus recevoir de messages (opt-out), la plateforme arrête également les envois. L'option visible **Le contact convertit** n'est pas encore appliquée automatiquement dans cette version : désinscrivez manuellement le contact après sa conversion.
+4. Dans **Arrêter si**, laissez cochées les conditions d'arrêt, en particulier **Le contact répond**, pour ne pas insister auprès de quelqu'un qui vous parle déjà (voir plus bas quand la séquence s'arrête).
 5. Activez la séquence avec l'interrupteur **Active**.
 
 Sur chaque carte, vous verrez le compteur **Inscrits** : combien de contacts se trouvent dans ce flux en ce moment.
@@ -72,12 +72,29 @@ Sur chaque carte, vous verrez le compteur **Inscrits** : combien de contacts se 
 - Jour 2 — message de valeur (avantage, financement, nouveauté)
 - Jour 5 — invitation concrète (« On planifie un appel ? Répondez OUI »)
 
+### Quand la séquence s'arrête pour un contact
+
+- **Le contact répond** à un message de la série, lorsque la condition d'arrêt sur réponse est activée.
+- Le contact demande à ne plus recevoir de messages (opt-out).
+
+L'option visible **Le contact convertit** n'est pas encore appliquée automatiquement dans cette version. Désinscrivez manuellement le contact après sa conversion.
+
+### Prospecter un segment avec une séquence
+
+Dans une séquence active, vous trouverez **Prospecter depuis le CRM** : vous choisissez un segment de leads et cliquez sur **Inscrire le segment** pour les inscrire d'un coup (jusqu'à 300 par envoi). La première étape doit être un modèle WhatsApp approuvé, car WhatsApp n'autorise que les modèles pour démarrer une conversation à froid. La plateforme respecte les opt-outs et n'inscrit jamais personne deux fois.
+
 ## Comment installer un modèle prêt à l'emploi
 
 1. Allez dans **Automatisation → Modèles**.
 2. Utilisez le moteur de recherche et les filtres **Catégorie** et **Secteur** pour trouver le plus adapté. Il existe des modèles de **Nutrition de leads**, **Rappels de rendez-vous**, **Panier abandonné**, **Séquence de bienvenue**, **Réactivation**, **Collecte de feedback**, **Traitement VIP** et **Hors horaires**. Si votre activité relève de la santé, de l'immobilier, de la restauration, etc., vous verrez d'abord ceux de votre secteur.
 3. Cliquez sur **Installer** : une fenêtre vous montre le déclencheur, les actions et les **Variables** que vous pouvez ajuster (textes, délais) avant de confirmer avec **Installer le modèle**.
 4. Une fois terminé, utilisez **Voir les règles** pour accéder directement à vos règles. La règle installée reste **inactive** par défaut : vérifiez les textes et activez-la lorsque vous êtes prêt.
+
+## Horaires : quand partent les messages automatiques
+
+- Le délai d'une séquence, ou d'une action avec attente, se compte à partir de l'événement qui l'a déclenchée (par exemple « 2 jours après la capture du lead »).
+- Vos horaires d'ouverture se configurent séparément, dans **Paramètres → Horaires d'ouverture**. Vous y définissez les jours et heures où vous êtes ouvert et le message hors horaires. Les règles qui vérifient l'horaire utilisent le même horaire que l'agent dans les conversations.
+- Dans la galerie de modèles, la catégorie **Hors horaires** propose des règles prêtes à l'emploi pour répondre automatiquement quand on vous écrit en dehors de vos horaires.
 
 ## Disponibilité et capacité
 

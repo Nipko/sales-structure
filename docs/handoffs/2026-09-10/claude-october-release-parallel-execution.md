@@ -1,5 +1,7 @@
 # Directiva integrada: cierre técnico y adaptación para octubre
 
+> **Documento histórico (2026-09-10) — no refleja el estado actual; ver `docs/product-capabilities-reference.md` y `docs/README.md`.** Es una instrucción que se pasó a otro agente en esa fecha: lo que dice sobre no hacer push, merge o deploy ya no aplica (desde el 2026-10-07 un merge a `main` con CI verde despliega solo) y sus cifras (perfiles, escenarios, tareas) son las de ese día.
+
 Fecha: 10 de septiembre de 2026. Base revisada: `7c9eb04b`. Objetivo del usuario: integrar el cierre de la plataforma y los cambios Meta/WhatsApp, pagos, control del gasto y experiencia comercial para estar preparados el **1 de octubre**.
 
 ## Mandato

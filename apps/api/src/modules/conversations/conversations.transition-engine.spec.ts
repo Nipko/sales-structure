@@ -353,3 +353,55 @@ describe('a pending proposal and the questions the engine asks', () => {
         expect(h.ran('list_customer_appointments')).toHaveLength(0);
     });
 });
+
+// ── Opus final check of 53dc0343 ─────────────────────────────────────────────────────────────────────────────────────────────────────
+describe('a pending proposal and a change of mind about the ACTION', () => {
+    it.each(['no, mejor reprográmala para el viernes', 'mejor muévela al viernes', 'no la canceles, pásala al viernes'])(
+        'a pending cancellation + "%s": never a cancel proposal; the server moves it or asks which', async text => {
+            const h = world({ tools: SALON, industry: 'salon', appointments: [appointment(APPT, '2026-10-12', '09:00'), appointment(APPT2, '2026-10-16', '09:00')], slots: ['09:00', '10:00'] });
+            await h.turn('hola');
+            await h.turn('quiero cancelar mi cita');
+            await h.turn('la del lunes');
+            expect(h.ran('cancel_appointment').map(call => call.args.appointmentId)).toEqual([APPT]);
+            const result = await h.turn(text);
+            expect(h.ran('cancel_appointment')).toHaveLength(1);
+            // two appointments: the Friday in the words is where it goes, so the server asks WHICH one to move
+            expect(h.ran('reschedule_appointment')).toHaveLength(0);
+            expect(result.reply).toMatch(/¿Cuál desea mover\?/);
+            expect(result.reply).not.toMatch(/desea cancelar/);
+        });
+
+    it('with one appointment it proposes the move, and the «sí» executes the move, not the cancellation', async () => {
+        const h = world({ tools: SALON, industry: 'salon', appointments: [appointment(APPT, '2026-10-12', '09:00')], slots: ['09:00', '10:00'] });
+        await h.turn('hola');
+        await h.turn('quiero cancelar mi cita');
+        const pivot = await h.turn('quiero reprogramar mi cita al día siguiente a la misma hora');
+        expect(h.ran('cancel_appointment')).toHaveLength(1);
+        expect(h.ran('reschedule_appointment').map(call => call.args)).toEqual([{ appointmentId: APPT, newDate: '2026-10-13', newTime: '09:00' }]);
+        expect(pivot.reply).toContain('¿Confirma que movamos');
+        await h.turn('sí, reprográmala');
+        expect(h.succeeded('reschedule_appointment')).toHaveLength(1);
+        expect(h.succeeded('cancel_appointment')).toHaveLength(0);
+    });
+
+    it('a pending move + «mejor cancélela» becomes a cancel proposal', async () => {
+        const h = world({ tools: SALON, industry: 'salon', appointments: [appointment(APPT, '2026-10-12', '09:00')], slots: ['09:00', '10:00'] });
+        await h.turn('hola');
+        await h.turn('quiero reprogramar mi cita al día siguiente a la misma hora');
+        expect(h.ran('reschedule_appointment')).toHaveLength(1);
+        const result = await h.turn('mejor cancélela');
+        expect(h.ran('cancel_appointment').map(call => call.args)).toEqual([{ appointmentId: APPT }]);
+        expect(result.reply).toContain('¿Confirma que desea cancelar');
+        await h.turn('sí, cancélala');
+        expect(h.succeeded('cancel_appointment')).toHaveLength(1);
+        expect(h.succeeded('reschedule_appointment')).toHaveLength(0);
+    });
+
+    it('«el martes no» after «¿cuál?» is not the answer: nothing is proposed', async () => {
+        const h = world({ tools: SALON, industry: 'salon', appointments: [appointment(APPT, '2026-10-12', '09:00'), appointment(APPT2, '2026-10-13', '09:00')] });
+        await h.turn('hola');
+        await h.turn('quiero cancelar mi cita');
+        await h.turn('la del martes no');
+        expect(h.ran('cancel_appointment')).toHaveLength(0);
+    });
+});

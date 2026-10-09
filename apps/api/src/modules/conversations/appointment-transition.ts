@@ -32,6 +32,14 @@ const NEGATOR = /\b(?:no|nunca|jamas|ni|not|never|nao|non|pas|n|sin|won t|wont|d
 export const REPORTED_OR_PAST = /\b(?:cancel|cambi|mov|reprogram|reagend|anul|remarc)(?:é|ó|ió)(?![a-záéíóúüñ])|\b(?:cancel|cambi|mov|reprogram|reagend|anul|remarc|aplaz|pospus)\w*(?:aron|ieron|aste|ado|ada|ados|adas|ido|ida)\b|\bme (?:cancelan|cambian|mueven|reprograman|anulan)\b/i;
 
 /** Is the verb at `index` of the clause-punctuated text negated: a negator in the four words before it, with no clause break between. */
+/**
+ * Accents folded and lower-cased, PUNCTUATION KEPT: `normalizeForIntent` turns commas into spaces and drops the final mark, and a clause
+ * break («no, mejor muévela») is exactly what separates a negator from the verb it does not negate.
+ */
+export function foldKeepingPunctuation(raw: unknown): string {
+    return String(raw ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
 export function negatedAt(clauses: string, index: number): boolean {
     const clause = clauses.slice(0, index).split(/[,.;!?¿¡]/).pop() ?? '';
     const words = clause.replace(/['’]/g, ' ').trim().split(/\s+/).filter(Boolean).slice(-4).join(' ');
@@ -47,7 +55,7 @@ export function appointmentChangeRequest(text: unknown): AppointmentChange {
     if (OTHER_DOMAIN.test(normalized) && !APPOINTMENT_NOUN_RE.test(normalized)) return null;
     // «No quiero reprogramar, solo confirmar que voy» / «me cambiaron la cita»: not a request to change it.
     if (REPORTED_OR_PAST.test(raw.toLowerCase().normalize('NFC'))) return null;
-    const clauses = normalizeForIntent(raw).replace(/[^\p{L}\p{N}\s,.;!?¿¡']/gu, ' ').replace(/\s+/g, ' ').trim();
+    const clauses = foldKeepingPunctuation(raw).replace(/[^\p{L}\p{N}\s,.;!?¿¡']/gu, ' ').replace(/\s+/g, ' ').trim();
     const negated = (re: RegExp) => { const m = re.exec(clauses); return !!m && negatedAt(clauses, m.index); };
     if (EXPLICIT_RE.test(normalized)) {
         // «reprogramar» alone, or on an appointment noun/possessive: an existing appointment.

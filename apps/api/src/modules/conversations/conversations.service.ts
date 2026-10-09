@@ -3995,7 +3995,7 @@ export class ConversationsService {
                             return { date: interpreted.dateMentioned, time: interpreted.timeMentioned };
                         },
                         todayIso, language: userLanguage, form: addressFormOf(regional?.addressForm.value), locale: regional?.locale.value,
-                    });
+                    }, { continuation: detected.continuation });
                     engineExecutedTools = [...engineExecutedTools, ...outcome.executed.filter(tool => tool.result?.error !== 'confirmation_required')];
                     if (outcome.handled && outcome.text) {
                         engineProducedText = outcome.text;

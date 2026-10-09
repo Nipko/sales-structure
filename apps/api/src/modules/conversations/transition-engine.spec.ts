@@ -1,5 +1,5 @@
 import {
-    opensWithYes, appointmentCandidates, chooseCandidate, detectTransition, humanizeReferences, namedRequestOverridesClarify, orderCandidates, resolveTarget,
+    hasChoiceSignal, opensWithYes, appointmentCandidates, chooseCandidate, detectTransition, humanizeReferences, namedRequestOverridesClarify, orderCandidates, resolveTarget,
     shortReference, transitionDoneText, transitionTexts, addressFormOf,
 } from './transition-engine';
 import { appointmentChangeRequest } from './appointment-transition';
@@ -118,11 +118,44 @@ describe('detectTransition: a pending cancel / reschedule proposal belongs to th
     it('a pending reschedule is changed only by a reference, never by a date (the date is its NEW time)', () => {
         const reschedule = (text: string) => detect(text, { pendingConfirmation: true, missionToolName: 'reschedule_appointment', missionDomain: 'appointment' });
         expect(reschedule('mejor a las 3')).toBeNull();
-        expect(reschedule('cancélala')).toBeNull();
+        // «cancélala» does not answer a reschedule (the verb is the thing asked): it is a request to cancel it
+        expect(reschedule('cancélala')).toMatchObject({ request: { verb: 'cancel', domain: 'appointment' } });
         expect(reschedule('la D5959EA9')).toMatchObject({ request: { verb: 'reschedule' }, continuation: true });
     });
     it('the OTHER kind of object is a new request', () => {
         expect(pending('quiero cancelar mi pedido')).toMatchObject({ request: { verb: 'cancel', domain: 'order' }, continuation: false });
+    });
+});
+
+describe('detectTransition: the requested ACTION decides over a pending proposal', () => {
+    const pendingCancel = (text: string) => detect(text, { pendingConfirmation: true, missionToolName: 'cancel_appointment', missionDomain: 'appointment' });
+    it.each([
+        'no, mejor reprográmala para el viernes', 'mejor muévela al viernes', 'no la canceles, pásala al viernes', 'quiero reprogramar mi cita para el viernes',
+        'mejor cámbiala para el viernes', 'mejor la pasamos al viernes',
+    ])('a pending CANCELLATION + "%s" is a reschedule request, never a cancel proposal', text => {
+        expect(pendingCancel(text)).toEqual({ kind: 'request', request: { verb: 'reschedule', domain: 'appointment' }, continuation: false });
+    });
+    it.each(['cancélala, cambié de opinión', 'no quiero cambiarla', 'cancélala por favor', 'cancélela'])('"%s" does not turn a pending cancellation into a move', text => {
+        expect(pendingCancel(text)).toBeNull();
+    });
+    it('a pending RESCHEDULE + «mejor cancélela» is a cancel request, not a reschedule', () => {
+        const pendingMove = (text: string) => detect(text, { pendingConfirmation: true, missionToolName: 'reschedule_appointment', missionDomain: 'appointment' });
+        expect(pendingMove('mejor cancélela')).toEqual({ kind: 'request', request: { verb: 'cancel', domain: 'appointment' }, continuation: false });
+        expect(pendingMove('no, mejor cancela mi cita')).toMatchObject({ request: { verb: 'cancel', domain: 'appointment' } });
+        expect(pendingMove('cámbiala a las 3')).toBeNull();
+    });
+});
+
+describe('a negated choice is not a choice', () => {
+    it.each(['el martes no', 'la del martes no', 'tampoco la del lunes', 'no la del lunes', 'esa no', 'la segunda no', 'nunca el viernes'])('"%s"', text => {
+        expect(hasChoiceSignal(text)).toBe(false);
+        expect(detect(text, { awaitingWriter: 'cancel_appointment', awaitingFresh: true })).toBeNull();
+    });
+    it.each(['no, la del martes', 'la del martes, no la del lunes', 'martes', 'la del martes por favor'])('"%s" still names one', text => {
+        expect(hasChoiceSignal(text)).toBe(true);
+    });
+    it('a pending cancellation is not redirected by «la del martes no»', () => {
+        expect(detect('la del martes no', { pendingConfirmation: true, missionToolName: 'cancel_appointment', missionDomain: 'appointment' })).toBeNull();
     });
 });
 
@@ -178,6 +211,12 @@ describe('chooseCandidate', () => {
         expect(chooseCandidate('la referencia D5959EA9', appts)).toBe(appts[1]);
         expect(chooseCandidate('la primera', appts)).toBe(appts[0]);
         expect(chooseCandidate('la última', appts)).toBe(appts[1]);
+    });
+    it('for a reschedule the dates are where it GOES: they never pick which appointment (a reference or an ordinal still do)', () => {
+        expect(chooseCandidate('mejor muévela al martes', appts)).toBe(appts[1]);
+        expect(chooseCandidate('mejor muévela al martes', appts, { ignoreDates: true })).toBeNull();
+        expect(chooseCandidate('mueve la D5959EA9 al lunes', appts, { ignoreDates: true })).toBe(appts[1]);
+        expect(chooseCandidate('la segunda', appts, { ignoreDates: true })).toBe(appts[1]);
     });
     it('ignores appointments already cancelled', () => {
         expect(appts.map(c => c.ref)).toEqual(['AE3D0C86', 'D5959EA9']);

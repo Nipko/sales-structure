@@ -1,6 +1,6 @@
 import { normalizeForIntent } from '@parallext/shared';
 import { isInformationSeekingMessage } from '../../common/conversation/intent-normalizer';
-import { appointmentChangeRequest, negatedAt, REPORTED_OR_PAST } from './appointment-transition';
+import { appointmentChangeRequest, foldKeepingPunctuation, negatedAt, REPORTED_OR_PAST } from './appointment-transition';
 
 /**
  * Deterministic proposal step for the changes a customer makes to something that ALREADY EXISTS: cancel an appointment,
@@ -81,6 +81,9 @@ const NOT_A_CHOICE = /\b(?:abren|abre|abrir|cierran|horario|horarios|cuesta|cues
 /** Courtesy around an answer («hola, la del martes», «la segunda, gracias») is not part of the answer. */
 const COURTESY = /\b(?:hola|buenos dias|buenas tardes|buenas noches|buenas|buen dia|muchas gracias|gracias|por favor|porfa|porfavor|please|thanks)\b/g;
 /** A bare yes to the question the engine asked («¿Se trata de su pedido?», «¿Es esa la que desea?»). */
+const NEGATOR_WORD = /\b(?:no|tampoco|nunca|jamas|ni|ninguna?|not|nao|non)\b/;
+/** A verb that moves something: «mejor muévela», «pásala al viernes», «reprográmala». */
+const MOVE_VERB = /\b(?:mover\w*|muev\w*|mueva\w*|pasar\w*|pas(?:a|e|amos|emos)(?:la|lo)?|cambi\w*|reprogram\w*|reagend\w*|remarc\w*|mudar\w*|mude\w*|move|reschedule|deplac\w*|aplaz\w*|posponer\w*|adelant\w*)\b/;
 const BARE_YES = /^(?:si|ok|okay|dale|claro|correcto|exacto|asi es|esa|esa misma|esa es|yes|sim|oui)$/;
 
 export interface DetectContext {
@@ -107,7 +110,7 @@ export type Detected =
 
 /** The words of a message with accents folded and punctuation kept as clause breaks (`,` and `.`). */
 function clauseText(raw: string): string {
-    return normalizeForIntent(raw).replace(/[^\p{L}\p{N}\s,.;!?¿¡']/gu, ' ').replace(/\s+/g, ' ').trim();
+    return foldKeepingPunctuation(raw).replace(/[^\p{L}\p{N}\s,.;!?¿¡']/gu, ' ').replace(/\s+/g, ' ').trim();
 }
 
 /** «Cancelar» / «anular» used as a request: not negated, not payment, not past tense, not someone else's act. */
@@ -127,7 +130,11 @@ function cancelRequested(raw: string): boolean {
 export function hasChoiceSignal(raw: string): boolean {
     const text = clauseText(raw).replace(/[,.;!?¿¡]/g, ' ').replace(COURTESY, ' ').replace(/\s+/g, ' ').trim();
     if (!text || NOT_A_CHOICE.test(text)) return false;
-    return CHOICE_REF.test(text) && /\d/.test(text.match(CHOICE_REF)![0]) || CHOICE_DATE.test(text) || CHOICE_ORDINAL.test(text);
+    const clauses = clauseText(raw).split(/[,.;!?¿¡]/).map(clause => clause.replace(COURTESY, ' ').replace(/\s+/g, ' ').trim()).filter(Boolean);
+    const named = (clause: string) => (CHOICE_REF.test(clause) && /\d/.test(clause.match(CHOICE_REF)![0])) || CHOICE_DATE.test(clause);
+    // «el martes no», «tampoco la del lunes»: the clause rules the record OUT; it is not the choice.
+    if (clauses.some(clause => named(clause) && !NEGATOR_WORD.test(clause))) return true;
+    return CHOICE_ORDINAL.test(text);
 }
 
 /**
@@ -176,7 +183,23 @@ export function detectTransition(ctx: DetectContext): Detected {
     const plainText = text.replace(/[,.;!?¿¡]/g, ' ').replace(/\s+/g, ' ').trim();
     // A message that names the OTHER kind of object («quiero cancelar mi pedido» over a pending appointment) is a new request.
     const namesOtherObject = !!pendingTransition && (pendingTransition.domain === 'appointment' ? ORDER_NOUN.test(plainText) : APPOINTMENT_NOUN.test(plainText));
-    if (pendingTransition && !namesOtherObject) {
+    // «no, mejor reprográmala para el viernes» over a pending CANCELLATION (or «mejor cancélela» over a pending reschedule) changes the
+    // action: it is a new request, never an answer and never a different target for the same action.
+    let changesAction = false;
+    if (pendingTransition) {
+        const moveAt = MOVE_VERB.exec(text);
+        if (pendingTransition.verb === 'cancel') {
+            // «cancélala, cambié de opinión» is not a request to move it
+            const idiom = /(?:de opinion|de idea|de parecer|de planes)/.test(text) || REPORTED_OR_PAST.test(raw.toLowerCase().normalize('NFC'));
+            const moves = !idiom && ((!!moveAt && !negatedAt(text, moveAt.index)) || !!appointmentChangeRequest(raw));
+            if (moves && can('reschedule', pendingTransition.domain) && pendingTransition.domain === 'appointment' && !isInformationSeekingMessage(raw)) {
+                return { kind: 'request', request: { verb: 'reschedule', domain: 'appointment' }, continuation: false };
+            }
+        } else {
+            changesAction = cancelRequested(raw);
+        }
+    }
+    if (pendingTransition && !namesOtherObject && !changesAction) {
         if (!can(pendingTransition.verb, pendingTransition.domain) || isInformationSeekingMessage(raw)) return null;
         const differentTarget = pendingTransition.verb === 'cancel' ? hasChoiceSignal(raw) : /\b[0-9a-f]{8}\b/.test(text) && /\d/.test(text.match(/\b[0-9a-f]{8}\b/)![0]);
         return differentTarget ? { kind: 'request', request: pendingTransition, continuation: true } : null;
@@ -313,9 +336,10 @@ function scoreCandidate(candidate: Candidate, picks: ReturnType<typeof datePicks
  * Order: the reference, then dates and times, then an ordinal that is (nearly) the whole message. «La que tengo el 3 de noviembre»
  * is a date, «espera un segundo» and «primero dime…» are not choices.
  */
-export function chooseCandidate(rawText: string, candidates: Candidate[], options: { verifySingle?: boolean } = {}): Candidate | null {
+export function chooseCandidate(rawText: string, candidates: Candidate[], options: { verifySingle?: boolean; ignoreDates?: boolean } = {}): Candidate | null {
     const text = ` ${normalizeForIntent(rawText).replace(/[^\p{L}\p{N}\s:]/gu, ' ').replace(/\s+/g, ' ').trim()} `;
-    const picks = datePicks(text);
+    // «mejor muévela al viernes»: the Friday is where it goes, not which appointment it is.
+    const picks = options.ignoreDates ? datePicks('') : datePicks(text);
     if (candidates.length === 1) {
         // «cancela la del martes» with only a Thursday: the words contradict the only record, so ask instead of assuming.
         if (options.verifySingle && picks.any && scoreCandidate(candidates[0], picks, text).contradicted) return null;
@@ -532,7 +556,7 @@ export interface TransitionOutcome {
 
 const NOT_HANDLED: TransitionOutcome = { handled: false, executed: [] };
 
-export async function runTransition(request: TransitionRequest, text: string, io: TransitionIO): Promise<TransitionOutcome> {
+export async function runTransition(request: TransitionRequest, text: string, io: TransitionIO, opts: { continuation?: boolean } = {}): Promise<TransitionOutcome> {
     const T = transitionTexts(io.language, io.form);
     const writer = request.verb === 'list' ? undefined : TRANSITION_WRITER[`${request.verb}:${request.domain}`];
     const executed: TransitionOutcome['executed'] = [];
@@ -560,7 +584,7 @@ export async function runTransition(request: TransitionRequest, text: string, io
         return { handled: true, text: candidates.length ? T.list(candidates) : T.noAppointments(), awaitingWriter: null, executed };
     }
     if (!candidates.length) return { handled: true, text: T.noAppointments(), awaitingWriter: null, executed };
-    const target = chooseCandidate(text, candidates, { verifySingle: request.verb === 'cancel' });
+    const target = chooseCandidate(text, candidates, { verifySingle: request.verb === 'cancel', ignoreDates: request.verb === 'reschedule' && !opts.continuation });
     if (!target) {
         return { handled: true, text: candidates.length === 1 ? T.noMatch('appointment', candidates[0]) : T.askWhich(request.verb, 'appointment', candidates), awaitingWriter: writer, executed };
     }

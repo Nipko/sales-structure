@@ -108,6 +108,7 @@ import { identityStepUpToolNames, identityStepUpToolsFor } from './identity-step
 import { BookingEngineService, invalidateBookingProposal, type BookingState } from './booking-engine.service';
 import { arbitrateMissionFocus, missionDialogue, toolMissionAliases, missionToolAllowed, toolMissionDomain, type MissionCandidate, type MissionFocusDecision } from './mission-focus';
 import { MissionFocusStore } from './mission-focus-store';
+import { addressFormOf, detectTransition, humanizeReferences, namedRequestOverridesClarify, opensWithYes, runTransition, transitionDoneText, transitionTexts, TRANSITION_TOOLS, TRANSITION_WRITER } from './transition-engine';
 import { persistConversationRuntimeState } from './conversation-runtime-state';
 import type { ConversationMissionFocusV1, MissionExecutionScopeV1 } from '@parallext/shared';
 import { ProcedureEngineService } from './procedure-engine.service';
@@ -2786,7 +2787,8 @@ export class ConversationsService {
             get: (target, key, receiver) => key === 'execute' ? async (...args: Parameters<AIToolExecutorService['execute']>) => {
                 if (missionAllowsTool && !await missionAllowsTool(args[3], owner)) {
                     const result = { error: 'mission_selection_required', controlBlocked: true, persisted: false, shouldHandoff: false,
-                        message: missionDialogue(session?.snapshot.config.language || config.language || 'es', 'clarify') };
+                        message: missionDialogue(session?.snapshot.config.language || config.language || 'es', 'clarify',
+                            [missionFocus?.selected?.domain, toolMissionDomain(args[3])].filter((domain): domain is string => !!domain)) };
                     session?.trace.toolCalls.push({ name: args[3], args: args[4] || {}, result, durationMs: 0 });
                     return result;
                 }
@@ -3276,6 +3278,9 @@ export class ConversationsService {
         // The text in `engineProducedText` is the booking engine's own customer-facing text (not an instruction to the
         // model such as the executed-operation directive): only then may a guard send it as the reply.
         let engineTextIsReply = false;
+        // A transition (cancel / reschedule / «¿qué citas tengo?») the server proposed or executed this turn: the reply is the
+        // server's own account of it, word for word. The model neither narrates nor second-guesses what the backend did.
+        let deterministicReply: string | null = null;
         // Writes performed OUTSIDE the LLM tool loop (booking engine, server-side
         // confirmation). Without these the output guardrail audits a real booking
         // as an invented one and rewrites the reply to say it is still pending.
@@ -3441,11 +3446,22 @@ export class ConversationsService {
             }
         }
 
+        // What the transition engine (cancel / reschedule / list the customer's own records) may call this turn: only what the
+        // turn's published contract authorises and the owner left on. The writers still pass the central guard.
+        const transitionAvailable: ReadonlySet<string> = new Set(
+            [...(engineAuthority.allowedTools ?? [])]
+                .filter(name => !deniedTools.includes(name))
+                .filter(name => writesAuthorised || !TRANSITION_TOOLS.has(name)),
+        );
+
         // One server-owned focus arbitrates all engines before any slot or
         // consent can consume this inbound. Evaluation persists only its session.
         let missionFocus: ConversationMissionFocusV1 | undefined;
         let missionDecision: MissionFocusDecision | undefined;
         let missionStore: MissionFocusStore | undefined;
+        let missionLoadedAt: string | undefined;
+        // The tool of the proposal that was waiting for a yes/no BEFORE this message was arbitrated (the arbiter may drop it).
+        let priorPendingTool: string | undefined;
         const missionMessageId = inboundMessageId || msg.id || randomUUID();
         const updateMissionScope = () => {
             if (!missionFocus) return;
@@ -3465,6 +3481,9 @@ export class ConversationsService {
         if (!draftMode && conversation.contact_id) {
             missionStore = new MissionFocusStore(this.prisma, schemaName, conversation.id, conversation.contact_id, session);
             missionFocus = await missionStore.load();
+            // When the focus was last written: the question «¿cuál?» of the transition engine is answered by the NEXT message, soon.
+            missionLoadedAt = missionFocus.updatedAt;
+            priorPendingTool = missionFocus.expectedReply?.kind === 'confirmation' && missionFocus.selected?.kind === 'tool' ? missionFocus.selected.toolName : undefined;
             const candidates: MissionCandidate[] = await procedureEngine.missionCandidates(schemaName, tenantId, conversation.id, {
                 industry: turnContext.verticalContext?.industry, subType: turnContext.verticalContext?.subType,
             });
@@ -3481,8 +3500,40 @@ export class ConversationsService {
             if (missionDecision.invalidateConfirmation && bookingProposalActive) invalidateBookingProposal(bookingState);
             if (missionDecision.pauseBooking || missionDecision.invalidateConfirmation && bookingProposalActive) await this.persistBookingState(schemaName, conversation.id, bookingState, session);
             if (missionDecision.pauseProcedure) await procedureEngine.pauseMission(schemaName, conversation.id);
+            // A clarification with fewer than two things to choose between, for a message that plainly asks to cancel / move /
+            // list ONE kind of thing («quiero cancelar mi cita» while several tasks of that kind sit paused), is not a clarification:
+            // the request names its object, so it goes to the transition engine as a new task of that object.
+            if (missionDecision.route === 'clarify' && missionDecision.action === 'clarify') {
+                const named = detectTransition({ text: userText, available: transitionAvailable, pendingConfirmation: false });
+                if (namedRequestOverridesClarify(missionDecision.clarifyOptions, named, !!priorPendingTool && opensWithYes(userText)) && named.kind === 'request') {
+                    missionDecision.route = 'tools';
+                    missionDecision.action = 'select';
+                    missionDecision.clarifyOptions = undefined;
+                    missionFocus.selected = { id: randomUUID(), kind: 'tool', domain: named.request.domain };
+                    missionFocus.expectedReply = null;
+                }
+            }
             if (missionDecision.route === 'clarify' || missionDecision.action === 'pause' || missionDecision.action === 'replay') {
                 engineProducedText = missionDialogue(userLanguage, missionDecision.action === 'replay' ? 'replay' : missionDecision.action === 'pause' ? 'paused' : 'clarify', missionDecision.clarifyOptions);
+                // «quiero cancelar» with no object, in a business that has several: say which ones there are.
+                if (missionDecision.route === 'clarify') {
+                    const ambiguous = detectTransition({ text: userText, available: transitionAvailable, pendingConfirmation: false });
+                    const overridden = ambiguous?.kind === 'ambiguous' && !(missionDecision.clarifyOptions || []).length;
+                    if (ambiguous?.kind === 'ambiguous' && overridden) {
+                        engineProducedText = transitionTexts(userLanguage, addressFormOf(regional?.addressForm.value)).ambiguous(ambiguous.options);
+                        // «¿Se trata de su pedido?»: remember the writer, so a bare «sí» next message is the request.
+                        if (ambiguous.options.length === 1) {
+                            missionFocus.selected = { id: randomUUID(), kind: 'tool', domain: ambiguous.options[0], toolName: TRANSITION_WRITER[`cancel:${ambiguous.options[0]}`] };
+                            missionFocus.expectedReply = null;
+                        }
+                    }
+                    // A question that names the options is the server's, word for word: the model does not rephrase it. With no
+                    // option to name (a bare resume with nothing to resume) the model still voices it, as before.
+                    if (overridden || (missionDecision.clarifyOptions || []).length) {
+                        engineTextIsReply = true;
+                        deterministicReply = engineProducedText;
+                    }
+                }
                 tools = [];
             }
             await saveMission();
@@ -3892,6 +3943,89 @@ export class ConversationsService {
             }
         }
 
+        // 4b2. A CHANGE TO SOMETHING THAT EXISTS — the server proposes, not the model.
+        //
+        // «quiero cancelar mi cita», «quiero reprogramarla al día siguiente», «quiero cancelar mi pedido», «¿qué citas
+        // tengo?». The "yes" that follows (4c) can only execute a pending ledger row, and that row exists only if the writer
+        // was called on THIS turn. The model asks in prose instead, so the yes had nothing to confirm and the model, which
+        // has neither the ids nor the tool calls of the previous turn, answered «no puedo, alguien del equipo». Here the
+        // server reads the customer's own records, picks the one the words point at, calls the writer itself (the central
+        // guard answers with the confirmation challenge and records the pending row, mission and terms included) and states
+        // the terms. It asks which one when there are several and never guesses.
+        if (!draftMode && !engineProducedText && conversation.contact_id && missionFocus && missionDecision
+            && missionDecision.route === 'tools' && !handoffReturn) {
+            try {
+                const selectedTool = missionFocus.selected?.kind === 'tool' ? missionFocus.selected : undefined;
+                const awaitingWriter = selectedTool && !selectedTool.reference && selectedTool.toolName
+                    && TRANSITION_TOOLS.has(selectedTool.toolName) && !missionFocus.expectedReply ? selectedTool.toolName : undefined;
+                const detected = detectTransition({
+                    text: userText, available: transitionAvailable, missionDomain: selectedTool?.domain, missionToolName: priorPendingTool ?? selectedTool?.toolName, awaitingWriter,
+                    // «¿Cuál?» is answered by the very next message, soon: after 15 minutes it is just another conversation.
+                    awaitingFresh: !!missionLoadedAt && Date.now() - Date.parse(missionLoadedAt) < 15 * 60_000,
+                    pendingConfirmation: !!priorPendingTool || missionFocus.expectedReply?.kind === 'confirmation',
+                });
+                // Whatever this message turns out to be, a lapsed or unanswered choice is dropped here unless the engine asks again.
+                let keepsAwaiting = false;
+                if (detected?.kind === 'ambiguous') {
+                    engineProducedText = transitionTexts(userLanguage, addressFormOf(regional?.addressForm.value)).ambiguous(detected.options);
+                    engineTextIsReply = true;
+                    deterministicReply = engineProducedText;
+                    tools = [];
+                    // «¿Se trata de su pedido?»: remember the writer, so a bare «sí» next message is the request.
+                    if (detected.options.length === 1 && missionFocus.selected?.kind === 'tool' && !missionFocus.selected.reference) {
+                        missionFocus.selected.toolName = TRANSITION_WRITER[`cancel:${detected.options[0]}`];
+                        missionFocus.selected.domain = detected.options[0];
+                        keepsAwaiting = true;
+                        await saveMission();
+                    }
+                } else if (detected?.kind === 'request') {
+                    const todayIso = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(now);
+                    const outcome = await runTransition(detected.request, userText, {
+                        execute: (name, args) => toolExecutor.execute(schemaName, tenantId, conversation.contact_id!, name, args, conversation.id, {
+                            authority: engineAuthority,
+                            channelType: msg.channelType,
+                            executionContext,
+                            jurisdiction: regional?.operatingCountry.value,
+                            commitmentBlocked,
+                            deniedTools,
+                        }),
+                        interpretTarget: async text => {
+                            const interpreted = await intentInterpreter.interpret(text, 'idle', [], todayIso, turnContext.upcomingDays || [], tenantId,
+                                regional?.operatingCountry.value);
+                            return { date: interpreted.dateMentioned, time: interpreted.timeMentioned };
+                        },
+                        todayIso, language: userLanguage, form: addressFormOf(regional?.addressForm.value), locale: regional?.locale.value,
+                    }, { continuation: detected.continuation });
+                    engineExecutedTools = [...engineExecutedTools, ...outcome.executed.filter(tool => tool.result?.error !== 'confirmation_required')];
+                    if (outcome.handled && outcome.text) {
+                        engineProducedText = outcome.text;
+                        engineTextIsReply = true;
+                        engineAwaitsConsent = outcome.awaitsConsent === true;
+                        deterministicReply = outcome.text;
+                        tools = [];
+                        // The target is still being chosen: remember the writer so the next message is read as the choice.
+                        if (outcome.awaitingWriter !== undefined && missionFocus.selected?.kind === 'tool' && !missionFocus.selected.reference) {
+                            if (outcome.awaitingWriter) {
+                                missionFocus.selected.toolName = outcome.awaitingWriter;
+                                missionFocus.selected.domain = toolMissionDomain(outcome.awaitingWriter);
+                            } else if (missionFocus.selected.toolName && TRANSITION_TOOLS.has(missionFocus.selected.toolName)) {
+                                delete missionFocus.selected.toolName;
+                            }
+                            keepsAwaiting = !!outcome.awaitingWriter;
+                            await saveMission();
+                        }
+                    }
+                }
+                if (awaitingWriter && !keepsAwaiting && missionFocus.selected?.kind === 'tool' && !missionFocus.selected.reference
+                    && missionFocus.selected.toolName && TRANSITION_TOOLS.has(missionFocus.selected.toolName)) {
+                    delete missionFocus.selected.toolName;
+                    await saveMission();
+                }
+            } catch (e: any) {
+                this.logger.warn(`[Transition] engine error (non-fatal): ${e.message}`);
+            }
+        }
+
         // 4c. THE CUSTOMER SAID YES — the server executes, not the model.
         //
         // Every write gated by a confirmation used to depend on the model
@@ -4003,6 +4137,10 @@ export class ConversationsService {
                         this.recordAgentSignal(tenantId, 'pending_confirmation_executed', session);
                         if (toolResultSucceeded(result)) {
                             tools = [];
+                            // A cancellation / reschedule the backend just executed is reported by the backend: the model
+                            // voicing it was free to answer «no puedo, alguien del equipo» about something already done.
+                            deterministicReply = transitionDoneText(pending.toolName, pending.args, result, userLanguage,
+                                addressFormOf(regional?.addressForm.value)) ?? deterministicReply;
                         } else {
                             // La operacion fallo DESPUES del "si" del cliente.
                             // Vaciar todo aca dejaba a la agente sabiendo que
@@ -4641,6 +4779,8 @@ export class ConversationsService {
             let markupRetried = false;
 
             for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
+                // The server proposed or executed a transition this turn: its own text is the reply, no model call.
+                if (deterministicReply) { finalResponse = deterministicReply; break; }
                 const hasTools = tools.length > 0 && !learningSuppressed;
                 const styleOperation = [...executedToolsThisTurn].reverse().find(tool => isBusinessWriteTool(tool.name) && toolResultSucceeded(tool.result));
                 if (styleOperation && styleOperation !== lastStyleOperation) {
@@ -4945,11 +5085,13 @@ export class ConversationsService {
             // Output guardrail (#3): catch invented prices before the reply leaves.
             // Corpus = the system prompt (services/KB/directive/business info) + the
             // whole message thread (history + tool results) — everything the model saw.
-            finalResponse = await this.applyOutputGuardrails(
+            finalResponse = deterministicReply ? deterministicReply : await this.applyOutputGuardrails(
                 finalResponse, systemPrompt, currentMessages, allowedTiers, tenantId, conversation.id,
                 executedToolsThisTurn, userLanguage, priorActions, turnContext, session, {execute:executeLearningModel},
                 allowHumanHandoff,
             );
+            // A raw UUID is not a reference a customer can read or quote: it is shown as the short one (first 8, uppercase).
+            if (finalResponse) finalResponse = humanizeReferences(finalResponse);
             // The model writes the thousands separator of a bare number as it pleases (119.900 one day,
             // 119,900 the next): amounts that carry a currency are put in the reply language's grouping.
             if (finalResponse && !isErrorFallback(finalResponse)) {
@@ -4967,7 +5109,7 @@ export class ConversationsService {
             // stranded: every next message is classified again, so a personal detail
             // or "quiero mi reembolso" reaches a person directly.
             if (!session && !draftMode && allowHumanHandoff && this.wantsPersonOffer(userText, tenantId)
-                && !isPipelineFallbackReply(finalResponse)) {
+                && !deterministicReply && !isPipelineFallbackReply(finalResponse)) {
                 finalResponse = withPolicyPersonOffer(finalResponse, userLanguage);
             }
             // An open booking summary must not take the "yes" that answers an offer of a person.

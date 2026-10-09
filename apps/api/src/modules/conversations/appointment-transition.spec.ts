@@ -73,11 +73,13 @@ describe('«sí, cancélalo» answers a pending cancellation in the arbiter', ()
         const d = arbitrate('mejor quiero reprogramar mi cita para el lunes', pending('reschedule_appointment'));
         expect(d.invalidateConfirmation).toBe(true);
     });
-    it('naming another object keeps the pending proposal untouched and unconfirmed (the model asks which)', () => {
+    it('naming another object is never consent to the pending proposal: the arbiter asks which, naming both objects', () => {
         const d = arbitrate('sí, cancela el pedido', pending('cancel_appointment'));
-        expect(d.route).toBe('tools');
-        expect(d.state.expectedReply).not.toBeNull();
-        expect(d.state.selected?.toolName).toBe('cancel_appointment');
+        expect(d.route).toBe('clarify');
+        expect(d.clarifyOptions).toEqual(['appointment', 'order']);
+        expect(d.state.expectedReply).toBeNull();
+        // the appointment proposal is paused with its data, not lost
+        expect(d.state.pausedTools?.[0]?.ref.toolName).toBe('cancel_appointment');
     });
     it('the same phrase with another pending effect is a cancel request (clarify, no domain)', () => {
         const state = pending('create_payment_link');
@@ -97,7 +99,8 @@ describe('«sí, cancélalo» answers a pending cancellation in the arbiter', ()
         expect(missionDialogue('es', 'clarify', ['appointment', 'order'])).toBe('Hay más de una gestión posible: su cita o su pedido. ¿Sobre cuál desea continuar?');
         expect(missionDialogue('en', 'clarify', ['appointment', 'order'])).toContain('your appointment or your order');
         expect(missionDialogue('es', 'clarify')).toContain('más de una gestión');
-        expect(missionDialogue('es', 'clarify', ['appointment'])).toContain('más de una gestión');
+        // one known gestión is still named: «¿cuál?» with nothing to choose from cannot be answered
+        expect(missionDialogue('es', 'clarify', ['appointment'])).toContain('su cita');
     });
 });
 

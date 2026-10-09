@@ -3742,7 +3742,7 @@ export class AIToolExecutorService {
 
     private async listCustomerAppointments(schema: string, contactId: string): Promise<any> {
         const rows: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT a.id, a.service_name, a.status, a.customer_name, a.payment_status, a.amount_due, a.hold_expires_at, a.metadata,
+            `SELECT a.id, a.service_id, a.assigned_to, a.service_name, a.status, a.customer_name, a.payment_status, a.amount_due, a.hold_expires_at, a.metadata,
                     ${appointmentPriceSql('a', 's')} AS price, ${appointmentCurrencySql('a', 's')} AS currency,
                     to_char(a.start_at, 'YYYY-MM-DD') AS local_date, to_char(a.start_at, 'HH24:MI') AS local_time
              FROM "${schema}".appointments a LEFT JOIN "${schema}".services s ON s.id = a.service_id
@@ -3754,6 +3754,10 @@ export class AIToolExecutorService {
         return {
             appointments: rows.map(r => ({
                 id: r.id,
+                // The short reference the customer is shown and can quote (the first 8 hex characters).
+                reference: String(r.id).replace(/-/g, '').slice(0, 8).toUpperCase(),
+                serviceId: r.service_id ?? undefined,
+                staffId: r.assigned_to ?? undefined,
                 service: r.service_name,
                 date: r.local_date,
                 time: r.local_time,

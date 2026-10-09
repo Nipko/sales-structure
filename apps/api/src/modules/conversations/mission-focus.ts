@@ -145,7 +145,16 @@ export function arbitrateMissionFocus(input: {
     };
     // No wording can select two owners, including a correction combined with a
     // new task. Keeping the slots intact is preferable to inventing ownership.
-    if ((taskDirective || resume) && (domains.length > 1 || unique.length > 1)) {
+    // «sí, cancela el pedido» while the pending proposal cancels an APPOINTMENT (or the reverse): the message names another
+    // object than the one the customer was asked about. It is neither consent to the pending proposal nor a plain new
+    // request: ask which one, naming both.
+    const pendingDomain = pendingAction && pendingAction.object !== 'other' ? pendingAction.object : undefined;
+    const otherObjects = pendingDomain ? domains.filter(domain => ['appointment', 'order'].includes(domain) && domain !== pendingDomain) : [];
+    let forcedOptions: string[] | undefined;
+    if (pendingDomain && otherObjects.length && !answersPending && /\b(?:cancel\w*|anul\w*|annul\w*|mu[eé]v\w*|mover|reprogram\w*|reagend\w*)\b/.test(normalized)) {
+        action = 'clarify'; route = 'clarify'; invalidate = true;
+        forcedOptions = [pendingDomain, ...otherObjects];
+    } else if ((taskDirective || resume) && (domains.length > 1 || unique.length > 1)) {
         action = 'clarify'; route = 'clarify'; invalidate = true;
     } else if (!answersPending && (appointmentChangeRequest(input.text) === 'explicit'
         || appointmentChangeRequest(input.text) === 'ambiguous' && !(current?.ref.kind === 'booking' && !current.paused))) {
@@ -206,8 +215,15 @@ export function arbitrateMissionFocus(input: {
     state.selected = selected;
     if (!state.selected && route === 'tools') state.selected = { id: randomUUID(), kind: 'tool' };
     const switching = action === 'select' || (action as MissionFocusDecision['action']) === 'resume' || action === 'cancel';
+    // The options are the missions the customer can pick from PLUS the objects the message names: a clarification that
+    // does not say what the choice is between («Hay más de una gestión posible. ¿Cuál desea continuar?») cannot be answered.
     const clarifyOptions = route === 'clarify'
-        ? [...new Set(saved.map(candidate => candidate.ref.domain || (candidate.ref.kind === 'booking' ? 'appointment' : candidate.ref.kind)))]
+        ? [...new Set([
+            ...(forcedOptions ?? []),
+            ...saved.map(candidate => candidate.ref.domain || (candidate.ref.kind === 'booking' ? 'appointment' : candidate.ref.kind)),
+            ...domains.filter(domain => forcedOptions || saved.length < 2 || saved.some(candidate => candidate.ref.domain === domain)),
+            ...(state.selected?.kind === 'tool' && state.selected.domain ? [state.selected.domain] : []),
+        ])]
         : undefined;
     return { state, route, action, clarifyOptions,
         selectedProcedureId: selected?.kind === 'procedure' ? selected.reference : undefined,
@@ -233,11 +249,20 @@ const CLARIFY_WITH_OPTIONS: Record<string, string> = {
     fr: 'Plusieurs démarches sont possibles : {options}. Laquelle souhaitez-vous poursuivre ?',
 };
 
+const CLARIFY_ONE_OPTION: Record<string, string> = {
+    es: 'No me queda claro a qué gestión se refiere; tengo en curso {option}. ¿Desea continuar con eso o necesita otra cosa?',
+    en: 'I am not sure which task you mean; I have {option} in progress. Do you want to continue with it or do you need something else?',
+    pt: 'Não ficou claro a qual tarefa você se refere; tenho {option} em andamento. Quer continuar com ela ou precisa de outra coisa?',
+    fr: 'Je ne suis pas sûr de la démarche concernée ; j’ai {option} en cours. Souhaitez-vous la poursuivre ou avez-vous besoin d’autre chose ?',
+};
+
 export function missionDialogue(language: string, kind: 'clarify' | 'paused' | 'correction' | 'invalidCorrection' | 'replay', options?: readonly string[]): string {
-    if (kind === 'clarify' && options && options.length > 1) {
+    if (kind === 'clarify' && options && options.length > 0) {
         const lang = (language in DOMAIN_LABEL ? language : 'es');
-        const labels = options.map(option => DOMAIN_LABEL[lang][option]).filter(Boolean);
+        const labels = [...new Set(options.map(option => DOMAIN_LABEL[lang][option]).filter(Boolean))];
         if (labels.length > 1) return CLARIFY_WITH_OPTIONS[lang].replace('{options}', labels.join(OPTIONS_JOIN[lang]));
+        // One known gestión: still say WHICH, instead of asking «¿cuál?» with nothing to choose from.
+        if (labels.length === 1) return CLARIFY_ONE_OPTION[lang].replace('{option}', labels[0]);
     }
     const messages = {
         es: { clarify: 'Hay más de una gestión posible. ¿Cuál desea continuar?', paused: 'La gestión queda pausada y conserva sus datos. ¿Qué necesita hacer ahora?', correction: 'Actualicé ese dato. Revise la propuesta de nuevo antes de confirmar.', invalidCorrection: 'Necesito identificar un solo dato para corregirlo. ¿Qué campo desea cambiar y cuál es el valor correcto?' },

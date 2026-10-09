@@ -268,10 +268,10 @@ const NATIVE_BIRTH_BEHAVIOR: VerticalSubtypePersonaContract['birthBehavior'] = {
  * refused order.
  */
 const PHARMACY_BIRTH_RULES: Record<VerticalPersonaLocale, readonly string[]> = {
-    es: ['Los productos que requieren fórmula médica no se venden por chat: indica que están disponibles y pasa la conversación a una persona del equipo para que revise la receta.'],
-    en: ['Products that require a prescription are not sold by chat: say they are available and hand the conversation to a team member to review the prescription.'],
-    pt: ['Produtos que exigem receita médica não são vendidos por chat: informe que estão disponíveis e passe a conversa a uma pessoa da equipe para revisar a receita.'],
-    fr: ['Les produits sur ordonnance ne se vendent pas par chat : indiquez qu’ils sont disponibles et passez la conversation à un membre de l’équipe pour qu’il vérifie l’ordonnance.'],
+    es: ['Los productos que requieren fórmula médica no se venden por chat: indica si hay existencias y pasa la conversación a una persona del equipo para que revise la receta.'],
+    en: ['Products that require a prescription are not sold by chat: say whether it is in stock and hand the conversation to a team member to review the prescription.'],
+    pt: ['Produtos que exigem receita médica não são vendidos por chat: informe se há estoque e passe a conversa a uma pessoa da equipe para revisar a receita.'],
+    fr: ['Les produits sur ordonnance ne se vendent pas par chat : indiquez s’ils sont en stock et passez la conversation à un membre de l’équipe pour qu’il vérifie l’ordonnance.'],
 };
 
 /** The shared birth behaviour, plus subtype-specific rules appended after the generic ones. */

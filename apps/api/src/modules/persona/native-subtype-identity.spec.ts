@@ -85,7 +85,7 @@ describe('native-operation subtypes are born with an identity that fits them', (
             await ctx.service.createDefaultAgentFromGoals(TENANT_ID, ['sales'], 'onboarding', industry, subType);
             const rules = (ctx.inserted()!.config.behavior.rules as string[]).join(' ');
             if (subType === 'farmacia') {
-                expect(rules).toMatch(/fórmula médica no se venden por chat/);
+                expect(rules).toMatch(/fórmula médica no se venden por chat: indica si hay existencias/);
                 expect(rules).toMatch(/persona del equipo para que revise la receta/);
             } else {
                 expect(rules).not.toMatch(/fórmula|receta/i);

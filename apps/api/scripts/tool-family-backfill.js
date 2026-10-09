@@ -96,7 +96,8 @@ function familiesForProfile(industry, subType) {
  */
 function tenantVerticalIdentity(tenant) {
   const industry = tenant.vc_industry || tenant.industry;
-  const subType = tenant.vc_sub_type || tenant.legacy_sub_type;
+  // The runtime accepts both `verticalConfig.subType` and a lowercase `subtype`.
+  const subType = tenant.vc_sub_type || tenant.vc_sub_type_lower || tenant.legacy_sub_type;
   return { industry: normalize(industry), subType: normalize(subType) };
 }
 

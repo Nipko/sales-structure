@@ -23,6 +23,7 @@ const {
   parseNoopCandidate,
   migrateTenantSchema,
   runTenantMigrations,
+  TENANTS_QUERY,
 } = require('./migrate-tenants');
 
 const results = [];
@@ -733,6 +734,19 @@ async function endToEnd(databaseUrl) {
     };
     delete env.MIGRATE_TENANTS_ALLOW_INCOMPLETE_FOR_TESTS;
     const cli = (extraEnv, hooks) => runCli({ ...env, ...extraEnv }, { ...hooks, cwd: tmpDir });
+
+    await test('E2E the tenant listing works against a REDUCED public.tenants (id, schema_name, is_active only)', async () => {
+      // The vertical identity columns must degrade to NULL, not fail with 42703:
+      // this fixture is the deploy gate (npm run test:migrate:tenants).
+      const { rows } = await db.query(TENANTS_QUERY);
+      const row = rows.find((candidate) => candidate.schema_name === schema);
+      assert.ok(row, 'the fixture tenant must be listed');
+      assert.equal(row.industry, null);
+      assert.equal(row.vc_industry, null);
+      assert.equal(row.vc_sub_type, null);
+      assert.equal(row.vc_sub_type_lower, null);
+      assert.equal(row.legacy_sub_type, null);
+    });
 
     await test('E2E first run builds the tenant: exit 0, summary parseable exactly like deploy.yml does', async () => {
       const run = await cli({});

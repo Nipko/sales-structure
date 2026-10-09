@@ -422,6 +422,29 @@ describe('createToolFamilyBackfill (the hook the migration runs)', () => {
     });
 });
 
+describe('the tenant listing query', () => {
+    const { TENANTS_QUERY } = require('../../../scripts/migrate-tenants.js');
+
+    it('reads the vertical identity through to_jsonb, so a reduced public.tenants lists as NULLs instead of 42703', () => {
+        expect(TENANTS_QUERY).not.toMatch(/\bt\.industry\b/);
+        expect(TENANTS_QUERY).not.toMatch(/\bt\.settings\b/);
+        for (const alias of ['industry', 'vc_industry', 'vc_sub_type', 'vc_sub_type_lower', 'legacy_sub_type']) {
+            expect(TENANTS_QUERY).toMatch(new RegExp(String.raw`to_jsonb\(t\)[^\n]*AS ${alias}\b`));
+        }
+        // the three columns the minimal E2E fixture has
+        expect(TENANTS_QUERY).toMatch(/SELECT t\.id, t\.schema_name, t\.is_active,/);
+    });
+
+    it('accepts the lowercase verticalConfig.subtype the runtime accepts', () => {
+        expect(backfill.tenantVerticalIdentity({
+            industry: 'pet_services', vc_industry: 'pet_services', vc_sub_type: null, vc_sub_type_lower: 'Hotel', legacy_sub_type: null,
+        })).toEqual({ industry: 'pet_services', subType: 'hotel' });
+        expect(backfill.tenantVerticalIdentity({
+            industry: 'x', vc_sub_type: 'guarderia', vc_sub_type_lower: 'hotel',
+        }).subType).toBe('guarderia');
+    });
+});
+
 describe('wired into the deploy migration (runTenantMigrations)', () => {
     /** A prisma double that lets the schema template run and counts the hook's calls. */
     function migrationPrisma() {

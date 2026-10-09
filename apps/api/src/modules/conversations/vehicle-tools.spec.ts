@@ -15,8 +15,9 @@ function harness() {
     const executor: any = new (AIToolExecutorService as any)(...dependencies);
     const command = jest.spyOn(executor, 'createAppointment').mockResolvedValue({ success: true, appointment: { id: 'appointment', status: 'pending_payment', vehicleId } });
     for (const level of ['log', 'warn', 'error']) jest.spyOn(executor.logger, level).mockImplementation(() => undefined);
+    const channelType = 'telegram';
     const run = (input: any = args, scope: any = operationalScope) => executor.execute(schemaName, tenantId, contactId, 'schedule_test_drive', input, undefined,
-        { authority: authorityFor('schedule_test_drive'), operationalScope: scope });
+        { authority: authorityFor('schedule_test_drive'), operationalScope: scope, channelType });
     return { executor, command, control, service, vehicle, run, prisma };
 }
 describe('test-drive tool admission and canonical command binding', () => {
@@ -30,7 +31,7 @@ describe('test-drive tool admission and canonical command binding', () => {
             appointmentTerms: expect.objectContaining({ price: 100, requiresPayment: true }),
         }) }));
         expect(h.command).toHaveBeenCalledWith(schemaName, tenantId, contactId, expect.objectContaining({ date: args.scheduledDate, time: args.scheduledTime, customerName: args.contactName }),
-            undefined, undefined, undefined, operationalScope, 'durable-test-drive-command');
+            undefined, undefined, undefined, operationalScope, 'durable-test-drive-command', 'telegram');
     });
     it('reuses stored tool arguments without losing the original date or customer name', async () => {
         const h = harness(); await h.run();

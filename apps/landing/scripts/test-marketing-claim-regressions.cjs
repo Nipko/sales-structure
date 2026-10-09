@@ -28,6 +28,13 @@ const probes = [
   "Cotizaciones y propuestas por chat",
   "Seguros: Salud · Auto · Hogar · Vida",
   "Asesoría · Inversiones · Contabilidad",
+  // The finance demo chat opened with investment advice and a risk-profile
+  // question in four languages; the product only offers financial advisory and
+  // credit/loans (no investments), so each wording must stay rejected.
+  "Hola, necesito asesoría para invertir. ¿Cuál es tu perfil: conservador, moderado o agresivo?",
+  "Hi, I need investment advice. What's your profile: conservative, moderate or aggressive?",
+  "Olá, preciso de assessoria para investir. Qual é o seu perfil: conservador, moderado ou agressivo?",
+  "Bonjour, j'ai besoin de conseils pour investir. Quel est votre profil : conservateur, modéré ou agressif ?",
   "25.000 mensajes IA/mes",
   "Canales: WhatsApp, Instagram, Messenger, Telegram, SMS",
   "Estados: pendiente → cotizado → completado",

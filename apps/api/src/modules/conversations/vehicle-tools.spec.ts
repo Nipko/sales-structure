@@ -30,7 +30,7 @@ describe('test-drive tool admission and canonical command binding', () => {
             appointmentTerms: expect.objectContaining({ price: 100, requiresPayment: true }),
         }) }));
         expect(h.command).toHaveBeenCalledWith(schemaName, tenantId, contactId, expect.objectContaining({ date: args.scheduledDate, time: args.scheduledTime, customerName: args.contactName }),
-            undefined, undefined, undefined, operationalScope, 'durable-test-drive-command');
+            undefined, undefined, undefined, operationalScope, 'durable-test-drive-command', undefined /* channelType, appended by 1cef1521 */);
     });
     it('reuses stored tool arguments without losing the original date or customer name', async () => {
         const h = harness(); await h.run();

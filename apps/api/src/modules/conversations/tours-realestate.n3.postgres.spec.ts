@@ -351,4 +351,55 @@ import { CRM_BASE_TABLES, N3_DATABASE_URL, openLive, seedCustomer } from './__fi
         expect(await h.q('SELECT id FROM tour_bookings')).toEqual([]);
         expect(await seatsLeft(inv)).toBe(9);
     });
+
+    // ── Empty catalogue and accents (diagnosis 2026-10-09, F1 / F5) ───────────
+    it('F1: search_listings over a catalogue with no available listing answers catalog_empty; with listings it is a plain no-match', async () => {
+        const C = await seedCustomer(h.q, 'Comprador');
+        const empty = await h.call(C.contactId, C.conversationId, 'search_listings', { transactionType: 'sale', neighborhood: 'Usaquén', minBedrooms: 3 }, scope);
+        expect(empty.listings).toEqual([]);
+        expect(empty.catalog_empty).toBe(true);
+        await listing('Casa vendida', { status: 'sold' });
+        expect((await h.call(C.contactId, C.conversationId, 'search_listings', {}, scope)).catalog_empty).toBe(true);
+        await listing('Casa Aurora', { hood: 'Chapinero' });
+        const noMatch = await h.call(C.contactId, C.conversationId, 'search_listings', { neighborhood: 'Medellín' }, scope);
+        expect(noMatch.listings).toEqual([]);
+        expect(noMatch.catalog_empty).toBeUndefined();
+        expect(noMatch.message).toContain('No hay inmuebles con esos criterios');
+    });
+
+    it('F5: a neighborhood typed with or without the accent finds the listing the owner typed either way', async () => {
+        await listing('Casa Aurora', { hood: 'Usaquen' });
+        await listing('Casa Bruma', { hood: 'Chapinero' });
+        const C = await seedCustomer(h.q, 'Comprador');
+        const accented = await h.call(C.contactId, C.conversationId, 'search_listings', { neighborhood: 'Usaquén' }, scope);
+        expect(accented.listings.map((l: any) => l.name)).toEqual(['Casa Aurora']);
+        await h.q(`UPDATE real_estate_listings SET neighborhood='Usaquén' WHERE name='Casa Aurora'`);
+        const plain = await h.call(C.contactId, C.conversationId, 'search_listings', { neighborhood: 'usaquen' }, scope);
+        expect(plain.listings.map((l: any) => l.name)).toEqual(['Casa Aurora']);
+    });
+
+    it('F1/F4: search_packages over a catalogue with no package answers catalog_empty, but a past date is said first', async () => {
+        const C = await seedCustomer(h.q, 'Viajero');
+        const empty = await h.call(C.contactId, C.conversationId, 'search_packages', { destination: 'Cartagena' }, scope);
+        expect(empty.packages).toEqual([]);
+        expect(empty.catalog_empty).toBe(true);
+        const stale = await h.call(C.contactId, C.conversationId, 'search_packages', { date: past }, scope);
+        expect(stale.reason).toBe('departure_in_past');
+        expect(stale.catalog_empty).toBeUndefined();
+        await pkg('Isla Grande');
+        const noMatch = await h.call(C.contactId, C.conversationId, 'search_packages', { destination: 'Tokio' }, scope);
+        expect(noMatch.packages).toEqual([]);
+        expect(noMatch.catalog_empty).toBeUndefined();
+    });
+
+    it('F5: a destination typed without the accent finds the package titled with it', async () => {
+        const id = randomUUID();
+        await h.q(`INSERT INTO tour_packages(id,name,destination,price,currency,min_party_size,is_active,child_discount_pct,duration_type,duration_value)
+            VALUES($1::uuid,'Ruta del Café','Medellín',250000,'COP',1,true,0,'days',2)`, [id]);
+        const C = await seedCustomer(h.q, 'Viajero');
+        const found = await h.call(C.contactId, C.conversationId, 'search_packages', { destination: 'medellin' }, scope);
+        expect(found.packages.map((p: any) => p.name)).toEqual(['Ruta del Café']);
+        const withAccent = await h.call(C.contactId, C.conversationId, 'search_packages', { destination: 'Medellín' }, scope);
+        expect(withAccent.packages).toHaveLength(1);
+    });
 });

@@ -3499,12 +3499,16 @@ export class ConversationsService {
                 // «quiero cancelar» with no object, in a business that has several: say which ones there are.
                 if (missionDecision.route === 'clarify') {
                     const ambiguous = detectTransition({ text: userText, available: transitionAvailable, pendingConfirmation: false });
-                    if (ambiguous?.kind === 'ambiguous' && !(missionDecision.clarifyOptions || []).length) {
+                    const overridden = ambiguous?.kind === 'ambiguous' && !(missionDecision.clarifyOptions || []).length;
+                    if (ambiguous?.kind === 'ambiguous' && overridden) {
                         engineProducedText = transitionTexts(userLanguage, addressFormOf(regional?.addressForm.value)).ambiguous(ambiguous.options);
                     }
-                    // The question of which one is the server's, with the options in it: the model does not rephrase it.
-                    engineTextIsReply = true;
-                    deterministicReply = engineProducedText;
+                    // A question that names the options is the server's, word for word: the model does not rephrase it. With no
+                    // option to name (a bare resume with nothing to resume) the model still voices it, as before.
+                    if (overridden || (missionDecision.clarifyOptions || []).length) {
+                        engineTextIsReply = true;
+                        deterministicReply = engineProducedText;
+                    }
                 }
                 tools = [];
             }

@@ -134,7 +134,7 @@ export const VERTICALS: VerticalDef[] = ([
       { from: "customer", text: "Quiero info sobre cursos de inglés" },
       { from: "ai", text: "¡Hola! Soy Ana 📚 Tenemos cursos A1-C2, presencial y virtual. ¿Sabes tu nivel actual?" },
       { from: "customer", text: "No, nunca hice prueba" },
-      { from: "ai", text: "Te hago un mini diagnóstico acá mismo (5 preguntas). ¿Empezamos? Primera: How would you describe your daily routine?" },
+      { from: "ai", text: "Te comparto el enlace a la prueba de nivel que configuró la academia. Con el resultado, el equipo te ubica en el grupo adecuado." },
     ],
   },
   {

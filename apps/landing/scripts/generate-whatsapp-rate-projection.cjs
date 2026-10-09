@@ -189,7 +189,8 @@ const generated = build();
 
 if (process.argv.includes("--check")) {
   const current = fs.existsSync(OUTPUT) ? fs.readFileSync(OUTPUT, "utf8") : "";
-  if (current !== generated) {
+  // The checkout may be CRLF (core.autocrlf on Windows); the generator emits LF.
+  if (current.replace(/\r\n/g, "\n") !== generated) {
     process.stderr.write(
       "whatsapp-rate-projection.generated.ts is stale or hand-edited.\n"
       + "Run: node scripts/generate-whatsapp-rate-projection.cjs\n",

@@ -329,6 +329,58 @@ const frozenClaimPatterns = [
     pattern: /(?:\b(?:hands? off|passes? the conversation|pasa la conversaci[oó]n|passa a conversa|transf[eè]re la conversation)\b.{0,70}\b(?:instantly|al instante|instantaneamente|instantan[eé]ment)\b)/i,
   },
   {
+    // Truth pass over the industry pages against the product's own registries
+    // (vertical-definitions, subtype profiles, agent tool families). Each rule
+    // below freezes a claim that was on the site and has no code behind it, so
+    // it cannot come back by copy-edit.
+    //
+    // The monthly AI-message quotas of the retired plan copy. The live
+    // commercial catalogue (apps/api/prisma/plan-commercial-defaults.json) has
+    // different figures, and the pricing cards read the live catalogue anyway.
+    label: "retired plan AI-message quota",
+    pattern: /\b(?:25|100)[.,   ]?000\s+(?:(?:mensajes|mensagens|messages)\s+IA|AI\s+messages)\b/i,
+  },
+  {
+    // Technician assignment on a service request is manual, from the dispatch
+    // board; nothing matches a request to a technician by skill.
+    label: "unsupported automatic technician assignment by skills",
+    pattern: /(?:asignaci[oó]n autom[aá]tica por habilidades|auto-?assign(?:ment)? by skills|atribui[cç][aã]o autom[aá]tica por habilidades|affectation auto(?:matique)? par comp[eé]tences)/i,
+  },
+  {
+    // The only professional-services tool is get_case_status, which is read-only.
+    label: "unsupported professional-services quotes and proposals by chat",
+    pattern: /(?:cotizaciones y propuestas por chat|quotes and proposals by chat|cota[cç][oõ]es e propostas por chat|devis et propositions par chat)/i,
+  },
+  {
+    // Grooming and daycare moved out of veterinary to the pet-services industry.
+    // Only the old veterinary subtitles are frozen here: bookings of daycare and
+    // grooming are real pet-services features. The veterinaria strings are
+    // checked on their own, per locale, further down.
+    label: "pet grooming or daycare listed under veterinary",
+    pattern: /(?:Cl[ií]nicas · (?:Est[eé]tica canina|Banho e tosa)|Clinics · Pet grooming|Cliniques · Toilettage)/i,
+  },
+  {
+    // The service-request lifecycle is pending, scheduled, dispatched,
+    // in progress, completed (home-services.service.ts). "Quoted" is not a
+    // step an operator moves a request through.
+    label: "home-service lifecycle with a quoted step",
+    pattern: /(?:pendiente → cotizado|pending → quoted|pendente → cotado|en attente → devisé)/i,
+  },
+  {
+    // Business types that do not exist as selectable types: insurance for the
+    // home, health insurance (waitlist only, hidden from sign-up), investments
+    // and accounting under finance.
+    label: "business types the product does not offer (insurance, finance)",
+    pattern: /(?:Salud · Auto · Hogar|Health · Auto · Home|Sa[uú]de · Auto · Casa|Sant[eé] · Auto · Maison|Asesor[ií]a · Inversiones|Advisory · Investments|Assessoria · Investimentos|Conseil · Investissements)/i,
+  },
+  {
+    // SMS is retired (one-way credit product behind a kill switch). It is not a
+    // channel any plan sells, whatever the plan catalogue still lists. Frozen in
+    // channel-list context so a sentence that says SMS is gone is still allowed.
+    label: "SMS presented as a channel",
+    pattern: /(?:WhatsApp|Instagram|Messenger|Telegram|Canales|Canais|Channels|Canaux)[^.\n]{0,60}\bSMS\b/,
+  },
+  {
     // Parallly is not the payer. From 1 October 2026 Meta bills the tenant's
     // own WhatsApp Business account, and a page that says otherwise promises
     // to absorb a cost that is unbounded outside Colombia — one number in an
@@ -576,6 +628,15 @@ for (const locale of locales) {
   assert(
     !/\b(?:guaranteed coverage|cobertura garantizada|cobertura garantida|garantie assurée|approved|aprobado|aprovado|approuvé)\b/i.test(regulatedText),
     `${locale}: regulated demos must not promise coverage or approval`,
+  );
+
+  // Grooming and daycare belong to pet-services; veterinary has no such tools.
+  // Scoped to the veterinaria strings so the pet-services page can keep them.
+  assert(
+    !/daycare|guarder[ií]a|garderie|peluquer[ií]a|grooming|toilettage|banho|tosa\b|est[eé]tica canina/i.test(
+      Object.values(messages?.verticals?.veterinaria || {}).filter((value) => typeof value === "string").join(" "),
+    ),
+    `${locale}: veterinaria must not advertise grooming or daycare (those are pet-services)`,
   );
 
   for (const claim of frozenClaimPatterns) {

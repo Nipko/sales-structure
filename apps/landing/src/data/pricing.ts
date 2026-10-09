@@ -134,7 +134,7 @@ function formatFeatureValue(raw: unknown, fmt: FeatureFmt | undefined, locale: s
         }).format(n >= 365 ? Math.round(n / 365) : n)
       : null;
     case "channels": return Array.isArray(raw) && raw.every((channel) => typeof channel === "string")
-      ? formatChannelNames(raw)
+      ? (formatChannelNames(raw) || null)
       : null;
     default: return typeof raw === "string" ? raw : String(raw);
   }

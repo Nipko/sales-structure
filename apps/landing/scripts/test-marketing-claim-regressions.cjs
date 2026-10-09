@@ -21,6 +21,16 @@ const probes = [
   // Opening Meta's billing page proves neither funding nor delivery. A screen
   // that says it does is selling a guarantee made of somebody else's bank.
   "Come back and you will see Payment verified — guaranteed delivery from day one.",
+  // Truth pass over the industry pages: each of these was on the live landing
+  // with nothing in the product behind it.
+  "Clínicas · Estética canina · Daycare",
+  "Asignación automática por habilidades",
+  "Cotizaciones y propuestas por chat",
+  "Seguros: Salud · Auto · Hogar · Vida",
+  "Asesoría · Inversiones · Contabilidad",
+  "25.000 mensajes IA/mes",
+  "Canales: WhatsApp, Instagram, Messenger, Telegram, SMS",
+  "Estados: pendiente → cotizado → completado",
 ];
 
 for (const probe of probes) {

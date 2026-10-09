@@ -223,10 +223,10 @@ export const VERTICALS: VerticalDef[] = ([
     cluster: "profesional-finanzas",
     channel: "whatsapp",
     demoMessages: [
-      { from: "customer", text: "Hola, necesito asesoría para invertir" },
-      { from: "ai", text: "¡Hola! Soy Alex 💰 ¿Cuál es tu perfil: conservador, moderado o agresivo? ¿Y monto aproximado?" },
-      { from: "customer", text: "Moderado, unos 20 millones" },
-      { from: "ai", text: "Puedo recopilar tus objetivos y coordinar una conversación con un asesor autorizado. Las recomendaciones las confirma el asesor. ¿Quieres agendar?" },
+      { from: "customer", text: "Hola, quiero saber cómo solicitar un crédito" },
+      { from: "ai", text: "¡Hola! Soy Alex 💰 Con gusto te ayudo. ¿Para qué necesitas el financiamiento y para cuándo?" },
+      { from: "customer", text: "Capital para mi negocio, en unas dos semanas" },
+      { from: "ai", text: "Gracias. Registro tu necesidad y puedo coordinar una cita con un asesor autorizado, que te explica requisitos y condiciones. Yo no apruebo créditos ni informo tasas. ¿Quieres agendar?" },
     ],
   },
 

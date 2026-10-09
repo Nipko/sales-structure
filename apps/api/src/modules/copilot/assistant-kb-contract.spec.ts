@@ -5,9 +5,11 @@ import {
   VERTICAL_MANIFEST_INDUSTRIES,
   dashboardRoleCanOpen,
   listCanonicalSubtypeExperienceProfileIds,
+  listSubtypeExperienceProfileIds,
   resolveSubtypeExperienceProfile,
 } from '@parallext/shared';
 import * as path from 'path';
+import { VERTICAL_REGISTRY } from '../verticals/vertical-definitions';
 
 const LOCALES = ['es', 'en', 'pt', 'fr'] as const;
 const ALLOWED_ROLES = new Set([
@@ -534,6 +536,29 @@ describe('Parallly Assist knowledge-base contract', () => {
     // fija el momento en que se escribió, no el contrato del que sale.
     expect(normalizedBody).toMatch(/\b80\b/);
     expect(normalizedBody).toMatch(/\b18\b/);
+
+    // The 72 / 8 / 5 figures and the names of the business types the owner
+    // cannot pick are derived from the registries, not typed here: adding a
+    // waitlist or legacy type without updating the article turns this red.
+    const canonicalIds = new Set(listCanonicalSubtypeExperienceProfileIds());
+    const legacyIds = listSubtypeExperienceProfileIds().filter((id) => !canonicalIds.has(id));
+    const selectableCount = profiles.filter((profile) => profile.availability === 'selectable').length;
+    const waitlistIds = [...canonicalIds].filter((id) => {
+      const [industry, subtype] = id.split('/');
+      return resolveSubtypeExperienceProfile(industry, subtype === '__none__' ? null : subtype).availability === 'waitlist';
+    });
+    expect(selectableCount + waitlistIds.length).toBe(profiles.length);
+    expect(normalizedBody).toMatch(new RegExp(`\\b${selectableCount}\\b`));
+    expect(normalizedBody).toMatch(new RegExp(`\\b${waitlistIds.length}\\b`));
+    expect(normalizedBody).toMatch(new RegExp(`\\(${legacyIds.length}\\)`));
+    const compact = (text: string) => text.toLocaleLowerCase(locale).replace(/\s*\/\s*/g, '/');
+    const bodyForNames = compact(article!.body);
+    for (const id of [...waitlistIds, ...legacyIds]) {
+      const [industry, subtype] = id.split('/');
+      const entry = VERTICAL_REGISTRY[industry]?.subTypes.find((sub) => sub.key === subtype);
+      expect({ id, hasLabel: Boolean(entry) }).toEqual({ id, hasLabel: true });
+      expect({ id, named: bodyForNames.includes(compact(entry!.label[locale])) }).toEqual({ id, named: true });
+    }
   });
 
   it.each(LOCALES)('%s keeps sensitive and shared workflows scoped to the right roles', (locale) => {

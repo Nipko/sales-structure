@@ -15,7 +15,7 @@ Industries with a current offer are healthcare, fashion and beauty (called "Beau
 ## Business types you cannot choose today
 
 - **Waitlisted (8)**: Wedding planning (event planning), General contractor (construction), Property developer, Payments & collections (finance), Marketplace / E-commerce (retail), IT support & MSP (technology), Insurance carrier and Health insurance specialist (insurance). They exist as business types, but their full operation is still closed and sign-up does not offer them.
-- **Existing accounts only (5)**: Construction & development (real estate), Fintech (finance), IT Consulting (technology), Pet grooming under veterinary (now Pet services → Pet grooming) and Wedding planner (photography). An account that already had one keeps working; a new account cannot choose them.
+- **Existing accounts only (5)**: Construction & development (real estate), Fintech (finance), IT Consulting (technology), Pet grooming under veterinary (now Pet services → Pet grooming) and Wedding planner (photography). An account that already had one keeps working; a new account cannot choose them. In addition, old boutique and pet-shop accounts now show as Retail → Fashion & clothing, and old delivery accounts as Restaurants → Fast food.
 
 ## Where the modules appear
 

@@ -15,7 +15,7 @@ Las industrias con oferta actual son: salud, moda y belleza (en el alta se llama
 ## Tipos de negocio que no puedes elegir hoy
 
 - **En lista de espera (8)**: Planeación de bodas (planeación de eventos), Contratista general (construcción), Promotora inmobiliaria, Pagos y recaudos (finanzas), Marketplace / E-commerce (retail), Soporte TI y MSP (tecnología), Aseguradora y Especialista en salud (seguros). Existen como tipos, pero su operación completa sigue cerrada y el alta no los ofrece.
-- **Solo cuentas existentes (5)**: Construcción y proyectos (inmobiliaria), Fintech (finanzas), Consultoría TI (tecnología), Peluquería canina / felina de veterinaria (hoy es Servicios para mascotas → Peluquería) y Wedding planner (fotografía). Una cuenta que ya los tenía sigue funcionando; una cuenta nueva no puede elegirlos.
+- **Solo cuentas existentes (5)**: Construcción y proyectos (inmobiliaria), Fintech (finanzas), Consultoría TI (tecnología), Peluquería canina / felina de veterinaria (hoy es Servicios para mascotas → Peluquería) y Wedding planner (fotografía). Una cuenta que ya los tenía sigue funcionando; una cuenta nueva no puede elegirlos. Además, las cuentas antiguas de boutique y de tienda para mascotas ahora se muestran como Retail → Moda y ropa, y las de delivery como Restaurantes → Comida rápida.
 
 ## Dónde aparecen los módulos
 

@@ -15,7 +15,7 @@ Les secteurs actuellement proposés sont la santé, la mode et beauté (appelée
 ## Types d'activité que vous ne pouvez pas choisir aujourd'hui
 
 - **Sur liste d'attente (8)** : Organisation de mariages (organisation d'événements), Entrepreneur général (construction), Promoteur immobilier, Paiements et encaissements (finance), Marketplace / E-commerce (commerce de détail), Support informatique et MSP (technologie), Compagnie d'assurance et Spécialiste santé (assurances). Ils existent en tant que types, mais leur fonctionnement complet reste fermé et l'inscription ne les propose pas.
-- **Comptes existants uniquement (5)** : Construction et projets (immobilier), Fintech (finance), Conseil IT (technologie), Toilettage côté vétérinaire (c'est désormais Services pour animaux → Toilettage) et Wedding planner (photographie). Un compte qui les avait déjà continue de fonctionner ; un nouveau compte ne peut pas les choisir.
+- **Comptes existants uniquement (5)** : Construction et projets (immobilier), Fintech (finance), Conseil IT (technologie), Toilettage côté vétérinaire (c'est désormais Services pour animaux → Toilettage) et Wedding planner (photographie). Un compte qui les avait déjà continue de fonctionner ; un nouveau compte ne peut pas les choisir. De plus, les anciens comptes de boutique et d'animalerie apparaissent désormais comme Commerce de détail → Mode et vêtements, et ceux de livraison comme Restaurants → Restauration rapide.
 
 ## Où apparaissent les modules
 

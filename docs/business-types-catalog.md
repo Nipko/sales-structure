@@ -24,9 +24,9 @@ Este es el único listado vigente de industrias y tipos de negocio. Cualquier ci
 ## Resumen
 
 - **20 industrias** en el registro; **18** se ven en el alta (`event_planning` y `construccion` solo tienen tipos en lista de espera y el selector las oculta).
-- **85 configuraciones** industria/tipo resolubles: **80 tipos de negocio canónicos** (72 seleccionables + 8 en lista de espera) y 5 que solo existen para cuentas anteriores (`legacy_only` o alias).
+- **85 configuraciones** industria/tipo resolubles: **80 tipos de negocio canónicos** (72 seleccionables + 8 en lista de espera) y, solo para cuentas anteriores, **5 con ficha propia + 3 alias** (`legacy_only`; los alias son ids antiguos sin ficha que resuelven a otro tipo, ver la tabla de alias).
 - **123 herramientas estáticas del agente**: 113 repartidas en **26 familias** y 10 fuera de familia (cobros, identidad y herramientas de proveedor externo, ver más abajo). Las herramientas de integraciones MCP son dinámicas y no figuran aquí.
-- Recetas de industria (contenido inicial que se siembra en el alta): `salud`, `moda_belleza`, `restaurantes`, `education`, `retail`, `servicios_hogar`. Las demás industrias nacen con la definición base. `otro` genera su propia receta con IA a partir de la descripción del alta. Educación añade cuatro capas de tipo (academia de baile, academia de música o arte, clases particulares y autoescuela).
+- Recetas de industria (contenido inicial que se siembra en el alta): `salud`, `moda_belleza`, `restaurantes`, `education`, `retail`, `servicios_hogar`. Las demás industrias nacen con la definición base. `otro` genera su propia receta con IA a partir de la descripción del alta. Capas de receta por tipo de negocio (se suman a la receta de la industria): Academia de baile (`education/academia_baile`), Academia de música o arte (`education/academia_musica`), Clases particulares y tutorías (`education/clases_particulares`), Autoescuela (`education/autoescuela`) — 4 en total.
 
 ## Industrias
 
@@ -57,7 +57,7 @@ Anclas de certificación: `restaurantes`, `turismo`, `servicios_hogar`. Los nomb
 
 ## Familias de herramientas
 
-Nombre = cómo rotula la familia la pantalla Agente IA → Capacidades (`agent.capabilities` en `apps/dashboard/messages/es.json`). El manifiesto de cada tipo de negocio decide qué familias se publican (línea «Familias de herramientas» de cada ficha) y el dueño las enciende en el editor del agente. Las familias `crm`, `knowledge`, `policies`, `offers`, `orders` y `ecommerce` no figuran en ningún tipo porque no dependen de él: las activa la configuración del agente.
+Nombre = cómo rotula la familia la pantalla Agente IA → Capacidades (`agent.capabilities` en `apps/dashboard/messages/es.json`). El manifiesto de cada tipo de negocio decide qué familias se publican (línea «Familias de herramientas» de cada ficha) y el dueño las enciende en el editor del agente. Las familias `offers`, `policies`, `knowledge`, `orders`, `crm`, `ecommerce` no figuran en ningún tipo porque no dependen de él: las activa la configuración del agente.
 
 | Familia | Nombre en el editor | Herramientas |
 |---|---|---|
@@ -88,7 +88,7 @@ Nombre = cómo rotula la familia la pantalla Agente IA → Capacidades (`agent.c
 | `professionalServices` | Casos del despacho | `get_case_status` |
 | `repairOrders` | Órdenes de taller | `create_repair_order`, `list_my_repair_orders`, `get_repair_order`, `approve_repair`, `cancel_repair_order` |
 
-Herramientas estáticas fuera de familia: `apply_discount`, `create_payment_link`, `get_payment_status`, `refund_payment`, `get_restaurant_menu`, `get_fitness_schedule`, `list_clinic_services`, `check_clinic_availability`, `request_identity_code`, `verify_identity_code`. Las de cobros (`apply_discount`, `create_payment_link`, `get_payment_status`, `refund_payment`) requieren la familia de pagos (`payments`) y el plan correspondiente, `request_identity_code` y `verify_identity_code` son las de verificación de identidad, y las cuatro restantes (origen «proveedor») solo existen mientras el tenant tiene conectado el sistema externo correspondiente.
+Herramientas estáticas fuera de familia: `apply_discount`, `create_payment_link`, `get_payment_status`, `refund_payment`, `get_restaurant_menu`, `get_fitness_schedule`, `list_clinic_services`, `check_clinic_availability`, `request_identity_code`, `verify_identity_code`. Las de cobros (`apply_discount`, `create_payment_link`, `get_payment_status`, `refund_payment`) requieren la familia de pagos (`payments`) y el plan correspondiente, `request_identity_code` y `verify_identity_code` son las de verificación de identidad, y las 4 restantes (origen «proveedor») solo existen mientras el tenant tiene conectado el sistema externo correspondiente.
 
 Subpermisos que el dueño puede apagar dentro de una familia: `appointments.canBook` (`create_appointment`, `schedule_test_drive`, `send_booking_link`); `appointments.canCancel` (`cancel_appointment`, `reschedule_appointment`); `catalog.canCheckStock` (`check_stock`); `ecommerce.canRecommend` (`recommend_products`).
 
@@ -107,7 +107,7 @@ Estos ids siguen resolviendo para que ninguna cuenta cambie de producto sin avis
 
 Cómo leer cada ficha:
 
-- **Menú**: lo que ve el dueño en la barra lateral para ese tipo de negocio, con el nombre exacto del menú (varía por industria y por tipo) y la sección donde aparece. «CRM» es el ítem de personas (la pantalla de contactos) y «Embudo» el del embudo de ventas; ambos se renombran por industria. Además de lo listado, todos ven Conversaciones, Agente IA, Base de conocimiento, Campañas, Analíticas, Canales, Usuarios y Facturación según su rol y plan.
+- **Menú**: lo que ve el dueño en la barra lateral para ese tipo de negocio, con el nombre exacto del menú (varía por industria y por tipo) y la sección donde aparece. «CRM» es el ítem de personas (la pantalla de contactos) y «Embudo» el del embudo de ventas; ambos se renombran por industria. Además de lo listado, todos ven Conversaciones, Agente IA, Base de Conocimiento, Campañas, Análisis, Canales, Usuarios y Facturación según su rol y plan.
 - **Familias y herramientas**: las que el producto publica para ese tipo. Las herramientas se limitan además por plan, rol y por lo que el dueño active en el editor del agente.
 
 ### Salud (`salud`)

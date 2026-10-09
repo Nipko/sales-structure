@@ -15,7 +15,7 @@ Os setores com oferta atual são saúde, moda e beleza (no cadastro aparece como
 ## Tipos de negócio que você não pode escolher hoje
 
 - **Na lista de espera (8)**: Planejamento de casamentos (planejamento de eventos), Empreiteiro geral (construção), Incorporadora imobiliária, Pagamentos e cobranças (finanças), Marketplace / E-commerce (varejo), Suporte de TI e MSP (tecnologia), Seguradora e Especialista em saúde (seguros). Existem como tipos, mas a operação completa continua fechada e o cadastro não os oferece.
-- **Somente contas existentes (5)**: Construção e projetos (imobiliário), Fintech (finanças), Consultoria TI (tecnologia), Banho e tosa de veterinária (hoje é Serviços para pets → Banho e tosa) e Wedding planner (fotografia). Uma conta que já os tinha continua funcionando; uma conta nova não pode escolhê-los.
+- **Somente contas existentes (5)**: Construção e projetos (imobiliário), Fintech (finanças), Consultoria TI (tecnologia), Banho e tosa de veterinária (hoje é Serviços para pets → Banho e tosa) e Wedding planner (fotografia). Uma conta que já os tinha continua funcionando; uma conta nova não pode escolhê-los. Além disso, as contas antigas de boutique e de pet shop agora aparecem como Varejo → Moda e roupas, e as de delivery como Restaurantes → Fast food.
 
 ## Onde os módulos aparecem
 

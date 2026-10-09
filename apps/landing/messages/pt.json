@@ -422,7 +422,7 @@
       "feature1": "Solicitações priorizadas: emergência → flexível",
       "feature2": "Atribuição de técnico pelo painel de despacho",
       "feature3": "Endereço e descrição do problema pelo chat",
-      "feature4": "Estados: pendente → cotado → concluído"
+      "feature4": "Estados: pendente → agendado → a caminho → concluído"
     },
     "fotografia": {
       "pain1": "Consultas por sessões que chegam pelo Instagram e esfriam sem resposta.",

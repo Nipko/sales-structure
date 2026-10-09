@@ -30,6 +30,7 @@ const probes = [
   "Asesoría · Inversiones · Contabilidad",
   "25.000 mensajes IA/mes",
   "Canales: WhatsApp, Instagram, Messenger, Telegram, SMS",
+  "Estados: pendiente → cotizado → completado",
 ];
 
 for (const probe of probes) {

@@ -422,7 +422,7 @@
       "feature1": "Urgency-prioritized requests: emergency → flexible",
       "feature2": "Technician assignment from the dispatch board",
       "feature3": "Address and issue description from chat",
-      "feature4": "Statuses: pending → quoted → completed"
+      "feature4": "Statuses: pending → scheduled → on the way → completed"
     },
     "fotografia": {
       "pain1": "Session inquiries that come in on Instagram and go cold without a reply.",

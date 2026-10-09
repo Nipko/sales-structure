@@ -418,7 +418,7 @@
       "feature1": "Solicitudes priorizadas: emergencia → flexible",
       "feature2": "Asignación de técnico desde el panel de despacho",
       "feature3": "Dirección y descripción del problema desde el chat",
-      "feature4": "Estados: pendiente → cotizado → completado",
+      "feature4": "Estados: pendiente → agendado → en camino → completado",
       "demo1": "Se me tapó el desagüe, urgente",
       "demo2": "Entendido 🚨 Soy Iván. ¿Dirección para enviar técnico?",
       "demo3": "Calle 50 #15-20",

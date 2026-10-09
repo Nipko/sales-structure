@@ -420,9 +420,9 @@
       "agentName": "Iván",
       "tagline": "Envoi de techniciens par urgence avec suivi du statut",
       "feature1": "Demandes priorisées : urgence → flexible",
-      "feature2": "Affectation du technicien depuis le tableau d'envoi",
+      "feature2": "Affectation du technicien depuis le tableau de répartition",
       "feature3": "Adresse et description du problème depuis le chat",
-      "feature4": "Statuts : en attente → devisé → terminé"
+      "feature4": "Statuts : en attente → planifié → en route → terminé"
     },
     "fotografia": {
       "pain1": "Des demandes de séances qui arrivent sur Instagram et se refroidissent sans réponse.",

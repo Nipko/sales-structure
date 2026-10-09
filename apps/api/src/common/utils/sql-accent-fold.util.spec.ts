@@ -1,4 +1,4 @@
-import { ACCENT_FOLD_FROM, ACCENT_FOLD_TO, foldedSql, foldQueryText } from './sql-accent-fold.util';
+import { ACCENT_FOLD_FROM, ACCENT_FOLD_TO, foldedContainsSql, foldedLikePattern, foldedSql, foldQueryText } from './sql-accent-fold.util';
 
 describe('accent folding for catalogue lookups', () => {
     it('maps every folded character to exactly one replacement', () => {
@@ -29,7 +29,25 @@ describe('accent folding for catalogue lookups', () => {
     });
 
     it('composes decomposed accents before comparing', () => {
-        expect(foldQueryText('Audi\u0301fono ')).toBe('Audífono');
+        expect(foldQueryText('Audífono ')).toBe('Audífono');
         expect(foldQueryText(null)).toBe('');
+    });
+
+    it('builds a folded contains with the placeholder cast to text on the folded side', () => {
+        const sql = foldedContainsSql('neighborhood', '$3');
+        expect(sql).toContain(`translate(neighborhood, '${ACCENT_FOLD_FROM}`);
+        expect(sql).toContain(`translate($3::text, '${ACCENT_FOLD_FROM}`);
+        expect(sql).toContain(' LIKE lower(');
+    });
+
+    it('composes a decomposed accent before binding', () => {
+        expect(foldedLikePattern('Usaquén')).toBe('%Usaquén%');
+    });
+
+    it('escapes the LIKE wildcards the customer typed (the backslash is the default LIKE escape)', () => {
+        const backslash = String.fromCharCode(92);
+        expect(foldedLikePattern('50%_off' + backslash))
+            .toBe('%50' + backslash + '%' + backslash + '_off' + backslash + backslash + '%');
+        expect(foldedLikePattern(null)).toBe('%%');
     });
 });

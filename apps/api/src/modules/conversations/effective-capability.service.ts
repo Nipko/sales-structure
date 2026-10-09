@@ -2,6 +2,7 @@ import type { ServiceExecutionContext } from '../../common/types/execution-conte
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import {
     CAPABILITY_EXCLUSION_TEXT,
+    CATALOG_READ_TOOLS_WHEN_EMPTY,
     CONVERSATIONAL_CHANNELS,
     EFFECTIVE_CAPABILITY_CONTRACT_VERSION,
     OPERATIONAL_ROLES,
@@ -385,6 +386,28 @@ export class EffectiveCapabilityService {
         let publishedTools = staticToolsForAgentConfig(publishedConfig)
             .map((tool: ToolDefinition) => String(tool.name));
 
+        // Readiness gates what the agent can COMPLETE, not what it can ASK.
+        // A family with no rows keeps its writers hidden, but its catalogue
+        // readers stay published: without them the agent cannot tell the
+        // customer the catalogue is empty and answers «no puedo buscar» while
+        // the flow guidance tells it to search. Only the explicit allowlist
+        // (`CATALOG_READ_TOOLS_WHEN_EMPTY`) is published, and the owner's own
+        // subpermissions still apply because the tools are resolved through
+        // the same registry as the ready families.
+        const catalogReadGroups: VerticalToolGroup[] = [];
+        for (const group of withinPlan) {
+            if (readyGroups.includes(group)) continue;
+            const readers = CATALOG_READ_TOOLS_WHEN_EMPTY[group];
+            if (!readers?.length) continue;
+            const familyTools = staticToolsForAgentConfig({
+                [group]: { ...(savedTools[group] || {}), enabled: true },
+            }).map((tool: ToolDefinition) => String(tool.name));
+            const readerTools = readers.filter(tool => familyTools.includes(tool) && !publishedTools.includes(tool));
+            if (!readerTools.length) continue;
+            publishedTools = [...publishedTools, ...readerTools];
+            catalogReadGroups.push(group);
+        }
+
         // A readiness requirement may describe just one reader in a broader
         // family.  Filter it after family publication so an unmet boarding
         // capacity never hides a valid grooming/walking catalogue.
@@ -705,6 +728,7 @@ export class EffectiveCapabilityService {
                 mcp: [],
             }),
             publishedGroups: published,
+            catalogReadGroups,
             excluded,
             unmetReadiness: [...unmet],
             degraded,

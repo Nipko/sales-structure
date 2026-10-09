@@ -118,6 +118,13 @@ export interface EffectiveCapabilityContract {
     publishedByOrigin?: Readonly<Record<'core' | 'vertical' | 'provider' | 'mcp', readonly string[]>>;
     /** Families that survived every gate. */
     publishedGroups: VerticalToolGroup[];
+    /**
+     * Families whose readiness is unmet (no rows yet) but whose catalogue
+     * READERS are published anyway, so the agent can say the catalogue is empty
+     * instead of «I cannot search». Their writers are excluded as usual. See
+     * `CATALOG_READ_TOOLS_WHEN_EMPTY`.
+     */
+    catalogReadGroups?: VerticalToolGroup[];
     /** Everything that did not, with why. */
     excluded: ExcludedCapability[];
     /** Readiness keys the subtype declares that the tenant does not meet. */
@@ -205,6 +212,45 @@ export const TOOL_GROUP_READINESS: Readonly<Partial<Record<VerticalToolGroup, Ve
  */
 export const TOOL_READINESS: Readonly<Partial<Record<string, VerticalReadinessKey>>> = Object.freeze({
     check_daycare_availability: 'boarding_capacity',
+});
+
+/**
+ * Catalogue READERS that stay published when their family has no rows yet.
+ *
+ * Readiness answers "can the agent COMPLETE an operation with this data". For a
+ * writer (book a tour, place an order, schedule a viewing) the answer with an
+ * empty catalogue is no, and the writer stays hidden. For a reader the answer
+ * is the opposite: hiding `search_listings` because there are no listings does
+ * not make the question go away, it removes the only way the agent has to know
+ * the catalogue is empty. The model then received «call search_listings now»
+ * from the flow guidance and `runtime="unavailable"` from the domain contract
+ * in the same prompt, and answered «no puedo realizar la búsqueda» to a
+ * customer whose search was perfectly valid (Inmobiliaria QA / Agencia QA
+ * Viajes, 2026-10-09).
+ *
+ * A published reader on an empty catalogue answers `catalog_empty` (see the
+ * tool executor): honest, distinct from «no matches for these filters», and
+ * with the lead-capture / handoff policy that already applies.
+ *
+ * Deliberately an explicit allowlist, not «every public read»: each entry is a
+ * tool whose own handler returns an honest empty result, and the spec holds the
+ * list against the tool policy registry (non-committal) and the family's tools.
+ * Families whose readiness is not «has rows» stay fully gated: `appointments`
+ * (a bookable service plus staff hours), `faqs`, `petBoarding` and
+ * `vehicleRentals` (capacity), `education` (an open cohort in the next 180 days).
+ */
+export const CATALOG_READ_TOOLS_WHEN_EMPTY: Readonly<Partial<Record<VerticalToolGroup, readonly string[]>>> = Object.freeze({
+    catalog: Object.freeze(['search_products', 'get_product', 'check_stock', 'send_product_image']),
+    realEstate: Object.freeze(['search_listings', 'get_listing_details', 'send_listing_image']),
+    tours: Object.freeze(['search_packages', 'get_package_details', 'check_package_availability']),
+    vehicles: Object.freeze(['search_vehicles', 'get_vehicle_details', 'send_vehicle_image']),
+    properties: Object.freeze(['list_properties', 'check_property_availability', 'get_property_details', 'send_property_image']),
+    restaurants: Object.freeze(['get_menu']),
+    gyms: Object.freeze(['get_membership_plans']),
+    insurance: Object.freeze(['get_insurance_plans']),
+    homeServices: Object.freeze(['list_home_services']),
+    petServices: Object.freeze(['list_pet_services']),
+    photography: Object.freeze(['list_photo_packages']),
 });
 
 function exclusionText(es: string, en: string, pt: string, fr: string): LocalizedCapabilityText {

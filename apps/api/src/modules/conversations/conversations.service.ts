@@ -180,52 +180,6 @@ const CHARS_PER_TOKEN = 4;                       // repo-wide token estimator (c
 /** How many of the turn's tool outcomes are carried into the next turn. */
 const RECENT_ACTIONS_MAX = 6;
 
-/**
- * The order in which each industry actually closes its sale.
- *
- * `<guidance>` has been in the prompt assembler for months and nothing outside a
- * spec ever filled it, so the agent knew the vertical's vocabulary but not its
- * sequence: it offered to book before checking availability, quoted without
- * looking the product up, and enrolled students into schedules it had not read.
- * One line per industry, naming the real tools, because a model follows a
- * concrete sequence far better than an abstract instruction to "be careful".
- *
- * Gated by the tools the tenant actually has enabled: guidance that names a tool
- * the agent cannot call is worse than no guidance at all.
- */
-const VERTICAL_FLOW_GUIDANCE: Array<{
-    industry: string;
-    requires: string;
-    guidance: string;
-}> = [
-    { industry: 'turismo', requires: 'properties', guidance: 'Para una estadía: list_properties → check_property_availability para las fechas exactas → resuma precio total y fechas → pida confirmación → create_property_booking. Nunca ofrezca una propiedad sin verificar esas fechas.' },
-    { industry: 'turismo', requires: 'tours', guidance: 'Para un paquete: search_packages → check_package_availability para la fecha de salida → resuma precio y cupos → pida confirmación → create_tour_booking.' },
-    { industry: 'restaurantes', requires: 'restaurants', guidance: 'Para un pedido: get_menu → arme el pedido con el cliente → repita los ítems, el total y la dirección → pida confirmación → place_order. Para una mesa use el flujo de reservas de agenda.' },
-    { industry: 'gimnasios', requires: 'gyms', guidance: 'Para una clase: get_class_schedule → verifique que el contacto tenga membresía con get_my_membership → pida confirmación → book_class. Si no es socio, ofrezca get_membership_plans antes de intentar reservar.' },
-    { industry: 'education', requires: 'education', guidance: 'Para una inscripción: get_courses → get_course_schedule del curso elegido → resuma curso, horario y precio → pida confirmación → enroll_student.' },
-    { industry: 'seguros', requires: 'insurance', guidance: 'Para cotizar: get_insurance_plans → pida sólo los datos que falten → calculate_quote y presente el resultado. Para un reclamo, file_claim requiere verificar identidad primero (request_identity_code y verify_identity_code).' },
-    { industry: 'servicios_hogar', requires: 'homeServices', guidance: 'Para una solicitud: entienda el problema y la dirección → resuma lo que registrará → create_service_request. Después del registro la conversación pasa a una persona del equipo.' },
-    { industry: 'fotografia', requires: 'photography', guidance: 'Para una sesión: list_photo_packages → send_portfolio si el cliente quiere ver trabajo previo → check_date_availability de la fecha → request_photo_quote.' },
-    { industry: 'inmobiliaria', requires: 'realEstate', guidance: 'Apenas el cliente dé criterios de búsqueda (operación: arriendo/alquiler o venta, zona o barrio, habitaciones, tipo de inmueble o precio), llame search_listings con esos filtros: presupuesto, codeudor y datos personales NO son requisito para buscar. Muestre los resultados o diga que no hay inmuebles con esos criterios (la búsqueda sí se hizo) y ofrezca ajustar zona, habitaciones o presupuesto; recién después pregunte lo opcional (presupuesto, codeudor en arriendo). Para una visita: search_listings → get_listing_details del inmueble concreto → send_listing_image si ayuda → agende la visita dejando SIEMPRE registrado de qué inmueble se trata.' },
-    { industry: 'automotriz', requires: 'vehicles', guidance: 'Para una prueba de manejo: search_vehicles → get_vehicle_details → list_services (servicio presencial de duración fija) → check_availability con vehicleId → acuerde vehículo, asesor, horario y condiciones → schedule_test_drive. Use serviceId y staffId reales. Comunique el estado devuelto: pendiente de aprobación, pendiente de pago o confirmado. Consulte, cambie y cancele el mismo appointment.id con las herramientas de agenda. Si falta la agenda o un requisito, explique qué falta y derive al equipo sin prometer la reserva.' },
-    { industry: 'veterinaria', requires: 'pets', guidance: 'Registre la mascota con register_pet antes de agendar (list_pets_for_contact primero para no duplicarla). Ante señales de urgencia use triage_pet_emergency de inmediato.' },
-    // `salud` + catálogo es la farmacia: ninguna otra subespecialidad de salud
-    // enciende catálogo. La regla de la fórmula médica vive en el writer, no
-    // acá; esto sólo hace que el agente sepa POR QUÉ le van a decir que no y
-    // qué ofrecer en su lugar.
-    { industry: 'salud', requires: 'catalog', guidance: 'Para una venta de mostrador: search_products → check_stock antes de prometer disponibilidad → confirme producto y cantidad → place_catalog_order. Lo que sale marcado como venta bajo fórmula médica NO se pide por chat: dígalo con el nombre del producto y pase la conversación a una persona del equipo para validar la receta. Nunca sugiera un medicamento para un síntoma, ni una dosis, ni un reemplazo de otro producto.' },
-    { industry: 'retail', requires: 'catalog', guidance: 'Para una venta: search_products → get_product → check_stock antes de prometer disponibilidad → send_product_image si ayuda → confirme producto y cantidad → place_catalog_order. Los precios salen del catálogo; pase sólo productId y cantidad.' },
-    { industry: 'otro', requires: 'catalog', guidance: 'Para una venta: search_products → get_product → check_stock → confirme producto y cantidad → place_catalog_order. Nunca diga que el pedido quedó registrado sin que place_catalog_order haya tenido éxito.' },
-];
-
-export function verticalFlowGuidance(industry: unknown, tools: any): string | undefined {
-    if (typeof industry !== 'string' || !industry) return undefined;
-    const enabled = (key: string) => tools?.[key]?.enabled === true;
-    const lines = VERTICAL_FLOW_GUIDANCE
-        .filter(entry => entry.industry === industry && enabled(entry.requires))
-        .map(entry => entry.guidance);
-    return lines.length ? lines.join(' ') : undefined;
-}
 // Returned when the LLM pipeline errors out. Sent to the customer but NOT counted
 // as a successful AI response (no monthly-quota increment, no message_sent event).
 // i18n'd like HANDOFF_MSG — errorFallbackText(lang) picks the customer's language.
@@ -3209,21 +3163,6 @@ export class ConversationsService {
                 };
             }
 
-            // Cómo se cierra la venta en esta industria. El assembler ya sabía
-            // imprimir <guidance> desde hace meses, pero NADIE lo poblaba fuera de
-            // un spec: el agente conocía los sustantivos de la vertical y no el
-            // orden de las herramientas, así que ofrecía reservar antes de
-            // consultar disponibilidad, o cotizaba sin buscar el producto.
-            const guidance = verticalFlowGuidance(
-                (turnContext.verticalContext as any)?.industry,
-                (config.tools ?? (config as any)?.tools) as any,
-            );
-            if (guidance) {
-                turnContext.verticalContext = {
-                    ...(turnContext.verticalContext || {}),
-                    industryGuidance: guidance,
-                };
-            }
         } catch (e: any) {
             this.logger.debug(`Vertical context lookup skipped: ${e.message}`);
         }

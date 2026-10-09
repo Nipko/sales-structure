@@ -31,7 +31,7 @@ describe('AIToolExecutorService empty search results', () => {
             {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any,
             toolExecutionControl as any, {} as any, {} as any,
         );
-        return { executor, toursService, listingsService };
+        return { executor, prisma, toursService, listingsService };
     }
 
     const run = (h: ReturnType<typeof createHarness>, tool: string, args: Record<string, any>) =>
@@ -59,10 +59,49 @@ describe('AIToolExecutorService empty search results', () => {
 
     it('search_listings says explicitly that nothing matched the criteria', async () => {
         const h = createHarness();
+        h.prisma.executeInTenantSchema.mockResolvedValue([{ present: 1 }]); // the catalogue HAS listings
         h.listingsService.search.mockResolvedValue([]);
         const result = await run(h, 'search_listings', { city: 'Bogotá', maxPrice: 10 });
         expect(result.listings).toEqual([]);
         expect(result.message).toContain('No hay inmuebles con esos criterios');
+        expect(result.catalog_empty).toBeUndefined();
+    });
+
+    it('search_listings over a catalogue with NO listings answers catalog_empty, not a plain no-match', async () => {
+        const h = createHarness(); // the readiness predicate finds no row
+        h.listingsService.search.mockResolvedValue([]);
+        const result = await run(h, 'search_listings', { transactionType: 'sale', neighborhood: 'Usaquén', minBedrooms: 3 });
+        expect(result.listings).toEqual([]);
+        expect(result.catalog_empty).toBe(true);
+        expect(result.message).toMatch(/catálogo está vacío/);
+        expect(result.message).not.toContain('No hay inmuebles con esos criterios');
+        expect(h.prisma.executeInTenantSchema.mock.calls.at(-1)![1]).toContain('FROM real_estate_listings');
+    });
+
+    it('search_packages over a catalogue with NO packages answers catalog_empty', async () => {
+        const h = createHarness();
+        h.toursService.searchPackages.mockResolvedValue([]);
+        const result = await run(h, 'search_packages', { destination: 'Cartagena' });
+        expect(result.packages).toEqual([]);
+        expect(result.catalog_empty).toBe(true);
+        expect(h.prisma.executeInTenantSchema.mock.calls.at(-1)![1]).toContain('FROM tour_packages');
+    });
+
+    it('search_packages with packages loaded but none matching stays a plain empty list', async () => {
+        const h = createHarness();
+        h.prisma.executeInTenantSchema.mockResolvedValue([{ present: 1 }]);
+        h.toursService.searchPackages.mockResolvedValue([]);
+        const result = await run(h, 'search_packages', { destination: 'Tokio' });
+        expect(result.packages).toEqual([]);
+        expect(result.catalog_empty).toBeUndefined();
+    });
+
+    it('a past departure date over an EMPTY catalogue still says the date passed (the date comes first)', async () => {
+        const h = createHarness();
+        h.toursService.searchPackages.mockRejectedValue(new BadRequestException({ error: 'departure_in_past', message: 'Esa fecha de salida ya pasó.' }));
+        const result = await run(h, 'search_packages', { date: '2026-09-01' });
+        expect(result.reason).toBe('departure_in_past');
+        expect(result.catalog_empty).toBeUndefined();
     });
 
     it('search_listings adds no empty-result message when there are matches', async () => {

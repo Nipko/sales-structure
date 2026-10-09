@@ -103,6 +103,7 @@ import { attachWriterActiveObject } from './writer-active-object';
 import { RepairOrdersService } from '../repair-orders/repair-orders.service';
 import { selectSlotWindow } from './slot-window';
 import { foldedSql, foldQueryText } from '../../common/utils/sql-accent-fold.util';
+import { markCatalogEmpty } from './catalog-empty.util';
 
 /**
  * Products carry no price_status column: a price above zero IS the confirmed price.
@@ -1207,7 +1208,10 @@ export class AIToolExecutorService {
             }
             };
 
-            const handlerResult = await executeHandler();
+            // A catalogue reader that comes back empty says WHICH kind of empty:
+            // «the business has published nothing yet» (`catalog_empty`) is not
+            // «nothing matches these filters».
+            const handlerResult = await markCatalogEmpty(this.prisma, toolName, schemaName, await executeHandler());
             if (handlerResult?.error === 'agent_operational_revision_changed') throw new ServedAgentAuthorityError();
             const result = attachWriterActiveObject(toolName, handlerResult, args);
             if(['place_catalog_order','cancel_catalog_order'].includes(toolName) && result && typeof result==='object' && 'success' in result && result.success===true) catalogCommitted=true;

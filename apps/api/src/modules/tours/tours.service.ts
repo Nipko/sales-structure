@@ -1,5 +1,6 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { foldedContainsSql, foldedLikePattern } from '../../common/utils/sql-accent-fold.util';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { EmailTemplatesService } from '../email-templates/email-templates.service';
 import {
@@ -618,8 +619,9 @@ export class ToursService {
         let idx = 1;
 
         if (params.destination) {
-            conditions.push(`(destination ILIKE $${idx} OR name ILIKE $${idx})`);
-            vals.push(`%${params.destination}%`);
+            // «Medellin» finds «Medellín», «Cartagena de Indias» finds «cartagena».
+            conditions.push(`(${foldedContainsSql('destination', `$${idx}`)} OR ${foldedContainsSql('name', `$${idx}`)})`);
+            vals.push(foldedLikePattern(params.destination));
             idx++;
         }
         if (params.durationType) {

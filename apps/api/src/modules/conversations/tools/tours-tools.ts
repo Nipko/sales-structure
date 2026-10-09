@@ -14,7 +14,7 @@ import { ToolDefinition } from '@parallext/shared';
 export const TOURS_TOOLS: ToolDefinition[] = [
     {
         name: 'search_packages',
-        description: 'Search tour packages and travel experiences offered by this business. Use when the customer asks about available tours, day trips, multi-day packages, or experiences. Returns matching packages with price, duration, languages and whether they have inventory for the requested date.',
+        description: 'Search tour packages and travel experiences offered by this business. Use when the customer asks about available tours, day trips, multi-day packages, or experiences. Every parameter is optional: search with whatever the customer already said (destination is not required) and never ask for name, phone or email before searching. If the customer named a departure date, pass it as `date` even when it looks like it is in the past: the result reports `departure_in_past` and you tell them that first. Returns matching packages with price, duration, languages and whether they have inventory for the requested date. `catalog_empty: true` means the business has not published any package yet (not a filter mismatch): say so plainly and offer that the team contacts them; `packages: []` without it means nothing matched, so offer to adjust.',
         parameters: {
             type: 'object',
             properties: {

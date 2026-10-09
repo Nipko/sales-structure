@@ -34,6 +34,7 @@ import {
 } from './vertical-agent-defaults.util';
 import type { ResolvedVerticalAgentDefaults } from './vertical-agent-defaults.util';
 import { resolveOnboardingPersonaTemplate } from './onboarding-persona-resolver';
+import { applySubtypeRecipeIdentity } from './subtype-recipe-identity';
 
 const AGENT_TOOL_FLAGS = new Map<string, Set<string>>(
     AGENT_CONFIG_TOOL_FAMILIES.map(family => [family, new Set(['enabled'])]),
@@ -3157,6 +3158,10 @@ export class PersonaService {
         );
 
         const configJson = this.deepMergeConfig(this.buildDefaultPersona(tenantId), template.config_json);
+        // La receta propia del subtipo (si escribió un agente) manda sobre la
+        // plantilla de la industria; ver subtype-recipe-identity.ts.
+        const identity = applySubtypeRecipeIdentity(configJson.persona, industry, subType, tenantLang);
+        if (identity.applied) configJson.persona = identity.persona;
 
         // Gate de prerrequisitos de agenda, versión BLANDA. Este método corre durante el
         // alta y ANTES del bootstrap vertical (auth.service: primero el agente, después
@@ -3187,7 +3192,7 @@ export class PersonaService {
             await this.prisma.$executeRawUnsafe(
                 `INSERT INTO "${schemaName}".agent_personas (name, template_id, config_json, is_active, is_default, channels, schedule_mode, created_by)
                  VALUES ($1, $2, $3::jsonb, true, true, $4::text[], '24_7', $5)`,
-                template.name,
+                identity.applied && configJson.persona?.name ? configJson.persona.name : template.name,
                 template.id,
                 JSON.stringify(configJson),
                 // No channel is assigned at birth. The default agent serves every

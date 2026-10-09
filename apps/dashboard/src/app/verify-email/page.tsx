@@ -18,6 +18,11 @@ export default function VerifyEmailPage() {
     const { logout, syncSessionFacts } = useAuth();
     const [digits, setDigits] = useState<string[]>(["", "", "", "", "", ""]);
     const [error, setError] = useState("");
+    // El código venció (no se tipeó mal): reescribirlo no sirve, hay que pedir otro.
+    const [codeExpired, setCodeExpired] = useState(false);
+    // Sube cada vez que el código fue rechazado: el efecto de abajo devuelve el
+    // foco a la primera casilla cuando ya volvieron a estar habilitadas.
+    const [retryFocus, setRetryFocus] = useState(0);
     const [notice, setNotice] = useState("");
     const [deliveryFailed, setDeliveryFailed] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -97,6 +102,10 @@ export default function VerifyEmailPage() {
         setSavingEmail(false);
     };
 
+    useEffect(() => {
+        if (retryFocus > 0) inputRefs.current[0]?.focus();
+    }, [retryFocus]);
+
     // Cooldown timer
     useEffect(() => {
         if (cooldown <= 0) return;
@@ -107,13 +116,22 @@ export default function VerifyEmailPage() {
     const submitCode = useCallback(
         async (code: string) => {
             setError("");
+            setCodeExpired(false);
             setIsSubmitting(true);
             try {
                 const result = await api.verifyEmail(code);
                 if (!result.success) {
-                    setError(result.errorCode === "invalid_verification_code"
-                        ? t('wrongCode')
-                        : result.error || t('wrongCode'));
+                    const expired = result.errorCode === "verification_code_expired";
+                    setCodeExpired(expired);
+                    setError(expired
+                        ? t('codeExpiredError')
+                        : result.errorCode === "invalid_verification_code"
+                            ? t('wrongCode')
+                            : result.error || t('wrongCode'));
+                    // Las seis casillas se quedaban llenas: para reintentar había que
+                    // borrarlas una por una. Se limpian y el foco vuelve a la primera.
+                    setDigits(["", "", "", "", "", ""]);
+                    setRetryFocus((n) => n + 1);
                     setIsSubmitting(false);
                     return;
                 }
@@ -192,6 +210,7 @@ export default function VerifyEmailPage() {
     const handleResend = async () => {
         if (cooldown > 0) return;
         setError("");
+        setCodeExpired(false);
         setNotice("");
         try {
             const result = await api.sendVerification();
@@ -208,6 +227,7 @@ export default function VerifyEmailPage() {
             }
             setDeliveryFailed(false);
             setCooldown(60);
+            setRetryFocus((n) => n + 1);
         } catch {
             setError(t('connectionError'));
         }
@@ -253,7 +273,17 @@ export default function VerifyEmailPage() {
                     {/* Error */}
                     {error && (
                         <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-lg mb-4 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-400 text-[13px]">
-                            <AlertCircle size={16} /> {error}
+                            <AlertCircle size={16} className="shrink-0" /> <span>{error}</span>
+                            {/* Código vencido: ofrecer el siguiente paso en el mismo aviso. */}
+                            {codeExpired && cooldown === 0 && (
+                                <button
+                                    type="button"
+                                    onClick={handleResend}
+                                    className="ml-auto shrink-0 font-semibold underline underline-offset-2 bg-transparent border-none p-0 cursor-pointer"
+                                >
+                                    {t('resendCode')}
+                                </button>
+                            )}
                         </div>
                     )}
 

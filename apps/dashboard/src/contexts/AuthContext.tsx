@@ -86,6 +86,8 @@ interface GoogleLoginResult {
 interface LoginResult {
     success: boolean;
     error?: string;
+    /** Stable backend identifier (`invalid_credentials`, ...); the screen localizes it. */
+    errorCode?: string;
     redirect?: string;
     requires2FA?: boolean;
     twoFAToken?: string;
@@ -533,7 +535,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const data = await res.json();
 
             if (!res.ok || !data.success) {
-                return { success: false, error: data.message || "Invalid credentials" };
+                return {
+                    success: false,
+                    error: data.message || "Invalid credentials",
+                    errorCode: typeof data.error === "string" ? data.error : undefined,
+                };
             }
 
             if (data.data.requires2FA) {

@@ -120,7 +120,7 @@ import { PromptAssemblerService } from './prompt-assembler.service';
 import { resolveBusinessWindow } from './business-window';
 import { hasDispatchOutbox, noHumanReplySql } from '../handoff/handoff-human-reply';
 import { isAttendanceReassurance, attendanceAckText } from './customer-reassurance';
-import { isUngroundedPolicyAnswer, noPolicyInformationText } from './policy-grounding';
+import { groundPolicyReply } from './policy-grounding';
 import { catalogDomainOf, emptyCatalogText, pastDepartureIn, pastDepartureText, replyAcknowledgesPast, replyAsksCriteria, replySaysEmpty } from './catalog-first';
 import { CATALOG_EMPTY_PROBES, catalogHasNoRows } from './catalog-empty.util';
 import { HUMAN_OFFER_MARK, HUMAN_OFFER_TTL_MS, NO_DATA_WAIT_REPLACEMENT, NO_DATA_NO_OFFER, noDataWaitReplacementText, noDataNoOfferText, containsHumanOffer, isHumanOfferText, isAffirmation, isAffirmationOfHumanOffer, isLiveHumanOffer, withReturnNotice, offerInsteadOfPromise, policyPersonOfferText, withPolicyPersonOffer } from './human-offer';
@@ -4177,7 +4177,7 @@ export class ConversationsService {
                             // A cancellation / reschedule the backend just executed is reported by the backend: the model
                             // voicing it was free to answer «no puedo, alguien del equipo» about something already done.
                             deterministicReply = transitionDoneText(pending.toolName, pending.args, result, userLanguage,
-                                addressFormOf(regional?.addressForm.value)) ?? deterministicReply;
+                                addressFormOf(regional?.addressForm.value), new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(now)) ?? deterministicReply;
                         } else {
                             // A cancellation / reschedule that failed after the yes is reported from what the records say NOW
                             // (re-read), by the server: the model used to assume «sigue tal como está» about an appointment
@@ -5458,7 +5458,7 @@ export class ConversationsService {
 
             // The attribution above needed the raw `[Article: …]` citations; the
             // customer, the stored message and the history must never see them.
-            return stripInternalMarkers(finalResponse);
+            return stripInternalMarkers(finalResponse, [...(turnContext.retrievedKnowledge || []), ...(turnContext.possibleKnowledge || [])].map((item: any) => String(item?.title ?? '')));
         } catch (e: any) {
             if (session) session.trace.error = String(e.message || e);
             this.logger.error(`[Pipeline] LLM call FAILED: ${e.message}`, e.stack);
@@ -6090,13 +6090,16 @@ export class ConversationsService {
         // Guardrail 0b: terms of cancelling / moving are answered from what the business wrote, never from the model's habits.
         // «¿Se puede cancelar sin costo?» with no policy, FAQ or knowledge in the turn is not answered «por lo general, sí».
         const customerText = lastCustomerText(currentMessages);
-        if (!(trustedContext as any)?.directive && !isSystemFixedText(response) && isUngroundedPolicyAnswer({
-            userText: customerText, reply: response, systemPrompt,
+        const grounded = !(trustedContext as any)?.directive && !isSystemFixedText(response) ? groundPolicyReply({
+            userText: customerText, reply: response, systemPrompt, lang, canOfferPerson: humanOfferAvailable,
             retrievedKnowledge: [...((trustedContext as any)?.retrievedKnowledge || [])], executedTools,
-        })) {
+        }) : null;
+        if (grounded) {
             this.recordAgentSignal(tenantId, 'policy_answer_ungrounded', session);
-            this.logger.warn(`[Guardrail] The reply states cancellation terms but the turn holds no policy source — replaced: "${response.slice(0, 100)}"`);
-            return noPolicyInformationText(lang, humanOfferAvailable);
+            this.logger.warn(`[Guardrail] The reply states cancellation terms but the turn holds no policy source — ${grounded.whole ? 'replaced' : 'those sentences replaced'}: "${response.slice(0, 100)}"`);
+            // Only the unsupported sentences go: a price answered in the same message stays (and still goes through the guards below).
+            if (grounded.whole) return grounded.text;
+            response = grounded.text;
         }
 
         // Guardrail 1: False completion claims (claiming an action happened when no tool ran/succeeded)

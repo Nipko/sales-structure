@@ -35,7 +35,7 @@ describe('date-reference: the calendar words of a message', () => {
         expect(explicitDates(fold('15 de agosto de 2027'), TODAY)).toMatchObject([{ date: '2027-08-15', yearStated: true, rolledForward: false }]);
         expect(explicitDates(fold('3 de julio del 2025'), TODAY)).toMatchObject([{ date: '2025-07-03', yearStated: true, rolledForward: false }]);
         // no year and already gone this year: rolled forward, and SAID so (the caller decides what to do with it)
-        expect(explicitDates(fold('el 3 de julio'), TODAY)).toMatchObject([{ date: '2027-07-03', thisYearDate: '2026-07-03', yearStated: false, rolledForward: true }]);
+        expect(explicitDates(fold('el 3 de julio'), TODAY)).toMatchObject([{ date: '2027-07-03', thisYearDate: '2026-07-03', yearStated: false, rolledForward: true, nearFuture: false }]);
         expect(explicitDates(fold('october 16'), TODAY).map(d => d.date)).toEqual(['2026-10-16']);
         expect(explicitDates(fold('31 de febrero'), TODAY)).toEqual([]);
     });
@@ -58,14 +58,14 @@ describe('date-reference: the calendar words of a message', () => {
 
     it('a weekday that disagrees with the day of the month is a conflict, never a guess', () => {
         expect(readDateReference(fold('para el viernes 17 de octubre'), TODAY)).toEqual({ kind: 'conflict', date: '2026-10-17', saidWeekday: 5 });
-        expect(readDateReference(fold('el martes o el miércoles'), TODAY)).toEqual({ kind: 'ambiguous' });
+        expect(readDateReference(fold('el martes o el miércoles'), TODAY)).toEqual({ kind: 'ambiguous', of: 'weekdays' });
     });
 
     it('a date that already passed is reported as past (and a day with no year is NOT rolled into next year in silence)', () => {
-        expect(readDateReference(fold('el 3 de julio'), TODAY)).toEqual({ kind: 'past', date: '2026-07-03', thisYear: true });
+        expect(readDateReference(fold('el 3 de julio'), TODAY)).toEqual({ kind: 'past', date: '2026-07-03', thisYear: true, nextYearDate: '2027-07-03' });
         expect(readDateReference(fold('el 3 de julio de 2026'), TODAY)).toEqual({ kind: 'past', date: '2026-07-03', thisYear: false });
-        // the booking interpreter keeps rolling a bare «10 de enero» forward
-        expect(readDateReference(fold('el 10 de enero'), TODAY, { rolledIsPast: false })).toEqual({ kind: 'date', date: '2027-01-10', via: 'explicit' });
+        // a year-less day whose next-year date is close is next year's (and says so); far away it is a question
+        expect(readDateReference(fold('el 10 de enero'), TODAY)).toEqual({ kind: 'date', date: '2027-01-10', via: 'explicit', yearAssumed: true });
     });
 });
 

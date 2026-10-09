@@ -235,7 +235,7 @@ describe('internal status words are put in the customer\'s language', () => {
     });
 
     it.each([
-        ['es', 'El pedido está in_transit y el pago paid.', 'El pedido está en camino y el pago pagado.'],
+        ['es', 'El pedido está in_transit y el pago está paid.', 'El pedido está en camino y el pago está pagado.'],
         ['pt', 'O pedido está shipped.', 'O pedido está enviado.'],
         ['fr', 'La commande est confirmed et le paiement est unpaid.', 'La commande est confirmée et le paiement est non payée.'],
         ['en', 'The order is pending.', 'The order is pending.'],
@@ -280,7 +280,7 @@ describe('internal citation markup never reaches the customer', () => {
     it('«[Artículo: ¿Cuál es la política de cancelación?]» (RV07) is removed', () => {
         expect(stripInternalMarkers('Le confirmamos las condiciones exactas antes de que reserve. ¿Quiere que alguien del equipo le contacte? [Artículo: ¿Cuál es la política de cancelación?]'))
             .toBe('Le confirmamos las condiciones exactas antes de que reserve. ¿Quiere que alguien del equipo le contacte?');
-        expect(stripInternalMarkers('Política flexible [Artigo: Política de cancelamento do pacote] ok')).toBe('Política flexible ok');
+        expect(stripInternalMarkers('Política flexible [Artigo: Qual é a política de cancelamento?] ok')).toBe('Política flexible ok');
     });
 
     it('a product reference written with the same label is still the customer\'s', () => {

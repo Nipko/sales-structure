@@ -8,7 +8,7 @@ import {
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { BusinessWindowResolver, disambiguateBareHour } from './business-window';
 import { isInformationalDetour } from './informational-detour';
-import { addDaysIso, readDateReference, weekdayMentions } from './date-reference';
+import { nextWeekdayDate, readDateReference, relativeDayIso, weekdayMentions } from './date-reference';
 
 /**
  * INTERPRET phase — extracts structured intent from user messages.
@@ -43,6 +43,12 @@ export interface InterpretedIntent {
     language: string;
     /** The weekday and the day of the month the customer wrote disagree («viernes 17 de octubre» when the 17th is a Saturday): no date is chosen, the caller asks. */
     dateWeekdayConflict?: boolean;
+    /** Which day of the month and which weekday disagreed (for the question). */
+    dateConflictDetail?: { date: string; weekday: number };
+    /** Two different dates in one message («el 16 de octubre o el 17 de octubre»): none is chosen, the caller asks. */
+    dateAmbiguous?: boolean;
+    /** A day with no year that already passed this year, and next year's is far away: the caller asks «¿Se refiere al ... de <next year>?» instead of assuming it. */
+    dateYearQuestion?: { thisYear: string; nextYear: string };
 }
 
 @Injectable()
@@ -315,27 +321,27 @@ export class IntentInterpreterService {
 
         // ── Detect date ──
         //
-        // Today / tomorrow first; otherwise ONE reader (date-reference.ts) for «16 de octubre [de 2026]» and the weekday words.
-        // An explicit day+month used to be overwritten by the weekday (dictionary order, not the order said): «viernes 16 de
-        // octubre» said on Friday 9 became the 9th. The explicit date wins, a stated year is honoured, a weekday that disagrees
-        // with the date is reported (`dateWeekdayConflict`) instead of picking one, and a bare weekday names the first matching
-        // day of `upcoming` in the order the customer wrote them.
-        if (/\b(hoy|today|hoje|aujourd)/i.test(t)) base.dateMentioned = todayDate;
-        else if (/\bpasado manana\b/.test(tNorm)) base.dateMentioned = addDaysIso(todayDate, 2);
-        else if (/\b(manana|tomorrow|amanha|demain)\b/i.test(tNorm)) {
-            base.dateMentioned = addDaysIso(todayDate, 1);
-        } else {
-            const reading = readDateReference(tNorm, todayDate, { rolledIsPast: false, lenientPortuguese: true });
-            if (reading.kind === 'date' && reading.via === 'explicit') base.dateMentioned = reading.date;
-            else if (reading.kind === 'past') base.dateMentioned = reading.date;
-            else if (reading.kind === 'conflict') base.dateWeekdayConflict = true;
-            else {
-                const weekdays = weekdayMentions(tNorm, true).filter(day => !day.selector);
-                const first = weekdays[0];
-                if (first) {
-                    const match = upcoming.find(d => new Date(`${d.date}T00:00:00.000Z`).getUTCDay() === first.weekday);
-                    if (match) base.dateMentioned = match.date;
-                }
+        // ONE reader (date-reference.ts) shared with the reschedule engine, in this order of authority:
+        //   1. an explicit day («16 de octubre [de 2026]», «el viernes 17», «el 16») - it beat «hoy / mañana» and the weekday
+        //      in no case before: «el viernes 16 de octubre por la mañana» booked Saturday (the «mañana» of the morning read as tomorrow);
+        //   2. today / the day after tomorrow / tomorrow («por la mañana» is the morning, not tomorrow);
+        //   3. a weekday: the NEXT one, never today unless the customer says «hoy» («el viernes» said on a Friday is next Friday).
+        // What cannot be resolved is not guessed: a weekday that disagrees with the day of the month, two different dates, and a
+        // year-less day that already passed this year (far from next year's) are reported for the engine to ASK about.
+        const reading = readDateReference(tNorm, todayDate, { lenientPortuguese: true });
+        if (reading.kind === 'date' && reading.via === 'explicit') base.dateMentioned = reading.date;
+        else if (reading.kind === 'past' && reading.thisYear && reading.nextYearDate) base.dateYearQuestion = { thisYear: reading.date, nextYear: reading.nextYearDate };
+        else if (reading.kind === 'past') base.dateMentioned = reading.date;
+        else if (reading.kind === 'conflict') { base.dateWeekdayConflict = true; base.dateConflictDetail = { date: reading.date, weekday: reading.saidWeekday }; }
+        else if (reading.kind === 'ambiguous' && reading.of === 'dates') base.dateAmbiguous = true;
+        else {
+            const relative = relativeDayIso(tNorm, todayDate);
+            if (relative) base.dateMentioned = relative;
+            else if (reading.kind === 'date') base.dateMentioned = reading.date;
+            else if (reading.kind === 'ambiguous') {
+                // «el jueves o el martes»: the first one said (the weekdays are not contradictory, only alternatives).
+                const first = weekdayMentions(tNorm, true).filter(day => !day.selector)[0];
+                if (first) base.dateMentioned = nextWeekdayDate(first.weekday, todayDate, false);
             }
         }
 
@@ -423,9 +429,10 @@ export class IntentInterpreterService {
         }
 
         // ── If we detected something useful, return ──
-        if (base.intent !== 'unknown' || base.serviceMentioned || base.dateMentioned || base.timeMentioned || base.emailProvided || base.nameProvided) {
+        const dateToAskAbout = !!(base.dateWeekdayConflict || base.dateAmbiguous || base.dateYearQuestion);
+        if (base.intent !== 'unknown' || base.serviceMentioned || base.dateMentioned || base.timeMentioned || base.emailProvided || base.nameProvided || dateToAskAbout) {
             if (base.intent === 'unknown') {
-                if (base.dateMentioned || base.timeMentioned) base.intent = 'ask_availability';
+                if (base.dateMentioned || base.timeMentioned || dateToAskAbout) base.intent = 'ask_availability';
                 else if (base.emailProvided) base.intent = 'provide_info';
             }
             return base;

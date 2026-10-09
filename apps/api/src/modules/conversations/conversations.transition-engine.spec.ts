@@ -299,9 +299,10 @@ describe('a reschedule is never proposed unverified', () => {
         expect(result.reply).not.toContain('¿Confirma que movamos');
     });
     it('a date that already passed is asked again, not checked or proposed', async () => {
-        const h = world({ tools: SALON, industry: 'salon', appointments: [appointment(APPT, '2020-01-01', '09:00')] });
+        // (the appointment is ahead; it is the NEW day that has gone by. An appointment that itself already started is refused: see pr82-followup.spec.ts)
+        const h = world({ tools: SALON, industry: 'salon', appointments: [appointment(APPT, '2099-01-05', '09:00')] });
         await h.turn('hola');
-        const result = await h.turn('quiero reprogramar mi cita al día siguiente a la misma hora');
+        const result = await h.turn('quiero reprogramar mi cita para el 1 de enero de 2020 a la misma hora');
         expect(result.reply).toContain('Esa fecha ya pasó');
         expect(h.ran('reschedule_appointment')).toHaveLength(0);
         expect(h.ran('check_availability')).toHaveLength(0);

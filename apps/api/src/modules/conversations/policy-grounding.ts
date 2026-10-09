@@ -76,15 +76,16 @@ export function hasPolicyEvidence(input: PolicyEvidenceInput): boolean {
         }
         if (hasPolicyWords(result)) return true;
     }
+    // What the OWNER wrote into the prompt: the persona, the business description (`<about>`), the main instructions, the industry
+    // guidance. The contract (rules for the model) is not a source.
     const prompt = String(input.systemPrompt ?? '');
-    const start = prompt.indexOf('<persona>');
-    if (start >= 0) {
-        const end = prompt.indexOf('</persona>', start);
-        const persona = normalizeForIntent(end >= 0 ? prompt.slice(start, end + 10) : prompt.slice(start));
-        if (/(?:cancel|anul|reprogram)\w*[^.\n]{0,80}(?:\d+\s*(?:horas|h|hrs|dias|hours|days)|sin costo|sin cargo|gratis|penaliz|cargo|fee|free)/.test(persona)) return true;
-    }
+    const owner = [...prompt.matchAll(OWNER_BLOCK)].map(block => block[2]).join(' ');
+    if (owner && OWNER_TERMS.test(normalizeForIntent(owner))) return true;
     return false;
 }
+
+const OWNER_BLOCK = /<(persona|about|main_instructions|guidance|business_goals)>([\s\S]*?)<\/\1>/g;
+const OWNER_TERMS = /(?:cancel|anul|reprogram)\w*[^.\n]{0,80}(?:\d+\s*(?:horas|h|hrs|dias|hours|days)|sin costo|sin cargo|gratis|penaliz|cargo|fee|free)/;
 
 /**
  * True when the reply must be replaced: the customer asked for cancellation / rescheduling terms, the turn holds no source for them,
@@ -95,6 +96,29 @@ export function isUngroundedPolicyAnswer(input: PolicyEvidenceInput & { userText
     if (replyAdmitsNotKnowing(input.reply)) return false;
     if (!replyStatesTerms(input.reply)) return false;
     return !hasPolicyEvidence(input);
+}
+
+/** Sentences, keeping the figures intact («30.000 COP.» does not end a sentence: no space follows its dot). */
+const sentencesOf = (reply: string): string[] => reply.split(/(?<=[.!?])\s+(?=[A-ZÁÉÍÓÚÑ¿¡"«0-9])|\n+/u).map(part => part.trim()).filter(Boolean);
+const POLICY_QUESTION = /(?:politic|cancel|costo|cargo|penaliz|confirm|aviso)/;
+
+/**
+ * The reply to rewrite when it states cancellation terms nothing in the turn supports, or null when it stands. Only the unsupported
+ * sentences go: a price or an hour answered in the same message is kept, followed by the honest line (and the offer of a person).
+ * A question about the policy that the model left at the end is dropped, since the offer is the one question the customer answers.
+ * `whole` is true when nothing of the model's reply was kept.
+ */
+export function groundPolicyReply(
+    input: PolicyEvidenceInput & { userText: unknown; reply: unknown; lang?: string; canOfferPerson: boolean },
+): { text: string; whole: boolean } | null {
+    if (!isUngroundedPolicyAnswer(input)) return null;
+    const kept = sentencesOf(String(input.reply ?? '')).filter(sentence => {
+        const folded = normalizeForIntent(sentence);
+        if (STATES_TERMS.test(folded)) return false;
+        return !(/[?¿]/.test(sentence) && POLICY_QUESTION.test(folded));
+    });
+    const honest = noPolicyInformationText(input.lang, input.canOfferPerson);
+    return kept.length ? { text: `${kept.join(' ')} ${honest}`, whole: false } : { text: honest, whole: true };
 }
 
 const NO_POLICY: Record<string, string> = {

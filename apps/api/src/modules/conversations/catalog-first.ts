@@ -21,9 +21,13 @@ const LOCALES: Record<Lang, string> = { es: 'es-CO', en: 'en-US', pt: 'pt-BR', f
 
 export type CatalogDomain = 'packages' | 'listings';
 
-const DEPARTURE_CUE = /\b(?:paquete|paquetes|tour|tours|viaje|viajes|viajar|salir|salida|salimos|salgo|ir a|queremos ir|quiero ir|disponib\w*|cupos?|reserv\w*|package|packages|trip|travel|depart\w*|leave|leaving|go to|voyage|partir|depart|pacote|pacotes|viagem|sair)\b/;
+/**
+ * The message ASKS for the offer on that date: which packages, whether there is availability, that they want to go / book / leave.
+ * Only then is a past date a past DEPARTURE. A message about a trip that already exists or happened is not one.
+ */
+const ASKS_FOR_OFFER = /\b(?:(?:que|cuales|cuantos|cuantas) (?:paquetes|tours|viajes|opciones|planes|excursiones)|(?:paquetes|tours|viajes|opciones|planes|excursiones) (?:tienen|hay|ofrecen|disponibles)|hay (?:paquetes?|tours?|disponibilidad|cupos?|viajes?)|tienen (?:paquetes?|tours?|disponibilidad|cupos?|viajes?)|disponibilidad|disponible|cupos?|quiero (?:ir|viajar|salir|reservar|un paquete|un tour|cotizar)|queremos (?:ir|viajar|salir|reservar|cotizar)|quisiera (?:ir|viajar|salir|reservar|cotizar)|salir el|salida (?:el|para)|viajar el|cotiz\w*|what (?:packages|tours|trips|options)|do you have|any (?:packages|tours|availability)|availability|available|i want to (?:go|travel|book|leave)|we want to (?:go|travel|book|leave)|quais pacotes|tem (?:pacotes|disponibilidade)|disponibilidade|quero (?:ir|viajar|reservar|sair)|quels (?:forfaits|voyages)|disponibilite|je voudrais (?:partir|reserver))\b/;
 /** The date is about something that already happened or exists, not a trip to be sold. */
-const NOT_A_DEPARTURE = /\b(?:mi reserva|mi viaje|mi compra|ya viaje|viaje el|fue el|my booking|my trip|i travelled|i traveled)\b/;
+const NOT_A_DEPARTURE = /\b(?:mi reserva|mi viaje|mi paquete|mi compra|mi tour|mi pedido|tengo una reserva|tenemos una reserva|reserva (?:del|numero|n)|ya (?:viaje|pague|reserve)|viaje el|fue el|estuvo|cobr\w*|cargo|cargaron|factura\w*|recibo|comprobante|pag[oue]\w*|reembols\w*|devolu\w*|queja|reclam\w*|rese[nñ]a|opini\w*|calific\w*|review|invoice|receipt|charged|refund\w*|complain\w*|my (?:booking|trip|reservation|package|tour)|i (?:booked|paid|travelled|traveled)|fatura|cobraram|minha reserva|ma reservation|facture)\b/;
 
 const DOMAIN_CUES: Record<CatalogDomain, RegExp> = {
     packages: /\b(?:paquete|paquetes|tour|tours|viaje|viajes|viajar|destino|destinos|excursion|excursiones|vacaciones|package|packages|trip|trips|travel|destination|voyage|voyages|pacote|pacotes|viagem|viagens)\b/,
@@ -74,10 +78,11 @@ export interface PastDeparture {
 export function pastDepartureIn(userText: unknown, todayIso: string): PastDeparture | null {
     const raw = String(userText ?? '');
     const folded = normalizeForIntent(raw);
-    if (!folded || raw.length > 400 || !DEPARTURE_CUE.test(folded) || NOT_A_DEPARTURE.test(folded)) return null;
+    if (!folded || raw.length > 400 || !ASKS_FOR_OFFER.test(folded) || NOT_A_DEPARTURE.test(folded)) return null;
     for (const found of explicitDates(folded, todayIso)) {
         if (found.yearStated && found.date < todayIso) return { iso: found.date, yearStated: true };
-        if (!found.yearStated && found.rolledForward) return { iso: found.thisYearDate, yearStated: false, nextYearIso: found.date };
+        // A year-less day that passed but whose next-year date is close (20 December asking for 5 January) is next January's, not past.
+        if (!found.yearStated && found.rolledForward && !found.nearFuture) return { iso: found.thisYearDate, yearStated: false, nextYearIso: found.date };
     }
     return null;
 }

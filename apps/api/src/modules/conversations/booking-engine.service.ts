@@ -359,15 +359,62 @@ function looksLikeNameAnswer(raw: string): boolean {
     return /^\p{Lu}[\p{L}'’.-]*(?:\s+\p{Lu}[\p{L}'’.-]*){0,2}$/u.test(text);
 }
 
-/** "sábado 10 de octubre": how the customer reads a date, from the ISO day the engine keeps. */
-function friendlyDate(lang: string, iso: string): string {
+/**
+ * "sábado 10 de octubre": how the customer reads a date, from the ISO day the engine keeps. With `todayIso`, the YEAR is written
+ * whenever it is not the current one («viernes 8 de enero de 2027»): a date in next year must not read as this year's.
+ */
+function friendlyDate(lang: string, iso: string, todayIso?: string): string {
     try {
-        return new Intl.DateTimeFormat((lang || 'es').slice(0, 2), { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' })
+        const withYear = !!todayIso && todayIso.slice(0, 4) !== iso.slice(0, 4);
+        return new Intl.DateTimeFormat((lang || 'es').slice(0, 2), { weekday: 'long', day: 'numeric', month: 'long', ...(withYear ? { year: 'numeric' as const } : {}), timeZone: 'UTC' })
             .format(new Date(`${iso}T00:00:00Z`)).replace(',', '');
     } catch {
         return iso;
     }
 }
+
+/** «3 de octubre»: the day and month only (for «el 3 de octubre de este año ya pasó»). */
+function dayAndMonth(lang: string, iso: string): string {
+    try {
+        return new Intl.DateTimeFormat((lang || 'es').slice(0, 2), { day: 'numeric', month: 'long', timeZone: 'UTC' }).format(new Date(`${iso}T00:00:00Z`));
+    } catch {
+        return iso;
+    }
+}
+
+/** The name of a weekday (0 = Sunday) in the customer's language. */
+function weekdayName(lang: string, weekday: number): string {
+    return new Intl.DateTimeFormat((lang || 'es').slice(0, 2), { weekday: 'long', timeZone: 'UTC' }).format(new Date(Date.UTC(2023, 0, 1 + weekday)));
+}
+
+/**
+ * What a date the customer wrote cannot be resolved to: asked, never guessed. Register-neutral on purpose (these lines are
+ * deterministic and the engine does not know the tenant's form of address).
+ */
+const DATE_ASK: Record<string, {
+    conflict: (date: string, weekday: string) => string; ambiguous: () => string; year: (thisYear: string, nextYear: string) => string;
+}> = {
+    es: {
+        conflict: (date, weekday) => `El ${date} no es ${weekday}. ¿Para qué día exactamente?`,
+        ambiguous: () => 'Veo más de una fecha en el mensaje. ¿Para cuál día exactamente?',
+        year: (thisYear, nextYear) => `El ${thisYear} de este año ya pasó. ¿Se refiere al ${nextYear}?`,
+    },
+    en: {
+        conflict: (date, weekday) => `${date} is not a ${weekday}. Which day exactly?`,
+        ambiguous: () => 'I see more than one date in your message. Which day exactly?',
+        year: (thisYear, nextYear) => `${thisYear} of this year has already passed. Do you mean ${nextYear}?`,
+    },
+    pt: {
+        conflict: (date, weekday) => `${date} não é ${weekday}. Para que dia exatamente?`,
+        ambiguous: () => 'Vejo mais de uma data na mensagem. Para qual dia exatamente?',
+        year: (thisYear, nextYear) => `${thisYear} deste ano já passou. Você se refere a ${nextYear}?`,
+    },
+    fr: {
+        conflict: (date, weekday) => `Le ${date} n’est pas un ${weekday}. Pour quel jour exactement ?`,
+        ambiguous: () => 'Je vois plus d’une date dans votre message. Pour quel jour exactement ?',
+        year: (thisYear, nextYear) => `Le ${thisYear} de cette année est déjà passé. Parlez-vous du ${nextYear} ?`,
+    },
+};
 
 /** Get message in the given language, with variable substitution */
 function msg(lang: string, key: string, vars: Record<string, string> = {}): string {
@@ -511,6 +558,11 @@ export interface BookingState {
      * draft itself is untouched. Only a yes right after the offer applies it; any other message drops it.
      */
     pendingSwitch?: { serviceId: string; serviceName: string; date?: string; time?: string; offeredAt: string };
+    /**
+     * A day with no year that had already passed this year was asked back as «¿Se refiere al 3 de octubre de 2027?»: the next-year
+     * date waits here for the customer's yes. Any other message drops it.
+     */
+    pendingYearDate?: { date: string; offeredAt: string };
     /**
      * Last real customer activity before the mission went dormant. Retention is
      * measured from here: `savedAt` is refreshed on every turn (even turns the
@@ -815,6 +867,14 @@ export class BookingEngineService {
             (state as any).slots = undefined; state.suggestedSlots = undefined;
             if (state.step && state.step !== 'idle' && state.step !== 'show_services') {
                 state.step = 'ask_date';
+            }
+        }
+        // The customer answers the year question («¿Se refiere al 3 de octubre de 2027?»): a yes takes that date, anything else drops it.
+        if (state.pendingYearDate) {
+            const offered = state.pendingYearDate;
+            state.pendingYearDate = undefined;
+            if (intent.isConfirmation && !intent.dateMentioned && offered.date >= todayDate) {
+                intent = { ...intent, dateMentioned: offered.date, isConfirmation: false, intent: 'ask_availability' };
             }
         }
         // Per-turn signal (NOT persisted): set when the user asks for a time with
@@ -1194,6 +1254,23 @@ export class BookingEngineService {
                 state.serviceName = svc.name;
             }
         }
+        // A date that cannot be resolved is asked about, never guessed: the weekday disagrees with the day of the month, two different
+        // dates, or a day with no year that already passed this year (and next year's is far away).
+        if (intent.dateWeekdayConflict || intent.dateAmbiguous || intent.dateYearQuestion) {
+            const ask = DATE_ASK[(language || 'es').slice(0, 2)] || DATE_ASK.es;
+            let text: string;
+            if (intent.dateYearQuestion) {
+                state.pendingYearDate = { date: intent.dateYearQuestion.nextYear, offeredAt: new Date().toISOString() };
+                text = ask.year(dayAndMonth(language, intent.dateYearQuestion.thisYear), friendlyDate(language, intent.dateYearQuestion.nextYear, todayDate));
+            } else if (intent.dateAmbiguous) {
+                text = ask.ambiguous();
+            } else {
+                const detail = intent.dateConflictDetail;
+                text = detail ? ask.conflict(friendlyDate(language, detail.date, todayDate), weekdayName(language, detail.weekday)) : ask.ambiguous();
+            }
+            state.step = 'ask_date';
+            return { handled: true, state, text };
+        }
         if (intent.dateMentioned) {
             // Bug #4: Reject past dates — the agent should never book in the past.
             // If the extracted date is before today, reset it so the bot re-asks.
@@ -1566,7 +1643,7 @@ export class BookingEngineService {
             if (!result || result.error) return { handled: false, state };
             const slots = result.available && result.slots?.length ? selectSlotWindow<{ time: string }>(result.slots, time) : [];
             const times = (list: Array<{ time: string }>) => Array.from(new Set(list.map(s => s.time))).join(', ');
-            const vars = { service: target.name, date: friendlyDate(lang, date), time: time || '' };
+            const vars = { service: target.name, date: friendlyDate(lang, date, todayDate), time: time || '' };
             const slotKind = kind === 'slot';
             if (!slots.length) {
                 parts.push(msg(lang, 'switchDayFull', vars));
@@ -1587,7 +1664,7 @@ export class BookingEngineService {
         // customer, e.g. a time but no day) only says so: the draft simply stays.
         if (kind === 'slot' && offerKey === 'switchOffer') offerKey = 'draftStays';
         parts.push(msg(lang, offerKey, {
-            from, service: target.name, date: offeredDate ? friendlyDate(lang, offeredDate) : '', time: offeredTime || '',
+            from, service: target.name, date: offeredDate ? friendlyDate(lang, offeredDate, todayDate) : '', time: offeredTime || '',
         }));
         if (offerKey !== 'draftStays') {
             state.pendingSwitch = {

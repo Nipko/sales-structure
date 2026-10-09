@@ -3663,7 +3663,8 @@ export class AIToolExecutorService {
     private async cancelAppointment(schema: string, contactId: string, appointmentId: string, reason?: string, namespace?: EvalNamespaceLease, operationalScope?:ServedAgentAuthority, conversationId?: string): Promise<any> {
         // Verify ownership — only cancel if it belongs to this contact
         const rows: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT id, contact_id, service_id, service_name, start_at, end_at, status, metadata
+            `SELECT id, contact_id, service_id, service_name, start_at, end_at, status, metadata,
+                    (start_at <= (NOW() AT TIME ZONE COALESCE((SELECT config_json->'hours'->>'timezone' FROM "${schema}".persona_config WHERE is_active = true LIMIT 1), 'America/Bogota'))) AS already_started
              FROM "${schema}".appointments WHERE id = $1::uuid`,
             appointmentId,
         );
@@ -3672,6 +3673,14 @@ export class AIToolExecutorService {
         if (rows[0].contact_id !== contactId) return { error: 'You can only cancel your own appointments' };
         if (rows[0].status === 'cancelled') {
             return { success: true, alreadyCancelled: true, message: 'Appointment was already cancelled.', alternatives: [] };
+        }
+        // An appointment that already started (in the tenant's clock) is not cancelled from the chat: a no-show must not turn into a
+        // cancellation. The business decides; the customer is offered a person.
+        if (rows[0].already_started === true) {
+            return {
+                error: 'appointment_already_started', persisted: false,
+                message: 'That appointment has already started or passed, so it cannot be cancelled from the chat. Nothing was changed. Offer, as a question, that someone from the team reviews it.',
+            };
         }
 
         const updated: any[] = await this.prisma.transactionInTenantSchema(
@@ -6355,6 +6364,12 @@ export class AIToolExecutorService {
                 const part = (type: string) => parts.find(p => p.type === type)?.value ?? '00';
                 localNow = `${part('year')}-${part('month')}-${part('day')}T${part('hour')}:${part('minute')}:00`;
             } catch (error: unknown) { return this.appointmentTemporalFailure(error); }
+            if (typeof apt.start_local === 'string' && apt.start_local.slice(0, 19) <= localNow) {
+                return {
+                    error: 'appointment_already_started', persisted: false,
+                    message: 'That appointment has already started or passed, so it cannot be moved from the chat. Nothing was changed. Offer, as a question, that someone from the team reviews it.',
+                };
+            }
             if (newStartAt <= localNow) {
                 return {
                     error: 'appointment_in_past', persisted: false, requestedDate: newDate, requestedTime: newTime,

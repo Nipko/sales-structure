@@ -262,6 +262,37 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
         expect(result).toMatchObject({ success: true });
     });
 
+    // Decision on PR #82: the list shows what is left of today (visibility), but an appointment whose start time has passed is not
+    // cancelled or moved from the chat (a no-show must not turn into a cancellation).
+    it('does not cancel an appointment that already started, and writes nothing', async () => {
+        const harness = createHarness([[{ ...appointment, already_started: true }], [{ id: appointmentId }]]);
+
+        const result = await harness.executor.execute(
+            schemaName, tenantId, contactId, 'cancel_appointment', { appointmentId }, undefined,
+            { operationalScope, authority: authorityFor('cancel_appointment') },
+        );
+
+        expect(result).toMatchObject({ error: 'appointment_already_started', persisted: false });
+        expect(harness.prisma.$queryRawUnsafe.mock.calls.some(([sql]) => String(sql).includes('UPDATE appointments'))).toBe(false);
+        expect(harness.eventEmitter.emit).not.toHaveBeenCalled();
+        // the start time is judged in the tenant's clock, inside the same read
+        expect(harness.prisma.$queryRawUnsafe.mock.calls[0][0]).toContain('AT TIME ZONE COALESCE((SELECT config_json');
+        expect(harness.prisma.$queryRawUnsafe.mock.calls[0][0]).toContain('AS already_started');
+    });
+
+    it('does not move an appointment that already started, and writes nothing', async () => {
+        // the clock is pinned to 2026-08-01 07:00 in Bogotá; the appointment was yesterday
+        const harness = createHarness([[{ ...appointment, assigned_to: null, start_local: '2026-07-31T10:00:00' }], [{ duration_minutes: 30 }], [], [{ id: appointmentId }], []]);
+
+        const result = await harness.executor.execute(
+            schemaName, tenantId, contactId, 'reschedule_appointment', { appointmentId, newDate: '2026-08-05', newTime: '11:00' }, undefined,
+            { operationalScope, authority: authorityFor('reschedule_appointment') },
+        );
+
+        expect(result).toMatchObject({ error: 'appointment_already_started', persisted: false });
+        expect(harness.prisma.$queryRawUnsafe.mock.calls.some(([sql]) => String(sql).includes('UPDATE appointments'))).toBe(false);
+    });
+
     it('lists the customer\'s appointments from the start of the tenant\'s LOCAL day, in the tenant\'s timezone', async () => {
         const harness = createHarness([[]]);
 

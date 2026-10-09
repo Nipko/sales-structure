@@ -59,8 +59,10 @@ export class PromptAssemblerService {
         const form = String(turn.regional?.addressForm ?? '').toLowerCase();
         const persona = resolved.persona;
         if (form === 'usted' && String(turn.language ?? '').toLowerCase().startsWith('es') && persona) {
-            const greeting = typeof persona.greeting === 'string' ? toUsted(persona.greeting) : persona.greeting;
-            const fallbackMessage = typeof persona.fallbackMessage === 'string' ? toUsted(persona.fallbackMessage) : persona.fallbackMessage;
+            // The business and the persona keep their names («Tu Look», «Tus Uñas Spa» are not the customer's «tu»).
+            const names = [persona.name, turn.business?.companyName].filter((name): name is string => typeof name === 'string' && name.trim().length > 0);
+            const greeting = typeof persona.greeting === 'string' ? toUsted(persona.greeting, names) : persona.greeting;
+            const fallbackMessage = typeof persona.fallbackMessage === 'string' ? toUsted(persona.fallbackMessage, names) : persona.fallbackMessage;
             if (greeting !== persona.greeting || fallbackMessage !== persona.fallbackMessage) {
                 return { ...resolved, persona: { ...persona, greeting, fallbackMessage } };
             }

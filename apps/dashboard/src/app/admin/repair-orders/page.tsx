@@ -20,6 +20,8 @@ import {
 import { useTenant } from "@/contexts/TenantContext";
 import { useRole } from "@/hooks/useRole";
 import { useOperatingCurrency } from "@/hooks/useOperatingCurrency";
+import { usePlanLimits } from "@/hooks/usePlanLimits";
+import { staffDirectoryAvailable } from "@/lib/staff-directory";
 import {
   api,
   type CreateRepairOrderInput,
@@ -450,7 +452,15 @@ function TechnicalDetailsDialog({ tenantId, order, onClose, onSaved }: { tenantI
   const [technicianId, setTechnicianId] = useState(order.assigned_technician_id || "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The staff directory is a plan feature (staffScheduling); Starter gets a 403 by
+  // design, so it is not requested there and the picker says why it is empty.
+  const { features, loading: planLoading } = usePlanLimits();
+  const staffAvailable = staffDirectoryAvailable(features, planLoading);
   useEffect(() => {
+    if (!staffAvailable) {
+      setStaff([]);
+      return;
+    }
     void api.listStaff(tenantId).then((response) => {
       if (!response.success || !Array.isArray(response.data)) return;
       setStaff(response.data.map((member: Record<string, unknown>) => ({
@@ -458,14 +468,14 @@ function TechnicalDetailsDialog({ tenantId, order, onClose, onSaved }: { tenantI
         name: String(member.name || member.id),
       })));
     });
-  }, [tenantId]);
+  }, [tenantId, staffAvailable]);
   async function save(event: React.FormEvent) {
     event.preventDefault(); setSaving(true);
     const response = await api.updateRepairDetails(tenantId, order.id, { expectedVersion: order.version, diagnosisSummary: diagnosis || undefined, finalAmountCents: finalAmount ? Math.round(Number(finalAmount) * 100) : undefined, mileageKm: mileage ? Number(mileage) : undefined, promisedAt: promisedAt ? new Date(promisedAt).toISOString() : undefined, assignedTechnicianId: technicianId || undefined });
     if (response.success && response.data) await onSaved(response.data); else setError(response.error || t("saveError"));
     setSaving(false);
   }
-  return <DialogShell title={t("technicalDetails")} onClose={onClose}><form onSubmit={save} className="mt-4 space-y-4">{error && <p className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-700">{error}</p>}<label className="block space-y-1"><span className="text-sm font-medium">{t("diagnosis")}</span><textarea value={diagnosis} onChange={(event) => setDiagnosis(event.target.value)} rows={4} className={inputClass} /><span className="text-xs text-muted-foreground">{t("diagnosisHumanOnly")}</span></label><div className="grid gap-3 sm:grid-cols-2"><label className="block space-y-1"><span className="text-sm font-medium">{t("technician")}</span><select value={technicianId} onChange={(event) => setTechnicianId(event.target.value)} className={inputClass}><option value="">{t("selectTechnician")}</option>{staff.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}</select><span className="text-xs text-muted-foreground">{t("technicianHint")}</span></label><Field label={t("finalAmount")} type="number" value={finalAmount} onChange={setFinalAmount} /><Field label={t("mileage")} type="number" value={mileage} onChange={setMileage} /><Field label={t("promisedAt")} type="datetime-local" value={promisedAt} onChange={setPromisedAt} /></div><DialogActions saving={saving} onClose={onClose} /></form></DialogShell>;
+  return <DialogShell title={t("technicalDetails")} onClose={onClose}><form onSubmit={save} className="mt-4 space-y-4">{error && <p className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-700">{error}</p>}<label className="block space-y-1"><span className="text-sm font-medium">{t("diagnosis")}</span><textarea value={diagnosis} onChange={(event) => setDiagnosis(event.target.value)} rows={4} className={inputClass} /><span className="text-xs text-muted-foreground">{t("diagnosisHumanOnly")}</span></label><div className="grid gap-3 sm:grid-cols-2"><label className="block space-y-1"><span className="text-sm font-medium">{t("technician")}</span><select value={technicianId} disabled={!staffAvailable} onChange={(event) => setTechnicianId(event.target.value)} className={inputClass}><option value="">{t("selectTechnician")}</option>{staff.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}</select><span className="text-xs text-muted-foreground">{staffAvailable ? t("technicianHint") : t("technicianUnavailableOnPlan")}</span></label><Field label={t("finalAmount")} type="number" value={finalAmount} onChange={setFinalAmount} /><Field label={t("mileage")} type="number" value={mileage} onChange={setMileage} /><Field label={t("promisedAt")} type="datetime-local" value={promisedAt} onChange={setPromisedAt} /></div><DialogActions saving={saving} onClose={onClose} /></form></DialogShell>;
 }
 
 function Field({ label, value, onChange, type = "text", required = false, placeholder }: { label: string; value: string; onChange: (value: string) => void; type?: string; required?: boolean; placeholder?: string }) {

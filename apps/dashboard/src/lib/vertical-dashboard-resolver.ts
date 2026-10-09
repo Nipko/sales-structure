@@ -218,7 +218,7 @@ const LEGACY_INDUSTRY_ITEMS: Readonly<Record<string, readonly VerticalDashboardI
   servicios_profesionales: ["appointments"],
   retail: ["inventory", "orders"],
   technology: ["appointments"],
-  veterinaria: ["appointments", "treatmentPlans", "pets"],
+  veterinaria: ["appointments", "pets"],
   gimnasios: ["appointments", "memberships", "classes"],
   seguros: ["insurance"],
   servicios_hogar: ["appointments", "serviceRequests"],

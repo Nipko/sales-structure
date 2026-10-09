@@ -671,6 +671,9 @@ export class PipelineService {
 
     async updatePipeline(tenantId: string, pipelineId: string, data: { name?: string; description?: string }) {
         const { schema } = await this.ensureMultiPipeline(tenantId);
+        if (!PipelineService.UUID_RE.test(pipelineId)) {
+            throw new BadRequestException('Invalid pipeline ID');
+        }
 
         const sets: string[] = ['updated_at = NOW()'];
         const params: any[] = [pipelineId, tenantId];

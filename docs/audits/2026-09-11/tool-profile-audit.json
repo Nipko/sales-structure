@@ -2,7 +2,7 @@
   "version": 1,
   "evidenceKind": "structural_only",
   "sourceHashEncoding": "utf8-lf",
-  "sourceRevision": "d88a2a3e7d4551aee0126613cddaf7264fd00437",
+  "sourceRevision": "d14d1cd6c4ffca41a1aa4d8346c9183afc07308b",
   "summary": {
     "verticals": 20,
     "profiles": 80,
@@ -70,7 +70,7 @@
     "apps/api/src/modules/simulation/isolated-eval-namespace.ts": "4b43f8ec67e6246ff502130f546d7c86023bab8a3ef897e955566a8409bee672",
     "apps/api/src/modules/simulation/task-competence-matrix.ts": "225c9d64a8b9b63c0d5a7e4d73aa36b9e410628d22a1140e44b349a4f7fe355b",
     "apps/dashboard/src/lib/navigation-contract.ts": "0faeea2dcb8abca5650d645b46c98495608368dd3bca29e2e54c86fbd2413ea7",
-    "apps/dashboard/src/lib/vertical-dashboard-resolver.ts": "e9f02c8e104f4c8fbb7a902763a8f1161869e29337fcbfddf344684ef51c7f0f",
+    "apps/dashboard/src/lib/vertical-dashboard-resolver.ts": "05899447bdc61a9cb7f68330731f4087142686cbd771614ad55e5d1eb6a6c15c",
     "docs/audits/2026-09-11/generate-tool-profile-audit.cjs": "1a774208f5e46b5a94e7eac9c1208d20f6a42daba7aa4e51ef52b3b938577099",
     "packages/shared/src/active-object-deep-link.ts": "738a7f5f1180bcfec4e8d9dc1cb424515419e4001dfbf1e82bd6a4802fd7003b",
     "packages/shared/src/agent-assessment-contract.ts": "fe333fdd43763b06b0727add8a7e1e232d0f2a84cb53180b9b95e2ad2431c488",

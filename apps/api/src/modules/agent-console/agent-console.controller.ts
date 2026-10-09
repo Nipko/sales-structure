@@ -215,6 +215,24 @@ export class AgentConsoleController {
         return { success: true, data: note };
     }
 
+    /** Contact-card fields edited from the inbox side panel (empresa, ciudad, redes, notas rapidas). */
+    @Put('conversation/:tenantId/:conversationId/contact-metadata')
+    @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
+    async updateContactMetadata(
+        @Param('tenantId') tenantId: string,
+        @Param('conversationId') conversationId: string,
+        @Req() req: any,
+        @Body() body: { metadata?: Record<string, string> },
+    ) {
+        await this.agentConsoleService.assertCanActOnConversation(
+            tenantId, conversationId, req.user.id, req.user.role,
+        );
+        const metadata = await this.agentConsoleService.updateContactMetadata(
+            tenantId, conversationId, body?.metadata,
+        );
+        return { success: true, data: metadata };
+    }
+
     @Get('conversation/:tenantId/:conversationId/suggest')
     async getAISuggestion(
         @Param('tenantId') tenantId: string,

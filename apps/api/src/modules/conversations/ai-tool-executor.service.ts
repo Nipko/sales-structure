@@ -744,7 +744,7 @@ export class AIToolExecutorService {
                     } as any, conversationId, opts?.evalMode, canonicalSandbox, operationalScope, executionIdempotencyKey, opts?.channelType);
 
                 case 'cancel_appointment':
-                    return this.cancelAppointment(schemaName, contactId, args.appointmentId, args.reason, canonicalSandbox, operationalScope);
+                    return this.cancelAppointment(schemaName, contactId, args.appointmentId, args.reason, canonicalSandbox, operationalScope, conversationId);
 
                 case 'reschedule_appointment':
                     return this.rescheduleAppointment(schemaName, contactId, args.appointmentId, args.newDate, args.newTime, args.reason, operationalScope, canonicalSandbox);
@@ -753,7 +753,7 @@ export class AIToolExecutorService {
                     return this.getAppointmentDetails(schemaName, contactId, args.appointmentId);
 
                 case 'list_customer_appointments':
-                    return this.listCustomerAppointments(schemaName, contactId);
+                    return this.listCustomerAppointments(schemaName, contactId, canonicalSandbox);
 
                 case 'send_booking_link':
                     return this.sendBookingLink(tenantId);
@@ -2879,6 +2879,32 @@ export class AIToolExecutorService {
         };
     }
 
+    /** The current instant. A method (not `new Date()` inline) so a test can pin the day a past-date rule is judged on. */
+    protected clock(): Date { return new Date(); }
+
+    /** «YYYY-MM-DDTHH:MM:SS» on the wall clock of `timezone` right now (the same shape as `start_local`). */
+    private localNowIso(timezone: string): string {
+        const parts = new Intl.DateTimeFormat('en-CA', {
+            timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+        }).formatToParts(this.clock());
+        const part = (type: string) => parts.find(p => p.type === type)?.value ?? '00';
+        return `${part('year')}-${part('month')}-${part('day')}T${part('hour')}:${part('minute')}:00`;
+    }
+
+    /**
+     * Has an appointment (its start as the tenant's wall clock) already started on the TENANT's clock? The timezone is resolved the
+     * way every other writer resolves it (`getTenantTimezone`, evaluation namespaces included). When it cannot be read the answer is
+     * «no»: a customer's cancellation is not blocked by an infrastructure failure.
+     */
+    private async startedOnTenantClock(schema: string, startLocal: unknown, namespace?: EvalNamespaceLease): Promise<boolean> {
+        if (typeof startLocal !== 'string' || !startLocal) return false;
+        try {
+            return startLocal.slice(0, 19) <= this.localNowIso(await this.getTenantTimezone(schema, namespace));
+        } catch {
+            return false;
+        }
+    }
+
     /** Resolve tenant timezone from persona_config or default */
     private async getTenantTimezone(schema: string, namespace?: EvalNamespaceLease): Promise<string> {
         if (schema.startsWith('tenant_eval_')) {
@@ -3657,10 +3683,11 @@ export class AIToolExecutorService {
         }
     }
 
-    private async cancelAppointment(schema: string, contactId: string, appointmentId: string, reason?: string, namespace?: EvalNamespaceLease, operationalScope?:ServedAgentAuthority): Promise<any> {
+    private async cancelAppointment(schema: string, contactId: string, appointmentId: string, reason?: string, namespace?: EvalNamespaceLease, operationalScope?:ServedAgentAuthority, conversationId?: string): Promise<any> {
         // Verify ownership — only cancel if it belongs to this contact
         const rows: any[] = await this.prisma.$queryRawUnsafe(
-            `SELECT id, contact_id, service_id, service_name, start_at, end_at, status, metadata
+            `SELECT id, contact_id, service_id, service_name, start_at, end_at, status, metadata,
+                    to_char(start_at,'YYYY-MM-DD"T"HH24:MI:SS') AS start_local
              FROM "${schema}".appointments WHERE id = $1::uuid`,
             appointmentId,
         );
@@ -3669,6 +3696,14 @@ export class AIToolExecutorService {
         if (rows[0].contact_id !== contactId) return { error: 'You can only cancel your own appointments' };
         if (rows[0].status === 'cancelled') {
             return { success: true, alreadyCancelled: true, message: 'Appointment was already cancelled.', alternatives: [] };
+        }
+        // An appointment that already started (in the tenant's clock) is not cancelled from the chat: a no-show must not turn into a
+        // cancellation. The business decides; the customer is offered a person.
+        if (await this.startedOnTenantClock(schema, rows[0].start_local, namespace)) {
+            return {
+                error: 'appointment_already_started', persisted: false,
+                message: 'That appointment has already started or passed, so it cannot be cancelled from the chat. Nothing was changed. Offer, as a question, that someone from the team reviews it.',
+            };
         }
 
         const updated: any[] = await this.prisma.transactionInTenantSchema(
@@ -3709,6 +3744,9 @@ export class AIToolExecutorService {
                 startAt: rows[0].start_at,
                 endAt: rows[0].end_at,
                 status: 'cancelled',
+                // Cancelled by the customer INSIDE a conversation: the agent tells them so in that same thread, so the notification
+                // listener must not send a second message there (the e-mail is a different channel and still goes).
+                cancelledInConversationId: conversationId ?? null,
             },
             reason,
         });
@@ -3749,15 +3787,29 @@ export class AIToolExecutorService {
         };
     }
 
-    private async listCustomerAppointments(schema: string, contactId: string): Promise<any> {
+    /**
+     * The customer's own appointments that are still ahead of them: UPCOMING + THE REST OF TODAY'S, up to the start of the tenant's
+     * local day.
+     *
+     * `start_at` is a wall clock in the tenant's timezone (a `timestamp`, no zone), and this compared it with `NOW()` (an instant,
+     * UTC on the server): a booking at 11:00 in Bogotá on a morning that was 08:42 there but 13:42 UTC was «already in the past» and
+     * vanished from the list, so the customer could neither see nor cancel the appointment a move had just put on that day. The
+     * boundary is now the local midnight, which also keeps an appointment of earlier today (not yet completed or marked no-show by
+     * the business) reachable: whatever a customer owns today, they can still cancel.
+     */
+    private async listCustomerAppointments(schema: string, contactId: string, namespace?: EvalNamespaceLease): Promise<any> {
+        // When the timezone cannot be read the window is widened (UTC-12, the earliest clock on Earth) rather than narrowed:
+        // an appointment shown a few hours late is better than one that cannot be found.
+        const timezone = await this.getTenantTimezone(schema, namespace).catch(() => 'Etc/GMT+12');
         const rows: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT a.id, a.service_id, a.assigned_to, a.service_name, a.status, a.customer_name, a.payment_status, a.amount_due, a.hold_expires_at, a.metadata,
                     ${appointmentPriceSql('a', 's')} AS price, ${appointmentCurrencySql('a', 's')} AS currency,
                     to_char(a.start_at, 'YYYY-MM-DD') AS local_date, to_char(a.start_at, 'HH24:MI') AS local_time
              FROM "${schema}".appointments a LEFT JOIN "${schema}".services s ON s.id = a.service_id
-             WHERE a.contact_id = $1::uuid AND a.status NOT IN ('cancelled') AND a.start_at >= NOW()
+             WHERE a.contact_id = $1::uuid AND a.status NOT IN ('cancelled')
+               AND a.start_at >= date_trunc('day', NOW() AT TIME ZONE $2::text)
              ORDER BY a.start_at LIMIT 10`,
-            contactId,
+            contactId, timezone,
         );
 
         return {
@@ -6305,9 +6357,11 @@ export class AIToolExecutorService {
 
         const newStartAt = `${newDate}T${newTime}:00`;
         let newEndAt: string;
+        let tenantTimezone: string;
         try {
+            tenantTimezone = await this.getTenantTimezone(schema, sandboxNamespace);
             const temporal = this.temporalContracts.normalize({ kind: 'appointment', startsAtLocal: newStartAt,
-                timezone: await this.getTenantTimezone(schema, sandboxNamespace), durationMinutes: duration });
+                timezone: tenantTimezone, durationMinutes: duration });
             if (temporal.kind !== 'appointment') throw new Error('wrong_temporal_kind');
             newEndAt = temporal.endsAtLocal;
         } catch (error: unknown) { return this.appointmentTemporalFailure(error); }
@@ -6322,6 +6376,24 @@ export class AIToolExecutorService {
         // Same opening-hours gate as create_appointment, for the NEW slot only: a
         // retry that lands on the time the appointment already has stays idempotent.
         if (apt.start_local !== newStartAt || apt.end_local !== newEndAt) {
+            // Never move an appointment to a moment that has already gone by (in the TENANT's clock). The engine refuses the
+            // proposal first; this is the writer's own guard for every other caller (the model's call, the dashboard path).
+            let localNow: string;
+            try {
+                localNow = this.localNowIso(tenantTimezone);
+            } catch (error: unknown) { return this.appointmentTemporalFailure(error); }
+            if (typeof apt.start_local === 'string' && apt.start_local.slice(0, 19) <= localNow) {
+                return {
+                    error: 'appointment_already_started', persisted: false,
+                    message: 'That appointment has already started or passed, so it cannot be moved from the chat. Nothing was changed. Offer, as a question, that someone from the team reviews it.',
+                };
+            }
+            if (newStartAt <= localNow) {
+                return {
+                    error: 'appointment_in_past', persisted: false, requestedDate: newDate, requestedTime: newTime,
+                    message: 'That date and time have already passed. Nothing was changed. Ask the customer for a future day and time.',
+                };
+            }
             const outsideHours = await this.assertWithinBusinessHours(
                 schema, newDate, newTime, duration + (Number(svcRows[0]?.buffer_minutes) || 0),
                 apt.assigned_to || null, sandboxNamespace);

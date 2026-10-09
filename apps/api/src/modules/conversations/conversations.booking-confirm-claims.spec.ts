@@ -1,3 +1,4 @@
+import { pinClock } from './__fixtures__/pinned-clock';
 import { agentTurnFixture, publishTools } from './__fixtures__/agent-turn.fixture';
 import type { AgentTurnSession } from './agent-turn-session';
 import { randomUUID } from 'crypto';
@@ -80,6 +81,10 @@ const CLAIMS: Array<[string, string]> = [
 ];
 const CLAIM_WORDS = /confirmad|agendad|reserv|lista|booked|confirmed|agendamento|réserv|r.serv/i;
 
+
+// The scenarios below are dated against a calendar and the turn reads the real clock: pinned, so they do not turn red the day
+// they were written for goes by (see __fixtures__/pinned-clock.ts). Only Date is faked.
+pinClock();
 describe('a reply that claims a booking outcome when nothing was booked never reaches the customer', () => {
     it.each(CLAIMS)('at the confirmation re-ask (%s): the engine text, verbatim, and 0 writes', async (_label, claim) => {
         const h = fixture();

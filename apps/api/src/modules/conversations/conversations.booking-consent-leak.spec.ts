@@ -1,3 +1,4 @@
+import { pinClock } from './__fixtures__/pinned-clock';
 import { agentTurnFixture, publishTools } from './__fixtures__/agent-turn.fixture';
 import type { AgentTurnSession } from './agent-turn-session';
 import { randomUUID } from 'crypto';
@@ -69,6 +70,10 @@ function fixture() {
 
 const noMarkup = (text: string) => !/[<>]|DSML|create_appointment|service_id|invoke|parameter/.test(text);
 
+
+// The scenarios below are dated against a calendar and the turn reads the real clock: pinned, so they do not turn red the day
+// they were written for goes by (see __fixtures__/pinned-clock.ts). Only Date is faked.
+pinClock();
 describe('a tool call written as text never reaches the customer or the history', () => {
     it.each(MARKUP_SHAPES)('at the confirmation re-ask (%s): the engine text is the reply, nothing is booked', async (_label, markup) => {
         const h = fixture();

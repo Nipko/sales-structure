@@ -1,3 +1,4 @@
+import { pinClock } from './__fixtures__/pinned-clock';
 import { agentTurnFixture, publishTools } from './__fixtures__/agent-turn.fixture';
 // The evaluation session blocks the identity tools (it never sends or accepts a real code); this spec exercises the production
 // glue, whose executor is a double, so they are let through here.
@@ -110,6 +111,10 @@ const SALON = ['list_services', 'check_availability', 'create_appointment', 'can
 const STORE = ['place_catalog_order', 'list_my_catalog_orders', 'get_catalog_order', 'cancel_catalog_order', 'search_products', 'check_stock'];
 const VERIFY_NEEDED = 'Para ver o cambiar sus citas necesito verificar su identidad. Le envié un código a j***@example.com; escríbalo aquí para continuar.';
 
+
+// The scenarios below are dated against a calendar and the turn reads the real clock: pinned, so they do not turn red the day
+// they were written for goes by (see __fixtures__/pinned-clock.ts). Only Date is faked.
+pinClock();
 describe('a business type that needs a code: the server drives the verification and resumes the request', () => {
     it('«quiero cancelar mi cita» → the server asks for the code (once), keeps the request, verifies, proposes, and the «sí» cancels', async () => {
         const h = world({ tools: CLINIC, industry: 'salud', sensitive: true, verified: false });

@@ -11,6 +11,8 @@ import { useEffect, useState, useCallback } from "react";
 import { useTranslations } from "next-intl";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
+import { usePlanLimits } from "@/hooks/usePlanLimits";
+import { staffDirectoryAvailable } from "@/lib/staff-directory";
 import { cn } from "@/lib/utils";
 import {
     Wrench, RefreshCw, Loader2, MapPin, Phone, AlertTriangle,
@@ -231,14 +233,22 @@ function RequestDetailModal({
     const [busy, setBusy] = useState(false);
     const [validationError, setValidationError] = useState("");
 
+    // El directorio de personal es una función del plan (staffScheduling): en
+    // Starter el API responde 403 por diseño, así que ni se pide. El campo cae a
+    // texto libre, igual que cuando el directorio está vacío.
+    const { features, loading: planLoading } = usePlanLimits();
+    const staffAvailable = staffDirectoryAvailable(features, planLoading);
     useEffect(() => {
-        if (!activeTenantId) return;
+        if (!activeTenantId || !staffAvailable) {
+            setStaff([]);
+            return;
+        }
         api.listStaff(activeTenantId)
             .then(res => setStaff((res?.data as any[])?.map(s => ({ id: s.id, name: s.name })) || []))
             // Si el directorio está vacío o falla, el campo cae a texto libre:
             // vale más poder despachar al técnico que bloquear la operación.
             .catch(() => setStaff([]));
-    }, [activeTenantId]);
+    }, [activeTenantId, staffAvailable]);
 
     async function handleSave() {
         if (!activeTenantId) return;

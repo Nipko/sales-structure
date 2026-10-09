@@ -14,12 +14,15 @@ import { CurrentUser } from '../../common/decorators/tenant.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
+import { VerticalCapabilityGuard } from '../../common/guards/vertical-capability.guard';
+import { RequireVerticalCapability } from '../../common/decorators/require-vertical-capability.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateRepairOrderInput, RepairOrdersService } from './repair-orders.service';
 
 @ApiTags('repair-orders')
 @Controller('repair-orders')
-@UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
+@UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard, VerticalCapabilityGuard)
+@RequireVerticalCapability('repair_orders')
 @ApiBearerAuth()
 export class RepairOrdersController {
     constructor(

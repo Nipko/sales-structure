@@ -42,6 +42,12 @@ describe('the artefact gate covers the tools programme', () => {
         expect(GENERATORS).toContain('2026-09-09/generate-certification-manifest.cjs');
     });
 
+    it('carries the generated catalogue of industries and business types', () => {
+        // The one list of business types is generated; if it leaves this list
+        // nothing compares it with the registries any more.
+        expect(GENERATORS).toContain('../../apps/api/scripts/business-types-catalog.cjs');
+    });
+
     it('goes RED when an audited source changes and the artefact does not', () => {
         // The only assertion that proves a gate. A tool definition is added to
         // a real audited file, the artefact is left alone, and the verifier has

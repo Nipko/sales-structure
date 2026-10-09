@@ -7,12 +7,15 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
+import { VerticalCapabilityGuard } from '../../common/guards/vertical-capability.guard';
+import { RequireVerticalCapability } from '../../common/decorators/require-vertical-capability.decorator';
 import { PhotographyService } from './photography.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 @ApiTags('photography')
 @Controller('photography')
-@UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
+@UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard, VerticalCapabilityGuard)
+@RequireVerticalCapability('photo_sessions')
 @ApiBearerAuth()
 export class PhotographyController {
     constructor(

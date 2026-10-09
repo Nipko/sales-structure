@@ -3,20 +3,67 @@ id: herramientas-tipo-negocio
 title: "Ferramentas do agente por tipo de negócio"
 routes: ["/admin/agent", "/admin/agent/quality", "/admin/memberships"]
 roles: ["tenant_admin"]
-keywords: ["ferramentas","capacidades","tipo de negócio","subtipo","ativar ferramentas","ferramenta desativada","configurar agente","preço de exemplo","confirmar preço","é orçado","matrículas","planos de matrícula","academia"]
+keywords: ["ferramentas","capacidades","indústria","tipo de negócio","subtipo","famílias de ferramentas","o que o agente pode fazer","lista de espera","ativar ferramentas","ferramenta desativada","configurar agente","preço de exemplo","confirmar preço","é orçado","matrículas","planos de matrícula","academia"]
 ---
 
 # Ferramentas do agente por tipo de negócio
 
-A vertical reúne negócios; o tipo de negócio define as operações concretas. Um hotel e uma agência de passeios pertencem ao turismo, mas precisam de catálogos, disponibilidade e reservas diferentes. Configure o tipo real da conta antes de escolher as ferramentas.
+A **indústria** reúne negócios; o **tipo de negócio** define as operações concretas. Um hotel e uma agência de passeios pertencem ao turismo, mas precisam de catálogos, disponibilidade e reservas diferentes. Configure o tipo real da conta antes de escolher as ferramentas.
 
 Em **Agente de IA → Capacidades**, revise as famílias aplicáveis ao tipo de negócio. Uma configuração antiga pode manter uma família que não se aplica mais: você pode desativá-la, mas ativá-la não amplia a autorização do agente. Se os dados do perfil ou do plano estiverem indisponíveis, aguarde ou consulte novamente; isso não equivale a permissão.
+
+## Quais capacidades cada tipo de negócio traz
+
+As **Perguntas frequentes** estão disponíveis em todos os tipos de negócio. As demais capacidades dependem do tipo que você escolheu no cadastro; aparecem com estes nomes em **Agente de IA → Capacidades**, na seção **Ferramentas da sua indústria**:
+
+- **Saúde** — Odontologia, Dermatologia e medicina estética, Psicologia e terapia: Agendamento de consultas, Planos de tratamento. Medicina geral: Agendamento de consultas. Farmácia: Catálogo de produtos.
+- **Beleza e estética** — Salão de beleza, Barbearia: Agendamento de consultas. Spa e bem-estar, Centro de estética: Agendamento de consultas, Planos de tratamento.
+- **Imobiliária** — Venda de imóveis, Aluguel, Imóveis comerciais: Agendamento de consultas, Imóveis.
+- **Restaurantes / Gastronomia** — Restaurante casual, Cafeteria: Agendamento de consultas, Restaurante. Fast food, Dark kitchen / Delivery: Restaurante.
+- **Automotivo** — Concessionária: Agendamento de consultas, Veículos. Oficina mecânica: Agendamento de consultas, Ordens da oficina. Peças e acessórios: Catálogo de produtos. Aluguel de veículos: Veículos, Aluguel de veículos.
+- **Turismo** — Agência de viagens, Tours e atividades: Tours e pacotes. Hotel / Hostel, Aluguel por temporada: Propriedades (aluguel).
+- **Educação** — Escola de idiomas, Universidade / Instituto, Cursos online, Treinamento empresarial, Academia de dança, Academia de música ou arte, Aulas particulares e tutoria, Autoescola: Agendamento de consultas, Educação.
+- **Finanças / Banco** — Assessoria financeira, Créditos e empréstimos: Agendamento de consultas.
+- **Serviços profissionais** — Advogados, Contadores, Arquitetos, Consultores: Agendamento de consultas, Casos do escritório.
+- **Varejo / Comércio** — Moda e roupas, Eletrônica: Catálogo de produtos. Casa e decoração: Catálogo de produtos, Agendamento de consultas.
+- **Tecnologia** — SaaS, Desenvolvimento de software: Agendamento de consultas. Hardware e redes: Catálogo de produtos.
+- **Veterinária** — Clínica de pequenos animais, Hospital veterinário 24h, Animais exóticos: Agendamento de consultas, Veterinária.
+- **Academias e Fitness** — Academia tradicional, Box CrossFit, Estúdio de yoga / pilates, Cycling / spinning, Artes marciais: Agendamento de consultas, Academia.
+- **Seguros** — Corretor, Especialista em vida, Especialista em auto: Seguros.
+- **Serviços para casa** — Encanamento, Eletricidade, Dedetização, Limpeza, Jardinagem, Chaveiro, Pintura: Serviços residenciais.
+- **Serviços para pets** — Banho e tosa, Passeios, Adestramento: Agendamento de consultas, Serviços para pets, Veterinária. Creche para pets, Hotel para pets: Serviços para pets, Veterinária, Creche e hotel.
+- **Fotografia / Eventos** — Estúdio fotográfico, Casamentos, Eventos, Produto: Fotografia.
+- **Outro** — Catálogo de produtos.
+
+O que cada capacidade faz:
+
+- **Agendamento de consultas**: consulta serviços e disponibilidade, cria, remarca e cancela agendamentos, lista os agendamentos do cliente e envia o link de reserva.
+- **Catálogo de produtos**: busca produtos, mostra a ficha e a imagem, consulta o estoque e registra, consulta e cancela pedidos do catálogo.
+- **Planos de tratamento**: consulta o plano de tratamento do cliente e as próximas sessões.
+- **Imóveis**: busca imóveis e mostra a ficha e as imagens.
+- **Restaurante**: mostra o cardápio e as promoções, registra pedidos, consulta o status, cancela e lista os pedidos do cliente.
+- **Veículos**: busca veículos, mostra a ficha e as imagens e agenda test drives (isto também exige Agendamento de consultas).
+- **Ordens da oficina**: abre, consulta e cancela ordens de reparo e registra se o cliente aprova ou recusa o orçamento vigente. Registra o que o cliente relata; não faz diagnóstico.
+- **Aluguel de veículos**: consulta a disponibilidade e cria, consulta e cancela aluguéis.
+- **Tours e pacotes**: busca pacotes, consulta detalhes e disponibilidade e cria, lista ou cancela reservas de tours.
+- **Propriedades (aluguel)**: lista acomodações, consulta disponibilidade e detalhes, passa as instruções de check-in e cria, lista ou cancela reservas.
+- **Educação**: consulta cursos e horários, matricula alunos, compartilha o link do teste de nível e cancela matrículas.
+- **Casos do escritório**: consulta o andamento de um caso. É somente leitura: não cria nem orça casos.
+- **Academia**: consulta planos de matrícula e a grade de aulas, reserva e cancela aulas e consulta ou congela o plano do cliente.
+- **Seguros**: consulta planos, calcula cotações, consulta o status de uma apólice, registra e lista sinistros e cancela cotações.
+- **Serviços residenciais**: lista serviços e disponibilidade, cria solicitações, consulta o status e cancela.
+- **Veterinária**: gerencia as fichas de pets do cliente, consulta a situação de vacinação e classifica a urgência de uma emergência para repassá-la à equipe.
+- **Serviços para pets**: lista os serviços e consulta a disponibilidade da creche.
+- **Creche e hotel**: cria, consulta e cancela estadias de pets.
+- **Fotografia**: lista pacotes, envia o portfólio, consulta a disponibilidade de uma data, solicita cotação e cancela sessões.
+
+Os 8 tipos de negócio na **lista de espera** (Planejamento de casamentos, Empreiteiro geral, Incorporadora imobiliária, Pagamentos e cobranças, Marketplace / E-commerce, Suporte de TI e MSP, Seguradora e Especialista em saúde de seguros) não são oferecidos no cadastro e sua operação completa continua fechada; não espere que o agente conclua operações próprias desses negócios. Os 5 tipos que só existem para contas anteriores (Construção e projetos, Fintech, Consultoria TI, Banho e tosa de veterinária e Wedding planner) continuam funcionando nas contas que já os tinham. A lista completa de módulos por setor está no artigo **Ferramentas e módulos para o seu setor**.
 
 ## Configurar com um objetivo
 
 1. Defina o que o agente deve resolver e quando a equipe deve intervir.
 2. Ative as ferramentas necessárias para essas tarefas. Não é preciso ativar todas.
-3. Preencha os dados de cada ferramenta em seu módulo: produtos, cardápio, serviços, capacidade, cursos ou outros registros. Algumas atividades usam **Catálogo de serviços** sem uma agenda de horários.
+3. Preencha os dados de cada ferramenta em seu módulo: produtos, cardápio, serviços, capacidade, cursos ou outros registros. Algumas atividades usam **Pacotes e serviços** sem uma agenda de horários.
 4. Revise permissões específicas: consultar disponibilidade, criar, cancelar, recomendar e gerar links de pagamento são ações diferentes.
 5. Salve e consulte novamente o diagnóstico do agente. Ele relê a preparação; uma opção ativada não garante os dados ou a conexão necessários.
 6. Teste uma tarefa completa, incluindo dados ausentes, uma recusa e o resultado final. Revise cada conexão atendida pelo agente.

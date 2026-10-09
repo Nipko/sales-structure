@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Param, UseGuards, Logger } from '@nestjs/common';
+import { Controller, Post, Body, Param, Req, UseGuards, Logger } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { HandoffService } from './handoff.service';
@@ -22,7 +22,11 @@ export class HandoffController {
     async completeHandoff(
         @CurrentTenant() tenantId: string,
         @Param('conversationId') conversationId: string,
+        @Req() req: any,
     ) {
+        await this.handoffService.assertCanCompleteHandoff(
+            tenantId, conversationId, req.user?.id, req.user?.role,
+        );
         await this.handoffService.completeHandoff(tenantId, conversationId);
         return { success: true, message: 'Handoff completed, conversation returned to AI' };
     }

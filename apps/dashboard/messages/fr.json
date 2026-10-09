@@ -1798,6 +1798,10 @@
     "cancel": "Annuler",
     "errorSend": "Echec de l'envoi du message. Veuillez reessayer.",
     "errorResolve": "Echec de la resolution de la conversation. Veuillez reessayer.",
+    "returnToBot": "Rendre au bot",
+    "returnToBotConfirm": "Rendre cette conversation au bot ? L'IA répondra au prochain message du client.",
+    "errorReturnToBot": "Echec du retour de la conversation au bot. Veuillez reessayer.",
+    "errorSaveContact": "Echec de l'enregistrement des donnees du contact. Veuillez reessayer.",
     "errorNote": "Echec de l'enregistrement de la note. Veuillez reessayer.",
     "errorSnooze": "Echec du report de la conversation. Veuillez reessayer.",
     "errorArchive": "Echec de l'archivage de la conversation. Veuillez reessayer.",
@@ -14209,6 +14213,7 @@
     "noTechnician": "Aucun technicien affecté",
     "selectTechnician": "Sélectionner un technicien",
     "technicianHint": "La liste utilise l’équipe active configurée dans Rendez-vous → Équipe.",
+    "technicianUnavailableOnPlan": "Votre forfait n’inclut pas l’équipe, il n’y a donc aucun technicien à choisir. Le reste s’enregistre normalement.",
     "status": {
       "intake": "Réception",
       "estimating": "Diagnostic/devis",

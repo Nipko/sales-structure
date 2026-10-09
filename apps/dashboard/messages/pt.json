@@ -1798,6 +1798,10 @@
     "cancel": "Cancelar",
     "errorSend": "Falha ao enviar mensagem. Tente novamente.",
     "errorResolve": "Falha ao resolver conversa. Tente novamente.",
+    "returnToBot": "Devolver ao bot",
+    "returnToBotConfirm": "Devolver esta conversa ao bot? A IA responderá a próxima mensagem do cliente.",
+    "errorReturnToBot": "Falha ao devolver a conversa ao bot. Tente novamente.",
+    "errorSaveContact": "Falha ao salvar os dados do contato. Tente novamente.",
     "errorNote": "Falha ao salvar nota. Tente novamente.",
     "errorSnooze": "Falha ao adiar conversa. Tente novamente.",
     "errorArchive": "Falha ao arquivar conversa. Tente novamente.",
@@ -14209,6 +14213,7 @@
     "noTechnician": "Sem técnico atribuído",
     "selectTechnician": "Selecione um técnico",
     "technicianHint": "A lista usa a equipe ativa configurada em Agendamentos → Equipe.",
+    "technicianUnavailableOnPlan": "Seu plano não inclui Equipe, por isso não há técnicos para escolher. O restante dos dados é salvo normalmente.",
     "status": {
       "intake": "Recepção",
       "estimating": "Diagnóstico/orçamento",

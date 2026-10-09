@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { isSupervisor } from "@/lib/roles";
 import { useVerticalTerms } from "@/hooks/useVerticalTerms";
 import { ViewersIndicator } from "./_components/ViewersIndicator";
+import { canReturnToBot, contactMetaFromDetail, contactMetaPayload } from "./inbox-actions";
 import { io } from "socket.io-client";
 import type { Socket } from "socket.io-client";
 import {
@@ -425,17 +426,29 @@ export default function InboxPage() {
         setContactMetaDirty(true);
     };
 
+    // Keys the custom-attribute rows of the panel are stored under (same expression the rows use).
+    const customAttrKeysRef = useRef<string[]>([]);
+    customAttrKeysRef.current = customAttrDefs
+        .map((attr: any) => String(attr.key || attr.name || attr.id || ''))
+        .filter(Boolean);
+
     const saveContactMeta = async () => {
-        if (!activeTenantId || !selectedConv?.contactId) return;
+        if (!activeTenantId || !selectedConv?.id) return;
         setContactMetaSaving(true);
         try {
-            await api.fetch(`/crm/contacts/${activeTenantId}/${selectedConv.contactId}`, {
-                method: 'PATCH',
-                body: JSON.stringify({ metadata: contactMeta }),
-            });
+            // Addressed by conversation: the API resolves the contact itself and applies
+            // the same ownership rule as the other inbox actions. (It used to call a
+            // contact PATCH route that does not exist, and only logged.)
+            const res: any = await api.updateInboxContactMetadata(
+                activeTenantId,
+                selectedConv.id,
+                contactMetaPayload(contactMeta, customAttrKeysRef.current),
+            );
+            if (!res?.success) throw new Error(res?.error || 'save failed');
             setContactMetaDirty(false);
         } catch (err) {
             console.error('Failed to save contact metadata:', err);
+            showInboxError(t("errorSaveContact"));
         } finally {
             setContactMetaSaving(false);
         }
@@ -667,7 +680,10 @@ export default function InboxPage() {
                         };
                     });
                     setMessages(msgs);
-                    const detailContactId = [conv.contact_id, conv.contactId, conv.contact?.id]
+                    // The side-panel contact card starts from what the contact already has stored.
+                    setContactMeta(contactMetaFromDetail(conv.contact?.customFields, customAttrKeysRef.current));
+                    setContactMetaDirty(false);
+                    const detailContactId =[conv.contact_id, conv.contactId, conv.contact?.id]
                         .find((value): value is string => typeof value === "string" && value.trim().length > 0);
                     if (detailContactId || conv.handoffSummary || conv.handoffReason) {
                         setSelectedConv((prev: any) => prev?.id === selectedConv.id ? {
@@ -1304,6 +1320,36 @@ export default function InboxPage() {
         }
     };
 
+    // "Devolver al bot": the human lets go and the AI answers the next message.
+    const [returningToBot, setReturningToBot] = useState(false);
+    const handleReturnToBot = async () => {
+        if (!activeTenantId || !selectedConv?.id || returningToBot) return;
+        if (typeof window !== "undefined" && !window.confirm(t("returnToBotConfirm"))) return;
+        const conversationId = selectedConv.id;
+        const previous = {
+            status: selectedConv.status,
+            assignedAgentId: selectedConv.assignedAgentId,
+            isAiHandled: selectedConv.isAiHandled,
+        };
+        const apply = (patch: Record<string, unknown>) => {
+            setConversations((prev: any[]) => prev.map(c => c.id === conversationId ? { ...c, ...patch } : c));
+            setSelectedConv((prev: any) => prev?.id === conversationId ? { ...prev, ...patch } : prev);
+        };
+        setReturningToBot(true);
+        apply({ status: "active", assignedAgentId: null, isAiHandled: true });
+        try {
+            // apiPut never throws: it resolves { success: false } on a refusal.
+            const res: any = await api.returnConversationToAI(activeTenantId, conversationId);
+            if (!res?.success) throw new Error(res?.error || "return-to-ai failed");
+        } catch (err) {
+            console.error("Return to bot failed:", err);
+            apply(previous);
+            showInboxError(t("errorReturnToBot"));
+        } finally {
+            setReturningToBot(false);
+        }
+    };
+
     // --- Build messages with date separators ---
     const messagesWithSeparators = useMemo(() => {
         const result: any[] = [];
@@ -1770,6 +1816,19 @@ export default function InboxPage() {
                                 >
                                     <Activity size={16} />
                                 </button>
+                                {/* Return to bot — while a person holds the conversation */}
+                                {canReturnToBot(selectedConv, { id: user?.id, isSupervisor: canReassignConversations }) && (
+                                    <button
+                                        onClick={handleReturnToBot}
+                                        disabled={returningToBot}
+                                        className="py-1.5 px-2.5 rounded-lg border border-border bg-transparent text-foreground text-xs font-semibold cursor-pointer flex gap-1.5 items-center hover:bg-muted transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                                        title={t("returnToBot")}
+                                        aria-label={t("returnToBot")}
+                                    >
+                                        {returningToBot ? <Loader2 size={14} className="animate-spin" /> : <Bot size={14} />}
+                                        <span className="hidden md:inline">{t("returnToBot")}</span>
+                                    </button>
+                                )}
                                 {/* Resolve — always visible */}
                                 <button
                                     onClick={handleResolve}

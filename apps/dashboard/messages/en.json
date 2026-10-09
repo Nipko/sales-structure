@@ -1798,6 +1798,10 @@
     "cancel": "Cancel",
     "errorSend": "Failed to send message. Please try again.",
     "errorResolve": "Failed to resolve conversation. Please try again.",
+    "returnToBot": "Return to bot",
+    "returnToBotConfirm": "Return this conversation to the bot? The AI will answer the customer's next message.",
+    "errorReturnToBot": "Failed to return the conversation to the bot. Please try again.",
+    "errorSaveContact": "Failed to save the contact details. Please try again.",
     "errorNote": "Failed to save note. Please try again.",
     "errorSnooze": "Failed to snooze conversation. Please try again.",
     "errorArchive": "Failed to archive conversation. Please try again.",
@@ -14209,6 +14213,7 @@
     "noTechnician": "No technician assigned",
     "selectTechnician": "Select a technician",
     "technicianHint": "This list uses active staff configured under Appointments → Staff.",
+    "technicianUnavailableOnPlan": "Your plan does not include Staff, so there are no technicians to choose from. Everything else saves normally.",
     "status": {
       "intake": "Intake",
       "estimating": "Diagnosis/estimate",

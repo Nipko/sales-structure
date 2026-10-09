@@ -7,13 +7,16 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
+import { VerticalCapabilityGuard } from '../../common/guards/vertical-capability.guard';
+import { RequireVerticalCapability } from '../../common/decorators/require-vertical-capability.decorator';
 import { RestaurantsService } from './restaurants.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { bulkImportRows } from '../../common/utils/bulk-import.util';
 
 @ApiTags('restaurants')
 @Controller('restaurants')
-@UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
+@UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard, VerticalCapabilityGuard)
+@RequireVerticalCapability('restaurant_ordering')
 @ApiBearerAuth()
 export class RestaurantsController {
     constructor(

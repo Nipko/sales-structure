@@ -51,3 +51,21 @@ export function foldedSql(expression: string): string {
 export function foldQueryText(text: unknown): string {
     return String(text ?? '').normalize('NFC').trim();
 }
+
+/**
+ * `%text%` for an accent-insensitive «contains». The customer's `%`, `_` and
+ * `\` are text, not wildcards (backslash is PostgreSQL's default LIKE escape).
+ * Compare with `foldedContainsSql(column, '$n')`, which folds BOTH sides in SQL.
+ */
+export function foldedLikePattern(text: unknown): string {
+    return `%${foldQueryText(text).replace(/[\\%_]/g, '\\$&')}%`;
+}
+
+/**
+ * `column` contains the text bound to `placeholder` (e.g. `$3`), ignoring case
+ * and accents on both sides: «Usaquén» finds «Usaquen» and the other way round.
+ * Bind `foldedLikePattern(text)` to the placeholder.
+ */
+export function foldedContainsSql(column: string, placeholder: string): string {
+    return `${foldedSql(column)} LIKE ${foldedSql(`${placeholder}::text`)}`;
+}

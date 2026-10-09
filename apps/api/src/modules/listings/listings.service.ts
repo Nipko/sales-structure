@@ -1,5 +1,6 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { foldedContainsSql, foldedLikePattern } from '../../common/utils/sql-accent-fold.util';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -298,13 +299,14 @@ export class ListingsService {
             idx++;
         }
         if (params.neighborhood) {
-            conds.push(`(neighborhood ILIKE $${idx} OR address ILIKE $${idx})`);
-            vals.push(`%${params.neighborhood}%`);
+            // «Usaquén» typed on a phone is «Usaquen»; the owner may have typed either.
+            conds.push(`(${foldedContainsSql('neighborhood', `$${idx}`)} OR ${foldedContainsSql('address', `$${idx}`)})`);
+            vals.push(foldedLikePattern(params.neighborhood));
             idx++;
         }
         if (params.city) {
-            conds.push(`city ILIKE $${idx}`);
-            vals.push(`%${params.city}%`);
+            conds.push(foldedContainsSql('city', `$${idx}`));
+            vals.push(foldedLikePattern(params.city));
             idx++;
         }
 

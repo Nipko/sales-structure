@@ -49,12 +49,66 @@ export class LanguageDetectorService {
         fr: { words: ['veux', 'besoin', 'voudrais', 'cherche', 'combien', 'reserver', 'rendez', 'disponible', 'disponibilite'], chars: /[èùœëîû]/ },
     };
 
-    /** Whether the message carries at least two DIFFERENT strong markers of the language (a diacritic counts as one). */
-    private hasStrongMarker(lang: string, tokens: Set<string>, raw: string): boolean {
+    /**
+     * Function words that belong to ONE of the four languages (never a word another of them also uses: «do» is
+     * Portuguese «of the» and an English verb, «as» is a Portuguese article and an English word, «como» is Spanish AND
+     * Portuguese, «apartamento»/«visitas»/«ver» are Spanish AND Portuguese, so none of those is here). A message of a
+     * full sentence carries several of them; a borrowed word, a brand or a courtesy word carries none.
+     */
+    private readonly sentenceWords: Record<string, string[]> = {
+        es: ['el', 'los', 'las', 'una', 'del', 'con', 'mis', 'sus', 'estoy', 'hay', 'soy', 'eres', 'interesa', 'interesan', 'funcionan', 'funciona', 'nosotros', 'ustedes', 'usted', 'tambien', 'quiero', 'tengo', 'busco', 'necesito'],
+        en: ['the', 'is', 'are', 'was', 'of', 'to', 'in', 'it', 'my', 'with', 'this', 'that', 'for', 'and', 'you', 'your', 'have', 'has', 'be', 'can', 'will', 'about', 'from', 'what', 'how', 'does', 'not', 'want', 'need'],
+        pt: ['os', 'uma', 'da', 'dos', 'das', 'com', 'nao', 'voce', 'voces', 'tem', 'estou', 'meu', 'minha', 'pra', 'quero', 'preciso', 'gostaria', 'tambem'],
+        fr: ['le', 'les', 'des', 'du', 'une', 'est', 'sont', 'avec', 'dans', 'pour', 'vous', 'nous', 'je', 'mon', 'ma', 'mes', 'pas', 'veux', 'besoin', 'voudrais'],
+    };
+
+    /**
+     * How much of the message is in `lang` for the purpose of a FULL-SENTENCE switch: distinct function words, plus the
+     * language's strong request words, plus 2 for an unmistakable character (¿ ¡ ñ, ã õ, è ù œ…).
+     */
+    private sentenceEvidence(lang: string, tokens: Set<string>, raw: string): number {
+        const words = new Set([...(this.sentenceWords[lang] ?? []), ...(this.strongMarkers[lang]?.words ?? [])]);
+        let hits = 0;
+        for (const word of words) if (tokens.has(word)) hits++;
+        return hits + (this.strongMarkers[lang]?.chars?.test(raw) ? 2 : 0);
+    }
+
+    /**
+     * Whether the message carries at least two DIFFERENT strong markers of the language (a diacritic counts as one).
+     * ¿ ¡ ñ are unmistakably Spanish, so in a message of three words or more they count as two.
+     */
+    private hasStrongMarker(lang: string, tokens: Set<string>, raw: string, wordCount = 0): boolean {
         const strong = this.strongMarkers[lang];
         if (!strong) return false;
-        const hits = strong.words.filter(word => tokens.has(word)).length + (strong.chars?.test(raw) ? 1 : 0);
+        const charWeight = lang === 'es' && wordCount >= 3 ? 2 : 1;
+        const hits = strong.words.filter(word => tokens.has(word)).length + (strong.chars?.test(raw) ? charWeight : 0);
         return hits >= 2;
+    }
+
+    /**
+     * A whole sentence in another language is the customer's language now, even when the stored one is sticky:
+     * «Me interesa ver un apartamento en Chapinero, ¿cómo funcionan las visitas?» after an English chat.
+     *
+     * It needs ALL of: a stored language, five or more words, not a single sign of the stored language in the message
+     * (no marker, no diacritic, no function word), and at least three pieces of evidence for the new one with no real
+     * competitor. A lone «what?», «Want Pack», «cual», «me mandas el link please» never get here.
+     */
+    private fullSentenceLanguage(
+        previous: string | null,
+        tokens: Set<string>,
+        raw: string,
+        wordCount: number,
+        scores: Record<string, number>,
+    ): string | null {
+        if (!previous || wordCount < 5 || (scores[previous] ?? 0) > 0) return null;
+        if (this.sentenceEvidence(previous, tokens, raw) > 0) return null;
+        const ranked = Object.keys(this.sentenceWords)
+            .filter(lang => lang !== previous)
+            .map(lang => [lang, this.sentenceEvidence(lang, tokens, raw)] as const)
+            .sort((a, b) => b[1] - a[1]);
+        const [best, bestEvidence] = ranked[0];
+        const rival = ranked[1]?.[1] ?? 0;
+        return bestEvidence >= 3 && rival <= 1 ? best : null;
     }
 
     /**
@@ -127,14 +181,17 @@ export class LanguageDetectorService {
         if ((winnerScore >= 2 && margin >= 2) || (winnerScore >= 3 && margin >= 1)) {
             return { language: winner, persist: true };
         }
+        const prev = previous ? this.short(previous) : null;
+        const wordCount = normalized.split(/\s+/).filter(Boolean).length;
+        const sentenceLanguage = this.fullSentenceLanguage(prev, tokens, raw, wordCount, scores);
+        if (sentenceLanguage) return { language: sentenceLanguage, persist: true };
         if (winnerScore >= 1 && secondScore === 0) {
-            const prev = previous ? this.short(previous) : null;
             if (prev && prev !== winner) {
                 // A REQUEST in another language ("quiero agendar corte y estilo" after "What are your opening hours?")
                 // is the customer's language now: the stored one holds only while the message shows a sign of it or
                 // lacks TWO strong markers of the new one. A courtesy word ("please", "gracias") or a single borrowed
                 // word ("what?", "how?", "el Want Pack", "cual") never switches, nor persists, a language.
-                if ((scores[prev] ?? 0) === 0 && this.hasStrongMarker(winner, tokens, raw)) return { language: winner, persist: true };
+                if ((scores[prev] ?? 0) === 0 && this.hasStrongMarker(winner, tokens, raw, wordCount)) return { language: winner, persist: true };
                 return { language: prev, persist: true };
             }
             return { language: winner, persist: !!prev };

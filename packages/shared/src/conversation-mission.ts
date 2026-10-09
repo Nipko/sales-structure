@@ -29,6 +29,25 @@ export interface ConversationMissionFocusV1 {
     updatedAt: string;
     /** IDs only: one inbound cannot be reused by another mission. */
     lastConsumed?: { messageId: string; missionId: string; revision: number };
+    /**
+     * A request on the customer's own records (cancel / move / list) that is waiting for the identity code the server asked
+     * for. The words of the request are kept so it is resumed once the code is verified, not asked again.
+     */
+    pendingIdentity?: PendingIdentityRequestV1;
+}
+
+export interface PendingIdentityRequestV1 {
+    verb: 'cancel' | 'reschedule' | 'list';
+    domain: 'appointment' | 'order';
+    /** What the customer originally wrote. */
+    text: string;
+    /** `awaiting_code`: a code was sent. `offer_new_code`: the code lapsed and a new one is only offered. */
+    stage: 'awaiting_code' | 'offer_new_code';
+    /** Masked destination of the code the server sent (never the code). */
+    hint?: string;
+    /** When the code was sent; a request is never given a second code while this one is live. */
+    codeSentAt?: string;
+    askedAt: string;
 }
 
 /** Supplied by the core/execution adapter, never accepted from tool arguments. */

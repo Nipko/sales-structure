@@ -257,6 +257,8 @@ function createHarness(identityVerified = true) {
         }
         // A commitment family's tables are "not there" in this fake: no commitment terms are built.
         if (normalized.startsWith('SELECT to_regclass')) return [{}];
+        // «One yes confirms one change to the customer's appointments»: no other appointment writer was confirmed by this message.
+        if (normalized.includes('AND id <> $3::uuid AND confirmed_by_message_id = $4::uuid')) return [];
         throw new Error(`Unhandled SQL in fake: ${normalized}`);
     };
     const executeInTenantSchema = jest.fn(async (_schema: string, sql: string, params: any[] = []) => (

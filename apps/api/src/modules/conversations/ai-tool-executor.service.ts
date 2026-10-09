@@ -12,6 +12,7 @@ import { CANONICAL_EVAL_TOOLS, isolatedEvalNamespaceForPrisma, type EvalNamespac
 import { evaluationNamespaceTimezone } from '../simulation/eval-temporal-context';
 import { RepairOrderTerms, RepairTermsChangedError, repairRequestHash, repairTermsReviewResult, repairActionErrorResult } from '../repair-orders/repair-order-terms';
 import { catalogHash, catalogActionError, catalogTermsReviewResult } from '../orders/catalog-order-contract';
+import { shortReference, withShortReference } from './transition-engine';
 import { BadRequestException, ConflictException, Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { createHash } from 'crypto';
@@ -302,6 +303,8 @@ export class AIToolExecutorService {
             structuredKnowledgeInputs?:import('../evaluation-revision/evaluation-structured-knowledge').StructuredKnowledgeCapture;
             executionState?: { get(key: string): Promise<string | null> };
             missionScope?: import('@parallext/shared').MissionExecutionScopeV1;
+            /** Server-origin only: a step-up read reports an unverified chat without sending a code (see the guard). */
+            identityChallenge?: 'start' | 'none';
             channelType?: string;
             readOnly?: boolean;
             /** Trusted automatic context lookup; no views, DDL or ledger writes. */
@@ -650,6 +653,7 @@ export class AIToolExecutorService {
                 authorityEvidence: opts?.authorityEvidence,
                 executionState: opts?.executionState,
                 missionScope: opts?.missionScope,
+                identityChallenge: opts?.identityChallenge,
                 draftMode: opts?.executionContext?.mode === 'draft',
                 // Keep server provenance for the approval ledger during isolated
                 // replay. Domain commands use the namespace lease, not live authority.
@@ -787,9 +791,9 @@ export class AIToolExecutorService {
                 case 'place_catalog_order':
                     return this.placeCatalogOrder(schemaName, contactId, conversationId, args, executionIdempotencyKey, operationalScope);
                 case 'list_my_catalog_orders':
-                    return { success:true, orders:await this.catalogCommands().listOwned(schemaName,contactId,args.limit) };
+                    return { success:true, orders:(await this.catalogCommands().listOwned(schemaName,contactId,args.limit)).map(withShortReference) };
                 case 'get_catalog_order':
-                    return { success:true, order:await this.catalogCommands().getOwned(schemaName,String(args.orderId||''),contactId) };
+                    return { success:true, order:withShortReference(await this.catalogCommands().getOwned(schemaName,String(args.orderId||''),contactId)) };
                 case 'cancel_catalog_order':
                     return { success:true, order:await this.catalogCommands().cancel(schemaName,String(args.orderId||''),contactId,
                         {source:'agent',expectedVersion:args.catalogTerms?.orderVersion,expectedTermsHash:args.catalogTermsHash,reason:args.reason,operationalScope}),refundPerformed:false };
@@ -2704,6 +2708,7 @@ export class AIToolExecutorService {
                 found: true,
                 order: {
                     id: o.id,
+                    reference: shortReference(o.id),
                     status: o.status,
                     paymentStatus: o.payment_status,
                     payableReference: this.payableReference('order', o.id, o.payment_status, o.status),
@@ -3759,7 +3764,7 @@ export class AIToolExecutorService {
             appointments: rows.map(r => ({
                 id: r.id,
                 // The short reference the customer is shown and can quote (the first 8 hex characters).
-                reference: String(r.id).replace(/-/g, '').slice(0, 8).toUpperCase(),
+                reference: shortReference(r.id),
                 serviceId: r.service_id ?? undefined,
                 staffId: r.assigned_to ?? undefined,
                 service: r.service_name,
@@ -5429,7 +5434,7 @@ export class AIToolExecutorService {
             );
         } catch (error: any) {
             if (error?.message !== 'identity_challenge_admission_failed') throw error;
-            return { error: 'identity_unverifiable', message: 'No pude iniciar la verificación; no se envió ningún código. Escala la gestión a una persona.', shouldHandoff: true };
+            return { error: 'identity_unverifiable', message: 'No pude iniciar la verificación; no se envió ningún código. Ofrece pasar la gestión a una persona, como pregunta: solo si el cliente acepta se transfiere.', shouldHandoff: true };
         }
 
         if (started.status === 'already_verified') return null;
@@ -5459,7 +5464,7 @@ export class AIToolExecutorService {
     private identityLockedResult(): Record<string, unknown> {
         return {
             error: 'identity_locked',
-            message: 'La verificación de identidad está bloqueada temporalmente por demasiados intentos. NO ofrezcas un código nuevo ni sigas intentando: pasa la conversación a un asesor humano.',
+            message: 'La verificación de identidad está bloqueada temporalmente por demasiados intentos. NO ofrezcas un código nuevo ni sigas intentando: ofrece pasar la conversación a un asesor humano, como pregunta (solo si el cliente acepta se transfiere).',
             shouldHandoff: true,
         };
     }
@@ -5477,7 +5482,7 @@ export class AIToolExecutorService {
             res = await this.chatIdentity.startVerification(tenantId, schemaName, contactId, conversationId, channelType || '');
         } catch (error: any) {
             if (error?.message !== 'identity_challenge_admission_failed') throw error;
-            return { error: 'identity_unverifiable', message: 'No pude iniciar la verificación; no se envió ningún código. Escala la gestión a una persona.', shouldHandoff: true };
+            return { error: 'identity_unverifiable', message: 'No pude iniciar la verificación; no se envió ningún código. Ofrece pasar la gestión a una persona, como pregunta: solo si el cliente acepta se transfiere.', shouldHandoff: true };
         }
         if (res.status === 'already_verified') return { alreadyVerified: true };
         if (res.status === 'pending') return { pending: true, message: 'Ya hay una verificación en curso. No envíes otro código.' };
@@ -5500,7 +5505,7 @@ export class AIToolExecutorService {
         const messages: Record<string, string> = {
             expired: 'El código venció o no se pidió ninguno. Ofrece enviar uno nuevo con request_identity_code.',
             wrong: 'El código no coincide. Pídaselo de nuevo; le quedan intentos.',
-            too_many: 'Demasiados intentos fallidos. NO siga intentando: pase la conversación a un asesor humano.',
+            too_many: 'Demasiados intentos fallidos. NO siga intentando: ofrezca pasar la conversación a un asesor humano, como pregunta (solo si el cliente acepta se transfiere).',
             unavailable: 'No se pudo comprobar el código en este momento. El código NO es inválido: pídele al cliente que lo envíe de nuevo en unos segundos.',
         };
         if (res.reason === 'unavailable') {

@@ -160,6 +160,11 @@ import { CRM_BASE_TABLES, N3_DATABASE_URL, openLive, seedCustomer } from './__fi
             .toMatchObject({ success: true, order: { id: orderId } });
         expect((await h.call(A.contactId, A.conversationId, 'list_my_catalog_orders', {}, scope)).orders.map((o: any) => o.id)).toEqual([orderId]);
         expect(await h.call(A.contactId, A.conversationId, 'get_order_status', { orderId }, scope)).toMatchObject({ found: true });
+        // the short uppercase reference the customer quotes rides with every read of the order
+        const ref = orderId.replace(/-/g, '').slice(0, 8).toUpperCase();
+        expect((await h.call(A.contactId, A.conversationId, 'list_my_catalog_orders', {}, scope)).orders[0].reference).toBe(ref);
+        expect((await h.call(A.contactId, A.conversationId, 'get_catalog_order', { orderId }, scope)).order.reference).toBe(ref);
+        expect((await h.call(A.contactId, A.conversationId, 'get_order_status', { orderId }, scope)).order.reference).toBe(ref);
         await h.inbound(A.conversationId, 'quiero cancelar mi pedido');
         expect(await h.call(A.contactId, A.conversationId, 'cancel_catalog_order', cancelArgs, scope)).toMatchObject({ error: 'confirmation_required' });
         await h.inbound(A.conversationId, 'sí, confirmo');

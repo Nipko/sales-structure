@@ -108,7 +108,9 @@ import { identityStepUpToolNames, identityStepUpToolsFor } from './identity-step
 import { BookingEngineService, invalidateBookingProposal, type BookingState } from './booking-engine.service';
 import { arbitrateMissionFocus, missionDialogue, toolMissionAliases, missionToolAllowed, toolMissionDomain, type MissionCandidate, type MissionFocusDecision } from './mission-focus';
 import { MissionFocusStore } from './mission-focus-store';
-import { addressFormOf, detectTransition, humanizeReferences, namedRequestOverridesClarify, opensWithYes, runTransition, transitionDoneText, transitionTexts, TRANSITION_TOOLS, TRANSITION_WRITER } from './transition-engine';
+import { sanitizeRewrittenReply } from './rewrite-validation';
+import { correctRelativeWeekdays } from './relative-weekday';
+import { addressFormOf, detectTransition, failedTransitionOf, handleIdentityReply, humanizeReferences, identityGate, knownRecordFacts, knownRecordIds, namedRequestOverridesClarify, opensWithYes, requestIdentityForTool, runTransition, transitionDoneText, transitionFailureText, transitionTexts, TRANSITION_TOOLS, TRANSITION_WRITER, type TransitionIO, type TransitionOutcome } from './transition-engine';
 import { persistConversationRuntimeState } from './conversation-runtime-state';
 import type { ConversationMissionFocusV1, MissionExecutionScopeV1 } from '@parallext/shared';
 import { ProcedureEngineService } from './procedure-engine.service';
@@ -117,7 +119,7 @@ import { normalizePhoneE164 } from '../../common/utils/phone.util';
 import { PromptAssemblerService } from './prompt-assembler.service';
 import { resolveBusinessWindow } from './business-window';
 import { hasDispatchOutbox, noHumanReplySql } from '../handoff/handoff-human-reply';
-import { HUMAN_OFFER_MARK, HUMAN_OFFER_TTL_MS, NO_DATA_WAIT_REPLACEMENT, NO_DATA_NO_OFFER, noDataWaitReplacementText, noDataNoOfferText, containsHumanOffer, isHumanOfferText, isAffirmation, isAffirmationOfHumanOffer, isLiveHumanOffer, withReturnNotice, offerInsteadOfPromise, withPolicyPersonOffer } from './human-offer';
+import { HUMAN_OFFER_MARK, HUMAN_OFFER_TTL_MS, NO_DATA_WAIT_REPLACEMENT, NO_DATA_NO_OFFER, noDataWaitReplacementText, noDataNoOfferText, containsHumanOffer, isHumanOfferText, isAffirmation, isAffirmationOfHumanOffer, isLiveHumanOffer, withReturnNotice, offerInsteadOfPromise, policyPersonOfferText, withPolicyPersonOffer } from './human-offer';
 import { LanguageDetectorService } from './language-detector.service';
 import { BusinessInfoService } from '../business-info/business-info.service';
 import { PaymentOperationService } from './payment-operation.service';
@@ -153,6 +155,7 @@ import { awaitAutomaticFaqLookup, awaitToolWithSafeTimeout } from './tool-timeou
 import { boundedAutomaticFaqs } from '../faqs/automatic-faq-context';
 import {
     CONTROL_ERRORS_REQUIRING_HUMAN,
+    handoffRequiredByResult,
     ToolExecutionControlService,
 } from './tool-execution-control.service';
 import { ActiveOperationsContextService, tenantActiveObjectPolicyContext } from './active-operations-context.service';
@@ -3226,6 +3229,9 @@ export class ConversationsService {
         let engineExecutedTools: Array<{ name: string; result: any }> = [];
         // An escalation asked for by a tool executed outside the loop.
         let pendingOperationHandoff: string | null = null;
+        // A tool asked for a person (a failure after the customer's yes, a verification that cannot be completed) but the
+        // customer did NOT ask for one: the reply OFFERS it, as a question, and only the customer's «sí» opens a handoff.
+        let personOfferReason: string | null = null;
 
         // ═══ EL CONTRATO EFECTIVO SE RESUELVE PRIMERO ═══
         //
@@ -3512,7 +3518,7 @@ export class ConversationsService {
                     missionFocus.expectedReply = { missionId: missionFocus.selected.id, proposalId: result.confirmationId,
                         ledgerId: result.confirmationId, sourceMessageId: missionMessageId, kind: 'confirmation' };
                     await saveMission();
-                } else if ((isBusinessWriteTool(name) || result?._executionEffect === 'write') && toolResultSucceeded(result)) {
+                } else if (((isBusinessWriteTool(name) && getToolPolicy(name)?.commitsBusiness !== false) || result?._executionEffect === 'write') && toolResultSucceeded(result)) {
                     if (missionFocus.selected?.kind === 'tool' && !missionFocus.selected.toolName) missionFocus.selected.toolName = name;
                     missionFocus.lastConsumed = { messageId: missionMessageId, missionId: missionScope!.missionId, revision: missionFocus.revision };
                     missionFocus.expectedReply = null;
@@ -3882,6 +3888,58 @@ export class ConversationsService {
             }
         }
 
+        // What the transition engine reads and proposes through. Reading the customer's records never sends a verification
+        // code by itself (`identityChallenge: 'none'`): the engine requests it explicitly, once, when the business type needs it.
+        const transitionIo = (): TransitionIO => {
+            const todayIso = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(now);
+            return {
+                execute: (name, args) => toolExecutor.execute(schemaName, tenantId, conversation.contact_id!, name, args, conversation.id, {
+                    authority: engineAuthority,
+                    channelType: msg.channelType,
+                    executionContext,
+                    jurisdiction: regional?.operatingCountry.value,
+                    commitmentBlocked,
+                    deniedTools,
+                    identityChallenge: 'none',
+                }),
+                interpretTarget: async text => {
+                    const interpreted = await intentInterpreter.interpret(text, 'idle', [], todayIso, turnContext.upcomingDays || [], tenantId,
+                        regional?.operatingCountry.value);
+                    return { date: interpreted.dateMentioned, time: interpreted.timeMentioned };
+                },
+                todayIso, language: userLanguage, form: addressFormOf(regional?.addressForm.value), locale: regional?.locale.value,
+            };
+        };
+        // The identity tools verify who is writing; they back no business fact.
+        const engineEvidence = (outcome: TransitionOutcome) => outcome.executed
+            .filter(tool => tool.result?.error !== 'confirmation_required' && tool.name !== 'request_identity_code' && tool.name !== 'verify_identity_code');
+
+        // 4b1. THE CUSTOMER ANSWERS THE VERIFICATION CODE THE SERVER ASKED FOR.
+        //
+        // The code verifies and the request that needed it (its words were kept) goes on: the proposal is made, not asked
+        // for again and not left to the model. A wrong or lapsed code is answered by the server; a code that cannot be
+        // completed OFFERS a person.
+        if (!draftMode && !engineProducedText && conversation.contact_id && missionFocus?.pendingIdentity && !handoffReturn) {
+            try {
+                const outcome = await handleIdentityReply(missionFocus.pendingIdentity, userText, transitionIo());
+                engineExecutedTools = [...engineExecutedTools, ...engineEvidence(outcome)];
+                if (outcome.awaitingIdentity !== undefined) {
+                    if (outcome.awaitingIdentity) missionFocus.pendingIdentity = outcome.awaitingIdentity;
+                    else delete missionFocus.pendingIdentity;
+                    await saveMission();
+                }
+                if (outcome.handled && outcome.text) {
+                    engineProducedText = outcome.text;
+                    engineTextIsReply = true;
+                    engineAwaitsConsent = outcome.awaitsConsent === true;
+                    deterministicReply = outcome.text;
+                    tools = [];
+                }
+            } catch (e: any) {
+                this.logger.warn(`[Transition] identity step error (non-fatal): ${e.message}`);
+            }
+        }
+
         // 4b2. A CHANGE TO SOMETHING THAT EXISTS — the server proposes, not the model.
         //
         // «quiero cancelar mi cita», «quiero reprogramarla al día siguiente», «quiero cancelar mi pedido», «¿qué citas
@@ -3918,24 +3976,25 @@ export class ConversationsService {
                         await saveMission();
                     }
                 } else if (detected?.kind === 'request') {
-                    const todayIso = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(now);
-                    const outcome = await runTransition(detected.request, userText, {
-                        execute: (name, args) => toolExecutor.execute(schemaName, tenantId, conversation.contact_id!, name, args, conversation.id, {
-                            authority: engineAuthority,
-                            channelType: msg.channelType,
-                            executionContext,
-                            jurisdiction: regional?.operatingCountry.value,
-                            commitmentBlocked,
-                            deniedTools,
-                        }),
-                        interpretTarget: async text => {
-                            const interpreted = await intentInterpreter.interpret(text, 'idle', [], todayIso, turnContext.upcomingDays || [], tenantId,
-                                regional?.operatingCountry.value);
-                            return { date: interpreted.dateMentioned, time: interpreted.timeMentioned };
-                        },
-                        todayIso, language: userLanguage, form: addressFormOf(regional?.addressForm.value), locale: regional?.locale.value,
-                    }, { continuation: detected.continuation });
-                    engineExecutedTools = [...engineExecutedTools, ...outcome.executed.filter(tool => tool.result?.error !== 'confirmation_required')];
+                    // The proposal that is waiting for a yes, so a request that repeats it shows it again instead of re-proposing
+                    // it (the guard would read the repeated request as the answer to the proposal).
+                    const pendingWriter = TRANSITION_WRITER[`${detected.request.verb}:${detected.request.domain}`];
+                    const pendingProposal = priorPendingTool && pendingWriter && priorPendingTool === pendingWriter
+                        ? await this.toolExecutionControl.findPendingConfirmation(schemaName, conversation.id, conversation.contact_id, undefined, missionScope)
+                        : null;
+                    const outcome = await runTransition(detected.request, userText, transitionIo(), {
+                        continuation: detected.continuation,
+                        restate: detected.restate === true,
+                        pending: pendingProposal,
+                        pendingIdentity: missionFocus.pendingIdentity && missionFocus.pendingIdentity.verb === detected.request.verb
+                            && missionFocus.pendingIdentity.domain === detected.request.domain ? missionFocus.pendingIdentity : null,
+                    });
+                    engineExecutedTools = [...engineExecutedTools, ...engineEvidence(outcome)];
+                    if (outcome.awaitingIdentity !== undefined) {
+                        if (outcome.awaitingIdentity) missionFocus.pendingIdentity = outcome.awaitingIdentity;
+                        else delete missionFocus.pendingIdentity;
+                        await saveMission();
+                    }
                     if (outcome.handled && outcome.text) {
                         engineProducedText = outcome.text;
                         engineTextIsReply = true;
@@ -4008,6 +4067,9 @@ export class ConversationsService {
                                 authority: engineAuthority,
                                 channelType: msg.channelType,
                                 executionContext,
+                                // The server reports an unverified chat and drives the code itself (below); only the model's own
+                                // tool loop lets the guard send one.
+                                ...(TRANSITION_TOOLS.has(pending.toolName) ? { identityChallenge: 'none' as const } : {}),
                                 knowledgeSearch: {
                                     agentId: resolvedAgentId,
                                     audience: 'customer',
@@ -4025,6 +4087,7 @@ export class ConversationsService {
                         pending.toolName,
                     );
                     if (result?._mediaToSend) delete result._mediaToSend;
+                    const transitionPending = TRANSITION_TOOLS.has(pending.toolName);
                     // Still asking for confirmation means the token expired
                     // between the lookup and the call. Say nothing here and let
                     // the normal turn run: inventing an outcome is exactly the
@@ -4047,9 +4110,18 @@ export class ConversationsService {
                         } else if (result?.shouldHandoff === true
                             && (result.controlBlocked !== true
                                 || CONTROL_ERRORS_REQUIRING_HUMAN.has(String(result.error)))) {
-                            pendingOperationHandoff = `intake:${pending.toolName}`;
+                            // A tool that CAPTURED a case a person must handle (a claim, an emergency) or a consistency risk
+                            // that only a person can reconcile escalates. A tool that merely FAILED and says «hand it off»
+                            // (a lockout, a missing channel) does not: the customer is asked first.
+                            if (handoffRequiredByResult(result) || toolResultSucceeded(result)) {
+                                pendingOperationHandoff = `intake:${pending.toolName}`;
+                            } else {
+                                personOfferReason = `offer:${pending.toolName}:${String(result.error)}`;
+                            }
                         } else if (!toolResultSucceeded(result) && isBusinessWriteTool(pending.toolName)
+                            && !(transitionPending && identityGate(result) === 'verify')
                             && !isCanonicalConsentRecovery(pending.toolName,result)) {
+                            // (a verification that lapsed between the proposal and the yes is not a failed write: the code is asked below)
                             // Se escala por RESULTADO, no por declaracion.
                             //
                             // El cliente ya dijo que si: la operacion estaba
@@ -4061,12 +4133,17 @@ export class ConversationsService {
                             // afirma nada, asi que el guardrail de falsos exitos
                             // no lo toca— y el huesped se quedaba esperando un
                             // pago que no existia, sin que nadie lo rescatara.
-                            pendingOperationHandoff = `failed:${pending.toolName}`;
+                            //
+                            // ...pero NO se abre un traspaso por su cuenta: el cliente no lo pidio. La respuesta le OFRECE una
+                            // persona (pregunta) y solo su «si» la abre; la senal sigue alertando al operador.
+                            // (a result whose outcome is unknown or that needs a reconciliation still reaches a person)
+                            if (handoffRequiredByResult(result)) pendingOperationHandoff = `failed:${pending.toolName}`;
+                            else personOfferReason = `failed:${pending.toolName}`;
                             this.recordAgentSignal(tenantId, 'commit_then_failure', session);
                             this.logger.error(
                                 `[Confirm] ${pending.toolName} fallo DESPUES de la confirmacion del cliente ` +
                                 `(ledger ${pending.ledgerId}): ${String(result?.error || result?.message || 'sin motivo')} ` +
-                                `— escalando a humano`,
+                                `— se ofrece una persona al cliente`,
                             );
                         }
                         engineProducedText = this.buildExecutedOperationDirective(
@@ -4081,6 +4158,22 @@ export class ConversationsService {
                             deterministicReply = transitionDoneText(pending.toolName, pending.args, result, userLanguage,
                                 addressFormOf(regional?.addressForm.value)) ?? deterministicReply;
                         } else {
+                            // A cancellation / reschedule that failed after the yes is reported from what the records say NOW
+                            // (re-read), by the server: the model used to assume «sigue tal como está» about an appointment
+                            // that the failed write had already removed.
+                            if (transitionPending && !isToolAuthorityDenial(result?.error)) {
+                                const io = transitionIo();
+                                if (identityGate(result) === 'verify') {
+                                    // The verification lapsed between the proposal and the yes: ask for the code, once, and keep the request.
+                                    const asked = await requestIdentityForTool(pending.toolName, pending.args, io);
+                                    if (asked?.handled && asked.text) {
+                                        deterministicReply = asked.text;
+                                        if (asked.awaitingIdentity && missionFocus) { missionFocus.pendingIdentity = asked.awaitingIdentity; await saveMission(); }
+                                    }
+                                } else {
+                                    deterministicReply = await transitionFailureText(pending.toolName, pending.args, io) ?? deterministicReply;
+                                }
+                            }
                             // La operacion fallo DESPUES del "si" del cliente.
                             // Vaciar todo aca dejaba a la agente sabiendo que
                             // fallo y sin poder hacer nada al respecto: solo
@@ -4630,7 +4723,7 @@ export class ConversationsService {
         // failing) used to answer "estoy teniendo problemas técnicos" and lose
         // all trace of the tool — so the next turn had no idea the reservation
         // existed and either denied it or made it again.
-        const executedToolsThisTurn: Array<{ name: string; result: any }> = [];
+        const executedToolsThisTurn: Array<{ name: string; result: any; args?: any }> = [];
 
         // 4. Execute LLM Call using Router (with tool execution loop)
         try {
@@ -4812,11 +4905,13 @@ export class ConversationsService {
                     const runTool = async (tc: any): Promise<any> => {
                         let result: any;
                         let argumentKeys: string[] = [];
+                        let parsedArgs: any;
                         const policy = getToolPolicy(tc.function.name);
                         try {
                             const args = typeof tc.function.arguments === 'string'
                                 ? JSON.parse(tc.function.arguments)
                                 : (tc.function.arguments || {});
+                            parsedArgs = args;
                             argumentKeys = args && typeof args === 'object' && !Array.isArray(args)
                                 ? Object.keys(args).slice(0, 30)
                                 : [];
@@ -4855,7 +4950,7 @@ export class ConversationsService {
                         }
 
                         this.logger.log(`[Pipeline] Tool ${tc.function.name} executed in LLM loop`);
-                        executedToolsThisTurn.push({ name: tc.function.name, result });
+                        executedToolsThisTurn.push({ name: tc.function.name, result, args: parsedArgs });
                         await observeMission({kind:'tool',tool:tc.function.name,toolStatus:toolResultSucceeded(result)?'succeeded'
                             :result?.error?'failed':result?.pendingConsent||result?.requiresConfirmation||result?.requiresApproval?'pending':'unknown'});
                         turnTrace.add('tool_result', tc.function.name, {
@@ -4915,7 +5010,12 @@ export class ConversationsService {
                         } else if (result && result.shouldHandoff === true
                             && (result.controlBlocked !== true
                                 || CONTROL_ERRORS_REQUIRING_HUMAN.has(String(result.error)))) {
-                            postToolHandoff = postToolHandoff || `intake:${tc.function.name}`;
+                            if (handoffRequiredByResult(result) || (toolResultSucceeded(result) && result.verified !== false)) {
+                                postToolHandoff = postToolHandoff || `intake:${tc.function.name}`;
+                            } else {
+                                // A failure, a lockout, a refused verification: a person is OFFERED, nothing is opened unasked.
+                                personOfferReason = personOfferReason || `offer:${tc.function.name}:${String(result.error ?? result.reason ?? 'failed')}`;
+                            }
                         } else if (result?.controlBlocked === true) {
                             this.logger.warn(`[Pipeline] Control block on ${tc.function.name} (${result.error}) — handled internally, not escalated`);
                         }
@@ -5021,6 +5121,16 @@ export class ConversationsService {
 
             // Booking state already persisted earlier in the engine block
 
+            // A cancellation / reschedule the MODEL ran in this turn and that failed (and was not run again successfully): the
+            // customer is told what the records say now, read again by the server — the model assumed «sigue tal como está» about
+            // an appointment its own failed attempt had already removed.
+            if (!deterministicReply && !draftMode && !handoffReturn && conversation.contact_id) {
+                const failedTransition = failedTransitionOf(executedToolsThisTurn);
+                if (failedTransition) {
+                    const text = await transitionFailureText(failedTransition.name, failedTransition.args, transitionIo()).catch(() => null);
+                    if (text) deterministicReply = text;
+                }
+            }
             // Output guardrail (#3): catch invented prices before the reply leaves.
             // Corpus = the system prompt (services/KB/directive/business info) + the
             // whole message thread (history + tool results) — everything the model saw.
@@ -5030,7 +5140,17 @@ export class ConversationsService {
                 allowHumanHandoff,
             );
             // A raw UUID is not a reference a customer can read or quote: it is shown as the short one (first 8, uppercase).
-            if (finalResponse) finalResponse = humanizeReferences(finalResponse);
+            if (finalResponse) finalResponse = humanizeReferences(finalResponse, knownRecordIds([...executedToolsThisTurn, ...engineExecutedTools], turnContext));
+            // «Mañana es domingo» on a Friday: the calendar the model was given says otherwise, so the weekday is corrected.
+            if (finalResponse && !isErrorFallback(finalResponse)) finalResponse = correctRelativeWeekdays(finalResponse, turnContext.upcomingDays);
+            // A tool asked for a person but the customer did not: the reply ends by OFFERING one (a question the customer
+            // answers), and the offer is remembered below so that only their «sí» opens the handoff.
+            if (personOfferReason && !postToolHandoff && !draftMode && !handoffReturn && allowHumanHandoff && finalResponse
+                && !isErrorFallback(finalResponse) && !containsHumanOffer(finalResponse) && !offersHumanHandoff(finalResponse)) {
+                this.logger.warn(`[Pipeline] A person is offered, not opened (${personOfferReason}) in ${conversation.id}`);
+                this.recordAgentSignal(tenantId, 'handoff_offered_not_opened', session);
+                finalResponse = `${finalResponse.trimEnd()}\n\n${policyPersonOfferText(userLanguage)}`;
+            }
             // The model writes the thousands separator of a bare number as it pleases (119.900 one day,
             // 119,900 the next): amounts that carry a currency are put in the reply language's grouping.
             if (finalResponse && !isErrorFallback(finalResponse)) {
@@ -5943,7 +6063,9 @@ export class ConversationsService {
             name.startsWith('mcp__') ? result?._executionEffect === 'write' : isBusinessWriteTool(name)
         );
         const backing = this.backingEvidence(executedTools, priorActions);
-        const claimAudit = auditTurnClaim(response, backing, { isBackingTool });
+        // Saying what state a record is in (read this turn) is not claiming an action.
+        const recordFacts = knownRecordFacts(executedTools || [], trustedContext);
+        const claimAudit = auditTurnClaim(response, backing, { isBackingTool, recordFacts });
         // The engine decided what this turn says (a re-ask at the confirmation step, a summary, a question): when the
         // model claims a booking outcome that no tool backed, the engine's own text is the reply, word for word. No
         // rewrite round trip, which a model that insists would turn into the generic fallback.
@@ -5968,9 +6090,11 @@ export class ConversationsService {
                     allowedTiers,
                     tenantId,
                 });
-                const fixedClaim = correctedClaim.content?.trim();
+                // The rewrite is a model output like any other: quotes around it, a comment about itself or another language
+                // are removed or the rewrite is rejected (then the deterministic text below is what the customer reads).
+                const fixedClaim = sanitizeRewrittenReply(correctedClaim.content, { lang, names: catalogNamesOfTurn(trustedContext, executedTools) });
                 const secondAudit = fixedClaim
-                    ? auditTurnClaim(fixedClaim, backing, { isBackingTool })
+                    ? auditTurnClaim(fixedClaim, backing, { isBackingTool, recordFacts })
                     : null;
                 if (secondAudit && !secondAudit.falseClaim) {
                     response = fixedClaim as string;
@@ -6021,7 +6145,7 @@ export class ConversationsService {
                     allowedTiers,
                     tenantId,
                 });
-                const fixed = corrected.content?.trim();
+                const fixed = sanitizeRewrittenReply(corrected.content, { lang, names: catalogNamesOfTurn(trustedContext, executedTools) });
                 if (fixed && !promisesLaterDelivery(fixed)) {
                     response = fixed;
                 } else {

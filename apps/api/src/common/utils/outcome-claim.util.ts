@@ -126,7 +126,31 @@ const HEADLINE_CLAIM = new RegExp(
     + '\\s+(?:confirmada|confirmado|agendada|agendado|reservada|reservado|confirmed|booked|scheduled|confirmee|confirme|reserve|reservee|pris|prise|marcada|marcado)\\b(?!\\s*:)',
 );
 
-export function claimsCompletedAction(reply: unknown): boolean {
+/**
+ * Saying what STATE a record is in is not claiming an ACTION: «su pedido está cancelado» / «el otro pedido, cuyo estado es
+ * cancelado» report a status the customer asked about. What makes a sentence a status report is a record that was READ this
+ * turn (a listing, the active objects) with that very status, named in the sentence, which only repeats it in the PRESENT
+ * («el pedido D1D0D14A está cancelado»). Wording alone («el estado de su pedido está …») excuses nothing. A past or reflexive
+ * form («quedó cancelado», «fue cancelado», «ya cancelé») is the deed, whatever was read.
+ *
+ * Only «cancelled» is read this way. «Está confirmada» / «está reservada» are exactly the sentences a model invents to close a
+ * booking it never made, so a booking or a payment status is never excused by a record that merely exists.
+ */
+
+const CANCELLED_PARTICIPLE = /\b(?:cancelad[oa]s?|anulad[oa]s?|cancelled|canceled|annulee?s?)\b/;
+const CANCELLED_STATUSES = new Set(['cancelled', 'canceled', 'cancelado', 'cancelada', 'anulado', 'anulada', 'voided']);
+
+/** A record the turn read: its status and the words that identify it (its short reference, its product or service name). */
+export interface RecordFact { status: string; tokens: readonly string[] }
+
+function reportsReadCancellation(matched: string, sentence: string, facts: readonly RecordFact[]): boolean {
+    if (!/\besta\b|\bis\b|\best\b/.test(matched) || /\b(?:quedo|fue|foi|was|a ete|ha sido)\b/.test(matched)) return false;
+    if (!CANCELLED_PARTICIPLE.test(matched)) return false;
+    return facts.some(fact => CANCELLED_STATUSES.has(String(fact.status).toLowerCase())
+        && fact.tokens.some(token => normalize(String(token)).length >= 3 && sentence.includes(normalize(String(token)))));
+}
+
+export function claimsCompletedAction(reply: unknown, options: { recordFacts?: readonly RecordFact[] } = {}): boolean {
     if (typeof reply !== 'string' || !reply.trim()) return false;
     // Per sentence: a negation in one clause must not cancel a claim in another.
     return normalize(reply).split(/(?<=[.!?;])\s+|\n+/).some(sentence => {
@@ -135,6 +159,10 @@ export function claimsCompletedAction(reply: unknown): boolean {
         for (let m = COMPLETION_CLAIM.exec(sentence); m; m = COMPLETION_CLAIM.exec(sentence)) {
             const before = sentence.slice(Math.max(0, m.index - 30), m.index);
             if (NEGATED_BEFORE.test(before) || NEGATION_INSIDE.test(m[0]) || DATA_OF_BEFORE.test(before)) continue;
+            // A cancelled status of a record that was READ this turn and is only repeated in the present. Nothing else is excused:
+            // naming «el estado» does not make «está confirmada» / «está agendada» / «está pagado» a report (that is how a booking
+            // that never happened gets announced).
+            if (reportsReadCancellation(m[0], sentence, options.recordFacts ?? [])) continue;
             if (OFFER_LEAD_IN.test(before) || insideQuestion(sentence, m.index, m.index + m[0].length)) continue;
             if (/\besta\b/.test(m[0])) {
                 const subject = sentence.slice(Math.max(0, m.index - 60), m.index);
@@ -187,6 +215,8 @@ const BACKING_TOOL_NAME = new RegExp(
 );
 
 export interface TurnClaimAuditOptions {
+    /** The records the turn READ (a listing, the active objects): repeating a cancelled one's status in the present is not a claim. */
+    recordFacts?: readonly RecordFact[];
     /**
      * Canonical "this tool commits a business change" predicate. Callers inside
      * the API pass the tool-policy registry so the audit tracks the real writer
@@ -212,7 +242,7 @@ export function auditTurnClaim(
     toolCalls: Array<{ name?: string; result?: unknown }> | undefined,
     options: TurnClaimAuditOptions = {},
 ): TurnClaimAudit {
-    const claimed = claimsCompletedAction(reply);
+    const claimed = claimsCompletedAction(reply, { recordFacts: options.recordFacts });
     const isBacking = options.isBackingTool || ((name: string) => BACKING_TOOL_NAME.test(name));
     const backed = (toolCalls || []).some((call) => (
         typeof call?.name === 'string'

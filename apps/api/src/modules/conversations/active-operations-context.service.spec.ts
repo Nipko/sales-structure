@@ -206,6 +206,29 @@ describe('ActiveOperationsContextService', () => {
         expect(allSql).not.toMatch(/\b(notes|address|access_code|allergies|chronic_conditions|medical_description)\b/);
     });
 
+    it('carries the short uppercase reference of every appointment and order, so the model can match «Ref. 2F01EC00» to the record', async () => {
+        const APPOINTMENT_UUID = '2f01ec00-1111-4111-8111-111111111111';
+        const ORDER_UUID = 'd1d0d14a-2222-4222-8222-222222222222';
+        const query = jest.fn(async (_schema: string, sql: string) => {
+            if (sql.includes('FROM appointments')) return [{
+                id: APPOINTMENT_UUID, service_name: 'Corte y estilo', status: 'confirmed',
+                starts_at_iso: '2026-10-15T15:00:00.000Z', ends_at_iso: '2026-10-15T15:45:00.000Z', updated_at_iso: '2026-10-09T01:00:00.000Z',
+            }];
+            if (sql.includes('FROM orders')) return [{ id: ORDER_UUID, status: 'pending', total_amount: 119900, currency: 'COP', updated_at_iso: '2026-10-09T01:00:00.000Z' }];
+            return [];
+        });
+        const result = await new ActiveOperationsContextService({ executeInTenantSchema: query } as any).load({
+            tenantId: 'tenant-1', schemaName: 'tenant_test', contactId: CONTACT_ID,
+            config: { industry: 'moda_belleza', capabilities: ['appointment_booking', 'catalog_ordering'], tools: { ecommerce: { enabled: true } } } as any,
+            timezone: 'America/Bogota', now: NOW,
+        });
+        const byKind = Object.fromEntries((result.activeObjects?.items ?? []).map((item) => [item.kind, item]));
+        expect(byKind.appointment).toMatchObject({ id: APPOINTMENT_UUID, reference: '2F01EC00' });
+        if (byKind.order) expect(byKind.order).toMatchObject({ id: ORDER_UUID, reference: 'D1D0D14A' });
+        // a loader that already names its own reference keeps it
+        expect(byKind.appointment.reference).not.toBe(APPOINTMENT_UUID);
+    });
+
     it('isolates loader failures with Promise.allSettled, normalizes status/ISO, and preserves NULL amounts', async () => {
         const query = jest.fn(async (_schema: string, sql: string, params: any[]) => {
             expect(params[0]).toBe(CONTACT_ID);

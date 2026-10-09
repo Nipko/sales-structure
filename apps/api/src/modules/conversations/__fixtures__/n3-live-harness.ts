@@ -74,6 +74,12 @@ export interface LiveOptions {
     workarounds?: { commitmentDdl?: boolean; contactsIsActive?: boolean };
     /** `public.tenants` language/country defaults. */
     language?: string;
+    /**
+     * The tenant's business type, as the tenant row carries it (`industry`, `settings.verticalConfig`). It is what the central
+     * guard reads to decide whether a contact needs a code to see or act on their own appointments. Absent: no vertical on the
+     * row, which the policy reads as a sensitive business (fail closed).
+     */
+    vertical?: { industry: string; subType?: string };
 }
 
 const SLOTS = ['prisma', 'redis', 'eventEmitter', 'calendarIntegration', 'faqsService', 'policiesService',
@@ -122,7 +128,9 @@ export async function openLive(options: LiveOptions) {
     };
     prisma.tenant = {
         findUnique: async () => ({ id: tenantId, schemaName: schema, language: 'es-CO', isInternal: false,
-            subscriptionStatus: 'active', settings: {} }),
+            subscriptionStatus: 'active',
+            ...(options.vertical ? { industry: options.vertical.industry } : {}),
+            settings: options.vertical ? { verticalConfig: { industry: options.vertical.industry, subType: options.vertical.subType } } : {} }),
         findFirst: async () => ({ id: tenantId, schemaName: schema }),
     };
     // The canonical-table loader only runs statements that name a table. Trigger

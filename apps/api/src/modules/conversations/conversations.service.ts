@@ -4026,6 +4026,8 @@ export class ConversationsService {
                     // belong to — «necesito su confirmación final» and nothing executed; only the second «sí» worked (production
                     // 2026-10-09, reschedule of Ref. 3C78ECA2). The focus goes back to the one the proposal was issued under.
                     if (outcome.handled && outcome.reshown === true && focusBeforeArbitration?.expectedReply && !missionFocus.expectedReply
+                        // (and the proposal shown again is the very one the focus was waiting on, not another that happens to be pending)
+                        && pendingProposal?.ledgerId === focusBeforeArbitration.expectedReply.ledgerId
                         && missionFocus.selected?.id === focusBeforeArbitration.selectedId) {
                         missionFocus.revision = focusBeforeArbitration.revision;
                         missionFocus.expectedReply = structuredClone(focusBeforeArbitration.expectedReply);

@@ -3523,15 +3523,24 @@ export class AIToolExecutorService {
         const serviceId = String(args?.serviceId ?? '');
         if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date)) || !/^\d{2}:\d{2}$/.test(String(time))
             || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(serviceId)) return null;
+        // The same professional and the same vehicle when the call named them: another row of the same customer, service and start
+        // (written for another staff member or another vehicle) is not what THIS call wrote.
+        const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        const params: unknown[] = [contactId, serviceId, `${date}T${time}:00`];
+        const staffFilter = typeof args?.staffId === 'string' && uuid.test(args.staffId)
+            ? (params.push(args.staffId), `AND a.assigned_to = $${params.length}::uuid`) : '';
+        const vehicleFilter = typeof args?.vehicleId === 'string' && uuid.test(args.vehicleId)
+            ? (params.push(args.vehicleId), `AND COALESCE(a.metadata->>'vehicleId', a.metadata->>'vehicle_id') = $${params.length}::text`) : '';
         const rows: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT a.id, a.status, a.service_name, a.payment_status, a.amount_due, a.hold_expires_at,
                     ${appointmentPriceSql('a', 's')} AS price, ${appointmentCurrencySql('a', 's')} AS currency
              FROM "${schema}".appointments a LEFT JOIN "${schema}".services s ON s.id = a.service_id
              WHERE a.contact_id = $1::uuid AND a.service_id = $2::uuid AND a.start_at = $3::timestamp
+               ${staffFilter} ${vehicleFilter}
                AND a.status NOT IN ('cancelled', 'completed', 'no_show', 'expired')
                AND a.created_at >= NOW() - interval '5 minutes'
              ORDER BY a.created_at DESC LIMIT 1`,
-            contactId, serviceId, `${date}T${time}:00`,
+            ...params,
         );
         const row = rows?.[0];
         if (!row?.id) return null;

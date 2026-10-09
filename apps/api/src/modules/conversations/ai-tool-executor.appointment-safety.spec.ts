@@ -764,6 +764,58 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
             expect(result.success).toBeUndefined();
             expect(readBack).not.toHaveBeenCalled();
         });
+
+        describe('the read-back is for what THIS call wrote: same professional, same vehicle', () => {
+            const staffId = '88888888-8888-4888-8888-888888888888';
+            const vehicleId = '99999999-9999-4999-8999-999999999999';
+            const row = (extra: Record<string, unknown>) => ({ id: appointmentId, status: 'confirmed', service_name: 'Consulta', payment_status: null,
+                amount_due: null, hold_expires_at: null, price: 0, currency: 'COP', ...extra });
+            /** a tiny agenda that applies the filters the query carries (by their parameters) */
+            const withAgenda = (harness: ReturnType<typeof createHarness>, rows: Array<Record<string, any>>) => {
+                const seen: Array<{ sql: string; params: any[] }> = [];
+                harness.prisma.$queryRawUnsafe.mockImplementation(async (sql: string, ...params: any[]) => {
+                    seen.push({ sql: String(sql), params });
+                    return rows.filter(r => (!/a\.assigned_to = \$(\d)/.test(sql) || r.assigned_to === params[Number(/a\.assigned_to = \$(\d)/.exec(sql)![1]) - 1])
+                        && (!/vehicleId'.*= \$(\d)::text/.test(sql) || r.vehicle_id === params[Number(/= \$(\d)::text/.exec(sql)![1]) - 1]));
+                });
+                return seen;
+            };
+
+            it('a row written for ANOTHER professional (same customer, service and start) is not this call\'s', async () => {
+                const harness = createHarness([]);
+                const seen = withAgenda(harness, [row({ assigned_to: '77777777-0000-4000-8000-000000000000' })]);
+                const found = await (harness.executor as any).committedAppointmentResult(schemaName, contactId, 'create_appointment', { ...bookingArgs, staffId });
+                expect(found).toBeNull();
+                expect(seen[0].sql).toContain('a.assigned_to = $4::uuid');
+                expect(seen[0].params[3]).toBe(staffId);
+            });
+
+            it('the row of the professional that was named is found', async () => {
+                const harness = createHarness([]);
+                withAgenda(harness, [row({ assigned_to: staffId })]);
+                const found = await (harness.executor as any).committedAppointmentResult(schemaName, contactId, 'create_appointment', { ...bookingArgs, staffId });
+                expect(found).toMatchObject({ success: true, appointment: { id: appointmentId } });
+            });
+
+            it('no professional named: no filter on it', async () => {
+                const harness = createHarness([]);
+                const seen = withAgenda(harness, [row({ assigned_to: staffId })]);
+                expect(await (harness.executor as any).committedAppointmentResult(schemaName, contactId, 'create_appointment', bookingArgs)).not.toBeNull();
+                expect(seen[0].sql).not.toContain('assigned_to');
+            });
+
+            it('a test drive reads back its own vehicle only', async () => {
+                const harness = createHarness([]);
+                const seen = withAgenda(harness, [row({ assigned_to: staffId, vehicle_id: '11111111-0000-4000-8000-000000000000' })]);
+                const args = { serviceId, staffId, vehicleId, scheduledDate: '2026-08-12', scheduledTime: '11:00', contactName: 'Cliente' };
+                expect(await (harness.executor as any).committedAppointmentResult(schemaName, contactId, 'schedule_test_drive', args)).toBeNull();
+                expect(seen[0].sql).toContain("COALESCE(a.metadata->>'vehicleId', a.metadata->>'vehicle_id') = $5::text");
+                expect(seen[0].params[4]).toBe(vehicleId);
+                harness.prisma.$queryRawUnsafe.mockClear();
+                withAgenda(harness, [row({ assigned_to: staffId, vehicle_id: vehicleId })]);
+                expect(await (harness.executor as any).committedAppointmentResult(schemaName, contactId, 'schedule_test_drive', args)).toMatchObject({ success: true });
+            });
+        });
     });
 
     it.each([

@@ -57,6 +57,8 @@ function world(options: { appointments: any[]; /** what the writer answers (its 
     publishTools(f, ['list_services', 'check_availability', 'create_appointment', 'cancel_appointment', 'reschedule_appointment', 'list_customer_appointments']);
     const calls: Array<{ name: string; args: any; result: any }> = [];
     let pending: { tool: string; args: any } | null = null;
+    /** the ledger row the guard says is waiting (when it is not the one the focus is waiting on) */
+    let waitingLedger: string | undefined;
     const done: Record<string, any> = {};
     f.toolExecutor.execute.mockImplementation(async (_s: string, _t: string, _c: string, name: string, args: any) => {
         let result: any;
@@ -82,7 +84,7 @@ function world(options: { appointments: any[]; /** what the writer answers (its 
     // The guard's own rules for the lookup of «the proposal this yes answers»: bound to the focus the proposal is waiting under.
     f.toolExecutionControl.findPendingConfirmation.mockImplementation(async (_s: string, _c: string, _k: string, reply: string | undefined, scope: any) => {
         if (!pending) return null;
-        if (reply === undefined) return { ledgerId: `conf-${pending.tool}`, toolName: pending.tool, args: pending.args };
+        if (reply === undefined) return { ledgerId: waitingLedger ?? `conf-${pending.tool}`, toolName: pending.tool, args: pending.args };
         if (scope?.expectedReply?.kind !== 'confirmation') return null;
         if (classifyExplicitToolConfirmation(reply, { effect: 'transactional', pendingTool: pending.tool }) !== 'confirmed') return null;
         done[pending.tool] = 'confirmed';
@@ -104,7 +106,7 @@ function world(options: { appointments: any[]; /** what the writer answers (its 
     const session = (): AgentTurnSession => (f.service as any).sessions.sessions.get(id).session;
     const ran = (name: string) => calls.filter(call => call.name === name);
     const succeeded = (name: string) => ran(name).filter(call => call.result?.success === true);
-    return { f, turn, session, ran, succeeded, calls };
+    return { f, turn, session, ran, succeeded, calls, setWaitingLedger: (id?: string) => { waitingLedger = id; } };
 }
 
 describe('a started appointment in the account is not the task in progress', () => {
@@ -199,6 +201,19 @@ describe('one «sí» after a reschedule proposal executes it, even when the req
         await h.turn(REQUEST);
         const yes = await h.turn('sí');
         expect(yes.reply).toBe('Su cita (Ref. 3C78ECA2) quedó reprogramada para el viernes 16 de octubre a las 11:00.');
+    });
+
+    it('another proposal is the one waiting in the ledger: the focus is NOT handed back to the old one', async () => {
+        const h = world({ appointments: [UPCOMING] });
+        await h.turn('hola');
+        await h.turn(REQUEST);
+        h.setWaitingLedger('conf-another-row');
+        const again = await h.turn(REQUEST);
+        expect(again.reply).toContain('¿Confirma que movamos su cita');
+        expect(h.session().metadata.missionFocus.expectedReply).toBeNull();
+        const yes = await h.turn('sí');
+        expect(h.succeeded('reschedule_appointment')).toHaveLength(0);
+        expect(yes.reply).not.toMatch(/quedó reprogramada/);
     });
 
     it('a repeated request that names a DIFFERENT move is a new proposal: the old yes is not resurrected', async () => {

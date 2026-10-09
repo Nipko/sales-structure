@@ -1,4 +1,8 @@
 import { getSubtypeRecipeOverlay, getVerticalDefinition } from '../verticals/vertical-definitions';
+import {
+    normalizeVerticalPersonaLocale,
+    resolveVerticalSubtypePersonaContract,
+} from './vertical-subtype-persona-contract';
 
 /**
  * Identity a subtype's own recipe gives the agent (name, role, voice, greeting).
@@ -58,6 +62,54 @@ export function applySubtypeRecipeIdentity(
             ...(role ? { role } : {}),
             ...(greeting ? { greeting } : {}),
             personality,
+        },
+    };
+}
+
+/**
+ * Behaviour the six native-operation subtypes (farmacia, repuestos, alquiler,
+ * hardware, guardería, hotel) are born with.
+ *
+ * The onboarding resolver gives them the generic `tpl_sales` template on
+ * purpose: every goal template of their industry promises an appointment, a
+ * demo or a test drive that these subtypes do not operate. That template also
+ * carries the SPIN discovery script ("never start with features or prices"),
+ * objection handling and a "hot lead" hand-off, which are not how a pharmacy
+ * answers "do you have ibuprofen?" or how a pet hotel takes a stay. Identity
+ * (name, role, voice, greeting) comes from `applySubtypeRecipeIdentity`; this
+ * replaces the sales conduct with the contract's `birthBehavior` and its
+ * `nativeRules`, in the tenant's language.
+ *
+ * Birth only, same as the identity: `createDefaultAgentFromGoals` is
+ * create-only, so the template config is the whole row and nothing the owner
+ * typed can be overwritten. The bootstrap that follows adds `nativeRules`
+ * again and de-duplicates them, so the result is stable.
+ *
+ * Anything that is not one of the six, or a template other than the generic
+ * onboarding one, is returned untouched.
+ */
+export function applyNativeSubtypeBirthBehavior(
+    config: Record<string, any>,
+    industry: string | undefined,
+    subType: string | undefined,
+    templateId: string | undefined,
+    language: string,
+): { config: Record<string, any>; applied: boolean } {
+    const contract = resolveVerticalSubtypePersonaContract(industry, subType);
+    if (!contract || templateId !== contract.onboardingTemplateId) {
+        return { config, applied: false };
+    }
+    const locale = normalizeVerticalPersonaLocale(language);
+    const birth = contract.birthBehavior[locale];
+    return {
+        applied: true,
+        config: {
+            ...config,
+            behavior: {
+                ...(config.behavior || {}),
+                rules: [...birth.rules, ...contract.nativeRules[locale]],
+                handoffTriggers: [...birth.handoffTriggers],
+            },
         },
     };
 }

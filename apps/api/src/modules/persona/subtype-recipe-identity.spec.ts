@@ -93,10 +93,16 @@ describe('subtype recipe identity at agent creation', () => {
         const withOverlay = listVerticalCapabilityCompatibilityConfigurations()
             .filter((c) => getSubtypeRecipeOverlay(c.industry, c.subtype)?.agent);
         expect(withOverlay.map((c) => `${c.industry}/${c.subtype}`).sort()).toEqual([
+            'automotriz/alquiler',
+            'automotriz/repuestos',
             'education/academia_baile',
             'education/academia_musica',
             'education/autoescuela',
             'education/clases_particulares',
+            'pet_services/guarderia',
+            'pet_services/hotel',
+            'salud/farmacia',
+            'technology/hardware',
         ]);
         for (const c of withOverlay) {
             for (const language of ['es', 'en', 'pt', 'fr']) {

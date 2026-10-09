@@ -1,6 +1,7 @@
 // scripts/migrate-tenants.js
 const fs = require('fs');
 const path = require('path');
+const { createToolFamilyBackfill, readBackfillOptions } = require('./tool-family-backfill');
 
 /**
  * Divide la plantilla en statements RESPETANDO el dollar-quoting de Postgres.
@@ -360,6 +361,10 @@ async function runTenantMigrations({
   random = Math.random,
   log = console.log,
   logError = console.error,
+  // Optional per-tenant hook run AFTER the tenant's schema was migrated (used for
+  // the additive tool-family backfill). It must never throw; if it does anyway it
+  // is logged and ignored: it can neither fail a tenant nor change the counters.
+  afterTenantMigrated = null,
 }) {
   let successCount = 0;
   let skipCount = 0;
@@ -428,6 +433,13 @@ async function runTenantMigrations({
       if (result.noopSkipped > 0) notes.push(`${result.noopSkipped} no-op DDL statements skipped`);
       log(`  [OK] ${t.schema_name}${notes.length ? ` (${notes.join('; ')})` : ''}`);
       successCount++;
+      if (afterTenantMigrated) {
+        try {
+          await afterTenantMigrated(t);
+        } catch (hookError) {
+          logError(`  [BACKFILL-WARN] ${t.schema_name}: post-migration hook failed: ${briefMessage(hookError)}`);
+        }
+      }
     } catch (tenantError) {
       // Continue only to inventory every affected tenant. The process exits
       // non-zero in main(), so manual/setup-fresh/deploy callers all fail closed.
@@ -462,7 +474,10 @@ async function migrate() {
     // that may later be reactivated. Inactive tenants whose schema was already
     // archived/dropped are excluded so migration never recreates erased data.
     const tenants = await prisma.$queryRaw`
-      SELECT t.id, t.schema_name, t.is_active
+      SELECT t.id, t.schema_name, t.is_active, t.industry,
+             t.settings->'verticalConfig'->>'industry' AS vc_industry,
+             t.settings->'verticalConfig'->>'subType' AS vc_sub_type,
+             t.settings->>'subType' AS legacy_sub_type
       FROM tenants t
       WHERE t.schema_name IS NOT NULL
         AND (
@@ -475,8 +490,15 @@ async function migrate() {
 
     console.log(`Found ${tenants.length} active or retained tenant schemas.`);
     const options = readOptions(process.env);
-    const summary = await runTenantMigrations({ prisma, tpl, tenants, options });
+    // Additive data backfill that rides on the same pass (tool-family-backfill.js).
+    // It is non-fatal by design: its own summary line is printed below and the
+    // MIGRATE_TENANTS_SUMMARY contract the deploy parses is left untouched.
+    const backfill = createToolFamilyBackfill({ prisma, ...readBackfillOptions(process.env) });
+    const summary = await runTenantMigrations({
+      prisma, tpl, tenants, options, afterTenantMigrated: backfill.run,
+    });
 
+    console.log(backfill.summaryLine());
     console.log(
       `Results: ${summary.ok} OK, ${summary.skipped} skipped, ${summary.warnings} statement warnings,`
       + ` ${summary.retries} lock-contention retries`,

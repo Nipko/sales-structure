@@ -261,6 +261,13 @@ const frozenClaimPatterns = [
     pattern: /\b(?:personalized quotes? by chat|cotizaciones personalizadas por chat|cotações personalizadas por chat|devis personnalisés par chat|portfolio tracking|seguimiento de portafolio|acompanhamento de portfólio|suivi de portefeuille|investment profile qualification|calificación de perfil de inversión|qualificação de perfil de investimento|évaluation du profil d'investissement)\b/i,
   },
   {
+    // The finance demo used to open with investment advice and a risk-profile
+    // question. Finance business types are advisory and credit/loans only: no
+    // investments, no portfolio, no suitability profile.
+    label: "unsupported investment advice or risk-profile qualification",
+    pattern: /(?:asesor[ií]a para invertir|investment advice|assessoria para investir|conseils? pour investir|conservador,\s+moderado\s+(?:o|ou)\s+agress?ivo|conservative,\s+moderate\s+or\s+aggressive|conservateur,\s+mod[ée]r[ée]\s+ou\s+agressif)/i,
+  },
+  {
     label: "services preconfigured across all 18 verticals",
     pattern: /\b18\b.{0,120}\b(?:pre-?configured services?|servicios pre-?configurados?|serviços pré-configurados?|services pré-configurés?)\b/i,
   },

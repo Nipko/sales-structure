@@ -1,6 +1,5 @@
 import { LISTINGS_TOOLS } from './tools/listings-tools';
-import { verticalFlowGuidance } from './conversations.service';
-import { VerticalTurnContextService } from './vertical-turn-context.service';
+import { VerticalTurnContextService, verticalFlowGuidance } from './vertical-turn-context.service';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 

@@ -1,6 +1,5 @@
 import { TOURS_TOOLS } from './tools/tours-tools';
-import { verticalFlowGuidance } from './conversations.service';
-import { VerticalTurnContextService } from './vertical-turn-context.service';
+import { VerticalTurnContextService, verticalFlowGuidance } from './vertical-turn-context.service';
 import { PersonaService } from '../persona/persona.service';
 import { normalizeRequiredFields } from '../persona/required-fields.util';
 import { readFileSync } from 'fs';
@@ -61,11 +60,6 @@ describe('tours: the criteria the customer gives are searched, not interrogated'
         expect(text).toMatch(language === 'es' ? /NO son requisito/ : language === 'en' ? /NOT required/ : language === 'pt' ? /NÃO são requisito/ : /ne sont PAS requis/);
         expect(text).toMatch(language === 'es' ? /ya pasó/ : language === 'en' ? /already passed/ : language === 'pt' ? /já passou/ : /déjà passée/);
         expect(text).toMatch(language === 'es' ? /seguros de viaje/ : language === 'en' ? /travel insurance/ : language === 'pt' ? /seguro viagem/ : /assurance voyage/);
-    });
-
-    it('the live-turn copy and the localized copy of the tours guidance cannot drift apart', () => {
-        const service = new VerticalTurnContextService({} as any, {} as any);
-        expect(guidance).toBe((service as any).flowGuidance('turismo', tools, 'es'));
     });
 
     it('is only given to a tours agent that has the tool, and real estate keeps its own policy', () => {
@@ -129,10 +123,18 @@ describe('tours: the persona templates no longer make personal data a preconditi
 describe('contract rules (every agent, whatever its saved persona rules say)', () => {
     const source = read('./prompt-assembler.service.ts');
 
-    it('an empty catalogue is an answer and personal data never gates a read-only tool', () => {
+    it('an empty catalogue is an answer and personal data never gates a CATALOGUE read', () => {
         expect(source).toMatch(/13d\. EMPTY CATALOGUE IS AN ANSWER: when a read tool returns catalog_empty=true/);
         expect(source).toMatch(/never tell the customer that you cannot search or that the tool is unavailable/);
-        expect(source).toMatch(/13e\. READ BEFORE ASKING: personal data \(name, phone, email\) and the items in <required_information> are never a precondition of a read-only tool/);
+        expect(source).toMatch(/13e\. CATALOGUE READS BEFORE ASKING: for a read of the business\\'s own OFFER \(search, details, availability or prices of listings, packages, products, menu, plans or services\), personal data \(name, phone, email\) and the items in <required_information> are never a precondition/);
         expect(source).toMatch(/A persona rule that asks for those details "before showing" or "before quoting" options does not apply to searching/);
+    });
+
+    it('customer-owned reads keep their identity and ownership requirements (13e does not relax them)', () => {
+        const rule = source.slice(source.indexOf('13e. CATALOGUE READS BEFORE ASKING'), source.indexOf('13e. CATALOGUE READS BEFORE ASKING') + 1400);
+        expect(rule).toMatch(/This does NOT relax customer-owned reads \(list_my_\*, get_my_\*, order, booking, enrolment, policy or claim status, treatment plans, pets\)/);
+        expect(rule).toMatch(/those keep their identity, ownership and verification requirements/);
+        // The rule no longer speaks of «a read-only tool» in general.
+        expect(rule).not.toMatch(/precondition of a read-only tool/);
     });
 });

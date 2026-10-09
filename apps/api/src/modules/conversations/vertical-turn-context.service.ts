@@ -192,21 +192,36 @@ export class VerticalTurnContextService {
         tools: any,
         language: 'es' | 'en' | 'pt' | 'fr',
     ): string | undefined {
-        const lines = FLOW_GUIDANCE
-            .filter(entry => entry.industry === industry && tools?.[entry.requires]?.enabled === true)
-            .map(entry => entry.guidance[language]);
-        return lines.length ? lines.join(' ') : undefined;
+        return verticalFlowGuidance(industry, tools, language);
     }
 }
 
-type FlowLanguage = 'es' | 'en' | 'pt' | 'fr';
-type FlowGuidance = Readonly<{
+export type FlowLanguage = 'es' | 'en' | 'pt' | 'fr';
+export type FlowGuidance = Readonly<{
     industry: string;
     requires: string;
     guidance: Readonly<Record<FlowLanguage, string>>;
 }>;
 
-const FLOW_GUIDANCE: readonly FlowGuidance[] = Object.freeze([
+/**
+ * The order in which each industry closes its sale, in the customer's language, gated by the tools the agent has enabled.
+ *
+ * This is the ONLY copy. `conversations.service.ts` used to keep a Spanish-only table that overwrote this one on every
+ * turn it applied to, so an English, Portuguese or French turn received Spanish guidance and the two drifted apart.
+ */
+export function verticalFlowGuidance(
+    industry: unknown,
+    tools: any,
+    language: FlowLanguage = 'es',
+): string | undefined {
+    if (typeof industry !== 'string' || !industry) return undefined;
+    const lines = FLOW_GUIDANCE
+        .filter(entry => entry.industry === industry && tools?.[entry.requires]?.enabled === true)
+        .map(entry => entry.guidance[language]);
+    return lines.length ? lines.join(' ') : undefined;
+}
+
+export const FLOW_GUIDANCE: readonly FlowGuidance[] = Object.freeze([
     { industry: 'turismo', requires: 'properties', guidance: {
         es: 'Para una estadía: list_properties → check_property_availability para las fechas exactas → resuma precio total y fechas → pida confirmación → create_property_booking. Nunca ofrezca una propiedad sin verificar esas fechas.',
         en: 'For a stay: list_properties → check_property_availability for the exact dates → summarize the total price and dates → ask for confirmation → create_property_booking. Never offer a property without checking those dates.',

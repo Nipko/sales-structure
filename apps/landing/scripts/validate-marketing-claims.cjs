@@ -329,6 +329,47 @@ const frozenClaimPatterns = [
     pattern: /(?:\b(?:hands? off|passes? the conversation|pasa la conversaci[oó]n|passa a conversa|transf[eè]re la conversation)\b.{0,70}\b(?:instantly|al instante|instantaneamente|instantan[eé]ment)\b)/i,
   },
   {
+    // Truth pass over the industry pages against the product's own registries
+    // (vertical-definitions, subtype profiles, agent tool families). Each rule
+    // below freezes a claim that was on the site and has no code behind it, so
+    // it cannot come back by copy-edit.
+    //
+    // The monthly AI-message quotas of the retired plan copy. The live
+    // commercial catalogue (apps/api/prisma/plan-commercial-defaults.json) has
+    // different figures, and the pricing cards read the live catalogue anyway.
+    label: "retired plan AI-message quota",
+    pattern: /\b(?:25|100)[.,   ]?000\s+(?:(?:mensajes|mensagens|messages)\s+IA|AI\s+messages)\b/i,
+  },
+  {
+    // Technician assignment on a service request is manual, from the dispatch
+    // board; nothing matches a request to a technician by skill.
+    label: "unsupported automatic technician assignment by skills",
+    pattern: /(?:asignaci[oó]n autom[aá]tica por habilidades|auto-?assign(?:ment)? by skills|atribui[cç][aã]o autom[aá]tica por habilidades|affectation auto(?:matique)? par comp[eé]tences)/i,
+  },
+  {
+    // The only professional-services tool is get_case_status, which is read-only.
+    label: "unsupported professional-services quotes and proposals by chat",
+    pattern: /(?:cotizaciones y propuestas por chat|quotes and proposals by chat|cota[cç][oõ]es e propostas por chat|devis et propositions par chat)/i,
+  },
+  {
+    // Grooming and daycare moved out of veterinary to the pet-services industry.
+    label: "pet grooming or daycare listed under veterinary",
+    pattern: /(?:Cl[ií]nicas · (?:Est[eé]tica canina|Banho e tosa)|Clinics · Pet grooming|Cliniques · Toilettage|reservas de daycare|daycare and grooming bookings|r[eé]servations garderie et toilettage)/i,
+  },
+  {
+    // Business types that do not exist as selectable types: insurance for the
+    // home, health insurance (waitlist only, hidden from sign-up), investments
+    // and accounting under finance.
+    label: "business types the product does not offer (insurance, finance)",
+    pattern: /(?:Salud · Auto · Hogar|Health · Auto · Home|Sa[uú]de · Auto · Casa|Sant[eé] · Auto · Maison|Asesor[ií]a · Inversiones|Advisory · Investments|Assessoria · Investimentos|Conseil · Investissements)/i,
+  },
+  {
+    // SMS is retired (one-way credit product behind a kill switch). It is not a
+    // channel any plan sells, whatever the plan catalogue still lists.
+    label: "SMS presented as a channel",
+    pattern: /\bSMS\b/,
+  },
+  {
     // Parallly is not the payer. From 1 October 2026 Meta bills the tenant's
     // own WhatsApp Business account, and a page that says otherwise promises
     // to absorb a cost that is unbounded outside Colombia — one number in an

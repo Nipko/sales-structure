@@ -487,10 +487,10 @@
       "feature2": "Agenda con asesor autorizado",
       "feature3": "Pipeline de prospectos",
       "feature4": "FAQs y contexto del negocio",
-      "demo1": "Hola, necesito asesoría para invertir",
-      "demo2": "¡Hola! Soy Alex 💰 ¿Cuál es tu perfil: conservador, moderado o agresivo? ¿Y monto aproximado?",
-      "demo3": "Moderado, unos 20 millones",
-      "demo4": "Puedo recopilar tus objetivos y coordinar una conversación con un asesor autorizado. Las recomendaciones las confirma el asesor. ¿Quieres agendar?"
+      "demo1": "Hola, quiero saber cómo solicitar un crédito",
+      "demo2": "¡Hola! Soy Alex 💰 Con gusto te ayudo. ¿Para qué necesitas el financiamiento y para cuándo?",
+      "demo3": "Capital para mi negocio, en unas dos semanas",
+      "demo4": "Gracias. Registro tu necesidad y puedo coordinar una cita con un asesor autorizado, que te explica requisitos y condiciones. Yo no apruebo créditos ni informo tasas. ¿Quieres agendar?"
     },
     "servicios-profesionales": {
       "pain1": "Consultas que llegan fuera de horario y se enfrían sin respuesta.",

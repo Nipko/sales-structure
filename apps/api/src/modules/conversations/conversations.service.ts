@@ -155,6 +155,7 @@ import { awaitAutomaticFaqLookup, awaitToolWithSafeTimeout } from './tool-timeou
 import { boundedAutomaticFaqs } from '../faqs/automatic-faq-context';
 import {
     CONTROL_ERRORS_REQUIRING_HUMAN,
+    handoffRequiredByResult,
     ToolExecutionControlService,
 } from './tool-execution-control.service';
 import { ActiveOperationsContextService, tenantActiveObjectPolicyContext } from './active-operations-context.service';
@@ -4173,7 +4174,7 @@ export class ConversationsService {
                             // A tool that CAPTURED a case a person must handle (a claim, an emergency) or a consistency risk
                             // that only a person can reconcile escalates. A tool that merely FAILED and says «hand it off»
                             // (a lockout, a missing channel) does not: the customer is asked first.
-                            if (CONTROL_ERRORS_REQUIRING_HUMAN.has(String(result.error)) || toolResultSucceeded(result)) {
+                            if (handoffRequiredByResult(result) || toolResultSucceeded(result)) {
                                 pendingOperationHandoff = `intake:${pending.toolName}`;
                             } else {
                                 personOfferReason = `offer:${pending.toolName}:${String(result.error)}`;
@@ -4196,7 +4197,9 @@ export class ConversationsService {
                             //
                             // ...pero NO se abre un traspaso por su cuenta: el cliente no lo pidio. La respuesta le OFRECE una
                             // persona (pregunta) y solo su «si» la abre; la senal sigue alertando al operador.
-                            personOfferReason = `failed:${pending.toolName}`;
+                            // (a result whose outcome is unknown or that needs a reconciliation still reaches a person)
+                            if (handoffRequiredByResult(result)) pendingOperationHandoff = `failed:${pending.toolName}`;
+                            else personOfferReason = `failed:${pending.toolName}`;
                             this.recordAgentSignal(tenantId, 'commit_then_failure', session);
                             this.logger.error(
                                 `[Confirm] ${pending.toolName} fallo DESPUES de la confirmacion del cliente ` +
@@ -5068,7 +5071,7 @@ export class ConversationsService {
                         } else if (result && result.shouldHandoff === true
                             && (result.controlBlocked !== true
                                 || CONTROL_ERRORS_REQUIRING_HUMAN.has(String(result.error)))) {
-                            if (CONTROL_ERRORS_REQUIRING_HUMAN.has(String(result.error)) || (toolResultSucceeded(result) && result.verified !== false)) {
+                            if (handoffRequiredByResult(result) || (toolResultSucceeded(result) && result.verified !== false)) {
                                 postToolHandoff = postToolHandoff || `intake:${tc.function.name}`;
                             } else {
                                 // A failure, a lockout, a refused verification: a person is OFFERED, nothing is opened unasked.

@@ -39,6 +39,13 @@ describe('the identity requirement for appointment records follows the business 
         }
     });
 
+    it('«otro» (an unclassified business could be a clinic) needs the code; aesthetics stays code-free as a deliberate, owner-reviewable decision', () => {
+        expect(appointmentRecordsNeedIdentityCode({ industry: 'otro' })).toBe(true);
+        expect(appointmentRecordsNeedIdentityCode({ industry: 'otro', subtype: 'general' })).toBe(true);
+        expect(filterActiveObjectsForPrompt([appointmentItem()], { industry: 'otro' })).toHaveLength(0);
+        expect(appointmentRecordsNeedIdentityCode({ industry: 'moda_belleza', subtype: 'estetica' })).toBe(false);
+    });
+
     it('an unknown or missing vertical fails closed on both sides', () => {
         for (const context of [undefined, {}, { industry: 'otro_mundo' }, { industry: null }]) {
             expect(appointmentRecordsNeedIdentityCode(context as any)).toBe(true);

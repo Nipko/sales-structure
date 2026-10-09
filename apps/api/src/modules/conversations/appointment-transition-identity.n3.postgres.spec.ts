@@ -221,6 +221,10 @@ async function openTenant(prefix: string, vertical: { industry: string; subType?
         const create = await t.h.call(C.contactId, C.conversationId, 'create_appointment', book('Corte y estilo', day(14)), t.scope);
         expect(create).toMatchObject({ error: 'reschedule_must_be_atomic', controlBlocked: true });
         expect(create.message).toContain('reschedule_appointment');
+        // it does not push the move blindly: the customer is asked whether it is a move, for someone else, or an extra booking
+        expect(create.message).toMatch(/Pregúntale al cliente/);
+        expect(create.message).toMatch(/otra persona/);
+        expect(create.message).toMatch(/adicional/);
         expect(create.shouldHandoff).toBeUndefined();
         expect(await t.ledger()).toEqual([{ tool_name: 'cancel_appointment', status: 'awaiting_confirmation' }]);
     });

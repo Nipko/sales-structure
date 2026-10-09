@@ -8,8 +8,9 @@ import { replyLanguageOf } from './reply-language';
  * claim it was asked to remove.
  *
  * Every rewrite is validated here before it can replace a reply: wrappers and labels are removed, paragraphs that talk ABOUT
- * the message (or are written in another language) are cut, and what is left must be in the customer's language and carry no
- * tool-call markup. Anything that cannot be made clean returns null: the caller then uses its deterministic text.
+ * the reply, the claim or the action («This seems to…», «It reports…», «I have rewritten…») are cut, and what is left must be in
+ * the customer's language and carry no tool-call markup. A paragraph is cut for being META, never merely for being in another
+ * language: an English tenant's product paragraph inside a Spanish reply, or an English customer's «It only takes a minute», stays. Anything that cannot be made clean returns null: the caller then uses its deterministic text.
  */
 
 const OPENERS = '"“«\'‘';
@@ -20,7 +21,7 @@ const LABEL = /^\s*(?:\*\*)?(?:mensaje corregido|respuesta corregida|mensagem co
 
 /** A paragraph that talks ABOUT the message instead of being it. */
 // Phrases of self-commentary only: «this»/«it»/«note» alone are ordinary first words of an English customer's reply.
-const META = /^\s*[*_>-]*\s*(?:this (?:seems|appears|rewrite|rewritten|message|reply|response|version|should|addresses|address|corrects|correct|now)\b|it (?:reports|states|says|clarifies|avoids|now|keeps|does not claim|only)\b|the (?:corrected|rewritten|revised) (?:message|reply|response|version)\b|here(?:'s| is| are) (?:the|a|my) (?:corrected|rewritten|revised)\b|i (?:have|'ve) (?:rewritten|corrected|revised|removed|adjusted|reworded)\b|as requested\b|let me know if\b|feel free to\b|note that the\b)/i;
+const META = /^\s*[*_>-]*\s*(?:this (?:seems|appears) to\b|this (?:rewrite|rewritten (?:message|reply|response)|(?:message|reply|response|version) (?:now|no longer|avoids|does not claim|doesn't claim|has been (?:rewritten|corrected|revised)))\b|it (?:reports|avoids claiming|does not claim|doesn't claim|no longer claims|states that the (?:action|operation|booking|appointment|order))\b|the (?:corrected|rewritten|revised) (?:message|reply|response|version)\b|the (?:message|reply|response) (?:above|now|no longer|avoids|does not claim)\b|here(?:'s| is| are) (?:the|a|my) (?:corrected|rewritten|revised)\b|i (?:have|'ve|will|'ll) (?:rewritten|rewrite|corrected|revised|removed|adjusted|reworded|reword)\b|as an ai\b)/i;
 
 function unwrap(text: string): string {
     const first = text[0];
@@ -30,15 +31,9 @@ function unwrap(text: string): string {
     for (let index = text.length - 1; index > 0; index -= 1) {
         if (!closers.includes(text[index])) continue;
         const rest = text.slice(index + 1).trim();
-        if (!rest || META.test(rest) || isForeign(rest, undefined)) return text.slice(1, index).trim();
+        if (!rest || META.test(rest)) return text.slice(1, index).trim();
     }
     return text;
-}
-
-function isForeign(paragraph: string, lang: string | undefined): boolean {
-    if (paragraph.trim().split(/\s+/).length < 5) return false;
-    const written = replyLanguageOf(paragraph);
-    return !!written && (!lang || written !== lang.slice(0, 2).toLowerCase());
 }
 
 export function sanitizeRewrittenReply(rewritten: unknown, options: { lang?: string; names?: readonly string[] } = {}): string | null {
@@ -50,7 +45,7 @@ export function sanitizeRewrittenReply(rewritten: unknown, options: { lang?: str
     text = unwrap(text);
     // A quote opened after a label line or a blank line wraps the message as well.
     const kept = text.split(/\n{2,}/).map(paragraph => paragraph.trim()).filter(paragraph => paragraph
-        && !META.test(paragraph) && !isForeign(paragraph, options.lang));
+        && !META.test(paragraph));
     text = kept.join('\n\n').trim();
     text = unwrap(text).replace(LABEL, '').trim();
     if (text.length < 6) return null;

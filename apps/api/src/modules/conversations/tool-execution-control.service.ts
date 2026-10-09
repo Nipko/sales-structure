@@ -1583,8 +1583,10 @@ export class ToolExecutionControlService {
                         error: 'reschedule_must_be_atomic',
                         controlBlocked: true,
                         persisted: false,
-                        message: 'Cancelar una cita y crear otra del mismo servicio es mover la cita: no lo hagas en dos pasos, porque si el segundo falla el cliente pierde su cita. '
-                            + 'Usa reschedule_appointment con appointmentId, newDate y newTime; no llames a cancel_appointment ni a create_appointment para esto.',
+                        message: 'Cancelar una cita y crear otra del mismo servicio en el mismo turno puede ser mover la cita, pero también una cita para otra persona o una adicional. '
+                            + 'No lo hagas en dos pasos: si el segundo falla el cliente pierde su cita. Pregúntale al cliente cuál de las tres es: (a) mover la cita que ya tiene, (b) agendar para otra persona, '
+                            + '(c) agendar una adicional. Solo si es mover la cita usa reschedule_appointment con appointmentId, newDate y newTime; si es para otra persona o adicional, '
+                            + 'no canceles la cita que ya tiene.',
                     };
                 }
             }
@@ -3144,3 +3146,17 @@ export const CONTROL_ERRORS_REQUIRING_HUMAN: ReadonlySet<string> = new Set([
     'execution_lease_expired',
     'approval_required',
 ]);
+
+/**
+ * A tool result that MUST reach a person, whether or not the customer asked: the outcome of the operation is unknown or money /
+ * stock may have moved (`outcome: 'unverified'`, any `*reconciliation*` error such as `payment_reconciliation_required` or
+ * `catalog_stock_reconciliation_required`), or a person has to review it (`catalog_prescription_review_required`,
+ * `catalog_cancellation_review_required`, and the guard's own set above). Everything else that asks for a person (a lockout, a
+ * missing channel, a write that failed with nothing having happened) is OFFERED to the customer, who decides.
+ */
+export function handoffRequiredByResult(result: any): boolean {
+    const error = String(result?.error ?? '');
+    return CONTROL_ERRORS_REQUIRING_HUMAN.has(error)
+        || result?.outcome === 'unverified'
+        || /reconciliation|review_required|requires_review/.test(error);
+}

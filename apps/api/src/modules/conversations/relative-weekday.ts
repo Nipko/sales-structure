@@ -38,6 +38,27 @@ function weekdayIndexOf(day: CalendarDay): number | null {
     return y && m && d ? new Date(Date.UTC(y, m - 1, d)).getUTCDay() : null;
 }
 
+const DAY_WORDS = '(?:domingo|lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|dimanche|lundi|mardi|mercredi|jeudi|vendredi|samedi|sunday|monday|tuesday|wednesday|thursday|friday|saturday|segunda|ter[cç]a|quarta|quinta|sexta)';
+/** «mañana» / «amanhã» used as the MORNING, not as tomorrow: «por la mañana», «el turno de la mañana», «cada mañana», «esta mañana». */
+const MORNING_BEFORE = /(?:\b(?:la|las|de la|de|en la|por la|cada|esta|toda la|every|this|each)\s+)$/i;
+/** A weekday RANGE or LIST right after the stated day: «lunes a viernes», «martes y jueves», «Monday to Friday», «de segunda a sexta». */
+const RANGE_AFTER = new RegExp('^(?:\\s*(?:-|–)\\s*|\\s+(?:a|al|hasta|y|e|o|to|through|and|or|à|au|et|ou|ao|até)\\s+(?:el\\s+|le\\s+|o\\s+|the\\s+)?)' + DAY_WORDS, 'i');
+/** A conditional or hypothetical clause: «si mañana es lunes festivo…», «if tomorrow is Monday…». */
+const CONDITIONAL: Record<string, RegExp> = {
+    es: /\b(?:si|cuando|aunque)\b/i, en: /\b(?:if|whether|when|even if)\b/i, pt: /\b(?:se|quando|embora)\b/i, fr: /\b(?:si|quand|m[eê]me si)\b/i,
+};
+/** The same sentence says the business is open or closed: the model's weekday is part of an opening-hours claim it reasoned about, so it is left to the model. */
+const OPENING_CLAIM = /\b(?:cerrad[oa]s?|cerramos|cierran|abierto|abiertos|abrimos|abren|atendemos|closed|open|opening|fechad[oa]s?|aberto|abertos|abrimos|ferm[eé]e?s?|ouvert|ouverts)\b/i;
+
+/** The sentence of `whole` that holds the match, from its start to its end punctuation. */
+function sentenceAround(whole: string, index: number, length: number): { before: string; after: string; sentence: string } {
+    const start = Math.max(whole.lastIndexOf('.', index - 1), whole.lastIndexOf('!', index - 1), whole.lastIndexOf('?', index - 1), whole.lastIndexOf('\n', index - 1)) + 1;
+    const tail = whole.slice(index + length);
+    const endAt = tail.search(/[.!?\n]/);
+    const end = endAt < 0 ? whole.length : index + length + endAt;
+    return { before: whole.slice(start, index), after: whole.slice(index + length, end), sentence: whole.slice(start, end) };
+}
+
 function sameCase(model: string, word: string): string {
     return model[0] === model[0]?.toUpperCase() && model[0] !== model[0]?.toLowerCase() ? word[0].toUpperCase() + word.slice(1) : word;
 }
@@ -46,8 +67,14 @@ export function correctRelativeWeekdays(reply: string, upcomingDays: readonly Ca
     if (!reply || !upcomingDays?.length) return reply;
     let out = reply;
     for (const frame of FRAMES) {
-        out = out.replace(frame.re, (match, offsetWord: string, joiner: string, stated: string) => {
+        out = out.replace(frame.re, (match, offsetWord: string, joiner: string, stated: string, at: number, whole: string) => {
             const offset = frame.offset(offsetWord);
+            // Only the plain statement «mañana es <día>» is corrected. «Por la mañana es martes y jueves», «el turno de la mañana es el
+            // lunes», «la clase de mañana es lunes a viernes», «si mañana es lunes festivo…» and «mañana es domingo y está cerrado» are
+            // not a claim about which weekday tomorrow is, or are one the model reasoned about: they are left as they are.
+            const around = sentenceAround(whole, at, match.length);
+            if (offset === 1 && MORNING_BEFORE.test(around.before)) return match;
+            if (RANGE_AFTER.test(around.after) || CONDITIONAL[frame.lang].test(around.before) || OPENING_CLAIM.test(around.sentence)) return match;
             const day = offset === null ? undefined : upcomingDays[offset];
             const actual = day ? weekdayIndexOf(day) : null;
             if (actual === null || actual === undefined) return match;

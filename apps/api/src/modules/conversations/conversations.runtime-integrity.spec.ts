@@ -470,8 +470,8 @@ describe('Shared runtime integrity', () => {
         it('«mañana es domingo» said on a Friday becomes Saturday', async () => {
             friday();
             const { run, llm } = fixture();
-            llm.mockResolvedValue({ content: 'Hoy es viernes y mañana es domingo, por eso estamos cerrados.' });
-            expect(await run('whatsapp', '¿abren mañana?')).toBe('Hoy es viernes y mañana es sábado, por eso estamos cerrados.');
+            llm.mockResolvedValue({ content: 'Hoy es viernes y mañana es domingo, así que planee su visita.' });
+            expect(await run('whatsapp', '¿abren mañana?')).toBe('Hoy es viernes y mañana es sábado, así que planee su visita.');
         });
 
         it('a correct statement is left alone', async () => {
@@ -550,6 +550,31 @@ describe('Shared runtime integrity', () => {
             llm.mockResolvedValueOnce({ content: '', toolCalls: [{ id: 'call-1', function: { name: 'search_products', arguments: '{}' } }] })
                 .mockResolvedValue({ content: 'No puedo verificar su identidad por ahora.' });
             expect(await run('web_widget', 'busco una crema')).toBe('No puedo verificar su identidad por ahora.');
+        });
+
+        it.each([
+            ['payment_reconciliation_required', { error: 'payment_reconciliation_required', shouldHandoff: true }],
+            ['catalog_operation_unavailable with an unverified outcome', { error: 'catalog_operation_unavailable', outcome: 'unverified', retryable: false, shouldHandoff: true }],
+            ['catalog_stock_reconciliation_required', { error: 'catalog_stock_reconciliation_required', persisted: false, shouldHandoff: true }],
+            ['catalog_prescription_review_required', { error: 'catalog_prescription_review_required', persisted: false, shouldHandoff: true }],
+            ['reconciliation_required', { error: 'reconciliation_required', shouldHandoff: true }],
+        ])('%s still reaches a person from the loop, whatever the customer asked', async (_label, result) => {
+            const { service, run, llm } = offerFixture();
+            service.toolExecutor = { execute: jest.fn().mockResolvedValue(result) };
+            llm.mockResolvedValueOnce({ content: '', toolCalls: [{ id: 'call-1', function: { name: 'search_products', arguments: '{}' } }] })
+                .mockResolvedValue({ content: 'Estamos revisando su caso.' });
+            await run('whatsapp', 'busco una crema');
+            expect(service.handoffService.executeHandoff).toHaveBeenCalled();
+        });
+
+        it('…and after the customer\'s yes: a confirmed write whose outcome is unverified reaches a person instead of an offer', async () => {
+            const { service, run, llm } = offerFixture();
+            service.toolExecutionControl.findPendingConfirmation.mockResolvedValue({ toolName: 'create_appointment', ledgerId: 'pending', args: { serviceId: 's' } });
+            service.toolExecutor = { execute: jest.fn().mockResolvedValue({ error: 'catalog_operation_unavailable', outcome: 'unverified', retryable: false }) };
+            llm.mockResolvedValue({ content: 'Estamos revisando su pedido.' });
+            const reply = await run('whatsapp', 'Sí, confirmo');
+            expect(service.handoffService.executeHandoff).toHaveBeenCalled();
+            expect(reply).not.toContain(OFFER);
         });
 
         it('a tool that CAPTURED a case a person must handle (success + shouldHandoff) still escalates once it ran', async () => {

@@ -71,10 +71,16 @@ export const ACTIVE_OBJECT_EXPOSURE_POLICY: Readonly<Record<ActiveObjectKind, Ac
     repair_order: BOUNDED_A1,
 });
 
+// DELIBERATE PRODUCT DECISIONS, pending owner review:
+//   · `moda_belleza` (salon, aesthetics included: `estetica`) is NOT sensitive: its appointments are prompt-visible and, with the
+//     same classification, need no code to be seen, cancelled or moved. Aesthetic treatments are close to health care; if the owner
+//     decides they must verify, make `isSensitiveAppointmentDomain` read that subtype too; the prompt and the tools follow it.
+//   · `otro` IS sensitive: an unclassified business could be a clinic, so it is treated like one until it picks a real business type.
 const SENSITIVE_APPOINTMENT_INDUSTRIES = new Set([
     'salud',
     'seguros',
     'finanzas',
+    'otro',
 ]);
 const NON_SENSITIVE_PROFESSIONAL_SUBTYPES = new Set(['arquitectos', 'consultores']);
 const NON_SENSITIVE_VETERINARY_SUBTYPES = new Set(['peluqueria_canina']);

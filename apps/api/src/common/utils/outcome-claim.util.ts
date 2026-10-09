@@ -128,15 +128,15 @@ const HEADLINE_CLAIM = new RegExp(
 
 /**
  * Saying what STATE a record is in is not claiming an ACTION: «su pedido está cancelado» / «el otro pedido, cuyo estado es
- * cancelado» report a status the customer asked about. Two things make a sentence a status report: it names the status
- * explicitly («estado», «status») BEFORE the participle, or the sentence is about a record that was READ this turn with that
- * very status (a listing, the active objects) and only repeats it in the PRESENT («el pedido D1D0D14A está cancelado»). A past
- * or reflexive form («quedó cancelado», «fue cancelado», «ya cancelé») is the deed, whatever was read.
+ * cancelado» report a status the customer asked about. What makes a sentence a status report is a record that was READ this
+ * turn (a listing, the active objects) with that very status, named in the sentence, which only repeats it in the PRESENT
+ * («el pedido D1D0D14A está cancelado»). Wording alone («el estado de su pedido está …») excuses nothing. A past or reflexive
+ * form («quedó cancelado», «fue cancelado», «ya cancelé») is the deed, whatever was read.
  *
  * Only «cancelled» is read this way. «Está confirmada» / «está reservada» are exactly the sentences a model invents to close a
  * booking it never made, so a booking or a payment status is never excused by a record that merely exists.
  */
-const STATUS_FRAME = /\b(?:estado|status|statut|situacion|estatus)\b(?: [a-z0-9]+){0,5} (?:es|esta|is|est)\b|\b(?:estado|status|statut|situacion|estatus)\s*:/;
+
 const CANCELLED_PARTICIPLE = /\b(?:cancelad[oa]s?|anulad[oa]s?|cancelled|canceled|annulee?s?)\b/;
 const CANCELLED_STATUSES = new Set(['cancelled', 'canceled', 'cancelado', 'cancelada', 'anulado', 'anulada', 'voided']);
 
@@ -159,8 +159,9 @@ export function claimsCompletedAction(reply: unknown, options: { recordFacts?: r
         for (let m = COMPLETION_CLAIM.exec(sentence); m; m = COMPLETION_CLAIM.exec(sentence)) {
             const before = sentence.slice(Math.max(0, m.index - 30), m.index);
             if (NEGATED_BEFORE.test(before) || NEGATION_INSIDE.test(m[0]) || DATA_OF_BEFORE.test(before)) continue;
-            // A status the sentence names («cuyo estado es cancelado»), or one that was read this turn and is only repeated.
-            if (/\besta\b/.test(m[0]) && STATUS_FRAME.test(sentence.slice(0, m.index + m[0].length))) continue;
+            // A cancelled status of a record that was READ this turn and is only repeated in the present. Nothing else is excused:
+            // naming «el estado» does not make «está confirmada» / «está agendada» / «está pagado» a report (that is how a booking
+            // that never happened gets announced).
             if (reportsReadCancellation(m[0], sentence, options.recordFacts ?? [])) continue;
             if (OFFER_LEAD_IN.test(before) || insideQuestion(sentence, m.index, m.index + m[0].length)) continue;
             if (/\besta\b/.test(m[0])) {

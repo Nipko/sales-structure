@@ -1,5 +1,7 @@
 # Runtime schema concurrency repair
 
+> **Documento histórico (2026-09-14) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 Reported failure: PostgreSQL `23505` on `(typname, typnamespace) =
 ('webhook_delivery_outbox', 2200)` while the webhook recovery cron executed
 `CREATE TABLE IF NOT EXISTS`. This is a catalog creation race, not a duplicate

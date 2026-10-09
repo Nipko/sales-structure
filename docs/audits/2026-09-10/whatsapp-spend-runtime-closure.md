@@ -1,5 +1,7 @@
 # Cierre local: motor de gasto de WhatsApp, frontera única y ruta de candidato
 
+> **Documento histórico (2026-09-10) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 _Rango: `d720370d..9cb12e24` (14 commits de código y documentación derivada).
 Generado a mano a partir de artefactos que sí son derivados; cada número de esta
 página se puede reproducir con el comando que aparece junto a él._

@@ -1,5 +1,7 @@
 # Plan maestro de pruebas de las 18 verticales
 
+> **Documento histórico (agosto de 2026) — no refleja el estado actual: sus cifras (75 subtipos + otro, 1.520 escenarios) son las de ese día; hoy son 80 tipos de negocio. La lista vigente de industrias y tipos de negocio está en `business-types-catalog.md`.**
+
 **Corte de diseño:** 6 de agosto de 2026
 **Estado reconciliado:** 8 de agosto de 2026
 **Auditoría asociada:** [`vertical-system-audit-2026-08.md`](./vertical-system-audit-2026-08.md)  

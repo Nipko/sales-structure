@@ -1,5 +1,7 @@
 # Versión operativa dentro de las transacciones de efecto
 
+> **Documento histórico (2026-09-07) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 El runtime conserva una autoridad privada obtenida de la misma fila que seleccionó las instrucciones del agente: tenant, schema, agente, versión y hash completo de configuración operativa. El objeto viaja fuera de los argumentos del modelo y se conserva en el ledger para aprobaciones diferidas.
 
 ## Frontera inicial registrada en `4ecbb4b8`

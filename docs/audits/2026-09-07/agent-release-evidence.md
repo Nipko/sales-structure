@@ -1,5 +1,7 @@
 # Evidencia y publicación del agente — E3 en ejecución
 
+> **Documento histórico (2026-09-07) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 El gate devuelve resultados de evaluación y elegibilidad técnica para revisión. `evalActivable` deja de deducirse de una media: aprobar una batería no ejecuta ni autoriza una publicación. Este cambio todavía no implementa el ciclo completo candidato/piloto/publicado/rollback.
 
 ## Evidencia implementada

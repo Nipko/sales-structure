@@ -1,5 +1,7 @@
 # Autoridad vigente para evidencia de herramientas en el assessment
 
+> **Documento histórico (2026-09-11) — no refleja el estado actual; ver `docs/product-capabilities-reference.md` y `docs/README.md`.** Es una instrucción que se pasó a otro agente en esa fecha: lo que dice sobre no hacer push, merge o deploy ya no aplica (desde el 2026-10-07 un merge a `main` con CI verde despliega solo) y sus cifras (perfiles, escenarios, tareas) son las de ese día.
+
 Estado: **pendiente de implementar**. Diseño preparado el 11 de septiembre de 2026 durante la auditoría de herramientas. No declara perfiles certificados ni sustituye los gates de proveedores, modelos o usuarios reales.
 
 ## Problema que queda abierto

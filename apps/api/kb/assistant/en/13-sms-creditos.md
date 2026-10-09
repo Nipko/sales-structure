@@ -1,41 +1,26 @@
 ---
 id: sms-creditos
-title: "SMS credits and SMS notifications"
+title: "SMS (retired product)"
 routes: ["/admin/settings/billing", "/admin/broadcast"]
 roles: ["tenant_admin", "tenant_supervisor"]
-keywords: ["sms", "credits", "sms credits", "sms package", "buy credits", "sms balance", "top up", "text messages", "sms notifications", "segment", "sms campaigns", "sms reminders", "out of balance", "sms disabled", "text customers"]
+keywords: ["sms", "sms credits", "buy credits", "sms package", "sms balance", "sms campaigns", "sms notifications", "sms reminders", "text messages", "sms retired", "sms not available", "text customers", "send sms"]
 ---
 
-# SMS credits and SMS notifications
+# SMS (retired product)
 
-SMS is an **outbound notification** feature, not a conversation channel for the AI agent. Availability, coverage, sender identity, and how credits are provisioned depend on the integration enabled for the account and country.
+SMS is **no longer a Parallly product**: it has been retired entirely. You cannot buy credits, there are no packages or balance to top up, and SMS does not appear as a channel or as a campaign option. It was never a way to talk to the AI agent either: it was never a conversation channel.
 
-## Segments and usage
+## What this means for your business
 
-One credit represents one SMS segment. Plain text usually fits more characters than a message with certain symbols or emojis, and a long message can be split into several segments. The editor counter is authoritative before sending: review its estimate because text encoding can change the total.
+- **Credits and purchases**: the SMS credits section is not offered, and the server rejects any attempt to buy or activate SMS. If you see a balance from an earlier period, contact support to find out what to do with it; do not expect it to be spendable.
+- **Campaigns**: the **AI & growth → Campaigns** editor works with **WhatsApp** only. To reach a group of customers, use a WhatsApp template approved by Meta (see **Campaigns and broadcasts**).
+- **Reminders and automations**: no action sends SMS. Appointment reminders go out over WhatsApp or Telegram, depending on the channel the customer wrote from, and, for the 24-hour one, also by email when the customer left an email address.
+- **Alerts to your team**: do not expect SMS alerts. Use the notifications in the dashboard and the mobile app.
 
-## Balance or credit purchase
+## What is not SMS
 
-An administrator can open **Administration → Plan & Billing**. If the **SMS credits** section appears, it shows the balance, usage, and active options. When a purchase or top-up action exists, the page states the packages, price, currency, provider, terms, and confirmation; use only that secure flow.
+The codes that arrive by SMS or phone call when you register a WhatsApp number are sent by Meta to verify that the number is yours. They do not go through Parallly and have nothing to do with the retired product.
 
-If the section or button is absent, purchasing is not enabled for that account. Do not assume a provider, payment type, instant crediting, or expiration rule: the page and operation confirmation are the current source of truth.
+## If someone offers you SMS through Parallly
 
-## Preparing an SMS campaign draft
-
-An administrator or supervisor can use **AI & Growth → Campaigns** when SMS appears as an option:
-
-1. Create the campaign and select **SMS**.
-2. Write the text and review the estimated segment count.
-3. Choose an authorized audience and confirm that opt-outs are honored.
-4. Review the summary and save the draft. Do not send or schedule it for production from the current editor: it shares the campaign flow that is not yet certified, and scheduled campaigns have no cancel action. See **Campaigns and broadcasts**.
-
-Reminders and automations may also consume credits when the SMS action is enabled. Security codes that Parallly sends to users are not part of the business's campaigns.
-
-## If SMS is disabled
-
-- If SMS does not appear in **Campaigns**, the service is unavailable for that account, country, or configuration.
-- If the balance is insufficient, sending is blocked; check the page before trying again.
-- A supervisor can prepare or operate allowed campaigns, but only an administrator can access billing or an enabled purchase flow.
-- If a confirmed operation is not reflected, refresh the page and contact support with the date and status, without sharing sensitive payment information.
-
-The sender number or identity depends on the integration and may vary by country. Do not promise inbound SMS replies unless the page itself states that two-way messaging is enabled.
+Do not promise SMS to a customer or to your team. If a contact needs to receive a message outside the WhatsApp 24-hour window, the route is an approved WhatsApp template; if you need another route, ask support.

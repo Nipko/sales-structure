@@ -1,5 +1,7 @@
 # Addendum para Claude: cierre paralelo seguro desde `0da81979`
 
+> **Documento histórico (2026-09-11) — no refleja el estado actual; ver `docs/product-capabilities-reference.md` y `docs/README.md`.** Es una instrucción que se pasó a otro agente en esa fecha: lo que dice sobre no hacer push, merge o deploy ya no aplica (desde el 2026-10-07 un merge a `main` con CI verde despliega solo) y sus cifras (perfiles, escenarios, tareas) son las de ese día.
+
 Actualización de alcance: incorporar también
 [herramientas, 76 tipos de negocio y Assist](./claude-tools-business-profile-alignment.md).
 Sus pendientes locales forman parte del mismo cierre; no quedan resueltos por

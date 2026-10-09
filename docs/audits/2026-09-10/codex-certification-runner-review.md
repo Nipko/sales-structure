@@ -1,5 +1,7 @@
 # Revisión de certificación, publicación y cierre — Codex
 
+> **Documento histórico (2026-09-10) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 Fecha: **10-sep-2026**. Código revisado: **`7c9eb04b9978c668e77abe89eaad2e6f0f9ae615`**. Revisión local sin cuentas, credenciales, llamadas de proveedor ni base de datos. No se modificó producto ni se repitió la suite completa. Esta revisión añade únicamente este informe y el reproductor que lo acompaña.
 
 **Conclusión:** la nueva prueba de publicación aporta evidencia útil de persistencia, selección de configuración y rollback. Los artefactos derivados están actualizados por contenido. Sin embargo, **sí quedan defectos locales antes del canario de certificación**: el adaptador consume una forma distinta a la que devuelve el gate real, pierde costo y resultados, y el plan económico no cuenta todas las llamadas. Por tanto, ya no se sostiene que sólo falten gates externos.

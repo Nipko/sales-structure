@@ -1,5 +1,7 @@
 # E3 — revisión independiente de publicación y evaluación
 
+> **Documento histórico (2026-09-07) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 La revisión cubrió `agent-release-{contract,store,policy,service,processor,controller}`, el gate de evaluación y la invalidación de derivados por retiro/borrado de regresiones. La aprobación técnica y humana se mantiene separada de la activación: `activationAllowed:false` y `certified:false` son límites deliberados, no una promoción pendiente de ejecutar por esta revisión.
 
 ## Defectos corregidos

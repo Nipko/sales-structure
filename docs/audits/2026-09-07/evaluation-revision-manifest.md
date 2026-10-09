@@ -1,5 +1,7 @@
 # E2 — Revisión integral y validación de dependencias
 
+> **Documento histórico (2026-09-07) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 La revisión de una prueba deja de identificarse sólo por `configHash`. Agent Test, Eval, Simulation y la comparación de aprendizaje utilizan una revisión compuesta con datos privados congelados y firmas de sus dependencias. La estrategia se declara como `guarded_live_dependencies`: las fuentes que se leen en vivo se comprueban antes y después de herramientas, modelos, turnos y jueces; un cambio invalida el resultado.
 
 ## Contenido y procedencia

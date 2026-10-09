@@ -1,5 +1,7 @@
 # Directiva para Claude: cierre local completo de WhatsApp, producto y release
 
+> **Documento histórico (2026-09-11) — no refleja el estado actual; ver `docs/product-capabilities-reference.md` y `docs/README.md`.** Es una instrucción que se pasó a otro agente en esa fecha: lo que dice sobre no hacer push, merge o deploy ya no aplica (desde el 2026-10-07 un merge a `main` con CI verde despliega solo) y sus cifras (perfiles, escenarios, tareas) son las de ese día.
+
 ## Punto de partida y mandato
 
 Trabaja desde el HEAD que contiene la revisión independiente

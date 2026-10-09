@@ -260,7 +260,8 @@ Par numéro et par mois civil, sans report. Pas par pays, pas par contact, et il
 **Instagram et Messenger sont-ils aussi facturés au message ?**
 Pas aujourd'hui. La facturation par message de service qui commence le 1er octobre 2026 est celle de WhatsApp ; Instagram, Messenger et Telegram n'ont pas de facturation par message de service de la part de leur fournisseur.
 
+**Mon compte WhatsApp Business existait déjà : comment ajouter le moyen de paiement ?**
+Ouvrez https://business.facebook.com/wa/manage/home/, sélectionnez la WABA indiquée dans Canaux → WhatsApp et ajoutez un moyen de paiement dans Vue d’ensemble / paiements. Ne reconnectez pas les numéros. Revenez au tableau de bord et choisissez Vérifier chez Meta. Inconnu ne signifie pas absence de carte ; un moyen associé ne garantit pas de fonds. Depuis le 1er octobre 2026, un compte sans moyen de paiement cesse de livrer les messages de service, et Meta ne publie pas que les 1 000 messages gratuits du mois continuent de partir sans carte : n’y comptez pas.
+
 Une question qui reste en suspens ? Écrivez-nous au [support](https://parallly-chat.cloud/support).
 
-
-Pour les comptes existants : ouvrez https://business.facebook.com/wa/manage/home/, sélectionnez la WABA indiquée dans Canaux → WhatsApp et ajoutez un moyen de paiement dans Vue d’ensemble / paiements. Ne reconnectez pas les numéros. Revenez au tableau de bord et choisissez Vérifier chez Meta. Inconnu ne signifie pas absence de carte ; un moyen associé ne garantit pas de fonds. Meta indique que si le compte n’a pas de moyen de paiement au 30 septembre 2026, il cesse de livrer les messages de service à partir du 1er octobre. Meta ne publie pas que les 1 000 messages gratuits du mois continuent de partir sans carte : n’y comptez pas et ajoutez le moyen de paiement avant le 30 septembre.

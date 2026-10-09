@@ -1,5 +1,7 @@
 # Evaluación con comandos canónicos y aislamiento relacional
 
+> **Documento histórico (2026-09-07) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 Validación local: 7 de septiembre de 2026. No hubo despliegue ni acceso a datos de clientes.
 
 La prueba habitual del agente conserva su contrato de lectura. Eval y Simulation pueden ejecutar `create_appointment`, `cancel_appointment`, `reschedule_appointment`, `enroll_student`, `cancel_enrollment`, `book_class` y `cancel_class_booking` mediante el mismo ejecutor, confirmación, ledger y comandos de dominio que producción. `check_availability` usa el mismo cálculo con un directorio de profesionales local y sin proveedores conectados.

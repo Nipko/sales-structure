@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
+import { HelpPanel } from "@/components/ui/help-panel";
 import { useRole } from "@/hooks/useRole";
 import {
   api,
@@ -98,6 +99,7 @@ function normalizedCategory(value: unknown): string {
 
 export default function ResourceRentalsPage() {
   const t = useTranslations("resourceRentals");
+  const tHelp = useTranslations("help");
   const locale = useLocale();
   const { activeTenantId } = useTenant();
   const { verticalConfig } = useAuth();
@@ -240,6 +242,13 @@ export default function ResourceRentalsPage() {
           )}
         </div>
       </div>
+
+      <HelpPanel
+        title={tHelp("resourceRentals.title")}
+        description={tHelp("resourceRentals.description")}
+        tips={tHelp.raw("resourceRentals.tips") as string[]}
+        mediaKey="resourceRentals"
+      />
 
       <div className="grid gap-3 rounded-xl border border-border bg-card p-4 sm:grid-cols-2">
         <label className="space-y-1.5 text-sm">

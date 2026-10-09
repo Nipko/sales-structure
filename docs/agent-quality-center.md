@@ -109,7 +109,7 @@ está conectado pero cuya cuenta ya no existe cuenta como `staleBinding` (el nú
 reconectó y cambió de id).
 
 La salud de credenciales tiene una sola fuente de verdad,
-`apps/api/src/modules/channels/channel-credential-health.util.ts` (función pura), que
+`packages/shared/src/channel-credential-health.ts` (función pura; `apps/api/src/modules/channels/channel-credential-health.util.spec.ts` es su prueba), que
 consumen tanto el servicio de calidad como `/channels/overview`. Antes había dos: calidad
 leía `missing` donde el overview devolvía `unknown` y la página lo ocultaba.
 
@@ -257,8 +257,10 @@ Las interacciones reales cierran el ciclo sin convertir al agente en un sistema 
 3. El agregador agrupa recurrencias por agente, versión, código y dimensión.
 4. La interfaz muestra el impacto y las conversaciones fuente.
 5. Un administrador corrige configuración, contenido o integración.
-6. Cuando corresponde, el administrador convierte manualmente el fallo en un escenario
-   de regresión revisado; esta entrega no lo crea por sí sola.
+6. Cuando corresponde, el administrador convierte el fallo real en un escenario de
+   regresión revisado: lo propone desde una fuente (`POST /quality/:tenantId/agents/:agentId/regressions`) y
+   se revisa con `.../regressions/:caseId/review`. Nada se crea ni se aprueba
+   por sí solo.
 7. La evidencia previa vence y la nueva versión debe superar las pruebas.
 8. Producción confirma si la mejora se sostiene.
 
@@ -290,9 +292,11 @@ Ya están operativos la atribución por agente/versión para conversaciones nuev
 overview integrado de los tres pilares, la taxonomía acotada de recomendaciones y los
 snapshots/señales durables que alimentan Inicio, Insights, el aviso y Assist.
 
+Implementado después de este documento (ver `apps/api/src/modules/quality/regressions/`): la conversión asistida y revisable de fallos reales en casos de regresión. Endpoints bajo `/quality/:tenantId/agents/:agentId/regressions` (`GET` lista, `GET options|sources|metrics`, `POST` propone, `POST :caseId/review` revisa) y pantalla `/admin/agent/:agentId/regressions`.
+
 Quedan como evolución explícita —no como capacidad prometida en esta entrega—:
 
-1. conversión asistida y revisable de fallos reales en casos de regresión;
+1. (hecho — ver arriba) conversión asistida y revisable de fallos reales en casos de regresión;
 2. hash canónico adicional de configuración, suite y fuentes para una vigencia más
    fina que la versión del agente;
 3. comparación antes/después e intervalos de confianza cuando exista volumen;

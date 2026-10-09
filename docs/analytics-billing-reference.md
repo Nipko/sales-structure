@@ -7,7 +7,7 @@ _Actualizado: jul 2026 (v2026-07)._
 
 ---
 
-## Analytics — Dashboard Endpoints (13 total under `/dashboard-analytics/`)
+## Analytics — Dashboard Endpoints (14 routes under `/dashboard-analytics/`; `dashboard-analytics.controller.ts`)
 
 | Endpoint | Purpose |
 |----------|---------|
@@ -24,6 +24,7 @@ _Actualizado: jul 2026 (v2026-07)._
 | `GET anomalies/:tenantId` | Z-score analysis, flags deviations >2σ from 30-day average |
 | `GET cohorts/:tenantId` | Cohort retention matrix (contacts by first-contact month) |
 | `GET appointments/:tenantId` | Appointment analytics (KPIs, daily volume, by service, by source, peak hours) |
+| `GET channel-accounts/:tenantId` | Metrics attributed to each operational channel account (optional `channelType`) |
 
 ## Alerts & Reports (under `/analytics-config/`)
 
@@ -256,7 +257,7 @@ ai:stats:{tenantId}:{YYYY-MM-DD}:{category}:provider:{name} — Per-provider bre
 | `/admin/financials` | SaaS metrics (5 tabs) |
 | `/admin/llm-stats` | Unified AI usage |
 | `/admin/billing-ops` | Suscripciones/pagos/eventos cross-tenant + reconciliación + refunds |
-| `/admin/plans` | Editor del catálogo de planes + sync MP + badge sandbox/producción |
+| `/admin/plans` | Editor del catálogo de planes (features, precios por país y ciclo) + estado de proveedores |
 | `/admin/coupons` | CRUD de cupones + redenciones |
 | `/admin/fiscal` | Config fiscal DIAN (modo CO_LOCAL/US_REMOTE), Factus, facturas globales |
 | `/admin/sms-packages` | Tiers de créditos SMS + balances + ajustes |
@@ -277,8 +278,7 @@ Traslada las consultas psql-por-SSH del runbook al panel. Auditadas con actor re
 | `GET plans/:slug` | Un plan |
 | `PUT plans/:slug` | Editar plan (merge de `features` validado contra el registro, invalida cache) |
 | `POST plans/:slug/invalidate-cache` | Refrescar entitlements sin editar |
-| `GET provider-status` | Entorno MP (sandbox/producción) + webhook configurado |
-| `POST plans/:slug/sync-mp` | Registrar/recrear `preapproval_plan` en MP por país×ciclo (`cycle` month/year) |
+| `GET provider-status` | Estado de cada proveedor de pago (habilitado, capacidades, sandbox/producción). Mercado Pago ya no es proveedor de plataforma y `sync-mp` no existe |
 | `POST reconcile` | Reconciliación on-demand (`scope` full/past_due) |
 | `POST tenants/:tenantId/reconcile` | Reconciliar un tenant contra el proveedor |
 | `GET subscriptions` | Listado paginado (filtros status/provider/plan/q) |
@@ -311,16 +311,18 @@ Capa fiscal desacoplada del PSP (`IFiscalInvoiceProvider`; hoy adaptador **Factu
 
 ---
 
-## SMS monetizado por paquetes (créditos reseller)
+## SMS monetizado por paquetes (créditos reseller) — PRODUCTO RETIRADO
+
+> **Retirado (ago 2026).** El interruptor maestro `sms.platform_enabled` está apagado por defecto (`sms-kill-switch.service.ts`), `GET /sms-credits/packages` devuelve `data: []` con `meta.retired` y `code: sms_product_retired`, y el checkout y las notificaciones responden `sms_product_retired`. La compra con Mercado Pago ya no existe. Lo que sigue describe el diseño original por si hay que auditar saldos o libros históricos.
 
 Modelo reseller one-way: los tenants compran créditos prepagos (1 crédito = 1 segmento Twilio) para **notificar a sus clientes** vía el Twilio de la plataforma. El canal SMS conversacional (bidireccional) quedó **descartado**. Ver `docs/sms-monetization-packages-2026-07.md`.
 
-- **Tablas**: `sms_credit_balances` (cache del total), `sms_credit_ledger` (movimientos append-only, `balance_after`), `sms_package_orders` (compra pago único MP, `external_reference` = order id, acreditación idempotente por webhook)
+- **Tablas**: `sms_credit_balances` (cache del total), `sms_credit_ledger` (movimientos append-only, `balance_after`), `sms_package_orders` (compra pago único con Mercado Pago, hoy retirada; `external_reference` = order id, acreditación idempotente por webhook)
 - **Endpoints** (`/sms-credits/*`):
   - Tenant: `GET :tenantId/balance`, `GET :tenantId/ledger`
-  - Catálogo: `GET packages` (tiers activos)
+  - Catálogo: `GET packages` (hoy vacío: producto retirado)
   - Super admin: `GET/PUT admin/config` (tiers editables + sender), `GET admin/balances` (cross-tenant), `POST admin/:tenantId/adjust` (ajuste manual firmado, motivo obligatorio)
-- **Compra**: `sms-checkout.*` en el módulo billing (preferencia MP, pago único)
+- **Compra**: `sms-checkout.*` en el módulo billing (neutralizado: responde `sms_checkout_retired` / `sms_product_retired`)
 - **Hardening**: kill-switch maestro del modelo reseller (apagado por defecto) + verificación de firma Twilio en el webhook
 
 ---
@@ -340,8 +342,8 @@ Centro de Operaciones para el super_admin. Liveness `GET /health` + `GET /health
 ## Vertical Adaptation System
 
 - **Module**: `apps/api/src/modules/verticals/`
-- **12 industries × 4 languages**: salud, moda_belleza, inmobiliaria, restaurantes, automotriz, turismo, education, finanzas, servicios_profesionales, retail, technology, otro
-- **Sub-types**: 3-5 per industry (e.g., salud → dental, medica_general, estetica, psicologia, farmacia)
+- **20 industries × 4 languages** (`VERTICAL_REGISTRY`; 18 selectable at sign-up, `event_planning` and `construccion` only have waitlist types). The list is in `docs/business-types-catalog.md` instead of being copied here.
+- **Business types (sub-types)**: 80 canonical profiles (72 selectable + 8 waitlist; 85 resolvable configurations counting 5 `legacy_only`), from 1 to 8 per industry (e.g., salud → dental, medica_general, dermatologia, psicologia, farmacia)
 - **Bootstrap on onboarding**: `bootstrapVertical(tenantId, industry, subType, lang)` seeds:
   1. 5-7 pipeline stages per industry
   2. Patches default AI agent (name, persona, language, forbidden topics, handoff triggers)

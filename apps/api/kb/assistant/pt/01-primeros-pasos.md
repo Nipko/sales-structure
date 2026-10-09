@@ -125,7 +125,7 @@ Em **Canais** você vê quais conexões pode ativar; **Plano e faturamento** mos
 Sim, quando sua conta tiver capacidade disponível. Cada conexão usa seu próprio agente; confira o limite atual em **Plano e faturamento**.
 
 **E o canal de SMS?**
-O SMS não é um canal de conversa: ele serve para enviar notificações aos seus clientes usando créditos (1 crédito = 1 segmento de mensagem).
+O SMS não existe mais no Parallly: é um produto descontinuado e nunca foi um canal de conversa. Os canais do agente são WhatsApp, Instagram, Messenger, Telegram e chat web.
 
 **O que é "o link do seu agente"?**
 É uma página pública que existe desde o dia 0, antes de conectar qualquer canal, onde qualquer pessoa pode conversar com seu agente igual a um cliente. Se o seu plano não inclui o chat web, ela serve para testá-lo e mostrá-lo a alguém: a plataforma paga as mensagens até um limite por conta, cada página tem um teto de mensagens por dia e a conversa não passa para uma pessoa. Ao chegar no teto do dia, o próprio chat avisa e continua no dia seguinte; se o limite da conta acabar, o chat avisa que volta a funcionar quando o negócio ativar o chat web. Com um plano que inclui o chat web, o mesmo link é um canal de verdade: sem teto diário, com a cota do seu plano e com passagem para a sua equipe. Em nenhum caso conta como canal conectado: o cartão **Primeiros passos** continua pedindo um canal de verdade (WhatsApp, Instagram, Messenger, Telegram ou o chat web do seu site).

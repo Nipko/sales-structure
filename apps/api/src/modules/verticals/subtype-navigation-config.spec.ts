@@ -18,6 +18,27 @@ function config(industry: string, subType: string) {
 }
 
 describe('subtype-aware navigation config', () => {
+    it('keeps the pets register named after the pets for a groomer, not after what it sells', () => {
+        for (const [industry, subType] of [['pet_services', 'peluqueria'], ['veterinaria', 'peluqueria_canina']] as const) {
+            const resolved = (service() as any).withSubtypeNavigation(config(industry, subType));
+            expect(resolved.sidebar.itemOrder).toContain('pets');
+            expect(resolved.sidebar.labelOverrides.pets?.es).not.toBe('Servicios');
+            expect(resolved.sidebar.labelOverrides.pets?.es ?? 'Mascotas').toBe('Mascotas');
+        }
+    });
+
+    it('keeps the photo sessions register out of the packages catalogue name for wedding photography', () => {
+        const resolved = (service() as any).withSubtypeNavigation(config('fotografia', 'bodas'));
+        expect(resolved.sidebar.itemOrder).toContain('photoSessions');
+        expect(resolved.sidebar.labelOverrides.photoSessions?.es).not.toBe('Paquetes');
+        expect(resolved.sidebar.labelOverrides.photoSessions?.es ?? 'Sesiones').toBe('Sesiones');
+    });
+
+    it('still renames the primary register for subtypes that were not excluded', () => {
+        const resolved = (service() as any).withSubtypeNavigation(config('turismo', 'hotel'));
+        expect(resolved.sidebar.labelOverrides.properties.es).toBe('Habitaciones');
+    });
+
     it('puts the hotel booking register before its catalogue without renaming the register as rooms', () => {
         const base = config('turismo', 'hotel');
         base.sidebar.labelOverrides.stays = {

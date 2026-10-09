@@ -3,7 +3,7 @@ id: facturacion-planes
 title: "Planos, faturamento e dados fiscais"
 routes: ["/admin/settings/billing", "/admin/settings/fiscal"]
 roles: ["tenant_admin"]
-keywords: ["planos", "precos", "faturamento", "pagamento", "metodo de pagamento", "mudar de plano", "teste", "ciclo", "fatura", "historico de pagamentos", "dados fiscais", "limite do plano", "creditos sms", "cupom", "cancelar assinatura", "meta cobra a parte", "o plano inclui whatsapp", "cobranca do whatsapp", "dois pagamentos", "fatura da meta"]
+keywords: ["planos", "precos", "faturamento", "pagamento", "metodo de pagamento", "mudar de plano", "teste", "ciclo", "fatura", "historico de pagamentos", "dados fiscais", "limite do plano", "cupom", "cancelar assinatura", "meta cobra a parte", "o plano inclui whatsapp", "cobranca do whatsapp", "dois pagamentos", "fatura da meta"]
 ---
 
 # Planos, faturamento e dados fiscais
@@ -18,7 +18,7 @@ Conforme a configuração da conta, a página pode mostrar:
 - preços, moeda, ciclo, renovação e condições de teste;
 - opções para mudar de plano ou ciclo;
 - método de pagamento, estado das cobranças e histórico;
-- cupons, créditos SMS ou documentos de faturamento.
+- cupons ou documentos de faturamento.
 
 Um recurso existente na plataforma não está necessariamente ativo para todas as contas. Se um bloco ou botão não aparecer, não presuma que o fluxo está disponível: siga a mensagem da tela ou procure o suporte.
 
@@ -30,15 +30,17 @@ Informe dados de pagamento apenas no fluxo seguro aberto pela Parallly. O proved
 
 ## Histórico, faturas e dados fiscais
 
-Quando o histórico estiver habilitado, cada movimento mostra seu status e oferece download apenas quando existe um documento. Em **Configurações → Dados fiscais**, preencha os campos solicitados para a conta. Emissão eletrônica, formatos e validade fiscal dependem do país e de uma integração habilitada; salvar os dados fiscais, por si só, não garante a emissão de um documento.
+Quando o histórico estiver habilitado, cada movimento mostra seu status e oferece download apenas quando existe um documento. Em **Configurações → Faturação eletrônica**, preencha os campos solicitados para a conta. Emissão eletrônica, formatos e validade fiscal dependem do país e de uma integração habilitada; salvar os dados fiscais, por si só, não garante a emissão de um documento.
 
-## Pausa, cancelamento, cupons e créditos SMS
+## Pausa, cancelamento e cupons
 
-Essas ações só estão disponíveis quando aparecem na página. Antes de pausar ou cancelar, leia a data de efeito, o acesso mantido e as condições de reativação. Se cupons ou compra de créditos SMS estiverem habilitados, a interface mostra validade, preço, meio de pagamento e resultado. SMS é uma notificação de saída e pode estar desabilitado para uma conta.
+Essas ações só estão disponíveis quando aparecem na página. Antes de pausar ou cancelar, leia a data de efeito, o acesso mantido e as condições de reativação. Se houver cupons, a interface mostra validade, preço, meio de pagamento e resultado. O SMS é um produto descontinuado: não há créditos para comprar nem saldo para recarregar (veja **SMS (produto descontinuado)**).
 
 ## Limites e uso
 
 As barras de uso indicam o período e a capacidade vigente. Ao atingir um limite, o comportamento depende do recurso: a página explica se é preciso liberar espaço, aguardar o próximo período ou escolher outra opção. Não use cotas copiadas de outra conta.
+
+As respostas incluídas estão sujeitas ao limite mensal de gasto de IA do plano. Conversas longas, ferramentas e modelos avançados consomem mais orçamento: a IA pode pausar antes de esgotar a quantidade de respostas. As mensagens do WhatsApp são pagas separadamente à Meta.
 
 ## O que a Meta cobra à parte pelo WhatsApp
 
@@ -62,9 +64,7 @@ Depende da opção disponível. O cadastro e **Plano e faturamento** mostram o r
 Não. São dois pagamentos separados: o plano é o software, e as mensagens entregues pelo WhatsApp são pagas pelo seu negócio à Meta com a forma de pagamento cadastrada na sua conta do WhatsApp Business.
 
 **Como obtenho uma fatura?**
-Confira o histórico e **Dados fiscais**. Se não aparecer download ou status de emissão, procure o suporte; não presuma que uma integração fiscal está ativa.
+Confira o histórico e **Configurações → Faturação eletrônica**. Se não aparecer download ou status de emissão, procure o suporte; não presuma que uma integração fiscal está ativa.
 
 Precisa de ajuda com uma operação? Escreva para https://parallly-chat.cloud/support e inclua a mensagem de status, sem compartilhar dados sensíveis de pagamento.
 
-
-As respostas incluídas estão sujeitas ao limite mensal de gasto de IA do plano. Conversas longas, ferramentas e modelos avançados consomem mais orçamento: a IA pode pausar antes de esgotar a quantidade de respostas. As mensagens do WhatsApp são pagas separadamente à Meta.

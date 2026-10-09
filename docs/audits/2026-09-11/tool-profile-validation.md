@@ -1,5 +1,7 @@
 # Verificación focalizada de la auditoría de herramientas
 
+> **Documento histórico (2026-09-11) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 Fecha: 2026-09-11. Workspace compartido con otra ejecución de Claude. Los comandos
 se ejecutaron desde la raíz de Sales_Structure; no se hicieron llamadas reales a
 proveedores/modelos, push ni despliegue.

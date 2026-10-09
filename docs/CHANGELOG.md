@@ -1,5 +1,7 @@
 # 📋 Changelog — Parallext Engine
 
+> **Congelado desde el 13-ago-2026 (nota del 2026-10-08).** Este archivo no registra nada posterior: ni el retiro de Mercado Pago, el motor de cobros Wompi, el programa de verticales (24–25 ago), el onboarding guiado y las academias (17-sep), el cobro de Meta del 1-oct, las comunicaciones de plataforma (30-sep) ni los cambios de octubre. **Para lo posterior, la fuente es el historial de PRs fusionados a `main` y las Releases de GitHub** (`gh pr list --state merged`, `gh release list`). Su numeración (`v6.7.0`) es histórica y no corresponde a la versión del repositorio (`package.json` y `.release-please-manifest.json` dicen `4.0.0`; el único tag es `v4.0.0`). `release.yml` (release-please) está configurado para mantener un `CHANGELOG.md` en la raíz del repositorio que hoy no existe; mientras no se cree, el changelog automático no tiene dónde escribir.
+
 > Registro de todos los cambios significativos del proyecto.
 > **Última actualización documental: 2026-08-13.** `v6.7.0` es el último release
 > histórico enumerado abajo; no debe interpretarse como la versión runtime vigente.

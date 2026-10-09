@@ -1,5 +1,7 @@
 # Reanudación de aprobaciones con origen y propietario verificados
 
+> **Documento histórico (2026-09-07) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 Implementación: `9e5016f8`. La conversación conserva el primer agente para atribución histórica, pero una propuesta nueva puede pertenecer al agente que atiende actualmente su conexión. La reanudación ahora usa el selector canónico de producción: conexión exacta, tipo de canal y agente predeterminado, rechazando empates. Compara esa selección con el scope privado original del ledger y con la revisión de borrador, cuando existe. No reconstruye autoridad desde argumentos del modelo ni actualiza una propuesta antigua con una versión nueva.
 
 Se rechazan propuestas sin procedencia válida. El modo legacy requiere scope explícito y sólo existe mientras no haya agentes durables, incluso inactivos. Una operación ya finalizada devuelve su recibo antes de resolver otra vez el agente; no vuelve a ejecutarse por un cambio de routing.

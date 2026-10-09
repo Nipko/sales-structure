@@ -1,5 +1,7 @@
 # Qué hay adentro de este PR, y qué pasa con cada parte al desplegar
 
+> **Documento histórico (2026-09-10) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 Derivado del diff contra `origin/main`, no escrito de memoria. Los números salen
 de `git diff --numstat origin/main...HEAD` y las clasificaciones de leer los
 archivos que el diff nombra. Cuando algo no se puede afirmar desde el código,

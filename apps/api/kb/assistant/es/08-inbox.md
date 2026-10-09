@@ -110,6 +110,6 @@ Sí. Configura habilidades en los perfiles del equipo (menú **Usuarios**) para 
 No se pierde: la conversación reaparece automáticamente en la fecha que elegiste y el historial completo se conserva.
 
 **¿Llegan mensajes de SMS a esta bandeja?**
-No. La bandeja recibe WhatsApp, Instagram, Messenger, Telegram y el chat de tu sitio web. Los SMS solo salen como notificación de una vía a tus clientes, o como aviso a tu equipo; no abren una conversación aquí.
+No. La bandeja recibe WhatsApp, Instagram, Messenger, Telegram y el chat de tu sitio web. SMS es un producto retirado y no abre conversaciones aquí.
 
 ¿Necesitas más ayuda? Escríbenos en https://parallly-chat.cloud/support

@@ -3,27 +3,37 @@
 > Version 8.0 | July 23, 2026
 > Updates: Add this document whenever DB schema changes are made.
 
+> **DESACTUALIZADO desde julio de 2026 (marcado el 2026-10-08).** Este diccionario describe 33 modelos Prisma y unas 154 tablas por tenant; al 2026-10-08 `apps/api/prisma/schema.prisma` tiene **49 modelos** y `apps/api/prisma/tenant-schema.sql` define **246 sentencias `CREATE TABLE`** (241 tablas distintas), además de tablas creadas en runtime por algunos servicios. **La fuente de verdad es el código: `schema.prisma` + las migraciones de `apps/api/prisma/migrations/` + `tenant-schema.sql`.** No hay generador DBML en el repositorio (ni `prisma-dbml-generator`), así que este documento y `database-schema.dbml` no se regeneran solos; lo de abajo es la lista de lo que **no está descrito** aquí, obtenida cotejando `CREATE TABLE` / `model` contra los nombres de tabla del DBML (el detalle exacto de columnas de cada una está en su migración).
+>
+> **Modelos Prisma (schema público) sin describir (16):** billing_charge_attempts, billing_credit_ledger, billing_payment_sources, billing_provider_effects, billing_refund_operations, chat_identity_challenges, customer_portal_access_challenges, integration_work_tenants, llm_spend_reservations, meta_compliance_requests, onboarding_events, platform_communication_recipients, platform_communications, platform_notification_outbox, regional_identity_reviews, tenant_payment_provider_configs.
+>
+> **Tablas por tenant (`tenant-schema.sql`) sin describir (85):** agent_certification_cases, agent_certification_runs, agent_certification_subjects, agent_config_proposals, agent_configuration_commands, agent_configuration_draft_discards, agent_configuration_drafts, agent_configuration_revisions, agent_content_proposals, agent_dispatch_outbox, agent_dispatch_outbox_sources, agent_dispatch_resolutions, agent_handoff_effects, agent_handoff_receipts, agent_mission_instances, agent_mission_steps, agent_mission_turns, agent_publication_events, agent_publication_heads, agent_release_candidates, agent_release_evaluations, agent_release_reviews, agent_turn_ledger, benchmark_attempts, benchmark_reviews, benchmark_runs, calendar_sync_outbox, commitment_proposals, crm_note_receipts, customer_memory_erasure, customer_vehicles, eval_autorun_budget, eval_autorun_requests, gbp_reply_effects, integration_outbox, integration_reconciliations, integration_resource_bindings, integration_webhook_inbox, knowledge_conflict_cases, knowledge_conflict_decisions, knowledge_conflict_scans, learning_evaluation_budget, learning_examples, learning_releases, learning_reviews, learning_sources, media_ai_consent_challenges, meta_agent_thread_control, money_lineage, operational_locations, operational_notice_outbox, operational_notice_reviews, operational_resources, outbound_payloads, payment_operation_ledger, pet_command_receipts, pipelines, quality_regression_cases, quality_regression_reviews, quality_regression_revisions, quality_sampling_items, quality_sampling_runs, repair_order_events, repair_orders, resource_rental_damages, resource_rental_events, resource_rental_inspections, resource_rentals, staff_operational_bindings, staff_resource_assignments, tenant_payment_attempts, tenant_payment_intents, tool_approval_effects, tool_approval_outbox, tool_approval_tickets, tool_execution_ledger, vertical_migration_archives, vertical_migration_outbox, vertical_migrations, whatsapp_receipt_inbox, whatsapp_spend_allocations, whatsapp_spend_counters, whatsapp_spend_reservations, widget_agent_replies, widget_agent_reply_sources.
+>
+> **Tablas creadas en runtime (`CREATE TABLE IF NOT EXISTS` en servicios) sin describir (10):** __eval_knowledge_capture, __eval_knowledge_usages, __eval_namespace, email_channel_configs, push_subscriptions, webhook_delivery_outbox, webhook_subscriptions, widget_configs, widget_sessions, widget_triggers.
+>
+> Cuando se regenere este documento, el procedimiento es: recorrer `model` y `@@map` de `schema.prisma`, los `CREATE TABLE` de `tenant-schema.sql` y de los servicios con DDL perezoso, y cotejar contra los nombres de tabla de esta página.
+
 ---
 
 ## Schema Architecture
 
 ```
 parallext_engine (database)
-├── public                    ← Global tables (33 modelos Prisma + tablas lazy raw SQL)
+├── public                    ← Global tables (49 modelos Prisma al 2026-10-08, este doc describe 33 + tablas lazy raw SQL)
 ├── tenant_{slug}             ← Per-tenant tables (raw SQL, tenant-schema.sql)
 ├── tenant_{slug_2}           ← Another tenant
 └── ...
 ```
 
 **When tables are created:**
-- **Public schema (Prisma)**: Prisma migrations (`npx prisma migrate deploy`) — 33 modelos en `schema.prisma`
+- **Public schema (Prisma)**: Prisma migrations (`npx prisma migrate deploy`) — 49 modelos en `schema.prisma` (este diccionario describe 33; ver el aviso del inicio)
 - **Public schema (lazy raw SQL)**: Algunos servicios crean su tabla `public.<t>` en runtime con `CREATE TABLE IF NOT EXISTS` (no están en Prisma). Ver "Tablas public por servicio" abajo
 - **Tenant schema**: On tenant signup (`auth.service.ts:createTenantSchema`) applies `tenant-schema.sql`
 - **Existing tenants**: On deploy, `deploy.yml` applies `tenant-schema.sql` to all active tenants (IF NOT EXISTS)
 
 ---
 
-## PUBLIC SCHEMA (33 modelos Prisma + tablas lazy por servicio)
+## PUBLIC SCHEMA (33 de los 49 modelos Prisma + tablas lazy por servicio)
 
 Global (cross-tenant) tables. 33 modelos gestionados por Prisma migrations (`apps/api/prisma/schema.prisma`), agrupados por dominio. `platform_settings` está modelado en Prisma pero se lee/escribe vía raw SQL. Aparte, algunos servicios crean tablas `public.*` en runtime vía raw SQL (ver la última subsección).
 

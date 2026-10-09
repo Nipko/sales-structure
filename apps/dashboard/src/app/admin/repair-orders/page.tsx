@@ -18,6 +18,7 @@ import {
   X,
 } from "lucide-react";
 import { useTenant } from "@/contexts/TenantContext";
+import { HelpPanel } from "@/components/ui/help-panel";
 import { useRole } from "@/hooks/useRole";
 import { useOperatingCurrency } from "@/hooks/useOperatingCurrency";
 import { usePlanLimits } from "@/hooks/usePlanLimits";
@@ -78,6 +79,7 @@ function StatusBadge({ status, label }: { status: RepairOrderStatus; label: stri
 
 export default function RepairOrdersPage() {
   const t = useTranslations("repairOrders");
+  const tHelp = useTranslations("help");
   const locale = useLocale();
   const { activeTenantId } = useTenant();
   const { canHandleConversations } = useRole();
@@ -216,6 +218,13 @@ export default function RepairOrdersPage() {
           )}
         </div>
       </div>
+
+      <HelpPanel
+        title={tHelp("repairOrders.title")}
+        description={tHelp("repairOrders.description")}
+        tips={tHelp.raw("repairOrders.tips") as string[]}
+        mediaKey="repairOrders"
+      />
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard label={t("metrics.open")} value={summary.open} />

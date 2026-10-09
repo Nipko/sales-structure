@@ -8,7 +8,28 @@ keywords: ["menu", "navigation", "sidebar", "sections", "collapse", "expand", "f
 
 # Navigation, menu, and Settings
 
-The sidebar organizes Parallly by purpose: **Essentials**, **AI & Growth**, **Operations**, **Insights**, and **Administration**. **Settings** stays at the bottom so it always has a stable location. Visible options can vary by role, plan, and industry.
+The sidebar organizes Parallly by purpose into these sections: **Essentials**, **Customers**, **Commercial**, **Daily work**, **Catalogue & resources**, **AI & growth**, **Insights**, and **Administration**. **Settings** stays at the bottom so it always has a stable location. Visible options can vary by role, plan, and business type. There is no section called "Operations" in the business sidebar.
+
+## What you find in each section
+
+- **Essentials** — Home and Conversations (the inbox).
+- **Customers** — CRM (your contacts) and Organizations.
+- **Commercial** — the Sales Funnel and Offers.
+- **Daily work** — the records you handle every day: Appointments and, depending on your business type, stays, orders, workshop orders, cases, classes, photo sessions, memberships and similar.
+- **Catalogue & resources** — what configures those records (properties, listings, vehicles, menu, courses, packages and services, inventory…). This is work for administrators and supervisors.
+- **AI & growth** — AI Agent, Procedures, Knowledge Base, Automation and Campaigns.
+- **Insights** — Analytics, Sales, Agent health and Agent performance.
+- **Administration** — Channels, Users, Compliance, Billing and Improvements.
+
+## Some option names change with your business type
+
+Parallly adapts certain menu labels to the language of your trade. The screen is the same; only the name changes:
+
+- The **Sales Funnel** may be called **Opportunities**, **Deals**, **Patient Journey** or **Sales**.
+- **Appointments** may appear as **Schedule** or **Bookings**, and in some trades it does not appear because that business does not book appointments.
+- Screens specific to a trade (Workshop orders, Cases, Tour bookings, Packages & services, Vehicles…) appear only when your business type uses them.
+
+If you cannot find something by its generic name, search by what it does with the command search (`Ctrl+K`) or open **Daily work**.
 
 ## Move around without losing context
 
@@ -17,7 +38,7 @@ The sidebar organizes Parallly by purpose: **Essentials**, **AI & Growth**, **Op
 - Favorite frequently used pages; recent items help you return to your previous work.
 - Inside **Settings**, use the back control or visible path to return to the settings index. The browser Back button should also return to the previous screen, not the dashboard.
 
-If an option is missing, first check your role, business vertical, and the features enabled under **Settings → Plan & Billing**. Do not change a setting only to make it appear without confirming with an administrator.
+If an option is missing, first check your role, business type, and the features enabled under **Administration → Billing** (the screen is titled **Plan & billing**). Do not change a setting only to make it appear without confirming with an administrator.
 
 ## Settings: "Essentials for your agent"
 

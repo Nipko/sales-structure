@@ -17,6 +17,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { useTenant } from "@/contexts/TenantContext";
+import { HelpPanel } from "@/components/ui/help-panel";
 import { api } from "@/lib/api";
 import {
     BedDouble, RefreshCw, Loader2, Search, CalendarDays, User, Home,
@@ -72,6 +73,7 @@ export default function StaysPage() {
     const operatingCurrency = useOperatingCurrency();
     const t = useTranslations("stays");
     const tc = useTranslations("common");
+    const tHelp = useTranslations("help");
     // Fechas y moneda siguen el idioma elegido, no un `es-CO` fijo: la app
     // corre en cuatro idiomas y una fecha en formato ajeno se lee mal.
     const locale = useLocale();
@@ -169,6 +171,13 @@ export default function StaysPage() {
                     </button>
                 </div>
             </div>
+
+            <HelpPanel
+                title={tHelp("stays.title")}
+                description={tHelp("stays.description")}
+                tips={tHelp.raw("stays.tips") as string[]}
+                mediaKey="stays"
+            />
 
             <div className="flex flex-wrap items-center gap-2">
                 <div className="relative flex-1 min-w-[220px]">

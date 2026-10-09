@@ -15,7 +15,7 @@ Las industrias con oferta actual son: salud, moda y belleza (en el alta se llama
 ## Tipos de negocio que no puedes elegir hoy
 
 - **En lista de espera (8)**: Planeación de bodas (planeación de eventos), Contratista general (construcción), Promotora inmobiliaria, Pagos y recaudos (finanzas), Marketplace / E-commerce (retail), Soporte TI y MSP (tecnología), Aseguradora y Especialista en salud (seguros). Existen como tipos, pero su operación completa sigue cerrada y el alta no los ofrece.
-- **Solo cuentas existentes (5)**: Construcción y proyectos (inmobiliaria), Fintech (finanzas), Consultoría TI (tecnología), Peluquería canina / felina de veterinaria (hoy es Servicios para mascotas → Peluquería) y Wedding planner (fotografía). Una cuenta que ya los tenía sigue funcionando; una cuenta nueva no puede elegirlos.
+- **Solo cuentas existentes (5)**: Construcción y proyectos (inmobiliaria), Fintech (finanzas), Consultoría TI (tecnología), Peluquería canina / felina de veterinaria (hoy es Servicios para mascotas → Peluquería) y Wedding planner (fotografía). Una cuenta que ya los tenía sigue funcionando; una cuenta nueva no puede elegirlos. Además, las cuentas antiguas de boutique y de tienda para mascotas ahora se muestran como Retail → Moda y ropa, y las de delivery como Restaurantes → Comida rápida.
 
 ## Dónde aparecen los módulos
 
@@ -44,7 +44,7 @@ El nombre del módulo cambia según la industria y el tipo de negocio. El módul
 - **Seguros**: **Seguros** (en el menú, «Pólizas») en broker, vida y auto.
 - **Servicios del hogar**: **Solicitudes** (en el menú, «Servicios») y **Paquetes y servicios**.
 - **Servicios para mascotas**: peluquería, paseos y adiestramiento usan la agenda de reservas y **Mascotas**; guardería y hotel canino usan **Alquileres y estadías** (en el menú, «Estadías»), **Mascotas** y **Paquetes y servicios**.
-- **Fotografía**: **Sesiones fotográficas** (en el menú, «Sesiones» o «Paquetes») y **Paquetes y servicios**.
+- **Fotografía**: **Sesiones fotográficas** (en el menú, «Sesiones»; en fotografía de bodas, «Sesiones fotográficas») y **Paquetes y servicios**.
 - **Otros**: **Pedidos** e **Inventario**.
 
 **Paquetes y servicios** es el catálogo de lo que el negocio vende con su duración, precio y capacidad, para las actividades que no agendan por franjas. Las pantallas de **Estadías**, **Reservas de tours**, **Órdenes de taller** y **Casos** son registros de trabajo diario: ahí operas las estadías, las salidas de tours, los trabajos del taller y los expedientes.

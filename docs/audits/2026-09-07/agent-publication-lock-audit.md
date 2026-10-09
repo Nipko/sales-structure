@@ -1,5 +1,7 @@
 # Operational version and effect boundary audit
 
+> **Documento histórico (2026-09-07) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 Date: 2026-09-07. Read-only production-code inspection; the companion PostgreSQL probe uses only a disposable schema and synthetic rows. This is an implementation review, not a claim that publication is safe to expose.
 
 ## Conclusion

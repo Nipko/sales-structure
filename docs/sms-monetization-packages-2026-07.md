@@ -1,5 +1,7 @@
 # SMS — Monetización por paquetes (reseller) — Jul 2026
 
+> **Documento histórico (jul-2026) — el producto SMS fue RETIRADO (ago-2026): `sms.platform_enabled` apagado por defecto, checkout y notificaciones responden `sms_product_retired`. No describe nada vendible hoy.**
+
 > Estado: **IMPLEMENTADO (F0–F3)**. Los tenants **compran paquetes de SMS** para enviar **notificaciones
 > one-way a sus clientes** ("avisar de cualquier cosa"). La plataforma provee el envío (nuestro Twilio) y
 > **cobra por consumo**. Modelo **reseller** (sender de plataforma), precios editables en /admin. El

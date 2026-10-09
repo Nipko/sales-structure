@@ -33,7 +33,7 @@ Customer (WhatsApp/IG/Messenger/Telegram/Web Chat) → official channel APIs / w
 
 ```
 apps/
-  api/          — NestJS 10, port 3000. Core business logic, 88 module declaration files
+  api/          — NestJS 10, port 3000. Core business logic, 101 `*.module.ts` files (snapshot 2026-10-08; recompute with `find apps/api/src -name "*.module.ts" | wc -l`)
   dashboard/    — Next.js 16, port 3001. Admin panel (50+ pages), React 19, Tailwind + shadcn/ui + recharts
   whatsapp/     — NestJS 10, port 3002. Embedded Signup v4 + Meta webhook router
   landing/      — Next.js static export, port 80. Marketing landing page (parallly-chat.cloud), 4-language i18n
@@ -54,7 +54,7 @@ docs/           — Architecture specs, visual guide, logo, API reference, chang
 - **Database queries**: `prisma.$queryRawUnsafe(sql, ...params)` — ALWAYS use `::uuid` casts. NO type arguments on `$queryRawUnsafe`
 - **Global tables**: Prisma client directly (`prisma.tenant.findUnique(...)`)
 - **Raw SQL column names**: Use snake_case (`is_active`, not `"isActive"`) — Prisma `@map` only applies to Prisma client
-- **Auth**: JWT with refresh token rotation (Redis-backed). 4 roles: super_admin, tenant_admin, tenant_supervisor, tenant_agent. Google OAuth, email 2FA, password reset. Session timeout 60min with warning modal
+- **Auth**: JWT with refresh token rotation (Redis-backed). 5 roles: super_admin, tenant_admin, tenant_supervisor, tenant_agent, tenant_viewer. Google OAuth, email 2FA, password reset. Session timeout 60min with warning modal
 - **Database pooling**: PgBouncer (transaction mode) between apps and PostgreSQL. Use `DIRECT_DATABASE_URL` for Prisma migrations. PostgreSQL tuned: `max_locks_per_transaction=256`, `shared_buffers=256MB`. Multi-statement SQL must be split into individual queries for PgBouncer compatibility
 - **Error tracking**: Sentry (@sentry/nestjs + profiling). `instrument.ts` must load before all modules
 - **Guards**: `@UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)` on protected endpoints
@@ -72,7 +72,7 @@ docs/           — Architecture specs, visual guide, logo, API reference, chang
 - **i18n**: Every page edit/creation MUST include i18n updates in all 4 JSON files (es/en/pt/fr)
 - **Multi-agent**: Each tenant can have N agents according to runtime plan capacity. One agent per operational connection. Pipeline uses `getPersonaForChannel()` for routing.
 - **Subscription plans**: 5 plan families: emprendedor, starter, pro, enterprise, custom. Runtime `billing_plans` rows are authoritative for prices, quotas, and availability.
-- **Channels**: Adapter pattern via `IChannelAdapter`. Certified self-service conversational surfaces include WhatsApp, Instagram, Messenger, Telegram, and Web Chat. Email currently exposes an internal inbound adapter only; `/admin/channels/email` has no matching tenant config handler and must not be treated as an operational self-service channel. SMS is a one-way reseller-credit notification product, not a conversational channel. One AI agent per operational connection (hard rule).
+- **Channels**: Adapter pattern via `IChannelAdapter`. Certified self-service conversational surfaces include WhatsApp, Instagram, Messenger, Telegram, and Web Chat. Email currently exposes an internal inbound adapter only; `/admin/channels/email` has redirected to `/admin/channels` since 2026-08-25 and must not be treated as an operational self-service channel. SMS is a **retired product** (`sms-kill-switch.service.ts`, `sms_product_retired`): no credits, checkout, notifications or campaigns; it was never a conversational channel. One AI agent per operational connection (hard rule).
 - **Conversation mutex**: Redis SETNX lock per conversation ID (`lock:conv:{conversationId}`, 30s TTL) prevents race conditions when messages arrive simultaneously
 - **Booking state**: Redis-backed (`booking:{conversationId}`, 1h TTL) as primary, PostgreSQL as backup. Loaded from Redis first. In directive mode, only last 4 messages sent to LLM (not full history) to prevent LLM from ignoring directives
 - **Booking engine i18n**: All 21 directive strings in 4 languages (es/en/pt/fr). Language auto-detected from customer message. No LLM translation needed
@@ -104,13 +104,13 @@ Any agent can be tested live from the dashboard: `/admin/agent/[id]/test`. The e
 
 `LanguageDetectorService` heuristically detects es/en/pt/fr from the inbound message. Default is the configured agent language; auto-override when the customer switches languages mid-conversation. Fed into `<turn><language>` so the LLM answers in the customer's language.
 
-## API modules (88 module declaration files; use `docs/modules-reference.md` for the current inventory)
+## API modules (101 `*.module.ts` files at 2026-10-08; use `docs/modules-reference.md` for the inventory and recompute the number with the command above)
 
 | Category | Modules |
 |----------|---------|
 | **Infrastructure** | prisma, redis, health, throttle, internal |
 | **Auth & Tenants** | auth (JWT + refresh rotation + Google OAuth + 2FA + password reset + session management + impersonation), tenants, settings |
-| **Message Pipeline** | channels (WhatsApp/IG/Messenger/Telegram adapters, internal Email inbound adapter, legacy SMS adapter + IG OAuth + Messenger FB SDK + IG token refresh cron), conversations, whatsapp, handoff, agent-console |
+| **Message Pipeline** | channels (WhatsApp/IG/Messenger/Telegram adapters, internal Email inbound adapter, legacy SMS adapter (retired product) + IG OAuth + Messenger FB SDK + IG token refresh cron), conversations, whatsapp, handoff, agent-console |
 | **AI & Config** | ai (router + 5 providers), persona (multi-agent CRUD, templates, channel assignment), knowledge, copilot |
 | **CRM & Sales** | crm (leads, contacts, opportunities, custom-attrs, segments, import/export, notes, tasks, activity, scoring, analytics, insights, deal-approval, bulk-update, pipeline-stages), pipeline, catalog |
 | **Automation** | automation (rules engine, listener, jobs processor, nurturing, action executor) |
@@ -128,7 +128,7 @@ Any agent can be tested live from the dashboard: `/admin/agent/[id]/test`. The e
 WhatsappModule → ConversationsModule → [PersonaModule, AIModule, ChannelsModule, HandoffModule, IdentityModule]
                                                                       ↓ (EventEmitter)
                                                               AgentConsoleModule
-ChannelsModule provides: ChannelGatewayService, ChannelTokenService, OutboundQueueService, InstagramTokenRefreshService, conversational adapters (WA/IG/Messenger/Telegram) plus internal Email inbound and legacy one-way SMS support
+ChannelsModule provides: ChannelGatewayService, ChannelTokenService, OutboundQueueService, InstagramTokenRefreshService, conversational adapters (WA/IG/Messenger/Telegram) plus internal Email inbound and the legacy SMS adapter (the SMS product is retired and switched off)
 ThrottleModule: @Global — TenantThrottleService available everywhere
 AnalyticsModule provides: AnalyticsService, DashboardAnalyticsService, AlertsService, ScheduledReportsService, BIApiController
 BillingModule provides: BillingService, WompiAdapter, payment-source/internal renewal engine, ReconciliationProcessor, BillingEmailService
@@ -144,7 +144,7 @@ OffboardingModule provides: OffboardingService, OffboardingCronService (depends 
 | Add LLM provider | `ai/providers/*.provider.ts`, `ai/router/llm-router.service.ts` |
 | Agent persona config | `persona/persona.service.ts`, `persona/persona.controller.ts` |
 | Channel adapters | `channels/{channel}/*.adapter.ts`, `channels/channel-gateway.service.ts` |
-| Channel management | `channels/channel-management.controller.ts` (connect IG/Messenger/Telegram/SMS) |
+| Channel management | `channels/channel-management.controller.ts` (connect IG/Messenger/Telegram; the SMS routes answer `sms_product_retired`) |
 | Webhook validation | `channels/meta-signature.util.ts` (shared HMAC validator) |
 | Handoff logic | `handoff/handoff.service.ts` |
 | Agent console | `agent-console/agent-console.gateway.ts` (WebSocket), `.service.ts` |
@@ -189,7 +189,7 @@ OffboardingModule provides: OffboardingService, OffboardingCronService (depends 
 | Agent editor | `dashboard/src/app/admin/agent/[agentId]/page.tsx` |
 | Agent list | `dashboard/src/app/admin/agent/page.tsx` |
 | Setup banner | `dashboard/src/components/SetupBanner.tsx` |
-| SMS adapter | `channels/sms/sms.adapter.ts` |
+| SMS adapter (legacy; product retired) | `channels/sms/sms.adapter.ts` |
 | IG token refresh | `channels/instagram-token-refresh.service.ts` (daily @6AM, 30-day pre-expiry) |
 | Offboarding | `offboarding/offboarding.service.ts` (7-step pipeline: channels, sessions, queues, deactivate, cache, audit, event) |
 | Offboarding cron | `offboarding/offboarding-cron.service.ts` (grace enforcer @3AM, archive cleaner @4AM) |
@@ -203,10 +203,9 @@ OffboardingModule provides: OffboardingService, OffboardingCronService (depends 
 | Impersonation banner | `dashboard/src/components/ImpersonationBanner.tsx` |
 | Financials dashboard | `dashboard/src/app/admin/financials/page.tsx` (5 tabs) |
 | Billing settings | `dashboard/src/app/admin/settings/billing/page.tsx` |
-| Booking engine | `appointments/booking-engine.service.ts` (deterministic flow, Redis state) |
-| Booking i18n | `appointments/booking-messages.ts` (21 directives x 4 languages) |
+| Booking engine | `conversations/booking-engine.service.ts` (deterministic flow, Redis state) |
 | Calendar integrations | `appointments/calendar-integration.service.ts` (Google/Microsoft sync) |
-| Intent interpreter | `appointments/intent-interpreter.service.ts` (NLP for booking intents) |
+| Intent interpreter | `conversations/intent-interpreter.service.ts` (NLP for booking intents) |
 | **CRM Analytics** | `crm/services/crm-analytics/crm-analytics.service.ts` (overview, funnel, velocity, win-loss, leaderboard, sources) |
 | **CRM AI Insights** | `crm/services/crm-insights/crm-insights.service.ts` (per-lead AI insight) |
 | **Phone normalization** | `common/utils/phone.util.ts` (E.164 normalization for LatAm) |
@@ -217,11 +216,11 @@ OffboardingModule provides: OffboardingService, OffboardingCronService (depends 
 | **Prompt assembler** | `conversations/prompt-assembler.service.ts` (3-layer + safety guardrails) |
 | **Identity manual merge** | `identity/identity.controller.ts` (POST manual-merge) |
 | **Pipeline stages** | `crm/crm.controller.ts` (CRUD pipeline-stages endpoints) |
-| **Vertical definitions** | `verticals/vertical-definitions.ts` plus the shared manifest/policy (18 canonical verticals, 4 languages) |
+| **Vertical definitions** | `verticals/vertical-definitions.ts` plus the shared manifest/policy (20 industries in `VERTICAL_REGISTRY`, 18 selectable; 80 canonical business types, 4 languages; see `docs/business-types-catalog.md`) |
 | **Vertical service** | `verticals/verticals.service.ts` (bootstrapVertical, getVerticalConfig) |
 | **Vertical terms hook** | `dashboard/src/hooks/useVerticalTerms.ts` |
 
-## Dashboard pages (143 filesystem routes; 130 under `/admin` and 13 outside it)
+## Dashboard pages (163 `page.tsx` files at 2026-10-08: 149 under `/admin` and 14 outside it; recompute with `find apps/dashboard/src/app -name page.tsx | wc -l`)
 
 | Section | Pages |
 |---------|-------|
@@ -232,7 +231,7 @@ OffboardingModule provides: OffboardingService, OffboardingCronService (depends 
 | **AI** | Agent List (multi-agent management, templates), Agent Editor (/agent/[agentId] — hub card grid + channel assignment + custom prompt mode), AI Settings |
 | **Automation** | Rules (4-step wizard), Settings |
 | **Analytics** | Analytics V2 (8 tabs: Overview/AI & Bot/Automation/Campaigns/Channels/CSAT/Anomalies/Cohorts), Agent Performance (legacy 4 tabs) |
-| **Channels** | Overview, WhatsApp Setup, Instagram Setup (OAuth popup + callback), Messenger Setup (FB SDK Login), Telegram Setup, SMS/Twilio Setup |
+| **Channels** | Overview, WhatsApp Setup, Instagram Setup (OAuth popup + callback), Messenger Setup (FB SDK Login), Telegram Setup (SMS/Twilio setup was retired with the SMS product; Email redirects to the channels overview) |
 | **Identity** | Merge Suggestions (approve/reject), Manual Merge (cross-channel contacts) |
 | **Settings** | General, Custom Attributes, Macros, Pre-Chat Forms, Media (image bank + logo + tags), Email Templates (editor + preview), Change Password, **Alerts & Reports**, **Billing** (plan, countdown, actions, payment history) |
 | **Scheduling** | Appointments (week/day calendar, agenda, services + staff + modality, config + multi-calendar, analytics), Public Booking (/book/:tenantSlug) |
@@ -243,11 +242,12 @@ OffboardingModule provides: OffboardingService, OffboardingCronService (depends 
 
 ## Analytics System (Comprehensive)
 
-### Dashboard Analytics Endpoints (12 total under /dashboard-analytics/)
+### Dashboard Analytics Endpoints (14 routes under /dashboard-analytics/)
 | Endpoint | Purpose |
 |----------|---------|
 | `GET overview-kpis/:tenantId` | 6 KPIs with automatic period comparison (% change) |
 | `GET conversations-volume/:tenantId` | Daily volume stacked by channel |
+| `GET channel-accounts/:tenantId` | Metrics attributed to each operational channel account |
 | `GET response-times/:tenantId` | Median + P90 first response and resolution times |
 | `GET ai-metrics/:tenantId` | AI resolution rate, containment, cost, model usage, handoff reasons |
 | `GET heatmap/:tenantId` | 7-day x 24-hour message volume grid |
@@ -257,6 +257,8 @@ OffboardingModule provides: OffboardingService, OffboardingCronService (depends 
 | `GET broadcast/:tenantId` | Campaign funnel (sent→delivered→read→failed) per campaign |
 | `GET anomalies/:tenantId` | Z-score analysis, flags deviations >2σ from 30-day average |
 | `GET cohorts/:tenantId` | Cohort retention matrix (contacts by first-contact month) |
+| `GET appointments/:tenantId` | Appointment analytics (KPIs, daily volume, by service, by source, peak hours) |
+| `GET ai-resolution/:tenantId` | AI resolution rate: stats, trend and breakdown by channel |
 
 ### Alerts & Reports (under /analytics-config/)
 | Endpoint | Purpose |
@@ -402,7 +404,7 @@ audit_logs                 — Offboarding and billing audit trail
 - **Password Change**: Revokes all refresh tokens (force re-login)
 - **Redis Keys**: `refresh:{userId}:{tokenId}` with TTL matching token lifetime
 
-## BullMQ Queues (5 total)
+## BullMQ Queues (13 registered at 2026-10-08)
 
 | Queue | Concurrency | Rate Limit | Purpose |
 |-------|------------|-----------|---------|
@@ -412,11 +414,13 @@ audit_logs                 — Offboarding and billing audit trail
 | nurturing | 5 | 10/s | Follow-up sequences |
 | conversation-snooze | 1 | — | Delayed wake-up for snoozed conversations |
 
+The other eight queues are `inbound-messages` (durable ingress: every webhook enqueues, then acknowledges), `agent-release-evaluation`, `agent-simulation`, `eval-gate`, `quality-scoring`, `crm-import`, `crm-sync` and `fiscal-invoice`. Their concurrency and limits live in each `@Processor` decorator; `docs/modules-reference.md` lists the owners. Recompute the list with `grep -rn "registerQueue\|@Processor(" apps/api/src`.
+
 ## Observability Stack
 
 - **Logging**: Pino (nestjs-pino) structured JSON with tenantId/userId context. Pretty in dev, JSON in prod. Docker json-file driver with rotation (50MB x 5)
-- **BullMQ Dashboard**: Bull Board at `/api/v1/admin/queues` (auth via BULL_BOARD_TOKEN query param or X-Admin-Token header). All 5 queues visible
-- **Error Tracking**: Sentry with `@OnWorkerEvent('failed')` on all 4 BullMQ processors (outbound, broadcast, automation, nurturing)
+- **BullMQ Dashboard**: Bull Board at `/api/v1/admin/queues` (auth via BULL_BOARD_TOKEN query param or X-Admin-Token header). All registered queues visible
+- **Error Tracking**: Sentry with `@OnWorkerEvent('failed')` on the BullMQ processors (originally outbound, broadcast, automation and nurturing; check each `@Processor` when adding one)
 - **Log Viewer**: Dozzle (port 9999) — real-time Docker log viewer with search → `logs.parallly-chat.cloud`
 - **Endpoint Monitoring**: Uptime Kuma (port 3003) — monitors API/Dashboard/WA/Landing/PG/Redis with email+Telegram alerts → `status.parallly-chat.cloud`
 - **Dashboards**: Grafana (port 3004) + Loki (port 3100) + Promtail — log aggregation, dashboards, alerting → `grafana.parallly-chat.cloud`
@@ -561,8 +565,8 @@ Response when triggered: "I'm not able to help with that. Is there anything else
 
 - **Purpose**: When a tenant selects their industry during onboarding, the entire platform adapts automatically
 - **Module**: `apps/api/src/modules/verticals/` — VerticalsService, VerticalsController, vertical-definitions.ts
-- **18 canonical verticals**: salud, moda_belleza, inmobiliaria, restaurantes, automotriz, turismo, education, finanzas, servicios_profesionales, retail, technology, veterinaria, gimnasios, seguros, servicios_hogar, pet_services, fotografia, otro. The shared manifest and `vertical-product-policy.ts` govern effective capabilities and certification status.
-- **Sub-types**: Each industry has 3-5 sub-types (e.g., salud → dental, medica_general, estetica, psicologia, farmacia)
+- **Industries ("verticales")**: 20 in `VERTICAL_REGISTRY`, 18 selectable at sign-up — salud, moda_belleza, inmobiliaria, restaurantes, automotriz, turismo, education, finanzas, servicios_profesionales, retail, technology, veterinaria, gimnasios, seguros, servicios_hogar, pet_services, fotografia, otro — plus `event_planning` and `construccion`, which only have waitlist business types. **Business types** ("tipos de negocio", industry/subtype profiles): 80 canonical = 72 selectable + 8 waitlist, 85 resolvable configurations counting 5 `legacy_only`; the generated list is `docs/business-types-catalog.md`. The shared manifest and `vertical-product-policy.ts` govern effective capabilities and certification status.
+- **Sub-types**: an industry has between 1 and 8 business types (e.g., salud → dental, medica_general, dermatologia, psicologia, farmacia; education has 8); see the catalog above for each one's availability
 - **Bootstrap on onboarding**: `completeOnboarding()` calls `bootstrapVertical(tenantId, industry, subType, lang)` which:
   1. Seeds pipeline stages (5-7 per industry)
   2. Patches default AI agent (name, persona, forbidden topics, handoff triggers)
@@ -629,13 +633,13 @@ See `.env.example`. Key ones:
 
 - Landing: https://parallly-chat.cloud (static, nginx container, 4-language i18n)
 - Dashboard: https://admin.parallly-chat.cloud (Next.js, Tailwind + shadcn/ui + recharts)
-- API: https://api.parallly-chat.cloud (NestJS, 88 module declaration files, multi-agent)
+- API: https://api.parallly-chat.cloud (NestJS, 101 `*.module.ts` files, multi-agent)
 - WhatsApp: https://wa.parallly-chat.cloud (NestJS, Embedded Signup)
 - KB Portal: https://admin.parallly-chat.cloud/kb/{tenant-slug}
 - BI API: https://api.parallly-chat.cloud/api/v1/bi-api/ (X-API-Key auth)
 - GitHub: https://github.com/Nipko/sales-structure
-- VPS: Hostinger Ubuntu, Docker (10 containers incl. PgBouncer), Cloudflare Tunnel
+- VPS: Hostinger Ubuntu, Docker (14 services in `infra/docker/docker-compose.prod.yml`: tunnel, landing, pgbouncer, api, dashboard, worker, whatsapp, postgres, redis, dozzle, uptime-kuma, grafana, loki, promtail), Cloudflare Tunnel
 - PgBouncer: Transaction pooling mode, 500→25 connections (parallext-pgbouncer container)
 - Sentry: Error tracking + profiling (@sentry/nestjs, instrument.ts loaded first)
-- Deploy: Push to main → GitHub Actions → build 5 images → SSH deploy → **regenerate .env from secrets** → migrate (via DIRECT_DATABASE_URL) → restart
+- Deploy: Push to main → GitHub Actions (`validate` → `build-and-push` → `deploy`; since 2026-10-07 `production` has no manual approval step, so a merge to `main` with green CI deploys) → build 5 images → SSH deploy → **regenerate .env from secrets** → migrate (via DIRECT_DATABASE_URL) → restart
 - **CRITICAL**: `.env` is regenerated on every deploy from GitHub Actions Secrets. New env vars MUST be added to both GitHub Secrets AND `.github/workflows/deploy.yml`, or they will be lost on next deploy

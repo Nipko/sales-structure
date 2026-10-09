@@ -1,5 +1,7 @@
 # Madurez vertical — auditoría exhaustiva (Jul 2026)
 
+> **Documento histórico (jul-2026) — no refleja el estado actual: sus puntajes y el diagnóstico de 18 verticales son de julio (varios defectos se arreglaron en `95f758f3`). Ver `vertical-approved-implementation-plan-2026-08-24.md` y `vertical-implementation-execution-log.md`.**
+
 > **Método:** 8 mapeos (4 clústeres de verticales + 4 ejes transversales: booking/capacidad, mercado, UX del dashboard, arqueología de lo a medio construir), todos contra la misma rúbrica de 12 ejes puntuados 0-3. Los datos crudos con archivo:línea están en `docs/vertical-audit-workdir/`.
 > **Advertencias de honestidad:** (1) **ningún hallazgo pasó ronda de refutación adversarial** — se sacrificó por límites de sesión; lo anclado con archivo:línea fue leído, pero nadie buscó activamente los mitigantes. (2) **Nada se ejecutó contra base real.** (3) `cluster-agenda.json` fue elaborado por el orquestador con menor profundidad declarada en pipeline y docs_estrategia (ver su campo `_provenance`).
 > **Contexto:** el commit `95f758f3` (2026-07-27) ya arregló el bootstrap vertical (shape de persona, merge de tools, siembra de slots, FAQs encendidas, localización pt/fr/en, índices únicos). Esta auditoría describe el estado POST-arreglo.

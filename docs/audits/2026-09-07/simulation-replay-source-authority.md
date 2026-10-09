@@ -1,5 +1,7 @@
 # Procedencia y retiro de replays de Simulation
 
+> **Documento histórico (2026-09-07) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 La selección histórica anterior copiaba textos de cualquier conversación, sin registrar sus mensajes fuente ni comprobarlos al reutilizar un baseline. Un borrado del contacto no retiraba esas copias. La nueva ruta captura las fuentes al iniciar la prueba y conserva su autoridad evaluativa por separado del aprendizaje.
 
 ## Contrato

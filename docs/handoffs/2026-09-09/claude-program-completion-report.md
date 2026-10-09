@@ -1,5 +1,7 @@
 # Informe de cierre — programa de plataforma y agente
 
+> **Documento histórico (2026-09-09) — no refleja el estado actual; ver `docs/product-capabilities-reference.md` y `docs/README.md`.** Es una instrucción que se pasó a otro agente en esa fecha: lo que dice sobre no hacer push, merge o deploy ya no aplica (desde el 2026-10-07 un merge a `main` con CI verde despliega solo) y sus cifras (perfiles, escenarios, tareas) son las de ese día.
+
 9 de septiembre de 2026. Rango: **`30a79102..HEAD`**. Sin `push`, sin despliegue, sin activación productiva y sin una sola llamada a un proveedor real. Todo lo que toca una base de datos corre contra instancias desechables en loopback (PostgreSQL 55437, PostgreSQL+pgvector 55439, Valkey 55440, PgBouncer 55438); ninguna URL de producción aparece en ningún comando de esta tanda.
 
 Este informe no usa porcentajes para declarar cierre. Lo que está aceptado se nombra aceptado; lo que no, nombra el gate externo exacto que lo detiene.

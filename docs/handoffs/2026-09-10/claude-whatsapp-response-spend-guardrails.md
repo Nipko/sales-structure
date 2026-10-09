@@ -1,5 +1,7 @@
 # Adenda: controlar el gasto de respuestas WhatsApp por destino
 
+> **Documento histórico (2026-09-10) — no refleja el estado actual; ver `docs/product-capabilities-reference.md` y `docs/README.md`.** Es una instrucción que se pasó a otro agente en esa fecha: lo que dice sobre no hacer push, merge o deploy ya no aplica (desde el 2026-10-07 un merge a `main` con CI verde despliega solo) y sus cifras (perfiles, escenarios, tareas) son las de ese día.
+
 ## Mandato y alcance
 
 Incorpora **R0–R6** al cierre existente y a M1–M3/L2. La prioridad expresamente aclarada es el nuevo cobro de **respuestas de WhatsApp**, especialmente en países de tarifa alta. Conserva los controles IA existentes; no conviertas esta adenda en otro rediseño del presupuesto de modelos. Las referencias IA en la auditoría son contexto y no sustituyen la protección de entregas Meta.

@@ -69,8 +69,8 @@ Cuando un recurso llega a su tope (agentes, contactos, campañas, mensajes IA, e
 
 ## La cita no aparece en mi calendario
 
-1. Primero confirma que la cita existe en Parallly: entra a **Agenda** y búscala en la pestaña **Calendario**. Si no está ahí, la reserva no llegó a concretarse (el cliente pudo no confirmar el último paso).
-2. Si la cita está en Parallly pero no en tu Google Calendar u Outlook, ve a **Agenda → Configuración → Calendarios conectados** y revisa que tu calendario siga **conectado**. Si la conexión venció, pulsa **Reconectar**.
+1. Primero confirma que la cita existe en Parallly: entra a **Citas** (en algunos rubros el menú la llama **Agenda** o **Reservas**) y búscala en la pestaña **Calendario**. Si no está ahí, la reserva no llegó a concretarse (el cliente pudo no confirmar el último paso).
+2. Si la cita está en Parallly pero no en tu Google Calendar u Outlook, ve a **Citas → Configuración → Calendarios conectados** y revisa que tu calendario siga **conectado**. Si la conexión venció, pulsa **Reconectar**.
 3. Si tienes **varios calendarios conectados**, la cita pudo sincronizarse en otro: cada cita va primero al calendario asignado al **servicio**, si no hay, al del **profesional** asignado, y si tampoco, al calendario **general** del negocio. Revisa esas asignaciones en la edición del servicio.
 4. La sincronización es rápida pero no siempre instantánea: espera un par de minutos y actualiza tu calendario.
 

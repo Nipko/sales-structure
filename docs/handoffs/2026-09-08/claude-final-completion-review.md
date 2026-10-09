@@ -1,5 +1,7 @@
 # Revisión adversarial y directiva de continuación para Claude
 
+> **Documento histórico (2026-09-08) — no refleja el estado actual; ver `docs/product-capabilities-reference.md` y `docs/README.md`.** Es una instrucción que se pasó a otro agente en esa fecha: lo que dice sobre no hacer push, merge o deploy ya no aplica (desde el 2026-10-07 un merge a `main` con CI verde despliega solo) y sus cifras (perfiles, escenarios, tareas) son las de ese día.
+
 Fecha: 8 de septiembre de 2026. Rango revisado: `ec430c54..30a79102` (35 commits locales). Esta revisión complementa y corrige el cierre informado por Claude. No autoriza push, despliegue, activación productiva ni llamadas a proveedores reales.
 
 ## Veredicto

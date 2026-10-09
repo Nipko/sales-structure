@@ -1,5 +1,7 @@
 # Continuación de la ejecución por Claude — 8 de septiembre de 2026
 
+> **Documento histórico (2026-09-08) — no refleja el estado actual; ver `docs/product-capabilities-reference.md` y `docs/README.md`.** Es una instrucción que se pasó a otro agente en esa fecha: lo que dice sobre no hacer push, merge o deploy ya no aplica (desde el 2026-10-07 un merge a `main` con CI verde despliega solo) y sus cifras (perfiles, escenarios, tareas) son las de ese día.
+
 ## Punto de partida
 
 El usuario pidió cerrar esta última tanda y preparar la continuación por un agente de Claude, con el mismo plan y commits incrementales. La tanda queda cerrada; **el plan integral sigue pendiente**. No reiniciar el análisis ni reducir el alcance a Web Chat.

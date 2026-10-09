@@ -1,5 +1,7 @@
 # Gate 1 — taxonomía y preflight vertical
 
+> **Documento histórico (24-ago-2026) — no refleja el estado actual: las cifras de perfiles son las de esa fecha (después, el 17-sep, se pasó a 80 tipos de negocio canónicos). La lista vigente de industrias y tipos de negocio está en `business-types-catalog.md`.**
+
 Fecha de corte: 24 de agosto de 2026
 Estado: **código completo; cierre operativo condicionado a ejecutar el inventario read-only en producción**.
 

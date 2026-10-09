@@ -74,7 +74,7 @@ A opção visível **O contato converte** ainda não é aplicada automaticamente
 
 ### Prospectar um segmento com uma sequência
 
-Dentro de uma sequência ativa você encontra **"Prospectar do CRM"**: escolha um segmento de leads e clique em **"Inscrever segmento"** para inscrevê-los de uma vez (até 500 por envio). O primeiro passo precisa ser um modelo aprovado do WhatsApp, porque o WhatsApp só permite modelos para iniciar uma conversa fria. A plataforma respeita os opt-outs e não duplica inscrições.
+Dentro de uma sequência ativa você encontra **"Prospectar do CRM"**: escolha um segmento de leads e clique em **"Inscrever segmento"** para inscrevê-los de uma vez (até 300 por envio). O primeiro passo precisa ser um modelo aprovado do WhatsApp, porque o WhatsApp só permite modelos para iniciar uma conversa fria. A plataforma respeita os opt-outs e não duplica inscrições.
 
 ## Como instalar um modelo de automação
 
@@ -89,7 +89,7 @@ Se você prefere não começar do zero, vá em **IA e crescimento → Modelos**:
 ## Horários: quando as mensagens automáticas são enviadas?
 
 - Os tempos de uma sequência ou de uma ação com espera contam a partir do evento que a disparou (ex.: "2 dias depois de capturar o lead").
-- O horário de funcionamento do seu negócio é configurado à parte, em **Configurações** → **Horário de Atendimento**. Lá você define os dias e horários de atendimento e a mensagem de fora do horário.
+- O horário de funcionamento do seu negócio é configurado à parte, em **Configurações** → **Horário de Atendimento**. Lá você define os dias e horários de atendimento e a mensagem de fora do horário. As regras que verificam o horário usam o mesmo horário que o agente nas conversas.
 - Na galeria de modelos, a categoria **Fora do horário** traz regras prontas para responder automaticamente quando escrevem para você fora do seu horário.
 
 ## Disponibilidade e capacidade

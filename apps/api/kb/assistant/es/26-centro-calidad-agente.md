@@ -80,8 +80,8 @@ cuáles quedaron sin conexión.
 
 Hay un tercer control crítico, aparte, para las asignaciones que no corresponden a un
 canal conversacional certificado: **Alcance operativo del canal** rechaza al agente
-asignado a un tipo de canal que no atiende conversaciones (por ejemplo, SMS, que solo
-envía notificaciones, o email, que hoy no tiene configuración autoservicio certificada).
+asignado a un tipo de canal que no atiende conversaciones (por ejemplo, SMS, un producto
+retirado, o email, que hoy no tiene configuración autoservicio certificada).
 No alcanza con desconectarlo: hay que desmarcar ese tipo en el editor del agente y dejar
 solo canales certificados — WhatsApp, Instagram, Messenger, Telegram o el chat web.
 

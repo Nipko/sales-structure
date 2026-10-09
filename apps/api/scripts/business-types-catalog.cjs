@@ -220,6 +220,49 @@ const signupIndustries = industries.filter(industry => rows.some(r => r.industry
 const toolsInFamilies = new Set([...familyTools.values()].flat());
 const toolsOutsideFamilies = toolPolicy.STATIC_TOOL_NAMES.filter(name => !toolsInFamilies.has(name));
 const familyToolTotal = [...familyTools.values()].reduce((sum, tools) => sum + tools.length, 0);
+
+// Prose below states facts that --check cannot see change (it only compares the
+// output with itself). Each fact is computed here, or asserted: a stale
+// sentence stops the generator instead of shipping.
+// Old ids: some have a card of their own (legacy_only rows, one of which is also an alias) and some are only an alias.
+const legacyOwnCard = count(r => !r.canonical);
+const aliasOnly = Object.keys(shared.SUBTYPE_ALIASES).filter(from => !rows.some(r => r.id === from));
+const aliasCount = aliasOnly.length;
+const recipeOverlays = [];
+for (const industry of industries) {
+  for (const sub of defs.VERTICAL_REGISTRY[industry].subTypes) {
+    if (defs.getSubtypeRecipeOverlay(industry, sub.key)) recipeOverlays.push({ industry, key: sub.key, name: sub.label.es });
+  }
+}
+// Families that no business type publishes: they depend on the agent configuration, not on the type.
+const familiesInAnyType = new Set(rows.flatMap(r => r.families));
+const familiesInNoType = [...familyTools.keys()].filter(key => !familiesInAnyType.has(key));
+// Static tools outside a family, by what they are.
+const PAYMENT_TOOLS = ['apply_discount', 'create_payment_link', 'get_payment_status', 'refund_payment'];
+const IDENTITY_TOOLS = ['request_identity_code', 'verify_identity_code'];
+for (const name of [...PAYMENT_TOOLS, ...IDENTITY_TOOLS]) {
+  if (!toolsOutsideFamilies.includes(name)) throw new Error(`business_types_catalog: ${name} ya no esta fuera de familia; corrige la frase sobre herramientas fuera de familia`);
+}
+const providerTools = toolsOutsideFamilies.filter(name => !PAYMENT_TOOLS.includes(name) && !IDENTITY_TOOLS.includes(name));
+const notProvider = providerTools.filter(name => toolPolicy.toolOrigin(name) !== 'provider');
+if (notProvider.length) {
+  throw new Error(`business_types_catalog: herramientas fuera de familia que no son de origen proveedor ni de pagos/identidad: ${notProvider.join(', ')}`);
+}
+// Menu items every business sees whatever its type: the ones AppSidebar declares without a `verticalItem`.
+const ALWAYS_VISIBLE = ['conversations', 'aiAgent', 'knowledgeBase', 'campaigns', 'analytics', 'channels', 'users', 'billing'];
+{
+  const sidebar = fs.readFileSync(path.join(ROOT, 'apps/dashboard/src/components/layout/AppSidebar.tsx'), 'utf8');
+  const tenantPart = sidebar.slice(sidebar.indexOf('const tenantSections'));
+  for (const key of ALWAYS_VISIBLE) {
+    const at = tenantPart.indexOf(`labelKey: "${key}"`);
+    if (at < 0) throw new Error(`business_types_catalog: el menu ya no tiene ${key}; corrige la frase "todos ven ..."`);
+    const next = tenantPart.indexOf('labelKey:', at + 10);
+    const chunk = tenantPart.slice(at, next < 0 ? undefined : next);
+    if (/verticalItem:/.test(chunk)) throw new Error(`business_types_catalog: ${key} depende del tipo de negocio; corrige la frase "todos ven ..."`);
+  }
+  const leaked = rows.flatMap(r => r.menu.items.map(m => m.item)).filter(item => ALWAYS_VISIBLE.includes(item));
+  if (leaked.length) throw new Error(`business_types_catalog: la ficha de un tipo lista un modulo que se dice comun a todos: ${leaked.join(', ')}`);
+}
 if (familyToolTotal !== toolsInFamilies.size) {
   throw new Error('business_types_catalog: una herramienta figura en dos familias; corrige la redaccion del glosario');
 }
@@ -254,9 +297,9 @@ push(
   '## Resumen',
   '',
   `- **${industries.length} industrias** en el registro; **${signupIndustries.length}** se ven en el alta (${industries.filter(i => !signupIndustries.includes(i)).map(i => `\`${i}\``).join(' y ')} solo tienen tipos en lista de espera y el selector las oculta).`,
-  `- **${rows.length} configuraciones** industria/tipo resolubles: **${count(r => r.canonical)} tipos de negocio canónicos** (${count(r => r.availability === 'selectable' && r.canonical)} seleccionables + ${count(r => r.availability === 'waitlist')} en lista de espera) y ${count(r => !r.canonical)} que solo existen para cuentas anteriores (\`legacy_only\` o alias).`,
+  `- **${rows.length} configuraciones** industria/tipo resolubles: **${count(r => r.canonical)} tipos de negocio canónicos** (${count(r => r.availability === 'selectable' && r.canonical)} seleccionables + ${count(r => r.availability === 'waitlist')} en lista de espera) y, solo para cuentas anteriores, **${legacyOwnCard} con ficha propia + ${aliasCount} alias** (\`legacy_only\`; los alias son ids antiguos sin ficha que resuelven a otro tipo, ver la tabla de alias).`,
   `- **${toolPolicy.STATIC_TOOL_NAMES.length} herramientas estáticas del agente**: ${toolsInFamilies.size} repartidas en **${registry.TOOL_FAMILIES.length} familias** y ${toolsOutsideFamilies.length} fuera de familia (cobros, identidad y herramientas de proveedor externo, ver más abajo). Las herramientas de integraciones MCP son dinámicas y no figuran aquí.`,
-  `- Recetas de industria (contenido inicial que se siembra en el alta): ${industries.filter(i => defs.VERTICAL_REGISTRY[i].recipe).map(i => `\`${i}\``).join(', ')}. Las demás industrias nacen con la definición base. \`otro\` genera su propia receta con IA a partir de la descripción del alta. Educación añade cuatro capas de tipo (academia de baile, academia de música o arte, clases particulares y autoescuela).`,
+  `- Recetas de industria (contenido inicial que se siembra en el alta): ${industries.filter(i => defs.VERTICAL_REGISTRY[i].recipe).map(i => `\`${i}\``).join(', ')}. Las demás industrias nacen con la definición base. \`otro\` genera su propia receta con IA a partir de la descripción del alta. Capas de receta por tipo de negocio (se suman a la receta de la industria): ${recipeOverlays.map(o => `${o.name} (\`${o.industry}/${o.key}\`)`).join(', ')} — ${recipeOverlays.length} en total.`,
   '',
   '## Industrias',
   '',
@@ -275,7 +318,7 @@ push(
   '',
   '## Familias de herramientas',
   '',
-  'Nombre = cómo rotula la familia la pantalla Agente IA → Capacidades (`agent.capabilities` en `apps/dashboard/messages/es.json`). El manifiesto de cada tipo de negocio decide qué familias se publican (línea «Familias de herramientas» de cada ficha) y el dueño las enciende en el editor del agente. Las familias `crm`, `knowledge`, `policies`, `offers`, `orders` y `ecommerce` no figuran en ningún tipo porque no dependen de él: las activa la configuración del agente.',
+  'Nombre = cómo rotula la familia la pantalla Agente IA → Capacidades (`agent.capabilities` en `apps/dashboard/messages/es.json`). El manifiesto de cada tipo de negocio decide qué familias se publican (línea «Familias de herramientas» de cada ficha) y el dueño las enciende en el editor del agente. ' + (familiesInNoType.length ? `Las familias ${familiesInNoType.map(k => `\`${k}\``).join(', ')} no figuran en ningún tipo porque no dependen de él: las activa la configuración del agente.` : 'Todas las familias se publican en al menos un tipo.'),
   '',
   '| Familia | Nombre en el editor | Herramientas |',
   '|---|---|---|',
@@ -285,7 +328,7 @@ for (const [key, tools] of familyTools) {
 }
 push(
   '',
-  `Herramientas estáticas fuera de familia: ${toolsOutsideFamilies.map(t => `\`${t}\``).join(', ')}. Las de cobros (\`apply_discount\`, \`create_payment_link\`, \`get_payment_status\`, \`refund_payment\`) requieren la familia de pagos (\`payments\`) y el plan correspondiente, \`request_identity_code\` y \`verify_identity_code\` son las de verificación de identidad, y las cuatro restantes (origen «proveedor») solo existen mientras el tenant tiene conectado el sistema externo correspondiente.`,
+  `Herramientas estáticas fuera de familia: ${toolsOutsideFamilies.map(t => `\`${t}\``).join(', ')}. Las de cobros (${PAYMENT_TOOLS.map(t => `\`${t}\``).join(', ')}) requieren la familia de pagos (\`payments\`) y el plan correspondiente, ${IDENTITY_TOOLS.map(t => `\`${t}\``).join(' y ')} son las de verificación de identidad, y las ${providerTools.length} restantes (origen «proveedor») solo existen mientras el tenant tiene conectado el sistema externo correspondiente.`,
   '',
   'Subpermisos que el dueño puede apagar dentro de una familia: ' +
     registry.TOOL_SUBPERMISSION_RULES.map(rule => `\`${rule.family}.${rule.flag}\` (${rule.tools.map(t => `\`${t}\``).join(', ')})`).join('; ') + '.',
@@ -306,7 +349,7 @@ push(
   '',
   'Cómo leer cada ficha:',
   '',
-  '- **Menú**: lo que ve el dueño en la barra lateral para ese tipo de negocio, con el nombre exacto del menú (varía por industria y por tipo) y la sección donde aparece. «CRM» es el ítem de personas (la pantalla de contactos) y «Embudo» el del embudo de ventas; ambos se renombran por industria. Además de lo listado, todos ven Conversaciones, Agente IA, Base de conocimiento, Campañas, Analíticas, Canales, Usuarios y Facturación según su rol y plan.',
+  '- **Menú**: lo que ve el dueño en la barra lateral para ese tipo de negocio, con el nombre exacto del menú (varía por industria y por tipo) y la sección donde aparece. «CRM» es el ítem de personas (la pantalla de contactos) y «Embudo» el del embudo de ventas; ambos se renombran por industria. Además de lo listado, todos ven ' + ALWAYS_VISIBLE.map(k => navItems[k]).join(', ').replace(/, ([^,]*)$/, ' y $1') + ' según su rol y plan.',
   '- **Familias y herramientas**: las que el producto publica para ese tipo. Las herramientas se limitan además por plan, rol y por lo que el dueño active en el editor del agente.',
   '',
 );

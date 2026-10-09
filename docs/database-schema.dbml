@@ -5,9 +5,17 @@
 // Abrir en: https://dbdiagram.io/d
 // ═══════════════════════════════════════════════════════════════════════
 //
+// ⚠ DESACTUALIZADO desde julio de 2026 (marcado el 2026-10-08). Tiene ~189 tablas; faltan
+//   16 modelos Prisma públicos, 85 tablas por tenant y 10 tablas creadas en runtime
+//   (motor de cobros, ledger de turno del agente, aprobaciones de tools, pagos del tenant,
+//   comunicaciones de plataforma, widget, órdenes de taller y alquileres, gasto de WhatsApp…).
+//   La lista por nombre está en el aviso inicial de docs/data-dictionary.md. No existe un
+//   generador DBML en el repo: la fuente de verdad es schema.prisma + migraciones +
+//   tenant-schema.sql. No se completó a mano tabla por tabla a propósito.
+//
 // FUENTES CANÓNICAS (este doc se deriva de ellas — si difieren, GANA EL CÓDIGO):
-//   • PUBLIC  (global, gestionado por Prisma):  apps/api/prisma/schema.prisma        (~33 modelos)
-//   • TENANT  (schema-per-tenant, SQL crudo):   apps/api/prisma/tenant-schema.sql    (~154 tablas)
+//   • PUBLIC  (global, gestionado por Prisma):  apps/api/prisma/schema.prisma        (49 modelos al 2026-10-08; aquí ~33)
+//   • TENANT  (schema-per-tenant, SQL crudo):   apps/api/prisma/tenant-schema.sql    (241 tablas distintas al 2026-10-08; aquí ~154)
 //   Para frenar el drift conviene regenerar este .dbml desde ambas fuentes
 //   (idealmente scripteado), no editarlo a mano tabla por tabla.
 //

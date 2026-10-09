@@ -1,6 +1,6 @@
 # Citas y Calendario — Manual Completo
 
-> Actualizado: 2026-07-23 · Código de referencia: `apps/api/src/modules/appointments/*`, `apps/api/src/modules/conversations/tools/appointment-tools.ts`, `apps/dashboard/src/app/admin/appointments/*`, `apps/dashboard/src/components/appointments/*`, `apps/api/prisma/tenant-schema.sql`
+> Actualizado: 2026-10-08 (notificaciones, horario de atención y sujeto de la cita revisados contra el código; el resto del manual describe el estado de jul-2026) · Código de referencia: `apps/api/src/modules/appointments/*`, `apps/api/src/modules/conversations/tools/appointment-tools.ts`, `apps/dashboard/src/app/admin/appointments/*`, `apps/dashboard/src/components/appointments/*`, `apps/api/prisma/tenant-schema.sql`
 
 ## Resumen
 
@@ -250,8 +250,8 @@ El agente IA reserva mediante **tool calling** sobre un motor de reserva **deter
 |--------|------------|---------|-----------|
 | Cita creada | `appointment.created` → `AppointmentNotificationsService` | Canal del contacto (WhatsApp/IG/Messenger/Telegram) vía `OutboundQueueService` + email | Confirmación con servicio, fecha, hora, ubicación / enlace de reunión |
 | Cita cancelada | `appointment.cancelled` | Canal del contacto vía `OutboundQueueService` + email | Aviso de cancelación con motivo |
-| Recordatorio 24 h | Cron `*/15` | WhatsApp (plantilla `appointment_reminder`) **y** email | Recordatorio con detalles |
-| Recordatorio 2 h | Cron `3,18,33,48` | **Solo WhatsApp**, plantilla `appointment_reminder` | Recordatorio |
+| Recordatorio 24 h | Cron `*/15` | WhatsApp (plantilla `appointment_reminder`) o, desde el 2026-10-05, Telegram (texto) según el canal del contacto, **y** email | Recordatorio con detalles |
+| Recordatorio 2 h | Cron `3,18,33,48` | WhatsApp (plantilla `appointment_reminder`) o Telegram (texto) según el canal del contacto | Recordatorio |
 | Comprobación de asistencia | Cron `5,35` | **Solo WhatsApp**, plantilla `attendance_check` | Confirmación de asistencia (no reprograma ni marca no-show) |
 
 **Confirmaciones/cancelaciones**: `OutboundQueueService` (BullMQ, 3 reintentos, rate-limit por plan), resolviendo el canal por `contact.channel_type` y el token por-cuenta vía `ChannelTokenService`. Emiten además `appointment.ws` para el relay WebSocket al dashboard.
@@ -264,7 +264,9 @@ El agente IA reserva mediante **tool calling** sobre un motor de reserva **deter
 - **Adjunto `.ics`** (`appointment-ics.util.ts`): el wall clock naive se resuelve a instante UTC con la zona del tenant. La cancelación reusa el mismo UID con `METHOD:CANCEL` y `SEQUENCE:1` para que el evento desaparezca del calendario del cliente.
 - **Plantillas generadas** desde `appointment-email-layout.ts` (3 estados × 4 idiomas). Los tenants existentes que nunca editaron su plantilla se actualizan solos: `refreshManagedDefaults` sólo pisa filas cuyo HTML es idéntico byte a byte a algo que se sembró (`email-template-legacy-bodies.ts`).
 
-**Recordatorios/asistencia**: se envían solo a contactos `channel_type = 'whatsapp'` y requieren la plantilla de Meta aprobada; si no hay plantilla aprobada, se omite con warning.
+**Recordatorios**: los de 24 h y 2 h salen a contactos `whatsapp` (requieren la plantilla de Meta aprobada; si no hay plantilla aprobada se omite con warning y la bandera queda sin marcar) y, desde el 2026-10-05 (`834731a2`), a contactos `telegram` como mensaje de texto por el hilo del bot en que reservaron (la dirección es el `external_id` del contacto, no un teléfono). El barrido solo marca el recordatorio como enviado si hubo efecto (fila durable, supresión por política o email enviado). **Asistencia** (`attendance_check`): sigue siendo solo `channel_type = 'whatsapp'`. Otros canales (Instagram, Messenger, Web Chat) no reciben recordatorio por mensaje; el email solo acompaña al recordatorio de 24 h (no al de 2 h) y sale cuando hay dirección.
+
+**Horario de atención y sujeto de la cita (desde el 2026-10-05, `834731a2` y `4c422e12`)**: `create_appointment` y `reschedule_appointment` (herramientas del agente) exigen que el bloque completo (duración + tiempo entre citas) caiga dentro de una ventana de `availability_slots` del día —del profesional asignado o de cualquiera si el recurso es compartido— y fuera de `blocked_dates`; si no, devuelven `outside_business_hours` con las ventanas, y `appointments_not_configured` si el negocio no configuró horarios. Un id de sujeto enviado (`listingId`, `petId`, `vehicleId`) que no es UUID o no existe ya no se descarta en silencio (`appointment_subject_invalid` / `appointment_subject_not_found`); un negocio con inmuebles cargados exige `listingId` (`appointment_subject_required`). La etiqueta legible del sujeto se escribe en la descripción del evento del calendario externo.
 
 ---
 

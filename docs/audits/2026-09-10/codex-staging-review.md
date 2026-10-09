@@ -1,5 +1,7 @@
 # Revisión independiente de staging y preflight de términos
 
+> **Documento histórico (2026-09-10) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 Fecha: 2026-09-10. HEAD inspeccionado: `7c9eb04b9978c668e77abe89eaad2e6f0f9ae615`.
 Cambios solicitados: `3b51ab5a` (staging), `a10bf87c` (preflight antes de migrar).
 

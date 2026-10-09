@@ -10,7 +10,7 @@ keywords: ["citas", "agenda", "calendario", "agendar", "reservas", "reservar", "
 
 Parallly incluye una agenda completa: defines tus servicios y horarios una sola vez, y a partir de ahí tu agente de IA agenda citas solo dentro de la conversación, tu equipo las ve en un calendario compartido y todo puede sincronizarse con Google Calendar u Outlook.
 
-Todo vive en la barra lateral, en **Citas**. Al entrar verás la página **Citas y Agendamiento** con cinco pestañas: **Calendario** (vista por semana o por día), **Agenda** (lista de citas), **Servicios disponibles**, **Configuración** y **Analíticas**. La configuración es para administradores y supervisores; los agentes pueden ver el calendario, crear citas y atenderlas.
+Todo vive en la barra lateral, en **Trabajo diario → Citas**. Según tu tipo de negocio el menú puede llamarlo **Agenda**, **Reservas** o **Reservaciones**, y en algunos rubros no aparece porque ese negocio no agenda citas; es la misma pantalla. Al entrar verás la página **Citas y Agendamiento** con cinco pestañas: **Calendario** (vista por semana o por día), **Agenda** (lista de citas), **Servicios disponibles**, **Configuración** y **Analíticas**. La configuración es para administradores y supervisores; los agentes pueden ver el calendario, crear citas y atenderlas.
 
 ## Cómo crear tus servicios
 
@@ -93,9 +93,19 @@ En **Citas** → **Configuración** → sección **Recordatorios y seguimiento**
 
 Los recordatorios por WhatsApp pueden usar plantillas aprobadas por Meta para intentar el envío fuera de la ventana de 24 horas. La entrega no está garantizada: depende del estado de la plantilla, la cuenta, Meta y el destinatario.
 
+El recordatorio sale por el canal con el que el cliente habló contigo: por WhatsApp (con plantilla aprobada) o, si te escribió por Telegram, como mensaje de texto en esa conversación; el recordatorio de 24 horas también puede enviarse por correo si el cliente dejó su email. Si el cliente no tiene ninguna vía de contacto, no se envía nada.
+
+## Qué muestra la Agenda y qué pasa con las citas canceladas
+
+- La pestaña **Agenda** lista las citas de los últimos 30 días y de los próximos 6 meses, y lo dice en una nota sobre la lista. Si hay más citas de las que caben, la pantalla avisa que muestra solo las primeras: usa el **Calendario** para ver una semana concreta.
+- En el **Calendario**, las citas canceladas se ven en la grilla; el botón **Ocultar canceladas** (que pasa a **Mostrar canceladas**) las quita o las devuelve.
+- Una cita cancelada es de solo lectura: no se puede mover ni editar. Para volver a agendarla, crea una cita nueva.
+
 ## La IA agenda sola en la conversación
 
 Cuando un cliente pide una cita por WhatsApp, Instagram o cualquier canal conectado, el agente de IA lo guía paso a paso: primero el servicio, luego una fecha con disponibilidad real, luego la hora, y al final una confirmación. En ese último paso el sistema vuelve a verificar el horario, así que dos personas no pueden quedarse con el mismo cupo.
+
+El agente solo crea o reprograma una cita si cabe dentro de tu **horario de atención** (la cita completa, con el tiempo entre citas) y no cae en una **fecha bloqueada**. Si el negocio aún no configuró horarios, el agente no puede agendar: por eso conviene guardarlos en **Citas** → **Configuración**. Además, si tu negocio agenda sobre un objeto —un inmueble, una mascota o un vehículo—, la cita guarda de cuál se trata: en una inmobiliaria con inmuebles cargados el agente debe indicar el inmueble para poder agendar, y en veterinarias y concesionarios puede indicar la mascota o el vehículo. Ese dato aparece en la descripción del evento de tu calendario externo. En Argentina, Uruguay y Paraguay el agente habla de «turno» en lugar de «cita».
 
 Al confirmar, todo ocurre solo: la cita queda en tu **Calendario**, se sincroniza con tu Google Calendar u Outlook, el cliente recibe un email de confirmación, el miembro del equipo asignado recibe aviso y, si el servicio es online, se incluye el link de reunión.
 

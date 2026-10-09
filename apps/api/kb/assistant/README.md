@@ -23,8 +23,9 @@ image/audio processing, revocation, retention, and the separation from Meta bill
 - Use the frontmatter fields `id`, `title`, `routes`, `roles`, and `keywords`. Array fields must be valid JSON arrays.
 - Use only canonical dashboard routes declared in `apps/dashboard/src/lib/navigation-contract.ts`.
 - Roles are limited to `tenant_admin`, `tenant_supervisor`, and `tenant_agent`. Grant only the roles that can safely use the article.
-- Describe menu locations using the current information architecture: Essentials, AI & Growth, Operations, Insights, Administration, and Settings.
-- Do not copy prices, trial durations, quotas, or plan matrices into articles. Direct users to **Administration → Plan & Billing**, whose account-specific values are authoritative.
+- Describe menu locations using the real tenant sidebar (`nav.sections` in `apps/dashboard/messages/*.json`, `tenantSections` in `AppSidebar.tsx`): Essentials, Customers, Commercial, Daily work, Catalogue & resources, AI & growth, Insights, Administration, and Settings. There is no "Operations" section in the tenant sidebar (it exists only in the mobile app as a tab). Some labels change with the business type (the sales funnel can read Opportunities, Deals, Patient Journey or Sales; Appointments can read Schedule or Bookings): name the function and, when it matters, say that the label varies.
+- SMS is a retired product (`sms_product_retired`). Never describe SMS credits, SMS campaigns, SMS reminders or SMS alerts as available; the `sms-creditos` article exists only to say so.
+- Do not copy prices, trial durations, quotas, or plan matrices into articles. Direct users to **Administration → Billing** (the screen titled **Plan & billing**), whose account-specific values are authoritative.
 - Keep credentials, secrets, tenant content, customer FAQs, and customer policies out of this repository knowledge base.
 - Do not describe Agent health badges as a score: they count only open Critical and
   High signals. The global banner is limited to an active Critical signal or an At

@@ -1,5 +1,7 @@
 # La matriz de tareas, calculada — y los dos huecos en cero
 
+> **Documento histórico (2026-09-08) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 8 de septiembre de 2026. Cierre de los dos contadores nombrados en la [condición 2 de la directiva](../../handoffs/2026-09-08/claude-complete-plan-directive.md): las 32 tareas sin positivo propio y las 10 sin verificador. Sin push, sin despliegue, sin proveedores reales.
 
 ## Commits

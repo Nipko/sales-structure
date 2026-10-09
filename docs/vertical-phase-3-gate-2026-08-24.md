@@ -1,5 +1,7 @@
 # Gate de Fase 3 — autoría 1:1, país, navegación y tools
 
+> **Documento histórico (24-ago-2026) — no refleja el estado actual: las cifras son las de esa fecha (hoy 80 tipos de negocio canónicos). La lista vigente de industrias y tipos de negocio está en `business-types-catalog.md`.**
+
 **Corte:** 24 de agosto de 2026
 **Estado:** código cerrado; promoción bloqueada por las revisiones y evidencias descritas aquí
 **Contrato:** `VerticalAuthoringPackageV1`

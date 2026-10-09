@@ -3,7 +3,7 @@ id: facturacion-planes
 title: "Forfaits, facturation et données fiscales"
 routes: ["/admin/settings/billing", "/admin/settings/fiscal"]
 roles: ["tenant_admin"]
-keywords: ["forfaits", "tarifs", "facturation", "paiement", "moyen de paiement", "changer de forfait", "essai", "cycle", "facture", "historique des paiements", "donnees fiscales", "limite du forfait", "credits sms", "coupon", "annuler abonnement", "meta facture a part", "le forfait inclut whatsapp", "facturation whatsapp", "deux paiements", "facture meta"]
+keywords: ["forfaits", "tarifs", "facturation", "paiement", "moyen de paiement", "changer de forfait", "essai", "cycle", "facture", "historique des paiements", "donnees fiscales", "limite du forfait", "coupon", "annuler abonnement", "meta facture a part", "le forfait inclut whatsapp", "facturation whatsapp", "deux paiements", "facture meta"]
 ---
 
 # Forfaits, facturation et données fiscales
@@ -18,7 +18,7 @@ Selon la configuration du compte, la page peut afficher :
 - les tarifs, la devise, le cycle, le renouvellement et les conditions d'essai ;
 - les options pour changer de forfait ou de cycle ;
 - un moyen de paiement, l'état des débits et l'historique ;
-- des coupons, crédits SMS ou documents de facturation.
+- des coupons ou documents de facturation.
 
 Une fonction présente sur la plateforme n'est pas nécessairement active pour chaque compte. Si un bloc ou un bouton est absent, ne supposez pas que le parcours est disponible : suivez le message affiché ou contactez le support.
 
@@ -30,15 +30,17 @@ Saisissez les données de paiement uniquement dans le parcours sécurisé ouvert
 
 ## Historique, factures et données fiscales
 
-Lorsque l'historique est activé, chaque mouvement affiche son état et ne propose un téléchargement que si un document existe. Dans **Paramètres → Données fiscales**, complétez les champs demandés pour le compte. La facturation électronique, ses formats et sa validité fiscale dépendent du pays et d'une intégration activée ; enregistrer les données fiscales ne garantit pas à lui seul l'émission d'un document.
+Lorsque l'historique est activé, chaque mouvement affiche son état et ne propose un téléchargement que si un document existe. Dans **Configuration → Facturation électronique**, complétez les champs demandés pour le compte. La facturation électronique, ses formats et sa validité fiscale dépendent du pays et d'une intégration activée ; enregistrer les données fiscales ne garantit pas à lui seul l'émission d'un document.
 
-## Pause, annulation, coupons et crédits SMS
+## Pause, annulation et coupons
 
-Ces actions ne sont disponibles que lorsqu'elles apparaissent sur la page. Avant de suspendre ou d'annuler, lisez la date d'effet, l'accès conservé et les conditions de réactivation. Si les coupons ou l'achat de crédits SMS sont activés, l'interface affiche leur validité, prix, moyen de paiement et résultat. Le SMS est une notification sortante et peut être désactivé pour un compte.
+Ces actions ne sont disponibles que lorsqu'elles apparaissent sur la page. Avant de suspendre ou d'annuler, lisez la date d'effet, l'accès conservé et les conditions de réactivation. S'il y a des coupons, l'interface affiche leur validité, prix, moyen de paiement et résultat. Le SMS est un produit retiré : il n'y a ni crédits à acheter ni solde à recharger (voir **SMS (produit retiré)**).
 
 ## Limites et utilisation
 
 Les barres d'utilisation indiquent la période et la capacité en vigueur. Lorsqu'une limite est atteinte, le comportement dépend de la ressource : la page précise s'il faut libérer de l'espace, attendre la période suivante ou choisir une autre option. N'utilisez pas de quotas copiés depuis un autre compte.
+
+Les réponses incluses sont soumises au plafond mensuel de dépenses IA du forfait. Les longues conversations, outils et modèles avancés consomment davantage : l’IA peut s’arrêter avant épuisement du quota de réponses. Les messages WhatsApp sont payés séparément à Meta.
 
 ## Ce que Meta facture à part pour WhatsApp
 
@@ -62,9 +64,7 @@ Cela dépend de l'option disponible. L'inscription et **Forfait et facturation**
 Non. Ce sont deux paiements distincts : le forfait, c'est le logiciel ; les messages livrés par WhatsApp sont payés par votre entreprise à Meta avec le moyen de paiement enregistré sur votre compte WhatsApp Business.
 
 **Comment obtenir une facture ?**
-Consultez l'historique et les **Données fiscales**. Si aucun téléchargement ni état d'émission n'apparaît, contactez le support ; ne supposez pas qu'une intégration fiscale est active.
+Consultez l'historique et **Configuration → Facturation électronique**. Si aucun téléchargement ni état d'émission n'apparaît, contactez le support ; ne supposez pas qu'une intégration fiscale est active.
 
 Besoin d'aide pour une opération ? Écrivez à https://parallly-chat.cloud/support en joignant le message d'état, sans partager de données de paiement sensibles.
 
-
-Les réponses incluses sont soumises au plafond mensuel de dépenses IA du forfait. Les longues conversations, outils et modèles avancés consomment davantage : l’IA peut s’arrêter avant épuisement du quota de réponses. Les messages WhatsApp sont payés séparément à Meta.

@@ -1,9 +1,9 @@
 # Modules Reference
 
-Technical inventory for 100 API module declaration files, 163 dashboard pages
-(149 admin + 14 non-admin), 11 BullMQ queues, and the documented cron jobs.
+Technical inventory for 101 API module declaration files, 163 dashboard pages
+(149 admin + 14 non-admin), 13 BullMQ queues, and the documented cron jobs (snapshot 2026-10-08).
 
-**Last updated:** 30 sep 2026 — Comunicaciones generales del superadmin; recuento de módulos y páginas actualizado desde el sistema de archivos.
+**Last updated:** 8 oct 2026 — contadores recalculados desde el sistema de archivos (101 módulos, 163 páginas, 13 colas: se añaden `inbound-messages` y `agent-release-evaluation`); retirados los adaptadores y endpoints de Mercado Pago que ya no existen; endpoints de white-label, ecommerce, channel-manager, dispositivos de confianza y drip corregidos contra los controladores. Las secciones por módulo anteriores a esa fecha pueden estar desactualizadas: ante la duda, manda el controlador.
 
 > Counts are a filesystem snapshot, not a product contract. Recalculate with
 > `rg --files apps/api/src/modules -g '*.module.ts'` and
@@ -11,7 +11,7 @@ Technical inventory for 100 API module declaration files, 163 dashboard pages
 
 ---
 
-## API Modules (100 module declaration files)
+## API Modules (101 module declaration files)
 
 ### Platform communications
 
@@ -137,7 +137,8 @@ Technical inventory for 100 API module declaration files, 163 dashboard pages
   - `POST /auth/2fa/send-sms` — Send SMS OTP fallback when available
   - `POST /auth/2fa/backup-codes` — Generate/regenerate backup codes
   - `GET /auth/trusted-devices` — List user's trusted devices
-  - `DELETE /auth/trusted-devices/:id` — Revoke a trusted device
+  - `POST /auth/trusted-devices/:deviceId/revoke` — Revoke a trusted device
+  - `POST /auth/trusted-devices/revoke-all` — Revoke every trusted device
 - **Verificación progresiva P25:** `users.email_verification_state` persiste `unverified|pending_change|verified|restricted`. `POST /auth/send-verification`, `PATCH /auth/pending-email` y `POST /auth/verify-email` tienen rate limits. `RequiresVerifiedEmail` bloquea en backend activación/desconexión, outbound, usuarios, secretos, cobros y exportaciones; lectura, onboarding y sandbox continúan. Google exige `email_verified=true` en el token firmado.
 - **Trusted devices:** When verifying 2FA with `trust_device: true`, a 30-day device token is stored (SHA-256 hash in `trusted_devices` table + Redis fast-lookup). Subsequent logins from trusted devices skip 2FA. Email notification on new trust. Password change revokes all
 
@@ -219,7 +220,7 @@ Technical inventory for 100 API module declaration files, 163 dashboard pages
 #### 10b. saml-sso (in auth/)
 - **Purpose:** SAML/SSO enterprise authentication with JIT user provisioning
 - **Services:** `saml.service.ts`
-- **Strategy:** `multi-saml.strategy.ts` (Passport MultiSaml with `getSamlOptions` callback)
+- **Strategy:** `saml.strategy.ts` (Passport SAML strategy)
 - **Controller:** `saml.controller.ts`
 - **Endpoints:**
   - `GET /auth/saml/check` — Check if SSO is forced for email domain
@@ -596,7 +597,7 @@ Technical inventory for 100 API module declaration files, 163 dashboard pages
 
 #### 25. automation
 - **Purpose:** Event-driven automation rules, nurturing sequences, drip campaigns, HTTP actions, template library
-- **Services:** `automation.service.ts`, `automation-listener.service.ts`, `nurturing.service.ts`, `action-executor.service.ts`, `drip-sequence.service.ts` (drip sequence CRUD + enrollment management), `templates/automation-templates.service.ts` (template library CRUD + install)
+- **Services:** `automation.service.ts`, `automation-listener.service.ts`, `nurturing.service.ts`, `drip-sequence.service.ts` (drip sequence CRUD + enrollment management), `templates/automation-templates.service.ts` (template library CRUD + install)
 - **Handlers:** `handlers/http-request.handler.ts` (HTTP request action executor)
 - **Utils:** `utils/variable-interpolator.ts` ({{variable}} replacement), `utils/response-extractor.ts` (JSONPath response mapping)
 - **Controllers:** `automation.controller.ts`, `drip-sequence.controller.ts`, `templates/automation-templates.controller.ts`
@@ -636,10 +637,10 @@ Technical inventory for 100 API module declaration files, 163 dashboard pages
 #### 26. billing
 - **Purpose:** Ciclo de vida de suscripción mediante motor interno/Wompi, facturas, cupones, ciclos mensual/anual y panel billing-ops cross-tenant (super_admin). No vende paquetes SMS nuevos
 - **Services:** `billing.service.ts`, `billing-email.service.ts`, `invoice-generator.service.ts`, `coupons.service.ts`, `payment-provider.factory.ts`, `sms-checkout.service.ts`
-- **Adapters:** `mercadopago.adapter.ts`, `mercadopago-config.service.ts`, `stripe.adapter.ts`, `stripe-config.service.ts`, `mock-payment-provider.adapter.ts`
+- **Adapters (`billing/adapters/`):** `wompi.adapter.ts`, `wompi-config.service.ts`, `stripe.adapter.ts`, `stripe-config.service.ts`, `mock-payment-provider.adapter.ts`. Mercado Pago ya no existe como adaptador de plataforma (retirado ago 2026; ver `docs/mercadopago-retirement-2026-08.md`)
 - **Processors:** `reconciliation.processor.ts`
 - **Controllers:** `billing.controller.ts` (tenant), `billing-admin.controller.ts` (super_admin, billing-ops), `billing-public.controller.ts` (catálogo público), `coupons.controller.ts`, `sms-checkout.controller.ts`, `webhook.controller.ts`
-- **Ciclo anual (~15% desc):** el anual crea un `preapproval_plan` de MP separado; su id se guarda en `priceLocalOverrides[country].annual.mpPlanId`. El precio en DB (editable vía `PUT /billing-admin/plans/:slug`) es solo lo que se MUESTRA; MP cobra el monto congelado en el `preapproval_plan`, así que un cambio de precio no es efectivo hasta correr `sync-mp`. Ver `docs/billing-annual-cycle.md`
+- **Ciclo anual:** el precio mensual y el anual viven en `billing_plans.priceLocalOverrides[country]` (`amountCents` y `annual.amountCents`, este último independiente de mensual × 12) y los cobra el motor recurrente interno con Wompi; no hay catálogo remoto de planes que sincronizar. Los campos históricos `mpPlanId` no autorizan cobros. Ver `docs/billing-annual-cycle.md`
 - **Tenant endpoints (`/billing`):**
   - `GET /billing/plans` — Lista de planes (con overrides por país/moneda + anual)
   - `GET /billing/:tenantId/subscription` — Suscripción actual
@@ -654,20 +655,24 @@ Technical inventory for 100 API module declaration files, 163 dashboard pages
   - `GET /billing/:tenantId/payments/:paymentId/invoice` — Descargar factura PDF
 - **Public / catálogo:**
   - `GET /billing/public/plans` — Catálogo de planes público (para la landing `/precios` data-driven)
-- **Billing-ops (super_admin, `/billing-admin`) — ~15 endpoints:**
+- **Billing-ops (super_admin, `/billing-admin`) — 19 endpoints (`billing-admin.controller.ts`):**
   - `GET /billing-admin/plans` — Lista de planes con conteo de tenants + claves de feature desconocidas
   - `GET /billing-admin/feature-registry` — Registro canónico de claves de `features`
   - `GET /billing-admin/plans/:slug` — Detalle de plan
   - `PUT /billing-admin/plans/:slug` — Editar plan (features validadas + merge, precio, overrides país/anual; con auditoría before→after)
   - `POST /billing-admin/plans/:slug/invalidate-cache` — Invalidar caché de plan/features
-  - `POST /billing-admin/plans/:slug/sync-mp` — Registrar/recrear el `preapproval_plan` de MP para plan+país (reemplaza el script SSH)
-  - `GET /billing-admin/provider-status` — Badge sandbox/producción de MP
+  - `GET /billing-admin/llm-spend` — Gasto de LLM del mes por tenant frente a su techo
+  - `GET /billing-admin/provider-status` — Estado de cada proveedor de pago (habilitado, capacidades, sandbox/producción)
+  - `GET /billing-admin/providers` · `PUT /billing-admin/providers` — Enrutamiento global de proveedores de pago (solo altas nuevas)
+  - `PUT /billing-admin/tenants/:tenantId/payment-provider` — Fijar el proveedor de un tenant
   - `POST /billing-admin/reconcile` — Reconciliación on-demand (scope past_due|full)
   - `POST /billing-admin/tenants/:tenantId/reconcile` — Reconciliar un tenant contra el proveedor
   - `GET /billing-admin/subscriptions` — Vista cross-tenant de suscripciones (filtros + paginado)
   - `GET /billing-admin/payments` — Vista cross-tenant de pagos
   - `GET /billing-admin/events` — Vista cross-tenant de billing_events
   - `POST /billing-admin/payments/:paymentId/refund` — Reembolso inline
+  - `POST /billing-admin/payments/:paymentId/refunds/:operationId/resolve` — Resolver un reembolso pendiente
+  - `POST /billing-admin/tenants/:tenantId/comp-plan` · `PUT /billing-admin/tenants/:tenantId/plan` — Plan de cortesía / cambio de plan de un tenant
   - `POST /billing-admin/tenants/:tenantId/comp-plan` — Otorgar plan de cortesía (time-boxed, motivo obligatorio)
   - `PUT /billing-admin/tenants/:tenantId/plan` — Cambio permanente de plan (override de entitlement; invalida cachés + auditoría)
 - **Cupones (`/billing-coupons`):** `GET|POST /admin`, `PUT|DELETE /admin/:id`, `GET /admin/:id/redemptions`, `POST /validate/:tenantId`, `POST /redeem/:tenantId` (percent_off / amount_off / free_months)
@@ -703,9 +708,9 @@ Technical inventory for 100 API module declaration files, 163 dashboard pages
 - **Cron:** `0 1 1 * *` — generateMonthlySnapshot: 1st of month @1AM
 
 #### 27b. stripe-adapter (in billing/)
-- **Purpose:** Stripe payment provider adapter (alternative to MercadoPago)
+- **Purpose:** Stripe payment provider adapter (international subscriptions; see `docs/stripe-international-subscriptions-2026-09.md`)
 - **Services:** `stripe.adapter.ts` (implements `IPaymentProvider`)
-- **Factory:** `payment-provider.factory.ts` — routes between Stripe and MercadoPago based on tenant config
+- **Factory:** `payment-provider.factory.ts` — routes between Wompi, Stripe and the mock provider (`mercadopago` is not a provider any more)
 - **Controller:** None (consumed via PaymentProviderFactory)
 - **Key methods:**
   - `createCustomer()` — Create Stripe customer
@@ -713,7 +718,7 @@ Technical inventory for 100 API module declaration files, 163 dashboard pages
   - `cancelSubscription()` — Cancel active subscription
   - `createCheckoutSession()` — Generate Stripe Checkout URL
   - `constructWebhookEvent()` — Verify + parse Stripe webhook (signature validation)
-- **Notes:** Tenant config determines which provider is active. Both Stripe and MercadoPago implement the same `IPaymentProvider` interface
+- **Notes:** Tenant config and country routing determine which provider is active. Wompi, Stripe and the mock provider implement the same provider interface
 
 ---
 
@@ -1043,7 +1048,7 @@ Technical inventory for 100 API module declaration files, 163 dashboard pages
 #### 43. verticals
 - **Purpose:** Industry vertical definitions, onboarding bootstrap, UI config
 - **Services:** `verticals.service.ts`
-- **Definitions:** `vertical-definitions.ts` — 18 industries × 4 languages
+- **Definitions:** `vertical-definitions.ts` — `VERTICAL_REGISTRY` with 20 industries (18 selectable) × 4 languages; business types (80 canonical) come from `packages/shared/src/subtype-experience-profile.ts` and are listed in `docs/business-types-catalog.md`
 - **Controller:** `verticals.controller.ts`
 - **Endpoints:**
   - `GET /verticals/:tenantId` — Tenant's vertical config
@@ -1331,8 +1336,8 @@ Technical inventory for 100 API module declaration files, 163 dashboard pages
 - **Controller:** `white-label.controller.ts`
 - **Config fields:** brandName, logoUrl, faviconUrl, primaryColor, accentColor, customDomain, customCss, footerText, hidePoweredBy
 - **Endpoints:**
-  - `GET /white-label/:tenantId` — Get branding config (tenant_admin)
-  - `PUT /white-label/:tenantId` — Update branding config (tenant_admin)
+  - `GET /white-label/config` — Get branding config (tenant_admin; the tenant comes from the JWT)
+  - `PUT /white-label/config` — Update branding config (tenant_admin)
   - `GET /white-label/public/slug/:slug` — Public lookup by tenant slug (no auth)
   - `GET /white-label/public/domain` — Public lookup by custom domain (no auth)
 - **Key features:**
@@ -1347,11 +1352,11 @@ Technical inventory for 100 API module declaration files, 163 dashboard pages
 - **Controller:** `ecommerce.controller.ts`
 - **Lazy tables:** `ecommerce_products`, `abandoned_carts` (created on first use per tenant)
 - **Endpoints:**
-  - `GET /ecommerce/:tenantId/config` — Get integration config
-  - `PUT /ecommerce/:tenantId/config` — Update integration config
-  - `POST /ecommerce/:tenantId/sync` — Trigger product sync from provider
-  - `GET /ecommerce/:tenantId/products` — List synced products
-  - `GET /ecommerce/:tenantId/products/search` — AI-oriented product search
+  - `GET /ecommerce/config` — Get integration config (tenant from the JWT)
+  - `PUT /ecommerce/config` — Update integration config
+  - `POST /ecommerce/sync` — Trigger product sync from provider
+  - `GET /ecommerce/products` — List synced products
+  - `GET /ecommerce/products/search` — AI-oriented product search
 - **Key features:**
   - Shopify Admin API integration
   - WooCommerce REST API integration
@@ -1365,14 +1370,12 @@ Technical inventory for 100 API module declaration files, 163 dashboard pages
 - **Controller:** `channel-manager.controller.ts`
 - **Lazy tables:** `cm_listings`, `cm_reservations`, `cm_availability` (created on first use per tenant)
 - **Endpoints:**
-  - `GET /channel-manager/:tenantId/config` — Get config
-  - `PUT /channel-manager/:tenantId/config` — Update config
-  - `GET /channel-manager/:tenantId/listings` — List managed listings
-  - `POST /channel-manager/:tenantId/listings` — Create listing
-  - `GET /channel-manager/:tenantId/reservations` — List reservations
-  - `POST /channel-manager/:tenantId/reservations` — Create reservation
-  - `GET /channel-manager/:tenantId/availability` — Availability calendar (date series)
-  - `POST /channel-manager/:tenantId/sync/hostaway` — Sync from Hostaway
+  - `GET /channel-manager/config` · `PUT /channel-manager/config` — Get / update config (tenant from the JWT)
+  - `GET /channel-manager/listings` · `POST /channel-manager/listings` — List / create managed listings
+  - `GET /channel-manager/reservations` · `POST /channel-manager/reservations` — List / create reservations
+  - `GET /channel-manager/availability` — Availability calendar (date series)
+  - `GET /channel-manager/mappings` · `PUT /channel-manager/mappings` — Listing mappings
+  - `POST /channel-manager/sync/hostaway` · `POST /channel-manager/test/hostaway` — Sync from / test Hostaway
 - **Key features:**
   - Hostaway OAuth integration
   - Reservation conflict detection
@@ -1450,7 +1453,7 @@ Technical inventory for 100 API module declaration files, 163 dashboard pages
 #### 66. public-api
 - **Purpose:** Tenant-facing REST API with key-based auth, scoped access, rate limiting, and outbound webhooks
 - **Services:** `public-api-key.service.ts` (API key CRUD, SHA-256 hashing, plan-gated limits), `webhook-subscription.service.ts` (subscribe/unsubscribe/dispatch with HMAC-SHA256), `webhook-event-listener.service.ts` (@OnEvent bridge for 5 event types)
-- **Guards:** `public-api.guard.ts` (X-API-Key validation with Redis cache 60s), `public-api-rate-limit.guard.ts` (sliding window rate limiting), `api-scope.guard.ts` (scope-based access control)
+- **Guards:** `guards/public-api.guard.ts` (X-API-Key validation with Redis cache 60s), `public-api-rate-limit.guard.ts` (sliding window rate limiting), `api-scope.guard.ts` (scope-based access control)
 - **Controller:** `public-api-key.controller.ts`, `public-api.controller.ts`
 - **Endpoints:**
   - `GET /public-api/keys/:tenantId` — List API keys
@@ -1636,7 +1639,7 @@ Technical inventory for 100 API module declaration files, 163 dashboard pages
 
 ---
 
-## Cron Jobs (47 total)
+## Cron Jobs (47 documented here; the code has 93 `@Cron` decorators at 2026-10-08, some per vertical — recompute with `grep -rn "@Cron(" apps/api/src --include=*.ts | grep -v spec | wc -l`)
 
 | Schedule | Module | Method | Purpose |
 |----------|--------|--------|---------|
@@ -1840,7 +1843,7 @@ Technical inventory for 100 API module declaration files, 163 dashboard pages
 | `/admin/ops/alerts` | Configuración de umbrales de alerta | ✅ |
 | `/admin/incidents` | Incidentes de plataforma (ack/resolve) | ✅ |
 | `/admin/storage` | Storage por-tenant (schema DB + media + quota + history) | ✅ |
-| `/admin/plans` | Gestión de planes (features, precios, sync-mp, badge sandbox/prod) | ✅ |
+| `/admin/plans` | Gestión de planes (features, precios por país y ciclo, estado de proveedores) | ✅ |
 | `/admin/billing-ops` | Billing-ops cross-tenant (suscripciones/pagos/eventos, reconcile, refund, comp-plan) | ✅ |
 | `/admin/sms-packages` | Tiers de créditos SMS + kill-switch + balances | ✅ |
 | `/admin/fiscal` | Facturación electrónica DIAN (config Factus, facturas, reemisión) | ✅ |
@@ -1896,7 +1899,7 @@ Technical inventory for 100 API module declaration files, 163 dashboard pages
 | Agent availability + SLA | `agent-console/agent-availability.service.ts` |
 | Multi-agent CRUD | `persona/persona.service.ts` |
 | Agent templates (6 built-in) | `persona/templates/index.ts` |
-| Vertical definitions (18 industries) | `verticals/vertical-definitions.ts` |
+| Vertical definitions (20 industries, 18 selectable) | `verticals/vertical-definitions.ts` |
 | Vertical bootstrap | `verticals/verticals.service.ts` |
 | Plan features / rate limits | `throttle/tenant-throttle.service.ts` |
 | Feature flags | `throttle/feature-flags.service.ts` |
@@ -1906,7 +1909,7 @@ Technical inventory for 100 API module declaration files, 163 dashboard pages
 | Audio transcription (Whisper) | `media-processing/audio-transcription.service.ts` |
 | Image vision (multi-provider) | `media-processing/image-vision.service.ts` |
 | Public API key service | `public-api/public-api-key.service.ts` |
-| Public API guard (X-API-Key) | `public-api/public-api.guard.ts` |
+| Public API guard (X-API-Key) | `public-api/guards/public-api.guard.ts` |
 | Webhook subscription dispatch | `public-api/webhook-subscription.service.ts` |
 | Drip sequence engine | `automation/drip-sequence.service.ts` |
 | Automation template library | `automation/templates/automation-templates.service.ts` |

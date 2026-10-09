@@ -1,5 +1,7 @@
 # Plan consolidado de verticales — qué hacer (Jul 2026)
 
+> **Documento histórico (jul-2026) — supersedido por `vertical-approved-implementation-plan-2026-08-24.md` y `vertical-implementation-execution-log.md`; no lo uses para decidir qué hacer hoy.**
+
 > **De dónde sale.** De los 18 deep-dives por vertical (`docs/vertical-deep-dives/*.md`, §4 "Huecos finos" y §7 "Plan de inversión") cruzados con la auditoría de madurez (`docs/vertical-maturity-audit-2026-07.md`) y la de bootstrap (`docs/vertical-bootstrap-audit-2026-07.md`).
 >
 > **Cuánto se consolidó.** ~390 ítems accionables extraídos de los dossiers → **24 arreglos horizontales**, **~55 ítems verticales** y **~20 descartes explícitos**. La compresión no es cosmética: el mismo problema aparecía contado por hasta 6 dossiers distintos (el motor de reservas mono-recurso, el evaluador temporal, el handoff por substring, el sub-tipo sin consecuencias). Cada uno de esos es UN ítem acá.

@@ -1,5 +1,7 @@
 # C1 — continuidad y autoridad de la misión
 
+> **Documento histórico (2026-09-07) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 ## Problema reproducido
 
 Los motores conservaban sus estados de forma independiente, pero el orden del orquestador decidía quién consumía el mensaje. Un procedimiento esperando `reason:string` podía guardar «quiero reservar una cita» o «cambia mi correo…» como motivo. Dos gestiones pausadas no tenían una selección común. Una confirmación pendiente del ledger podía reaparecer después de cambiar de tarea. El token de WhatsApp Flow no estaba ligado de extremo a extremo a la revisión de la reserva.

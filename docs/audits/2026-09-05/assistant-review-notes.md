@@ -1,5 +1,7 @@
 # Auditoría de Assist y diagnóstico de calidad — notas verificadas
 
+> **Documento histórico (2026-09-05) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 Fecha: 6 de septiembre de 2026 UTC. Alcance: código local de Assist y Centro de calidad; pruebas unitarias y reproducción aislada. No se consultó ni modificó producción y no se hicieron cambios de producto.
 
 ## Conclusión

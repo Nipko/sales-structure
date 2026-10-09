@@ -1,5 +1,7 @@
 # Auditoría del onboarding — Julio 2026
 
+> **Documento histórico (jul-2026) — supersedido por la generación de septiembre: `onboarding-diagnosis-2026-09.md`, `onboarding-decisions-2026-09.md` e `onboarding-implementation-closeout-2026-09-18.md`.**
+
 > Auditoría end-to-end del recorrido de alta: landing → signup → verificación → wizard guiado → setup-wizard → primer canal → dashboard.
 > Método: lectura estática de código en 7 dimensiones paralelas + ronda de verificación adversarial sobre los hallazgos graves. **Nada se ejecutó en producción.**
 > Supersede parcialmente a `docs/onboarding-audit-2026-06.md` (estado de fases) y corrige secciones de `docs/onboarding-redesign-2026-q2.md`.

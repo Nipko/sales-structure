@@ -1,5 +1,7 @@
 # E2 — Lecturas, tráfico operativo y captura de entradas
 
+> **Documento histórico (2026-09-07) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+
 Fecha: 2026-09-07. Alcance: AgentTest, Eval, Simulation y LearningEvaluation, su entrada común `ConversationsService.executeAgentTurn`, motores, capacidades, herramientas y lectores transitivos. Reconciliado contra `5f036d10`; no certifica perfiles ni cambia las condiciones de publicación.
 
 Contexto del núcleo, FAQs/políticas, temporalidad de fixtures, autoridad de fuentes de aprendizaje y Replay ya están integrados. Vehículos y mascotas amplían a quince los writers del adaptador canónico; tres lectores privados/adicionales conservan sus guardas. El capturador RAG dispone de gestor de referencias, reutilización y vencimiento. AgentTest captura la réplica y la comparte con Eval/Simulation/Learning y candidatas; el contexto automático y la herramienta seleccionan esa misma referencia privada. El presupuesto agregado bajo carga y los lectores comerciales restantes siguen pendientes. El capturador piloto de servicios sigue sin conectar y el manifiesto global se conserva completo.

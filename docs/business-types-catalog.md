@@ -760,7 +760,7 @@ Modo de producto: producto vertical · implementado, no certificado · visible e
 
 - Disponibilidad: **seleccionable**.
 - Objeto principal: `pet`.
-- Menú: CRM «Tutores», Embudo «Embudo de ventas»; «Reservas» (`/admin/appointments`) en Trabajo diario; «Servicios» (`/admin/pets`) en Trabajo diario.
+- Menú: CRM «Tutores», Embudo «Embudo de ventas»; «Reservas» (`/admin/appointments`) en Trabajo diario; «Mascotas» (`/admin/pets`) en Trabajo diario.
 - Familias de herramientas: `faqs`, `appointments`, `petServices`, `pets`.
 - Herramientas: `search_faqs`, `list_services`, `check_availability`, `create_appointment`, `cancel_appointment`, `list_customer_appointments`, `send_booking_link`, `reschedule_appointment`, `get_appointment_details`, `list_pet_services`, `check_daycare_availability`, `list_pets_for_contact`, `register_pet`, `get_vaccination_status`, `triage_pet_emergency`, `update_pet`.
 
@@ -812,7 +812,7 @@ Modo de producto: producto vertical · implementado, no certificado · visible e
 
 - Disponibilidad: **seleccionable**.
 - Objeto principal: `photo_session`.
-- Menú: CRM «CRM», Embudo «Oportunidades»; «Paquetes» (`/admin/photo-sessions`) en Trabajo diario; «Paquetes y servicios» (`/admin/service-catalog`) en Catálogo y recursos.
+- Menú: CRM «CRM», Embudo «Oportunidades»; «Sesiones fotográficas» (`/admin/photo-sessions`) en Trabajo diario; «Paquetes y servicios» (`/admin/service-catalog`) en Catálogo y recursos.
 - Familias de herramientas: `faqs`, `photography`.
 - Herramientas: `search_faqs`, `list_photo_packages`, `send_portfolio`, `check_date_availability`, `request_photo_quote`, `cancel_photo_session`.
 

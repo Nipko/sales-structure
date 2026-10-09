@@ -44,7 +44,7 @@ A module's name changes with the industry and the business type. The appointment
 - **Insurance**: **Insurance** (shown as "Policies") for broker, life, and auto.
 - **Home services**: **Requests** (shown as "Service requests") and **Packages & services**.
 - **Pet services**: grooming, walks, and training use the booking schedule and **Pets**; daycare and dog hotel use **Rentals & stays** (shown as "Stays"), **Pets**, and **Packages & services**.
-- **Photography**: **Photo sessions** (shown as "Sessions" or "Packages") and **Packages & services**.
+- **Photography**: **Photo sessions** (shown as "Sessions"; "Photo sessions" for wedding photography) and **Packages & services**.
 - **Other**: **Orders** and **Inventory**.
 
 **Packages & services** is the catalogue of what the business sells, with its duration, price, and capacity, for activities that are not booked by time slots. The **Stays**, **Tour bookings**, **Workshop orders**, and **Cases** screens are daily-work records: that is where you operate stays, tour departures, workshop jobs, and case files.

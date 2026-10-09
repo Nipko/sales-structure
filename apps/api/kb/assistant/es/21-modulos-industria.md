@@ -44,7 +44,7 @@ El nombre del módulo cambia según la industria y el tipo de negocio. El módul
 - **Seguros**: **Seguros** (en el menú, «Pólizas») en broker, vida y auto.
 - **Servicios del hogar**: **Solicitudes** (en el menú, «Servicios») y **Paquetes y servicios**.
 - **Servicios para mascotas**: peluquería, paseos y adiestramiento usan la agenda de reservas y **Mascotas**; guardería y hotel canino usan **Alquileres y estadías** (en el menú, «Estadías»), **Mascotas** y **Paquetes y servicios**.
-- **Fotografía**: **Sesiones fotográficas** (en el menú, «Sesiones» o «Paquetes») y **Paquetes y servicios**.
+- **Fotografía**: **Sesiones fotográficas** (en el menú, «Sesiones»; en fotografía de bodas, «Sesiones fotográficas») y **Paquetes y servicios**.
 - **Otros**: **Pedidos** e **Inventario**.
 
 **Paquetes y servicios** es el catálogo de lo que el negocio vende con su duración, precio y capacidad, para las actividades que no agendan por franjas. Las pantallas de **Estadías**, **Reservas de tours**, **Órdenes de taller** y **Casos** son registros de trabajo diario: ahí operas las estadías, las salidas de tours, los trabajos del taller y los expedientes.

@@ -44,7 +44,7 @@ Le nom d'un module change selon le secteur et le type d'activité. Le module de 
 - **Assurances** : **Assurances** (dans le menu, « Polices ») pour courtier, vie et auto.
 - **Services à domicile** : **Demandes** (dans le menu, « Interventions ») et **Forfaits et services**.
 - **Services animaliers** : toilettage, promenades et dressage utilisent l'agenda des réservations et **Animaux** ; garderie et hôtel pour animaux utilisent **Locations et séjours** (dans le menu, « Séjours »), **Animaux** et **Forfaits et services**.
-- **Photographie** : **Séances photo** (dans le menu, « Séances » ou « Forfaits ») et **Forfaits et services**.
+- **Photographie** : **Séances photo** (dans le menu, « Séances » ; pour la photographie de mariage, « Séances photo ») et **Forfaits et services**.
 - **Autre** : **Commandes** et **Inventaire**.
 
 **Forfaits et services** est le catalogue de ce que l'entreprise vend, avec sa durée, son prix et sa capacité, pour les activités qui ne se réservent pas par créneaux. Les écrans **Séjours**, **Réservations de tours**, **Ordres d'atelier** et **Dossiers** sont des registres du travail quotidien : c'est là que vous gérez les séjours, les départs de tours, les interventions d'atelier et les dossiers.

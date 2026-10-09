@@ -108,7 +108,7 @@ import { identityStepUpToolNames, identityStepUpToolsFor } from './identity-step
 import { BookingEngineService, invalidateBookingProposal, type BookingState } from './booking-engine.service';
 import { arbitrateMissionFocus, missionDialogue, toolMissionAliases, missionToolAllowed, toolMissionDomain, type MissionCandidate, type MissionFocusDecision } from './mission-focus';
 import { MissionFocusStore } from './mission-focus-store';
-import { addressFormOf, detectTransition, humanizeReferences, runTransition, transitionDoneText, transitionTexts, TRANSITION_TOOLS, TRANSITION_WRITER } from './transition-engine';
+import { addressFormOf, detectTransition, humanizeReferences, namedRequestOverridesClarify, runTransition, transitionDoneText, transitionTexts, TRANSITION_TOOLS, TRANSITION_WRITER } from './transition-engine';
 import { persistConversationRuntimeState } from './conversation-runtime-state';
 import type { ConversationMissionFocusV1, MissionExecutionScopeV1 } from '@parallext/shared';
 import { ProcedureEngineService } from './procedure-engine.service';
@@ -3459,6 +3459,9 @@ export class ConversationsService {
         let missionFocus: ConversationMissionFocusV1 | undefined;
         let missionDecision: MissionFocusDecision | undefined;
         let missionStore: MissionFocusStore | undefined;
+        let missionLoadedAt: string | undefined;
+        // The tool of the proposal that was waiting for a yes/no BEFORE this message was arbitrated (the arbiter may drop it).
+        let priorPendingTool: string | undefined;
         const missionMessageId = inboundMessageId || msg.id || randomUUID();
         const updateMissionScope = () => {
             if (!missionFocus) return;
@@ -3478,6 +3481,9 @@ export class ConversationsService {
         if (!draftMode && conversation.contact_id) {
             missionStore = new MissionFocusStore(this.prisma, schemaName, conversation.id, conversation.contact_id, session);
             missionFocus = await missionStore.load();
+            // When the focus was last written: the question «¿cuál?» of the transition engine is answered by the NEXT message, soon.
+            missionLoadedAt = missionFocus.updatedAt;
+            priorPendingTool = missionFocus.expectedReply?.kind === 'confirmation' && missionFocus.selected?.kind === 'tool' ? missionFocus.selected.toolName : undefined;
             const candidates: MissionCandidate[] = await procedureEngine.missionCandidates(schemaName, tenantId, conversation.id, {
                 industry: turnContext.verticalContext?.industry, subType: turnContext.verticalContext?.subType,
             });
@@ -3494,6 +3500,19 @@ export class ConversationsService {
             if (missionDecision.invalidateConfirmation && bookingProposalActive) invalidateBookingProposal(bookingState);
             if (missionDecision.pauseBooking || missionDecision.invalidateConfirmation && bookingProposalActive) await this.persistBookingState(schemaName, conversation.id, bookingState, session);
             if (missionDecision.pauseProcedure) await procedureEngine.pauseMission(schemaName, conversation.id);
+            // A clarification with fewer than two things to choose between, for a message that plainly asks to cancel / move /
+            // list ONE kind of thing («quiero cancelar mi cita» while several tasks of that kind sit paused), is not a clarification:
+            // the request names its object, so it goes to the transition engine as a new task of that object.
+            if (missionDecision.route === 'clarify' && missionDecision.action === 'clarify') {
+                const named = detectTransition({ text: userText, available: transitionAvailable, pendingConfirmation: false });
+                if (namedRequestOverridesClarify(missionDecision.clarifyOptions, named) && named.kind === 'request') {
+                    missionDecision.route = 'tools';
+                    missionDecision.action = 'select';
+                    missionDecision.clarifyOptions = undefined;
+                    missionFocus.selected = { id: randomUUID(), kind: 'tool', domain: named.request.domain };
+                    missionFocus.expectedReply = null;
+                }
+            }
             if (missionDecision.route === 'clarify' || missionDecision.action === 'pause' || missionDecision.action === 'replay') {
                 engineProducedText = missionDialogue(userLanguage, missionDecision.action === 'replay' ? 'replay' : missionDecision.action === 'pause' ? 'paused' : 'clarify', missionDecision.clarifyOptions);
                 // «quiero cancelar» with no object, in a business that has several: say which ones there are.
@@ -3935,9 +3954,13 @@ export class ConversationsService {
                 const awaitingWriter = selectedTool && !selectedTool.reference && selectedTool.toolName
                     && TRANSITION_TOOLS.has(selectedTool.toolName) && !missionFocus.expectedReply ? selectedTool.toolName : undefined;
                 const detected = detectTransition({
-                    text: userText, available: transitionAvailable, missionDomain: selectedTool?.domain, awaitingWriter,
-                    pendingConfirmation: missionFocus.expectedReply?.kind === 'confirmation',
+                    text: userText, available: transitionAvailable, missionDomain: selectedTool?.domain, missionToolName: priorPendingTool ?? selectedTool?.toolName, awaitingWriter,
+                    // «¿Cuál?» is answered by the very next message, soon: after 15 minutes it is just another conversation.
+                    awaitingFresh: !!missionLoadedAt && Date.now() - Date.parse(missionLoadedAt) < 15 * 60_000,
+                    pendingConfirmation: !!priorPendingTool || missionFocus.expectedReply?.kind === 'confirmation',
                 });
+                // Whatever this message turns out to be, a lapsed or unanswered choice is dropped here unless the engine asks again.
+                let keepsAwaiting = false;
                 if (detected?.kind === 'ambiguous') {
                     engineProducedText = transitionTexts(userLanguage, addressFormOf(regional?.addressForm.value)).ambiguous(detected.options);
                     engineTextIsReply = true;
@@ -3959,7 +3982,7 @@ export class ConversationsService {
                                 regional?.operatingCountry.value);
                             return { date: interpreted.dateMentioned, time: interpreted.timeMentioned };
                         },
-                        todayIso, language: userLanguage, form: addressFormOf(regional?.addressForm.value),
+                        todayIso, language: userLanguage, form: addressFormOf(regional?.addressForm.value), locale: regional?.locale.value,
                     });
                     engineExecutedTools = [...engineExecutedTools, ...outcome.executed.filter(tool => tool.result?.error !== 'confirmation_required')];
                     if (outcome.handled && outcome.text) {
@@ -3976,9 +3999,15 @@ export class ConversationsService {
                             } else if (missionFocus.selected.toolName && TRANSITION_TOOLS.has(missionFocus.selected.toolName)) {
                                 delete missionFocus.selected.toolName;
                             }
+                            keepsAwaiting = !!outcome.awaitingWriter;
                             await saveMission();
                         }
                     }
+                }
+                if (awaitingWriter && !keepsAwaiting && missionFocus.selected?.kind === 'tool' && !missionFocus.selected.reference
+                    && missionFocus.selected.toolName && TRANSITION_TOOLS.has(missionFocus.selected.toolName)) {
+                    delete missionFocus.selected.toolName;
+                    await saveMission();
                 }
             } catch (e: any) {
                 this.logger.warn(`[Transition] engine error (non-fatal): ${e.message}`);

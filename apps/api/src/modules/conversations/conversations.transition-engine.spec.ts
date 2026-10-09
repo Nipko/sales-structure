@@ -24,7 +24,7 @@ const appointment = (id: string, date: string, time: string) => ({ id, reference
 const order = { id: ORDER, version: 1, status: 'pending', paymentStatus: 'pending', totalAmount: 119900, currency: 'COP',
     items: [{ productName: 'Audífono QA Aurora', quantity: 1 }] };
 
-interface Options { tools: string[]; industry: string; appointments?: any[]; orders?: any[]; slots?: string[]; model?: (request: any) => string }
+interface Options { tools: string[]; industry: string; appointments?: any[]; orders?: any[]; slots?: string[] | 'error'; model?: (request: any) => string; script?: (request: any) => any | undefined }
 
 function world(options: Options) {
     const f = agentTurnFixture({ toolRetrieval: new ToolRetrievalService() });
@@ -44,8 +44,8 @@ function world(options: Options) {
         let result: any;
         if (name === 'list_customer_appointments') result = { appointments: options.appointments ?? [] };
         else if (name === 'list_my_catalog_orders') result = { success: true, orders: options.orders ?? [] };
-        else if (name === 'check_availability') result = { available: true, slots: (options.slots ?? ['09:00', '10:00']).map(time => ({ time })) };
-        else if (['cancel_appointment', 'reschedule_appointment', 'cancel_catalog_order'].includes(name)) {
+        else if (name === 'check_availability') result = options.slots === 'error' ? { error: 'availability_unavailable' } : { available: true, slots: (options.slots ?? ['09:00', '10:00']).map(time => ({ time })) };
+        else if (['cancel_appointment', 'reschedule_appointment', 'cancel_catalog_order', 'place_catalog_order'].includes(name)) {
             if (pending && pending.tool === name && JSON.stringify(pending.args) === JSON.stringify(args) && done[name] === 'confirmed') {
                 result = name === 'reschedule_appointment'
                     ? { success: true, appointment: { id: args.appointmentId, service: 'Corte y estilo', date: args.newDate, time: args.newTime, status: 'confirmed' } }
@@ -68,6 +68,8 @@ function world(options: Options) {
     f.llmRouter.execute.mockImplementation(async (request: any) => {
         if (!['conversation', 'tool_calling'].includes(request.task)) return answer('{}');
         voiced.push(String((request.messages ?? []).slice(-1)[0]?.content ?? ''));
+        const scripted = options.script?.(request);
+        if (scripted) return scripted;
         return answer(options.model ? options.model(request) : REFUSAL);
     });
     let id: string | undefined;
@@ -85,7 +87,7 @@ function world(options: Options) {
 }
 
 const SALON = ['list_services', 'check_availability', 'create_appointment', 'cancel_appointment', 'reschedule_appointment', 'list_customer_appointments', 'search_faqs'];
-const STORE = ['list_my_catalog_orders', 'get_catalog_order', 'cancel_catalog_order', 'search_products', 'check_stock'];
+const STORE = ['place_catalog_order', 'list_my_catalog_orders', 'get_catalog_order', 'cancel_catalog_order', 'search_products', 'check_stock'];
 
 describe('cancelling an appointment does not depend on the model calling the writer', () => {
     it('«quiero cancelar mi cita» → the server proposes with the exact terms; «sí, cancélala» executes it and says so', async () => {
@@ -178,10 +180,11 @@ describe('cancelling an order', () => {
         expect(h.ran('cancel_catalog_order')[0].args).toEqual({ orderId: ORDER });
         expect(request.reply).toContain('C03EBDD7');
         expect(request.reply).not.toContain(ORDER);
-        expect(request.reply).toMatch(/¿Confirma que desea cancelar su pedido/);
+        expect(request.reply).toMatch(/¿Confirma que desea ANULAR su pedido/);
+        expect(request.reply).toContain('El pedido no se entregará y no es un pago.');
         const yes = await h.turn('sí, cancélalo');
         expect(h.succeeded('cancel_catalog_order')).toHaveLength(1);
-        expect(yes.reply).toBe('Su pedido (Ref. C03EBDD7) quedó cancelado.');
+        expect(yes.reply).toBe('Su pedido (Ref. C03EBDD7) quedó anulado.');
         expect(yes.reply).not.toMatch(/No he podido completar/);
     });
 });
@@ -217,5 +220,89 @@ describe('references and register in what the model writes', () => {
         const result = await h.turn('¿cuál es el estado de mi pedido?');
         expect(result.reply).toContain('Su pedido C03EBDD7 está pendiente');
         expect(result.reply).toContain(`https://x.example/orders/${ORDER}`);
+    });
+});
+
+// ── Opus review of dc0337fc: the engine must not hijack normal conversation ─────────────────────────────────────────────────────────
+describe('ordinary conversation is left to the model', () => {
+    const two = [appointment(APPT, '2026-10-12', '09:00'), appointment(APPT2, '2026-10-13', '09:00')];
+    it.each([
+        'Por favor no cancelen mi cita, voy en camino', 'No voy a cancelar mi cita, llego 10 minutos tarde', 'Me cancelaron la cita del martes sin avisar',
+        'Ya cancelé el pedido por Nequi', 'Quiero cancelar el pedido con tarjeta', 'Tengo una cita mañana, ¿dónde queda el local?',
+        'No quiero reprogramar, solo confirmar que voy', 'Me cambiaron la cita y nadie me avisó',
+    ])('"%s": no record is read, no writer is called', async text => {
+        const h = world({ tools: [...SALON, ...STORE], industry: 'salon', appointments: two, orders: [order] });
+        await h.turn('hola');
+        await h.turn(text);
+        expect(h.calls.map(call => call.name).filter(name => /^(?:list_customer_appointments|list_my_catalog_orders|cancel_|reschedule_|check_availability)/.test(name))).toEqual([]);
+    });
+
+    it('the «¿cuál?» question is answered by the very next message only: greetings, thanks and questions drop it', async () => {
+        for (const text of ['Hola, buenos días', 'gracias', '¿Cuánto cuesta la limpieza?', '¿el martes abren?']) {
+            const h = world({ tools: SALON, industry: 'salon', appointments: two });
+            await h.turn('hola');
+            const ask = await h.turn('quiero cancelar mi cita');
+            expect(ask.reply).toMatch(/¿Cuál desea cancelar\?/);
+            await h.turn(text);
+            await h.turn('la del martes'); // the question lapsed with the unrelated message: this is not an answer any more
+            expect(h.ran('cancel_appointment')).toHaveLength(0);
+        }
+    });
+
+    it('a pending proposal to CREATE an order: «no, cancélalo» / «mejor cancela el pedido» never propose cancelling an earlier order', async () => {
+        for (const text of ['no, cancélalo', 'mejor cancela el pedido', 'cancélalo']) {
+            const h = world({
+                tools: STORE, industry: 'retail', orders: [order],
+                script: request => {
+                    const last = String((request.messages ?? []).slice(-1)[0]?.content ?? '');
+                    if (request.task === 'tool_calling' && /quiero comprar/.test(last)) {
+                        return { content: '', toolCalls: [{ id: 'c1', function: { name: 'place_catalog_order', arguments: JSON.stringify({ items: [{ productId: 'p1', quantity: 1 }] }) } }], model: 'test', usage: { promptTokens: 1, completionTokens: 1 }, cost: 0 };
+                    }
+                    if (JSON.stringify(request.messages ?? []).includes('confirmation_required')) return answer('Su pedido está listo para su confirmación. ¿Lo confirmo?');
+                    return undefined;
+                },
+            });
+            await h.turn('hola');
+            const proposal = await h.turn('quiero comprar el audífono');
+            expect(h.ran('place_catalog_order').map(call => call.result.error)).toEqual(['confirmation_required']);
+            expect(proposal.reply).toContain('¿Lo confirmo?');
+            await h.turn(text);
+            expect(h.ran('cancel_catalog_order')).toHaveLength(0);
+            expect(h.ran('list_my_catalog_orders')).toHaveLength(0);
+        }
+    });
+
+    it('the only appointment contradicts the words («la del martes», it is a Thursday): the server shows it and asks, it does not propose', async () => {
+        const h = world({ tools: SALON, industry: 'salon', appointments: [appointment(APPT, '2026-10-15', '09:00')] });
+        await h.turn('hola');
+        const reply = await h.turn('quiero cancelar la cita del martes');
+        expect(h.ran('cancel_appointment')).toHaveLength(0);
+        expect(reply.reply).toContain('No encuentro una cita con ese día u hora');
+        expect(reply.reply).toContain('AE3D0C86');
+        const yes = await h.turn('la del jueves');
+        expect(h.ran('cancel_appointment')[0].args).toEqual({ appointmentId: APPT });
+        expect(yes.reply).toContain('¿Confirma que desea cancelar');
+    });
+});
+
+describe('a reschedule is never proposed unverified', () => {
+    const base = [appointment(APPT, '2026-10-12', '09:00')];
+    it.each([
+        ['the agenda errors', { appointments: base, slots: 'error' as const }],
+        ['the appointment has no service to check', { appointments: [{ ...base[0], serviceId: undefined }] }],
+    ])('%s: nothing is proposed, the model\'s own flow takes over', async (_label, options) => {
+        const h = world({ tools: SALON, industry: 'salon', ...options });
+        await h.turn('hola');
+        const result = await h.turn('quiero reprogramar mi cita al día siguiente a la misma hora');
+        expect(h.ran('reschedule_appointment')).toHaveLength(0);
+        expect(result.reply).not.toContain('¿Confirma que movamos');
+    });
+    it('a date that already passed is asked again, not checked or proposed', async () => {
+        const h = world({ tools: SALON, industry: 'salon', appointments: [appointment(APPT, '2020-01-01', '09:00')] });
+        await h.turn('hola');
+        const result = await h.turn('quiero reprogramar mi cita al día siguiente a la misma hora');
+        expect(result.reply).toContain('Esa fecha ya pasó');
+        expect(h.ran('reschedule_appointment')).toHaveLength(0);
+        expect(h.ran('check_availability')).toHaveLength(0);
     });
 });

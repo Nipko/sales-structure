@@ -178,7 +178,7 @@ describe('«sí + cancel verb» answers the pending cancellation', () => {
         expect(second.debug.runtimeError).toBeUndefined();
         expect(h.ran(tool).map(item => item.result.success ?? item.result.error)).toEqual(['confirmation_required', true]);
         expect(second.reply).not.toMatch(/más de una gestión|no he podido|alguien del equipo/i);
-        expect(second.reply).toContain('cancelad');
+        expect(second.reply).toMatch(/cancelad|anulad/);
     });
 
     it('with nothing pending, «sí, cancélalo» is still just a cancel request: nothing is executed, and it asks which one', async () => {

@@ -1,4 +1,5 @@
 import {
+    canonicalSubtypeId,
     resolveVerticalCapabilityManifest,
     subtypeTerminologyFor,
     type TenantVerticalConfig,
@@ -26,6 +27,26 @@ const DAILY_WORK_LABEL: Readonly<Record<string, Readonly<Record<'es' | 'en' | 'p
     vehicle_rental: Object.freeze({
         es: 'Reservas', en: 'Reservations', pt: 'Reservas', fr: 'Réservations',
     }),
+});
+
+/**
+ * Registers that keep their own menu name for a subtype whose "primary object"
+ * (the word its owner uses for what the business sells) is a different thing
+ * from what the register lists.
+ *
+ * `withSubtypeNavigation` renames the register of the manifest's primary object
+ * with the subtype's plural noun. That is right when they are the same thing
+ * (a hotel's rooms) and wrong when they are not:
+ *   - a dog groomer sells "Servicios", but `/admin/pets` lists the pets, so the
+ *     entry read «Servicios» next to the appointments entry;
+ *   - a wedding photographer sells "Paquetes", but `/admin/photo-sessions` lists
+ *     the sessions, so the entry read «Paquetes» next to «Paquetes y servicios»,
+ *     the catalogue of packages.
+ * Keyed by canonical profile id (aliases resolve first).
+ */
+export const REGISTER_KEEPS_ITS_OWN_LABEL: Readonly<Record<string, readonly string[]>> = Object.freeze({
+    'pet_services/peluqueria': Object.freeze(['pets']),
+    'fotografia/bodas': Object.freeze(['photoSessions']),
 });
 
 export const VERTICAL_ROUTE_NAV_ITEM: Readonly<Record<string, string>> = Object.freeze({
@@ -73,7 +94,11 @@ export function withSubtypeNavigation(
     const labelOverrides = { ...(config.sidebar?.labelOverrides || {}) };
     const terms = subtypeTerminologyFor(config.industry, config.subType);
     const primaryItem = PRIMARY_OBJECT_NAV_ITEM[manifest.primaryObject];
-    if (primaryItem && routeOrder.includes(primaryItem)) {
+    const canonical = config.subType ? canonicalSubtypeId(config.industry, config.subType) : null;
+    const keepsOwnLabel = canonical
+        ? REGISTER_KEEPS_ITS_OWN_LABEL[`${canonical.industry}/${canonical.subtype}`] || []
+        : [];
+    if (primaryItem && routeOrder.includes(primaryItem) && !keepsOwnLabel.includes(primaryItem)) {
         const label = terms?.primaryObjectPlural || terms?.primaryObject;
         if (label) labelOverrides[primaryItem] = { ...label };
     }

@@ -81,7 +81,7 @@ L'option visible **Le contact convertit** n'est pas encore appliquée automatiqu
 
 ### Prospecter un segment avec une séquence
 
-Dans une séquence active, vous trouverez **Prospecter depuis le CRM** : vous choisissez un segment de leads et cliquez sur **Inscrire le segment** pour les inscrire d'un coup (jusqu'à 500 par envoi). La première étape doit être un modèle WhatsApp approuvé, car WhatsApp n'autorise que les modèles pour démarrer une conversation à froid. La plateforme respecte les opt-outs et n'inscrit jamais personne deux fois.
+Dans une séquence active, vous trouverez **Prospecter depuis le CRM** : vous choisissez un segment de leads et cliquez sur **Inscrire le segment** pour les inscrire d'un coup (jusqu'à 300 par envoi). La première étape doit être un modèle WhatsApp approuvé, car WhatsApp n'autorise que les modèles pour démarrer une conversation à froid. La plateforme respecte les opt-outs et n'inscrit jamais personne deux fois.
 
 ## Comment installer un modèle prêt à l'emploi
 

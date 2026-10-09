@@ -10,7 +10,7 @@ keywords: ["citas", "agenda", "calendario", "agendar", "reservas", "reservar", "
 
 Parallly incluye una agenda completa: defines tus servicios y horarios una sola vez, y a partir de ahí tu agente de IA agenda citas solo dentro de la conversación, tu equipo las ve en un calendario compartido y todo puede sincronizarse con Google Calendar u Outlook.
 
-Todo vive en la barra lateral, en **Trabajo diario → Citas**. Según tu tipo de negocio el menú puede llamarlo **Agenda**, **Agenda médica**, **Reservas** o **Reservaciones**, y en algunos rubros no aparece porque ese negocio no agenda citas; es la misma pantalla. Al entrar verás la página **Citas y Agendamiento** con cinco pestañas: **Calendario** (vista por semana o por día), **Agenda** (lista de citas), **Servicios disponibles**, **Configuración** y **Analíticas**. La configuración es para administradores y supervisores; los agentes pueden ver el calendario, crear citas y atenderlas.
+Todo vive en la barra lateral, en **Trabajo diario → Citas**. Según tu tipo de negocio el menú puede llamarlo **Agenda**, **Reservas** o **Reservaciones**, y en algunos rubros no aparece porque ese negocio no agenda citas; es la misma pantalla. Al entrar verás la página **Citas y Agendamiento** con cinco pestañas: **Calendario** (vista por semana o por día), **Agenda** (lista de citas), **Servicios disponibles**, **Configuración** y **Analíticas**. La configuración es para administradores y supervisores; los agentes pueden ver el calendario, crear citas y atenderlas.
 
 ## Cómo crear tus servicios
 

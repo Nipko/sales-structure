@@ -26,7 +26,7 @@ La barre latérale organise Parallly par objectif en ces sections : **Essentiels
 Parallly adapte certains libellés du menu au vocabulaire de votre métier. L'écran est le même ; seul le nom change :
 
 - L'**Entonnoir de ventes** peut s'appeler **Opportunités**, **Négociations**, **Suivi** ou **Ventes**.
-- **Rendez-vous** peut apparaître comme **Agenda**, **Agenda Médicale** ou **Réservations**, et dans certains métiers il n'apparaît pas parce que l'entreprise ne prend pas de rendez-vous.
+- **Rendez-vous** peut apparaître comme **Agenda** ou **Réservations**, et dans certains métiers il n'apparaît pas parce que l'entreprise ne prend pas de rendez-vous.
 - Les écrans propres à un métier (Ordres d’atelier, Dossiers, Réservations de tours, Forfaits et services, Véhicules…) n'apparaissent que si votre type d'activité les utilise.
 
 Si vous ne trouvez pas quelque chose sous son nom générique, cherchez par fonction avec la recherche de commandes (`Ctrl+K`) ou ouvrez **Travail quotidien**.

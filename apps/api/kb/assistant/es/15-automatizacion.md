@@ -81,7 +81,7 @@ La opción visible **El contacto convierte** aún no se ejecuta automáticamente
 
 ### Prospectar un segmento con una secuencia
 
-Dentro de una secuencia activa encontrarás **Prospectar desde el CRM**: eliges un segmento de leads y pulsas **Inscribir segmento** para inscribirlos de una vez (hasta 500 por envío). El primer paso debe ser una plantilla de WhatsApp aprobada, porque WhatsApp solo permite plantillas para iniciar una conversación en frío. La plataforma respeta los opt-outs y nunca inscribe a nadie dos veces.
+Dentro de una secuencia activa encontrarás **Prospectar desde el CRM**: eliges un segmento de leads y pulsas **Inscribir segmento** para inscribirlos de una vez (hasta 300 por envío). El primer paso debe ser una plantilla de WhatsApp aprobada, porque WhatsApp solo permite plantillas para iniciar una conversación en frío. La plataforma respeta los opt-outs y nunca inscribe a nadie dos veces.
 
 ## Cómo instalar una plantilla lista para usar
 

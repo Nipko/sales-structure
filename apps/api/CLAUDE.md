@@ -2,7 +2,7 @@
 _Actualizado: jul 2026_
 
 ## Overview
-NestJS 10 backend with 101 `*.module.ts` files across 95 folders in `src/modules/` (2026-10-08 snapshot; recompute with `find apps/api/src -name "*.module.ts" | wc -l`). Port 3000. Global prefix: `/api/v1`.
+NestJS 10 backend with 101 `*.module.ts` files across 93 folders in `src/modules/` (2026-10-08 snapshot; recompute with `find apps/api/src -name "*.module.ts" | wc -l`). Port 3000. Global prefix: `/api/v1`.
 
 ## Module categories
 

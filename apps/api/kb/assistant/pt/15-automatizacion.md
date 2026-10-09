@@ -74,7 +74,7 @@ A opção visível **O contato converte** ainda não é aplicada automaticamente
 
 ### Prospectar um segmento com uma sequência
 
-Dentro de uma sequência ativa você encontra **"Prospectar do CRM"**: escolha um segmento de leads e clique em **"Inscrever segmento"** para inscrevê-los de uma vez (até 500 por envio). O primeiro passo precisa ser um modelo aprovado do WhatsApp, porque o WhatsApp só permite modelos para iniciar uma conversa fria. A plataforma respeita os opt-outs e não duplica inscrições.
+Dentro de uma sequência ativa você encontra **"Prospectar do CRM"**: escolha um segmento de leads e clique em **"Inscrever segmento"** para inscrevê-los de uma vez (até 300 por envio). O primeiro passo precisa ser um modelo aprovado do WhatsApp, porque o WhatsApp só permite modelos para iniciar uma conversa fria. A plataforma respeita os opt-outs e não duplica inscrições.
 
 ## Como instalar um modelo de automação
 

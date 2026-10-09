@@ -12288,7 +12288,7 @@
       "enrolling": "Inscrevendo…",
       "enrolledToast": "{enrolled} inscritos · {optout} opt-out · {dup} já inscritos",
       "enrollError": "Não foi possível inscrever o segmento.",
-      "hint": "Respeita opt-outs e não duplica inscrições. Limite de 500 por envio."
+      "hint": "Respeita opt-outs e não duplica inscrições. Limite de 300 por envio."
     }
   },
   "knowledgeGap": {

@@ -26,7 +26,7 @@ The sidebar organizes Parallly by purpose into these sections: **Essentials**, *
 Parallly adapts certain menu labels to the language of your trade. The screen is the same; only the name changes:
 
 - The **Sales Funnel** may be called **Opportunities**, **Deals**, **Patient Journey** or **Sales**.
-- **Appointments** may appear as **Schedule**, **Medical Schedule** or **Bookings**, and in some trades it does not appear because that business does not book appointments.
+- **Appointments** may appear as **Schedule** or **Bookings**, and in some trades it does not appear because that business does not book appointments.
 - Screens specific to a trade (Workshop orders, Cases, Tour bookings, Packages & services, Vehicles…) appear only when your business type uses them.
 
 If you cannot find something by its generic name, search by what it does with the command search (`Ctrl+K`) or open **Daily work**.

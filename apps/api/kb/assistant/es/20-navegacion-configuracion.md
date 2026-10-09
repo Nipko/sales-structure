@@ -26,7 +26,7 @@ La barra lateral organiza Parallly por propósito en estas secciones: **Esencial
 Parallly adapta ciertos rótulos del menú al lenguaje de tu rubro. La pantalla es la misma; cambia el nombre:
 
 - El **Embudo de ventas** puede llamarse **Oportunidades**, **Negociaciones**, **Seguimiento** o **Ventas**.
-- **Citas** puede verse como **Agenda**, **Agenda médica**, **Reservas** o **Reservaciones**, y en algunos rubros no aparece porque ese negocio no agenda citas.
+- **Citas** puede verse como **Agenda**, **Reservas** o **Reservaciones**, y en algunos rubros no aparece porque ese negocio no agenda citas.
 - Las pantallas propias de un rubro (Órdenes de taller, Casos, Reservas de tours, Paquetes y servicios, Vehículos…) solo aparecen cuando tu tipo de negocio las usa.
 
 Si no encuentras algo por su nombre genérico, busca por la función con el buscador de comandos (`Ctrl+K`) o abre **Trabajo diario**.

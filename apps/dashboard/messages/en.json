@@ -12288,7 +12288,7 @@
       "enrolling": "Enrolling…",
       "enrolledToast": "{enrolled} enrolled · {optout} opted-out · {dup} already in",
       "enrollError": "Couldn't enroll the segment.",
-      "hint": "Respects opt-outs and never double-enrolls. Cap of 500 per run."
+      "hint": "Respects opt-outs and never double-enrolls. Cap of 300 per run."
     }
   },
   "knowledgeGap": {

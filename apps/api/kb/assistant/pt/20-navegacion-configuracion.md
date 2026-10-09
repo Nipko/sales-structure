@@ -26,7 +26,7 @@ A barra lateral organiza a Parallly por objetivo nestas seções: **Essenciais**
 A Parallly adapta certos rótulos do menu à linguagem do seu ramo. A tela é a mesma; só muda o nome:
 
 - O **Funil de vendas** pode se chamar **Oportunidades**, **Negociações**, **Acompanhamento** ou **Vendas**.
-- **Agendamentos** pode aparecer como **Agenda**, **Agenda Médica** ou **Reservas**, e em alguns ramos não aparece porque esse negócio não agenda compromissos.
+- **Agendamentos** pode aparecer como **Agenda** ou **Reservas**, e em alguns ramos não aparece porque esse negócio não agenda compromissos.
 - As telas próprias de um ramo (Ordens da oficina, Casos, Reservas de tours, Pacotes e serviços, Veículos…) só aparecem quando o seu tipo de negócio as usa.
 
 Se não encontrar algo pelo nome genérico, busque pela função com a busca de comandos (`Ctrl+K`) ou abra **Trabalho do dia**.

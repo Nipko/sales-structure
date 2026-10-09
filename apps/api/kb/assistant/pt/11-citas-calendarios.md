@@ -10,7 +10,7 @@ keywords: ["agendamentos", "agenda", "calendário", "agendar", "reservas", "rese
 
 O Parallly inclui uma agenda completa: você define seus serviços e horários uma única vez e, a partir daí, seu agente de IA marca agendamentos sozinho dentro da conversa, sua equipe os vê num calendário compartilhado e tudo pode ser sincronizado com o Google Calendar ou o Outlook.
 
-Tudo fica na barra lateral, em **Trabalho do dia → Agendamentos**. Conforme o seu tipo de negócio, o menu pode chamá-lo de **Agenda**, **Agenda Médica** ou **Reservas**, e em alguns ramos ele não aparece porque esse negócio não agenda compromissos; é a mesma tela. Ao entrar, você verá a página **Agendamentos** com cinco abas: **Calendário** (visão por semana ou por dia), **Agenda** (lista de agendamentos), **Serviços**, **Configurações** e **Analytics**. As configurações são para administradores e supervisores; os agentes podem ver o calendário, criar agendamentos e atendê-los.
+Tudo fica na barra lateral, em **Trabalho do dia → Agendamentos**. Conforme o seu tipo de negócio, o menu pode chamá-lo de **Agenda** ou **Reservas**, e em alguns ramos ele não aparece porque esse negócio não agenda compromissos; é a mesma tela. Ao entrar, você verá a página **Agendamentos** com cinco abas: **Calendário** (visão por semana ou por dia), **Agenda** (lista de agendamentos), **Serviços**, **Configurações** e **Analytics**. As configurações são para administradores e supervisores; os agentes podem ver o calendário, criar agendamentos e atendê-los.
 
 ## Como criar seus serviços
 

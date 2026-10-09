@@ -39,7 +39,7 @@ Fuentes primarias:
 
 ## Jerarquía canónica
 
-> **Actualizado el 2026-10-08.** La primera versión de este documento (ago-2026) describía seis grupos con una sección «Operación». Desde el 20–21 de agosto la barra lateral del negocio se divide en ocho grupos más Configuración; la fuente es `tenantSections` en `apps/dashboard/src/components/layout/AppSidebar.tsx` y los rótulos están en `nav.sections` de `apps/dashboard/messages/*.json`. Los nombres de ciertos ítems además cambian según el tipo de negocio (`sidebar.labelOverrides` en `vertical-definitions.ts`: el embudo puede leerse Oportunidades, Negociaciones, Seguimiento o Ventas; Citas puede leerse Agenda, Agenda médica, Reservas o Reservaciones).
+> **Actualizado el 2026-10-08.** La primera versión de este documento (ago-2026) describía seis grupos con una sección «Operación». Desde el 20–21 de agosto la barra lateral del negocio se divide en ocho grupos más Configuración; la fuente es `tenantSections` en `apps/dashboard/src/components/layout/AppSidebar.tsx` y los rótulos están en `nav.sections` de `apps/dashboard/messages/*.json`. Los nombres de ciertos ítems además cambian según el tipo de negocio (`sidebar.labelOverrides` en `vertical-definitions.ts`: el embudo puede leerse Oportunidades, Negociaciones, Seguimiento o Ventas; Citas puede leerse Agenda, Reservas o Reservaciones).
 
 1. **Esenciales** — Inicio y Conversaciones.
 2. **Clientes** — CRM y Organizaciones.

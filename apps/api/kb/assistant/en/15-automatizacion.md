@@ -74,7 +74,7 @@ The visible **The contact converts** option is not yet enforced automatically in
 
 ### Prospecting a segment with a sequence
 
-Inside an active sequence you'll find **"Prospect from CRM"**: you pick a lead segment and click **"Enroll segment"** to enroll them all at once (up to 500 per batch). The first step must be an approved WhatsApp template, because WhatsApp only allows templates to start a cold conversation. The platform honors opt-outs and never enrolls anyone twice.
+Inside an active sequence you'll find **"Prospect from CRM"**: you pick a lead segment and click **"Enroll segment"** to enroll them all at once (up to 300 per batch). The first step must be an approved WhatsApp template, because WhatsApp only allows templates to start a cold conversation. The platform honors opt-outs and never enrolls anyone twice.
 
 ## How to install an automation template
 

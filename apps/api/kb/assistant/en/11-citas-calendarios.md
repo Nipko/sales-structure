@@ -10,7 +10,7 @@ keywords: ["appointments", "scheduling", "calendar", "book", "booking", "reserva
 
 Parallly comes with a full scheduling system: you define your services and hours once, and from then on your AI agent books appointments on its own inside the conversation, your team sees them on a shared calendar, and everything can sync with Google Calendar or Outlook.
 
-It all lives in the sidebar, under **Daily work → Appointments**. Depending on your business type the menu may call it **Schedule**, **Medical Schedule** or **Bookings**, and in some trades it does not appear because that business does not book appointments; it is the same screen. When you open it you'll see the **Appointments & Scheduling** page with five tabs: **Calendar** (week or day view), **Agenda** (appointment list), **Services**, **Settings**, and **Analytics**. Settings are for admins and supervisors; agents can view the calendar, create appointments, and handle them.
+It all lives in the sidebar, under **Daily work → Appointments**. Depending on your business type the menu may call it **Schedule** or **Bookings**, and in some trades it does not appear because that business does not book appointments; it is the same screen. When you open it you'll see the **Appointments & Scheduling** page with five tabs: **Calendar** (week or day view), **Agenda** (appointment list), **Services**, **Settings**, and **Analytics**. Settings are for admins and supervisors; agents can view the calendar, create appointments, and handle them.
 
 ## How to create your services
 

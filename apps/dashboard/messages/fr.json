@@ -12288,7 +12288,7 @@
       "enrolling": "Inscription…",
       "enrolledToast": "{enrolled} inscrits · {optout} désinscrits · {dup} déjà inscrits",
       "enrollError": "Impossible d'inscrire le segment.",
-      "hint": "Respecte les désinscriptions et ne double pas les inscriptions. Limite de 500 par envoi."
+      "hint": "Respecte les désinscriptions et ne double pas les inscriptions. Limite de 300 par envoi."
     }
   },
   "knowledgeGap": {

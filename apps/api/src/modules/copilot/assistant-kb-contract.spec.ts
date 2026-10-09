@@ -548,9 +548,14 @@ describe('Parallly Assist knowledge-base contract', () => {
       return resolveSubtypeExperienceProfile(industry, subtype === '__none__' ? null : subtype).availability === 'waitlist';
     });
     expect(selectableCount + waitlistIds.length).toBe(profiles.length);
-    expect(normalizedBody).toMatch(new RegExp(`\\b${selectableCount}\\b`));
-    expect(normalizedBody).toMatch(new RegExp(`\\b${waitlistIds.length}\\b`));
-    expect(normalizedBody).toMatch(new RegExp(`\\(${legacyIds.length}\\)`));
+    // Anchored on the wording of each locale, so a bare "8" elsewhere cannot satisfy them.
+    const countPatterns: Record<(typeof LOCALES)[number], RegExp[]> = {
+      es: [new RegExp(`\\(${selectableCount} seleccionables y ${waitlistIds.length} en lista de espera\\)`), new RegExp(`lista de espera \\(${waitlistIds.length}\\)`), new RegExp(`cuentas existentes \\(${legacyIds.length}\\)`)],
+      en: [new RegExp(`\\(${selectableCount} selectable and ${waitlistIds.length} on a waitlist\\)`), new RegExp(`waitlisted \\(${waitlistIds.length}\\)`), new RegExp(`existing accounts only \\(${legacyIds.length}\\)`)],
+      pt: [new RegExp(`\\(${selectableCount} selecionáveis e ${waitlistIds.length} na lista de espera\\)`), new RegExp(`lista de espera \\(${waitlistIds.length}\\)`), new RegExp(`contas existentes \\(${legacyIds.length}\\)`)],
+      fr: [new RegExp(`\\(${selectableCount} sélectionnables et ${waitlistIds.length} sur liste d'attente\\)`), new RegExp(`liste d'attente \\(${waitlistIds.length}\\)`), new RegExp(`comptes existants uniquement \\(${legacyIds.length}\\)`)],
+    };
+    for (const pattern of countPatterns[locale]) expect(normalizedBody).toMatch(pattern);
     const compact = (text: string) => text.toLocaleLowerCase(locale).replace(/\s*\/\s*/g, '/');
     const bodyForNames = compact(article!.body);
     for (const id of [...waitlistIds, ...legacyIds]) {
@@ -975,13 +980,26 @@ describe('Parallly Assist knowledge-base contract', () => {
   });
 
   it('names the real tenant sidebar sections in the navigation article, never an Operations section', () => {
-    // nav.sections in apps/dashboard/messages/<locale>.json (tenantSections in AppSidebar.tsx).
-    const sections: Record<(typeof LOCALES)[number], string[]> = {
-      es: ['Esenciales', 'Clientes', 'Comercial', 'Trabajo diario', 'Catálogo y recursos', 'IA y crecimiento', 'Insights', 'Administración'],
-      en: ['Essentials', 'Customers', 'Commercial', 'Daily work', 'Catalogue & resources', 'AI & growth', 'Insights', 'Administration'],
-      pt: ['Essenciais', 'Clientes', 'Comercial', 'Trabalho do dia', 'Catálogo e recursos', 'IA e crescimento', 'Insights', 'Administração'],
-      fr: ['Essentiels', 'Clients', 'Commercial', 'Travail quotidien', 'Catalogue et ressources', 'IA et croissance', 'Insights', 'Administration'],
-    };
+    // The sections come from the code, not from a list typed here: the titleKeys of
+    // tenantSections in AppSidebar.tsx, named by nav.sections in each locale's messages.
+    // "config" (Settings) sits at the bottom and the article calls it by its own name.
+    const sidebarSource = fs.readFileSync(
+      path.resolve(__dirname, '../../../../dashboard/src/components/layout/AppSidebar.tsx'),
+      'utf8',
+    );
+    const tenantStart = sidebarSource.indexOf('const tenantSections');
+    const tenantPart = sidebarSource.slice(tenantStart, sidebarSource.indexOf('];', tenantStart));
+    const sectionKeys = [...tenantPart.matchAll(/titleKey:\s*"(\w+)"/g)]
+      .map((match) => match[1])
+      .filter((key) => key !== 'config');
+    expect(sectionKeys).toHaveLength(8);
+    const sections = Object.fromEntries(LOCALES.map((locale) => {
+      const navSections = JSON.parse(fs.readFileSync(
+        path.resolve(__dirname, '../../../../dashboard/messages/' + locale + '.json'),
+        'utf8',
+      )).nav.sections as Record<string, string>;
+      return [locale, sectionKeys.map((key) => navSections[key])];
+    })) as Record<(typeof LOCALES)[number], string[]>;
     for (const locale of LOCALES) {
       const article = byLocale[locale].find((candidate) => candidate.id === 'navegacion-configuracion');
       expect(article).toBeDefined();

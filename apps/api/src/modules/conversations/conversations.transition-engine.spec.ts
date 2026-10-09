@@ -1,3 +1,4 @@
+import { pinClock } from './__fixtures__/pinned-clock';
 import { agentTurnFixture, publishTools } from './__fixtures__/agent-turn.fixture';
 import { randomUUID } from 'crypto';
 import { classifyExplicitToolConfirmation } from './tool-execution-control.service';
@@ -89,6 +90,10 @@ function world(options: Options) {
 const SALON = ['list_services', 'check_availability', 'create_appointment', 'cancel_appointment', 'reschedule_appointment', 'list_customer_appointments', 'search_faqs'];
 const STORE = ['place_catalog_order', 'list_my_catalog_orders', 'get_catalog_order', 'cancel_catalog_order', 'search_products', 'check_stock'];
 
+
+// The scenarios below are dated against a calendar and the turn reads the real clock: pinned, so they do not turn red the day
+// they were written for goes by (see __fixtures__/pinned-clock.ts). Only Date is faked.
+pinClock();
 describe('cancelling an appointment does not depend on the model calling the writer', () => {
     it('«quiero cancelar mi cita» → the server proposes with the exact terms; «sí, cancélala» executes it and says so', async () => {
         const h = world({ tools: SALON, industry: 'salon', appointments: [appointment(APPT, '2026-10-12', '09:00')] });

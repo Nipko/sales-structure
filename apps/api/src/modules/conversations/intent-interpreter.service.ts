@@ -328,7 +328,7 @@ export class IntentInterpreterService {
         //   3. a weekday: the NEXT one, never today unless the customer says «hoy» («el viernes» said on a Friday is next Friday).
         // What cannot be resolved is not guessed: a weekday that disagrees with the day of the month, two different dates, and a
         // year-less day that already passed this year (far from next year's) are reported for the engine to ASK about.
-        const reading = readDateReference(tNorm, todayDate, { lenientPortuguese: true });
+        const reading = readDateReference(tNorm, todayDate, { lenientPortuguese: true, allowBareDay: step !== 'show_services' && step !== 'show_slots' });
         if (reading.kind === 'date' && reading.via === 'explicit') base.dateMentioned = reading.date;
         else if (reading.kind === 'past' && reading.thisYear && reading.nextYearDate) base.dateYearQuestion = { thisYear: reading.date, nextYear: reading.nextYearDate };
         else if (reading.kind === 'past') base.dateMentioned = reading.date;

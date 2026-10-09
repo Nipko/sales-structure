@@ -363,8 +363,10 @@ export function localizeStatusWords(text: string, language?: string): string {
     const masked = text.replace(PROTECTED_SPAN, span => `${SPAN_MARK}${parked.push(span) - 1}${SPAN_MARK}`);
     const translated = masked.replace(LABELED_STATUS, (match: string, label: string, connector: string, word: string) => {
         const key = word.toLowerCase();
-        const label2 = PAYMENT_STATUS_LABELS[lang]?.[key] ?? ORDER_STATUS_LABELS[lang][key];
+        let label2 = PAYMENT_STATUS_LABELS[lang]?.[key] ?? ORDER_STATUS_LABELS[lang][key];
         if (!label2) return match;
+        // «sigue en processing» → «sigue en preparación», not «sigue en en preparación»: the connector already says «en».
+        if (/\ben\s+$/i.test(connector) && /^en\s/i.test(label2)) label2 = label2.slice(3);
         return `${label}${connector}${word[0] !== word[0].toLowerCase() ? label2[0].toUpperCase() + label2.slice(1) : label2}`;
     });
     return translated.replace(new RegExp(`${SPAN_MARK}(\\d+)${SPAN_MARK}`, 'g'), (_m, index: string) => parked[Number(index)]);

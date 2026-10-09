@@ -264,8 +264,17 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
 
     // Decision on PR #82: the list shows what is left of today (visibility), but an appointment whose start time has passed is not
     // cancelled or moved from the chat (a no-show must not turn into a cancellation).
+    it('cancels an appointment whose start is still ahead on the tenant clock (control)', async () => {
+        const harness = createHarness([[{ ...appointment, start_local: '2026-08-01T07:30:00' }], [{ tz: 'America/Bogota' }], [{ id: appointmentId }]]);
+        const result = await harness.executor.execute(
+            schemaName, tenantId, contactId, 'cancel_appointment', { appointmentId }, undefined,
+            { operationalScope, authority: authorityFor('cancel_appointment') },
+        );
+        expect(result).toMatchObject({ success: true });
+    });
+
     it('does not cancel an appointment that already started, and writes nothing', async () => {
-        const harness = createHarness([[{ ...appointment, already_started: true }], [{ id: appointmentId }]]);
+        const harness = createHarness([[{ ...appointment, start_local: '2026-07-31T10:00:00' }], [{ id: appointmentId }]]);
 
         const result = await harness.executor.execute(
             schemaName, tenantId, contactId, 'cancel_appointment', { appointmentId }, undefined,
@@ -275,9 +284,9 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
         expect(result).toMatchObject({ error: 'appointment_already_started', persisted: false });
         expect(harness.prisma.$queryRawUnsafe.mock.calls.some(([sql]) => String(sql).includes('UPDATE appointments'))).toBe(false);
         expect(harness.eventEmitter.emit).not.toHaveBeenCalled();
-        // the start time is judged in the tenant's clock, inside the same read
-        expect(harness.prisma.$queryRawUnsafe.mock.calls[0][0]).toContain('AT TIME ZONE COALESCE((SELECT config_json');
-        expect(harness.prisma.$queryRawUnsafe.mock.calls[0][0]).toContain('AS already_started');
+        // the start comes back as the tenant's wall clock and is judged against the timezone every writer resolves (getTenantTimezone)
+        expect(harness.prisma.$queryRawUnsafe.mock.calls[0][0]).toContain('AS start_local');
+        expect(harness.prisma.$queryRawUnsafe.mock.calls[0][0]).not.toContain('persona_config');
     });
 
     it('does not move an appointment that already started, and writes nothing', async () => {

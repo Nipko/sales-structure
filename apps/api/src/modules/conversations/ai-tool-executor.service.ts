@@ -2882,6 +2882,29 @@ export class AIToolExecutorService {
     /** The current instant. A method (not `new Date()` inline) so a test can pin the day a past-date rule is judged on. */
     protected clock(): Date { return new Date(); }
 
+    /** «YYYY-MM-DDTHH:MM:SS» on the wall clock of `timezone` right now (the same shape as `start_local`). */
+    private localNowIso(timezone: string): string {
+        const parts = new Intl.DateTimeFormat('en-CA', {
+            timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+        }).formatToParts(this.clock());
+        const part = (type: string) => parts.find(p => p.type === type)?.value ?? '00';
+        return `${part('year')}-${part('month')}-${part('day')}T${part('hour')}:${part('minute')}:00`;
+    }
+
+    /**
+     * Has an appointment (its start as the tenant's wall clock) already started on the TENANT's clock? The timezone is resolved the
+     * way every other writer resolves it (`getTenantTimezone`, evaluation namespaces included). When it cannot be read the answer is
+     * «no»: a customer's cancellation is not blocked by an infrastructure failure.
+     */
+    private async startedOnTenantClock(schema: string, startLocal: unknown, namespace?: EvalNamespaceLease): Promise<boolean> {
+        if (typeof startLocal !== 'string' || !startLocal) return false;
+        try {
+            return startLocal.slice(0, 19) <= this.localNowIso(await this.getTenantTimezone(schema, namespace));
+        } catch {
+            return false;
+        }
+    }
+
     /** Resolve tenant timezone from persona_config or default */
     private async getTenantTimezone(schema: string, namespace?: EvalNamespaceLease): Promise<string> {
         if (schema.startsWith('tenant_eval_')) {
@@ -3664,7 +3687,7 @@ export class AIToolExecutorService {
         // Verify ownership — only cancel if it belongs to this contact
         const rows: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT id, contact_id, service_id, service_name, start_at, end_at, status, metadata,
-                    (start_at <= (NOW() AT TIME ZONE COALESCE((SELECT config_json->'hours'->>'timezone' FROM "${schema}".persona_config WHERE is_active = true LIMIT 1), 'America/Bogota'))) AS already_started
+                    to_char(start_at,'YYYY-MM-DD"T"HH24:MI:SS') AS start_local
              FROM "${schema}".appointments WHERE id = $1::uuid`,
             appointmentId,
         );
@@ -3676,7 +3699,7 @@ export class AIToolExecutorService {
         }
         // An appointment that already started (in the tenant's clock) is not cancelled from the chat: a no-show must not turn into a
         // cancellation. The business decides; the customer is offered a person.
-        if (rows[0].already_started === true) {
+        if (await this.startedOnTenantClock(schema, rows[0].start_local, namespace)) {
             return {
                 error: 'appointment_already_started', persisted: false,
                 message: 'That appointment has already started or passed, so it cannot be cancelled from the chat. Nothing was changed. Offer, as a question, that someone from the team reviews it.',
@@ -6357,12 +6380,7 @@ export class AIToolExecutorService {
             // proposal first; this is the writer's own guard for every other caller (the model's call, the dashboard path).
             let localNow: string;
             try {
-                const parts = new Intl.DateTimeFormat('en-CA', {
-                    timeZone: tenantTimezone, year: 'numeric', month: '2-digit', day: '2-digit',
-                    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
-                }).formatToParts(this.clock());
-                const part = (type: string) => parts.find(p => p.type === type)?.value ?? '00';
-                localNow = `${part('year')}-${part('month')}-${part('day')}T${part('hour')}:${part('minute')}:00`;
+                localNow = this.localNowIso(tenantTimezone);
             } catch (error: unknown) { return this.appointmentTemporalFailure(error); }
             if (typeof apt.start_local === 'string' && apt.start_local.slice(0, 19) <= localNow) {
                 return {

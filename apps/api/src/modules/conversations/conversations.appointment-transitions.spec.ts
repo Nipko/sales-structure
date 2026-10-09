@@ -1,3 +1,4 @@
+import { pinClock } from './__fixtures__/pinned-clock';
 import { agentTurnFixture, publishTools } from './__fixtures__/agent-turn.fixture';
 import { randomUUID } from 'crypto';
 import { classifyExplicitToolConfirmation } from './tool-execution-control.service';
@@ -95,6 +96,10 @@ const RESCHEDULE: World = {
     results: { reschedule_appointment: { success: true, appointment: { id: 'apt-9', status: 'confirmed' } } },
 };
 
+
+// The scenarios below are dated against a calendar and the turn reads the real clock: pinned, so they do not turn red the day
+// they were written for goes by (see __fixtures__/pinned-clock.ts). Only Date is faked.
+pinClock();
 describe('changing an existing appointment goes to reschedule_appointment, never to a new booking', () => {
     it.each([
         'quiero reprogramar mi cita para el viernes 8 de enero a las 10:00',

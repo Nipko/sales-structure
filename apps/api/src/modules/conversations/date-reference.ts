@@ -149,10 +149,19 @@ export function nextWeekdayDate(weekday: number, fromIso: string, includeFrom: b
 
 const WEEKDAY_ALT = Object.keys(WEEKDAYS).join('|');
 /** What may follow a bare number without it being a day of the month: an hour, a percentage, a quantity. */
-const NOT_A_DAY_AFTER = '(?!\\s*(?::|%|h\\b|hs\\b|hrs\\b|am\\b|pm\\b|horas\\b|personas\\b|ninos\\b|adultos\\b|anos\\b|mil\\b|de descuento\\b|por ciento\\b|pesos\\b|dolares\\b|usd\\b|cop\\b|\\d))';
+const NOT_A_DAY_AFTER = '(?!\\s*(?::|%|h\\b|hs\\b|hrs\\b|am\\b|pm\\b|horas\\b|personas\\b|ninos\\b|adultos\\b|anos\\b|mil\\b|de descuento\\b|por ciento\\b|pesos\\b|dolares\\b|usd\\b|cop\\b|cada\\b|de cada\\b|de todos\\b|mensual|\\d))';
 const DAY_WORD_RE = new RegExp(`\\bdia (\\d{1,2})\\b${NOT_A_DAY_AFTER}`, 'g');
 const WEEKDAY_DAY_RE = new RegExp(`\\b((?:${WEEKDAY_ALT})s?) (\\d{1,2})\\b${NOT_A_DAY_AFTER}`, 'g');
-const BARE_DAY_RE = new RegExp(`\\bel (\\d{1,2})\\b${NOT_A_DAY_AFTER}`, 'g');
+/**
+ * A bare «el N» is a day of the month only with DATE CONTEXT: a preposition of time before it («para / hasta / desde el 16»), a booking
+ * or moving word («cita el 16», «muévela el 16»), or an hour after it («el 16 a las 11»). «Quiero el 2 por favor», «me interesa el 3»,
+ * «el 2 de la lista», «mi número es el 5» and «el 9 está bien» are choices and chatter, not dates.
+ */
+const CONTEXT_BEFORE = '(?:(?:para|hasta|desde|hacia|antes del?|despues del?) |(?:cita|turno|reserva|reservar|agendar|agenda|agendame|appointment|booking|book|muev\\w*|mover\\w*|pas[ae]\\w*|cambi\\w*|reprogram\\w*|reagend\\w*)(?: \\w+){0,3}? )';
+/** «el 2 de la lista», «el 2 de los paquetes»: an item, not a day. */
+const NOT_AN_ITEM_AFTER = '(?!\\s+de\\s+(?:la|las|los|el)\\b)';
+const BARE_DAY_WITH_CONTEXT_RE = new RegExp(`\\b${CONTEXT_BEFORE}el (\\d{1,2})\\b${NOT_A_DAY_AFTER}${NOT_AN_ITEM_AFTER}`, 'g');
+const BARE_DAY_WITH_HOUR_RE = new RegExp(`\\bel (\\d{1,2})\\b(?=\\s+a\\s+las?\\b|\\s+a\\s+la\\s+\\d)${NOT_AN_ITEM_AFTER}`, 'g');
 /** The whole message is «el 2» / «la 3» / «opción 1»: that is a choice among options, not a day of the month. */
 const WHOLE_CHOICE = /^(?:(?:la|el|opcion|numero|la opcion|el numero)\s+)?\d{1,2}$/;
 
@@ -160,7 +169,7 @@ const WHOLE_CHOICE = /^(?:(?:la|el|opcion|numero|la opcion|el numero)\s+)?\d{1,2
  * A day of the month with no month named: «dia 16», «el viernes 17», «el 16 a las 11». This month if it has not passed, else the
  * next one. A bare number that is the whole message («el 2») is a choice among options and is not read.
  */
-export function dayOfMonthOnly(tNorm: string, todayIso: string, referenceDate?: string): string | null {
+export function dayOfMonthOnly(tNorm: string, todayIso: string, referenceDate?: string, allowBare = true): string | null {
     const text = tNorm.trim();
     if (WHOLE_CHOICE.test(text)) return null;
     const [year, month] = todayIso.split('-').map(Number);
@@ -171,7 +180,11 @@ export function dayOfMonthOnly(tNorm: string, todayIso: string, referenceDate?: 
     };
     const found: Array<{ index: number; date: string }> = [];
     for (const m of text.matchAll(DAY_WORD_RE)) { const date = resolve(Number(m[1])); if (date) found.push({ index: m.index ?? 0, date }); }
-    for (const m of text.matchAll(BARE_DAY_RE)) { const date = resolve(Number(m[1])); if (date) found.push({ index: m.index ?? 0, date }); }
+    // While the customer is choosing among the options that were shown (services, slots), a bare «el 2» is the option.
+    if (allowBare) {
+        for (const m of text.matchAll(BARE_DAY_WITH_CONTEXT_RE)) { const date = resolve(Number(m[1])); if (date) found.push({ index: m.index ?? 0, date }); }
+        for (const m of text.matchAll(BARE_DAY_WITH_HOUR_RE)) { const date = resolve(Number(m[1])); if (date) found.push({ index: m.index ?? 0, date }); }
+    }
     for (const m of text.matchAll(WEEKDAY_DAY_RE)) {
         // «la del jueves 15 para el viernes 16»: the weekday that names the record takes its number with it.
         if (isSelector(text, m.index ?? 0, m[1].length)) continue;
@@ -217,7 +230,7 @@ export type DateReading =
  * The date a customer's words name, by the rules in the header. `referenceDate` is the date of the record being moved: a weekday
  * written as its selector («la del jueves») is ignored as a destination, and a date equal to it is not a second destination.
  */
-export function readDateReference(tNorm: string, todayIso: string, options: { referenceDate?: string; lenientPortuguese?: boolean } = {}): DateReading {
+export function readDateReference(tNorm: string, todayIso: string, options: { referenceDate?: string; lenientPortuguese?: boolean; allowBareDay?: boolean } = {}): DateReading {
     const explicit = explicitDates(tNorm, todayIso);
     const weekdays = weekdayMentions(tNorm, options.lenientPortuguese === true);
     const targetDays = weekdays.filter(day => !day.selector);
@@ -240,7 +253,7 @@ export function readDateReference(tNorm: string, todayIso: string, options: { re
         if (chosen.date < todayIso) return { kind: 'past', date: chosen.date, thisYear: false };
         return { kind: 'date', date: chosen.date, via: 'explicit' };
     }
-    const dayOnly = dayOfMonthOnly(tNorm, todayIso, options.referenceDate);
+    const dayOnly = dayOfMonthOnly(tNorm, todayIso, options.referenceDate, options.allowBareDay !== false);
     if (dayOnly) return conflictOf(dayOnly) ?? { kind: 'date', date: dayOnly, via: 'explicit' };
     const distinct = [...new Set(targetDays.map(day => day.weekday))];
     if (distinct.length === 1) {

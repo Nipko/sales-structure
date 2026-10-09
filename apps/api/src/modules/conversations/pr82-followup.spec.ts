@@ -83,6 +83,12 @@ describe('localizeStatusWords translates a status where it is named as one', () 
         expect(localizeStatusWords(text, 'es')).toBe(text);
     });
 
+    it('does not double the «en» of the connector («sigue en processing»)', () => {
+        expect(localizeStatusWords('El pedido sigue en processing.', 'es')).toBe('El pedido sigue en preparación.');
+        expect(localizeStatusWords('El pedido está in_transit.', 'es')).toBe('El pedido está en camino.');
+        expect(localizeStatusWords('El pedido está en processing y el pago sigue en pending.', 'es')).toBe('El pedido está en preparación y el pago sigue en pendiente.');
+    });
+
     it('translates the status next to a link without touching the link', () => {
         expect(localizeStatusWords('Su pedido está pending. Pague en https://pay.co/l/x?status=pending', 'es'))
             .toBe('Su pedido está pendiente. Pague en https://pay.co/l/x?status=pending');
@@ -144,6 +150,27 @@ describe('IntentInterpreter (booking) reads the date by the shared rules', () =>
         expect(far.dateYearQuestion).toEqual({ thisYear: '2026-10-03', nextYear: '2027-10-03' });
         expect((await read('quiero cita el 5 de enero', '2026-12-20')).dateMentioned).toBe('2027-01-05');
         expect((await read('quiero cita el 5 de enero', '2026-12-20')).dateYearQuestion).toBeUndefined();
+    });
+});
+
+describe('IntentInterpreter: «el N» of an option is not a date', () => {
+    const interpreter = new IntentInterpreterService({ execute: jest.fn() } as any);
+    const upcoming = upcomingFrom(2026, 10, 9);
+
+    it.each([
+        'quiero el 2 por favor', 'el 2 porfa', 'me interesa el 3', 'quiero el 1 de la lista', 'el 2 de los paquetes', 'mi número es el 5', 'el 9 está bien',
+    ])('"%s" at idle: no date is taken', async text => {
+        expect((await interpreter.interpret(text, 'idle', ['Consulta'], TODAY, upcoming, 't')).dateMentioned).toBeNull();
+    });
+
+    it.each(['show_services', 'show_slots'])('at %s (an option is awaited) «para el 16» is not a date either; «el viernes 16 de octubre» is', async step => {
+        expect((await interpreter.interpret('para el 16', step, ['Consulta'], TODAY, upcoming, 't')).dateMentioned).toBeNull();
+        expect((await interpreter.interpret('el viernes 16 de octubre', step, ['Consulta'], TODAY, upcoming, 't')).dateMentioned).toBe('2026-10-16');
+    });
+
+    it('with date context it is one: «para el 16», «quiero cita el 16»', async () => {
+        expect((await interpreter.interpret('para el 16', 'ask_date', ['Consulta'], TODAY, upcoming, 't')).dateMentioned).toBe('2026-10-16');
+        expect((await interpreter.interpret('quiero cita el 16', 'idle', [], TODAY, upcoming, 't')).dateMentioned).toBe('2026-10-16');
     });
 });
 
@@ -248,6 +275,29 @@ describe('date-reference: days of the month, two dates, the year boundary', () =
         expect(readDateReference(fold('atienden todos los martes'), TODAY)).toEqual({ kind: 'none' });
         expect(readDateReference(fold('cada lunes a las 10'), TODAY)).toEqual({ kind: 'none' });
         expect(readDateReference(fold('el domingo'), TODAY)).toEqual({ kind: 'date', date: '2026-10-11', via: 'weekday' });
+    });
+
+    // PR #82 final check: a bare «el N» overwrote the date of a booking («el 9 está bien» became TODAY).
+    it.each([
+        'quiero el 2 por favor', 'el 2 porfa', 'me interesa el 3', 'quiero el 1 de la lista', 'el 2 de los paquetes', 'mi número es el 5', 'el 9 está bien',
+        'quiero el 2', 'me gusta el 4', 'dame el 3', 'el 15 de cada mes', 'atienden el 15 de cada mes', 'el día 15 de cada mes',
+    ])('"%s" names no date', text => {
+        expect(readDateReference(fold(text), TODAY)).toEqual({ kind: 'none' });
+        expect(dayOfMonthOnly(fold(text), TODAY)).toBeNull();
+    });
+
+    it.each([
+        ['para el 16', '2026-10-16'], ['hasta el 20', '2026-10-20'], ['desde el 12', '2026-10-12'], ['el 16 a las 11', '2026-10-16'],
+        ['quiero cita el 16', '2026-10-16'], ['quiero reservar el 16', '2026-10-16'], ['muévela el 16', '2026-10-16'], ['el 16 a la 1', '2026-10-16'],
+    ])('"%s" is a day of the month (it has date context)', (text, date) => {
+        expect(readDateReference(fold(text), TODAY)).toEqual({ kind: 'date', date, via: 'explicit' });
+    });
+
+    it('while the customer is choosing among options that were shown, a bare «el N» is the option', () => {
+        expect(readDateReference(fold('para el 16'), TODAY, { allowBareDay: false })).toEqual({ kind: 'none' });
+        // the other forms still name a date
+        expect(readDateReference(fold('el viernes 16'), TODAY, { allowBareDay: false })).toEqual({ kind: 'date', date: '2026-10-16', via: 'explicit' });
+        expect(readDateReference(fold('el dia 16'), TODAY, { allowBareDay: false })).toEqual({ kind: 'date', date: '2026-10-16', via: 'explicit' });
     });
 
     it('a discount or an amount after a number is not a day', () => {

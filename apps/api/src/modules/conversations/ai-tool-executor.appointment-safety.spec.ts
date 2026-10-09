@@ -664,6 +664,108 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
         ))).toBe(false);
     });
 
+    // Production 2026-10-09 (Ref. D0ADBD49): «No pude agendar la cita…» about an appointment that WAS in the agenda. Whatever fails
+    // AFTER the INSERT committed must not turn the booking into a failure.
+    describe('a failure after the INSERT committed does not turn the booking into a failure', () => {
+        const serviceId = '44444444-4444-4444-8444-444444444444';
+        const bookingArgs = { serviceId, date: '2026-08-12', time: '11:00', customerName: 'Cliente', customerEmail: 'cliente@example.com' };
+        const service = { id: serviceId, name: 'Consulta', duration_minutes: 30, duration_type: 'fixed', duration_minutes_max: null,
+            max_concurrent: 1, price: 0, currency: 'COP', location_type: 'in_person' };
+        const inserted = { id: appointmentId, service_name: 'Consulta', start_at: '2026-08-12T11:00:00', end_at: '2026-08-12T11:30:00', status: 'confirmed' };
+        const queue = () => [[service], [], [], [{ id: serviceId, name: 'Consulta', max_concurrent: 1 }], [{ occupied: 0 }], [inserted]];
+        /** What the agenda holds for the customer afterwards (the read-back the executor does once the answer has failed). */
+        const agendaHolds = (harness: ReturnType<typeof createHarness>, rows: any[]) => {
+            const original = harness.prisma.$queryRawUnsafe.getMockImplementation()!;
+            harness.prisma.$queryRawUnsafe.mockImplementation(async (sql: string, ...params: any[]) => (
+                /a\.created_at >= NOW\(\)/.test(String(sql)) ? rows : original(sql, ...params)));
+        };
+
+        it('the slot lock cannot be released (Redis hiccup): the booking is still the success it was', async () => {
+            const harness = createHarness(queue());
+            harness.redis.releaseLockToken.mockRejectedValue(new Error('redis timeout'));
+
+            const result = await harness.executor.execute(schemaName, tenantId, contactId, 'create_appointment', bookingArgs, undefined,
+                { operationalScope, authority: authorityFor('create_appointment') });
+
+            expect(harness.redis.releaseLockToken).toHaveBeenCalledTimes(1);
+            expect(result).toMatchObject({ success: true, appointment: { id: expect.any(String) } });
+            expect(result.error).toBeUndefined();
+        });
+
+        it('the same for a reschedule: the move is committed, the lock release fails, the answer is still the move', async () => {
+            const harness = createHarness([[{ ...appointment, assigned_to: null }], [{ duration_minutes: 30 }], [], [{ id: appointmentId }], []]);
+            harness.redis.releaseLockToken.mockRejectedValue(new Error('redis timeout'));
+            jest.spyOn(harness.executor as any, 'clock').mockReturnValue(new Date('2026-08-01T12:00:00.000Z'));
+
+            const result = await harness.executor.execute(schemaName, tenantId, contactId, 'reschedule_appointment',
+                { appointmentId, newDate: '2026-08-12', newTime: '11:00' }, undefined, { operationalScope, authority: authorityFor('reschedule_appointment') });
+
+            expect(harness.redis.releaseLockToken).toHaveBeenCalled();
+            expect(result).toMatchObject({ success: true });
+        });
+
+        it('the ledger cannot acknowledge the commit: the appointment that exists is reported, not «reconciliation_required»', async () => {
+            const committed = { id: appointmentId, status: 'confirmed', service_name: 'Consulta', payment_status: null, amount_due: null, hold_expires_at: null, price: 0, currency: 'COP' };
+            const harness = createHarness(queue());
+            agendaHolds(harness, [committed]);
+            const control = (harness.executor as any).toolExecutionControl;
+            control.preflight.mockResolvedValue({ allowed: true, ledgerId: 'ledger-1', executionLeaseToken: 'lease-1', idempotencyKey: 'k', policy: { externalEffect: 'internal_write' } });
+            control.complete.mockRejectedValueOnce(new Error('tool_execution_lease_expired_or_lost'));
+
+            const result = await harness.executor.execute(schemaName, tenantId, contactId, 'create_appointment', bookingArgs, undefined,
+                { operationalScope, authority: authorityFor('create_appointment') });
+
+            expect(result).toMatchObject({ success: true, reconciledFromRecords: true, appointment: { id: appointmentId, status: 'confirmed', date: '2026-08-12', time: '11:00' } });
+            expect(result.error).toBeUndefined();
+            // the ledger is closed on the real outcome once more (the first acknowledgement failed)
+            expect(control.complete).toHaveBeenCalledTimes(2);
+            expect(control.complete.mock.calls[1][2]).toMatchObject({ success: true, appointment: { id: appointmentId } });
+        });
+
+        it('and when the ledger cannot be closed at all, it is marked for reconciliation but the customer still hears the truth', async () => {
+            const committed = { id: appointmentId, status: 'confirmed', service_name: 'Consulta', payment_status: null, amount_due: null, hold_expires_at: null, price: 0, currency: 'COP' };
+            const harness = createHarness(queue());
+            agendaHolds(harness, [committed]);
+            const control = (harness.executor as any).toolExecutionControl;
+            control.preflight.mockResolvedValue({ allowed: true, ledgerId: 'ledger-1', executionLeaseToken: 'lease-1', idempotencyKey: 'k', policy: { externalEffect: 'internal_write' } });
+            control.complete.mockRejectedValue(new Error('db down'));
+
+            const result = await harness.executor.execute(schemaName, tenantId, contactId, 'create_appointment', bookingArgs, undefined,
+                { operationalScope, authority: authorityFor('create_appointment') });
+
+            expect(result).toMatchObject({ success: true, appointment: { id: appointmentId } });
+            expect(control.fail).toHaveBeenCalledWith(schemaName, expect.anything(), 'acknowledgement_failed_after_commit');
+        });
+
+        it('nothing in the agenda: the failure is still a failure (a person reconciles it)', async () => {
+            const harness = createHarness(queue());
+            agendaHolds(harness, []);
+            const control = (harness.executor as any).toolExecutionControl;
+            control.preflight.mockResolvedValue({ allowed: true, ledgerId: 'ledger-1', executionLeaseToken: 'lease-1', idempotencyKey: 'k', policy: { externalEffect: 'internal_write' } });
+            control.complete.mockRejectedValue(new Error('db down'));
+
+            const result = await harness.executor.execute(schemaName, tenantId, contactId, 'create_appointment', bookingArgs, undefined,
+                { operationalScope, authority: authorityFor('create_appointment') });
+
+            expect(result).toMatchObject({ error: 'reconciliation_required', shouldHandoff: true });
+            expect(result.reconciledFromRecords).toBeUndefined();
+        });
+
+        it('a rejection the domain raises BEFORE writing is the answer: the agenda is not read back for it', async () => {
+            const { BadRequestException } = await import('@nestjs/common');
+            const harness = createHarness(queue());
+            const readBack = jest.spyOn(harness.executor as any, 'committedAppointmentResult');
+            jest.spyOn((harness.executor as any).appointmentsService, 'create').mockRejectedValue(new BadRequestException({ error: 'appointment_contact_required' }));
+
+            const result = await harness.executor.execute(schemaName, tenantId, contactId, 'create_appointment', bookingArgs, undefined,
+                { operationalScope, authority: authorityFor('create_appointment') });
+
+            expect(result.error).toBeDefined();
+            expect(result.success).toBeUndefined();
+            expect(readBack).not.toHaveBeenCalled();
+        });
+    });
+
     it.each([
         ['google', { google_event_id: 'google-event-1', outlook_event_id: null }],
         ['microsoft', { google_event_id: null, outlook_event_id: 'outlook-event-1' }],

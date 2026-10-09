@@ -29,6 +29,11 @@ const NAMED_RESUME = /^(?:(?:por favor|please|s il vous plait)\s+)?(?:retoma|ret
 const CORRECTION = /\b(?:cambia|cambiar|cambie|change|update|altere|alterar|mude|modifiez|modifier|corrijo|corrige|corregir|correction|correct|quise decir|queria decir|me equivoque|en realidad|mas bien|actually|i meant|corrigindo|corrigir|na verdade|quis dizer|je voulais dire|rectifier|corriger)\b/;
 const COLLECTION_CANCEL = /^(?:(?:por favor|please)\s+)?(?:cancelar|cancela|cancelalo|cancel|annuler|arretez|olvidalo|olvidate|dejemoslo|deixa pra la|ya no quiero(?: continuar)?|no quiero continuar|nao quero continuar|i don't want to continue|i do not want to continue|je ne veux plus continuer|mejor nada|nada de eso)(?:\s+(?:por favor|please))?[.!\s]*$/;
 
+/** A verb that asks for something NEW to be booked (not «reagendar», which has no word boundary before «agendar»). */
+const CREATION_VERB = /\b(?:agendar|reservar|book|schedule|reserver|prendre rendez vous|marcar consulta|marcar uma consulta)\b/;
+/** The writers of a proposal to change something that already exists. */
+const CHANGE_WRITER = /^(?:cancel|reschedule)_/;
+
 export function isCollectionCancellation(text: string): boolean { return COLLECTION_CANCEL.test(normalizeForIntent(text)); }
 export function isNamedMissionResume(text: string): boolean { return NAMED_RESUME.test(normalizeForIntent(text)); }
 export function isDirectedCorrection(text: string): boolean { return CORRECTION.test(normalizeForIntent(text)); }
@@ -129,10 +134,14 @@ export function arbitrateMissionFocus(input: {
     const saved = candidates.filter(candidate => candidate.saved);
     const current = saved.find(candidate => candidate.ref.id === state.selected?.id)
         || (saved.filter(candidate => !candidate.paused).length === 1 ? saved.find(candidate => !candidate.paused) : undefined);
-    const matches = candidates.filter(candidate => candidate.aliases.some(alias => {
-        const name = normalizeForIntent(alias).replace(/-/g, ' ');
-        return name.length >= 3 && (` ${normalized.replace(/-/g, ' ')} `).includes(` ${name} `);
-    }));
+    // «Quiero agendar una cita…» asks for a NEW appointment: it never names a parked proposal to cancel or move one (every one of them
+    // answers to «cita», so seven of them made the word ambiguous and the customer was asked which — production 2026-10-09).
+    const creating = CREATION_VERB.test(normalized.replace(/-/g, ' '));
+    const matches = candidates.filter(candidate => !(creating && candidate.ref.kind === 'tool' && CHANGE_WRITER.test(candidate.ref.toolName || ''))
+        && candidate.aliases.some(alias => {
+            const name = normalizeForIntent(alias).replace(/-/g, ' ');
+            return name.length >= 3 && (` ${normalized.replace(/-/g, ' ')} `).includes(` ${name} `);
+        }));
     const unique = [...new Map(matches.map(candidate => [candidate.ref.id, candidate])).values()];
     let selected = current?.ref || state.selected;
     let route: MissionFocusDecision['route'] = current?.ref.kind === 'booking' ? 'booking'
@@ -217,8 +226,12 @@ export function arbitrateMissionFocus(input: {
     if (state.selected?.kind === 'tool' && state.selected.reference
         && (selected?.id !== state.selected.id || action === 'pause' || action === 'clarify')) {
         const otherPaused = (state.pausedTools || []).filter(item => item.ref.id !== state.selected!.id);
-        if (otherPaused.length >= 6) { action = 'clarify'; route = 'clarify'; selected = state.selected; }
-        else state.pausedTools = [...otherPaused, { ref: state.selected, pausedAt: new Date().toISOString() }];
+        // A task whose proposal was already carried out has nothing left to resume: it is dropped, not parked.
+        const finished = state.lastConsumed?.missionId === state.selected.id;
+        // The parked list is bounded (six) and the OLDEST makes room. A full list never refuses the customer's NEW task: with six
+        // finished cancellations / reschedules piled up, every «quiero agendar…» was answered «No me queda claro a qué gestión se
+        // refiere; tengo en curso su cita» for as long as they lasted (production 2026-10-09, Salón QA Citas).
+        state.pausedTools = finished ? otherPaused : [...otherPaused, { ref: state.selected, pausedAt: new Date().toISOString() }].slice(-6);
     }
     if (action === 'pause') selected = null;
     if ((action as MissionFocusDecision['action']) === 'resume') state.pausedTools = (state.pausedTools || []).filter(item => item.ref.id !== selected?.id);

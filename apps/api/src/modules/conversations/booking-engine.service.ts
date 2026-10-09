@@ -498,7 +498,8 @@ export function formatPriceWithCurrency(lang: string, value: unknown, currency?:
  * Answering "no availability, try another date" to these loops forever, so the
  * engine tells the truth and escalates to a human instead.
  */
-const UNRECOVERABLE_TOOL_ERRORS = new Set(['appointments_not_configured', 'tool_failed', 'outside_business_hours']);
+// (`reconciliation_required`: the writer could not tell whether it wrote and the agenda shows nothing either — a person closes it)
+const UNRECOVERABLE_TOOL_ERRORS = new Set(['appointments_not_configured', 'tool_failed', 'outside_business_hours', 'reconciliation_required']);
 /** `appointment_subject_*`: the engine collects no listing/pet/vehicle, so it cannot repair these itself. */
 const UNRECOVERABLE_TOOL_ERROR_PREFIXES = ['appointment_subject_'];
 
@@ -1969,49 +1970,38 @@ export class BookingEngineService {
         // Appointment columns store tenant-local wall-clock timestamps. A replay
         // must preserve that clock and exclude payment holds that have expired.
         try {
-            const startAt = `${state.date}T${state.time}:00`;
-            const existing: any[] = await this.prisma.$queryRawUnsafe(
-                `SELECT a.id, a.status, a.payment_status, a.amount_due, a.hold_expires_at,
-                        ${appointmentPriceSql('a', 's')} AS price, ${appointmentCurrencySql('a', 's')} AS currency
-                 FROM "${schema}".appointments a LEFT JOIN "${schema}".services s ON s.id = a.service_id
-                 WHERE a.contact_id = $1::uuid
-                   AND a.service_id = $2::uuid
-                   AND a.start_at = $3::timestamp
-                   AND a.status NOT IN ('cancelled', 'completed', 'no_show') AND ${holdStillAliveSql('a')} LIMIT 1`,
-                contactId, state.serviceId, startAt,
-            );
-            if (existing?.length) {
-                this.logger.warn(`[Decide] Duplicate booking prevented — appointment ${existing[0].id} already exists`);
-                const apt = existing[0];
-                const awaitingPayment = apt.status === 'pending_payment';
-                return this.bookingOutcome(state, lang, {
-                    success: true, idempotentReplay: true, appointmentId: apt.id,
-                    appointment: { id: apt.id, status: apt.status, awaitingPayment,
-                        amountDueToConfirm: apt.amount_due ?? apt.price, currency: apt.currency,
-                        holdExpiresAt: apt.hold_expires_at,
-                        payableReference: awaitingPayment ? `appointment:${apt.id}` : null },
-                });
+            const held = await this.heldBooking(schema, contactId, state);
+            if (held) {
+                this.logger.warn(`[Decide] Duplicate booking prevented — appointment ${held.appointmentId} already exists`);
+                return this.bookingOutcome(state, lang, held);
             }
         } catch (err) {
             this.logger.warn(`[Decide] Duplicate check failed (non-blocking): ${(err as any).message}`);
         }
 
-        const result = await this.toolExecutor.execute(schema, tenantId, contactId, 'create_appointment', {
-            serviceId: state.serviceId, date: state.date, time: state.time,
-            // Quién atiende. La tool ya lo aceptaba y lo escribía en assigned_to;
-            // era el motor el que no se lo pasaba nunca.
-            staffId: state.staffId,
-            customerName: state.customerName, customerEmail: state.customerEmail, customerPhone: state.customerPhone,
-        }, conversationId, {
-            authority,
-            ...(confirmationSource ? {
-                authorityEvidence: {
-                    kind: 'booking_engine_confirmation' as const,
-                    source: confirmationSource,
-                    flowToken: confirmationSource === 'flow_response' ? state.flowToken : undefined,
-                },
-            } : {}),
-        });
+        let result: any;
+        try {
+            result = await this.toolExecutor.execute(schema, tenantId, contactId, 'create_appointment', {
+                serviceId: state.serviceId, date: state.date, time: state.time,
+                // Quién atiende. La tool ya lo aceptaba y lo escribía en assigned_to;
+                // era el motor el que no se lo pasaba nunca.
+                staffId: state.staffId,
+                customerName: state.customerName, customerEmail: state.customerEmail, customerPhone: state.customerPhone,
+            }, conversationId, {
+                authority,
+                ...(confirmationSource ? {
+                    authorityEvidence: {
+                        kind: 'booking_engine_confirmation' as const,
+                        source: confirmationSource,
+                        flowToken: confirmationSource === 'flow_response' ? state.flowToken : undefined,
+                    },
+                } : {}),
+            });
+        } catch (err) {
+            // (a throw is a failed ANSWER, not proof that nothing was written: the records are read below)
+            this.logger.error(`[Decide] create_appointment threw (${(err as any)?.message}) — the records decide what happened`);
+            result = { error: 'tool_failed', message: 'create_appointment threw' };
+        }
         const executedTools = [{ name: 'create_appointment', result }];
         if (result?.success) return this.bookingOutcome(state, lang, result);
         if (result?.error === 'appointment_terms_changed' && result.service?.id === state.serviceId) {
@@ -2024,6 +2014,20 @@ export class BookingEngineService {
             await this.redis.del(`booking:services:${tenantId}`).catch(() => {});
             return { ...this.collectMissingInfo(state, lang), executedTools };
         }
+        // A writer that answered with a failure may still have written: its commit can be acknowledged badly (the ledger, a
+        // housekeeping step after the INSERT, a retry that found the first one still running). The reply is what the AGENDA says:
+        // when the appointment is there it is booked, with its reference, and nobody is asked to "close" it (production
+        // 2026-10-09: «No pude agendar la cita…» about Ref. D0ADBD49, which existed). The read before the write found none, so
+        // whatever is found now was written by this call.
+        try {
+            const written = await this.heldBooking(schema, contactId, state);
+            if (written) {
+                this.logger.error(`[Decide] create_appointment answered ${String(result?.error ?? 'a failure')} but appointment ${written.appointmentId} exists — reported as booked`);
+                return this.bookingOutcome(state, lang, { ...written, idempotentReplay: false, reconciledFromRecords: true });
+            }
+        } catch (err) {
+            this.logger.warn(`[Decide] Re-read after a failed write also failed: ${(err as any).message}`);
+        }
         // Same criterion as checkAvailability: on an unrecoverable failure the
         // appointment was NOT created and "try another time" is both a lie and a
         // way to leak the internal error code into the customer's chat.
@@ -2032,6 +2036,31 @@ export class BookingEngineService {
             return { ...this.escalateToHuman(state, lang, 'bookingFailedHandoff', `booking_failed:${fatal}`), executedTools };
         }
         return { handled: true, state, executedTools, text: msg(lang, 'bookingError', { error: result?.error || 'Unknown' }) };
+    }
+
+    /** The customer's live appointment for exactly this service and start, as a success result (null when there is none). */
+    private async heldBooking(schema: string, contactId: string, state: BookingState): Promise<any | null> {
+        const startAt = `${state.date}T${state.time}:00`;
+        const existing: any[] = await this.prisma.$queryRawUnsafe(
+            `SELECT a.id, a.status, a.payment_status, a.amount_due, a.hold_expires_at,
+                    ${appointmentPriceSql('a', 's')} AS price, ${appointmentCurrencySql('a', 's')} AS currency
+             FROM "${schema}".appointments a LEFT JOIN "${schema}".services s ON s.id = a.service_id
+             WHERE a.contact_id = $1::uuid
+               AND a.service_id = $2::uuid
+               AND a.start_at = $3::timestamp
+               AND a.status NOT IN ('cancelled', 'completed', 'no_show') AND ${holdStillAliveSql('a')} LIMIT 1`,
+            contactId, state.serviceId, startAt,
+        );
+        if (!existing?.length) return null;
+        const apt = existing[0];
+        const awaitingPayment = apt.status === 'pending_payment';
+        return {
+            success: true, idempotentReplay: true, appointmentId: apt.id,
+            appointment: { id: apt.id, status: apt.status, awaitingPayment,
+                amountDueToConfirm: apt.amount_due ?? apt.price, currency: apt.currency,
+                holdExpiresAt: apt.hold_expires_at,
+                payableReference: awaitingPayment ? `appointment:${apt.id}` : null },
+        };
     }
 
     private bookingOutcome(state: BookingState, lang: string, result: any): EngineResult {

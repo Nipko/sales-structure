@@ -842,6 +842,11 @@ export interface TransitionOutcome {
     awaitingIdentity?: PendingIdentityRequestV1 | null;
     /** The reply ends by OFFERING a person; only the customer's «sí» opens a handoff. */
     offersPerson?: boolean;
+    /**
+     * The proposal the customer was ALREADY shown, and that is still waiting in the ledger, is shown again unchanged. Nothing was
+     * proposed this turn, so the focus the arbiter moved for the repeated request goes back to what the proposal was issued under.
+     */
+    reshown?: boolean;
     executed: Array<{ name: string; result: any }>;
 }
 
@@ -997,7 +1002,7 @@ async function runTransitionInner(request: TransitionRequest, text: string, io: 
         // The proposal already shown is shown again, never re-proposed: the guard would read the repeated request as an answer.
         const shown = pending && pendingTargetId ? candidates.find(candidate => candidate.id === pendingTargetId) : undefined;
         if (shown && (opts.restate || chooseCandidate(text, candidates)?.id === shown.id)) {
-            return { handled: true, text: T.proposeCancel('order', shown), awaitsConsent: true, awaitingWriter: null, executed };
+            return { handled: true, text: T.proposeCancel('order', shown), awaitsConsent: true, awaitingWriter: null, reshown: true, executed };
         }
         const target = chooseCandidate(text, candidates);
         if (!target) return { handled: true, text: T.askWhich('cancel', 'order', candidates), awaitingWriter: writer, executed };
@@ -1034,7 +1039,7 @@ async function runTransitionInner(request: TransitionRequest, text: string, io: 
 
     if (request.verb === 'cancel') {
         if (shown && target.id === shown.id) {
-            return { handled: true, text: T.proposeCancel('appointment', target), awaitsConsent: true, awaitingWriter: null, executed };
+            return { handled: true, text: T.proposeCancel('appointment', target), awaitsConsent: true, awaitingWriter: null, reshown: true, executed };
         }
         const proposal = await io.execute(writer!, { appointmentId: target.id });
         executed.push({ name: writer!, result: proposal });
@@ -1046,7 +1051,7 @@ async function runTransitionInner(request: TransitionRequest, text: string, io: 
 
     // reschedule: the new date and time come from the customer's words, relative to the appointment where they say so.
     if (opts.restate && shown && typeof pending?.args?.newDate === 'string' && typeof pending.args.newTime === 'string') {
-        return { handled: true, text: T.proposeReschedule(shown, { date: pending.args.newDate, time: pending.args.newTime }), awaitsConsent: true, awaitingWriter: null, executed };
+        return { handled: true, text: T.proposeReschedule(shown, { date: pending.args.newDate, time: pending.args.newTime }), awaitsConsent: true, awaitingWriter: null, reshown: true, executed };
     }
     const interpreted = await io.interpretTarget(text).catch(() => null);
     const reading = readTarget(text, target, interpreted, io.todayIso);
@@ -1061,7 +1066,7 @@ async function runTransitionInner(request: TransitionRequest, text: string, io: 
     }
     // The move the customer was already shown: shown again, not proposed again.
     if (shown && target.id === shown.id && pending?.args?.newDate === when2.date && pending.args.newTime === when2.time) {
-        return { handled: true, text: T.proposeReschedule(target, when2), awaitsConsent: true, awaitingWriter: null, executed };
+        return { handled: true, text: T.proposeReschedule(target, when2), awaitsConsent: true, awaitingWriter: null, reshown: true, executed };
     }
     // A slot is never proposed unverified: without the service, or when the agenda cannot answer, the model's own flow takes over.
     if (!target.serviceId) return { ...NOT_HANDLED, executed };

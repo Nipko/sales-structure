@@ -4,6 +4,7 @@ import { isInformationSeekingMessage, isPauseMessage, isResumeMessage, normalize
 import { isBookingStatusQuestion } from './booking-status-question';
 import { appointmentChangeRequest } from './appointment-transition';
 import { pendingActionForTool } from './tool-policy-registry';
+import { restatesPendingProposal } from './transition-engine';
 
 export interface MissionCandidate {
     ref: ConversationMissionRefV1;
@@ -82,6 +83,10 @@ export function readMissionFocus(value: unknown): ConversationMissionFocusV1 {
     copy.pausedTools = (Array.isArray(copy.pausedTools) ? copy.pausedTools : []).filter(item => item?.ref?.kind === 'tool'
         && typeof item.ref.id === 'string' && Number.isFinite(Date.parse(item.pausedAt))
         && Date.now() - Date.parse(item.pausedAt) < 7 * 86400_000).slice(0, 6);
+    const waiting = copy.pendingIdentity as any;
+    if (waiting && !(['cancel', 'reschedule', 'list'].includes(waiting.verb) && ['appointment', 'order'].includes(waiting.domain)
+        && typeof waiting.text === 'string' && ['awaiting_code', 'offer_new_code'].includes(waiting.stage)
+        && Number.isFinite(Date.parse(waiting.askedAt)) && Date.now() - Date.parse(waiting.askedAt) < 30 * 60_000)) delete copy.pendingIdentity;
     if (copy.expectedReply && (copy.expectedReply.missionId !== copy.selected?.id
         || typeof copy.expectedReply.proposalId !== 'string'
         || !['slot', 'confirmation', 'flow'].includes(copy.expectedReply.kind))) copy.expectedReply = null;
@@ -154,6 +159,12 @@ export function arbitrateMissionFocus(input: {
     if (pendingDomain && otherObjects.length && !answersPending && /\b(?:cancel\w*|anul\w*|annul\w*|mu[eé]v\w*|mover|reprogram\w*|reagend\w*)\b/.test(normalized)) {
         action = 'clarify'; route = 'clarify'; invalidate = true;
         forcedOptions = [pendingDomain, ...otherObjects];
+    } else if (pendingAction && pendingDomain && !answersPending && domains.length === 1 && domains[0] === pendingDomain
+        && restatesPendingProposal(input.text, { verb: pendingAction.verb, domain: pendingDomain })) {
+        // «quiero cancelar mi pedido» over the proposal that annuls it: the same task and the same proposal. It is not a new
+        // task (that dropped the confirmation and left the next «sí» with nothing to confirm): the focus stays as it is and the
+        // transition engine shows the proposal again.
+        action = 'continue';
     } else if ((taskDirective || resume) && (domains.length > 1 || unique.length > 1)) {
         action = 'clarify'; route = 'clarify'; invalidate = true;
     } else if (!answersPending && (appointmentChangeRequest(input.text) === 'explicit'

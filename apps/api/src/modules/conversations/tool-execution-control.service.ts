@@ -24,7 +24,8 @@ import {
     commitmentProposalHash, commitmentReviewResult, ensureCommitmentProposals,
     type CommitmentProposal,
 } from './commitment-proposal';
-import { getToolPolicy, pendingActionForTool, type ToolPolicy } from './tool-policy-registry';
+import { APPOINTMENT_RECORD_TOOLS, getToolPolicy, getToolPolicyForContext, pendingActionForTool, type ToolPolicy } from './tool-policy-registry';
+import { tenantActiveObjectPolicyContext, type ActiveObjectPolicyContext } from './active-object-policy';
 import { reviewedMcpPolicy } from '../mcp/mcp-execution-policy';
 import type { McpToolApproval } from '../mcp/mcp-tool-approval';
 
@@ -46,6 +47,9 @@ const EXECUTION_LEASE_SECONDS = 90;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 type ConfirmationDisposition = 'confirmed' | 'rejected' | 'unclear';
+
+/** The writers of a contact's appointments: one confirmation never commits more than one of them. */
+const APPOINTMENT_WRITER_TOOLS: ReadonlySet<string> = new Set(['create_appointment', 'cancel_appointment', 'reschedule_appointment']);
 
 interface ExecutionLedgerRow {
     id: string;
@@ -157,6 +161,12 @@ export interface ToolExecutionControlRequest {
     /** Server-owned sandbox state; never deserialized from a customer/model argument. */
     executionState?: { get(key: string): Promise<string | null> };
     missionScope?: import('@parallext/shared').MissionExecutionScopeV1;
+    /**
+     * Server-origin only. `none`: when a step-up read finds the chat unverified, report it WITHOUT sending a code. The
+     * transition engine reads the customer's records to decide what to propose; sending a code is a step it takes
+     * explicitly (and once), never a side effect of that read. The default (`start`) is the model's tool-loop behaviour.
+     */
+    identityChallenge?: 'start' | 'none';
     authorityEvidence?: {
         kind: 'booking_engine_confirmation';
         source: 'confirm_yes' | 'flow_response' | 'text_confirmation';
@@ -1143,6 +1153,12 @@ export class ToolExecutionControlService {
                 : this.block('read_only_tool_blocked', 'La herramienta no está permitida en ejecución de solo lectura.');
         }
 
+        // Seeing or acting on one's own appointments needs a code only where the business type makes an appointment
+        // sensitive: the same classification that decides what the prompt may carry (active-object-policy).
+        if (APPOINTMENT_RECORD_TOOLS.has(request.toolName)) {
+            policy = getToolPolicyForContext(request.toolName, await this.verticalPolicyContext(request)) ?? policy;
+        }
+
         const assurance = ASSURANCE_LEVEL_MATRIX[policy.assurance];
         if (assurance.requiresContactContext && !UUID_RE.test(request.contactId)) {
             return this.block(
@@ -1172,6 +1188,8 @@ export class ToolExecutionControlService {
         if (!latestInbound) {
             return this.block('idempotency_source_missing', 'No hay un mensaje de origen para vincular la acción.');
         }
+        const replayedReschedule = await this.refuseRescheduleAsCancelAndCreate(request, latestInbound.id);
+        if (replayedReschedule) return { allowed: false, result: replayedReschedule };
 
         let ledger = await this.findContinuableLedger(request, argsHash, latestInbound);
         const idempotencyKey = ledger?.idempotency_key
@@ -1516,6 +1534,91 @@ export class ToolExecutionControlService {
         });
     }
 
+    /**
+     * Moving an appointment is ONE atomic write (`reschedule_appointment`: an UPDATE of the same row). The model replayed it as
+     * `cancel_appointment` + `create_appointment`: the cancellation committed, the creation failed and the customer lost the
+     * appointment. When the other half of that pair is already pending (or already done in this very turn) for the SAME
+     * service of the same contact, this call is refused and routed to the atomic tool.
+     */
+    private async refuseRescheduleAsCancelAndCreate(
+        request: ToolExecutionControlRequest,
+        latestInboundId: string,
+    ): Promise<Record<string, unknown> | null> {
+        if (request.toolName !== 'cancel_appointment' && request.toolName !== 'create_appointment') return null;
+        if (!request.conversationId || !UUID_RE.test(request.conversationId)) return null;
+        const other = request.toolName === 'cancel_appointment' ? 'create_appointment' : 'cancel_appointment';
+        const serviceOfCancelled = async (appointmentId: unknown): Promise<string | null> => {
+            if (typeof appointmentId !== 'string' || !UUID_RE.test(appointmentId)) return null;
+            const rows = await this.query<any[]>(request.schemaName,
+                'SELECT service_id::text AS service_id FROM appointments WHERE id = $1::uuid AND contact_id = $2::uuid LIMIT 1',
+                [appointmentId, request.contactId]);
+            return rows?.[0]?.service_id ?? null;
+        };
+        try {
+            const mine = request.toolName === 'create_appointment'
+                ? (typeof request.args?.serviceId === 'string' ? request.args.serviceId.toLowerCase() : null)
+                : (await serviceOfCancelled(request.args?.appointmentId))?.toLowerCase() ?? null;
+            if (!mine) return null;
+            const rows = await this.query<ExecutionLedgerRow[]>(request.schemaName,
+                `SELECT * FROM tool_execution_ledger
+                  WHERE conversation_id = $1::uuid AND contact_id = $2::uuid AND tool_name = $3
+                    AND created_at > NOW() - INTERVAL '30 minutes'
+                    AND (status IN ('awaiting_confirmation', 'awaiting_approval', 'ready', 'executing')
+                         OR (status = 'succeeded' AND (confirmed_by_message_id = $4::uuid OR request_source_message_id = $4::uuid)))
+                  ORDER BY created_at DESC LIMIT 5`,
+                [request.conversationId, request.contactId, other, latestInboundId]);
+            for (const row of rows || []) {
+                // A proposal of ANOTHER task or of an earlier revision of this one (the customer changed course: «mejor reserva
+                // otra para el viernes») is stale; it must not forbid the new request.
+                const claims = row.status === 'awaiting_confirmation' && row.confirmation_token ? this.verifyConfirmationToken(row.confirmation_token) : null;
+                if (request.missionScope && claims?.mission
+                    && (claims.mission.id !== request.missionScope.missionId || claims.mission.revision !== request.missionScope.revision)) continue;
+                const theirArgs = row.request_payload?.args;
+                const theirs = other === 'create_appointment'
+                    ? (typeof theirArgs?.serviceId === 'string' ? theirArgs.serviceId.toLowerCase() : null)
+                    : (await serviceOfCancelled(theirArgs?.appointmentId))?.toLowerCase() ?? null;
+                if (theirs && theirs === mine) {
+                    this.logger.warn(`[Reschedule] ${request.toolName} refused: ${other} for the same service is already in play — use reschedule_appointment`);
+                    return {
+                        error: 'reschedule_must_be_atomic',
+                        controlBlocked: true,
+                        persisted: false,
+                        message: 'Cancelar una cita y crear otra del mismo servicio es mover la cita: no lo hagas en dos pasos, porque si el segundo falla el cliente pierde su cita. '
+                            + 'Usa reschedule_appointment con appointmentId, newDate y newTime; no llames a cancel_appointment ni a create_appointment para esto.',
+                    };
+                }
+            }
+        } catch (error: any) {
+            this.logger.debug(`[Reschedule] pair check skipped: ${error?.message || 'unknown'}`);
+        }
+        return null;
+    }
+
+    private readonly verticalPolicyCache = new Map<string, { context: ActiveObjectPolicyContext | undefined; at: number }>();
+
+    /**
+     * The tenant's vertical for the identity decision of the appointment tools. Absent (a sealed evaluation namespace, a
+     * lookup that fails, a tenant without the field) the answer is `undefined`, which the policy reads as sensitive.
+     */
+    private async verticalPolicyContext(request: ToolExecutionControlRequest): Promise<ActiveObjectPolicyContext | undefined> {
+        if (request.sandboxNamespace) return undefined;
+        const cached = this.verticalPolicyCache.get(request.tenantId);
+        if (cached && Date.now() - cached.at < 30_000) return cached.context;
+        let context: ActiveObjectPolicyContext | undefined;
+        try {
+            const tenant = await (this.prisma as any).tenant?.findUnique?.({
+                where: { id: request.tenantId },
+                select: { industry: true, settings: true },
+            });
+            context = tenant ? tenantActiveObjectPolicyContext(tenant) : undefined;
+        } catch (error: any) {
+            this.logger.warn(`[Identity] vertical policy unavailable for tenant ${request.tenantId}: ${error?.message || 'lookup_failed'}`);
+            return undefined;
+        }
+        this.verticalPolicyCache.set(request.tenantId, { context, at: Date.now() });
+        return context;
+    }
+
     private async requireStepUpIdentity(
         request: ToolExecutionControlRequest,
     ): Promise<Record<string, unknown> | null> {
@@ -1533,6 +1636,14 @@ export class ToolExecutionControlService {
                 message: 'La evaluación no dispone de una identidad sintética verificada para esta consulta. No se envió ningún código.' };
         }
         if (await this.chatIdentity.isVerified(request.conversationId, request.contactId)) return null;
+        if (request.identityChallenge === 'none') {
+            return {
+                error: 'identity_verification_required',
+                needsVerification: true,
+                challengeSent: false,
+                message: 'Se requiere verificar la identidad antes de continuar. No se envió ningún código.',
+            };
+        }
 
         let started: Awaited<ReturnType<ChatIdentityService['startVerification']>>;
         try {
@@ -1549,7 +1660,7 @@ export class ToolExecutionControlService {
             if (error?.message !== 'identity_challenge_admission_failed') throw error;
             return {
                 error: 'identity_unverifiable',
-                message: 'No pude iniciar la verificación; no se envió ningún código. Escala la gestión a una persona.',
+                message: 'No pude iniciar la verificación; no se envió ningún código. Ofrece pasar la gestión a una persona, como pregunta: solo si el cliente acepta se transfiere.',
                 shouldHandoff: true,
             };
         }
@@ -1557,14 +1668,14 @@ export class ToolExecutionControlService {
         if (started.status === 'blocked') {
             return {
                 error: 'identity_locked',
-                message: 'La verificación de identidad está bloqueada temporalmente por demasiados intentos. No ofrezcas un código nuevo; escala la gestión a una persona.',
+                message: 'La verificación de identidad está bloqueada temporalmente por demasiados intentos. No ofrezcas un código nuevo; ofrece pasar la gestión a una persona, como pregunta: solo si el cliente acepta se transfiere.',
                 shouldHandoff: true,
             };
         }
         if (started.status === 'no_channel') {
             return {
                 error: 'identity_unverifiable',
-                message: 'No hay un canal independiente para verificar la identidad. Escala la gestión a una persona.',
+                message: 'No hay un canal independiente para verificar la identidad. Ofrece pasar la gestión a una persona, como pregunta: solo si el cliente acepta se transfiere.',
                 shouldHandoff: true,
             };
         }
@@ -2015,6 +2126,21 @@ export class ToolExecutionControlService {
                 latest.id,
             );
             return this.confirmationRequired((reissued || ledger).id);
+        }
+
+        // One «sí» confirms ONE change to the customer's appointments. A model that re-issued the cancellation AND the
+        // creation of a «reschedule» would otherwise have the same yes commit both halves, one after the other.
+        if (APPOINTMENT_WRITER_TOOLS.has(request.toolName)) {
+            const sibling = await this.query<any[]>(
+                request.schemaName,
+                `SELECT id FROM tool_execution_ledger
+                  WHERE conversation_id = $1::uuid AND contact_id = $2::uuid AND id <> $3::uuid
+                    AND confirmed_by_message_id = $4::uuid AND tool_name = ANY($5::text[]) LIMIT 1`,
+                [conversationId, request.contactId, ledger.id, latest.id, [...APPOINTMENT_WRITER_TOOLS]],
+            );
+            if (sibling?.length) {
+                return this.block('confirmation_already_used', 'Ese «sí» ya confirmó otro cambio de citas. Propón este cambio por separado.');
+            }
         }
 
         const updated = await this.query<ExecutionLedgerRow[]>(
@@ -2907,6 +3033,8 @@ export class ToolExecutionControlService {
     ): Promise<{ ledgerId: string; toolName: string; args: Record<string, unknown> } | null> {
         if (!UUID_RE.test(conversationId) || !UUID_RE.test(contactId)) return null;
         try {
+            // The proposal the mission is waiting on is the one the «sí» answers: bound to its ledger id, not «the newest row».
+            const bound = missionScope?.expectedReply?.kind === 'confirmation' ? missionScope.expectedReply.ledgerId : undefined;
             const rows = await this.query<ExecutionLedgerRow[]>(
                 schemaName,
                 `SELECT * FROM tool_execution_ledger
@@ -2915,12 +3043,21 @@ export class ToolExecutionControlService {
                     AND status = 'awaiting_confirmation'
                     AND confirmation_token IS NOT NULL
                     AND confirmation_expires_at > NOW()
+                    ${bound && UUID_RE.test(bound) ? 'AND id = $3::uuid' : ''}
                   ORDER BY created_at DESC
-                  LIMIT 1`,
-                [conversationId, contactId],
+                  LIMIT 2`,
+                bound && UUID_RE.test(bound) ? [conversationId, contactId, bound] : [conversationId, contactId],
             );
             const row = rows?.[0];
             if (!row) return null;
+            // Two different writers proposed from the SAME customer message, and nothing says which one the «sí» answers
+            // (no mission binding): none is executed. Guessing «the newest» is how half of a reschedule got committed.
+            const rival = rows[1];
+            if (!(bound && UUID_RE.test(bound)) && rival && rival.tool_name !== row.tool_name
+                && rival.request_source_message_id && rival.request_source_message_id === row.request_source_message_id) {
+                this.logger.warn(`[Confirm] ${rows.length} proposals (${row.tool_name}, ${rival.tool_name}) from one message and no binding — none executed`);
+                return null;
+            }
             const args = row.request_payload?.args;
             if (!args || typeof args !== 'object' || Array.isArray(args)) return null;
             if (customerReply !== undefined) {

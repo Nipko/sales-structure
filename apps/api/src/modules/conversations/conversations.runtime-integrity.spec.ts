@@ -461,4 +461,104 @@ describe('Shared runtime integrity', () => {
             expect((service as any).handoffService.shouldHandoff).toHaveBeenCalledWith('quiero mi reembolso', conv, config);
         });
     });
+
+    // «Mañana es domingo» on a Friday: the calendar of the prompt says otherwise, so the weekday of the reply is corrected.
+    describe('the weekday a reply gives for today / tomorrow follows the calendar the model was given', () => {
+        afterEach(() => jest.useRealTimers());
+        const friday = () => jest.useFakeTimers({ now: new Date('2026-10-09T17:00:00Z'), doNotFake: ['nextTick', 'setImmediate', 'clearImmediate', 'setInterval', 'clearInterval', 'setTimeout', 'clearTimeout', 'queueMicrotask', 'performance', 'hrtime'] });
+
+        it('«mañana es domingo» said on a Friday becomes Saturday', async () => {
+            friday();
+            const { run, llm } = fixture();
+            llm.mockResolvedValue({ content: 'Hoy es viernes y mañana es domingo, por eso estamos cerrados.' });
+            expect(await run('whatsapp', '¿abren mañana?')).toBe('Hoy es viernes y mañana es sábado, por eso estamos cerrados.');
+        });
+
+        it('a correct statement is left alone', async () => {
+            friday();
+            const { run, llm } = fixture();
+            llm.mockResolvedValue({ content: 'Mañana es sábado y abrimos a las 9.' });
+            expect(await run('whatsapp', '¿abren mañana?')).toBe('Mañana es sábado y abrimos a las 9.');
+        });
+    });
+
+    // «Never transfer without consent»: a tool that FAILED and asks for a person (a write that failed after the customer's yes, a
+    // verification that cannot be completed) makes the reply OFFER one; only the customer's «sí» opens a handoff. A tool that
+    // CAPTURED a case a person must handle still escalates once it has run.
+    describe('a person is offered, not opened, when a tool fails and the customer did not ask for one', () => {
+        const OFFER = policyPersonOfferText('es');
+        const markWritten = (query: jest.Mock) => query.mock.calls.some((c: any[]) => String(c[1]).includes('{' + HUMAN_OFFER_MARK + '}'));
+        // The agent signals (counters in Redis) are real calls here: the fixture's bare mocks return undefined.
+        const offerFixture = (draftMode = false) => {
+            const t = fixture(draftMode);
+            t.service.redis.sadd = jest.fn().mockResolvedValue(1);
+            return t;
+        };
+
+        it('a write that fails AFTER the customer\'s yes: the reply ends with the offer, the mark is left, no handoff is opened', async () => {
+            const { service, run, llm, query } = offerFixture();
+            service.toolExecutionControl.findPendingConfirmation.mockResolvedValue({ toolName: 'create_appointment', ledgerId: 'pending', args: { serviceId: 's' } });
+            service.toolExecutor = { execute: jest.fn().mockResolvedValue({ error: 'tool_failed', message: 'No se pudo completar.' }) };
+            llm.mockResolvedValue({ content: 'No pude completar la reserva.' });
+            const reply = await run('whatsapp', 'Sí, confirmo');
+            expect(reply).toBe('No pude completar la reserva.\n\n' + OFFER);
+            expect(service.handoffService.executeHandoff).not.toHaveBeenCalled();
+            expect(markWritten(query)).toBe(true);
+        });
+
+        it('a write the customer confirmed that comes back «hand it off» (a lockout) is offered too, not opened', async () => {
+            const { service, run, llm, query } = offerFixture();
+            service.toolExecutionControl.findPendingConfirmation.mockResolvedValue({ toolName: 'create_appointment', ledgerId: 'pending', args: { serviceId: 's' } });
+            service.toolExecutor = { execute: jest.fn().mockResolvedValue({ error: 'identity_locked', message: 'bloqueado', shouldHandoff: true }) };
+            llm.mockResolvedValue({ content: 'No pude verificar su identidad.' });
+            expect(await run('whatsapp', 'Sí, confirmo')).toBe('No pude verificar su identidad.\n\n' + OFFER);
+            expect(service.handoffService.executeHandoff).not.toHaveBeenCalled();
+            expect(markWritten(query)).toBe(true);
+        });
+
+        it('a tool of the loop that cannot verify the customer (locked / no channel) offers a person and opens nothing', async () => {
+            const { service, run, llm, query } = offerFixture();
+            service.toolExecutor = { execute: jest.fn().mockResolvedValue({ error: 'identity_locked', message: 'bloqueado', shouldHandoff: true }) };
+            llm.mockResolvedValueOnce({ content: '', toolCalls: [{ id: 'call-1', function: { name: 'search_products', arguments: '{}' } }] })
+                .mockResolvedValue({ content: 'No puedo verificar su identidad por ahora.' });
+            const reply = await run('whatsapp', 'busco una crema');
+            expect(reply).toBe('No puedo verificar su identidad por ahora.\n\n' + OFFER);
+            expect(service.handoffService.executeHandoff).not.toHaveBeenCalled();
+            expect(markWritten(query)).toBe(true);
+        });
+
+        it('a refused code (verify_identity_code → too_many) offers a person as well', async () => {
+            const { service, run, llm } = offerFixture();
+            service.toolExecutor = { execute: jest.fn().mockResolvedValue({ verified: false, reason: 'too_many', shouldHandoff: true }) };
+            llm.mockResolvedValueOnce({ content: '', toolCalls: [{ id: 'call-1', function: { name: 'search_products', arguments: '{}' } }] })
+                .mockResolvedValue({ content: 'Demasiados intentos.' });
+            expect(await run('whatsapp', 'busco una crema')).toBe('Demasiados intentos.\n\n' + OFFER);
+            expect(service.handoffService.executeHandoff).not.toHaveBeenCalled();
+        });
+
+        it('a reply that already offers a person is left as it is', async () => {
+            const { service, run, llm } = offerFixture();
+            service.toolExecutor = { execute: jest.fn().mockResolvedValue({ error: 'identity_locked', shouldHandoff: true }) };
+            llm.mockResolvedValueOnce({ content: '', toolCalls: [{ id: 'call-1', function: { name: 'search_products', arguments: '{}' } }] })
+                .mockResolvedValue({ content: `No puedo verificarlo. ${OFFER}` });
+            expect(await run('whatsapp', 'busco una crema')).toBe(`No puedo verificarlo. ${OFFER}`);
+        });
+
+        it('nothing is offered where nobody can be reached (a widget without handoff)', async () => {
+            const { service, run, llm } = offerFixture();
+            service.toolExecutor = { execute: jest.fn().mockResolvedValue({ error: 'identity_locked', shouldHandoff: true }) };
+            llm.mockResolvedValueOnce({ content: '', toolCalls: [{ id: 'call-1', function: { name: 'search_products', arguments: '{}' } }] })
+                .mockResolvedValue({ content: 'No puedo verificar su identidad por ahora.' });
+            expect(await run('web_widget', 'busco una crema')).toBe('No puedo verificar su identidad por ahora.');
+        });
+
+        it('a tool that CAPTURED a case a person must handle (success + shouldHandoff) still escalates once it ran', async () => {
+            const { service, run, llm } = offerFixture();
+            service.toolExecutor = { execute: jest.fn().mockResolvedValue({ success: true, claimId: 'c1', shouldHandoff: true }) };
+            llm.mockResolvedValueOnce({ content: '', toolCalls: [{ id: 'call-1', function: { name: 'search_products', arguments: '{}' } }] })
+                .mockResolvedValue({ content: 'Registré su caso.' });
+            await run('whatsapp', 'busco una crema');
+            expect(service.handoffService.executeHandoff).toHaveBeenCalled();
+        });
+    });
 });

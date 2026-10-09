@@ -1,4 +1,5 @@
 import type { VerticalAssuranceLevel } from '@parallext/shared';
+import { appointmentRecordsNeedIdentityCode, type ActiveObjectPolicyContext } from './active-object-policy';
 
 /**
  * Canonical policy for every statically advertised AI tool.
@@ -156,8 +157,13 @@ const TOOL_POLICY_ENTRIES = [
         downstreamEffects: ['domain_event'],
     })),
     // Appointment payloads include time, service, meeting links and sometimes
-    // regulated-domain context. A static policy cannot safely infer the tenant
-    // industry here, so both reads use the stronger global A2 boundary.
+    // regulated-domain context. This static entry is the FAIL-CLOSED baseline
+    // (A2) for a caller that does not know the tenant's vertical. The central
+    // guard resolves the real requirement per tenant with
+    // `getToolPolicyForContext`, from the same classification that decides what
+    // the prompt may carry (`active-object-policy`): a salon needs no code to see
+    // or change its own appointments, a clinic does, for ALL FOUR appointment
+    // record tools alike.
     entry('get_appointment_details', stepUpSensitiveRead({ ownership: 'resource_owner' })),
     entry('list_customer_appointments', stepUpSensitiveRead()),
     // Es una lectura que le manda al cliente el enlace DONDE reserva. Un perfil
@@ -705,6 +711,27 @@ export function getToolPolicy(name: unknown): ToolPolicy | undefined {
     if (typeof name !== 'string') return undefined;
     if (name.startsWith('mcp__')) return OPAQUE_MCP_TOOL_POLICY;
     return TOOL_POLICY_REGISTRY[name];
+}
+
+/**
+ * The tools that read or act on a contact's own appointments. Whether the contact must verify with a code first is ONE
+ * decision for the four of them, taken from the business type (see `appointmentRecordsNeedIdentityCode`).
+ */
+export const APPOINTMENT_RECORD_TOOLS: ReadonlySet<string> = new Set([
+    'list_customer_appointments', 'get_appointment_details', 'cancel_appointment', 'reschedule_appointment',
+]);
+
+/**
+ * The policy of a tool for a tenant of the given vertical. Identical to `getToolPolicy` except for the appointment record
+ * tools, whose assurance level follows the business type: A1 (the contact bound to this conversation) where an appointment is
+ * not sensitive, A2 (out-of-band code) where it is. A missing or unknown vertical fails closed, as the prompt side does.
+ */
+export function getToolPolicyForContext(name: unknown, context?: ActiveObjectPolicyContext): ToolPolicy | undefined {
+    const policy = getToolPolicy(name);
+    if (!policy || typeof name !== 'string' || !APPOINTMENT_RECORD_TOOLS.has(name)) return policy;
+    return appointmentRecordsNeedIdentityCode(context)
+        ? { ...policy, assurance: 'A2', assuranceEnforcement: 'step_up' }
+        : { ...policy, assurance: 'A1', assuranceEnforcement: 'contact_context', dataClassification: 'contact' };
 }
 
 /** A registered tool that cancels something (cancel_appointment, cancel_catalog_order…): the pending proposal is a cancellation. */

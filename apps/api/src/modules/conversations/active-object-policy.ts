@@ -98,6 +98,35 @@ export function isSensitiveAppointmentDomain(context?: ActiveObjectPolicyContext
         || (industry === 'veterinaria' && !NON_SENSITIVE_VETERINARY_SUBTYPES.has(subtype));
 }
 
+function isRecord(value: unknown): value is Record<string, any> {
+    return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+/**
+ * The tenant row's vertical, exactly as stored (legacy and unknown values are preserved so the exposure boundary can fail
+ * closed on them). It is the ONE place the vertical is read for the identity decision below: the prompt context, the
+ * central guard's per-tool assurance and the transition engine all start from this projection.
+ */
+export function tenantActiveObjectPolicyContext(tenant: any): ActiveObjectPolicyContext {
+    const verticalConfig = isRecord(tenant?.settings?.verticalConfig) ? tenant.settings.verticalConfig : {};
+    return {
+        industry: verticalConfig.industry || tenant?.industry,
+        subtype: verticalConfig.subType || verticalConfig.subtype,
+    };
+}
+
+/**
+ * Whether a contact must verify with an out-of-band code to SEE or ACT ON their own appointments.
+ *
+ * One rule for every surface: the appointments the prompt may carry (`filterActiveObjectsForPrompt`),
+ * `list_customer_appointments`, `get_appointment_details`, `cancel_appointment` and `reschedule_appointment`. A salon, a
+ * fitness studio or an architect's office does not need a code; a clinic, an insurer, a bank or a law firm does. Records are
+ * always scoped to the contact bound to the conversation either way.
+ */
+export function appointmentRecordsNeedIdentityCode(context?: ActiveObjectPolicyContext): boolean {
+    return activeObjectPolicyFor('appointment', context).minimumAssurance === 'A2';
+}
+
 // Runtime assertion protects JavaScript callers and catches drift even if a
 // future kind is added without compiling this package in strict mode.
 for (const kind of ACTIVE_OBJECT_KINDS) {

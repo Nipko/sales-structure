@@ -14,7 +14,8 @@ import type {
     VerticalCapability,
 } from '@parallext/shared';
 import { PrismaService } from '../prisma/prisma.service';
-import { filterActiveObjectsForPrompt, type ActiveObjectPolicyContext } from './active-object-policy';
+import { shortReference } from './transition-engine';
+import { filterActiveObjectsForPrompt, tenantActiveObjectPolicyContext as tenantPolicyProjection, type ActiveObjectPolicyContext } from './active-object-policy';
 
 export type ActiveOperationsLoaderName =
     | 'appointments'
@@ -131,14 +132,9 @@ function activeObjectPolicyContext(config: ActiveOperationsContextInput['config'
 
 /** Preserve the live exposure policy when capturing evaluation inputs. This
  * projection intentionally does not canonicalize legacy or unknown domains;
- * the exposure boundary must still treat those as sensitive. */
-export function tenantActiveObjectPolicyContext(tenant: any): ActiveObjectPolicyContext {
-    const verticalConfig = isRecord(tenant?.settings?.verticalConfig) ? tenant.settings.verticalConfig : {};
-    return {
-        industry: verticalConfig.industry || tenant?.industry,
-        subtype: verticalConfig.subType || verticalConfig.subtype,
-    };
-}
+ * the exposure boundary must still treat those as sensitive. It lives in
+ * `active-object-policy` so the guard reads the very same projection. */
+export const tenantActiveObjectPolicyContext = tenantPolicyProjection;
 
 /**
  * Loader activation is capability/tool based. An explicit tool configuration
@@ -320,10 +316,16 @@ export class ActiveOperationsContextService {
         // loader accidentally returns them. They remain available only through
         // reviewed tools at the assurance level declared by the kind policy.
         const policyContext = await this.resolvePolicyContext(input);
+        // The short uppercase reference the customer is shown and quotes («Ref. 2F01EC00») rides with every appointment and
+        // order: without it the model only sees the lowercase UUID and cannot tell that «2F01EC00» is that very record.
         const boundedItems = filterActiveObjectsForPrompt(
             items,
             policyContext,
-        ).slice(0, maxItems);
+        ).slice(0, maxItems).map((item) => (
+            (item.kind === 'appointment' || item.kind === 'order') && !item.reference && UUID_RE.test(item.id)
+                ? { ...item, reference: shortReference(item.id) }
+                : item
+        ));
         if (boundedItems.length === 0) return { failures };
 
         const activeObjects: ActiveObjectsContextV1 = {

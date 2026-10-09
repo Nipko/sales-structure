@@ -217,7 +217,7 @@ describe('references and register in what the model writes', () => {
             model: () => `Su pedido ${ORDER} está pendiente. Detalle: https://x.example/orders/${ORDER}`,
         });
         await h.turn('hola');
-        const result = await h.turn('¿cuál es el estado de mi pedido?');
+        const result = await h.turn('¿me confirmas si ya despacharon mi pedido?');
         expect(result.reply).toContain('Su pedido C03EBDD7 está pendiente');
         expect(result.reply).toContain(`https://x.example/orders/${ORDER}`);
     });

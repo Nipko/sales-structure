@@ -49,3 +49,32 @@ describe('shared mission focus ownership', () => {
         expect(result.route).toBe('clarify');
     });
 });
+
+describe('a clarification always says what the choice is between', () => {
+    const pendingCancellation = (tool: string, domain: string) => {
+        const state = newMissionFocus();
+        state.selected = { id: 'pending', kind: 'tool', reference: 'ledger', toolName: tool, domain };
+        state.expectedReply = { missionId: 'pending', proposalId: 'ledger', ledgerId: 'ledger', sourceMessageId: 'old', kind: 'confirmation' };
+        return state;
+    };
+    it.each([
+        ['cancel_appointment', 'appointment', 'sí, cancela el pedido', ['appointment', 'order']],
+        ['cancel_catalog_order', 'order', 'sí, cancela la cita', ['order', 'appointment']],
+    ])('%s pending + "%s": clarify, not consent, with both objects named', (tool, domain, text, options) => {
+        const result = arbitrateMissionFocus({ state: pendingCancellation(tool, domain), candidates: [], text, messageId: 'next' });
+        expect(result).toMatchObject({ route: 'clarify', action: 'clarify', invalidateConfirmation: true, clarifyOptions: options });
+        expect(result.state.expectedReply).toBeNull();
+        const spoken = missionDialogue('es', 'clarify', result.clarifyOptions);
+        expect(spoken).toMatch(/su cita o su pedido|su pedido o su cita/);
+        expect(spoken).toContain('¿Sobre cuál desea continuar?');
+    });
+    it('the matching object is still the answer to the pending proposal', () => {
+        const result = arbitrateMissionFocus({ state: pendingCancellation('cancel_appointment', 'appointment'), candidates: [], text: 'sí, cancela la cita', messageId: 'next' });
+        expect(result).toMatchObject({ route: 'tools', action: 'continue' });
+    });
+    it('one known gestión is still named; the bare question exists for nothing at all', () => {
+        expect(missionDialogue('es', 'clarify', ['order'])).toContain('su pedido');
+        expect(missionDialogue('es', 'clarify', ['order', 'order'])).toContain('su pedido');
+        expect(missionDialogue('es', 'clarify')).toBe('Hay más de una gestión posible. ¿Cuál desea continuar?');
+    });
+});

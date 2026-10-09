@@ -1229,6 +1229,25 @@ export class AIToolExecutorService {
             }
             return result;
         } catch (error: any) {
+            // A booking whose ANSWER failed is not a booking that did not happen. Whatever threw (the ledger acknowledging the
+            // commit, a housekeeping step after the INSERT), the agenda decides: when the appointment is there, that is what the
+            // caller is told, with its reference; the ledger is closed on it if it still can be. (A rejection the domain itself raises
+            // BEFORE writing — a sold vehicle, a slot taken, changed terms, a revoked authority — is never read back: it is the answer.)
+            const rejectedBeforeWriting = error instanceof VehicleAppointmentError || error instanceof BadRequestException
+                || error instanceof ConflictException || error instanceof AppointmentTermsChangedError
+                || error instanceof AppointmentSlotConflictError || error instanceof AppointmentServiceUnavailableError
+                || error instanceof ServedAgentAuthorityError || error instanceof LLMSourceAuthorityUnavailable;
+            if (!rejectedBeforeWriting && ['create_appointment', 'schedule_test_drive'].includes(toolName)) {
+                const committed = await this.committedAppointmentResult(schemaName, contactId, toolName, args).catch(() => null);
+                if (committed) {
+                    this.logger.error(`[Tool] ${toolName} failed AFTER the appointment ${committed.appointment.id} was written (${error?.message}) — answered from the records`);
+                    if (this.toolExecutionControl && controlDecision) {
+                        await this.toolExecutionControl.complete(schemaName, controlDecision, committed).catch(() =>
+                            this.toolExecutionControl!.fail(schemaName, controlDecision, 'acknowledgement_failed_after_commit').catch(() => undefined));
+                    }
+                    return committed;
+                }
+            }
             if (this.toolExecutionControl) {
                 await this.toolExecutionControl
                     .fail(schemaName, controlDecision, 'tool_execution_failed')
@@ -3493,6 +3512,53 @@ export class AIToolExecutorService {
         }
     }
 
+    /**
+     * The appointment a booking call wrote, read back from the agenda, as the success the call should have returned (or null when the
+     * agenda holds none). Only a row written by THIS call counts: same customer, same service, same start, still alive, created in
+     * the last minutes.
+     */
+    private async committedAppointmentResult(schema: string, contactId: string, toolName: string, args: any): Promise<any | null> {
+        const date = toolName === 'schedule_test_drive' ? args?.scheduledDate : args?.date;
+        const time = toolName === 'schedule_test_drive' ? args?.scheduledTime : args?.time;
+        const serviceId = String(args?.serviceId ?? '');
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date)) || !/^\d{2}:\d{2}$/.test(String(time))
+            || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(serviceId)) return null;
+        // The same professional and the same vehicle when the call named them: another row of the same customer, service and start
+        // (written for another staff member or another vehicle) is not what THIS call wrote.
+        const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        const params: unknown[] = [contactId, serviceId, `${date}T${time}:00`];
+        const staffFilter = typeof args?.staffId === 'string' && uuid.test(args.staffId)
+            ? (params.push(args.staffId), `AND a.assigned_to = $${params.length}::uuid`) : '';
+        const vehicleFilter = typeof args?.vehicleId === 'string' && uuid.test(args.vehicleId)
+            ? (params.push(args.vehicleId), `AND COALESCE(a.metadata->>'vehicleId', a.metadata->>'vehicle_id') = $${params.length}::text`) : '';
+        const rows: any[] = await this.prisma.$queryRawUnsafe(
+            `SELECT a.id, a.status, a.service_name, a.payment_status, a.amount_due, a.hold_expires_at,
+                    ${appointmentPriceSql('a', 's')} AS price, ${appointmentCurrencySql('a', 's')} AS currency
+             FROM "${schema}".appointments a LEFT JOIN "${schema}".services s ON s.id = a.service_id
+             WHERE a.contact_id = $1::uuid AND a.service_id = $2::uuid AND a.start_at = $3::timestamp
+               ${staffFilter} ${vehicleFilter}
+               AND a.status NOT IN ('cancelled', 'completed', 'no_show', 'expired')
+               AND a.created_at >= NOW() - interval '5 minutes'
+             ORDER BY a.created_at DESC LIMIT 1`,
+            ...params,
+        );
+        const row = rows?.[0];
+        if (!row?.id) return null;
+        const awaitingPayment = row.status === 'pending_payment';
+        return {
+            success: true,
+            reconciledFromRecords: true,
+            operationStatus: awaitingPayment ? 'awaiting_payment' : row.status,
+            appointment: {
+                id: row.id, service: row.service_name, date, time, status: row.status,
+                customerName: args?.customerName ?? args?.contactName,
+                awaitingPayment,
+                amountDueToConfirm: row.amount_due ?? row.price, currency: row.currency, holdExpiresAt: row.hold_expires_at,
+                payableReference: awaitingPayment ? this.payableReference('appointment', row.id, row.payment_status, row.status) : null,
+            },
+        };
+    }
+
     private async createAppointment(
         schema: string, tenantId: string, contactId: string,
         args: { serviceId: string; staffId?: string; date: string; time: string; customerName: string; customerPhone?: string; customerEmail?: string; notes?: string; appointmentTerms?: AppointmentServiceTerms; vehicleTerms?: VehicleAppointmentTerms; vehicleId?: string },
@@ -3679,7 +3745,21 @@ export class AIToolExecutorService {
             if (error instanceof AppointmentServiceUnavailableError) return { error: 'Service not found' };
             throw error;
         } finally {
-            await this.redis.releaseLockToken(slotLock.key, slotLock.token);
+            await this.releaseSlotLock(slotLock);
+        }
+    }
+
+    /**
+     * Gives the per-(resource,date) lock back. It can NEVER throw: this runs in a `finally` AFTER the INSERT/UPDATE committed, and an
+     * exception from a `finally` replaces the `return` of the try. A Redis hiccup on the release (the lock has a 10 s TTL, so it
+     * frees itself) turned a committed booking into `tool_failed` / `reconciliation_required`: the customer was told «no pude
+     * agendar» about an appointment that was in the agenda (production 2026-10-09, Ref. D0ADBD49).
+     */
+    private async releaseSlotLock(lock: { key: string; token: string }): Promise<void> {
+        try {
+            await this.redis.releaseLockToken(lock.key, lock.token);
+        } catch (error: any) {
+            this.logger.warn(`[Tool] Slot lock ${lock.key} could not be released (it expires on its own): ${error?.message}`);
         }
     }
 
@@ -6494,7 +6574,7 @@ export class AIToolExecutorService {
             };
             throw error;
         } finally {
-            await this.redis.releaseLockToken(slotLock.key, slotLock.token);
+            await this.releaseSlotLock(slotLock);
         }
 
         // An exact retry observes the already-applied state but must not append

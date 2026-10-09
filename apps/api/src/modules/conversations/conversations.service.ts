@@ -3420,6 +3420,8 @@ export class ConversationsService {
         let missionLoadedAt: string | undefined;
         // The tool of the proposal that was waiting for a yes/no BEFORE this message was arbitrated (the arbiter may drop it).
         let priorPendingTool: string | undefined;
+        // The focus as it stood BEFORE this message was arbitrated: a message that only shows the pending proposal again gets it back.
+        let focusBeforeArbitration: { revision: number; selectedId?: string; expectedReply: NonNullable<ConversationMissionFocusV1['expectedReply']> | null } | undefined;
         const missionMessageId = inboundMessageId || msg.id || randomUUID();
         const updateMissionScope = () => {
             if (!missionFocus) return;
@@ -3442,6 +3444,8 @@ export class ConversationsService {
             // When the focus was last written: the question «¿cuál?» of the transition engine is answered by the NEXT message, soon.
             missionLoadedAt = missionFocus.updatedAt;
             priorPendingTool = missionFocus.expectedReply?.kind === 'confirmation' && missionFocus.selected?.kind === 'tool' ? missionFocus.selected.toolName : undefined;
+            focusBeforeArbitration = { revision: missionFocus.revision, selectedId: missionFocus.selected?.id,
+                expectedReply: missionFocus.expectedReply ? structuredClone(missionFocus.expectedReply) : null };
             const candidates: MissionCandidate[] = await procedureEngine.missionCandidates(schemaName, tenantId, conversation.id, {
                 industry: turnContext.verticalContext?.industry, subType: turnContext.verticalContext?.subType,
             });
@@ -4014,6 +4018,19 @@ export class ConversationsService {
                     if (outcome.awaitingIdentity !== undefined) {
                         if (outcome.awaitingIdentity) missionFocus.pendingIdentity = outcome.awaitingIdentity;
                         else delete missionFocus.pendingIdentity;
+                        await saveMission();
+                    }
+                    // The request was REPEATED over the proposal that is still waiting (same record, same move): the engine shows that very
+                    // proposal again and nothing new was issued under this message. The arbiter had moved the focus for the repeated
+                    // request (a new revision, no expected reply), so the customer's next «sí» would find a focus its proposal does not
+                    // belong to — «necesito su confirmación final» and nothing executed; only the second «sí» worked (production
+                    // 2026-10-09, reschedule of Ref. 3C78ECA2). The focus goes back to the one the proposal was issued under.
+                    if (outcome.handled && outcome.reshown === true && focusBeforeArbitration?.expectedReply && !missionFocus.expectedReply
+                        // (and the proposal shown again is the very one the focus was waiting on, not another that happens to be pending)
+                        && pendingProposal?.ledgerId === focusBeforeArbitration.expectedReply.ledgerId
+                        && missionFocus.selected?.id === focusBeforeArbitration.selectedId) {
+                        missionFocus.revision = focusBeforeArbitration.revision;
+                        missionFocus.expectedReply = structuredClone(focusBeforeArbitration.expectedReply);
                         await saveMission();
                     }
                     if (outcome.handled && outcome.text) {

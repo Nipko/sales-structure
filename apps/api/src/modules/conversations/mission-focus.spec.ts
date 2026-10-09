@@ -78,3 +78,88 @@ describe('a clarification always says what the choice is between', () => {
         expect(missionDialogue('es', 'clarify')).toBe('Hay más de una gestión posible. ¿Cuál desea continuar?');
     });
 });
+
+// Production 2026-10-09 (Salón QA Citas): six finished cancellations / reschedules were parked as "paused tasks" and the seventh
+// supersession answered every new «quiero agendar…» with «No me queda claro a qué gestión se refiere; tengo en curso su cita».
+describe('the parked tasks are bounded and never a wall for a new task', () => {
+    const toolMission = (n: number) => ({ id: `m${n}`, kind: 'tool' as const, domain: 'appointment', toolName: 'cancel_appointment', reference: `ledger-${n}` });
+    const full = () => {
+        const state = newMissionFocus();
+        state.selected = toolMission(7);
+        state.pausedTools = [1, 2, 3, 4, 5, 6].map(n => ({ ref: toolMission(n), pausedAt: new Date(Date.now() - (10 - n) * 60_000).toISOString() }));
+        return state;
+    };
+    it.each([
+        'quiero agendar corte y estilo',
+        'Hola, quiero agendar una cita de corte y estilo',
+        'quiero agendar corte y estilo el miércoles 21 de octubre a las 10:00, a nombre de Joaquin Sosa, correo qa.cliente@example.com',
+    ])('with six parked and one in progress, «%s» opens a booking', text => {
+        const result = arbitrateMissionFocus({ state: full(), candidates: [], text, messageId: 'inbound' });
+        expect(result.route).not.toBe('clarify');
+        expect(result.action).not.toBe('clarify');
+        expect(result.state.selected).toMatchObject({ kind: expect.stringMatching(/booking|tool/) });
+        expect(result.state.pausedTools).toHaveLength(6);
+    });
+    it('the OLDEST parked task makes room', () => {
+        const result = arbitrateMissionFocus({ state: full(), candidates: [], text: 'quiero agendar corte y estilo', messageId: 'inbound' });
+        const ids = (result.state.pausedTools || []).map(item => item.ref.id);
+        expect(ids).not.toContain('m1');
+        expect(ids).toContain('m7');
+    });
+    it('a task whose proposal was already carried out is dropped, not parked', () => {
+        const state = full();
+        state.lastConsumed = { messageId: 'earlier', missionId: 'm7', revision: 0 };
+        const result = arbitrateMissionFocus({ state, candidates: [], text: 'quiero agendar corte y estilo', messageId: 'inbound' });
+        expect((result.state.pausedTools || []).map(item => item.ref.id)).toEqual(['m1', 'm2', 'm3', 'm4', 'm5', 'm6']);
+    });
+});
+
+// PR #83 review: what is dropped and what is evicted.
+describe('parked tasks: a live proposal is never dropped, and room is made by what cannot be resumed first', () => {
+    const toolMission = (id: string) => ({ id, kind: 'tool' as const, domain: 'appointment', toolName: 'cancel_appointment', reference: `ledger-${id}` });
+    const minutesAgo = (n: number) => new Date(Date.now() - n * 60_000).toISOString();
+    const parkedSix = () => [0, 1, 2, 3, 4, 5].map(n => ({ ref: toolMission(`p${n}`), pausedAt: minutesAgo(10 - n) }));
+    const current = (live: boolean) => {
+        const state = newMissionFocus();
+        state.selected = toolMission('cur');
+        if (live) state.expectedReply = { missionId: 'cur', proposalId: 'ledger-cur', ledgerId: 'ledger-cur', sourceMessageId: 'x', kind: 'confirmation' };
+        return state;
+    };
+
+    it.each(['quiero agendar una cita para el lunes', 'quiero cancelar mi pedido'])('a task consumed once that now waits on a NEW proposal is parked, not dropped: «%s»', text => {
+        const state = current(true);
+        state.lastConsumed = { messageId: 'old', missionId: 'cur', revision: 0 };
+        const result = arbitrateMissionFocus({ state, candidates: [], text, messageId: 'n' });
+        expect((result.state.pausedTools || []).map(item => item.ref.id)).toContain('cur');
+    });
+
+    it('a task consumed and with nothing waiting is still dropped', () => {
+        const state = current(false);
+        state.lastConsumed = { messageId: 'old', missionId: 'cur', revision: 0 };
+        const result = arbitrateMissionFocus({ state, candidates: [], text: 'quiero agendar una cita para el lunes', messageId: 'n' });
+        expect((result.state.pausedTools || []).map(item => item.ref.id)).not.toContain('cur');
+    });
+
+    it('with six parked, the task that was carried out is evicted before the oldest one', () => {
+        const state = current(true);
+        state.pausedTools = parkedSix();
+        state.lastConsumed = { messageId: 'old', missionId: 'p3', revision: 0 };
+        const ids = (arbitrateMissionFocus({ state, candidates: [], text: 'quiero agendar una cita para el lunes', messageId: 'n' }).state.pausedTools || []).map(item => item.ref.id);
+        expect(ids).toEqual(['p0', 'p1', 'p2', 'p4', 'p5', 'cur']);
+    });
+
+    it('with six parked, a proposal past its confirmation window is evicted before the oldest one', () => {
+        const state = current(true);
+        state.pausedTools = parkedSix();
+        state.pausedTools[4].pausedAt = minutesAgo(120);
+        const ids = (arbitrateMissionFocus({ state, candidates: [], text: 'quiero agendar una cita para el lunes', messageId: 'n' }).state.pausedTools || []).map(item => item.ref.id);
+        expect(ids).toEqual(['p0', 'p1', 'p2', 'p3', 'p5', 'cur']);
+    });
+
+    it('with six parked and none of them dead, the oldest makes room', () => {
+        const state = current(true);
+        state.pausedTools = parkedSix();
+        const ids = (arbitrateMissionFocus({ state, candidates: [], text: 'quiero agendar una cita para el lunes', messageId: 'n' }).state.pausedTools || []).map(item => item.ref.id);
+        expect(ids).toEqual(['p1', 'p2', 'p3', 'p4', 'p5', 'cur']);
+    });
+});

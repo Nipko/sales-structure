@@ -47,8 +47,12 @@ export function customerFacingPrice(row: { price?: unknown; price_status?: unkno
 
 /** The instruction the model gets instead of a number. */
 export function servicePriceNote(status: ServicePriceStatus): string | undefined {
-    if (status === 'quote') return 'El negocio cotiza este servicio según el caso: no digas ningún monto, ofrece que una persona lo cotice.';
-    if (status === 'example') return 'Precio pendiente de confirmar por el negocio: no digas ningún monto ni lo estimes; di que el precio no está confirmado y ofrece que una persona del equipo lo confirme.';
+    // The offer of a person is for a customer who ASKS the price. A customer who is booking is not held back by it: the booking
+    // goes ahead with the price pending (production 2026-10-09: «el precio no está confirmado… ¿le pido a alguien del equipo que
+    // lo confirme y termine de reservar?» instead of booking).
+    const NOT_A_CONDITION = ' Si el cliente solo quiere reservar, la reserva sigue adelante con el precio pendiente: no la condiciones a esa confirmación ni ofrezcas una persona "para confirmar el precio y terminar de reservar".';
+    if (status === 'quote') return `El negocio cotiza este servicio según el caso: no digas ningún monto, ofrece que una persona lo cotice.${NOT_A_CONDITION}`;
+    if (status === 'example') return `Precio pendiente de confirmar por el negocio: no digas ningún monto ni lo estimes; di que el precio no está confirmado y ofrece que una persona del equipo lo confirme.${NOT_A_CONDITION}`;
     return undefined;
 }
 

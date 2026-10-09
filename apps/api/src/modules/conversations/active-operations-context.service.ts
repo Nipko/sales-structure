@@ -662,6 +662,10 @@ export class ActiveOperationsContextService {
         limit: number,
         detailsTool: string | undefined,
     ): Promise<ActiveObjectContextItemV1[]> {
+        // The same window as list_customer_appointments: upcoming + TODAY'S, from the start of the tenant's local day. An appointment
+        // that started this morning is still on the account for today; leaving it out made the model answer «no tiene citas
+        // próximas» next to a list that showed it (production 2026-10-09, F0080B9A at 11:00). A visit already closed (completed or
+        // no-show) is not "pending ahead", so once its time has passed only the still-open ones count.
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `SELECT id, service_name, service_id, status,
@@ -673,8 +677,9 @@ export class ActiveOperationsContextService {
                     COALESCE(metadata->>'petId', metadata->>'pet_id') AS pet_id
              FROM appointments
              WHERE contact_id = $1::uuid
-               AND start_at >= (NOW() AT TIME ZONE $2)
+               AND start_at >= date_trunc('day', NOW() AT TIME ZONE $2)
                AND LOWER(COALESCE(status, '')) NOT IN ('cancelled', 'canceled', 'expired')
+               AND (start_at >= (NOW() AT TIME ZONE $2) OR LOWER(COALESCE(status, '')) NOT IN ('completed', 'no_show'))
              ORDER BY start_at ASC LIMIT ${limit}`,
             [contactId, timezone],
         );

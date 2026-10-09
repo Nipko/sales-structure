@@ -9,19 +9,19 @@
 
 const APPT_MESSAGES: Record<string, Record<string, string>> = {
     es: {
-        confirmTitle:   '✅ *Cita confirmada*',
+        confirmTitle:   '✅ **Cita confirmada**',
         confirmGreeting: 'Hola {name}! Su cita ha sido agendada:',
         confirmLocation: '📍 {location}',
         confirmMeeting:  '💻 Enlace de reunión: {url}',
         confirmFooter:   'Si necesita cancelar o reprogramar, escríbanos con anticipación.',
 
-        cancelTitle:    '❌ *Cita cancelada*',
-        cancelBody:     'Su cita de *{service}* del {date} ha sido cancelada.',
+        cancelTitle:    '❌ **Cita cancelada**',
+        cancelBody:     'Su cita de **{service}** del {date} ha sido cancelada.',
         cancelReason:   'Motivo: {reason}',
         cancelFooter:   'Si desea reprogramar, no dude en escribirnos.',
 
-        reminderTitle:  '⏰ *Recordatorio de cita*',
-        reminderBody:   'Hola {name}! Le recordamos su cita de *{service}* el {date} a las {time}.',
+        reminderTitle:  '⏰ **Recordatorio de cita**',
+        reminderBody:   'Hola {name}! Le recordamos su cita de **{service}** el {date} a las {time}.',
         reminderStaff:  '👤 Le atenderá: {staff}',
         reminderFooter: 'Si no puede asistir, escríbanos con anticipación para reprogramar.',
 
@@ -31,19 +31,19 @@ const APPT_MESSAGES: Record<string, Record<string, string>> = {
         durationBoth:     '{h} h {m} min',
     },
     en: {
-        confirmTitle:   '✅ *Appointment confirmed*',
+        confirmTitle:   '✅ **Appointment confirmed**',
         confirmGreeting: 'Hi {name}! Your appointment has been scheduled:',
         confirmLocation: '📍 {location}',
         confirmMeeting:  '💻 Meeting link: {url}',
         confirmFooter:   'If you need to cancel or reschedule, please let us know in advance.',
 
-        cancelTitle:    '❌ *Appointment cancelled*',
-        cancelBody:     'Your *{service}* appointment on {date} has been cancelled.',
+        cancelTitle:    '❌ **Appointment cancelled**',
+        cancelBody:     'Your **{service}** appointment on {date} has been cancelled.',
         cancelReason:   'Reason: {reason}',
         cancelFooter:   'Feel free to reach out if you would like to reschedule.',
 
-        reminderTitle:  '⏰ *Appointment reminder*',
-        reminderBody:   'Hi {name}! This is a reminder of your *{service}* appointment on {date} at {time}.',
+        reminderTitle:  '⏰ **Appointment reminder**',
+        reminderBody:   'Hi {name}! This is a reminder of your **{service}** appointment on {date} at {time}.',
         reminderStaff:  '👤 You will be seen by: {staff}',
         reminderFooter: 'If you cannot make it, please let us know in advance to reschedule.',
 
@@ -53,19 +53,19 @@ const APPT_MESSAGES: Record<string, Record<string, string>> = {
         durationBoth:     '{h} h {m} min',
     },
     pt: {
-        confirmTitle:   '✅ *Consulta confirmada*',
+        confirmTitle:   '✅ **Consulta confirmada**',
         confirmGreeting: 'Olá {name}! Seu agendamento foi realizado:',
         confirmLocation: '📍 {location}',
         confirmMeeting:  '💻 Link da reunião: {url}',
         confirmFooter:   'Se precisar cancelar ou reagendar, entre em contato com antecedência.',
 
-        cancelTitle:    '❌ *Agendamento cancelado*',
-        cancelBody:     'Seu agendamento de *{service}* do dia {date} foi cancelado.',
+        cancelTitle:    '❌ **Agendamento cancelado**',
+        cancelBody:     'Seu agendamento de **{service}** do dia {date} foi cancelado.',
         cancelReason:   'Motivo: {reason}',
         cancelFooter:   'Se desejar reagendar, não hesite em nos escrever.',
 
-        reminderTitle:  '⏰ *Lembrete de agendamento*',
-        reminderBody:   'Olá {name}! Lembramos do seu agendamento de *{service}* em {date} às {time}.',
+        reminderTitle:  '⏰ **Lembrete de agendamento**',
+        reminderBody:   'Olá {name}! Lembramos do seu agendamento de **{service}** em {date} às {time}.',
         reminderStaff:  '👤 Quem vai atender: {staff}',
         reminderFooter: 'Se não puder comparecer, avise com antecedência para reagendar.',
 
@@ -75,19 +75,19 @@ const APPT_MESSAGES: Record<string, Record<string, string>> = {
         durationBoth:     '{h} h {m} min',
     },
     fr: {
-        confirmTitle:   '✅ *Rendez-vous confirmé*',
+        confirmTitle:   '✅ **Rendez-vous confirmé**',
         confirmGreeting: 'Bonjour {name} ! Votre rendez-vous a été planifié :',
         confirmLocation: '📍 {location}',
         confirmMeeting:  '💻 Lien de réunion : {url}',
         confirmFooter:   'Si vous devez annuler ou reporter, contactez-nous à l\'avance.',
 
-        cancelTitle:    '❌ *Rendez-vous annulé*',
-        cancelBody:     'Votre rendez-vous *{service}* du {date} a été annulé.',
+        cancelTitle:    '❌ **Rendez-vous annulé**',
+        cancelBody:     'Votre rendez-vous **{service}** du {date} a été annulé.',
         cancelReason:   'Motif : {reason}',
         cancelFooter:   'N\'hésitez pas à nous écrire si vous souhaitez reporter.',
 
-        reminderTitle:  '⏰ *Rappel de rendez-vous*',
-        reminderBody:   'Bonjour {name} ! Nous vous rappelons votre rendez-vous *{service}* le {date} à {time}.',
+        reminderTitle:  '⏰ **Rappel de rendez-vous**',
+        reminderBody:   'Bonjour {name} ! Nous vous rappelons votre rendez-vous **{service}** le {date} à {time}.',
         reminderStaff:  '👤 Vous serez reçu par : {staff}',
         reminderFooter: 'Si vous ne pouvez pas venir, prévenez-nous à l\'avance pour reporter.',
 

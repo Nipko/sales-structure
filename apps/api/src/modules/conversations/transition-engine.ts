@@ -2,6 +2,7 @@ import { isToolAuthorityDenial, normalizeForIntent, type PendingIdentityRequestV
 import { isInformationSeekingMessage } from '../../common/conversation/intent-normalizer';
 import { appointmentChangeRequest, foldKeepingPunctuation, negatedAt, REPORTED_OR_PAST } from './appointment-transition';
 import { policyPersonOfferText } from './human-offer';
+import { readDateReference, weekdayMentions, WEEKDAY_NAMES_ES } from './date-reference';
 import type { RecordFact } from '../../common/utils/outcome-claim.util';
 
 /**
@@ -331,6 +332,24 @@ export function orderStatusLabel(status: unknown, language?: string): string {
     return ORDER_STATUS_LABELS[lang][key] || key || '-';
 }
 
+const PAYMENT_STATUS_LABELS: Record<string, Record<string, string>> = {
+    es: { paid: 'pagado', unpaid: 'sin pagar', partially_paid: 'pago parcial', awaiting_payment: 'pendiente de pago' },
+    pt: { paid: 'pago', unpaid: 'não pago', partially_paid: 'pago parcialmente', awaiting_payment: 'aguardando pagamento' },
+    fr: { paid: 'payée', unpaid: 'non payée', partially_paid: 'partiellement payée', awaiting_payment: 'en attente de paiement' },
+};
+/** An internal status as the model copies it from a tool result: whole words, lower case, never inside a quoted name. */
+const STATUS_WORD = /(?<![\w"'“‘\-/.])(pending|confirmed|processing|preparing|shipped|in_transit|delivered|completed|cancelled|canceled|refunded|failed|paid|unpaid|partially_paid|awaiting_payment)(?![\w"'”’\-/])/g;
+
+/**
+ * An internal status word («pending», «in_transit») that reached a reply in another language («El estado es pending») is put in the
+ * customer's language with the same labels the server's own listing uses. English replies are left alone.
+ */
+export function localizeStatusWords(text: string, language?: string): string {
+    const lang = langOf(language);
+    if (!text || lang === 'en') return text;
+    return text.replace(STATUS_WORD, (word: string) => PAYMENT_STATUS_LABELS[lang]?.[word] ?? ORDER_STATUS_LABELS[lang][word] ?? word);
+}
+
 /** EVERY order of the customer, newest first, with its status: for «¿qué pedidos tengo?» (the cancellable ones are a subset). */
 export function orderListing(result: any, locale = 'es-CO', language = 'es'): Candidate[] {
     const rows: any[] = Array.isArray(result?.orders) ? result.orders : [];
@@ -454,9 +473,27 @@ function addDays(iso: string, days: number): string {
     return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
 }
 
-/** The new date and time of a reschedule request. A part the customer did not name stays as the appointment has it. */
-export function resolveTarget(rawText: string, appointment: Candidate, interpreted: InterpretedTarget | null, todayIso: string):
-    { date: string; time: string } | null {
+/** A way of naming the day this reader cannot resolve («la próxima semana», «en 3 días»): the day was given, so it is asked, never dropped. */
+const UNREADABLE_DAY = /\b(?:proxima semana|semana que viene|semana proxima|next week|la semana|en \d+ dias|in \d+ days|fin de semana|weekend|proximo mes|next month|quincena)\b/;
+const RELATIVE_DAY = /\b(?:hoy|manana|pasado manana|today|tomorrow|hoje|amanha|aujourd|demain)\b/;
+
+/**
+ * What the customer's words say about WHERE the appointment goes:
+ *  - `target`: a date and a time (a part not named stays as the appointment has it, but only when NO day was named at all);
+ *  - `ask`: no usable day or time, or a day was named that cannot be read (never «only the hour changes»);
+ *  - `conflict`: the weekday and the day of the month disagree («viernes 17 de octubre» when the 17th is a Saturday);
+ *  - `past`: an explicit date that already passed (this year's, when no year was said: it is not rolled forward in silence).
+ *
+ * An explicit day + month beats the weekday; a weekday written as the selector of the record («la del jueves») is not where it
+ * goes; a bare weekday said on that same weekday is the next one («el viernes» on a Friday is not today).
+ */
+export type TargetReading =
+    | { kind: 'target'; date: string; time: string }
+    | { kind: 'ask' }
+    | { kind: 'conflict'; date: string; weekday: number }
+    | { kind: 'past'; date: string };
+
+export function readTarget(rawText: string, appointment: Candidate, interpreted: InterpretedTarget | null, todayIso: string): TargetReading {
     const text = normalizeForIntent(rawText).replace(/[^\p{L}\p{N}\s:]/gu, ' ').replace(/\s+/g, ' ').trim();
     const baseDate = appointment.date || '';
     const baseTime = appointment.time || '';
@@ -464,16 +501,38 @@ export function resolveTarget(rawText: string, appointment: Candidate, interpret
     let time: string | null = null;
     if (NEXT_DAY.test(text)) date = addDays(baseDate, 1);
     if (SAME_TIME.test(text)) time = baseTime;
-    const interpretedDate = String(interpreted?.date ?? '').trim().toLowerCase();
-    if (!date && interpretedDate) {
-        if (/^\d{4}-\d{2}-\d{2}$/.test(interpretedDate)) date = interpretedDate;
-        else if (interpretedDate === 'today') date = todayIso;
-        else if (interpretedDate === 'tomorrow') date = addDays(todayIso, 1);
+    if (!date) {
+        const reading = readDateReference(text, todayIso, { referenceDate: baseDate });
+        if (reading.kind === 'conflict') return { kind: 'conflict', date: reading.date, weekday: reading.saidWeekday };
+        if (reading.kind === 'past') return { kind: 'past', date: reading.date };
+        if (reading.kind === 'ambiguous') return { kind: 'ask' };
+        if (reading.kind === 'date') date = reading.date;
+        else if (/\bpasado manana\b/.test(text)) date = addDays(todayIso, 2);
+        else {
+            const interpretedDate = String(interpreted?.date ?? '').trim().toLowerCase();
+            // The interpreter reads a selector weekday («la del jueves») as the destination too: its date counts here only
+            // when the customer used a relative word or no weekday at all.
+            const interpreterMayDecide = RELATIVE_DAY.test(text) || !weekdayMentions(text).length;
+            if (interpretedDate && interpreterMayDecide) {
+                if (/^\d{4}-\d{2}-\d{2}$/.test(interpretedDate)) date = interpretedDate;
+                else if (interpretedDate === 'today') date = todayIso;
+                else if (interpretedDate === 'tomorrow') date = addDays(todayIso, 1);
+            }
+            // A day was named in a way that is not understood: ask, do not move only the hour.
+            if (!date && UNREADABLE_DAY.test(text)) return { kind: 'ask' };
+        }
     }
     const interpretedTime = String(interpreted?.time ?? '').trim();
     if (!time && /^([01]?\d|2[0-3]):[0-5]\d$/.test(interpretedTime)) time = interpretedTime.padStart(5, '0');
-    if (!date && !time) return null;
-    return { date: date || baseDate, time: time || baseTime };
+    if (!date && !time) return { kind: 'ask' };
+    return { kind: 'target', date: date || baseDate, time: time || baseTime };
+}
+
+/** The new date and time of a reschedule request, or null when the words do not say (see `readTarget`). */
+export function resolveTarget(rawText: string, appointment: Candidate, interpreted: InterpretedTarget | null, todayIso: string):
+    { date: string; time: string } | null {
+    const reading = readTarget(rawText, appointment, interpreted, todayIso);
+    return reading.kind === 'target' ? { date: reading.date, time: reading.time } : null;
 }
 
 // ── Texts ───────────────────────────────────────────────────────────────────
@@ -496,8 +555,16 @@ export function formatDay(date: string, lang: string): string {
 }
 
 type Lang = 'es' | 'en' | 'pt' | 'fr';
+const WEEKDAY_NAMES_EN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const WEEKDAY_NAMES_PT = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
+const WEEKDAY_NAMES_FR = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
 const langOf = (language?: string): Lang => (['es', 'en', 'pt', 'fr'].includes(String(language).slice(0, 2).toLowerCase())
     ? String(language).slice(0, 2).toLowerCase() : 'es') as Lang;
+
+/** Orders that can no longer be cancelled: offering to cancel them («Si desea anular alguno…») is noise when ALL of the listing is one of these. */
+const CLOSED_ORDER_STATUS = new Set(['cancelled', 'canceled', 'delivered', 'completed', 'refunded', 'failed']);
+/** The closing line of the orders listing, only when at least one order is still open. */
+const orderHint = (cs: Candidate[], text: string): string => (cs.some(c => !CLOSED_ORDER_STATUS.has(String(c.status ?? '').toLowerCase())) ? `\n${text}` : '');
 
 /** An order of the listing: what it is, how much, where it stands, and the reference to quote. */
 const orderLine = (c: Candidate) => `- ${c.label}${c.total ? ` (${c.total})` : ''} — ${c.statusLabel || c.status || '-'} (Ref. ${c.ref})`;
@@ -521,6 +588,8 @@ export interface Texts {
     ambiguous(options: TransitionDomain[]): string;
     noMatch(domain: TransitionDomain, c: Candidate): string;
     pastDate(c: Candidate): string;
+    /** The weekday and the day of the month the customer wrote disagree: asked, never resolved by guessing. */
+    dateConflict(c: Candidate, date: string, weekday: number): string;
     /** «¿Qué pedidos tengo?» / «¿cuál es el estado de mi pedido?»: the server's own listing, with the status and the reference. */
     listOrders(cs: Candidate[]): string;
     noOrdersAtAll(): string;
@@ -572,7 +641,8 @@ export function transitionTexts(language: string | undefined, form: AddressForm 
                 : `Hay más de una gestión posible: ${options.map(o => S(o)).join(' o ')}. ${tu ? '¿Sobre cuál quieres continuar?' : '¿Sobre cuál desea continuar?'}`,
             noMatch: (domain, c) => `${tu ? 'No encuentro' : 'No encuentro'} ${domain === 'appointment' ? 'una cita' : 'un pedido'} con ese día u hora. ${tu ? 'Tienes' : 'Usted tiene'}:\n${line(c, domain, 'es')}\n${tu ? '¿Es esa la que quieres?' : '¿Es esa la que desea?'}`,
             pastDate: c => `${tu ? 'Esa fecha ya pasó.' : 'Esa fecha ya pasó.'} ${tu ? '¿Para qué día y hora quieres' : '¿Para qué día y hora desea'} mover ${S('appointment')} de ${c.label} (Ref. ${c.ref})?`,
-            listOrders: cs => `${tu ? (cs.length === 1 ? 'Tienes un pedido' : `Tienes ${cs.length} pedidos`) : (cs.length === 1 ? 'Usted tiene un pedido' : `Usted tiene ${cs.length} pedidos`)}:\n${cs.map(c => orderLine(c)).join('\n')}\n${tu ? 'Si quieres anular alguno, dime la referencia.' : 'Si desea anular alguno, indíqueme la referencia.'}`,
+            dateConflict: (c, d, w) => `El ${formatDay(d, 'es')} no es ${WEEKDAY_NAMES_ES[w]}. ${tu ? '¿Qué día y hora quieres exactamente' : '¿Qué día y hora desea exactamente'} para mover ${S('appointment')} de ${c.label} (Ref. ${c.ref})?`,
+            listOrders: cs => `${tu ? (cs.length === 1 ? 'Tienes un pedido' : `Tienes ${cs.length} pedidos`) : (cs.length === 1 ? 'Usted tiene un pedido' : `Usted tiene ${cs.length} pedidos`)}:\n${cs.map(c => orderLine(c)).join('\n')}${orderHint(cs, tu ? 'Si quieres anular alguno, dime la referencia.' : 'Si desea anular alguno, indíqueme la referencia.')}`,
             noOrdersAtAll: () => tu ? 'No encuentro pedidos tuyos.' : 'No encuentro pedidos suyos.',
             verifyNeeded: hint => `${tu ? 'Para ver o cambiar tus citas necesito verificar tu identidad.' : 'Para ver o cambiar sus citas necesito verificar su identidad.'} ${hint ? `${tu ? 'Te envié' : 'Le envié'} un código a ${hint}` : `${tu ? 'Te envié' : 'Le envié'} un código de verificación`}; ${tu ? 'escríbelo' : 'escríbalo'} aquí para continuar.`,
             codeAlreadySent: hint => `${tu ? 'Ya te envié' : 'Ya le envié'} un código de verificación${hint ? ` a ${hint}` : ''}; ${tu ? 'escríbelo' : 'escríbalo'} aquí para continuar.`,
@@ -603,7 +673,8 @@ export function transitionTexts(language: string | undefined, form: AddressForm 
             ambiguous: options => options.length === 1 ? `I am not sure what you want to cancel. Is it ${D(options[0])}?` : `There is more than one possible task: ${options.map(o => D(o)).join(' or ')}. Which one would you like to continue?`,
             noMatch: (domain, c) => `I do not find ${domain === 'appointment' ? 'an appointment' : 'an order'} for that day or time. You have:\n${line(c, domain, 'en')}\nIs that the one?`,
             pastDate: c => `That date has already passed. Which day and time would you like to move your ${c.label} appointment (Ref. ${c.ref}) to?`,
-            listOrders: cs => `You have ${cs.length === 1 ? 'one order' : `${cs.length} orders`}:\n${cs.map(c => orderLine(c)).join('\n')}\nIf you want to cancel one, tell me its reference.`,
+            dateConflict: (c, d, w) => `${formatDay(d, 'en')} is not a ${WEEKDAY_NAMES_EN[w]}. Which day and time exactly would you like to move your ${c.label} appointment (Ref. ${c.ref}) to?`,
+            listOrders: cs => `You have ${cs.length === 1 ? 'one order' : `${cs.length} orders`}:\n${cs.map(c => orderLine(c)).join('\n')}${orderHint(cs, 'If you want to cancel one, tell me its reference.')}`,
             noOrdersAtAll: () => 'I do not find any orders of yours.',
             verifyNeeded: hint => `To see or change your appointments I need to verify your identity. I sent a code ${hint ? `to ${hint}` : 'for verification'}; type it here to continue.`,
             codeAlreadySent: hint => `I already sent a verification code${hint ? ` to ${hint}` : ''}; type it here to continue.`,
@@ -634,7 +705,8 @@ export function transitionTexts(language: string | undefined, form: AddressForm 
             ambiguous: options => options.length === 1 ? `Não ficou claro o que você quer cancelar. É ${D(options[0])}?` : `Há mais de uma tarefa possível: ${options.map(o => D(o)).join(' ou ')}. Sobre qual deseja continuar?`,
             noMatch: (domain, c) => `Não encontro ${domain === 'appointment' ? 'um agendamento' : 'um pedido'} nesse dia ou hora. Você tem:\n${line(c, domain, 'pt')}\nÉ esse?`,
             pastDate: c => `Essa data já passou. Para que dia e hora quer mudar o agendamento de ${c.label} (Ref. ${c.ref})?`,
-            listOrders: cs => `Você tem ${cs.length === 1 ? 'um pedido' : `${cs.length} pedidos`}:\n${cs.map(c => orderLine(c)).join('\n')}\nSe quiser cancelar algum, informe a referência.`,
+            dateConflict: (c, d, w) => `${formatDay(d, 'pt')} não é ${WEEKDAY_NAMES_PT[w]}. Para que dia e hora exatamente quer mudar o agendamento de ${c.label} (Ref. ${c.ref})?`,
+            listOrders: cs => `Você tem ${cs.length === 1 ? 'um pedido' : `${cs.length} pedidos`}:\n${cs.map(c => orderLine(c)).join('\n')}${orderHint(cs, 'Se quiser cancelar algum, informe a referência.')}`,
             noOrdersAtAll: () => 'Não encontro pedidos seus.',
             verifyNeeded: hint => `Para ver ou mudar seus agendamentos preciso verificar sua identidade. Enviei um código ${hint ? `para ${hint}` : 'de verificação'}; escreva-o aqui para continuar.`,
             codeAlreadySent: hint => `Já enviei um código de verificação${hint ? ` para ${hint}` : ''}; escreva-o aqui para continuar.`,
@@ -665,7 +737,8 @@ export function transitionTexts(language: string | undefined, form: AddressForm 
             ambiguous: options => options.length === 1 ? `Je ne sais pas ce que vous souhaitez annuler. S’agit-il de ${D(options[0])} ?` : `Plusieurs démarches sont possibles : ${options.map(o => D(o)).join(' ou ')}. Laquelle souhaitez-vous poursuivre ?`,
             noMatch: (domain, c) => `Je ne trouve pas ${domain === 'appointment' ? 'de rendez-vous' : 'de commande'} pour ce jour ou cette heure. Vous avez :\n${line(c, domain, 'fr')}\nEst-ce celui-ci ?`,
             pastDate: c => `Cette date est déjà passée. Pour quel jour et quelle heure souhaitez-vous déplacer votre rendez-vous ${c.label} (Réf. ${c.ref}) ?`,
-            listOrders: cs => `Vous avez ${cs.length === 1 ? 'une commande' : `${cs.length} commandes`} :\n${cs.map(c => orderLine(c)).join('\n')}\nPour en annuler une, indiquez sa référence.`,
+            dateConflict: (c, d, w) => `Le ${formatDay(d, 'fr')} n’est pas un ${WEEKDAY_NAMES_FR[w]}. Pour quel jour et quelle heure exactement souhaitez-vous déplacer votre rendez-vous ${c.label} (Réf. ${c.ref}) ?`,
+            listOrders: cs => `Vous avez ${cs.length === 1 ? 'une commande' : `${cs.length} commandes`} :\n${cs.map(c => orderLine(c)).join('\n')}${orderHint(cs, 'Pour en annuler une, indiquez sa référence.')}`,
             noOrdersAtAll: () => 'Je ne trouve aucune commande de votre part.',
             verifyNeeded: hint => `Pour voir ou modifier vos rendez-vous, je dois vérifier votre identité. J’ai envoyé un code ${hint ? `à ${hint}` : 'de vérification'} ; saisissez-le ici pour continuer.`,
             codeAlreadySent: hint => `J’ai déjà envoyé un code de vérification${hint ? ` à ${hint}` : ''} ; saisissez-le ici pour continuer.`,
@@ -694,6 +767,8 @@ export interface TransitionIO {
     /** Date and time the customer's words name (the interpreter); null when none. */
     interpretTarget(text: string): Promise<InterpretedTarget | null>;
     todayIso: string;
+    /** The tenant's local time now («HH:MM»): a same-day move to a time that already passed is refused. Absent: only the date is checked. */
+    nowTime?: string;
     language: string;
     form: AddressForm;
     /** The tenant's locale for amounts (regional profile). */
@@ -712,6 +787,11 @@ export interface TransitionOptions {
     pending?: PendingProposal | null;
     /** A verification code was already sent for a request of this conversation. */
     pendingIdentity?: PendingIdentityRequestV1 | null;
+    /**
+     * The record a proposal of ANOTHER action was about («quiero cancelar la D5959EA9» → «no, mejor reprográmala para el viernes»):
+     * when the new words name no record, this is the one they mean. The customer is not asked again which one.
+     */
+    pivotTargetId?: string | null;
 }
 
 export interface TransitionOutcome {
@@ -802,7 +882,7 @@ export async function handleIdentityReply(pending: PendingIdentityRequestV1, tex
     const T = transitionTexts(io.language, io.form);
     const executed: TransitionOutcome['executed'] = [];
     const request: TransitionRequest = { verb: pending.verb, domain: pending.domain };
-    const fresh = Date.now() - Date.parse(pending.askedAt) < 30 * 60_000;
+    const fresh = nowOf(io) - Date.parse(pending.askedAt) < 30 * 60_000;
     if (!fresh) return { handled: false, awaitingIdentity: null, executed };
 
     if (pending.stage === 'offer_new_code') {
@@ -896,7 +976,8 @@ async function runTransitionInner(request: TransitionRequest, text: string, io: 
     if (!candidates.length) return { handled: true, text: T.noAppointments(), awaitingWriter: null, executed };
     const shown = pending && pendingTargetId ? candidates.find(candidate => candidate.id === pendingTargetId) : undefined;
     const target = (opts.restate && shown) ? shown
-        : chooseCandidate(text, candidates, { verifySingle: request.verb === 'cancel', ignoreDates: request.verb === 'reschedule' && !opts.continuation });
+        : (chooseCandidate(text, candidates, { verifySingle: request.verb === 'cancel', ignoreDates: request.verb === 'reschedule' && !opts.continuation })
+            ?? (opts.pivotTargetId ? candidates.find(candidate => candidate.id === opts.pivotTargetId) ?? null : null));
     if (!target) {
         return { handled: true, text: candidates.length === 1 ? T.noMatch('appointment', candidates[0]) : T.askWhich(request.verb, 'appointment', candidates), awaitingWriter: writer, executed };
     }
@@ -918,10 +999,16 @@ async function runTransitionInner(request: TransitionRequest, text: string, io: 
         return { handled: true, text: T.proposeReschedule(shown, { date: pending.args.newDate, time: pending.args.newTime }), awaitsConsent: true, awaitingWriter: null, executed };
     }
     const interpreted = await io.interpretTarget(text).catch(() => null);
-    const when2 = resolveTarget(text, target, interpreted, io.todayIso);
-    if (!when2) return { handled: true, text: T.askTarget(target), awaitingWriter: writer, executed };
+    const reading = readTarget(text, target, interpreted, io.todayIso);
+    if (reading.kind === 'ask') return { handled: true, text: T.askTarget(target), awaitingWriter: writer, executed };
+    if (reading.kind === 'conflict') return { handled: true, text: T.dateConflict(target, reading.date, reading.weekday), awaitingWriter: writer, executed };
+    if (reading.kind === 'past') return { handled: true, text: T.pastDate(target), awaitingWriter: writer, executed };
+    const when2 = { date: reading.date, time: reading.time };
     if (when2.date === target.date && when2.time === target.time) return { handled: true, text: T.askTarget(target), awaitingWriter: writer, executed };
-    if (when2.date < io.todayIso) return { handled: true, text: T.pastDate(target), awaitingWriter: writer, executed };
+    // Never proposed, never executed: a date before today, or today at a time that has already gone by.
+    if (when2.date < io.todayIso || (when2.date === io.todayIso && !!io.nowTime && when2.time <= io.nowTime)) {
+        return { handled: true, text: T.pastDate(target), awaitingWriter: writer, executed };
+    }
     // The move the customer was already shown: shown again, not proposed again.
     if (shown && target.id === shown.id && pending?.args?.newDate === when2.date && pending.args.newTime === when2.time) {
         return { handled: true, text: T.proposeReschedule(target, when2), awaitsConsent: true, awaitingWriter: null, executed };

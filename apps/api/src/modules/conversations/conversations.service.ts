@@ -110,7 +110,7 @@ import { arbitrateMissionFocus, missionDialogue, toolMissionAliases, missionTool
 import { MissionFocusStore } from './mission-focus-store';
 import { sanitizeRewrittenReply } from './rewrite-validation';
 import { correctRelativeWeekdays } from './relative-weekday';
-import { addressFormOf, detectTransition, failedTransitionOf, handleIdentityReply, humanizeReferences, identityGate, knownRecordFacts, knownRecordIds, namedRequestOverridesClarify, opensWithYes, requestIdentityForTool, runTransition, transitionDoneText, transitionFailureText, transitionTexts, TRANSITION_TOOLS, TRANSITION_WRITER, type TransitionIO, type TransitionOutcome } from './transition-engine';
+import { addressFormOf, detectTransition, failedTransitionOf, handleIdentityReply, humanizeReferences, identityGate, knownRecordFacts, knownRecordIds, localizeStatusWords, namedRequestOverridesClarify, opensWithYes, requestIdentityForTool, runTransition, transitionDoneText, transitionFailureText, transitionRequestForTool, transitionTexts, TRANSITION_TOOLS, TRANSITION_WRITER, type TransitionIO, type TransitionOutcome } from './transition-engine';
 import { persistConversationRuntimeState } from './conversation-runtime-state';
 import type { ConversationMissionFocusV1, MissionExecutionScopeV1 } from '@parallext/shared';
 import { ProcedureEngineService } from './procedure-engine.service';
@@ -119,6 +119,10 @@ import { normalizePhoneE164 } from '../../common/utils/phone.util';
 import { PromptAssemblerService } from './prompt-assembler.service';
 import { resolveBusinessWindow } from './business-window';
 import { hasDispatchOutbox, noHumanReplySql } from '../handoff/handoff-human-reply';
+import { isAttendanceReassurance, attendanceAckText } from './customer-reassurance';
+import { isUngroundedPolicyAnswer, noPolicyInformationText } from './policy-grounding';
+import { catalogDomainOf, emptyCatalogText, pastDepartureIn, pastDepartureText, replyAcknowledgesPast, replyAsksCriteria, replySaysEmpty } from './catalog-first';
+import { CATALOG_EMPTY_PROBES, catalogHasNoRows } from './catalog-empty.util';
 import { HUMAN_OFFER_MARK, HUMAN_OFFER_TTL_MS, NO_DATA_WAIT_REPLACEMENT, NO_DATA_NO_OFFER, noDataWaitReplacementText, noDataNoOfferText, containsHumanOffer, isHumanOfferText, isAffirmation, isAffirmationOfHumanOffer, isLiveHumanOffer, withReturnNotice, offerInsteadOfPromise, policyPersonOfferText, withPolicyPersonOffer } from './human-offer';
 import { LanguageDetectorService } from './language-detector.service';
 import { BusinessInfoService } from '../business-info/business-info.service';
@@ -403,6 +407,15 @@ const TOOL_MARKUP_NUDGE: Record<string, string> = {
 };
 const unverifiedClaimFallbackText = (lang?: string) =>
     UNVERIFIED_CLAIM_FALLBACK[(lang || 'es').slice(0, 2).toLowerCase()] || UNVERIFIED_CLAIM_FALLBACK.es;
+
+/** The text of the customer's latest message in a model transcript (a string, or the text parts of a multimodal one). */
+function lastCustomerText(messages: ReadonlyArray<any> | undefined): string {
+    const last = [...(messages || [])].reverse().find(message => message?.role === 'user');
+    const content = last?.content;
+    if (typeof content === 'string') return content;
+    if (Array.isArray(content)) return content.map((part: any) => (typeof part === 'string' ? part : String(part?.text ?? ''))).join(' ').trim();
+    return '';
+}
 
 /** The rewrite request, written in the language it asks for (an instruction in Spanish pulls the answer back to Spanish). */
 const REPLY_LANGUAGE_REWRITE: Record<string, string> = {
@@ -3907,7 +3920,8 @@ export class ConversationsService {
                         regional?.operatingCountry.value);
                     return { date: interpreted.dateMentioned, time: interpreted.timeMentioned };
                 },
-                todayIso, language: userLanguage, form: addressFormOf(regional?.addressForm.value), locale: regional?.locale.value,
+                todayIso, nowTime: new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(now),
+                language: userLanguage, form: addressFormOf(regional?.addressForm.value), locale: regional?.locale.value,
             };
         };
         // The identity tools verify who is writing; they back no business fact.
@@ -3982,10 +3996,17 @@ export class ConversationsService {
                     const pendingProposal = priorPendingTool && pendingWriter && priorPendingTool === pendingWriter
                         ? await this.toolExecutionControl.findPendingConfirmation(schemaName, conversation.id, conversation.contact_id, undefined, missionScope)
                         : null;
+                    // «No, mejor reprográmala para el viernes» over the proposal to CANCEL the D5959EA9: the record that was named stays the
+                    // subject of the new action; the customer is not asked which one again.
+                    const pivotedFrom = priorPendingTool && pendingWriter && priorPendingTool !== pendingWriter && TRANSITION_TOOLS.has(priorPendingTool)
+                        && transitionRequestForTool(priorPendingTool)?.domain === detected.request.domain
+                        ? await this.toolExecutionControl.findPendingConfirmation(schemaName, conversation.id, conversation.contact_id, undefined, missionScope)
+                        : null;
                     const outcome = await runTransition(detected.request, userText, transitionIo(), {
                         continuation: detected.continuation,
                         restate: detected.restate === true,
                         pending: pendingProposal,
+                        pivotTargetId: pivotedFrom ? String((pivotedFrom.args as any)?.appointmentId ?? (pivotedFrom.args as any)?.orderId ?? '') || null : null,
                         pendingIdentity: missionFocus.pendingIdentity && missionFocus.pendingIdentity.verb === detected.request.verb
                             && missionFocus.pendingIdentity.domain === detected.request.domain ? missionFocus.pendingIdentity : null,
                     });
@@ -5141,6 +5162,21 @@ export class ConversationsService {
             );
             // A raw UUID is not a reference a customer can read or quote: it is shown as the short one (first 8, uppercase).
             if (finalResponse) finalResponse = humanizeReferences(finalResponse, knownRecordIds([...executedToolsThisTurn, ...engineExecutedTools], turnContext));
+            // «El estado es pending»: an internal status word copied from a tool result is put in the customer's language.
+            if (finalResponse && !isErrorFallback(finalResponse)) finalResponse = localizeStatusWords(finalResponse, userLanguage);
+            // Travel packages / property listings: a departure date that already passed, and a catalogue with nothing published, are
+            // said FIRST. The model sometimes answered with a question («¿a qué destino?», «¿para cuántas personas?») or an offer of the team.
+            if (finalResponse && !isErrorFallback(finalResponse) && !draftMode && !handoffReturn && !engineTextIsReply && !deterministicReply) {
+                const catalogFirst = await this.catalogFirstReply({
+                    schemaName, tools: turnAllowedTools, userText, reply: finalResponse, lang: userLanguage,
+                    todayIso: new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(now),
+                    executed: [...executedToolsThisTurn, ...engineExecutedTools], canOfferPerson: allowHumanHandoff,
+                });
+                if (catalogFirst) {
+                    this.recordAgentSignal(tenantId, 'catalog_first_answer', session);
+                    finalResponse = catalogFirst;
+                }
+            }
             // «Mañana es domingo» on a Friday: the calendar the model was given says otherwise, so the weekday is corrected.
             if (finalResponse && !isErrorFallback(finalResponse)) finalResponse = correctRelativeWeekdays(finalResponse, turnContext.upcomingDays);
             // A tool asked for a person but the customer did not: the reply ends by OFFERING one (a question the customer
@@ -6051,6 +6087,18 @@ export class ConversationsService {
         // model back (a Portuguese refund question answered in Spanish). One rewrite, only on clear evidence.
         response = await this.alignReplyLanguage(response, lang, currentMessages, systemPrompt, allowedTiers, tenantId, llmRouter, trustedContext, session, executedTools);
 
+        // Guardrail 0b: terms of cancelling / moving are answered from what the business wrote, never from the model's habits.
+        // «¿Se puede cancelar sin costo?» with no policy, FAQ or knowledge in the turn is not answered «por lo general, sí».
+        const customerText = lastCustomerText(currentMessages);
+        if (!(trustedContext as any)?.directive && !isSystemFixedText(response) && isUngroundedPolicyAnswer({
+            userText: customerText, reply: response, systemPrompt,
+            retrievedKnowledge: [...((trustedContext as any)?.retrievedKnowledge || [])], executedTools,
+        })) {
+            this.recordAgentSignal(tenantId, 'policy_answer_ungrounded', session);
+            this.logger.warn(`[Guardrail] The reply states cancellation terms but the turn holds no policy source — replaced: "${response.slice(0, 100)}"`);
+            return noPolicyInformationText(lang, humanOfferAvailable);
+        }
+
         // Guardrail 1: False completion claims (claiming an action happened when no tool ran/succeeded)
         //
         // `isBackingTool` comes from the canonical policy registry rather than a
@@ -6070,7 +6118,13 @@ export class ConversationsService {
         // model claims a booking outcome that no tool backed, the engine's own text is the reply, word for word. No
         // rewrite round trip, which a model that insists would turn into the generic fallback.
         const engineText = String((trustedContext as any)?.engineReplyText ?? '').trim();
-        if (claimAudit.falseClaim && engineText && !claimsCompletedAction(engineText)) {
+        if (claimAudit.falseClaim && isAttendanceReassurance(customerText)) {
+            // «No cancelen mi cita, voy en camino»: the customer asked for nothing to be done. The reply claimed an outcome nothing
+            // backed; the answer is an acknowledgement, not «I cannot treat that as done — shall I ask a person?».
+            this.recordAgentSignal(tenantId, 'claim_unbacked', session);
+            this.logger.warn(`[Guardrail] The model claimed an outcome for an attendance reassurance — acknowledged instead: "${response.slice(0, 100)}"`);
+            response = attendanceAckText(lang);
+        } else if (claimAudit.falseClaim && engineText && !claimsCompletedAction(engineText)) {
             this.recordAgentSignal(tenantId, 'claim_unbacked', session);
             this.logger.warn(`[Guardrail] The model claimed a completed action on an engine turn with nothing booked — the engine text is the reply: "${response.slice(0, 100)}"`);
             response = engineText;
@@ -7276,6 +7330,31 @@ export class ConversationsService {
                 );
             }
         } catch { /* non-blocking */ }
+    }
+
+    /**
+     * What a catalogue business owes the customer before any question back (see catalog-first.ts): that a departure date already
+     * passed, and that nothing is published yet. Null when the reply already says it, or when the rule does not apply.
+     */
+    private async catalogFirstReply(args: {
+        schemaName: string; tools: string[]; userText: string; reply: string; lang: string; todayIso: string;
+        executed: Array<{ name: string; result: any }>; canOfferPerson: boolean;
+    }): Promise<string | null> {
+        if (args.tools.includes('search_packages') || args.tools.includes('check_package_availability')) {
+            const past = pastDepartureIn(args.userText, args.todayIso);
+            // The date passed: that is the first thing said. A reply that already says it stands (nothing else is owed first).
+            if (past) return replyAcknowledgesPast(args.reply) ? null : pastDepartureText(args.lang, past);
+        }
+        if (!replyAsksCriteria(args.reply) || replySaysEmpty(args.reply)) return null;
+        // The model did search: what it found (or the empty catalogue it was told about) is its own answer to give.
+        if (args.executed.some(tool => !!CATALOG_EMPTY_PROBES[tool.name])) return null;
+        for (const domain of catalogDomainOf(args.userText)) {
+            const tool = domain === 'packages' ? 'search_packages' : 'search_listings';
+            if (!args.tools.includes(tool)) continue;
+            const empty = await catalogHasNoRows(this.prisma, args.schemaName, CATALOG_EMPTY_PROBES[tool].key).catch(() => null);
+            if (empty === true) return emptyCatalogText(args.lang, domain, args.canOfferPerson);
+        }
+        return null;
     }
 
     /** The reply to this question also offers a person: the classifier's `policy_howto`, or the rules when it never ran. */

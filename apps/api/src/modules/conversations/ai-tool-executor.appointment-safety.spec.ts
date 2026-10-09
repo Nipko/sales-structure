@@ -153,6 +153,8 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
             {} as any,
             {} as any,
         );
+        // The fixtures describe August 2026; the past-date rule of the reschedule writer is judged on that day, not on today's.
+        jest.spyOn(executor as any, 'clock').mockReturnValue(new Date('2026-08-01T12:00:00.000Z'));
         const appointments = new AppointmentsService(prisma as any, eventEmitter as any,
             { enqueueWithQuery: (query: any, id: string, action: any) => CalendarSyncOutboxService.enqueueWithTransaction(query, id, action) } as any,
             { timezoneForSchema: jest.fn().mockResolvedValue('America/Bogota') } as any);
@@ -210,6 +212,65 @@ describe('AIToolExecutorService appointment cancellation safety', () => {
                 appointment: expect.objectContaining({ id: appointmentId, contactId, status: 'cancelled' }),
             }),
         );
+    });
+
+    it('tells the notification listener which conversation the customer cancelled in (so it sends no second message there)', async () => {
+        const harness = createHarness([[appointment], [{ id: appointmentId }]]);
+        const conversationId = '99999999-9999-4999-8999-999999999999';
+
+        await harness.executor.execute(
+            schemaName, tenantId, contactId, 'cancel_appointment',
+            { appointmentId, reason: 'Cambio de planes' }, conversationId,
+            { operationalScope, authority: authorityFor('cancel_appointment') },
+        );
+
+        expect(harness.eventEmitter.emit).toHaveBeenCalledWith(
+            'appointment.cancelled',
+            expect.objectContaining({ appointment: expect.objectContaining({ id: appointmentId, cancelledInConversationId: conversationId }) }),
+        );
+    });
+
+    // Production 2026-10-09: «reprograma … para el viernes 16 de octubre» ended on the 9th (today). The writer itself refuses a moment
+    // that has gone by, in the TENANT's clock (pinned here to 2026-08-01 07:00 in Bogotá).
+    it.each([
+        ['a past day', '2026-07-30', '11:00'],
+        ['today at a time that already passed', '2026-08-01', '06:30'],
+        ['this very minute', '2026-08-01', '07:00'],
+    ])('refuses to move an appointment to %s and writes nothing', async (_label, newDate, newTime) => {
+        const harness = createHarness([[{ ...appointment, assigned_to: null }], [{ duration_minutes: 30 }], [], [{ id: appointmentId }], []]);
+
+        const result = await harness.executor.execute(
+            schemaName, tenantId, contactId, 'reschedule_appointment',
+            { appointmentId, newDate, newTime }, undefined,
+            { operationalScope, authority: authorityFor('reschedule_appointment') },
+        );
+
+        expect(result).toMatchObject({ error: 'appointment_in_past', persisted: false });
+        expect(harness.prisma.$queryRawUnsafe.mock.calls.some(([sql]) => String(sql).includes('UPDATE appointments'))).toBe(false);
+        expect(harness.eventEmitter.emit).not.toHaveBeenCalled();
+    });
+
+    it('moves an appointment to later today (the tenant clock, not UTC, decides what is past)', async () => {
+        const harness = createHarness([[{ ...appointment, assigned_to: null }], [{ duration_minutes: 30 }], [], [{ id: appointmentId }], []]);
+
+        const result = await harness.executor.execute(
+            schemaName, tenantId, contactId, 'reschedule_appointment',
+            { appointmentId, newDate: '2026-08-01', newTime: '07:30' }, undefined,
+            { operationalScope, authority: authorityFor('reschedule_appointment') },
+        );
+
+        expect(result).toMatchObject({ success: true });
+    });
+
+    it('lists the customer\'s appointments from the start of the tenant\'s LOCAL day, in the tenant\'s timezone', async () => {
+        const harness = createHarness([[]]);
+
+        await (harness.executor as any).listCustomerAppointments(schemaName, contactId);
+
+        const call = harness.prisma.$queryRawUnsafe.mock.calls.find(([sql]) => String(sql).includes('FROM "tenant_appointment_safety".appointments a'))!;
+        expect(call[0]).toContain("date_trunc('day', NOW() AT TIME ZONE $2::text)");
+        expect(call[0]).not.toMatch(/start_at >= NOW\(\)/);
+        expect(call.slice(1)).toEqual([contactId, 'America/Bogota']);
     });
 
     it('does not repeat notes or events when the appointment was already cancelled', async () => {

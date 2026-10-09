@@ -72,7 +72,7 @@ export const APPOINTMENT_TOOLS: ToolDefinition[] = [
     },
     {
         name: 'list_customer_appointments',
-        description: 'List upcoming appointments for the current customer.',
+        description: 'List the current customer\'s appointments that are still ahead of them: the upcoming ones AND the rest of today\'s (an appointment of earlier today that is not completed or cancelled is still listed, so it can still be cancelled or moved).',
         parameters: { type: 'object', properties: {}, required: [] },
     },
     {

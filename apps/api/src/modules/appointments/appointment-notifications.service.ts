@@ -152,7 +152,7 @@ export class AppointmentNotificationsService {
                     ``,
                     apptMsg(lang, 'confirmGreeting', { name: contact.name || '' }),
                     ``,
-                    `📋 *${facts.serviceName}*`,
+                    `📋 **${facts.serviceName}**`,
                     `🗓️ ${shortDate}`,
                     `⏰ ${timeStr}`,
                     facts.location ? apptMsg(lang, 'confirmLocation', { location: facts.location }) : null,
@@ -212,7 +212,17 @@ export class AppointmentNotificationsService {
             const dateStr = formatWallClockDate(facts.startAt, locale);
             const timeStr = formatWallClockTime(facts.startAt, locale);
 
-            if (contact?.phone) {
+            // The customer cancelled INSIDE a conversation on their own channel: the agent already told them, in that thread. A second
+            // «Cita cancelada» there is a duplicate (and, before this, one with raw markup). A cancellation made from the dashboard, or
+            // from another channel, still gets the notice; the e-mail is a different channel and always goes.
+            const channelType = (contact?.channel_type || 'whatsapp') as string;
+            const cancelledInConversation = typeof appointment.cancelledInConversationId === 'string'
+                && !!(await this.bookingThread(schemaName, appointment.cancelledInConversationId, channelType));
+            if (cancelledInConversation) {
+                this.logger.log(`Appointment ${facts.id} was cancelled by the customer in their own conversation — no second channel message`);
+            }
+
+            if (contact?.phone && !cancelledInConversation) {
                 const shortDate = formatWallClockShortDate(facts.startAt, locale);
                 const text = [
                     apptMsg(lang, 'cancelTitle'),

@@ -254,7 +254,9 @@ describe('resolveTarget', () => {
         expect(resolveTarget('al día siguiente a la misma hora', base, null, '2026-10-08')).toEqual({ date: '2026-10-13', time: '09:00' });
     });
     it('uses the interpreter for the parts the words name and keeps the rest as the appointment has it', () => {
-        expect(resolveTarget('para el viernes', base, { date: '2026-10-16', time: null }, '2026-10-08')).toEqual({ date: '2026-10-16', time: '09:00' });
+        // a weekday is read from today's date (Thursday 8 → Friday 9; said on Friday 9 → the NEXT Friday, 16), not taken from the interpreter
+        expect(resolveTarget('para el viernes', base, { date: '2026-10-16', time: null }, '2026-10-09')).toEqual({ date: '2026-10-16', time: '09:00' });
+        expect(resolveTarget('para el viernes', base, { date: '2026-10-16', time: null }, '2026-10-08')).toEqual({ date: '2026-10-09', time: '09:00' });
         expect(resolveTarget('mejor a las 3', base, { date: null, time: '15:00' }, '2026-10-08')).toEqual({ date: '2026-10-12', time: '15:00' });
         expect(resolveTarget('mañana', base, { date: 'tomorrow' }, '2026-10-08')).toEqual({ date: '2026-10-09', time: '09:00' });
     });

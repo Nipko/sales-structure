@@ -8,6 +8,7 @@ import {
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { BusinessWindowResolver, disambiguateBareHour } from './business-window';
 import { isInformationalDetour } from './informational-detour';
+import { addDaysIso, readDateReference, weekdayMentions } from './date-reference';
 
 /**
  * INTERPRET phase — extracts structured intent from user messages.
@@ -40,6 +41,8 @@ export interface InterpretedIntent {
     questionTopic: string | null;
     /** Detected language code */
     language: string;
+    /** The weekday and the day of the month the customer wrote disagree («viernes 17 de octubre» when the 17th is a Saturday): no date is chosen, the caller asks. */
+    dateWeekdayConflict?: boolean;
 }
 
 @Injectable()
@@ -311,61 +314,27 @@ export class IntentInterpreterService {
         }
 
         // ── Detect date ──
+        //
+        // Today / tomorrow first; otherwise ONE reader (date-reference.ts) for «16 de octubre [de 2026]» and the weekday words.
+        // An explicit day+month used to be overwritten by the weekday (dictionary order, not the order said): «viernes 16 de
+        // octubre» said on Friday 9 became the 9th. The explicit date wins, a stated year is honoured, a weekday that disagrees
+        // with the date is reported (`dateWeekdayConflict`) instead of picking one, and a bare weekday names the first matching
+        // day of `upcoming` in the order the customer wrote them.
         if (/\b(hoy|today|hoje|aujourd)/i.test(t)) base.dateMentioned = todayDate;
+        else if (/\bpasado manana\b/.test(tNorm)) base.dateMentioned = addDaysIso(todayDate, 2);
         else if (/\b(manana|tomorrow|amanha|demain)\b/i.test(tNorm)) {
-            const d = new Date(`${todayDate}T00:00:00.000Z`); d.setUTCDate(d.getUTCDate() + 1);
-            base.dateMentioned = d.toISOString().split('T')[0];
+            base.dateMentioned = addDaysIso(todayDate, 1);
         } else {
-            // Month names (es/pt/fr/en) — matched accent-insensitively against tNorm.
-            const months: Record<string, number> = {
-                // es
-                enero: 1, febrero: 2, marzo: 3, abril: 4, mayo: 5, junio: 6, julio: 7, agosto: 8, septiembre: 9, octubre: 10, noviembre: 11, diciembre: 12,
-                // pt
-                janeiro: 1, fevereiro: 2, marco: 3, maio: 5, junho: 6, julho: 7, setembro: 9, outubro: 10, novembro: 11, dezembro: 12,
-                // fr
-                janvier: 1, fevrier: 2, mars: 3, avril: 4, mai: 5, juin: 6, juillet: 7, aout: 8, decembre: 12,
-                // en
-                january: 1, february: 2, march: 3, may: 5, june: 6, july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
-            };
-            for (const [name, num] of Object.entries(months)) {
-                // day-before-month ("10 de enero", "10 janvier") or month-before-day ("january 10")
-                const m = tNorm.match(new RegExp(`(\\d{1,2})\\s*(?:de\\s+|of\\s+)?${name}\\b`, 'i'))
-                    || tNorm.match(new RegExp(`\\b${name}\\s+(\\d{1,2})\\b`, 'i'));
-                if (m) {
-                    const day = parseInt(m[1]);
-                    if (day < 1 || day > 31) break; // invalid day → ignore
-                    let y = Number(todayDate.slice(0, 4));
-                    let candidate = `${y}-${String(num).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                    // If the date already passed this year, roll over to next year
-                    // ("10 de enero" said in June means next January, not the past).
-                    if (candidate < todayDate) {
-                        y += 1;
-                        candidate = `${y}-${String(num).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                    }
-                    // Validate it's a real calendar date (rejects e.g. "31 de febrero").
-                    const parsed = new Date(`${candidate}T00:00:00.000Z`);
-                    if (!isNaN(parsed.getTime()) && parsed.getUTCMonth() + 1 === num && parsed.getUTCDate() === day) {
-                        base.dateMentioned = candidate;
-                    }
-                    break;
-                }
-            }
-            // Day names (es/pt/fr/en) — matched accent-insensitively against tNorm.
-            const days: Record<string, number> = {
-                // es
-                domingo: 0, lunes: 1, martes: 2, miercoles: 3, jueves: 4, viernes: 5, sabado: 6,
-                // pt
-                segunda: 1, terca: 2, quarta: 3, quinta: 4, sexta: 5,
-                // fr
-                dimanche: 0, lundi: 1, mardi: 2, mercredi: 3, jeudi: 4, vendredi: 5, samedi: 6,
-                // en
-                sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6,
-            };
-            for (const [name, num] of Object.entries(days)) {
-                if (tNorm.includes(name)) {
-                    const match = upcoming.find(d => new Date(`${d.date}T00:00:00.000Z`).getUTCDay() === num);
+            const reading = readDateReference(tNorm, todayDate, { rolledIsPast: false, lenientPortuguese: true });
+            if (reading.kind === 'date' && reading.via === 'explicit') base.dateMentioned = reading.date;
+            else if (reading.kind === 'past') base.dateMentioned = reading.date;
+            else if (reading.kind === 'conflict') base.dateWeekdayConflict = true;
+            else {
+                const weekdays = weekdayMentions(tNorm, true).filter(day => !day.selector);
+                const first = weekdays[0];
+                if (first) {
+                    const match = upcoming.find(d => new Date(`${d.date}T00:00:00.000Z`).getUTCDay() === first.weekday);
                     if (match) base.dateMentioned = match.date;
-                    break;
                 }
             }
         }

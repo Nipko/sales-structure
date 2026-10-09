@@ -108,7 +108,7 @@ import { identityStepUpToolNames, identityStepUpToolsFor } from './identity-step
 import { BookingEngineService, invalidateBookingProposal, type BookingState } from './booking-engine.service';
 import { arbitrateMissionFocus, missionDialogue, toolMissionAliases, missionToolAllowed, toolMissionDomain, type MissionCandidate, type MissionFocusDecision } from './mission-focus';
 import { MissionFocusStore } from './mission-focus-store';
-import { addressFormOf, detectTransition, humanizeReferences, namedRequestOverridesClarify, runTransition, transitionDoneText, transitionTexts, TRANSITION_TOOLS, TRANSITION_WRITER } from './transition-engine';
+import { addressFormOf, detectTransition, humanizeReferences, namedRequestOverridesClarify, opensWithYes, runTransition, transitionDoneText, transitionTexts, TRANSITION_TOOLS, TRANSITION_WRITER } from './transition-engine';
 import { persistConversationRuntimeState } from './conversation-runtime-state';
 import type { ConversationMissionFocusV1, MissionExecutionScopeV1 } from '@parallext/shared';
 import { ProcedureEngineService } from './procedure-engine.service';
@@ -3505,7 +3505,7 @@ export class ConversationsService {
             // the request names its object, so it goes to the transition engine as a new task of that object.
             if (missionDecision.route === 'clarify' && missionDecision.action === 'clarify') {
                 const named = detectTransition({ text: userText, available: transitionAvailable, pendingConfirmation: false });
-                if (namedRequestOverridesClarify(missionDecision.clarifyOptions, named) && named.kind === 'request') {
+                if (namedRequestOverridesClarify(missionDecision.clarifyOptions, named, !!priorPendingTool && opensWithYes(userText)) && named.kind === 'request') {
                     missionDecision.route = 'tools';
                     missionDecision.action = 'select';
                     missionDecision.clarifyOptions = undefined;
@@ -3521,6 +3521,11 @@ export class ConversationsService {
                     const overridden = ambiguous?.kind === 'ambiguous' && !(missionDecision.clarifyOptions || []).length;
                     if (ambiguous?.kind === 'ambiguous' && overridden) {
                         engineProducedText = transitionTexts(userLanguage, addressFormOf(regional?.addressForm.value)).ambiguous(ambiguous.options);
+                        // «¿Se trata de su pedido?»: remember the writer, so a bare «sí» next message is the request.
+                        if (ambiguous.options.length === 1) {
+                            missionFocus.selected = { id: randomUUID(), kind: 'tool', domain: ambiguous.options[0], toolName: TRANSITION_WRITER[`cancel:${ambiguous.options[0]}`] };
+                            missionFocus.expectedReply = null;
+                        }
                     }
                     // A question that names the options is the server's, word for word: the model does not rephrase it. With no
                     // option to name (a bare resume with nothing to resume) the model still voices it, as before.
@@ -3966,6 +3971,13 @@ export class ConversationsService {
                     engineTextIsReply = true;
                     deterministicReply = engineProducedText;
                     tools = [];
+                    // «¿Se trata de su pedido?»: remember the writer, so a bare «sí» next message is the request.
+                    if (detected.options.length === 1 && missionFocus.selected?.kind === 'tool' && !missionFocus.selected.reference) {
+                        missionFocus.selected.toolName = TRANSITION_WRITER[`cancel:${detected.options[0]}`];
+                        missionFocus.selected.domain = detected.options[0];
+                        keepsAwaiting = true;
+                        await saveMission();
+                    }
                 } else if (detected?.kind === 'request') {
                     const todayIso = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(now);
                     const outcome = await runTransition(detected.request, userText, {

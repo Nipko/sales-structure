@@ -70,14 +70,18 @@ const APPOINTMENT_NOUN = /\b(?:cita|citas|turno|turnos|consulta|reserva|appointm
 const ORDER_NOUN = /\b(?:pedido|pedidos|orden|ordenes|compra|order|orders|commande|encomenda)\b/;
 const POLICY_WORDS = /\b(?:politica|politicas|policy|cuanto|costo|cobran|penalizacion|multa|reembolso|devolucion|plazo|horas antes|antes de)\b/;
 const ASKING_ABOUT = /\b(?:saber si|quiero saber|quisiera saber|necesito saber|me gustaria saber|duda|pregunta|puedo cancelar|puedo anular|se puede cancelar|se puede anular|es posible|puedo reprogramar|se puede reprogramar|puedo cambiar|se puede cambiar|can i cancel|is it possible)\b/;
-const REQUEST_OPENER = /\b(?:quiero|necesito|quisiera|deseo|me gustaria|quisiera|favor|por favor|puedes|podrias|podria|ayudame a|i want to|i need to|i would like to|please|je veux|je voudrais|quero|preciso|gostaria de)\b/;
+const REQUEST_OPENER = /\b(?:quiero|necesito|quisiera|deseo|me gustaria|quisiera|favor|por favor|puedes|podrias|podria|ayudame a|me ayuda a|me ayudas a|me puede ayudar a|me podria ayudar a|me ayudan a|me podrian ayudar a|i want to|i need to|i would like to|please|je veux|je voudrais|quero|preciso|gostaria de)\b/;
 const YES_OPENER = /^\W*(?:si|sí|ok|dale|claro|vale|listo|perfecto|de acuerdo|yes|sim|oui)\b/;
 /** The whole message is the list question; «tengo una cita mañana, ¿dónde queda?» is not. */
 const LIST_WHOLE = /^(?:(?:hola|buenas?(?: dias| tardes| noches)?)\s+)?(?:(?:por favor|dime|digame|muestrame|me puedes decir|me podrias decir|quiero ver|quiero saber|necesito saber)\s+)*(?:(?:que|cuales|cuantas) (?:citas|turnos)(?: (?:tengo|hay|tiene|tengo agendadas|tengo programadas|tengo pendientes|agendadas|programadas))?(?: agendad\w+| programad\w+| pendientes)?|(?:cuales|que) son mis (?:citas|turnos)(?: proxim\w+)?|mis (?:proximas )?(?:citas|turnos)|(?:tengo|hay) (?:alguna|algun) (?:cita|turno)(?: agendad\w+| programad\w+| pendiente)?|ver mis (?:proximas )?(?:citas|turnos)|what appointments do i have|my appointments)(?:\s+(?:por favor|gracias))?$/;
 const CHOICE_REF = /\b[0-9a-f]{8}\b/;
 const CHOICE_DATE = /\b(?:lunes|martes|miercoles|jueves|viernes|sabado|domingo|\d{1,2} de (?:enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)|dia \d{1,2}|\d{1,2}:\d{2}|(?:a )?las \d{1,2}|dia siguiente|siguiente dia|misma hora|manana|hoy|pasado manana|next day|same time|tomorrow)\b/;
 const CHOICE_ORDINAL = /^(?:(?:cancela|cancelar|cancelala|cancelalo|mueve|mover|muevela|reprograma|esa|ese|la que sea|quiero)\s+)?(?:(?:la|el|opcion|numero|la opcion|el numero)\s+)?(?:primer[ao]?|segund[ao]|tercer[ao]?|ultim[ao]|[123])(?:\s+(?:por favor|gracias))?$/;
-const NOT_A_CHOICE = /\b(?:abren|abre|abrir|cierran|horario|horarios|cuesta|cuestan|precio|precios|cuanto|donde|como|cuando|que hora|puedo|pueden|se puede|hay|tienen|atienden|direccion|gracias|hola|buenos|buenas)\b/;
+const NOT_A_CHOICE = /\b(?:abren|abre|abrir|cierran|horario|horarios|cuesta|cuestan|precio|precios|cuanto|donde|como|cuando|que hora|puedo|pueden|se puede|hay|tienen|atienden|direccion)\b/;
+/** Courtesy around an answer («hola, la del martes», «la segunda, gracias») is not part of the answer. */
+const COURTESY = /\b(?:hola|buenos dias|buenas tardes|buenas noches|buenas|buen dia|muchas gracias|gracias|por favor|porfa|porfavor|please|thanks)\b/g;
+/** A bare yes to the question the engine asked («¿Se trata de su pedido?», «¿Es esa la que desea?»). */
+const BARE_YES = /^(?:si|ok|okay|dale|claro|correcto|exacto|asi es|esa|esa misma|esa es|yes|sim|oui)$/;
 
 export interface DetectContext {
     /** The customer's text. */
@@ -121,7 +125,7 @@ function cancelRequested(raw: string): boolean {
 
 /** Does the message carry a word that could pick one of several records (a ref, a date, a time, a whole-message ordinal)? */
 export function hasChoiceSignal(raw: string): boolean {
-    const text = clauseText(raw).replace(/[,.;!?¿¡]/g, ' ').replace(/\s+/g, ' ').trim();
+    const text = clauseText(raw).replace(/[,.;!?¿¡]/g, ' ').replace(COURTESY, ' ').replace(/\s+/g, ' ').trim();
     if (!text || NOT_A_CHOICE.test(text)) return false;
     return CHOICE_REF.test(text) && /\d/.test(text.match(CHOICE_REF)![0]) || CHOICE_DATE.test(text) || CHOICE_ORDINAL.test(text);
 }
@@ -131,8 +135,18 @@ export function hasChoiceSignal(raw: string): boolean {
  * and a message that plainly names ONE object to cancel / move / list, that is not a question to ask: the request goes to
  * this engine as a new task of that object.
  */
-export function namedRequestOverridesClarify(clarifyOptions: readonly string[] | undefined, detected: Detected): detected is Extract<NonNullable<Detected>, { kind: 'request' }> {
-    return (clarifyOptions || []).length < 2 && detected?.kind === 'request' && !detected.continuation;
+export function namedRequestOverridesClarify(clarifyOptions: readonly string[] | undefined, detected: Detected, answersPending = false): detected is Extract<NonNullable<Detected>, { kind: 'request' }> {
+    if (detected?.kind !== 'request' || detected.continuation) return false;
+    // «sí, cancela el pedido» over a pending appointment cancellation IS the question «¿cuál de las dos?»: it stays.
+    if (answersPending) return false;
+    const options = clarifyOptions || [];
+    // Fewer than two things to choose between, or a message that names exactly one of them (paused missions made it two).
+    return options.length < 2 || options.includes(detected.request.domain);
+}
+
+/** Does the message open with a yes? (an answer to a pending proposal, not a new request) */
+export function opensWithYes(raw: string): boolean {
+    return YES_OPENER.test(clauseText(raw));
 }
 
 export function detectTransition(ctx: DetectContext): Detected {
@@ -149,12 +163,24 @@ export function detectTransition(ctx: DetectContext): Detected {
     if (awaiting && !ctx.pendingConfirmation && can(awaiting.verb, awaiting.domain)) {
         const fresh = detectFresh(text, raw, ctx, can);
         if (fresh && fresh.kind === 'request' && fresh.request.verb !== 'list') return fresh;
-        if (!fresh && ctx.awaitingFresh !== false && !isInformationSeekingMessage(raw) && hasChoiceSignal(raw)) {
+        if (!fresh && ctx.awaitingFresh !== false && !isInformationSeekingMessage(raw)
+            && (hasChoiceSignal(raw) || BARE_YES.test(text.replace(/[,.;!?¿¡]/g, ' ').replace(COURTESY, ' ').replace(/\s+/g, ' ').trim()))) {
             return { kind: 'request', request: awaiting, continuation: true };
         }
         return null;
     }
     if (ctx.pendingConfirmation && YES_OPENER.test(text)) return null;
+    // A cancel / reschedule proposal is waiting for its answer. «Cancélala», «cancélela por favor» ANSWER it (the server executes it
+    // after this step); only a message that names a DIFFERENT target («mejor la del martes», a reference) re-opens the choice.
+    const pendingTransition = ctx.pendingConfirmation ? transitionRequestForTool(ctx.missionToolName) : null;
+    const plainText = text.replace(/[,.;!?¿¡]/g, ' ').replace(/\s+/g, ' ').trim();
+    // A message that names the OTHER kind of object («quiero cancelar mi pedido» over a pending appointment) is a new request.
+    const namesOtherObject = !!pendingTransition && (pendingTransition.domain === 'appointment' ? ORDER_NOUN.test(plainText) : APPOINTMENT_NOUN.test(plainText));
+    if (pendingTransition && !namesOtherObject) {
+        if (!can(pendingTransition.verb, pendingTransition.domain) || isInformationSeekingMessage(raw)) return null;
+        const differentTarget = pendingTransition.verb === 'cancel' ? hasChoiceSignal(raw) : /\b[0-9a-f]{8}\b/.test(text) && /\d/.test(text.match(/\b[0-9a-f]{8}\b/)![0]);
+        return differentTarget ? { kind: 'request', request: pendingTransition, continuation: true } : null;
+    }
     const pendingCreate = ctx.pendingConfirmation && !!ctx.missionToolName && !TRANSITION_TOOLS.has(ctx.missionToolName);
     const fresh = detectFresh(text, raw, ctx, can);
     if (pendingCreate && fresh && (fresh.kind === 'ambiguous' || fresh.request.verb === 'cancel')) return null;
@@ -169,6 +195,11 @@ function detectFresh(text: string, raw: string, ctx: DetectContext, can: (v: Tra
     if (ASKING_ABOUT.test(plain) || POLICY_WORDS.test(plain)) return null;
     const asking = isInformationSeekingMessage(raw) && !REQUEST_OPENER.test(plain);
     if (asking) return null;
+
+    // «¿A qué hora abren mañana? Y quiero cancelar mi cita del viernes»: two intents. The model answers both; the engine would
+    // drop the question.
+    const sentences = raw.split(/(?<=[?!.])\s+/).filter(part => part.trim());
+    if (sentences.length > 1 && sentences.some(part => /[?¿]/.test(part) && !cancelRequested(part) && !appointmentChangeRequest(part))) return null;
 
     const change = appointmentChangeRequest(raw);
     if (change && can('reschedule', 'appointment')) {
@@ -296,6 +327,9 @@ export function chooseCandidate(rawText: string, candidates: Candidate[], option
         .filter(item => item.score > 0 && !item.contradicted).sort((a, b) => b.score - a.score);
     if (scored.length) return scored[1] && scored[1].score === scored[0].score ? null : scored[0].candidate;
     const whole = text.trim();
+    // «el 3» with a candidate on the 3rd is a day, not the third one: ask.
+    const bareNumber = /^(?:(?:la|el|opcion|numero|la opcion|el numero)\s+)?([123])$/.exec(whole.replace(/^(?:cancela|cancelar|mueve|mover|quiero)\s+/, ''));
+    if (bareNumber && candidates.some(candidate => Number((candidate.date || '').slice(8, 10)) === Number(bareNumber[1]))) return null;
     if (CHOICE_ORDINAL.test(whole)) {
         for (const [pattern, index] of ORDINALS) if (pattern.test(whole) && candidates[index]) return candidates[index];
         if (/\b(?:ultim[ao]|last)\b/.test(whole)) return candidates[candidates.length - 1];

@@ -230,6 +230,7 @@ describe('ordinary conversation is left to the model', () => {
         'Por favor no cancelen mi cita, voy en camino', 'No voy a cancelar mi cita, llego 10 minutos tarde', 'Me cancelaron la cita del martes sin avisar',
         'Ya cancelé el pedido por Nequi', 'Quiero cancelar el pedido con tarjeta', 'Tengo una cita mañana, ¿dónde queda el local?',
         'No quiero reprogramar, solo confirmar que voy', 'Me cambiaron la cita y nadie me avisó',
+        '¿A qué hora abren mañana? Y quiero cancelar mi cita del viernes',
     ])('"%s": no record is read, no writer is called', async text => {
         const h = world({ tools: [...SALON, ...STORE], industry: 'salon', appointments: two, orders: [order] });
         await h.turn('hola');
@@ -304,5 +305,51 @@ describe('a reschedule is never proposed unverified', () => {
         expect(result.reply).toContain('Esa fecha ya pasó');
         expect(h.ran('reschedule_appointment')).toHaveLength(0);
         expect(h.ran('check_availability')).toHaveLength(0);
+    });
+});
+
+// ── Re-review of PR #76 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+describe('a pending proposal and the questions the engine asks', () => {
+    const two = [appointment(APPT, '2026-10-12', '09:00'), appointment(APPT2, '2026-10-13', '09:00')];
+    it('with two appointments and a proposal for one, «cancélala por favor» does not re-ask «¿cuál?»: the proposal stands and the next «sí» executes it', async () => {
+        const h = world({ tools: SALON, industry: 'salon', appointments: two });
+        await h.turn('hola');
+        await h.turn('quiero cancelar mi cita');
+        const proposal = await h.turn('la del lunes');
+        expect(h.ran('cancel_appointment').map(call => call.args.appointmentId)).toEqual([APPT]);
+        expect(proposal.reply).toContain('¿Confirma que desea cancelar');
+        const bare = await h.turn('cancélala por favor');
+        expect(bare.reply).not.toMatch(/¿Cuál desea cancelar\?/);
+        expect(h.ran('cancel_appointment')).toHaveLength(1);
+        await h.turn('sí, cancélala');
+        expect(h.succeeded('cancel_appointment').map(call => call.args.appointmentId)).toEqual([APPT]);
+    });
+
+    it('«quiero cancelar» in a business with only orders asks «¿Se trata de su pedido?» and a bare «sí» is the request', async () => {
+        const h = world({ tools: STORE, industry: 'retail', orders: [order] });
+        await h.turn('hola');
+        const ask = await h.turn('quiero cancelar');
+        expect(ask.reply).toContain('¿Se trata de su pedido?');
+        const yes = await h.turn('sí');
+        expect(h.ran('cancel_catalog_order').map(call => call.args)).toEqual([{ orderId: ORDER }]);
+        expect(yes.reply).toMatch(/¿Confirma que desea ANULAR su pedido/);
+    });
+
+    it('«¿Es esa la que desea?» (the words contradicted the only appointment) takes a bare «sí» as the choice', async () => {
+        const h = world({ tools: SALON, industry: 'salon', appointments: [appointment(APPT, '2026-10-15', '09:00')] });
+        await h.turn('hola');
+        const ask = await h.turn('quiero cancelar la cita del martes');
+        expect(ask.reply).toContain('¿Es esa la que desea?');
+        const yes = await h.turn('sí');
+        expect(h.ran('cancel_appointment').map(call => call.args)).toEqual([{ appointmentId: APPT }]);
+        expect(yes.reply).toContain('¿Confirma que desea cancelar');
+    });
+
+    it('a question and a request in one message go to the model: nothing is read, nothing is proposed', async () => {
+        const h = world({ tools: SALON, industry: 'salon', appointments: two });
+        await h.turn('hola');
+        await h.turn('¿A qué hora abren mañana? Y quiero cancelar mi cita del viernes');
+        expect(h.ran('cancel_appointment')).toHaveLength(0);
+        expect(h.ran('list_customer_appointments')).toHaveLength(0);
     });
 });

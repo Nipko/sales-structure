@@ -1,5 +1,5 @@
 import {
-    appointmentCandidates, chooseCandidate, detectTransition, humanizeReferences, namedRequestOverridesClarify, orderCandidates, resolveTarget,
+    opensWithYes, appointmentCandidates, chooseCandidate, detectTransition, humanizeReferences, namedRequestOverridesClarify, orderCandidates, resolveTarget,
     shortReference, transitionDoneText, transitionTexts, addressFormOf,
 } from './transition-engine';
 import { appointmentChangeRequest } from './appointment-transition';
@@ -105,6 +105,41 @@ describe('detectTransition: what is a request', () => {
     });
 });
 
+describe('detectTransition: a pending cancel / reschedule proposal belongs to the server', () => {
+    const pending = (text: string, over: Record<string, unknown> = {}) => detect(text, { pendingConfirmation: true, missionToolName: 'cancel_appointment', missionDomain: 'appointment', ...over });
+    it.each(['cancélala', 'cancélela por favor', 'cancelala', 'dale, cancélala', 'sí, cancélala', 'confirmo', 'sí'])('"%s" answers it: the engine stays out', text => {
+        expect(pending(text)).toBeNull();
+    });
+    it('only a message naming a DIFFERENT target re-opens the choice', () => {
+        expect(pending('mejor la del martes')).toEqual({ kind: 'request', request: { verb: 'cancel', domain: 'appointment' }, continuation: true });
+        expect(pending('mejor la referencia D5959EA9')).toMatchObject({ continuation: true });
+        expect(pending('¿la del martes abre?')).toBeNull();
+    });
+    it('a pending reschedule is changed only by a reference, never by a date (the date is its NEW time)', () => {
+        const reschedule = (text: string) => detect(text, { pendingConfirmation: true, missionToolName: 'reschedule_appointment', missionDomain: 'appointment' });
+        expect(reschedule('mejor a las 3')).toBeNull();
+        expect(reschedule('cancélala')).toBeNull();
+        expect(reschedule('la D5959EA9')).toMatchObject({ request: { verb: 'reschedule' }, continuation: true });
+    });
+    it('the OTHER kind of object is a new request', () => {
+        expect(pending('quiero cancelar mi pedido')).toMatchObject({ request: { verb: 'cancel', domain: 'order' }, continuation: false });
+    });
+});
+
+describe('detectTransition: more than one intent in a message', () => {
+    it.each([
+        '¿A qué hora abren mañana? Y quiero cancelar mi cita del viernes',
+        'Quiero cancelar mi cita. ¿Cuál es el horario del sábado?',
+        'Hola, ¿tienen parqueadero? Quiero reprogramar mi cita',
+    ])('"%s" goes to the model, which answers both', text => {
+        expect(detect(text)).toBeNull();
+    });
+    it('a question that IS the request, or a greeting, does not block it', () => {
+        expect(detect('Hola. Quiero cancelar mi cita')).toMatchObject({ request: { verb: 'cancel', domain: 'appointment' } });
+        expect(detect('Hola, ¿me ayuda a cancelar mi cita?')).toMatchObject({ request: { verb: 'cancel', domain: 'appointment' } });
+    });
+});
+
 describe('detectTransition: the «¿cuál?» state', () => {
     const awaiting = (text: string, over: Record<string, unknown> = {}) => detect(text, { awaitingWriter: 'cancel_appointment', awaitingFresh: true, ...over });
     it.each(['la del martes', 'la del 3 de noviembre', 'la de las 10:00', 'la referencia D5959EA9', 'la primera', 'la última', '2', 'el viernes a las 10'])(
@@ -112,9 +147,17 @@ describe('detectTransition: the «¿cuál?» state', () => {
             expect(awaiting(text)).toEqual({ kind: 'request', request: { verb: 'cancel', domain: 'appointment' }, continuation: true });
         });
     // blocker 3: it never swallows normal conversation
-    it.each(['Hola, buenos días', 'gracias', '¿Cuánto cuesta la limpieza?', '¿el martes abren?', 'ok', 'no sé', 'quiero agendar una cita', 'espera un segundo',
+    it.each(['Hola, buenos días', 'gracias', '¿Cuánto cuesta la limpieza?', '¿el martes abren?', 'no sé', 'quiero agendar una cita', 'espera un segundo',
         'primero dime, ¿cuál es la del jueves?', '¿a qué hora abren el martes?'])('"%s" is not an answer: it falls through', text => {
         expect(awaiting(text)).toBeNull();
+    });
+    it.each(['la segunda, gracias', 'hola, la del martes', 'buenos días, la referencia D5959EA9', 'la del martes por favor'])(
+        'courtesy around an answer does not spoil it: "%s"', text => {
+            expect(awaiting(text)).toMatchObject({ continuation: true });
+        });
+    it.each(['sí', 'ok', 'esa', 'dale', 'sí, gracias'])('a bare yes to the question the engine asked («¿Es esa?», «¿Se trata de su pedido?») is the answer: "%s"', text => {
+        expect(awaiting(text)).toMatchObject({ continuation: true });
+        expect(awaiting(text, { awaitingFresh: false })).toBeNull();
     });
     it('after the window the choice has lapsed, even for a text that would pick', () => {
         expect(awaiting('la del martes', { awaitingFresh: false })).toBeNull();
@@ -148,7 +191,11 @@ describe('chooseCandidate', () => {
         ['primero dime, ¿cuál es la del viernes?', null],
         ['espera un segundo', null],
         ['la segunda', 'BBBBBBBB'],
-        ['la 3', 'CCCCCCCC'],
+        ['la 3', null], // a candidate is on the 3rd: «la 3» may be a day, so it asks
+        ['el 3', null],
+        ['la 2', 'BBBBBBBB'],
+        ['la segunda, gracias', 'BBBBBBBB'],
+        ['hola, la del 5 de noviembre', 'BBBBBBBB'],
     ])('"%s" → %s', (text, ref) => {
         expect(chooseCandidate(text, nov)?.ref ?? null).toBe(ref);
     });
@@ -257,9 +304,18 @@ describe('a clarification with nothing to choose between does not block a plain 
         expect(namedRequestOverridesClarify(['appointment'], request)).toBe(true);
         expect(namedRequestOverridesClarify(undefined, request)).toBe(true);
     });
-    it('two options (a real choice, e.g. the mixed-objects question) or no request → the clarification stands', () => {
-        expect(namedRequestOverridesClarify(['appointment', 'order'], request)).toBe(false);
+    it('paused missions made it two options, but the message names exactly one of them → the engine takes it', () => {
+        expect(namedRequestOverridesClarify(['appointment', 'order'], request)).toBe(true);
+        expect(namedRequestOverridesClarify(['order', 'tour'], request)).toBe(false);
+    });
+    it('a yes over a pending proposal that names the other object IS the question «¿cuál de las dos?»: it stands', () => {
+        expect(namedRequestOverridesClarify(['appointment', 'order'], detect('sí, cancela el pedido'), true)).toBe(false);
+        expect(opensWithYes('sí, cancela el pedido')).toBe(true);
+        expect(opensWithYes('quiero cancelar mi pedido')).toBe(false);
+    });
+    it('no request → the clarification stands', () => {
         expect(namedRequestOverridesClarify([], detect('hola'))).toBe(false);
+        expect(namedRequestOverridesClarify(['appointment', 'order'], detect('hola'))).toBe(false);
         expect(namedRequestOverridesClarify([], detect('quiero cancelar'))).toBe(false);
     });
 });

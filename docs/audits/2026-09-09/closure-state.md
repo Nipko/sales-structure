@@ -5,7 +5,7 @@ Generado por `docs/audits/2026-09-09/generate-closure-state.cjs`. **Ningún núm
 programa que sí se escribieron a mano envejecieron —el 32/10 de la matriz, el `complete` de canales,
 «otras salidas», «faltan términos en otras familias»—, y ése es exactamente el motivo.
 
-Revisión: `2292c7bdc67384a1d0f71000f80f9f69cb6e635c`. Sin base de datos, sin modelo, sin proveedor, sin tenant.
+Revisión: `b6b243432c2a3a65ba9d83a7ce53e1cb3bdd566b`. Sin base de datos, sin modelo, sin proveedor, sin tenant.
 
 ## Matriz de tareas
 

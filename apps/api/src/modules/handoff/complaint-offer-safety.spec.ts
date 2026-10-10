@@ -32,6 +32,10 @@ describe('a defect that can hurt someone, or that a person must judge, is never 
         'la crema me causó reacción y no funciona', 'me salieron ronchas, el producto llegó dañado', 'me dio alergia, el producto llegó roto',
         'me dio dolor de cabeza el medicamento que llegó dañado', 'me mareo con el aparato que llegó roto', 'the pills arrived damaged and I felt sick',
         'la pastilla llegó rota', 'o remédio chegou danificado', 'le médicament est arrivé endommagé', 'me dio fiebre, el producto llegó dañado',
+        // child car seats, swollen batteries
+        'le siège auto est arrivé cassé', 'the car seat arrived broken', 'la silla de carro llegó rota', 'la silla para auto llegó dañada', 'la silla de bebé llegó rota',
+        'a cadeirinha chegou quebrada', 'la batería se hinchó y no funciona', 'la batería está hinchada y no funciona', 'the battery is swollen and does not work',
+        'a bateria estufou e não funciona', 'a bateria chegou inchada', 'la batterie est gonflée et ne fonctionne pas', 'el celular llegó dañado con la batería inflada',
         // medical devices
         'el tensiómetro no funciona', 'el glucómetro llegó roto', 'el termómetro no funciona', 'el nebulizador llegó dañado', 'the pulse oximeter does not work',
     ])('«%s»', text => {

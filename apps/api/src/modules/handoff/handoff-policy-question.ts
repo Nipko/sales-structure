@@ -457,6 +457,9 @@ const SAFETY_RISK = new RegExp('\\b(?:' + [
     // medicines and medical devices
     'medicament\\w*', 'medicin\\w*', 'medicine\\w*', 'medication\\w*', 'pastilla\\w*', 'pill\\w*', 'tableta\\w*', 'capsula\\w*', 'comprimido\\w*', 'remedio\\w*', 'jarabe\\w*', 'inyecc\\w*', 'inyectable\\w*', 'vacuna\\w*', 'dosis', 'dose', 'insulina', 'receta\\w*', 'formula medica',
     'oximeter\\w*', 'thermometer\\w*', 'glucometer\\w*', 'blood pressure', 'nebuli[sz]er\\w*', 'tensiometro\\w*', 'glucometro\\w*', 'oximetro\\w*', 'termometro\\w*', 'nebulizador\\w*', 'inhalador\\w*', 'marcapasos', 'cpap', 'protesis', 'silla de ruedas', 'muletas?', 'audifono\\w* medic\\w*', 'monitor de glucosa',
+    // child car seats and swollen (lithium) batteries
+    'siege auto', 'car seat', 'silla (?:de|para) (?:carro|auto|coche|bebe|nino)', 'silla de seguridad', 'cadeirinha', 'cadeira de bebe', 'cadeira para auto',
+    'hinch\\w*', 'inflad\\w*', 'swollen', 'swell\\w*', 'bulging', 'gonfl\\w*', 'estuf\\w*', 'inchad\\w*', 'inchou', 'abombad\\w*',
     // a baby or a child next to a defect
     'bebe\\w*', 'baby', 'babies', 'nino\\w*', 'nina\\w*', 'hijo\\w*', 'hija\\w*', 'child\\w*', 'kid\\w*', 'toddler\\w*', 'enfant\\w*', 'crianca\\w*', 'filho\\w*', 'filha\\w*', 'recien nacido\\w*', 'menor de edad', 'menores',
 ].join('|') + ')\\b');

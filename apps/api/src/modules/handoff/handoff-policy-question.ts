@@ -416,3 +416,95 @@ export function policyOverrideLabel(raw: unknown, topics: { refund: boolean; dis
         || reportedAsFact(raw, SOFT_DEFECT_RE) || reportedAsFact(raw, DISLIKE_RE)) return 'personal_case';
     return null;
 }
+
+// ---------------------------------------------------------------------------
+// A product complaint is answered, and a person is OFFERED
+//
+// Production 2026-10-10 (Tienda QA Electrónica): «quiero pedir perdón, el Audífono QA Aurora llegó roto» was transferred at once and
+// the customer got «Le estoy transfiriendo…», then silence, and the warranty was answered ten minutes later. A report of a defective
+// product is something the business can answer from its own warranty / returns policy; the customer did not ask for a person (#80: no
+// unrequested handoffs). The reply states what is known and ends by OFFERING one; only the customer's «sí» opens the handoff.
+// What stays automatic: a request for a person (its own reason), a refund / return / discount for oneself, a grievance (a scam, a
+// lawyer, a formal complaint, insults), anything that puts someone at risk, and a trigger the owner wrote that this message hits.
+// ---------------------------------------------------------------------------
+
+/** A defect, said about a product: broken, damaged, defective, «no funciona». */
+const PRODUCT_DEFECT = /\b(?:roto|rota|rotos|rotas|danad[oa]s?|defectuos[oa]s?|quebrad[oa]s?|danificad[oa]s?|defeituos[oa]s?|defectueu(?:x|se|ses)|endommage\w*|casse\w*|broken|damaged|defective|faulty|no funciona|nao funciona|ne fonctionne pas|dejo de funcionar|se (?:me )?(?:rompio|dano|descompuso)|stopped working|does not work|doesn[' ]?t work)\b/;
+
+/** Anger, a scam, a legal threat or a formal complaint: a person hears it at once. «no funciona» is a defect, not one of these. */
+const STRONG_GRIEVANCE = /\b(?:estafa\w*|fraude|engano|enganaram|golpe|inaceptable|inacceptable|pesimo|pessimo|horrible|terrible|furios[oa]|molest[oa]|queja\w*|reclamo|reclamacao|plainte|demanda\w*|abogado|advogado|avocat|scam|fraud|unacceptable|awful|lawyer|arnaque|indignad[oa]|vergonza|verguenza|robo|robaron)\b/;
+
+/**
+ * Something that can hurt someone or that a person must judge: smoke, fire, gas, a smell of burning, overheating, a shock, a burn, a
+ * spark, a leak, brakes, an airbag, a swallowed piece, choking, a reaction, a rash, pain, dizziness, vomiting, fever, bleeding, an
+ * injury, a medicine, a medical device, a baby or a child next to a defect. Spanish, English, Portuguese and French; matched on
+ * accent-free lower case.
+ */
+const SAFETY_RISK = new RegExp('\\b(?:' + [
+    // fire, heat, electricity, gas, leaks
+    'incendio\\w*', 'humo', 'fumee', 'fuma\\w*', 'smoke', 'fire', 'incendie', 'quemo', 'quemado', 'quemadura\\w*', 'quema', 'queimou', 'burn\\w*', 'brul\\w*',
+    'chispa\\w*', 'spark\\w*', 'explot\\w*', 'explosion', 'explod\\w*', 'descarga\\w*', 'electrocut\\w*', 'electric shock', 'shock', 'corto ?circuito',
+    'gas', 'gaz', 'huele\\w*', 'olor\\w*', 'oler', 'olfato', 'cheiro', 'odeur', 'smell\\w*', 'fuga\\w*', 'escape de', 'vazamento\\w*', 'fuite\\w*', 'leak\\w*',
+    'recalient\\w*', 'sobrecalient\\w*', 'sobrecalent\\w*', 'overheat\\w*', 'superaquec\\w*', 'surchauff\\w*', 'se calienta mucho', 'muy caliente',
+    // vehicle safety
+    'airbag\\w*', 'air bag\\w*', 'freno\\w*', 'brake\\w*', 'frein\\w*', 'volante', 'steering', 'direccion hidraulica', 'direcao hidraulica', 'power steering', 'llanta\\w* (?:explot|reventad)\\w*', 'cinturon\\w*', 'seatbelt\\w*',
+    // the body
+    'trag\\w*', 'swallow\\w*', 'avale\\w*', 'engasg\\w*', 'ahog\\w*', 'asfix\\w*', 'atragant\\w*', 'chok\\w*', 'choke\\w*',
+    'reaccion\\w*', 'reaction\\w*', 'ronch\\w*', 'rash', 'alergi\\w*', 'allerg\\w*', 'irritacion\\w*', 'irritation',
+    'dolor\\w*', 'duele\\w*', 'doler', 'pain\\w*', 'douleur\\w*', 'dor de', 'mareo\\w*', 'mareado\\w*', 'marea', 'dizz\\w*', 'vomit\\w*', 'nausea\\w*', 'fiebre', 'febre', 'fever',
+    'sangr\\w*', 'bleed\\w*', 'herid\\w*', 'ferid\\w*', 'lesion\\w*', 'injur\\w*', 'hurt', 'blesse\\w*', 'intoxic\\w*', 'envenen\\w*', 'veneno\\w*', 'poison\\w*',
+    'peligro\\w*', 'perigo\\w*', 'danger\\w*', 'emergencia', 'emergency', 'ambulancia', 'urgencia\\w*',
+    // medicines and medical devices
+    'medicament\\w*', 'medicin\\w*', 'medicine\\w*', 'medication\\w*', 'pastilla\\w*', 'pill\\w*', 'tableta\\w*', 'capsula\\w*', 'comprimido\\w*', 'remedio\\w*', 'jarabe\\w*', 'inyecc\\w*', 'inyectable\\w*', 'vacuna\\w*', 'dosis', 'dose', 'insulina', 'receta\\w*', 'formula medica',
+    'oximeter\\w*', 'thermometer\\w*', 'glucometer\\w*', 'blood pressure', 'nebuli[sz]er\\w*', 'tensiometro\\w*', 'glucometro\\w*', 'oximetro\\w*', 'termometro\\w*', 'nebulizador\\w*', 'inhalador\\w*', 'marcapasos', 'cpap', 'protesis', 'silla de ruedas', 'muletas?', 'audifono\\w* medic\\w*', 'monitor de glucosa',
+    // child car seats and swollen (lithium) batteries
+    'siege auto', 'car seat', 'silla (?:de|para) (?:carro|auto|coche|bebe|nino)', 'silla de seguridad', 'cadeirinha', 'cadeira de bebe', 'cadeira para auto',
+    'hinch\\w*', 'inflad\\w*', 'swollen', 'swell\\w*', 'bulging', 'gonfl\\w*', 'estuf\\w*', 'inchad\\w*', 'inchou', 'abombad\\w*',
+    // a baby or a child next to a defect
+    'bebe\\w*', 'baby', 'babies', 'nino\\w*', 'nina\\w*', 'hijo\\w*', 'hija\\w*', 'child\\w*', 'kid\\w*', 'toddler\\w*', 'enfant\\w*', 'crianca\\w*', 'filho\\w*', 'filha\\w*', 'recien nacido\\w*', 'menor de edad', 'menores',
+].join('|') + ')\\b');
+
+/**
+ * Where a defect is never «just a product complaint»: a health business (a clinic, a pharmacy, a medical device), a veterinary clinic, a
+ * vehicle dealer or workshop (brakes, airbags, steering). A defect report there always reaches a person at once.
+ */
+const SAFETY_CRITICAL_INDUSTRIES = new Set(['salud', 'veterinaria', 'automotriz', 'health', 'healthcare', 'veterinary', 'automotive']);
+const SAFETY_CRITICAL_SUBTYPE = /\b(?:salud|health|medic\w*|clinic\w*|hospital\w*|farmac\w*|pharm\w*|drogueria\w*|odont\w*|dental\w*|optic\w*|veterinar\w*|automotri\w*|automotive|taller\w*|mecanic\w*|concesionari\w*|vehicul\w*|moto\w*|repuesto\w*|ortoped\w*|ortop\w*)/;
+
+export function isSafetyCriticalContext(industry?: unknown, subType?: unknown): boolean {
+    const folded = (value: unknown) => normalizeForIntent(String(value ?? '')).replace(/[^a-z0-9]+/g, ' ').trim();
+    const kind = folded(industry);
+    if (kind && SAFETY_CRITICAL_INDUSTRIES.has(kind)) return true;
+    const sub = folded(subType);
+    return !!sub && SAFETY_CRITICAL_SUBTYPE.test(sub);
+}
+
+/** Refund, return, exchange or discount words: what the customer wants done about it is a person's to handle. */
+const MONEY_BACK = /\b(?:reembols\w*|devol\w*|refund\w*|return\w*|remboursement\w*|rembours\w*|descuent\w*|rebaj\w*|desconto\w*|compens\w*|indemniz\w*|cambio|cambiar|cambiarlo|exchange|troca\w*|echange\w*)\b/;
+
+/** «llegó roto», «no funciona», «dañado»: the customer reports a product defect, and nothing in the message asks for more than an answer. */
+export function isProductDefectReport(raw: unknown): boolean {
+    const text = normalizeForIntent(raw);
+    if (!text || !PRODUCT_DEFECT.test(text)) return false;
+    if (isHypotheticalDefectQuestion(raw)) return false;
+    if (STRONG_GRIEVANCE.test(text) || SAFETY_RISK.test(text) || MONEY_BACK.test(text)) return false;
+    return !PERSONAL_REQUEST.test(text) && !PERSONAL_REQUEST_HIGH.test(text);
+}
+
+/**
+ * Whether the reason a turn would escalate for («complaint») is only a product defect report that the agent answers, offering a person
+ * instead of opening the handoff. Never in a safety-critical business (see `isSafetyCriticalContext`). `triggers` are the owner's own handoff triggers: one that this message hits is the owner's rule and
+ * escalates as always.
+ */
+export function complaintIsOfferOnly(
+    reason: string | null | undefined, raw: unknown, triggers: readonly string[] = [], business: { industry?: unknown; subType?: unknown } = {},
+): boolean {
+    if (reason !== 'complaint' || !isProductDefectReport(raw)) return false;
+    // In a health, veterinary or vehicle business a defect is a safety matter: a person hears it at once, whatever the words.
+    if (isSafetyCriticalContext(business.industry, business.subType)) return false;
+    const text = normalizeForIntent(raw);
+    return !triggers.some(trigger => {
+        const needle = normalizeForIntent(trigger);
+        return !!needle && !POLICY_TOPIC_KEYWORDS.has(needle) && text.includes(needle);
+    });
+}

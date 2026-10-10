@@ -49,10 +49,11 @@ describe('an order says how many, or puts the product right after the buying ver
 
 describe('the delivery the order message itself gives goes with the order', () => {
     it.each([
-        ['Quiero pedir el Audífono QA Aurora, envíelo a la Calle 5 #4-3', 'envíelo a la Calle 5 #4-3'],
-        ['Quiero pedir 2 Audífono QA Aurora, sin envío por ahora', 'sin envío por ahora'],
-        ['Quiero pedir 1 Cargador QA Nova; lo recojo en la tienda', 'lo recojo en la tienda'],
-        ['I want to buy 1 Cargador QA Nova, ship it to 12 Main Street', 'ship it to 12 Main Street'],
+        // (as the order's canonical delivery line: «Envío a: …» / «Recojo en tienda»)
+        ['Quiero pedir el Audífono QA Aurora, envíelo a la Calle 5 #4-3', 'Envío a: Calle 5 #4-3'],
+        ['Quiero pedir 2 Audífono QA Aurora, sin envío por ahora', 'Recojo en tienda'],
+        ['Quiero pedir 1 Cargador QA Nova; lo recojo en la tienda', 'Recojo en tienda'],
+        ['I want to buy 1 Cargador QA Nova, ship it to 12 Main Street', 'Envío a: 12 Main Street'],
     ])('«%s»', (text, notes) => {
         expect(detectOrderIntake(text, CATALOG)).toMatchObject({ notes });
     });

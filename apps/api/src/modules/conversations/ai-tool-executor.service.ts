@@ -104,6 +104,7 @@ import { attachWriterActiveObject } from './writer-active-object';
 import { RepairOrdersService } from '../repair-orders/repair-orders.service';
 import { selectSlotWindow } from './slot-window';
 import { foldedSql, foldQueryText } from '../../common/utils/sql-accent-fold.util';
+import { foldForSearch, likePatternForTerm, productSearchTerms } from '../../common/utils/product-search-terms';
 import { markCatalogEmpty } from './catalog-empty.util';
 
 /**
@@ -1480,14 +1481,19 @@ export class AIToolExecutorService {
      * matched — and a query that throws says so instead of returning zero rows.
      */
     private async searchProducts(schema: string, query: string, limit = 5, category?: string, maxPrice?: number): Promise<any> {
-        // `%` and `_` typed by the customer are text, not wildcards.
-        const q = `%${foldQueryText(query).replace(/[\\%_]/g, '\\$&')}%`;
         const conds: string[] = [];
         const params: any[] = [];
-        // Accent- and case-insensitive: "Audifono" must find "Audífono".
-        const pattern = foldedSql(`$${params.length + 1}::text`);
-        conds.push(`(${foldedSql('name')} LIKE ${pattern} OR ${foldedSql('description')} LIKE ${pattern} OR ${foldedSql('category')} LIKE ${pattern})`);
-        params.push(q);
+        // A product answers when EVERY significant word of the query is found in its name, description or category: accent- and case-
+        // insensitive ("Audifono" finds "Audífono"), plural or singular ("audífonos" finds "Audífono"), in any order and with words of the
+        // name left out ("audífonos aurora" finds "Audífono QA Aurora"). The whole text as one substring of the name told a customer that a
+        // product on sale did not exist (production 2026-10-10). `%` and `_` typed by the customer are text, not wildcards.
+        const terms = productSearchTerms(query);
+        const patterns = terms.length ? terms.map(likePatternForTerm) : [`%${foldQueryText(query).replace(/[\\%_]/g, '\\$&')}%`];
+        for (const q of patterns) {
+            const pattern = foldedSql(`$${params.length + 1}::text`);
+            conds.push(`(${foldedSql('name')} LIKE ${pattern} OR ${foldedSql('description')} LIKE ${pattern} OR ${foldedSql('category')} LIKE ${pattern})`);
+            params.push(q);
+        }
         if (category) {
             conds.push(`${foldedSql('category')} = ${foldedSql(`$${params.length + 1}::text`)}`);
             params.push(foldQueryText(category));
@@ -1540,18 +1546,19 @@ export class AIToolExecutorService {
      * two candidates are ambiguous, and picking one would quote the wrong price.
      */
     private async soleProductContaining(schema: string, columns: string, name: string): Promise<any[]> {
-        const text = foldQueryText(name);
-        // Four characters and whole words: "ora" is not a name, and it sits inside "Aurora".
-        if (text.length < 4) return [];
+        // The words of the name, not the text as one substring: «audífonos aurora» is the product «Audífono QA Aurora» (plural, a word of
+        // the name left out). A single word needs four characters: "ora" is not a name, and it sits inside "Aurora".
+        const terms = productSearchTerms(name);
+        if (!terms.length || (terms.length === 1 && terms[0].length < 4)) return [];
         const rows: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT ${columns} FROM "${schema}".products
-              WHERE is_available = true AND ${foldedSql('name')} LIKE ${foldedSql('$1::text')}
+              WHERE is_available = true AND ${terms.map((_, index) => `${foldedSql('name')} LIKE ${foldedSql(`$${index + 1}::text`)}`).join(' AND ')}
               ORDER BY name ASC, id ASC LIMIT 20`,
-            `%${text.replace(/[\\%_]/g, '\\$&')}%`,
+            ...terms.map(likePatternForTerm),
         );
-        const fold = (value: string) => value.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
-        const needle = new RegExp(`(?:^|[^a-z0-9])${fold(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:$|[^a-z0-9])`);
-        const whole = (Array.isArray(rows) ? rows : []).filter(row => needle.test(fold(String(row.name ?? ''))));
+        // Every word starts a word of the name ("ora" is not a word of "Aurora"), so a short word never hides inside another.
+        const starts = terms.map(term => new RegExp(`(?:^|[^a-z0-9])${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+        const whole = (Array.isArray(rows) ? rows : []).filter(row => starts.every(start => start.test(foldForSearch(row.name))));
         return whole.length === 1 ? whole : [];
     }
 

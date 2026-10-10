@@ -11,6 +11,8 @@ import {
     safeAxiosOptions,
 } from '../../common/utils/safe-outbound-url.util';
 import { mutateTenantSettingsBranchAtomic } from '../../common/utils/tenant-settings-branch.util';
+import { foldedSql } from '../../common/utils/sql-accent-fold.util';
+import { likePatternForTerm, productSearchTerms } from '../../common/utils/product-search-terms';
 import {
     isMaskedSecret,
     TENANT_SECRET_MASK,
@@ -442,7 +444,14 @@ export class EcommerceService {
         const params: any[] = [];
         let idx = 1;
 
-        if (query.search) { conditions.push(`title ILIKE $${idx++}`); params.push(`%${query.search}%`); }
+        if (query.search) {
+            // Every significant word of the search must be in the title, accent-, case- and plural-insensitive, in any order («audífonos
+            // aurora» finds «Audífono QA Aurora»): the whole text as one substring of the title is a miss for a plural or a missing word.
+            const terms = productSearchTerms(query.search);
+            if (terms.length) {
+                for (const term of terms) { conditions.push(`${foldedSql('title')} LIKE ${foldedSql(`$${idx++}::text`)}`); params.push(likePatternForTerm(term)); }
+            } else { conditions.push(`title ILIKE $${idx++}`); params.push(`%${query.search}%`); }
+        }
         if (query.maxPrice) { conditions.push(`price_cents <= $${idx++}`); params.push(query.maxPrice); }
         if (query.category) { conditions.push(`product_type = $${idx++}`); params.push(query.category); }
 

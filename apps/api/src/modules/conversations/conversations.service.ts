@@ -54,7 +54,7 @@ import { resolveTurnOutcome } from './turn-outcome-wait';
 import { ChannelTokenService } from '../channels/channel-token.service';
 import { ConversationsGateway } from './conversations.gateway';
 import { HandoffService } from '../handoff/handoff.service';
-import { isActionOrientedRefundQuestion } from '../handoff/handoff-policy-question';
+import { complaintIsOfferOnly, isActionOrientedRefundQuestion } from '../handoff/handoff-policy-question';
 import { KnowledgeService } from '../knowledge/knowledge.service';
 import { knowledgeHitToContext } from '../knowledge/knowledge-contracts';
 import { resolveKnowledgeReplica } from '../evaluation-revision/evaluation-knowledge-replica';
@@ -112,7 +112,7 @@ import { sanitizeRewrittenReply } from './rewrite-validation';
 import { correctRelativeWeekdays } from './relative-weekday';
 import { addressFormOf, detectTransition, failedTransitionOf, handleIdentityReply, humanizeReferences, identityGate, knownRecordFacts, knownRecordIds, localizeStatusWords, namedRequestOverridesClarify, opensWithYes, requestIdentityForTool, runTransition, shortReference, transitionDoneText, transitionFailureText, transitionRequestForTool, transitionTexts, TRANSITION_TOOLS, TRANSITION_WRITER, type TransitionIO, type TransitionOutcome } from './transition-engine';
 import { resolveListChoice } from './list-choice';
-import { createdDoneText, detectOrderIntake, isOrderDetails, mergeOrderNotes, mightBeOrderRequest, orderProposalText, orderStockText, orderChoiceText, type OrderChoice, type OrderIntake } from './order-intake';
+import { createdDoneText, detectOrderIntake, isOrderDetails, mergeOrderNotes, mightBeOrderRequest, orderProposalText, orderStockText, orderChoiceText, replyStillAsksConfirmation, type OrderChoice, type OrderIntake } from './order-intake';
 import { persistConversationRuntimeState } from './conversation-runtime-state';
 import type { ConversationMissionFocusV1, MissionExecutionScopeV1 } from '@parallext/shared';
 import { ProcedureEngineService } from './procedure-engine.service';
@@ -2142,9 +2142,17 @@ export class ConversationsService {
      */
     private async loadOwnCatalogForTurn(schemaName: string, userText: string): Promise<Array<NonNullable<TurnContext['catalog']>[number] & { priceStatus: 'confirmed' | 'missing' }>> {
         const SMALL_CATALOG = 12;
+        // «Mentioned»: the whole name is in the message, OR every word of the name (three letters or more) is — «quisiera comprar audífonos
+        // aurora» names «Audífono QA Aurora» (a plural, no «QA»). Without the second reading a catalogue of more than twelve products
+        // left it out of the turn, and the agent said it did not exist (production 2026-10-10).
         const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
             `SELECT id, name, price, currency, stock, category,
-                    (char_length(btrim(name)) >= 3 AND position(${foldedSql('name')} IN ${foldedSql('$1::text')}) > 0) AS mentioned,
+                    (char_length(btrim(name)) >= 3 AND (
+                        position(${foldedSql('name')} IN ${foldedSql('$1::text')}) > 0
+                        OR COALESCE((SELECT bool_and(position(word IN ${foldedSql('$1::text')}) > 0)
+                                       FROM unnest(regexp_split_to_array(${foldedSql('name')}, '[^a-z0-9]+')) AS word
+                                      WHERE char_length(word) >= 3), false)
+                    )) AS mentioned,
                     count(*) OVER () AS total
                FROM products
               WHERE is_available = true
@@ -3254,7 +3262,12 @@ export class ConversationsService {
         let pendingOperationHandoff: string | null = null;
         // A tool asked for a person (a failure after the customer's yes, a verification that cannot be completed) but the
         // customer did NOT ask for one: the reply OFFERS it, as a question, and only the customer's «sí» opens a handoff.
+        // (A report of a defective product starts out as one: the reply answers it and offers a person; nothing is transferred unasked.)
         let personOfferReason: string | null = null;
+        if (allowHumanHandoff) {
+            const complaint = await this.resolveComplaintOffer(userText, conversation, config, tenantId, true, executionContext);
+            if (complaint) personOfferReason = `offer:${complaint}`;
+        }
 
         // ═══ EL CONTRATO EFECTIVO SE RESUELVE PRIMERO ═══
         //
@@ -5269,11 +5282,13 @@ export class ConversationsService {
             // The reply must match the records. A booking / an order that was created this turn (by the server's yes or by the model's
             // own call) is told with its reference: a reply that does not carry it — «lista para reservar… ¿desea que proceda?» about
             // an appointment that existed, production 2026-10-09 Ref. 17F69A1B — is replaced by the server's account of the record.
+            // So is a reply that carries it and still ASKS to confirm the same record («¡Cita confirmada! Ref. A72599D6. ¿Me confirma si
+            // agendo la cita…?», production 2026-10-10): the customer reads ONE message, and it states the record.
             if (!deterministicReply && !draftMode && !handoffReturn && finalResponse) {
                 const created = [...executedToolsThisTurn].reverse()
                     .find(tool => (tool.name === 'create_appointment' || tool.name === 'place_catalog_order') && toolResultSucceeded(tool.result));
                 const reference = created ? shortReference(created.result?.order?.id ?? created.result?.appointment?.id) : '';
-                if (created && reference && !finalResponse.toUpperCase().includes(reference)) {
+                if (created && reference && (!finalResponse.toUpperCase().includes(reference) || replyStillAsksConfirmation(finalResponse))) {
                     const text = createdDoneText(created.name, created.args, created.result, userLanguage, addressFormOf(regional?.addressForm.value),
                         new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(now), regional?.locale.value);
                     if (text) {
@@ -7445,6 +7460,27 @@ export class ConversationsService {
         text: string, conversation: any, config: any, tenantId: string, classify = true,
         /** The turn's execution context (Agent Test / evaluation / draft), so the classifier call is read-only and accounted like the interpreter's. */
         executionContext?: unknown,
+    ): Promise<string | null> {
+        const reason = await this.rawHandoffReason(text, conversation, config, tenantId, classify, executionContext);
+        // A product complaint is answered and a person is OFFERED (see `resolveComplaintOffer`): it opens no handoff by itself.
+        return complaintIsOfferOnly(reason, text, config?.behavior?.handoffTriggers || [], { industry: config?.industry, subType: config?.subType }) ? null : reason;
+    }
+
+    /**
+     * The reason this turn would have transferred for, when it is only a report of a defective product («llegó roto», «no funciona»): the
+     * reply states what the business knows (warranty / returns) and ends by OFFERING a person, remembered so that only the customer's
+     * «sí» opens the handoff (production 2026-10-10: «Le estoy transfiriendo…» at once, the warranty answered ten minutes later; #80,
+     * no unrequested handoffs). Null for everything else, which escalates (or not) exactly as `resolveHandoffReason` says.
+     */
+    private async resolveComplaintOffer(
+        text: string, conversation: any, config: any, tenantId: string, classify = true, executionContext?: unknown,
+    ): Promise<string | null> {
+        const reason = await this.rawHandoffReason(text, conversation, config, tenantId, classify, executionContext);
+        return complaintIsOfferOnly(reason, text, config?.behavior?.handoffTriggers || [], { industry: config?.industry, subType: config?.subType }) ? reason : null;
+    }
+
+    private async rawHandoffReason(
+        text: string, conversation: any, config: any, tenantId: string, classify: boolean, executionContext?: unknown,
     ): Promise<string | null> {
         const service: any = this.handoffService;
         if (classify && typeof service?.decideHandoff === 'function') {

@@ -60,9 +60,11 @@ describe('delivery details given while the proposal waits', () => {
     ])('«%s» does not', text => expect(isOrderDetails(text)).toBe(false));
 
     it('the notes keep what the order had and add what was said once, bounded', () => {
-        expect(mergeOrderNotes(undefined, ' sin envío por ahora ')).toBe('sin envío por ahora');
-        expect(mergeOrderNotes('sin envío por ahora', 'Calle 5 # 6-7')).toBe('sin envío por ahora. Calle 5 # 6-7');
-        expect(mergeOrderNotes('Calle 5 # 6-7', 'calle 5 # 6-7')).toBe('Calle 5 # 6-7');
+        // the delivery is ONE canonical line, the last sentence of the notes; a new delivery replaces it (see live-findings-20261010.spec.ts)
+        expect(mergeOrderNotes(undefined, ' sin envío por ahora ')).toBe('Recojo en tienda');
+        expect(mergeOrderNotes('Recojo en tienda', 'Calle 5 # 6-7')).toBe('Envío a: Calle 5 # 6-7');
+        expect(mergeOrderNotes('Calle 5 # 6-7', 'calle 5 # 6-7')).toBe('Envío a: calle 5 # 6-7');
+        expect(mergeOrderNotes('regalo', 'con tarjeta')).toBe('regalo. con tarjeta');
         expect(mergeOrderNotes('a'.repeat(590), 'b'.repeat(300)).length).toBeLessThanOrEqual(600);
         expect(mergeOrderNotes('algo', '')).toBe('algo');
     });

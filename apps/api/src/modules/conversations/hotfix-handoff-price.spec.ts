@@ -194,7 +194,8 @@ describe('a partial product name resolves when it identifies a single product (r
         const fallback = String(e.prisma.$queryRawUnsafe.mock.calls[1][0]);
         expect(fallback).toMatch(/is_available = true/);
         expect(fallback).toMatch(/LIKE/);
-        expect(e.prisma.$queryRawUnsafe.mock.calls[1][1]).toBe('%QA Aurora%');
+        // one pattern per significant word (a plural or a word left out of the name still finds it): see catalog-search-tolerant.spec.ts
+        expect(e.prisma.$queryRawUnsafe.mock.calls[1].slice(1)).toEqual(['%qa%', '%aurora%']);
     });
 
     it.each([

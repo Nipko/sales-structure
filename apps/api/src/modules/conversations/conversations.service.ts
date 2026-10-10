@@ -4900,9 +4900,17 @@ export class ConversationsService {
             // Also tells the router to stand down its tool-calling floor: over
             // budget, replying on a weaker model beats not replying.
             let budgetConstrained = false;
-            // A write in play (see BUDGET_KEEPS_TOOL_FLOOR_FOR_WRITES): a proposal waits for its yes, or the customer asks to do something.
+            // A write in play (see BUDGET_KEEPS_TOOL_FLOOR_FOR_WRITES), as the server itself recognises it (below).
             let keepsWriteFloor = false;
-            const writeInPlay = !!priorPendingTool || missionFocus?.expectedReply?.kind === 'confirmation' || !!orderIntake || asksForAction(userText);
+            // Only what the SERVER itself recognised counts: a proposal waiting for its yes (a bare «sí» means nothing otherwise), an order it read,
+            // a cancel / reschedule request of the transition engine, or a booking in progress. Broad word lists («marca», «apartamento»,
+            // «ok gracias») would keep most turns on the plan's tiers and exhaust the hard spend cap sooner.
+            const transitionWrite = (() => {
+                const detected = detectTransition({ text: userText, available: transitionAvailable, pendingConfirmation: false });
+                return detected?.kind === 'request' && detected.request.verb !== 'list';
+            })();
+            const writeInPlay = !!priorPendingTool || missionFocus?.expectedReply?.kind === 'confirmation' || !!orderIntake || !!orderChoice
+                || transitionWrite || missionDecision?.route === 'booking' || !['idle', 'booked'].includes(bookingState.step);
             if (llmBudgetUsdCents > 0) {
                 const spentUsdCents = session?.snapshot.runtimeInputs?.llmSpendUsdCents ?? await this.throttle.getLlmSpendUsdCents(tenantId);
                 if (spentUsdCents >= llmBudgetUsdCents) {

@@ -385,21 +385,38 @@ describe('«el 2» after a list of times written in prose is the second of them 
 describe('over the monthly LLM budget, a turn with a write in play keeps the tool-calling floor (production 2026-10-09)', () => {
     const toolTurn = (h: ReturnType<typeof world>) => h.routed.filter(call => call.task === 'tool_calling').slice(-1)[0];
 
-    it('an ordinary turn stays clamped to the cheap tiers and the floor stays down', async () => {
-        const h = store({ overBudget: true });
-        await h.turn('hola, buenas tardes');
-        expect(toolTurn(h)).toEqual({ task: 'tool_calling', allowedTiers: ['tier_3_efficient', 'tier_4_budget'], budgetConstrained: true });
+    const CLAMPED = { task: 'tool_calling', allowedTiers: ['tier_3_efficient', 'tier_4_budget'], budgetConstrained: true };
+    const FLOOR = { task: 'tool_calling', allowedTiers: ['tier_2_standard', 'tier_3_efficient', 'tier_4_budget'], budgetConstrained: false };
+    const proposalWaiting = async (overBudget: boolean) => {
+        const h = store({ overBudget, writes: message => (/a nombre de/i.test(message) ? { name: 'place_catalog_order', args: { items: [{ productId: PRODUCT, quantity: 1 }], notes: 'Sin envío' } } : null), prose: () => 'Entendido.' });
+        await h.turn('hola');
+        await h.turn(DATA);
+        expect(h.ran('place_catalog_order').map(call => call.result.error)).toEqual(['confirmation_required']);
+        return h;
+    };
+
+    it.each(['hola, buenas tardes', 'apartamento en Usaquén', 'qué marca tienen', 'ok gracias', 'sí', 'confirmo que llegué'])(
+        '«%s» with nothing waiting stays clamped to the cheap tiers, the floor stays down', async text => {
+            const h = store({ overBudget: true });
+            await h.turn(text);
+            expect(toolTurn(h)).toEqual(CLAMPED);
+        });
+
+    it('a proposal waiting for its yes keeps the tiers of the plan and the floor, whatever the next message says', async () => {
+        const h = await proposalWaiting(true);
+        await h.turn('dame un momento');
+        expect(toolTurn(h)).toEqual(FLOOR);
     });
 
-    it.each(['quiero apartar algo, ayúdame', 'sí, confirmo', 'necesito comprar algo y no sé qué'])('«%s» keeps the tiers of the plan and the floor', async text => {
+    it('the same message once nothing waits is clamped again', async () => {
         const h = store({ overBudget: true });
-        await h.turn(text);
-        expect(toolTurn(h)).toEqual({ task: 'tool_calling', allowedTiers: ['tier_2_standard', 'tier_3_efficient', 'tier_4_budget'], budgetConstrained: false });
+        await h.turn('dame un momento');
+        expect(toolTurn(h)).toEqual(CLAMPED);
     });
 
     it('under budget nothing changes', async () => {
-        const h = store();
-        await h.turn('quiero apartar algo, ayúdame');
-        expect(toolTurn(h)).toEqual({ task: 'tool_calling', allowedTiers: ['tier_2_standard', 'tier_3_efficient', 'tier_4_budget'], budgetConstrained: false });
+        const h = await proposalWaiting(false);
+        await h.turn('dame un momento');
+        expect(toolTurn(h)).toEqual(FLOOR);
     });
 });

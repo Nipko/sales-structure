@@ -30,7 +30,12 @@ export interface IntakeProduct {
 export interface OrderIntake {
     product: IntakeProduct;
     quantity: number;
+    /** Delivery or collection the same message gave («envíelo a la Calle 5»): the order's notes. */
+    notes?: string;
 }
+
+/** The customer named a product only in part and more than one product of the catalogue answers to those words: ask which. */
+export interface OrderChoice { choose: IntakeProduct[]; quantity: number }
 
 const fold = (value: unknown): string => foldKeepingPunctuation(value).replace(/\s+/g, ' ').trim();
 const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -40,9 +45,9 @@ const DESIRE = /\b(?:quiero|quisiera|queria|necesito|deseo|me gustaria|voy a|vam
 /** The act of buying. «llevar» only counts with a desire form («quiero llevar…»). */
 const BUY_ACT = /\b(?:pedir(?:lo|la|los|las)?|pedido de|ordenar(?:lo|la)?|comprar(?:lo|la|los|las)?|adquirir|llevar(?:lo|la|los|las|me)?|encargar(?:lo|la)?|buy|order|purchase|comprar|pedir|encomendar|levar|acheter|commander)\b/;
 /** «me llevo…», «i ll take…»: the buying act and the desire in one phrase. */
-const TAKE_IT = /\b(?:me llevo|me quedo con|i ll take|i will take|vou levar|je prends)\b/;
+const TAKE_IT = /\b(?:me llevo|me quedo con|lo compro|la compro|me lo vende|me la vende|me lo vendes|me la vendes|me lo venden|lo quiero comprar|i ll take|i will take|i ll buy it|vou levar|eu levo|je prends|je le prends)\b/;
 /** What makes the message something other than an order for the product it names. */
-const NOT_AN_ORDER = /\b(?:informacion|info|detalles?|saber|precio|precios|cuanto|cuesta|costo|disponib\w*|tienen|tiene|hay|stock|garantia|caracteristicas|diferencia\w*|comparar|opciones|catalogo|recomiend\w*|cancel\w*|anul\w*|devol\w*|reembols\w*|cambi\w*|reclam\w*|queja|factura|cotiz\w*|presupuesto|cita|citas|turno|reserva|ya pedi|ya compre|ya ordene|pedi|compre|ordene)\b/;
+const NOT_AN_ORDER = /\b(?:informacion|info|detalles?|saber|precio|precios|cuanto|cuesta|costo|disponib\w*|tienen|tiene|hay|stock|garantia|caracteristicas|diferencia\w*|comparar|opciones|catalogo|recomiend\w*|cancel\w*|anul\w*|devol\w*|reembols\w*|cambi\w*|reclam\w*|queja|factura|cotiz\w*|presupuesto|cita|citas|turno|reserva|ya pedi|ya compre|ya ordene|pedi|compre|ordene|roto|rota|rotos|rotas|danad\w*|defectuos\w*|llego|llegaron|no funciona|no sirve|perdon|disculp\w*|problema\w*|incomplet\w*|equivoc\w*|broken|damaged|defective|arrived|sorry|apolog\w*|problem|warranty|refund|return|complain\w*|invoice|faulty|wrong|quebrad\w*|danificad\w*|defeituos\w*|chegou|desculp\w*|reembolso|reclamacao|fatura|casse\w*|endommag\w*|defectueu\w*|arrive|desole|probleme\w*|garantie|retour|rembours\w*|plainte|facture)\b/;
 const NUMBER_WORDS: Record<string, number> = {
     un: 1, uno: 1, una: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7, ocho: 8, nueve: 9, diez: 10,
     one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
@@ -51,6 +56,8 @@ const NUMBER_WORDS: Record<string, number> = {
 };
 const QUANTITY_BEFORE = new RegExp(`(?:^|\\s)(\\d{1,3}|${Object.keys(NUMBER_WORDS).join('|')})\\s*(?:x\\s*)?(?:unidad(?:es)?|und?s?|piezas?|pares?|units?|unites?|unidades?)?\\s*(?:de |del |de la |of |de l )?$`);
 const QUANTITY_AFTER = /^\s*(?:x|por)\s*(\d{1,3})\b/;
+/** Words that may stand between the buying verb and the product's name without breaking the phrase. */
+const FILLER = new Set(['el', 'la', 'los', 'las', 'un', 'una', 'uno', 'unos', 'unas', 'de', 'del', 'mi', 'mis', 'para', 'me', 'lo', 'the', 'a', 'an', 'my', 'some', 'one', 'o', 'os', 'as', 'um', 'uma', 'le', 'les', 'des', 'du', 'mon', 'ma', 'mes', 'unidad', 'unidades', 'pedido', 'orden', 'order', 'pedir', 'comprar']);
 const SKIP_TOKENS = new Set(['de', 'del', 'la', 'el', 'los', 'las', 'y', 'e', 'con', 'para', 'the', 'of', 'and', 'le', 'les', 'du', 'des', 'et']);
 
 const tokensOf = (text: string): string[] => text.replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter(Boolean);
@@ -95,9 +102,11 @@ export function mightBeOrderRequest(raw: string): boolean {
  * states none). Conservative on purpose, like the transition engine: a question, a price or stock enquiry, a complaint, a
  * cancellation, an appointment, a negation or the past tense is not an order, and neither is a message that names two products.
  */
-export function detectOrderIntake(raw: string, catalog: readonly IntakeProduct[]): OrderIntake | null {
+export function detectOrderIntake(raw: string, catalog: readonly IntakeProduct[]): OrderIntake | OrderChoice | null {
     if (!catalog.length || !mightBeOrderRequest(raw)) return null;
     const text = fold(raw).replace(/['’]/g, ' ');
+    const take = TAKE_IT.exec(text);
+    const act = BUY_ACT.exec(text);
     const found = catalog
         .filter(product => product && typeof product.id === 'string' && typeof product.title === 'string')
         .map(product => ({ product, at: findProduct(text, product.title) }))
@@ -109,6 +118,7 @@ export function detectOrderIntake(raw: string, catalog: readonly IntakeProduct[]
     const unique = new Map(best.map(hit => [hit.product.id, hit]));
     if (unique.size !== 1) return null;
     const { product, at } = [...unique.values()][0];
+    const wholeName = new RegExp(`(?:^|[^\\p{L}\\p{N}])${escapeRegex(fold(product.title))}(?:e?s)?(?![\\p{L}\\p{N}])`, 'u').test(text);
 
     const before = text.slice(0, at.start);
     const after = text.slice(at.end);
@@ -122,7 +132,27 @@ export function detectOrderIntake(raw: string, catalog: readonly IntakeProduct[]
         if (trailing) quantity = Number(trailing[1]);
     }
     if (!Number.isInteger(quantity) || quantity < 1 || quantity > 99) return null;
-    return { product, quantity };
+    // What «Quiero pedir perdón, el Audífono llegó roto» shares with an order is a verb and a product. An order says HOW MANY, or puts
+    // the product right after the buying verb («quisiera comprar audífonos aurora»), or takes it («me llevo…»).
+    const buyEnd = take ? take.index + take[0].length : act ? act.index + act[0].length : 0;
+    const gap = text.slice(buyEnd, at.start);
+    const adjacent = !/[,.;]/.test(gap) && tokensOf(gap).every(token => FILLER.has(token) || /^\d+$/.test(token));
+    if (!stated && !QUANTITY_AFTER.test(after) && !take && !adjacent) return null;
+    // A partial name that a longer product of the catalogue also answers to («audífonos aurora» with an «… Pro» on sale): ask which.
+    if (!wholeName) {
+        const said = tokensOf(text.slice(at.start, at.end)).filter(token => token.length >= 3 && !SKIP_TOKENS.has(token));
+        const also = catalog.filter(other => other.id !== product.id && typeof other.title === 'string'
+            && said.every(token => tokensOf(fold(other.title)).some(word => sameWord(word, token))));
+        if (also.length) return { choose: [product, ...also], quantity };
+    }
+    const notes = deliveryClauses(raw);
+    return { product, quantity, ...(notes ? { notes } : {}) };
+}
+
+/** What the order message itself says about delivery or collection, clause by clause («envíelo a la Calle 5»). */
+function deliveryClauses(raw: string): string {
+    const kept = String(raw ?? '').split(/[,;.]/).map(part => part.trim()).filter(part => part && DETAILS_CUE.test(fold(part)));
+    return mergeOrderNotes(undefined, kept.join(', '));
 }
 
 /** Words that give the order's delivery or collection: an address, «sin envío», «lo recojo». */
@@ -210,6 +240,20 @@ export function orderProposalText(terms: OrderTerms | undefined, language: strin
         fr: 'Confirmez-vous cette commande ? Elle est enregistrée comme en attente et ce n’est pas un paiement. Si vous la voulez livrée, indiquez-moi l’adresse.',
     }[lang];
     return [head, ...lines, totalLine, ...(notesLine ? [notesLine] : []), ask].join('\n');
+}
+
+/** Two or more products answer to the words the customer used: asked, never guessed. */
+export function orderChoiceText(options: readonly IntakeProduct[], language: string | undefined, form: AddressForm = 'usted'): string {
+    const lang = langOf(language);
+    const tu = form === 'tu' && lang === 'es';
+    const names = options.map(product => product.title);
+    const listed = names.length > 1 ? `${names.slice(0, -1).join(', ')} ${{ es: 'o', en: 'or', pt: 'ou', fr: 'ou' }[lang]} ${names[names.length - 1]}` : names.join('');
+    return {
+        es: `Tengo más de un producto con ese nombre: ${listed}. ${tu ? '¿Cuál quieres?' : '¿Cuál desea?'}`,
+        en: `I have more than one product with that name: ${listed}. Which one would you like?`,
+        pt: `Tenho mais de um produto com esse nome: ${listed}. Qual você quer?`,
+        fr: `J’ai plusieurs produits portant ce nom : ${listed}. Lequel souhaitez-vous ?`,
+    }[lang];
 }
 
 /** Not enough of the product, or none: said by the server from the catalogue's own number. */

@@ -45,6 +45,8 @@ interface Options {
     prose?: (message: string) => string;
     /** The conversation so far is handed to the model on every turn (what a live conversation does). */
     history?: boolean;
+    /** The tenant has spent its monthly LLM budget (the router is clamped to the cheap tiers). */
+    overBudget?: boolean;
 }
 
 function world(options: Options) {
@@ -57,6 +59,10 @@ function world(options: Options) {
     f.personaService.getAgent.mockResolvedValue({ version: 1, config_json: { language: 'es', industry: options.industry, tools: {}, rag: { enabled: false }, llm: {} } });
     f.verticalTurnContext.resolve.mockResolvedValue({ industry: options.industry, subType: 'general' });
     publishTools(f, options.tools);
+    if (options.overBudget) {
+        f.throttle.getPlanFeatures.mockResolvedValue({ llmTier: 'tier_2', llmCostBudgetUsdCents: 100 });
+        f.throttle.getLlmSpendUsdCents.mockResolvedValue(500);
+    }
     // The tenant's own catalogue, as `loadOwnCatalogForTurn` reads it.
     const readRows = f.prisma.executeInTenantSchema.getMockImplementation()!;
     f.prisma.executeInTenantSchema.mockImplementation(async (schema: string, sql: string, params?: any[]) => {
@@ -136,8 +142,10 @@ function world(options: Options) {
     });
 
     const modelSaw: string[] = [];
+    const routed: Array<{ task: string; allowedTiers: string[]; budgetConstrained: boolean }> = [];
     f.llmRouter.execute.mockImplementation(async (request: any) => {
         if (!['conversation', 'tool_calling'].includes(request.task)) return answer('{}');
+        routed.push({ task: request.task, allowedTiers: request.allowedTiers, budgetConstrained: request.budgetConstrained === true });
         const last = String((request.messages ?? []).slice(-1)[0]?.content ?? '');
         const thread = JSON.stringify(request.messages ?? []);
         if (thread.includes('confirmation_required') || thread.includes('"success":true')) {
@@ -164,7 +172,7 @@ function world(options: Options) {
         return result;
     };
     const ran = (name: string) => calls.filter(call => call.name === name);
-    return { f, turn, ran, calls, executed, modelSaw, get created() { return executed.filter(call => call.name === 'place_catalog_order').length; } };
+    return { f, turn, ran, calls, executed, modelSaw, routed, get created() { return executed.filter(call => call.name === 'place_catalog_order').length; } };
 }
 
 pinClock();
@@ -265,6 +273,30 @@ describe('an order is placed even when the model only ever asks in prose (produc
         await h.turn('sí, confirmo el pedido');
         expect(h.created).toBe(1);
     });
+
+    it('the delivery in the order message itself is in the notes of the proposal and of the order', async () => {
+        const h = store();
+        const proposal = await h.turn('Quiero pedir 1 Audífono QA Aurora, envíelo a la Calle 5 #4-3');
+        expect(h.ran('place_catalog_order')[0].args).toEqual({ items: [{ productId: PRODUCT, quantity: 1 }], notes: 'envíelo a la Calle 5 #4-3' });
+        expect(proposal.reply).toContain('Notas: envíelo a la Calle 5 #4-3');
+        await h.turn('sí');
+        expect(h.executed[0].args.notes).toBe('envíelo a la Calle 5 #4-3');
+    });
+
+    it('a complaint that shares a verb and a product with an order is left to the model: no writer is called', async () => {
+        const h = store();
+        await h.turn('quiero pedir perdón, el Audífono QA Aurora llegó roto');
+        expect(h.ran('place_catalog_order')).toHaveLength(0);
+        expect(h.modelSaw.length).toBeGreaterThan(0);
+    });
+
+    it('a partial name that two products answer to is asked, and nothing is proposed', async () => {
+        const pro: Product = { id: 'b1b48c4a-0000-4000-8000-000000000002', name: 'Audífono QA Aurora Pro', price: 229900, currency: 'COP', stock: 4, category: 'Audio' };
+        const h = store({ products: [AURORA, pro] });
+        const asked = await h.turn('quisiera comprar audífonos aurora');
+        expect(h.ran('place_catalog_order')).toHaveLength(0);
+        expect(asked.reply).toBe('Tengo más de un producto con ese nombre: Audífono QA Aurora o Audífono QA Aurora Pro. ¿Cuál desea?');
+    });
 });
 
 describe('the model that does call the writer by itself keeps working', () => {
@@ -347,5 +379,27 @@ describe('«el 2» after a list of times written in prose is the second of them 
         await none.turn('quiero ir el lunes');
         await none.turn('el 2');
         expect(none.modelSaw.slice(-1)[0]).toBe('el 2');
+    });
+});
+
+describe('over the monthly LLM budget, a turn with a write in play keeps the tool-calling floor (production 2026-10-09)', () => {
+    const toolTurn = (h: ReturnType<typeof world>) => h.routed.filter(call => call.task === 'tool_calling').slice(-1)[0];
+
+    it('an ordinary turn stays clamped to the cheap tiers and the floor stays down', async () => {
+        const h = store({ overBudget: true });
+        await h.turn('hola, buenas tardes');
+        expect(toolTurn(h)).toEqual({ task: 'tool_calling', allowedTiers: ['tier_3_efficient', 'tier_4_budget'], budgetConstrained: true });
+    });
+
+    it.each(['quiero apartar algo, ayúdame', 'sí, confirmo', 'necesito comprar algo y no sé qué'])('«%s» keeps the tiers of the plan and the floor', async text => {
+        const h = store({ overBudget: true });
+        await h.turn(text);
+        expect(toolTurn(h)).toEqual({ task: 'tool_calling', allowedTiers: ['tier_2_standard', 'tier_3_efficient', 'tier_4_budget'], budgetConstrained: false });
+    });
+
+    it('under budget nothing changes', async () => {
+        const h = store();
+        await h.turn('quiero apartar algo, ayúdame');
+        expect(toolTurn(h)).toEqual({ task: 'tool_calling', allowedTiers: ['tier_2_standard', 'tier_3_efficient', 'tier_4_budget'], budgetConstrained: false });
     });
 });

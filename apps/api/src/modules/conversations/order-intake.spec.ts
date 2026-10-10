@@ -36,7 +36,7 @@ describe('a request to buy a product of the catalogue', () => {
 
     it('two names where one contains the other: the longer one is what was said; two different products are ambiguous', () => {
         expect(detectOrderIntake('Quiero pedir 1 Audífono QA Aurora Pro', [AURORA, PRO])).toEqual({ product: expect.objectContaining({ id: 'p-pro' }), quantity: 1 });
-        expect(detectOrderIntake('Quiero pedir 1 Audífono QA Aurora', [AURORA, PRO])?.product.id).toBe('p-aurora');
+        expect((detectOrderIntake('Quiero pedir 1 Audífono QA Aurora', [AURORA, PRO]) as any)?.product.id).toBe('p-aurora');
         expect(detectOrderIntake('Quiero pedir el Audífono QA Aurora y el Cargador QA Nova', [AURORA, NOVA])).toBeNull();
     });
 

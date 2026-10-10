@@ -112,7 +112,7 @@ import { sanitizeRewrittenReply } from './rewrite-validation';
 import { correctRelativeWeekdays } from './relative-weekday';
 import { addressFormOf, detectTransition, failedTransitionOf, handleIdentityReply, humanizeReferences, identityGate, knownRecordFacts, knownRecordIds, localizeStatusWords, namedRequestOverridesClarify, opensWithYes, requestIdentityForTool, runTransition, shortReference, transitionDoneText, transitionFailureText, transitionRequestForTool, transitionTexts, TRANSITION_TOOLS, TRANSITION_WRITER, type TransitionIO, type TransitionOutcome } from './transition-engine';
 import { resolveListChoice } from './list-choice';
-import { createdDoneText, detectOrderIntake, isOrderDetails, mergeOrderNotes, mightBeOrderRequest, orderProposalText, orderStockText, type OrderIntake } from './order-intake';
+import { createdDoneText, detectOrderIntake, isOrderDetails, mergeOrderNotes, mightBeOrderRequest, orderProposalText, orderStockText, orderChoiceText, type OrderChoice, type OrderIntake } from './order-intake';
 import { persistConversationRuntimeState } from './conversation-runtime-state';
 import type { ConversationMissionFocusV1, MissionExecutionScopeV1 } from '@parallext/shared';
 import { ProcedureEngineService } from './procedure-engine.service';
@@ -521,6 +521,14 @@ const apptReplies = (lang?: string) => APPOINTMENT_REPLIES[(lang || 'es').slice(
 // Per-tool execution ceiling — a single tool (esp. an external MCP server) must
 // never hang the whole conversational turn.
 const TOOL_TIMEOUT_MS = 25_000;
+/**
+ * COST IMPLICATION. Over the plan's monthly LLM budget the tiers are clamped to the cheap ones and the router stands down its
+ * tool-calling floor (replying on a weak model beats not replying). A turn in which a WRITE is in play — a proposal waiting for its
+ * yes, or a request to book / order / cancel / confirm — is where a weak model drifts the arguments or answers in prose while the
+ * customer waits (production 2026-10-09: no order in ten confirmations). With this on, THOSE turns keep the plan's tiers and the
+ * floor even over budget; every other turn stays clamped. Set to false to restore the pure circuit breaker.
+ */
+const BUDGET_KEEPS_TOOL_FLOOR_FOR_WRITES = true;
 // Tool concurrency comes from the canonical registry. This includes writers that
 // the former name-based list missed (quotes, placement tests, identity codes and
 // outbound media), while unknown/MCP tools remain serialized fail-safe.
@@ -3424,6 +3432,8 @@ export class ConversationsService {
         let priorPendingTool: string | undefined;
         // A request to BUY a product the tenant's catalogue holds, read by the server before the focus is arbitrated (order-intake.ts).
         let orderIntake: OrderIntake | null = null;
+        // ...or only part of a product's name, answered by several products: the server asks which (never guesses).
+        let orderChoice: OrderChoice | null = null;
         // The focus as it stood BEFORE this message was arbitrated: a message that only shows the pending proposal again gets it back.
         let focusBeforeArbitration: { revision: number; selectedId?: string; expectedReply: NonNullable<ConversationMissionFocusV1['expectedReply']> | null } | undefined;
         const missionMessageId = inboundMessageId || msg.id || randomUUID();
@@ -3463,12 +3473,13 @@ export class ConversationsService {
             if (!engineProducedText && !handoffReturn && !commitmentBlocked && transitionAvailable.has('place_catalog_order') && mightBeOrderRequest(userText)) {
                 try {
                     const sellable = (await this.loadOwnCatalogForTurn(schemaName, userText)).filter(product => product.priceStatus === 'confirmed');
-                    orderIntake = detectOrderIntake(userText, sellable);
+                    const read = detectOrderIntake(userText, sellable);
+                    if (read && 'choose' in read) orderChoice = read; else orderIntake = read;
                 } catch (error: any) {
                     this.logger.debug(`[OrderIntake] catalogue unavailable (non-fatal): ${error?.message}`);
                 }
             }
-            missionDecision = arbitrateMissionFocus({ state: missionFocus, candidates, text: userText, messageId: missionMessageId, orderRequest: !!orderIntake });
+            missionDecision = arbitrateMissionFocus({ state: missionFocus, candidates, text: userText, messageId: missionMessageId, orderRequest: !!orderIntake || !!orderChoice });
             missionFocus = missionDecision.state;
             const bookingProposalActive = !['idle', 'booked'].includes(bookingState.step);
             if (missionDecision.pauseBooking) bookingState.pausedAt ||= new Date().toISOString();
@@ -4089,15 +4100,17 @@ export class ConversationsService {
             && missionDecision.route === 'tools' && !handoffReturn && !commitmentBlocked && transitionAvailable.has('place_catalog_order')) {
             try {
                 const form = addressFormOf(regional?.addressForm.value);
-                const waiting = !orderIntake && priorPendingTool === 'place_catalog_order' && isOrderDetails(userText)
+                const waiting = !orderIntake && !orderChoice && priorPendingTool === 'place_catalog_order' && isOrderDetails(userText)
                     ? await this.toolExecutionControl.findPendingConfirmation(schemaName, conversation.id, conversation.contact_id, undefined, missionScope)
                     : null;
                 let proposalArgs: Record<string, unknown> | null = null;
                 let orderReply: string | null = null;
-                if (orderIntake) {
+                if (orderChoice) {
+                    orderReply = orderChoiceText(orderChoice.choose, userLanguage, form);
+                } else if (orderIntake) {
                     const { product, quantity } = orderIntake;
                     if (typeof product.stock === 'number' && product.stock < quantity) orderReply = orderStockText(product, quantity, userLanguage, form);
-                    else proposalArgs = { items: [{ productId: product.id, quantity }] };
+                    else proposalArgs = { items: [{ productId: product.id, quantity }], ...(orderIntake.notes ? { notes: orderIntake.notes } : {}) };
                 } else if (waiting?.toolName === 'place_catalog_order' && Array.isArray((waiting.args as any)?.items)) {
                     proposalArgs = { items: (waiting.args as any).items, notes: mergeOrderNotes((waiting.args as any).notes, userText) };
                 }
@@ -4875,6 +4888,7 @@ export class ConversationsService {
 
             const planFeatures = session?.snapshot.runtimeInputs?.planFeatures ?? await this.throttle.getPlanFeatures(tenantId, executionContext);
             let allowedTiers = this.mapLlmTierToAllowed(planFeatures.llmTier);
+            const planAllowedTiers = allowedTiers;
 
             // LLM cost circuit breaker: once month-to-date LLM spend exceeds the
             // plan's budget, clamp routing to budget models (tier_3/tier_4) so a
@@ -4886,12 +4900,16 @@ export class ConversationsService {
             // Also tells the router to stand down its tool-calling floor: over
             // budget, replying on a weaker model beats not replying.
             let budgetConstrained = false;
+            // A write in play (see BUDGET_KEEPS_TOOL_FLOOR_FOR_WRITES): a proposal waits for its yes, or the customer asks to do something.
+            let keepsWriteFloor = false;
+            const writeInPlay = !!priorPendingTool || missionFocus?.expectedReply?.kind === 'confirmation' || !!orderIntake || asksForAction(userText);
             if (llmBudgetUsdCents > 0) {
                 const spentUsdCents = session?.snapshot.runtimeInputs?.llmSpendUsdCents ?? await this.throttle.getLlmSpendUsdCents(tenantId);
                 if (spentUsdCents >= llmBudgetUsdCents) {
                     const clamped = allowedTiers.filter(t => t === 'tier_3_efficient' || t === 'tier_4_budget');
                     allowedTiers = clamped.length ? clamped : ['tier_4_budget'];
                     budgetConstrained = true;
+                    keepsWriteFloor = BUDGET_KEEPS_TOOL_FLOOR_FOR_WRITES && writeInPlay;
                     this.logger.warn(
                         `[LLM budget] tenant ${tenantId} over monthly LLM budget ` +
                         `($${(spentUsdCents / 100).toFixed(2)}/$${(llmBudgetUsdCents / 100).toFixed(2)}) — ` +
@@ -4943,8 +4961,8 @@ export class ConversationsService {
                     maxTokens: personaMaxTokens,
                     routingFactors,
                     tools: hasTools ? tools : undefined,
-                    allowedTiers,
-                    budgetConstrained,
+                    allowedTiers: keepsWriteFloor ? planAllowedTiers : allowedTiers,
+                    budgetConstrained: budgetConstrained && !keepsWriteFloor,
                     voicedWrite,
                     pinnedModel: turnModel,
                     tenantId,

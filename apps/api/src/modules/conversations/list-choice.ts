@@ -13,7 +13,12 @@ import { foldKeepingPunctuation } from './appointment-transition';
  * is ambiguous, and the model asks). The customer's message is stored as written; only what the model is shown is the option.
  */
 const BARE_NUMBER = /^\s*(?:(?:el|la|opcion|la opcion|numero|el numero|n|no|num)\.?\s*)?#?\s*(\d{1,2})\s*[.!]?\s*$/;
-const OFFER_CUE = /\b(?:cual|cuales|horario|horarios|disponible|disponibles|opcion|opciones|elegir|elige|prefiere|prefieres|reservar|agendar|which|available|options?|choose|quel|quelle|disponibles?|horaires?|escolher|qual|hor[aá]rios?)\b/;
+// The closing question asks WHICH TIME (or which of the options just listed) the customer wants.
+const CHOICE_CLOSING = /\b(?:horarios?|horas?|a que hora|que horas?|cual(?:es)?\s+(?:le|te|prefiere|prefieres|desea|deseas|quiere|quieres|elige|eliges|escoge|sirve|conviene|reservar|gustaria)|cual\s+de\s+(?:ellos|estos|esos|los)|which\s+(?:time|one|do you|would you)|what time|quel\s+(?:horaire|creneau|heure)|quelle\s+heure|horaires?|heure|qual\s+(?:horario|prefere|deseja|voce)|hor[a-z]rios?)\b/;
+// ...and not something else the list happens to precede («¿Cuál es el número de personas?»).
+const OTHER_TOPIC = /\b(?:numero de|personas|cantidad|cuantos|cuantas|nombre|correo|servicio|producto|edad|telefono|direccion)\b/;
+// A reply that numbers its own items («1. Pizza 2. Hamburguesa …») owns its «el 2»: left as it is.
+const NUMBERED = /(?<![\d:])\d{1,2}[.)]\s+(?:\p{L}|\d{1,2}:\d{2})/u;
 // A time or a range («09:30 - 10:15»): a range is ONE option, named by where it starts.
 const TIME = /\b(\d{1,2}):(\d{2})(?:\s*([ap])\.?\s?m\.?)?(?:\s*(?:-|–|—|a|hasta|to|ate)\s*\d{1,2}:\d{2}(?:\s*[ap]\.?\s?m\.?)?)?/g;
 
@@ -28,7 +33,7 @@ export function resolveListChoice(userText: unknown, previousReply: unknown): Li
     // The reply must END asking the customer to choose («¿Cuál le gustaría reservar?»): a list of times followed by another question
     // («…¿para cuántas personas?») makes a bare «2» the answer to THAT question.
     const closing = reply.split(/(?<=[.?!])\s+/).map(part => part.trim()).filter(Boolean).pop() ?? '';
-    if (!OFFER_CUE.test(closing)) return null;
+    if (!CHOICE_CLOSING.test(closing) || OTHER_TOPIC.test(closing) || NUMBERED.test(reply)) return null;
     const offered = [...reply.matchAll(TIME)].map(match => ({
         text: `${Number(match[1])}:${match[2]}${match[3] ? ` ${match[3]}. m.` : ''}`, hour: Number(match[1]) % 12, period: match[3],
     }));

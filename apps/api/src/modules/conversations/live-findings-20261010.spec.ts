@@ -1,6 +1,6 @@
 import { pinClock } from './__fixtures__/pinned-clock';
 import { PRODUCT, STORE, SALON, AURORA, world, type Options } from './__fixtures__/live-world';
-import { createdDoneText, deliveryFrom, detectOrderIntake, mergeOrderNotes, orderProposalText, replyStillAsksConfirmation } from './order-intake';
+import { createdDoneText, deliveryFrom, detectOrderIntake, isOrderDetails, mergeOrderNotes, orderProposalText, replyStillAsksConfirmation } from './order-intake';
 
 /**
  * Live Telegram round after PR #84 (b0a2d79d), 2026-10-09/10: Tienda QA Electrónica and Salón QA Citas.
@@ -85,6 +85,21 @@ describe('1. a record created in the turn is told in ONE message that states it'
         expect(outbound(h, yes.reply)).toHaveLength(1);
     });
 
+    it('a booking voiced with its reference and a follow-up about something else keeps the words of the model', async () => {
+        const voiced = '¡Cita confirmada! Ref. 17F69A1B. ¿Desea que le agende otra para su hijo?';
+        const h = world({
+            tools: SALON, industry: 'salon',
+            writes: message => { saying(message); return /agéndala|continúe/i.test(message) ? book : null; },
+            voice: () => 'Para confirmar, ¿desea que proceda?',
+            prose: () => (/agéndala/i.test(said.user) ? voiced : 'Claro.'),
+        });
+        const gate = modelExecutes(h);
+        await h.turn('me interesa corte y estilo el lunes 12 de octubre a las 9:30, a nombre de Joaquin Sosa');
+        await h.turn('sí, continúe con la reserva con el precio pendiente');
+        gate.on();
+        expect((await h.turn('sí, agéndala')).reply).toBe(voiced);
+    });
+
     it('the server-side yes (the usual path) already answers once, with the record', async () => {
         const h = store();
         await h.turn('Quiero pedir 1 Audífono QA Aurora');
@@ -105,6 +120,17 @@ describe('1. a record created in the turn is told in ONE message that states it'
         ['Confirmez-vous cette commande ?', true],
         ['Confirma que deseja fazer este pedido?', true],
         ['Su cita quedó confirmada. Ref. A72599D6. ¿Algo más?', false],
+        // a follow-up about something else is not a request to confirm THIS record (PR #85 review)
+        ['¡Listo! Ref. A72599D6. ¿Desea que le agende otra para su hijo?', false],
+        ['Pedido Ref. 20FD6A98 registrado. ¿Quiere que le confirme por correo?', false],
+        ['Cita confirmada (Ref. A72599D6). ¿Le confirmo la dirección del local?', false],
+        ['¡Cita confirmada! Ref. A72599D6. ¿Desea agendar otra cita?', false],
+        ['Pedido registrado. ¿Desea que le envíe un recordatorio?', false],
+        ['Cita confirmada. Ref. A72599D6. ¿Quiere que le confirme la cita por correo?', false],
+        ['Pedido Ref. 20FD6A98 registrado. ¿Le confirmo también la dirección del pedido?', false],
+        ['Cita confirmada. ¿Quiere que le agende también el masaje?', false],
+        ['¿Me confirma si agendo la cita? ¡Cita confirmada! Ref. A72599D6', true],
+        ['¿Le agendo la cita de Corte y estilo?', true],
         ['Su pedido quedó registrado. ¿Desea que le ayude con otro producto?', false],
         ['Quedó confirmada para el lunes. Le llegará un recordatorio.', false],
     ])('«%s» is a confirmation question: %s', (text, expected) => {
@@ -139,6 +165,33 @@ describe('2. the delivery in the order message is a delivery, not only a note', 
         expect(mergeOrderNotes('Envío a: Calle 5 #4-3', 'envíelo a la Calle 5 #4-3')).toBe('Envío a: Calle 5 #4-3');
         // nothing about delivery: the old behaviour (the words are kept, bounded)
         expect(mergeOrderNotes('regalo', 'con tarjeta de felicitación')).toBe('regalo. con tarjeta de felicitación');
+    });
+
+    it.each([
+        'me envían la factura por favor', 'envíenme info de la garantía', 'envíame el recibo al correo', 'mándame el catálogo por whatsapp',
+        'Quiero pedir 1 Audífono QA Aurora y envíenme la factura al correo', 'me pueden enviar las instrucciones',
+    ])('«%s» says nothing about how the order reaches the customer', text => {
+        expect(deliveryFrom(text)).toBeNull();
+        expect(isOrderDetails(text)).toBe(false);
+    });
+
+    it.each([
+        'quiero que me lo envíen', 'me lo pueden mandar', 'envíelo a la Calle 5 #4-3', 'con envío', 'a domicilio', 'mándemelo a mi casa', 'ship it to 12 Main Street',
+        'envíenme el pedido a la Carrera 7 # 32-16',
+    ])('«%s» is a shipment of the order', text => {
+        expect(deliveryFrom(text)).toMatchObject({ kind: 'ship' });
+    });
+
+    it('while the proposal waits, a message about an invoice or the warranty leaves the delivery of the order alone', async () => {
+        const h = store();
+        await h.turn('Quiero pedir 1 Audífono QA Aurora, lo recojo en la tienda');
+        const before = h.ran('place_catalog_order').length;
+        await h.turn('me envían la factura por favor');
+        await h.turn('envíenme info de la garantía');
+        expect(h.ran('place_catalog_order')).toHaveLength(before);
+        const yes = await h.turn('sí, confirmo el pedido');
+        expect(h.executed[0].args.notes).toBe('Recojo en tienda');
+        expect(yes.reply).toContain('Entrega: recojo en tienda');
     });
 
     it('«Quiero comprar 1 Audífono QA Aurora, envíelo a la Calle 5 #4-3»: the proposal shows the delivery and does not ask for the address again', async () => {

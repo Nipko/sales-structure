@@ -434,8 +434,47 @@ const PRODUCT_DEFECT = /\b(?:roto|rota|rotos|rotas|danad[oa]s?|defectuos[oa]s?|q
 /** Anger, a scam, a legal threat or a formal complaint: a person hears it at once. «no funciona» is a defect, not one of these. */
 const STRONG_GRIEVANCE = /\b(?:estafa\w*|fraude|engano|enganaram|golpe|inaceptable|inacceptable|pesimo|pessimo|horrible|terrible|furios[oa]|molest[oa]|queja\w*|reclamo|reclamacao|plainte|demanda\w*|abogado|advogado|avocat|scam|fraud|unacceptable|awful|lawyer|arnaque|indignad[oa]|vergonza|verguenza|robo|robaron)\b/;
 
-/** Something that can hurt someone: smoke, fire, a shock, a burn, an injury, poison, an emergency. */
-const SAFETY_RISK = /\b(?:incendio|humo|quemo|quemado|quemadura\w*|quema|chispa\w*|explot\w*|explosion|descarga\w*|electrocut\w*|corto ?circuito|lesion\w*|herid\w*|sangr\w*|intoxic\w*|veneno\w*|peligro\w*|peligros\w*|emergencia|ambulancia|alergi\w*|fire|smoke|burn\w*|spark\w*|explod\w*|shock|electric shock|injur\w*|hurt|poison\w*|danger\w*|emergency|incendie|fumee|brul\w*|blesse\w*|queimou|fuma\w*|ferid\w*|perigo\w*)\b/;
+/**
+ * Something that can hurt someone or that a person must judge: smoke, fire, gas, a smell of burning, overheating, a shock, a burn, a
+ * spark, a leak, brakes, an airbag, a swallowed piece, choking, a reaction, a rash, pain, dizziness, vomiting, fever, bleeding, an
+ * injury, a medicine, a medical device, a baby or a child next to a defect. Spanish, English, Portuguese and French; matched on
+ * accent-free lower case.
+ */
+const SAFETY_RISK = new RegExp('\\b(?:' + [
+    // fire, heat, electricity, gas, leaks
+    'incendio\\w*', 'humo', 'fumee', 'fuma\\w*', 'smoke', 'fire', 'incendie', 'quemo', 'quemado', 'quemadura\\w*', 'quema', 'queimou', 'burn\\w*', 'brul\\w*',
+    'chispa\\w*', 'spark\\w*', 'explot\\w*', 'explosion', 'explod\\w*', 'descarga\\w*', 'electrocut\\w*', 'electric shock', 'shock', 'corto ?circuito',
+    'gas', 'gaz', 'huele\\w*', 'olor\\w*', 'oler', 'olfato', 'cheiro', 'odeur', 'smell\\w*', 'fuga\\w*', 'escape de', 'vazamento\\w*', 'fuite\\w*', 'leak\\w*',
+    'recalient\\w*', 'sobrecalient\\w*', 'sobrecalent\\w*', 'overheat\\w*', 'superaquec\\w*', 'surchauff\\w*', 'se calienta mucho', 'muy caliente',
+    // vehicle safety
+    'airbag\\w*', 'air bag\\w*', 'freno\\w*', 'brake\\w*', 'frein\\w*', 'volante', 'steering', 'direccion hidraulica', 'direcao hidraulica', 'power steering', 'llanta\\w* (?:explot|reventad)\\w*', 'cinturon\\w*', 'seatbelt\\w*',
+    // the body
+    'trag\\w*', 'swallow\\w*', 'avale\\w*', 'engasg\\w*', 'ahog\\w*', 'asfix\\w*', 'atragant\\w*', 'chok\\w*', 'choke\\w*',
+    'reaccion\\w*', 'reaction\\w*', 'ronch\\w*', 'rash', 'alergi\\w*', 'allerg\\w*', 'irritacion\\w*', 'irritation',
+    'dolor\\w*', 'duele\\w*', 'doler', 'pain\\w*', 'douleur\\w*', 'dor de', 'mareo\\w*', 'mareado\\w*', 'marea', 'dizz\\w*', 'vomit\\w*', 'nausea\\w*', 'fiebre', 'febre', 'fever',
+    'sangr\\w*', 'bleed\\w*', 'herid\\w*', 'ferid\\w*', 'lesion\\w*', 'injur\\w*', 'hurt', 'blesse\\w*', 'intoxic\\w*', 'envenen\\w*', 'veneno\\w*', 'poison\\w*',
+    'peligro\\w*', 'perigo\\w*', 'danger\\w*', 'emergencia', 'emergency', 'ambulancia', 'urgencia\\w*',
+    // medicines and medical devices
+    'medicament\\w*', 'medicin\\w*', 'medicine\\w*', 'medication\\w*', 'pastilla\\w*', 'pill\\w*', 'tableta\\w*', 'capsula\\w*', 'comprimido\\w*', 'remedio\\w*', 'jarabe\\w*', 'inyecc\\w*', 'inyectable\\w*', 'vacuna\\w*', 'dosis', 'dose', 'insulina', 'receta\\w*', 'formula medica',
+    'oximeter\\w*', 'thermometer\\w*', 'glucometer\\w*', 'blood pressure', 'nebuli[sz]er\\w*', 'tensiometro\\w*', 'glucometro\\w*', 'oximetro\\w*', 'termometro\\w*', 'nebulizador\\w*', 'inhalador\\w*', 'marcapasos', 'cpap', 'protesis', 'silla de ruedas', 'muletas?', 'audifono\\w* medic\\w*', 'monitor de glucosa',
+    // a baby or a child next to a defect
+    'bebe\\w*', 'baby', 'babies', 'nino\\w*', 'nina\\w*', 'hijo\\w*', 'hija\\w*', 'child\\w*', 'kid\\w*', 'toddler\\w*', 'enfant\\w*', 'crianca\\w*', 'filho\\w*', 'filha\\w*', 'recien nacido\\w*', 'menor de edad', 'menores',
+].join('|') + ')\\b');
+
+/**
+ * Where a defect is never «just a product complaint»: a health business (a clinic, a pharmacy, a medical device), a veterinary clinic, a
+ * vehicle dealer or workshop (brakes, airbags, steering). A defect report there always reaches a person at once.
+ */
+const SAFETY_CRITICAL_INDUSTRIES = new Set(['salud', 'veterinaria', 'automotriz', 'health', 'healthcare', 'veterinary', 'automotive']);
+const SAFETY_CRITICAL_SUBTYPE = /\b(?:salud|health|medic\w*|clinic\w*|hospital\w*|farmac\w*|pharm\w*|drogueria\w*|odont\w*|dental\w*|optic\w*|veterinar\w*|automotri\w*|automotive|taller\w*|mecanic\w*|concesionari\w*|vehicul\w*|moto\w*|repuesto\w*|ortoped\w*|ortop\w*)/;
+
+export function isSafetyCriticalContext(industry?: unknown, subType?: unknown): boolean {
+    const folded = (value: unknown) => normalizeForIntent(String(value ?? '')).replace(/[^a-z0-9]+/g, ' ').trim();
+    const kind = folded(industry);
+    if (kind && SAFETY_CRITICAL_INDUSTRIES.has(kind)) return true;
+    const sub = folded(subType);
+    return !!sub && SAFETY_CRITICAL_SUBTYPE.test(sub);
+}
 
 /** Refund, return, exchange or discount words: what the customer wants done about it is a person's to handle. */
 const MONEY_BACK = /\b(?:reembols\w*|devol\w*|refund\w*|return\w*|remboursement\w*|rembours\w*|descuent\w*|rebaj\w*|desconto\w*|compens\w*|indemniz\w*|cambio|cambiar|cambiarlo|exchange|troca\w*|echange\w*)\b/;
@@ -451,11 +490,15 @@ export function isProductDefectReport(raw: unknown): boolean {
 
 /**
  * Whether the reason a turn would escalate for («complaint») is only a product defect report that the agent answers, offering a person
- * instead of opening the handoff. `triggers` are the owner's own handoff triggers: one that this message hits is the owner's rule and
+ * instead of opening the handoff. Never in a safety-critical business (see `isSafetyCriticalContext`). `triggers` are the owner's own handoff triggers: one that this message hits is the owner's rule and
  * escalates as always.
  */
-export function complaintIsOfferOnly(reason: string | null | undefined, raw: unknown, triggers: readonly string[] = []): boolean {
+export function complaintIsOfferOnly(
+    reason: string | null | undefined, raw: unknown, triggers: readonly string[] = [], business: { industry?: unknown; subType?: unknown } = {},
+): boolean {
     if (reason !== 'complaint' || !isProductDefectReport(raw)) return false;
+    // In a health, veterinary or vehicle business a defect is a safety matter: a person hears it at once, whatever the words.
+    if (isSafetyCriticalContext(business.industry, business.subType)) return false;
     const text = normalizeForIntent(raw);
     return !triggers.some(trigger => {
         const needle = normalizeForIntent(trigger);

@@ -198,8 +198,20 @@ const SHIP_PENDING_NOTE = 'Con envío (dirección pendiente)';
 
 /** «sin envío», «lo recojo», «retiro en tienda», «pick up»: the order is collected, nothing is shipped. */
 const PICKUP_CUE = /\b(?:sin (?:envio|domicilio|despacho)|no (?:quiero|necesito|requiero) (?:el |un )?(?:envio|domicilio|despacho)|(?:lo|la|los|las) (?:recojo|recogo|retiro|busco)|(?:paso|pasare|voy|ire|vengo|viene|vamos|iremos) (?:a|por) (?:recog|retir|busc)\w*|recog\w*|recojo|retirar\w*|retiro en (?:la |el |su |mi )?(?:tienda|local|sucursal|almacen|punto)|pick ?up|pick it up|i ll collect|collect(?:ion)?|sans livraison|je viens (?:le |la )?(?:chercher|retirer)|(?:vou|vamos) (?:retirar|buscar)|retirada na loja)\b/;
-/** The words that say it is sent: «envíelo», «a domicilio», «mi dirección», «ship it». */
-const SHIP_CUE = /\b(?:envi\w*|mand\w*|despach\w*|entreg\w*|domicilio|direccion|ship\w*|deliver\w*|send\w*|address|envoy\w*|livr\w*|adresse|endereco)\b/;
+/**
+ * What says the ORDER is sent: «envíelo», «me lo envían», «a domicilio», «con envío», «ship it», an address. A bare «enviar» with another
+ * object — «me envían la factura», «envíenme info de la garantía» — is not a shipment of the order.
+ */
+const SHIP_CUE = new RegExp([
+    '\\b(?:envi|mand|despach|entreg|llev)\\w*(?:lo|la|los|las)\\b',
+    '\\b(?:lo|la|los|las) (?:\\w+ ){0,2}(?:envi|mand|despach|entreg)\\w*',
+    '\\b(?:con|quiero|necesito|incluya|incluye|incluir) (?:el |un )?(?:envio|domicilio|despacho)\\b',
+    '\\b(?:a )?domicilio\\b|\\bdespacho a\\b',
+    '\\b(?:ship|deliver|send)\\s+(?:it|them|this|that|my order|the order)\\b|\\bshipping\\b|\\bdelivery\\b',
+    '\\b(?:envoy|livr)\\w*[- ](?:le|la|les)\\b|\\bavec livraison\\b',
+    '\\b(?:envi|mand|entreg)\\w*-(?:o|a|os|as)\\b|\\bcom (?:envio|entrega)\\b',
+    '\\b(?:mi |nuestra |la |my |our )?(?:direccion|address|adresse|endereco)\\s*(?:es|is|est|:|-)\\s*\\S',
+].join('|'));
 /** A street of a city: «Calle 5», «Carrera 7 # 32-16», «Cl 5», «Avenida 68». It needs its number, so a product called «Torre» is not an address. */
 const STREET = /\b(?:calle|carrera|cra|kr|cl|cr|avenida|av|diagonal|dg|transversal|autopista|circular|street|avenue|rue|rua)\.?\s*(?:#\s*)?\d/;
 /** «envíelo a …», «enviar a la …», «ship to …»: what follows is where. */
@@ -319,7 +331,8 @@ export function isOrderDetails(raw: string): boolean {
     if (/[?¿]/.test(text) || isInformationSeekingMessage(original)) return false;
     const plain = text.replace(/[,.;!?¿¡]/g, ' ').replace(/\s+/g, ' ').trim();
     if (/\b(?:cancel\w*|anul\w*|devol\w*|reembols\w*|cita|turno)\b/.test(plain)) return false;
-    return DETAILS_CUE.test(plain);
+    // «me envían la factura por favor» names a shipment word and states no delivery of the order: the model answers it.
+    return DETAILS_CUE.test(plain) && readDelivery(original) !== null;
 }
 
 /** Words that give the order's delivery or collection: an address, «sin envío», «lo recojo». */
@@ -482,12 +495,17 @@ export function orderStockText(product: IntakeProduct, quantity: number, languag
  */
 export function replyStillAsksConfirmation(reply: string): boolean {
     const text = alignedFold(String(reply ?? ''));
-    const OFFERS_TO_ACT = /\b(?:(?:lo|la|le|te) (?:agendo|registro|reservo|confirmo)|agendo la|shall i|should i (?:book|place|confirm|schedule|go ahead|proceed)|(?:do you want|would you like) me to|(?:desea|deseas|quiere|quieres|deseja|quer) que (?:le |lo |la |te )?(?:proceda|continue|confirme|agende|registre|reserve|finalice|proceed|confirm|book)\w*|voulez-vous que|je (?:le |la )?reserve)\b/;
+    // Asking to do / confirm THIS record: «¿Lo agendo?», «¿Me confirma si agendo la cita?», «¿Confirma que desea realizar este pedido?».
+    const OFFERS_TO_ACT = /\b(?:(?:lo|la) (?:agendo|registro|reservo|confirmo)|le (?:agendo|reservo|registro|confirmo) (?:la|el|su|este|esta) (?:cita|pedido|reserva|orden|compra)|agendo la|shall i|should i (?:book|place|confirm|schedule|go ahead|proceed)|(?:do you want|would you like) me to (?:book|place|confirm|schedule|go ahead|proceed)|(?:desea|deseas|quiere|quieres|deseja|quer) que (?:le |lo |la |te )?(?:proceda|continue|finalice|proceed)\w*|voulez-vous que je (?:le |la )?(?:reserve|confirme))\b/;
     const ASKS_TO_CONFIRM = /\bconfirm(?:a|as|e|es|ez|ar|o)?\b/;
     const RECORD_NOUN = /\b(?:pedido|orden|cita|reserva|agend\w*|order|appointment|booking|commande|rendez-vous|reservation|compra|purchase)\b/;
+    // A follow-up about something else (another appointment, a confirmation by e-mail, the address of the shop, a reminder) is not a request
+    // to confirm the record that was just created, and is not the contradiction this guard removes.
+    const ANOTHER_THING = /\b(?:otra|otro|otras|otros|tambien|ademas|another|other|also|too|autre|autres|outra|outro|tambem|aussi|nuevo|nueva|new|siguiente|next|recordatorio|reminder|rappel|lembrete|correo|email|e-mail|mail|whatsapp|sms|direccion|address|adresse|endereco|ubicacion|location|factura|recibo|invoice|receipt|comprobante)\b/;
     for (let at = text.indexOf('?'); at >= 0; at = text.indexOf('?', at + 1)) {
         const start = Math.max(text.lastIndexOf('¿', at), text.lastIndexOf('. ', at), text.lastIndexOf('! ', at), text.lastIndexOf('\n', at)) + 1;
         const sentence = text.slice(start, at);
+        if (ANOTHER_THING.test(sentence)) continue;
         if (OFFERS_TO_ACT.test(sentence) || (ASKS_TO_CONFIRM.test(sentence) && RECORD_NOUN.test(sentence))) return true;
     }
     return false;

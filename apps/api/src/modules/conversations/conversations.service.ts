@@ -7463,7 +7463,7 @@ export class ConversationsService {
     ): Promise<string | null> {
         const reason = await this.rawHandoffReason(text, conversation, config, tenantId, classify, executionContext);
         // A product complaint is answered and a person is OFFERED (see `resolveComplaintOffer`): it opens no handoff by itself.
-        return complaintIsOfferOnly(reason, text, config?.behavior?.handoffTriggers || []) ? null : reason;
+        return complaintIsOfferOnly(reason, text, config?.behavior?.handoffTriggers || [], { industry: config?.industry, subType: config?.subType }) ? null : reason;
     }
 
     /**
@@ -7476,7 +7476,7 @@ export class ConversationsService {
         text: string, conversation: any, config: any, tenantId: string, classify = true, executionContext?: unknown,
     ): Promise<string | null> {
         const reason = await this.rawHandoffReason(text, conversation, config, tenantId, classify, executionContext);
-        return complaintIsOfferOnly(reason, text, config?.behavior?.handoffTriggers || []) ? reason : null;
+        return complaintIsOfferOnly(reason, text, config?.behavior?.handoffTriggers || [], { industry: config?.industry, subType: config?.subType }) ? reason : null;
     }
 
     private async rawHandoffReason(

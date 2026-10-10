@@ -482,6 +482,8 @@ describe('Shared runtime integrity', () => {
             t.service.handoffService = handoff;
             // the agent signals (counters in Redis) are real calls here: the fixture's bare mocks return undefined
             t.service.redis.sadd = jest.fn().mockResolvedValue(1);
+            // a shop, not a clinic: in a health, veterinary or vehicle business a defect always reaches a person (see below)
+            t.config.industry = 'retail';
             return { ...t, handoff };
         }
 
@@ -542,6 +544,16 @@ describe('Shared runtime integrity', () => {
             const own: any = { behavior: { handoffTriggers: ['garantia'] } };
             expect(await (service as any).resolveHandoffReason('el audífono llegó roto, quiero usar la garantía', conv, own, tenantId)).toBe('complaint');
             expect(await (service as any).resolveComplaintOffer('el audífono llegó roto, quiero usar la garantía', conv, own, tenantId)).toBeNull();
+        });
+
+        it.each(['salud', 'veterinaria', 'automotriz'])('in a «%s» business a defect report always goes to a person at once', async industry => {
+            const { service } = withRules();
+            const business: any = { ...config, industry };
+            expect(await (service as any).resolveHandoffReason(COMPLAINT, conv, business, tenantId)).toBe('complaint');
+            expect(await (service as any).resolveComplaintOffer(COMPLAINT, conv, business, tenantId)).toBeNull();
+            // a pharmacy under another industry, by its sub-type
+            const pharmacy: any = { ...config, industry: 'retail', subType: 'farmacia' };
+            expect(await (service as any).resolveHandoffReason(COMPLAINT, conv, pharmacy, tenantId)).toBe('complaint');
         });
 
         it('a message that is not a product complaint has no offer to make', async () => {

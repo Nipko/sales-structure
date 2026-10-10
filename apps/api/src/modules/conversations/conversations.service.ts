@@ -110,7 +110,9 @@ import { arbitrateMissionFocus, missionDialogue, toolMissionAliases, missionTool
 import { MissionFocusStore } from './mission-focus-store';
 import { sanitizeRewrittenReply } from './rewrite-validation';
 import { correctRelativeWeekdays } from './relative-weekday';
-import { addressFormOf, detectTransition, failedTransitionOf, handleIdentityReply, humanizeReferences, identityGate, knownRecordFacts, knownRecordIds, localizeStatusWords, namedRequestOverridesClarify, opensWithYes, requestIdentityForTool, runTransition, transitionDoneText, transitionFailureText, transitionRequestForTool, transitionTexts, TRANSITION_TOOLS, TRANSITION_WRITER, type TransitionIO, type TransitionOutcome } from './transition-engine';
+import { addressFormOf, detectTransition, failedTransitionOf, handleIdentityReply, humanizeReferences, identityGate, knownRecordFacts, knownRecordIds, localizeStatusWords, namedRequestOverridesClarify, opensWithYes, requestIdentityForTool, runTransition, shortReference, transitionDoneText, transitionFailureText, transitionRequestForTool, transitionTexts, TRANSITION_TOOLS, TRANSITION_WRITER, type TransitionIO, type TransitionOutcome } from './transition-engine';
+import { resolveListChoice } from './list-choice';
+import { createdDoneText, detectOrderIntake, isOrderDetails, mergeOrderNotes, mightBeOrderRequest, orderProposalText, orderStockText, type OrderIntake } from './order-intake';
 import { persistConversationRuntimeState } from './conversation-runtime-state';
 import type { ConversationMissionFocusV1, MissionExecutionScopeV1 } from '@parallext/shared';
 import { ProcedureEngineService } from './procedure-engine.service';
@@ -3420,6 +3422,8 @@ export class ConversationsService {
         let missionLoadedAt: string | undefined;
         // The tool of the proposal that was waiting for a yes/no BEFORE this message was arbitrated (the arbiter may drop it).
         let priorPendingTool: string | undefined;
+        // A request to BUY a product the tenant's catalogue holds, read by the server before the focus is arbitrated (order-intake.ts).
+        let orderIntake: OrderIntake | null = null;
         // The focus as it stood BEFORE this message was arbitrated: a message that only shows the pending proposal again gets it back.
         let focusBeforeArbitration: { revision: number; selectedId?: string; expectedReply: NonNullable<ConversationMissionFocusV1['expectedReply']> | null } | undefined;
         const missionMessageId = inboundMessageId || msg.id || randomUUID();
@@ -3455,7 +3459,16 @@ export class ConversationsService {
                     aliases: [...toolMissionAliases({ id: bookingState.missionId, kind: 'booking', domain: 'appointment' }),
                         ...(bookingState.serviceName ? [bookingState.serviceName] : [])], paused: !!bookingState.pausedAt, saved: true });
             }
-            missionDecision = arbitrateMissionFocus({ state: missionFocus, candidates, text: userText, messageId: missionMessageId });
+            // «Quiero pedir 1 Audífono QA Aurora»: the words alone decide whether the catalogue is even read.
+            if (!engineProducedText && !handoffReturn && !commitmentBlocked && transitionAvailable.has('place_catalog_order') && mightBeOrderRequest(userText)) {
+                try {
+                    const sellable = (await this.loadOwnCatalogForTurn(schemaName, userText)).filter(product => product.priceStatus === 'confirmed');
+                    orderIntake = detectOrderIntake(userText, sellable);
+                } catch (error: any) {
+                    this.logger.debug(`[OrderIntake] catalogue unavailable (non-fatal): ${error?.message}`);
+                }
+            }
+            missionDecision = arbitrateMissionFocus({ state: missionFocus, candidates, text: userText, messageId: missionMessageId, orderRequest: !!orderIntake });
             missionFocus = missionDecision.state;
             const bookingProposalActive = !['idle', 'booked'].includes(bookingState.step);
             if (missionDecision.pauseBooking) bookingState.pausedAt ||= new Date().toISOString();
@@ -4062,6 +4075,52 @@ export class ConversationsService {
             }
         }
 
+        // 4b3. A REQUEST TO BUY WHAT THE CATALOGUE HOLDS — the server proposes, not the model (order-intake.ts).
+        //
+        // Production 2026-10-09 (Tienda QA Electrónica): «Quiero pedir 1 Audífono QA Aurora» → the model summarised the order in
+        // prose and asked «¿Confirma que desea realizar este pedido?», every «sí» was answered with the same summary and no order
+        // was ever created. An order is placed behind a confirmation like a cancellation, and like it needs a pending ledger row
+        // before the «sí» can be executed; that row only existed when the model happened to call the writer. Here the server reads
+        // the product and the quantity from the tenant's own catalogue and calls the writer itself: the central guard answers with
+        // the challenge (the pending row, the mission and the terms), the reply states those exact terms, and the «sí» is executed
+        // by the server at 4c, the path cancellations already take. A delivery the customer gives while the proposal waits («envíelo
+        // a la Calle 5», «sin envío») is added to that order's notes and the proposal is made again.
+        if (!draftMode && !engineProducedText && conversation.contact_id && missionFocus && missionDecision
+            && missionDecision.route === 'tools' && !handoffReturn && !commitmentBlocked && transitionAvailable.has('place_catalog_order')) {
+            try {
+                const form = addressFormOf(regional?.addressForm.value);
+                const waiting = !orderIntake && priorPendingTool === 'place_catalog_order' && isOrderDetails(userText)
+                    ? await this.toolExecutionControl.findPendingConfirmation(schemaName, conversation.id, conversation.contact_id, undefined, missionScope)
+                    : null;
+                let proposalArgs: Record<string, unknown> | null = null;
+                let orderReply: string | null = null;
+                if (orderIntake) {
+                    const { product, quantity } = orderIntake;
+                    if (typeof product.stock === 'number' && product.stock < quantity) orderReply = orderStockText(product, quantity, userLanguage, form);
+                    else proposalArgs = { items: [{ productId: product.id, quantity }] };
+                } else if (waiting?.toolName === 'place_catalog_order' && Array.isArray((waiting.args as any)?.items)) {
+                    proposalArgs = { items: (waiting.args as any).items, notes: mergeOrderNotes((waiting.args as any).notes, userText) };
+                }
+                if (proposalArgs) {
+                    const proposal = await transitionIo().execute('place_catalog_order', proposalArgs);
+                    if (proposal?.error === 'confirmation_required') {
+                        orderReply = orderProposalText(proposal.catalogTerms, userLanguage, form, regional?.locale.value);
+                    } else {
+                        this.logger.warn(`[OrderIntake] no proposal was issued (${String(proposal?.error ?? 'no_error')}): the model continues`);
+                    }
+                }
+                if (orderReply) {
+                    engineProducedText = orderReply;
+                    engineTextIsReply = true;
+                    engineAwaitsConsent = !!proposalArgs;
+                    deterministicReply = orderReply;
+                    tools = [];
+                }
+            } catch (e: any) {
+                this.logger.warn(`[OrderIntake] engine error (non-fatal): ${e.message}`);
+            }
+        }
+
         // 4c. THE CUSTOMER SAID YES — the server executes, not the model.
         //
         // Every write gated by a confirmation used to depend on the model
@@ -4193,8 +4252,15 @@ export class ConversationsService {
                             tools = [];
                             // A cancellation / reschedule the backend just executed is reported by the backend: the model
                             // voicing it was free to answer «no puedo, alguien del equipo» about something already done.
+                            const todayForText = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(now);
                             deterministicReply = transitionDoneText(pending.toolName, pending.args, result, userLanguage,
-                                addressFormOf(regional?.addressForm.value), new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(now)) ?? deterministicReply;
+                                addressFormOf(regional?.addressForm.value), todayForText)
+                                // A booking / an order the backend just created is reported by the backend too, with the reference the
+                                // records hold: the model voiced «lista para reservar… ¿desea que proceda?» about an appointment that
+                                // already existed (production 2026-10-09, Ref. 17F69A1B).
+                                ?? createdDoneText(pending.toolName, pending.args, result, userLanguage,
+                                    addressFormOf(regional?.addressForm.value), todayForText, regional?.locale.value)
+                                ?? deterministicReply;
                         } else {
                             // A cancellation / reschedule that failed after the yes is reported from what the records say NOW
                             // (re-read), by the server: the model used to assume «sigue tal como está» about an appointment
@@ -4752,7 +4818,12 @@ export class ConversationsService {
             messages = [{ role: 'user', content: userText }];
             this.logger.log(`[Pipeline] New session: sending only current message (discarded ${history?.length || 0} old messages)`);
         } else {
-            messages = this.truncateHistory(history || [], userText, systemPrompt, personaMaxTokens);
+            // «El 2» after a reply that listed several times in prose is the SECOND of them, not 2:00 p.m. (list-choice.ts): the
+            // model is shown the option; the customer's message is stored as they wrote it.
+            const offered = [...(history || [])].reverse().find((row: any) => row?.direction === 'outbound')?.content_text;
+            const listChoice = resolveListChoice(userText, offered);
+            if (listChoice) turnTrace.add('decision', 'list_choice_resolved', { index: listChoice.index, time: listChoice.time });
+            messages = this.truncateHistory(history || [], listChoice ? listChoice.time : userText, systemPrompt, personaMaxTokens);
         }
 
         // Every write this turn performed, wherever it ran. Declared OUTSIDE the
@@ -5167,6 +5238,22 @@ export class ConversationsService {
                 if (failedTransition) {
                     const text = await transitionFailureText(failedTransition.name, failedTransition.args, transitionIo()).catch(() => null);
                     if (text) deterministicReply = text;
+                }
+            }
+            // The reply must match the records. A booking / an order that was created this turn (by the server's yes or by the model's
+            // own call) is told with its reference: a reply that does not carry it — «lista para reservar… ¿desea que proceda?» about
+            // an appointment that existed, production 2026-10-09 Ref. 17F69A1B — is replaced by the server's account of the record.
+            if (!deterministicReply && !draftMode && !handoffReturn && finalResponse) {
+                const created = [...executedToolsThisTurn].reverse()
+                    .find(tool => (tool.name === 'create_appointment' || tool.name === 'place_catalog_order') && toolResultSucceeded(tool.result));
+                const reference = created ? shortReference(created.result?.order?.id ?? created.result?.appointment?.id) : '';
+                if (created && reference && !finalResponse.toUpperCase().includes(reference)) {
+                    const text = createdDoneText(created.name, created.args, created.result, userLanguage, addressFormOf(regional?.addressForm.value),
+                        new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(now), regional?.locale.value);
+                    if (text) {
+                        this.recordAgentSignal(tenantId, 'created_record_reply_replaced', session);
+                        deterministicReply = text;
+                    }
                 }
             }
             // Output guardrail (#3): catch invented prices before the reply leaves.

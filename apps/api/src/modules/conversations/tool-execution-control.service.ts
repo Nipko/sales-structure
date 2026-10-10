@@ -2030,6 +2030,14 @@ export class ToolExecutionControlService {
                 // Focus changes cannot resurrect an older yes. A new challenge
                 // is issued from THIS inbound, which cannot answer itself.
                 if (!scope) return this.block('confirmation_mission_missing', 'Retoma esta gestión y revisa su propuesta antes de confirmar.');
+                // (a first challenge has no token yet and is the normal path; only a proposal that WAS issued and is now re-issued is news)
+                if (ledger.confirmation_token) {
+                    this.logger.warn(`[Confirm] ${request.toolName} (ledger ${ledger.id}): the customer's message cannot answer this proposal — `
+                        + `${!sameMission ? 'mission_or_revision_changed' : expected?.kind !== 'confirmation' ? 'focus_not_waiting_for_a_confirmation'
+                            : expected.ledgerId !== ledger.id ? 'focus_waits_on_another_proposal' : expected.missionId !== scope.missionId ? 'expected_reply_of_another_mission'
+                            : expected.sourceMessageId === latest.id ? 'the_proposal_was_issued_on_this_very_message' : 'inbound_message_not_the_latest'}`
+                        + ` — a new challenge is issued`);
+                }
                 const reissued = await this.issueConfirmationToken({ ...request, conversationId }, ledger, argsHash, latest.id);
                 return this.confirmationRequired((reissued || ledger).id);
             }
@@ -3064,15 +3072,26 @@ export class ToolExecutionControlService {
             if (!args || typeof args !== 'object' || Array.isArray(args)) return null;
             if (customerReply !== undefined) {
                 const claims = row.confirmation_token ? this.verifyConfirmationToken(row.confirmation_token) : null;
+                // Why a pending proposal was NOT executed at the customer's reply is the one thing nothing recorded: a «sí» that finds
+                // its proposal bound to another mission, revision or ledger looks exactly like a model that asked again (production
+                // 2026-10-09: ten «sí» to the same order, no trace of which binding refused them). Ids and counters only, no text.
+                const refuse = (reason: string): null => {
+                    this.logger.warn(`[Confirm] Pending ${row.tool_name} (ledger ${row.id}) not executed at the customer's reply: ${reason}`);
+                    return null;
+                };
                 if (missionScope || claims?.mission) {
-                    if (!missionScope || claims?.mission?.id !== missionScope.missionId || claims.mission.revision !== missionScope.revision
-                        || missionScope.expectedReply?.kind !== 'confirmation' || missionScope.expectedReply.ledgerId !== row.id
-                        || missionScope.expectedReply.missionId !== missionScope.missionId) return null;
+                    if (!missionScope) return refuse('no_mission_scope');
+                    if (claims?.mission?.id !== missionScope.missionId) return refuse('mission_changed');
+                    if (claims.mission.revision !== missionScope.revision) return refuse(`revision_changed_${claims.mission.revision}_to_${missionScope.revision}`);
+                    if (missionScope.expectedReply?.kind !== 'confirmation') return refuse('focus_not_waiting_for_a_confirmation');
+                    if (missionScope.expectedReply.ledgerId !== row.id) return refuse('focus_waits_on_another_proposal');
+                    if (missionScope.expectedReply.missionId !== missionScope.missionId) return refuse('expected_reply_of_another_mission');
                 }
-                if (!claims || claims.ledgerId !== row.id || claims.toolName !== row.tool_name
-                    || claims.conversationId !== conversationId || claims.contactId !== contactId
-                    || claims.argsHash !== sha256(JSON.stringify(stableValue(args)))
-                    || Date.parse(claims.expiresAt) <= Date.now()) return null;
+                if (!claims) return refuse('token_unreadable');
+                if (claims.ledgerId !== row.id || claims.toolName !== row.tool_name
+                    || claims.conversationId !== conversationId || claims.contactId !== contactId) return refuse('token_of_another_proposal');
+                if (claims.argsHash !== sha256(JSON.stringify(stableValue(args)))) return refuse('arguments_changed_since_the_proposal');
+                if (Date.parse(claims.expiresAt) <= Date.now()) return refuse('proposal_expired');
                 if (classifyExplicitToolConfirmation(customerReply, {
                     effect: confirmationEffectForPolicy(getToolPolicy(row.tool_name)),
                     country: await this.resolveOperatingCountry(claims.tenantId),

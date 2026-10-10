@@ -117,11 +117,22 @@ export interface MissionFocusDecision {
 /** Chooses ownership only. Capability/identity/terms/ledger remain authoritative. */
 export function arbitrateMissionFocus(input: {
     state: ConversationMissionFocusV1; candidates: MissionCandidate[]; text: string; messageId: string;
+    /** The server read this message as a request to BUY a product the tenant's catalogue holds (order-intake.ts). */
+    orderRequest?: boolean;
 }): MissionFocusDecision {
     const state = structuredClone(input.state);
     if (state.lastConsumed?.messageId === input.messageId) return {
         state, route: 'dialogue', action: 'replay', pauseBooking: false, pauseProcedure: false, invalidateConfirmation: false,
     };
+    // A tool task whose write was carried out, with no proposal of its own waiting for an answer, is FINISHED: it no longer owns the
+    // conversation. Left selected, it kept owning every later message — the next request («quiero corte y estilo el lunes…») was read
+    // as «still the appointment I just cancelled», the booking engine (which only runs when no task of another kind is selected)
+    // never saw it, and the model drove a booking with none of the engine's guarantees; a new order was proposed under the mission of
+    // the cancellation that had consumed it (production 2026-10-09, Salón QA Citas and Tienda QA Electrónica).
+    if (state.selected?.kind === 'tool' && state.lastConsumed?.missionId === state.selected.id && !state.expectedReply) {
+        state.pausedTools = (state.pausedTools || []).filter(item => item.ref.id !== state.selected!.id);
+        state.selected = null;
+    }
     const normalized = normalizeForIntent(input.text);
     // «sí, cancélalo» answers a pending CANCELLATION proposal; read anywhere else the cancel verb is a cancellation request.
     const pendingAction = state.expectedReply?.kind === 'confirmation' && state.selected?.kind === 'tool'
@@ -168,7 +179,11 @@ export function arbitrateMissionFocus(input: {
     const pendingDomain = pendingAction && pendingAction.object !== 'other' ? pendingAction.object : undefined;
     const otherObjects = pendingDomain ? domains.filter(domain => ['appointment', 'order'].includes(domain) && domain !== pendingDomain) : [];
     let forcedOptions: string[] | undefined;
-    if (pendingDomain && otherObjects.length && !answersPending && /\b(?:cancel\w*|anul\w*|annul\w*|mu[eé]v\w*|mover|reprogram\w*|reagend\w*)\b/.test(normalized)) {
+    if (input.orderRequest && !answersPending) {
+        // A request to buy a product of the catalogue is a task of its own: never the finished or parked one it happens to follow.
+        selected = { id: randomUUID(), kind: 'tool', domain: 'order' };
+        route = 'tools'; action = 'select'; invalidate = true;
+    } else if (pendingDomain && otherObjects.length && !answersPending && /\b(?:cancel\w*|anul\w*|annul\w*|mu[eé]v\w*|mover|reprogram\w*|reagend\w*)\b/.test(normalized)) {
         action = 'clarify'; route = 'clarify'; invalidate = true;
         forcedOptions = [pendingDomain, ...otherObjects];
     } else if (pendingAction && pendingDomain && !answersPending && domains.length === 1 && domains[0] === pendingDomain

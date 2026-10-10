@@ -462,6 +462,94 @@ describe('Shared runtime integrity', () => {
         });
     });
 
+    // Production 2026-10-10 (Tienda QA Electrónica): «quiero pedir perdón, el Audífono QA Aurora llegó roto» was transferred at once
+    // («Le estoy transfiriendo…») and the warranty was only answered ten minutes later. A report of a defective product is answered with what
+    // the business knows (warranty / returns) and a person is OFFERED; only the customer's «sí» opens the handoff (as in #80: no unrequested
+    // handoffs). What the customer asked a person for, a grievance, a safety risk and the owner's own triggers still escalate at once.
+    describe('a product complaint is answered first and a person is offered, not opened', () => {
+        const OFFER = policyPersonOfferText('es');
+        const COMPLAINT = 'quiero pedir perdón, el Audífono QA Aurora llegó roto';
+        const config: any = { behavior: { handoffTriggers: [] } };
+        const conv = { id: '33333333-3333-4333-8333-333333333333', metadata: {} };
+        const tenantId = '11111111-1111-4111-8111-111111111111';
+        const markWritten = (query: jest.Mock) => query.mock.calls.some((c: any[]) => String(c[1]).includes('{' + HUMAN_OFFER_MARK + '}'));
+        // The regular expressions decide (the classifier is down): the path that sent this message to the queue in production.
+        function withRules() {
+            const t = fixture();
+            const handoff: any = Object.create(HandoffService.prototype);
+            Object.assign(handoff, { llmRouter: { execute: jest.fn().mockRejectedValue(new Error('classifier down')) }, logger: { warn: jest.fn() },
+                executeHandoff: jest.fn(), isInHandoff: jest.fn().mockResolvedValue(false) });
+            t.service.handoffService = handoff;
+            // the agent signals (counters in Redis) are real calls here: the fixture's bare mocks return undefined
+            t.service.redis.sadd = jest.fn().mockResolvedValue(1);
+            return { ...t, handoff };
+        }
+
+        it('the top of the turn opens no handoff for it, and the reason is kept as an offer', async () => {
+            const { service } = withRules();
+            expect(await (service as any).resolveHandoffReason(COMPLAINT, conv, config, tenantId)).toBeNull();
+            expect(await (service as any).resolveComplaintOffer(COMPLAINT, conv, config, tenantId)).toBe('complaint');
+        });
+
+        it('the reply is what the business knows, then the offer of a person, remembered for the next «sí»; nobody is transferred', async () => {
+            const { service, run, llm, query } = withRules();
+            llm.mockResolvedValue({ content: 'El Audífono QA Aurora tiene garantía de 72 días calendario desde la entrega.' });
+            expect(await run('whatsapp', COMPLAINT)).toBe('El Audífono QA Aurora tiene garantía de 72 días calendario desde la entrega.\n\n' + OFFER);
+            expect(markWritten(query)).toBe(true);
+            expect(service.handoffService.executeHandoff).not.toHaveBeenCalled();
+        });
+
+        it('a model that promises the transfer on its own is rewritten into the offer: the customer did not ask for one', async () => {
+            const { service, run, llm } = withRules();
+            llm.mockResolvedValue({ content: 'Lamento lo ocurrido. Le paso con nuestro equipo para que lo revise.' });
+            const reply = await run('whatsapp', COMPLAINT);
+            expect(reply).toContain('Lamento lo ocurrido.');
+            expect(reply).toMatch(/¿Quiere que|¿Desea que|¿Le gustaría que/);
+            expect(reply).not.toMatch(/le paso con nuestro equipo para/i);
+            expect(service.handoffService.executeHandoff).not.toHaveBeenCalled();
+        });
+
+        it('a reply that already offers a person is not given a second offer', async () => {
+            const { run, llm } = withRules();
+            llm.mockResolvedValue({ content: 'La garantía es de 72 días. ¿Quiere que le pase con alguien del equipo?' });
+            expect(await run('whatsapp', COMPLAINT)).toBe('La garantía es de 72 días. ¿Quiere que le pase con alguien del equipo?');
+        });
+
+        it('nobody can be offered in a widget without handoff or in draft mode: the answer stands alone', async () => {
+            const widget = withRules();
+            widget.llm.mockResolvedValue({ content: 'La garantía es de 72 días.' });
+            expect(await widget.run('web_widget', COMPLAINT)).toBe('La garantía es de 72 días.');
+            expect(markWritten(widget.query)).toBe(false);
+        });
+
+        it.each([
+            ['quiero hablar con un asesor, el audífono llegó roto', 'human_request'],
+            ['quiero mi reembolso, el audífono llegó roto', 'complaint'],
+            ['quiero devolver el audífono, llegó roto', 'complaint'],
+            ['me estafaron: el audífono llegó roto', 'complaint'],
+            ['quiero poner una queja, el audífono llegó roto', 'complaint'],
+            ['voy a demandar, el audífono llegó roto', 'complaint'],
+            ['el cargador llegó roto y echa humo, huele a quemado', 'complaint'],
+            ['el cargador llegó roto y me dio una descarga', 'complaint'],
+        ])('«%s» still goes to a person at once (%s)', async (text, reason) => {
+            const { service } = withRules();
+            expect(await (service as any).resolveHandoffReason(text, conv, config, tenantId)).toBe(reason);
+            expect(await (service as any).resolveComplaintOffer(text, conv, config, tenantId)).toBeNull();
+        });
+
+        it('the owner\'s own triggers keep escalating', async () => {
+            const { service } = withRules();
+            const own: any = { behavior: { handoffTriggers: ['garantia'] } };
+            expect(await (service as any).resolveHandoffReason('el audífono llegó roto, quiero usar la garantía', conv, own, tenantId)).toBe('complaint');
+            expect(await (service as any).resolveComplaintOffer('el audífono llegó roto, quiero usar la garantía', conv, own, tenantId)).toBeNull();
+        });
+
+        it('a message that is not a product complaint has no offer to make', async () => {
+            const { service } = withRules();
+            expect(await (service as any).resolveComplaintOffer('hola, ¿tienen audífonos?', conv, config, tenantId)).toBeNull();
+        });
+    });
+
     // «Mañana es domingo» on a Friday: the calendar of the prompt says otherwise, so the weekday of the reply is corrected.
     describe('the weekday a reply gives for today / tomorrow follows the calendar the model was given', () => {
         afterEach(() => jest.useRealTimers());

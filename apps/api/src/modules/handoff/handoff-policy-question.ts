@@ -416,3 +416,49 @@ export function policyOverrideLabel(raw: unknown, topics: { refund: boolean; dis
         || reportedAsFact(raw, SOFT_DEFECT_RE) || reportedAsFact(raw, DISLIKE_RE)) return 'personal_case';
     return null;
 }
+
+// ---------------------------------------------------------------------------
+// A product complaint is answered, and a person is OFFERED
+//
+// Production 2026-10-10 (Tienda QA Electrónica): «quiero pedir perdón, el Audífono QA Aurora llegó roto» was transferred at once and
+// the customer got «Le estoy transfiriendo…», then silence, and the warranty was answered ten minutes later. A report of a defective
+// product is something the business can answer from its own warranty / returns policy; the customer did not ask for a person (#80: no
+// unrequested handoffs). The reply states what is known and ends by OFFERING one; only the customer's «sí» opens the handoff.
+// What stays automatic: a request for a person (its own reason), a refund / return / discount for oneself, a grievance (a scam, a
+// lawyer, a formal complaint, insults), anything that puts someone at risk, and a trigger the owner wrote that this message hits.
+// ---------------------------------------------------------------------------
+
+/** A defect, said about a product: broken, damaged, defective, «no funciona». */
+const PRODUCT_DEFECT = /\b(?:roto|rota|rotos|rotas|danad[oa]s?|defectuos[oa]s?|quebrad[oa]s?|danificad[oa]s?|defeituos[oa]s?|defectueu(?:x|se|ses)|endommage\w*|casse\w*|broken|damaged|defective|faulty|no funciona|nao funciona|ne fonctionne pas|dejo de funcionar|se (?:me )?(?:rompio|dano|descompuso)|stopped working|does not work|doesn[' ]?t work)\b/;
+
+/** Anger, a scam, a legal threat or a formal complaint: a person hears it at once. «no funciona» is a defect, not one of these. */
+const STRONG_GRIEVANCE = /\b(?:estafa\w*|fraude|engano|enganaram|golpe|inaceptable|inacceptable|pesimo|pessimo|horrible|terrible|furios[oa]|molest[oa]|queja\w*|reclamo|reclamacao|plainte|demanda\w*|abogado|advogado|avocat|scam|fraud|unacceptable|awful|lawyer|arnaque|indignad[oa]|vergonza|verguenza|robo|robaron)\b/;
+
+/** Something that can hurt someone: smoke, fire, a shock, a burn, an injury, poison, an emergency. */
+const SAFETY_RISK = /\b(?:incendio|humo|quemo|quemado|quemadura\w*|quema|chispa\w*|explot\w*|explosion|descarga\w*|electrocut\w*|corto ?circuito|lesion\w*|herid\w*|sangr\w*|intoxic\w*|veneno\w*|peligro\w*|peligros\w*|emergencia|ambulancia|alergi\w*|fire|smoke|burn\w*|spark\w*|explod\w*|shock|electric shock|injur\w*|hurt|poison\w*|danger\w*|emergency|incendie|fumee|brul\w*|blesse\w*|queimou|fuma\w*|ferid\w*|perigo\w*)\b/;
+
+/** Refund, return, exchange or discount words: what the customer wants done about it is a person's to handle. */
+const MONEY_BACK = /\b(?:reembols\w*|devol\w*|refund\w*|return\w*|remboursement\w*|rembours\w*|descuent\w*|rebaj\w*|desconto\w*|compens\w*|indemniz\w*|cambio|cambiar|cambiarlo|exchange|troca\w*|echange\w*)\b/;
+
+/** «llegó roto», «no funciona», «dañado»: the customer reports a product defect, and nothing in the message asks for more than an answer. */
+export function isProductDefectReport(raw: unknown): boolean {
+    const text = normalizeForIntent(raw);
+    if (!text || !PRODUCT_DEFECT.test(text)) return false;
+    if (isHypotheticalDefectQuestion(raw)) return false;
+    if (STRONG_GRIEVANCE.test(text) || SAFETY_RISK.test(text) || MONEY_BACK.test(text)) return false;
+    return !PERSONAL_REQUEST.test(text) && !PERSONAL_REQUEST_HIGH.test(text);
+}
+
+/**
+ * Whether the reason a turn would escalate for («complaint») is only a product defect report that the agent answers, offering a person
+ * instead of opening the handoff. `triggers` are the owner's own handoff triggers: one that this message hits is the owner's rule and
+ * escalates as always.
+ */
+export function complaintIsOfferOnly(reason: string | null | undefined, raw: unknown, triggers: readonly string[] = []): boolean {
+    if (reason !== 'complaint' || !isProductDefectReport(raw)) return false;
+    const text = normalizeForIntent(raw);
+    return !triggers.some(trigger => {
+        const needle = normalizeForIntent(trigger);
+        return !!needle && !POLICY_TOPIC_KEYWORDS.has(needle) && text.includes(needle);
+    });
+}

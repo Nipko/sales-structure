@@ -120,9 +120,14 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             expect(result.id).toBeUndefined();
         });
 
-        it('treats LIKE wildcards in the customer text literally', async () => {
+        // Since #85 the lookup splits the text into words (product-search-terms):
+        // '%' and '_' are separators, never LIKE wildcards. A lone wildcard finds
+        // nothing, and 'audifono_bluetooth' reads as the two words it contains.
+        it('never treats LIKE wildcards in the customer text as wildcards', async () => {
             expect((await executor[method](schema, '%')).id).toBeUndefined();
-            expect((await executor[method](schema, 'audifono_bluetooth')).id).toBeUndefined();
+            expect((await executor[method](schema, '_')).id).toBeUndefined();
+            expect((await executor[method](schema, '%%__')).id).toBeUndefined();
+            expect((await executor[method](schema, 'audifono_bluetooth')).id).toBe(ids.audifono);
         });
     });
 
@@ -140,9 +145,13 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         });
     });
 
-    it('search_products treats % and _ as text and folds the category filter', async () => {
+    it('search_products never treats % and _ as wildcards and folds the category filter', async () => {
         expect((await executor.searchProducts(schema, '%', 5)).products).toHaveLength(0);
-        expect((await executor.searchProducts(schema, 'audifono_pro', 5)).products).toHaveLength(0);
+        expect((await executor.searchProducts(schema, '_', 5)).products).toHaveLength(0);
+        expect((await executor.searchProducts(schema, '%%__', 5)).products).toHaveLength(0);
+        // '_' separates words: both «Audifono Pro» spellings, nothing else.
+        const pro = (await executor.searchProducts(schema, 'audifono_pro', 5)).products.map((p: any) => p.id).sort();
+        expect(pro).toEqual([ids.proPlain, ids.proAccent].sort());
         const byCategory = await executor.searchProducts(schema, 'cable', 5, 'catalogo');
         expect(byCategory.products.map((p: any) => p.id)).toContain(ids.plain);
     });

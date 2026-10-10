@@ -395,7 +395,7 @@ describe('over the monthly LLM budget, a turn with a write in play keeps the too
         return h;
     };
 
-    it.each(['hola, buenas tardes', 'apartamento en Usaquén', 'qué marca tienen', 'ok gracias', 'sí', 'confirmo que llegué'])(
+    it.each(['hola, buenas tardes', 'apartamento en Usaquén', 'qué marca tienen', 'ok gracias', 'sí', 'confirmo que llegué', 'quiero cambiar de tema'])(
         '«%s» with nothing waiting stays clamped to the cheap tiers, the floor stays down', async text => {
             const h = store({ overBudget: true });
             await h.turn(text);

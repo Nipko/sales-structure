@@ -217,9 +217,12 @@ export function arbitrateMissionFocus(input: {
             route = 'tools'; action = 'cancel';
         }
         invalidate = true;
-    } else if (isDirectedCorrection(input.text)) {
+    } else if (current && isDirectedCorrection(input.text)) {
+        // A correction needs something to correct. With no task in progress «quiero cambiar de tema», «cambiar el método de pago»,
+        // «cambié de opinión» or «quiero cambiar mi pedido de color» are not corrections of anything: they were answered «hay más de una
+        // gestión posible…» with the tools withdrawn. They go on to the model (or to the next rule) like any other message.
         action = 'correct'; invalidate = true;
-        if (!current || current.paused || (domains.length && current.ref.domain && !domains.includes(current.ref.domain))) route = 'clarify';
+        if (current.paused || (domains.length && current.ref.domain && !domains.includes(current.ref.domain))) route = 'clarify';
     } else if ((taskDirective || !current && !isInformationSeekingMessage(input.text)) && unique.length === 1) {
         choose(unique[0]);
     } else if (taskDirective && domains.length === 1) {

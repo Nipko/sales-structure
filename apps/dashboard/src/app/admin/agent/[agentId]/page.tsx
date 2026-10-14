@@ -1,5 +1,7 @@
 "use client";
 
+import { editorConfigForSave } from "./agent-editor-save-config";
+
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslations } from "next-intl";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
@@ -769,9 +771,7 @@ export default function AgentEditorPage() {
         ...foldedTypes,
       ]));
       const base = { ...form.config };
-      const configJson = form.mode === "prompt"
-        ? { ...base, customPrompt: form.customPrompt, editorMode: 'prompt', _customPrompt: form.customPrompt, _mode: "prompt" }
-        : { ...base, customPrompt: undefined, editorMode: 'guided', _customPrompt: undefined, _mode: "wizard" };
+      const configJson = editorConfigForSave(base, form.mode, form.customPrompt);
       saveAttempt.current = prepareDraftSave(workspace, {
         ...formBodyFor(workspace, view), name: configJson.persona.name,
         configJson, channels: channelsToSave, channelBindings: bindingsToSave, isDefault: form.isDefault,

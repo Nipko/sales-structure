@@ -265,6 +265,7 @@ jobs:
           apps/api/src/modules/conversations/agent-test-request.spec.ts
           apps/api/src/modules/conversations/agent-test.service.spec.ts
           apps/api/src/modules/conversations/agent-turn-trace.spec.ts
+          apps/api/src/modules/conversations/trusted-price-context.spec.ts
           apps/api/src/modules/conversations/ai-tool-executor.vertical-safety.spec.ts
           apps/api/src/modules/conversations/capability-exclusion-localization.spec.ts
           apps/api/src/modules/conversations/capability-stop-profiles.spec.ts

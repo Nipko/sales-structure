@@ -86,7 +86,7 @@ import { AGENT_TEST_EXECUTION_CONTEXT, DRAFT_EXECUTION_CONTEXT, type ServiceExec
 import { EVALUATION_CONTEXT_LANGUAGES, evaluationContextLanguage, projectBusinessTurnContext,
     resolveEvaluationTurnContext, type EvaluationTurnContextInputs } from './evaluation-turn-context';
 import { isAgentTestSafeToolName } from './agent-test-tool-policy';
-import { buildTrustedPriceCorpus } from './trusted-price-context';
+import { buildTrustedPriceCorpus, requiresCanonicalPackagePrice } from './trusted-price-context';
 import {
     auditTurnClaim,
     claimsCompletedAction,
@@ -6417,7 +6417,9 @@ export class ConversationsService {
         // El resultado de la tool es la fuente de verdad del importe, asi que va
         // serializado: no depende del formato del directivo ni de que alguien
         // recuerde mantener los dos alineados.
-        const corpus = buildTrustedPriceCorpus(trustedContext, executedTools);
+        const corpus = buildTrustedPriceCorpus(trustedContext, executedTools, {
+            canonicalPackagePrice: requiresCanonicalPackagePrice(customerText),
+        });
 
         const check = this.responseValidator.validatePrices(response, corpus);
         if (check.ok) return response;

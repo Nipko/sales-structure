@@ -1,9 +1,44 @@
-import { buildTrustedPriceCorpus } from './trusted-price-context';
+import { buildTrustedPriceCorpus, requiresCanonicalPackagePrice } from './trusted-price-context';
 import { ResponseValidatorService } from './response-validator.service';
 import { ConversationsService } from './conversations.service';
 
 describe('Trusted price evidence', () => {
     const validator = new ResponseValidatorService();
+    it('does not validate a retrieved FAQ amount as the current package price', () => {
+        const corpus = buildTrustedPriceCorpus({ retrievedKnowledge: [{ source: 'faq', id: 'qa',
+            title: 'Cuánto cuesta Tour QA Aurora', content: 'El Tour QA Aurora cuesta COP 500.' }] }, [],
+            { canonicalPackagePrice: true });
+        expect(validator.validatePrices('El tour cuesta COP 500.', corpus).ok).toBe(false);
+    });
+
+    it('keeps the canonical package result while rejecting a conflicting FAQ tool amount', () => {
+        const corpus = buildTrustedPriceCorpus({}, [
+            { name: 'search_faqs', result: { faqs: [{ answer: 'El tour cuesta COP 500.' }] } },
+            { name: 'get_package_details', result: { id: 'package', price: 129000, currency: 'COP' } },
+        ], { canonicalPackagePrice: true });
+        expect(validator.validatePrices('El tour cuesta COP 129000.', corpus).ok).toBe(true);
+        expect(validator.validatePrices('El tour cuesta COP 500.', corpus).ok).toBe(false);
+    });
+
+    it('the actual reply boundary blocks FAQ-only package prices even if the corrective model repeats them', async () => {
+        const service: any = Object.create(ConversationsService.prototype);
+        Object.assign(service, { responseValidator: validator, logger: { warn: jest.fn() },
+            eventEmitter: { emit: jest.fn() }, llmRouter: { execute: jest.fn().mockResolvedValue({ content: 'El tour cuesta COP 500.' }) } });
+        const reply = await service.applyOutputGuardrails('El tour cuesta COP 500.', '<language>es</language>',
+            [{ role: 'user', content: '¿Cuánto cuesta Tour QA Aurora?' }], [], 'tenant', 'conversation',
+            [{ name: 'search_faqs', result: { faqs: [{ answer: 'El tour cuesta COP 500.' }] } }], 'es', [],
+            { retrievedKnowledge: [{ source: 'faq', id: 'qa', content: 'El tour cuesta COP 500.' }] },
+            undefined, undefined, true);
+        expect(reply).not.toContain('500');
+        expect(reply).toContain('No tengo un precio verificado');
+    });
+    it.each(['¿Cuánto cuesta Tour QA Aurora?', 'What is the price of the Aurora tour?',
+        'Qual é o preço do pacote Aurora?', 'Quel est le prix du forfait Aurora?',
+        '¿Cuánto cuesta el tour Aurora? No quiero cancelar ni reservar.'])(
+        'requires canonical package price for %s', query => expect(requiresCanonicalPackagePrice(query)).toBe(true));
+    it.each(['¿Cuánto cuesta cancelar el tour?', 'What is the tour refund fee?',
+        'La entrega cuesta COP 5000.', '¿Cuánto dura el tour?'])(
+        'keeps policy, unrelated fees and duration separate: %s', query => expect(requiresCanonicalPackagePrice(query)).toBe(false));
     it('does not use customer memory, directives or possible knowledge as monetary authority', () => {
         const corpus = buildTrustedPriceCorpus({
             customerMemory: { facts: ['Customer requested COP 1000'] },

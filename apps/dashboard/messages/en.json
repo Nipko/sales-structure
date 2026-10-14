@@ -5357,7 +5357,9 @@
       "title": "Article suggestions (AI)",
       "generate": "Generate suggestions",
       "generating": "Analyzing...",
-      "hint": "Click Generate to have AI analyze unanswered queries and suggest new articles."
+      "hint": "Click Generate to have AI analyze unanswered queries and suggest new articles.",
+      "empty": "There are no new suggestions to show.",
+      "unavailable": "Suggestions could not be generated. Please try again later."
     },
     "versions": {
       "title": "Version history",

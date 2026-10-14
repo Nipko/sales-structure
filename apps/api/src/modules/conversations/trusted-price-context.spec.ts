@@ -10,8 +10,10 @@ describe('canonical package projection', () => {
     });
     it('rejects failed and malformed results rather than turning missing prices into zero', () => {
         expect(canonicalPackageCatalogue({ error: 'denied', packages: [{ id: 'one', name: 'Tour', price: 500 }] })).toEqual([]);
+        expect(canonicalPackageCatalogue({ status: 'failed', packages: [{ id: 'one', name: 'Tour', price: 500 }] })).toEqual([]);
         expect(canonicalPackageCatalogue({ packages: [{ id: 'one', name: 'Tour', price: null },
-            { id: 'two', name: 'Tour', price: 'NaN' }, { id: 'three', name: 'Tour', price: -1 }] })).toEqual([]);
+            { id: 'two', name: 'Tour', price: 'NaN' }, { id: 'three', name: 'Tour', price: -1 },
+            { id: 'four', name: 'Tour', price: true }, { id: 'five', name: 'Tour', price: ' ' }] })).toEqual([]);
     });
 });
 import { ResponseValidatorService } from './response-validator.service';

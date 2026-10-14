@@ -8,6 +8,18 @@ const MONEY_FIELDS = new Set([
 ]);
 const KNOWLEDGE_READERS = new Set(['search_faqs', 'get_policy', 'search_knowledge_base']);
 
+/** Current package prices belong to catalogue readers. Policy fees are a
+ * separate question and keep their published-policy/FAQ authority. */
+export function requiresCanonicalPackagePrice(query: string): boolean {
+    const text = query.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    // A separate cancellation clause must not downgrade an explicit catalogue
+    // price request, e.g. "cuesta el tour; no quiero cancelar".
+    if (/\b(?:precio|price|preco|prix|valor|tarifa|cuesta|costs?|custa|coute)\s+(?:(?:el|la|del|de|do|da|of|the|du|des|un|une|por|persona|per|person)\s+)*(?:tour\w*|paquet\w*|package\w*|pacot\w*|excurs\w*|forfait\w*)\b/.test(text)) return true;
+    if (/\b(?:cancel\w*|reembolso\w*|refund\w*|penal\w*|annul\w*|rembours\w*)\b/.test(text)) return false;
+    return /\b(?:tour\w*|paquet\w*|package\w*|pacot\w*|excurs\w*|forfait\w*)\b/.test(text)
+        && /\b(?:precio\w*|cuesta\w*|cost\w*|price\w*|preco\w*|custa\w*|prix|cout\w*|tarif\w*|valor\w*)\b/.test(text);
+}
+
 /**
  * Build price evidence from domain fields and retrieved business sources.
  * Customer messages, model history, memory, prompts, arguments and arbitrary
@@ -16,6 +28,7 @@ const KNOWLEDGE_READERS = new Set(['search_faqs', 'get_policy', 'search_knowledg
 export function buildTrustedPriceCorpus(
     context: Partial<TurnContext> = {},
     executed: Array<{ name: string; result: any }> = [],
+    options: { canonicalPackagePrice?: boolean } = {},
 ): string {
     const facts: Array<{ amount: number; currency?: string }> = [];
     const sourceText: string[] = [];
@@ -52,11 +65,12 @@ export function buildTrustedPriceCorpus(
     visit(context.activeObjects);
     visit(context.recentOrders);
     for (const hit of context.retrievedKnowledge || []) {
-        if (hit.content) sourceText.push(hit.content);
+        if (hit.content && !options.canonicalPackagePrice) sourceText.push(hit.content);
     }
     for (const { name, result } of executed) {
         if (!result || result.error || result.success === false
             || ['failed', 'error', 'unauthorized', 'provider_down', 'not_configured'].includes(result.status)) continue;
+        if (options.canonicalPackagePrice && KNOWLEDGE_READERS.has(name)) continue;
         visit(result);
         if (KNOWLEDGE_READERS.has(name)) addKnowledgeText(result);
     }

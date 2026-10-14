@@ -591,7 +591,7 @@ cd apps/api && npm run test:bootstrap  # NestJS DI errors (CRITICAL — tsc does
 cd apps/dashboard && npx tsc --noEmit  # Dashboard type errors
 cd apps/landing && npx tsc --noEmit    # Landing type errors
 # Check PgBouncer health
-docker exec parallext-pgbouncer pg_isready -h localhost -p 6432
+docker exec parallext-pgbouncer pg_isready -h localhost -p 5432  # production compose listen port
 ```
 
 ## Build & run

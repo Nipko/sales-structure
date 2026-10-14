@@ -8,11 +8,12 @@ import { guidedTourAnchorId } from "@/lib/guided-tours";
 import { UpgradeBanner, UpgradeModal } from "@/components/ui/upgrade-banner";
 import { usePlanLimits } from "@/hooks/usePlanLimits";
 import { useState, useEffect, useCallback } from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useRole } from "@/hooks/useRole";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { formatDateOnly } from "@/lib/local-timestamp";
 import Link from "next/link";
 import type { KnowledgeGapReport } from "@parallext/shared";
 import {
@@ -76,6 +77,7 @@ const statusColors: Record<string, string> = { draft: "#f39c12", approved: "#2ec
 
 export default function KnowledgePage() {
     const t = useTranslations("knowledge");
+    const locale = useLocale();
     const tc = useTranslations("common");
     const tHelp = useTranslations("help");
     // La KB la LEEN los tres roles (canViewKnowledge) — el agente la consulta
@@ -1002,9 +1004,9 @@ export default function KnowledgePage() {
                                         <ResponsiveContainer width="100%" height="100%">
                                             <BarChart data={analytics.dailyVolume}>
                                                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                                                <XAxis dataKey="date" tick={{ fontSize: 11, fill: "var(--text-secondary)" }} tickFormatter={d => new Date(d).toLocaleDateString(undefined, { month: "short", day: "numeric" })} />
+                                                <XAxis dataKey="date" tick={{ fontSize: 11, fill: "var(--text-secondary)" }} tickFormatter={d => formatDateOnly(d, locale)} />
                                                 <YAxis tick={{ fontSize: 11, fill: "var(--text-secondary)" }} />
-                                                <Tooltip contentStyle={{ background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }} />
+                                                <Tooltip labelFormatter={d => `${t("analytics.queryDate")}: ${formatDateOnly(d, locale)}`} contentStyle={{ background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }} />
                                                 <Legend />
                                                 <Bar dataKey="queries" name={t("analytics.queries")} fill="var(--accent)" radius={[4, 4, 0, 0]} />
                                                 <Bar dataKey="hits" name={t("analytics.hits")} fill="var(--success)" radius={[4, 4, 0, 0]} />

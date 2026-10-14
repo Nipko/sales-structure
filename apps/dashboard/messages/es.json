@@ -5307,7 +5307,8 @@
       "loadError": "Error al cargar analytics",
       "attributionExplanation": "Encontrar un documento no demuestra que la respuesta lo use. Una cita o una frase coincidente es una señal observable; no verifica que la afirmación sea correcta ni esté respaldada. Sin señal tampoco se puede concluir que no se usó.",
       "attributionDenominator": "{observed} búsquedas con señal en la respuesta final de {assessed} evaluadas. Se observaron respuestas para {assessed} de {candidates} búsquedas que devolvieron documentos. Se mide el texto generado, no su entrega.",
-      "legacyExcluded": "{count} registros históricos usaban relevancia como «uso». Se excluyen de estas tasas y conteos por búsqueda."
+      "legacyExcluded": "{count} registros históricos usaban relevancia como «uso». Se excluyen de estas tasas y conteos por búsqueda.",
+      "queryDate": "Fecha de consulta"
     },
     "bulk": {
       "button": "Importación masiva",

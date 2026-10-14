@@ -5307,7 +5307,8 @@
       "loadError": "Erreur lors du chargement des analyses",
       "attributionExplanation": "Trouver un document ne prouve pas que la réponse en fait usage. Une citation ou une phrase identique est un signal observable ; elle ne vérifie ni l’exactitude ni le fondement de l’affirmation. L’absence de signal ne prouve pas non plus une absence d’usage.",
       "attributionDenominator": "{observed} recherches avec un signal dans la réponse finale sur {assessed} évaluées. Des réponses ont été observées pour {assessed} des {candidates} recherches ayant renvoyé des documents. Le texte généré est mesuré, pas sa livraison.",
-      "legacyExcluded": "{count} enregistrements historiques assimilaient pertinence et usage. Ils sont exclus de ces taux et décomptes par recherche."
+      "legacyExcluded": "{count} enregistrements historiques assimilaient pertinence et usage. Ils sont exclus de ces taux et décomptes par recherche.",
+      "queryDate": "Date de la consultation"
     },
     "bulk": {
       "button": "Import en masse",

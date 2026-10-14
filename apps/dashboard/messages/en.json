@@ -5307,7 +5307,8 @@
       "loadError": "Error loading analytics",
       "attributionExplanation": "Finding a document does not prove a reply uses it. A citation or matching phrase is an observable signal; it does not verify that a claim is correct or supported. No signal does not prove non-use either.",
       "attributionDenominator": "{observed} searches with a signal in the final reply out of {assessed} assessed. Replies were observed for {assessed} of {candidates} searches returning documents. This measures generated text, not delivery.",
-      "legacyExcluded": "{count} historical records treated relevance as usage. They are excluded from these rates and per-search counts."
+      "legacyExcluded": "{count} historical records treated relevance as usage. They are excluded from these rates and per-search counts.",
+      "queryDate": "Query date"
     },
     "bulk": {
       "button": "Bulk import",

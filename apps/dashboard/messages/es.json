@@ -5009,6 +5009,9 @@
       "inputPlaceholder": "Escribe como si fueras un cliente...",
       "send": "Enviar",
       "toolsUsed": "tools",
+      "conversationSection": "Conversación de prueba",
+      "traceSection": "Detalles de la prueba",
+      "modelNotReported": "Modelo no informado",
       "selectHint": "Selecciona una respuesta para ver sus detalles",
       "noTools": "No se llamaron tools",
       "noRag": "Sin resultados de RAG",
@@ -5088,7 +5091,7 @@
       "fallbackRequired": "Escribe qué debe decir cuando no sabe la respuesta. Sin esto, el agente puede inventar.",
       "rulesRequired": "Agrega al menos una regla. Ejemplo: \"siempre confirmar disponibilidad antes de dar un precio\".",
       "handoffRequired": "Agrega al menos un motivo para pasar a una persona. Ejemplo: \"el cliente pide hablar con alguien\".",
-      "fallbackHelp": "Obligatorio. Promete que una persona va a responder, en vez de dejar al agente improvisando."
+      "fallbackHelp": "Obligatorio. Indica que no tienes información confirmada y ofrece ayuda del equipo sin prometer una respuesta ni afirmar que ya se hizo un traspaso."
     },
     "activation": {
       "label": "Estado",

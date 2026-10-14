@@ -156,13 +156,13 @@ export default function TestAgentPage() {
     };
 
     return (
-        <div className="h-[calc(100vh-64px)] flex flex-col">
-            <div className="border-b border-neutral-200 dark:border-neutral-800 px-6 py-3 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                    <Link href={`/admin/agent/${agentId}`} className="p-1.5 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800">
+        <div className="flex min-w-0 flex-col lg:h-[calc(100dvh-64px)]">
+            <div className="flex min-w-0 flex-col gap-3 border-b border-neutral-200 px-4 py-3 dark:border-neutral-800 sm:px-6">
+                <div className="flex min-w-0 items-start gap-3">
+                    <Link href={`/admin/agent/${agentId}`} className="shrink-0 p-1.5 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800">
                         <ArrowLeft size={18} />
                     </Link>
-                    <div>
+                    <div className="min-w-0 flex-1">
                         <h1 className="text-base font-semibold text-neutral-900 dark:text-neutral-100 flex items-center gap-2">
                             <Bot size={16} className="text-indigo-600" />
                             {t("title")}
@@ -173,17 +173,17 @@ export default function TestAgentPage() {
                         </p>
                     </div>
                 </div>
-                <div className="flex items-center gap-2">
-                    <label id={guidedTourAnchorId("agent-test-configuration")} className="flex items-center gap-2 text-xs">
+                <div className="flex min-w-0 flex-wrap items-end gap-3">
+                    <label id={guidedTourAnchorId("agent-test-configuration")} className="flex min-w-0 max-w-full flex-col gap-1 text-xs">
                         <span>{tDraft('testSelection')}</span>
                         <select aria-label={tDraft('testSelection')} disabled={sending || !workspace} value={configurationRevisionId ?? 'operational'}
                             onChange={event => { setConfigurationRevisionId(event.target.value === 'operational' ? undefined : event.target.value); setSelectionError(false); reset(); }}
-                            className="h-8 rounded-lg border border-neutral-300 bg-white px-2 dark:border-neutral-700 dark:bg-neutral-900">
+                            className="h-8 min-w-0 max-w-full rounded-lg border border-neutral-300 bg-white px-2 dark:border-neutral-700 dark:bg-neutral-900">
                             <option value="operational">{tDraft('operationalVersion', { version: workspace?.operational.version ?? '—' })}</option>
                             {workspace?.draft && <option value={workspace.draft.id} disabled={!workspace.draft.currentBase}>{tDraft('draftPrepared')}</option>}
                         </select>
                     </label>
-                    <label className="flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-300">
+                    <label className="flex min-w-0 flex-col gap-1 text-xs text-neutral-600 dark:text-neutral-300">
                         <span>{t("channelLabel")}</span>
                         <select
                             value={channelType}
@@ -217,10 +217,10 @@ export default function TestAgentPage() {
                 {tDraft(configurationLoading ? 'loading' : selectionError ? 'testSelectionChanged' : !workspace ? 'loadUnavailable' : configurationRevisionId ? 'testingDraft' : 'testingOperational')}
             </p>
 
-            <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_420px] overflow-hidden">
+            <div className="grid min-w-0 grid-cols-1 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_420px]">
                 {/* Chat */}
-                <div className="flex flex-col border-r border-neutral-200 dark:border-neutral-800">
-                    <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 space-y-4">
+                <div role="region" aria-label={t("conversationSection")} className="flex h-[60dvh] min-h-[360px] min-w-0 flex-col border-r border-neutral-200 dark:border-neutral-800 lg:h-auto lg:min-h-0">
+                    <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto p-4 space-y-4 sm:p-6">
                         {turns.length === 0 && (
                             <div className="h-full flex items-center justify-center text-sm text-neutral-500">
                                 {t("startHint")}
@@ -241,10 +241,10 @@ export default function TestAgentPage() {
                                     }`}
                                     onClick={() => turn.debug && setSelectedDebug(turn.debug)}
                                 >
-                                    <p className="whitespace-pre-wrap">{turn.content}</p>
+                                    <p className="whitespace-pre-wrap break-words">{turn.content}</p>
                                     {turn.debug && (
                                         <div className="mt-1 text-[10px] text-neutral-500 dark:text-neutral-400 flex items-center gap-2">
-                                            <span>{turn.debug.model}</span>
+                                            <span>{turn.debug.model || t("modelNotReported")}</span>
                                             <span>·</span>
                                             <span>{turn.debug.latencyMs}ms</span>
                                             {turn.debug.toolCalls.length > 0 && (
@@ -290,7 +290,7 @@ export default function TestAgentPage() {
                                 onKeyDown={e => e.key === "Enter" && !e.shiftKey && send()}
                                 disabled={sending || !workspace || selectionError}
                                 placeholder={t("inputPlaceholder")}
-                                className="flex-1 h-10 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 text-sm text-neutral-900 dark:text-neutral-100 outline-none focus:border-indigo-500"
+                                className="min-w-0 flex-1 h-10 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 text-sm text-neutral-900 dark:text-neutral-100 outline-none focus:border-indigo-500"
                             />
                             <button
                                 onClick={send}
@@ -305,9 +305,9 @@ export default function TestAgentPage() {
                 </div>
 
                 {/* Debug panel */}
-                <div className="flex flex-col bg-neutral-50 dark:bg-neutral-950 overflow-hidden">
-                    <div className="border-b border-neutral-200 dark:border-neutral-800 px-4">
-                        <div className="flex gap-1 -mb-px">
+                <div role="region" aria-label={t("traceSection")} className="flex h-[60dvh] min-h-[320px] min-w-0 flex-col bg-neutral-50 dark:bg-neutral-950 overflow-hidden lg:h-auto lg:min-h-0">
+                    <div className="shrink-0 overflow-x-auto border-b border-neutral-200 dark:border-neutral-800 px-4">
+                        <div className="flex w-max gap-1 -mb-px">
                             {([
                                 { key: "prompt", label: t("tabs.prompt"), icon: FileCode },
                                 { key: "tools", label: t("tabs.tools"), icon: Wrench },
@@ -336,7 +336,7 @@ export default function TestAgentPage() {
                         </div>
                     </div>
 
-                    <div className="flex-1 overflow-y-auto p-4">
+                    <div className="min-h-0 flex-1 overflow-y-auto p-4">
                         {!selectedDebug ? (
                             <div className="h-full flex items-center justify-center text-xs text-neutral-500">
                                 {t("selectHint")}
@@ -510,7 +510,7 @@ export default function TestAgentPage() {
                         ) : debugTab === "metrics" ? (
                             <div className="space-y-3">
                                 <div className="grid grid-cols-2 gap-3">
-                                    <MetricCard label={t("metric.model")} value={selectedDebug.model} />
+                                    <MetricCard label={t("metric.model")} value={selectedDebug.model || t("modelNotReported")} />
                                     <MetricCard label={t("metric.latency")} value={`${selectedDebug.latencyMs}ms`} />
                                     <MetricCard label={t("metric.inputTokens")} value={selectedDebug.tokens.input} />
                                     <MetricCard label={t("metric.outputTokens")} value={selectedDebug.tokens.output} />

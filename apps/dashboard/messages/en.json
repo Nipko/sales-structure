@@ -5009,6 +5009,9 @@
       "inputPlaceholder": "Type as if you were a customer...",
       "send": "Send",
       "toolsUsed": "tools",
+      "conversationSection": "Test conversation",
+      "traceSection": "Test details",
+      "modelNotReported": "Model not reported",
       "selectHint": "Select a reply to see its details",
       "noTools": "No tools were called",
       "noRag": "No RAG results",
@@ -5088,7 +5091,7 @@
       "fallbackRequired": "Write what it should say when it does not know the answer. Without this the agent may make things up.",
       "rulesRequired": "Add at least one rule. Example: \"always confirm availability before quoting a price\".",
       "handoffRequired": "Add at least one reason to pass the chat to a person. Example: \"the customer asks to talk to someone\".",
-      "fallbackHelp": "Required. Promise that a person will follow up instead of letting the agent improvise."
+      "fallbackHelp": "Required. Explain that the information is not confirmed and offer help from the team without promising a reply or claiming that a transfer has already happened."
     },
     "activation": {
       "label": "Status",

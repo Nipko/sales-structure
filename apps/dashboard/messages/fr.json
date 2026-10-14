@@ -5009,6 +5009,9 @@
       "inputPlaceholder": "Saisissez comme si vous étiez un client...",
       "send": "Envoyer",
       "toolsUsed": "outils",
+      "conversationSection": "Conversation de test",
+      "traceSection": "Détails du test",
+      "modelNotReported": "Modèle non renseigné",
       "selectHint": "Sélectionnez une réponse pour voir les détails",
       "noTools": "Aucun outil appelé",
       "noRag": "Aucun résultat RAG",
@@ -5088,7 +5091,7 @@
       "fallbackRequired": "Indiquez ce qu'il doit dire quand il ne connaît pas la réponse. Sans cela, l'agent risque d'inventer.",
       "rulesRequired": "Ajoutez au moins une règle. Exemple : « toujours confirmer la disponibilité avant d'annoncer un prix ».",
       "handoffRequired": "Ajoutez au moins un motif de transfert à une personne. Exemple : « le client demande à parler à quelqu'un ».",
-      "fallbackHelp": "Obligatoire. Promettez qu'une personne prendra le relais plutôt que de laisser l'agent improviser."
+      "fallbackHelp": "Obligatoire. Indiquez que l’information n’est pas confirmée et proposez l’aide de l’équipe sans promettre de réponse ni affirmer qu’un transfert a déjà eu lieu."
     },
     "activation": {
       "label": "Statut",

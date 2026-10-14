@@ -5361,6 +5361,11 @@
       "empty": "Não há novas sugestões para mostrar.",
       "unavailable": "Não foi possível gerar sugestões. Tente novamente mais tarde."
     },
+    "libraryActions": {
+      "editDocument": "Editar documento",
+      "deleteDocument": "Excluir documento",
+      "deleteResource": "Excluir recurso"
+    },
     "versions": {
       "title": "Histórico de versões",
       "current": "Versão atual",

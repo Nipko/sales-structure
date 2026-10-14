@@ -5361,6 +5361,11 @@
       "empty": "No hay sugerencias nuevas para mostrar.",
       "unavailable": "No se pudieron generar sugerencias. Inténtalo de nuevo más tarde."
     },
+    "libraryActions": {
+      "editDocument": "Editar documento",
+      "deleteDocument": "Eliminar documento",
+      "deleteResource": "Eliminar recurso"
+    },
     "versions": {
       "title": "Historial de versiones",
       "current": "Versión actual",

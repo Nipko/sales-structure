@@ -716,14 +716,14 @@ export default function KnowledgePage() {
 
                     {/* RAG Documents (new system) */}
                     {documents.filter(d => (!activeCategory || d.category === activeCategory) && (!activeLanguage || d.language === activeLanguage)).map(doc => (
-                        <div key={doc.id} className="flex items-center justify-between px-5 py-4 rounded-[14px] border border-border bg-card">
-                            <div className="flex items-center gap-3.5">
-                                <div className="w-11 h-11 rounded-xl flex items-center justify-center bg-background">
+                        <div key={doc.id} className="flex flex-col sm:flex-row items-start sm:items-center gap-4 px-5 py-4 rounded-[14px] border border-border bg-card">
+                            <div className="w-full min-w-0 flex-1 flex items-center gap-3.5">
+                                <div className="shrink-0 w-11 h-11 rounded-xl flex items-center justify-center bg-background">
                                     {doc.source_type === "url" ? <Globe size={20} className="text-blue-400" /> : <FileText size={20} className="text-primary" />}
                                 </div>
-                                <div>
-                                    <div className="font-semibold text-[15px] flex items-center gap-2 flex-wrap">
-                                        {doc.name || doc.title}
+                                <div className="min-w-0 flex-1">
+                                    <div className="min-w-0 font-semibold text-[15px] flex items-center gap-2 flex-wrap">
+                                        <span className="min-w-0 [overflow-wrap:anywhere]">{doc.name || doc.title}</span>
                                         <span className={cn("text-[10px] px-2 py-0.5 rounded-md font-semibold", doc.source_type === "url" ? "bg-blue-500/10 text-blue-400" : "bg-primary/10 text-primary")}>
                                             {t(`sourceType.${doc.source_type || "upload"}`)}
                                         </span>
@@ -753,7 +753,7 @@ export default function KnowledgePage() {
                                             </span>
                                         )}
                                     </div>
-                                    <div className="text-xs text-muted-foreground flex items-center gap-1.5 mt-1">
+                                    <div className="text-xs text-muted-foreground flex flex-wrap items-center gap-1.5 mt-1">
                                         {new Date(doc.created_at).toLocaleDateString()}
                                         {doc.source_url && (
                                             <a href={doc.source_url} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline flex items-center gap-0.5 no-underline">
@@ -764,13 +764,14 @@ export default function KnowledgePage() {
                                     </div>
                                 </div>
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="max-w-full shrink-0 flex flex-wrap items-center gap-2">
                                 {canEditKnowledge && (
                                 <button
                                     onClick={() => handleTogglePublic(doc)}
                                     className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg border font-semibold text-xs cursor-pointer",
                                         doc.is_public ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-500" : "border-border bg-transparent text-muted-foreground")}
                                     title={doc.is_public ? tc("public") : tc("private")}
+                                    aria-label={doc.is_public ? tc("public") : tc("private")}
                                 >
                                     <GlobeLock size={13} />
                                 </button>
@@ -785,14 +786,14 @@ export default function KnowledgePage() {
                                         {recrawlingId === doc.id ? t("crawl.recrawling") : t("crawl.recrawl")}
                                     </button>
                                 )}
-                                <button onClick={() => handleViewVersions(doc)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-transparent text-foreground font-semibold text-xs cursor-pointer" title={t("versions.title")}>
+                                <button onClick={() => handleViewVersions(doc)} aria-label={t("versions.title")} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-transparent text-foreground font-semibold text-xs cursor-pointer" title={t("versions.title")}>
                                     <History size={13} />
                                 </button>
                                 {canEditKnowledge && (<>
-                                <button onClick={() => handleEdit(doc)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-transparent text-foreground font-semibold text-xs cursor-pointer">
+                                <button onClick={() => handleEdit(doc)} aria-label={t("libraryActions.editDocument")} title={t("libraryActions.editDocument")} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-transparent text-foreground font-semibold text-xs cursor-pointer">
                                     <Edit3 size={13} />
                                 </button>
-                                <button onClick={() => handleDeleteDoc(doc.id)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-transparent text-danger font-semibold text-xs cursor-pointer hover:bg-danger/10">
+                                <button onClick={() => handleDeleteDoc(doc.id)} aria-label={t("libraryActions.deleteDocument")} title={t("libraryActions.deleteDocument")} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-transparent text-danger font-semibold text-xs cursor-pointer hover:bg-danger/10">
                                     <Trash2 size={13} />
                                 </button>
                                 </>)}
@@ -802,28 +803,28 @@ export default function KnowledgePage() {
 
                     {/* Legacy resources */}
                     {resources.map(r => (
-                        <div key={r.id} className="flex items-center justify-between px-5 py-4 rounded-[14px] border border-border bg-card">
-                            <div className="flex items-center gap-3.5">
-                                <div className="w-11 h-11 rounded-xl flex items-center justify-center bg-background">
+                        <div key={r.id} className="flex flex-col sm:flex-row items-start sm:items-center gap-4 px-5 py-4 rounded-[14px] border border-border bg-card">
+                            <div className="w-full min-w-0 flex-1 flex items-center gap-3.5">
+                                <div className="shrink-0 w-11 h-11 rounded-xl flex items-center justify-center bg-background">
                                     <FileText size={20} className="text-primary" />
                                 </div>
-                                <div>
-                                    <div className="font-semibold text-[15px] flex items-center gap-2">
-                                        {r.title}
+                                <div className="min-w-0 flex-1">
+                                    <div className="min-w-0 font-semibold text-[15px] flex flex-wrap items-center gap-2">
+                                        <span className="min-w-0 [overflow-wrap:anywhere]">{r.title}</span>
                                         <span className="text-[10px] px-2 py-0.5 rounded-md bg-background text-muted-foreground font-semibold">v{r.version}</span>
                                     </div>
-                                    <div className="text-xs text-muted-foreground flex items-center gap-1.5 mt-1">
+                                    <div className="text-xs text-muted-foreground flex flex-wrap items-center gap-1.5 mt-1">
                                         <span className="uppercase">{r.type}</span> • {new Date(r.created_at).toLocaleDateString()}
                                         {r.content_hash && <span>• {t("hash")}: {r.content_hash.substring(0, 8)}</span>}
                                     </div>
                                 </div>
                             </div>
-                            <div className="flex items-center gap-3">
+                            <div className="max-w-full shrink-0 flex flex-wrap items-center gap-3">
                                 <span className="text-xs font-semibold px-2.5 py-1 rounded-lg" style={{ color: statusColors[r.status] || undefined, background: `${statusColors[r.status] || "#95a5a6"}22` }}>
                                     {t(`status.${r.status}`)}
                                 </span>
                                 {canEditKnowledge && (
-                                <button onClick={() => handleDeleteResource(r.id)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-transparent text-danger font-semibold text-xs cursor-pointer hover:bg-danger/10">
+                                <button onClick={() => handleDeleteResource(r.id)} aria-label={t("libraryActions.deleteResource")} title={t("libraryActions.deleteResource")} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-transparent text-danger font-semibold text-xs cursor-pointer hover:bg-danger/10">
                                     <Trash2 size={13} />
                                 </button>
                                 )}

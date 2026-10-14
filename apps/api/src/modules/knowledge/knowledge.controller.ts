@@ -68,7 +68,10 @@ export class KnowledgeController {
         @Body() payload: KnowledgeSourceMetadata & { name?: string; content?: string; fileBase64?: string; mimeType?: string; category?: string; isPublic?: boolean },
     ) {
         const tenantId = req.user?.tenantId;
-        return this.knowledgeService.updateDocument(tenantId, id, payload);
+        return this.knowledgeService.updateDocument(tenantId, id, {
+            ...payload,
+            changedBy: req.user?.id || req.user?.userId,
+        });
     }
 
     @Get('documents')

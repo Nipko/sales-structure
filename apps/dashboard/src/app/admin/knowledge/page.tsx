@@ -1626,14 +1626,14 @@ export default function KnowledgePage() {
             {/* Version History Modal */}
             {versionDoc && (
                 <div data-tour-form="knowledge" className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setVersionDoc(null)}>
-                    <div onClick={e => e.stopPropagation()} className="w-[560px] max-h-[80vh] p-7 rounded-[18px] bg-card border border-border shadow-2xl flex flex-col">
-                        <div className="flex justify-between items-center mb-5">
-                            <h2 className="text-xl font-semibold m-0 flex items-center gap-2">
-                                <History size={20} className="text-primary" /> {t("versions.title")}
+                    <div onClick={e => e.stopPropagation()} className="w-[560px] max-w-[95vw] min-w-0 max-h-[80vh] p-7 rounded-[18px] bg-card border border-border shadow-2xl flex flex-col">
+                        <div className="flex justify-between items-center gap-3 mb-5">
+                            <h2 className="min-w-0 flex-1 text-xl font-semibold m-0 flex items-center gap-2">
+                                <History size={20} className="shrink-0 text-primary" /> {t("versions.title")}
                             </h2>
-                            <button onClick={() => setVersionDoc(null)} className="bg-transparent border-none text-muted-foreground cursor-pointer"><X size={20} /></button>
+                            <button onClick={() => setVersionDoc(null)} aria-label={t("versions.closeHistory")} className="shrink-0 bg-transparent border-none text-muted-foreground cursor-pointer"><X size={20} /></button>
                         </div>
-                        <div className="text-sm text-muted-foreground mb-4">
+                        <div className="break-words text-sm text-muted-foreground mb-4">
                             {versionDoc.name || versionDoc.title} — {t("versions.current")}: v{versionDoc.version || 1}
                         </div>
 
@@ -1644,18 +1644,18 @@ export default function KnowledgePage() {
                         )}
 
                         {!versionsLoading && versions.length > 0 && (
-                            <div className="flex flex-col gap-2.5 overflow-y-auto flex-1">
+                            <div className="min-w-0 flex flex-col gap-2.5 overflow-y-auto flex-1">
                                 {versions.map(v => (
                                     <div key={v.id} className="flex items-center justify-between p-4 rounded-xl bg-background border border-border">
-                                        <div className="flex-1 mr-3">
-                                            <div className="font-semibold text-sm flex items-center gap-2">
+                                        <div className="min-w-0 flex-1 mr-3">
+                                            <div className="min-w-0 font-semibold text-sm flex items-center gap-2">
                                                 v{v.version}
-                                                {v.title && <span className="text-muted-foreground font-normal truncate">{v.title}</span>}
+                                                {v.title && <span title={v.title} className="min-w-0 flex-1 text-muted-foreground font-normal truncate">{v.title}</span>}
                                             </div>
-                                            <div className="text-[11px] text-muted-foreground mt-1 flex items-center gap-2">
+                                            <div className="text-[11px] text-muted-foreground mt-1 flex flex-wrap items-center gap-2">
                                                 <Calendar size={11} /> {new Date(v.created_at).toLocaleString()}
                                                 {v.chunk_count != null && <span>• {t("chunkCount", { count: v.chunk_count })}</span>}
-                                                {v.changed_by && <span>• {v.changed_by}</span>}
+                                                {v.changed_by && <span>• {t("versions.changedBy", { name: v.changed_by_name || t("versions.actorUnavailable") })}</span>}
                                             </div>
                                             {v.change_summary && (
                                                 <div className="text-[11px] text-muted-foreground mt-0.5 italic">{v.change_summary}</div>

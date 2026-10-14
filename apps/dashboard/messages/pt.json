@@ -5366,7 +5366,10 @@
       "current": "Versão atual",
       "noVersions": "Não há versões anteriores deste documento.",
       "restore": "Restaurar",
-      "restored": "Versão restaurada com sucesso"
+      "restored": "Versão restaurada com sucesso",
+      "closeHistory": "Fechar histórico de versões",
+      "changedBy": "Alterado por {name}",
+      "actorUnavailable": "usuário indisponível"
     },
     "language": {
       "auto": "Auto-detectado",

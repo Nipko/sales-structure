@@ -4576,11 +4576,30 @@ export class AIToolExecutorService {
 
     private async getPackageDetails(schemaName: string, packageId: string): Promise<any> {
         try {
-            const pkg = await this.toursService.getPackage(schemaName, packageId);
-            if (!pkg) return { error: 'package_not_found' };
+            const reference = typeof packageId === 'string' ? packageId.trim() : '';
+            if (!reference || reference.length > 240) {
+                return { error: 'package_reference_invalid', retryable: false,
+                    message: 'Busca el paquete con search_packages y usa su ID exacto o su nombre completo.' };
+            }
+            let resolvedId = reference;
+            if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(reference)) {
+                // Names are customer-facing references, never UUIDs. Match only
+                // an exact active name in this tenant; do not pick a fuzzy first hit.
+                const matches = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                    `SELECT id, name, destination FROM tour_packages
+                     WHERE is_active = true AND LOWER(name) = LOWER($1)
+                     ORDER BY id LIMIT 2`, [reference]);
+                if (!matches.length) return { error: 'package_not_found', retryable: false };
+                if (matches.length > 1) return { error: 'package_reference_ambiguous', retryable: false,
+                    message: 'Hay varios paquetes con ese nombre. Busca con search_packages y pide al cliente que elija antes de usar el ID exacto.',
+                    packages: matches.map(p => ({ id: p.id, name: p.name, destination: p.destination })) };
+                resolvedId = matches[0].id;
+            }
+            const pkg = await this.toursService.getPackage(schemaName, resolvedId);
+            if (!pkg || pkg.is_active === false) return { error: 'package_not_found' };
             const inventory = await this.toursService.listInventory(
                 schemaName,
-                packageId,
+                resolvedId,
                 new Date().toISOString().split('T')[0],
             );
             return {

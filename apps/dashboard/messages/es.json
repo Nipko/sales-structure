@@ -5357,7 +5357,9 @@
       "title": "Sugerencias de artículos (IA)",
       "generate": "Generar sugerencias",
       "generating": "Analizando...",
-      "hint": "Haz clic en Generar para que la IA analice las preguntas sin respuesta y sugiera artículos nuevos."
+      "hint": "Haz clic en Generar para que la IA analice las preguntas sin respuesta y sugiera artículos nuevos.",
+      "empty": "No hay sugerencias nuevas para mostrar.",
+      "unavailable": "No se pudieron generar sugerencias. Inténtalo de nuevo más tarde."
     },
     "versions": {
       "title": "Historial de versiones",

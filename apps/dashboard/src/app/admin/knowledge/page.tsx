@@ -162,6 +162,7 @@ export default function KnowledgePage() {
     // AI Suggestions
     const [suggestions, setSuggestions] = useState<any[]>([]);
     const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+    const [suggestionsResult, setSuggestionsResult] = useState<"idle" | "empty" | "error" | "plan">("idle");
 
     // Language filter
     const [activeLanguage, setActiveLanguage] = useState<string | null>(null);
@@ -510,15 +511,21 @@ export default function KnowledgePage() {
     const handleGenerateSuggestions = async () => {
         if (!activeTenantId) return;
         setSuggestionsLoading(true);
+        setSuggestions([]);
+        setSuggestionsResult("idle");
         try {
             const res = await api.fetch(`/knowledge/suggestions/${activeTenantId}`, { method: "POST", body: JSON.stringify({}) });
-            if (res?.success && res.data?.suggestions) {
-                setSuggestions(res.data.suggestions);
-            } else if (res?.error === "plan_upgrade_required") {
+            if (res?.error === "plan_upgrade_required") {
+                setSuggestionsResult("plan");
                 showToast(t("analytics.planRequired"), "error");
+            } else if (res?.success && !res.data?.error && Array.isArray(res.data?.suggestions)) {
+                setSuggestions(res.data.suggestions);
+                setSuggestionsResult(res.data.suggestions.length ? "idle" : "empty");
+            } else {
+                setSuggestionsResult("error");
             }
-        } catch (e: any) {
-            showToast(e.message || "Error", "error");
+        } catch {
+            setSuggestionsResult("error");
         } finally {
             setSuggestionsLoading(false);
         }
@@ -1124,8 +1131,12 @@ export default function KnowledgePage() {
                                         ))}
                                     </div>
                                 ) : (
-                                    <div className="text-center py-4 text-muted-foreground text-sm">
-                                        {t("suggestions.hint")}
+                                    <div role={suggestionsResult === "error" ? "alert" : "status"} className="text-center py-4 text-muted-foreground text-sm">
+                                        {suggestionsLoading ? t("suggestions.generating") :
+                                            suggestionsResult === "empty" ? t("suggestions.empty") :
+                                            suggestionsResult === "error" ? t("suggestions.unavailable") :
+                                            suggestionsResult === "plan" ? t("analytics.planRequired") :
+                                            t("suggestions.hint")}
                                     </div>
                                 )}
                             </div>)}

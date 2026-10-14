@@ -542,11 +542,13 @@ export class KnowledgeService {
     async getDocumentVersions(tenantId: string, documentId: string) {
         const schema = await this.tenantSchema(tenantId);
         return this.prisma.executeInTenantSchema<any[]>(schema,
-            `SELECT id, version, title, chunk_count, changed_by, change_summary, created_at
-             FROM knowledge_document_versions
-             WHERE document_id = $1::uuid
-             ORDER BY version DESC`,
-            [documentId]);
+            `SELECT v.id, v.version, v.title, v.chunk_count, v.changed_by, v.change_summary, v.created_at,
+                    NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), '') AS changed_by_name
+             FROM knowledge_document_versions v
+             LEFT JOIN public.users u ON u.id::text = v.changed_by AND u.tenant_id = $2::uuid
+             WHERE v.document_id = $1::uuid
+             ORDER BY v.version DESC`,
+            [documentId, tenantId]);
     }
 
     async restoreDocumentVersion(tenantId: string, documentId: string, versionId: string, userId?: string) {

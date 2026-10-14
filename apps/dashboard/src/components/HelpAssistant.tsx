@@ -524,7 +524,7 @@ function TenantHelpAssistant() {
             {t("launcherTooltip")}
           </span>
 
-          <span className={`relative flex origin-bottom-right scale-[0.7] items-end justify-center sm:scale-100 ${introMoving ? "parallly-pop" : ""}`}>
+          <span className={`relative flex items-end justify-center ${introMoving ? "parallly-pop" : ""}`}>
             {introMoving && (
               <>
                 <span className="parallly-ring pointer-events-none absolute bottom-4 left-1/2 -ml-8 size-16 rounded-full border-2 border-[#3897f0]/50" />
@@ -541,7 +541,7 @@ function TenantHelpAssistant() {
                 ))}
               </>
             )}
-            <ParalllyAssistant size={74} state={introMoving ? "wave" : "idle"} />
+            <ParalllyAssistant size={74} className="h-auto w-[51.8px] sm:w-[74px]" state={introMoving ? "wave" : "idle"} />
           </span>
         </button>
       </SheetTrigger>}

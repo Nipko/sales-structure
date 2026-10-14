@@ -109,6 +109,7 @@ jobs:
           apps/api/src/modules/pipeline/pipeline-write-lead-stage-active-scope.spec.ts
           apps/api/src/modules/crm/crm.controller.spec.ts
           apps/api/src/modules/knowledge/knowledge.controller-version-audit.spec.ts
+          apps/api/src/modules/knowledge/knowledge-file-parsing.spec.ts
           apps/api/src/modules/tours/tours.service.spec.ts
           apps/api/src/modules/vacation-rental/properties.service.spec.ts
           apps/api/src/modules/restaurants/restaurants.service.spec.ts
@@ -342,6 +343,47 @@ jobs:
           name: vertical-contract-${{ github.run_id }}-${{ github.run_attempt }}
           path: artifacts
           retention-days: 30
+          if-no-files-found: error
+
+  knowledge-files:
+    name: Knowledge file parser and MIME PostgreSQL
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: parallext
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: knowledge_files_eval_isolation
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U parallext -d knowledge_files_eval_isolation"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://parallext:ci@localhost:5432/knowledge_files_eval_isolation
+      DIRECT_DATABASE_URL: postgresql://parallext:ci@localhost:5432/knowledge_files_eval_isolation
+      KNOWLEDGE_FILE_TEST_DATABASE_URL: postgresql://parallext:ci@localhost:5432/knowledge_files_eval_isolation
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate --schema=apps/api/prisma/schema.prisma
+      - run: mkdir -p artifacts
+      - name: Real parsers and legacy/new schema MIME persistence
+        run: >-
+          npx jest --config apps/api/jest.knowledge-files.config.js --runInBand
+          --json --outputFile artifacts/knowledge-files.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: knowledge-files-${{ github.run_id }}
+          path: artifacts/knowledge-files.json
           if-no-files-found: error
 
   integration:

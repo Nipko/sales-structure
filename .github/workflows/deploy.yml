@@ -133,6 +133,7 @@ jobs:
           apps/api/src/modules/pipeline/pipeline-write-lead-stage-active-scope.spec.ts
           apps/api/src/modules/crm/crm.controller.spec.ts
           apps/api/src/modules/knowledge/knowledge.controller-version-audit.spec.ts
+          apps/api/src/modules/knowledge/knowledge-file-parsing.spec.ts
           apps/api/src/modules/tours/tours.service.spec.ts
           apps/api/src/modules/vacation-rental/properties.service.spec.ts
           apps/api/src/modules/restaurants/restaurants.service.spec.ts
@@ -442,6 +443,7 @@ jobs:
           # Y la del repunte de schema, que necesita la tabla `tenants` REAL
           # (la sintética del fixture por worker no tiene ni `slug`).
           LEGACY_SCHEMA_TEST_URL: postgresql://parallext:ci@localhost:5432/parallly_plan_economics_eval_isolation
+          KNOWLEDGE_FILE_TEST_DATABASE_URL: postgresql://parallext:ci@localhost:5432/parallly_plan_economics_eval_isolation
         run: |
           psql -h localhost -U parallext -d postgres             -c 'CREATE DATABASE parallly_plan_economics_eval_isolation'
           cd apps/api
@@ -455,7 +457,8 @@ jobs:
             apps/api/src/modules/simulation/eval-namespace-reaper.postgres.spec.ts \
             apps/api/src/modules/prisma/legacy-schema-repoint.postgres.spec.ts \
             apps/api/src/modules/billing/stripe-refund.postgres.spec.ts \
-            apps/api/src/modules/conversations/ai-tool-executor.product-lookup.postgres.spec.ts
+            apps/api/src/modules/conversations/ai-tool-executor.product-lookup.postgres.spec.ts \
+            apps/api/src/modules/knowledge/knowledge-file-type.postgres.spec.ts
 
       - name: Tenant schema migration compatibility smoke test
         run: cd apps/api && npm run test:migrate:tenants

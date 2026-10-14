@@ -306,7 +306,7 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."knowledge_documents" (
     "title" VARCHAR(500) NOT NULL,
     "file_name" VARCHAR(500),
     "file_url" TEXT,
-    "file_type" VARCHAR(50),
+    "file_type" TEXT,
     "file_size" INTEGER DEFAULT 0,
     "content_text" TEXT,
     "chunk_count" INTEGER DEFAULT 0,

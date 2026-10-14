@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import { acquireRuntimeSchemaLock, isRuntimeSchemaDdl, withRuntimeSchemaLock } from '../../common/utils/runtime-schema-lock';
 import { resolveMirroredDealStatus } from '../pipeline/pipeline-outcome.util';
 import { ensurePrimaryPipeline } from '../../common/utils/primary-pipeline.util';
+import { knowledgeFileTypeWidenSql } from './knowledge-file-type-schema';
 
 const TENANT_PUBLIC_PURGE_ORDER = [
     'platform_communication_recipients',
@@ -812,7 +813,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     }
 
     /**
-     * Widen URL and tracking columns to TEXT for all existing tenant schemas.
+     * Widen URL, tracking and full MIME columns for existing tenant schemas.
      * Runs once at startup, completely non-blocking and idempotent.
      */
     private async ensureVarcharColumnsWiden(): Promise<void> {
@@ -835,6 +836,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
                     `ALTER TABLE "${schemaName}"."contacts" ALTER COLUMN "avatar_url" TYPE TEXT;`,
                     `ALTER TABLE "${schemaName}"."messages" ALTER COLUMN "media_url" TYPE TEXT;`,
                     `ALTER TABLE "${schemaName}"."knowledge_documents" ALTER COLUMN "file_url" TYPE TEXT;`,
+                    knowledgeFileTypeWidenSql(schemaName),
                     `ALTER TABLE "${schemaName}"."knowledge_resources" ALTER COLUMN "source_url" TYPE TEXT;`,
                     `ALTER TABLE "${schemaName}"."courses" ALTER COLUMN "brochure_url" TYPE TEXT;`,
                     `ALTER TABLE "${schemaName}"."companies" ALTER COLUMN "website" TYPE TEXT;`,

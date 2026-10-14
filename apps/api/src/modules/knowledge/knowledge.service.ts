@@ -1519,7 +1519,9 @@ export class KnowledgeService {
 
         if (mime === 'application/pdf' || ext === 'pdf') {
             try {
-                const data = await pdfParse(buffer);
+                // pdf-parse's bundled PDF.js must receive only this file's bytes.
+                // Small base64-decoded Buffers can share a larger Node pool.
+                const data = await pdfParse(Uint8Array.from(buffer));
                 // El \x00 es a propósito: los PDF traen bytes nulos y PostgreSQL
                 // rechaza el texto que los contenga ("invalid byte sequence").
                 // eslint-disable-next-line no-control-regex

@@ -77,7 +77,13 @@ export class AgentTurnTrace {
         this.inputTokens += response?.usage?.promptTokens ?? response?.usage?.inputTokens ?? response?.usage?.prompt_tokens ?? 0;
         this.outputTokens += response?.usage?.completionTokens ?? response?.usage?.outputTokens ?? response?.usage?.completion_tokens ?? 0;
         this.cost += response?.cost ?? 0;
-        this.model = response?.modelUsed || response?.model || this.model;
+        // OpenAI-compatible providers keep their actual model inside raw;
+        // task routing also reports the candidate that really succeeded.
+        // Requested configuration alone is not evidence of the served model.
+        const reportedModel = [response?.modelUsed, response?.model, response?.raw?.model,
+            response?.routingDecision?.selectedModel?.id]
+            .find(value => typeof value === 'string' && value.trim().length > 0);
+        if (reportedModel) this.model = reportedModel.trim();
     }
 }
 

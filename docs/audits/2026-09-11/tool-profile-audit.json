@@ -2,7 +2,7 @@
   "version": 1,
   "evidenceKind": "structural_only",
   "sourceHashEncoding": "utf8-lf",
-  "sourceRevision": "d036d9dffcb39ff66829345c03a693c2fd400cad",
+  "sourceRevision": "dbb7451d206a7473565c183bef38933870a36363",
   "summary": {
     "verticals": 20,
     "profiles": 80,
@@ -36,7 +36,7 @@
     }
   },
   "sources": {
-    "apps/api/src/common/conversation/intent-normalizer.ts": "f91db2e1ecee3bcf947e8ee7c0827eddc6b81d3cba54a115e3114c0ff3e0db9c",
+    "apps/api/src/common/conversation/intent-normalizer.ts": "e88567fd26f301faadbddde177a0558e127f8f4ddf1b3b2233f42abaef71a96c",
     "apps/api/src/modules/conversations/active-object-policy.ts": "2117f12a64454fab06867c0303a41ac3ca4ba64a1a49c10ca587d24ce012c430",
     "apps/api/src/modules/conversations/agent-test-tool-policy.ts": "853761eaec7980869ba07a6d7ecd36853b654dfa2cd3be88720a1732454912a9",
     "apps/api/src/modules/conversations/agent-tool-registry.ts": "eb0d07f5a197dc167a3b52aba549b60f47743f0244d7437921dbb22772f28c0a",

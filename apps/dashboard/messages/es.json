@@ -12302,7 +12302,7 @@
     "helpful": "Útil",
     "notHelpful": "No útil",
     "feedbackSent": "Gracias por tu feedback",
-    "feedbackError": "Error al enviar feedback",
+    "feedbackError": "No pudimos confirmar la valoración. Revisa el registro antes de volver a enviarla.",
     "thankYou": "¡Gracias!"
   },
   "automationTemplates": {

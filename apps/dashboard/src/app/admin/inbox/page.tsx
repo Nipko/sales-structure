@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { isSupervisor } from "@/lib/roles";
 import { useVerticalTerms } from "@/hooks/useVerticalTerms";
 import { ViewersIndicator } from "./_components/ViewersIndicator";
+import { KbFeedbackWidget } from "./_components/KbFeedbackWidget";
 import { canReturnToBot, contactMetaFromDetail, contactMetaPayload } from "./inbox-actions";
 import { io } from "socket.io-client";
 import type { Socket } from "socket.io-client";
@@ -2120,6 +2121,11 @@ export default function InboxPage() {
                                             )}>
                                                 {msg.content}
                                             </div>
+                                            {!isInbound && msg.senderLabel === "IA" && activeTenantId && (
+                                                <div className="mt-1 flex justify-end">
+                                                    <KbFeedbackWidget tenantId={activeTenantId} conversationId={selectedConv.id} messageId={msg.id} />
+                                                </div>
+                                            )}
                                         </div>
 
                                         {/* Outbound: small icon on right */}

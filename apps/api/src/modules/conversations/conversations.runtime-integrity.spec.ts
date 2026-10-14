@@ -91,6 +91,34 @@ describe('Shared runtime integrity', () => {
         return { service, run, llm, domainCreate, config, query };
     }
 
+    it('loads canonical package prices before a model that answers without calling tools', async () => {
+        const { service, run, llm } = fixture();
+        const allowedTools = ['search_faqs', 'search_packages'];
+        const authority = { source: 'turn_contract', allowedTools, deniedTools: [], commitmentBlocked: null, resolvedAt: new Date().toISOString() };
+        service.turnCapabilityComposer.resolve.mockResolvedValue({
+            tools: allowedTools.map(name => ({ name, description: name, parameters: { type: 'object', properties: {} } })),
+            authority, deniedTools: [], commitmentBlocked: null, status: { status: 'ok' },
+            contract: { version: 1, publishedTools: allowedTools, excluded: [], writersBlocked: false },
+        });
+        service.toolExecutor.execute = jest.fn(async (_schema, _tenant, _contact, name) => name === 'search_faqs'
+            ? { faqs: [{ id: 'faq-one', question: '¿Cuánto cuesta Tour QA Aurora?', answer: 'Cuesta 500 COP.' }] }
+            : { packages: [{ id: 'package-one', name: 'Tour QA Aurora', price: 129000, currency: 'COP' }] });
+        llm.mockImplementation(async (request: any) => ({ content: request.systemPrompt.includes('price="129000"')
+            ? 'El Tour QA Aurora cuesta 129000 COP.' : 'No tengo el precio confirmado.' }));
+        expect(await run('telegram', '¿Cuánto cuesta Tour QA Aurora?')).toMatch(/129[.,]?000 COP/);
+        expect(service.toolExecutor.execute).toHaveBeenCalledWith('tenant_test', expect.any(String), expect.any(String),
+            'search_packages', {}, expect.any(String), expect.objectContaining({ authority,
+                executionContext: expect.objectContaining({ persistence: 'disabled' }) }));
+    });
+
+    it('does not preload a package reader absent from this turn capability', async () => {
+        const { service, run } = fixture();
+        service.toolExecutor.execute = jest.fn();
+        await run('telegram', '¿Cuánto cuesta Tour QA Aurora?');
+        expect(service.toolExecutor.execute).not.toHaveBeenCalledWith(expect.anything(), expect.anything(),
+            expect.anything(), 'search_packages', expect.anything(), expect.anything(), expect.anything());
+    });
+
     // The provenance of a learned reply is proven as the examples arrive, not
     // once the words exist. Aggregating only at the end left a single move when
     // the scope or an example was malformed: hand admission an empty footprint,

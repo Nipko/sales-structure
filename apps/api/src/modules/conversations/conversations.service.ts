@@ -87,6 +87,7 @@ import { EVALUATION_CONTEXT_LANGUAGES, evaluationContextLanguage, projectBusines
     resolveEvaluationTurnContext, type EvaluationTurnContextInputs } from './evaluation-turn-context';
 import { isAgentTestSafeToolName } from './agent-test-tool-policy';
 import { buildTrustedPriceCorpus, requiresCanonicalPackagePrice } from './trusted-price-context';
+import { canonicalPackageCatalogue } from './canonical-package-context';
 import {
     auditTurnClaim,
     claimsCompletedAction,
@@ -4544,6 +4545,34 @@ export class ConversationsService {
                 if (session || error instanceof LLMSourceAuthorityUnavailable) throw error;
                 this.logger.warn(`FAQ search failed (non-fatal): ${error.message}`);
                 turnTrace.add('tool_result', 'search_faqs', { ok: false, automatic: true, error: 'faq_search_failed' });
+            }
+        }
+
+        // A matching FAQ must not make a current-price lookup optional. Read
+        // the bounded catalogue through this turn's normal executor before
+        // the model sees competing sources. Keep tenant/capability/snapshot
+        // authority and persistence controls identical to an explicit read.
+        if (!engineProducedText && requiresCanonicalPackagePrice(userText)
+            && turnAllowedTools.includes('search_packages')) {
+            const packageExecutionContext: ServiceExecutionContext = {
+                ...executionContext, mode: executionContext?.mode ?? 'live', persistence: 'disabled',
+            };
+            try {
+                turnTrace.add('tool_call', 'search_packages', { origin: 'vertical', effect: 'read', automatic: true });
+                const result = await awaitAutomaticFaqLookup(toolExecutor.execute(
+                    schemaName, tenantId, conversation.contact_id || '', 'search_packages', {}, conversation.id,
+                    { authority: llmAuthority, channelType: msg.channelType, executionContext: packageExecutionContext,
+                        commitmentBlocked, deniedTools, jurisdiction: regional?.operatingCountry.value },
+                ), 3_000, packageExecutionContext);
+                const catalogue = canonicalPackageCatalogue(result);
+                preExecutedTools.push({ name: 'search_packages', result });
+                turnContext.catalog = [...(turnContext.catalog || []), ...catalogue];
+                turnTrace.add('tool_result', 'search_packages', { ok: !result?.error, error: result?.error,
+                    automatic: true, retrievedCount: catalogue.length });
+            } catch (error: any) {
+                if (session || error instanceof LLMSourceAuthorityUnavailable) throw error;
+                this.logger.warn(`Package price lookup failed (non-fatal): ${error.message}`);
+                turnTrace.add('tool_result', 'search_packages', { ok: false, automatic: true, error: 'package_search_failed' });
             }
         }
 

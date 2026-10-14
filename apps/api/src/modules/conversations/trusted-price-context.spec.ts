@@ -1,4 +1,21 @@
 import { buildTrustedPriceCorpus, requiresCanonicalPackagePrice } from './trusted-price-context';
+import { canonicalPackageCatalogue } from './canonical-package-context';
+
+describe('canonical package projection', () => {
+    it('keeps current reader prices without inventing currency or availability', () => {
+        expect(canonicalPackageCatalogue({ packages: [{ id: 'one', name: 'Tour', price: '129000', currency: 'COP', seatsLeft: 8 },
+            { id: 'two', name: 'Other', price: 20, notes: '500 COP' }] })).toEqual([
+                { id: 'one', title: 'Tour', price: 129000, currency: 'COP' }, { id: 'two', title: 'Other', price: 20 },
+            ]);
+    });
+    it('rejects failed and malformed results rather than turning missing prices into zero', () => {
+        expect(canonicalPackageCatalogue({ error: 'denied', packages: [{ id: 'one', name: 'Tour', price: 500 }] })).toEqual([]);
+        expect(canonicalPackageCatalogue({ status: 'failed', packages: [{ id: 'one', name: 'Tour', price: 500 }] })).toEqual([]);
+        expect(canonicalPackageCatalogue({ packages: [{ id: 'one', name: 'Tour', price: null },
+            { id: 'two', name: 'Tour', price: 'NaN' }, { id: 'three', name: 'Tour', price: -1 },
+            { id: 'four', name: 'Tour', price: true }, { id: 'five', name: 'Tour', price: ' ' }] })).toEqual([]);
+    });
+});
 import { ResponseValidatorService } from './response-validator.service';
 import { ConversationsService } from './conversations.service';
 

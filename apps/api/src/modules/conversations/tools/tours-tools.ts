@@ -44,11 +44,11 @@ export const TOURS_TOOLS: ToolDefinition[] = [
     },
     {
         name: 'get_package_details',
-        description: 'Get full details of a tour package: includes/excludes, what to bring, languages, cancellation policy, and currently available departure dates.',
+        description: 'Get full details of an active tour package: price, currency, duration, includes/excludes, what to bring, languages, cancellation policy, and currently available departure dates. Prefer the exact UUID returned by search_packages. A complete package name can also be resolved when it uniquely matches an active package. For partial names or ambiguous matches, use search_packages first and ask the customer to choose; never invent a UUID.',
         parameters: {
             type: 'object',
             properties: {
-                packageId: { type: 'string', description: 'Package UUID' },
+                packageId: { type: 'string', description: 'Exact package UUID returned by search_packages, or the complete unique package name. Never a guessed identifier.' },
             },
             required: ['packageId'],
         },

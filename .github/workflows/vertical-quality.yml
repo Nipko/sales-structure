@@ -163,6 +163,7 @@ jobs:
           apps/api/src/modules/conversations/ai-tool-executor.appointment-safety.spec.ts
           apps/api/src/modules/conversations/procedure-engine.central-controls.spec.ts
           apps/api/src/modules/conversations/booking-engine.central-confirmation.spec.ts
+          apps/api/src/modules/conversations/booking-engine.no-availability.spec.ts
           apps/api/src/modules/conversations/tool-approval.controller.spec.ts
           apps/api/src/modules/conversations/tool-approval-workflow.e2e.spec.ts
           apps/api/src/modules/conversations/agent-test-request.spec.ts

@@ -108,7 +108,7 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         slotsAvailable: 'Horarios disponibles para {service} el {date}: {slots}. ¿Cuál horario prefiere?',
         noAvailability: [
             'No hay disponibilidad el {date}. ¿Le gustaría probar otra fecha?',
-            'El {date} ya está completamente lleno. ¿Qué tal si intentamos con otro día?',
+            'No hay horarios disponibles el {date}. ¿Qué tal si intentamos con otro día?',
             'Lamentablemente no tenemos horarios libres el {date}. ¿Le sirve alguna otra fecha?',
             'Disculpe, no encontré espacios el {date}. ¿Qué otro día le gustaría intentar?'
         ],

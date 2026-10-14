@@ -26,6 +26,14 @@ describe("formatDateOnly", () => {
         expect(parts(formatDateOnly("2026-08-17", "es-CO"))).toContain("17");
     });
 
+    it.each(["es", "en", "pt", "fr"])("keeps the knowledge analytics bucket day in %s", locale => {
+        const bucket = "2026-10-14";
+        const previous = new Date(bucket).toLocaleDateString(locale, { day: "numeric", month: "short", timeZone: "America/Bogota" });
+        expect(parts(previous)).toContain("13");
+        expect(parts(formatDateOnly(bucket, locale))).toContain("14");
+        expect(parts(formatDateOnly(bucket, locale))).not.toContain("13");
+    });
+
     it("does not shift the day in any timezone the product ships to", () => {
         // El render corre en el navegador del anfitrión: Bogotá, Ciudad de
         // México, São Paulo, Madrid y Auckland (la que más se adelanta).

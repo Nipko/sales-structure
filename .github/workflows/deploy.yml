@@ -359,6 +359,7 @@ jobs:
           npx jest --config apps/dashboard/jest.config.cjs --runInBand
           apps/dashboard/src/lib/vertical-dashboard-resolver.spec.ts
           apps/dashboard/src/lib/local-timestamp.spec.ts
+          apps/dashboard/src/lib/format-date-only.spec.ts
           apps/dashboard/src/lib/help-assistant-contract.spec.ts
           apps/dashboard/src/lib/quality-assistant-contract.spec.ts
           apps/dashboard/src/lib/quality-health.spec.ts

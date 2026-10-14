@@ -143,6 +143,26 @@ describe('los packs de país cambian la lectura, no el techo de seguridad', () =
 });
 
 describe('pedir un humano y darse de baja', () => {
+    it.each([
+        'Prueba QA: ¿qué paquetes de viaje tienen publicados y cuáles son sus precios? Solo consulta; no quiero reservar, pagar ni contactar a una persona.',
+        'No quiero hablar con una persona, solo saber el precio.',
+        "I don't want to talk to a human, just show me the price.",
+        'Nao quero falar com um atendente, so consultar o preco.',
+        'Je ne veux pas parler a un humain, je veux connaitre le prix.',
+    ])('no escala una negativa explícita de contacto humano: %s', text => {
+        expect(normalizeCustomerIntent(text, {maxLength: Number.MAX_SAFE_INTEGER}).intent)
+            .not.toBe('request_human');
+    });
+    it.each([
+        'No funciona, quiero hablar con una persona.',
+        'No quiero reservar, pero quiero hablar con una persona.',
+        "I don't want to book, but I want to talk to a human.",
+        'Nao quero reservar, mas quero falar com um atendente.',
+        'Je ne veux pas reserver, mais je veux parler a un humain.',
+    ])('conserva una petición humana afirmativa independiente: %s', text => {
+        expect(normalizeCustomerIntent(text, {maxLength: Number.MAX_SAFE_INTEGER}).intent)
+            .toBe('request_human');
+    });
     it('reconoce la petición dentro de un mensaje largo', () => {
         for (const text of [
             'esto no funciona, quiero hablar con una persona',

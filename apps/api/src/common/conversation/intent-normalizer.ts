@@ -94,6 +94,12 @@ const NEGATION_ANYWHERE = /\b(no|nao|non|not|nunca|never|jamais|rechazo|espera|a
 const CANCEL_ANYWHERE = /\b(cancela|cancelar|cancelalo|cancel|annuler|arretez|olvidalo|olvidate|dejemoslo|deja de|deixa pra la|ya no quiero|no quiero continuar|nao quero continuar|i don't want to continue|i do not want to continue|je ne veux plus continuer|mejor nada|nada de eso)\b/;
 const NEGATED_CANCELLATION = /\b(?:no (?:quiero |deseo |puedo |vayas a )?(?:cancelar|cancela|canceles)|nao (?:quero |desejo |posso )?cancelar|(?:don't|do not|not) (?:want to )?cancel|ne (?:veux |souhaite )?pas annuler)\b/;
 
+// Scope a refusal to its clause. A negative about booking must not suppress
+// a separate request for a person ("no quiero reservar, pero quiero un asesor").
+// Commas and coordinated objects stay inside the refusal: "no quiero reservar,
+// pagar ni contactar a una persona" is one negative request.
+const HUMAN_REQUEST_REFUSAL = /\b(?:no (?:quiero|deseo|necesito)|no me (?:pases|transfieras|comuniques)|nao (?:quero|desejo|preciso)|(?:don't|do not) (?:want|need|transfer|connect)|ne (?:veux|souhaite) pas)\b[^.!?;]*?(?=\b(?:pero|but|mas|porem|mais|however|sin embargo)\b|\b(?:y|and|e|et)\s+(?:si\s+)?(?:quiero|necesito|i want|i need|quero|preciso|je veux)\b|[.!?;]|$)/g;
+
 const CORRECTION_ANYWHERE = /\b(quise decir|quería decir|me equivoque|corrijo|corrigiendo|mas bien|en realidad|na verdade|quis dizer|corrigindo|actually|i meant|je voulais dire)\b/;
 
 const COURTESY = /^(?:muchas gracias|gracias|thank you|thanks|obrigado|obrigada|merci|por favor|please|s il vous plait|s'il vous plait)(?:\s+|$)/;
@@ -275,9 +281,10 @@ export function normalizeCustomerIntent(
 
     // A human explicitly asking for a person must be heard in a long message
     // too — it usually arrives inside a complaint, not as a single word.
+    const humanRequestText = normalized.replace(HUMAN_REQUEST_REFUSAL, ' ');
     const humanAlias = aliases.find(a => a.intent === 'request_human'
-        && new RegExp(`\\b${a.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(normalized));
-    if (humanAlias && /\b(hablar|habla|comunicar|pasame|pasar|quiero|necesito|talk|speak|falar|parler)\b/.test(normalized)) {
+        && new RegExp(`\\b${a.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(humanRequestText));
+    if (humanAlias && /\b(hablar|habla|comunicar|pasame|pasar|quiero|necesito|talk|speak|falar|parler)\b/.test(humanRequestText)) {
         return {
             ...base, intent: 'request_human', confidence: humanAlias.confidence,
             matched: humanAlias.value, packId: pack?.id,

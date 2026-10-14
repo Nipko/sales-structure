@@ -1,6 +1,21 @@
 import { HandoffService } from './handoff.service';
 import { isActionOrientedRefundQuestion } from './handoff-policy-question';
 
+describe('HandoffService negated human requests', () => {
+    const service = Object.create(HandoffService.prototype) as HandoffService;
+    const config = { behavior: { handoffTriggers: [] } } as any;
+    it('keeps an informational travel request with explicit refusal out of the human queue', () => {
+        expect(service.shouldHandoff(
+            'Prueba QA: ¿qué paquetes de viaje tienen publicados y cuáles son sus precios? Solo consulta; no quiero reservar, pagar ni contactar a una persona.',
+            { metadata: {} }, config, 'CO',
+        )).toBeNull();
+    });
+    it('still routes an affirmative request inside a complaint to a human', () => {
+        expect(service.shouldHandoff('No funciona, quiero hablar con una persona.',
+            { metadata: {} }, config, 'CO')).toBe('human_request');
+    });
+});
+
 describe('HandoffService structured handoff', () => {
     const tenantId = '11111111-1111-4111-8111-111111111111';
     const conversationId = '22222222-2222-4222-8222-222222222222';

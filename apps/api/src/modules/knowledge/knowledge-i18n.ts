@@ -13,6 +13,8 @@
 
 export const KB_MSG: Record<'es' | 'en' | 'pt' | 'fr', Record<string, string>> = {
     es: {
+        'bulk.empty': 'Selecciona al menos un archivo.',
+        'bulk.tooMany': 'Puedes importar hasta {{limit}} archivos por lote.',
         // ── OpenAI key missing ──
         'embeddings.noKey':
             'La base de conocimiento requiere una API key de OpenAI configurada (se usa para generar los embeddings). Configúrala en el panel de super admin.',
@@ -43,6 +45,8 @@ export const KB_MSG: Record<'es' | 'en' | 'pt' | 'fr', Record<string, string>> =
     },
 
     en: {
+        'bulk.empty': 'Select at least one file.',
+        'bulk.tooMany': 'You can import up to {{limit}} files per batch.',
         'embeddings.noKey':
             'The knowledge base requires a configured OpenAI API key (used to generate embeddings). Set it up in the super admin panel.',
 
@@ -67,6 +71,8 @@ export const KB_MSG: Record<'es' | 'en' | 'pt' | 'fr', Record<string, string>> =
     },
 
     pt: {
+        'bulk.empty': 'Selecione pelo menos um arquivo.',
+        'bulk.tooMany': 'Você pode importar até {{limit}} arquivos por lote.',
         'embeddings.noKey':
             'A base de conhecimento requer uma chave de API OpenAI configurada (usada para gerar embeddings). Configure-a no painel de super admin.',
 
@@ -91,6 +97,8 @@ export const KB_MSG: Record<'es' | 'en' | 'pt' | 'fr', Record<string, string>> =
     },
 
     fr: {
+        'bulk.empty': 'Sélectionnez au moins un fichier.',
+        'bulk.tooMany': "Vous pouvez importer jusqu’à {{limit}} fichiers par lot.",
         'embeddings.noKey':
             "La base de connaissances nécessite une clé API OpenAI configurée (utilisée pour générer les embeddings). Configurez-la dans le panneau super admin.",
 

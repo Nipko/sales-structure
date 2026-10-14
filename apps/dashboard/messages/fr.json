@@ -12304,7 +12304,7 @@
     "helpful": "Utile",
     "notHelpful": "Pas utile",
     "feedbackSent": "Merci pour votre retour",
-    "feedbackError": "Erreur lors de l'envoi du retour",
+    "feedbackError": "Nous n'avons pas pu confirmer l'évaluation. Vérifiez l'enregistrement avant de la renvoyer.",
     "thankYou": "Merci !"
   },
   "automationTemplates": {

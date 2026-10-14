@@ -12304,7 +12304,7 @@
     "helpful": "Útil",
     "notHelpful": "Não útil",
     "feedbackSent": "Obrigado pelo seu feedback",
-    "feedbackError": "Erro ao enviar feedback",
+    "feedbackError": "Não foi possível confirmar a avaliação. Verifique o registro antes de enviá-la novamente.",
     "thankYou": "Obrigado!"
   },
   "automationTemplates": {

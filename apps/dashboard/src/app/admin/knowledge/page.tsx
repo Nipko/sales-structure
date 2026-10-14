@@ -633,7 +633,7 @@ export default function KnowledgePage() {
             />
 
             {/* Tabs */}
-            <div id={guidedTourAnchorId("knowledge-tabs")} className="flex gap-1 mb-5 bg-card rounded-xl p-1 border border-border w-fit">
+            <div id={guidedTourAnchorId("knowledge-tabs")} className="flex flex-wrap gap-1 mb-5 bg-card rounded-xl p-1 border border-border w-fit max-w-full">
                 <button onClick={() => setTab("library")} className={cn("px-4 py-2 rounded-lg border-none font-semibold text-[13px] cursor-pointer flex items-center gap-1.5 transition-all duration-200", tab === "library" ? "bg-primary text-primary-foreground" : "bg-transparent text-muted-foreground")}>
                     <BookOpen size={16} /> {t("tabs.library")}
                 </button>

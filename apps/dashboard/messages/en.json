@@ -12304,7 +12304,7 @@
     "helpful": "Helpful",
     "notHelpful": "Not helpful",
     "feedbackSent": "Thanks for your feedback",
-    "feedbackError": "Error sending feedback",
+    "feedbackError": "We could not confirm the rating. Check the record before submitting it again.",
     "thankYou": "Thank you!"
   },
   "automationTemplates": {

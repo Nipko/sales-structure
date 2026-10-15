@@ -3491,6 +3491,7 @@
     "keywordsTitle": "Palavras-chave de compra",
     "keywordsDesc": "Palavras que indicam intencao de compra do lead",
     "addKeyword": "Adicionar",
+    "removeKeyword": "Remover palavra-chave: {keyword}",
     "keywordPlaceholder": "Nova palavra-chave...",
     "decayTitle": "Decaimento do score",
     "decayDesc": "Reduz automaticamente o score de leads inativos",

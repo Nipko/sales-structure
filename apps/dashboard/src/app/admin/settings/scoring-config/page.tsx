@@ -253,6 +253,7 @@ export default function ScoringConfigPage() {
                                 {kw}
                                 <button
                                     onClick={() => removeKeyword(kw)}
+                                    aria-label={t("removeKeyword", { keyword: kw })}
                                     className="p-0 border-none bg-transparent text-muted-foreground hover:text-red-500 cursor-pointer transition-colors"
                                 >
                                     <X size={12} />

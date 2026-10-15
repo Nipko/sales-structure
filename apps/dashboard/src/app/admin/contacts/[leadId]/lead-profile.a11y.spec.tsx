@@ -21,11 +21,11 @@ jest.mock("next/navigation", () => ({
     useParams: () => ({ leadId: urlId }),
 }));
 
-jest.mock("@/lib/api", () => ({ __esModule: true, api: { fetch: jest.fn() } }));
+jest.mock("@/lib/api", () => ({ __esModule: true, api: { fetch: jest.fn(), getStages: jest.fn() } }));
 jest.mock("@/contexts/TenantContext", () => ({ __esModule: true, useTenant: () => ({ activeTenantId: "11111111-1111-4111-8111-111111111111" }) }));
 jest.mock("@/contexts/AuthContext", () => ({ __esModule: true, useAuth: () => ({ user: { id: "u1", role: "tenant_admin" }, verticalConfig: null }) }));
 
-const { api } = jest.requireMock("@/lib/api") as { api: { fetch: jest.Mock } };
+const { api } = jest.requireMock("@/lib/api") as { api: { fetch: jest.Mock; getStages: jest.Mock } };
 const calls = () => api.fetch.mock.calls.map(([path, options]) => ({ path: String(path), options }));
 const paths = () => calls().map(call => call.path);
 
@@ -49,6 +49,7 @@ function serve(profile: any, extra: Record<string, any> = {}) {
 
 beforeEach(() => {
     api.fetch.mockReset();
+    api.getStages.mockReset().mockResolvedValue({ success: true, data: [] });
     for (const fn of Object.values(router)) fn.mockClear();
     jest.spyOn(console, "error").mockImplementation(() => undefined);
 });

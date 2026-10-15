@@ -1567,6 +1567,7 @@
       "loadRetry": "Try again",
       "loadBack": "Back to customers",
       "partialLoadError": "Some profile data could not be loaded.",
+      "stageUnavailable": "Stage unavailable",
       "insightUnavailable": "No insight available",
       "tabTimeline": "Timeline",
       "tabNotes": "Notes ({count})",

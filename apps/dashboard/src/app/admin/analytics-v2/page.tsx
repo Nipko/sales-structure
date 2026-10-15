@@ -18,6 +18,7 @@ import {
     XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
 import KPICard from "@/components/analytics/KPICard";
+import { analyticsHandoffReasonLabel } from "@/lib/analytics-handoff-reason-label";
 import DateRangePicker from "@/components/analytics/DateRangePicker";
 import Heatmap from "@/components/analytics/Heatmap";
 import AiResolutionWidget from "./_components/AiResolutionWidget";
@@ -305,6 +306,10 @@ function AIBotTab({ data }: { data: any }) {
 
     if (!data) return <p className="text-muted-foreground py-10 text-center">{t("noData")}</p>;
 
+    const handoffReasons = (data.handoffReasons || []).map((row: any) => ({
+        ...row, displayReason: analyticsHandoffReasonLabel(row.reason, t),
+    }));
+
     return (
         <div className="space-y-6">
             {/* AI KPI Cards */}
@@ -351,18 +356,26 @@ function AIBotTab({ data }: { data: any }) {
                 )}
 
                 {/* Handoff Reasons */}
-                {data.handoffReasons?.length > 0 && (
+                {handoffReasons.length > 0 && (
                     <div className="p-6 rounded-xl bg-white dark:bg-white/[0.04] border border-neutral-200 dark:border-white/[0.08]">
                         <h3 className="text-sm font-semibold text-foreground mb-4">{t("handoffReasons")}</h3>
                         <ResponsiveContainer width="100%" height={250}>
-                            <BarChart data={data.handoffReasons} layout="vertical">
+                            <BarChart data={handoffReasons} layout="vertical">
                                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
                                 <XAxis type="number" tick={{ fontSize: 11, fill: "#9898b0" }} />
-                                <YAxis dataKey="reason" type="category" tick={{ fontSize: 11, fill: "#9898b0" }} width={120} />
+                                <YAxis dataKey="displayReason" type="category" tick={{ fontSize: 11, fill: "#9898b0" }} width={120} />
                                 <Tooltip contentStyle={{ background: "#1a1a2e", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, fontSize: 12 }} />
-                                <Bar dataKey="count" fill="#6c5ce7" radius={[0, 6, 6, 0]} />
+                                <Bar dataKey="count" name={t("handoffs")} fill="#6c5ce7" radius={[0, 6, 6, 0]} />
                             </BarChart>
                         </ResponsiveContainer>
+                        <ul aria-label={t("handoffReasons")} className="mt-4 space-y-2 text-sm">
+                            {handoffReasons.map((row: any, index: number) => (
+                                <li key={index} className="flex items-start justify-between gap-4">
+                                    <span className="min-w-0 break-words">{row.displayReason}</span>
+                                    <span className="shrink-0 tabular-nums">{row.count}</span>
+                                </li>
+                            ))}
+                        </ul>
                     </div>
                 )}
             </div>

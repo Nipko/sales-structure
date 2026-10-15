@@ -233,36 +233,40 @@ export class SegmentsService {
                 column = rule.field;
             }
 
+            // Prisma binds form strings as TEXT. Score is an integer column;
+            // an explicit numeric parameter cast keeps numeric comparisons
+            // valid (including decimal thresholds) without changing text fields.
+            const placeholder = () => `$${n++}${rule.field === 'score' ? '::numeric' : ''}`;
             switch (rule.operator) {
                 case 'eq':
-                    conditions.push(`${column} = $${n++}`);
+                    conditions.push(`${column} = ${placeholder()}`);
                     params.push(rule.value);
                     break;
                 case 'neq':
-                    conditions.push(`${column} != $${n++}`);
+                    conditions.push(`${column} != ${placeholder()}`);
                     params.push(rule.value);
                     break;
                 case 'in':
                     if (Array.isArray(rule.value)) {
-                        const placeholders = rule.value.map(() => `$${n++}`).join(', ');
+                        const placeholders = rule.value.map(() => placeholder()).join(', ');
                         conditions.push(`${column} IN (${placeholders})`);
                         params.push(...rule.value);
                     }
                     break;
                 case 'gt':
-                    conditions.push(`${column} > $${n++}`);
+                    conditions.push(`${column} > ${placeholder()}`);
                     params.push(rule.value);
                     break;
                 case 'gte':
-                    conditions.push(`${column} >= $${n++}`);
+                    conditions.push(`${column} >= ${placeholder()}`);
                     params.push(rule.value);
                     break;
                 case 'lt':
-                    conditions.push(`${column} < $${n++}`);
+                    conditions.push(`${column} < ${placeholder()}`);
                     params.push(rule.value);
                     break;
                 case 'lte':
-                    conditions.push(`${column} <= $${n++}`);
+                    conditions.push(`${column} <= ${placeholder()}`);
                     params.push(rule.value);
                     break;
                 case 'contains':

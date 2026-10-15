@@ -3502,6 +3502,7 @@
     "loadError": "Erro ao carregar a configuracao"
   },
   "crmAnalytics": {
+    "stageUnavailable": "Etapa indisponível",
     "title": "Análise CRM",
     "subtitle": "Métricas de vendas, pipeline e desempenho da equipe",
     "tabs": {
@@ -3511,6 +3512,7 @@
       "agents": "Agentes"
     },
     "kpi": {
+      "totalCustomers": "Total de {customers}",
       "totalLeads": "Total leads",
       "activeOpps": "Oportunidades ativas",
       "pipelineValue": "Valor do pipeline",
@@ -3518,6 +3520,8 @@
       "convRate": "Taxa de conversão"
     },
     "charts": {
+      "customersByStage": "{customers} por etapa",
+      "customerSources": "Origens de {customers}",
       "leadsByStage": "Leads por etapa",
       "leadSources": "Fontes de leads",
       "winLoss": "Ganhos vs Perdidos",

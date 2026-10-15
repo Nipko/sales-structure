@@ -42,6 +42,8 @@ export default function IdentityPage() {
     const { activeTenantId } = useTenant();
     const [activeTab, setActiveTab] = useState("suggestions");
     const [suggestions, setSuggestions] = useState<any[]>([]);
+    const [counts, setCounts] = useState<{ pending: number; approved: number; rejected: number } | null>(null);
+    const [loadError, setLoadError] = useState(false);
     const [loading, setLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState<string | null>(null);
     const [message, setMessage] = useState({ type: "", text: "" });
@@ -57,10 +59,24 @@ export default function IdentityPage() {
     const loadSuggestions = async () => {
         if (!activeTenantId) return;
         setLoading(true);
+        setLoadError(false);
+        setCounts(null);
         try {
-            const data = await api.fetch(`/identity/${activeTenantId}/suggestions`);
-            setSuggestions(Array.isArray(data) ? data : data?.data || []);
-        } catch (err) { console.error("Failed to load identity suggestions", err); }
+            const [list, summary] = await Promise.all([
+                api.fetch(`/identity/${activeTenantId}/suggestions`),
+                api.fetch(`/identity/${activeTenantId}/suggestions/summary`),
+            ]);
+            if (!list?.success || !Array.isArray(list.data) || !summary?.success
+                || !["pending", "approved", "rejected"].every(key => Number.isSafeInteger(summary.data?.[key]) && summary.data[key] >= 0)) {
+                throw new Error("Invalid identity suggestions response");
+            }
+            setSuggestions(list.data);
+            setCounts(summary.data);
+        } catch (err) {
+            console.error("Failed to load identity suggestions", err);
+            setSuggestions([]);
+            setLoadError(true);
+        }
         finally { setLoading(false); }
     };
 
@@ -111,8 +127,6 @@ export default function IdentityPage() {
     };
 
     const pending = suggestions.filter(s => s.status === "pending");
-    const approved = suggestions.filter(s => s.status === "approved");
-    const rejected = suggestions.filter(s => s.status === "rejected");
 
     if (loading) return <div className="p-8 text-center text-muted-foreground">{t("loading")}</div>;
 
@@ -155,9 +169,9 @@ export default function IdentityPage() {
             {activeTab === "suggestions" && (<>
             <div className="grid grid-cols-3 gap-5 mb-8 mt-4">
                 {([
-                    { key: "pending", count: pending.length, color: "var(--warning, #ffaa00)", Icon: Clock },
-                    { key: "approved", count: approved.length, color: "var(--success, #00d68f)", Icon: CheckCircle },
-                    { key: "rejected", count: rejected.length, color: "var(--danger, #ff4757)", Icon: XCircle },
+                    { key: "pending", count: counts?.pending ?? "—", color: "var(--warning, #ffaa00)", Icon: Clock },
+                    { key: "approved", count: counts?.approved ?? "—", color: "var(--success, #00d68f)", Icon: CheckCircle },
+                    { key: "rejected", count: counts?.rejected ?? "—", color: "var(--danger, #ff4757)", Icon: XCircle },
                 ] as const).map(stat => (
                     <div key={stat.key} className="bg-card border border-border rounded-xl overflow-hidden p-6 flex items-center gap-4">
                         <div className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: `${stat.color}15` }}>
@@ -175,10 +189,12 @@ export default function IdentityPage() {
                 <div className="px-6 py-5 border-b border-border flex items-center gap-2.5">
                     <Users size={18} className="text-primary" />
                     <h2 className="text-base font-semibold m-0 text-foreground">{t("pendingTitle")}</h2>
-                    <span className="text-xs text-muted-foreground ml-auto">{t("suggestionCount", { count: pending.length })}</span>
+                    {!loadError && <span className="text-xs text-muted-foreground ml-auto">{t("suggestionCount", { count: pending.length })}</span>}
                 </div>
 
-                {pending.length === 0 ? (
+                {loadError ? (
+                    <div role="alert" className="p-6 text-sm text-destructive">{t("loadError")}</div>
+                ) : pending.length === 0 ? (
                     <div className="py-[60px] text-center text-muted-foreground">
                         <Users size={40} className="opacity-30 mb-4" />
                         <p className="text-[15px] font-medium m-0 mb-1">{t("empty.title")}</p>

@@ -5481,6 +5481,7 @@
     },
     "subtitle": "Gerencie a identidade de clientes entre canais",
     "loading": "Carregando sugestões...",
+    "loadError": "Não foi possível carregar as sugestões e suas contagens. Tente novamente.",
     "pendingTitle": "Sugestões pendentes",
     "suggestionCount": "{count, plural, one {# sugestão} other {# sugestões}}",
     "contactA": "Contato A",

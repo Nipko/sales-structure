@@ -5481,6 +5481,7 @@
     },
     "subtitle": "Gerez l identite client inter-canaux",
     "loading": "Chargement des suggestions...",
+    "loadError": "Impossible de charger les suggestions et leurs compteurs. Réessayez.",
     "pendingTitle": "Suggestions en attente",
     "suggestionCount": "{count, plural, one {# suggestion} other {# suggestions}}",
     "contactA": "Contact A",

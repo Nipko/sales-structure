@@ -5481,6 +5481,7 @@
     },
     "subtitle": "Manage cross-channel customer identity",
     "loading": "Loading identity suggestions...",
+    "loadError": "Suggestions and their counts could not be loaded. Please try again.",
     "pendingTitle": "Pending suggestions",
     "suggestionCount": "{count, plural, one {# suggestion} other {# suggestions}}",
     "contactA": "Contact A",

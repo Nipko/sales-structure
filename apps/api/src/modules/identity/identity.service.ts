@@ -233,6 +233,19 @@ export class IdentityService {
         );
     }
 
+    /** Counts are independent of the pending list's status filter and LIMIT100. */
+    async getMergeSuggestionCounts(tenantId: string) {
+        const schemaName = await this.getSchema(tenantId);
+        const [counts] = await this.prisma.executeInTenantSchema<any[]>(
+            schemaName,
+            `SELECT COUNT(*) FILTER (WHERE status = 'pending')::int AS pending,
+                    COUNT(*) FILTER (WHERE status = 'approved')::int AS approved,
+                    COUNT(*) FILTER (WHERE status = 'rejected')::int AS rejected
+             FROM merge_suggestions`,
+        );
+        return counts;
+    }
+
     /**
      * Approve a merge: move all contact_identities from profile B to profile A,
      * then delete the orphan profile B.

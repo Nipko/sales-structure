@@ -25,6 +25,13 @@ export class IdentityController {
         return { success: true, data };
     }
 
+    @Get(':tenantId/suggestions/summary')
+    @ApiOperation({ summary: 'Count merge suggestions by status without contact details' })
+    async getSuggestionCounts(@Param('tenantId') tenantId: string) {
+        const data = await this.identityService.getMergeSuggestionCounts(tenantId);
+        return { success: true, data };
+    }
+
     @Post(':tenantId/suggestions/:suggestionId/approve')
     @Roles('tenant_admin', 'tenant_supervisor')
     @ApiOperation({ summary: 'Approve a merge suggestion' })

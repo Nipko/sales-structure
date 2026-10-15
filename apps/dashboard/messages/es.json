@@ -1567,6 +1567,7 @@
       "loadRetry": "Reintentar",
       "loadBack": "Volver a clientes",
       "partialLoadError": "Algunos datos de la ficha no se pudieron cargar.",
+      "stageUnavailable": "Etapa no disponible",
       "insightUnavailable": "No hay insight disponible",
       "tabTimeline": "Historial",
       "tabNotes": "Notas ({count})",

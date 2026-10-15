@@ -13,6 +13,7 @@ import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { PageHeader } from "@/components/ui/page-header";
 import { useVerticalTerms } from "@/hooks/useVerticalTerms";
 import { interpretLeadProfile } from "@/lib/lead-profile";
+import { crmStageLabel, type CrmStageDefinition } from "@/lib/crm-stage-label";
 import {
     ArrowLeft, User, Phone, Mail, Building2, Star, Tag, Hash,
     MessageSquare, CheckSquare, StickyNote, Clock, Plus,
@@ -73,6 +74,7 @@ export default function Lead360Page() {
     const [timeline, setTimeline] = useState<any[]>([]);
     const [notes, setNotes] = useState<any[]>([]);
     const [tasks, setTasks] = useState<any[]>([]);
+    const [stageDefinitions, setStageDefinitions] = useState<CrmStageDefinition[]>([]);
     const [activeTab, setActiveTab] = useState<"timeline" | "notes" | "tasks" | "gallery">("timeline");
     // Fotos que el cliente mando por el chat. Media-processing las guarda
     // ligadas al contacto (entity_type=contact); antes se describian y se
@@ -131,6 +133,7 @@ export default function Lead360Page() {
         if (!tenantId || !leadId) return;
         setLoading(true);
         setLoadError(null);
+        setStageDefinitions([]);
         let redirected = false;
         try {
             // The profile first: it says whether the URL id is a lead or a contact, and every other call
@@ -152,15 +155,17 @@ export default function Lead360Page() {
             setReadOnly(isReadOnly);
             setLead360(d1.data);
 
-            const [d2, d3, d4] = await Promise.allSettled([
+            const [d2, d3, d4, stageResponse] = await Promise.allSettled([
                 api.fetch(`/crm/timeline/${tenantId}/${leadId}`),
                 isReadOnly ? Promise.resolve({ data: [] }) : api.fetch(`/crm/notes/${tenantId}/${leadId}`),
                 isReadOnly ? Promise.resolve({ data: [] }) : api.fetch(`/crm/tasks/${tenantId}?leadId=${leadId}`),
+                api.getStages(tenantId),
             ]);
             const rows = (r: PromiseSettledResult<any>) => (r.status === "fulfilled" && Array.isArray(r.value?.data) ? r.value.data : []);
             setTimeline(rows(d2));
             setNotes(rows(d3));
             setTasks(rows(d4));
+            setStageDefinitions(rows(stageResponse));
             if ([d2, d3, d4].some(r => r.status === "rejected")) showToast(t("leadDetail.partialLoadError"));
 
             // Load score breakdown
@@ -359,7 +364,8 @@ export default function Lead360Page() {
     }
 
     const stageColor = STAGE_COLORS[lead.stage] || STAGE_COLORS.nuevo;
-    const stageLabel = tc(`stages.${lead.stage}`) || lead.stage;
+    const labelForStage = (stage: unknown) => crmStageLabel(stage, stageDefinitions, tc, t("leadDetail.stageUnavailable"));
+    const stageLabel = labelForStage(lead.stage);
     const score = lead.score || 0;
 
     return (
@@ -524,7 +530,7 @@ export default function Lead360Page() {
                                         className="w-full px-2.5 py-1.5 rounded-lg border border-border bg-muted text-foreground text-sm outline-none"
                                     >
                                         {STAGE_KEYS.map(key => (
-                                            <option key={key} value={key}>{tc(`stages.${key}`)}</option>
+                                            <option key={key} value={key}>{labelForStage(key)}</option>
                                         ))}
                                     </select>
                                 </div>
@@ -645,7 +651,7 @@ export default function Lead360Page() {
                             <div key={op.id} className="py-2 border-b border-border">
                                 <div className="text-[13px] font-semibold">{op.course_name || t("leadDetail.opportunity")}</div>
                                 <div className="flex gap-2 mt-1">
-                                    <span className="text-[11px] text-muted-foreground">{tc(`stages.${op.stage}`) || op.stage}</span>
+                                    <span className="text-[11px] text-muted-foreground">{labelForStage(op.stage)}</span>
                                     {op.estimated_value && (
                                         <span className="text-[11px] font-semibold text-emerald-500">
                                             ${Number(op.estimated_value).toLocaleString()} COP

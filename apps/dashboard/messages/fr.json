@@ -1705,6 +1705,7 @@
     "useSuggestion": "Utiliser la suggestion",
     "cannedResponses": "Réponses rapides",
     "noConversations": "Aucune conversation",
+    "openConversationWith": "Ouvrir la conversation avec {name}",
     "filterAll": "Tous",
     "filterMine": "Les miens",
     "filterUnassigned": "Non attribues",

@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { RedisService } from '../../../redis/redis.service';
@@ -211,25 +211,33 @@ export class SegmentsService {
         'converted_at', 'archived_at', 'tags',
     ]);
     private static readonly METADATA_KEY_PATTERN = /^[a-zA-Z0-9_]+$/;
+    private static readonly ALLOWED_FILTER_OPERATORS = new Set([
+        'eq', 'neq', 'in', 'gt', 'gte', 'lt', 'lte', 'contains',
+    ]);
 
     private buildFilterSQL(rules: FilterRule[]): { whereClause: string; params: any[] } {
-        if (!rules || rules.length === 0) {
+        if (rules == null) {
             return { whereClause: '', params: [] };
         }
+        if (!Array.isArray(rules)) throw new BadRequestException('Invalid segment filter rules');
 
         const conditions: string[] = [];
         const params: any[] = [];
         let n = 1;
 
         for (const rule of rules) {
+            if (!rule || typeof rule !== 'object' || typeof rule.field !== 'string'
+                || !SegmentsService.ALLOWED_FILTER_OPERATORS.has(rule.operator)) {
+                throw new BadRequestException('Invalid segment filter rule');
+            }
             const isMetadata = rule.field.startsWith('metadata.');
             let column: string;
             if (isMetadata) {
                 const key = rule.field.replace('metadata.', '');
-                if (!SegmentsService.METADATA_KEY_PATTERN.test(key)) continue;
+                if (!SegmentsService.METADATA_KEY_PATTERN.test(key)) throw new BadRequestException('Invalid segment filter field');
                 column = `metadata->>'${key}'`;
             } else {
-                if (!SegmentsService.ALLOWED_FILTER_FIELDS.has(rule.field)) continue;
+                if (!SegmentsService.ALLOWED_FILTER_FIELDS.has(rule.field)) throw new BadRequestException('Invalid segment filter field');
                 column = rule.field;
             }
 

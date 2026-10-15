@@ -17,6 +17,7 @@ import {
     Award, BarChart3,
 } from "lucide-react";
 import { useVerticalTerms } from "@/hooks/useVerticalTerms";
+import { crmStageLabel } from "@/lib/crm-stage-label";
 
 const COLORS = ['#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899', '#f43f5e', '#f97316', '#eab308', '#22c55e', '#14b8a6'];
 const STAGE_COLORS: Record<string, string> = {
@@ -27,6 +28,7 @@ const STAGE_COLORS: Record<string, string> = {
 
 export default function CrmAnalyticsPage() {
     const t = useTranslations("crmAnalytics");
+    const tc = useTranslations("common");
     const tHelp = useTranslations("help");
     const { activeTenantId } = useTenant();
     const vt = useVerticalTerms();
@@ -40,6 +42,10 @@ export default function CrmAnalyticsPage() {
     const [winLoss, setWinLoss] = useState<any>(null);
     const [leaderboard, setLeaderboard] = useState<any[]>([]);
     const [sources, setSources] = useState<any[]>([]);
+    const displayFunnel = funnel.map(entry => ({
+        ...entry,
+        displayName: crmStageLabel(entry.stage, entry.name === entry.stage ? [] : [{ slug: entry.stage, name: entry.name }], tc, t("stageUnavailable")),
+    }));
 
     useEffect(() => {
         if (!activeTenantId) return;
@@ -88,7 +94,7 @@ export default function CrmAnalyticsPage() {
                     {/* KPI Cards */}
                     <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                         {[
-                            { label: `Total ${vt.customerNounPlural}`, value: overview?.totalLeads || 0, icon: Users, color: "#6366f1" },
+                            { label: t("kpi.totalCustomers", { customers: vt.customerNounPlural }), value: overview?.totalLeads || 0, icon: Users, color: "#6366f1" },
                             { label: t("kpi.activeOpps"), value: overview?.activeOpportunities || 0, icon: Target, color: "#8b5cf6" },
                             { label: t("kpi.pipelineValue"), value: `$${(overview?.pipelineValue || 0).toLocaleString()}`, icon: DollarSign, color: "#22c55e" },
                             { label: t("kpi.avgScore"), value: `${overview?.avgScore || 0}/10`, icon: Activity, color: "#f97316" },
@@ -109,12 +115,12 @@ export default function CrmAnalyticsPage() {
                     {/* Funnel + Sources side by side */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                         <div className="bg-card border border-border rounded-xl p-5">
-                            <h3 className="text-sm font-semibold mb-4">{`${capitalize(vt.customerNounPlural)} por etapa`}</h3>
+                            <h3 className="text-sm font-semibold mb-4">{t("charts.customersByStage", { customers: capitalize(vt.customerNounPlural) })}</h3>
                             <ResponsiveContainer width="100%" height={280}>
-                                <BarChart data={funnel} layout="vertical">
+                                <BarChart data={displayFunnel} layout="vertical">
                                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                                     <XAxis type="number" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
-                                    <YAxis dataKey="stage" type="category" width={100} tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
+                                    <YAxis dataKey="displayName" type="category" width={100} tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
                                     <Tooltip contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }} />
                                     <Bar dataKey="count" radius={[0, 4, 4, 0]}>
                                         {funnel.map((entry: any, i: number) => (
@@ -126,7 +132,7 @@ export default function CrmAnalyticsPage() {
                         </div>
 
                         <div className="bg-card border border-border rounded-xl p-5">
-                            <h3 className="text-sm font-semibold mb-4">{`Fuentes de ${vt.customerNounPlural}`}</h3>
+                            <h3 className="text-sm font-semibold mb-4">{t("charts.customerSources", { customers: vt.customerNounPlural })}</h3>
                             {sources.length > 0 ? (
                                 <ResponsiveContainer width="100%" height={280}>
                                     <PieChart>
@@ -187,9 +193,9 @@ export default function CrmAnalyticsPage() {
                 <div className="bg-card border border-border rounded-xl p-5">
                     <h3 className="text-sm font-semibold mb-4">{t("charts.conversionFunnel")}</h3>
                     <div className="flex flex-col gap-2">
-                        {funnel.map((stage: any, i: number) => (
+                        {displayFunnel.map((stage: any, i: number) => (
                             <div key={stage.stage} className="flex items-center gap-3">
-                                <div className="w-28 text-xs font-medium text-right truncate">{stage.stage}</div>
+                                <div className="w-28 text-xs font-medium text-right truncate" title={stage.displayName}>{stage.displayName}</div>
                                 <div className="flex-1 h-8 bg-muted rounded-lg overflow-hidden relative">
                                     <div
                                         className="h-full rounded-lg transition-all duration-500"

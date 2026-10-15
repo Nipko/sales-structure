@@ -3502,6 +3502,7 @@
     "loadError": "Failed to load configuration"
   },
   "crmAnalytics": {
+    "stageUnavailable": "Stage unavailable",
     "title": "CRM Analytics",
     "subtitle": "Sales metrics, pipeline performance and team insights",
     "tabs": {
@@ -3511,6 +3512,7 @@
       "agents": "Agents"
     },
     "kpi": {
+      "totalCustomers": "Total {customers}",
       "totalLeads": "Total leads",
       "activeOpps": "Active opportunities",
       "pipelineValue": "Pipeline value",
@@ -3518,6 +3520,8 @@
       "convRate": "Conversion rate"
     },
     "charts": {
+      "customersByStage": "{customers} by stage",
+      "customerSources": "Sources of {customers}",
       "leadsByStage": "Leads by stage",
       "leadSources": "Lead sources",
       "winLoss": "Won vs Lost",

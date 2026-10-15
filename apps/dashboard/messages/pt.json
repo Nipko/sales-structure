@@ -1807,6 +1807,8 @@
     "errorReturnToBot": "Falha ao devolver a conversa ao bot. Tente novamente.",
     "errorSaveContact": "Falha ao salvar os dados do contato. Tente novamente.",
     "errorNote": "Falha ao salvar nota. Tente novamente.",
+    "noteMetadata": "Por {author} · {date}",
+    "noteDateUnavailable": "Data indisponível",
     "errorSnooze": "Falha ao adiar conversa. Tente novamente.",
     "errorArchive": "Falha ao arquivar conversa. Tente novamente.",
     "errorDelete": "Falha ao excluir conversa. Tente novamente.",

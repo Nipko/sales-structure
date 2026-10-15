@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { Pool } from 'pg';
+import { PrismaClient } from '@prisma/client';
 import { CrmController } from '../../crm.controller';
 import { SegmentsService } from './segments.service';
 
@@ -12,6 +13,7 @@ integration('Segment preview through the controller with real isolated PostgreSQ
     const tenants = [randomUUID(), randomUUID()];
     const schemas = tenants.map(id => `tenant_segpreview_${id.replace(/-/g, '')}`);
     let db: Pool;
+    let prisma: PrismaClient;
     let controllers: CrmController[];
     let quota: jest.Mock[];
     let statements: string[][];
@@ -21,6 +23,8 @@ integration('Segment preview through the controller with real isolated PostgreSQ
             throw new Error('disposable_loopback_database_required');
         }
         db = new Pool({ connectionString: url, max: 4 });
+        prisma = new PrismaClient({ datasources: { db: { url: url! } } });
+        await prisma.$connect();
         await db.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"');
         const source = readFileSync(resolve(__dirname, '../../../../../prisma/tenant-schema.sql'), 'utf8');
         const table = source.match(/CREATE TABLE IF NOT EXISTS "\{\{SCHEMA_NAME\}\}"\."contact_segments" \([\s\S]*?\n\);/)?.[0];
@@ -36,15 +40,12 @@ integration('Segment preview through the controller with real isolated PostgreSQ
             const execute = async (name: string, sql: string, params: unknown[] = []) => {
                 if (name !== schema) throw new Error('test_schema_scope_violation');
                 statements[i].push(sql);
-                const client = await db.connect();
-                try {
-                    await client.query('BEGIN');
-                    await client.query(`SET LOCAL search_path TO "${schema}", public`);
-                    const result = await client.query(sql, params);
-                    await client.query('COMMIT');
-                    return result.rows;
-                } catch (error) { await client.query('ROLLBACK'); throw error; }
-                finally { client.release(); }
+                return prisma.$transaction(async tx => {
+                    await tx.$executeRawUnsafe(`SET LOCAL search_path TO "${schema}", public`);
+                    // Match production Prisma binding: a form value such as "7"
+                    // is sent as TEXT, unlike node-pg's inferred parameter type.
+                    return tx.$queryRawUnsafe(sql, ...params);
+                });
             };
             const resolver = async (tenant: string) => {
                 if (tenant !== tenants[i]) throw new Error('test_tenant_scope_violation');
@@ -61,7 +62,7 @@ integration('Segment preview through the controller with real isolated PostgreSQ
     afterAll(async () => {
         if (!db) return;
         try { for (const schema of schemas) await db.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`); }
-        finally { await db.end(); }
+        finally { await prisma?.$disconnect(); await db.end(); }
     });
     beforeEach(async () => {
         for (let i = 0; i < schemas.length; i++) {
@@ -89,6 +90,29 @@ integration('Segment preview through the controller with real isolated PostgreSQ
         const response = await controllers[0].createSegment(tenants[0], { name: '', filterRules: rules, preview: true });
         expect(response).toEqual({ success: true, data: { count: 1 } });
         expect((await db.query(`SELECT COUNT(*)::int AS total FROM "${schemas[0]}".contact_segments`)).rows).toEqual([{ total: 0 }]);
+    });
+    it.each([
+        { operator: 'eq', value: '7', count: 1 },
+        { operator: 'neq', value: '7', count: 0 },
+        { operator: 'gt', value: '7', count: 0 },
+        { operator: 'gte', value: '8', count: 0 },
+        { operator: 'lt', value: '8', count: 1 },
+        { operator: 'lte', value: '7', count: 1 },
+        { operator: 'gte', value: '7.5', count: 0 },
+        { operator: 'in', value: ['2', '7'], count: 1 },
+    ])('binds score $operator through Prisma with value $value', async ({ operator, value, count }) => {
+        const before = await snapshot(0);
+        const response = await controllers[0].createSegment(tenants[0], {
+            name: '', preview: true, filterRules: [{ field: 'score', operator, value }],
+        });
+        expect(response).toEqual({ success: true, data: { count } });
+        expect(await snapshot(0)).toEqual(before);
+    });
+    it('keeps text filters parameterized through the same Prisma path', async () => {
+        const response = await controllers[0].createSegment(tenants[0], {
+            name: '', preview: true, filterRules: [{ field: 'stage', operator: 'eq', value: "consulta' OR 1=1 --" }],
+        });
+        expect(response).toEqual({ success: true, data: { count: 0 } });
     });
     it('continues to enforce quota and persist one definition for an explicit create', async () => {
         const response = await controllers[0].createSegment(tenants[0], { name: 'Synthetic saved segment', filterRules: rules });

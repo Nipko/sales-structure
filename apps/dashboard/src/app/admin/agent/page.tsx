@@ -696,8 +696,12 @@ function AgentCard({
         )}
       </div>
 
-      {/* Actions */}
-      <div className="flex items-center gap-2">
+      {/* Keep mobile action targets left of Assist's floating figure. */}
+      <div
+        role="group"
+        aria-label={t("actionsFor", { name: agent.name || t("unnamedAgent") })}
+        className="flex items-center gap-2 pr-16 md:pr-0"
+      >
         <button
           type="button"
           onClick={onEdit}
@@ -708,6 +712,7 @@ function AgentCard({
         <button
           type="button"
           onClick={onDuplicate}
+          aria-label={t("duplicateAgent", { name: agent.name || t("unnamedAgent") })}
           className="px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 text-neutral-500 dark:text-neutral-400 cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
           title={t("duplicate")}
         >

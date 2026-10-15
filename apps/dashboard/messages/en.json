@@ -5152,6 +5152,8 @@
       "questions": { "title": "Frequently asked questions", "summary": "Canonical answers it can reuse", "action": "Review questions", "assistPrompt": "Help me identify which FAQs this agent is missing. Show me the proposal before saving any change." }
     },
     "moreActions": "More options for {name}",
+    "actionsFor": "Actions for {name}",
+    "duplicateAgent": "Duplicate agent {name}",
     "editorBehind": {
       "text": "Your agent changed after you opened this page, and we could not show how it looks now. Reload to see it; you have no unsaved changes.",
       "reload": "Reload"

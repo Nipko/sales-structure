@@ -57,10 +57,11 @@ export class CustomAttributesService {
 
         const result = await this.prisma.executeInTenantSchema<any[]>(schema, `
             INSERT INTO custom_attribute_definitions
-                (entity_type, attribute_key, attribute_label, attribute_type, options, required)
-            VALUES ($1, $2, $3, $4, $5::jsonb, $6)
+                (tenant_id, entity_type, attribute_key, attribute_label, attribute_type, options, required)
+            VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)
             RETURNING *
         `, [
+            tenantId,
             data.entityType,
             data.attributeKey,
             data.attributeLabel,

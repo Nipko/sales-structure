@@ -46,7 +46,11 @@ for (const viewport of [{ width: 319, height: 604 }, { width: 1280, height: 800 
         await expect(action).toBeFocused();
         await page.keyboard.press(key);
 
-        await expect(action).toHaveAttribute("aria-current", "true");
+        // Mobile opens the chat by hiding the list, so its selected row is then
+        // absent from the accessibility tree while still mounted in the DOM.
+        await expect(page.getByRole("button", {
+          name: "Abrir conversación con QA Keyboard Two", exact: true, includeHidden: true,
+        })).toHaveAttribute("aria-current", "true");
         await expect(composer).toBeVisible();
         await expect(composer).toHaveValue("");
         await expect.poll(() => state.observed.includes(`agent-console/conversation/${TENANT}/${CONVERSATIONS[1]}`)).toBe(true);

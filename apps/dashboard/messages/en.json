@@ -6717,6 +6717,19 @@
     "toastConnectionError": "Connection error. Please try again."
   },
   "analyticsV2": {
+    "handoffReasonLabels": {
+      "human_request": "Requested a person",
+      "complaint": "Complaint",
+      "discount_request": "Discount request",
+      "vip": "Priority assistance",
+      "max_failed_attempts": "Attempt limit reached",
+      "agent_promised_handoff": "Agent offered human assistance",
+      "customer_accepted_human_offer": "Accepted offered human assistance",
+      "unknown": "No reason recorded",
+      "custom_trigger": "Custom rule",
+      "intake": "Request through a procedure",
+      "other": "Other reason"
+    },
     "title": "Analytics",
     "overview": "Overview",
     "aiBotTab": "AI & Bot",

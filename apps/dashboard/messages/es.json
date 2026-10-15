@@ -1807,6 +1807,8 @@
     "errorReturnToBot": "No se pudo devolver la conversación al bot. Intenta de nuevo.",
     "errorSaveContact": "No se pudieron guardar los datos del contacto. Intenta de nuevo.",
     "errorNote": "No se pudo guardar la nota. Intenta de nuevo.",
+    "noteMetadata": "Por {author} · {date}",
+    "noteDateUnavailable": "Fecha no disponible",
     "errorSnooze": "No se pudo posponer la conversación. Intenta de nuevo.",
     "errorArchive": "No se pudo archivar la conversación. Intenta de nuevo.",
     "errorDelete": "No se pudo eliminar la conversación. Intenta de nuevo.",

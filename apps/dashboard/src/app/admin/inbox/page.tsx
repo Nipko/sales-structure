@@ -699,8 +699,9 @@ export default function InboxPage() {
                         setNotes(conv.notes.map((n: any) => ({
                             id: n.id,
                             content: n.content || n.content_text || '',
-                            agentName: n.created_by || n.agent_name || t('agent'),
-                            createdAt: n.created_at ? new Date(n.created_at).toLocaleDateString(undefined) : '',
+                            agentName: n.agentName || n.created_by || n.agent_name || t('agent'),
+                            // Keep the API timestamp intact; format only when rendering.
+                            createdAt: n.createdAt || n.created_at || '',
                         })));
                     }
                     // Scroll to bottom instantly on load
@@ -1282,13 +1283,16 @@ export default function InboxPage() {
         // API call
         try {
             if (activeTenantId && selectedConv.id) {
-                await api.addNote(activeTenantId, selectedConv.id, content);
-                // Optimistic add to notes list
+                const result: any = await api.addNote(activeTenantId, selectedConv.id, content);
+                if (!result?.success || !result.data?.id || !result.data?.createdAt) {
+                    throw new Error("Note save not acknowledged");
+                }
+                // Append the acknowledged record, not a fabricated id/date.
                 setNotes(prev => [...prev, {
-                    id: `note_${Date.now()}`,
-                    content,
+                    id: result.data.id,
+                    content: result.data.content,
                     agentName: user?.firstName || t('agent'),
-                    createdAt: new Date().toLocaleDateString(undefined),
+                    createdAt: result.data.createdAt,
                 }]);
             }
         } catch (err) {
@@ -2226,7 +2230,7 @@ export default function InboxPage() {
                                 {notes.length > 0 ? notes.map(note => (
                                     <div key={note.id} className="px-3 py-2 rounded-xl bg-card border border-border/50 mb-2 text-[13px]">
                                         <div>{note.content}</div>
-                                        <div className="text-[10px] text-muted-foreground mt-1.5">-- {note.agentName}, {safeDate(note.createdAt)}</div>
+                                        <div className="text-[10px] text-muted-foreground mt-1.5">{t("noteMetadata", { author: note.agentName, date: safeDate(note.createdAt) || t("noteDateUnavailable") })}</div>
                                     </div>
                                 )) : (
                                     <div className="text-xs text-muted-foreground opacity-60">{t("noNotes")}</div>

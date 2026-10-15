@@ -1807,6 +1807,8 @@
     "errorReturnToBot": "Failed to return the conversation to the bot. Please try again.",
     "errorSaveContact": "Failed to save the contact details. Please try again.",
     "errorNote": "Failed to save note. Please try again.",
+    "noteMetadata": "By {author} · {date}",
+    "noteDateUnavailable": "Date unavailable",
     "errorSnooze": "Failed to snooze conversation. Please try again.",
     "errorArchive": "Failed to archive conversation. Please try again.",
     "errorDelete": "Failed to delete conversation. Please try again.",

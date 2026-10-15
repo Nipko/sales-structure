@@ -1807,6 +1807,8 @@
     "errorReturnToBot": "Echec du retour de la conversation au bot. Veuillez reessayer.",
     "errorSaveContact": "Echec de l'enregistrement des donnees du contact. Veuillez reessayer.",
     "errorNote": "Echec de l'enregistrement de la note. Veuillez reessayer.",
+    "noteMetadata": "Par {author} · {date}",
+    "noteDateUnavailable": "Date indisponible",
     "errorSnooze": "Echec du report de la conversation. Veuillez reessayer.",
     "errorArchive": "Echec de l'archivage de la conversation. Veuillez reessayer.",
     "errorDelete": "Echec de la suppression de la conversation. Veuillez reessayer.",

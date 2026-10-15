@@ -1518,6 +1518,13 @@ export default function InboxPage() {
                                     ));
                                 }}
                             >
+                                {/* Native activation bubbles to the existing row handler once. */}
+                                <button
+                                    type="button"
+                                    aria-label={t("openConversationWith", { name: conv.contactName })}
+                                    aria-current={isSelected ? "true" : undefined}
+                                    className="absolute inset-0 z-10 h-full w-full cursor-pointer rounded-none bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500"
+                                />
                                 {/* Selected indicator: left border */}
                                 {isSelected && !isWaitingHuman && (
                                     <div className="absolute left-0 top-2 bottom-2 w-[3px] rounded-r-full bg-indigo-600" />

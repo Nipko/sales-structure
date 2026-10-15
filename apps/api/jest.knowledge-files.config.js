@@ -4,6 +4,6 @@ module.exports = {
     rootDir: __dirname,
     testEnvironment: 'node',
     roots: ['<rootDir>/src/modules/knowledge'],
-    testRegex: 'knowledge-file-(parsing|type.postgres)\\.spec\\.ts$',
+    testRegex: '(knowledge-file-(parsing|type.postgres)|knowledge-public-legacy.postgres)\\.spec\\.ts$',
     moduleNameMapper: { '^@parallext/shared$': '<rootDir>/../../packages/shared/src/index.ts' },
 };

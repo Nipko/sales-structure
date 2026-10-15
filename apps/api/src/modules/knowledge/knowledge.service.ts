@@ -1711,10 +1711,13 @@ export class KnowledgeService {
         const schemaName = await this.resolveSchemaFromSlug(tenantSlug);
         if (!schemaName) return [];
 
+        // Historical resource tables omit excerpt; JSON row access keeps it optional without schema writes.
         const [legacy, docs] = await Promise.allSettled([
             this.prisma.executeInTenantSchema<any[]>(schemaName,
-                `SELECT id, title, slug, category, excerpt, content, published_at, updated_at, 'resource' AS _source
-                 FROM knowledge_resources
+                `SELECT id, title, slug, category,
+                        COALESCE(to_jsonb(resource)->>'excerpt', LEFT(COALESCE(content, ''), 300)) AS excerpt,
+                        content, published_at, updated_at, 'resource' AS _source
+                 FROM knowledge_resources resource
                  WHERE is_public = true AND status = 'ready'
                  ORDER BY category, published_at DESC`),
             this.prisma.executeInTenantSchema<any[]>(schemaName,
@@ -1742,8 +1745,10 @@ export class KnowledgeService {
 
         const [legacy, docs] = await Promise.allSettled([
             this.prisma.executeInTenantSchema<any[]>(schemaName,
-                `SELECT id, title, slug, category, excerpt, content, published_at, updated_at
-                 FROM knowledge_resources WHERE is_public = true AND status = 'ready' AND slug = $1 LIMIT 1`,
+                `SELECT id, title, slug, category,
+                        COALESCE(to_jsonb(resource)->>'excerpt', LEFT(COALESCE(content, ''), 300)) AS excerpt,
+                        content, published_at, updated_at
+                 FROM knowledge_resources resource WHERE is_public = true AND status = 'ready' AND slug = $1 LIMIT 1`,
                 [slug]),
             this.prisma.executeInTenantSchema<any[]>(schemaName,
                 `SELECT id, title, slug, category, excerpt, content_text AS content, created_at AS published_at, updated_at

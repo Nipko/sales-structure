@@ -21,6 +21,29 @@ import type { CommunicationDraft, CommunicationLanguage, CommunicationPage, Comm
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.parallly-chat.cloud/api/v1";
 
+// Settings uses form names; the CRM service accepts a camelCase DTO and returns
+// database column names. Keep that boundary here for settings and Inbox readers.
+function customAttributeInput(data: Record<string, unknown>) {
+    return {
+        entityType: data.entityType ?? data.entity_type,
+        attributeKey: data.attributeKey ?? data.attribute_key,
+        attributeLabel: data.attributeLabel ?? data.label,
+        attributeType: data.attributeType ?? data.data_type,
+        options: data.options,
+        required: data.required ?? data.is_required,
+    };
+}
+
+function customAttributeView(row: Record<string, unknown>) {
+    return {
+        ...row,
+        key: row.attribute_key ?? row.key,
+        label: row.attribute_label ?? row.label,
+        data_type: row.attribute_type ?? row.data_type,
+        is_required: row.required ?? row.is_required,
+    };
+}
+
 /**
  * Payment operators the platform can NAME. 'mercadopago' sobrevive como valor
  * LEGADO de solo lectura (historial de pagos/suscripciones viejas y el
@@ -1059,12 +1082,16 @@ export const api = {
         apiPost(`/agent-console/macros/${tenantId}/${macroId}/execute`, { conversationId }),
 
     // --- Custom Attributes ---
-    getCustomAttributes: (tenantId: string, entityType?: string) =>
-        apiGet(`/crm/custom-attributes/${tenantId}${entityType ? `?entityType=${entityType}` : ''}`),
+    getCustomAttributes: async (tenantId: string, entityType?: string) => {
+        const result = await apiGet(`/crm/custom-attributes/${tenantId}${entityType ? `?entityType=${entityType}` : ''}`);
+        return result.success && Array.isArray(result.data)
+            ? { ...result, data: result.data.map(customAttributeView) }
+            : result;
+    },
     createCustomAttribute: (tenantId: string, data: any) =>
-        apiPost(`/crm/custom-attributes/${tenantId}`, data),
+        apiPost(`/crm/custom-attributes/${tenantId}`, customAttributeInput(data)),
     updateCustomAttribute: (tenantId: string, id: string, data: any) =>
-        apiPut(`/crm/custom-attributes/${tenantId}/${id}`, data),
+        apiPut(`/crm/custom-attributes/${tenantId}/${id}`, customAttributeInput(data)),
 
     // --- Contact Segments ---
     getSegments: (tenantId: string) => apiGet(`/crm/segments/${tenantId}`),

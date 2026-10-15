@@ -172,10 +172,11 @@ export default function ScoringConfigPage() {
                         const pct = Math.round(config.weights[key] * 100);
                         return (
                             <div key={key} className="flex items-center gap-4">
-                                <span className="w-[160px] text-sm text-foreground shrink-0">
+                                <label htmlFor={`scoring-weight-${key}`} className="w-[160px] text-sm text-foreground shrink-0">
                                     {t(key)}
-                                </span>
+                                </label>
                                 <input
+                                    id={`scoring-weight-${key}`}
                                     type="range"
                                     min={0}
                                     max={100}

@@ -3491,6 +3491,7 @@
     "keywordsTitle": "Purchase Keywords",
     "keywordsDesc": "Words that indicate a lead's purchase intent",
     "addKeyword": "Add",
+    "removeKeyword": "Remove keyword: {keyword}",
     "keywordPlaceholder": "New keyword...",
     "decayTitle": "Score Decay",
     "decayDesc": "Automatically reduce scores of inactive leads",

@@ -45,3 +45,31 @@ describe.each(["es", "en", "pt", "fr"])("scoring weight names in %s", locale => 
         }
     });
 });
+
+describe.each(["es", "en", "pt", "fr"])("scoring keyword removal names in %s", locale => {
+    it("names each remove action with its keyword without activating or saving", async () => {
+        const messages = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../../../../../messages", locale + ".json"), "utf8"));
+        const container = document.createElement("div");
+        document.body.appendChild(container);
+        const root = createRoot(container);
+        try {
+            await act(async () => {
+                root.render(<NextIntlClientProvider locale={locale} messages={messages} timeZone="America/Bogota"><ScoringConfigPage /></NextIntlClientProvider>);
+            });
+            await act(async () => { await Promise.resolve(); });
+            const buttons = Array.from(container.querySelectorAll<HTMLButtonElement>("span > button"));
+            expect(buttons).toHaveLength(14);
+            const result = await axe.run(buttons, { runOnly: { type: "rule", values: ["button-name"] } });
+            expect(result.violations).toEqual([]);
+            const keywords = buttons.map(button => button.parentElement?.firstChild?.textContent?.trim());
+            expect(keywords).toEqual(["precio", "costo", "comprar", "reservar", "disponible", "cuánto vale", "quiero", "inscribir", "pagar", "descuento", "promoción", "oferta", "financiación", "cuotas"]);
+            expect(buttons.map(button => button.getAttribute("aria-label")))
+                .toEqual(keywords.map(keyword => messages.scoringConfig.removeKeyword.replace("{keyword}", keyword)));
+            expect(new Set(buttons.map(button => button.getAttribute("aria-label"))).size).toBe(14);
+            expect(api.saveScoringConfig).not.toHaveBeenCalled();
+        } finally {
+            act(() => root.unmount());
+            container.remove();
+        }
+    });
+});

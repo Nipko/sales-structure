@@ -3491,6 +3491,7 @@
     "keywordsTitle": "Mots-cles d'achat",
     "keywordsDesc": "Mots indiquant l'intention d'achat d'un lead",
     "addKeyword": "Ajouter",
+    "removeKeyword": "Supprimer le mot-clé : {keyword}",
     "keywordPlaceholder": "Nouveau mot-cle...",
     "decayTitle": "Decroissance du score",
     "decayDesc": "Reduit automatiquement le score des leads inactifs",

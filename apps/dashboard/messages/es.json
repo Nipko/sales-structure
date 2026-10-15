@@ -5152,6 +5152,8 @@
       "questions": { "title": "Preguntas frecuentes", "summary": "Respuestas canónicas que puede reutilizar", "action": "Revisar preguntas", "assistPrompt": "Ayúdame a detectar qué preguntas frecuentes le faltan a este agente. Muéstrame la propuesta antes de guardar cualquier cambio." }
     },
     "moreActions": "Más opciones de {name}",
+    "actionsFor": "Acciones de {name}",
+    "duplicateAgent": "Duplicar agente {name}",
     "editorBehind": {
       "text": "Tu agente cambió desde que abriste esta página y no pudimos mostrar cómo quedó. Recarga para verlo; no tienes cambios sin guardar.",
       "reload": "Recargar"

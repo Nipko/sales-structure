@@ -42,6 +42,18 @@ export class SegmentsService {
         );
     }
 
+    async previewSegment(tenantId: string, filterRules: FilterRule[]) {
+        const schema = await this.getTenantSchema(tenantId);
+        if (!schema) throw new Error('Tenant not found');
+
+        const { whereClause, params } = this.buildFilterSQL(filterRules);
+        const rows = await this.prisma.executeInTenantSchema<any[]>(schema,
+            `SELECT COUNT(*)::int as count FROM leads${whereClause ? ` WHERE ${whereClause}` : ''}`,
+            params,
+        );
+        return { count: rows[0]?.count || 0 };
+    }
+
     async createSegment(tenantId: string, data: {
         name: string;
         description?: string;

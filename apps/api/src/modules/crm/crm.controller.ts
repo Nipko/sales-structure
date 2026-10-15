@@ -477,6 +477,10 @@ export class CrmController {
     @Post('segments/:tenantId')
     @Roles('tenant_admin', 'tenant_supervisor', 'tenant_agent')
     async createSegment(@Param('tenantId') tenantId: string, @Body() body: any) {
+        if (body.preview === true) {
+            const data = await this.segmentsService.previewSegment(tenantId, body.filterRules);
+            return { success: true, data };
+        }
         const schema = await this.getSchema(tenantId);
         const cnt = await this.prisma.executeInTenantSchema<any[]>(schema,
             `SELECT COUNT(*)::int AS c FROM contact_segments`);

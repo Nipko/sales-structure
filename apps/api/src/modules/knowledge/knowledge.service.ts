@@ -405,6 +405,10 @@ export class KnowledgeService {
 
     // ─── Bulk Import ─────────────────────────────────────────────────────────
 
+    async getBulkValidationMessage(tenantId: string, reason: 'empty' | 'tooMany'): Promise<string> {
+        return kbmsg(await this.getTenantLanguage(tenantId), `bulk.${reason}`, { limit: '20' });
+    }
+
     async bulkIngest(
         tenantId: string,
         files: Array<{

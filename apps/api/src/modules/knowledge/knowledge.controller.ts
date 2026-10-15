@@ -139,8 +139,8 @@ export class KnowledgeController {
         },
     ) {
         const tenantId = req.user?.tenantId;
-        if (!payload.files?.length) return { success: false, error: 'No files provided' };
-        if (payload.files.length > 20) return { success: false, error: 'Maximum 20 files per batch' };
+        if (!payload.files?.length) return { success: false, error: await this.knowledgeService.getBulkValidationMessage(tenantId, 'empty') };
+        if (payload.files.length > 20) return { success: false, error: await this.knowledgeService.getBulkValidationMessage(tenantId, 'tooMany') };
         const data = await this.knowledgeService.bulkIngest(tenantId, payload.files);
         return { success: true, data };
     }

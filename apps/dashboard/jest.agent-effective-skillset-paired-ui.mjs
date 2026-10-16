@@ -1,14 +1,15 @@
-// PREPARED ONLY. Future apps/dashboard/jest.agent-effective-skillset-paired-ui.cjs.
 // Dedicated12 paired contracts; real Node services plus owned JSDOM.
 // CI uses existing full-workspace npm ci and its existing Prisma generation.
 // No local E client path, no DB globalSetup, no receipt32 or generic suites.
-const path = require('path');
-const { createRequire } = require('module');
+import path from 'node:path';
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dashboardRequire = createRequire(path.join(__dirname, 'package.json'));
 const apiRoot = path.resolve(__dirname, '../api');
 const apiRequire = createRequire(path.join(apiRoot, 'package.json'));
 const environmentRequire = createRequire(dashboardRequire.resolve('jest-environment-jsdom'));
-module.exports = {
+export default {
     rootDir: apiRoot,
     testEnvironment: 'node',
     roots: ['<rootDir>/src'],

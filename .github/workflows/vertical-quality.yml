@@ -403,7 +403,7 @@ jobs:
           const dashboardRequire = createRequire(path.resolve('apps/dashboard/package.json'));
           const output = path.resolve('artifacts/agent-effective-skillset-paired-ui-jest.json');
           const result = spawnSync(process.execPath, [dashboardRequire.resolve('jest/bin/jest'),
-            '--config', path.resolve('apps/dashboard/jest.agent-effective-skillset-paired-ui.cjs'),
+            '--config', path.resolve('apps/dashboard/jest.agent-effective-skillset-paired-ui.mjs'),
             '--runInBand', '--runTestsByPath', path.resolve('apps/api/src/modules/conversations/agent-effective-skillset-display.ui.spec.tsx'),
             '--json', '--outputFile', output], { stdio: 'inherit', env: { ...process.env, FORCE_COLOR: '0' } });
           if (result.error) throw result.error;

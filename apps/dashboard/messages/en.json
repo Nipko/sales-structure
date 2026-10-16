@@ -1377,6 +1377,8 @@
     }
   },
   "contacts": {
+    "selectAllVisible": "Select visible contacts",
+    "selectContactForBulk": "Select contact: {name}",
     "loadError": "Contacts could not be loaded. Try again; this does not mean there are no contacts.",
     "title": "Contacts",
     "search": "Search contacts...",

@@ -1377,6 +1377,8 @@
     }
   },
   "contacts": {
+    "selectAllVisible": "Sélectionner les contacts visibles",
+    "selectContactForBulk": "Sélectionner le contact : {name}",
     "loadError": "Impossible de charger les contacts. Réessayez ; cela ne signifie pas qu’il n’y a aucun contact.",
     "title": "Contacts",
     "search": "Rechercher des contacts...",

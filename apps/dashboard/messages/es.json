@@ -1377,6 +1377,8 @@
     }
   },
   "contacts": {
+    "selectAllVisible": "Seleccionar contactos visibles",
+    "selectContactForBulk": "Seleccionar contacto: {name}",
     "loadError": "No se pudieron cargar los contactos. Inténtalo de nuevo; esto no significa que no haya contactos.",
     "title": "Contactos",
     "search": "Buscar contactos...",

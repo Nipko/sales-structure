@@ -185,6 +185,7 @@ jobs:
           apps/api/src/modules/widget/widget-loader.connection-status.spec.ts
           apps/api/src/modules/widget/widget-loader.welcome.spec.ts
           apps/api/src/modules/conversations/agent-rag-implicit-runtime.spec.ts
+          apps/api/src/modules/persona/agent-required-fields-legacy-consumer.spec.ts
           apps/api/src/modules/widget/widget-triggers.controller.security.spec.ts
           apps/api/src/modules/widget/widget-triggers.service.security.spec.ts
           apps/api/src/modules/conversations/conversations.widget-containment.spec.ts
@@ -338,6 +339,10 @@ jobs:
           apps/dashboard/src/app/admin/settings/notifications/notifications-functional-batch.a11y.spec.tsx
           apps/dashboard/src/app/admin/agent/[agentId]/agent-editor-context-order.a11y.spec.tsx
           apps/dashboard/src/app/admin/agent/[agentId]/agent-rag-implicit-editor.a11y.spec.tsx
+          apps/dashboard/src/app/admin/agent/[agentId]/agent-required-fields-legacy-editor.a11y.spec.tsx
+          apps/dashboard/src/app/admin/agent/[agentId]/agent-required-context-mutations.a11y.spec.tsx
+          apps/dashboard/src/app/admin/agent/[agentId]/agent-required-fields-adapter-preservation.a11y.spec.tsx
+          apps/dashboard/src/app/admin/agent/[agentId]/agent-required-context-rename-focus.a11y.spec.tsx
           apps/dashboard/src/app/admin/settings/business-hours/business-hours-timezone-roundtrip.a11y.spec.tsx
           apps/dashboard/src/app/admin/settings/business-hours/business-hours-controls.a11y.spec.tsx
           apps/dashboard/src/app/admin/settings/localization/localization-read-context.a11y.spec.tsx
@@ -363,6 +368,18 @@ jobs:
           apps/dashboard/src/app/admin/agent/quality/owner-health-summary.spec.ts
           apps/dashboard/src/app/admin/agent/quality/weekly-summary-choice.a11y.spec.tsx
           --json --outputFile artifacts/dashboard-vertical-jest.json
+      - name: Assist receipt producer-to-review UI (20 local DOM contracts)
+        run: >-
+          npx jest --config apps/api/jest.assist-content-receipt-ui.cjs --runInBand
+          --json --outputFile artifacts/assist-content-receipt-ui-jest.json
+      - name: Upload Assist receipt UI results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: assist-content-receipt-ui-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/assist-content-receipt-ui-jest.json
+          retention-days: 30
+          if-no-files-found: error
       - name: Mobile vertical regression
         run: npm test --prefix apps/mobile -- --runInBand
       - name: Convert dashboard evidence to JUnit

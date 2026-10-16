@@ -55,7 +55,7 @@ export function AgentContentReview({ tenantId, proposal, onApplied }: {
         <h3 className="font-semibold">{t(`operations.${current.operation.replace(/\./g, '_')}`)}</h3>
         {/* "Does not exist yet" said outright, because an empty before-column
             reads as a field being cleared rather than an object being made. */}
-        <p className="mt-1 text-xs text-neutral-600 dark:text-neutral-400">{t('willCreate')}</p>
+        {!applied && <p className="mt-1 text-xs text-neutral-600 dark:text-neutral-400">{t('willCreate')}</p>}
 
         <dl className="mt-3 space-y-2 text-sm">
             {current.preview.after.map(field => <div key={field.field} className="grid gap-0.5">
@@ -71,9 +71,9 @@ export function AgentContentReview({ tenantId, proposal, onApplied }: {
         </p>}
 
         {result && <div className="mt-3 space-y-1 text-sm">
-            <p role="status" className="text-emerald-700 dark:text-emerald-400">
+            {result.object && <p role="status" className="text-emerald-700 dark:text-emerald-400">
                 {t(result.outcome === 'replayed' ? 'replayed' : 'created')}
-            </p>
+            </p>}
             {/* Written is not reviewed. The object exists; whether it says the
                 right thing is a person's judgement, on its own screen. */}
             {result.verification === 'unavailable' && <p role="status" className="text-amber-700 dark:text-amber-400">

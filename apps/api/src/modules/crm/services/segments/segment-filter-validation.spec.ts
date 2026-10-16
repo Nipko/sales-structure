@@ -58,3 +58,35 @@ describe('Segment filters fail closed on unsupported or malformed rules', () => 
         expect(execute).toHaveBeenCalledWith('tenant_synthetic', expect.stringContaining("metadata->>'qa_interest' = $1"), ['synthetic']);
     });
 });
+
+describe('Segment IN values from the visible comma-list form', () => {
+    let service: SegmentsService;
+    let controller: CrmController;
+    let execute: jest.Mock;
+    beforeEach(() => {
+        // Synthetic score7: distinguish an ignored filter from a negative list.
+        execute = jest.fn(async (_schema: string, sql: string, params: unknown[]) => [{ count: !sql.includes(' WHERE ') || params.includes('7') ? 1 : 0 }]);
+        service = Object.create(SegmentsService.prototype);
+        Object.assign(service, { getTenantSchema: jest.fn().mockResolvedValue('tenant_synthetic'), prisma: { executeInTenantSchema: execute }, logger: { log: jest.fn() } });
+        controller = Object.create(CrmController.prototype);
+        Object.assign(controller, { segmentsService: service });
+    });
+    it.each([['2,3', 0, ['2', '3']], [' 7, 8 ', 1, ['7', '8']]])('previews form score IN %s with bound numeric values', async (value, count, params) => {
+        await expect(controller.createSegment('synthetic', { preview: true, filterRules: [{ field: 'score', operator: 'in', value }] })).resolves.toEqual({ success: true, data: { count } });
+        expect(execute).toHaveBeenCalledWith('tenant_synthetic', expect.stringContaining('score IN ($1::numeric, $2::numeric)'), params);
+        expect(execute).toHaveBeenCalledTimes(1);
+    });
+    it('keeps comma-list text literal and parameterized', async () => {
+        await controller.createSegment('synthetic', { preview: true, filterRules: [{ field: 'stage', operator: 'in', value: " consulta, x' OR 1=1 -- " }] });
+        expect(execute).toHaveBeenCalledWith('tenant_synthetic', expect.stringContaining('stage IN ($1, $2)'), ['consulta', "x' OR 1=1 --"]);
+        expect(execute.mock.calls[0][1]).not.toContain("OR 1=1");
+    });
+    it('preserves existing array callers', async () => {
+        await service.previewSegment('synthetic', [{ field: 'score', operator: 'in', value: ['2', '7'] }]);
+        expect(execute).toHaveBeenCalledWith('tenant_synthetic', expect.stringContaining('score IN ($1::numeric, $2::numeric)'), ['2', '7']);
+    });
+    it.each([['empty text', ''], ['whitespace', '  '], ['empty array', []], ['missing member', '2,,3'], ['null', null], ['nested array', [['7']]], ['empty array member', ['']], ['object member', [{ score: 7 }]]])('rejects %s before querying leads', async (_label, value) => {
+        await expect(service.previewSegment('synthetic', [{ field: 'score', operator: 'in', value }])).rejects.toBeInstanceOf(BadRequestException);
+        expect(execute).not.toHaveBeenCalled();
+    });
+});

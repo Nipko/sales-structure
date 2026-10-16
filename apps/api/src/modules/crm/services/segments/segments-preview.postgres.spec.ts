@@ -114,6 +114,32 @@ integration('Segment preview through the controller with real isolated PostgreSQ
         });
         expect(response).toEqual({ success: true, data: { count: 0 } });
     });
+    it.each([{ value: '2,3', count: 0 }, { value: ' 7, 8 ', count: 1 }])('filters the visible form list $value through Prisma without persistence', async ({ value, count }) => {
+        const before = await snapshot(0);
+        const response = await controllers[0].createSegment(tenants[0], {
+            name: '', preview: true, filterRules: [{ field: 'score', operator: 'in', value }],
+        });
+        expect(response).toEqual({ success: true, data: { count } });
+        expect(await snapshot(0)).toEqual(before);
+        expect(statements[0].every(sql => /^\s*SELECT\b/i.test(sql))).toBe(true);
+        expect(quota[0]).not.toHaveBeenCalled();
+    });
+    it('binds each text list member without SQL interpolation', async () => {
+        const response = await controllers[0].createSegment(tenants[0], {
+            name: '', preview: true, filterRules: [{ field: 'stage', operator: 'in', value: "other, consulta' OR 1=1 --" }],
+        });
+        expect(response).toEqual({ success: true, data: { count: 0 } });
+        expect(statements[0].every(sql => !sql.includes('OR 1=1'))).toBe(true);
+    });
+    it('rejects an empty list before issuing a query or persisting a segment', async () => {
+        const before = await snapshot(0);
+        await expect(controllers[0].createSegment(tenants[0], {
+            name: '', preview: true, filterRules: [{ field: 'score', operator: 'in', value: '2,,3' }],
+        })).rejects.toThrow('Invalid segment filter list');
+        expect(statements[0]).toEqual([]);
+        expect(await snapshot(0)).toEqual(before);
+        expect(quota[0]).not.toHaveBeenCalled();
+    });
     it('continues to enforce quota and persist one definition for an explicit create', async () => {
         const response = await controllers[0].createSegment(tenants[0], { name: 'Synthetic saved segment', filterRules: rules });
         expect(quota[0]).toHaveBeenCalledWith(tenants[0], 'segments', 0, 'segmentos');

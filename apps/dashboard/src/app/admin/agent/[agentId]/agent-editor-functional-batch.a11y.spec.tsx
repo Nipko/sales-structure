@@ -204,7 +204,7 @@ describe.each(LOCALES)("local agent editor functional batch (%s)", locale => {
 
   it("product: a successful save of A cannot mark a later editable B as saved", async () => {
     let resolveSave!: (value: ReturnType<typeof committed>) => void;
-    api.saveAgentDraft.mockImplementation((_tenant, _agent, _request) => new Promise(resolve => { resolveSave = resolve; }));
+    api.saveAgentDraft.mockImplementation(() => new Promise(resolve => { resolveSave = resolve; }));
     const screen = await openEditor(locale);
     try {
       await interact(() => typeName(screen, "Agent QA A"));

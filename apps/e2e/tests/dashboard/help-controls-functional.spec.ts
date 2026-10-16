@@ -1,8 +1,10 @@
 import { expect, test } from "@playwright/test";
-import { dashboardShell } from "../../fixtures/dashboard-routes";
+import { dashboardShell, disabledAgentTools } from "../../fixtures/dashboard-routes";
 import { expectHermetic, hermeticDashboard, ok, settled, signIn } from "../../fixtures/dashboard-session";
 
 const TENANT = "33333333-3333-4333-8333-333333333333";
+const AGENT = "77777777-7777-4777-8777-777777777777";
+const AGENT_NAME = "QA Ayuda";
 const HELP_TITLE = "¿Cómo gestionar tus Agentes IA?";
 
 // Real page, motion/AnimatePresence and native keyboard, against the existing
@@ -16,12 +18,23 @@ for (const viewport of [{ width: 319, height: 604 }, { width: 1280, height: 800 
     test("Enter opens help, focuses its named close and restores focus after collapse", async ({ page }) => {
       const state = await hermeticDashboard(page, {
         ...dashboardShell(TENANT),
-        // A fully evaluated empty synthetic account never bootstraps a quality
-        // reconciliation. The API is declared, not a real global shell loader.
+        // The agent list's empty-state early return has no contextual HelpPanel.
+        // A declared existing synthetic agent is therefore a prerequisite for
+        // this control, independently of the live session's day-zero status.
+        [`persona/${TENANT}/agents`]: ok([{
+          id: AGENT, name: AGENT_NAME, is_active: true, is_default: true,
+          version: 1, channels: [], schedule_mode: "24/7",
+          config_json: { _personalizedAt: "2026-10-15T12:00:00.000Z" },
+        }]),
+        [`persona/${TENANT}/plan-features`]: ok({ maxAgents: 3, templates: false, customPrompt: false }),
+        [`persona/${TENANT}/tool-configuration-summary`]: ok(disabledAgentTools(1)),
+        // One synthetic current snapshot prevents a shell bootstrap; this is
+        // declared CI data, not a model evaluation or a production fixture.
         [`quality/${TENANT}/attention-summary`]: ok({
-          generatedAt: "2026-10-16T07:00:00.000Z", worstStatus: "not_evaluated",
-          agentsTotal: 0, evaluatedAgents: 0, agentsNeedingAttention: 0,
-          openCritical: 0, openHigh: 0, attentionCount: 0, agents: [],
+          generatedAt: "2026-10-16T07:00:00.000Z", worstStatus: "ready_for_pilot",
+          agentsTotal: 1, evaluatedAgents: 1, agentsNeedingAttention: 0,
+          openCritical: 0, openHigh: 0, attentionCount: 0,
+          agents: [{ id: AGENT, name: AGENT_NAME, version: 1, status: "ready_for_pilot", criticalCount: 0, highCount: 0 }],
         }),
         "channels/overview": ok([]),
         [`analytics/navigation-telemetry/${TENANT}`]: ok({ recorded: true }),
@@ -31,6 +44,7 @@ for (const viewport of [{ width: 319, height: 604 }, { width: 1280, height: 800 
       expect(await settled(page)).toBe("shell");
       await expect(page).toHaveURL(/\/admin\/agent(?:\?|$)/);
 
+      await expect(page.getByText(AGENT_NAME, { exact: true })).toBeVisible();
       const trigger = page.getByRole("button", { name: HELP_TITLE, exact: true });
       await expect(trigger).toBeVisible();
       await expect(trigger).toHaveAttribute("aria-expanded", "false");

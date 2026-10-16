@@ -17,7 +17,7 @@ describe.each(["es", "en", "pt", "fr"])("published help controls local regressio
   beforeEach(() => { api.copilotChat.mockReset().mockImplementation(() => { throw new Error("Unexpected chat send"); }); sessionStorage.clear(); localStorage.clear(); });
   async function mounted(element: React.ReactElement, check: (c: HTMLElement) => Promise<void>) {
     for (const v of [messages.common.close, messages.helpAssistant.chat.send]) expect(typeof v).toBe("string");
-    let c = document.createElement("div"); document.body.appendChild(c); const root = createRoot(c);
+    const c = document.createElement("div"); document.body.appendChild(c); const root = createRoot(c);
     try { await act(async () => root.render(<NextIntlClientProvider locale={locale} messages={messages} timeZone="America/Bogota">{element}</NextIntlClientProvider>)); await settle(); await check(c); expect(api.copilotChat).not.toHaveBeenCalled(); }
     finally { act(() => root.unmount()); c.remove(); }
   }

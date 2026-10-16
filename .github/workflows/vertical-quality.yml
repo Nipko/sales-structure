@@ -651,6 +651,24 @@ jobs:
           fs.writeFileSync('artifacts/feature-board-ui-validation.json',JSON.stringify({passed:true,total:8,commands:2,fixtures:16,results,actual_PostgreSQL:false,actual_HTTP:false,actual_model:false,global_acceptances:0,month_language_scope:'engine effective locale retained; app month language not certified',request_order_scope:'board native status1-3-2 only; no inter-view/error/unmount claim'},null,2)+'\n',{flag:'wx'});
           NODE
 
+      - name: Settings profile first-input label and supervisor role (8 context-only UI contracts)
+        run: |
+          node <<'NODE'
+          const fs=require('fs'),path=require('path'),cp=require('child_process'),a=require('assert/strict'),crypto=require('crypto');
+          const read=f=>JSON.parse(fs.readFileSync(f,'utf8')),sha=f=>crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex'),results=[];
+          const blocks=[{kind:'label',spec:'profile-first-input-label.ui.spec.tsx',env:'PROFILE_LABEL_EVIDENCE_DIR'},{kind:'role',spec:'profile-supervisor-role.ui.spec.tsx',env:'PROFILE_ROLE_EVIDENCE_DIR'}];
+          for(const block of blocks){
+           const folder=path.resolve('artifacts/fixtures/settings-profile-'+block.kind),rawFile=path.resolve('artifacts/settings-profile-'+block.kind+'-ui-jest.json');fs.mkdirSync(folder,{recursive:true});a.equal(fs.readdirSync(folder).length,0);a(!fs.existsSync(rawFile));
+           const child=cp.spawnSync(process.execPath,[path.resolve('node_modules/jest/bin/jest.js'),'--config','apps/dashboard/jest.settings-profile-ui.mjs','--runInBand','--runTestsByPath','apps/dashboard/src/app/admin/settings/profile/'+block.spec,'--json','--outputFile',rawFile],{cwd:process.cwd(),env:{...process.env,TZ:'America/Bogota',[block.env]:folder},stdio:'inherit',timeout:180000});a.equal(child.status,0,child.error?.message||block.kind+' nonzero');const raw=read(rawFile);a.equal(raw.success,true);a.equal(raw.numTotalTests,4);a.equal(raw.numPassedTests,4);a.equal(raw.numFailedTests,0);a.equal(raw.numPendingTests,0);a.equal(raw.numRuntimeErrorTestSuites||0,0);a.equal(raw.testResults.length,1);a.equal(raw.testResults[0].assertionResults.length,4);a(raw.testResults[0].assertionResults.every(t=>t.status==='passed'));
+           for(const locale of ['es','en','pt','fr']){const o=read(path.join(folder,locale+'-observed.json')),c=read(path.join(folder,locale+'-cleanup.json'));a.equal(o.error,null);a.equal(o.controlsPassedBeforeOracle,true);for(const values of [o.apiCalls,o.boundaryErrors,o.activations,c.apiCalls,c.boundaryErrors,c.activations])a.deepEqual(values,[]);a.equal(c.ownContainerRemoved,true);a.equal(c.remainingOwnedContainers,0);a.equal(c.timerInventoryMeasured,false);a.equal(o.inputs.length,5);a.deepEqual(o.inputs.map(r=>r.type),['text','text','email','tel','text']);a.deepEqual(o.inputs.map(r=>r.disabled),[false,false,true,false,false]);
+            if(block.kind==='label'){const acc=o.accessibility;a.equal(acc.version,'4.13.0');a.equal(acc.scope,'first owned Profile input ONLY');a.equal(acc.rule,'label');a.deepEqual(acc.violations,[]);a.deepEqual(acc.incomplete,[]);a.equal(acc.passes.length,1);a.equal(acc.passes[0].id,'label');a.equal(acc.passes[0].nodes.length,1);a(o.inputs[0].id);a.deepEqual(acc.passes[0].nodes[0].target,['#'+o.inputs[0].id]);const check=acc.passes[0].nodes[0].any.find(r=>r.id==='explicit-label');a(check);a.equal(check.data.explicitLabel,o.firstVisibleLabel);a.equal(check.relatedNodes.length,1);a(o.html.includes(check.relatedNodes[0].html));}
+            else{const messages=read('apps/dashboard/messages/'+locale+'.json');a.equal(o.roleDisplay.syntheticRole,'tenant_supervisor');a.equal(o.roleDisplay.fullName,'Synthetic Supervisor');a.equal(o.roleDisplay.displayedRole,o.roleDisplay.expectedRole);a.equal(o.roleDisplay.expectedRole,messages.roles.supervisor);a.equal(o.accessibility,undefined);}
+           }
+           const files=fs.readdirSync(folder).sort();a.equal(files.length,8);results.push({kind:block.kind,passed:4,exit_code:child.status,raw:path.basename(rawFile),raw_sha256:sha(rawFile),fixture_files:files.map(file=>({file,sha256:sha(path.join(folder,file))}))});
+          }
+          fs.writeFileSync('artifacts/settings-profile-ui-validation.json',JSON.stringify({passed:true,total:8,commands:2,fixture_files:16,synthetic_contexts:8,results,actual_PostgreSQL:false,actual_HTTP:false,actual_model:false,global_acceptances:0,scope:'First input label only and supervisor role presentation only; no other inputs/authorization/focus/AT/global'},null,2),{flag:'wx'});
+          NODE
+
       - name: Assist receipt producer-to-review UI (32 local DOM contracts)
         run: >-
           npx jest --config apps/api/jest.assist-content-receipt-ui.cjs --runInBand

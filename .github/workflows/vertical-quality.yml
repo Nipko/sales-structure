@@ -599,6 +599,23 @@ jobs:
           }
           fs.writeFileSync('artifacts/assist-context-history-ui-validation.json',JSON.stringify({passed:true,total:24,commands:4,results,global_acceptances:0,real_model:false,real_HTTP:false,production_UI:false},null,2)+'\n',{flag:'wx'});
           NODE
+      - name: Manual task date and save error (12 strict-memory UI contracts)
+        run: |
+          node <<'NODE'
+          const fs=require('fs'),path=require('path'),cp=require('child_process'),a=require('assert/strict'),crypto=require('crypto');
+          const read=f=>JSON.parse(fs.readFileSync(f,'utf8')),sha=f=>crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex'),results=[];
+          for(const block of [{kind:'date',count:8,spec:'manual-task-date-producer.ui.spec.tsx'},{kind:'error',count:4,spec:'manual-task-save-error-ISO-port.ui.spec.tsx'}]){
+            const folder=path.resolve('artifacts/fixtures/manual-task-'+block.kind),rawFile=path.resolve('artifacts/manual-task-'+block.kind+'-ui-jest.json');fs.mkdirSync(folder,{recursive:true});a.equal(fs.readdirSync(folder).length,0);a(!fs.existsSync(rawFile));
+            const child=cp.spawnSync(process.execPath,[path.resolve('node_modules/jest/bin/jest.js'),'--config','apps/dashboard/jest.manual-task-ui.mjs','--runInBand','--runTestsByPath','apps/api/src/modules/crm/'+block.spec,'--json','--outputFile',rawFile],{cwd:process.cwd(),env:{...process.env,TZ:'America/Bogota',MANUAL_TASK_EVIDENCE_DIR:folder},stdio:'inherit',timeout:180000});a.equal(child.status,0,child.error?.message||block.kind+' nonzero');const raw=read(rawFile);a.equal(raw.success,true);a.equal(raw.numTotalTests,block.count);a.equal(raw.numPassedTests,block.count);a.equal(raw.numFailedTests,0);a.equal(raw.numPendingTests,0);a.equal(raw.numRuntimeErrorTestSuites||0,0);a.equal(raw.testResults.length,1);
+            for(const locale of ['es','en','pt','fr'])for(const suffix of block.kind==='date'?['-undated','-dated']:['']){
+              const o=read(path.join(folder,locale+suffix+'-observed.json')),c=read(path.join(folder,locale+suffix+'-cleanup.json'));a.equal(o.error,null);a.deepEqual(o.boundaryErrors,[]);a.equal(c.ownContainerRemoved,true);a.deepEqual(c.boundaryErrors,[]);a(c.navigation.every(n=>n===0));a.equal(o.requests.filter(r=>r.method==='POST').length,1);a.equal(o.sql.filter(r=>r.sql.includes('INSERT INTO tasks')).length,1);
+              if(block.kind==='date'){a.equal(o.source,'real_page_controller_service_strict_memory_NO_PG');a.equal(c.actualPostgreSQL,false);a.equal(c.memoryRowsDiscarded,true);a.equal(c.remainingContainers,0);a.equal(o.afterRows.length,1);a.equal(o.requests.filter(r=>r.method==='GET'&&r.route.startsWith('/crm/tasks/')).length,2);if(suffix==='-dated'){a.equal(o.afterRows[0].due_at,'2099-01-02T05:30:00.000Z');a(o.rendered.text.includes(o.prerequisites.expectedDate));}else a.equal(o.afterRows[0].due_at,null);}
+              else{a.equal(c.remainingOwnedContainers,0);a.equal(c.toastSeen,true);a.equal(c.cleanupError,null);a.equal(c.timerInventoryMeasured,false);a.equal(o.pending.disabledBeforeSecond,true);a.equal(o.pending.disabledAfterSecond,true);a.equal(o.pending.POSTs,1);a.equal(o.pending.INSERTs,1);a.equal(o.rejected.title,o.pending.title);a.equal(o.rejected.type,o.pending.type);a.equal(o.rejected.date,o.pending.date);a.equal(o.rejected.buttonDisabled,false);a.equal(o.rejected.visibleError,true);a.equal(o.announcements.length,1);a.equal(o.announcements[0].role,'status');a.equal(o.announcements[0].live,'polite');a.equal(o.announcements[0].text,o.rejected.errorText);const delay=Date.parse(c.naturalToastDisappearanceAt)-Date.parse(o.rejected.at_utc);a(delay>=2000&&delay<4000);}
+            }
+            const files=fs.readdirSync(folder).sort();a.equal(files.length,block.kind==='date'?17:8);results.push({kind:block.kind,passed:block.count,exit_code:child.status,raw:path.basename(rawFile),raw_sha256:sha(rawFile),fixtures:files.map(file=>({file,sha256:sha(path.join(folder,file))}))});
+          }
+          fs.writeFileSync('artifacts/manual-task-ui-validation.json',JSON.stringify({passed:true,total:12,commands:2,results,actual_PostgreSQL:false,actual_HTTP:false,actual_model:false,global_acceptances:0},null,2)+'\n',{flag:'wx'});
+          NODE
       - name: Assist receipt producer-to-review UI (32 local DOM contracts)
         run: >-
           npx jest --config apps/api/jest.assist-content-receipt-ui.cjs --runInBand

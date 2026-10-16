@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useTenant } from "@/contexts/TenantContext";
 import { useLocale, useTranslations } from "next-intl";
 import { api } from "@/lib/api";
+import { agentTestHistoryWindow } from "@/lib/agent-test-history";
 import { guidedTourAnchorId } from "@/lib/guided-tours";
 import { ArrowLeft, Send, Wrench, Search, FileCode, Activity, RotateCcw, Bot, User, Loader2, ShieldCheck } from "lucide-react";
 import type { ConversationalChannelType, EffectiveCapabilityContract, AgentConfigurationWorkspace } from "@parallext/shared";
@@ -118,7 +119,7 @@ export default function TestAgentPage() {
         const userMsg = input.trim();
         setInput("");
         setError("");
-        const history = turns.slice(-20).map(tr => ({ role: tr.role, content: tr.content }));
+        const history = agentTestHistoryWindow(turns).map(tr => ({ role: tr.role, content: tr.content }));
         setTurns(prev => [...prev, { role: "user", content: userMsg }]);
         setSending(true);
 

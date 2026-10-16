@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
+import { agentTestHistoryWindow } from "@/lib/agent-test-history";
 import { Send, Bot, User, Loader2, Pencil } from "lucide-react";
 
 interface AgentTestChatProps {
@@ -76,7 +77,7 @@ export default function AgentTestChat({ tenantId, agentId, configurationRevision
         const msg = input.trim();
         setInput("");
         setError("");
-        const history = turns.slice(-20).map((tr) => ({ role: tr.role, content: tr.content }));
+        const history = agentTestHistoryWindow(turns).map((tr) => ({ role: tr.role, content: tr.content }));
         setTurns((prev) => [...prev, { role: "user", content: msg }]);
         setSending(true);
         try {

@@ -950,7 +950,7 @@ export default function Lead360Page() {
 
                                 {tasks.map((task: any) => (
                                     <div key={task.id} className={cn("flex items-start gap-2.5 py-2.5 border-b border-border", task.status === "done" && "opacity-50")}>
-                                        <button onClick={() => handleCompleteTask(task.id)} disabled={readOnly} className="bg-transparent border-none cursor-pointer p-0.5 mt-px">
+                                        <button onClick={() => handleCompleteTask(task.id)} disabled={readOnly} aria-label={t("leadDetail.completeTask", { title: task.title })} className="bg-transparent border-none cursor-pointer p-0.5 mt-px">
                                             {task.status === "done"
                                                 ? <CheckCircle size={18} color="#2ecc71" />
                                                 : <Circle size={18} className="text-muted-foreground" />
@@ -961,7 +961,7 @@ export default function Lead360Page() {
                                                 {task.title}
                                             </div>
                                             <div className="flex gap-2 mt-0.5">
-                                                <span className="text-[11px] text-muted-foreground">{task.type}</span>
+                                                <span className="text-[11px] text-muted-foreground">{["follow_up", "call", "email", "meeting", "handoff"].includes(task.type) ? t(`leadDetail.taskTypes.${task.type}`) : task.type}</span>
                                                 {task.due_at && (
                                                     <span className={cn("text-[11px] flex items-center gap-0.5", new Date(task.due_at) < new Date() && task.status !== "done" ? "text-red-500" : "text-muted-foreground")}>
                                                         <Calendar size={10} /> {new Date(task.due_at).toLocaleDateString(undefined)}

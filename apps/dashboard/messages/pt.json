@@ -1583,6 +1583,8 @@
       "saveNote": "Salvar nota",
       "noNotes": "Ainda sem notas.",
       "newTaskPlaceholder": "Nova tarefa... (ex: Ligar para o cliente)",
+      "completeTask": "Concluir tarefa: {title}",
+
       "taskTypes": {
         "follow_up": "Acompanhamento",
         "call": "Ligação",

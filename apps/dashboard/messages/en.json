@@ -1583,6 +1583,8 @@
       "saveNote": "Save note",
       "noNotes": "No notes yet.",
       "newTaskPlaceholder": "New task... (e.g.: Call client)",
+      "completeTask": "Complete task: {title}",
+
       "taskTypes": {
         "follow_up": "Follow-up",
         "call": "Call",

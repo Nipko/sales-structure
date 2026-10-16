@@ -68,6 +68,7 @@ export default function ContactsPage() {
     const [activeSegment, setActiveSegment] = useState<string>("all");
     const [isLive, setIsLive] = useState(false);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState(false);
     const [showImportModal, setShowImportModal] = useState(false);
     const [showFormatGuide, setShowFormatGuide] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
@@ -132,6 +133,7 @@ export default function ContactsPage() {
         async function load() {
             if (!activeTenantId) return;
             setLoading(true);
+            setLoadError(false);
             try {
                 // Fetch leads matching the API model
                 const qs = buildFilterQuery();
@@ -170,6 +172,7 @@ export default function ContactsPage() {
                 }
             } catch (err) {
                 console.error("Failed fetching leads:", err);
+                setLoadError(true);
             } finally {
                 setLoading(false);
             }
@@ -370,6 +373,12 @@ export default function ContactsPage() {
                 tips={tHelp.raw("contacts.tips") as string[]}
                 mediaKey="contacts"
             />
+
+            {loadError && (
+                <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+                    {t('loadError')}
+                </div>
+            )}
 
             {/* Stats Cards */}
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -701,7 +710,7 @@ export default function ContactsPage() {
                         })}
                     </tbody>
                 </table>
-                {filtered.length === 0 && !loading && (
+                {filtered.length === 0 && !loading && !loadError && (
                     <div className="flex flex-col items-center justify-center py-16 text-center">
                         <Users size={48} className="text-[var(--text-secondary)] opacity-20 mb-4" />
                         <p className="text-sm text-[var(--text-secondary)]">

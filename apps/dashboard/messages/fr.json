@@ -1377,6 +1377,7 @@
     }
   },
   "contacts": {
+    "loadError": "Impossible de charger les contacts. Réessayez ; cela ne signifie pas qu’il n’y a aucun contact.",
     "title": "Contacts",
     "search": "Rechercher des contacts...",
     "addContact": "Ajouter un contact",

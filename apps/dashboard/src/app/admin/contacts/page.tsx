@@ -844,37 +844,37 @@ export default function ContactsPage() {
                     <div onClick={e => e.stopPropagation()} className="w-[480px] rounded-xl border border-neutral-200 bg-white p-7 dark:border-neutral-800 dark:bg-neutral-900">
                         <div className="mb-5 flex items-center justify-between">
                             <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">{t('createModal.title')}</h2>
-                            <button onClick={() => setShowCreateModal(false)} className="rounded-md border-none bg-transparent p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200">
+                            <button aria-label={t('createModal.close')} onClick={() => setShowCreateModal(false)} className="rounded-md border-none bg-transparent p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200">
                                 <X size={18} />
                             </button>
                         </div>
                         <div className="flex flex-col gap-3">
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
-                                    <label className="text-[11px] text-neutral-500 dark:text-neutral-400 mb-1 block">{t('createModal.firstName')}</label>
-                                    <input type="text" value={createForm.first_name} onChange={e => setCreateForm(f => ({ ...f, first_name: e.target.value }))}
+                                    <label htmlFor="contact-create-first-name" className="text-[11px] text-neutral-500 dark:text-neutral-400 mb-1 block">{t('createModal.firstName')}</label>
+                                    <input id="contact-create-first-name" type="text" value={createForm.first_name} onChange={e => setCreateForm(f => ({ ...f, first_name: e.target.value }))}
                                         className="w-full px-3 py-2 rounded-lg border border-neutral-200 bg-neutral-50 text-sm text-neutral-900 outline-none dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100" />
                                 </div>
                                 <div>
-                                    <label className="text-[11px] text-neutral-500 dark:text-neutral-400 mb-1 block">{t('createModal.lastName')}</label>
-                                    <input type="text" value={createForm.last_name} onChange={e => setCreateForm(f => ({ ...f, last_name: e.target.value }))}
+                                    <label htmlFor="contact-create-last-name" className="text-[11px] text-neutral-500 dark:text-neutral-400 mb-1 block">{t('createModal.lastName')}</label>
+                                    <input id="contact-create-last-name" type="text" value={createForm.last_name} onChange={e => setCreateForm(f => ({ ...f, last_name: e.target.value }))}
                                         className="w-full px-3 py-2 rounded-lg border border-neutral-200 bg-neutral-50 text-sm text-neutral-900 outline-none dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100" />
                                 </div>
                             </div>
                             <div>
-                                <label className="text-[11px] text-neutral-500 dark:text-neutral-400 mb-1 block">{t('createModal.phone')} *</label>
-                                <input type="tel" value={createForm.phone} onChange={e => setCreateForm(f => ({ ...f, phone: e.target.value }))}
+                                <label htmlFor="contact-create-phone" className="text-[11px] text-neutral-500 dark:text-neutral-400 mb-1 block">{t('createModal.phone')} *</label>
+                                <input id="contact-create-phone" type="tel" value={createForm.phone} onChange={e => setCreateForm(f => ({ ...f, phone: e.target.value }))}
                                     placeholder="+573001234567"
                                     className="w-full px-3 py-2 rounded-lg border border-neutral-200 bg-neutral-50 text-sm text-neutral-900 outline-none dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100" />
                             </div>
                             <div>
-                                <label className="text-[11px] text-neutral-500 dark:text-neutral-400 mb-1 block">{t('createModal.email')}</label>
-                                <input type="email" value={createForm.email} onChange={e => setCreateForm(f => ({ ...f, email: e.target.value }))}
+                                <label htmlFor="contact-create-email" className="text-[11px] text-neutral-500 dark:text-neutral-400 mb-1 block">{t('createModal.email')}</label>
+                                <input id="contact-create-email" type="email" value={createForm.email} onChange={e => setCreateForm(f => ({ ...f, email: e.target.value }))}
                                     className="w-full px-3 py-2 rounded-lg border border-neutral-200 bg-neutral-50 text-sm text-neutral-900 outline-none dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100" />
                             </div>
                             <div>
-                                <label className="text-[11px] text-neutral-500 dark:text-neutral-400 mb-1 block">{t('createModal.stage')}</label>
-                                <select value={createForm.stage} onChange={e => setCreateForm(f => ({ ...f, stage: e.target.value }))}
+                                <label htmlFor="contact-create-stage" className="text-[11px] text-neutral-500 dark:text-neutral-400 mb-1 block">{t('createModal.stage')}</label>
+                                <select id="contact-create-stage" value={createForm.stage} onChange={e => setCreateForm(f => ({ ...f, stage: e.target.value }))}
                                     className="w-full px-3 py-2 rounded-lg border border-neutral-200 bg-neutral-50 text-sm text-neutral-900 outline-none dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100">
                                     {["nuevo","contactado","respondio","calificado"].map(s => (
                                         <option key={s} value={s}>{tc(`stages.${s}`)}</option>

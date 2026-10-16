@@ -2623,6 +2623,8 @@
       "marketHint_certified": "Pacote, capacidades e claims do país aprovados e monitorados."
     },
     "localizationPage": {
+      "loading": "Carregando as preferências desta conta…",
+      "loadError": "Não foi possível carregar as preferências desta conta. Recarregue a página antes de salvar.",
       "title": "Localização",
       "subtitle": "Fuso horário, moeda, formato de data e idioma do workspace",
       "timezone": "Fuso horário",
@@ -2634,6 +2636,7 @@
       "undefined": "Não definido"
     },
     "businessHoursPage": {
+      "currentTimezone": "Fuso horário atual: {timezone}",
       "title": "Horário comercial",
       "subtitle": "Defina os horários de atendimento da sua empresa. Esses horários se aplicam a todos os agentes de IA",
       "is247": "Disponível 24/7",

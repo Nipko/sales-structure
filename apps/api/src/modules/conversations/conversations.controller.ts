@@ -80,9 +80,9 @@ export class ConversationsController {
     }
 
     @Get('prechat-form/:tenantId')
-    @ApiOperation({ summary: 'Get active pre-chat form for a tenant' })
+    @ApiOperation({ summary: 'Get saved pre-chat configuration for editing, including disabled forms' })
     async getPrechatForm(@Param('tenantId') tenantId: string) {
-        const form = await this.preChatService.getActiveForm(tenantId);
+        const form = await this.preChatService.getSavedForm(tenantId);
         return { success: true, data: form };
     }
 

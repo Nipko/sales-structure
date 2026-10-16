@@ -25,6 +25,25 @@ export class PreChatService {
         return tenant.schemaName;
     }
 
+    /** Editable configuration includes a saved form that is temporarily disabled. */
+    async getSavedForm(tenantId: string) {
+        const schema = await this.getSchema(tenantId);
+        const rows = await this.prisma.executeInTenantSchema(schema,
+            `SELECT id, name, fields_json, greeting_message, is_active, created_at, updated_at
+             FROM pre_chat_forms ORDER BY created_at DESC, id DESC LIMIT 1`,
+            [],
+        ) as any[];
+        if (!rows.length) return null;
+        const row = rows[0];
+        return {
+            id: row.id,
+            name: row.name,
+            fields: typeof row.fields_json === 'string' ? JSON.parse(row.fields_json) : row.fields_json,
+            greeting_message: row.greeting_message,
+            is_active: row.is_active,
+        };
+    }
+
     async getActiveForm(tenantId: string) {
         const schema = await this.getSchema(tenantId);
 

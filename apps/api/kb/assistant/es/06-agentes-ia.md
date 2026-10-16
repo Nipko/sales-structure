@@ -35,7 +35,7 @@ Un agente solo atiende bien si tiene lo mínimo definido. Al guardar, el editor 
 
 - **Nombre del agente** — cómo se presenta ante tus clientes.
 - **Rol** — qué hace (por ejemplo, "Asesora de ventas" o "Recepcionista").
-- **Mensaje cuando no puede responder** — la frase exacta que dice el agente si la pregunta se sale de lo que sabe. Conviene que prometa buscar a una persona, en vez de improvisar.
+- **Mensaje cuando no puede responder** — indica que no tienes información confirmada y ofrece ayuda del equipo sin prometer una respuesta ni afirmar que ya se hizo un traspaso.
 - **Al menos una regla** de comportamiento.
 - **Al menos un motivo** en **Cuándo pasar a un humano**.
 

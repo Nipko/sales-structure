@@ -35,7 +35,7 @@ Um agente só atende bem com o mínimo definido. Ao salvar, o editor confere e a
 
 - **Nome do agente** — como ele se apresenta aos seus clientes.
 - **Função** — o que ele faz (por exemplo, "Consultora de vendas" ou "Recepcionista").
-- **Mensagem para quando não souber responder** — a frase exata que o agente diz quando a pergunta foge do que ele sabe. É melhor prometer buscar uma pessoa do que improvisar.
+- **Mensagem para quando não souber responder** — diga que a informação não está confirmada e ofereça ajuda da equipe sem prometer uma resposta nem afirmar que uma transferência já foi feita.
 - **Pelo menos uma regra** de comportamento.
 - **Pelo menos um motivo** em **Quando passar para um humano**.
 

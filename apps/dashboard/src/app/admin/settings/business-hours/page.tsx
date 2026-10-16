@@ -49,6 +49,7 @@ export default function BusinessHoursPage() {
     const t = useTranslations("settings.businessHoursPage");
     const tHelp = useTranslations("help");
     const tConfiguration = useTranslations('agentConfiguration');
+    const tCustomize = useTranslations('setupWizard.customize');
     const { user } = useAuth();
     const { activeTenantId } = useTenant();
     const [config, setConfig] = useState<BusinessHoursConfig>(defaultConfig);
@@ -128,6 +129,12 @@ export default function BusinessHoursPage() {
     };
 
     const timeClasses = "h-9 w-32 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-2 text-sm text-center text-neutral-900 dark:text-neutral-100 outline-none focus:border-indigo-500 transition-colors";
+    const normalizedTimezone = normalizeTimezone(config.timezone);
+    const timezoneIsListed = TIMEZONE_GROUPS.some(group => group.zones.some(zone => zone.value === normalizedTimezone));
+    const timezoneIsValid = (() => {
+        try { new Intl.DateTimeFormat('en', { timeZone: normalizedTimezone }); return true; }
+        catch { return false; }
+    })();
 
     return (
         <div className="max-w-2xl space-y-6">
@@ -170,7 +177,7 @@ export default function BusinessHoursPage() {
             <div id={guidedTourAnchorId("hours-247")} className="rounded-xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
                 <div className="flex items-center justify-between">
                     <div>
-                        <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
+                        <h2 id="business-hours-247-label" className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
                             {t("is247")}
                         </h2>
                         <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
@@ -178,6 +185,10 @@ export default function BusinessHoursPage() {
                         </p>
                     </div>
                     <button
+                        type="button"
+                        role="switch"
+                        aria-labelledby="business-hours-247-label"
+                        aria-checked={config.is247}
                         onClick={() => setConfig(prev => ({ ...prev, is247: !prev.is247 }))}
                         className={cn(
                             "relative h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors",
@@ -196,7 +207,7 @@ export default function BusinessHoursPage() {
             <div id={guidedTourAnchorId("hours-timezone")} className="rounded-xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
                 <div className="flex items-center gap-2 mb-1">
                     <Globe size={16} className="text-neutral-400" />
-                    <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
+                    <h2 id="business-hours-timezone-label" className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
                         {t("timezone")}
                     </h2>
                 </div>
@@ -204,10 +215,14 @@ export default function BusinessHoursPage() {
                     {t("timezoneDesc")}
                 </p>
                 <select
-                    value={normalizeTimezone(config.timezone)}
+                    aria-labelledby="business-hours-timezone-label"
+                    value={normalizedTimezone}
                     onChange={(e) => setConfig(prev => ({ ...prev, timezone: e.target.value }))}
                     className="h-9 w-full rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-3 text-sm text-neutral-900 dark:text-neutral-100 outline-none focus:border-indigo-500 transition-colors"
                 >
+                    {!timezoneIsListed && timezoneIsValid && (
+                        <option value={normalizedTimezone}>{t('currentTimezone', { timezone: normalizedTimezone })}</option>
+                    )}
                     {TIMEZONE_GROUPS.map((g) => (
                         <optgroup key={g.region} label={g.region}>
                             {g.zones.map((tz) => <option key={tz.value} value={tz.value}>{tz.label}</option>)}
@@ -240,6 +255,10 @@ export default function BusinessHoursPage() {
                                     )}
                                 >
                                     <button
+                                        type="button"
+                                        role="switch"
+                                        aria-labelledby={`business-hours-${key}-label`}
+                                        aria-checked={day.enabled}
                                         onClick={() => updateDay(key, "enabled", !day.enabled)}
                                         className={cn(
                                             "relative h-5 w-10 shrink-0 cursor-pointer rounded-full border-none transition-colors",
@@ -252,7 +271,7 @@ export default function BusinessHoursPage() {
                                         )} />
                                     </button>
 
-                                    <span className="w-24 text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                                    <span id={`business-hours-${key}-label`} className="w-24 text-sm font-medium text-neutral-900 dark:text-neutral-100">
                                         {t(`days.${key}`)}
                                     </span>
 
@@ -260,6 +279,7 @@ export default function BusinessHoursPage() {
                                         <div className="flex items-center gap-2">
                                             <input
                                                 type="time"
+                                                aria-label={`${t(`days.${key}`)} ${tCustomize('openTime')}`}
                                                 value={day.open}
                                                 onChange={(e) => updateDay(key, "open", e.target.value)}
                                                 className={timeClasses}
@@ -267,6 +287,7 @@ export default function BusinessHoursPage() {
                                             <span className="text-xs text-neutral-400">{t("timeSeparator")}</span>
                                             <input
                                                 type="time"
+                                                aria-label={`${t(`days.${key}`)} ${tCustomize('closeTime')}`}
                                                 value={day.close}
                                                 onChange={(e) => updateDay(key, "close", e.target.value)}
                                                 className={timeClasses}
@@ -284,13 +305,14 @@ export default function BusinessHoursPage() {
 
             {/* After-hours message */}
             <div id={guidedTourAnchorId("hours-message")} className="rounded-xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
-                <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100 mb-1">
+                <h2 id="business-hours-message-label" className="text-base font-semibold text-neutral-900 dark:text-neutral-100 mb-1">
                     {t("outOfHoursTitle")}
                 </h2>
                 <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-4">
                     {t("outOfHoursDesc")}
                 </p>
                 <textarea
+                    aria-labelledby="business-hours-message-label"
                     value={config.afterHoursMessage}
                     maxLength={2000}
                     onChange={(e) => setConfig(prev => ({ ...prev, afterHoursMessage: e.target.value }))}

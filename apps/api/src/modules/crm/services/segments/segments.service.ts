@@ -254,13 +254,24 @@ export class SegmentsService {
                     conditions.push(`${column} != ${placeholder()}`);
                     params.push(rule.value);
                     break;
-                case 'in':
-                    if (Array.isArray(rule.value)) {
-                        const placeholders = rule.value.map(() => placeholder()).join(', ');
-                        conditions.push(`${column} IN (${placeholders})`);
-                        params.push(...rule.value);
+                case 'in': {
+                    // The dashboard's visible list input sends comma-separated
+                    // text. Keep array clients compatible; never omit a rule
+                    // when its list is malformed or empty.
+                    const values = typeof rule.value === 'string'
+                        ? rule.value.split(',').map(value => value.trim())
+                        : rule.value;
+                    if (!Array.isArray(values) || values.length === 0 || values.some(value =>
+                        !['string', 'number', 'boolean'].includes(typeof value)
+                        || (typeof value === 'string' && !value.trim())
+                        || (typeof value === 'number' && !Number.isFinite(value)))) {
+                        throw new BadRequestException('Invalid segment filter list');
                     }
+                    const placeholders = values.map(() => placeholder()).join(', ');
+                    conditions.push(`${column} IN (${placeholders})`);
+                    params.push(...values);
                     break;
+                }
                 case 'gt':
                     conditions.push(`${column} > ${placeholder()}`);
                     params.push(rule.value);

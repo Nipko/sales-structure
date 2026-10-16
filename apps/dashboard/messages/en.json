@@ -1411,6 +1411,7 @@
       "apply": "Apply"
     },
     "createModal": {
+      "close": "Close contact form",
       "title": "New contact",
       "firstName": "First name",
       "lastName": "Last name",

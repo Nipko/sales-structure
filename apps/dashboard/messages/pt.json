@@ -1411,6 +1411,7 @@
       "apply": "Aplicar"
     },
     "createModal": {
+      "close": "Fechar formulário de contato",
       "title": "Novo contato",
       "firstName": "Nome",
       "lastName": "Sobrenome",

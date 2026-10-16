@@ -6,10 +6,18 @@ var C=window.__paralllyWidget||{};var WID=C.widgetId;if(!WID)return;
 var API='${apiBase}';
 var SK='parallly_w_'+WID;
 var IO_CDN='https://cdn.socket.io/4.8.1/socket.io.min.js';
+// One mounted snippet per API/origin/widget, including concurrent config fetches.
+var widgetOwnerKey=String(location.origin||'')+'|'+API+'|'+WID;
+var widgetOwners=window.__paralllyWidgetOwners||(window.__paralllyWidgetOwners=Object.create(null));
+if(widgetOwners[widgetOwnerKey])return;
+var widgetOwner={};widgetOwners[widgetOwnerKey]=widgetOwner;
+function releaseWidgetOwner(){if(widgetOwners[widgetOwnerKey]===widgetOwner)delete widgetOwners[widgetOwnerKey];if(window.removeEventListener)window.removeEventListener('pagehide',releaseWidgetOwner)}
+if(window.addEventListener)window.addEventListener('pagehide',releaseWidgetOwner);
 
 // page: rendered inline inside a host element (C.mode==='page'); capped: composer locked by a server cap notice;
 // retryTimer: the single pending auto-retry after a rate limit (see scheduleRetry).
 var st={open:false,cfg:null,sess:null,sock:null,msgs:[],unread:0,typing:false,pcDone:false,page:false,capped:false,retryTimer:null,el:{}};
+var triggerEngine=null;
 
 function loadIO(cb){if(window.io)return cb();var s=document.createElement('script');s.src=IO_CDN;s.onload=cb;s.onerror=function(){console.error('Parallly widget: socket.io load failed')};document.head.appendChild(s)}
 
@@ -29,7 +37,7 @@ function initSess(pc,cb){
   if(saved&&saved.token){
     fetch(API+'/widget/sessions/refresh',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:saved.token})})
     .then(function(r){return r.json()}).then(function(d){
-      if(d.success){st.sess=Object.assign({},saved,d.data);cb(null,st.sess)}
+      if(d.success){st.sess=Object.assign({},saved,d.data);bindTriggerSession(st.sess);cb(null,st.sess)}
       else newSess(pc,cb)
     }).catch(function(){newSess(pc,cb)})
   }else newSess(pc,cb)
@@ -41,7 +49,7 @@ function newSess(pc,cb){
   if(pc){if(pc.name)b.name=pc.name;if(pc.email)b.email=pc.email;if(pc.phone)b.phone=pc.phone}
   fetch(API+'/widget/sessions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)})
   .then(function(r){return r.json()}).then(function(d){
-    if(d.success){st.sess=d.data;saveSess(d.data);cb(null,d.data)}
+    if(d.success){st.sess=d.data;saveSess(d.data);bindTriggerSession(st.sess);cb(null,d.data)}
     else cb(new Error(d.error||'failed'))
   }).catch(cb)
 }
@@ -412,11 +420,15 @@ function buildChat(panel){
 }
 
 function toggle(){
-  if(st.page)return;
-  st.open=!st.open;
+  setWidgetOpen(!st.open,true)
+}
+function setWidgetOpen(open,focus){
+  if(st.page||st.open===open)return false;
+  st.open=open;
   st.el.panel.classList.toggle('show',st.open);
   st.el.bubble.classList.toggle('open',st.open);
-  if(st.open){st.unread=0;renderBadge();if(st.el.input)st.el.input.focus()}
+  if(st.open){st.unread=0;renderBadge();if(focus&&st.el.input)st.el.input.focus()}
+  return true
 }
 
 function renderMsgs(){
@@ -481,17 +493,251 @@ var T={
 };
 function getT(k){var l=(st.cfg&&st.cfg.locale)||'es';return(T[l]||T.es)[k]||k}
 
+/* Proactive triggers: local browser effects only. This engine never starts a
+ * session, reconnects a socket, sends a message, or treats a notice as history.
+ * Session identity comes only from the existing normal session callback.
+ */
+function triggerNow(){return window.performance.now()}
+function triggerInteger(value,min,max){return typeof value==='number'&&Number.isFinite(value)&&Math.floor(value)===value&&value>=min&&(max===undefined||value<=max)}
+function triggerRead(key){try{var raw=localStorage.getItem(key);return{ok:true,raw:raw,value:raw===null?null:JSON.parse(raw)}}catch(e){return{ok:false,raw:null,value:null}}}
+function triggerWrite(key,value){try{var raw=JSON.stringify(value);localStorage.setItem(key,raw);return localStorage.getItem(key)===raw}catch(e){return false}}
+function triggerCondition(condition){
+  if(!condition||typeof condition!=='object'||Array.isArray(condition))return null;
+  var type=condition.type,value=condition.value,operator=condition.operator;
+  if(type==='page_url'){
+    if(['contains','equals','starts_with'].indexOf(operator)<0||typeof value!=='string'||!value.trim())return null;
+    return{type:type,operator:operator,value:value}
+  }
+  if(type==='visit_count'){
+    if(['gte','eq','lte'].indexOf(operator)<0||!triggerInteger(value,1,Number.MAX_SAFE_INTEGER))return null;
+    return{type:type,operator:operator,value:value}
+  }
+  if(operator!==undefined&&operator!==null&&operator!=='')return null;
+  if(type==='time_on_page'&&triggerInteger(value,1,Number.MAX_SAFE_INTEGER))return{type:type,value:value};
+  if(type==='scroll_depth'&&triggerInteger(value,1,100))return{type:type,value:value};
+  if(type==='exit_intent'&&(value===undefined||value===null))return{type:type};
+  return null
+}
+function triggerRule(input){
+  if(!input||!Array.isArray(input.conditions)||!input.conditions.length||['AND','OR'].indexOf(input.condition_operator)<0)return null;
+  if(!triggerInteger(input.frequency_minutes,0,Number.MAX_SAFE_INTEGER)||!triggerInteger(input.priority,-Number.MAX_SAFE_INTEGER,Number.MAX_SAFE_INTEGER))return null;
+  var conditions=[],seen=Object.create(null);
+  for(var i=0;i<input.conditions.length;i++){
+    var condition=triggerCondition(input.conditions[i]);if(!condition)return null;
+    var serial=JSON.stringify(condition);if(!seen[serial]){seen[serial]=true;conditions.push(condition)}
+  }
+  conditions.sort(function(a,b){var x=JSON.stringify(a),y=JSON.stringify(b);return x<y?-1:x>y?1:0});
+  var action=input.action_type,source=input.action_config,config={};
+  if(!source||typeof source!=='object'||Array.isArray(source))return null;
+  if(action==='show_bubble_message'||action==='show_banner'){
+    if(typeof source.message!=='string'||!source.message.trim())return null;config.message=source.message.trim();
+    if(action==='show_banner'){
+      if(['top','bottom'].indexOf(source.position)<0||typeof source.bgColor!=='string'||!/^#[0-9a-f]{6}$/i.test(source.bgColor))return null;
+      config.position=source.position;config.bgColor=source.bgColor.toLowerCase()
+    }
+  }else if(action!=='open_widget')return null;
+  var canonical=JSON.stringify({conditions:conditions,condition_operator:input.condition_operator,action_type:action,action_config:config});
+  return{conditions:conditions,operator:input.condition_operator,action:action,config:config,canonical:canonical,frequency:input.frequency_minutes,priority:input.priority,hash:null}
+}
+function triggerCloseLabel(){var locale=(st.cfg&&st.cfg.locale)||'es';return({es:'Cerrar aviso',en:'Close notice',pt:'Fechar aviso',fr:'Fermer l’avis'})[locale]||'Cerrar aviso'}
+function triggerNoticeRemove(engine,type){
+  var old=engine.notices[type];if(!old)return;
+  var root=st.el.wrap&&st.el.wrap.getRootNode(),active=root&&root.activeElement;
+  var restore=active&&old.node.contains(active);old.node.remove();engine.notices[type]=null;
+  if(restore){var target=st.el.bubble||st.el.input||st.el.panel;if(target&&typeof target.focus==='function')target.focus()}
+}
+function triggerNotice(engine,rule){
+  var type=rule.action,old=engine.notices[type];
+  if(old&&old.canonical===rule.canonical&&old.node.parentNode)return false;
+  var notice=document.createElement('div');notice.setAttribute('role','status');
+  notice.style.boxSizing='border-box';notice.style.padding='12px 40px 12px 14px';notice.style.borderRadius='10px';
+  notice.style.font='14px/1.45 system-ui,sans-serif';notice.style.boxShadow='0 4px 24px rgba(0,0,0,.18)';notice.style.color='#fff';
+  notice.style.zIndex='2147483646';notice.style.overflowWrap='anywhere';
+  if(type==='show_banner'){
+    notice.style.position='fixed';notice.style.left='0';notice.style.right='0';notice.style[rule.config.position]='0';
+    notice.style.backgroundColor=rule.config.bgColor;notice.style.borderRadius='0';
+  }else{
+    notice.style.backgroundColor=st.cfg.primaryColor||'#6c5ce7';notice.style.maxWidth='280px';
+    if(st.page){notice.style.position='relative';notice.style.marginBottom='10px'}
+    else{notice.style.position='absolute';notice.style.width='280px';notice.style.maxWidth='calc(100vw - 40px)';notice.style.bottom='76px';notice.style[st.cfg.position==='bottom-left'?'left':'right']='0'}
+  }
+  var message=document.createElement('span');message.textContent=rule.config.message;notice.appendChild(message);
+  var close=document.createElement('button');close.type='button';close.setAttribute('aria-label',triggerCloseLabel());close.textContent='×';
+  close.style.position='absolute';close.style.right='8px';close.style.top='8px';close.style.border='0';close.style.background='transparent';
+  close.style.color='inherit';close.style.fontSize='20px';close.style.cursor='pointer';
+  close.onclick=function(event){if(event)event.stopPropagation();triggerNoticeRemove(engine,type)};notice.appendChild(close);
+  triggerNoticeRemove(engine,type);
+  if(st.page&&type==='show_bubble_message')st.el.wrap.insertBefore(notice,st.el.panel);else st.el.wrap.appendChild(notice);
+  engine.notices[type]={node:notice,canonical:rule.canonical};return true
+}
+function bindTriggerSession(session){if(triggerEngine&&session&&typeof session.sessionId==='string'&&session.sessionId)triggerEngine.bindSession(session.sessionId)}
+function startTriggers(){
+  if(!st.cfg||!Array.isArray(st.cfg.triggers)||!st.cfg.triggers.length)return;
+  var scope=String(location.origin||'')+'|'+API+'|'+WID;
+  var registry=window.__paralllyTriggerDocuments||(window.__paralllyTriggerDocuments=Object.create(null));
+  var documentState=registry[scope];
+  if(!documentState){
+    var visitKey='parallly_trigger_v1:'+encodeURIComponent(scope)+':visits',prior=triggerRead(visitKey),visits=null;
+    if(prior.ok&&(prior.value===null||(prior.value.v===1&&triggerInteger(prior.value.count,0,Number.MAX_SAFE_INTEGER-1)))){
+      var count=prior.value===null?1:prior.value.count+1;if(triggerWrite(visitKey,{v:1,count:count}))visits=count;
+    }
+    documentState=registry[scope]={visits:visits,provisional:'provisional:'+Date.now().toString(36)+':'+Math.random().toString(36).slice(2),engine:null};
+  }
+  if(documentState.engine&&!documentState.engine.dead)return;
+  if(!window.performance||typeof window.performance.now!=='function')return;
+  var saved=getSess(),engine={dead:false,ready:false,rules:[],scope:'parallly_trigger_v1:'+encodeURIComponent(scope),
+    session:documentState.provisional,provisional:true,waiting:!st.cfg.preChatEnabled||!!(saved&&saved.token),
+    start:triggerNow(),href:String(location.href),scroll:0,exit:false,pending:null,timeTimer:null,hrefTimer:null,
+    frequency:Object.create(null),migrationBlocked:Object.create(null),notices:Object.create(null),listeners:[]};
+  triggerEngine=engine;documentState.engine=engine;
+  function key(rule,session){return engine.scope+':frequency:'+encodeURIComponent(session)+':'+rule.hash}
+  function recordValid(record,rule){return record&&record.v===1&&record.hash===rule.hash&&record.canonical===rule.canonical&&typeof record.at==='number'&&Number.isFinite(record.at)}
+  function frequencyState(rule){
+    var name=key(rule,engine.session);if(engine.migrationBlocked[name])return{ok:false};
+    if(engine.frequency[name])return engine.frequency[name];
+    var record=triggerRead(name),state={ok:record.ok,raw:record.raw,record:record.value,deadline:0};
+    if(record.value!==null&&!recordValid(record.value,rule))state.ok=false;
+    if(state.ok&&record.value!==null&&rule.frequency>0){
+      var period=rule.frequency*60000;
+      state.deadline=triggerNow()+Math.max(0,Math.min(period,period-(Date.now()-record.value.at)));
+    }
+    engine.frequency[name]=state;return state
+  }
+  function frequencyAllows(rule){var state=frequencyState(rule);return state.ok&&(state.record===null||(rule.frequency>0&&triggerNow()>=state.deadline))}
+  function reserve(rule){
+    var state=frequencyState(rule);if(!frequencyAllows(rule))return null;
+    var reservation={v:1,hash:rule.hash,canonical:rule.canonical,at:Date.now()},name=key(rule,engine.session);
+    if(!triggerWrite(name,reservation)){state.ok=false;return null}
+    var previous={raw:state.raw,record:state.record,deadline:state.deadline};
+    state.raw=JSON.stringify(reservation);state.record=reservation;state.deadline=triggerNow()+rule.frequency*60000;
+    return{state:state,previous:previous,key:name}
+  }
+  function release(reservation){
+    if(!reservation)return;
+    try{
+      if(reservation.previous.raw===null)localStorage.removeItem(reservation.key);else localStorage.setItem(reservation.key,reservation.previous.raw);
+      if(localStorage.getItem(reservation.key)!==reservation.previous.raw){reservation.state.ok=false;return}
+      reservation.state.raw=reservation.previous.raw;reservation.state.record=reservation.previous.record;reservation.state.deadline=reservation.previous.deadline;
+    }catch(e){reservation.state.ok=false}
+  }
+  engine.bindSession=function(session){
+    if(engine.dead)return;
+    if(!engine.provisional&&engine.session===session){engine.waiting=false;queue();return}
+    if(engine.provisional){
+      engine.rules.forEach(function(rule){
+        var old=triggerRead(key(rule,engine.session)),nextKey=key(rule,session),next=triggerRead(nextKey);
+        if(!old.ok||!next.ok||(old.value!==null&&!recordValid(old.value,rule))||(next.value!==null&&!recordValid(next.value,rule))){engine.migrationBlocked[nextKey]=true;return}
+        if(old.value!==null){
+          var merged=next.value&&next.value.at>old.value.at?next.value:old.value;
+          if(!triggerWrite(nextKey,merged))engine.migrationBlocked[nextKey]=true;
+        }
+      });
+    }
+    engine.session=session;engine.provisional=false;engine.waiting=false;engine.frequency=Object.create(null);queue()
+  };
+  function sampleScroll(){
+    var html=document.documentElement,body=document.body;
+    var height=Math.max(html?html.scrollHeight:0,body?body.scrollHeight:0),viewport=window.innerHeight||(html?html.clientHeight:0);
+    var denominator=height-viewport,top=Math.max(window.scrollY||0,window.pageYOffset||0,html?html.scrollTop:0,body?body.scrollTop:0);
+    var percent=denominator>0?Math.min(100,Math.max(0,100*top/denominator)):0;engine.scroll=Math.max(engine.scroll,percent)
+  }
+  function matches(condition){
+    if(condition.type==='page_url'){
+      var href=String(location.href),value=condition.value;
+      return condition.operator==='equals'?href===value:condition.operator==='starts_with'?href.indexOf(value)===0:href.indexOf(value)>=0
+    }
+    if(condition.type==='time_on_page')return triggerNow()-engine.start>=condition.value*1000;
+    if(condition.type==='scroll_depth')return engine.scroll>=condition.value;
+    if(condition.type==='exit_intent')return engine.exit;
+    if(condition.type==='visit_count'){
+      var count=documentState.visits;if(count===null)return false;
+      return condition.operator==='eq'?count===condition.value:condition.operator==='lte'?count<=condition.value:count>=condition.value
+    }
+    return false
+  }
+  function ruleMatches(rule){return rule.operator==='AND'?rule.conditions.every(matches):rule.conditions.some(matches)}
+  function applicable(rule){
+    if(rule.action==='open_widget')return !st.page&&!st.open;
+    var old=engine.notices[rule.action];return !(old&&old.node.parentNode&&old.canonical===rule.canonical)
+  }
+  function armTime(){
+    if(engine.timeTimer!==null){clearTimeout(engine.timeTimer);engine.timeTimer=null}
+    var next=Infinity,elapsed=triggerNow()-engine.start;
+    engine.rules.forEach(function(rule){rule.conditions.forEach(function(condition){if(condition.type==='time_on_page'&&condition.value*1000>elapsed)next=Math.min(next,condition.value*1000-elapsed)})});
+    // Native browser timers clamp very large delays; chunk them conservatively
+    // rather than turning a valid far-future threshold into a1ms busy loop.
+    if(next!==Infinity)engine.timeTimer=setTimeout(function(){engine.timeTimer=null;queue()},Math.min(next,2147483647))
+  }
+  function evaluate(){
+    engine.pending=null;if(engine.dead||!engine.ready)return;
+    // A host pushState need not emit popstate. Reconcile before reading any
+    // time/scroll/exit condition, even if another event beats the500ms poll.
+    resetContextIfChanged();
+    sampleScroll();
+    if(!engine.waiting){
+      for(var i=0;i<engine.rules.length;i++){
+        var rule=engine.rules[i];if(!ruleMatches(rule)||!applicable(rule)||!frequencyAllows(rule))continue;
+        var reservation=reserve(rule);if(!reservation)continue;
+        var changed=false;
+        try{changed=rule.action==='open_widget'?setWidgetOpen(true,false):triggerNotice(engine,rule)}catch(e){changed=false}
+        if(changed)break;release(reservation)
+      }
+    }
+    armTime()
+  }
+  function queue(){if(!engine.dead&&engine.ready&&engine.pending===null)engine.pending=setTimeout(evaluate,0)}
+  function resetContextIfChanged(){
+    var href=String(location.href);if(href===engine.href)return false;
+    engine.href=href;engine.start=triggerNow();engine.scroll=0;engine.exit=false;return true
+  }
+  function context(){resetContextIfChanged();queue()}
+  function listen(target,name,handler){target.addEventListener(name,handler);engine.listeners.push([target,name,handler])}
+  function stop(){
+    if(engine.dead)return;engine.dead=true;
+    if(engine.pending!==null)clearTimeout(engine.pending);if(engine.timeTimer!==null)clearTimeout(engine.timeTimer);if(engine.hrefTimer!==null)clearInterval(engine.hrefTimer);
+    engine.listeners.forEach(function(item){item[0].removeEventListener(item[1],item[2])});engine.listeners=[];
+    triggerNoticeRemove(engine,'show_bubble_message');triggerNoticeRemove(engine,'show_banner');
+    if(documentState.engine===engine)documentState.engine=null;
+    if(triggerEngine===engine)triggerEngine=null
+  }
+  listen(window,'pagehide',stop);
+  var cryptoApi=window.crypto,Encoder=window.TextEncoder;
+  if(!cryptoApi||!cryptoApi.subtle||typeof cryptoApi.subtle.digest!=='function'||typeof Encoder!=='function')return;
+  var validated=st.cfg.triggers.map(triggerRule).filter(Boolean);
+  Promise.all(validated.map(function(rule){return cryptoApi.subtle.digest('SHA-256',new Encoder().encode(rule.canonical)).then(function(buffer){
+    rule.hash=Array.prototype.map.call(new Uint8Array(buffer),function(value){return value.toString(16).padStart(2,'0')}).join('');return rule
+  })})).then(function(hashed){
+    if(engine.dead)return;
+    var byHash=Object.create(null),collisions=Object.create(null);
+    hashed.forEach(function(rule){var old=byHash[rule.hash];if(old&&old.canonical!==rule.canonical){collisions[rule.hash]=true;return}if(!old||rule.priority<old.priority)byHash[rule.hash]=rule});
+    engine.rules=Object.keys(byHash).filter(function(hash){return !collisions[hash]}).map(function(hash){return byHash[hash]}).sort(function(a,b){return a.priority-b.priority||(a.hash<b.hash?-1:a.hash>b.hash?1:0)});
+    engine.ready=true;sampleScroll();
+    if(st.sess&&typeof st.sess.sessionId==='string'&&st.sess.sessionId)engine.bindSession(st.sess.sessionId);
+    var has=function(type){return engine.rules.some(function(rule){return rule.conditions.some(function(condition){return condition.type===type})})};
+    if(has('scroll_depth')){listen(document,'scroll',function(){resetContextIfChanged();sampleScroll();queue()});listen(window,'scroll',function(){resetContextIfChanged();sampleScroll();queue()});listen(window,'resize',function(){resetContextIfChanged();sampleScroll();queue()})}
+    if(has('exit_intent'))listen(document,'mouseout',function(event){if(event.relatedTarget===null&&event.clientY<=0){resetContextIfChanged();engine.exit=true;queue()}});
+    if(engine.rules.some(function(rule){return rule.conditions.some(function(condition){return condition.type!=='visit_count'})})){
+      listen(window,'popstate',context);listen(window,'hashchange',context);
+      engine.hrefTimer=setInterval(function(){if(String(location.href)!==engine.href)context()},500)
+    }
+    listen(document,'visibilitychange',function(){if(!document.hidden)context()});
+    queue()
+  }).catch(function(){if(!engine.dead)console.warn('Parallly widget: proactive rules unavailable')})
+}
+
 /* ─── INIT ─── */
 function init(){
   fetchCfg(function(err,cfg){
-    if(err)return console.warn('Parallly widget: config error');
+    if(err){releaseWidgetOwner();return console.warn('Parallly widget: config error')}
     if(cfg.preChatEnabled){
       build();
+      startTriggers();
       var saved=getSess();
       if(saved&&saved.token){st.pcDone=true}
       if(st.pcDone){initSess(null,function(e){if(!e)loadIO(connectWS)})}
     }else{
       build();
+      startTriggers();
       initSess(null,function(e){if(!e)loadIO(connectWS)})
     }
   })

@@ -178,6 +178,15 @@ function formFromBody(data: AgentDraftBody, accounts: ChannelAccountLite[], over
     topK: configData.rag?.topK ?? 5,
     similarityThreshold: configData.rag?.similarityThreshold ?? 0.35,
   };
+  // Existing configs may omit LLM tuning. Preserve the options already used
+  // by the conversational runtime; creation defaults remain in defaultConfig.
+  // An absent cap stays unpinned rather than becoming a new800-token limit.
+  config.llm = {
+    ...config.llm,
+    temperature: typeof configData.llm?.temperature === "number" ? configData.llm.temperature : 0.8,
+    maxTokens: typeof configData.llm?.maxTokens === "number" && configData.llm.maxTokens > 0
+      ? configData.llm.maxTokens : undefined,
+  };
   // Normalize the stored assignment against the CURRENT connected accounts so
   // the UI (and the next save) are consistent both ways:
   //  • a type with 2+ accounts uses per-account bindings (expand any legacy

@@ -34,12 +34,26 @@ export function AgentContentReview({ tenantId, proposal, onApplied }: {
     const applied = current.status === 'applied' || !!result;
 
     const apply = async () => {
+        // Review time may have elapsed since the last render.
+        if (current.status === 'expired' || (current.status === 'proposed'
+            && Date.parse(current.expiresAt) <= Date.now())) {
+            setError('');
+            setCurrent(previous => ({ ...previous, status: 'expired' }));
+            return;
+        }
         setBusy(true); setError('');
         try {
             // The digest travels back exactly as it arrived: it is what says the
             // person approved THIS content and not a proposal that moved.
             const response = await api.applyAgentContent(tenantId, current.id, current.digest);
-            if (!response?.success || !response.data) { setError(response?.errorCode || 'apply_failed'); return; }
+            if (!response?.success || !response.data) {
+                if (response?.errorCode === 'operation_proposal_expired') {
+                    setCurrent(previous => ({ ...previous, status: 'expired' }));
+                } else {
+                    setError(response?.errorCode || 'apply_failed');
+                }
+                return;
+            }
             setResult(response.data);
             setCurrent(response.data.proposal);
             onApplied?.(response.data);

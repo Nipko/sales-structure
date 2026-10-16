@@ -2329,6 +2329,8 @@
       "xai": "Grok models",
       "deepseek": "DeepSeek Chat"
     },
+    "loading": "Loading preferences…",
+    "loadError": "We couldn’t load your preferences. Refresh the page to try again.",
     "saveError": "Error saving",
     "pages": {
       "profile": "Profile",
@@ -10170,6 +10172,8 @@
       "invalidResponse": "I didn't receive a valid response. Could you try again?",
       "connectionError": "Sorry, an error occurred while connecting to my AI brain. Please make sure your subscription is active and your AI providers are configured on the platform.",
       "typing": "Copilot is typing...",
+      "send": "Send message",
+      "messagesLabel": "Assist messages",
       "inputPlaceholder": "Ask me about the platform...",
       "suggestions": {
         "connectWhatsApp": "How do I connect WhatsApp?",

@@ -310,7 +310,7 @@ jobs:
           src/modules/onboarding/onboarding-token-coverage.spec.ts
       - name: Dashboard resolver
         run: >-
-          npx jest --config apps/dashboard/jest.config.cjs --runInBand
+          npx jest --config apps/dashboard/jest.config.cjs --runInBand --runTestsByPath
           apps/dashboard/src/lib/vertical-dashboard-resolver.spec.ts
           apps/dashboard/src/lib/local-timestamp.spec.ts
           apps/dashboard/src/lib/format-date-only.spec.ts
@@ -329,6 +329,15 @@ jobs:
           apps/dashboard/src/app/admin/contacts/list-load-error.a11y.spec.tsx
           apps/dashboard/src/app/admin/contacts/selection-controls.a11y.spec.tsx
           apps/dashboard/src/app/admin/contacts/create-controls.a11y.spec.tsx
+          apps/dashboard/src/app/admin/settings/notifications/notifications-functional-batch.a11y.spec.tsx
+          apps/dashboard/src/app/admin/agent/[agentId]/agent-editor-functional-batch.a11y.spec.tsx
+          apps/dashboard/src/components/HelpAssistant.functional-batch.a11y.spec.tsx
+          apps/dashboard/src/components/HelpControls.functional-batch.a11y.spec.tsx
+          apps/dashboard/src/components/help-assistant-day-zero.a11y.spec.tsx
+          apps/dashboard/src/app/admin/agent/[agentId]/agent-editor-pending-changes.a11y.spec.tsx
+          apps/dashboard/src/app/admin/agent/[agentId]/agent-editor-channel-owner.a11y.spec.tsx
+          apps/dashboard/src/app/admin/agent/[agentId]/agent-editor-assist-change.a11y.spec.tsx
+          apps/dashboard/src/app/admin/agent/[agentId]/agent-editor-day-zero.a11y.spec.tsx
           apps/dashboard/src/lib/integration-outbox-review.contract.spec.ts
           apps/dashboard/src/lib/signup-attribution.spec.ts
           apps/dashboard/src/components/appointments/contact-selection.spec.ts

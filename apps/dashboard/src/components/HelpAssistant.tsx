@@ -146,6 +146,7 @@ function TenantHelpAssistant() {
   const { user } = useAuth();
   const tenantId = user?.tenantId ?? null;
   const t = useTranslations("helpAssistant");
+  const tCommon = useTranslations("common");
   const locale = useLocale();
   const pathname = usePathname();
   // Conversation screens already have a composer at the bottom right.
@@ -548,6 +549,7 @@ function TenantHelpAssistant() {
 
       <SheetContent
         side="right"
+        closeLabel={tCommon("close")}
         className="flex h-full w-full flex-col overflow-hidden border-l border-neutral-200/70 bg-white p-0 sm:max-w-md dark:border-neutral-800/70 dark:bg-neutral-950"
       >
         <SheetHeader className="shrink-0 border-b border-neutral-200/50 px-6 py-5 text-left dark:border-neutral-800/50">
@@ -561,7 +563,7 @@ function TenantHelpAssistant() {
         </SheetHeader>
 
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-neutral-50/10 dark:bg-neutral-950/10">
-          <div className="flex flex-1 flex-col space-y-4 overflow-y-auto px-6 py-4 scrollbar-thin scrollbar-thumb-neutral-200 dark:scrollbar-thumb-neutral-800">
+          <div role="log" aria-live="polite" aria-relevant="additions text" aria-label={t("chat.messagesLabel")} className="flex flex-1 flex-col space-y-4 overflow-y-auto px-6 py-4 scrollbar-thin scrollbar-thumb-neutral-200 dark:scrollbar-thumb-neutral-800">
             {qualityDetail && (
               <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-950 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-100" role="status">
                 <p className="text-[11px] font-bold">{t("chat.quality.contextTitle")}</p>
@@ -657,7 +659,7 @@ function TenantHelpAssistant() {
               />
               <button
                 type="submit"
-                aria-label={t("chat.inputPlaceholder")}
+                aria-label={t("chat.send")}
                 disabled={isSending || !chatInput.trim()}
                 className="absolute right-1.5 cursor-pointer rounded-lg bg-indigo-600 p-2 text-white transition-all hover:scale-105 hover:bg-indigo-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100 dark:bg-indigo-500"
               >

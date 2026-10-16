@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { HelpCircle, X, ChevronDown, Sparkles, Lightbulb, Compass } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -86,8 +86,12 @@ export function HelpPanel({
     title, description, videoUrl, images, mediaKey, tips, defaultOpen = false, tourId, tourLabel,
 }: HelpPanelProps) {
     const [open, setOpen] = useState(defaultOpen);
+    const nextFocus = useRef<"open" | "close" | null>(null);
+    const contentId = useId();
+    const titleId = useId();
     const { role } = useRole();
     const tHelp = useTranslations("help");
+    const tCommon = useTranslations("common");
 
     const tour = tourId ? getGuidedTour(tourId) : null;
     const canRunTour = Boolean(tour && canRoleRunGuidedTour(tour, role));
@@ -122,13 +126,22 @@ export function HelpPanel({
             <AnimatePresence mode="wait">
                 {!open ? (
                     <motion.button
+                        type="button"
+                        aria-expanded={false}
+                        aria-controls={contentId}
+                        ref={(node) => {
+                            if (node && nextFocus.current === "open") {
+                                node.focus();
+                                nextFocus.current = null;
+                            }
+                        }}
                         key="collapsed"
                         initial={{ opacity: 0, y: 5 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -5 }}
                         whileHover={{ scale: 1.015, translateY: -1 }}
                         whileTap={{ scale: 0.985 }}
-                        onClick={() => setOpen(true)}
+                        onClick={() => { nextFocus.current = "close"; setOpen(true); }}
                         className="mb-5 flex items-center gap-2.5 px-4 py-2.5 rounded-xl border border-dashed border-indigo-500/35 bg-indigo-500/[0.04] dark:bg-indigo-500/[0.07] text-indigo-600 dark:text-indigo-400 text-[13px] font-semibold hover:border-indigo-500/50 hover:bg-indigo-500/[0.08] dark:hover:bg-indigo-500/[0.12] transition-all duration-200 cursor-pointer shadow-sm hover:shadow-indigo-500/5 backdrop-blur-[4px] relative overflow-hidden group"
                     >
                         {/* Shimmer effect */}
@@ -139,6 +152,9 @@ export function HelpPanel({
                     </motion.button>
                 ) : (
                     <motion.div
+                        id={contentId}
+                        role="region"
+                        aria-labelledby={titleId}
                         key="expanded"
                         initial={{ opacity: 0, y: -10, scale: 0.985 }}
                         animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -152,14 +168,22 @@ export function HelpPanel({
                                 <div className="w-7 h-7 rounded-lg bg-indigo-500/10 flex items-center justify-center">
                                     <Sparkles size={14.5} className="text-indigo-600 dark:text-indigo-400 animate-pulse" />
                                 </div>
-                                <h3 className="text-[13.5px] font-bold text-neutral-800 dark:text-neutral-200 tracking-wide">{title}</h3>
+                                <h3 id={titleId} className="text-[13.5px] font-bold text-neutral-800 dark:text-neutral-200 tracking-wide">{title}</h3>
                             </div>
                             <div className="flex items-center gap-2">
                             {showMeButton("header", true)}
                             <motion.button
+                                type="button"
+                                aria-label={tCommon("close")}
+                                ref={(node) => {
+                                    if (node && nextFocus.current === "close") {
+                                        node.focus();
+                                        nextFocus.current = null;
+                                    }
+                                }}
                                 whileHover={{ scale: 1.08, rotate: 90 }}
                                 whileTap={{ scale: 0.92 }}
-                                onClick={() => setOpen(false)}
+                                onClick={() => { nextFocus.current = "open"; setOpen(false); }}
                                 className="p-1.5 rounded-lg bg-indigo-500/5 dark:bg-neutral-800/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/10 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors cursor-pointer border-none"
                             >
                                 <X size={14.5} />

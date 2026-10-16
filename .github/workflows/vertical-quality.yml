@@ -633,6 +633,24 @@ jobs:
           }
           fs.writeFileSync('artifacts/manual-task-existing-ui-validation.json',JSON.stringify({passed:true,total:12,commands:3,fixtures:24,results,actual_PostgreSQL:false,actual_HTTP:false,actual_model:false,global_acceptances:0,names_scope:'first own button only'},null,2)+'\n',{flag:'wx'});
           NODE
+      - name: Feature changelog month and board status order (8 strict-memory UI contracts)
+        run: |
+          node <<'NODE'
+          const fs=require('fs'),path=require('path'),cp=require('child_process'),a=require('assert/strict'),crypto=require('crypto');
+          const read=f=>JSON.parse(fs.readFileSync(f,'utf8')),sha=f=>crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex'),results=[];
+          const blocks=[{kind:'month',spec:'feature-changelog-month.ui.spec.tsx',env:'FEATURE_CHANGELOG_EVIDENCE_DIR'},{kind:'status',spec:'feature-board-status-order.ui.spec.tsx',env:'FEATURE_BOARD_STATUS_EVIDENCE_DIR'}];
+          for(const block of blocks){
+           const folder=path.resolve('artifacts/fixtures/feature-board-'+block.kind),rawFile=path.resolve('artifacts/feature-board-'+block.kind+'-ui-jest.json');fs.mkdirSync(folder,{recursive:true});a.equal(fs.readdirSync(folder).length,0);a(!fs.existsSync(rawFile));
+           const child=cp.spawnSync(process.execPath,[path.resolve('node_modules/jest/bin/jest.js'),'--config','apps/dashboard/jest.feature-board-ui.mjs','--runInBand','--runTestsByPath','apps/api/src/modules/feature-requests/'+block.spec,'--json','--outputFile',rawFile],{cwd:process.cwd(),env:{...process.env,TZ:'America/Bogota',[block.env]:folder},stdio:'inherit',timeout:180000});a.equal(child.status,0,child.error?.message||block.kind+' nonzero');const raw=read(rawFile);a.equal(raw.success,true);a.equal(raw.numTotalTests,4);a.equal(raw.numPassedTests,4);a.equal(raw.numFailedTests,0);a.equal(raw.numPendingTests,0);a.equal(raw.numRuntimeErrorTestSuites||0,0);a.equal(raw.testResults.length,1);a.equal(raw.testResults[0].assertionResults.length,4);a(raw.testResults[0].assertionResults.every(t=>t.status==='passed'));
+           for(const locale of ['es','en','pt','fr']){const o=read(path.join(folder,locale+'-observed.json')),c=read(path.join(folder,locale+'-cleanup.json'));a.equal(o.error,null);a.deepEqual(o.boundaryErrors,[]);a.equal(c.ownContainerRemoved,true);a.equal(c.remainingOwnedContainers,0);a.deepEqual(c.boundaryErrors,[]);a(c.navigation.every(n=>n===0));a.equal(c.writes,0);a.equal(c.timerInventoryMeasured,false);a(o.requests.every(r=>r.method==='GET'));a(o.sql.every(r=>r.sql.startsWith('SELECT ')));
+            if(block.kind==='month'){a.equal(o.requests.length,2);a.equal(o.sql.length,2);a.equal(o.returnedMonth,'2099-01');a.equal(o.before.sqlCount,1);a.equal(o.after.title,o.before.title);a.equal(o.after.description,'Synthetic existing shipped improvement');a.equal(o.after.hasShipped,true);a.equal(o.after.offsetMinutes,300);a.equal(o.after.timeZone,'America/Bogota');a.equal(o.after.heading,o.after.expectedMonth);}
+            else{a.equal(o.requests.length,3);a.equal(o.sql.length,3);a.equal(o.initial.activeStatus,'all');a.deepEqual(o.initial.titles,['Synthetic initial '+locale]);a.equal(o.middle.activeStatus,'shipped');a.deepEqual(o.middle.titles,['Synthetic shipped B '+locale]);a.equal(o.final.activeStatus,'shipped');a.deepEqual(o.final.titles,['Synthetic shipped B '+locale]);a.deepEqual(o.responses.map(r=>r.call),[1,3,2]);a.deepEqual(o.responses.map(r=>r.rows[0].status),['open','shipped','planned']);a.equal(c.plannedResolved,true);a.equal(c.cleanupReleasedOwnedPending,false);}
+           }
+           const files=fs.readdirSync(folder).sort();a.equal(files.length,8);results.push({kind:block.kind,passed:4,exit_code:child.status,raw:path.basename(rawFile),raw_sha256:sha(rawFile),fixtures:files.map(file=>({file,sha256:sha(path.join(folder,file))}))});
+          }
+          fs.writeFileSync('artifacts/feature-board-ui-validation.json',JSON.stringify({passed:true,total:8,commands:2,fixtures:16,results,actual_PostgreSQL:false,actual_HTTP:false,actual_model:false,global_acceptances:0,month_language_scope:'engine effective locale retained; app month language not certified',request_order_scope:'board native status1-3-2 only; no inter-view/error/unmount claim'},null,2)+'\n',{flag:'wx'});
+          NODE
+
       - name: Assist receipt producer-to-review UI (32 local DOM contracts)
         run: >-
           npx jest --config apps/api/jest.assist-content-receipt-ui.cjs --runInBand

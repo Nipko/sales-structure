@@ -327,6 +327,7 @@ jobs:
           apps/dashboard/src/app/admin/contacts/import-result.a11y.spec.tsx
           apps/dashboard/src/app/admin/contacts/filter-labels.a11y.spec.tsx
           apps/dashboard/src/app/admin/contacts/list-load-error.a11y.spec.tsx
+          apps/dashboard/src/app/admin/contacts/selection-controls.a11y.spec.tsx
           apps/dashboard/src/lib/integration-outbox-review.contract.spec.ts
           apps/dashboard/src/lib/signup-attribution.spec.ts
           apps/dashboard/src/components/appointments/contact-selection.spec.ts

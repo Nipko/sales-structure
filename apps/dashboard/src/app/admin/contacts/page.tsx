@@ -575,6 +575,8 @@ export default function ContactsPage() {
                         <tr className="border-b border-neutral-100 dark:border-neutral-800">
                             <th className="w-10 px-3 py-3">
                                 <button
+                                    aria-label={t('selectAllVisible')}
+                                    aria-pressed={filtered.length > 0 && filtered.every(c => selectedIds.has(c.id)) ? true : filtered.some(c => selectedIds.has(c.id)) ? "mixed" : false}
                                     onClick={() => {
                                         if (selectedIds.size === filtered.length) setSelectedIds(new Set());
                                         else setSelectedIds(new Set(filtered.map(c => c.id)));
@@ -607,6 +609,8 @@ export default function ContactsPage() {
                                 >
                                     <td className="w-10 px-3 py-3">
                                         <button
+                                            aria-label={t('selectContactForBulk', { name: contact.name })}
+                                            aria-pressed={selectedIds.has(contact.id)}
                                             onClick={(e) => {
                                                 e.stopPropagation();
                                                 setSelectedIds(prev => {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useId } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -14,11 +14,13 @@ export default function ProfilePage() {
     const tHelp = useTranslations("help");
     const tRoles = useTranslations("roles");
     const { user } = useAuth();
+    const firstNameId = useId();
 
     const roleLabel = (() => {
         switch (user?.role) {
             case "super_admin": return tRoles("superAdmin");
             case "tenant_admin": return tRoles("admin");
+            case "tenant_supervisor": return tRoles("supervisor");
             case "tenant_agent": return tRoles("agent");
             case "tenant_viewer": return tRoles("viewer");
             default: return user?.role?.replace(/_/g, " ") ?? "";
@@ -130,12 +132,13 @@ export default function ProfilePage() {
                 {/* Name row */}
                 <div className="grid grid-cols-2 gap-4">
                     <div>
-                        <label className="mb-1.5 block text-[13px] font-medium text-neutral-700 dark:text-neutral-300">
+                        <label htmlFor={firstNameId} className="mb-1.5 block text-[13px] font-medium text-neutral-700 dark:text-neutral-300">
                             {t("firstName")}
                         </label>
                         <div className="relative">
                             <User size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
                             <input
+                                id={firstNameId}
                                 type="text"
                                 value={form.firstName}
                                 onChange={(e) => setForm({ ...form, firstName: e.target.value })}

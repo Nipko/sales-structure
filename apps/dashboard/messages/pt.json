@@ -2329,6 +2329,8 @@
       "xai": "Modelos Grok",
       "deepseek": "DeepSeek Chat"
     },
+    "loading": "Carregando preferências…",
+    "loadError": "Não foi possível carregar suas preferências. Atualize a página para tentar novamente.",
     "saveError": "Erro ao salvar",
     "pages": {
       "profile": "Perfil",
@@ -10170,6 +10172,8 @@
       "invalidResponse": "Não recebi uma resposta válida. Você poderia tentar novamente?",
       "connectionError": "Desculpe, ocorreu um erro ao conectar com meu cérebro de IA. Por favor, verifique se sua assinatura está ativa e se seus provedores de IA estão configurados na plataforma.",
       "typing": "Copilot está digitando...",
+      "send": "Enviar mensagem",
+      "messagesLabel": "Mensagens do Assist",
       "inputPlaceholder": "Pergunte-me sobre a plataforma...",
       "suggestions": {
         "connectWhatsApp": "Como conecto o WhatsApp?",

@@ -14,6 +14,7 @@ export function useNotificationPreferences() {
   const [preferences, setPreferences] = useState<NotificationPreferences>(DEFAULT_NOTIFICATION_PREFERENCES);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [error, setError] = useState(false);
 
   useEffect(() => {
@@ -22,9 +23,10 @@ export function useNotificationPreferences() {
       if (!current) return;
       if (response.success && response.data) {
         setPreferences(normalizeNotificationPreferences(response.data));
+        setLoadError(false);
         setError(false);
       } else {
-        setError(true);
+        setLoadError(true);
       }
       setLoading(false);
     });
@@ -40,6 +42,9 @@ export function useNotificationPreferences() {
   }, []);
 
   const updatePreferences = useCallback(async (next: NotificationPreferences) => {
+    // A failed or pending read leaves only defaults, not the account settings.
+    // Never replace unknown stored categories with those display defaults.
+    if (loading || loadError || saving) return false;
     const normalized = normalizeNotificationPreferences(next);
     const previous = preferences;
     setPreferences(normalized);
@@ -58,7 +63,7 @@ export function useNotificationPreferences() {
     setError(true);
     window.dispatchEvent(new CustomEvent(EVENT, { detail: previous }));
     return false;
-  }, [preferences]);
+  }, [preferences, loading, loadError, saving]);
 
-  return { preferences, loading, saving, error, updatePreferences };
+  return { preferences, loading, saving, loadError, error, updatePreferences };
 }

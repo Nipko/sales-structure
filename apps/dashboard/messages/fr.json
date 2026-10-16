@@ -2329,6 +2329,8 @@
       "xai": "Modèles Grok",
       "deepseek": "DeepSeek Chat"
     },
+    "loading": "Chargement des préférences…",
+    "loadError": "Impossible de charger vos préférences. Actualisez la page pour réessayer.",
     "saveError": "Erreur lors de l'enregistrement",
     "pages": {
       "profile": "Profil",
@@ -10170,6 +10172,8 @@
       "invalidResponse": "Je n'ai pas reçu de réponse valide. Pourriez-vous réessayer ?",
       "connectionError": "Désolé, une erreur s'est produite lors de la connexion à mon cerveau IA. Veuillez vérifier que votre abonnement est actif et que vos fournisseurs d'IA sont configurés sur la plateforme.",
       "typing": "Copilot est en train d'écrire...",
+      "send": "Envoyer le message",
+      "messagesLabel": "Messages d’Assist",
       "inputPlaceholder": "Posez-moi une question sur la plateforme...",
       "suggestions": {
         "connectWhatsApp": "Comment connecter WhatsApp ?",

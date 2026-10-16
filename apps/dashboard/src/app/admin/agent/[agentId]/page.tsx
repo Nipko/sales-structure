@@ -420,6 +420,8 @@ export default function AgentEditorPage() {
   // away after a save that had silently failed. Track dirtiness and guard both
   // the browser's unload and in-app links until the next successful save.
   const dirtyRef = useRef(false);
+  // A response acknowledges the edits sent with that save, not later typing.
+  const editGenerationRef = useRef(0);
   // The same fact as state, for what the page shows: "Dime qué cambiar" waits
   // while there are unsaved edits, and a ref alone would not redraw it. Every
   // edit goes through here, so an in-place re-read (below) can trust it.
@@ -428,7 +430,10 @@ export default function AgentEditorPage() {
     dirtyRef.current = value;
     setDirtyState(value);
     // Her next edit is newer than the change Assist applied: that line is done.
-    if (value) setAssistApplied(false);
+    if (value) {
+      editGenerationRef.current += 1;
+      setAssistApplied(false);
+    }
   }, []);
   useEffect(() => {
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -441,7 +446,10 @@ export default function AgentEditorPage() {
       const anchor = (event.target as HTMLElement | null)?.closest?.("a[href]") as HTMLAnchorElement | null;
       if (!anchor || anchor.target === "_blank") return;
       const href = anchor.getAttribute("href") || "";
-      if (!href.startsWith("/") || href.startsWith(`/admin/agent/${agentId}`)) return;
+      const pathname = href.split(/[?#]/, 1)[0];
+      // Query/hash changes stay in the editor; /test and the other child
+      // routes leave it and must protect edits just like another module.
+      if (!href.startsWith("/") || pathname === `/admin/agent/${agentId}`) return;
       if (!window.confirm(t("unsavedLeaveConfirm"))) { event.preventDefault(); event.stopPropagation(); }
       else setDirty(false);
     };
@@ -736,13 +744,14 @@ export default function AgentEditorPage() {
   // ── Save ───────────────────────────────────────────────────
 
   function handleSave() {
+    if (!canEditAgent) return;
     // The Save button saves what the page shows, including the
     // "Se reasignará de …" line under the channels: those moves are promised.
     return saveForm(currentForm(), pendingView, { promiseMoves: true });
   }
 
   async function saveForm(form: EditorForm, view: "live" | "draft", { promiseMoves }: { promiseMoves: boolean }) {
-    if (!activeTenantId || !agentId) return;
+    if (!canEditAgent || !activeTenantId || !agentId) return;
     if (!channelOverviewAvailable) { setToast(t('channelOverviewUnavailableHint'), "error"); return; }
     // Immediate mode refuses every save while a stale draft is stored; say
     // what to do about it instead of "the configuration changed".
@@ -757,6 +766,7 @@ export default function AgentEditorPage() {
       return;
     }
     setFieldErrors({});
+    const savedEditGeneration = editGenerationRef.current;
     setSaving(true);
     try {
       // Multi-account types are driven by per-account bindings; keep them OUT of
@@ -807,7 +817,7 @@ export default function AgentEditorPage() {
           : saved.savedRevision.id === saved.workspace.draft?.id;
         if (!savedIsCurrent) setExternalChange(true);
         saveAttempt.current = null;
-        setDirty(false);
+        if (editGenerationRef.current === savedEditGeneration) setDirty(false);
         setPendingView("live");
         setToast(tDraft(saved.workspace.directCommit ? 'savedLive' : 'saved'));
         // The other agent gave the channel away: the line has nothing left to say.
@@ -972,7 +982,7 @@ export default function AgentEditorPage() {
   // Save is never off without a reason on screen. A stale draft is the one
   // case with no other explanation visible next to the button.
   const saveBlockedReason = pending === "stale" ? tPending("saveBlocked") : null;
-  const saveDisabled = saving || !workspace || externalChange || pendingBusy !== null
+  const saveDisabled = !canEditAgent || saving || !workspace || externalChange || pendingBusy !== null
     || Boolean(workspace.draft && !workspace.draft.currentBase);
   // Immediate mode tests what answers customers: the live agent. An old
   // draft's revision would test changes the form is not showing.
@@ -1342,14 +1352,16 @@ export default function AgentEditorPage() {
 
       {/* ── Prompt mode ── */}
       {mode === "prompt" && (
-        <CustomPromptMode
-          customPrompt={customPrompt}
-          onChangePrompt={(value) => { setDirty(true); setCustomPrompt(value); }}
-          saving={saving}
-          onSave={handleSave}
-          saveLabel={workspace?.directCommit ? tc("save") : tDraft('save')}
-          savingLabel={tc("saving")}
-        />
+        <fieldset disabled={!canEditAgent} className="min-w-0 border-0 p-0">
+          <CustomPromptMode
+            customPrompt={customPrompt}
+            onChangePrompt={(value) => { setDirty(true); setCustomPrompt(value); }}
+            saving={saving}
+            onSave={handleSave}
+            saveLabel={workspace?.directCommit ? tc("save") : tDraft('save')}
+            savingLabel={tc("saving")}
+          />
+        </fieldset>
       )}
 
       {/* ── Tab navigation ── */}

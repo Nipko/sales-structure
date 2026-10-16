@@ -2329,6 +2329,8 @@
       "deepseek": "DeepSeek Chat"
     },
     "connectionError": "Error de conexión",
+    "loading": "Cargando preferencias…",
+    "loadError": "No pudimos cargar tus preferencias. Actualiza la página para volver a intentarlo.",
     "saveError": "Error al guardar",
     "pages": {
       "profile": "Perfil",
@@ -10170,6 +10172,8 @@
       "invalidResponse": "No he recibido una respuesta válida. ¿Podrías intentar nuevamente?",
       "connectionError": "Lo siento, ha ocurrido un error al conectar con mi cerebro de IA. Por favor, asegúrate de que tu suscripción esté activa y tus proveedores de IA estén configurados en la plataforma.",
       "typing": "Copilot está escribiendo...",
+      "send": "Enviar mensaje",
+      "messagesLabel": "Mensajes de Assist",
       "inputPlaceholder": "Pregúntame sobre la plataforma...",
       "suggestions": {
         "connectWhatsApp": "¿Cómo conecto WhatsApp?",

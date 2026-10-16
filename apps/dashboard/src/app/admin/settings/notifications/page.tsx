@@ -39,9 +39,16 @@ const categories: Omit<NotificationCategory, "enabled">[] = [
 export default function NotificationsPage() {
     const t = useTranslations("notifications");
     const tHelp = useTranslations("help");
-    const { preferences, loading, saving, error, updatePreferences } = useNotificationPreferences();
+    const { preferences, loading, saving, loadError, error, updatePreferences } = useNotificationPreferences();
+    const changesBlocked = loading || loadError || saving;
+
+    const toggleSound = () => {
+        if (changesBlocked) return;
+        void updatePreferences({ ...preferences, soundEnabled: !preferences.soundEnabled });
+    };
 
     const toggleCategory = (id: NotificationCategoryKey) => {
+        if (changesBlocked) return;
         void updatePreferences({ ...preferences, categories: {
             ...preferences.categories, [id]: !preferences.categories[id],
         } });
@@ -80,8 +87,8 @@ export default function NotificationsPage() {
                         role="switch"
                         aria-checked={preferences.soundEnabled}
                         aria-label={t("sound")}
-                        onClick={() => void updatePreferences({ ...preferences, soundEnabled: !preferences.soundEnabled })}
-                        disabled={loading || saving}
+                        onClick={toggleSound}
+                        disabled={changesBlocked}
                         className={cn(
                             "relative h-6 w-12 shrink-0 cursor-pointer rounded-full border-none transition-colors",
                             preferences.soundEnabled ? "bg-indigo-600" : "bg-neutral-300 dark:bg-neutral-600"
@@ -126,7 +133,7 @@ export default function NotificationsPage() {
                                     aria-checked={enabled}
                                     aria-label={t(cat.labelKey)}
                                     onClick={() => toggleCategory(cat.id)}
-                                    disabled={loading || saving}
+                                    disabled={changesBlocked}
                                     className={cn(
                                         "relative h-6 w-12 shrink-0 cursor-pointer rounded-full border-none transition-colors",
                                         enabled ? "bg-indigo-600" : "bg-neutral-300 dark:bg-neutral-600"
@@ -144,12 +151,12 @@ export default function NotificationsPage() {
             </div>
 
             <div
-                role={error ? "alert" : "status"}
+                role={loadError || error ? "alert" : "status"}
                 aria-live="polite"
                 className="flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-xs text-neutral-600 dark:border-indigo-500/20 dark:bg-indigo-500/10 dark:text-neutral-400"
             >
                 <Bell size={14} className="text-indigo-500 shrink-0" />
-                {error ? t("saveError") : saving ? t("saving") : t("serverNote")}
+                {loading ? t("loading") : loadError ? t("loadError") : error ? t("saveError") : saving ? t("saving") : t("serverNote")}
             </div>
         </div>
     );

@@ -4,7 +4,10 @@ module.exports = {
     rootDir: __dirname,
     testEnvironment: 'node',
     roots: ['<rootDir>/src'],
-    testMatch: ['<rootDir>/src/modules/copilot/assist-content-receipt.ui.spec.tsx'],
+    testMatch: [
+        '<rootDir>/src/modules/copilot/assist-content-receipt.ui.spec.tsx',
+        '<rootDir>/src/modules/copilot/assist-content-proposal-deadline.ui.spec.tsx',
+    ],
     moduleFileExtensions: ['ts', 'tsx', 'js', 'mjs', 'json', 'node'],
     moduleNameMapper: { '^@parallext/shared$': '<rootDir>/../../packages/shared/src/index.ts' },
     transform: {

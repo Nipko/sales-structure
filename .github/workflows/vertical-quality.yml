@@ -64,6 +64,24 @@ jobs:
         run: npx prisma generate --schema=apps/api/prisma/schema.prisma
       - run: npm ci --prefix apps/mobile
       - run: mkdir -p artifacts
+      # Root-reviewed proposal only: insert once after mkdir artifacts,
+      # before Claims and competitive evidence, without replacing prior steps.
+      - name: API production graph and Nest compilation
+        run: |
+          npm run build --workspace=@parallext/shared
+          npx tsc -p apps/api/tsconfig.build.json --listFilesOnly --pretty false > artifacts/api-production-build-files.txt
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const files = fs.readFileSync('artifacts/api-production-build-files.txt', 'utf8').split(/\r?\n/).map(line => line.trim()).filter(file => path.isAbsolute(file) && /\.(?:ts|tsx)$/.test(file));
+          const invalid = files.filter(file => /[\\/]apps[\\/]api[\\/]src[\\/].*(?:\.spec|\.e2e-spec)\.tsx?$/.test(file) || /[\\/]apps[\\/]dashboard[\\/]src[\\/]/.test(file));
+          const mainPresent = files.some(file => /[\\/]apps[\\/]api[\\/]src[\\/]main\.ts$/.test(file));
+          const workerPresent = files.some(file => /[\\/]apps[\\/]api[\\/]src[\\/]worker\.main\.ts$/.test(file));
+          const proof = { fileCount: files.length, productionApiTestSourcesAndDashboardConsumers: invalid, mainPresent, workerPresent, noApplicationExecution: true };
+          fs.writeFileSync('artifacts/api-production-build-scope.json', JSON.stringify(proof, null, 2) + '\n');
+          if (!files.length || invalid.length || !mainPresent || !workerPresent) throw new Error('Production API compilation graph violates runtime/test boundary; inspect saved graph');
+          NODE
+          npm run build --workspace=@parallext/api
       - name: Claims and competitive evidence
         run: npm run check:claims --prefix apps/landing
       - name: Static 1,660-scenario matrix (canonical + legacy)
@@ -184,7 +202,10 @@ jobs:
           apps/api/src/modules/widget/widget-loader.prechat-recovery.spec.ts
           apps/api/src/modules/widget/widget-loader.connection-status.spec.ts
           apps/api/src/modules/widget/widget-loader.welcome.spec.ts
+          apps/api/src/modules/widget/widget-loader.expanded-trigger.spec.ts
+          apps/api/src/modules/widget/widget-loader.saved-trigger.spec.ts
           apps/api/src/modules/conversations/agent-rag-implicit-runtime.spec.ts
+          apps/api/src/modules/conversations/agent-llm-implicit-runtime.spec.ts
           apps/api/src/modules/persona/agent-required-fields-legacy-consumer.spec.ts
           apps/api/src/modules/widget/widget-triggers.controller.security.spec.ts
           apps/api/src/modules/widget/widget-triggers.service.security.spec.ts
@@ -339,6 +360,8 @@ jobs:
           apps/dashboard/src/app/admin/settings/notifications/notifications-functional-batch.a11y.spec.tsx
           apps/dashboard/src/app/admin/agent/[agentId]/agent-editor-context-order.a11y.spec.tsx
           apps/dashboard/src/app/admin/agent/[agentId]/agent-rag-implicit-editor.a11y.spec.tsx
+          apps/dashboard/src/app/admin/agent/[agentId]/agent-llm-implicit-editor.a11y.spec.tsx
+          apps/dashboard/src/app/admin/agent/[agentId]/agent-llm-preset-preservation-controls.a11y.spec.tsx
           apps/dashboard/src/app/admin/agent/[agentId]/agent-required-fields-legacy-editor.a11y.spec.tsx
           apps/dashboard/src/app/admin/agent/[agentId]/agent-required-context-mutations.a11y.spec.tsx
           apps/dashboard/src/app/admin/agent/[agentId]/agent-required-fields-adapter-preservation.a11y.spec.tsx
@@ -368,7 +391,7 @@ jobs:
           apps/dashboard/src/app/admin/agent/quality/owner-health-summary.spec.ts
           apps/dashboard/src/app/admin/agent/quality/weekly-summary-choice.a11y.spec.tsx
           --json --outputFile artifacts/dashboard-vertical-jest.json
-      - name: Assist receipt producer-to-review UI (20 local DOM contracts)
+      - name: Assist receipt producer-to-review UI (32 local DOM contracts)
         run: >-
           npx jest --config apps/api/jest.assist-content-receipt-ui.cjs --runInBand
           --json --outputFile artifacts/assist-content-receipt-ui-jest.json

@@ -142,8 +142,9 @@ export function PersonaTab({ config, onChange, errors = {}, focusField = null }:
     return match?.id ?? null;
   }
 
-  function getAnswerLengthId(): string {
+  function getAnswerLengthId(): string | null {
     const tokens = config.llm.maxTokens;
+    if (typeof tokens !== "number") return null;
     if (tokens <= 500) return "concise";
     if (tokens <= 1000) return "standard";
     return "detailed";

@@ -22,7 +22,7 @@ export interface PersonaConfig {
   };
   llm: {
     temperature: number;
-    maxTokens: number;
+    maxTokens?: number;
     routing: any;
     memory: { shortTerm: number; longTerm: boolean; summaryAfter: number };
   };

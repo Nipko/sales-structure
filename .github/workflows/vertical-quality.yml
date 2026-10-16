@@ -181,6 +181,10 @@ jobs:
           apps/api/src/modules/widget/widget-capability-policy.spec.ts
           apps/api/src/modules/widget/widget.gateway.security.spec.ts
           apps/api/src/modules/widget/widget-public.controller.security.spec.ts
+          apps/api/src/modules/widget/widget-loader.prechat-recovery.spec.ts
+          apps/api/src/modules/widget/widget-loader.connection-status.spec.ts
+          apps/api/src/modules/widget/widget-loader.welcome.spec.ts
+          apps/api/src/modules/conversations/agent-rag-implicit-runtime.spec.ts
           apps/api/src/modules/widget/widget-triggers.controller.security.spec.ts
           apps/api/src/modules/widget/widget-triggers.service.security.spec.ts
           apps/api/src/modules/conversations/conversations.widget-containment.spec.ts
@@ -333,6 +337,7 @@ jobs:
           apps/dashboard/src/app/admin/contacts/create-controls.a11y.spec.tsx
           apps/dashboard/src/app/admin/settings/notifications/notifications-functional-batch.a11y.spec.tsx
           apps/dashboard/src/app/admin/agent/[agentId]/agent-editor-context-order.a11y.spec.tsx
+          apps/dashboard/src/app/admin/agent/[agentId]/agent-rag-implicit-editor.a11y.spec.tsx
           apps/dashboard/src/app/admin/settings/business-hours/business-hours-timezone-roundtrip.a11y.spec.tsx
           apps/dashboard/src/app/admin/settings/business-hours/business-hours-controls.a11y.spec.tsx
           apps/dashboard/src/app/admin/settings/localization/localization-read-context.a11y.spec.tsx

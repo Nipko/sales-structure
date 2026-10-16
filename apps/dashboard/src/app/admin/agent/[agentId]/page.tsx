@@ -168,6 +168,16 @@ function formBodyFor(workspace: AgentConfigurationWorkspace, view: "live" | "dra
 function formFromBody(data: AgentDraftBody, accounts: ChannelAccountLite[], overviewAvailable: boolean): EditorForm {
   const configData: any = data.configJson || {};
   const promptMode = (configData.editorMode ?? configData._mode) === "prompt";
+  const config = deepMerge(structuredClone(defaultConfig), configData);
+  // A saved agent may omit RAG fields that the runtime reads with legacy
+  // defaults. Hydrate those effective values so an unrelated edit preserves
+  // its behavior; defaultConfig remains the defaults for creating a new agent.
+  config.rag = {
+    ...config.rag,
+    enabled: configData.rag?.enabled !== false,
+    topK: configData.rag?.topK ?? 5,
+    similarityThreshold: configData.rag?.similarityThreshold ?? 0.35,
+  };
   // Normalize the stored assignment against the CURRENT connected accounts so
   // the UI (and the next save) are consistent both ways:
   //  • a type with 2+ accounts uses per-account bindings (expand any legacy
@@ -183,7 +193,7 @@ function formFromBody(data: AgentDraftBody, accounts: ChannelAccountLite[], over
     supportedTypes: CHANNEL_ORDER,
   });
   return {
-    config: deepMerge(structuredClone(defaultConfig), configData),
+    config,
     mode: promptMode ? "prompt" : "guided",
     customPrompt: promptMode ? (configData.customPrompt ?? configData._customPrompt ?? "") : "",
     channels: normalized.channels,

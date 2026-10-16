@@ -111,6 +111,7 @@ export default function AppearancePage() {
             return (
               <button
                 key={tc.key}
+                aria-pressed={selected}
                 onClick={() => setTheme(tc.key)}
                 className={cn(
                   "relative rounded-xl border-2 p-4 text-left transition-all",

@@ -38,6 +38,7 @@ const PASSWORD_REQUIREMENTS: PasswordRequirement[] = [
 export default function ChangePasswordPage() {
     const t = useTranslations('changePassword');
     const tc = useTranslations("common");
+    const tAuth = useTranslations("auth");
     const tHelp = useTranslations("help");
     const router = useRouter();
     const { user } = useAuth();
@@ -174,6 +175,7 @@ export default function ChangePasswordPage() {
                                     <button
                                         type="button"
                                         onClick={() => setShowCurrent(!showCurrent)}
+                                        aria-label={showCurrent ? tAuth("hidePassword") : tAuth("showPassword")}
                                         className="absolute right-2 top-1/2 -translate-y-1/2 border-none bg-transparent p-1 text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200"
                                     >
                                         {showCurrent ? <EyeOff size={16} /> : <Eye size={16} />}

@@ -1,4 +1,4 @@
-// Dedicated8 page/wizard history contracts; real Node consumers plus owned JSDOM.
+// Dedicated12 navigation/page/wizard contracts; real Node consumers plus owned JSDOM.
 // CI uses existing full-workspace npm ci and its existing Prisma generation.
 // No local E client path, no DB globalSetup, no receipt32 or generic suites.
 import path from 'node:path';
@@ -12,10 +12,11 @@ const environmentRequire = createRequire(dashboardRequire.resolve('jest-environm
 export default {
     rootDir: apiRoot,
     testEnvironment: 'node',
-    roots: ['<rootDir>/src'],
+    roots: ['<rootDir>/src', '<rootDir>/../dashboard/src'],
     testMatch: [
         '<rootDir>/src/modules/conversations/agent-test-history-boundary.ui.spec.tsx',
         '<rootDir>/src/modules/conversations/wizard-agent-test-history-boundary.ui.spec.tsx',
+        '<rootDir>/../dashboard/src/components/layout/NavigationCommandPalette.positive-narrowing.a11y.spec.tsx',
     ],
     moduleFileExtensions: ['ts','tsx','js','mjs','json','node'],
     moduleNameMapper: {

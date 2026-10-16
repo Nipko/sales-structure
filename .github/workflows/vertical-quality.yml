@@ -347,7 +347,6 @@ jobs:
           apps/dashboard/src/lib/quality-health.spec.ts
           apps/dashboard/src/lib/initial-setup.spec.ts
           apps/dashboard/src/lib/navigation-contract.spec.ts
-          apps/dashboard/src/components/layout/NavigationCommandPalette.positive-narrowing.a11y.spec.tsx
           apps/dashboard/src/lib/roles.spec.ts
           apps/dashboard/src/lib/custom-attributes.api.spec.ts
           apps/dashboard/src/app/admin/settings/custom-attributes/page.contract.a11y.spec.tsx
@@ -421,7 +420,7 @@ jobs:
           path: artifacts/agent-effective-skillset-paired-ui-jest.json
           retention-days: 30
           if-no-files-found: error
-      - name: Agent test page and wizard history (8 isolated UI and runtime contracts)
+      - name: Navigation and agent test history (12 isolated UI and runtime contracts)
         run: |
           node <<'NODE'
           const fs = require('fs');
@@ -431,21 +430,22 @@ jobs:
           const dashboardRequire = createRequire(path.resolve('apps/dashboard/package.json'));
           const output = path.resolve('artifacts/agent-test-history-paired-ui-jest.json');
           const files = [
-            'agent-test-history-boundary.ui.spec.tsx',
-            'wizard-agent-test-history-boundary.ui.spec.tsx',
+            'apps/api/src/modules/conversations/agent-test-history-boundary.ui.spec.tsx',
+            'apps/api/src/modules/conversations/wizard-agent-test-history-boundary.ui.spec.tsx',
+            'apps/dashboard/src/components/layout/NavigationCommandPalette.positive-narrowing.a11y.spec.tsx',
           ];
           const result = spawnSync(process.execPath, [dashboardRequire.resolve('jest/bin/jest'),
             '--config', path.resolve('apps/dashboard/jest.agent-test-history-paired-ui.mjs'),
-            '--runInBand', '--runTestsByPath', ...files.map(file => path.resolve('apps/api/src/modules/conversations', file)),
+            '--runInBand', '--runTestsByPath', ...files.map(file => path.resolve(file)),
             '--json', '--outputFile', output], { stdio: 'inherit', env: { ...process.env, FORCE_COLOR: '0' } });
           if (result.error) throw result.error;
           if (result.status !== 0) process.exit(result.status ?? 1);
           const raw = JSON.parse(fs.readFileSync(output, 'utf8'));
-          if (raw.numTotalTests !== 8 || raw.numPassedTests !== 8 || raw.numFailedTests !== 0
-            || raw.numRuntimeErrorTestSuites !== 0 || raw.testResults.length !== 2)
-            throw new Error('Expected exactly8 history contracts across2 suites; inspect saved raw');
+          if (raw.numTotalTests !== 12 || raw.numPassedTests !== 12 || raw.numFailedTests !== 0
+            || raw.numRuntimeErrorTestSuites !== 0 || raw.testResults.length !== 3)
+            throw new Error('Expected exactly12 navigation/history contracts across3 suites; inspect saved raw');
           for (const file of files) {
-            const matches = raw.testResults.filter(suite => path.basename(suite.name) === file);
+            const matches = raw.testResults.filter(suite => path.basename(suite.name) === path.basename(file));
             if (matches.length !== 1 || matches[0].assertionResults.length !== 4
               || matches[0].assertionResults.some(assertion => assertion.status !== 'passed'))
               throw new Error('Expected exactly4 passing locale contracts in ' + file);

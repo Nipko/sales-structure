@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Lightbulb, ChevronUp, MessageSquare, Plus, X, AlertCircle, Search } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
@@ -39,6 +39,7 @@ export default function FeatureRequestsPage() {
     const [requests, setRequests] = useState<any[]>([]);
     const [changelog, setChangelog] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const boardRequestGeneration = useRef(0);
     const [statusTab, setStatusTab] = useState("all");
     const [categoryFilter, setCategoryFilter] = useState<string>("");
     const [search, setSearch] = useState("");
@@ -53,12 +54,14 @@ export default function FeatureRequestsPage() {
     }
 
     async function load() {
+        const generation = ++boardRequestGeneration.current;
         setLoading(true);
         const params: any = { sort };
         if (statusTab !== "all") params.status = statusTab;
         if (categoryFilter) params.category = categoryFilter;
         if (search.trim()) params.search = search.trim();
         const r = await api.listFeatureRequests(params);
+        if (generation !== boardRequestGeneration.current) return;
         setRequests(r.data || []);
         setLoading(false);
     }
@@ -166,7 +169,7 @@ export default function FeatureRequestsPage() {
                         changelogByMonth.map(([month, items]) => (
                             <div key={month}>
                                 <h3 className="text-sm font-medium text-neutral-500 mb-3 sticky top-0 bg-white dark:bg-neutral-950 py-1">
-                                    {new Date(month + "-01").toLocaleDateString(undefined, { month: "long", year: "numeric" })}
+                                    {new Date(month + "-01T12:00:00").toLocaleDateString(undefined, { month: "long", year: "numeric" })}
                                 </h3>
                                 <div className="space-y-2">
                                     {items.map((item: any) => (

@@ -341,7 +341,13 @@ export default function InboxPage() {
     // --- Copilot Rewrite / Summarize State ---
     const [rewriting, setRewriting] = useState(false);
     const [showRewriteMenu, setShowRewriteMenu] = useState(false);
-    const [summaryText, setSummaryText] = useState<string | null>(null);
+    const [summaryState, setSummaryState] = useState<{ context: string; text: string } | null>(null);
+    // A completed or pending response belongs to the tenant/conversation that requested it.
+    const summaryContext = `${activeTenantId ?? ""}:${selectedConv?.id ?? ""}`;
+    const summaryText = summaryState?.context === summaryContext ? summaryState.text : null;
+    const setSummaryText = (text: string | null) => {
+        setSummaryState(text === null ? null : { context: summaryContext, text });
+    };
     const [summaryLoading, setSummaryLoading] = useState(false);
 
     // --- AI Trace (observability) State ---

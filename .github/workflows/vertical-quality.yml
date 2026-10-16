@@ -535,6 +535,70 @@ jobs:
             artifacts/fixtures/inbox-copilot-rewrite16/*.json
           retention-days: 30
           if-no-files-found: error
+      - name: Assist context and test history character budget (24 isolated UI and runtime contracts)
+        run: |
+          node <<'NODE'
+          const fs=require('fs'),path=require('path'),cp=require('child_process'),a=require('assert/strict'),crypto=require('crypto');
+          const blocks=[
+            {
+              "name": "Page4",
+              "count": 4,
+              "spec": "apps/api/src/modules/conversations/agent-test-history-character-budget.ui.spec.tsx",
+              "raw": "agent-history-characters-ui-jest.json",
+              "folder": "agent-history-characters4",
+              "kind": "budget",
+              "env": "AGENT_BUDGET_EVIDENCE_DIR"
+            },
+            {
+              "name": "Wizard4",
+              "count": 4,
+              "spec": "apps/api/src/modules/conversations/wizard-agent-test-history-character-budget.ui.spec.tsx",
+              "raw": "wizard-history-characters-ui-jest.json",
+              "folder": "wizard-history-characters4",
+              "kind": "budget",
+              "env": "AGENT_BUDGET_EVIDENCE_DIR"
+            },
+            {
+              "name": "SummaryCompleted8",
+              "count": 8,
+              "spec": "apps/api/src/modules/copilot/copilot-summary-context-postfix.ui.spec.tsx",
+              "raw": "inbox-summary-context-ui-jest.json",
+              "folder": "inbox-summary-context8",
+              "kind": "summary",
+              "env": "COPILOT_SUMMARY_EVIDENCE_DIR"
+            },
+            {
+              "name": "SummaryPending8",
+              "count": 8,
+              "spec": "apps/api/src/modules/copilot/copilot-summary-pending-context.ui.spec.tsx",
+              "raw": "inbox-summary-pending-ui-jest.json",
+              "folder": "inbox-summary-pending8",
+              "kind": "summary",
+              "env": "COPILOT_SUMMARY_EVIDENCE_DIR"
+            }
+          ];
+          const sha=file=>crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex'),read=file=>JSON.parse(fs.readFileSync(file,'utf8'));
+          const root=process.cwd(),results=[];
+          for(const block of blocks){
+            const folder=path.resolve('artifacts/fixtures',block.folder),rawFile=path.resolve('artifacts',block.raw);
+            fs.mkdirSync(folder,{recursive:true});a.equal(fs.readdirSync(folder).length,0);a(!fs.existsSync(rawFile));
+            const result=cp.spawnSync(process.execPath,[path.resolve('node_modules/jest/bin/jest.js'),'--config','apps/dashboard/jest.assist-context-history-ui.mjs','--runInBand','--runTestsByPath',block.spec,'--json','--outputFile',rawFile],{cwd:root,env:{...process.env,[block.env]:folder},stdio:'inherit',timeout:180000});
+            a.equal(result.status,0,result.error?.message||block.name+' nonzero Jest');const raw=read(rawFile);
+            a.equal(raw.success,true);a.equal(raw.numTotalTests,block.count);a.equal(raw.numPassedTests,block.count);a.equal(raw.numFailedTests,0);a.equal(raw.numPendingTests,0);a.equal(raw.numRuntimeErrorTestSuites||0,0);a.equal(raw.testResults.length,1);
+            const traces=[];for(const locale of ['es','en','pt','fr']){
+              if(block.kind==='budget'){
+                const file=path.join(folder,locale+'-observed.json'),o=read(file);a.equal(o.error,null);a.equal(o.configValidationError,null);a.equal(o.bodyUnchanged,true);a.equal(o.steps.length,6);a.equal(o.steps[4].historyChars,24000);a.equal(o.steps[5].historyChars,24000);a.equal(o.steps[5].historyItems,8);a.equal(o.requests[5].guardAccepted,true);a.equal(o.requests[5].controllerCalled,true);a.equal(o.runtimeRequests.length,6);a.deepEqual(o.accounting,{reserve:6,commit:6,release:0});a.equal(o.cleanup.remainingCaseContainers,0);for(const k of ['runtime','unexpected','navigation'])a.deepEqual(o.cleanup[k],[]);traces.push({locale,observed_sha256:sha(file),sixth_history_chars:24000,sixth_guard_accepted:true,router_calls:6});
+              }else for(const testcase of ['same','switch']){
+                const file=path.join(folder,locale+'-'+testcase+'-trace.json'),observed=path.join(folder,locale+'-'+testcase+'-observed.json'),t=read(file),o=read(observed);a.equal(t.completed,true);a.equal(t.error,'');a.equal(t.cleanup.timerCount,0);a.equal(t.cleanup.afterTicks.timerCount,0);a.deepEqual(t.cleanup.afterTicks.pendingMicrotasks,[]);a.equal(t.cleanup.drainError,'');for(const k of ['runtime','unexpected'])a.deepEqual(t.cleanup[k],[]);a.deepEqual(t.cleanup.disconnected,[1,1]);a.equal(t.cleanup.socketCount,2);
+                if(block.name==='SummaryCompleted8'){a.equal(o.controllerCalls.length,2);a.equal(o.routerCalls.length,testcase==='same'?1:2);a.equal(o.middle.hasAlpha,false);a.equal(o.finalState.hasAlpha,testcase==='same');a.equal(o.finalState.hasBeta,testcase==='switch');}else{a.equal(o.requests.length,1);a.equal(o.routerCalls.length,1);a.equal(o.finalState.hasAlpha,testcase==='same');a.equal(o.finalState.hasBeta,false);}
+                traces.push({locale,testcase,observed_sha256:sha(observed),trace_sha256:sha(file),completed:true,timers:0,microtasks:0,runtime:0,unexpected:0});
+              }
+            }
+            const inventory=fs.readdirSync(folder).sort().map(name=>({file:name,sha256:sha(path.join(folder,name))}));a.equal(inventory.length,block.kind==='budget'?4:32);
+            results.push({name:block.name,raw:block.raw,raw_sha256:sha(rawFile),passed:block.count,jest_exit_code:result.status,folder:block.folder,verified:traces,inventory});
+          }
+          fs.writeFileSync('artifacts/assist-context-history-ui-validation.json',JSON.stringify({passed:true,total:24,commands:4,results,global_acceptances:0,real_model:false,real_HTTP:false,production_UI:false},null,2)+'\n',{flag:'wx'});
+          NODE
       - name: Assist receipt producer-to-review UI (32 local DOM contracts)
         run: >-
           npx jest --config apps/api/jest.assist-content-receipt-ui.cjs --runInBand

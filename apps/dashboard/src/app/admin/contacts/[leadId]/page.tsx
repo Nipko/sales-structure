@@ -303,7 +303,7 @@ export default function Lead360Page() {
         if (!newTask.title.trim() || !tenantId) return;
         setAddingTask(true);
         try {
-            await api.fetch(`/crm/tasks/${tenantId}`, { method: "POST", body: JSON.stringify({ leadId, ...newTask }) });
+            await api.fetch(`/crm/tasks/${tenantId}`, { method: "POST", body: JSON.stringify({ leadId, ...newTask, dueAt: newTask.dueAt ? new Date(newTask.dueAt).toISOString() : "" }) });
             setNewTask({ title: "", dueAt: "", type: "follow_up" });
             load();
         } catch {
@@ -1017,7 +1017,7 @@ export default function Lead360Page() {
 
             {/* Toast */}
             {toast && (
-                <div className="fixed bottom-6 right-6 z-[1100] px-5 py-3 rounded-[10px] text-sm font-semibold bg-emerald-500 text-white shadow-lg animate-in">
+                <div role="status" aria-live="polite" aria-atomic="true" className="fixed bottom-6 right-6 z-[1100] px-5 py-3 rounded-[10px] text-sm font-semibold bg-emerald-500 text-white shadow-lg animate-in">
                     {toast}
                 </div>
             )}

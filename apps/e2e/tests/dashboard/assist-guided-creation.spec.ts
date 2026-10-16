@@ -37,6 +37,7 @@ const DIGEST = "b".repeat(64);
 
 type Creation = {
   operation: string;
+  heading: string;
   domain: string;
   route: string;
   after: Array<{ field: string; value: string | number | boolean }>;
@@ -44,6 +45,7 @@ type Creation = {
 
 const FAQ: Creation = {
   operation: "knowledge.faq.create",
+  heading: "Crear una pregunta frecuente",
   domain: "knowledge",
   route: "/admin/knowledge/faqs",
   after: [
@@ -54,6 +56,7 @@ const FAQ: Creation = {
 
 const LEGAL: Creation = {
   operation: "policies.legal_text.create",
+  heading: "Redactar un texto legal",
   domain: "policies",
   route: "/admin/compliance",
   after: [
@@ -65,6 +68,7 @@ const LEGAL: Creation = {
 
 const SERVICE: Creation = {
   operation: "agenda.service.create",
+  heading: "Crear un servicio agendable",
   domain: "agenda",
   route: "/admin/appointments",
   after: [
@@ -111,7 +115,16 @@ const routes = (creation: Creation, extra: ApiRoutes = {}): ApiRoutes => ({
   ...extra,
 });
 
-const card = (page: Page) => page.locator("section").filter({ hasText: "Todavía no existe" }).first();
+// The operation heading and proposal content persist after apply. willCreate is
+// a pre-apply assertion, not the card identity: DEF134 correctly removes it.
+async function card(page: Page, creation: Creation) {
+  const review = page.getByRole("heading", { level: 3, name: creation.heading, exact: true })
+    .locator("..")
+    .filter({ hasText: String(creation.after[0].value) });
+  await expect(review).toHaveCount(1);
+  await expect(review).toContainText("Todavía no existe");
+  return review;
+}
 
 async function askFor(page: Page, creation: Creation, extra: ApiRoutes = {}) {
   const state = await hermeticDashboard(page, routes(creation, extra));
@@ -129,7 +142,7 @@ test.describe("creación asistida: lo que se va a escribir, antes de escribirlo"
   test("una FAQ se muestra campo por campo y no existe hasta que alguien la crea", async ({ page }) => {
     const state = await askFor(page, FAQ);
 
-    const review = card(page);
+    const review = await card(page, FAQ);
     await expect(review).toBeVisible();
     await expect(review).toContainText("¿Atienden sin cita?");
     await expect(review).toContainText("con disponibilidad del día");
@@ -156,7 +169,7 @@ test.describe("creación asistida: lo que se va a escribir, antes de escribirlo"
     await box.fill("Escribime una pregunta frecuente");
     await box.press("Enter");
 
-    const review = card(page);
+    const review = await card(page, FAQ);
     await expect(review).toBeVisible();
     await review.getByRole("button").last().click();
 
@@ -168,6 +181,8 @@ test.describe("creación asistida: lo que se va a escribir, antes de escribirlo"
     // revisado, y el card no pretende que lo sea.
     await expect(review.getByRole("status").first()).toBeVisible();
     await expect(review.getByRole("link")).toHaveAttribute("href", FAQ.route);
+    await expect(review).toHaveCount(1);
+    await expect(review).not.toContainText("Todavía no existe");
     // Y el botón desaparece: crear dos veces lo mismo no es una opción que la
     // pantalla deba ofrecer.
     expect(await review.getByRole("button").count()).toBe(0);
@@ -181,17 +196,19 @@ test.describe("creación asistida: lo que se va a escribir, antes de escribirlo"
       [`copilot/operations/${TENANT}/proposals`]: ok(appliedObject(LEGAL)),
     });
 
-    const review = card(page);
+    const review = await card(page, LEGAL);
     await expect(review).toBeVisible();
     await expect(review).toContainText("Política de privacidad");
     await review.getByRole("button").last().click();
     await expect(review.getByRole("link")).toHaveAttribute("href", "/admin/compliance");
+    await expect(review).toHaveCount(1);
+    await expect(review).not.toContainText("Todavía no existe");
     await expectHermetic(state);
   });
 
   test("un servicio de agenda muestra la duración que se va a guardar", async ({ page }) => {
     const state = await askFor(page, SERVICE);
-    const review = card(page);
+    const review = await card(page, SERVICE);
     await expect(review).toBeVisible();
     await expect(review).toContainText("Control anual");
     await expect(review).toContainText("45");
@@ -205,11 +222,13 @@ test.describe("creación asistida: lo que se va a escribir, antes de escribirlo"
     const state = await askFor(page, FAQ, {
       [`copilot/operations/${TENANT}/proposals`]: ok(appliedObject(FAQ, { outcome: "replayed" })),
     });
-    const review = card(page);
+    const review = await card(page, FAQ);
     await expect(review).toBeVisible();
     await review.getByRole("button").last().click();
     await expect(review.getByRole("status").first()).toBeVisible();
     await expect(review.getByRole("link")).toHaveAttribute("href", FAQ.route);
+    await expect(review).toHaveCount(1);
+    await expect(review).not.toContainText("Todavía no existe");
     await expectHermetic(state);
   });
 
@@ -219,12 +238,14 @@ test.describe("creación asistida: lo que se va a escribir, antes de escribirlo"
         verification: "unavailable", verificationReason: "reread_failed",
       })),
     });
-    const review = card(page);
+    const review = await card(page, FAQ);
     await expect(review).toBeVisible();
     await review.getByRole("button").last().click();
     // Dos avisos: se creó, y no se pudo confirmar. Decir sólo el primero sería
     // afirmar una lectura que nunca ocurrió.
     await expect.poll(() => review.getByRole("status").count()).toBeGreaterThan(1);
+    await expect(review).toHaveCount(1);
+    await expect(review).not.toContainText("Todavía no existe");
     await expectHermetic(state);
   });
 
@@ -243,7 +264,7 @@ test.describe("creación asistida: lo que se va a escribir, antes de escribirlo"
     await box.fill("Escribime una pregunta frecuente");
     await box.press("Enter");
 
-    const review = card(page);
+    const review = await card(page, FAQ);
     await expect(review).toBeVisible();
     await expect(review.getByRole("status").first()).toBeVisible();
     expect(await review.getByRole("button").count()).toBe(0);

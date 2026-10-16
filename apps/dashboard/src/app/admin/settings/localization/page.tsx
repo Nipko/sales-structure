@@ -1,7 +1,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
@@ -46,12 +46,22 @@ const WEEK_STARTS = [
     { value: "sunday", label: "Sunday" },
 ];
 
+const EMPTY_FORM = {
+    timezone: "",
+    currency: "",
+    dateFormat: "DD/MM/YYYY",
+    timeFormat: "24h",
+    language: "",
+    weekStart: "monday",
+};
+
 export default function LocalizationPage() {
     const t = useTranslations("settings.localizationPage");
     const tc = useTranslations("common");
     const tHelp = useTranslations("help");
     const { user } = useAuth();
     const { activeTenantId } = useTenant();
+    const tenantId = activeTenantId || user?.tenantId || null;
     // Vacío, no "Bogotá y COP".
     //
     // Estos defaults se pintaban en el formulario ANTES de leer nada, así que
@@ -60,48 +70,72 @@ export default function LocalizationPage() {
     // colombianos. Un valor que el sistema puso para poder dibujar la pantalla
     // no puede convertirse en una decisión del dueño por apretar un botón que
     // dice otra cosa.
-    const [form, setForm] = useState({
-        timezone: "",
-        currency: "",
-        dateFormat: "DD/MM/YYYY",
-        timeFormat: "24h",
-        language: "",
-        weekStart: "monday",
+    const [form, setForm] = useState({ ...EMPTY_FORM });
+    const [readState, setReadState] = useState<{ tenantId: string | null; status: "loading" | "ready" | "error" }>({
+        tenantId: null, status: "loading",
     });
     const [saving, setSaving] = useState(false);
     const [saved, setSaved] = useState(false);
     const [error, setError] = useState("");
+    const contextRevision = useRef(0);
+    const savedTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+    // Key readiness to the current render, so an old form cannot be exposed
+    // or submitted during the render before the new context's effect runs.
+    const formReady = !!tenantId && readState.tenantId === tenantId && readState.status === "ready";
+    const loading = !!tenantId && (readState.tenantId !== tenantId || readState.status === "loading");
+    const loadError = readState.tenantId === tenantId && readState.status === "error";
 
     useEffect(() => {
+        const revision = ++contextRevision.current;
+        const isCurrent = () => contextRevision.current === revision;
+        setReadState({ tenantId, status: "loading" });
+        setForm({ ...EMPTY_FORM });
+        setSaving(false);
+        setSaved(false);
+        setError("");
         async function load() {
-            const tenantId = activeTenantId || user?.tenantId;
             if (!tenantId) return;
-            const result = await api.getTenant(tenantId);
-            if (result.success && result.data) {
-                const t = result.data as any;
-                const s = t.settings || {};
-                setForm({
-                    // Sin dato guardado, el campo queda sin elegir y el
-                    // `<select>` muestra "Sin definir". El fallback del backend
-                    // se muestra aparte, marcado como lo que es.
-                    timezone: s.timezone || "",
-                    currency: s.currency || "",
-                    dateFormat: s.dateFormat || "DD/MM/YYYY",
-                    timeFormat: s.timeFormat || "24h",
-                    language: t.language || "",
-                    weekStart: s.weekStart || "monday",
-                });
+            try {
+                const result = await api.getTenant(tenantId);
+                if (!isCurrent()) return;
+                if (result.success && result.data) {
+                    const tenant = result.data as any;
+                    const s = tenant.settings || {};
+                    setForm({
+                        // Sin dato guardado, el campo queda sin elegir y el
+                        // `<select>` muestra "Sin definir". El fallback del backend
+                        // se muestra aparte, marcado como lo que es.
+                        timezone: s.timezone || "",
+                        currency: s.currency || "",
+                        dateFormat: s.dateFormat || "DD/MM/YYYY",
+                        timeFormat: s.timeFormat || "24h",
+                        language: tenant.language || "",
+                        weekStart: s.weekStart || "monday",
+                    });
+                    setReadState({ tenantId, status: "ready" });
+                } else {
+                    setReadState({ tenantId, status: "error" });
+                }
+            } catch {
+                if (isCurrent()) setReadState({ tenantId, status: "error" });
             }
         }
         load();
-    }, [activeTenantId, user?.tenantId]);
+        return () => {
+            ++contextRevision.current;
+            if (savedTimeout.current) clearTimeout(savedTimeout.current);
+        };
+    }, [tenantId]);
 
     const handleSave = async () => {
+        if (!tenantId || !formReady || saving) return;
+        const revision = contextRevision.current;
+        const isCurrent = () => contextRevision.current === revision;
         setSaving(true);
+        setSaved(false);
+        if (savedTimeout.current) clearTimeout(savedTimeout.current);
         setError("");
         try {
-            const tenantId = activeTenantId || user?.tenantId;
-            if (!tenantId) return;
             // Lo que el dueño no eligió no se guarda: mandar `""` borraría un
             // valor declarado antes, y mandar el placeholder lo declararía.
             const settings: Record<string, string> = {
@@ -115,16 +149,20 @@ export default function LocalizationPage() {
                 ...(form.language ? { language: form.language } : {}),
                 settings,
             });
+            if (!isCurrent()) return;
             if (result.success) {
                 setSaved(true);
-                setTimeout(() => setSaved(false), 3000);
+                savedTimeout.current = setTimeout(() => {
+                    if (isCurrent()) setSaved(false);
+                }, 3000);
             } else {
                 setError(result.error || tc("errorSaving"));
             }
         } catch {
-            setError(tc("connectionError"));
+            if (isCurrent()) setError(tc("connectionError"));
+        } finally {
+            if (isCurrent()) setSaving(false);
         }
-        setSaving(false);
     };
 
     const selectClasses = "w-full h-10 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-3 text-sm text-neutral-900 dark:text-neutral-100 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 cursor-pointer transition-colors";
@@ -145,15 +183,23 @@ export default function LocalizationPage() {
                 mediaKey="settingsLocalization"
             />
 
-            {error && (
-                <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-400">
+            {loading && <p role="status" className="text-sm text-neutral-500">{t("loading")}</p>}
+
+            {loadError && (
+                <div role="alert" className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-400">
+                    <AlertCircle size={16} /> {t("loadError")}
+                </div>
+            )}
+
+            {formReady && error && (
+                <div role="alert" className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-400">
                     <AlertCircle size={16} /> {error}
                 </div>
             )}
 
-            <RegionalIdentityCard tenantId={activeTenantId || user?.tenantId} />
+            <RegionalIdentityCard tenantId={tenantId} />
 
-            <div className="space-y-5 rounded-xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
+            {formReady && <div className="space-y-5 rounded-xl border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
                 {/* Timezone */}
                 <div>
                     <label className="mb-1.5 flex items-center gap-2 text-[13px] font-medium text-neutral-700 dark:text-neutral-300">
@@ -220,20 +266,20 @@ export default function LocalizationPage() {
                         {WEEK_STARTS.map((w) => <option key={w.value} value={w.value}>{w.label}</option>)}
                     </select>
                 </div>
-            </div>
+            </div>}
 
             <div className="flex justify-end">
                 <button
                     onClick={handleSave}
-                    disabled={saving}
+                    disabled={!formReady || saving}
                     className={cn(
                         "flex items-center gap-2 rounded-xl px-6 py-2.5 text-sm font-semibold text-white transition-all",
-                        saved ? "bg-emerald-500" : "bg-indigo-600 hover:bg-indigo-700",
-                        saving && "opacity-70 cursor-wait"
+                        formReady && saved ? "bg-emerald-500" : "bg-indigo-600 hover:bg-indigo-700",
+                        (!formReady || saving) && "opacity-70 cursor-wait"
                     )}
                 >
-                    {saved ? <CheckCircle size={16} /> : <Save size={16} />}
-                    {saving ? tc("saving") : saved ? tc("saved") : tc("saveChanges")}
+                    {formReady && saved ? <CheckCircle size={16} /> : <Save size={16} />}
+                    {formReady && saving ? tc("saving") : formReady && saved ? tc("saved") : tc("saveChanges")}
                 </button>
             </div>
         </div>

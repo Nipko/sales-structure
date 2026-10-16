@@ -35,7 +35,7 @@ Un agent ne fonctionne bien que si le minimum est défini. À l'enregistrement, 
 
 - **Nom de l'agent** — comment il se présente à vos clients.
 - **Rôle** — ce qu'il fait (par exemple, « Conseillère commerciale » ou « Réceptionniste »).
-- **Message lorsqu'il ne peut pas répondre** — la phrase exacte que dit l'agent quand la question sort de ce qu'il sait. Promettre de chercher une personne vaut mieux qu'improviser.
+- **Message lorsqu'il ne peut pas répondre** — indiquez que l'information n'est pas confirmée et proposez l'aide de l'équipe sans promettre de réponse ni affirmer qu'un transfert a déjà eu lieu.
 - **Au moins une règle** de comportement.
 - **Au moins un motif** dans **Quand passer à un humain**.
 

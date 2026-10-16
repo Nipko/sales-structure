@@ -2623,6 +2623,8 @@
       "marketHint_certified": "Country pack, capabilities and claims are approved and monitored."
     },
     "localizationPage": {
+      "loading": "Loading preferences for this account…",
+      "loadError": "Could not load preferences for this account. Reload the page before saving.",
       "title": "Localization",
       "subtitle": "Timezone, currency, date format and workspace language",
       "timezone": "Timezone",
@@ -2634,6 +2636,7 @@
       "undefined": "Not set"
     },
     "businessHoursPage": {
+      "currentTimezone": "Current time zone: {timezone}",
       "title": "Business Hours",
       "subtitle": "Set your company's business hours. These hours apply to all AI agents",
       "is247": "Available 24/7",

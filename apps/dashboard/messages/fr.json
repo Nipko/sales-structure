@@ -2623,6 +2623,8 @@
       "marketHint_certified": "Le pack, les capacités et les allégations du pays sont approuvés et surveillés."
     },
     "localizationPage": {
+      "loading": "Chargement des préférences de ce compte…",
+      "loadError": "Impossible de charger les préférences de ce compte. Rechargez la page avant d’enregistrer.",
       "title": "Localisation",
       "subtitle": "Fuseau horaire, devise, format de date et langue de l'espace de travail",
       "timezone": "Fuseau horaire",
@@ -2634,6 +2636,7 @@
       "undefined": "Non défini"
     },
     "businessHoursPage": {
+      "currentTimezone": "Fuseau horaire actuel : {timezone}",
       "title": "Heures d'ouverture",
       "subtitle": "Définissez les heures d'ouverture de votre entreprise. Ces horaires s'appliquent à tous les agents IA",
       "is247": "Disponible 24/7",

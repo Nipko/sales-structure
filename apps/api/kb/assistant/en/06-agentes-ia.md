@@ -35,7 +35,7 @@ An agent only works well when the minimum is defined. On save, the editor checks
 
 - **Agent name** — how it introduces itself to your customers.
 - **Role** — what it does (for example, "Sales advisor" or "Receptionist").
-- **Message for when it cannot answer** — the exact sentence the agent says when the question falls outside what it knows. Promising to find a person beats improvising.
+- **Message for when it cannot answer** — explain that the information is not confirmed and offer help from the team without promising a reply or claiming that a transfer has already happened.
 - **At least one rule** of behavior.
 - **At least one reason** under **When to hand off to a human**.
 

@@ -187,6 +187,8 @@ jobs:
           apps/api/src/modules/channels/email/email-webhook-security.service.spec.ts
           apps/api/src/modules/channels/email/email-webhook.controller.spec.ts
           apps/api/src/modules/copilot/assistant-kb-contract.spec.ts
+          apps/api/src/modules/copilot/copilot.kb-functional-batch.spec.ts
+          apps/api/src/modules/conversations/prechat-admin-roundtrip.spec.ts
           apps/api/src/modules/copilot/copilot.controller.spec.ts
           apps/api/src/modules/copilot/copilot.service.context.spec.ts
           apps/api/src/modules/quality/agent-quality-signal.service.spec.ts
@@ -330,6 +332,11 @@ jobs:
           apps/dashboard/src/app/admin/contacts/selection-controls.a11y.spec.tsx
           apps/dashboard/src/app/admin/contacts/create-controls.a11y.spec.tsx
           apps/dashboard/src/app/admin/settings/notifications/notifications-functional-batch.a11y.spec.tsx
+          apps/dashboard/src/app/admin/agent/[agentId]/agent-editor-context-order.a11y.spec.tsx
+          apps/dashboard/src/app/admin/settings/business-hours/business-hours-timezone-roundtrip.a11y.spec.tsx
+          apps/dashboard/src/app/admin/settings/business-hours/business-hours-controls.a11y.spec.tsx
+          apps/dashboard/src/app/admin/settings/localization/localization-read-context.a11y.spec.tsx
+          apps/dashboard/src/app/admin/settings/prechat/prechat-functional-batch.a11y.spec.tsx
           apps/dashboard/src/app/admin/agent/[agentId]/agent-editor-functional-batch.a11y.spec.tsx
           apps/dashboard/src/components/HelpAssistant.functional-batch.a11y.spec.tsx
           apps/dashboard/src/components/HelpControls.functional-batch.a11y.spec.tsx

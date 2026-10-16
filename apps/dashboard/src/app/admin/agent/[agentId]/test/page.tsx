@@ -118,7 +118,7 @@ export default function TestAgentPage() {
         const userMsg = input.trim();
         setInput("");
         setError("");
-        const history = turns.map(tr => ({ role: tr.role, content: tr.content }));
+        const history = turns.slice(-20).map(tr => ({ role: tr.role, content: tr.content }));
         setTurns(prev => [...prev, { role: "user", content: userMsg }]);
         setSending(true);
 

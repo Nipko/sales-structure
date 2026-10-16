@@ -420,6 +420,121 @@ jobs:
           path: artifacts/agent-effective-skillset-paired-ui-jest.json
           retention-days: 30
           if-no-files-found: error
+      - name: Navigation and agent test history (12 isolated UI and runtime contracts)
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const { createRequire } = require('module');
+          const { spawnSync } = require('child_process');
+          const dashboardRequire = createRequire(path.resolve('apps/dashboard/package.json'));
+          const output = path.resolve('artifacts/agent-test-history-paired-ui-jest.json');
+          const files = [
+            'apps/api/src/modules/conversations/agent-test-history-boundary.ui.spec.tsx',
+            'apps/api/src/modules/conversations/wizard-agent-test-history-boundary.ui.spec.tsx',
+            'apps/dashboard/src/components/layout/NavigationCommandPalette.positive-narrowing.a11y.spec.tsx',
+          ];
+          const result = spawnSync(process.execPath, [dashboardRequire.resolve('jest/bin/jest'),
+            '--config', path.resolve('apps/dashboard/jest.agent-test-history-paired-ui.mjs'),
+            '--runInBand', '--runTestsByPath', ...files.map(file => path.resolve(file)),
+            '--json', '--outputFile', output], { stdio: 'inherit', env: { ...process.env, FORCE_COLOR: '0' } });
+          if (result.error) throw result.error;
+          if (result.status !== 0) process.exit(result.status ?? 1);
+          const raw = JSON.parse(fs.readFileSync(output, 'utf8'));
+          if (raw.numTotalTests !== 12 || raw.numPassedTests !== 12 || raw.numFailedTests !== 0
+            || raw.numRuntimeErrorTestSuites !== 0 || raw.testResults.length !== 3)
+            throw new Error('Expected exactly12 navigation/history contracts across3 suites; inspect saved raw');
+          for (const file of files) {
+            const matches = raw.testResults.filter(suite => path.basename(suite.name) === path.basename(file));
+            if (matches.length !== 1 || matches[0].assertionResults.length !== 4
+              || matches[0].assertionResults.some(assertion => assertion.status !== 'passed'))
+              throw new Error('Expected exactly4 passing locale contracts in ' + file);
+          }
+          NODE
+      - name: Upload agent test history UI and runtime results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-test-history-paired-ui-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/agent-test-history-paired-ui-jest.json
+          retention-days: 30
+          if-no-files-found: error
+      - name: Inbox Copilot rewrite draft concurrency (16 isolated UI and runtime contracts)
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const { createRequire } = require('module');
+          const { spawnSync } = require('child_process');
+          const dashboardRequire = createRequire(path.resolve('apps/dashboard/package.json'));
+          const evidence = path.resolve('artifacts/fixtures/inbox-copilot-rewrite16');
+          fs.mkdirSync(path.dirname(evidence), { recursive: true });
+          if (fs.existsSync(evidence)) throw new Error('Rewrite evidence directory must be fresh; never overwrite traces');
+          fs.mkdirSync(evidence);
+          const output = path.resolve('artifacts/inbox-copilot-rewrite-ui-jest.json');
+          const result = spawnSync(process.execPath, [dashboardRequire.resolve('jest/bin/jest'),
+            '--config', path.resolve('apps/dashboard/jest.inbox-copilot-rewrite-ui.mjs'),
+            '--runInBand', '--runTestsByPath', path.resolve('apps/api/src/modules/copilot/copilot-rewrite-draft-concurrency.ui.spec.tsx'),
+            '--json', '--outputFile', output], { stdio: 'inherit', env: { ...process.env,
+              FORCE_COLOR: '0', COPILOT_REWRITE_EVIDENCE_DIR: evidence } });
+          if (result.error) throw result.error;
+          const raw = JSON.parse(fs.readFileSync(output, 'utf8'));
+          const problems = [], locales = ['es', 'en', 'pt', 'fr'];
+          const cases = ['stable', 'switch', 'edited', 'router-error'];
+          if (raw.numTotalTests !== 16 || raw.numPassedTests !== 16 || raw.numFailedTests !== 0
+            || raw.numRuntimeErrorTestSuites !== 0 || raw.testResults.length !== 1)
+            problems.push('Expected exactly16 passing rewrite contracts in one suite');
+          const assertions = raw.testResults.flatMap(suite => suite.assertionResults);
+          const expectedFiles = [], verifiedTraces = [];
+          for (const locale of locales) for (const testcase of cases) {
+            const title = locale + ' ' + testcase;
+            const matches = assertions.filter(assertion => assertion.title === title && assertion.status === 'passed');
+            if (matches.length !== 1) problems.push('Expected one passing locale/case: ' + title);
+            const observedFile = locale + '-' + testcase + '-observed.json';
+            const traceFile = locale + '-' + testcase + '-trace.json';
+            expectedFiles.push(observedFile, traceFile);
+            try {
+              const observed = JSON.parse(fs.readFileSync(path.join(evidence, observedFile), 'utf8'));
+              const trace = JSON.parse(fs.readFileSync(path.join(evidence, traceFile), 'utf8'));
+              const cleanup = trace.cleanup;
+              if (trace.locale !== locale || trace.testcase !== testcase || trace.completed !== true || trace.error !== '')
+                throw new Error('Case identity/completion/error mismatch');
+              if (cleanup.timerCount !== 0 || cleanup.afterTicks.timerCount !== 0
+                || cleanup.afterTicks.pendingMicrotasks.length !== 0 || cleanup.drainError !== '')
+                throw new Error('Cleanup timers or microtasks remain');
+              if (cleanup.runtime.length !== 0 || cleanup.unexpected.length !== 0)
+                throw new Error('Runtime error or unexpected I/O recorded');
+              if (cleanup.socketCount !== 2 || cleanup.disconnected.length !== 2
+                || cleanup.disconnected.some(count => count !== 1))
+                throw new Error('Owned sockets were not disconnected exactly once');
+              if (observed.controllerCalls.length !== 1 || observed.routerCalls.length !== 1)
+                throw new Error('Real controller/router boundary count differs');
+              verifiedTraces.push({ locale, testcase, completed: true, timerCount: 0,
+                pendingMicrotasks: 0, runtimeErrors: 0, unexpected: 0, disconnected: cleanup.disconnected });
+            } catch (error) { problems.push(title + ': ' + error.message); }
+          }
+          if (JSON.stringify(fs.readdirSync(evidence).sort()) !== JSON.stringify(expectedFiles.sort()))
+            problems.push('Expected exactly32 exclusive observed/trace JSON files');
+          const validation = { passed: result.status === 0 && problems.length === 0,
+            jest_exit_code: result.status, total: raw.numTotalTests, passed_cases: raw.numPassedTests,
+            failed_cases: raw.numFailedTests, runtime_error_suites: raw.numRuntimeErrorTestSuites,
+            expected_locales: 4, expected_cases_per_locale: 4, verified_traces: verifiedTraces,
+            problems, real_model_calls: false, production_calls: false, no_global_acceptance: true };
+          fs.writeFileSync(path.resolve('artifacts/inbox-copilot-rewrite-ui-validation.json'), JSON.stringify(validation, null, 2) + '\n', { flag: 'wx' });
+          if (result.status !== 0) process.exit(result.status ?? 1);
+          if (!validation.passed) throw new Error('Rewrite16 evidence validation failed: ' + problems.join('; '));
+          NODE
+      - name: Upload Inbox rewrite UI and runtime results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: inbox-copilot-rewrite-ui-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            artifacts/inbox-copilot-rewrite-ui-jest.json
+            artifacts/inbox-copilot-rewrite-ui-validation.json
+            artifacts/fixtures/inbox-copilot-rewrite16/*.json
+          retention-days: 30
+          if-no-files-found: error
       - name: Assist receipt producer-to-review UI (32 local DOM contracts)
         run: >-
           npx jest --config apps/api/jest.assist-content-receipt-ui.cjs --runInBand

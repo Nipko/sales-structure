@@ -319,7 +319,7 @@ export default function NavigationCommandPalette() {
             <input
               ref={inputRef}
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={(event) => { setQuery(event.target.value); setActiveIndex(0); }}
               placeholder={t("navigation.command.placeholder")}
               aria-label={t("navigation.command.placeholder")}
               role="combobox"

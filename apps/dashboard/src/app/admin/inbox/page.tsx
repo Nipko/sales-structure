@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
 import { HelpPanel } from "@/components/ui/help-panel";
 import { guidedTourAnchorId } from "@/lib/guided-tours";
 import { api } from "@/lib/api";
@@ -276,6 +276,24 @@ export default function InboxPage() {
     const [messages, setMessages] = useState<any[]>([]);
     const [notes, setNotes] = useState<any[]>([]);
     const [messageInput, setMessageInput] = useState("");
+    // A late rewrite belongs to the exact committed thread/draft revision that requested it.
+    // The revision also rejects switch-away-and-back and edit-away-and-back sequences.
+    const rewriteContextRef = useRef({ conversationId: null as string | null, draft: "", revision: 0, mounted: false });
+    useLayoutEffect(() => {
+        rewriteContextRef.current = {
+            conversationId: selectedConv?.id || null,
+            draft: messageInput,
+            revision: rewriteContextRef.current.revision + 1,
+            mounted: true,
+        };
+        return () => {
+            rewriteContextRef.current = {
+                ...rewriteContextRef.current,
+                revision: rewriteContextRef.current.revision + 1,
+                mounted: false,
+            };
+        };
+    }, [selectedConv?.id, messageInput]);
     const [noteInput, setNoteInput] = useState("");
     const [showNotes, setShowNotes] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
@@ -1123,10 +1141,15 @@ export default function InboxPage() {
     // ---- Copilot: rewrite agent draft / summarize conversation ----
     const handleRewrite = async (tone: string) => {
         if (!selectedConv?.id || !messageInput.trim() || rewriting) return;
+        const conversationId = selectedConv.id;
+        const draft = messageInput;
+        const revision = rewriteContextRef.current.revision;
         setShowRewriteMenu(false);
         setRewriting(true);
         try {
-            const res: any = await api.rewriteCopilotReply(selectedConv.id, messageInput, tone);
+            const res: any = await api.rewriteCopilotReply(conversationId, draft, tone);
+            const current = rewriteContextRef.current;
+            if (!current.mounted || current.revision !== revision || current.conversationId !== conversationId || current.draft !== draft) return;
             if (res?.success && res.data?.text) {
                 setMessageInput(res.data.text);
                 messageInputRef.current?.focus();
@@ -1134,7 +1157,7 @@ export default function InboxPage() {
         } catch {
             // best-effort; leave the draft untouched on failure
         } finally {
-            setRewriting(false);
+            if (rewriteContextRef.current.mounted) setRewriting(false);
         }
     };
 

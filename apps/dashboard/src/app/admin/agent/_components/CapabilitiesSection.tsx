@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
+import { resolveAgentSkillset } from "@parallext/shared";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import {
@@ -170,7 +171,11 @@ export function CapabilitiesSection({ config, onChange, apptReadiness, reviewMod
     );
   }
 
-  const skillset = config.skillset || "both";
+  // Match the consumer: tenant profile industry takes precedence when loaded;
+  // this is a display projection, never a stored/defaulted skillset value.
+  const tenantIndustry = !isVerticalConfigLoading && typeof verticalConfig?.industry === "string"
+    ? verticalConfig.industry.trim() : "";
+  const skillset = resolveAgentSkillset(config.skillset, tenantIndustry || config.industry);
   const upsell = config.upsell || { enabled: false, intensity: "subtle" as const };
 
   return (

@@ -16,6 +16,7 @@ function loadIO(cb){if(window.io)return cb();var s=document.createElement('scrip
 function getVid(){var k=SK+'_vid';var v=localStorage.getItem(k);if(!v){v='v_'+Math.random().toString(36).substr(2,12)+Date.now().toString(36);localStorage.setItem(k,v)}return v}
 function getSess(){try{var s=localStorage.getItem(SK);return s?JSON.parse(s):null}catch(e){return null}}
 function saveSess(s){try{localStorage.setItem(SK,JSON.stringify(s))}catch(e){}}
+function setConnectionStatus(status){if(st.el.status)st.el.status.textContent=getT(status)}
 
 function fetchCfg(cb){
   fetch(API+'/widget/config/'+WID).then(function(r){return r.json()}).then(function(d){
@@ -47,11 +48,12 @@ function newSess(pc,cb){
 
 function connectWS(){
   if(!st.sess||!st.sess.token||!window.io)return;
+  setConnectionStatus('connecting');
   var wsUrl=API.replace('/api/v1','');
   st.sock=io(wsUrl+'/widget',{auth:{token:st.sess.token},transports:['websocket','polling'],reconnection:true,reconnectionDelay:2000,reconnectionAttempts:15});
-  st.sock.on('widget:connected',function(){});
+  st.sock.on('widget:connected',function(d){if(d&&st.sess&&typeof d.sessionId==='string'&&d.sessionId===st.sess.sessionId)setConnectionStatus('connected')});
   // A (re)connect ends a cap lock: the server decides again whether the next message goes through.
-  st.sock.on('connect',function(){clearRetry();if(st.capped)setComposer(true)});
+  st.sock.on('connect',function(){setConnectionStatus('connecting');clearRetry();if(st.capped)setComposer(true)});
   st.sock.on('widget:history',function(d){
     (d.messages||[]).forEach(function(m){mergeWidgetMessage(m)});renderMsgs();
     (d.messages||[]).forEach(ackWidgetMessage)
@@ -94,8 +96,9 @@ function connectWS(){
     renderMsgs()
   });
   // Anything still pending when the socket dies was never delivered.
-  st.sock.on('disconnect',function(){markPendingFailed()});
-  st.sock.io.on('reconnect_failed',function(){markPendingFailed()});
+  st.sock.on('disconnect',function(){setConnectionStatus('disconnected');markPendingFailed()});
+  st.sock.on('connect_error',function(){setConnectionStatus('disconnected')});
+  st.sock.io.on('reconnect_failed',function(){setConnectionStatus('disconnected');markPendingFailed()});
   st.sock.on('widget:typing',function(d){st.typing=d.isTyping;renderTyping()});
   st.sock.on('widget:error',onWidgetError);
 }
@@ -313,7 +316,7 @@ function build(){
   hdr.appendChild(avatar);
   var info=document.createElement('div');info.className='pw-hdr-info';
   var nm=document.createElement('div');nm.className='pw-hdr-name';nm.textContent=st.cfg.agentName||'Asistente';
-  var stat=document.createElement('div');stat.className='pw-hdr-status';stat.textContent='En l\\u00EDnea';
+  var stat=document.createElement('div');stat.className='pw-hdr-status';stat.textContent=getT('connecting');st.el.status=stat;
   info.appendChild(nm);info.appendChild(stat);hdr.appendChild(info);
   var closeBtn=document.createElement('button');closeBtn.className='pw-close';
   closeBtn.innerHTML='<svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></svg>';
@@ -338,17 +341,19 @@ function build(){
     });
     var fbtn=document.createElement('button');fbtn.className='pw-form-btn';fbtn.style.background=pc;
     fbtn.textContent=getT('start');
+    var ferr=document.createElement('div');ferr.className='pw-form-error';ferr.setAttribute('role','alert');ferr.hidden=true;
+    var pending=false;
     fbtn.onclick=function(){
+      if(pending)return;
       var data={};
       fields.forEach(function(f){data[f]=inputs[f].value});
-      st.pcDone=true;
-      form.remove();
-      buildChat(panel);
+      pending=true;fbtn.disabled=true;ferr.hidden=true;ferr.textContent='';setConnectionStatus('connecting');
       initSess(data,function(err){
-        if(!err){loadIO(connectWS)}
+        if(err){pending=false;fbtn.disabled=false;ferr.textContent=getT('sessionError');ferr.hidden=false;setConnectionStatus('disconnected');return}
+        st.pcDone=true;form.remove();st.el.form=null;buildChat(panel);loadIO(connectWS)
       })
     };
-    form.appendChild(fbtn);panel.appendChild(form)
+    form.appendChild(ferr);form.appendChild(fbtn);panel.appendChild(form)
   }else{
     buildChat(panel);
   }
@@ -418,7 +423,7 @@ function renderMsgs(){
   if(!st.el.msgs)return;
   var container=st.el.msgs;
   // Remove existing messages (keep typing indicator)
-  var existing=container.querySelectorAll('.pw-msg,.pw-welcome');
+  var existing=container.querySelectorAll('.pw-msg');
   existing.forEach(function(e){e.remove()});
 
   if(st.el.welcome&&st.msgs.length>0&&st.el.welcome.parentNode){st.el.welcome.remove();st.el.welcome=null}
@@ -469,10 +474,10 @@ function doSend(){
 
 /* i18n */
 var T={
-  es:{formTitle:'Antes de empezar',formSub:'Completa los datos para que podamos ayudarte mejor.',field_name:'Nombre',field_email:'Correo',field_phone:'Tel\\u00E9fono',ph_name:'Tu nombre',ph_email:'tu@correo.com',ph_phone:'+57 300 123 4567',start:'Iniciar chat',placeholder:'Escribe un mensaje...',capReached:'Este chat alcanz\\u00F3 su l\\u00EDmite por hoy. Vuelve ma\\u00F1ana.',rateLimited:'Est\\u00E1s enviando mensajes muy r\\u00E1pido. Espera un momento e int\\u00E9ntalo de nuevo.'},
-  en:{formTitle:'Before we start',formSub:'Fill in your details so we can help you better.',field_name:'Name',field_email:'Email',field_phone:'Phone',ph_name:'Your name',ph_email:'you@email.com',ph_phone:'+1 555 123 4567',start:'Start chat',placeholder:'Type a message...',capReached:'This chat reached its limit for today. Come back tomorrow.',rateLimited:'You are sending messages too quickly. Wait a moment and try again.'},
-  pt:{formTitle:'Antes de come\\u00E7ar',formSub:'Preencha seus dados para que possamos ajud\\u00E1-lo melhor.',field_name:'Nome',field_email:'E-mail',field_phone:'Telefone',ph_name:'Seu nome',ph_email:'voce@email.com',ph_phone:'+55 11 9999 0000',start:'Iniciar chat',placeholder:'Digite uma mensagem...',capReached:'Este chat atingiu o limite de hoje. Volte amanh\\u00E3.',rateLimited:'Voc\\u00EA est\\u00E1 enviando mensagens muito r\\u00E1pido. Aguarde um momento e tente novamente.'},
-  fr:{formTitle:'Avant de commencer',formSub:'Remplissez vos informations pour que nous puissions mieux vous aider.',field_name:'Nom',field_email:'E-mail',field_phone:'T\\u00E9l\\u00E9phone',ph_name:'Votre nom',ph_email:'vous@email.com',ph_phone:'+33 6 12 34 56 78',start:'D\\u00E9marrer le chat',placeholder:'\\u00C9crivez un message...',capReached:'Ce chat a atteint sa limite pour aujourd\\'hui. Revenez demain.',rateLimited:'Vous envoyez des messages trop rapidement. Attendez un instant et r\\u00E9essayez.'}
+  es:{connecting:'Conectando el chat…',connected:'Chat conectado',disconnected:'Chat desconectado',sessionError:'No pudimos iniciar el chat. Inténtalo de nuevo.',formTitle:'Antes de empezar',formSub:'Completa los datos para que podamos ayudarte mejor.',field_name:'Nombre',field_email:'Correo',field_phone:'Tel\\u00E9fono',ph_name:'Tu nombre',ph_email:'tu@correo.com',ph_phone:'+57 300 123 4567',start:'Iniciar chat',placeholder:'Escribe un mensaje...',capReached:'Este chat alcanz\\u00F3 su l\\u00EDmite por hoy. Vuelve ma\\u00F1ana.',rateLimited:'Est\\u00E1s enviando mensajes muy r\\u00E1pido. Espera un momento e int\\u00E9ntalo de nuevo.'},
+  en:{connecting:'Connecting chat…',connected:'Chat connected',disconnected:'Chat disconnected',sessionError:'Unable to start the chat. Please try again.',formTitle:'Before we start',formSub:'Fill in your details so we can help you better.',field_name:'Name',field_email:'Email',field_phone:'Phone',ph_name:'Your name',ph_email:'you@email.com',ph_phone:'+1 555 123 4567',start:'Start chat',placeholder:'Type a message...',capReached:'This chat reached its limit for today. Come back tomorrow.',rateLimited:'You are sending messages too quickly. Wait a moment and try again.'},
+  pt:{connecting:'Conectando o chat…',connected:'Chat conectado',disconnected:'Chat desconectado',sessionError:'Não foi possível iniciar o chat. Tente novamente.',formTitle:'Antes de come\\u00E7ar',formSub:'Preencha seus dados para que possamos ajud\\u00E1-lo melhor.',field_name:'Nome',field_email:'E-mail',field_phone:'Telefone',ph_name:'Seu nome',ph_email:'voce@email.com',ph_phone:'+55 11 9999 0000',start:'Iniciar chat',placeholder:'Digite uma mensagem...',capReached:'Este chat atingiu o limite de hoje. Volte amanh\\u00E3.',rateLimited:'Voc\\u00EA est\\u00E1 enviando mensagens muito r\\u00E1pido. Aguarde um momento e tente novamente.'},
+  fr:{connecting:'Connexion du chat…',connected:'Chat connecté',disconnected:'Chat déconnecté',sessionError:'Impossible de démarrer le chat. Réessayez.',formTitle:'Avant de commencer',formSub:'Remplissez vos informations pour que nous puissions mieux vous aider.',field_name:'Nom',field_email:'E-mail',field_phone:'T\\u00E9l\\u00E9phone',ph_name:'Votre nom',ph_email:'vous@email.com',ph_phone:'+33 6 12 34 56 78',start:'D\\u00E9marrer le chat',placeholder:'\\u00C9crivez un message...',capReached:'Ce chat a atteint sa limite pour aujourd\\'hui. Revenez demain.',rateLimited:'Vous envoyez des messages trop rapidement. Attendez un instant et r\\u00E9essayez.'}
 };
 function getT(k){var l=(st.cfg&&st.cfg.locale)||'es';return(T[l]||T.es)[k]||k}
 

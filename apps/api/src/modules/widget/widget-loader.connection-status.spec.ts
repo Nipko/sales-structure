@@ -1,6 +1,13 @@
-/** @jest-environment jsdom */
+/** @jest-environment node */
 import { runInNewContext } from 'vm';
+import { JSDOM } from 'jsdom';
 import { getLoaderScript } from './widget-loader';
+
+// API worker setup imports Node PostgreSQL dependencies before each spec.
+// Keep that Node environment and own only the DOM this loader test requires.
+const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>');
+const { document, Event } = dom.window;
+afterAll(() => dom.window.close());
 
 /**
  * PREPARED ONLY: apps/api/src/modules/widget/widget-loader.connection-status.spec.ts

@@ -1,9 +1,16 @@
-/** @jest-environment jsdom */
+/** @jest-environment node */
 import { runInNewContext } from 'vm';
+import { JSDOM } from 'jsdom';
 import { plainToInstance } from 'class-transformer';
 import { validateSync } from 'class-validator';
 import { getLoaderScript } from './widget-loader';
 import { CreateWidgetSessionDto } from './dto/widget-public.dto';
+
+// API worker setup imports Node PostgreSQL dependencies before each spec.
+// Keep that Node environment and own only the DOM this loader test requires.
+const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>');
+const { document, Event } = dom.window;
+afterAll(() => dom.window.close());
 
 /**
  * PREPARED ONLY. Future destination apps/api/src/modules/widget/widget-loader.prechat-recovery.spec.ts

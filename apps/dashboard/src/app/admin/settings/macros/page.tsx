@@ -100,7 +100,7 @@ export default function MacrosPage() {
                                 <span className={cn("px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1", macro.visibility === "team" ? "bg-[var(--success)]/10 text-[var(--success)]" : "bg-muted text-muted-foreground")}>
                                     {macro.visibility === "team" ? <Eye size={12} /> : <EyeOff size={12} />} {macro.visibility === "team" ? t("macrosPage.visibility.team") : t("macrosPage.visibility.personal")}
                                 </span>
-                                <button onClick={() => openEdit(macro)} className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 text-primary cursor-pointer flex items-center justify-center"><Pencil size={14} /></button>
+                                <button aria-label={tc("edit")} onClick={() => openEdit(macro)} className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 text-primary cursor-pointer flex items-center justify-center"><Pencil size={14} /></button>
                                 <button onClick={() => handleDelete(macro.id)} className="w-8 h-8 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive cursor-pointer flex items-center justify-center"><Trash2 size={14} /></button>
                             </div>
                         </div>

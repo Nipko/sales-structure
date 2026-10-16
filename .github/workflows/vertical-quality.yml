@@ -391,6 +391,35 @@ jobs:
           apps/dashboard/src/app/admin/agent/quality/owner-health-summary.spec.ts
           apps/dashboard/src/app/admin/agent/quality/weekly-summary-choice.a11y.spec.tsx
           --json --outputFile artifacts/dashboard-vertical-jest.json
+      # PREPARED ONLY: insert once before the existing Assist receipt32 step,
+      # after the full existing Dashboard resolver command. Preserve prior steps.
+      - name: Agent effective skillset paired editor and runtime (12 isolated contracts)
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const { createRequire } = require('module');
+          const { spawnSync } = require('child_process');
+          const dashboardRequire = createRequire(path.resolve('apps/dashboard/package.json'));
+          const output = path.resolve('artifacts/agent-effective-skillset-paired-ui-jest.json');
+          const result = spawnSync(process.execPath, [dashboardRequire.resolve('jest/bin/jest'),
+            '--config', path.resolve('apps/dashboard/jest.agent-effective-skillset-paired-ui.mjs'),
+            '--runInBand', '--runTestsByPath', path.resolve('apps/api/src/modules/conversations/agent-effective-skillset-display.ui.spec.tsx'),
+            '--json', '--outputFile', output], { stdio: 'inherit', env: { ...process.env, FORCE_COLOR: '0' } });
+          if (result.error) throw result.error;
+          if (result.status !== 0) process.exit(result.status ?? 1);
+          const raw = JSON.parse(fs.readFileSync(output, 'utf8'));
+          if (raw.numTotalTests !== 12 || raw.numPassedTests !== 12 || raw.numFailedTests !== 0 || raw.numRuntimeErrorTestSuites !== 0)
+            throw new Error('Expected exactly12 paired skillset contracts; inspect saved raw');
+          NODE
+      - name: Upload paired skillset UI and runtime results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-effective-skillset-paired-ui-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/agent-effective-skillset-paired-ui-jest.json
+          retention-days: 30
+          if-no-files-found: error
       - name: Assist receipt producer-to-review UI (32 local DOM contracts)
         run: >-
           npx jest --config apps/api/jest.assist-content-receipt-ui.cjs --runInBand

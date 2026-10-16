@@ -731,8 +731,9 @@ export default function ContactsPage() {
                             <label className="text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-2 block">{t('scoreRange')}</label>
                             <div className="grid grid-cols-2 gap-2">
                                 <div>
-                                    <label className="text-[11px] text-neutral-500 dark:text-neutral-400 mb-1 block">{t('scoreMin')}</label>
+                                    <label htmlFor="contact-filter-score-min" className="text-[11px] text-neutral-500 dark:text-neutral-400 mb-1 block">{t('scoreMin')}</label>
                                     <input
+                                        id="contact-filter-score-min"
                                         type="number" min="1" max="10" value={filterScoreMin}
                                         onChange={e => setFilterScoreMin(e.target.value)}
                                         placeholder="1"
@@ -740,8 +741,9 @@ export default function ContactsPage() {
                                     />
                                 </div>
                                 <div>
-                                    <label className="text-[11px] text-neutral-500 dark:text-neutral-400 mb-1 block">{t('scoreMax')}</label>
+                                    <label htmlFor="contact-filter-score-max" className="text-[11px] text-neutral-500 dark:text-neutral-400 mb-1 block">{t('scoreMax')}</label>
                                     <input
+                                        id="contact-filter-score-max"
                                         type="number" min="1" max="10" value={filterScoreMax}
                                         onChange={e => setFilterScoreMax(e.target.value)}
                                         placeholder="10"
@@ -756,16 +758,18 @@ export default function ContactsPage() {
                             <label className="text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-2 block">{t('dateRange')}</label>
                             <div className="space-y-2">
                                 <div>
-                                    <label className="text-[11px] text-neutral-500 dark:text-neutral-400 mb-1 block">{t('dateFrom')}</label>
+                                    <label htmlFor="contact-filter-date-from" className="text-[11px] text-neutral-500 dark:text-neutral-400 mb-1 block">{t('dateFrom')}</label>
                                     <input
+                                        id="contact-filter-date-from"
                                         type="date" value={filterDateFrom}
                                         onChange={e => setFilterDateFrom(e.target.value)}
                                         className="w-full px-3 py-2 rounded-lg border border-neutral-200 bg-neutral-50 text-sm text-neutral-900 outline-none dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
                                     />
                                 </div>
                                 <div>
-                                    <label className="text-[11px] text-neutral-500 dark:text-neutral-400 mb-1 block">{t('dateTo')}</label>
+                                    <label htmlFor="contact-filter-date-to" className="text-[11px] text-neutral-500 dark:text-neutral-400 mb-1 block">{t('dateTo')}</label>
                                     <input
+                                        id="contact-filter-date-to"
                                         type="date" value={filterDateTo}
                                         onChange={e => setFilterDateTo(e.target.value)}
                                         className="w-full px-3 py-2 rounded-lg border border-neutral-200 bg-neutral-50 text-sm text-neutral-900 outline-none dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
@@ -776,8 +780,9 @@ export default function ContactsPage() {
 
                         {/* Tags */}
                         <div>
-                            <label className="text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-2 block">{t('filterByTags')}</label>
+                            <label htmlFor="contact-filter-tags" className="text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-2 block">{t('filterByTags')}</label>
                             <input
+                                id="contact-filter-tags"
                                 type="text" value={filterTags}
                                 onChange={e => setFilterTags(e.target.value)}
                                 placeholder="VIP, premium, nuevo"

@@ -4863,7 +4863,8 @@
         "fieldNamePlaceholder": "campo (ej: email)",
         "questionPlaceholder": "Pregunta al cliente (ej: ¿Cuál es tu email?)",
         "addField": "Agregar campo",
-        "addContext": "Agregar contexto"
+        "addContext": "Agregar contexto",
+        "contextExists": "Ya existe un contexto con ese nombre. Usa otro nombre."
       },
       "handoffTriggersPlain": "Cuándo pasar a un humano",
       "handoffTriggersHint": "Escribe las situaciones en las que prefieres que conteste una persona de tu equipo."

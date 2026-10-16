@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import {
@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { inputCls } from "../_types";
 import type { PersonaConfig } from "../_types";
-import { UNIVERSAL_FORBIDDEN_TOPICS } from "@parallext/shared";
+import { UNIVERSAL_FORBIDDEN_TOPICS, normalizeRequiredFields } from "@parallext/shared";
 import { guidedTourAnchorId } from "@/lib/guided-tours";
 
 interface BehaviorSectionProps {
@@ -215,50 +215,118 @@ function AdvancedBehavior({ label, hint, children }: { label: string; hint: stri
 
 type RequiredField = { field: string; question: string };
 
+// Editor-only adapter: show every supported author field without Agenda filtering.
+function requiredFieldsForEditor(raw: Record<string, any>, language: string) {
+  const fields = normalizeRequiredFields(raw, { language });
+  const passthrough: Record<string, any> = {};
+  for (const [key, entry] of Object.entries(raw)) {
+    if (Array.isArray(entry) && entry.every(value => value && typeof value === "object"
+      && typeof value.field === "string" && typeof value.question === "string")) {
+      // Runtime drops empty contexts; they are intentional editable rows here.
+      if (!entry.length && !Object.prototype.hasOwnProperty.call(fields, key)) fields[key] = entry;
+      continue;
+    }
+    // Convert only supported required legacy keys. Preserve optional/unknown
+    // declarations and unknown invalid arrays exactly as received.
+    if (!Object.keys(normalizeRequiredFields({ [key]: entry }, { language })).length) passthrough[key] = entry;
+  }
+  // A preserved entry may already own general: do not overwrite it on conversion.
+  if (Object.prototype.hasOwnProperty.call(passthrough, "general")
+    && Object.prototype.hasOwnProperty.call(fields, "general")) {
+    let key = "general_legacy", i = 1;
+    while (Object.prototype.hasOwnProperty.call(raw, key) || Object.prototype.hasOwnProperty.call(fields, key)) key = "general_legacy_" + i++;
+    fields[key] = fields.general;
+    delete fields.general;
+  }
+  return { fields, passthrough };
+}
+
 function RequiredFieldsSection({ config, onChange }: BehaviorSectionProps) {
   const t = useTranslations("agent.behaviorSection.requiredFields");
-  const rawFields = (config.behavior.requiredFields || {}) as Record<string, any>;
-  const fields: Record<string, RequiredField[]> = {};
-  for (const [k, v] of Object.entries(rawFields)) {
-    if (Array.isArray(v)) fields[k] = v;
-  }
-  const contexts = Object.keys(fields);
+  const [contextError, setContextError] = useState(false);
+  const rawFields = useMemo(() => (config.behavior.requiredFields || {}) as Record<string, any>, [config.behavior.requiredFields]);
+  const { fields, passthrough } = useMemo(() => requiredFieldsForEditor(rawFields, config.language), [rawFields, config.language]);
+  const contexts = useMemo(() => Object.keys(fields), [fields]);
+  const [contextIdentity, setContextIdentity] = useState<{ next: number; byName: Record<string, string> }>(() => {
+    const byName: Record<string, string> = Object.create(null);
+    contexts.forEach((name, index) => { byName[name] = "required-context-" + index; });
+    return { next: contexts.length, byName };
+  });
+  // External author configuration may add/remove names. Keep surviving ids;
+  // return the same state when the identity mapping is already synchronized.
+  useEffect(() => {
+    setContextIdentity(previous => {
+      const byName: Record<string, string> = Object.create(null);
+      let next = previous.next;
+      let changed = Object.keys(previous.byName).length !== contexts.length;
+      for (const name of contexts) {
+        const existing = previous.byName[name];
+        if (existing === undefined) { byName[name] = "required-context-" + next++; changed = true; }
+        else byName[name] = existing;
+      }
+      return changed ? { next, byName } : previous;
+    });
+  }, [contexts]);
+  const hasContext = (name: string) => Object.prototype.hasOwnProperty.call(fields, name)
+    || Object.prototype.hasOwnProperty.call(passthrough, name);
+  const commitFields = (next: Record<string, RequiredField[]>) => {
+    setContextError(false);
+    onChange({ behavior: { ...config.behavior, requiredFields: { ...passthrough, ...next } } });
+  };
 
   const updateContextName = (oldName: string, newName: string) => {
     if (!newName.trim() || newName === oldName) return;
+    if (hasContext(newName)) { setContextError(true); return; }
+    setContextIdentity(previous => {
+      const byName = Object.assign(Object.create(null), previous.byName) as Record<string, string>;
+      const existing = byName[oldName];
+      delete byName[oldName];
+      byName[newName] = existing ?? "required-context-" + previous.next;
+      return { next: previous.next + (existing === undefined ? 1 : 0), byName };
+    });
     const next: Record<string, RequiredField[]> = {};
     for (const k of contexts) next[k === oldName ? newName : k] = fields[k];
-    onChange({ behavior: { ...config.behavior, requiredFields: next } });
+    commitFields(next);
   };
 
   const addContext = () => {
     const baseName = "nuevo_contexto";
     let name = baseName;
     let i = 1;
-    while (fields[name]) { name = `${baseName}_${i++}`; }
-    onChange({ behavior: { ...config.behavior, requiredFields: { ...fields, [name]: [] } } });
+    while (hasContext(name)) { name = `${baseName}_${i++}`; }
+    setContextIdentity(previous => ({
+      next: previous.next + 1,
+      byName: Object.assign(Object.create(null), previous.byName, { [name]: "required-context-" + previous.next }) as Record<string, string>,
+    }));
+    commitFields({ ...fields, [name]: [] });
   };
 
   const removeContext = (name: string) => {
+    setContextIdentity(previous => {
+      if (!Object.prototype.hasOwnProperty.call(previous.byName, name)) return previous;
+      const byName = Object.assign(Object.create(null), previous.byName) as Record<string, string>;
+      delete byName[name];
+      return { ...previous, byName };
+    });
     const next = { ...fields };
     delete next[name];
-    onChange({ behavior: { ...config.behavior, requiredFields: next } });
+    commitFields(next);
   };
 
   const updateField = (ctx: string, idx: number, patch: Partial<RequiredField>) => {
     const list = [...(fields[ctx] || [])];
     list[idx] = { ...list[idx], ...patch };
-    onChange({ behavior: { ...config.behavior, requiredFields: { ...fields, [ctx]: list } } });
+    commitFields({ ...fields, [ctx]: list });
   };
 
   const addField = (ctx: string) => {
     const list = [...(fields[ctx] || []), { field: "", question: "" }];
-    onChange({ behavior: { ...config.behavior, requiredFields: { ...fields, [ctx]: list } } });
+    commitFields({ ...fields, [ctx]: list });
   };
 
   const removeField = (ctx: string, idx: number) => {
     const list = (fields[ctx] || []).filter((_, i) => i !== idx);
-    onChange({ behavior: { ...config.behavior, requiredFields: { ...fields, [ctx]: list } } });
+    commitFields({ ...fields, [ctx]: list });
   };
 
   return (
@@ -267,10 +335,11 @@ function RequiredFieldsSection({ config, onChange }: BehaviorSectionProps) {
         <ClipboardList size={14} className="text-indigo-500" /> {t("title")}
       </h4>
       <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mb-3">{t("hint")}</p>
+      {contextError && <p role="alert" className="text-[12px] text-red-600 dark:text-red-400 mb-3">{t("contextExists")}</p>}
 
       <div className="flex flex-col gap-3">
         {contexts.map((ctx) => (
-          <div key={ctx} className="rounded-lg border border-neutral-200 dark:border-neutral-700 p-3">
+          <div key={contextIdentity.byName[ctx] ?? "pending-context:" + ctx} className="rounded-lg border border-neutral-200 dark:border-neutral-700 p-3">
             <div className="flex items-center gap-2 mb-2">
               <Folder size={12} className="text-neutral-400" />
               <input

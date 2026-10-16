@@ -515,7 +515,16 @@ export default function AgentEditorPage() {
 
   const updateConfig = useCallback((updates: Partial<PersonaConfig>) => {
     setDirty(true);
-    setConfig(prev => deepMerge(prev, updates));
+    setConfig(prev => {
+      const next = deepMerge(prev, updates);
+      // This child sends a complete map. Replace only requiredFields so
+      // renames/removals cannot resurrect keys through the generic merge.
+      if (updates.behavior && Object.prototype.hasOwnProperty.call(updates.behavior, "requiredFields")
+        && updates.behavior.requiredFields !== undefined) {
+        next.behavior.requiredFields = updates.behavior.requiredFields;
+      }
+      return next;
+    });
   }, [setDirty]);
 
   function hydrateForm(form: EditorForm) {

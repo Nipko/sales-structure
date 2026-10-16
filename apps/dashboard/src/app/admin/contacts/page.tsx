@@ -205,7 +205,7 @@ export default function ContactsPage() {
                 method: "POST",
                 body: JSON.stringify({ csvContent }),
             });
-            setImportResult(result);
+            setImportResult(result?.success ? { ...result.data, success: true } : result);
             if (result?.success) {
                 triggerReload();
             }

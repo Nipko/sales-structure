@@ -177,6 +177,7 @@ export default function PrechatPage() {
                             <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">{t("formActiveDesc")}</div>
                         </div>
                         <button
+                            aria-label={t("formActive")}
                             onClick={() => setConfig(prev => ({ ...prev, is_active: !prev.is_active }))}
                             className={cn(
                                 "relative w-11 h-6 rounded-full transition-colors",

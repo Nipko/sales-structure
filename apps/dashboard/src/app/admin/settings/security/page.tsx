@@ -806,7 +806,7 @@ function SsoSettings() {
 
                 <div>
                     <label className={labelClasses}>{t("defaultRole")}</label>
-                    <select value={defaultRole} onChange={(e) => setDefaultRole(e.target.value)}
+                    <select aria-label={t("defaultRole")} value={defaultRole} onChange={(e) => setDefaultRole(e.target.value)}
                         className={inputClasses}>
                         <option value="tenant_agent">{t("roleAgent")}</option>
                         <option value="tenant_supervisor">{t("roleSupervisor")}</option>

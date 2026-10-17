@@ -80,7 +80,7 @@ export default function CustomAttributesPage() {
 
             <div className="flex gap-2 mb-6">
                 {ENTITY_TYPES.map(et => (
-                    <button key={et.value} onClick={() => setActiveTab(et.value)} className={cn("px-[18px] py-2 rounded-lg font-semibold text-[13px] cursor-pointer", activeTab === et.value ? "bg-primary/20 text-primary border border-primary/40" : "bg-transparent text-muted-foreground border border-border")}>{et.label}</button>
+                    <button key={et.value} aria-pressed={activeTab === et.value} onClick={() => setActiveTab(et.value)} className={cn("px-[18px] py-2 rounded-lg font-semibold text-[13px] cursor-pointer", activeTab === et.value ? "bg-primary/20 text-primary border border-primary/40" : "bg-transparent text-muted-foreground border border-border")}>{et.label}</button>
                 ))}
             </div>
 

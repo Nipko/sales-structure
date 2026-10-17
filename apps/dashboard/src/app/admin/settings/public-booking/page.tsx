@@ -6,6 +6,7 @@ import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { Calendar, Copy, Check, ExternalLink, QrCode, Loader2 } from "lucide-react";
 import { HelpPanel } from "@/components/ui/help-panel";
+import { LoadFailureNotice } from "@/components/ui/load-failure";
 import { motion } from "motion/react";
 
 interface Config {
@@ -66,6 +67,10 @@ export default function PublicBookingSettingsPage() {
         await navigator.clipboard.writeText(config.bookingUrl);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
+    }
+
+    if (!loading && !config) {
+        return <LoadFailureNotice onRetry={load} className="max-w-3xl" />;
     }
 
     if (loading || !config) {

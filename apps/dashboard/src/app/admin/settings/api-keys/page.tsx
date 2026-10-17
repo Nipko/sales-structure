@@ -458,6 +458,7 @@ function CreateKeyModal({
       onClick={onClose}
     >
       <div
+        role="dialog"
         className="bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800 p-6 max-w-lg w-full mx-4 shadow-xl max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >

@@ -309,7 +309,7 @@ export default function WebhooksSettingsPage() {
                                     <button onClick={() => setVisibleSecrets((s) => ({ ...s, [ep.id]: !s[ep.id] }))} className="p-1 hover:bg-muted rounded">
                                         {visibleSecrets[ep.id] ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
                                     </button>
-                                    <button onClick={() => copyToClipboard(ep.secret, ep.id)} className="p-1 hover:bg-muted rounded">
+                                    <button aria-label={tc("copy")} onClick={() => copyToClipboard(ep.secret, ep.id)} className="p-1 hover:bg-muted rounded">
                                         {copied === ep.id ? <CheckCircle className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
                                     </button>
                                     <button onClick={() => handleRegenerate(ep.id)} title={t("regenerate")} className="p-1 hover:bg-muted rounded">

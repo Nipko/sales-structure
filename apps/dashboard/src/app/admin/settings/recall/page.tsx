@@ -208,6 +208,7 @@ export default function RecallSettingsPage() {
                 <div>
                     <label className="block text-sm font-medium mb-1">{t("channelLabel")}</label>
                     <select
+                        aria-label={t("channelLabel")}
                         value={form.channelType}
                         onChange={(e) => setForm({ ...form, channelType: e.target.value })}
                         className="w-full bg-background border border-border rounded-lg px-3 py-2"

@@ -158,6 +158,7 @@ export default function NurturingSettingsPage() {
                         </div>
                     </div>
                     <button
+                        aria-label={t("enableLabel")}
                         onClick={() => { setConfig(p => ({ ...p, enabled: !p.enabled })); setSaved(false); }}
                         className={cn(
                             "relative h-6 w-11 rounded-full transition-colors",

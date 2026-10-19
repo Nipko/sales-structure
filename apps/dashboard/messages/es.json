@@ -1377,6 +1377,8 @@
     }
   },
   "contacts": {
+    "viewContactNamed": "Ver {noun}: {name}",
+    "closeFilters": "Cerrar filtros",
     "selectAllVisible": "Seleccionar contactos visibles",
     "selectContactForBulk": "Seleccionar contacto: {name}",
     "loadError": "No se pudieron cargar los contactos. Inténtalo de nuevo; esto no significa que no haya contactos.",
@@ -3000,6 +3002,8 @@
     "imageUnavailable": "Sin imagen"
   },
   "appointments": {
+    "recurrenceFrequencyLabel": "Frecuencia de repetición",
+    "recurrenceCountLabel": "Número de citas",
     "title": "Citas y Agendamiento",
     "subtitle": "Gestiona citas, servicios y disponibilidad de tu equipo",
     "calendar": "Calendario",
@@ -3034,6 +3038,7 @@
     "buffer": "Tiempo buffer",
     "price": "Precio",
     "color": "Color",
+    "colorOption": "Elegir color {color}",
     "minutes": "minutos",
     "dateTime": "Fecha / Hora",
     "statusLabel": "Estado",
@@ -3540,6 +3545,8 @@
       "winLoss": "Ganados vs Perdidos",
       "conversionFunnel": "Embudo de conversión",
       "pipelineVelocity": "Velocidad del pipeline",
+      "stageRegion": "Distribución por etapa del CRM",
+      "velocityRegion": "Tiempo por etapa del CRM",
       "agentLeaderboard": "Ranking de agentes"
     },
     "won": "Ganados",
@@ -5210,6 +5217,9 @@
       "search": "Buscar en contexto"
     },
     "faqs": {
+      "closeFaqEditor": "Cerrar editor de FAQ",
+      "editFaqQuestion": "Editar FAQ: {question}",
+      "deleteFaqQuestion": "Eliminar FAQ: {question}",
       "title": "Preguntas frecuentes",
       "subtitle": "Pares pregunta-respuesta que el agente usa para dar respuestas canónicas",
       "loading": "Cargando...",
@@ -5737,6 +5747,7 @@
     }
   },
   "inventory": {
+    "productsRegion": "Tabla de productos. Desplázate horizontalmente para ver todas las columnas.",
     "prescription": {
       "badge": "Receta",
       "label": "Venta bajo fórmula médica",
@@ -5790,6 +5801,8 @@
       "litro": "Litro"
     },
     "createModal": {
+      "saveError": "El producto no se guardó. Revisa los datos antes de intentarlo de nuevo.",
+      "unconfirmedSave": "No pudimos confirmar si el producto se guardó. Revisa el inventario antes de volver a enviarlo.",
       "title": "Nuevo producto",
       "productName": "Nombre del producto",
       "productNamePlaceholder": "Tour Rafting Río Fonce",
@@ -6758,6 +6771,8 @@
     "30d": "30 días",
     "90d": "90 días",
     "custom": "Personalizado",
+    "rangeStart": "Fecha inicial",
+    "rangeEnd": "Fecha final",
     "conversations": "Conversaciones",
     "messages": "Mensajes",
     "aiResolutionRate": "Resolución IA",
@@ -8438,6 +8453,7 @@
     "title": "Propiedades",
     "subtitle": "Gestiona tus anuncios y disponibilidad",
     "addProperty": "Agregar propiedad",
+    "selectCurrency": "Selecciona una moneda",
     "noProperties": "No tienes propiedades. Agrega tu primer anuncio.",
     "name": "Nombre",
     "address": "Direccion",
@@ -10259,6 +10275,9 @@
     }
   },
   "tours": {
+    "creationFormLabel": "Nueva salida programada",
+    "detailsFormLabel": "Información del viaje",
+    "invalidValues": "Revisa los valores del paquete antes de guardar.",
     "info": "Datos",
     "title": "Tours y Paquetes",
     "subtitle": "Gestiona tus experiencias y paquetes de viaje",
@@ -10320,6 +10339,12 @@
     }
   },
   "listings": {
+    "creationFormLabel": "Nuevo inmueble",
+    "priceSectionLabel": "Precio y condiciones",
+    "detailsFormLabel": "Información del inmueble",
+    "currency": "Moneda",
+    "selectCurrency": "Selecciona la moneda",
+    "currencyRequired": "Selecciona la moneda del precio antes de crear el inmueble.",
     "photoColumn": "Fotos (URLs)",
     "propertyKinds": {
       "apartment": "Apartamento",
@@ -11283,6 +11308,7 @@
     "availableRange": "Esas fechas están libres.",
     "unavailableRange": "Esas fechas ya están ocupadas o el alojamiento no las acepta.",
     "createFailed": "No se pudo crear la reserva. Revisá las fechas e intentá de nuevo.",
+    "tableRegion": "Tabla de reservas. Desplázate horizontalmente para ver todas las columnas.",
     "cancelStay": "Cancelar reserva",
     "cancelConfirm": "Se cancela la reserva de {guest} en {property}. Las fechas quedan libres.",
     "cancelFailed": "No se pudo cancelar la reserva.",
@@ -11632,6 +11658,8 @@
     "categories": "Categorías",
     "allCategories": "Todas",
     "newCategoryPlaceholder": "Nueva categoría...",
+    "saveRejected": "No se pudo guardar el plato. Revisa los datos e inténtalo de nuevo.",
+    "saveUnconfirmed": "No pudimos confirmar si el plato se guardó. Revisa el menú antes de volver a enviarlo.",
     "deleteCategory": "Eliminar categoría",
     "deleteCategoryConfirm": "¿Eliminar esta categoría? Los platos asociados quedan sin categoría.",
     "allItems": "Todos los platos",

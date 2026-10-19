@@ -114,14 +114,14 @@ export default function CrmAnalyticsPage() {
 
                     {/* Funnel + Sources side by side */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                        <div className="bg-card border border-border rounded-xl p-5">
+                        <div role="region" aria-label={t("charts.stageRegion")} className="bg-card border border-border rounded-xl p-5">
                             <h3 className="text-sm font-semibold mb-4">{t("charts.customersByStage", { customers: capitalize(vt.customerNounPlural) })}</h3>
                             <ResponsiveContainer width="100%" height={280}>
                                 <BarChart data={displayFunnel} layout="vertical">
-                                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                                    <XAxis type="number" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
-                                    <YAxis dataKey="displayName" type="category" width={100} tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
-                                    <Tooltip contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }} />
+                                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                                    <XAxis type="number" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} stroke="hsl(var(--muted-foreground))" />
+                                    <YAxis dataKey="displayName" type="category" width={100} tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} stroke="hsl(var(--muted-foreground))" />
+                                    <Tooltip contentStyle={{ background: 'hsl(var(--card))', color: 'hsl(var(--card-foreground))', border: '1px solid hsl(var(--border))', borderRadius: 8, fontSize: 12 }} />
                                     <Bar dataKey="count" radius={[0, 4, 4, 0]}>
                                         {funnel.map((entry: any, i: number) => (
                                             <Cell key={entry.stage} fill={STAGE_COLORS[entry.stage] || COLORS[i % COLORS.length]} />
@@ -141,7 +141,7 @@ export default function CrmAnalyticsPage() {
                                                 <Cell key={i} fill={COLORS[i % COLORS.length]} />
                                             ))}
                                         </Pie>
-                                        <Tooltip contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }} />
+                                        <Tooltip contentStyle={{ background: 'hsl(var(--card))', color: 'hsl(var(--card-foreground))', border: '1px solid hsl(var(--border))', borderRadius: 8, fontSize: 12 }} />
                                     </PieChart>
                                 </ResponsiveContainer>
                             ) : (
@@ -215,15 +215,15 @@ export default function CrmAnalyticsPage() {
             )}
 
             {activeTab === "velocity" && (
-                <div className="bg-card border border-border rounded-xl p-5">
+                <div role="region" aria-label={t("charts.velocityRegion")} className="bg-card border border-border rounded-xl p-5">
                     <h3 className="text-sm font-semibold mb-4">{t("charts.pipelineVelocity")}</h3>
                     {velocity.length > 0 ? (
                         <ResponsiveContainer width="100%" height={350}>
                             <BarChart data={velocity}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                                <XAxis dataKey="stage" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
-                                <YAxis tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" label={{ value: t("days"), angle: -90, position: 'insideLeft', style: { fontSize: 11 } }} />
-                                <Tooltip contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }} />
+                                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                                <XAxis dataKey="stage" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} stroke="hsl(var(--muted-foreground))" />
+                                <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} stroke="hsl(var(--muted-foreground))" label={{ value: t("days"), angle: -90, position: 'insideLeft', style: { fontSize: 11, fill: 'hsl(var(--muted-foreground))' } }} />
+                                <Tooltip contentStyle={{ background: 'hsl(var(--card))', color: 'hsl(var(--card-foreground))', border: '1px solid hsl(var(--border))', borderRadius: 8, fontSize: 12 }} />
                                 <Bar dataKey="avgDays" name={t("avgDays")} radius={[4, 4, 0, 0]}>
                                     {velocity.map((entry: any, i: number) => (
                                         <Cell key={entry.stage} fill={STAGE_COLORS[entry.stage] || COLORS[i]} />

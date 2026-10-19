@@ -208,6 +208,8 @@ export default function MenuPage() {
                         </div>
                         <button
                             onClick={() => setShowCategoryForm(!showCategoryForm)}
+                            aria-label={t("categories")}
+                            aria-expanded={showCategoryForm}
                             className="p-1 hover:bg-muted rounded"
                         >
                             <Plus className="h-4 w-4" />
@@ -424,6 +426,7 @@ function ItemFormModal({
         allergens: item?.allergens || [],
     });
     const [busy, setBusy] = useState(false);
+    const [submitError, setSubmitError] = useState<"rejected" | "uncertain" | null>(null);
 
     function toggleArrayValue(field: "tags" | "allergens", value: string) {
         setForm(f => ({
@@ -433,7 +436,8 @@ function ItemFormModal({
     }
 
     async function handleSubmit() {
-        if (!activeTenantId || !form.name || !form.price) return;
+        if (busy || submitError === "uncertain" || !activeTenantId || !form.name || !form.price) return;
+        setSubmitError(null);
         setBusy(true);
         const payload = {
             name: form.name,
@@ -450,23 +454,27 @@ function ItemFormModal({
             allergens: form.allergens,
         };
         try {
-            if (item) {
-                await api.updateMenuItem(activeTenantId, item.id, payload);
-            } else {
-                await api.createMenuItem(activeTenantId, payload);
+            const result = item
+                ? await api.updateMenuItem(activeTenantId, item.id, payload)
+                : await api.createMenuItem(activeTenantId, payload);
+            if (result.success !== true) {
+                setSubmitError(result.httpStatus && result.httpStatus >= 400 && result.httpStatus < 500 ? "rejected" : "uncertain");
+                return;
             }
             onSaved();
+        } catch {
+            setSubmitError("uncertain");
         } finally {
             setBusy(false);
         }
     }
 
     return (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => { if (!busy) onClose(); }}>
             <div className="bg-background border border-border rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center justify-between p-5 border-b border-border">
                     <h3 className="text-base font-semibold">{item ? t("editItem") : t("newItem")}</h3>
-                    <button onClick={onClose} className="p-1 hover:bg-muted rounded"><X className="h-4 w-4" /></button>
+                    <button aria-label={tc("close")} disabled={busy} onClick={onClose} className="p-1 hover:bg-muted rounded"><X className="h-4 w-4" /></button>
                 </div>
 
                 <div className="p-5 space-y-4">
@@ -576,9 +584,10 @@ function ItemFormModal({
                     </div>
                 </div>
 
+                {submitError && <p role="alert" className="mx-5 mb-4 text-sm text-destructive">{t(submitError === "uncertain" ? "saveUnconfirmed" : "saveRejected")}</p>}
                 <div className="flex justify-end gap-2 p-4 border-t border-border">
-                    <button onClick={onClose} className="px-3 py-1.5 bg-muted/30 hover:bg-muted text-foreground border border-border rounded-lg text-sm transition-colors">{tc("cancel")}</button>
-                    <button onClick={handleSubmit} disabled={busy || !form.name || !form.price} className="inline-flex items-center gap-2 px-4 py-1.5 bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium">
+                    <button disabled={busy} onClick={onClose} className="px-3 py-1.5 bg-muted/30 hover:bg-muted text-foreground border border-border rounded-lg text-sm transition-colors">{tc("cancel")}</button>
+                    <button onClick={handleSubmit} disabled={busy || submitError === "uncertain" || !form.name || !form.price} className="inline-flex items-center gap-2 px-4 py-1.5 bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium">
                         {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                         {tc("save")}
                     </button>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useId } from "react";
 import { useParams } from "next/navigation";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
@@ -43,6 +43,7 @@ interface Listing {
 }
 
 export default function ListingDetailPage() {
+    const formId = useId();
     const params = useParams();
     const listingId = params.listingId as string;
     const { activeTenantId } = useTenant();
@@ -115,7 +116,7 @@ export default function ListingDetailPage() {
     const inputCls = "w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500";
 
     return (
-        <div className="p-4 md:p-6 max-w-4xl mx-auto">
+        <div role="region" aria-label={t("detailsFormLabel")} className="p-4 md:p-6 max-w-4xl mx-auto">
             <PageHeader
                 title={listing.name}
                 subtitle={listing.neighborhood ? `${listing.neighborhood}${listing.city ? `, ${listing.city}` : ""}` : ""}
@@ -129,12 +130,12 @@ export default function ListingDetailPage() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
                 <div>
-                    <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("name")}</label>
-                    <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className={inputCls} />
+                    <label htmlFor={`${formId}-name`} className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("name")}</label>
+                    <input id={`${formId}-name`} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className={inputCls} />
                 </div>
                 <div>
-                    <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("status.label")}</label>
-                    <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className={inputCls}>
+                    <label htmlFor={`${formId}-status`} className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("status.label")}</label>
+                    <select id={`${formId}-status`} value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className={inputCls}>
                         <option value="available">{t("status.available")}</option>
                         <option value="reserved">{t("status.reserved")}</option>
                         <option value="sold">{t("status.sold")}</option>
@@ -144,20 +145,20 @@ export default function ListingDetailPage() {
                 </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-4 mb-5">
+            <div role="group" aria-label={t("priceSectionLabel")} className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
                 <div>
-                    <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("price")} ({form.currency})</label>
-                    <input type="number" value={form.price} onChange={e => setForm({ ...form, price: parseFloat(e.target.value) || 0 })} className={inputCls} />
+                    <label htmlFor={`${formId}-price`} className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("price")} ({form.currency})</label>
+                    <input id={`${formId}-price`} type="number" value={form.price} onChange={e => setForm({ ...form, price: parseFloat(e.target.value) || 0 })} className={inputCls} />
                 </div>
                 {form.transactionType === "rent" && (
                     <>
                         <div>
-                            <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("hoaFee")}</label>
-                            <input type="number" value={form.hoaFee} onChange={e => setForm({ ...form, hoaFee: parseFloat(e.target.value) || 0 })} className={inputCls} />
+                            <label htmlFor={`${formId}-hoaFee`} className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("hoaFee")}</label>
+                            <input id={`${formId}-hoaFee`} type="number" value={form.hoaFee} onChange={e => setForm({ ...form, hoaFee: parseFloat(e.target.value) || 0 })} className={inputCls} />
                         </div>
                         <div>
-                            <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("deposit")}</label>
-                            <input type="number" value={form.deposit} onChange={e => setForm({ ...form, deposit: parseFloat(e.target.value) || 0 })} className={inputCls} />
+                            <label htmlFor={`${formId}-deposit`} className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("deposit")}</label>
+                            <input id={`${formId}-deposit`} type="number" value={form.deposit} onChange={e => setForm({ ...form, deposit: parseFloat(e.target.value) || 0 })} className={inputCls} />
                         </div>
                     </>
                 )}
@@ -165,48 +166,48 @@ export default function ListingDetailPage() {
 
             <div className="grid grid-cols-3 gap-4 mb-5">
                 <div>
-                    <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("bedrooms")}</label>
-                    <input type="number" value={form.bedrooms} onChange={e => setForm({ ...form, bedrooms: parseInt(e.target.value) || 0 })} className={inputCls} />
+                    <label htmlFor={`${formId}-bedrooms`} className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("bedrooms")}</label>
+                    <input id={`${formId}-bedrooms`} type="number" value={form.bedrooms} onChange={e => setForm({ ...form, bedrooms: parseInt(e.target.value) || 0 })} className={inputCls} />
                 </div>
                 <div>
-                    <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("bathrooms")}</label>
-                    <input type="number" step={0.5} value={form.bathrooms} onChange={e => setForm({ ...form, bathrooms: parseFloat(e.target.value) || 0 })} className={inputCls} />
+                    <label htmlFor={`${formId}-bathrooms`} className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("bathrooms")}</label>
+                    <input id={`${formId}-bathrooms`} type="number" step={0.5} value={form.bathrooms} onChange={e => setForm({ ...form, bathrooms: parseFloat(e.target.value) || 0 })} className={inputCls} />
                 </div>
                 <div>
-                    <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("areaM2")}</label>
-                    <input type="number" value={form.areaM2} onChange={e => setForm({ ...form, areaM2: parseFloat(e.target.value) || 0 })} className={inputCls} />
+                    <label htmlFor={`${formId}-areaM2`} className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("areaM2")}</label>
+                    <input id={`${formId}-areaM2`} type="number" value={form.areaM2} onChange={e => setForm({ ...form, areaM2: parseFloat(e.target.value) || 0 })} className={inputCls} />
                 </div>
             </div>
 
             <div className="grid grid-cols-3 gap-4 mb-5">
                 <div>
-                    <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("parking")}</label>
-                    <input type="number" value={form.parkingSpots} onChange={e => setForm({ ...form, parkingSpots: parseInt(e.target.value) || 0 })} className={inputCls} />
+                    <label htmlFor={`${formId}-parkingSpots`} className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("parking")}</label>
+                    <input id={`${formId}-parkingSpots`} type="number" value={form.parkingSpots} onChange={e => setForm({ ...form, parkingSpots: parseInt(e.target.value) || 0 })} className={inputCls} />
                 </div>
                 <div>
-                    <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("stratum")}</label>
-                    <input type="number" min={1} max={6} value={form.stratum} onChange={e => setForm({ ...form, stratum: parseInt(e.target.value) || 0 })} className={inputCls} />
+                    <label htmlFor={`${formId}-stratum`} className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("stratum")}</label>
+                    <input id={`${formId}-stratum`} type="number" min={1} max={6} value={form.stratum} onChange={e => setForm({ ...form, stratum: parseInt(e.target.value) || 0 })} className={inputCls} />
                 </div>
                 <div>
-                    <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("yearBuilt")}</label>
-                    <input type="number" value={form.yearBuilt} onChange={e => setForm({ ...form, yearBuilt: parseInt(e.target.value) || 0 })} className={inputCls} />
+                    <label htmlFor={`${formId}-yearBuilt`} className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("yearBuilt")}</label>
+                    <input id={`${formId}-yearBuilt`} type="number" value={form.yearBuilt} onChange={e => setForm({ ...form, yearBuilt: parseInt(e.target.value) || 0 })} className={inputCls} />
                 </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
                 <div className="md:col-span-2">
-                    <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("address")}</label>
-                    <input value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} className={inputCls} />
+                    <label htmlFor={`${formId}-address`} className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("address")}</label>
+                    <input id={`${formId}-address`} value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} className={inputCls} />
                 </div>
                 <div>
-                    <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("neighborhood")}</label>
-                    <input value={form.neighborhood} onChange={e => setForm({ ...form, neighborhood: e.target.value })} className={inputCls} />
+                    <label htmlFor={`${formId}-neighborhood`} className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("neighborhood")}</label>
+                    <input id={`${formId}-neighborhood`} value={form.neighborhood} onChange={e => setForm({ ...form, neighborhood: e.target.value })} className={inputCls} />
                 </div>
             </div>
 
             <div className="mb-5">
-                <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("city")}</label>
-                <input value={form.city} onChange={e => setForm({ ...form, city: e.target.value })} className={inputCls} />
+                <label htmlFor={`${formId}-city`} className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("city")}</label>
+                <input id={`${formId}-city`} value={form.city} onChange={e => setForm({ ...form, city: e.target.value })} className={inputCls} />
             </div>
 
             {/* La base soporta `images` y el agente tiene una tool que las
@@ -226,8 +227,8 @@ export default function ListingDetailPage() {
             </div>
 
             <div className="mb-5">
-                <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("description")}</label>
-                <textarea
+                <label htmlFor={`${formId}-description`} className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("description")}</label>
+                <textarea id={`${formId}-description`}
                     rows={4}
                     value={form.description}
                     onChange={e => setForm({ ...form, description: e.target.value })}
@@ -237,8 +238,8 @@ export default function ListingDetailPage() {
             </div>
 
             <div className="mb-5">
-                <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("externalUrl")}</label>
-                <input
+                <label htmlFor={`${formId}-externalUrl`} className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("externalUrl")}</label>
+                <input id={`${formId}-externalUrl`}
                     value={form.externalUrl}
                     onChange={e => setForm({ ...form, externalUrl: e.target.value })}
                     placeholder="https://www.fincaraiz.com.co/..."

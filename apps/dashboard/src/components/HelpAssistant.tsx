@@ -10,6 +10,7 @@ import {
   useSyncExternalStore,
   type CSSProperties,
 } from "react";
+import { createPortal } from "react-dom";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
@@ -31,6 +32,7 @@ import {
   buildHelpChatHistory,
   canUseHelpAssistantChat,
   HELP_CHAT_MESSAGE_MAX_LENGTH,
+  HELP_ASSISTANT_MOBILE_SLOT_ID,
 } from "@/lib/help-assistant-contract";
 import {
   isOwnerChangeRequest,
@@ -173,6 +175,18 @@ function TenantHelpAssistant() {
     canManageSettings,
   } = useRole();
   const canRestartProductTour = canEditAgent && canManageChannels;
+
+  // Reserve header space on small screens so Assist cannot cover form controls.
+  // Keep the floating fallback for embeddings that do not render the admin header.
+  const [mobileSlot, setMobileSlot] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 767px)");
+    const update = () => setMobileSlot(media.matches
+      ? document.getElementById(HELP_ASSISTANT_MOBILE_SLOT_ID) : null);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
 
   const [open, setOpen] = useState(false);
   const [intro, setIntro] = useState<IntroPhase>("done");
@@ -487,23 +501,18 @@ function TenantHelpAssistant() {
   const introMoving = intro === "enter" || intro === "talk";
   const showAnnouncement = intro === "talk" && !open;
 
-  return (
-    <Sheet open={open} onOpenChange={setOpen}>
-      {/* No mascot until the account is live (D7-A). Only the launcher goes:
-          the sheet stays, so every explicit way in still opens Assist — which
-          on the wizard it did not, because this used to return nothing there
-          and the sidebar's "Ayuda" opened a sheet that was never drawn. */}
-      {!beforeLive && !hasConversationComposer && <SheetTrigger asChild>
+  const launcher = !beforeLive && !hasConversationComposer ? (
+    <SheetTrigger asChild>
         <button
           type="button"
           id={guidedTourAnchorId("assistant")}
           onClick={openAssistant}
           aria-label={t("launcherTooltip")}
-          className={`parallly-launcher group fixed bottom-4 right-4 z-40 flex cursor-pointer items-end justify-center drop-shadow-[0_6px_18px_rgba(56,151,240,0.35)] transition-[transform,opacity] duration-300 hover:scale-105 active:scale-95 sm:right-6 ${
+          className={mobileSlot ? "parallly-header-launcher relative flex size-9 shrink-0 items-center justify-center rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500" : `parallly-launcher group fixed bottom-4 right-4 z-40 flex cursor-pointer items-end justify-center drop-shadow-[0_6px_18px_rgba(56,151,240,0.35)] transition-[transform,opacity] duration-300 hover:scale-105 active:scale-95 sm:right-6 ${
             intro === "hidden" ? "pointer-events-none opacity-0" : "opacity-100"
           }`}
         >
-          <span
+          {!mobileSlot && <span
             className={`absolute bottom-full right-0 mb-3 w-64 flex-col gap-1 rounded-2xl border border-[#3897f0]/25 bg-white/95 p-3.5 text-left shadow-2xl shadow-[#3897f0]/15 backdrop-blur-md dark:bg-neutral-900/95 ${
               showAnnouncement ? "parallly-bubble-in flex" : "hidden"
             }`}
@@ -519,14 +528,14 @@ function TenantHelpAssistant() {
               {t("announce.cta")} <ChevronRight className="size-2.5" />
             </span>
             <span className="absolute -bottom-1.5 right-9 size-3 rotate-45 border-b border-r border-[#3897f0]/25 bg-white/95 dark:bg-neutral-900/95" />
-          </span>
+          </span>}
 
-          <span className="absolute bottom-full right-0 mb-1 scale-0 whitespace-nowrap rounded-lg border border-white/10 bg-neutral-950 px-2.5 py-1.5 text-[11px] font-medium text-white shadow-xl transition-transform duration-200 group-hover:scale-100 dark:bg-neutral-100 dark:text-neutral-900">
+          {!mobileSlot && <span className="absolute bottom-full right-0 mb-1 scale-0 whitespace-nowrap rounded-lg border border-white/10 bg-neutral-950 px-2.5 py-1.5 text-[11px] font-medium text-white shadow-xl transition-transform duration-200 group-hover:scale-100 dark:bg-neutral-100 dark:text-neutral-900">
             {t("launcherTooltip")}
-          </span>
+          </span>}
 
-          <span className={`relative flex items-end justify-center ${introMoving ? "parallly-pop" : ""}`}>
-            {introMoving && (
+          <span className={`relative flex items-end justify-center ${introMoving && !mobileSlot ? "parallly-pop" : ""}`}>
+            {introMoving && !mobileSlot && (
               <>
                 <span className="parallly-ring pointer-events-none absolute bottom-4 left-1/2 -ml-8 size-16 rounded-full border-2 border-[#3897f0]/50" />
                 {INTRO_SPARKS.map((spark, index) => (
@@ -542,10 +551,19 @@ function TenantHelpAssistant() {
                 ))}
               </>
             )}
-            <ParalllyAssistant size={74} className="h-auto w-[51.8px] sm:w-[74px]" state={introMoving ? "wave" : "idle"} />
+            <ParalllyAssistant size={74} className={mobileSlot ? "h-auto w-7" : "h-auto w-[51.8px] sm:w-[74px]"} state={introMoving && !mobileSlot ? "wave" : "idle"} />
           </span>
         </button>
-      </SheetTrigger>}
+    </SheetTrigger>
+  ) : null;
+
+  return (
+    <Sheet open={open} onOpenChange={setOpen}>
+      {/* No mascot until the account is live (D7-A). Only the launcher goes:
+          the sheet stays, so every explicit way in still opens Assist — which
+          on the wizard it did not, because this used to return nothing there
+          and the sidebar's "Ayuda" opened a sheet that was never drawn. */}
+      {launcher && (mobileSlot ? createPortal(launcher, mobileSlot) : launcher)}
 
       <SheetContent
         side="right"

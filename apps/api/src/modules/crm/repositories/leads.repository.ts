@@ -7,6 +7,8 @@ import { RegionalProfileService } from '../../tenants/regional-profile.service';
 import { PipelineService } from '../../pipeline/pipeline.service';
 import { optionalSection, resolveLeadReference } from '../services/lead-reference';
 import { isolatedEvalNamespaceForPrisma, type EvalNamespaceLease } from '../../simulation/isolated-eval-namespace';
+import { randomUUID } from 'crypto';
+import { assertOptionalContactId, requireTenantContact } from '../../../common/utils/tenant-contact.util';
 
 /**
  * Columns of `leads` that a caller may write, as they actually exist in
@@ -336,14 +338,27 @@ export class LeadsRepository {
     const schema = await this.getTenantSchema(tenantId);
     if (!schema) return null;
 
-    const prepared = await this.prepareLeadInsert(tenantId, schema, data);
-    const results = await this.prisma.executeInTenantSchema<Lead[]>(
-      schema,
-      prepared.sql,
-      prepared.values,
-    );
-    const resultsArray = results as any[];
-    return resultsArray && resultsArray.length > 0 ? resultsArray[0] : null;
+    // The dashboard calls leads "contacts", but appointments/orders use the
+    // operational contacts table. Create that identity and its lead together;
+    // a lead-only insert leaves a patient visible in CRM but impossible to book.
+    const suppliedContactId = assertOptionalContactId(data.contact_id);
+    const contactId = suppliedContactId || randomUUID();
+    const prepared = await this.prepareLeadInsert(tenantId, schema, { ...data, contact_id: contactId });
+    return this.prisma.transactionInTenantSchema(schema, async (query) => {
+      if (suppliedContactId) {
+        await requireTenantContact(query, suppliedContactId);
+      } else {
+        const name = [data.first_name, data.last_name].filter(Boolean).join(' ').trim() || String(data.phone).trim();
+        await query(
+          `INSERT INTO contacts (id, external_id, channel_type, name, phone, phone_normalized, email)
+           VALUES ($1::uuid, $2, $3, $4, $5, $6, $7)`,
+          [contactId, `crm_${contactId}`, 'manual', name, data.phone, prepared.normalizedPhone, data.email || null],
+        );
+      }
+      const results = await query<Lead[]>(prepared.sql, prepared.values);
+      if (!results?.[0]) throw new Error('CRM lead was not created');
+      return results[0];
+    });
   }
 
   /**
@@ -390,7 +405,7 @@ export class LeadsRepository {
     tenantId: string,
     schema: string,
     data: Partial<Lead>,
-  ): Promise<{ sql: string; values: any[] }> {
+  ): Promise<{ sql: string; values: any[]; normalizedPhone?: string }> {
     const record = { ...(data as Record<string, any>) };
     rejectProtectedLeadColumns(record);
     foldNonColumnsIntoMetadata(record);
@@ -419,6 +434,7 @@ export class LeadsRepository {
     return {
       sql: `INSERT INTO leads (${fields.join(', ')}) VALUES (${placeholders}) RETURNING *`,
       values,
+      normalizedPhone: record.phone_normalized,
     };
   }
 

@@ -16,9 +16,10 @@ describe("floating assistant launcher", () => {
   const css = read("app", "globals.css");
   const launcher = read("components", "HelpAssistant.tsx");
 
-  it("is smaller on a phone and keeps its place in the stylesheet hook", () => {
+  it("keeps the stylesheet hook for the floating fallback", () => {
     expect(launcher).toContain("parallly-launcher");
-    expect(launcher).toMatch(/scale-\[0\.7\][^"`]*sm:scale-100/);
+    // Mobile placement is exercised by help-assistant-mobile.a11y.spec.tsx;
+    // the header slot replaces the former transform-scaled floating launcher.
   });
 
   it("is lifted above the bottom of the screen on narrow widths", () => {

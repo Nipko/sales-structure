@@ -28,11 +28,15 @@ describe('LeadsRepository column whitelist', () => {
 
   function setup() {
     const calls: Array<{ sql: string; values: any[] }> = [];
+    const query = jest.fn(async (sql: string, values: any[]) => {
+      // This suite checks lead column generation; contact transaction behavior
+      // is covered separately in leads.canonical-contact.spec.ts.
+      if (!sql.includes('INSERT INTO contacts')) calls.push({ sql, values });
+      return [{ id: leadId }];
+    });
     const prisma: any = {
-      executeInTenantSchema: jest.fn(async (_schema: string, sql: string, values: any[]) => {
-        calls.push({ sql, values });
-        return [{ id: leadId }];
-      }),
+      executeInTenantSchema: jest.fn((_schema: string, sql: string, values: any[]) => query(sql, values)),
+      transactionInTenantSchema: jest.fn((_schema: string, fn: any) => fn(query)),
     };
     const redis: any = { get: jest.fn().mockResolvedValue('tenant_test') };
     const pipeline: any = {

@@ -1,3 +1,5 @@
+export const HELP_ASSISTANT_MOBILE_SLOT_ID = "parallly-mobile-assistant-slot";
+
 export const HELP_CHAT_HISTORY_LIMIT = 10;
 export const HELP_CHAT_MESSAGE_MAX_LENGTH = 2_000;
 export const HELP_CHAT_HISTORY_MAX_TOTAL_LENGTH = 12_000;

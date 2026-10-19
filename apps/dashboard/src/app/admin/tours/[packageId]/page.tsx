@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useId } from "react";
 import { useParams } from "next/navigation";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
@@ -69,6 +69,16 @@ interface TourBooking {
     currency?: string;
     status: string;
     created_at: string;
+}
+
+// PostgreSQL DATE/TIME may arrive as ISO strings. Keep the business calendar
+// day and wall-clock time instead of applying a timezone conversion.
+function calendarDate(value: string): Date {
+    return new Date(value.slice(0, 10) + "T00:00:00");
+}
+
+function clockTime(value: string): string {
+    return (value.includes("T") ? value.split("T")[1] : value).slice(0, 5);
 }
 
 export default function TourDetailPage() {
@@ -163,6 +173,9 @@ function InfoTab({ pkg, tenantId, onSaved, t, tc }: {
     });
     const [saving, setSaving] = useState(false);
     const [saved, setSaved] = useState(false);
+    const formId = useId();
+    const formRef = useRef<HTMLDivElement>(null);
+    const [validationError, setValidationError] = useState(false);
     const [includesDraft, setIncludesDraft] = useState("");
     const [excludesDraft, setExcludesDraft] = useState("");
 
@@ -189,6 +202,14 @@ function InfoTab({ pkg, tenantId, onSaved, t, tc }: {
     }, [pkg.id, pkg.name, pkg.price, pkg.duration_value, pkg.is_active]);
 
     async function handleSave() {
+        const invalid = [...(formRef.current?.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>("input, select, textarea") || [])]
+            .find(control => !control.checkValidity());
+        if (invalid) {
+            setValidationError(true);
+            invalid.reportValidity();
+            return;
+        }
+        setValidationError(false);
         setSaving(true);
         const res = await api.updateTourPackage(tenantId, pkg.id, form);
         if (res.success) {
@@ -213,15 +234,15 @@ function InfoTab({ pkg, tenantId, onSaved, t, tc }: {
     const inputCls = "w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500";
 
     return (
-        <div className="max-w-2xl space-y-5">
+        <div ref={formRef} role="region" aria-label={t("detailsFormLabel")} className="max-w-2xl space-y-5">
             <div>
-                <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("name")}</label>
-                <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={inputCls} />
+                <label htmlFor={`${formId}-name`} className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("name")}</label>
+                <input id={`${formId}-name`} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={inputCls} />
             </div>
 
             <div>
-                <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("description")}</label>
-                <textarea
+                <label htmlFor={`${formId}-description`} className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("description")}</label>
+                <textarea id={`${formId}-description`}
                     rows={3}
                     value={form.description}
                     onChange={(e) => setForm({ ...form, description: e.target.value })}
@@ -231,21 +252,21 @@ function InfoTab({ pkg, tenantId, onSaved, t, tc }: {
 
             <div className="grid grid-cols-2 gap-3">
                 <div>
-                    <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("destination")}</label>
-                    <input value={form.destination} onChange={(e) => setForm({ ...form, destination: e.target.value })} className={inputCls} />
+                    <label htmlFor={`${formId}-destination`} className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("destination")}</label>
+                    <input id={`${formId}-destination`} value={form.destination} onChange={(e) => setForm({ ...form, destination: e.target.value })} className={inputCls} />
                 </div>
                 <div>
-                    <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("departureLocation")}</label>
-                    <input value={form.departureLocation} onChange={(e) => setForm({ ...form, departureLocation: e.target.value })} className={inputCls} />
+                    <label htmlFor={`${formId}-departureLocation`} className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("departureLocation")}</label>
+                    <input id={`${formId}-departureLocation`} value={form.departureLocation} onChange={(e) => setForm({ ...form, departureLocation: e.target.value })} className={inputCls} />
                 </div>
             </div>
 
             <div className="grid grid-cols-3 gap-3">
                 <div>
-                    <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">
+                    <label htmlFor={`${formId}-durationValue`} className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">
                         {form.durationType === "days" ? t("days") : t("hours")}
                     </label>
-                    <input
+                    <input id={`${formId}-durationValue`}
                         type="number"
                         min={1}
                         value={form.durationValue}
@@ -254,8 +275,8 @@ function InfoTab({ pkg, tenantId, onSaved, t, tc }: {
                     />
                 </div>
                 <div>
-                    <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("price")}</label>
-                    <input
+                    <label htmlFor={`${formId}-price`} className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("price")}</label>
+                    <input id={`${formId}-price`}
                         type="number"
                         min={0}
                         value={form.price}
@@ -264,8 +285,8 @@ function InfoTab({ pkg, tenantId, onSaved, t, tc }: {
                     />
                 </div>
                 <div>
-                    <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("currency")}</label>
-                    <select value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value })} className={inputCls}>
+                    <label htmlFor={`${formId}-currency`} className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("currency")}</label>
+                    <select id={`${formId}-currency`} value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value })} className={inputCls}>
                         <option value="COP">COP</option>
                         <option value="USD">USD</option>
                         <option value="MXN">MXN</option>
@@ -280,8 +301,8 @@ function InfoTab({ pkg, tenantId, onSaved, t, tc }: {
 
             <div className="grid grid-cols-3 gap-3">
                 <div>
-                    <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("maxCapacity")}</label>
-                    <input
+                    <label htmlFor={`${formId}-maxCapacity`} className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("maxCapacity")}</label>
+                    <input id={`${formId}-maxCapacity`}
                         type="number"
                         min={1}
                         value={form.maxCapacity}
@@ -290,8 +311,8 @@ function InfoTab({ pkg, tenantId, onSaved, t, tc }: {
                     />
                 </div>
                 <div>
-                    <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("minPartySize")}</label>
-                    <input
+                    <label htmlFor={`${formId}-minPartySize`} className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("minPartySize")}</label>
+                    <input id={`${formId}-minPartySize`}
                         type="number"
                         min={1}
                         value={form.minPartySize}
@@ -300,8 +321,8 @@ function InfoTab({ pkg, tenantId, onSaved, t, tc }: {
                     />
                 </div>
                 <div>
-                    <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("childDiscountPct")}</label>
-                    <input
+                    <label htmlFor={`${formId}-childDiscountPct`} className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("childDiscountPct")}</label>
+                    <input id={`${formId}-childDiscountPct`}
                         type="number"
                         min={0}
                         max={100}
@@ -314,9 +335,9 @@ function InfoTab({ pkg, tenantId, onSaved, t, tc }: {
 
             {/* Includes */}
             <div>
-                <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("includes")}</label>
+                <label htmlFor={`${formId}-includesDraft`} className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("includes")}</label>
                 <div className="flex gap-2 mb-2">
-                    <input
+                    <input id={`${formId}-includesDraft`}
                         value={includesDraft}
                         onChange={(e) => setIncludesDraft(e.target.value)}
                         onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addIncludesItem())}
@@ -341,9 +362,9 @@ function InfoTab({ pkg, tenantId, onSaved, t, tc }: {
 
             {/* Excludes */}
             <div>
-                <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("excludes")}</label>
+                <label htmlFor={`${formId}-excludesDraft`} className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("excludes")}</label>
                 <div className="flex gap-2 mb-2">
-                    <input
+                    <input id={`${formId}-excludesDraft`}
                         value={excludesDraft}
                         onChange={(e) => setExcludesDraft(e.target.value)}
                         onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addExcludesItem())}
@@ -367,8 +388,8 @@ function InfoTab({ pkg, tenantId, onSaved, t, tc }: {
             </div>
 
             <div>
-                <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("whatToBring")}</label>
-                <textarea
+                <label htmlFor={`${formId}-whatToBring`} className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("whatToBring")}</label>
+                <textarea id={`${formId}-whatToBring`}
                     rows={2}
                     value={form.whatToBring}
                     onChange={(e) => setForm({ ...form, whatToBring: e.target.value })}
@@ -377,8 +398,8 @@ function InfoTab({ pkg, tenantId, onSaved, t, tc }: {
             </div>
 
             <div>
-                <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("cancellationPolicy")}</label>
-                <textarea
+                <label htmlFor={`${formId}-cancellationPolicy`} className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("cancellationPolicy")}</label>
+                <textarea id={`${formId}-cancellationPolicy`}
                     rows={2}
                     value={form.cancellationPolicy}
                     onChange={(e) => setForm({ ...form, cancellationPolicy: e.target.value })}
@@ -395,6 +416,8 @@ function InfoTab({ pkg, tenantId, onSaved, t, tc }: {
                 />
                 {tc("active")}
             </label>
+
+            {validationError && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{t("invalidValues")}</p>}
 
             <button
                 onClick={handleSave}
@@ -419,6 +442,7 @@ function InventoryTab({ tenantId, packageId, pkg, t, tc }: {
     t: any;
     tc: any;
 }) {
+    const creationId = useId();
     const [rows, setRows] = useState<InventoryRow[]>([]);
     const [loading, setLoading] = useState(true);
     const [showForm, setShowForm] = useState(false);
@@ -485,11 +509,11 @@ function InventoryTab({ tenantId, packageId, pkg, t, tc }: {
             </div>
 
             {showForm && (
-                <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4 space-y-3">
+                <div role="region" aria-label={t("creationFormLabel")} className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4 space-y-3">
                     <div className="grid grid-cols-2 gap-3">
                         <div>
-                            <label className="block text-xs font-medium text-neutral-500 mb-1">{t("departureDate")} *</label>
-                            <input
+                            <label htmlFor={`${creationId}-departureDate`} className="block text-xs font-medium text-neutral-500 mb-1">{t("departureDate")} *</label>
+                            <input id={`${creationId}-departureDate`}
                                 type="date"
                                 value={form.departureDate}
                                 onChange={(e) => setForm({ ...form, departureDate: e.target.value })}
@@ -498,8 +522,8 @@ function InventoryTab({ tenantId, packageId, pkg, t, tc }: {
                             />
                         </div>
                         <div>
-                            <label className="block text-xs font-medium text-neutral-500 mb-1">{t("departureTime")}</label>
-                            <input
+                            <label htmlFor={`${creationId}-departureTime`} className="block text-xs font-medium text-neutral-500 mb-1">{t("departureTime")}</label>
+                            <input id={`${creationId}-departureTime`}
                                 type="time"
                                 value={form.departureTime}
                                 onChange={(e) => setForm({ ...form, departureTime: e.target.value })}
@@ -509,8 +533,8 @@ function InventoryTab({ tenantId, packageId, pkg, t, tc }: {
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                         <div>
-                            <label className="block text-xs font-medium text-neutral-500 mb-1">{t("totalSeats")} *</label>
-                            <input
+                            <label htmlFor={`${creationId}-totalSeats`} className="block text-xs font-medium text-neutral-500 mb-1">{t("totalSeats")} *</label>
+                            <input id={`${creationId}-totalSeats`}
                                 type="number"
                                 min={1}
                                 value={form.totalSeats}
@@ -519,8 +543,8 @@ function InventoryTab({ tenantId, packageId, pkg, t, tc }: {
                             />
                         </div>
                         <div>
-                            <label className="block text-xs font-medium text-neutral-500 mb-1">{t("priceOverride")} ({pkg.currency})</label>
-                            <input
+                            <label htmlFor={`${creationId}-priceOverride`} className="block text-xs font-medium text-neutral-500 mb-1">{t("priceOverride")} ({pkg.currency})</label>
+                            <input id={`${creationId}-priceOverride`}
                                 type="number"
                                 min={0}
                                 placeholder={String(pkg.price)}
@@ -531,8 +555,8 @@ function InventoryTab({ tenantId, packageId, pkg, t, tc }: {
                         </div>
                     </div>
                     <div>
-                        <label className="block text-xs font-medium text-neutral-500 mb-1">{t("notes")}</label>
-                        <input
+                        <label htmlFor={`${creationId}-notes`} className="block text-xs font-medium text-neutral-500 mb-1">{t("notes")}</label>
+                        <input id={`${creationId}-notes`}
                             value={form.notes}
                             onChange={(e) => setForm({ ...form, notes: e.target.value })}
                             placeholder={t("notesPlaceholder")}
@@ -564,13 +588,13 @@ function InventoryTab({ tenantId, packageId, pkg, t, tc }: {
                             <div key={r.id} className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-3 flex items-center gap-4">
                                 <div className="flex-shrink-0 w-16 text-center">
                                     <p className="text-[10px] text-neutral-500 uppercase">
-                                        {new Date(r.departure_date + "T00:00:00").toLocaleString(undefined, { month: "short" })}
+                                        {calendarDate(r.departure_date).toLocaleString(undefined, { month: "short" })}
                                     </p>
-                                    <p className="text-2xl font-bold leading-none">{new Date(r.departure_date + "T00:00:00").getDate()}</p>
+                                    <p className="text-2xl font-bold leading-none">{calendarDate(r.departure_date).getDate()}</p>
                                     {r.departure_time && (
                                         <p className="text-[10px] text-neutral-500 mt-0.5">
                                             <Clock size={10} className="inline mr-0.5" />
-                                            {r.departure_time.substring(0, 5)}
+                                            {clockTime(r.departure_time)}
                                         </p>
                                     )}
                                 </div>
@@ -595,6 +619,7 @@ function InventoryTab({ tenantId, packageId, pkg, t, tc }: {
                                 </div>
                                 <button
                                     onClick={() => handleDelete(r.id)}
+                                    aria-label={`${tc("delete")} ${r.departure_date.slice(0, 10)}${r.departure_time ? ` ${r.departure_time.split("T").pop()!.slice(0, 5)}` : ""}`}
                                     className="p-1.5 rounded-lg text-neutral-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
                                 >
                                     <Trash2 size={14} />
@@ -663,9 +688,9 @@ function BookingsTab({ tenantId, packageId, t, tc }: {
                 <div key={b.id} className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4 flex items-center gap-4">
                     <div className="flex-shrink-0 w-14 text-center">
                         <p className="text-[10px] text-neutral-500 uppercase">
-                            {new Date(b.departure_date + "T00:00:00").toLocaleString(undefined, { month: "short" })}
+                            {calendarDate(b.departure_date).toLocaleString(undefined, { month: "short" })}
                         </p>
-                        <p className="text-2xl font-bold leading-none">{new Date(b.departure_date + "T00:00:00").getDate()}</p>
+                        <p className="text-2xl font-bold leading-none">{calendarDate(b.departure_date).getDate()}</p>
                     </div>
                     <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">

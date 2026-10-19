@@ -3,7 +3,7 @@
 import { PageHeader } from "@/components/ui/page-header";
 import { HelpPanel } from "@/components/ui/help-panel";
 import { SkeletonPage } from "@/components/ui/skeleton-loader";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, type KeyboardEvent } from "react";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { DataSourceBadge } from "@/hooks/useApiData";
@@ -109,7 +109,7 @@ export default function InventoryPage() {
                 mediaKey="inventory"
             />
 
-            <div className="grid grid-cols-5 gap-4 mb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4 mb-6">
                 {[
                     { key: "totalProducts", label: t("kpi.totalProducts"), value: data.totalProducts, icon: Package, color: "#6c5ce7", sub: t("kpi.activeCount", { count: data.activeProducts }) },
                     { key: "inventoryValue", label: t("kpi.inventoryValue"), value: formatCurrency(data.totalValue, inventoryCurrency), icon: BarChart3, color: "#00b4d8", sub: t("kpi.marginAbout", { pct: margin }) },
@@ -119,14 +119,14 @@ export default function InventoryPage() {
                 ].map((kpi) => {
                     const Icon = kpi.icon;
                     return (
-                        <div key={kpi.key} className="bg-card rounded-xl border border-border p-5">
-                            <div className="flex justify-between mb-3">
-                                <span className="text-[13px] text-muted-foreground">{kpi.label}</span>
-                                <div className="w-9 h-9 rounded-[10px] flex items-center justify-center" style={{ background: `${kpi.color}15` }}>
+                        <div key={kpi.key} className="min-w-0 bg-card rounded-xl border border-border p-5">
+                            <div className="flex justify-between gap-2 mb-3">
+                                <span className="min-w-0 break-words text-[13px] text-muted-foreground">{kpi.label}</span>
+                                <div className="w-9 h-9 shrink-0 rounded-[10px] flex items-center justify-center" style={{ background: `${kpi.color}15` }}>
                                     <Icon size={18} color={kpi.color} />
                                 </div>
                             </div>
-                            <div className="text-[26px] font-semibold" style={{ color: typeof kpi.value === "number" && ((kpi.key === "lowStock" || kpi.key === "outOfStock") && kpi.value > 0) ? kpi.color : undefined }}>
+                            <div className="break-words text-[26px] font-semibold" style={{ color: typeof kpi.value === "number" && ((kpi.key === "lowStock" || kpi.key === "outOfStock") && kpi.value > 0) ? kpi.color : undefined }}>
                                 {kpi.value}
                             </div>
                             <div className="text-xs text-muted-foreground mt-1">{kpi.sub}</div>
@@ -135,7 +135,7 @@ export default function InventoryPage() {
                 })}
             </div>
 
-            <div className="flex gap-4 mb-5">
+            <div className="flex flex-col sm:flex-row gap-4 mb-5">
                 <div className="flex gap-2 flex-1 flex-wrap">
                     <button onClick={() => setSelectedCategory(null)} className={cn("px-4 py-2 rounded-[10px] font-semibold text-[13px] cursor-pointer", selectedCategory === null ? "border border-primary bg-primary/10 text-primary" : "border border-border bg-transparent text-muted-foreground")}>{t("allCategories")} ({data.totalProducts})</button>
                     {data.categories.map(cat => (
@@ -144,17 +144,17 @@ export default function InventoryPage() {
                         </button>
                     ))}
                 </div>
-                <div className="relative w-[280px]">
+                <div className="relative w-full sm:w-[280px] sm:shrink-0">
                     <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                     <input value={search} onChange={e => setSearch(e.target.value)} placeholder={tc("search") + "..."} className="w-full py-2.5 pl-9 pr-3.5 rounded-[10px] border border-border bg-muted text-foreground text-sm outline-none box-border" />
                 </div>
             </div>
 
-            <div className="grid grid-cols-[2fr_1fr] gap-4">
-                <div className="bg-card rounded-xl border border-border overflow-hidden">
+            <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-4">
+                <div className="min-w-0 bg-card rounded-xl border border-border overflow-hidden">
                     <div className="px-5 py-4 border-b border-border font-semibold text-[15px]">{t("productsTitle")} ({filteredProducts.length})</div>
-                    <div className="max-h-[520px] overflow-y-auto">
-                        <table className="w-full border-collapse text-sm">
+                    <div role="region" aria-label={t("productsRegion")} tabIndex={0} className="max-h-[520px] overflow-auto focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-[-2px]">
+                        <table className="w-full min-w-[680px] border-collapse text-sm">
                             <thead>
                                 <tr className="border-b border-border">
                                     {(["product", "sku", "category", "price", "stock", "status", "actions"] as const).map(k => (
@@ -199,7 +199,7 @@ export default function InventoryPage() {
                     </div>
                 </div>
 
-                <div className="bg-card rounded-xl border border-border">
+                <div className="min-w-0 bg-card rounded-xl border border-border">
                     <div className="px-5 py-4 border-b border-border font-semibold text-[15px]">{t("recentMovements")}</div>
                     <div className="max-h-[520px] overflow-y-auto">
                         {data.recentMovements.map(m => (
@@ -235,25 +235,64 @@ function CreateProductModal({ onClose, categories, tenantId, onCreated }: { onCl
     const [form, setForm] = useState({ name: "", sku: "", description: "", categoryId: "", price: "", cost: "", stock: "", unit: "unit" });
     const [requiresPrescription, setRequiresPrescription] = useState(false);
     const [saving, setSaving] = useState(false);
+    const [submitError, setSubmitError] = useState<"rejected" | "uncertain" | null>(null);
+    const dialogRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const trigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        dialogRef.current?.querySelector<HTMLInputElement>("#inventory-create-name")?.focus();
+        return () => { if (trigger?.isConnected) trigger.focus(); };
+    }, []);
+
+    const handleDialogKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+        if (event.key === "Escape") {
+            event.stopPropagation();
+            if (!saving) onClose();
+            return;
+        }
+        if (event.key !== "Tab") return;
+        const controls = [...event.currentTarget.querySelectorAll<HTMLElement>(
+            'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex="0"]',
+        )].filter(element => getComputedStyle(element).display !== "none" && getComputedStyle(element).visibility !== "hidden");
+        const first = controls[0], last = controls.at(-1);
+        if (!first || !last) return;
+        if (event.shiftKey && (document.activeElement === first || !event.currentTarget.contains(document.activeElement))) {
+            event.preventDefault(); last.focus();
+        } else if (!event.shiftKey && (document.activeElement === last || !event.currentTarget.contains(document.activeElement))) {
+            event.preventDefault(); first.focus();
+        }
+    };
 
     const handleSubmit = async () => {
-        if (!form.name || !form.sku || !form.price) return;
+        if (saving || submitError === "uncertain" || !form.name || !form.sku || !form.price) return;
+        setSubmitError(null);
         setSaving(true);
-        await api.createInventoryProduct(tenantId, { name: form.name, sku: form.sku, description: form.description, categoryId: form.categoryId || undefined, price: parseFloat(form.price), cost: parseFloat(form.cost) || 0, stock: parseInt(form.stock) || 0, unit: form.unit, requiresPrescription,
-            // El modal no mandaba moneda NUNCA, y del otro lado el default era
-            // COP: cada producto que un dueno cargaba a mano quedaba en pesos
-            // colombianos estuviera donde estuviera. Se manda la del negocio, y
-            // si no se sabe no se manda nada (el API escribe NULL).
-            currency: operatingCurrency || undefined });
+        try {
+            const result = await api.createInventoryProduct(tenantId, { name: form.name, sku: form.sku, description: form.description, categoryId: form.categoryId || undefined, price: parseFloat(form.price), cost: parseFloat(form.cost) || 0, stock: parseInt(form.stock) || 0, unit: form.unit, requiresPrescription,
+                // El modal no mandaba moneda NUNCA, y del otro lado el default era
+                // COP: cada producto que un dueno cargaba a mano quedaba en pesos
+                // colombianos estuviera donde estuviera. Se manda la del negocio, y
+                // si no se sabe no se manda nada (el API escribe NULL).
+                currency: operatingCurrency || undefined });
+            if (result.success !== true) {
+                setSubmitError(result.httpStatus && result.httpStatus >= 400 && result.httpStatus < 500 ? "rejected" : "uncertain");
+                return;
+            }
+        } catch {
+            setSubmitError("uncertain");
+            return;
+        } finally {
+            setSaving(false);
+        }
         onCreated();
     };
 
     return (
-        <div className="fixed inset-0 bg-black/60 z-[1000] flex items-center justify-center" onClick={onClose}>
-            <div onClick={e => e.stopPropagation()} className="bg-card rounded-[20px] border border-border p-7 w-[480px] max-h-[80vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/60 z-[1000] flex items-center justify-center p-4" onClick={() => { if (!saving) onClose(); }}>
+            <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="inventory-create-title" aria-busy={saving} onKeyDown={handleDialogKeyDown} onClick={e => e.stopPropagation()} className="bg-card rounded-[20px] border border-border p-5 sm:p-7 w-full max-w-[480px] max-h-[80vh] overflow-y-auto">
                 <div className="flex justify-between items-center mb-5">
-                    <h2 className="text-xl font-semibold m-0">{t("createModal.title")}</h2>
-                    <button onClick={onClose} className="bg-transparent border-none cursor-pointer text-muted-foreground"><X size={20} /></button>
+                    <h2 id="inventory-create-title" className="text-xl font-semibold m-0">{t("createModal.title")}</h2>
+                    <button aria-label={tc("close")} disabled={saving} onClick={onClose} className="bg-transparent border-none cursor-pointer text-muted-foreground"><X size={20} /></button>
                 </div>
                 <div className="flex flex-col gap-3.5">
                     {([
@@ -262,26 +301,26 @@ function CreateProductModal({ onClose, categories, tenantId, onCreated }: { onCl
                         { key: "description", label: t("createModal.description"), placeholder: t("createModal.descriptionPlaceholder") },
                     ] as const).map(f => (
                         <div key={f.key}>
-                            <label className="text-[13px] font-semibold block mb-1">{f.label}</label>
-                            <input value={(form as any)[f.key]} onChange={e => setForm(prev => ({ ...prev, [f.key]: e.target.value }))} placeholder={f.placeholder} className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-muted text-foreground text-sm outline-none box-border" />
+                            <label htmlFor={`inventory-create-${f.key}`} className="text-[13px] font-semibold block mb-1">{f.label}</label>
+                            <input id={`inventory-create-${f.key}`} value={(form as any)[f.key]} onChange={e => setForm(prev => ({ ...prev, [f.key]: e.target.value }))} placeholder={f.placeholder} className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-muted text-foreground text-sm outline-none box-border" />
                         </div>
                     ))}
                     <div className="grid grid-cols-2 gap-3">
                         {([{ key: "price", label: t("createModal.price"), ph: "120000" }, { key: "cost", label: t("createModal.cost"), ph: "45000" }] as const).map(f => (
                             <div key={f.key}>
-                                <label className="text-[13px] font-semibold block mb-1">{f.label}</label>
-                                <input type="number" value={(form as any)[f.key]} onChange={e => setForm(prev => ({ ...prev, [f.key]: e.target.value }))} placeholder={f.ph} className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-muted text-foreground text-sm outline-none box-border" />
+                                <label htmlFor={`inventory-create-${f.key}`} className="text-[13px] font-semibold block mb-1">{f.label}</label>
+                                <input id={`inventory-create-${f.key}`} type="number" value={(form as any)[f.key]} onChange={e => setForm(prev => ({ ...prev, [f.key]: e.target.value }))} placeholder={f.ph} className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-muted text-foreground text-sm outline-none box-border" />
                             </div>
                         ))}
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                         <div>
-                            <label className="text-[13px] font-semibold block mb-1">{t("createModal.initialStock")}</label>
-                            <input type="number" value={form.stock} onChange={e => setForm(prev => ({ ...prev, stock: e.target.value }))} placeholder="50" className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-muted text-foreground text-sm outline-none box-border" />
+                            <label htmlFor="inventory-create-stock" className="text-[13px] font-semibold block mb-1">{t("createModal.initialStock")}</label>
+                            <input id="inventory-create-stock" type="number" value={form.stock} onChange={e => setForm(prev => ({ ...prev, stock: e.target.value }))} placeholder="50" className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-muted text-foreground text-sm outline-none box-border" />
                         </div>
                         <div>
-                            <label className="text-[13px] font-semibold block mb-1">{t("createModal.unit")}</label>
-                            <select value={form.unit} onChange={e => setForm(prev => ({ ...prev, unit: e.target.value }))} className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-muted text-foreground text-sm outline-none cursor-pointer">
+                            <label htmlFor="inventory-create-unit" className="text-[13px] font-semibold block mb-1">{t("createModal.unit")}</label>
+                            <select id="inventory-create-unit" value={form.unit} onChange={e => setForm(prev => ({ ...prev, unit: e.target.value }))} className="w-full px-3.5 py-2.5 rounded-[10px] border border-border bg-muted text-foreground text-sm outline-none cursor-pointer">
                                 {["unit", "seat", "portion", "trip", "night", "hour", "kg", "litro"].map(u => <option key={u} value={u}>{t(`units.${u}`)}</option>)}
                             </select>
                         </div>
@@ -299,7 +338,8 @@ function CreateProductModal({ onClose, categories, tenantId, onCreated }: { onCl
                         </span>
                     </label>
                 </div>
-                <button onClick={handleSubmit} disabled={saving || !form.name || !form.sku || !form.price} className={cn("w-full mt-5 py-3 px-6 rounded-xl border-none bg-primary text-white font-semibold text-sm cursor-pointer", (saving || !form.name || !form.sku || !form.price) && "opacity-50")}>
+                {submitError && <p role="alert" className="mt-4 text-sm text-destructive">{t(submitError === "uncertain" ? "createModal.unconfirmedSave" : "createModal.saveError")}</p>}
+                <button onClick={handleSubmit} disabled={saving || submitError === "uncertain" || !form.name || !form.sku || !form.price} className={cn("w-full mt-5 py-3 px-6 rounded-xl border-none bg-primary text-white font-semibold text-sm cursor-pointer", (saving || submitError === "uncertain" || !form.name || !form.sku || !form.price) && "opacity-50")}>
                     {saving ? t("createModal.saving") : tc("create")}
                 </button>
             </div>
@@ -324,8 +364,8 @@ function StockAdjustModal({ product, onClose, tenantId, onAdjusted }: { product:
     const newStock = type === "in" ? product.stock + (parseInt(quantity) || 0) : type === "out" ? Math.max(0, product.stock - (parseInt(quantity) || 0)) : parseInt(quantity) || 0;
 
     return (
-        <div className="fixed inset-0 bg-black/60 z-[1000] flex items-center justify-center" onClick={onClose}>
-            <div onClick={e => e.stopPropagation()} className="bg-card rounded-[20px] border border-border p-7 w-[420px]">
+        <div className="fixed inset-0 bg-black/60 z-[1000] flex items-center justify-center p-4" onClick={onClose}>
+            <div onClick={e => e.stopPropagation()} className="bg-card rounded-[20px] border border-border p-5 sm:p-7 w-full max-w-[420px] max-h-[80vh] overflow-y-auto">
                 <div className="flex justify-between items-center mb-5">
                     <h2 className="text-xl font-semibold m-0">{t("adjustModal.title")}</h2>
                     <button onClick={onClose} className="bg-transparent border-none cursor-pointer text-muted-foreground"><X size={20} /></button>

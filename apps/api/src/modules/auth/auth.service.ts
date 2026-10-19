@@ -935,6 +935,7 @@ export class AuthService {
             // forma de gatear las acciones donde el correo importa de verdad.
             emailVerified: user.emailVerified,
             emailVerificationState: user.emailVerificationState,
+            onboardingCompleted: user.onboardingCompleted,
             schemaName: readyContext?.schemaName,
             // Carry the delegation through. Re-selecting the user from the DB
             // dropped these, so anything written while impersonating was
@@ -2157,6 +2158,7 @@ export class AuthService {
             await this.businessInfoService.upsertPrimary(existingTenantId, {
                 companyName: businessDraft.companyName || tenant.name,
                 industry: selection.industry,
+                country: businessDraft.country || undefined,
                 website: businessDraft.website || settings.website || undefined,
                 phone: businessDraft.phone || undefined,
                 email: businessDraft.email || tenant.billingEmail || undefined,
@@ -2243,6 +2245,10 @@ export class AuthService {
         }
         const { industry, subType } = verticalSelection;
         const companySize = company.orgSize || data.companySize;
+        // Keep the owner's declarations separate from timezone/billing fallbacks.
+        // Operating in one country does not imply paying from the same country.
+        const operatingCountry = company.country?.trim().toUpperCase() || undefined;
+        const explicitBillingCountry = data.billingCountry?.trim().toUpperCase() || undefined;
         // La zona del alta sale del PAÍS que el dueño acaba de elegir, no de un
         // literal. Sembrar Bogotá acá era declarar por él en el único momento
         // en que sí sabemos dónde opera — y ese valor después decide sus
@@ -2278,6 +2284,7 @@ export class AuthService {
         const businessInfoDraft = {
             companyName,
             industry,
+            country: operatingCountry,
             website: website || undefined,
             phone: phone || undefined,
             email: businessEmail || undefined,
@@ -2324,6 +2331,8 @@ export class AuthService {
                     slug,
                     industry,
                     schemaName,
+                    operatingCountry,
+                    billingCountry: explicitBillingCountry,
                     // El plan real lo fija createTrialSubscription más abajo, en esta
                     // misma request, a partir de lo que el usuario eligió. Sembrar
                     // 'starter' acá solo servía para que hubiera una ventana en la que

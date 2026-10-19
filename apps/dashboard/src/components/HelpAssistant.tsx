@@ -566,6 +566,7 @@ function TenantHelpAssistant() {
       {launcher && (mobileSlot ? createPortal(launcher, mobileSlot) : launcher)}
 
       <SheetContent
+        aria-modal="true"
         side="right"
         closeLabel={tCommon("close")}
         className="flex h-full w-full flex-col overflow-hidden border-l border-neutral-200/70 bg-white p-0 sm:max-w-md dark:border-neutral-800/70 dark:bg-neutral-950"

@@ -58,6 +58,7 @@ export default function ListingDetailPage() {
     const [images, setImages] = useState<string[]>([]);
     const [saving, setSaving] = useState(false);
     const [saved, setSaved] = useState(false);
+    const [validationError, setValidationError] = useState(false);
 
     async function load() {
         if (!activeTenantId) return;
@@ -99,6 +100,15 @@ export default function ListingDetailPage() {
 
     async function handleSave() {
         if (!activeTenantId || !listing) return;
+        const invalidInput = ["price", "bathrooms", "areaM2"]
+            .map(key => document.getElementById(`${formId}-${key}`) as HTMLInputElement | null)
+            .find(input => input && !input.checkValidity());
+        if (invalidInput) {
+            setValidationError(true);
+            invalidInput.reportValidity();
+            return;
+        }
+        setValidationError(false);
         setSaving(true);
         const res = await api.updateListing(activeTenantId, listing.id, form);
         if (res.success) {
@@ -148,7 +158,7 @@ export default function ListingDetailPage() {
             <div role="group" aria-label={t("priceSectionLabel")} className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
                 <div>
                     <label htmlFor={`${formId}-price`} className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("price")} ({form.currency})</label>
-                    <input id={`${formId}-price`} type="number" value={form.price} onChange={e => setForm({ ...form, price: parseFloat(e.target.value) || 0 })} className={inputCls} />
+                    <input id={`${formId}-price`} type="number" min={0} step="any" value={form.price} onChange={e => setForm({ ...form, price: parseFloat(e.target.value) || 0 })} className={inputCls} />
                 </div>
                 {form.transactionType === "rent" && (
                     <>
@@ -171,11 +181,11 @@ export default function ListingDetailPage() {
                 </div>
                 <div>
                     <label htmlFor={`${formId}-bathrooms`} className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("bathrooms")}</label>
-                    <input id={`${formId}-bathrooms`} type="number" step={0.5} value={form.bathrooms} onChange={e => setForm({ ...form, bathrooms: parseFloat(e.target.value) || 0 })} className={inputCls} />
+                    <input id={`${formId}-bathrooms`} type="number" min={0} step={0.5} value={form.bathrooms} onChange={e => setForm({ ...form, bathrooms: parseFloat(e.target.value) || 0 })} className={inputCls} />
                 </div>
                 <div>
                     <label htmlFor={`${formId}-areaM2`} className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("areaM2")}</label>
-                    <input id={`${formId}-areaM2`} type="number" value={form.areaM2} onChange={e => setForm({ ...form, areaM2: parseFloat(e.target.value) || 0 })} className={inputCls} />
+                    <input id={`${formId}-areaM2`} type="number" min={0} step="any" value={form.areaM2} onChange={e => setForm({ ...form, areaM2: parseFloat(e.target.value) || 0 })} className={inputCls} />
                 </div>
             </div>
 
@@ -263,6 +273,8 @@ export default function ListingDetailPage() {
                     {t("financingAvailable")}
                 </label>
             )}
+
+            {validationError && <p role="alert" className="mb-3 text-sm text-red-600">{t("invalidValues")}</p>}
 
             <button
                 onClick={handleSave}

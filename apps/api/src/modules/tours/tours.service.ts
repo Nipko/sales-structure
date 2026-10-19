@@ -21,6 +21,12 @@ import {
 } from '../../common/utils/payment-policy.util';
 import { enqueueOperationalNotice } from '../operational-notices/operational-notice-outbox';
 
+function assertTourPackageUuid(value: unknown): void {
+    if (typeof value !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) {
+        throw new BadRequestException('packageId must be a valid UUID');
+    }
+}
+
 /** A traveller count: a whole number >= 1, as a number or a numeric string. Anything else is "not given". */
 export function parsePartySize(value: unknown): number | null {
     const n = typeof value === 'number' ? value
@@ -85,6 +91,7 @@ export class ToursService {
     }
 
     async getPackage(schemaName: string, packageId: string): Promise<any | null> {
+        assertTourPackageUuid(packageId);
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `SELECT * FROM tour_packages WHERE id = $1::uuid`,
@@ -208,6 +215,11 @@ export class ToursService {
     // ── Inventory (per-departure capacity) ─────────────────────────
 
     async listInventory(schemaName: string, packageId: string, fromDate?: string): Promise<any[]> {
+        assertTourPackageUuid(packageId);
+        if (fromDate !== undefined && (typeof fromDate !== 'string'
+            || fromDate.startsWith('0000-') || departureDateProblem(fromDate) === 'invalid_departure_date')) {
+            throw new BadRequestException('fromDate must be a valid calendar date (YYYY-MM-DD)');
+        }
         const dateFilter = fromDate ? ` AND departure_date >= $2::date` : '';
         const params: any[] = [packageId];
         if (fromDate) params.push(fromDate);
@@ -341,6 +353,7 @@ export class ToursService {
     // ── Bookings ───────────────────────────────────────────────────
 
     async listBookings(schemaName: string, packageId?: string): Promise<any[]> {
+        if (packageId !== undefined) assertTourPackageUuid(packageId);
         const where = packageId ? `WHERE b.package_id = $1::uuid` : '';
         const params = packageId ? [packageId] : [];
         return this.prisma.executeInTenantSchema<any[]>(

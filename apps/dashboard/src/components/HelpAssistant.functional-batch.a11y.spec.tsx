@@ -98,6 +98,30 @@ describe.each(["es", "en", "pt", "fr"])("Assist real component async functional 
         }
     }
 
+    it("H0 exposes the real modal semantics, hides background and closes without chatting", async () => {
+        const background = document.createElement("button");
+        background.textContent = "QA synthetic background";
+        document.body.appendChild(background);
+        try {
+            await mounted(async messages => {
+                const panel = dialog();
+                expect(panel.getAttribute("aria-modal")).toBe("true");
+                const titleIds = (panel.getAttribute("aria-labelledby") || "").split(/\s+/).filter(Boolean);
+                expect(titleIds.map(id => document.getElementById(id)?.textContent || "").join(" ")).toContain(messages.helpAssistant.drawerTitle);
+                expect(background.getAttribute("aria-hidden")).toBe("true");
+                const close = [...panel.querySelectorAll<HTMLButtonElement>("button")]
+                    .find(button => button.querySelector(".sr-only")?.textContent === messages.common.close);
+                expect(close).toBeDefined();
+                await act(async () => { close!.click(); });
+                await settle();
+                expect(document.querySelector('[role="dialog"]')).toBeNull();
+                expect(api.copilotChat).not.toHaveBeenCalled();
+            });
+        } finally {
+            background.remove();
+        }
+    });
+
     it("H1 makes chat failure detectable, releases pending controls and permits only a deliberate retry", async () => {
         const first = deferred<any>();
         api.copilotChat.mockReturnValueOnce(first.promise)

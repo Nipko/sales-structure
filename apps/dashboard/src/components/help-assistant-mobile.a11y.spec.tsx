@@ -101,15 +101,16 @@ describe("Mobile Assist in reserved header space", () => {
             expect(launcher(screen)?.parentElement?.id).toBe("parallly-mobile-assistant-slot");
         } finally { screen.unmount(); }
     });
-    it("retains the desktop floating entry", async () => {
+    it("uses reserved header space on desktop too", async () => {
         mobile = false;
         const screen = await renderScreen(view());
-        try { expect(launcher(screen)?.classList.contains("fixed")).toBe(true); }
+        try { expect(launcher(screen)?.classList.contains("fixed")).toBe(false); expect(launcher(screen)?.parentElement?.id).toBe("parallly-mobile-assistant-slot"); }
         finally { screen.unmount(); }
     });
     it.each([
         [844, 390, true], [1024, 390, true], [1280, 500, true],
-        [844, 501, false], [1440, 900, false], [390, 844, true],
+        [844, 501, true], [1440, 900, true], [390, 844, true],
+        [1024, 600, true], [1280, 720, true], [1920, 1080, true],
     ])("keeps the entry outside fields at %sx%s (header=%s)", async (width, height, inHeader) => {
         window.matchMedia = ((query: string) => ({
             media: query,
@@ -143,13 +144,14 @@ describe("Mobile Assist in reserved header space", () => {
         try { expect(launcher(screen)).toBeNull(); }
         finally { screen.unmount(); }
     });
-    it("moves the entry on resize without losing the open drawer", async () => {
+    it("retains the header entry on resize without losing the open drawer", async () => {
         const screen = await renderScreen(view());
         try {
             await interact(() => (launcher(screen) as HTMLButtonElement).click());
             mobile = false;
-            await interact(() => notify?.());
-            expect(launcher(screen)?.classList.contains("fixed")).toBe(true);
+            await interact(() => { notify?.(); window.dispatchEvent(new Event("resize")); });
+            expect(launcher(screen)?.classList.contains("fixed")).toBe(false);
+            expect(launcher(screen)?.parentElement?.id).toBe("parallly-mobile-assistant-slot");
             expect(sheet()?.textContent).toContain(ES.helpAssistant.drawerTitle);
         } finally { screen.unmount(); }
     });

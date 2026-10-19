@@ -102,16 +102,15 @@ export function InstallPrompt() {
     return (
         <div
             style={{
-                position: "fixed",
-                bottom: 20,
-                left: "50%",
-                transform: "translateX(-50%)",
-                zIndex: 9999,
+                width: "100%",
+                boxSizing: "border-box",
+                margin: "20px auto 0",
                 background: "#1a1a2e",
                 border: "1px solid #2a2a45",
                 borderRadius: 12,
                 padding: "12px 20px",
                 display: "flex",
+                flexWrap: "wrap",
                 alignItems: "center",
                 gap: 12,
                 boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
@@ -119,7 +118,7 @@ export function InstallPrompt() {
             }}
         >
             <Download size={20} aria-hidden="true" style={{ color: "#6c5ce7", flexShrink: 0 }} />
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: "1 1 120px", minWidth: 0 }}>
                 <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "#e8e8f0" }}>
                     {t("installTitle")}
                 </p>
@@ -141,6 +140,7 @@ export function InstallPrompt() {
                     cursor: "pointer",
                     whiteSpace: "nowrap",
                     letterSpacing: "0.02em",
+                    flexShrink: 0,
                 }}
             >
                 {t("install")}
@@ -149,7 +149,7 @@ export function InstallPrompt() {
                 type="button"
                 onClick={handleDismiss}
                 aria-label={t("dismiss")}
-                style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}
+                style={{ background: "none", border: "none", cursor: "pointer", padding: 4, flexShrink: 0 }}
             >
                 <X size={16} aria-hidden="true" style={{ color: "#9898b0" }} />
             </button>

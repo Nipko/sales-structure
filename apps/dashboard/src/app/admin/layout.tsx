@@ -217,7 +217,7 @@ export default function AdminLayout({
           </Suspense>
           </div>
           <div className="flex-1 flex overflow-hidden">
-            <main id="main-content" ref={mainRef} tabIndex={-1} className="flex-1 overflow-auto p-4 md:p-6"><AgentToolModuleNotice />{children}</main>
+            <main id="main-content" ref={mainRef} tabIndex={-1} className="flex-1 overflow-auto p-4 md:p-6"><AgentToolModuleNotice />{children}<InstallPrompt /></main>
           </div>
         </div>
       </div>
@@ -241,7 +241,6 @@ export default function AdminLayout({
           </button>
         </div>
       )}
-      <InstallPrompt />
       <OfflineIndicator />
       <NavigationCommandPalette />
       <HelpAssistant />

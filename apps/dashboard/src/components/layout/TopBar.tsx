@@ -499,7 +499,7 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
       {/* Timezone indicator */}
       <TimezoneIndicator />
 
-      <div id={HELP_ASSISTANT_MOBILE_SLOT_ID} className="shrink-0 empty:hidden md:hidden" />
+      <div id={HELP_ASSISTANT_MOBILE_SLOT_ID} className="shrink-0 empty:hidden" />
 
       {/* Notification bell */}
       <div ref={notifRef} className="relative">

@@ -107,6 +107,29 @@ describe("Mobile Assist in reserved header space", () => {
         try { expect(launcher(screen)?.classList.contains("fixed")).toBe(true); }
         finally { screen.unmount(); }
     });
+    it.each([
+        [844, 390, true], [1024, 390, true], [1280, 500, true],
+        [844, 501, false], [1440, 900, false], [390, 844, true],
+    ])("keeps the entry outside fields at %sx%s (header=%s)", async (width, height, inHeader) => {
+        window.matchMedia = ((query: string) => ({
+            media: query,
+            matches: query.split(",").some((part) => {
+                const limit = part.match(/max-(width|height):\s*(\d+)px/);
+                return limit ? (limit[1] === "width" ? width : height) <= Number(limit[2]) : false;
+            }),
+            addEventListener: () => {}, removeEventListener: () => {},
+        })) as unknown as typeof window.matchMedia;
+        const screen = await renderScreen(view());
+        try {
+            const button = launcher(screen)!;
+            expect(button.parentElement?.id === "parallly-mobile-assistant-slot").toBe(inHeader);
+            expect(button.classList.contains("fixed")).toBe(!inHeader);
+            await interact(() => (button as HTMLButtonElement).click());
+            expect(sheet()?.getAttribute("aria-modal")).toBe("true");
+            expect(sheet()?.textContent).toContain(ES.helpAssistant.drawerTitle);
+            expect(api.copilotChat).not.toHaveBeenCalled();
+        } finally { screen.unmount(); }
+    });
     it("keeps the existing entry if an embedding has no header slot", async () => {
         const screen = await renderScreen(<HelpAssistant />);
         try { expect(launcher(screen)?.classList.contains("fixed")).toBe(true); }

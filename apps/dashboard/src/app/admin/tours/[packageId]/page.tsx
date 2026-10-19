@@ -344,7 +344,7 @@ function InfoTab({ pkg, tenantId, onSaved, t, tc }: {
                         placeholder={t("includesPlaceholder")}
                         className={inputCls}
                     />
-                    <button onClick={addIncludesItem} type="button" className="px-3 rounded-lg border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800">
+                    <button onClick={addIncludesItem} type="button" aria-label={t("addIncludedItem")} className="px-3 rounded-lg border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800">
                         <Plus size={16} />
                     </button>
                 </div>
@@ -371,7 +371,7 @@ function InfoTab({ pkg, tenantId, onSaved, t, tc }: {
                         placeholder={t("excludesPlaceholder")}
                         className={inputCls}
                     />
-                    <button onClick={addExcludesItem} type="button" className="px-3 rounded-lg border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800">
+                    <button onClick={addExcludesItem} type="button" aria-label={t("addExcludedItem")} className="px-3 rounded-lg border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800">
                         <Plus size={16} />
                     </button>
                 </div>
@@ -443,6 +443,8 @@ function InventoryTab({ tenantId, packageId, pkg, t, tc }: {
     tc: any;
 }) {
     const creationId = useId();
+    const creationRef = useRef<HTMLDivElement>(null);
+    const [validationError, setValidationError] = useState(false);
     const [rows, setRows] = useState<InventoryRow[]>([]);
     const [loading, setLoading] = useState(true);
     const [showForm, setShowForm] = useState(false);
@@ -468,6 +470,14 @@ function InventoryTab({ tenantId, packageId, pkg, t, tc }: {
 
     async function handleAdd() {
         if (!form.departureDate || form.totalSeats < 1) return;
+        const invalid = [...(creationRef.current?.querySelectorAll<HTMLInputElement>("input") || [])]
+            .find(control => !control.checkValidity());
+        if (invalid) {
+            setValidationError(true);
+            invalid.reportValidity();
+            return;
+        }
+        setValidationError(false);
         const res = await api.createTourInventory(tenantId, packageId, {
             departureDate: form.departureDate,
             departureTime: form.departureTime || undefined,
@@ -509,7 +519,7 @@ function InventoryTab({ tenantId, packageId, pkg, t, tc }: {
             </div>
 
             {showForm && (
-                <div role="region" aria-label={t("creationFormLabel")} className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4 space-y-3">
+                <div ref={creationRef} role="region" aria-label={t("creationFormLabel")} className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4 space-y-3">
                     <div className="grid grid-cols-2 gap-3">
                         <div>
                             <label htmlFor={`${creationId}-departureDate`} className="block text-xs font-medium text-neutral-500 mb-1">{t("departureDate")} *</label>
@@ -544,7 +554,7 @@ function InventoryTab({ tenantId, packageId, pkg, t, tc }: {
                         </div>
                         <div>
                             <label htmlFor={`${creationId}-priceOverride`} className="block text-xs font-medium text-neutral-500 mb-1">{t("priceOverride")} ({pkg.currency})</label>
-                            <input id={`${creationId}-priceOverride`}
+                            <input id={`${creationId}-priceOverride`} step="any"
                                 type="number"
                                 min={0}
                                 placeholder={String(pkg.price)}
@@ -563,6 +573,7 @@ function InventoryTab({ tenantId, packageId, pkg, t, tc }: {
                             className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm"
                         />
                     </div>
+                    {validationError && <p role="alert" className="text-xs text-red-500">{t("inventoryInvalidValues")}</p>}
                     <div className="flex justify-end gap-2">
                         <button onClick={() => setShowForm(false)} className="px-3 py-1.5 rounded-lg text-xs text-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800">
                             {tc("cancel")}

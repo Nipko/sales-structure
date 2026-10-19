@@ -10275,6 +10275,7 @@
     }
   },
   "tours": {
+    "inventoryInvalidValues": "Revise os valores da saída antes de salvar.",
     "creationFormLabel": "Nova saída agendada",
     "detailsFormLabel": "Informações do passeio",
     "invalidValues": "Revise os valores do pacote antes de salvar.",
@@ -10305,6 +10306,8 @@
     "childDiscountPct": "% desc. crianças",
     "languagesOffered": "Idiomas oferecidos",
     "nameRequired": "O nome é obrigatório",
+    "addIncludedItem": "Adicionar item incluído",
+    "addExcludedItem": "Adicionar item excluído",
     "includes": "Inclui",
     "excludes": "Não inclui",
     "includesPlaceholder": "Ex: traslado, almoço, guia",
@@ -10339,6 +10342,7 @@
     }
   },
   "listings": {
+    "invalidValues": "Revise os valores do imóvel antes de salvar.",
     "creationFormLabel": "Novo imóvel",
     "priceSectionLabel": "Preço e condições",
     "detailsFormLabel": "Informações do imóvel",

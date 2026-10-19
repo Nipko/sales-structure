@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useId } from "react";
+import { useState, useEffect, useId, useRef } from "react";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { resolveMediaUrl } from "@/lib/media-url";
@@ -247,6 +247,7 @@ function CreateListingModal({ tenantId, onClose, onCreated, t, tc }: {
     tc: any;
 }) {
     const creationId = useId();
+    const creationRef = useRef<HTMLDivElement>(null);
     const operatingCurrency = useOperatingCurrency();
     const [form, setForm] = useState({
         name: "",
@@ -288,6 +289,13 @@ function CreateListingModal({ tenantId, onClose, onCreated, t, tc }: {
             setError(t("currencyRequired"));
             return;
         }
+        const invalid = [...(creationRef.current?.querySelectorAll<HTMLInputElement | HTMLSelectElement>("input, select") || [])]
+            .find(control => !control.checkValidity());
+        if (invalid) {
+            setError(t("invalidValues"));
+            invalid.reportValidity();
+            return;
+        }
         setSaving(true);
         setError(null);
         try {
@@ -308,11 +316,11 @@ function CreateListingModal({ tenantId, onClose, onCreated, t, tc }: {
             <div className="bg-white dark:bg-neutral-900 rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-xl" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-100 dark:border-neutral-800">
                     <h3 className="text-base font-semibold">{t("createListing")}</h3>
-                    <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800">
+                    <button type="button" onClick={onClose} aria-label={tc("close")} className="p-1.5 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800">
                         <X size={18} />
                     </button>
                 </div>
-                <div role="region" aria-label={t("creationFormLabel")} className="p-5 space-y-4">
+                <div ref={creationRef} role="region" aria-label={t("creationFormLabel")} className="p-5 space-y-4">
                     <div className="grid grid-cols-2 gap-2">
                         <button
                             type="button"
@@ -351,7 +359,7 @@ function CreateListingModal({ tenantId, onClose, onCreated, t, tc }: {
                         </div>
                         <div>
                             <label htmlFor={`${creationId}-price`} className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("price")}</label>
-                            <input id={`${creationId}-price`}
+                            <input id={`${creationId}-price`} step="any"
                                 type="number"
                                 min={0}
                                 value={form.price}
@@ -372,7 +380,7 @@ function CreateListingModal({ tenantId, onClose, onCreated, t, tc }: {
                         </div>
                         <div>
                             <label htmlFor={`${creationId}-areaM2`} className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("areaM2")}</label>
-                            <input id={`${creationId}-areaM2`} type="number" min={0} value={form.areaM2} onChange={e => setForm({ ...form, areaM2: parseFloat(e.target.value) || 0 })} className={inputCls} />
+                            <input id={`${creationId}-areaM2`} step="any" type="number" min={0} value={form.areaM2} onChange={e => setForm({ ...form, areaM2: parseFloat(e.target.value) || 0 })} className={inputCls} />
                         </div>
                     </div>
 
@@ -406,7 +414,7 @@ function CreateListingModal({ tenantId, onClose, onCreated, t, tc }: {
                         />
                     </div>
 
-                    {error && <p className="text-xs text-red-500">{error}</p>}
+                    {error && <p role="alert" className="text-xs text-red-500">{error}</p>}
                 </div>
                 <div className="flex justify-end gap-2 px-5 py-4 border-t border-neutral-100 dark:border-neutral-800">
                     <button onClick={onClose} disabled={saving} className="px-3 py-1.5 rounded-lg text-sm text-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800">

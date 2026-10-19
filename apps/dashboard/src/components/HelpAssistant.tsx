@@ -176,17 +176,12 @@ function TenantHelpAssistant() {
   } = useRole();
   const canRestartProductTour = canEditAgent && canManageChannels;
 
-  // Reserve header space on narrow or short screens, including phone landscape,
-  // so Assist cannot cover form controls at the bottom of the viewport.
+  // Use the reserved header space at every size so Assist cannot cover form
+  // controls at the bottom of the viewport, including desktop forms.
   // Keep the floating fallback for embeddings that do not render the admin header.
   const [mobileSlot, setMobileSlot] = useState<HTMLElement | null>(null);
   useEffect(() => {
-    const media = window.matchMedia("(max-width: 767px), (max-height: 500px)");
-    const update = () => setMobileSlot(media.matches
-      ? document.getElementById(HELP_ASSISTANT_MOBILE_SLOT_ID) : null);
-    update();
-    media.addEventListener("change", update);
-    return () => media.removeEventListener("change", update);
+    setMobileSlot(document.getElementById(HELP_ASSISTANT_MOBILE_SLOT_ID));
   }, []);
 
   const [open, setOpen] = useState(false);

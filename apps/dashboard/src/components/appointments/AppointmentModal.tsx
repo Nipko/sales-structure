@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
@@ -56,6 +56,7 @@ export default function AppointmentModal({
   contactSearch, onContactSearchChange, contactsHasMore, onLoadMoreContacts,
   onRetryContacts, editingAppointment, saving, onSave, onSaveRecurring, onClose,
 }: AppointmentModalProps) {
+  const fieldId = useId();
   const t = useTranslations("appointments");
   const tc = useTranslations("common");
   const [recurrence, setRecurrence] = useState<RecurrenceConfig>({
@@ -130,10 +131,11 @@ export default function AppointmentModal({
           {/* Service selector */}
           {services.length > 0 && (
             <div>
-              <label className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
+              <label htmlFor={`${fieldId}-service`} className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
                 {t('service')}
               </label>
               <select
+                id={`${fieldId}-service`}
                 value={services.find((s) => s.name === form.serviceName)?.id || ""}
                 onChange={(e) => {
                   const selected = services.find((s) => s.id === e.target.value);
@@ -165,10 +167,11 @@ export default function AppointmentModal({
 
           {/* Service name (manual) */}
           <div>
-            <label className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
+            <label htmlFor={`${fieldId}-service-name`} className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
               {t('serviceName')}
             </label>
             <input
+              id={`${fieldId}-service-name`}
               type="text"
               placeholder={t('serviceNamePlaceholder')}
               value={form.serviceName}
@@ -179,10 +182,11 @@ export default function AppointmentModal({
 
           {/* Date */}
           <div>
-            <label className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
+            <label htmlFor={`${fieldId}-date`} className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
               {t('dateRequired')}
             </label>
             <input
+              id={`${fieldId}-date`}
               type="date"
               value={form.date}
               onChange={(e) => onChange({ ...form, date: e.target.value })}
@@ -193,10 +197,11 @@ export default function AppointmentModal({
           {/* Time row */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
+              <label htmlFor={`${fieldId}-start-time`} className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
                 {t('startTimeRequired')}
               </label>
               <input
+                id={`${fieldId}-start-time`}
                 type="time"
                 value={form.startTime}
                 onChange={(e) => onChange({ ...form, startTime: e.target.value })}
@@ -204,10 +209,11 @@ export default function AppointmentModal({
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
+              <label htmlFor={`${fieldId}-end-time`} className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
                 {t('endTimeRequired')}
               </label>
               <input
+                id={`${fieldId}-end-time`}
                 type="time"
                 value={form.endTime}
                 onChange={(e) => onChange({ ...form, endTime: e.target.value })}
@@ -218,11 +224,12 @@ export default function AppointmentModal({
 
           {/* Location */}
           <div>
-            <label className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
+            <label htmlFor={`${fieldId}-location`} className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
               <MapPin size={14} className="inline mr-1.5 -mt-0.5" />
               {t('location')}
             </label>
             <input
+              id={`${fieldId}-location`}
               type="text"
               placeholder={t('locationPlaceholder')}
               value={form.location}
@@ -233,11 +240,12 @@ export default function AppointmentModal({
 
           {/* Notes */}
           <div>
-            <label className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
+            <label htmlFor={`${fieldId}-notes`} className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
               <FileText size={14} className="inline mr-1.5 -mt-0.5" />
               {t('notes')}
             </label>
             <textarea
+              id={`${fieldId}-notes`}
               rows={3}
               placeholder={t('additionalNotes')}
               value={form.notes}
@@ -262,7 +270,7 @@ export default function AppointmentModal({
 
           {/* Contact */}
           <div>
-            <label className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
+            <label htmlFor={`${fieldId}-contact`} className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
               {t('contact')}{!editingAppointment ? " *" : ""}
             </label>
             <input
@@ -274,6 +282,7 @@ export default function AppointmentModal({
               className="mb-2 w-full px-3 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
             />
             <select
+              id={`${fieldId}-contact`}
               value={form.contactId}
               onChange={(e) => onChange({ ...form, contactId: e.target.value })}
               disabled={contactsLoading && contacts.length === 0}
@@ -359,6 +368,7 @@ export default function AppointmentModal({
               {recurrence.enabled && (
                 <div className="mt-3 flex gap-3 flex-wrap">
                   <select
+                    aria-label={t('recurrenceFrequencyLabel')}
                     value={recurrence.frequency}
                     onChange={e => setRecurrence({ ...recurrence, frequency: e.target.value as any })}
                     className="px-3 py-2 rounded-lg bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 text-sm text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer"
@@ -371,6 +381,7 @@ export default function AppointmentModal({
                   <div className="flex items-center gap-2">
                     <input
                       type="number" min={2} max={52}
+                      aria-label={t('recurrenceCountLabel')}
                       value={recurrence.count}
                       onChange={e => setRecurrence({ ...recurrence, count: Math.min(52, Math.max(2, Number(e.target.value))) })}
                       className="w-16 px-3 py-2 rounded-lg bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 text-sm text-center text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"

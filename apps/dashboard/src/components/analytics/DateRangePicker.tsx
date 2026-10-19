@@ -63,6 +63,7 @@ export default function DateRangePicker({ start, end, onChange }: DateRangePicke
                 <div className="flex items-center gap-2">
                     <input
                         type="date"
+                        aria-label={t("rangeStart")}
                         value={start}
                         onChange={e => onChange(e.target.value, end)}
                         className="px-2.5 py-1.5 rounded-lg text-[13px] border border-neutral-200 dark:border-white/10 bg-white dark:bg-white/[0.04] text-foreground outline-none"
@@ -70,6 +71,7 @@ export default function DateRangePicker({ start, end, onChange }: DateRangePicke
                     <span className="text-muted-foreground text-[13px]">—</span>
                     <input
                         type="date"
+                        aria-label={t("rangeEnd")}
                         value={end}
                         onChange={e => onChange(start, e.target.value)}
                         className="px-2.5 py-1.5 rounded-lg text-[13px] border border-neutral-200 dark:border-white/10 bg-white dark:bg-white/[0.04] text-foreground outline-none"

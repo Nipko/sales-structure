@@ -27,7 +27,8 @@ describe('AuthService onboarding provisioning retry', () => {
             onboardingCompletedAt: null,
             billingEmail: null,
             billingCountry: null,
-            settings: { subType: 'seguros', chatReasons: ['sales'], timezone: 'America/Bogota' },
+            settings: { subType: 'seguros', chatReasons: ['sales'], timezone: 'America/Bogota',
+                businessInfoDraft: { country: 'CO' } },
         };
         const prisma: any = {
             user: {
@@ -138,6 +139,8 @@ describe('AuthService onboarding provisioning retry', () => {
             tenantId, 'seguros', 'broker', 'es', expect.objectContaining({ assertLifecycleOwned: expect.any(Function) }),
         );
         expect(businessInfo.upsertPrimary).toHaveBeenCalledTimes(3);
+        expect(businessInfo.upsertPrimary).toHaveBeenLastCalledWith(tenantId,
+            expect.objectContaining({ country: 'CO' }));
         expect(billing.createTrialSubscription).toHaveBeenCalledTimes(2);
         expect(readinessTx.user.update).toHaveBeenCalledWith({
             where: { id: userId },
@@ -279,7 +282,12 @@ describe('AuthService onboarding provisioning retry', () => {
         expect(prisma.$transaction).toHaveBeenCalledTimes(1);
         expect(tx.tenant.create).toHaveBeenCalledTimes(1);
         expect(tx.tenant.create).toHaveBeenCalledWith(expect.objectContaining({
-            data: expect.objectContaining({ signupSource: 'google' }),
+            data: expect.objectContaining({
+                signupSource: 'google', operatingCountry: 'CO', billingCountry: 'MX',
+                settings: expect.objectContaining({
+                    businessInfoDraft: expect.objectContaining({ country: 'CO' }),
+                }),
+            }),
         }));
         expect(tx.user.update).toHaveBeenCalledWith(expect.objectContaining({
             data: expect.objectContaining({

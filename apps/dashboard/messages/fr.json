@@ -1377,6 +1377,8 @@
     }
   },
   "contacts": {
+    "viewContactNamed": "Voir {noun} : {name}",
+    "closeFilters": "Fermer les filtres",
     "selectAllVisible": "Sélectionner les contacts visibles",
     "selectContactForBulk": "Sélectionner le contact : {name}",
     "loadError": "Impossible de charger les contacts. Réessayez ; cela ne signifie pas qu’il n’y a aucun contact.",
@@ -3000,6 +3002,8 @@
     "imageUnavailable": "Pas d’image"
   },
   "appointments": {
+    "recurrenceFrequencyLabel": "Fréquence de répétition",
+    "recurrenceCountLabel": "Nombre de rendez-vous",
     "title": "Rendez-vous et planification",
     "subtitle": "Gérez les rendez-vous, services et disponibilité de votre équipe",
     "calendar": "Calendrier",
@@ -3034,6 +3038,7 @@
     "buffer": "Temps tampon",
     "price": "Prix",
     "color": "Couleur",
+    "colorOption": "Choisir la couleur {color}",
     "minutes": "minutes",
     "dateTime": "Date / Heure",
     "statusLabel": "Statut",
@@ -3540,6 +3545,8 @@
       "winLoss": "Gagnés vs Perdus",
       "conversionFunnel": "Entonnoir de conversion",
       "pipelineVelocity": "Vélocité du pipeline",
+      "stageRegion": "Graphique de répartition par étape du CRM",
+      "velocityRegion": "Graphique du temps par étape du CRM",
       "agentLeaderboard": "Classement des agents"
     },
     "won": "Gagnés",
@@ -5210,6 +5217,9 @@
     "chunks": "Fragments",
     "subtitle": "Base de connaissances, FAQ et documents pour IA",
     "faqs": {
+      "closeFaqEditor": "Fermer l’éditeur de FAQ",
+      "editFaqQuestion": "Modifier la FAQ : {question}",
+      "deleteFaqQuestion": "Supprimer la FAQ : {question}",
       "title": "FAQ",
       "subtitle": "Paires question-réponse que l'agent utilise pour réponses canoniques",
       "loading": "Chargement...",
@@ -5737,6 +5747,7 @@
     }
   },
   "inventory": {
+    "productsRegion": "Tableau des produits. Faites défiler horizontalement pour voir toutes les colonnes.",
     "prescription": {
       "badge": "Ordonnance",
       "label": "Vente sur ordonnance",
@@ -5790,6 +5801,8 @@
       "litro": "Litre"
     },
     "createModal": {
+      "saveError": "Le produit n’a pas été enregistré. Vérifiez les données avant de réessayer.",
+      "unconfirmedSave": "Nous n’avons pas pu confirmer l’enregistrement du produit. Vérifiez l’inventaire avant de le soumettre à nouveau.",
       "title": "Nouveau produit",
       "productName": "Nom du produit",
       "productNamePlaceholder": "Tour Rafting Rio Fonce",
@@ -6758,6 +6771,8 @@
     "30d": "30 jours",
     "90d": "90 jours",
     "custom": "Personnalisé",
+    "rangeStart": "Date de début",
+    "rangeEnd": "Date de fin",
     "conversations": "Conversations",
     "messages": "Messages",
     "aiResolutionRate": "Résolution IA",
@@ -8438,6 +8453,7 @@
     "title": "Proprietes",
     "subtitle": "Gerez vos annonces et disponibilites",
     "addProperty": "Ajouter une propriete",
+    "selectCurrency": "Sélectionnez une devise",
     "noProperties": "Vous n'avez pas de proprietes. Ajoutez votre premiere annonce.",
     "name": "Nom",
     "address": "Adresse",
@@ -10259,6 +10275,9 @@
     }
   },
   "tours": {
+    "creationFormLabel": "Nouveau départ programmé",
+    "detailsFormLabel": "Informations du voyage",
+    "invalidValues": "Vérifiez les valeurs du forfait avant d’enregistrer.",
     "info": "Informations",
     "title": "Tours et Forfaits",
     "subtitle": "Gérez vos expériences et forfaits de voyage",
@@ -10320,6 +10339,12 @@
     }
   },
   "listings": {
+    "creationFormLabel": "Nouveau bien immobilier",
+    "priceSectionLabel": "Prix et conditions",
+    "detailsFormLabel": "Informations du bien",
+    "currency": "Devise",
+    "selectCurrency": "Sélectionnez la devise",
+    "currencyRequired": "Sélectionnez la devise du prix avant de créer le bien.",
     "photoColumn": "Photos (URL)",
     "propertyKinds": {
       "apartment": "Appartement",
@@ -11283,6 +11308,7 @@
     "availableRange": "Ces dates sont libres.",
     "unavailableRange": "Ces dates sont déjà prises ou le logement ne les accepte pas.",
     "createFailed": "Impossible de créer la réservation. Vérifiez les dates et réessayez.",
+    "tableRegion": "Tableau des réservations. Faites défiler horizontalement pour voir toutes les colonnes.",
     "cancelStay": "Annuler la réservation",
     "cancelConfirm": "La réservation de {guest} au logement {property} sera annulée. Les dates redeviennent libres.",
     "cancelFailed": "Impossible d’annuler la réservation.",
@@ -11632,6 +11658,8 @@
     "categories": "Catégories",
     "allCategories": "Toutes",
     "newCategoryPlaceholder": "Nouvelle catégorie...",
+    "saveRejected": "Le plat n’a pas pu être enregistré. Vérifiez les informations et réessayez.",
+    "saveUnconfirmed": "Nous n’avons pas pu confirmer si le plat a été enregistré. Vérifiez le menu avant de le soumettre à nouveau.",
     "deleteCategory": "Supprimer la catégorie",
     "deleteCategoryConfirm": "Supprimer cette catégorie ? Les plats deviennent non catégorisés.",
     "allItems": "Tous les plats",

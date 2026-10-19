@@ -219,7 +219,7 @@ export default function StaysPage() {
                 </div>
             ) : (
                 <div className="rounded-lg border border-border overflow-hidden">
-                    <div className="overflow-x-auto">
+                    <div role="region" aria-label={t("tableRegion")} tabIndex={0} className="overflow-x-auto focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-[-2px]">
                         <table className="w-full text-sm">
                             <thead className="bg-muted/50 text-xs text-muted-foreground">
                                 <tr>
@@ -229,7 +229,7 @@ export default function StaysPage() {
                                     <th className="text-left font-medium px-4 py-2">{t("col.status")}</th>
                                     <th className="text-left font-medium px-4 py-2">{t("col.origin")}</th>
                                     <th className="text-right font-medium px-4 py-2">{t("col.total")}</th>
-                                    <th className="w-10 px-4 py-2"><span className="sr-only">{t("cancelStay")}</span></th>
+                                    <th className="relative w-10 px-4 py-2"><span className="sr-only">{t("cancelStay")}</span></th>
                                 </tr>
                             </thead>
                             <tbody>

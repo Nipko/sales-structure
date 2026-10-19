@@ -25,6 +25,26 @@ const nfcLabels = (value: any): any => {
     return Array.isArray(list) ? list.map(label => (typeof label === 'string' ? label.normalize('NFC') : label)) : list;
 };
 
+/** Reject invalid catalogue values before a create or partial update reaches SQL. */
+function assertMenuItemInput(data: any, partial: boolean): void {
+    if (!data || typeof data !== 'object' || Array.isArray(data)) {
+        throw new BadRequestException('Invalid menu item payload');
+    }
+    if ((!partial || data.name !== undefined)
+        && (typeof data.name !== 'string' || !data.name.trim() || data.name.length > 255)) {
+        throw new BadRequestException('name must contain 1 to 255 characters');
+    }
+    if ((!partial || data.price !== undefined)
+        && (typeof data.price !== 'number' || !Number.isFinite(data.price) || data.price < 0)) {
+        throw new BadRequestException('price must be a finite number >= 0');
+    }
+    for (const field of ['isAvailable', 'isActive']) {
+        if (data[field] !== undefined && typeof data[field] !== 'boolean') {
+            throw new BadRequestException(`${field} must be a boolean`);
+        }
+    }
+}
+
 /** A model may send a single string where a list is expected. */
 export function toLabelList(value: unknown): string[] {
     if (typeof value === 'string') return value.trim() ? [value] : [];
@@ -200,8 +220,7 @@ export class RestaurantsService {
         calories?: number;
         sortOrder?: number;
     }, tenantId?: string): Promise<any> {
-        if (!data.name) throw new BadRequestException('name is required');
-        if (data.price === undefined || data.price < 0) throw new BadRequestException('price must be >= 0');
+        assertMenuItemInput(data, false);
         const currency = await this.writeCurrency(data.currency, tenantId);
         const prepTimeMinutes = optionalPositiveIntegerUnit(data.prepTimeMinutes, 'prepTimeMinutes');
         const rows = await this.prisma.executeInTenantSchema<any[]>(
@@ -230,6 +249,7 @@ export class RestaurantsService {
     }
 
     async updateItem(schemaName: string, id: string, data: any, tenantId?: string): Promise<any> {
+        assertMenuItemInput(data, true);
         if (data.prepTimeMinutes !== undefined && data.prepTimeMinutes !== null) {
             data = {
                 ...data,

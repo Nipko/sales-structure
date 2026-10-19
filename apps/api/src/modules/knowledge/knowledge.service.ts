@@ -1782,8 +1782,7 @@ export class KnowledgeService {
     // ─── Legacy Resource Methods (backward compat) ───────────────────────────
 
     async getResources(schemaName: string, status?: string) {
-        await this.prisma.executeInTenantSchema(schemaName,
-            `UPDATE knowledge_resources SET status = 'approved' WHERE status = 'draft'`);
+        // Listing must preserve review state; it must never approve draft resources.
         if (status) {
             return this.prisma.executeInTenantSchema<any[]>(
                 schemaName,

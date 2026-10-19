@@ -17,6 +17,7 @@ import {
   resolveNavigationDisplayLabel,
 } from "@/lib/navigation-contract";
 import { canAccessDashboardNavigationPath } from "@/lib/navigation-access";
+import { HELP_ASSISTANT_MOBILE_SLOT_ID } from "@/lib/help-assistant-contract";
 import { guidedTourAnchorId } from "@/lib/guided-tours";
 import {
   Sun, Moon, Monitor, ChevronDown, ChevronLeft, ChevronRight, LogOut, Menu, User, Settings,
@@ -497,6 +498,8 @@ export default function TopBar({ onMobileMenuToggle }: TopBarProps) {
 
       {/* Timezone indicator */}
       <TimezoneIndicator />
+
+      <div id={HELP_ASSISTANT_MOBILE_SLOT_ID} className="shrink-0 empty:hidden md:hidden" />
 
       {/* Notification bell */}
       <div ref={notifRef} className="relative">

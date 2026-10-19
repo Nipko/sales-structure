@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useId } from "react";
 import Link from "next/link";
 import { useTenant } from "@/contexts/TenantContext";
 import { useTranslations } from "next-intl";
@@ -43,6 +43,7 @@ const EMPTY_FORM: FaqForm = {
 };
 
 export default function FaqsPage() {
+    const editorId = useId();
     const { activeTenantId } = useTenant();
     const { canEditKnowledge } = useRole();
     const t = useTranslations("knowledge.faqs");
@@ -217,39 +218,39 @@ export default function FaqsPage() {
                             <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
                                 {editing ? t("editTitle") : t("newTitle")}
                             </h2>
-                            <button onClick={() => setEditorOpen(false)} className="p-1 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800">
+                            <button aria-label={t("closeFaqEditor")} onClick={() => setEditorOpen(false)} className="p-1 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800">
                                 <X size={18} />
                             </button>
                         </div>
 
                         {error && (
-                            <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-400">
+                            <div role="alert" className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-400">
                                 {error}
                             </div>
                         )}
 
                         <div className="space-y-4">
                             <div id={guidedTourAnchorId("faq-fields")}>
-                                <label className="block text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1.5">{t("fields.question")} *</label>
-                                <input className={inputCls} value={form.question} onChange={e => setForm({ ...form, question: e.target.value })} placeholder={t("placeholders.question")} />
+                                <label htmlFor={`${editorId}-question`} className="block text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1.5">{t("fields.question")} *</label>
+                                <input id={`${editorId}-question`} className={inputCls} value={form.question} onChange={e => setForm({ ...form, question: e.target.value })} placeholder={t("placeholders.question")} />
                             </div>
                             <div>
-                                <label className="block text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1.5">{t("fields.answer")} *</label>
-                                <textarea className={textareaCls} value={form.answer} onChange={e => setForm({ ...form, answer: e.target.value })} placeholder={t("placeholders.answer")} />
+                                <label htmlFor={`${editorId}-answer`} className="block text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1.5">{t("fields.answer")} *</label>
+                                <textarea id={`${editorId}-answer`} className={textareaCls} value={form.answer} onChange={e => setForm({ ...form, answer: e.target.value })} placeholder={t("placeholders.answer")} />
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1.5">{t("fields.category")}</label>
-                                    <input className={inputCls} value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} placeholder={t("placeholders.category")} />
+                                    <label htmlFor={`${editorId}-category`} className="block text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1.5">{t("fields.category")}</label>
+                                    <input id={`${editorId}-category`} className={inputCls} value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} placeholder={t("placeholders.category")} />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1.5">{t("fields.order")}</label>
-                                    <input type="number" className={inputCls} value={form.orderIndex} onChange={e => setForm({ ...form, orderIndex: parseInt(e.target.value) || 0 })} />
+                                    <label htmlFor={`${editorId}-order`} className="block text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1.5">{t("fields.order")}</label>
+                                    <input id={`${editorId}-order`} type="number" className={inputCls} value={form.orderIndex} onChange={e => setForm({ ...form, orderIndex: parseInt(e.target.value) || 0 })} />
                                 </div>
                             </div>
                             <div>
-                                <label className="block text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1.5">{t("fields.tags")}</label>
-                                <input className={inputCls} value={form.tagsRaw} onChange={e => setForm({ ...form, tagsRaw: e.target.value })} placeholder={t("placeholders.tags")} />
+                                <label htmlFor={`${editorId}-tags`} className="block text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1.5">{t("fields.tags")}</label>
+                                <input id={`${editorId}-tags`} className={inputCls} value={form.tagsRaw} onChange={e => setForm({ ...form, tagsRaw: e.target.value })} placeholder={t("placeholders.tags")} />
                             </div>
                             <label id={guidedTourAnchorId("faq-published")} className="flex items-start gap-2 text-sm cursor-pointer">
                                 <input type="checkbox" checked={form.isPublished} onChange={e => setForm({ ...form, isPublished: e.target.checked })} className="rounded mt-0.5" />
@@ -302,10 +303,10 @@ function FaqRow({ faq, canEdit, onEdit, onDelete, t }: { faq: Faq; canEdit: bool
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
                     <span className="text-[10px] text-neutral-400 mr-2">{faq.views} {t("views")}</span>
-                    {canEdit && <button onClick={() => onEdit(faq)} className="p-1.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800" title={t("edit")}>
+                    {canEdit && <button aria-label={t("editFaqQuestion", { question: faq.question })} onClick={() => onEdit(faq)} className="p-1.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800" title={t("edit")}>
                         <Edit2 size={14} className="text-neutral-600 dark:text-neutral-400" />
                     </button>}
-                    {canEdit && <button onClick={() => onDelete(faq.id)} className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20" title={t("delete")}>
+                    {canEdit && <button aria-label={t("deleteFaqQuestion", { question: faq.question })} onClick={() => onDelete(faq.id)} className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20" title={t("delete")}>
                         <Trash2 size={14} className="text-red-600 dark:text-red-400" />
                     </button>}
                 </div>

@@ -188,11 +188,11 @@ export default function ContactsPage() {
     ];
 
     const filtered = contacts.filter(c => {
+        if (activeSegment !== "all" && c.segment !== activeSegment) return false;
         if (searchQuery) {
             const q = searchQuery.toLowerCase();
             return c.name.toLowerCase().includes(q) || c.phone.includes(q) || (c.email || "").toLowerCase().includes(q);
         }
-        if (activeSegment !== "all") return c.segment === activeSegment;
         return true;
     });
 
@@ -411,6 +411,8 @@ export default function ContactsPage() {
                     />
                 </div>
                 <button
+                    aria-expanded={showFilterDrawer}
+                    aria-controls="contacts-filter-drawer"
                     onClick={() => setShowFilterDrawer(true)}
                     className={cn(
                         "relative flex items-center gap-2 h-10 px-4 rounded-lg border text-sm font-medium cursor-pointer transition-colors",
@@ -703,6 +705,7 @@ export default function ContactsPage() {
                                     </td>
                                     <td className="px-4 py-3">
                                         <button
+                                            aria-label={t('viewContactNamed', { noun: vt.customerNoun, name: contact.name })}
                                             onClick={() => router.push(`/admin/contacts/${contact.id}`)}
                                             className="rounded-md border-none bg-transparent p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200"
                                         >
@@ -726,14 +729,14 @@ export default function ContactsPage() {
 
             {/* Advanced Filter Drawer */}
             {showFilterDrawer && <div className="fixed inset-0 z-40 bg-black/30" onClick={() => setShowFilterDrawer(false)} />}
-            <div className={cn(
+            <div id="contacts-filter-drawer" inert={!showFilterDrawer} aria-hidden={!showFilterDrawer} className={cn(
                 "fixed inset-y-0 right-0 z-50 w-80 bg-white dark:bg-[var(--bg-secondary)] border-l border-neutral-200 dark:border-neutral-800 shadow-xl transform transition-transform duration-300",
                 showFilterDrawer ? "translate-x-0" : "translate-x-full"
             )}>
                 <div className="p-6 h-full flex flex-col">
                     <div className="flex items-center justify-between mb-6">
                         <h3 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">{t('advancedFilters')}</h3>
-                        <button onClick={() => setShowFilterDrawer(false)} className="bg-transparent border-none cursor-pointer p-1 rounded-md text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200">
+                        <button aria-label={t('closeFilters')} onClick={() => setShowFilterDrawer(false)} className="bg-transparent border-none cursor-pointer p-1 rounded-md text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200">
                             <X size={18} />
                         </button>
                     </div>

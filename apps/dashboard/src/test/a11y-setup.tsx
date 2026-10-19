@@ -11,7 +11,7 @@ import * as React from "react";
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 
 // axe reads computed styles through matchMedia while deciding what is visible.
-if (!window.matchMedia) {
+if (typeof window !== "undefined" && !window.matchMedia) {
     window.matchMedia = ((query: string) => ({
         matches: false,
         media: query,
@@ -34,7 +34,7 @@ if (!(globalThis as any).ResizeObserver) {
 }
 
 // A screen that scrolls a row into view must not throw in a test.
-if (!Element.prototype.scrollIntoView) {
+if (typeof Element !== "undefined" && !Element.prototype.scrollIntoView) {
     Element.prototype.scrollIntoView = () => {};
 }
 

@@ -166,7 +166,7 @@ export class ListingsService {
                 data.price || null, data.currency || 'COP',
                 data.rentPeriod || 'monthly', data.hoaFee || null, data.deposit || null,
                 data.minRentalMonths || null, !!data.financingAvailable,
-                data.bedrooms || 1, data.bathrooms || 1, data.areaM2 || null,
+                data.bedrooms ?? 1, data.bathrooms ?? 1, data.areaM2 || null,
                 data.parkingSpots || 0, data.stratum || null, data.yearBuilt || null,
                 data.address || null, data.neighborhood || null, data.city || null,
                 data.country || 'CO', data.latitude || null, data.longitude || null,
@@ -264,6 +264,17 @@ export class ListingsService {
         minAreaM2?: number;
         limit?: number;
     }): Promise<any[]> {
+        const numericFields = [
+            ['maxPrice', 0, false], ['minPrice', 0, false], ['minAreaM2', 0, false],
+            ['minBedrooms', 0, true], ['limit', 1, true],
+        ] as const;
+        for (const [name, minimum, integer] of numericFields) {
+            const value = params[name];
+            if (value !== undefined && (typeof value !== 'number' || !Number.isFinite(value)
+                || value < minimum || (integer && !Number.isSafeInteger(value)))) {
+                throw new BadRequestException(`${name} must be ${integer ? 'a whole number' : 'a number'} >= ${minimum}`);
+            }
+        }
         const conds: string[] = ['is_active = true', `status = 'available'`];
         const vals: any[] = [];
         let idx = 1;
@@ -278,22 +289,22 @@ export class ListingsService {
             vals.push(params.propertyKind);
             idx++;
         }
-        if (params.maxPrice) {
+        if (params.maxPrice !== undefined) {
             conds.push(`price <= $${idx}`);
             vals.push(params.maxPrice);
             idx++;
         }
-        if (params.minPrice) {
+        if (params.minPrice !== undefined) {
             conds.push(`price >= $${idx}`);
             vals.push(params.minPrice);
             idx++;
         }
-        if (params.minBedrooms) {
+        if (params.minBedrooms !== undefined) {
             conds.push(`bedrooms >= $${idx}`);
             vals.push(params.minBedrooms);
             idx++;
         }
-        if (params.minAreaM2) {
+        if (params.minAreaM2 !== undefined) {
             conds.push(`area_m2 >= $${idx}`);
             vals.push(params.minAreaM2);
             idx++;
@@ -310,7 +321,7 @@ export class ListingsService {
             idx++;
         }
 
-        const limit = Math.min(params.limit || 10, 50);
+        const limit = Math.min(params.limit ?? 10, 50);
         return this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `SELECT id, name, transaction_type, property_kind, price, currency,

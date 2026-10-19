@@ -1377,6 +1377,8 @@
     }
   },
   "contacts": {
+    "viewContactNamed": "View {noun}: {name}",
+    "closeFilters": "Close filters",
     "selectAllVisible": "Select visible contacts",
     "selectContactForBulk": "Select contact: {name}",
     "loadError": "Contacts could not be loaded. Try again; this does not mean there are no contacts.",
@@ -3000,6 +3002,8 @@
     "imageUnavailable": "No image"
   },
   "appointments": {
+    "recurrenceFrequencyLabel": "Repeat frequency",
+    "recurrenceCountLabel": "Number of appointments",
     "title": "Appointments & Scheduling",
     "subtitle": "Manage appointments, services and your team's availability",
     "calendar": "Calendar",
@@ -3034,6 +3038,7 @@
     "buffer": "Buffer time",
     "price": "Price",
     "color": "Color",
+    "colorOption": "Choose color {color}",
     "minutes": "minutes",
     "dateTime": "Date / Time",
     "statusLabel": "Status",
@@ -3540,6 +3545,8 @@
       "winLoss": "Won vs Lost",
       "conversionFunnel": "Conversion funnel",
       "pipelineVelocity": "Pipeline velocity",
+      "stageRegion": "CRM stage distribution chart",
+      "velocityRegion": "CRM time per stage chart",
       "agentLeaderboard": "Agent leaderboard"
     },
     "won": "Won",
@@ -5210,6 +5217,9 @@
     "chunks": "Chunks",
     "subtitle": "Knowledge base, FAQs and documents for AI",
     "faqs": {
+      "closeFaqEditor": "Close FAQ editor",
+      "editFaqQuestion": "Edit FAQ: {question}",
+      "deleteFaqQuestion": "Delete FAQ: {question}",
       "title": "FAQs",
       "subtitle": "Question-answer pairs the agent uses for canonical replies",
       "loading": "Loading...",
@@ -5737,6 +5747,7 @@
     }
   },
   "inventory": {
+    "productsRegion": "Product table. Scroll horizontally to see all columns.",
     "prescription": {
       "badge": "Rx",
       "label": "Prescription only",
@@ -5790,6 +5801,8 @@
       "litro": "Liter"
     },
     "createModal": {
+      "saveError": "The product was not saved. Check the details before trying again.",
+      "unconfirmedSave": "We could not confirm whether the product was saved. Check the inventory before submitting it again.",
       "title": "New product",
       "productName": "Product name",
       "productNamePlaceholder": "Rafting Tour Rio Fonce",
@@ -6758,6 +6771,8 @@
     "30d": "30 days",
     "90d": "90 days",
     "custom": "Custom",
+    "rangeStart": "Start date",
+    "rangeEnd": "End date",
     "conversations": "Conversations",
     "messages": "Messages",
     "aiResolutionRate": "AI Resolution",
@@ -8438,6 +8453,7 @@
     "title": "Properties",
     "subtitle": "Manage your listings and availability",
     "addProperty": "Add property",
+    "selectCurrency": "Select a currency",
     "noProperties": "You have no properties. Add your first listing.",
     "name": "Name",
     "address": "Address",
@@ -10259,6 +10275,9 @@
     }
   },
   "tours": {
+    "creationFormLabel": "New scheduled departure",
+    "detailsFormLabel": "Tour details",
+    "invalidValues": "Review the package values before saving.",
     "info": "Details",
     "title": "Tours & Packages",
     "subtitle": "Manage your experiences and travel packages",
@@ -10320,6 +10339,12 @@
     }
   },
   "listings": {
+    "creationFormLabel": "New property",
+    "priceSectionLabel": "Price and terms",
+    "detailsFormLabel": "Listing details",
+    "currency": "Currency",
+    "selectCurrency": "Select a currency",
+    "currencyRequired": "Select the price currency before creating the listing.",
     "photoColumn": "Photos (URLs)",
     "propertyKinds": {
       "apartment": "Apartment",
@@ -11283,6 +11308,7 @@
     "availableRange": "Those dates are free.",
     "unavailableRange": "Those dates are already taken or the unit does not accept them.",
     "createFailed": "Could not create the booking. Check the dates and try again.",
+    "tableRegion": "Bookings table. Scroll horizontally to see all columns.",
     "cancelStay": "Cancel booking",
     "cancelConfirm": "This cancels {guest}’s booking at {property}. The dates become free again.",
     "cancelFailed": "Could not cancel the booking.",
@@ -11632,6 +11658,8 @@
     "categories": "Categories",
     "allCategories": "All",
     "newCategoryPlaceholder": "New category...",
+    "saveRejected": "The dish could not be saved. Check the details and try again.",
+    "saveUnconfirmed": "We could not confirm whether the dish was saved. Check the menu before submitting it again.",
     "deleteCategory": "Delete category",
     "deleteCategoryConfirm": "Delete this category? Items in it become uncategorized.",
     "allItems": "All items",

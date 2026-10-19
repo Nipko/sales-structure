@@ -57,17 +57,6 @@ const CURRENCY_CODES = [
   { code: "EUR", symbol: "€" },
 ];
 
-const COUNTRY_CURRENCY: Record<string, string> = {
-  CO: "COP", Colombia: "COP",
-  US: "USD", "United States": "USD",
-  MX: "MXN", México: "MXN", Mexico: "MXN",
-  AR: "ARS", Argentina: "ARS",
-  BR: "BRL", Brasil: "BRL", Brazil: "BRL",
-  CL: "CLP", Chile: "CLP",
-  PE: "PEN", Perú: "PEN", Peru: "PEN",
-  EC: "USD", Ecuador: "USD",
-};
-
 export const AMENITY_CATEGORIES = [
   { key: "essentials", items: [
     { key: "wifi" },
@@ -154,19 +143,14 @@ export default function PropertiesPage() {
 
   useEffect(() => {
     load();
-    if (activeTenantId) {
-      api.getBusinessInfo(activeTenantId).then((res: any) => {
-        if (res.success && res.data?.country) {
-          const c = COUNTRY_CURRENCY[res.data.country] || operatingCurrency || "";
-          if (c) {
-            setDefaultCurrency(c);
-            // Sólo se pisa lo que el dueño todavía no eligió.
-            setForm(prev => prev.currency ? prev : { ...prev, currency: c });
-          }
-        }
-      });
-    }
   }, [activeTenantId]);
+
+  useEffect(() => {
+    if (!operatingCurrency) return;
+    setDefaultCurrency(operatingCurrency);
+    // Preserve an explicit selection made while the regional profile loaded.
+    setForm(prev => prev.currency ? prev : { ...prev, currency: operatingCurrency });
+  }, [operatingCurrency]);
 
   async function load() {
     if (!activeTenantId) { setLoading(false); return; }
@@ -177,7 +161,7 @@ export default function PropertiesPage() {
   }
 
   async function handleCreate() {
-    if (!activeTenantId || !form.name) return;
+    if (!activeTenantId || !form.name || !form.currency) return;
     setSaving(true);
     try {
       const res = await api.createProperty(activeTenantId, {
@@ -437,6 +421,7 @@ export default function PropertiesPage() {
                   onChange={(e) => setForm({ ...form, currency: e.target.value })}
                   className="w-full px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-sm text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
+                  <option value="">{t("selectCurrency")}</option>
                   {CURRENCY_CODES.map(c => (
                     <option key={c.code} value={c.code}>{t(`currencyOptions.${c.code}`)}</option>
                   ))}
@@ -515,7 +500,7 @@ export default function PropertiesPage() {
               </button>
               <button
                 onClick={handleCreate}
-                disabled={!form.name || saving}
+                disabled={!form.name || !form.currency || saving}
                 className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors"
               >
                 {saving ? tc("saving") : tc("save")}

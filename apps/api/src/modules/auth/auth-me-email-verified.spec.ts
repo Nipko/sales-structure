@@ -17,10 +17,10 @@ import { AuthController } from './auth.controller';
 describe('/auth/me carries the confirmed email', () => {
     const tenantId = '11111111-1111-4111-8111-111111111111';
 
-    function makeService(emailVerified: boolean) {
+    function makeService(emailVerified: boolean, onboardingCompleted = true) {
         const row = {
             id: 'u1', email: 'owner@example.com', role: 'tenant_admin', tenantId, isActive: true,
-            onboardingCompleted: true, emailVerified, emailVerificationState: emailVerified ? 'verified' : 'unverified',
+            onboardingCompleted, emailVerified, emailVerificationState: emailVerified ? 'verified' : 'unverified',
             tenant: { id: tenantId, schemaName: 'tenant_norte', isActive: true, onboardingCompletedAt: new Date('2026-09-14T13:00:00.000Z') },
         };
         const prisma: any = {
@@ -59,5 +59,16 @@ describe('/auth/me carries the confirmed email', () => {
         await service.validateUser({ sub: 'u1', email: 'owner@example.com', role: 'tenant_admin', tenantId } as any);
         const selects = prisma.user.findUnique.mock.calls.map(([args]: [any]) => args?.select ?? {});
         expect(selects.some((select: Record<string, unknown>) => select.emailVerified === true)).toBe(true);
+    });
+
+    it.each([true, false])('returns the current onboardingCompleted=%s instead of dropping it', async (completed) => {
+        const { service, controller } = makeService(true, completed);
+        const requestUser = await service.validateUser({
+            sub: 'u1', email: 'owner@example.com', role: 'tenant_admin', tenantId,
+            onboardingCompleted: !completed,
+        } as any);
+        const answer = await controller.me(requestUser);
+        expect(answer.data.onboardingCompleted).toBe(completed);
+        if (!completed) expect(answer.data.tenantId).toBeUndefined();
     });
 });

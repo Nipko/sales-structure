@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useId } from "react";
 import { useTenant } from "@/contexts/TenantContext";
 import { api } from "@/lib/api";
 import { resolveMediaUrl } from "@/lib/media-url";
@@ -246,6 +246,7 @@ function CreateListingModal({ tenantId, onClose, onCreated, t, tc }: {
     t: any;
     tc: any;
 }) {
+    const creationId = useId();
     const operatingCurrency = useOperatingCurrency();
     const [form, setForm] = useState({
         name: "",
@@ -273,9 +274,18 @@ function CreateListingModal({ tenantId, onClose, onCreated, t, tc }: {
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
+    useEffect(() => {
+        if (!operatingCurrency) return;
+        setForm(previous => previous.currency ? previous : { ...previous, currency: operatingCurrency });
+    }, [operatingCurrency]);
+
     async function handleSave() {
         if (!form.name.trim()) {
             setError(t("nameRequired"));
+            return;
+        }
+        if (!form.currency) {
+            setError(t("currencyRequired"));
             return;
         }
         setSaving(true);
@@ -302,7 +312,7 @@ function CreateListingModal({ tenantId, onClose, onCreated, t, tc }: {
                         <X size={18} />
                     </button>
                 </div>
-                <div className="p-5 space-y-4">
+                <div role="region" aria-label={t("creationFormLabel")} className="p-5 space-y-4">
                     <div className="grid grid-cols-2 gap-2">
                         <button
                             type="button"
@@ -321,8 +331,8 @@ function CreateListingModal({ tenantId, onClose, onCreated, t, tc }: {
                     </div>
 
                     <div>
-                        <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("name")} *</label>
-                        <input
+                        <label htmlFor={`${creationId}-name`} className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("name")} *</label>
+                        <input id={`${creationId}-name`}
                             value={form.name}
                             onChange={e => setForm({ ...form, name: e.target.value })}
                             placeholder={t("namePlaceholder")}
@@ -332,16 +342,16 @@ function CreateListingModal({ tenantId, onClose, onCreated, t, tc }: {
 
                     <div className="grid grid-cols-2 gap-3">
                         <div>
-                            <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("propertyKind")}</label>
-                            <select value={form.propertyKind} onChange={e => setForm({ ...form, propertyKind: e.target.value })} className={inputCls}>
+                            <label htmlFor={`${creationId}-propertyKind`} className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("propertyKind")}</label>
+                            <select id={`${creationId}-propertyKind`} value={form.propertyKind} onChange={e => setForm({ ...form, propertyKind: e.target.value })} className={inputCls}>
                                 {PROPERTY_KINDS.map(kind => (
                                     <option key={kind} value={kind}>{t(`propertyKinds.${kind}`)}</option>
                                 ))}
                             </select>
                         </div>
                         <div>
-                            <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("price")}</label>
-                            <input
+                            <label htmlFor={`${creationId}-price`} className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("price")}</label>
+                            <input id={`${creationId}-price`}
                                 type="number"
                                 min={0}
                                 value={form.price}
@@ -353,28 +363,38 @@ function CreateListingModal({ tenantId, onClose, onCreated, t, tc }: {
 
                     <div className="grid grid-cols-3 gap-3">
                         <div>
-                            <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("bedrooms")}</label>
-                            <input type="number" min={0} value={form.bedrooms} onChange={e => setForm({ ...form, bedrooms: parseInt(e.target.value) || 0 })} className={inputCls} />
+                            <label htmlFor={`${creationId}-bedrooms`} className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("bedrooms")}</label>
+                            <input id={`${creationId}-bedrooms`} type="number" min={0} value={form.bedrooms} onChange={e => setForm({ ...form, bedrooms: parseInt(e.target.value) || 0 })} className={inputCls} />
                         </div>
                         <div>
-                            <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("bathrooms")}</label>
-                            <input type="number" min={0} step={0.5} value={form.bathrooms} onChange={e => setForm({ ...form, bathrooms: parseFloat(e.target.value) || 0 })} className={inputCls} />
+                            <label htmlFor={`${creationId}-bathrooms`} className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("bathrooms")}</label>
+                            <input id={`${creationId}-bathrooms`} type="number" min={0} step={0.5} value={form.bathrooms} onChange={e => setForm({ ...form, bathrooms: parseFloat(e.target.value) || 0 })} className={inputCls} />
                         </div>
                         <div>
-                            <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("areaM2")}</label>
-                            <input type="number" min={0} value={form.areaM2} onChange={e => setForm({ ...form, areaM2: parseFloat(e.target.value) || 0 })} className={inputCls} />
+                            <label htmlFor={`${creationId}-areaM2`} className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("areaM2")}</label>
+                            <input id={`${creationId}-areaM2`} type="number" min={0} value={form.areaM2} onChange={e => setForm({ ...form, areaM2: parseFloat(e.target.value) || 0 })} className={inputCls} />
                         </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
                         <div>
-                            <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("neighborhood")}</label>
-                            <input value={form.neighborhood} onChange={e => setForm({ ...form, neighborhood: e.target.value })} placeholder={t("neighborhoodPlaceholder")} className={inputCls} />
+                            <label htmlFor={`${creationId}-neighborhood`} className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("neighborhood")}</label>
+                            <input id={`${creationId}-neighborhood`} value={form.neighborhood} onChange={e => setForm({ ...form, neighborhood: e.target.value })} placeholder={t("neighborhoodPlaceholder")} className={inputCls} />
                         </div>
                         <div>
-                            <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("city")}</label>
-                            <input value={form.city} onChange={e => setForm({ ...form, city: e.target.value })} className={inputCls} />
+                            <label htmlFor={`${creationId}-city`} className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("city")}</label>
+                            <input id={`${creationId}-city`} value={form.city} onChange={e => setForm({ ...form, city: e.target.value })} className={inputCls} />
                         </div>
+                    </div>
+
+                    <div>
+                        <label htmlFor="listing-currency" className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">{t("currency")}</label>
+                        <select id="listing-currency" value={form.currency} onChange={e => setForm({ ...form, currency: e.target.value })} className={inputCls} required>
+                            <option value="">{t("selectCurrency")}</option>
+                            {[...new Set(["COP", "USD", "MXN", "ARS", "BRL", "CLP", "PEN", "EUR", ...(form.currency ? [form.currency] : [])])].map(currency => (
+                                <option key={currency} value={currency}>{currency}</option>
+                            ))}
+                        </select>
                     </div>
 
                     <div className="pt-2 border-t border-neutral-100 dark:border-neutral-800">
@@ -394,7 +414,7 @@ function CreateListingModal({ tenantId, onClose, onCreated, t, tc }: {
                     </button>
                     <button
                         onClick={handleSave}
-                        disabled={saving || !form.name.trim()}
+                        disabled={saving || !form.name.trim() || !form.currency}
                         className="px-4 py-1.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
                     >
                         {saving ? tc("saving") : t("createListing")}

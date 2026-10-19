@@ -1,5 +1,6 @@
 "use client";
 
+import { useId } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import { cn } from "@/lib/utils";
 import { Tag, X, Save, MapPin, Video, Globe, Clock, Timer, Infinity } from "lucide-react";
@@ -63,6 +64,8 @@ export default function ServiceModal({
   const t = useTranslations("appointments");
   const tc = useTranslations("common");
   const locale = useLocale();
+  const formId = useId();
+  const fieldId = (field: string) => `${formId}-${field}`;
   const numLocale = locale === "pt" ? "pt-BR" : locale === "fr" ? "fr-FR" : locale === "en" ? "en-US" : undefined;
   // El número que trae un servicio sembrado por el rubro no lo escribió el
   // dueño: sigue siendo ejemplo hasta que pulse "Precio confirmado" o escriba
@@ -120,10 +123,10 @@ export default function ServiceModal({
         <div className="min-h-0 overflow-y-auto p-6 space-y-5">
           {/* Name */}
           <div>
-            <label className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
+            <label htmlFor={fieldId("name")} className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
               {t('serviceName')}
             </label>
-            <input
+            <input id={fieldId("name")}
               type="text"
               placeholder={t('serviceNamePlaceholder')}
               value={form.name}
@@ -172,7 +175,7 @@ export default function ServiceModal({
           {/* Duration presets — hidden for open */}
           {form.durationType !== 'open' && (
             <div>
-              <label className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
+              <label htmlFor={fieldId("duration")} className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
                 {form.durationType === 'flexible' ? t('durationMin') : t('durationRequired')}
               </label>
               <div className="flex flex-wrap gap-2 mb-2">
@@ -191,7 +194,7 @@ export default function ServiceModal({
                   </button>
                 ))}
               </div>
-              <input
+              <input id={fieldId("duration")}
                 type="number"
                 min={5}
                 value={form.duration || ""}
@@ -205,10 +208,10 @@ export default function ServiceModal({
           {/* Duration max — only for flexible */}
           {form.durationType === 'flexible' && (
             <div>
-              <label className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
+              <label htmlFor={fieldId("durationMax")} className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
                 {t('durationMax')}
               </label>
-              <input
+              <input id={fieldId("durationMax")}
                 type="number"
                 min={form.duration || 5}
                 value={form.durationMax || ""}
@@ -222,7 +225,7 @@ export default function ServiceModal({
           {/* Buffer + Price */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium mb-1 text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5">
+              <label htmlFor={fieldId("buffer")} className="block text-sm font-medium mb-1 text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5">
                 {t('bufferTime')}
                 <span className="relative group">
                   <span className="w-4 h-4 rounded-full bg-neutral-200 dark:bg-neutral-700 text-neutral-500 dark:text-neutral-400 text-[10px] flex items-center justify-center cursor-help font-semibold">?</span>
@@ -231,7 +234,7 @@ export default function ServiceModal({
                   </span>
                 </span>
               </label>
-              <select
+              <select id={fieldId("buffer")}
                 value={form.buffer}
                 onChange={(e) => onChange({ ...form, buffer: Number(e.target.value) })}
                 className="w-full px-3 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
@@ -245,12 +248,12 @@ export default function ServiceModal({
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1 text-neutral-700 dark:text-neutral-300">
+              <label htmlFor={fieldId("price")} className="block text-sm font-medium mb-1 text-neutral-700 dark:text-neutral-300">
                 {t('price')}
               </label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-neutral-400">$</span>
-                <input
+                <input id={fieldId("price")}
                   type="text"
                   inputMode="numeric"
                   aria-label={t('price')}
@@ -339,7 +342,7 @@ export default function ServiceModal({
 
           {/* Color picker */}
           <div>
-            <label className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
+            <label htmlFor={fieldId("color")} className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
               {t('color')}
             </label>
             <div className="flex items-center gap-3">
@@ -354,11 +357,13 @@ export default function ServiceModal({
                         ? "border-neutral-900 dark:border-white scale-110 shadow-md"
                         : "border-transparent"
                     )}
+                    aria-label={t("colorOption", { color: c })}
+                    aria-pressed={form.color === c}
                     style={{ backgroundColor: c }}
                   />
                 ))}
               </div>
-              <input
+              <input id={fieldId("color")}
                 type="color"
                 value={form.color}
                 onChange={(e) => onChange({ ...form, color: e.target.value })}
@@ -398,10 +403,10 @@ export default function ServiceModal({
           {/* Location / Meeting Link */}
           {(form.locationType === 'in_person' || form.locationType === 'hybrid') && (
             <div>
-              <label className="block text-sm font-medium mb-1 text-neutral-700 dark:text-neutral-300">
+              <label htmlFor={fieldId("locationAddress")} className="block text-sm font-medium mb-1 text-neutral-700 dark:text-neutral-300">
                 {t('locationAddress')}
               </label>
-              <input
+              <input id={fieldId("locationAddress")}
                 type="text"
                 value={form.locationAddress || ''}
                 onChange={(e) => onChange({ ...form, locationAddress: e.target.value })}
@@ -412,10 +417,10 @@ export default function ServiceModal({
           )}
           {(form.locationType === 'online' || form.locationType === 'hybrid') && (
             <div>
-              <label className="block text-sm font-medium mb-1 text-neutral-700 dark:text-neutral-300">
+              <label htmlFor={fieldId("meetingLink")} className="block text-sm font-medium mb-1 text-neutral-700 dark:text-neutral-300">
                 {t('meetingLink')}
               </label>
-              <input
+              <input id={fieldId("meetingLink")}
                 type="url"
                 value={form.meetingLink || ''}
                 onChange={(e) => onChange({ ...form, meetingLink: e.target.value })}
@@ -429,10 +434,10 @@ export default function ServiceModal({
           {/* Category + Max Concurrent */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium mb-1 text-neutral-700 dark:text-neutral-300">
+              <label htmlFor={fieldId("category")} className="block text-sm font-medium mb-1 text-neutral-700 dark:text-neutral-300">
                 {t('category')}
               </label>
-              <input
+              <input id={fieldId("category")}
                 type="text"
                 value={form.category || ''}
                 onChange={(e) => onChange({ ...form, category: e.target.value })}
@@ -441,10 +446,10 @@ export default function ServiceModal({
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1 text-neutral-700 dark:text-neutral-300">
+              <label htmlFor={fieldId("maxConcurrent")} className="block text-sm font-medium mb-1 text-neutral-700 dark:text-neutral-300">
                 {t('maxConcurrent')}
               </label>
-              <input
+              <input id={fieldId("maxConcurrent")}
                 type="number" min={1} max={50}
                 value={form.maxConcurrent || 1}
                 onChange={(e) => onChange({ ...form, maxConcurrent: Math.max(1, Number(e.target.value)) })}
@@ -452,10 +457,10 @@ export default function ServiceModal({
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1 text-neutral-700 dark:text-neutral-300">
+              <label htmlFor={fieldId("rebookAfterDays")} className="block text-sm font-medium mb-1 text-neutral-700 dark:text-neutral-300">
                 {t('rebookAfterDays')}
               </label>
-              <input
+              <input id={fieldId("rebookAfterDays")}
                 type="number" min={0} max={730}
                 value={form.rebookAfterDays ?? ''}
                 placeholder={t('rebookAfterDaysPlaceholder')}

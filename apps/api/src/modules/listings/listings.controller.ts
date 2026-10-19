@@ -1,6 +1,6 @@
 import {
     Controller, Get, Post, Put, Delete, Param, Body, Query,
-    UseGuards, HttpCode, HttpStatus,
+    UseGuards, HttpCode, HttpStatus, BadRequestException,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
@@ -11,6 +11,17 @@ import { VerticalCapabilityGuard } from '../../common/guards/vertical-capability
 import { RequireVerticalCapability } from '../../common/decorators/require-vertical-capability.decorator';
 import { ListingsService } from './listings.service';
 import { PrismaService } from '../prisma/prisma.service';
+
+function parseOptionalSearchNumber(value: unknown, name: string): number | undefined {
+    if (value === undefined) return undefined;
+    if ((typeof value !== 'string' && typeof value !== 'number')
+        || (typeof value === 'string' && !value.trim())) {
+        throw new BadRequestException(`${name} must be a finite number`);
+    }
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) throw new BadRequestException(`${name} must be a finite number`);
+    return parsed;
+}
 import { bulkImportRows } from '../../common/utils/bulk-import.util';
 
 @ApiTags('listings')
@@ -60,13 +71,13 @@ export class ListingsController {
         const data = await this.service.search(schemaName, {
             transactionType: query.transactionType,
             propertyKind: query.propertyKind,
-            maxPrice: query.maxPrice ? Number(query.maxPrice) : undefined,
-            minPrice: query.minPrice ? Number(query.minPrice) : undefined,
-            minBedrooms: query.minBedrooms ? Number(query.minBedrooms) : undefined,
+            maxPrice: parseOptionalSearchNumber(query.maxPrice, 'maxPrice'),
+            minPrice: parseOptionalSearchNumber(query.minPrice, 'minPrice'),
+            minBedrooms: parseOptionalSearchNumber(query.minBedrooms, 'minBedrooms'),
             neighborhood: query.neighborhood,
             city: query.city,
-            minAreaM2: query.minAreaM2 ? Number(query.minAreaM2) : undefined,
-            limit: query.limit ? Number(query.limit) : undefined,
+            minAreaM2: parseOptionalSearchNumber(query.minAreaM2, 'minAreaM2'),
+            limit: parseOptionalSearchNumber(query.limit, 'limit'),
         });
         return { success: true, data };
     }

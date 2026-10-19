@@ -1127,11 +1127,11 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
     return (
       <div className="flex h-full min-h-0 flex-col bg-white dark:bg-neutral-950">
         <div className={cn(
-          "flex h-14 shrink-0 items-center border-b border-border/50 px-4 transition-all duration-200",
+          "relative flex h-14 shrink-0 items-center border-b border-border/50 px-4 transition-all duration-200",
           expanded ? "justify-between" : "justify-center",
         )}>
           {expanded && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }}>
+            <motion.div className={mode === "desktop" ? "ml-12" : undefined} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }}>
               <Link
                 href={roleHomeHref}
                 onClick={handleNavClick}
@@ -1150,7 +1150,7 @@ export default function AppSidebar({ mobileOpen = false, onMobileClose }: AppSid
                 setCollapsed((current) => !current);
                 setHovered(false);
               }}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-neutral-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:text-neutral-400 dark:hover:bg-neutral-800"
+              className="absolute left-4 top-3 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-neutral-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:text-neutral-400 dark:hover:bg-neutral-800"
               title={collapsed ? tNav("expandSidebar") : tNav("collapseSidebar")}
               aria-label={collapsed ? tNav("expandSidebar") : tNav("collapseSidebar")}
               aria-expanded={!collapsed}

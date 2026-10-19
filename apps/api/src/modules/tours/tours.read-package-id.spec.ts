@@ -11,8 +11,7 @@ describe('ToursService read package IDs', () => {
         ) };
     };
     for (const method of ['getPackage', 'listInventory', 'listBookings'] as const) {
-        it.each(['sparkqa-invalid-id', '', ['bad', 'id'], null, '11111111-1111-4111-8111-11111111111Z'])
-        (`${method} rejects invalid ID %j before SQL`, async (value) => {
+        it.each(['sparkqa-invalid-id', '', ['bad', 'id'], null, '11111111-1111-4111-8111-11111111111Z'])(`${method} rejects invalid ID %j before SQL`, async (value) => {
             const { execute, service } = build();
             await expect(service[method](schema, value as any)).rejects.toBeInstanceOf(BadRequestException);
             expect(execute).not.toHaveBeenCalled();

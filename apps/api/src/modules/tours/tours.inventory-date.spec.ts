@@ -22,8 +22,7 @@ describe('ToursService inventory date filter', () => {
         expect(execute).not.toHaveBeenCalled();
     });
 
-    it.each(['2000-01-01', '2028-02-29', '2026-12-15'])
-    ('preserves valid historical, leap and future filters: %s', async (fromDate) => {
+    it.each(['2000-01-01', '2028-02-29', '2026-12-15'])('preserves valid historical, leap and future filters: %s', async (fromDate) => {
         const { execute, service } = build();
         await expect(service.listInventory(schema, packageId, fromDate)).resolves.toEqual([]);
         expect(execute).toHaveBeenCalledTimes(1);

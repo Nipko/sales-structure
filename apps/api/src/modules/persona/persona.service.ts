@@ -3171,7 +3171,10 @@ export class PersonaService {
         // tpl_sales; su guion SPIN y su traspaso de «lead caliente» no son lo
         // que hacen. Se reemplazan por la conducta del contrato del subtipo.
         const nativeBehavior = applyNativeSubtypeBirthBehavior(configJson, industry, subType, template.id, tenantLang);
-        if (nativeBehavior.applied) configJson.behavior = nativeBehavior.config.behavior;
+        if (nativeBehavior.applied) {
+            configJson.behavior = nativeBehavior.config.behavior;
+            configJson.tools = nativeBehavior.config.tools;
+        }
 
         // Gate de prerrequisitos de agenda, versión BLANDA. Este método corre durante el
         // alta y ANTES del bootstrap vertical (auth.service: primero el agente, después

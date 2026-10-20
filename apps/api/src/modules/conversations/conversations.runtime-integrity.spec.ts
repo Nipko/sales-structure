@@ -91,6 +91,52 @@ describe('Shared runtime integrity', () => {
         return { service, run, llm, domainCreate, config, query };
     }
 
+    it('looks up a requested property photo before accepting an ungrounded denial', async () => {
+        const { service, run, llm } = fixture();
+        const allowedTools = ['search_faqs', 'list_properties', 'send_property_image'];
+        const authority = { source: 'turn_contract', allowedTools, deniedTools: [], commitmentBlocked: null, resolvedAt: new Date().toISOString() };
+        service.turnCapabilityComposer.resolve.mockResolvedValue({
+            tools: allowedTools.map(name => ({ name, description: name, parameters: { type: 'object', properties: {} } })),
+            authority, deniedTools: [], commitmentBlocked: null, status: { status: 'ok' },
+            contract: { version: 1, publishedTools: allowedTools, excluded: [], writersBlocked: false },
+        });
+        service.toolExecutor.execute = jest.fn(async (_schema, _tenant, _contact, name) => name === 'list_properties'
+            ? { properties: [{ id: 'a04493f8-5b74-4f94-921e-9d73d1b189d7', name: 'Spark QA Habitacion', images: [] }] }
+            : { faqs: [] });
+        llm.mockResolvedValue({ content: 'No tengo información sobre un alojamiento llamado Spark QA Habitacion.' });
+        const reply = await run('telegram', '¿Puedes enviarme la foto del alojamiento "Spark QA Habitacion"?');
+        expect(reply).toMatch(/no tiene fotos disponibles/i);
+        expect(reply).not.toMatch(/no tengo información/i);
+        expect(service.toolExecutor.execute).toHaveBeenCalledWith('tenant_test', expect.any(String), expect.any(String),
+            'list_properties', {}, expect.any(String), expect.objectContaining({ authority,
+                executionContext: expect.objectContaining({ persistence: 'disabled' }) }));
+        expect(service.toolExecutor.execute.mock.calls.some((call: any[]) => call[3] === 'send_property_image')).toBe(false);
+    });
+
+    it('never reads property photos when the turn lacks that catalogue authority', async () => {
+        const { service, run } = fixture();
+        service.toolExecutor.execute = jest.fn();
+        await run('telegram', 'Foto del alojamiento Spark QA Habitacion');
+        expect(service.toolExecutor.execute.mock.calls.some((call: any[]) => call[3] === 'list_properties')).toBe(false);
+    });
+
+    it.each([new Error('reader unavailable'), { error: 'read_failed' }])('does not turn a failed property read into a missing-photo claim', async failure => {
+        const { service, run, llm } = fixture();
+        const allowedTools = ['list_properties', 'send_property_image'];
+        const authority = { source: 'turn_contract', allowedTools, deniedTools: [], commitmentBlocked: null, resolvedAt: new Date().toISOString() };
+        service.turnCapabilityComposer.resolve.mockResolvedValue({
+            tools: allowedTools.map(name => ({ name, description: name, parameters: { type: 'object', properties: {} } })),
+            authority, deniedTools: [], commitmentBlocked: null, status: { status: 'ok' },
+            contract: { version: 1, publishedTools: allowedTools, excluded: [], writersBlocked: false },
+        });
+        service.toolExecutor.execute = jest.fn(async () => { if (failure instanceof Error) throw failure; return failure; });
+        llm.mockResolvedValue({ content: 'No pude confirmar las fotos en este momento.' });
+        const reply = await run('telegram', 'Foto del alojamiento Spark QA Habitacion');
+        expect(reply).not.toMatch(/no tiene fotos disponibles/i);
+        expect(service.toolExecutor.execute.mock.calls.filter((call: any[]) => call[3] === 'list_properties')).toHaveLength(1);
+        expect(service.sendMedia).not.toHaveBeenCalled();
+    });
+
     it('loads canonical package prices before a model that answers without calling tools', async () => {
         const { service, run, llm } = fixture();
         const allowedTools = ['search_faqs', 'search_packages'];

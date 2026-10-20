@@ -2430,7 +2430,8 @@ export class PipelineService {
         const hay = this.normalizeForMatch(text);
         if (!hay) return false;
         // Apostrophes are already stripped, so English contractions arrive as cant/wont/etc.
-        // 'sin' is deliberately NOT a negator ('sin duda quiero comprar' = affirmative).
+        // Without-action phrases negate only the adjacent action. A broad 'sin'
+        // token window would also suppress affirmative 'sin duda quiero comprar'.
         const NEGATORS = new Set([
             'no', 'nunca', 'tampoco', 'ni', 'jamas',           // es
             'nao', 'jamais', 'pas',                            // pt / fr
@@ -2446,7 +2447,8 @@ export class PipelineService {
                 // Tokenize the preamble on any non-alphanumeric run so a punctuation-glued
                 // negator ('pero,no') is still detected.
                 const before = hay.slice(0, m.index).split(/[^a-z0-9]+/).filter(Boolean).slice(-3);
-                if (!before.some((w) => NEGATORS.has(w))) return true; // matched without negation
+                const withoutAction = /\b(?:sin|sem|sans|without)(?:\s+(?:lo|la|le|o|a|having|to)){0,2}\s*$/.test(hay.slice(0, m.index));
+                if (!withoutAction && !before.some((w) => NEGATORS.has(w))) return true; // matched without negation
                 if (re.lastIndex === m.index) re.lastIndex++; // avoid zero-width loop
             }
         }

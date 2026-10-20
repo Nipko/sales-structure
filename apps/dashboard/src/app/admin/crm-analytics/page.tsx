@@ -38,6 +38,7 @@ export default function CrmAnalyticsPage() {
 
     const [overview, setOverview] = useState<any>(null);
     const [funnel, setFunnel] = useState<any[]>([]);
+    const [funnelLoaded, setFunnelLoaded] = useState(false);
     const [velocity, setVelocity] = useState<any[]>([]);
     const [winLoss, setWinLoss] = useState<any>(null);
     const [leaderboard, setLeaderboard] = useState<any[]>([]);
@@ -50,6 +51,7 @@ export default function CrmAnalyticsPage() {
     useEffect(() => {
         if (!activeTenantId) return;
         setLoading(true);
+        setFunnelLoaded(false);
 
         Promise.all([
             api.fetch(`/crm/analytics/${activeTenantId}/overview`),
@@ -61,6 +63,7 @@ export default function CrmAnalyticsPage() {
         ]).then(([ov, fn, vel, wl, lb, src]) => {
             setOverview(ov?.data);
             setFunnel(fn?.data || []);
+            setFunnelLoaded(Array.isArray(fn?.data));
             setVelocity(vel?.data || []);
             setWinLoss(wl?.data);
             setLeaderboard(lb?.data || []);
@@ -192,6 +195,9 @@ export default function CrmAnalyticsPage() {
             {activeTab === "funnel" && (
                 <div className="bg-card border border-border rounded-xl p-5">
                     <h3 className="text-sm font-semibold mb-4">{t("charts.conversionFunnel")}</h3>
+                    {funnelLoaded && displayFunnel.length === 0 && (
+                        <p role="status" className="py-8 text-center text-sm text-muted-foreground">{t("emptyFunnel")}</p>
+                    )}
                     <div className="flex flex-col gap-2">
                         {displayFunnel.map((stage: any, i: number) => (
                             <div key={stage.stage} className="flex items-center gap-3">

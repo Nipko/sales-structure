@@ -3520,6 +3520,7 @@
     "loadError": "Erreur lors du chargement de la configuration"
   },
   "crmAnalytics": {
+    "emptyFunnel": "Aucune donnée d’entonnoir à afficher.",
     "stageUnavailable": "Étape indisponible",
     "title": "Analyse CRM",
     "subtitle": "Métriques de ventes, pipeline et performance de l'équipe",

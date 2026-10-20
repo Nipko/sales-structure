@@ -31,6 +31,8 @@ export function groundInactiveCatalogReply(customerText:string,executedTools:Cat
  }
  if(new Set(products.map(p=>p.id.toLowerCase())).size!==1)return null;
  const current=products[products.length-1];if(current.isAvailable!==false)return null;
- const name=current.name.replace(/[\u0000-\u001f\u007f]/g,' ').trim().slice(0,200);
+ const name=Array.from(current.name,(char:string)=>{
+  const code=char.charCodeAt(0);return code<=31||code===127?' ':char;
+ }).join('').trim().slice(0,200);
  return(REPLIES[String(language||'es').toLowerCase().split(/[-_]/)[0]]||REPLIES.es)(name);
 }

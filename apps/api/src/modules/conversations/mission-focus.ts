@@ -40,9 +40,23 @@ const CHANGE_WRITER = /^(?:cancel|reschedule)_/;
 export function isCollectionCancellation(text: string): boolean { return COLLECTION_CANCEL.test(normalizeForIntent(text)); }
 export function isNamedMissionResume(text: string): boolean { return NAMED_RESUME.test(normalizeForIntent(text)); }
 export function isDirectedCorrection(text: string): boolean { return CORRECTION.test(normalizeForIntent(text)); }
+/** An imperative lookup is not a second medical appointment beside an explicit business task. */
+function hasConsultaLookup(text: string): boolean {
+    return text.split(/[.!?;,]/).some(part => /^(?:por favor\s+)?consulta\s+(?:si|se|el\s+(?:estado|precio|stock|inventario|cargo de limpieza)|la\s+(?:ficha|disponibilidad|capacidad|tarifa|estancia minima)|(?:mi|mis|su|sus)\s+(?:pedidos?|reservas?|ficha|datos))\b/.test(normalizeForIntent(part).trim()));
+}
+/** A prohibition on claiming a named outcome does not request that second task.
+ * Never swallow the rest of a sentence or a positive request before/after it.
+ * Ownership discovery only: consent and write authorization remain unchanged.
+ */
+function missionOwnershipText(text: string): string {
+    return normalizeForIntent(text).replace(/\b(?:no|ni)\s+confirm(?:es|e|en|ar)\s+(?:(?:una|ninguna)\s+)?(?:cancelacion|devolucion|reembolso)(?:\s+(?:o|ni)\s+(?:(?:una|ninguna)\s+)?(?:cancelacion|devolucion|reembolso))*\b/g, ' ');
+}
 export function mentionedMissionDomains(text: string): string[] {
-    const normalized = normalizeForIntent(text).replace(/-/g, ' ');
-    return Object.entries(DOMAINS).filter(([, pattern]) => pattern.test(normalized)).map(([domain]) => domain);
+    const normalized = missionOwnershipText(text).replace(/-/g, ' ');
+    const domains = Object.entries(DOMAINS).filter(([, pattern]) => pattern.test(normalized)).map(([domain]) => domain);
+    const explicitAppointment = /\b(?:citas?|appointments?|rendez vous|consultas?\s+(?:medic[ao]s?|dentales?|odontologic[ao]s?|veterinari[ao]s?))\b/.test(normalized);
+    return domains.length > 1 && hasConsultaLookup(text) && !explicitAppointment
+        ? domains.filter(domain => domain !== 'appointment') : domains;
 }
 export function toolMissionDomain(name: string): string | undefined {
     if (/appointment/.test(name)) return 'appointment';
@@ -133,7 +147,7 @@ export function arbitrateMissionFocus(input: {
         state.pausedTools = (state.pausedTools || []).filter(item => item.ref.id !== state.selected!.id);
         state.selected = null;
     }
-    const normalized = normalizeForIntent(input.text);
+    const normalized = missionOwnershipText(input.text);
     // «sí, cancélalo» answers a pending CANCELLATION proposal; read anywhere else the cancel verb is a cancellation request.
     const pendingAction = state.expectedReply?.kind === 'confirmation' && state.selected?.kind === 'tool'
         && state.expectedReply.missionId === state.selected.id ? pendingActionForTool(state.selected.toolName) : undefined;
@@ -154,6 +168,8 @@ export function arbitrateMissionFocus(input: {
     const matches = candidates.filter(candidate => !(creating && candidate.ref.kind === 'tool' && CHANGE_WRITER.test(candidate.ref.toolName || ''))
         && candidate.aliases.some(alias => {
             const name = normalizeForIntent(alias).replace(/-/g, ' ');
+            if (candidate.ref.domain === 'appointment' && domains.length > 0 && !domains.includes('appointment')
+                && ['consulta', 'consultas', 'agendar'].includes(name)) return false;
             return name.length >= 3 && (` ${normalized.replace(/-/g, ' ')} `).includes(` ${name} `);
         }));
     const unique = [...new Map(matches.map(candidate => [candidate.ref.id, candidate])).values()];

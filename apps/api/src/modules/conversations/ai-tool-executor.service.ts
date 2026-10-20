@@ -4087,6 +4087,34 @@ export class AIToolExecutorService {
             return avail;
         } catch (e: any) {
             this.logger.warn(`[Tool] check_property_availability failed: ${e.message}`);
+            // These errors are raised before any availability query. Preserve
+            // the actionable input problem instead of suggesting a service retry.
+            const inputErrors: Record<string, { code: string; message: string }> = {
+                'propertyId must be a valid UUID': {
+                    code: 'invalid_property_id',
+                    message: 'Resuelve el alojamiento con list_properties y usa su identificador. No solicites identificadores técnicos al cliente.',
+                },
+                'checkIn must be a valid date in YYYY-MM-DD format': {
+                    code: 'invalid_check_in_date',
+                    message: 'La fecha de entrada no es válida. Solicita una fecha real en formato YYYY-MM-DD; no la corrijas por suposición.',
+                },
+                'checkOut must be a valid date in YYYY-MM-DD format': {
+                    code: 'invalid_check_out_date',
+                    message: 'La fecha de salida no es válida. Solicita una fecha real en formato YYYY-MM-DD; no la corrijas por suposición.',
+                },
+                'checkOut must be after checkIn': {
+                    code: 'checkout_must_be_after_checkin',
+                    message: 'La fecha de salida debe ser posterior a la fecha de entrada. Solicita una salida posterior antes de consultar disponibilidad; no confirmes disponibilidad ni reserva.',
+                },
+            };
+            const inputError = e instanceof BadRequestException
+                && Object.prototype.hasOwnProperty.call(inputErrors, e.message)
+                ? inputErrors[e.message] : undefined;
+            if (inputError) {
+                return readFailed(inputError.code, {
+                    source: 'derived', retryable: false, message: inputError.message,
+                });
+            }
             return readFailed(TOOL_READ_ERROR_CODES.READ_FAILED, {
                 message: 'No pude consultar la disponibilidad de ese alojamiento en este momento.',
             });
@@ -4097,6 +4125,14 @@ export class AIToolExecutorService {
      * Full property details including amenities, rules, and pricing.
      */
     private async getPropertyDetails(schema: string, propertyId: string): Promise<any> {
+        // A failed argument lookup does not mean the business has no details.
+        // Give the agent the same recovery path used by property media tools.
+        if (!AIToolExecutorService.UUID_PATTERN.test(String(propertyId || ''))) {
+            return readFailed('invalid_property_id', {
+                retryable: false,
+                message: 'propertyId debe ser el UUID de la propiedad, no su nombre. Llama a list_properties para obtenerlo y vuelve a consultar get_property_details con ese UUID. No pidas al cliente un identificador técnico ni afirmes que la ficha no está disponible por este error de argumento.',
+            });
+        }
         try {
             const p = await this.propertiesService.getById(schema, propertyId);
             if (!p) return { error: 'Property not found' };
@@ -5022,6 +5058,9 @@ export class AIToolExecutorService {
             const undeclared = filtering && mapped.some(m => m.allergensDeclared === false);
             return {
                 count: items.length,
+                ...(mapped.some(item => item.prepTimeMinutes == null) ? {
+                    preparationTimeNotice: 'A null prepTimeMinutes means the kitchen preparation time is not recorded for that dish. Do not invent minutes or substitute an order/delivery ETA. This is not an access failure: explain that the time is not recorded and needs confirmation from the kitchen.',
+                } : {}),
                 ...(filtering ? {
                     // The filter only knows what the kitchen recorded; it is not a guarantee.
                     allergenNotice: 'These dishes do not list the requested allergen in the recorded data. Never promise a dish is allergen-free or safe: tell the customer the kitchen must confirm it.'

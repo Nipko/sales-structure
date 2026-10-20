@@ -29,6 +29,43 @@ const BOOKING_ARGS = {
     guestName: 'Nir Levin',
 };
 
+describe('property detail reads recover from a name passed as an ID', () => {
+    it('points the agent to the property lookup before it queries the database', async () => {
+        const getById = jest.fn();
+        const { executor } = createExecutor(getById);
+        const result = await executor.execute(schemaName, tenantId, contactId,
+            'get_property_details', { propertyId: 'Spark QA Habitacion' }, conversationId,
+            { authority: authorityFor('get_property_details') });
+        expect(result).toMatchObject({ error: 'invalid_property_id', retryable: false });
+        expect(result.message).toContain('list_properties');
+        expect(result.message).toContain('UUID');
+        expect(getById).not.toHaveBeenCalled();
+    });
+
+    it('does not replace an omitted ID with a guessed property', async () => {
+        const getById = jest.fn();
+        const { executor } = createExecutor(getById);
+        const result = await executor.execute(schemaName, tenantId, contactId,
+            'get_property_details', {}, conversationId,
+            { authority: authorityFor('get_property_details') });
+        expect(result.error).toBe('invalid_property_id');
+        expect(getById).not.toHaveBeenCalled();
+    });
+
+    it('returns canonical detail fields when lookup supplied a valid UUID', async () => {
+        const getById = jest.fn().mockResolvedValue({ id: PROPERTY_ID, name: 'QA room',
+            night_price: '150000', check_in_time: '15:00', check_out_time: '11:00',
+            amenities: [], house_rules: null });
+        const { executor } = createExecutor(getById);
+        const result = await executor.execute(schemaName, tenantId, contactId,
+            'get_property_details', { propertyId: PROPERTY_ID }, conversationId,
+            { authority: authorityFor('get_property_details') });
+        expect(getById).toHaveBeenCalledWith(schemaName, PROPERTY_ID);
+        expect(result).toMatchObject({ id: PROPERTY_ID, nightPrice: 150000,
+            checkInTime: '15:00', checkOutTime: '11:00', amenities: [], houseRules: null });
+    });
+});
+
 function createExecutor(getById: jest.Mock) {
     const control = {
         preflight: jest.fn().mockResolvedValue({ allowed: true }),

@@ -53,9 +53,10 @@ export class EvalController {
     @Roles('super_admin', 'tenant_admin')
     async runActions(
         @Param('tenantId') tenantId: string,
-        @Body() body: { agentId: string; threshold?: number; k?: number; passPolicy?: 'all' | 'majority'; activationThreshold?: number; channelType?: string },
+        @Body() body: { agentId: string; threshold?: number; k?: number; passPolicy?: 'all' | 'majority'; activationThreshold?: number; channelType?: string; scenarioKeys?: string[]; expectedScenarioSetHash?: string },
     ) {
-        return { success: true, data: await this.evals.runGateV2(tenantId, body.agentId, { threshold: body.threshold, k: body.k, passPolicy: body.passPolicy, activationThreshold: body.activationThreshold, channelType: body.channelType }) };
+        return { success: true, data: await this.evals.runGateV2(tenantId, body.agentId, { threshold: body.threshold, k: body.k, passPolicy: body.passPolicy, activationThreshold: body.activationThreshold, channelType: body.channelType,
+            ...(body.scenarioKeys !== undefined ? { scenarioKeys: body.scenarioKeys, expectedScenarioSetHash: body.expectedScenarioSetHash } : {}) }) };
     }
 
     @Get(':tenantId/runs')

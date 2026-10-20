@@ -75,6 +75,7 @@ import { legacyTurnReplyKey, turnReplyKey } from './turn-reply-cache';
 import { IdentityService } from '../identity/identity.service';
 import { AIToolExecutorService } from './ai-tool-executor.service';
 import { buildUnverifiedPriceReply, correctivePriceInstruction, enforceVerifiedPriceReply, ResponseValidatorService } from './response-validator.service';
+import { groundInactiveCatalogReply } from './catalog-retirement-grounding';
 import { AgentTurnSession } from './agent-turn-session';
 import { sessionCanExecute, sessionLlmRouter, sessionToolExecutor } from './agent-turn-adapters';
 import { containsBookingOffer } from './booking-offer';
@@ -6260,6 +6261,13 @@ export class ConversationsService {
         // and written into the prompt, yet a long history or knowledge in another language still pulled the
         // model back (a Portuguese refund question answered in Spanish). One rewrite, only on clear evidence.
         response = await this.alignReplyLanguage(response, lang, currentMessages, systemPrompt, allowedTiers, tenantId, llmRouter, trustedContext, session, executedTools);
+
+        // A healthy read (`status: ok`) is not permission to sell an inactive product.
+        // Ground this narrow single-product answer without another model attempt.
+        if (!(trustedContext as any)?.directive && !promisesHumanHandoff(response)) {
+            const retired = groundInactiveCatalogReply(lastCustomerText(currentMessages), executedTools, lang);
+            if (retired) return retired;
+        }
 
         // Guardrail 0b: terms of cancelling / moving are answered from what the business wrote, never from the model's habits.
         // «¿Se puede cancelar sin costo?» with no policy, FAQ or knowledge in the turn is not answered «por lo general, sí».

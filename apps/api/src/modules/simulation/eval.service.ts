@@ -26,6 +26,7 @@ import { EVAL_WRITER_SANDBOX_FAMILIES } from '../conversations/agent-test-tool-p
 import { AgentEvaluationSnapshot } from '../conversations/agent-evaluation-snapshot';
 import { verifyExpectedEffects } from './eval-effect-verifier';
 import { REGRESSION_PREFIX } from '../quality/regressions/quality-regression-contracts';
+import { selectEvalScenarios, validateEvalScenarioKeys } from './eval-scenario-selection';
 import { assertReviewedRegressionScenarios, fetchReviewedRegressionScenarios, regressionCaseIds } from '../quality/regressions/quality-regression-runtime';
 
 export interface EvalSandboxSession {
@@ -524,9 +525,15 @@ export class EvalService {
     async runGateV2(
         tenantId: string,
         agentId: string,
-        opts?: { threshold?: number; k?: number; passPolicy?: 'all' | 'majority'; activationThreshold?: number; trigger?: string; channelType?: string; agentSnapshot?: AgentEvaluationSnapshot; scenarios?: any[]; previousResults?: any[]; assertExecutionAuthority?:()=>Promise<void>; beforeModelUnits?: (units: number) => Promise<void>; onScenarioCompleted?: (results: any[]) => Promise<void> },
+        opts?: { threshold?: number; k?: number; passPolicy?: 'all' | 'majority'; activationThreshold?: number; trigger?: string; channelType?: string; agentSnapshot?: AgentEvaluationSnapshot; scenarios?: any[]; scenarioKeys?: string[]; expectedScenarioSetHash?: string; previousResults?: any[]; assertExecutionAuthority?:()=>Promise<void>; beforeModelUnits?: (units: number) => Promise<void>; onScenarioCompleted?: (results: any[]) => Promise<void> },
     ): Promise<any> {
         if (!agentId) throw new BadRequestException('agentId is required');
+        const scenarioKeys = validateEvalScenarioKeys(opts?.scenarioKeys);
+        const selectedDiagnostic = scenarioKeys !== undefined;
+        if (selectedDiagnostic && !/^[a-f0-9]{64}$/.test(opts?.expectedScenarioSetHash || ''))
+            throw new BadRequestException({ error: 'eval_scenario_selection_hash_required' });
+        if (selectedDiagnostic && opts?.scenarios) throw new BadRequestException({ error: 'eval_scenario_selection_conflict' });
+        const runTrigger = selectedDiagnostic ? 'manual_selected_diagnostic' : opts?.trigger || 'manual';
 
         const channelType = opts?.channelType || 'web_widget';
         if (!(CONVERSATIONAL_CHANNELS as readonly string[]).includes(channelType)) throw new BadRequestException('unsupported_conversational_channel');
@@ -552,9 +559,12 @@ export class EvalService {
                 const availableScenarios = opts?.scenarios || await this.listScenarios(tenantId);
                 await this.agentTest.assertSnapshotExecutable(snapshot, tenantId, agentId);
                 const applicable = availableScenarios.filter(scenario=>regressionAppliesToSnapshot(scenario,snapshot!,channelType));
-                if(applicable.some(scenario=>scenario.regressionBlocked))throw new Error('reviewed_regression_source_changed');
-                const scenarios=applicable.filter(scenario=>(scenario.seedState||'active')==='active'
-                    && scenarioAppliesToMission(scenario,snapshot!.releaseScope));
+                if(!selectedDiagnostic && applicable.some(scenario=>scenario.regressionBlocked))throw new Error('reviewed_regression_source_changed');
+                const scenarios=selectEvalScenarios(applicable.filter(scenario=>(scenario.seedState||'active')==='active'
+                    && scenarioAppliesToMission(scenario,snapshot!.releaseScope)), scenarioKeys);
+                if(scenarios.some(scenario=>scenario.regressionBlocked))throw new Error('reviewed_regression_source_changed');
+                if(selectedDiagnostic && revisionHash(scenarios) !== opts?.expectedScenarioSetHash)
+                    throw new ConflictException({ error: 'eval_scenario_selection_changed' });
                 runScenarios = scenarios;
                 const contextHash=releaseRunContext({agentId,dependencyRevision:snapshot.manifest?.revision||'',
                     configHash:snapshot.configHash,channelType,k,passPolicy,threshold});
@@ -577,28 +587,29 @@ export class EvalService {
                 const servedModels = [...new Set(out.flatMap((row: any) =>
                     (Array.isArray(row.runs) ? row.runs : []).flatMap((attempt: any) =>
                         Array.isArray(attempt?.models) ? attempt.models : [])))].sort();
-                const releaseEvidence = sealReleaseRun({agentId,dependencyRevision:snapshot.manifest?.revision||'',
+                const releaseEvidence = selectedDiagnostic ? undefined : sealReleaseRun({agentId,dependencyRevision:snapshot.manifest?.revision||'',
                     configHash:snapshot.configHash,channelType,status:'completed',k,passPolicy,threshold,
                     models:servedModels,scenarios,results:out});
-                const releaseReadiness = assessAgentRelease({agentId,dependencyRevision:snapshot.manifest?.revision||'',
-                    configHash:snapshot.configHash,scope:snapshot.releaseScope,runs:[releaseEvidence]});
+                const releaseReadiness = releaseEvidence ? assessAgentRelease({agentId,dependencyRevision:snapshot.manifest?.revision||'',
+                    configHash:snapshot.configHash,scope:snapshot.releaseScope,runs:[releaseEvidence]}) : undefined;
                 const result = { runId, passed, avgScore, threshold, k, passPolicy, total: out.length, scenarios: out,
                     // Scoring is evidence for review. Publishing requires a separate reviewed release transition.
                     evalActivable: false, releaseEvidence, releaseReadiness,
+                    ...(selectedDiagnostic ? { evaluationScope: 'selected_diagnostic' } : {}),
                     agentSnapshot: snapshot, scenarioSetHash: revisionHash(scenarios), channelType, status: 'completed' };
-                await this.persistRun(schema, agentId, result, opts?.trigger || 'manual');
-                this.emitRunEvent(AGENT_EVAL_COMPLETED_EVENT, tenantId, agentId, 'completed',runId);
+                await this.persistRun(schema, agentId, result, runTrigger);
+                if(!selectedDiagnostic)this.emitRunEvent(AGENT_EVAL_COMPLETED_EVENT, tenantId, agentId, 'completed',runId);
                 return result;
             } catch (error: any) {
                 if (activeScenario) out.push({ key: activeScenario.key, title: activeScenario.title,...regressionProvenance(activeScenario),
                     score: null, passed: false, resolved: false, error: String(error.message || error) });
-                const releaseEvidence = snapshot ? sealReleaseRun({agentId,dependencyRevision:snapshot.manifest?.revision||'',
+                const releaseEvidence = snapshot && !selectedDiagnostic ? sealReleaseRun({agentId,dependencyRevision:snapshot.manifest?.revision||'',
                     configHash:snapshot.configHash,channelType,status:'failed',k,passPolicy,threshold,scenarios:runScenarios,results:out}) : undefined;
                 await this.persistRun(schema, agentId, { runId, passed: false, avgScore: null, threshold, k, passPolicy,
                     total: out.length, scenarios: out, evalActivable: false, agentSnapshot: snapshot, channelType,
                     releaseEvidence,
-                    status: 'failed', error: String(error.message || error) }, opts?.trigger || 'manual');
-                this.emitRunEvent(AGENT_EVAL_FAILED_EVENT, tenantId, agentId, 'failed',runId);
+                    status: 'failed', error: String(error.message || error) }, runTrigger);
+                if(!selectedDiagnostic)this.emitRunEvent(AGENT_EVAL_FAILED_EVENT, tenantId, agentId, 'failed',runId);
                 throw error;
             } finally {
                 // External release/learning producers own their snapshot across

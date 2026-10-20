@@ -171,8 +171,8 @@ export default function ScoringConfigPage() {
                     {WEIGHT_KEYS.map((key) => {
                         const pct = Math.round(config.weights[key] * 100);
                         return (
-                            <div key={key} className="flex items-center gap-4">
-                                <label htmlFor={`scoring-weight-${key}`} className="w-[160px] text-sm text-foreground shrink-0">
+                            <div key={key} className="grid grid-cols-[minmax(0,1fr)_48px] items-center gap-x-4 gap-y-2 sm:grid-cols-[160px_minmax(0,1fr)_48px]">
+                                <label htmlFor={`scoring-weight-${key}`} className="col-start-1 row-start-1 min-w-0 text-sm text-foreground sm:col-auto sm:row-auto">
                                     {t(key)}
                                 </label>
                                 <input
@@ -183,9 +183,9 @@ export default function ScoringConfigPage() {
                                     step={5}
                                     value={pct}
                                     onChange={(e) => updateWeight(key, Number(e.target.value))}
-                                    className="flex-1 h-2 rounded-full appearance-none bg-muted accent-indigo-500 cursor-pointer"
+                                    className="col-span-2 row-start-2 w-full min-w-0 h-2 rounded-full appearance-none bg-muted accent-indigo-500 cursor-pointer sm:col-span-1 sm:row-auto"
                                 />
-                                <span className="w-[48px] text-right text-sm font-medium tabular-nums text-foreground">
+                                <span className="col-start-2 row-start-1 w-[48px] text-right text-sm font-medium tabular-nums text-foreground sm:col-auto sm:row-auto">
                                     {pct}%
                                 </span>
                             </div>

@@ -3520,6 +3520,7 @@
     "loadError": "Failed to load configuration"
   },
   "crmAnalytics": {
+    "emptyFunnel": "There is no funnel data to display.",
     "stageUnavailable": "Stage unavailable",
     "title": "CRM Analytics",
     "subtitle": "Sales metrics, pipeline performance and team insights",

@@ -144,32 +144,37 @@ export class PoliciesService {
         }
         const schemaName = await this.ensureSchema(tenantId);
 
-        // Deactivate current active version
-        await this.prisma.$executeRawUnsafe(
-            `UPDATE "${schemaName}"."policies"
-                SET is_active = false, effective_to = NOW(), updated_at = NOW()
-              WHERE type = $1 AND is_active = true`,
-            input.type,
-        );
+        const row = await withRuntimeSchemaLock(this.prisma, schemaName, async (tx) => {
+            // Deactivate current active version
+            await tx.$executeRawUnsafe(
+                `UPDATE "${schemaName}"."policies"
+                    SET is_active = false, effective_to = NOW(), updated_at = NOW()
+                  WHERE type = $1 AND is_active = true`,
+                input.type,
+            );
 
-        // Determine next version number
-        const verRows = await this.prisma.$queryRawUnsafe(
-            `SELECT COALESCE(MAX(version), 0) + 1 AS next_version FROM "${schemaName}"."policies" WHERE type = $1`,
-            input.type,
-        ) as any[];
-        const nextVersion = verRows[0]?.next_version ?? 1;
+            // Determine next version number
+            const verRows = await tx.$queryRawUnsafe(
+                `SELECT COALESCE(MAX(version), 0) + 1 AS next_version FROM "${schemaName}"."policies" WHERE type = $1`,
+                input.type,
+            ) as any[];
+            const nextVersion = verRows[0]?.next_version ?? 1;
 
-        const rows = await this.prisma.$queryRawUnsafe(
-            `INSERT INTO "${schemaName}"."policies"
-                (type, title, content, version, is_active, created_by)
-             VALUES ($1, $2, $3, $4, true, $5)
-             RETURNING id, type, title, content, version, effective_from, effective_to, is_active, created_at, updated_at`,
-            input.type, input.title, input.content, nextVersion, createdBy ?? 'system',
-        ) as any[];
+            const rows = await tx.$queryRawUnsafe(
+                `INSERT INTO "${schemaName}"."policies"
+                    (type, title, content, version, is_active, created_by)
+                 VALUES ($1, $2, $3, $4, true, $5)
+                 RETURNING id, type, title, content, version, effective_from, effective_to, is_active, created_at, updated_at`,
+                input.type, input.title, input.content, nextVersion, createdBy ?? 'system',
+            ) as any[];
+
+            if (!rows[0]) throw new Error('policy_insert_returned_no_row');
+            return rows[0];
+        });
 
         await this.redis.del(`policy:${tenantId}:${input.type}:active`);
         this.emitQualityDependency(tenantId);
-        return this.rowToPolicy(rows[0]);
+        return this.rowToPolicy(row);
     }
 
     async delete(tenantId: string, id: string): Promise<void> {

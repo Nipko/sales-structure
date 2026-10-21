@@ -10,6 +10,7 @@ describe('policy validation compatibility', () => {
             if (sql.includes('INSERT INTO')) return [{ id: '11111111-1111-4111-8111-111111111111', type: args[0], title: args[1], content: args[2], version: args[3], is_active: true }];
             return [];
         }) };
+        s.prisma.$transaction = jest.fn(async (operation: any) => operation(s.prisma));
         s.redis = { del: jest.fn() }; s.events = { emit: jest.fn() };
         return s;
     }

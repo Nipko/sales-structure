@@ -1016,6 +1016,8 @@ jobs:
             const client = new Client({ connectionString: process.env.DATABASE_URL });
             await client.connect();
             try {
+              // Match the runtime prerequisite used by FAQ schema creation.
+              await client.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"');
               for (const name of ['parallly_policy_a_eval_isolation', 'parallly_promo_a_eval_isolation']) {
                 await client.query('CREATE DATABASE "' + name + '"');
               }

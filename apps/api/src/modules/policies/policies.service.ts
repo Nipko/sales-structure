@@ -131,7 +131,17 @@ export class PoliciesService {
      * is `max(version)+1`.
      */
     async upsert(tenantId: string, input: UpsertPolicyInput, createdBy?: string): Promise<Policy> {
+        // Reject malformed edits before schema initialization or retiring the current policy.
+        if (!input || typeof input !== 'object' || Array.isArray(input)) {
+            throw new BadRequestException('Invalid policy payload');
+        }
         if (!VALID_TYPES.includes(input.type)) throw new BadRequestException(`Invalid policy type: ${input.type}`);
+        if (typeof input.title !== 'string' || !input.title.trim() || input.title.length > 500) {
+            throw new BadRequestException('Policy title must contain 1 to 500 characters');
+        }
+        if (typeof input.content !== 'string' || !input.content.trim()) {
+            throw new BadRequestException('Policy content must contain text');
+        }
         const schemaName = await this.ensureSchema(tenantId);
 
         // Deactivate current active version

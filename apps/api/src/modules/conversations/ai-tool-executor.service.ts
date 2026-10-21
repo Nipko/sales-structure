@@ -2198,7 +2198,7 @@ export class AIToolExecutorService {
             return { error: 'no_lead', message: 'Este cliente todavía no está en el embudo.' };
         }
         try {
-            await this.prisma.$queryRawUnsafe(
+            const written = await this.prisma.$queryRawUnsafe(
                 `UPDATE "${schema}".leads
                     SET primary_intent = COALESCE(NULLIF(primary_intent, ''), $2),
                         secondary_intent = CASE
@@ -2207,9 +2207,29 @@ export class AIToolExecutorService {
                             ELSE COALESCE(NULLIF(secondary_intent, ''), $2)
                         END,
                         updated_at = NOW()
-                  WHERE id = $1::uuid`,
+                  WHERE id = $1::uuid
+                    AND lower(COALESCE(primary_intent, '')) <> lower($2)
+                    AND lower(COALESCE(secondary_intent, '')) <> lower($2)
+                    AND (COALESCE(primary_intent, '') = '' OR COALESCE(secondary_intent, '') = '')
+                  RETURNING id`,
                 leadId, value,
             );
+            if (!written.length) {
+                // The guarded UPDATE also serializes concurrent fills. A duplicate
+                // is a successful no-op; a full or deleted lead must not claim a save.
+                const existing = await this.prisma.$queryRawUnsafe(
+                    `SELECT lower(COALESCE(primary_intent, '')) = lower($2)
+                         OR lower(COALESCE(secondary_intent, '')) = lower($2) AS recorded
+                       FROM "${schema}".leads WHERE id = $1::uuid`,
+                    leadId, value,
+                );
+                if (!existing.length) {
+                    return { error: 'no_lead', message: 'Este cliente ya no está en el embudo.' };
+                }
+                if (!existing[0].recorded) {
+                    return { error: 'interest_not_recorded', message: 'No pude guardar ese interés sin reemplazar los ya registrados.' };
+                }
+            }
             return { success: true, interest: value };
         } catch (e: any) {
             this.logger.warn(`[Tool] record_contact_interest failed: ${e.message}`);

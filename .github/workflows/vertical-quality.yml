@@ -185,6 +185,8 @@ jobs:
           apps/api/src/modules/conversations/mission-focus.negated-outcomes.spec.ts
           apps/api/src/modules/conversations/catalog-retirement-grounding.spec.ts
           apps/api/src/modules/conversations/property-photo-grounding.spec.ts
+          apps/api/src/modules/conversations/package-detail-grounding.spec.ts
+          apps/api/src/modules/conversations/conversations.package-details-grounding.spec.ts
           apps/api/src/modules/persona/tourism-hotel-birth.spec.ts
           apps/api/src/modules/pipeline/pipeline-readonly-negation.spec.ts
           apps/api/src/modules/pipeline/pipeline-conversation-milestone.spec.ts

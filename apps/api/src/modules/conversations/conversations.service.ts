@@ -90,6 +90,7 @@ import { EVALUATION_CONTEXT_LANGUAGES, evaluationContextLanguage, projectBusines
 import { isAgentTestSafeToolName } from './agent-test-tool-policy';
 import { buildTrustedPriceCorpus, requiresCanonicalPackagePrice } from './trusted-price-context';
 import { canonicalPackageCatalogue } from './canonical-package-context';
+import { packageDetailIdForQuestion, requiresPackageDetailLookup } from './package-detail-grounding';
 import {
     auditTurnClaim,
     claimsCompletedAction,
@@ -4166,6 +4167,7 @@ export class ConversationsService {
         // customer was actually shown, and let the LLM voice the outcome. The
         // signed token, the args hash and the ledger status stay in charge.
         let preExecutedTools: Array<{ name: string; result: any }> = engineExecutedTools;
+        let automaticPackageDetailRead: { packageId: string; result: any } | undefined;
         if (!draftMode && !engineProducedText
             && conversation.contact_id) {
             try {
@@ -4581,7 +4583,7 @@ export class ConversationsService {
         // the bounded catalogue through this turn's normal executor before
         // the model sees competing sources. Keep tenant/capability/snapshot
         // authority and persistence controls identical to an explicit read.
-        if (!engineProducedText && requiresCanonicalPackagePrice(userText)
+        if (!engineProducedText && (requiresCanonicalPackagePrice(userText) || requiresPackageDetailLookup(userText))
             && turnAllowedTools.includes('search_packages')) {
             const packageExecutionContext: ServiceExecutionContext = {
                 ...executionContext, mode: executionContext?.mode ?? 'live', persistence: 'disabled',
@@ -4598,6 +4600,29 @@ export class ConversationsService {
                 turnContext.catalog = [...(turnContext.catalog || []), ...catalogue];
                 turnTrace.add('tool_result', 'search_packages', { ok: !result?.error, error: result?.error,
                     automatic: true, retrievedCount: catalogue.length });
+                // Package-specific facts live in the current detail reader.
+                // Only one exact package from the authorized catalogue may be
+                // fetched; failed/ambiguous searches never supply an identity.
+                const packageId = requiresPackageDetailLookup(userText)
+                    && turnAllowedTools.includes('get_package_details')
+                    ? packageDetailIdForQuestion(userText, result) : null;
+                if (packageId) {
+                    try {
+                        turnTrace.add('tool_call', 'get_package_details', { origin: 'vertical', effect: 'read', automatic: true });
+                        const details = await awaitAutomaticFaqLookup(toolExecutor.execute(
+                            schemaName, tenantId, conversation.contact_id || '', 'get_package_details', { packageId }, conversation.id,
+                            { authority: llmAuthority, channelType: msg.channelType, executionContext: packageExecutionContext,
+                                commitmentBlocked, deniedTools, jurisdiction: regional?.operatingCountry.value },
+                        ), 3_000, packageExecutionContext);
+                        preExecutedTools.push({ name: 'get_package_details', result: details });
+                        automaticPackageDetailRead = { packageId, result: details };
+                        turnTrace.add('tool_result', 'get_package_details', { ok: !details?.error, error: details?.error, automatic: true });
+                    } catch (error: any) {
+                        if (session || error instanceof LLMSourceAuthorityUnavailable) throw error;
+                        this.logger.warn(`Package detail lookup failed (non-fatal): ${error.message}`);
+                        turnTrace.add('tool_result', 'get_package_details', { ok: false, automatic: true, error: 'package_detail_lookup_failed' });
+                    }
+                }
             } catch (error: any) {
                 if (session || error instanceof LLMSourceAuthorityUnavailable) throw error;
                 this.logger.warn(`Package price lookup failed (non-fatal): ${error.message}`);
@@ -4925,6 +4950,15 @@ export class ConversationsService {
             const voicedWrite = preExecutedTools.some(t => isBusinessWriteTool(t.name));
             const MAX_TOOL_ITERATIONS = 5;
             const currentMessages = [...messages] as any[];
+            // An automatic catalogue read must reach the model through the
+            // same sanitized tool-result boundary as a requested tool call.
+            if (automaticPackageDetailRead) {
+                const id = 'auto_package_details';
+                currentMessages.push({ role: 'assistant', content: '', toolCalls: [{ id, type: 'function',
+                    function: { name: 'get_package_details', arguments: JSON.stringify({ packageId: automaticPackageDetailRead.packageId }) } }] });
+                currentMessages.push({ role: 'tool', toolCallId: id,
+                    content: JSON.stringify(sanitizeToolResultForModel(automaticPackageDetailRead.result, userLanguage)) });
+            }
             // The router invokes this authority separately for every provider
             // attempt. Keep earlier examples too: generated tool-loop prose may
             // still derive from them after the visible style selection changes.

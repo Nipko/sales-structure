@@ -7,7 +7,7 @@ export function requiresListingDetailLookup(query: string): boolean {
     const rentalTerm = /\bminim\w*\b/.test(text)
         && /\b(?:mes(?:es)?|months?|mois|prazo|aluguel|arrend\w*|arriendo|rental|lease|tenancy|location)\b/.test(text);
     return /\b(?:inmueble\w*|propiedad\w*|apartamento\w*|casa\w*|listing\w*|property|apartment\w*|imovel|imoveis|appartement\w*|logement\w*)\b/.test(text)
-        && (rentalTerm || /\b(?:financ\w*|deposit\w*|depot|hoa|administracion|administracao|condominio|constru\w*|year\s+built|estrato|stratum|area|metros?\s+cuadrados?|m2|square\s+(?:met\w*|feet)|superficie|surface|parking|parqueadero\w*|estacionamiento\w*|garag\w*|vaga\w*|enlace\w*|link\w*|url|lien\w*|habitacion\w*|dormitorio\w*|bedroom\w*|chambre\w*|bano\w*|bathroom\w*|amen\w*|comodidade\w*)\b/.test(text));
+        && (rentalTerm || /\b(?:financ\w*|deposit\w*|depot|hoa|administracion|administracao|condominio|constru\w*|year\s+built|estrato|stratum|area|metros?\s+cuadrados?|m2|square\s+(?:met\w*|feet)|superficie|surface|parking|parqueadero\w*|estacionamiento\w*|garag\w*|vaga\w*|enlace\w*|link\w*|url|lien\w*|habitacion\w*|dormitorio\w*|bedroom\w*|chambre\w*|bano\w*|bathroom\w*|amen\w*|comodidade\w*|direcci\w*|ciudad\w*|address\w*|cit(?:y|ies)|endereco\w*|cidade\w*|adresse\w*|ville\w*|barrio\w*|neighbou?rhood\w*|bairro\w*|quartier\w*)\b/.test(text));
 }
 
 export function listingDetailIdForQuestion(query: string, result: unknown): string | null {

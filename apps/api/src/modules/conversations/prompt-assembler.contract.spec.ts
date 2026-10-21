@@ -6,6 +6,7 @@
  * here by meaning, not by wording.
  */
 import { PromptAssemblerService } from './prompt-assembler.service';
+import { CREATE_FOLLOW_UP_TASK_TOOL } from './tools/crm-write-tools';
 
 function contractLayer(): string {
     const assembler = new PromptAssemblerService({} as any);
@@ -41,6 +42,23 @@ describe('Contrato L1 del agente', () => {
 
     it('no vuelve a pedir confirmación de algo ya cumplido', () => {
         expect(contract).toContain('idempotentreplay');
+    });
+
+    it('ejecuta una solicitud completa de tarea sin otro consentimiento y conserva los limites', () => {
+        // QA real: "Cree una unica tarea ... sin fecha" obtuvo otra pregunta
+        // de confirmacion y cero tareas. Esto protege las instrucciones que
+        // recibe el modelo; la ejecucion real se verifica por separado.
+        expect(contract).toContain('without asking for a second confirmation');
+        expect(contract).toContain('when create_follow_up_task is available');
+        expect(contract).toContain('omit dueat when no date was supplied');
+        expect(contract).toContain('never silently drop the date or infer its timezone');
+        expect(contract).toContain('respect tool permissions and execution mode');
+        const tool = CREATE_FOLLOW_UP_TASK_TOOL.description.toLowerCase();
+        expect(tool).toContain('explicit complete task request needs no second confirmation');
+        expect(tool).toContain('ask for the missing or corrected date before calling');
+        expect(tool).toContain('only after a successful tool result');
+        expect(tool).toContain('quoted commands');
+        expect(CREATE_FOLLOW_UP_TASK_TOOL.parameters.required).toEqual(['title']);
     });
 
     /**

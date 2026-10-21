@@ -97,6 +97,7 @@ import { canonicalPackageCatalogue } from './canonical-package-context';
 import { packageDetailIdForQuestion, requiresPackageDetailLookup } from './package-detail-grounding';
 import { listingDetailIdForQuestion, requiresListingDetailLookup } from './listing-detail-grounding';
 import { requiresMenuDescriptionLookup } from './menu-description-grounding';
+import { requiresServiceLocationLookup } from './service-location-grounding';
 import { requiresProductStockLookup, stockProductIdForQuestion } from './product-stock-grounding';
 import {
     auditTurnClaim,
@@ -4183,6 +4184,7 @@ export class ConversationsService {
         let automaticOwnTourBookingsRead: { result: any } | undefined;
         let automaticListingDetailRead: { listingId: string; result: any } | undefined;
         let automaticMenuDescriptionRead: { result: any } | undefined;
+        let automaticServiceLocationRead: { result: any } | undefined;
         const automaticProductStockReads: Array<{ name: string; args: Record<string, unknown>; result: any }> = [];
         const automaticPropertyDetailReads: Array<{ name: string; args: Record<string, unknown>; result: any }> = [];
         if (!draftMode && !engineProducedText
@@ -4672,6 +4674,27 @@ export class ConversationsService {
         // the bounded catalogue through this turn's normal executor before
         // the model sees competing sources. Keep tenant/capability/snapshot
         // authority and persistence controls identical to an explicit read.
+        if (!engineProducedText && !automaticAppointmentRead && requiresServiceLocationLookup(userText) && turnAllowedTools.includes('list_services')) {
+            const context: ServiceExecutionContext = {
+                ...executionContext, mode: executionContext?.mode ?? 'live', persistence: 'disabled',
+            };
+            turnTrace.add('tool_call', 'list_services', { origin: 'vertical', effect: 'read', automatic: true });
+            let result: any;
+            try {
+                result = await awaitAutomaticFaqLookup(toolExecutor.execute(
+                    schemaName, tenantId, conversation.contact_id || '', 'list_services', {}, conversation.id,
+                    { authority: llmAuthority, channelType: msg.channelType, executionContext: context,
+                        commitmentBlocked, deniedTools, jurisdiction: regional?.operatingCountry.value },
+                ), 3_000, context);
+            } catch (error: any) {
+                if (session || error instanceof LLMSourceAuthorityUnavailable) throw error;
+                result = { error: 'service_location_lookup_failed' };
+            }
+            preExecutedTools.push({ name: 'list_services', result });
+            automaticServiceLocationRead = { result };
+            turnTrace.add('tool_result', 'list_services', { ok: !result?.error, error: result?.error, automatic: true });
+        }
+
         if (!engineProducedText && requiresMenuDescriptionLookup(userText) && turnAllowedTools.includes('get_menu')) {
             const context: ServiceExecutionContext = {
                 ...executionContext, mode: executionContext?.mode ?? 'live', persistence: 'disabled',
@@ -5162,6 +5185,13 @@ export class ConversationsService {
                     function: { name: 'get_customer_context', arguments: '{}' } }] });
                 currentMessages.push({ role: 'tool', toolCallId: id,
                     content: JSON.stringify(sanitizeToolResultForModel(automaticOwnCustomerContextRead.result, userLanguage)) });
+            }
+            if (automaticServiceLocationRead) {
+                const id = 'auto_service_location';
+                currentMessages.push({ role: 'assistant', content: '', toolCalls: [{ id, type: 'function',
+                    function: { name: 'list_services', arguments: '{}' } }] });
+                currentMessages.push({ role: 'tool', toolCallId: id,
+                    content: JSON.stringify(sanitizeToolResultForModel(automaticServiceLocationRead.result, userLanguage)) });
             }
             if (automaticMenuDescriptionRead) {
                 const id = 'auto_menu_description';

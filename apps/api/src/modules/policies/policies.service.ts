@@ -93,10 +93,8 @@ export class PoliciesService {
             return rows.length ? this.rowToPolicy(rows[0]) : null;
         }
 
-        const cacheKey = `policy:${tenantId}:${type}:active`;
-        const cached = await this.redis.getJson<Policy>(cacheKey);
-        if (cached) return cached;
-
+        // Policy text is a consent source: always read the current durable version.
+        // A stale Redis entry must not restore a retired or deleted policy.
         const schemaName = await this.ensureSchema(tenantId);
         const rows = await this.prisma.$queryRawUnsafe(
             `SELECT id, type, title, content, version, effective_from, effective_to, is_active, created_at, updated_at
@@ -107,7 +105,6 @@ export class PoliciesService {
         ) as any[];
         if (rows.length === 0) return null;
         const policy = this.rowToPolicy(rows[0]);
-        await this.redis.setJson(cacheKey, policy, 600);
         return policy;
     }
 
@@ -172,7 +169,7 @@ export class PoliciesService {
             return rows[0];
         });
 
-        await this.redis.del(`policy:${tenantId}:${input.type}:active`);
+        await this.invalidateLegacyActiveCache(tenantId, input.type);
         this.emitQualityDependency(tenantId);
         return this.rowToPolicy(row);
     }
@@ -184,7 +181,7 @@ export class PoliciesService {
             id,
         ) as any[];
         if (rows.length === 0) throw new NotFoundException('Policy not found');
-        await this.redis.del(`policy:${tenantId}:${rows[0].type}:active`);
+        await this.invalidateLegacyActiveCache(tenantId, rows[0].type);
         this.emitQualityDependency(tenantId);
     }
 
@@ -192,6 +189,16 @@ export class PoliciesService {
         const tenant = await this.prisma.tenant.findUnique({ where: { slug }, select: { id: true } });
         if (!tenant) throw new NotFoundException('Tenant not found');
         return this.getActive(tenant.id, type);
+    }
+
+    private async invalidateLegacyActiveCache(tenantId: string, type: PolicyType): Promise<void> {
+        try {
+            await this.redis.del(`policy:${tenantId}:${type}:active`);
+        } catch {
+            // The database write has committed. Do not report it as uncommitted
+            // or prevent dependency notification because a legacy cache is down.
+            this.logger.warn('Legacy policy cache invalidation failed after a committed write');
+        }
     }
 
     private rowToPolicy(r: any): Policy {

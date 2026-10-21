@@ -1,3 +1,4 @@
+import { appointmentRecordReadId } from './appointment-record-read';
 import { isCanonicalConsentRecovery, canonicalConsentRecoveryDirective } from './canonical-consent-recovery';
 import { DemoAllowanceService } from '../throttle/demo-allowance.service';
 import { demoAllowanceExhaustedText } from '../widget/widget-demo-link';
@@ -3611,7 +3612,9 @@ export class ConversationsService {
         // skip that fail-safe and leave the model to improvise an unavailable
         // booking flow.
         const bookingAuthority = bookingEngineAuthorityDecision(engineAuthority);
+        const appointmentReadId = appointmentRecordReadId(userText);
         if (!draftMode && toolsEnabled
+            && !appointmentReadId
             && !engineProducedText
             && (!missionDecision || missionDecision.route === 'booking' || missionDecision.route === 'tools' && !missionFocus?.selected?.domain)
             && !procedureAwaiting) {
@@ -4169,6 +4172,7 @@ export class ConversationsService {
         // signed token, the args hash and the ledger status stay in charge.
         let preExecutedTools: Array<{ name: string; result: any }> = engineExecutedTools;
         let automaticPackageDetailRead: { packageId: string; result: any } | undefined;
+        let automaticAppointmentRead: { appointmentId: string; result: any } | undefined;
         let automaticListingDetailRead: { listingId: string; result: any } | undefined;
         if (!draftMode && !engineProducedText
             && conversation.contact_id) {
@@ -4581,6 +4585,30 @@ export class ConversationsService {
             }
         }
 
+        // A historical reference is a read, not the start of a booking. Keep
+        // the standard executor's tenant, ownership, assurance and authority checks.
+        if (!engineProducedText && appointmentReadId && turnAllowedTools.includes('get_appointment_details')) {
+            const context: ServiceExecutionContext = {
+                ...executionContext, mode: executionContext?.mode ?? 'live', persistence: 'disabled',
+            };
+            try {
+                turnTrace.add('tool_call', 'get_appointment_details', { origin: 'core', effect: 'read', automatic: true });
+                const result = await awaitAutomaticFaqLookup(toolExecutor.execute(
+                    schemaName, tenantId, conversation.contact_id || '', 'get_appointment_details', { appointmentId: appointmentReadId }, conversation.id,
+                    { authority: llmAuthority, channelType: msg.channelType, executionContext: context,
+                        commitmentBlocked, deniedTools, jurisdiction: regional?.operatingCountry.value },
+                ), 3_000, context);
+                preExecutedTools.push({ name: 'get_appointment_details', result });
+                automaticAppointmentRead = { appointmentId: appointmentReadId, result };
+                turnTrace.add('tool_result', 'get_appointment_details', { ok: !result?.error, error: result?.error, automatic: true });
+            } catch (error: any) {
+                if (session || error instanceof LLMSourceAuthorityUnavailable) throw error;
+                const result = { error: 'appointment_detail_lookup_failed' };
+                automaticAppointmentRead = { appointmentId: appointmentReadId, result };
+                turnTrace.add('tool_result', 'get_appointment_details', { ok: false, automatic: true, error: result.error });
+            }
+        }
+
         // A matching FAQ must not make a current-price lookup optional. Read
         // the bounded catalogue through this turn's normal executor before
         // the model sees competing sources. Keep tenant/capability/snapshot
@@ -4988,6 +5016,13 @@ export class ConversationsService {
             const currentMessages = [...messages] as any[];
             // An automatic catalogue read must reach the model through the
             // same sanitized tool-result boundary as a requested tool call.
+            if (automaticAppointmentRead) {
+                const id = 'auto_appointment_details';
+                currentMessages.push({ role: 'assistant', content: '', toolCalls: [{ id, type: 'function',
+                    function: { name: 'get_appointment_details', arguments: JSON.stringify({ appointmentId: automaticAppointmentRead.appointmentId }) } }] });
+                currentMessages.push({ role: 'tool', toolCallId: id,
+                    content: JSON.stringify(sanitizeToolResultForModel(automaticAppointmentRead.result, userLanguage)) });
+            }
             if (automaticPackageDetailRead) {
                 const id = 'auto_package_details';
                 currentMessages.push({ role: 'assistant', content: '', toolCalls: [{ id, type: 'function',

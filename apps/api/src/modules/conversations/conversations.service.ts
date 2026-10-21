@@ -96,6 +96,7 @@ import { buildTrustedPriceCorpus, requiresCanonicalPackagePrice } from './truste
 import { canonicalPackageCatalogue } from './canonical-package-context';
 import { packageDetailIdForQuestion, requiresPackageDetailLookup } from './package-detail-grounding';
 import { listingDetailIdForQuestion, requiresListingDetailLookup } from './listing-detail-grounding';
+import { requiresMenuDescriptionLookup } from './menu-description-grounding';
 import { requiresProductStockLookup, stockProductIdForQuestion } from './product-stock-grounding';
 import {
     auditTurnClaim,
@@ -4180,6 +4181,7 @@ export class ConversationsService {
         let automaticOwnCustomerContextRead: { result: any } | undefined;
         let automaticOwnTourBookingsRead: { result: any } | undefined;
         let automaticListingDetailRead: { listingId: string; result: any } | undefined;
+        let automaticMenuDescriptionRead: { result: any } | undefined;
         const automaticProductStockReads: Array<{ name: string; args: Record<string, unknown>; result: any }> = [];
         const automaticPropertyDetailReads: Array<{ name: string; args: Record<string, unknown>; result: any }> = [];
         if (!draftMode && !engineProducedText
@@ -4668,6 +4670,27 @@ export class ConversationsService {
         // the bounded catalogue through this turn's normal executor before
         // the model sees competing sources. Keep tenant/capability/snapshot
         // authority and persistence controls identical to an explicit read.
+        if (!engineProducedText && requiresMenuDescriptionLookup(userText) && turnAllowedTools.includes('get_menu')) {
+            const context: ServiceExecutionContext = {
+                ...executionContext, mode: executionContext?.mode ?? 'live', persistence: 'disabled',
+            };
+            turnTrace.add('tool_call', 'get_menu', { origin: 'vertical', effect: 'read', automatic: true });
+            let result: any;
+            try {
+                result = await awaitAutomaticFaqLookup(toolExecutor.execute(
+                    schemaName, tenantId, conversation.contact_id || '', 'get_menu', {}, conversation.id,
+                    { authority: llmAuthority, channelType: msg.channelType, executionContext: context,
+                        commitmentBlocked, deniedTools, jurisdiction: regional?.operatingCountry.value },
+                ), 3_000, context);
+            } catch (error: any) {
+                if (session || error instanceof LLMSourceAuthorityUnavailable) throw error;
+                result = { error: 'menu_description_lookup_failed' };
+            }
+            preExecutedTools.push({ name: 'get_menu', result });
+            automaticMenuDescriptionRead = { result };
+            turnTrace.add('tool_result', 'get_menu', { ok: !result?.error, error: result?.error, automatic: true });
+        }
+
         if (!engineProducedText && (requiresCanonicalPackagePrice(userText) || requiresPackageDetailLookup(userText))
             && turnAllowedTools.includes('search_packages')) {
             const packageExecutionContext: ServiceExecutionContext = {
@@ -5137,6 +5160,13 @@ export class ConversationsService {
                     function: { name: 'get_customer_context', arguments: '{}' } }] });
                 currentMessages.push({ role: 'tool', toolCallId: id,
                     content: JSON.stringify(sanitizeToolResultForModel(automaticOwnCustomerContextRead.result, userLanguage)) });
+            }
+            if (automaticMenuDescriptionRead) {
+                const id = 'auto_menu_description';
+                currentMessages.push({ role: 'assistant', content: '', toolCalls: [{ id, type: 'function',
+                    function: { name: 'get_menu', arguments: '{}' } }] });
+                currentMessages.push({ role: 'tool', toolCallId: id,
+                    content: JSON.stringify(sanitizeToolResultForModel(automaticMenuDescriptionRead.result, userLanguage)) });
             }
             if (automaticOwnTourBookingsRead) {
                 const id = 'auto_own_tour_bookings';

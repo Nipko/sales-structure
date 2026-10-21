@@ -164,7 +164,7 @@ export class ListingsService {
             [
                 data.name, tx, data.propertyKind || 'apartment',
                 data.price || null, data.currency || 'COP',
-                data.rentPeriod || 'monthly', data.hoaFee || null, data.deposit || null,
+                data.rentPeriod || 'monthly', data.hoaFee === 0 ? 0 : data.hoaFee || null, data.deposit === 0 ? 0 : data.deposit || null,
                 data.minRentalMonths || null, !!data.financingAvailable,
                 data.bedrooms ?? 1, data.bathrooms ?? 1, data.areaM2 || null,
                 data.parkingSpots || 0, data.stratum || null, data.yearBuilt || null,

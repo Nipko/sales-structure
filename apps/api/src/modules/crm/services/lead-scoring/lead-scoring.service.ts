@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { RedisService } from '../../../redis/redis.service';
+import { captureScoringConfiguration } from './scoring-configuration-receipt';
 
 // ============================================
 // Interfaces
@@ -167,7 +168,9 @@ export class LeadScoringService {
         const schema = await this.getTenantSchema(tenantId);
         if (!schema) return this.defaultResult();
 
-        const config = await this.getConfig(tenantId);
+        const loadedConfig = await this.getConfig(tenantId);
+        const capturedConfig = captureScoringConfiguration(loadedConfig);
+        const config = capturedConfig?.configuration ?? loadedConfig;
         const factors = await this.computeFactors(schema, leadId, config);
         const result = this.buildResult(factors, config);
 
@@ -177,6 +180,7 @@ export class LeadScoringService {
             label: result.label,
             recommendation: result.recommendation,
             calculatedAt: new Date().toISOString(),
+            ...(capturedConfig ? { configurationReceipt: capturedConfig.receipt } : {}),
         });
 
         await this.prisma.executeInTenantSchema(

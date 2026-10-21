@@ -978,6 +978,59 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
+
+  agent-business-regressions:
+    name: Agent business regressions (46 unit and 3 PostgreSQL suites)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: parallext
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: parallly_eval_isolation
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U parallext -d parallly_eval_isolation"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://parallext:ci@127.0.0.1:5432/parallly_eval_isolation
+      POLICY_ATOMIC_SQL_TEST_URL: postgresql://parallext:ci@127.0.0.1:5432/parallly_policy_a_eval_isolation
+      PROMOTION_SQL_TEST_URL: postgresql://parallext:ci@127.0.0.1:5432/parallly_promo_a_eval_isolation
+      PARALLLY_ISOLATION_TEST_URL: postgresql://parallext:ci@127.0.0.1:5432/parallly_eval_isolation
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate --schema=apps/api/prisma/schema.prisma
+      - name: Prepare databases owned by this disposable job
+        run: |
+          node <<'NODE'
+          const { Client } = require('pg');
+          (async () => {
+            const client = new Client({ connectionString: process.env.DATABASE_URL });
+            await client.connect();
+            try {
+              for (const name of ['parallly_policy_a_eval_isolation', 'parallly_promo_a_eval_isolation']) {
+                await client.query('CREATE DATABASE "' + name + '"');
+              }
+            } finally { await client.end(); }
+          })().catch(error => { console.error(error); process.exitCode = 1; });
+          NODE
+      - run: node apps/api/scripts/run-agent-business-regressions.cjs unit
+      - run: node apps/api/scripts/run-agent-business-regressions.cjs postgres
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: agent-business-${{ github.run_id }}
+          path: artifacts/agent-business-*.json
+          if-no-files-found: error
+
   knowledge-files:
     name: Knowledge file parser and MIME PostgreSQL
     if: github.event_name == 'pull_request'

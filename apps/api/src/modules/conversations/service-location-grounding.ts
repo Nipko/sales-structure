@@ -1,6 +1,9 @@
 /** Public service modality/location questions need current service terms. */
 export function requiresServiceLocationLookup(query: string): boolean {
     const text = String(query || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    // Payment, shipping, invoicing and employment modes do not establish service location.
+    // Leave mixed questions to normal tool selection instead of forcing catalogue evidence.
+    if (/\b(?:pag(?:o|os|ar|amento|amentos)|payments?|paiements?|envios?|shipping|livraison|facturaci\w*|faturac\w*|billing|invoic\w*|jobs?|vacanc\w*|vacantes?|empleos?|empregos?)\b/.test(text)) return false;
     if (/\b(?:inmuebl\w*|propiedad\w*|apartament\w*|listing\w*|property|apartment\w*|imove\w*|appartement\w*|logement\w*|tours?|paquetes?|packages?|pacotes?|forfaits?|hotel\w*|alojamiento\w*)\b/.test(text)) return false;
     if (/\b(?:mis?\s+citas?|my\s+appointments?|minha\s+consulta|mon\s+rendez[\s-]vous)\b/.test(text)) return false;
     if (/\b(?:citas?|appointments?|consultas?|rendez[\s-]vous)\b/.test(text)

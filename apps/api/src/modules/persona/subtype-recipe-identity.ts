@@ -95,6 +95,27 @@ export function applyNativeSubtypeBirthBehavior(
     templateId: string | undefined,
     language: string,
 ): { config: Record<string, any>; applied: boolean } {
+    // A hotel uses the property engine. Its industry-wide travel template
+    // sells packages, so replacing only its identity leaves contradictory
+    // instructions. Creation is guarded by createDefaultAgentFromGoals; never
+    // apply this replacement to an existing or custom-template agent.
+    if (industry === 'turismo' && subType === 'hotel' && templateId === 'tpl_turismo_ventas') {
+        const agent = getVerticalDefinition(industry, subType).agent;
+        const locale = normalizeVerticalPersonaLocale(language);
+        const pick = (values: Record<string, string> | undefined) => values?.[locale] || values?.es || '';
+        const list = (values: Record<string, string> | undefined) => pick(values).split('|').map(value => value.trim()).filter(Boolean);
+        return {
+            applied: true,
+            config: {
+                ...config,
+                tools: { ...(config.tools || {}), properties: { ...(config.tools?.properties || {}), enabled: true },
+                    tours: { ...(config.tools?.tours || {}), enabled: false },
+                    appointments: { ...(config.tools?.appointments || {}), enabled: false } },
+                behavior: { ...(config.behavior || {}), rules: [pick(agent.rules)],
+                    forbiddenTopics: list(agent.forbiddenTopics), handoffTriggers: list(agent.handoffTriggers) },
+            },
+        };
+    }
     const contract = resolveVerticalSubtypePersonaContract(industry, subType);
     if (!contract || templateId !== contract.onboardingTemplateId) {
         return { config, applied: false };

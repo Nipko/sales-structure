@@ -14,7 +14,7 @@ import { ToolDefinition } from '@parallext/shared';
 export const RESTAURANTS_TOOLS: ToolDefinition[] = [
     {
         name: 'get_menu',
-        description: 'Search the restaurant menu by query, category, dietary tag, or price ceiling. Use when the customer asks about food, drinks, what is offered, or has dietary restrictions. excludeAllergens filters items containing any of the listed allergens (gluten, lactosa, mariscos, mani). Returns up to 30 items with name, description, price, tags and allergens.',
+        description: 'Search the restaurant menu by query, category, dietary tag, or price ceiling. Use when the customer asks about food, drinks, what is offered, dietary restrictions, or how long a dish takes to prepare. Returns up to 30 items with name, description, price, currency, tags, allergens and prepTimeMinutes. For preparation-time questions, look up the named dish before answering. A null prepTimeMinutes means no time is recorded, not that you lack menu access; never invent an estimate or confuse it with delivery ETA. excludeAllergens filters items containing any of the listed allergens (gluten, lactosa, mariscos, mani).',
         parameters: {
             type: 'object',
             properties: {

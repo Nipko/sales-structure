@@ -1,6 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ToolDefinition } from '@parallext/shared';
 import { retainTaskDependencies } from './tool-task-dependencies';
+import { explicitlyRequestsCrmNote } from './crm-note-request';
+import { explicitlyRequestsCrmTask } from './crm-task-request';
+import { explicitlyRequestsCrmTag } from './crm-tag-request';
 
 const MAX_TOOLS_PER_TURN = 10;
 const MIN_SCORE = 0.15;
@@ -41,8 +44,12 @@ export class ToolRetrievalService {
     ): ToolDefinition[] {
         if (!candidates.length) return candidates;
 
-        const mustKeep = pinned?.size
-            ? candidates.filter(t => pinned.has(t.name))
+        const retainedNames = new Set(pinned || []);
+        if (explicitlyRequestsCrmNote(query)) retainedNames.add('add_contact_note');
+        if (explicitlyRequestsCrmTask(query)) retainedNames.add('create_follow_up_task');
+        if (explicitlyRequestsCrmTag(query)) retainedNames.add('tag_contact');
+        const mustKeep = retainedNames.size
+            ? candidates.filter(t => retainedNames.has(t.name))
             : [];
         // The pinned set is small and bounded (the tenant's confirmable writers),
         // but it must never squeeze the reads out entirely: the budget grows
@@ -51,7 +58,7 @@ export class ToolRetrievalService {
         if (candidates.length <= budget) return candidates;
 
         const optional = mustKeep.length
-            ? candidates.filter(t => !pinned!.has(t.name))
+            ? candidates.filter(t => !retainedNames.has(t.name))
             : candidates;
         const slots = budget - mustKeep.length;
 

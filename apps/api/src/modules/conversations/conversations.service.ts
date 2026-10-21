@@ -75,6 +75,8 @@ import { legacyTurnReplyKey, turnReplyKey } from './turn-reply-cache';
 import { IdentityService } from '../identity/identity.service';
 import { AIToolExecutorService } from './ai-tool-executor.service';
 import { buildUnverifiedPriceReply, correctivePriceInstruction, enforceVerifiedPriceReply, ResponseValidatorService } from './response-validator.service';
+import { groundInactiveCatalogReply } from './catalog-retirement-grounding';
+import { groundMissingPropertyPhotoReply, propertyPhotoCatalogue, requiresPropertyPhotoLookup } from './property-photo-grounding';
 import { AgentTurnSession } from './agent-turn-session';
 import { sessionCanExecute, sessionLlmRouter, sessionToolExecutor } from './agent-turn-adapters';
 import { containsBookingOffer } from './booking-offer';
@@ -4548,6 +4550,33 @@ export class ConversationsService {
             }
         }
 
+        // An empty FAQ does not establish that a named property is unknown.
+        // Resolve photo requests through the authorized current catalogue before
+        // the model can deny its existence. This is a read, never a media send.
+        if (!engineProducedText && requiresPropertyPhotoLookup(userText)
+            && turnAllowedTools.includes('list_properties')) {
+            const photoExecutionContext: ServiceExecutionContext = {
+                ...executionContext, mode: executionContext?.mode ?? 'live', persistence: 'disabled',
+            };
+            try {
+                turnTrace.add('tool_call', 'list_properties', { origin: 'vertical', effect: 'read', automatic: true });
+                const result = await toolExecutor.execute(
+                    schemaName, tenantId, conversation.contact_id || '', 'list_properties', {}, conversation.id,
+                    { authority: llmAuthority, channelType: msg.channelType, executionContext: photoExecutionContext,
+                        commitmentBlocked, deniedTools, jurisdiction: regional?.operatingCountry.value },
+                );
+                preExecutedTools.push({ name: 'list_properties', result });
+                const catalogue = propertyPhotoCatalogue(result);
+                turnContext.catalog = [...(turnContext.catalog || []), ...catalogue];
+                turnTrace.add('tool_result', 'list_properties', { ok: !result?.error, error: result?.error,
+                    automatic: true, retrievedCount: catalogue.length });
+            } catch (error: any) {
+                if (session || error instanceof LLMSourceAuthorityUnavailable) throw error;
+                this.logger.warn(`Property photo lookup failed (non-fatal): ${error.message}`);
+                turnTrace.add('tool_result', 'list_properties', { ok: false, automatic: true, error: 'property_photo_lookup_failed' });
+            }
+        }
+
         // A matching FAQ must not make a current-price lookup optional. Read
         // the bounded catalogue through this turn's normal executor before
         // the model sees competing sources. Keep tenant/capability/snapshot
@@ -6260,6 +6289,15 @@ export class ConversationsService {
         // and written into the prompt, yet a long history or knowledge in another language still pulled the
         // model back (a Portuguese refund question answered in Spanish). One rewrite, only on clear evidence.
         response = await this.alignReplyLanguage(response, lang, currentMessages, systemPrompt, allowedTiers, tenantId, llmRouter, trustedContext, session, executedTools);
+
+        // A healthy read (`status: ok`) is not permission to sell an inactive product.
+        // Ground this narrow single-product answer without another model attempt.
+        if (!(trustedContext as any)?.directive && !promisesHumanHandoff(response)) {
+            const missingPhoto = groundMissingPropertyPhotoReply(lastCustomerText(currentMessages), executedTools, lang);
+            if (missingPhoto) return missingPhoto;
+            const retired = groundInactiveCatalogReply(lastCustomerText(currentMessages), executedTools, lang);
+            if (retired) return retired;
+        }
 
         // Guardrail 0b: terms of cancelling / moving are answered from what the business wrote, never from the model's habits.
         // «¿Se puede cancelar sin costo?» with no policy, FAQ or knowledge in the turn is not answered «por lo general, sí».

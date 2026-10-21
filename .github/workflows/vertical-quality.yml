@@ -177,6 +177,30 @@ jobs:
           apps/api/src/modules/public-api/public-api.controller.appointments.spec.ts
           apps/api/src/modules/vertical-contract-matrix/vertical-contract-matrix.spec.ts
           apps/api/src/modules/vertical-contract-matrix/vertical-commercial-units-matrix.spec.ts
+          apps/api/src/modules/conversations/ai-tool-executor.write-preconditions.spec.ts
+          apps/api/src/modules/conversations/ai-tool-executor.menu-preparation.spec.ts
+          apps/api/src/modules/conversations/ai-tool-executor.stay-validation.spec.ts
+          apps/api/src/modules/conversations/mission-focus.lookup.spec.ts
+          apps/api/src/modules/conversations/mission-focus.business-lookups.spec.ts
+          apps/api/src/modules/conversations/mission-focus.negated-outcomes.spec.ts
+          apps/api/src/modules/conversations/catalog-retirement-grounding.spec.ts
+          apps/api/src/modules/conversations/property-photo-grounding.spec.ts
+          apps/api/src/modules/persona/tourism-hotel-birth.spec.ts
+          apps/api/src/modules/pipeline/pipeline-readonly-negation.spec.ts
+          apps/api/src/modules/pipeline/pipeline-conversation-milestone.spec.ts
+          apps/api/src/modules/conversations/tool-retrieval.service.spec.ts
+          apps/api/src/modules/conversations/tool-retrieval.crm-note.spec.ts
+          apps/api/src/modules/conversations/crm-note-request.spec.ts
+          apps/api/src/modules/conversations/tool-retrieval.persisted-core.spec.ts
+          apps/api/src/modules/conversations/crm-task-request.spec.ts
+          apps/api/src/modules/conversations/crm-tag-request.spec.ts
+          apps/api/src/modules/conversations/tool-retrieval.crm-tag.spec.ts
+          apps/api/src/modules/conversations/tool-retrieval.crm-task.spec.ts
+          apps/api/src/common/conversation/intent-normalizer.references.spec.ts
+          apps/api/src/common/conversation/intent-normalizer.spec.ts
+          apps/api/src/common/conversation/intent-normalizer.consent-verbs.spec.ts
+          apps/api/src/modules/procedures/procedures.unsupported-field.spec.ts
+          apps/api/src/modules/simulation/eval-scenario-selection.spec.ts
           apps/api/src/modules/conversations/tool-policy-registry.spec.ts
           apps/api/src/modules/conversations/tool-execution-control.service.spec.ts
           apps/api/src/modules/conversations/payment-operation.service.spec.ts

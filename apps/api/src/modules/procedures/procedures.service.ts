@@ -125,11 +125,10 @@ export class ProceduresService {
         dto: { name: string; description?: string; trigger?: any; steps?: ProcedureStep[]; vertical?: string; status?: ProcedureStatus; sourceSop?: string },
         createdBy?: string,
     ): Promise<ProcedureDefinition> {
+        if (!dto.name?.trim()) throw new BadRequestException('El nombre es obligatorio');
+        const steps = this.validateSteps(dto.steps || []);
         const schemaName = await this.schema(tenantId);
         await this.ensureTables(schemaName);
-        if (!dto.name?.trim()) throw new BadRequestException('El nombre es obligatorio');
-
-        const steps = this.validateSteps(dto.steps || []);
         const trigger = this.normalizeTrigger(dto.trigger);
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
@@ -156,6 +155,7 @@ export class ProceduresService {
         id: string,
         dto: { name?: string; description?: string; trigger?: any; steps?: ProcedureStep[]; vertical?: string; status?: ProcedureStatus },
     ): Promise<ProcedureDefinition> {
+        const validatedSteps = dto.steps !== undefined ? this.validateSteps(dto.steps) : undefined;
         const schemaName = await this.schema(tenantId);
         await this.ensureTables(schemaName);
         const existing = await this.get(tenantId, id);
@@ -164,7 +164,7 @@ export class ProceduresService {
         const name = dto.name?.trim() ?? existing.name;
         const description = dto.description ?? existing.description ?? null;
         const trigger = dto.trigger !== undefined ? this.normalizeTrigger(dto.trigger) : existing.trigger;
-        const steps = dto.steps !== undefined ? this.validateSteps(dto.steps) : existing.steps;
+        const steps = validatedSteps ?? existing.steps;
         const status = dto.status ?? existing.status;
         const vertical = dto.vertical ?? existing.vertical ?? null;
 
@@ -279,6 +279,7 @@ export class ProceduresService {
             while (seen.has(id)) id = `${id}_${idx}`;
             seen.add(id);
             const cfg = s?.config && typeof s.config === 'object' ? s.config : {};
+            this.assertSupportedFieldType(cfg.fieldType);
             out.push({
                 id,
                 type,
@@ -312,12 +313,25 @@ export class ProceduresService {
         return [...new Set(raw.filter(v => typeof v === 'string').map(v => v.trim()).filter(Boolean))].slice(0, 100);
     }
 
+    private assertSupportedFieldType(type: unknown): void {
+        // Missing legacy scalar types remain compatible. An explicit unsupported
+        // type must not silently turn a required image into free-text collection.
+        if (type != null && !VALID_FIELD_TYPES.includes(type as ProcedureFieldType)) {
+            throw new BadRequestException({
+                code: 'unsupported_procedure_field_type',
+                message: 'El tipo de dato del procedimiento no es compatible. No se guardó el cambio.',
+                supportedTypes: VALID_FIELD_TYPES,
+            });
+        }
+    }
+
     private validateSlots(raw: unknown): Record<string, ProcedureFieldSpec> | undefined {
         if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
         const result: Record<string, ProcedureFieldSpec> = {};
         for (const [key, value] of Object.entries(raw).slice(0, 100)) {
             if (['__proto__', 'prototype', 'constructor'].includes(key) || !value || typeof value !== 'object') continue;
             const spec = value as Record<string, unknown>;
+            this.assertSupportedFieldType(spec.type);
             result[key] = {
                 type: VALID_FIELD_TYPES.includes(spec.type as ProcedureFieldType) ? spec.type as ProcedureFieldType : undefined,
                 required: typeof spec.required === 'boolean' ? spec.required : undefined,

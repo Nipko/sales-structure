@@ -103,6 +103,7 @@ describe('subtype recipe identity at agent creation', () => {
             'pet_services/hotel',
             'salud/farmacia',
             'technology/hardware',
+            'turismo/hotel',
         ]);
         for (const c of withOverlay) {
             for (const language of ['es', 'en', 'pt', 'fr']) {

@@ -100,6 +100,14 @@ const NEGATED_CANCELLATION = /\b(?:no (?:quiero |deseo |puedo |vayas a )?(?:canc
 // pagar ni contactar a una persona" is one negative request.
 const HUMAN_REQUEST_REFUSAL = /\b(?:no (?:quiero|deseo|necesito)|no me (?:pases|transfieras|comuniques)|nao (?:quero|desejo|preciso)|(?:don't|do not) (?:want|need|transfer|connect)|ne (?:veux|souhaite) pas)\b[^.!?;]*?(?=\b(?:pero|but|mas|porem|mais|however|sin embargo)\b|\b(?:y|and|e|et)\s+(?:si\s+)?(?:quiero|necesito|i want|i need|quero|preciso|je veux)\b|[.!?;]|$)/g;
 
+// Keep reference payload out of person-request detection. Normalizing first
+// turns QA-AGENTE-2026-17 into separate words: an unrelated "necesito" then
+// makes its AGENTE segment look like a request for a human. Mask only
+// multi-segment identifiers containing a digit, before punctuation is folded.
+// Real role phrases and requests outside the reference remain visible. This
+// does not change the normalized evidence used by confirmation/consent gates.
+const STRUCTURED_REFERENCE = /\b(?=[A-Za-z0-9_-]*\d)[A-Za-z0-9]+(?:[-_][A-Za-z0-9]+){2,}\b/g;
+
 const CORRECTION_ANYWHERE = /\b(quise decir|quería decir|me equivoque|corrijo|corrigiendo|mas bien|en realidad|na verdade|quis dizer|corrigindo|actually|i meant|je voulais dire)\b/;
 
 const COURTESY = /^(?:muchas gracias|gracias|thank you|thanks|obrigado|obrigada|merci|por favor|please|s il vous plait|s'il vous plait)(?:\s+|$)/;
@@ -281,7 +289,8 @@ export function normalizeCustomerIntent(
 
     // A human explicitly asking for a person must be heard in a long message
     // too — it usually arrives inside a complaint, not as a single word.
-    const humanRequestText = normalized.replace(HUMAN_REQUEST_REFUSAL, ' ');
+    const humanRequestText = normalizeForIntent(String(raw ?? '').replace(STRUCTURED_REFERENCE, ' '))
+        .replace(HUMAN_REQUEST_REFUSAL, ' ');
     const humanAlias = aliases.find(a => a.intent === 'request_human'
         && new RegExp(`\\b${a.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(humanRequestText));
     if (humanAlias && /\b(hablar|habla|comunicar|pasame|pasar|quiero|necesito|talk|speak|falar|parler)\b/.test(humanRequestText)) {

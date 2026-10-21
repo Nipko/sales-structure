@@ -2,7 +2,7 @@
   "version": 1,
   "evidenceKind": "structural_only",
   "sourceHashEncoding": "utf8-lf",
-  "sourceRevision": "84eabe8724a5727b0482a4175eea91f3d8c0c876",
+  "sourceRevision": "5c7eefffc01cb81b5a693ca893664ada7478e260",
   "summary": {
     "verticals": 20,
     "profiles": 80,
@@ -36,11 +36,11 @@
     }
   },
   "sources": {
-    "apps/api/src/common/conversation/intent-normalizer.ts": "e88567fd26f301faadbddde177a0558e127f8f4ddf1b3b2233f42abaef71a96c",
+    "apps/api/src/common/conversation/intent-normalizer.ts": "da53692ea44e79a53785a92fb16df215312e71add9f2bf56f767d64a84b78c2f",
     "apps/api/src/modules/conversations/active-object-policy.ts": "2117f12a64454fab06867c0303a41ac3ca4ba64a1a49c10ca587d24ce012c430",
     "apps/api/src/modules/conversations/agent-test-tool-policy.ts": "853761eaec7980869ba07a6d7ecd36853b654dfa2cd3be88720a1732454912a9",
     "apps/api/src/modules/conversations/agent-tool-registry.ts": "eb0d07f5a197dc167a3b52aba549b60f47743f0244d7437921dbb22772f28c0a",
-    "apps/api/src/modules/conversations/ai-tool-executor.service.ts": "bc09801b096d1d3816e2c8a603af7152806286590f4ecfe929ff7b76f89a3c69",
+    "apps/api/src/modules/conversations/ai-tool-executor.service.ts": "e79aa2d9c73b64c7d740d7669fa3b85fe085035eec7d6e8238a000e99b21239b",
     "apps/api/src/modules/conversations/tool-policy-registry.ts": "5cdc0a3e1c135aa8668e8c88c9ab33fe6de6ebf641526486598589661a625069",
     "apps/api/src/modules/conversations/tool-task-dependencies.ts": "6cd3988fd8377d8156a9dff7eae6659aead26e8054ddf953f92352e36ebff653",
     "apps/api/src/modules/conversations/tools/appointment-tools.ts": "abf443a4690a0f6574854e112291fc2d319b6881ad17254ad3b6ed1d3c8b34bd",
@@ -57,7 +57,7 @@
     "apps/api/src/modules/conversations/tools/pets-tools.ts": "f5cfdd5a1e4d438c0fbae49af02c1978af8eb77c0cd7fcc00499c2823a5b3ed4",
     "apps/api/src/modules/conversations/tools/repair-order-tools.ts": "2f03bbc94d8d28ba3ade80b8554d50d06378b1a8f66f3d16cf9cccfa69e6511b",
     "apps/api/src/modules/conversations/tools/resource-rental-tools.ts": "e10eafea3f554347cf95153d063181863d6fcfc82a16c58294cec2e00dc12050",
-    "apps/api/src/modules/conversations/tools/restaurants-tools.ts": "42acba2b46b1e9060100081f8b7ef6fc797d0e53ee66cf9e951acea05cdc2adc",
+    "apps/api/src/modules/conversations/tools/restaurants-tools.ts": "1249d988beb63726efdbf82ad93b10044032653fd2681d0b1ed4d8aa22bc782a",
     "apps/api/src/modules/conversations/tools/tier3-tools.ts": "a0808b2a2ed5967fa339a9f702d18f82d339ccb4361f0dcbaf45d12ae951b28e",
     "apps/api/src/modules/conversations/tools/tours-tools.ts": "36b0713cf695b0ada9f47894d0a0a0b52052a424dad06685563469c25d157dda",
     "apps/api/src/modules/conversations/tools/treatment-tools.ts": "f02a921882912ba2c6fb4a5c6c39a7a4aeda18249496a7b6713741fd1b6505ca",

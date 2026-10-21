@@ -222,6 +222,23 @@ export function resolveTenantNativeStage(
     }, pool[0]);
 }
 
+/** Conversation signals describe interest, never fulfillment of a domain action.
+ * Probability is useful for explicit legacy stage resolution, but it cannot
+ * turn a price question into an order, shipment or first medical visit.
+ * Only an explicitly named qualification/readiness stage can accept the signal.
+ */
+export function resolveConversationalProgressStage(
+    stages: readonly TenantStageMapping[],
+    target: string,
+): TenantStageMapping | undefined {
+    const semantic = STAGE_SEMANTIC_ALIASES[normalizeStageIdentifier(target)];
+    if (!semantic || !['contactado', 'respondio', 'calificado', 'tibio', 'caliente', 'listo_para_cierre'].includes(semantic)) return undefined;
+    const matches = stages.filter(stage => !stage.is_terminal && [stage.slug, stage.name || ''].some(
+        label => STAGE_SEMANTIC_ALIASES[normalizeStageIdentifier(label)] === semantic,
+    ));
+    return matches.length === 1 ? matches[0] : undefined;
+}
+
 export interface StageTransition {
     id: string;
     dealId: string;
@@ -2276,7 +2293,12 @@ export class PipelineService {
         if (currentStage.is_terminal) return;
         let targetStage: TenantStageMapping;
         try {
-            targetStage = resolveTenantNativeStage(tenantStages, targetSlug);
+            const conversationalTarget = resolveConversationalProgressStage(tenantStages, targetSlug);
+            if (!conversationalTarget) {
+                this.logger.log(`Auto-progress held: no explicit semantic stage for "${targetSlug}"`);
+                return;
+            }
+            targetStage = conversationalTarget;
         } catch (error: any) {
             this.logger.warn(`Cannot resolve auto-progress target "${targetSlug}": ${error.message}`);
             return;
@@ -2430,7 +2452,8 @@ export class PipelineService {
         const hay = this.normalizeForMatch(text);
         if (!hay) return false;
         // Apostrophes are already stripped, so English contractions arrive as cant/wont/etc.
-        // 'sin' is deliberately NOT a negator ('sin duda quiero comprar' = affirmative).
+        // Without-action phrases negate only the adjacent action. A broad 'sin'
+        // token window would also suppress affirmative 'sin duda quiero comprar'.
         const NEGATORS = new Set([
             'no', 'nunca', 'tampoco', 'ni', 'jamas',           // es
             'nao', 'jamais', 'pas',                            // pt / fr
@@ -2446,7 +2469,8 @@ export class PipelineService {
                 // Tokenize the preamble on any non-alphanumeric run so a punctuation-glued
                 // negator ('pero,no') is still detected.
                 const before = hay.slice(0, m.index).split(/[^a-z0-9]+/).filter(Boolean).slice(-3);
-                if (!before.some((w) => NEGATORS.has(w))) return true; // matched without negation
+                const withoutAction = /\b(?:sin|sem|sans|without)(?:\s+(?:lo|la|le|o|a|having|to)){0,2}\s*$/.test(hay.slice(0, m.index));
+                if (!withoutAction && !before.some((w) => NEGATORS.has(w))) return true; // matched without negation
                 if (re.lastIndex === m.index) re.lastIndex++; // avoid zero-width loop
             }
         }

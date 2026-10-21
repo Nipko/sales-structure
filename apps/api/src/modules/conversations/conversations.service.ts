@@ -80,6 +80,7 @@ import { groundInactiveCatalogReply } from './catalog-retirement-grounding';
 import { groundMissingPropertyPhotoReply, propertyPhotoCatalogue, requiresPropertyPhotoLookup } from './property-photo-grounding';
 import { requiresPropertyDetailLookup, propertyDetailIdForQuestion } from './property-detail-grounding';
 import { requiresOwnCustomerContextRead } from './own-customer-context-read';
+import { requiresOwnTourBookingsRead } from './own-tour-bookings-read';
 import { AgentTurnSession } from './agent-turn-session';
 import { sessionCanExecute, sessionLlmRouter, sessionToolExecutor } from './agent-turn-adapters';
 import { containsBookingOffer } from './booking-offer';
@@ -4177,6 +4178,7 @@ export class ConversationsService {
         let automaticPackageDetailRead: { packageId: string; result: any } | undefined;
         let automaticAppointmentRead: { appointmentId: string; result: any } | undefined;
         let automaticOwnCustomerContextRead: { result: any } | undefined;
+        let automaticOwnTourBookingsRead: { result: any } | undefined;
         let automaticListingDetailRead: { listingId: string; result: any } | undefined;
         const automaticProductStockReads: Array<{ name: string; args: Record<string, unknown>; result: any }> = [];
         const automaticPropertyDetailReads: Array<{ name: string; args: Record<string, unknown>; result: any }> = [];
@@ -4613,6 +4615,29 @@ export class ConversationsService {
             preExecutedTools.push({ name: 'get_customer_context', result });
             automaticOwnCustomerContextRead = { result };
             turnTrace.add('tool_result', 'get_customer_context', { ok: !result?.error, error: result?.error, automatic: true });
+        }
+
+        // Explicit own tour history uses the current contact-bound reader.
+        if (!engineProducedText && requiresOwnTourBookingsRead(userText)
+            && turnAllowedTools.includes('list_my_tour_bookings')) {
+            const context: ServiceExecutionContext = {
+                ...executionContext, mode: executionContext?.mode ?? 'live', persistence: 'disabled',
+            };
+            let result: any;
+            turnTrace.add('tool_call', 'list_my_tour_bookings', { origin: 'core', effect: 'read', automatic: true });
+            try {
+                result = await awaitAutomaticFaqLookup(toolExecutor.execute(
+                    schemaName, tenantId, conversation.contact_id || '', 'list_my_tour_bookings', {}, conversation.id,
+                    { authority: llmAuthority, channelType: msg.channelType, executionContext: context,
+                        commitmentBlocked, deniedTools, jurisdiction: regional?.operatingCountry.value },
+                ), 3_000, context);
+            } catch (error: any) {
+                if (session || error instanceof LLMSourceAuthorityUnavailable) throw error;
+                result = { error: 'tour_bookings_lookup_failed' };
+            }
+            preExecutedTools.push({ name: 'list_my_tour_bookings', result });
+            automaticOwnTourBookingsRead = { result };
+            turnTrace.add('tool_result', 'list_my_tour_bookings', { ok: !result?.error, error: result?.error, automatic: true });
         }
 
         // A historical reference is a read, not the start of a booking. Keep
@@ -5112,6 +5137,13 @@ export class ConversationsService {
                     function: { name: 'get_customer_context', arguments: '{}' } }] });
                 currentMessages.push({ role: 'tool', toolCallId: id,
                     content: JSON.stringify(sanitizeToolResultForModel(automaticOwnCustomerContextRead.result, userLanguage)) });
+            }
+            if (automaticOwnTourBookingsRead) {
+                const id = 'auto_own_tour_bookings';
+                currentMessages.push({ role: 'assistant', content: '', toolCalls: [{ id, type: 'function',
+                    function: { name: 'list_my_tour_bookings', arguments: '{}' } }] });
+                currentMessages.push({ role: 'tool', toolCallId: id,
+                    content: JSON.stringify(sanitizeToolResultForModel(automaticOwnTourBookingsRead.result, userLanguage)) });
             }
             if (automaticAppointmentRead) {
                 const id = 'auto_appointment_details';

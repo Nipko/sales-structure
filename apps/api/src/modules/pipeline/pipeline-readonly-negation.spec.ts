@@ -21,7 +21,7 @@ describe('read-only purchase negation', () => {
    const s: any = Object.create(PipelineService.prototype);
    const stages = [
     {slug:'cotizacion',position:0,prob:70,is_terminal:false,pipeline_id:'p'},
-    {slug:'confirmado',position:1,prob:95,is_terminal:false,pipeline_id:'p'},
+    {slug:'listo_para_cierre',position:1,prob:95,is_terminal:false,pipeline_id:'p'},
    ];
    s.getTenantSchema=jest.fn().mockResolvedValue('tenant_unit');
    s.getTenantStageCatalog=jest.fn().mockResolvedValue(stages);

@@ -187,11 +187,14 @@ jobs:
           apps/api/src/modules/conversations/property-photo-grounding.spec.ts
           apps/api/src/modules/persona/tourism-hotel-birth.spec.ts
           apps/api/src/modules/pipeline/pipeline-readonly-negation.spec.ts
+          apps/api/src/modules/pipeline/pipeline-conversation-milestone.spec.ts
           apps/api/src/modules/conversations/tool-retrieval.service.spec.ts
           apps/api/src/modules/conversations/tool-retrieval.crm-note.spec.ts
           apps/api/src/modules/conversations/crm-note-request.spec.ts
           apps/api/src/modules/conversations/tool-retrieval.persisted-core.spec.ts
           apps/api/src/modules/conversations/crm-task-request.spec.ts
+          apps/api/src/modules/conversations/crm-tag-request.spec.ts
+          apps/api/src/modules/conversations/tool-retrieval.crm-tag.spec.ts
           apps/api/src/modules/conversations/tool-retrieval.crm-task.spec.ts
           apps/api/src/common/conversation/intent-normalizer.references.spec.ts
           apps/api/src/common/conversation/intent-normalizer.spec.ts

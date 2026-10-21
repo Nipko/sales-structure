@@ -3,6 +3,7 @@ import { ToolDefinition } from '@parallext/shared';
 import { retainTaskDependencies } from './tool-task-dependencies';
 import { explicitlyRequestsCrmNote } from './crm-note-request';
 import { explicitlyRequestsCrmTask } from './crm-task-request';
+import { explicitlyRequestsCrmTag } from './crm-tag-request';
 
 const MAX_TOOLS_PER_TURN = 10;
 const MIN_SCORE = 0.15;
@@ -46,6 +47,7 @@ export class ToolRetrievalService {
         const retainedNames = new Set(pinned || []);
         if (explicitlyRequestsCrmNote(query)) retainedNames.add('add_contact_note');
         if (explicitlyRequestsCrmTask(query)) retainedNames.add('create_follow_up_task');
+        if (explicitlyRequestsCrmTag(query)) retainedNames.add('tag_contact');
         const mustKeep = retainedNames.size
             ? candidates.filter(t => retainedNames.has(t.name))
             : [];

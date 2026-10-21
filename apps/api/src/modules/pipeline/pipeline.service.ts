@@ -222,6 +222,23 @@ export function resolveTenantNativeStage(
     }, pool[0]);
 }
 
+/** Conversation signals describe interest, never fulfillment of a domain action.
+ * Probability is useful for explicit legacy stage resolution, but it cannot
+ * turn a price question into an order, shipment or first medical visit.
+ * Only an explicitly named qualification/readiness stage can accept the signal.
+ */
+export function resolveConversationalProgressStage(
+    stages: readonly TenantStageMapping[],
+    target: string,
+): TenantStageMapping | undefined {
+    const semantic = STAGE_SEMANTIC_ALIASES[normalizeStageIdentifier(target)];
+    if (!semantic || !['contactado', 'respondio', 'calificado', 'tibio', 'caliente', 'listo_para_cierre'].includes(semantic)) return undefined;
+    const matches = stages.filter(stage => !stage.is_terminal && [stage.slug, stage.name || ''].some(
+        label => STAGE_SEMANTIC_ALIASES[normalizeStageIdentifier(label)] === semantic,
+    ));
+    return matches.length === 1 ? matches[0] : undefined;
+}
+
 export interface StageTransition {
     id: string;
     dealId: string;
@@ -2276,7 +2293,12 @@ export class PipelineService {
         if (currentStage.is_terminal) return;
         let targetStage: TenantStageMapping;
         try {
-            targetStage = resolveTenantNativeStage(tenantStages, targetSlug);
+            const conversationalTarget = resolveConversationalProgressStage(tenantStages, targetSlug);
+            if (!conversationalTarget) {
+                this.logger.log(`Auto-progress held: no explicit semantic stage for "${targetSlug}"`);
+                return;
+            }
+            targetStage = conversationalTarget;
         } catch (error: any) {
             this.logger.warn(`Cannot resolve auto-progress target "${targetSlug}": ${error.message}`);
             return;

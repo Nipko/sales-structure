@@ -89,7 +89,7 @@ export const VACATION_RENTAL_TOOLS: ToolDefinition[] = [
     },
     {
         name: 'send_property_image',
-        description: 'Send the guest real photos of a specific property (up to 3). Use when showing/recommending a property would benefit from a visual (e.g. the guest asks to see it). Only call with a propertyId you got from list_properties. The images are sent for you: do not paste links or describe them in your reply.',
+        description: 'Send the guest the current published photos of a specific property (up to 3). Call when the guest asks to receive a photo, including a new request after an earlier send: a previous result is not a send in this turn. The tool reads the current catalogue images. Use only a propertyId returned by list_properties. The images are sent for you: do not substitute links or descriptions, or claim the channel cannot send images while this tool is available. Report success only from the current tool result; report missing images, errors or pending review honestly.',
         parameters: {
             type: 'object',
             properties: {

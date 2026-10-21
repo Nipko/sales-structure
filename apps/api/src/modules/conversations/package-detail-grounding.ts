@@ -5,7 +5,7 @@ const UUID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 export function requiresPackageDetailLookup(query: string): boolean {
     const text = fold(query);
     return /\b(?:tours?|paquetes?|packages?|pacotes?|excurs\w*|forfaits?)\b/.test(text)
-        && /\b(?:inclu\w*|exclu\w*|equipaje|llevar|idioma\w*|langu\w*|duracion|duracao|dura|duration|lasts?|bring|luggage|baggage|levar|duree|dure|apporter|bagages?|cancel\w*|annul\w*)\b/.test(text);
+        && /\b(?:inclu\w*|exclu\w*|equipaje|llevar|idioma\w*|langu\w*|duracion|duracao|dura|duration|lasts?|bring|luggage|baggage|levar|duree|dure|apporter|bagages?|descuent\w*|discount\w*|descont\w*|reduc\w*|cancel\w*|annul\w*)\b/.test(text);
 }
 
 /** Names/UUIDs are matched only against one current authorized search result.

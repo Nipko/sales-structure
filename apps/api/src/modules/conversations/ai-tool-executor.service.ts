@@ -5109,18 +5109,22 @@ export class AIToolExecutorService {
             const today = part('weekday').toLowerCase();
             const currentMin = Number(part('hour')) * 60 + Number(part('minute'));
             const eligible = all.filter((p: any) => {
-                const days = p.applicable_days || [];
-                if (Array.isArray(days) && days.length > 0 && !days.includes(today)) return false;
-                if (p.applicable_hours) {
-                    const [start, end] = String(p.applicable_hours).split('-');
-                    if (start && end) {
-                        const [sh, sm] = start.split(':').map(Number);
-                        const [eh, em] = end.split(':').map(Number);
-                        const startMin = sh * 60 + (sm || 0);
-                        const endMin = eh * 60 + (em || 0);
-                        if (currentMin < startMin || currentMin > endMin) return false;
-                    }
+                const days = p.applicable_days ?? [];
+                if (!Array.isArray(days) || days.some((day: unknown) =>
+                    typeof day !== 'string' || !['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'].includes(day))) {
+                    throw new Error('invalid_promotion_schedule');
                 }
+                let window: [number, number] | undefined;
+                if (p.applicable_hours != null && p.applicable_hours !== '') {
+                    const match = typeof p.applicable_hours === 'string'
+                        ? /^(\d{1,2}):([0-5]\d)-(\d{1,2}):([0-5]\d)$/.exec(p.applicable_hours.trim()) : null;
+                    if (!match || Number(match[1]) > 23 || Number(match[3]) > 23) {
+                        throw new Error('invalid_promotion_schedule');
+                    }
+                    window = [Number(match[1]) * 60 + Number(match[2]), Number(match[3]) * 60 + Number(match[4])];
+                }
+                if (days.length > 0 && !days.includes(today)) return false;
+                if (window && (currentMin < window[0] || currentMin > window[1])) return false;
                 return true;
             });
             if (!eligible.length) {

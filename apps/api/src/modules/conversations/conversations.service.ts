@@ -93,6 +93,7 @@ import { buildTrustedPriceCorpus, requiresCanonicalPackagePrice } from './truste
 import { canonicalPackageCatalogue } from './canonical-package-context';
 import { packageDetailIdForQuestion, requiresPackageDetailLookup } from './package-detail-grounding';
 import { listingDetailIdForQuestion, requiresListingDetailLookup } from './listing-detail-grounding';
+import { requiresProductStockLookup, stockProductIdForQuestion } from './product-stock-grounding';
 import {
     auditTurnClaim,
     claimsCompletedAction,
@@ -4174,6 +4175,7 @@ export class ConversationsService {
         let automaticPackageDetailRead: { packageId: string; result: any } | undefined;
         let automaticAppointmentRead: { appointmentId: string; result: any } | undefined;
         let automaticListingDetailRead: { listingId: string; result: any } | undefined;
+        const automaticProductStockReads: Array<{ name: string; args: Record<string, unknown>; result: any }> = [];
         if (!draftMode && !engineProducedText
             && conversation.contact_id) {
             try {
@@ -4694,6 +4696,36 @@ export class ConversationsService {
             }
         }
 
+        // Stock is a current read, never a promise, order or inventory mutation.
+        // Resolve only a unique named/UUID product from the authorized bounded catalogue.
+        if (!engineProducedText && requiresProductStockLookup(userText)
+            && turnAllowedTools.includes('search_products') && turnAllowedTools.includes('check_stock')) {
+            const context: ServiceExecutionContext = {
+                ...executionContext, mode: executionContext?.mode ?? 'live', persistence: 'disabled',
+            };
+            const options = { authority: llmAuthority, channelType: msg.channelType, executionContext: context,
+                commitmentBlocked, deniedTools, jurisdiction: regional?.operatingCountry.value };
+            const read = async (name: 'search_products' | 'check_stock', args: Record<string, unknown>) => {
+                turnTrace.add('tool_call', name, { origin: 'vertical', effect: 'read', automatic: true });
+                let result: any;
+                try {
+                    result = await awaitAutomaticFaqLookup(toolExecutor.execute(
+                        schemaName, tenantId, conversation.contact_id || '', name, args, conversation.id, options,
+                    ), 3_000, context);
+                } catch (error: any) {
+                    if (session || error instanceof LLMSourceAuthorityUnavailable) throw error;
+                    result = { error: 'product_stock_lookup_failed' };
+                }
+                preExecutedTools.push({ name, result });
+                automaticProductStockReads.push({ name, args, result });
+                turnTrace.add('tool_result', name, { ok: !result?.error, error: result?.error, automatic: true });
+                return result;
+            };
+            const result = await read('search_products', { query: '', limit: 20 });
+            const productId = stockProductIdForQuestion(userText, result);
+            if (productId) await read('check_stock', { productId });
+        }
+
         // 5. Knowledge retrieval — runs on EVERY turn (booking and non-booking alike).
         // When the booking engine produced a directive, the Layer 1 contract rule
         // "When <directive> is present, communicate ONLY that information" ensures
@@ -5036,6 +5068,13 @@ export class ConversationsService {
                     function: { name: 'get_listing_details', arguments: JSON.stringify({ listingId: automaticListingDetailRead.listingId }) } }] });
                 currentMessages.push({ role: 'tool', toolCallId: id,
                     content: JSON.stringify(sanitizeToolResultForModel(automaticListingDetailRead.result, userLanguage)) });
+            }
+            for (const [index, read] of automaticProductStockReads.entries()) {
+                const id = `auto_product_stock_${index}`;
+                currentMessages.push({ role: 'assistant', content: '', toolCalls: [{ id, type: 'function',
+                    function: { name: read.name, arguments: JSON.stringify(read.args) } }] });
+                currentMessages.push({ role: 'tool', toolCallId: id,
+                    content: JSON.stringify(sanitizeToolResultForModel(read.result, userLanguage)) });
             }
             // The router invokes this authority separately for every provider
             // attempt. Keep earlier examples too: generated tool-loop prose may

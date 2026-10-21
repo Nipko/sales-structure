@@ -78,6 +78,7 @@ import { AIToolExecutorService } from './ai-tool-executor.service';
 import { buildUnverifiedPriceReply, correctivePriceInstruction, enforceVerifiedPriceReply, ResponseValidatorService } from './response-validator.service';
 import { groundInactiveCatalogReply } from './catalog-retirement-grounding';
 import { groundMissingPropertyPhotoReply, propertyPhotoCatalogue, requiresPropertyPhotoLookup } from './property-photo-grounding';
+import { requiresPropertyDetailLookup, propertyDetailIdForQuestion } from './property-detail-grounding';
 import { AgentTurnSession } from './agent-turn-session';
 import { sessionCanExecute, sessionLlmRouter, sessionToolExecutor } from './agent-turn-adapters';
 import { containsBookingOffer } from './booking-offer';
@@ -4176,6 +4177,7 @@ export class ConversationsService {
         let automaticAppointmentRead: { appointmentId: string; result: any } | undefined;
         let automaticListingDetailRead: { listingId: string; result: any } | undefined;
         const automaticProductStockReads: Array<{ name: string; args: Record<string, unknown>; result: any }> = [];
+        const automaticPropertyDetailReads: Array<{ name: string; args: Record<string, unknown>; result: any }> = [];
         if (!draftMode && !engineProducedText
             && conversation.contact_id) {
             try {
@@ -4726,6 +4728,36 @@ export class ConversationsService {
             if (productId) await read('check_stock', { productId });
         }
 
+        // Property facts require a current authorized detail read before model prose.
+        // Resolve one exact property; missing capability or ambiguous names never grant access.
+        if (!engineProducedText && requiresPropertyDetailLookup(userText)
+            && turnAllowedTools.includes('list_properties') && turnAllowedTools.includes('get_property_details')) {
+            const context: ServiceExecutionContext = {
+                ...executionContext, mode: executionContext?.mode ?? 'live', persistence: 'disabled',
+            };
+            const options = { authority: llmAuthority, channelType: msg.channelType, executionContext: context,
+                commitmentBlocked, deniedTools, jurisdiction: regional?.operatingCountry.value };
+            const read = async (name: 'list_properties' | 'get_property_details', args: Record<string, unknown>) => {
+                turnTrace.add('tool_call', name, { origin: 'vertical', effect: 'read', automatic: true });
+                let result: any;
+                try {
+                    result = await awaitAutomaticFaqLookup(toolExecutor.execute(
+                        schemaName, tenantId, conversation.contact_id || '', name, args, conversation.id, options,
+                    ), 3_000, context);
+                } catch (error: any) {
+                    if (session || error instanceof LLMSourceAuthorityUnavailable) throw error;
+                    result = { error: 'property_detail_lookup_failed' };
+                }
+                preExecutedTools.push({ name, result });
+                automaticPropertyDetailReads.push({ name, args, result });
+                turnTrace.add('tool_result', name, { ok: !result?.error, error: result?.error, automatic: true });
+                return result;
+            };
+            const result = await read('list_properties', {});
+            const propertyId = propertyDetailIdForQuestion(userText, result);
+            if (propertyId) await read('get_property_details', { propertyId });
+        }
+
         // 5. Knowledge retrieval — runs on EVERY turn (booking and non-booking alike).
         // When the booking engine produced a directive, the Layer 1 contract rule
         // "When <directive> is present, communicate ONLY that information" ensures
@@ -5068,6 +5100,13 @@ export class ConversationsService {
                     function: { name: 'get_listing_details', arguments: JSON.stringify({ listingId: automaticListingDetailRead.listingId }) } }] });
                 currentMessages.push({ role: 'tool', toolCallId: id,
                     content: JSON.stringify(sanitizeToolResultForModel(automaticListingDetailRead.result, userLanguage)) });
+            }
+            for (const [index, read] of automaticPropertyDetailReads.entries()) {
+                const id = `auto_property_details_${index}`;
+                currentMessages.push({ role: 'assistant', content: '', toolCalls: [{ id, type: 'function',
+                    function: { name: read.name, arguments: JSON.stringify(read.args) } }] });
+                currentMessages.push({ role: 'tool', toolCallId: id,
+                    content: JSON.stringify(sanitizeToolResultForModel(read.result, userLanguage)) });
             }
             for (const [index, read] of automaticProductStockReads.entries()) {
                 const id = `auto_product_stock_${index}`;

@@ -5100,9 +5100,14 @@ export class AIToolExecutorService {
             const all = await this.restaurantsService.listPromotions(schemaName, true);
             // Filter by day of week + hour window if specified
             const now = new Date();
-            const dayCodes = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
-            const today = dayCodes[now.getDay()];
-            const currentMin = now.getHours() * 60 + now.getMinutes();
+            // Stored promotion schedules use the business wall clock, not the host's timezone.
+            const clock = new Intl.DateTimeFormat('en-US', {
+                timeZone: await this.getTenantTimezone(schemaName), weekday: 'short',
+                hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+            }).formatToParts(now);
+            const part = (type: string) => clock.find(p => p.type === type)?.value || '';
+            const today = part('weekday').toLowerCase();
+            const currentMin = Number(part('hour')) * 60 + Number(part('minute'));
             const eligible = all.filter((p: any) => {
                 const days = p.applicable_days || [];
                 if (Array.isArray(days) && days.length > 0 && !days.includes(today)) return false;

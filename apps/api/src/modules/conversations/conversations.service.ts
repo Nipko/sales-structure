@@ -91,6 +91,7 @@ import { isAgentTestSafeToolName } from './agent-test-tool-policy';
 import { buildTrustedPriceCorpus, requiresCanonicalPackagePrice } from './trusted-price-context';
 import { canonicalPackageCatalogue } from './canonical-package-context';
 import { packageDetailIdForQuestion, requiresPackageDetailLookup } from './package-detail-grounding';
+import { listingDetailIdForQuestion, requiresListingDetailLookup } from './listing-detail-grounding';
 import {
     auditTurnClaim,
     claimsCompletedAction,
@@ -4168,6 +4169,7 @@ export class ConversationsService {
         // signed token, the args hash and the ledger status stay in charge.
         let preExecutedTools: Array<{ name: string; result: any }> = engineExecutedTools;
         let automaticPackageDetailRead: { packageId: string; result: any } | undefined;
+        let automaticListingDetailRead: { listingId: string; result: any } | undefined;
         if (!draftMode && !engineProducedText
             && conversation.contact_id) {
             try {
@@ -4630,6 +4632,40 @@ export class ConversationsService {
             }
         }
 
+        // The property catalogue is separate from appointments. Resolve a named
+        // listing through this turn's authorized readers rather than relying on
+        // the model to choose between similarly described detail tools.
+        if (!engineProducedText && requiresListingDetailLookup(userText)
+            && turnAllowedTools.includes('search_listings')) {
+            const context: ServiceExecutionContext = {
+                ...executionContext, mode: executionContext?.mode ?? 'live', persistence: 'disabled',
+            };
+            try {
+                const options = { authority: llmAuthority, channelType: msg.channelType, executionContext: context,
+                    commitmentBlocked, deniedTools, jurisdiction: regional?.operatingCountry.value };
+                turnTrace.add('tool_call', 'search_listings', { origin: 'vertical', effect: 'read', automatic: true });
+                const result = await awaitAutomaticFaqLookup(toolExecutor.execute(
+                    schemaName, tenantId, conversation.contact_id || '', 'search_listings', {}, conversation.id, options,
+                ), 3_000, context);
+                preExecutedTools.push({ name: 'search_listings', result });
+                turnTrace.add('tool_result', 'search_listings', { ok: !result?.error, error: result?.error, automatic: true });
+                const listingId = turnAllowedTools.includes('get_listing_details') ? listingDetailIdForQuestion(userText, result) : null;
+                if (listingId) {
+                    turnTrace.add('tool_call', 'get_listing_details', { origin: 'vertical', effect: 'read', automatic: true });
+                    const details = await awaitAutomaticFaqLookup(toolExecutor.execute(
+                        schemaName, tenantId, conversation.contact_id || '', 'get_listing_details', { listingId }, conversation.id, options,
+                    ), 3_000, context);
+                    preExecutedTools.push({ name: 'get_listing_details', result: details });
+                    automaticListingDetailRead = { listingId, result: details };
+                    turnTrace.add('tool_result', 'get_listing_details', { ok: !details?.error, error: details?.error, automatic: true });
+                }
+            } catch (error: any) {
+                if (session || error instanceof LLMSourceAuthorityUnavailable) throw error;
+                this.logger.warn(`Listing detail lookup failed (non-fatal): ${error.message}`);
+                turnTrace.add('tool_result', 'get_listing_details', { ok: false, automatic: true, error: 'listing_detail_lookup_failed' });
+            }
+        }
+
         // 5. Knowledge retrieval — runs on EVERY turn (booking and non-booking alike).
         // When the booking engine produced a directive, the Layer 1 contract rule
         // "When <directive> is present, communicate ONLY that information" ensures
@@ -4958,6 +4994,13 @@ export class ConversationsService {
                     function: { name: 'get_package_details', arguments: JSON.stringify({ packageId: automaticPackageDetailRead.packageId }) } }] });
                 currentMessages.push({ role: 'tool', toolCallId: id,
                     content: JSON.stringify(sanitizeToolResultForModel(automaticPackageDetailRead.result, userLanguage)) });
+            }
+            if (automaticListingDetailRead) {
+                const id = 'auto_listing_details';
+                currentMessages.push({ role: 'assistant', content: '', toolCalls: [{ id, type: 'function',
+                    function: { name: 'get_listing_details', arguments: JSON.stringify({ listingId: automaticListingDetailRead.listingId }) } }] });
+                currentMessages.push({ role: 'tool', toolCallId: id,
+                    content: JSON.stringify(sanitizeToolResultForModel(automaticListingDetailRead.result, userLanguage)) });
             }
             // The router invokes this authority separately for every provider
             // attempt. Keep earlier examples too: generated tool-loop prose may

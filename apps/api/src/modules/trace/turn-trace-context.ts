@@ -4,6 +4,8 @@
  * turn inside generateResponse. Adding a step is a cheap array push; persistence
  * happens later, fire-and-forget, off the hot path.
  */
+import { projectFaqResultIds } from '../../common/utils/faq-result-provenance';
+
 export type TurnStepType =
     | 'media' | 'intent' | 'booking' | 'procedure'
     | 'turn_context'
@@ -82,6 +84,20 @@ export function redactTraceValue(v: any): any {
     return v;
 }
 
+/** Only registered FAQ result UUIDs bypass free-text phone masking. */
+function redactTraceStep(step: any): any {
+    const safe = redactTraceValue(step);
+    if (step?.type === 'tool_result' && step?.label === 'search_faqs' && safe?.metadata
+        && Object.prototype.hasOwnProperty.call(step.metadata, 'faqResultIds')) {
+        Object.assign(safe.metadata, projectFaqResultIds(step.metadata.faqResultIds, step.metadata.faqResultIdsComplete));
+    }
+    return safe;
+}
+
+export function redactTraceSteps(steps: any[]): any[] {
+    return steps.slice(0, MAX_STEPS).map(redactTraceStep);
+}
+
 export class TurnTraceContext {
     readonly startedAt = Date.now();
     readonly steps: TurnStep[] = [];
@@ -90,13 +106,13 @@ export class TurnTraceContext {
 
     add(type: TurnStepType, label?: string, metadata?: Record<string, any>, durationMs?: number): void {
         if (this.steps.length >= MAX_STEPS) return;
-        this.steps.push({
+        this.steps.push(redactTraceStep({
             type,
             label: label ? redactText(label) : undefined,
             startedAt: new Date().toISOString(),
             durationMs,
-            metadata: metadata ? redactTraceValue(metadata) : undefined,
-        });
+            metadata,
+        }));
     }
 
     /** Measure durationMs around a promise and record a step (re-throws on error). */

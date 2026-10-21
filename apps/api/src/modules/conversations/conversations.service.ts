@@ -170,6 +170,7 @@ import {
 } from './tool-policy-registry';
 import { awaitAutomaticFaqLookup, awaitToolWithSafeTimeout } from './tool-timeout-policy';
 import { boundedAutomaticFaqs } from '../faqs/automatic-faq-context';
+import { faqResultTraceMetadata } from '../../common/utils/faq-result-provenance';
 import {
     CONTROL_ERRORS_REQUIRING_HUMAN,
     handoffRequiredByResult,
@@ -4560,7 +4561,8 @@ export class ConversationsService {
                     .map((faq: any) => ({ source: 'faq' as const, id: faq.id, title: faq.question, content: faq.answer }));
                 turnContext.retrievedKnowledge = retrievedFaqs;
                 turnTrace.add('tool_result', 'search_faqs', { ok: !result?.error, error: result?.error,
-                    automatic: true, retrievedCount: retrievedFaqs.length });
+                    automatic: true, retrievedCount: retrievedFaqs.length,
+                    ...faqResultTraceMetadata(result?.error ? result : { faqs: retrievedFaqs }) });
             } catch (error: any) {
                 if (session || error instanceof LLMSourceAuthorityUnavailable) throw error;
                 this.logger.warn(`FAQ search failed (non-fatal): ${error.message}`);
@@ -5453,6 +5455,7 @@ export class ConversationsService {
                             activeObjectKind: result?.activeObject?.kind,
                             activeObjectHref: result?.activeObject?.href,
                             argumentKeys,
+                            ...(tc.function.name === 'search_faqs' ? faqResultTraceMetadata(result) : {}),
                         });
 
                         // Capture any media the tool wants sent (e.g. a product image)

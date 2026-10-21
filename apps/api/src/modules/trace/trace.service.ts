@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
-import { redactTraceValue } from './turn-trace-context';
+import { redactTraceSteps } from './turn-trace-context';
 
 export interface LlmTurnEvent {
     tenantId: string;
@@ -173,7 +173,7 @@ export class TraceService {
                     evt.messageId || null,
                     evt.totalDurationMs,
                     Math.min(100, Math.max(0, evt.stepCount || 0)),
-                    JSON.stringify(redactTraceValue((evt.steps || []).slice(0, 100))),
+                    JSON.stringify(redactTraceSteps(evt.steps || [])),
                 ],
             );
         } catch (err: any) {

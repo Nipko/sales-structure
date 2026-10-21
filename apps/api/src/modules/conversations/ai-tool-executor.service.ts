@@ -4664,6 +4664,8 @@ export class AIToolExecutorService {
                 description: pkg.description,
                 durationType: pkg.duration_type,
                 durationValue: pkg.duration_value,
+                minPartySize: pkg.min_party_size ?? null,
+                maxCapacity: pkg.max_capacity ?? null,
                 price: Number(pkg.price || 0),
                 currency: pkg.currency,
                 destination: pkg.destination,

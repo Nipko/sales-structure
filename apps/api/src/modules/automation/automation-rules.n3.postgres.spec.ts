@@ -38,6 +38,7 @@ import { LANE_CHAT_DDL, N3_LANE_URL, openLane } from '../../common/__fixtures__/
             ...LANE_CHAT_DDL,
             "ALTER TABLE leads ALTER COLUMN phone DROP NOT NULL",
             "ALTER TABLE leads ADD COLUMN stage VARCHAR(50) DEFAULT 'nuevo'",
+            'ALTER TABLE leads ADD COLUMN archived_at TIMESTAMP DEFAULT NULL',
             'ALTER TABLE leads ADD COLUMN assigned_to VARCHAR(255)',
             'ALTER TABLE leads ADD COLUMN updated_at TIMESTAMP DEFAULT NOW()',
             'CREATE TABLE opportunities(id UUID PRIMARY KEY DEFAULT gen_random_uuid(), lead_id UUID, deal_id UUID)',
@@ -65,7 +66,11 @@ import { LANE_CHAT_DDL, N3_LANE_URL, openLane } from '../../common/__fixtures__/
             regionalProfile: { timezoneFor: async () => 'UTC', timezoneForSchema: async () => 'UTC' },
             logger,
         });
-        (lane.prisma as any).user = { findFirst: async ({ where }: any) => (users[where.email] ? { id: users[where.email] } : null) };
+        (lane.prisma as any).user = { findFirst: async ({ where }: any) => {
+            if (where.tenantId !== lane.tenantId) return null;
+            const id = where.id && Object.values(users).includes(where.id) ? where.id : users[where.email];
+            return id ? { id } : null;
+        } };
         processor = Object.create(AutomationJobsProcessor.prototype);
         Object.assign(processor, {
             prisma: lane.prisma, proactive: lane.proactive,
@@ -77,7 +82,10 @@ import { LANE_CHAT_DDL, N3_LANE_URL, openLane } from '../../common/__fixtures__/
             pipelineService: {},
             logger,
         });
-    });
+    // Provisioning the real synthetic schema through a private loopback SSH
+    // tunnel can take longer than local CI. Individual effects still use the
+    // suite's 120s limit; only schema preparation gets extra time.
+    }, 300_000);
     afterAll(async () => { if (lane) await lane.close(); });
     beforeEach(async () => {
         jobs = []; overLimit = false; reservations = []; users = {};
@@ -132,7 +140,7 @@ import { LANE_CHAT_DDL, N3_LANE_URL, openLane } from '../../common/__fixtures__/
         await rule('lead.captured', [tagAction]);
         await listener.handleLeadCaptured({ tenantId: lane.tenantId, schemaName: lane.schema, leadId: l.leadId, source: 'whatsapp_inbound' });
         expect(await executions()).toHaveLength(1);
-        persona = { hours: { timezone: 'UTC', schedule: {} } };       // closed every day
+        persona = { hours: { timezone: 'UTC', schedule: Object.fromEntries(['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].map(day => [day, { enabled: false }])) } };       // closed every day
         await listener.handleLeadCaptured({ tenantId: lane.tenantId, schemaName: lane.schema, leadId: randomUUID(), source: 'whatsapp_inbound' });
         expect(await executions()).toHaveLength(1);
     });
@@ -166,7 +174,7 @@ import { LANE_CHAT_DDL, N3_LANE_URL, openLane } from '../../common/__fixtures__/
         await listener.handleMessageInbound({ ...base, channel: 'whatsapp', text: 'hola', score: 9 });
         await listener.handleMessageInbound({ ...base, channel: 'whatsapp', text: 'cual es el precio', score: 3 });
         expect(await executions()).toHaveLength(0);
-        persona = { hours: { timezone: 'UTC', schedule: {} } };
+        persona = { hours: { timezone: 'UTC', schedule: Object.fromEntries(['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].map(day => [day, { enabled: false }])) } };
         await listener.handleMessageInbound({ ...base, channel: 'whatsapp', text: 'cual es el precio', score: 9 });
         expect(await executions()).toHaveLength(0);            // closed: businessHoursStatus != 'open'
         persona = null;
@@ -208,6 +216,22 @@ import { LANE_CHAT_DDL, N3_LANE_URL, openLane } from '../../common/__fixtures__/
 
     // ── effect ──────────────────────────────────────────────────────────────────
 
+    it.each([false, true])('AUT-LOCAL-003: real inbound shape resolves its lead and applies a tag (phone supplied=%s)', async withPhone => {
+        const own = await lead();
+        const unrelated = await lead();
+        await rule('new_message', [tagAction]);
+        await listener.handleMessageInbound({ tenantId: lane.tenantId, schemaName: lane.schema,
+            conversationId: own.conversationId, messageId: randomUUID(),
+            contactId: '860048121', channel: 'telegram', messageType: 'text', text: 'Seguimiento',
+            phone: withPhone ? '+573001112233' : undefined });
+        expect(jobs).toHaveLength(1);
+        expect(jobs[0].data.event.leadId).toBe(own.leadId);
+        await work(jobs[0]);
+        expect(await lane.sql('SELECT lead_id FROM lead_tags')).toEqual([{ lead_id: own.leadId }]);
+        expect(await lane.sql('SELECT lead_id FROM lead_tags WHERE lead_id=$1::uuid', [unrelated.leadId])).toEqual([]);
+        expect((await executions())[0].status).toBe('success');
+    });
+
     it('AUT-11: add_tag creates the tag and the link once, however many times BullMQ runs it; the execution closes as success', async () => {
         const l = await lead();
         await rule('lead.captured', [tagAction]);
@@ -243,6 +267,70 @@ import { LANE_CHAT_DDL, N3_LANE_URL, openLane } from '../../common/__fixtures__/
         const [row] = await executions();
         expect(row.status).toBe('failed');
         expect(row.result_json.actions[0].status).toBe('failed');
+    });
+
+    it('resolves the own inbound lead instead of a supplied foreign leadId', async () => {
+        const own = await lead(), other = await lead();
+        await rule('new_message', [tagAction]);
+        await listener.handleMessageInbound({ tenantId: lane.tenantId, schemaName: lane.schema,
+            conversationId: own.conversationId, messageId: randomUUID(), contactId: '860048121',
+            leadId: other.leadId, phone: '+573001112233' });
+        expect(jobs[0].data.event.leadId).toBe(own.leadId);
+        await work(jobs[0]);
+        expect(await lane.sql('SELECT lead_id FROM lead_tags')).toEqual([{ lead_id: own.leadId }]);
+    });
+
+    it('does not choose among multiple active leads on the same contact', async () => {
+        const own = await lead();
+        await lane.sql('INSERT INTO leads(contact_id,phone) VALUES($1::uuid,$2)', [own.contactId, '+573001112233']);
+        await rule('new_message', [tagAction]);
+        await listener.handleMessageInbound({ tenantId: lane.tenantId, schemaName: lane.schema,
+            conversationId: own.conversationId, messageId: randomUUID(), contactId: '860048121', leadId: own.leadId });
+        expect(jobs[0].data.event.leadId).toBeUndefined();
+        await expect(work(jobs[0])).rejects.toThrow(/leadId/);
+        expect(await lane.sql('SELECT * FROM lead_tags')).toHaveLength(0);
+    });
+
+    it('validates UUID assignees against membership and rejects mismatched event tenants', async () => {
+        const own = await lead(), agent = randomUUID(), outsider = randomUUID();
+        users['own@example.invalid'] = agent;
+        await rule('lead.captured', [{ type: 'assign_agent', agentId: agent }, { type: 'assign_agent', agentId: outsider }]);
+        await listener.handleLeadCaptured({ tenantId: lane.tenantId, schemaName: lane.schema, leadId: own.leadId, source: 'x' });
+        await work(jobs[0]);
+        await expect(work(jobs[1])).rejects.toThrow(/No existe un usuario/);
+        await expect(work({ ...jobs[0], data: { ...jobs[0].data, event: { ...jobs[0].data.event, tenantId: randomUUID() } } })).rejects.toThrow(/tenant/);
+        expect((await lane.sql('SELECT assigned_to FROM leads WHERE id=$1::uuid', [own.leadId]))[0].assigned_to).toBe(agent);
+    });
+
+    it('commits one task under simultaneous retries and never recreates a deleted task', async () => {
+        const own = await lead();
+        await rule('lead.captured', [{ type: 'create_task', task_description: 'Seguimiento único' }]);
+        await listener.handleLeadCaptured({ tenantId: lane.tenantId, schemaName: lane.schema, leadId: own.leadId, source: 'x' });
+        const results = await Promise.all([work(jobs[0]), work(jobs[0], 1)]);
+        expect(results[0].taskId).toBe(results[1].taskId);
+        expect(await lane.sql('SELECT * FROM tasks')).toHaveLength(1);
+        await lane.sql('DELETE FROM tasks WHERE id=$1::uuid', [results[0].taskId]);
+        expect((await work(jobs[0], 2)).taskId).toBe(results[0].taskId);
+        expect(await lane.sql('SELECT * FROM tasks')).toHaveLength(0);
+    });
+
+    it('adopts the committed task receipt after acknowledgement failure', async () => {
+        const own = await lead();
+        await rule('lead.captured', [{ type: 'create_task', task_description: 'Sin duplicados' }]);
+        await listener.handleLeadCaptured({ tenantId: lane.tenantId, schemaName: lane.schema, leadId: own.leadId, source: 'x' });
+        const native = processor.recordActionOutcome.bind(processor);
+        let fail = true;
+        processor.recordActionOutcome = async (...args: any[]) => {
+            if (args[3] === 'success' && fail) { fail = false; throw new Error('acknowledgement_unavailable'); }
+            return native(...args);
+        };
+        try {
+            await expect(work(jobs[0])).rejects.toThrow('acknowledgement_unavailable');
+            const [task] = await lane.sql('SELECT id FROM tasks');
+            expect((await work(jobs[0], 1)).taskId).toBe(task.id);
+            expect(await lane.sql('SELECT * FROM tasks')).toHaveLength(1);
+            expect((await executions())[0].status).toBe('success');
+        } finally { processor.recordActionOutcome = native; }
     });
 
     // ── authority and ledger ────────────────────────────────────────────────────

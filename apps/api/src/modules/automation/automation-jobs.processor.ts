@@ -173,7 +173,7 @@ export class AutomationJobsProcessor extends WorkerHost {
                     break;
 
                 case 'create_task':
-                    result = await this.handleCreateTask(schemaName, action, event);
+                    result = await this.handleCreateTask(schemaName, action, event, executionId, actionIndex!);
                     break;
 
                 // `change_stage` es el nombre que usan las plantillas sembradas
@@ -190,7 +190,7 @@ export class AutomationJobsProcessor extends WorkerHost {
                     break;
 
                 case 'assign_agent':
-                    result = await this.handleAssignAgent(schemaName, action, event);
+                    result = await this.handleAssignAgent(tenantId, schemaName, action, event);
                     break;
 
                 case 'http_request':
@@ -480,26 +480,58 @@ export class AutomationJobsProcessor extends WorkerHost {
         schemaName: string,
         action: AutomationJobData['action'],
         event: LeadCapturedEvent,
+        executionId: string,
+        actionIndex: number,
     ) {
+        if (!event.leadId) throw new Error('El evento no contiene leadId');
         const description = action.task_description || 'Seguimiento de nuevo lead';
         const dueHours = action.task_due_hours || 24;
         const dueAt = new Date(Date.now() + dueHours * 3600 * 1000).toISOString();
 
-        const rows = await this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `INSERT INTO tasks (lead_id, title, description, due_at, status, created_at)
-             VALUES ($1::uuid, $2, $3, $4::timestamptz, 'pending', NOW()) RETURNING id`,
-            [event.leadId, description, description, dueAt],
-        );
-
-        this.logger.log(`[AutomationJobs] Tarea creada: ${rows?.[0]?.id} para lead ${event.leadId}`);
-
-        return {
-            action: 'create_task',
-            taskId: rows?.[0]?.id,
-            description,
-            dueAt,
-        };
+        return this.prisma.transactionInTenantSchema(schemaName, async (query) => {
+            // The execution/action slot is the durable effect identity. Lock it
+            // before inserting; a retry adopts its committed receipt even when
+            // the subsequent status acknowledgement failed. The separate field
+            // survives recordActionOutcome's status/result replacements.
+            const owned = await query<Array<{ task_effect: any }>>(
+                `SELECT ae.result_json->'actions'->$2::int->'task_effect' AS task_effect
+                   FROM automation_executions ae
+                   JOIN automation_rules ar ON ar.id = ae.rule_id
+                  WHERE ae.id = $1::uuid
+                    AND ar.active = TRUE
+                    AND ar.actions_json->$2::int = $3::jsonb
+                    AND jsonb_typeof(ae.result_json->'actions') = 'array'
+                    AND jsonb_array_length(ae.result_json->'actions') > $2::int
+                  FOR UPDATE OF ae FOR SHARE OF ar`,
+                [executionId, actionIndex, JSON.stringify(action)],
+            );
+            if (!owned[0]) throw new Error('automation_task_authority_missing_or_changed');
+            if (owned[0].task_effect) {
+                const receipt = owned[0].task_effect;
+                if (receipt.action !== 'create_task' || typeof receipt.taskId !== 'string' || !receipt.taskId || receipt.leadId !== event.leadId) {
+                    throw new Error('automation_task_effect_receipt_invalid');
+                }
+                // Never recreate a task an operator subsequently edited/deleted.
+                return receipt;
+            }
+            const rows = await query<Array<{ id: string }>>(
+                `INSERT INTO tasks (lead_id, title, description, due_at, status, created_at)
+                 VALUES ($1::uuid, $2, $3, $4::timestamptz, 'pending', NOW()) RETURNING id`,
+                [event.leadId, description, description, dueAt],
+            );
+            if (!rows[0]?.id) throw new Error('automation_task_insert_missing_id');
+            const receipt = { action: 'create_task', taskId: rows[0].id, leadId: event.leadId, description, dueAt };
+            const saved = await query<Array<{ id: string }>>(
+                `UPDATE automation_executions
+                    SET result_json = jsonb_set(result_json,
+                        ARRAY['actions', $2::text, 'task_effect'], $3::jsonb, true)
+                  WHERE id = $1::uuid RETURNING id`,
+                [executionId, actionIndex, JSON.stringify(receipt)],
+            );
+            if (!saved[0]) throw new Error('automation_task_receipt_not_committed');
+            this.logger.log(`[AutomationJobs] Tarea registrada: ${receipt.taskId} para lead ${event.leadId}`);
+            return receipt;
+        });
     }
 
     /**
@@ -583,6 +615,7 @@ export class AutomationJobsProcessor extends WorkerHost {
      * arma la regla a mano.
      */
     private async handleAssignAgent(
+        tenantId: string,
         schemaName: string,
         action: AutomationJobData['action'],
         event: LeadCapturedEvent,
@@ -591,19 +624,19 @@ export class AutomationJobsProcessor extends WorkerHost {
         if (!target) throw new Error('agentId es requerido para accion assign_agent');
         if (!event.leadId) throw new Error('El evento no contiene leadId');
 
+        if (!tenantId || (event.tenantId && event.tenantId !== tenantId)) {
+            throw new Error('El evento no corresponde al tenant de la automatizacion');
+        }
         let userId = String(target);
         const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
-        if (!isUuid) {
-            // Vino un email: se resuelve contra los usuarios del tenant. Si no
-            // existe se falla en vez de escribir basura en assigned_to, que
-            // dejaría al lead asignado a nadie sin que se note.
-            const found = await this.prisma.user.findFirst({
-                where: { email: userId, tenantId: (event as any).tenantId },
-                select: { id: true },
-            });
-            if (!found) throw new Error(`No existe un usuario '${target}' en el tenant`);
-            userId = found.id;
-        }
+        // A syntactically valid UUID is not proof of tenant membership. Resolve
+        // both forms against the authoritative job tenant before any lead write.
+        const found = await this.prisma.user.findFirst({
+            where: isUuid ? { id: userId, tenantId } : { email: userId, tenantId },
+            select: { id: true },
+        });
+        if (!found) throw new Error(`No existe un usuario '${target}' en el tenant`);
+        userId = found.id;
 
         await this.prisma.executeInTenantSchema(
             schemaName,

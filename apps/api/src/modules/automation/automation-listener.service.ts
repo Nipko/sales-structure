@@ -138,27 +138,28 @@ export class AutomationListenerService {
     }) {
         try {
             const schemaName = event.schemaName || await this.prisma.getTenantSchemaName(event.tenantId);
-            let phone = event.phone;
-            if (!phone) {
-                // El `contactId` de `message.inbound` viene de NormalizedMessage y es el
-                // identificador DEL CANAL (el user id de Telegram, el numero de
-                // WhatsApp…), no el UUID de `contacts`. Casteado a ::uuid reventaba con
-                //   22P02 invalid input syntax for type uuid: "860048121"
-                // y como el error se atrapa mas abajo, las automatizaciones dejaban de
-                // correr en silencio para cada mensaje entrante.
-                //
-                // Se resuelve por la conversacion, cuyo id si es UUID siempre.
-                const contacts = await this.prisma.executeInTenantSchema<any[]>(
-                    schemaName,
-                    `SELECT ct.phone
-                       FROM conversations c
-                       JOIN contacts ct ON ct.id = c.contact_id
-                      WHERE c.id = $1::uuid
-                      LIMIT 1`,
-                    [event.conversationId],
-                );
-                phone = contacts?.[0]?.phone || undefined;
+            // The actual inbound producer carries a CHANNEL contact identifier,
+            // not a CRM UUID or leadId. Resolve the commercial identity even when
+            // metadata already supplies a phone. Never adopt an event's arbitrary
+            // leadId, and never choose one of multiple active leads by row order.
+            const links = await this.prisma.executeInTenantSchema<any[]>(
+                schemaName,
+                `SELECT ct.phone, l.id AS lead_id
+                   FROM conversations c
+                   JOIN contacts ct ON ct.id = c.contact_id
+                   LEFT JOIN leads l ON l.contact_id = ct.id AND l.archived_at IS NULL
+                  WHERE c.id = $1::uuid
+                  LIMIT 2`,
+                [event.conversationId],
+            );
+            if (!links?.length) {
+                this.logger.warn('[AutomationListener] new_message omitido: conversacion sin contacto propio');
+                return;
             }
+            const phone = event.phone || links[0].phone || undefined;
+            const leadId = links.length === 1 ? links[0].lead_id || undefined : undefined;
+            // Conversation-level rules may still run without a unique lead;
+            // lead-dependent handlers reject a missing lead before writing.
 
             let businessHoursStatus: 'open' | 'closed' | 'unknown' = 'unknown';
             try {
@@ -177,7 +178,7 @@ export class AutomationListenerService {
                 schemaName,
                 'conversation',
                 event.conversationId,
-                { ...event, schemaName, phone, businessHoursStatus, eventType: 'new_message' },
+                { ...event, schemaName, phone, leadId, businessHoursStatus, eventType: 'new_message' },
             );
         } catch (error: any) {
             this.logger.error(`[AutomationListener] Error preparando new_message: ${error.message}`);

@@ -79,6 +79,7 @@ import { buildUnverifiedPriceReply, correctivePriceInstruction, enforceVerifiedP
 import { groundInactiveCatalogReply } from './catalog-retirement-grounding';
 import { groundMissingPropertyPhotoReply, propertyPhotoCatalogue, requiresPropertyPhotoLookup } from './property-photo-grounding';
 import { requiresPropertyDetailLookup, propertyDetailIdForQuestion } from './property-detail-grounding';
+import { requiresOwnCustomerContextRead } from './own-customer-context-read';
 import { AgentTurnSession } from './agent-turn-session';
 import { sessionCanExecute, sessionLlmRouter, sessionToolExecutor } from './agent-turn-adapters';
 import { containsBookingOffer } from './booking-offer';
@@ -4175,6 +4176,7 @@ export class ConversationsService {
         let preExecutedTools: Array<{ name: string; result: any }> = engineExecutedTools;
         let automaticPackageDetailRead: { packageId: string; result: any } | undefined;
         let automaticAppointmentRead: { appointmentId: string; result: any } | undefined;
+        let automaticOwnCustomerContextRead: { result: any } | undefined;
         let automaticListingDetailRead: { listingId: string; result: any } | undefined;
         const automaticProductStockReads: Array<{ name: string; args: Record<string, unknown>; result: any }> = [];
         const automaticPropertyDetailReads: Array<{ name: string; args: Record<string, unknown>; result: any }> = [];
@@ -4587,6 +4589,30 @@ export class ConversationsService {
                 this.logger.warn(`Property photo lookup failed (non-fatal): ${error.message}`);
                 turnTrace.add('tool_result', 'list_properties', { ok: false, automatic: true, error: 'property_photo_lookup_failed' });
             }
+        }
+
+        // Self-profile facts come from the current contact-bound reader, not
+        // an access-denial guess. Never accept an identity from model arguments.
+        if (!engineProducedText && requiresOwnCustomerContextRead(userText)
+            && turnAllowedTools.includes('get_customer_context')) {
+            const context: ServiceExecutionContext = {
+                ...executionContext, mode: executionContext?.mode ?? 'live', persistence: 'disabled',
+            };
+            let result: any;
+            turnTrace.add('tool_call', 'get_customer_context', { origin: 'core', effect: 'read', automatic: true });
+            try {
+                result = await awaitAutomaticFaqLookup(toolExecutor.execute(
+                    schemaName, tenantId, conversation.contact_id || '', 'get_customer_context', {}, conversation.id,
+                    { authority: llmAuthority, channelType: msg.channelType, executionContext: context,
+                        commitmentBlocked, deniedTools, jurisdiction: regional?.operatingCountry.value },
+                ), 3_000, context);
+            } catch (error: any) {
+                if (session || error instanceof LLMSourceAuthorityUnavailable) throw error;
+                result = { error: 'customer_context_lookup_failed' };
+            }
+            preExecutedTools.push({ name: 'get_customer_context', result });
+            automaticOwnCustomerContextRead = { result };
+            turnTrace.add('tool_result', 'get_customer_context', { ok: !result?.error, error: result?.error, automatic: true });
         }
 
         // A historical reference is a read, not the start of a booking. Keep
@@ -5080,6 +5106,13 @@ export class ConversationsService {
             const currentMessages = [...messages] as any[];
             // An automatic catalogue read must reach the model through the
             // same sanitized tool-result boundary as a requested tool call.
+            if (automaticOwnCustomerContextRead) {
+                const id = 'auto_own_customer_context';
+                currentMessages.push({ role: 'assistant', content: '', toolCalls: [{ id, type: 'function',
+                    function: { name: 'get_customer_context', arguments: '{}' } }] });
+                currentMessages.push({ role: 'tool', toolCallId: id,
+                    content: JSON.stringify(sanitizeToolResultForModel(automaticOwnCustomerContextRead.result, userLanguage)) });
+            }
             if (automaticAppointmentRead) {
                 const id = 'auto_appointment_details';
                 currentMessages.push({ role: 'assistant', content: '', toolCalls: [{ id, type: 'function',

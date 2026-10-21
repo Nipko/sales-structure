@@ -5,7 +5,7 @@ const UUID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 export function requiresListingDetailLookup(query: string): boolean {
     const text = fold(query);
     return /\b(?:inmueble\w*|propiedad\w*|apartamento\w*|casa\w*|listing\w*|property|apartment\w*|imovel|imoveis|appartement\w*|logement\w*)\b/.test(text)
-        && /\b(?:area|metros?\s+cuadrados?|m2|square\s+(?:met\w*|feet)|superficie|surface|parking|parqueadero\w*|estacionamiento\w*|garag\w*|vaga\w*|enlace\w*|link\w*|url|lien\w*|habitacion\w*|dormitorio\w*|bedroom\w*|chambre\w*|bano\w*|bathroom\w*|amen\w*|comodidade\w*)\b/.test(text);
+        && /\b(?:financ\w*|deposit\w*|depot|hoa|administracion|administracao|condominio|constru\w*|year\s+built|estrato|stratum|area|metros?\s+cuadrados?|m2|square\s+(?:met\w*|feet)|superficie|surface|parking|parqueadero\w*|estacionamiento\w*|garag\w*|vaga\w*|enlace\w*|link\w*|url|lien\w*|habitacion\w*|dormitorio\w*|bedroom\w*|chambre\w*|bano\w*|bathroom\w*|amen\w*|comodidade\w*)\b/.test(text);
 }
 
 export function listingDetailIdForQuestion(query: string, result: unknown): string | null {

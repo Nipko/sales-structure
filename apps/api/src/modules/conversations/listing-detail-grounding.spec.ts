@@ -3,7 +3,7 @@ const id = '57542cc7-de10-4166-b731-704bc7fa403d';
 const row = { id, name: 'Spark QA Inmueble', status: 'available' };
 describe('current listing detail identity', () => {
     it.each(['¿Cuántos metros cuadrados tiene el Spark QA Inmueble?', '¿El inmueble tiene parqueaderos?',
-        'Property parking?', 'Área do imóvel?', 'Surface du logement?', 'Enlace del apartamento'])('recognizes %s', q => expect(needs(q)).toBe(true));
+        'Property parking?', 'Área do imóvel?', 'Surface du logement?', 'Enlace del apartamento', 'Financiamiento del inmueble', 'Deposito del apartamento', 'Cuota HOA de la propiedad', 'Año de construccion y estrato del inmueble', 'Financiamento do imovel', 'Financement du logement', 'Property year built'])('recognizes %s', q => expect(needs(q)).toBe(true));
     it.each(['¿Cuándo es mi cita?', 'Reserva una visita', '¿Cuánto dura el tour?'])('ignores %s', q => expect(needs(q)).toBe(false));
     it('matches only an exact current name or UUID', () => {
         expect(pick('Área del Spark QA Inmueble?', { listings: [row] })).toBe(id);

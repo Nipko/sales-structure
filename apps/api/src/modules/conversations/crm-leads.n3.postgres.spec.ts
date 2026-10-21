@@ -309,14 +309,20 @@ import { CRM_BASE_TABLES, N3_DATABASE_URL, openLive, seedCustomer } from './__fi
         it('CRM-02: an interest fills the empty primary slot, then the secondary, and never overwrites what a person classified', async () => {
             const C = await seedCustomer(h.q, 'A'); const leadId = await lead(C);
             const read = async () => (await h.q<any[]>('SELECT primary_intent,secondary_intent FROM leads WHERE id=$1::uuid', [leadId]))[0];
-            await call(C, 'record_contact_interest', { interest: 'precio' });
+            expect(await call(C, 'record_contact_interest', { interest: 'precio' })).toMatchObject({ success: true });
             expect(await read()).toEqual({ primary_intent: 'precio', secondary_intent: null });
-            await call(C, 'record_contact_interest', { interest: 'PRECIO' });
+            const updatedAt = async () => (await h.q<any[]>('SELECT updated_at FROM leads WHERE id=$1::uuid', [leadId]))[0].updated_at;
+            const primaryTimestamp = await updatedAt();
+            expect(await call(C, 'record_contact_interest', { interest: 'PRECIO' })).toMatchObject({ success: true });
             expect(await read()).toEqual({ primary_intent: 'precio', secondary_intent: null });
-            await call(C, 'record_contact_interest', { interest: 'fecha' });
+            expect(await updatedAt()).toEqual(primaryTimestamp);
+            expect(await call(C, 'record_contact_interest', { interest: 'fecha' })).toMatchObject({ success: true });
             expect(await read()).toEqual({ primary_intent: 'precio', secondary_intent: 'fecha' });
-            await call(C, 'record_contact_interest', { interest: 'modalidad' });
+            const fullTimestamp = await updatedAt();
+            expect(await call(C, 'record_contact_interest', { interest: 'FECHA' })).toMatchObject({ success: true });
+            expect(await call(C, 'record_contact_interest', { interest: 'modalidad' })).toMatchObject({ error: 'interest_not_recorded' });
             expect(await read()).toEqual({ primary_intent: 'precio', secondary_intent: 'fecha' });
+            expect(await updatedAt()).toEqual(fullTimestamp);
         });
 
         it('CRM-03: ensure_crm_lead creates one lead per customer however many times it is asked', async () => {

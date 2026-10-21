@@ -110,15 +110,50 @@ describe('una etiqueta inventada vuelve inusable el CRM', () => {
 
 describe('el interés se registra sin pisar lo que una persona clasificó', () => {
     it('escribe el primario sólo cuando está vacío', async () => {
-        const { executor, queries } = buildExecutor([[{ id: leadId }], []]);
+        const { executor, queries } = buildExecutor([[{ id: leadId }], [{ id: leadId }]]);
 
-        await (executor as any).recordContactInterest(schemaName, contactId, 'plan anual');
+        expect(await (executor as any).recordContactInterest(schemaName, contactId, 'plan anual'))
+            .toMatchObject({ success: true, interest: 'plan anual' });
 
         const update = queries.find(q => q.sql.includes('UPDATE'))!;
         // Pisar lo que una persona clasificó es la forma silenciosa de que el
         // equipo deje de confiar en el campo.
         expect(update.sql).toContain("COALESCE(NULLIF(primary_intent, ''), $2)");
         expect(update.sql).toContain('secondary_intent');
+        expect(update.sql).toContain('RETURNING id');
+        expect(queries).toHaveLength(2);
+    });
+
+    it('does not claim a new interest was stored when both slots are occupied', async () => {
+        const { executor } = buildExecutor([[{ id: leadId }], [], [{ recorded: false }]]);
+        const result = await (executor as any).recordContactInterest(schemaName, contactId, 'tercer interés');
+        expect(result).toMatchObject({ error: 'interest_not_recorded' });
+        expect(result.success).toBeUndefined();
+    });
+
+    it('accepts an already persisted interest without another successful write', async () => {
+        const { executor, queries } = buildExecutor([[{ id: leadId }], [], [{ recorded: true }]]);
+        expect(await (executor as any).recordContactInterest(schemaName, contactId, 'PRECIO'))
+            .toMatchObject({ success: true, interest: 'PRECIO' });
+        const update = queries.find(q => q.sql.includes('UPDATE'))!;
+        expect(update.sql).toContain("lower(COALESCE(primary_intent, '')) <> lower($2)");
+        expect(update.sql).toContain("lower(COALESCE(secondary_intent, '')) <> lower($2)");
+        expect(queries[2].sql).toContain('AS recorded');
+        expect(queries[2].params).toEqual([leadId, 'PRECIO']);
+    });
+
+    it('reports a lead removed between lookup and update instead of a false save', async () => {
+        const { executor } = buildExecutor([[{ id: leadId }], [], []]);
+        expect(await (executor as any).recordContactInterest(schemaName, contactId, 'precio'))
+            .toMatchObject({ error: 'no_lead' });
+    });
+
+    it('reports a database failure without confirming a save', async () => {
+        const { executor } = buildExecutor([[{ id: leadId }]]);
+        (executor as any).prisma.$queryRawUnsafe = jest.fn().mockRejectedValue(new Error('database unavailable'));
+        jest.spyOn(executor as any, 'leadIdForContact').mockResolvedValue(leadId);
+        expect(await (executor as any).recordContactInterest(schemaName, contactId, 'precio'))
+            .toMatchObject({ error: 'interest_failed' });
     });
 
     it('un interés ilegible no escribe nada', async () => {

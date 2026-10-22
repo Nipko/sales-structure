@@ -374,3 +374,21 @@ export function withRequestLeftNote(response: string, lang: string | undefined, 
     const closing = closingQuestionStart(text);
     return closing > 0 ? `${text.slice(0, closing).trimEnd()}\n\n${note}\n\n${text.slice(closing)}` : `${text}\n\n${note}`;
 }
+
+/**
+ * The return notice in front of the answer of the turn that claimed it, said ONCE.
+ *
+ * The notice already tells the customer that nobody from the team is available and that the agent
+ * keeps helping. A reply that was nothing but a promise of a transfer comes back from
+ * `rewriteReplayPromise` as `TEAM_UNAVAILABLE`, which says the same thing in other words: put after
+ * the notice it read as the notice twice. That sentence, and the notice itself when the answer
+ * already carries it, is taken out of the answer; what is left follows the notice. An answer that
+ * said nothing else becomes the notice alone, never an empty message.
+ */
+export function composeReturnReply(notice: string | null | undefined, response: string): string {
+    if (!notice || !response?.trim()) return response;
+    let rest = response;
+    for (const sentence of [notice, ...Object.values(TEAM_UNAVAILABLE)]) rest = rest.split(sentence).join('');
+    rest = rest.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+    return rest ? `${notice}\n\n${rest}` : notice;
+}

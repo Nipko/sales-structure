@@ -153,7 +153,8 @@ describe('handoff return notice rides with the real answer', () => {
 });
 
 describe('queue notice for a customer waiting on a handoff nobody serves', () => {
-    const waiting = { startedAt: '2026-10-05T20:00:00Z' };
+    // Inside the unattended window: past it, the message returns the conversation instead.
+    const waiting = { startedAt: new Date(Date.now() - 2 * 60_000).toISOString() };
 
     it('sends the queue notice once even though the bot already announced the transfer', async () => {
         const { service, message } = fixture({ status: 'waiting_human', handoff: waiting });
@@ -351,7 +352,14 @@ describe('the replay turn of an unattended handoff return', () => {
         expect(service.handoffService.executeHandoff).not.toHaveBeenCalled();
         expect(service.replyOnceThroughOutbox).not.toHaveBeenCalled();
         expect(service.dispatchReplyThroughOutbox).toHaveBeenCalledTimes(1);
-        // what they asked was left for the team (the alert went out), and the reply says so
+        // the supervisors were alerted, but nothing was written down (no follow-up task): the reply
+        // does not claim the request was «anotada»
+        expect(sentChunks(service).join('\n')).toBe(`${RETURN_NOTICE}\n\n${ANSWER}`);
+    });
+
+    it('with the follow-up written down, the reply says the request was noted', async () => {
+        const { service, message } = build({ withTasks: true });
+        await service.runTurn(message);
         expect(sentChunks(service).join('\n')).toBe(
             `${RETURN_NOTICE}\n\n${ANSWER}\n\nDejé su solicitud anotada para que el equipo la vea y le contacte cuando esté disponible.`);
     });
@@ -360,8 +368,8 @@ describe('the replay turn of an unattended handoff return', () => {
         const { service, message } = build({ reason: 'complaint', text: 'esto es pésimo, nadie responde' });
         await service.runTurn(message);
         const msg = service.generateResponse.mock.calls[0][2];
-        // the supervisors' alert went out, so a true sentence can say the request was left
-        expect(msg.handoffReturn).toEqual({ ask: 'complaint', noteLeft: true, fromEpisode: false });
+        // the supervisors' alert went out, but without a follow-up nothing was noted
+        expect(msg.handoffReturn).toEqual({ ask: 'complaint', noteLeft: false, fromEpisode: false });
         expect(service.handoffService.executeHandoff).not.toHaveBeenCalled();
     });
 
@@ -507,10 +515,11 @@ describe('the replay: opt-out per line, and the team actually sees the request',
         }));
     });
 
-    it('tells the customer the request was left when the alert went out, even without a CRM lead task', async () => {
-        const { service, message } = build({ text: 'necesito hablar con un asesor' });
+    it('the alert alone is not a note: without a follow-up task the customer is not told it was noted', async () => {
+        const { service, message, events } = build({ text: 'necesito hablar con un asesor' });
         await service.runTurn(message);
-        expect(service.generateResponse.mock.calls[0][2].handoffReturn).toEqual({ ask: 'person', noteLeft: true, fromEpisode: false });
+        expect(events.emit).toHaveBeenCalledWith('handoff.escalated_supervisor', expect.anything());
+        expect(service.generateResponse.mock.calls[0][2].handoffReturn).toEqual({ ask: 'person', noteLeft: false, fromEpisode: false });
     });
 
     it('says nothing was left when neither the task nor the alert exists', async () => {
@@ -560,8 +569,8 @@ describe('the replay: one alert per episode, and a budget text that is not an an
         const { service, message, events } = build({ escalated: true });
         await service.runTurn(message);
         expect(events.emit).not.toHaveBeenCalledWith('handoff.escalated_supervisor', expect.anything());
-        // the notice was enqueued, so the request is honestly said to be left
-        expect(service.generateResponse.mock.calls[0][2].handoffReturn).toEqual({ ask: 'person', noteLeft: true, fromEpisode: false });
+        // the notice was enqueued, but an alert is not a note: nothing is said to be noted
+        expect(service.generateResponse.mock.calls[0][2].handoffReturn).toEqual({ ask: 'person', noteLeft: false, fromEpisode: false });
     });
 
     it('the live inbox alert goes out when nobody was alerted before', async () => {
@@ -684,7 +693,9 @@ describe('the 2026-10-07 live sequence', () => {
     it('T2 gets a queue notice that is NOT the transfer notice again', async () => {
         const { service, message } = fixture({ status: 'waiting_human', handoff: { startedAt: STARTED, reason: 'human_request' }, text: T2 });
         wire(service, { reason: null });
-        await service.runTurn(message);
+        // T2 arrived 2 min 26 s into the handoff, inside the unattended window
+        const now = jest.spyOn(Date, 'now').mockReturnValue(Date.parse(STARTED) + 146_000);
+        try { await service.runTurn(message); } finally { now.mockRestore(); }
         const text = service.replyOnceThroughOutbox.mock.calls[0][0].item.payload.text;
         expect(text).toBe('Su solicitud sigue en espera; alguien del equipo le responderá apenas esté disponible.');
         expect(text).not.toContain('transfiriendo');
@@ -870,25 +881,27 @@ describe('the 2026-10-08 live episode: the request left for the team is said whe
         expect(logged()[0]).toContain('follow-up created, supervisors enqueued:1 → left for the team');
     });
 
-    it('a contact WITHOUT a lead: no task, but the supervisors were told, so the request IS left', async () => {
+    // The supervisors' alert is a notification, not a note (dental, 2026-10-22): without the follow-up
+    // task the reply does not say «Dejé su solicitud anotada».
+    it('a contact WITHOUT a lead: no task, the supervisors were told, and nothing is said to be noted', async () => {
         const { service, message, tasks, logged } = episode({ lead: false });
         await service.runTurn(message);
         expect(tasks.createTaskIdempotently).not.toHaveBeenCalled();
-        expect(sentChunks(service).join('\n')).toBe(FULL);
+        expect(sentChunks(service).join('\n')).toBe(NO_NOTE);
         expect(logged()[0]).toContain('follow-up no_lead, supervisors enqueued:1');
     });
 
-    it('a task service that fails: the supervisors were still told', async () => {
+    it('a task service that fails: the supervisors were still told, nothing is said to be noted', async () => {
         const { service, message, logged } = episode({ tasks: 'throws' });
         await service.runTurn(message);
-        expect(sentChunks(service).join('\n')).toBe(FULL);
+        expect(sentChunks(service).join('\n')).toBe(NO_NOTE);
         expect(logged()[0]).toContain('follow-up failed:relation "tasks" does not exist');
     });
 
-    it('no task service wired: the supervisors were still told', async () => {
+    it('no task service wired: the supervisors were still told, nothing is said to be noted', async () => {
         const { service, message, logged } = episode({ tasks: 'none' });
         await service.runTurn(message);
-        expect(sentChunks(service).join('\n')).toBe(FULL);
+        expect(sentChunks(service).join('\n')).toBe(NO_NOTE);
         expect(logged()[0]).toContain('follow-up no_tasks_service');
     });
 
@@ -904,6 +917,6 @@ describe('the 2026-10-08 live episode: the request left for the team is said whe
         await service.runTurn(message);
         expect(sentChunks(service).join('\n')).toBe(NO_NOTE.replace(' mientras espera', ''));
         expect(service.generateResponse.mock.calls[0][2].handoffReturn).toEqual({ ask: 'person', noteLeft: false, fromEpisode: true });
-        expect(logged()[0]).toContain('NOTHING left');
+        expect(logged()[0]).toContain('NOTHING noted');
     });
 });

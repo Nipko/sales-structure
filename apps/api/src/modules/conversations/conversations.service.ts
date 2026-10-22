@@ -50,7 +50,7 @@ import {
 import { burstBufferKeys } from './burst-debounce-key';
 import { foldedContent, fragmentFor, mergeBurst, type BurstFragment } from './burst-fragments';
 import {
-    budgetExhaustedReplayText, BUDGET_EXHAUSTED_REPLAY_MSG, isBareConsent, replayAsk, returnNoteTask, returnReplayTurn,
+    budgetExhaustedReplayText, BUDGET_EXHAUSTED_REPLAY_MSG, composeReturnReply, isBareConsent, replayAsk, returnNoteTask, returnReplayTurn,
     rewriteReplayPromise, sanitizeReplayReply, staleConsentReply, toolsForReplay, withRequestLeftNote,
     type ReturnAsk,
 } from './handoff-return-replay-turn';
@@ -60,7 +60,7 @@ import { enqueueOperationalNoticesForTenantRoles, ensureOperationalNoticeOutbox 
 import { resolveTurnOutcome } from './turn-outcome-wait';
 import { ChannelTokenService } from '../channels/channel-token.service';
 import { ConversationsGateway } from './conversations.gateway';
-import { HandoffService } from '../handoff/handoff.service';
+import { HandoffService, UNATTENDED_HANDOFF_MINUTES } from '../handoff/handoff.service';
 import { complaintIsOfferOnly, isActionOrientedRefundQuestion } from '../handoff/handoff-policy-question';
 import { KnowledgeService } from '../knowledge/knowledge.service';
 import { knowledgeHitToContext } from '../knowledge/knowledge-contracts';
@@ -313,6 +313,18 @@ const HANDOFF_RETURN_MSG: Record<string, string> = {
     fr: "Personne de l'équipe n'est disponible pour le moment ; je continue de vous aider.",
 };
 const handoffReturnText = (lang?: string) => HANDOFF_RETURN_MSG[(lang || 'es').slice(0, 2).toLowerCase()] || HANDOFF_RETURN_MSG.es;
+
+/**
+ * A handoff the unattended sweep will give back to the agent as soon as the customer has written:
+ * started more than `UNATTENDED_HANDOFF_MINUTES` ago and not returned yet (the sweep's own time
+ * conditions; the "no person replied" one is checked by the caller).
+ */
+const handoffAboutToReturn = (handoff: any, now = Date.now()): boolean => {
+    const started = Date.parse(String(handoff?.startedAt ?? ''));
+    if (!Number.isFinite(started)) return false;
+    if (handoff?.returnedToAi === true || handoff?.returnedToAi === 'true') return false;
+    return now - started > UNATTENDED_HANDOFF_MINUTES * 60_000;
+};
 
 /** A persisted row identifier, never a provider message id. */
 const PERSISTED_ID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
@@ -1631,7 +1643,11 @@ export class ConversationsService {
             && typeof response === 'string' && response && !isErrorFallback(response) && !turnEffects.learningProvenanceRefused
             ? await this.claimReturnNotice(schemaName, conversation, content?.text, config.language || 'es')
             : null;
-        response = withReturnNotice(returnNotice, response, !!recoveredEnvelope || !!resumedReply);
+        // Said once: the answer's own restatement of it (the replay's "the team is not
+        // available" stand-in) goes, so the customer never reads the notice twice.
+        response = returnNotice && typeof response === 'string'
+            ? composeReturnReply(returnNotice, response)
+            : withReturnNotice(returnNotice, response, !!recoveredEnvelope || !!resumedReply);
 
         // Words that derive from learned examples whose provenance could not be
         // stated do not go out by any path. Aggregation used to swallow that
@@ -7960,8 +7976,8 @@ export class ConversationsService {
             }
             // The same notice, in the same message, as on every other channel.
             if (replayTurn && !isErrorFallback(reply)) {
-                reply = withReturnNotice(
-                    await this.claimReturnNotice(schemaName, conversation, text, config.language || 'es'), reply, false) as string;
+                reply = composeReturnReply(
+                    await this.claimReturnNotice(schemaName, conversation, text, config.language || 'es'), reply);
             }
             return this.activateOnWidgetReply(tenantId, demoTurn, modelAnswered,
                 await this.widgetAgentReplies.commit({ tenantId, schemaName, ...binding,
@@ -8203,12 +8219,19 @@ export class ConversationsService {
      * handoff (any channel): the transfer notice of step 5 and the model's own
      * promise are not a person, and counting them silenced this notice for
      * everyone who had been transferred.
+     *
+     * Nor is it sent once the handoff is past the unattended window: this very
+     * message is what lets the sweep (`returnUnattendedHandoffs`, every minute) give
+     * the conversation back, and the replay answers it with the return notice. "Su
+     * solicitud sigue en espera" followed a minute later by "no hay nadie del equipo
+     * disponible; sigo ayudándole yo" contradicted itself in front of the customer.
      */
     private async sendQueueNoticeOnce(tenantId: string, schemaName: string, conversation: any,
         msg: NormalizedMessage, inboundMessageId: string | undefined, scope: ServedAgentAuthority | undefined, text: string | undefined, defaultLanguage: string): Promise<void> {
         const handoff = (conversation?.metadata as any)?.handoff;
         const startedAt = handoff?.startedAt;
         if (!startedAt || handoff?.queueNoticeSent === true || handoff?.queueNoticeSent === 'true') return;
+        if (handoffAboutToReturn(handoff)) return;
         try {
             const run = (sql: string, params: any[]) => this.prisma.executeInTenantSchema<any[]>(schemaName, sql, params);
             const hasOutbox = await hasDispatchOutbox(run, schemaName);
@@ -8312,8 +8335,11 @@ export class ConversationsService {
      *    tenant's admins and supervisors (`handoff.sla_escalated` operational
      *    notice per operator, plus the live `handoff.escalated_supervisor` inbox
      *    alert), keyed by this handoff episode so it is sent once.
-     * True only when at least one of them exists: the customer is told the request
-     * was left for the team only if it was.
+     * True only when the follow-up task exists: the customer is told «dejé su
+     * solicitud anotada» only when something was really written down. The alert to
+     * the supervisors is a notification, not a note; counting it put the sentence
+     * on every reply of a contact without a lead (dental, 2026-10-22: one
+     * `operational_notice_outbox` row, no task, and the customer read it anyway).
      */
     private async leaveHandoffReturnNote(input: {
         tenantId: string; schemaName: string; conversation: any; contact?: any; leadId: unknown;
@@ -8349,9 +8375,6 @@ export class ConversationsService {
                     roles: ['tenant_admin', 'tenant_supervisor'], revision: `${input.startedAt}:returned`,
                 }));
             outcome.notice = notified.length ? `enqueued:${notified.length}` : 'no_recipients_or_already_sent';
-            if (notified.length) {
-                left = true;
-            }
             // The live inbox alert is the SLA escalation's own: when that one already fired for this
             // handoff (`handoff.escalated`), a second badge would only repeat it.
             const alreadyAlerted = String(input.conversation?.metadata?.handoff?.escalated) === 'true';
@@ -8368,7 +8391,7 @@ export class ConversationsService {
             this.logger.warn(`[Handoff] supervisors not alerted about the unanswered request: ${error?.message}`);
         }
         this.logger.log(`[Handoff] unanswered request of ${conversation?.id} (${ask}${input.fromEpisode ? ', from the handoff' : ''}): `
-            + `follow-up ${outcome.task}, supervisors ${outcome.notice} → ${left ? 'left for the team' : 'NOTHING left'}`);
+            + `follow-up ${outcome.task}, supervisors ${outcome.notice} → ${left ? 'left for the team' : 'NOTHING noted (the customer is not told it was)'}`);
         return left;
     }
 

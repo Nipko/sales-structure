@@ -74,7 +74,9 @@
     "apps/api/src/modules/conversations/conversations.operation-shadow.spec.ts",
     "apps/api/src/modules/faqs/faq-search.topic-recall.spec.ts",
     "apps/api/src/modules/conversations/runtime/facts-ledger.spec.ts",
-    "apps/api/src/modules/conversations/conversations.facts-ledger.spec.ts"
+    "apps/api/src/modules/conversations/conversations.facts-ledger.spec.ts",
+    "apps/api/src/modules/conversations/runtime/required-reads.runner.spec.ts",
+    "apps/api/src/modules/conversations/conversations.required-reads.spec.ts"
   ],
   "postgres": [
     "apps/api/src/modules/faqs/faq-effects.postgres.spec.ts",

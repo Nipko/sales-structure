@@ -128,6 +128,7 @@ import { MissionFocusStore } from './mission-focus-store';
 import { sanitizeRewrittenReply } from './rewrite-validation';
 import { correctRelativeWeekdays } from './relative-weekday';
 import { customerDatesIn } from './date-reference';
+import { guardIdentityCodeClaim } from './identity-code-claim';
 import { addressFormOf, detectTransition, failedTransitionOf, handleIdentityReply, humanizeReferences, identityGate, knownRecordFacts, knownRecordIds, localizeStatusWords, namedRequestOverridesClarify, opensWithYes, requestIdentityForTool, runTransition, shortReference, transitionDoneText, transitionFailureText, transitionRequestForTool, transitionTexts, TRANSITION_TOOLS, TRANSITION_WRITER, type TransitionIO, type TransitionOutcome } from './transition-engine';
 import { resolveListChoice } from './list-choice';
 import { createdDoneText, detectOrderIntake, isOrderDetails, mergeOrderNotes, mightBeOrderRequest, orderProposalText, orderStockText, orderChoiceText, replyStillAsksConfirmation, type OrderChoice, type OrderIntake } from './order-intake';
@@ -5906,6 +5907,27 @@ export class ConversationsService {
                 executedToolsThisTurn, userLanguage, priorActions, turnContext, session, {execute:executeLearningModel},
                 allowHumanHandoff,
             );
+            // A verification code is mentioned as SENT only when a provider accepted one (F4300-02): «el código de 6 dígitos
+            // que le fue enviado» after a read that sent nothing is a step the customer can never complete. The engine's
+            // own identity text is backed by its own request; anything the model wrote is checked against the turn's
+            // results and, for a code of an earlier turn, against the live delivered challenge.
+            if (finalResponse && !deterministicReply && !isErrorFallback(finalResponse)
+                && !(engineTextIsReply && engineProducedText && finalResponse.trim() === engineProducedText.trim())) {
+                const codeClaim = await guardIdentityCodeClaim({
+                    reply: finalResponse,
+                    executed: [...executedToolsThisTurn, ...engineExecutedTools],
+                    lang: userLanguage,
+                    canOfferPerson: allowHumanHandoff,
+                    delivered: async () => !session && !draftMode && !!conversation.contact_id
+                        && typeof (this.toolExecutor as any).identityCodeDelivered === 'function'
+                        && (this.toolExecutor as any).identityCodeDelivered(conversation.id, conversation.contact_id),
+                });
+                if (codeClaim.replaced) {
+                    this.recordAgentSignal(tenantId, 'identity_code_claim_unbacked', session);
+                    this.logger.warn(`[Guardrail] The reply claimed a verification code that no provider accepted (${codeClaim.situation}) — replaced: "${finalResponse.slice(0, 100)}"`);
+                    finalResponse = codeClaim.text;
+                }
+            }
             // A raw UUID is not a reference a customer can read or quote: it is shown as the short one (first 8, uppercase).
             if (finalResponse) finalResponse = humanizeReferences(finalResponse, knownRecordIds([...executedToolsThisTurn, ...engineExecutedTools], turnContext));
             // «El estado es pending»: an internal status word copied from a tool result is put in the customer's language.

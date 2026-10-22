@@ -720,3 +720,47 @@ const OFFER_QUESTION = new RegExp(
     + OFFER_TARGET,
 );
 
+// ── Verification codes ─────────────────────────────────────────────────────────────────────────────────────────────
+//
+// «¿Puede darme el código de 6 dígitos que le fue enviado a su correo o teléfono?» when no code left (F4300-02): the
+// customer can never complete it. A reply may say a code was sent only when a provider accepted one (this turn's
+// request_identity_code / identity gate said `codeSent`, or a delivered challenge is still live).
+
+/** «¿Desea que le envíe un código?» is an offer, not a claim (accent folding makes «envíe» and «envié» the same word). */
+const CODE_SEND_OFFER = /\b(?:quiere|quieres|desea|deseas|prefiere|prefieres|gustaria|puedo|podemos|necesita|necesitas|would you like|do you want|shall i|can i|should i|voulez|souhaitez|quer|gostaria|posso)\b[^.?!]{0,30}\b(?:que (?:le |te |les )?(?:envie|enviemos|mande|mandemos)|(?:me|i|we|je|eu) (?:to )?(?:send|envoie|envie)|enviar(?:le|te)?|mandar(?:le|te)?|envoyer)\b[^.?!]*/g;
+const CODE_NEGATED = /\b(?:no|not|nao|pas|ningun|nenhum|aucun|never|nunca|yet to|haven't|hasn't|didn't|wasn't|isn't|couldn't|cannot|can't)\b/;
+const CODE_SENT_CLAIMS: readonly RegExp[] = [
+    // es / pt: «código … (que le fue) enviado», «código que le envié», «código que recibió»
+    /\bcodigo\b[^.?!]{0,60}?\b(?:enviad[oa]|mandad[oa]|envie|enviamos|mande|mandamos|enviei|mandei|que (?:le |te )?(?:llego|ha llegado|recibio|recibiste|recebeu))\b/,
+    // es / pt: «le envié / hemos enviado / se le envió … un código»
+    /\b(?:envie|enviamos|mande|mandamos|enviei|mandei|(?:he|hemos|ha|han) (?:enviado|mandado)|se (?:le |te )?(?:envio|mando|ha enviado|ha mandado)|foi enviado)\b[^.?!]{0,40}\bcodigo\b/,
+    // en: «the code sent to your email», «I sent you a code», «the code you received»
+    /\bcode\b[^.?!]{0,60}?\b(?:sent|texted|emailed|that you (?:received|got)|you (?:received|got|just received))\b/,
+    /\b(?:i|we|i've|we've|i have|we have)\s+(?:just\s+|already\s+)?(?:sent|texted|emailed)\b[^.?!]{0,40}\bcode\b/,
+    // fr: «le code envoyé», «je vous ai envoyé un code», «le code reçu»
+    /\bcode\b[^.?!]{0,60}?\b(?:envoye|envoyee|recu)\b/,
+    /\b(?:je vous ai|nous vous avons|j'ai|nous avons|on vous a)\s+(?:deja\s+)?envoye\b[^.?!]{0,40}\bcode\b/,
+];
+
+/** The reply tells the customer a verification code WAS sent (or asks for the one «sent»/«received»). */
+export function claimsIdentityCodeSent(reply: unknown): boolean {
+    if (typeof reply !== 'string' || !reply.trim()) return false;
+    const text = normalize(reply).replace(/[’`]/g, "'").replace(CODE_SEND_OFFER, ' ');
+    return text.split(/(?<=[.?!¿¡;\n])/).some(sentence => {
+        if (!/\bcod(?:igo|e)\b/.test(sentence)) return false;
+        if (!CODE_SENT_CLAIMS.some(pattern => pattern.test(sentence))) return false;
+        return !CODE_NEGATED.test(sentence);
+    });
+}
+
+/** A result of this turn that proves a provider accepted a verification code. */
+export function identityCodeSendBacked(executedTools: ReadonlyArray<{ name?: string; result?: any }> | undefined): boolean {
+    return (executedTools || []).some(tool => {
+        const result = tool?.result;
+        if (!result || typeof result !== 'object') return false;
+        if (result.codeSent === true) return true;
+        if (tool.name === 'request_identity_code' && result.sent === true) return true;
+        return typeof result.sentVia === 'string' && typeof result.sentTo === 'string';
+    });
+}
+

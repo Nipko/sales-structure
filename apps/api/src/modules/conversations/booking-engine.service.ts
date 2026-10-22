@@ -20,6 +20,7 @@ import { coerceProcedureSlot } from './procedure-slot-interpolation';
 import { nearestSlots, selectSlotWindow } from './slot-window';
 import { answerToOffer, asksDuration, bookingActKind, isAboutBooking, isInformationalDetour, isOnlyInquiry, isPushingToBook, isServiceSwitchDirective } from './informational-detour';
 import { BOOKING_OFFER_TTL_MS } from './booking-offer';
+import { foldForSearch, productSearchTerms, stemForSearch } from '../../common/utils/product-search-terms';
 
 /**
  * Lo que el motor necesita saber del turno además del estado de la reserva.
@@ -86,7 +87,7 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         resumeOffer: 'Quedó a medio agendar una cita de {service}. ¿Desea continuar o prefiere empezar de nuevo?',
         resumeOfferNoService: 'Quedó una cita a medio agendar. ¿Desea continuar o prefiere empezar de nuevo?',
         resumeDiscarded: 'Listo, dejé esa reserva de lado. ¿En qué puedo ayudarle?',
-        switchDeclined: 'Está bien, dejamos su cita en curso de {service} como estaba.',
+        switchDeclined: 'Está bien, dejamos la cita en curso de {service} como estaba.',
         switchDuration: '{service} dura {minutes} minutos.',
         switchDurationRange: '{service} dura entre {min} y {max} minutos.',
         switchDurationOpen: '{service} tiene un horario flexible.',
@@ -96,13 +97,13 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         switchSlotTaken: 'El {date} a las {time} no hay cupo para {service}. Hay disponibilidad a las {slots}.',
         switchDayFree: 'El {date} hay cupo para {service} a las {slots}.',
         switchDayFull: 'El {date} no hay disponibilidad para {service}.',
-        switchOffer: '¿Desea cambiar su cita de {from} por {service}?',
-        switchOfferDate: '¿Desea cambiar su cita de {from} por {service} el {date}? Si es así, indíqueme el horario que prefiere.',
-        switchOfferSlot: '¿Desea cambiar su cita de {from} por {service} el {date} a las {time}?',
-        switchOfferOtherDate: '¿Desea cambiar su cita de {from} por {service} para otra fecha?',
-        changeOfferSlot: '¿Desea cambiar su cita de {service} al {date} a las {time}?',
-        changeOfferDate: '¿Desea cambiar su cita de {service} al {date}? Si es así, indíqueme el horario que prefiere.',
-        draftStays: 'Su cita de {service} sigue en curso, tal como estaba (todavía sin confirmar).',
+        switchOffer: '¿Desea cambiar la cita en curso de {from} (todavía sin confirmar) por {service}?',
+        switchOfferDate: '¿Desea cambiar la cita en curso de {from} (todavía sin confirmar) por {service} el {date}? Si es así, indíqueme el horario que prefiere.',
+        switchOfferSlot: '¿Desea cambiar la cita en curso de {from} (todavía sin confirmar) por {service} el {date} a las {time}?',
+        switchOfferOtherDate: '¿Desea cambiar la cita en curso de {from} (todavía sin confirmar) por {service} para otra fecha?',
+        changeOfferSlot: '¿Desea pasar la cita en curso de {service} (todavía sin confirmar) al {date} a las {time}?',
+        changeOfferDate: '¿Desea pasar la cita en curso de {service} (todavía sin confirmar) al {date}? Si es así, indíqueme el horario que prefiere.',
+        draftStays: 'La cita de {service} sigue en curso, tal como estaba (todavía sin confirmar).',
         servicesHeader: 'Estos son nuestros servicios:',
         servicesFooter: '¿Cuál le interesa?',
         slotsAvailable: 'Horarios disponibles para {service} el {date}: {slots}. ¿Cuál horario prefiere?',
@@ -162,7 +163,7 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         resumeOffer: 'An appointment for {service} was left half-scheduled. Would you like to continue it or start over?',
         resumeOfferNoService: 'An appointment was left half-scheduled. Would you like to continue it or start over?',
         resumeDiscarded: 'Done, I set that booking aside. How can I help you?',
-        switchDeclined: 'Understood, your {service} appointment in progress stays as it was.',
+        switchDeclined: 'Understood, the {service} appointment in progress stays as it was.',
         switchDuration: '{service} takes {minutes} minutes.',
         switchDurationRange: '{service} takes between {min} and {max} minutes.',
         switchDurationOpen: '{service} has a flexible duration.',
@@ -172,13 +173,13 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         switchSlotTaken: 'There is no availability for {service} on {date} at {time}. Available times: {slots}.',
         switchDayFree: 'On {date} there is availability for {service} at {slots}.',
         switchDayFull: 'There is no availability for {service} on {date}.',
-        switchOffer: 'Would you like to change your {from} appointment to {service}?',
-        switchOfferDate: 'Would you like to change your {from} appointment to {service} on {date}? If so, tell me which time you prefer.',
-        switchOfferSlot: 'Would you like to change your {from} appointment to {service} on {date} at {time}?',
-        switchOfferOtherDate: 'Would you like to change your {from} appointment to {service} on another date?',
-        changeOfferSlot: 'Would you like to move your {service} appointment to {date} at {time}?',
-        changeOfferDate: 'Would you like to move your {service} appointment to {date}? If so, tell me which time you prefer.',
-        draftStays: 'Your {service} appointment stays in progress as it was (not confirmed yet).',
+        switchOffer: 'Would you like to change the {from} appointment in progress (not confirmed yet) to {service}?',
+        switchOfferDate: 'Would you like to change the {from} appointment in progress (not confirmed yet) to {service} on {date}? If so, tell me which time you prefer.',
+        switchOfferSlot: 'Would you like to change the {from} appointment in progress (not confirmed yet) to {service} on {date} at {time}?',
+        switchOfferOtherDate: 'Would you like to change the {from} appointment in progress (not confirmed yet) to {service} on another date?',
+        changeOfferSlot: 'Would you like to move the {service} appointment in progress (not confirmed yet) to {date} at {time}?',
+        changeOfferDate: 'Would you like to move the {service} appointment in progress (not confirmed yet) to {date}? If so, tell me which time you prefer.',
+        draftStays: 'The {service} appointment stays in progress as it was (not confirmed yet).',
         servicesHeader: 'These are our services:',
         servicesFooter: 'Which one interests you?',
         slotsAvailable: 'Available times for {service} on {date}: {slots}. Which time do you prefer?',
@@ -228,7 +229,7 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         resumeOffer: 'Ficou um agendamento de {service} pela metade. Deseja continuar ou prefere começar de novo?',
         resumeOfferNoService: 'Ficou um agendamento pela metade. Deseja continuar ou prefere começar de novo?',
         resumeDiscarded: 'Pronto, deixei essa reserva de lado. Como posso ajudar?',
-        switchDeclined: 'Tudo bem, mantemos o seu agendamento em andamento de {service} como estava.',
+        switchDeclined: 'Tudo bem, mantemos o agendamento em andamento de {service} como estava.',
         switchDuration: '{service} dura {minutes} minutos.',
         switchDurationRange: '{service} dura entre {min} e {max} minutos.',
         switchDurationOpen: '{service} tem horário flexível.',
@@ -238,13 +239,13 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         switchSlotTaken: 'Não há vaga para {service} em {date} às {time}. Horários disponíveis: {slots}.',
         switchDayFree: 'Em {date} há vaga para {service} nos horários: {slots}.',
         switchDayFull: 'Não há disponibilidade para {service} em {date}.',
-        switchOffer: 'Deseja trocar o seu agendamento de {from} por {service}?',
-        switchOfferDate: 'Deseja trocar o seu agendamento de {from} por {service} em {date}? Se sim, diga-me o horário que prefere.',
-        switchOfferSlot: 'Deseja trocar o seu agendamento de {from} por {service} em {date} às {time}?',
-        switchOfferOtherDate: 'Deseja trocar o seu agendamento de {from} por {service} para outra data?',
-        changeOfferSlot: 'Deseja mudar o seu agendamento de {service} para {date} às {time}?',
-        changeOfferDate: 'Deseja mudar o seu agendamento de {service} para {date}? Se sim, diga-me o horário que prefere.',
-        draftStays: 'O seu agendamento de {service} continua em andamento, como estava (ainda sem confirmação).',
+        switchOffer: 'Deseja trocar o agendamento em andamento de {from} (ainda sem confirmação) por {service}?',
+        switchOfferDate: 'Deseja trocar o agendamento em andamento de {from} (ainda sem confirmação) por {service} em {date}? Se sim, diga-me o horário que prefere.',
+        switchOfferSlot: 'Deseja trocar o agendamento em andamento de {from} (ainda sem confirmação) por {service} em {date} às {time}?',
+        switchOfferOtherDate: 'Deseja trocar o agendamento em andamento de {from} (ainda sem confirmação) por {service} para outra data?',
+        changeOfferSlot: 'Deseja mudar o agendamento em andamento de {service} (ainda sem confirmação) para {date} às {time}?',
+        changeOfferDate: 'Deseja mudar o agendamento em andamento de {service} (ainda sem confirmação) para {date}? Se sim, diga-me o horário que prefere.',
+        draftStays: 'O agendamento de {service} continua em andamento, como estava (ainda sem confirmação).',
         servicesHeader: 'Estes são nossos serviços:',
         servicesFooter: 'Qual deles interessa a você?',
         slotsAvailable: 'Horários disponíveis para {service} em {date}: {slots}. Qual horário prefere?',
@@ -294,7 +295,7 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         resumeOffer: 'Un rendez-vous pour {service} est resté à moitié planifié. Voulez-vous continuer ou recommencer ?',
         resumeOfferNoService: 'Un rendez-vous est resté à moitié planifié. Voulez-vous continuer ou recommencer ?',
         resumeDiscarded: "C'est noté, j'ai mis cette réservation de côté. Comment puis-je vous aider ?",
-        switchDeclined: 'Très bien, votre rendez-vous en cours pour {service} reste tel quel.',
+        switchDeclined: 'Très bien, le rendez-vous en cours pour {service} reste tel quel.',
         switchDuration: '{service} dure {minutes} minutes.',
         switchDurationRange: '{service} dure entre {min} et {max} minutes.',
         switchDurationOpen: '{service} a une durée flexible.',
@@ -304,13 +305,13 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         switchSlotTaken: "Il n'y a pas de disponibilité pour {service} le {date} à {time}. Créneaux disponibles : {slots}.",
         switchDayFree: 'Le {date}, il y a de la disponibilité pour {service} : {slots}.',
         switchDayFull: "Il n'y a pas de disponibilité pour {service} le {date}.",
-        switchOffer: 'Souhaitez-vous remplacer votre rendez-vous pour {from} par {service} ?',
-        switchOfferDate: "Souhaitez-vous remplacer votre rendez-vous pour {from} par {service} le {date} ? Si oui, indiquez-moi l'horaire souhaité.",
-        switchOfferSlot: 'Souhaitez-vous remplacer votre rendez-vous pour {from} par {service} le {date} à {time} ?',
-        switchOfferOtherDate: 'Souhaitez-vous remplacer votre rendez-vous pour {from} par {service} pour une autre date ?',
-        changeOfferSlot: 'Souhaitez-vous déplacer votre rendez-vous pour {service} au {date} à {time} ?',
-        changeOfferDate: "Souhaitez-vous déplacer votre rendez-vous pour {service} au {date} ? Si oui, indiquez-moi l'horaire souhaité.",
-        draftStays: 'Votre rendez-vous pour {service} reste en cours, tel quel (pas encore confirmé).',
+        switchOffer: 'Souhaitez-vous remplacer le rendez-vous en cours pour {from} (pas encore confirmé) par {service} ?',
+        switchOfferDate: "Souhaitez-vous remplacer le rendez-vous en cours pour {from} (pas encore confirmé) par {service} le {date} ? Si oui, indiquez-moi l'horaire souhaité.",
+        switchOfferSlot: 'Souhaitez-vous remplacer le rendez-vous en cours pour {from} (pas encore confirmé) par {service} le {date} à {time} ?',
+        switchOfferOtherDate: 'Souhaitez-vous remplacer le rendez-vous en cours pour {from} (pas encore confirmé) par {service} pour une autre date ?',
+        changeOfferSlot: 'Souhaitez-vous déplacer le rendez-vous en cours pour {service} (pas encore confirmé) au {date} à {time} ?',
+        changeOfferDate: "Souhaitez-vous déplacer le rendez-vous en cours pour {service} (pas encore confirmé) au {date} ? Si oui, indiquez-moi l'horaire souhaité.",
+        draftStays: 'Le rendez-vous pour {service} reste en cours, tel quel (pas encore confirmé).',
         servicesHeader: 'Voici nos services :',
         servicesFooter: 'Lequel vous intéresse ?',
         slotsAvailable: 'Créneaux disponibles pour {service} le {date} : {slots}. Quel horaire préférez-vous ?',
@@ -348,6 +349,64 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
 const PRICE_QUESTION = /\b(?:cuanto (?:cuesta|vale|cobran|sale)|how much|quanto custa|combien|precio|price)\b/;
 
 const EMAIL_IN_TEXT = /[\w.+-]+@[\w-]+\.[\w.]+/;
+
+/**
+ * Words that sit in many service names without telling them apart ("Servicio completo", "Sesión express"): a customer
+ * who writes one of them has not named a service. Folded and stemmed like the catalogue words they are compared with.
+ */
+const GENERIC_SERVICE_WORDS: ReadonlySet<string> = new Set([
+    'servicio', 'service', 'servico', 'cita', 'sesion', 'session', 'sessao', 'seance', 'paquete', 'package', 'pacote', 'forfait',
+    'general', 'completo', 'complete', 'complet', 'basico', 'basic', 'basique', 'especial', 'special', 'normal', 'express', 'premium',
+]);
+
+type CatalogService = NonNullable<BookingState['services']>[number];
+
+/**
+ * The catalogue services the text names, with where the last mention starts. A service is named by its FULL name or,
+ * with `byWord`, by a DISTINCTIVE word of its name: one that no other service of the catalogue has and that is not a
+ * generic word («manicure» names «Manicure y pedicure»; «tratamiento» names «Color y tratamiento» only if no other
+ * service is a tratamiento). Words are compared whole, folded and stemmed like the product search, so «Cortés» is not
+ * «corte» and a fragment of a word never counts.
+ */
+function catalogServicesNamed(services: readonly CatalogService[], rawText: string, byWord: boolean): Array<{ service: CatalogService; at: number }> {
+    const fold = (value: string) => normalizeForIntent(value).replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
+    const text = ` ${fold(rawText)} `;
+    const hits = new Map<string, { service: CatalogService; at: number }>();
+    const hit = (service: CatalogService, at: number) => {
+        const seen = hits.get(service.id);
+        if (!seen || at > seen.at) hits.set(service.id, { service, at });
+    };
+    for (const service of services) {
+        if (fold(service.name).length < 4) continue;
+        const at = text.lastIndexOf(` ${fold(service.name)} `);
+        if (at >= 0) hit(service, at);
+    }
+    if (!byWord) return [...hits.values()];
+    const stemsOf = (value: string) => (foldForSearch(value).match(/[\p{L}\p{N}]+/gu) ?? []).map(stemForSearch);
+    const nameStems = services.map(service => new Set(productSearchTerms(service.name).filter(stem => stem.length >= 4 && !GENERIC_SERVICE_WORDS.has(stem))));
+    const textStems = stemsOf(rawText);
+    // Character offsets of each word, so a word mention is ordered against full-name mentions.
+    const offsets: number[] = [];
+    for (const match of foldForSearch(rawText).matchAll(/[\p{L}\p{N}]+/gu)) offsets.push(match.index ?? 0);
+    services.forEach((service, i) => {
+        for (const stem of nameStems[i]) {
+            if (nameStems.some((other, j) => j !== i && other.has(stem))) continue;
+            const index = textStems.lastIndexOf(stem);
+            if (index >= 0) hit(service, offsets[index] ?? 0);
+        }
+    });
+    return [...hits.values()];
+}
+
+/** The data that make a draft what it is: when one of them changes, the booking moved. */
+function draftFingerprint(state: BookingState): string {
+    return JSON.stringify([state.step, state.serviceId, state.date, state.time, state.customerName, state.customerEmail, state.pendingSwitch?.serviceId]);
+}
+
+/** The text names a service of the state's catalogue (full name or a distinctive word of it). */
+function namesCatalogService(state: BookingState, rawText: string): boolean {
+    return catalogServicesNamed(state.services ?? [], rawText, true).length > 0;
+}
 
 /**
  * The shape of an answer to "¿cuál es su nombre?": "Me llamo Carlos Barba", "soy Ana", or one to three
@@ -570,6 +629,12 @@ export interface BookingState {
      * engine declines), so it cannot bound the life of a mission by itself.
      */
     dormantSince?: string;
+    /**
+     * The last turn in which the booking itself moved (the engine answered about it, or a datum of the
+     * draft changed). The continuity window is measured from here, not from `savedAt`, which every turn
+     * rewrites: see `restoreBookingMission`.
+     */
+    progressedAt?: string;
     confirmationId?: string;
     confirmationHash?: string;
     confirmationIssuedAt?: string;
@@ -693,6 +758,17 @@ export class BookingEngineService {
         // confirmation). The engine only creates: taking it would open a second booking for the same customer.
         const changeOfExisting = appointmentChangeRequest(rawText);
         if (changeOfExisting === 'explicit' || changeOfExisting === 'ambiguous' && !isOpen(currentState)) return { handled: false, state: currentState };
+        // A DORMANT draft (untouched past the continuity window, see `restoreBookingMission`) is not resumed by a
+        // question that happens to carry a day, an hour or a service ("¿hay espacio el lunes a las 10 para manicure?"):
+        // that customer is asking, not coming back to the old draft. Resuming it wrote the question's day into the
+        // old draft and turned the next questions into «¿Desea cambiar su cita…?» offers about a booking nobody was
+        // making (production 2026-10-22). The stale draft is set aside and the question is answered as a new one.
+        if (wasOpen && currentState.resumeOffer && isInformationSeekingMessage(rawText) && !isServiceSwitchDirective(rawText)
+            && (intent.dateMentioned || intent.timeMentioned || intent.serviceMentioned || namesCatalogService(currentState, rawText))) {
+            this.logger.log(`[Decide] Question with booking data while a dormant draft (${currentState.serviceName ?? 'no service'}) is kept — answering it fresh, the stale draft is not resumed`);
+            return this.process(schemaName, tenantId, contactId, intent, rawText,
+                { step: 'idle', services: currentState.services }, customerProfile, todayDate, language, turn);
+        }
         const tentativeOpen = wasOpen && currentState.origin === 'question';
         const offeredAt = Date.parse(currentState.offeredBookingAt || '');
         const offerLive = tentativeOpen && Number.isFinite(offeredAt) && Date.now() - offeredAt >= 0 && Date.now() - offeredAt <= BOOKING_OFFER_TTL_MS;
@@ -710,6 +786,11 @@ export class BookingEngineService {
         // A draft the customer built (not an interest the engine opened for a question) is theirs to change.
         const result = await this.processCore(schemaName, tenantId, contactId, intent, rawText, entering,
             customerProfile, todayDate, language, turn, wasOpen && currentState.origin !== 'question');
+        // The booking moved this turn (the engine spoke about it, or one of its data changed): its continuity
+        // window starts again. A turn the model answers about something else leaves the stamp alone.
+        if (isOpen(result.state) && (result.handled || draftFingerprint(result.state) !== draftFingerprint(entering))) {
+            result.state.progressedAt = new Date().toISOString();
+        }
         if (!isOpen(result.state)) { result.state.origin = undefined; result.state.offeredBookingAt = undefined; result.state.pendingSwitch = undefined; return result; }
         // Only a mission OPENED by this message can be tentative; one the customer already
         // confirmed (act) or that was real before stays real.
@@ -1594,7 +1675,10 @@ export class BookingEngineService {
         if (!state.serviceId || !['ask_date', 'show_slots', 'ask_name', 'ask_email', 'confirm'].includes(state.step)) return null;
         const draft = state.services?.find(s => s.id === state.serviceId);
         if (!draft || !isInformationSeekingMessage(rawText) || isServiceSwitchDirective(rawText)) return null;
-        let target = this.otherServiceNamed(state, draft.id, intent, rawText, false);
+        // A question names a service the way customers do: «¿tienen cupo para manicure?».
+        // Only when the question is about booking it (a day, an hour, how long, how much): «¿de qué color es…?» is not «Color y tratamiento».
+        const asksAboutService = !!intent.dateMentioned || !!intent.timeMentioned || asksDuration(rawText) || PRICE_QUESTION.test(normalizeForIntent(rawText));
+        let target = this.otherServiceNamed(state, draft.id, intent, rawText, false, asksAboutService);
         // `slot`: the same question about the draft's own service on ANOTHER day or hour. Only once the
         // customer has a slot (the late steps): earlier, the day and hour are what the engine is asking for.
         let kind: 'service' | 'slot' = 'service';
@@ -1686,7 +1770,8 @@ export class BookingEngineService {
         if (!state.serviceId || !['ask_date', 'show_slots', 'ask_name', 'ask_email', 'confirm'].includes(state.step)) return undefined;
         const directive = isServiceSwitchDirective(rawText);
         if (isInformationSeekingMessage(rawText) && !directive) return undefined;
-        const target = this.otherServiceNamed(state, state.serviceId, intent, rawText, directive);
+        // Only an explicit order may name the service by one of its words: at the late steps a bare word can be a surname.
+        const target = this.otherServiceNamed(state, state.serviceId, intent, rawText, directive, directive);
         if (!target || !['ask_name', 'ask_email', 'confirm'].includes(state.step)) return target;
         // The late steps are where the customer types a NAME or an E-MAIL, and both can contain a service word
         // ("Carlos Barba", "carlos.barba@gmail.com"): the name of a service inside the text is not an order.
@@ -1712,7 +1797,7 @@ export class BookingEngineService {
      * a surname is not taken for one) a service whose full name appears in the text.
      */
     private otherServiceNamed(
-        state: BookingState, draftId: string, intent: InterpretedIntent, rawText: string, orderedChange: boolean,
+        state: BookingState, draftId: string, intent: InterpretedIntent, rawText: string, orderedChange: boolean, byWord = false,
     ): NonNullable<BookingState['services']>[number] | undefined {
         const services = state.services ?? [];
         const fold = (value: string) => normalizeForIntent(value).replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
@@ -1721,12 +1806,9 @@ export class BookingEngineService {
             const named = services.find(s => fold(s.name) === wanted) ?? services.find(s => fold(s.name).includes(wanted));
             if (named) return named.id === draftId ? undefined : named;
         }
-        // Full name only: a customer called "Cortés" is not asking for "Corte y estilo".
-        const text = ` ${fold(rawText)} `;
-        const found = services
-            .filter(s => fold(s.name).length >= 4)
-            .map(s => ({ service: s, at: text.lastIndexOf(` ${fold(s.name)} `) }))
-            .filter(entry => entry.at >= 0);
+        // A full name, or (`byWord`) a distinctive word of a name: a customer called "Cortés" is not asking for
+        // "Corte y estilo", but one who asks for "manicure" is asking for "Manicure y pedicure".
+        const found = catalogServicesNamed(services, rawText, byWord);
         const others = found.filter(entry => entry.service.id !== draftId);
         // Naming the draft's own service as well is ambiguous in a question; an order names where it goes last
         // ("cambia de corte y estilo a color y tratamiento").

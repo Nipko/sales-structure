@@ -88,7 +88,7 @@ describe('a question about ANOTHER service with a live draft is answered and the
         expect(result.text).toMatch(/120 minutos/);
         expect(result.text).toMatch(/16:00/);
         expect(result.text).toMatch(/hay cupo/i);
-        expect(result.text).toContain('¿Desea cambiar su cita de Corte y estilo por Color y tratamiento');
+        expect(result.text).toContain('¿Desea cambiar la cita en curso de Corte y estilo (todavía sin confirmar) por Color y tratamiento');
         expect(result.text).not.toMatch(/correo|Gracias Joaquin/i);
         expect(result.state.pendingSwitch).toMatchObject({ serviceId: COLOR.id, date: SATURDAY, time: '16:00' });
         expect(writes()).toHaveLength(0);
@@ -111,7 +111,7 @@ describe('a question about ANOTHER service with a live draft is answered and the
         expect(result.text).toMatch(/16:00/);
         expect(result.text).toMatch(/no hay cupo/i);
         expect(result.text).toMatch(/15:00/);
-        expect(result.text).toContain('¿Desea cambiar su cita de Corte y estilo por Color y tratamiento');
+        expect(result.text).toContain('¿Desea cambiar la cita en curso de Corte y estilo (todavía sin confirmar) por Color y tratamiento');
         expect(result.state.pendingSwitch).toMatchObject({ serviceId: COLOR.id, date: SATURDAY });
         expect(result.state.pendingSwitch?.time).toBeUndefined();
     });
@@ -142,7 +142,7 @@ describe('a question about ANOTHER service with a live draft is answered and the
         const { result } = await turn(text, structuredClone(open));
         expect(result.handled).toBe(true);
         expect(draftCore(result.state)).toEqual(draftCore(open));
-        expect(result.text).toContain('¿Desea cambiar su cita de Corte y estilo por Color y tratamiento');
+        expect(result.text).toContain('¿Desea cambiar la cita en curso de Corte y estilo (todavía sin confirmar) por Color y tratamiento');
     });
 
     it('a question about the SAME service is not an offer to switch', async () => {

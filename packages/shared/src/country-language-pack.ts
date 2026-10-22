@@ -225,7 +225,12 @@ export const BASE_INTENT_ALIASES: readonly IntentAlias[] = Object.freeze([
     { value: 'human agent', intent: 'request_human', confidence: 'high' },
     { value: 'talk to a human', intent: 'request_human', confidence: 'high' },
     { value: 'real person', intent: 'request_human', confidence: 'high' },
+    { value: 'talk to a person', intent: 'request_human', confidence: 'high' },
+    { value: 'speak to a person', intent: 'request_human', confidence: 'high' },
+    { value: 'speak with a person', intent: 'request_human', confidence: 'high' },
     { value: 'parler a un humain', intent: 'request_human', confidence: 'high' },
+    { value: 'parler a une personne', intent: 'request_human', confidence: 'high' },
+    { value: 'une vraie personne', intent: 'request_human', confidence: 'high' },
     { value: 'conseiller', intent: 'request_human', confidence: 'high' },
 ]);
 

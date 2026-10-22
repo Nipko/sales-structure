@@ -71,6 +71,13 @@ const META_PERMANENT_CODES = new Set<number>([
     131026, // Message undeliverable
     131031, // Business account is restricted
     131047, // Re-engagement message — outside the customer service window
+    // Per-user marketing limit: Meta declined to deliver this marketing
+    // template to this user to protect their experience. Retrying the same
+    // payload now cannot succeed (Meta's guidance is not to retry for at
+    // least 24h), so it is a refusal, never a transient — even if a body ever
+    // carried `is_transient: true`. Listed explicitly so that rule does not
+    // depend on the unmapped-code fallback below.
+    131049,
     131051, // Unsupported message type
     131052, // Media download error
     131053, // Media upload error

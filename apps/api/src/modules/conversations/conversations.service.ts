@@ -552,6 +552,21 @@ const isWriteTool = (name: string): boolean => toolRequiresSequentialExecution(n
 const DEBOUNCE_MS = 800;
 
 /**
+ * When a store-only coexistence message (`waba_echo`, `historical`) actually
+ * happened, as an ISO string, or `null` when the provider timestamp is missing
+ * or unreadable. The job travels through BullMQ as JSON, so `timestamp` arrives
+ * as a string as often as a Date; an epoch of 0 (`parseInt('')*1000` upstream
+ * yields NaN, a bare `0` yields 1970) is not a fact either.
+ */
+export function storeOnlyOccurredAt(timestamp: unknown): string | null {
+    if (timestamp === null || timestamp === undefined || timestamp === '') return null;
+    const date = timestamp instanceof Date ? timestamp : new Date(timestamp as any);
+    const ms = date.getTime();
+    if (!Number.isFinite(ms) || ms <= 0) return null;
+    return date.toISOString();
+}
+
+/**
  * Marks that a turn ran to completion for a given provider message id.
  *
  * Deliberately a NEW namespace, separate from every edge-level `idem:*` key:
@@ -2412,10 +2427,22 @@ export class ConversationsService {
 
             const schemaName = await this.tenantSchema(tenantId);
             const direction = msg.direction === 'outbound' ? 'outbound' : 'inbound';
+            // ── THE MESSAGE HAPPENED WHEN THE PROVIDER SAYS IT DID ──────────
+            //
+            // A backfilled chat from March stored with `created_at = NOW()` looks
+            // like the customer wrote a minute ago, and every 24-hour service
+            // window read (`MAX(created_at)` of inbound messages) then treats a
+            // long-closed thread as open: free-form sends get admitted and priced
+            // as service replies, and Meta refuses them. The provider timestamp
+            // is the fact; it is clamped to NOW() so a skewed clock can never
+            // push the window open into the future, and an unreadable one falls
+            // back to NOW() exactly as before.
+            const occurredAt = storeOnlyOccurredAt(msg.timestamp);
             await this.prisma.executeInTenantSchema(schemaName,
-                `INSERT INTO messages (conversation_id, direction, content_type, content_text, status, metadata)
-                 VALUES ($1::uuid, $2, $3, $4, 'delivered', $5::jsonb)`,
-                [conversation.id, direction, msg.content.type, msg.content.text, JSON.stringify(msg.metadata || {})],
+                `INSERT INTO messages (conversation_id, direction, content_type, content_text, status, metadata, created_at)
+                 VALUES ($1::uuid, $2, $3, $4, 'delivered', $5::jsonb,
+                         COALESCE(LEAST($6::timestamptz, NOW()), NOW()))`,
+                [conversation.id, direction, msg.content.type, msg.content.text, JSON.stringify(msg.metadata || {}), occurredAt],
             );
 
             this.logger.log(`[StoreOnly] Stored ${source} message (${direction}) for tenant ${tenantId} — AI skipped`);

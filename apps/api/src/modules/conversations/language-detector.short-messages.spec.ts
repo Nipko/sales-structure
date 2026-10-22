@@ -103,9 +103,11 @@ describe('LanguageDetectorService does not flip an established language on weak 
 
 describe('"vos" (voseo) is not a French marker', () => {
     const detector = new LanguageDetectorService();
-    it.each(['y vos?', 'vos sabés el precio', 'vos tenés turno'])('%s is not French', t => {
+    // After an English chat a short or single-piece message keeps English; «vos sabés el precio» is a Spanish
+    // sentence with no sign of English, and the current message's language wins (production 2026-10-22).
+    it.each([['y vos?', 'en'], ['vos sabés el precio', 'es'], ['vos tenés turno', 'en']])('%s is not French', (t, afterEnglish) => {
         expect(detector.detect(t, 'es')).not.toBe('fr');
-        expect(detector.detect(t, 'en', 'en')).toBe('en');
+        expect(detector.detect(t, 'en', 'en')).toBe(afterEnglish);
     });
 });
 

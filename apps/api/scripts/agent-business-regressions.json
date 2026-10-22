@@ -48,7 +48,9 @@
     "apps/api/src/modules/policies/policies.input-validation.spec.ts",
     "apps/api/src/modules/policies/policies.pending-cache.spec.ts",
     "apps/api/src/modules/tours/tours.capacity-limit.spec.ts",
-    "apps/api/src/modules/trace/trace.faq-result-provenance.spec.ts"
+    "apps/api/src/modules/trace/trace.faq-result-provenance.spec.ts",
+    "apps/api/src/modules/conversations/crm-other-output-ack-fixed.spec.ts",
+    "apps/api/src/modules/conversations/crm-operations-output-ack-fixed.spec.ts"
   ],
   "postgres": [
     "apps/api/src/modules/faqs/faq-effects.postgres.spec.ts",

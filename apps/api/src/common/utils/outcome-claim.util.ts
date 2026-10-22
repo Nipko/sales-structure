@@ -246,13 +246,23 @@ export function auditTurnClaim(
 ): TurnClaimAudit {
     const operationClaimed = claimsCompletedAction(reply, { recordFacts: options.recordFacts });
     const noteClaimed = claimsCrmNoteRecorded(reply, options.crmNoteRequested === true);
-    const claimed = operationClaimed || noteClaimed;
+    const crmClaims: Array<{ name: string; field: string; claimed: boolean; created?: boolean; recorded?: boolean; idField?: string }> = [
+        { name: 'add_contact_note', field: 'recorded', claimed: noteClaimed },
+        { name: 'tag_contact', field: 'tag', claimed: claimsOtherCrmFieldRecorded(reply, 'tag') },
+        { name: 'record_contact_interest', field: 'interest', claimed: claimsOtherCrmFieldRecorded(reply, 'interest') },
+        { name: 'ensure_crm_lead', field: 'leadId', claimed: claimsCrmOperationCompleted(reply, 'lead'), created: true, idField: 'leadId' },
+        { name: 'create_crm_opportunity', field: 'opportunityId', claimed: claimsCrmOperationCompleted(reply, 'opportunity'), created: true, idField: 'opportunityId' },
+        { name: 'create_follow_up_task', field: 'taskId', claimed: claimsCrmOperationCompleted(reply, 'task'), created: true, idField: 'taskId' },
+        { name: 'move_crm_opportunity_stage', field: 'stage', claimed: claimsCrmOperationCompleted(reply, 'stage'), idField: 'opportunityId' },
+        { name: 'record_contact_consent', field: 'consentId', claimed: claimsCrmOperationCompleted(reply, 'consent'), recorded: true, idField: 'consentId' },
+    ].filter(claim => claim.claimed);
+    const claimed = operationClaimed || crmClaims.length > 0;
     const isBacking = options.isBackingTool || ((name: string) => BACKING_TOOL_NAME.test(name));
     const operationBacked = (toolCalls || []).some((call) => (
         typeof call?.name === 'string'
         && isBacking(call.name, call.result)
         // A note cannot also prove a booking/payment in a mixed response.
-        && (!noteClaimed || call.name !== 'add_contact_note')
+        && !crmClaims.some(claim => claim.name === call.name)
         && toolResultSucceeded(call.result)
         // Escrita pero NO confirmada: el dueño exige pago y el cupo sigue a la
         // venta. La operación existe —por eso `toolResultSucceeded` es true— y
@@ -261,14 +271,60 @@ export function auditTurnClaim(
         // evitar.
         && (call.result as any)?.awaitingPayment !== true
     ));
-    const noteBacked = (toolCalls || []).some(call => {
+    const crmBacked = crmClaims.every(claim => (toolCalls || []).some(call => {
         const result = call?.result as Record<string, unknown> | undefined;
-        return call?.name === 'add_contact_note' && toolResultSucceeded(result)
-            && result?.success === true && typeof result.recorded === 'string'
-            && result.recorded.trim().length > 0 && result.awaitingPayment !== true;
-    });
-    const backed = noteClaimed ? noteBacked && (!operationClaimed || operationBacked) : operationBacked;
+        const recorded = result?.[claim.field];
+        return call?.name === claim.name && toolResultSucceeded(result)
+            && result?.success === true && typeof recorded === 'string'
+            && recorded.trim().length > 0 && result.awaitingPayment !== true
+            && (!claim.created || result.created === true)
+            && (!claim.recorded || result.recorded === true)
+            && (!claim.idField || (typeof result[claim.idField] === 'string'
+                && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(result[claim.idField] as string)));
+    }));
+    const backed = crmClaims.length ? crmBacked && (!operationClaimed || operationBacked) : operationBacked;
     return { claimed, backed, falseClaim: claimed && !backed };
+}
+
+/** Completion words never substitute for the domain receipt or an approval/confirmation. */
+function claimsCrmOperationCompleted(reply: unknown, kind: 'lead' | 'opportunity' | 'task' | 'stage' | 'consent'): boolean {
+    if (typeof reply !== 'string' || !reply.trim()) return false;
+    const terms = {
+        lead: ['creado', '(?:lead|ficha comercial)'],
+        opportunity: ['creado', 'oportunidad(?: comercial)?'],
+        task: ['creado|programado|agendado', 'tarea de seguimiento'],
+        stage: ['movido|cambiado|pasado|actualizado', 'oportunidad'],
+        consent: ['registrado|guardado', 'consentimiento'],
+    }[kind];
+    const pattern = new RegExp('\\b(?:he|hemos) (?:' + terms[0] + ')\\s+'
+        + '(?:(?:un|una|la|el|su|tu|esta|esa)\\s+)?(?:(?:nuevo|nueva)\\s+)?'
+        + terms[1] + '\\b[^.!?;]{0,140}\\b(?:ficha|perfil|registro|crm)\\b', 'g');
+    return normalize(reply).split(/(?<=[.!?;])\s+|\n+/).some(sentence => {
+        pattern.lastIndex = 0;
+        for (let m = pattern.exec(sentence); m; m = pattern.exec(sentence)) {
+            const before = sentence.slice(Math.max(0, m.index - 30), m.index);
+            if (!NEGATED_BEFORE.test(before) && !NEGATION_INSIDE.test(m[0])
+                && !insideQuestion(sentence, m.index, m.index + m[0].length)) return true;
+        }
+        return false;
+    });
+}
+
+/** Explicit completed tag/interest writes on an owned CRM record, not present record facts. */
+function claimsOtherCrmFieldRecorded(reply: unknown, kind: 'tag' | 'interest'): boolean {
+    if (typeof reply !== 'string' || !reply.trim()) return false;
+    const pattern = kind === 'tag'
+        ? /\b(?:he|hemos) (?:agregado|anadido|asignado|aplicado)\s+(?:(?:una|la|su|tu|esta|esa)\s+)?etiqueta\b[^.!?;]{0,140}\b(?:ficha|perfil|registro|crm)\b/g
+        : /\b(?:he|hemos) (?:guardado|registrado|anotado|agregado)\s+(?:(?:el|su|tu|este|ese)\s+)?interes\b[^.!?;]{0,140}\b(?:ficha|perfil|registro|crm)\b/g;
+    return normalize(reply).split(/(?<=[.!?;])\s+|\n+/).some(sentence => {
+        pattern.lastIndex = 0;
+        for (let m = pattern.exec(sentence); m; m = pattern.exec(sentence)) {
+            const before = sentence.slice(Math.max(0, m.index - 30), m.index);
+            if (!NEGATED_BEFORE.test(before) && !NEGATION_INSIDE.test(m[0])
+                && !insideQuestion(sentence, m.index, m.index + m[0].length)) return true;
+        }
+        return false;
+    });
 }
 
 /** Spanish first-person completed CRM writes; present record facts are not new writes. */

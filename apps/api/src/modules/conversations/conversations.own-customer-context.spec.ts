@@ -6,6 +6,14 @@ function fixture(allowed=['get_customer_context']){
  return {f,turn:(message=MESSAGE)=>f.service.test('tenant','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',{message,channelType:'telegram'},{agentSnapshot:undefined})};
 }
 describe('own profile facts use the current authorized customer context',()=>{
+ it('reads saved own notes with the configured reader and no model-supplied identity',async()=>{
+  const h=fixture();h.f.toolExecutor.execute.mockResolvedValue({status:'ok',contact:{tags:[]},lead:{notes:[{id:'synthetic-note',content:'Prefiere detalles por escrito.',createdAt:'2026-10-22T05:00:00Z'}]}});
+  await h.turn('Consulta mi ficha: ¿qué notas tienes guardadas sobre mis preferencias?');
+  expect(h.f.toolExecutor.execute.mock.calls.map((c:any[])=>c[3])).toEqual(['get_customer_context']);
+  expect(h.f.toolExecutor.execute.mock.calls[0][4]).toEqual({});
+  expect(h.f.toolExecutor.execute.mock.calls[0][6].executionContext.persistence).toBe('disabled');
+  expect(h.f.llmRouter.execute.mock.calls[0][0].messages.some((m:any)=>m.role==='tool'&&m.content.includes('Prefiere detalles por escrito.'))).toBe(true);
+ });
  it.each([MESSAGE,'Consulta mi ficha de cliente: ¿en qué fecha UTC fue mi primer contacto?'])('reads current profile without model supplied identity: %s',async message=>{
   const h=fixture();const r=await h.turn(message);expect(r.debug.runtimeError).toBeUndefined();
   expect(h.f.toolExecutor.execute.mock.calls.map((c:any[])=>c[3])).toEqual(['get_customer_context']);

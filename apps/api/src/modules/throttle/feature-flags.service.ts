@@ -16,6 +16,9 @@ import { mutateTenantSettingsAtomic } from '../../common/utils/tenant-settings.u
  */
 
 const CACHE_PREFIX = 'feature_flags:';
+
+/** Per-tenant flag of the shadow operation classifier (operations runtime PR4). */
+export const OPERATION_CLASSIFIER_FLAG = 'agentRuntime.operationClassifier';
 const CACHE_TTL = 300;
 
 /**
@@ -38,6 +41,10 @@ export const FEATURE_FLAGS_REGISTRY: Array<{
     { key: 'killBroadcasts',     label: 'Disable broadcasts',           description: 'Block all broadcast/campaign sending',                    category: 'killswitch',   default: false },
     { key: 'killHandoff',        label: 'Disable handoff escalation',   description: 'Skip the handoff trigger pipeline',                       category: 'killswitch',   default: false },
     { key: 'experimentalCopilot', label: 'AI Copilot suggestions',      description: 'Show AI-generated reply suggestions in the inbox',       category: 'experimental', default: false },
+    // Operations runtime PR4 (packages/shared/src/operation-catalogue.ts). SHADOW only:
+    // classifies each turn into a catalogue operation and writes a trace step; it never
+    // changes the reply, the tools or the routing. Costs one cheap `classify` call per turn.
+    { key: OPERATION_CLASSIFIER_FLAG, label: 'Operation classifier (shadow)', description: 'Shadow-classifies each customer turn into a catalogue operation and traces its required reads (no behaviour change)', category: 'experimental', default: false },
 ];
 
 @Injectable()

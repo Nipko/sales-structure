@@ -19,6 +19,16 @@
  * the model as synthetic tool messages. The caller does the I/O; everything here
  * is planning, argument resolution and bookkeeping.
  *
+ * PR7 extends the same runner to hotel / vacation rental (`properties`) and travel (`tours`). Production QA (Telegram):
+ *   - hotel «¿cuánto cuesta la noche?» with no dates → asked for dates, then «no tengo un precio base», while list_properties
+ *     returns `nightPrice` (150.000 COP, minNights 1): without dates the answer is the "desde" price;
+ *   - hotel «¿tienen disponible del 3 al 5 de diciembre para 2?» → availability claimed with no availability read: dates in the
+ *     message now read the list for those dates and `check_property_availability` for the one property;
+ *   - hotel «¿a qué hora es el check-in?» → only `get_property_details` has checkInTime/checkOutTime, so it runs on the one
+ *     property (the only one, or the one the customer named);
+ *   - travel: availability needs `check_package_availability` (a date) or the upcoming departures; price and what is included
+ *     come from `search_packages`, read unfiltered so «¿qué planes manejan?» lists the packages instead of asking for filters.
+ *
  * Invariants:
  *   - Only reads, only the pilot operations, only tools the turn publishes.
  *   - A failed read is an ADMIT ("no pude consultar"), never an empty list: the
@@ -29,13 +39,17 @@
  *     the receipt names exactly one record (or exactly one still-open record);
  *     anything ambiguous is left to the model, which has the whole list.
  */
-import { getOperation, TOOL_READ_ERROR_CODES, type OperationDefinition, type OperationReadProjection } from '@parallext/shared';
+import {
+    getOperation, getOperationCatalogue, normalizeForIntent, READ_TOOL_CONTRACTS, TOOL_READ_ERROR_CODES,
+    type OperationDefinition, type OperationReadProjection, type OperationRequiredRead,
+} from '@parallext/shared';
 import { readFailed } from '../../../common/contracts/tool-read-result.util';
 import { toolBatchRequiresSequentialExecution } from '../tool-policy-registry';
 import { isFailedToolResult } from '../trusted-price-context';
 import { OPERATION_CONFIDENCE_THRESHOLD, type OperationShadowVerdict } from './operation-classifier.service';
+import type { RequiredReadSlots } from './required-read-slots';
 
-export type RequiredReadsPilot = 'restaurants' | 'catalog';
+export type RequiredReadsPilot = 'restaurants' | 'catalog' | 'properties' | 'tours';
 
 /**
  * Confidence at or above which the runtime acts on the verdict. The plan names
@@ -48,10 +62,20 @@ export const REQUIRED_READS_CONFIDENCE_THRESHOLD = 0.8;
 /** Per-read deadline, the same the automatic reads use. */
 export const REQUIRED_READ_TIMEOUT_MS = 3_000;
 
-/** Industry (prefix of the subtype profile id) each pilot is limited to. */
-export const REQUIRED_READS_PILOT_INDUSTRY: Readonly<Record<RequiredReadsPilot, string>> = Object.freeze({
+/** Industry (prefix of the subtype profile id) the PR5 pilots are limited to. */
+export const REQUIRED_READS_PILOT_INDUSTRY: Readonly<Partial<Record<RequiredReadsPilot, string>>> = Object.freeze({
     restaurants: 'restaurantes',
     catalog: 'retail',
+});
+
+/**
+ * The PR7 pilots are limited by the profile's tool family, not its industry: `turismo` holds both the hotel and vacation
+ * rental profiles (`properties`) and the travel agency and tours profiles (`tours`). A profile belongs to the pilot when the
+ * catalogue lists it on an operation of that tool group.
+ */
+export const REQUIRED_READS_PILOT_TOOL_GROUP: Readonly<Partial<Record<RequiredReadsPilot, string>>> = Object.freeze({
+    properties: 'properties',
+    tours: 'tours',
 });
 
 /**
@@ -65,7 +89,37 @@ export const REQUIRED_READS_PILOT_OPERATIONS: Readonly<Record<string, RequiredRe
     track_food_order: 'restaurants',
     product_info: 'catalog',
     track_catalog_order: 'catalog',
+    // PR7, hotel / vacation rental. `stay_logistics` («a qué hora es el check-in?») runs only its public reads (see
+    // PILOT_READ_OVERRIDES); any of the three with stay dates in the message reads the availability first.
+    property_info: 'properties',
+    book_stay: 'properties',
+    stay_logistics: 'properties',
+    // PR7, travel agency / tours.
+    package_info: 'tours',
+    package_availability: 'tours',
+    book_tour: 'tours',
 });
+
+/**
+ * Where a pilot runs other reads than the catalogue's for an operation. `stay_logistics` owes the guest's own booking and its
+ * check-in instructions (A1/A2: identity step-up, PR9). Before the model only its public part runs: the property list and the
+ * property's details (check-in and check-out time, house rules, amenities). The booking reads stay visible to the model.
+ */
+const PILOT_READ_OVERRIDES: Readonly<Record<string, readonly string[]>> = Object.freeze({
+    stay_logistics: Object.freeze(['list_properties', 'get_property_details']),
+});
+
+/** Arguments a read cannot run without. Absent from the message, the read is not run and the model asks. */
+const REQUIRED_SLOT_ARGS: Readonly<Record<string, readonly string[]>> = Object.freeze({
+    check_property_availability: Object.freeze(['checkIn', 'checkOut']),
+    check_package_availability: Object.freeze(['date']),
+});
+
+/** Lists the reader returns whole (no limit, no paging): what was read is all there is. */
+const UNBOUNDED_LISTS = new Set(['list_properties']);
+
+/** What the model is told about a property list read without dates: the nightly price is a "from" price, not a quote. */
+export const FROM_PRICE_NOTE = 'Sin fechas: nightPrice es el precio por noche "desde" de cada alojamiento (minNights es la estadía mínima). Dalo como "desde"; el total depende de las fechas y se consulta con check_property_availability.';
 
 /**
  * Bounded arguments a pilot reader runs with when nothing narrows it. Lists ask
@@ -77,6 +131,8 @@ const DEFAULT_ARGS: Readonly<Record<string, Readonly<Record<string, unknown>>>> 
     list_my_orders: Object.freeze({ limit: 20 }),
     list_my_catalog_orders: Object.freeze({ limit: 50 }),
     search_products: Object.freeze({ query: '', limit: 20 }),
+    // Unfiltered: «¿qué planes manejan?» lists every package instead of asking for filters first.
+    search_packages: Object.freeze({}),
 });
 
 /** Record statuses after which an order is no longer "the one in progress". */
@@ -87,8 +143,12 @@ const ADMIT_MESSAGE = 'No pude consultar esta información en este momento. No d
 
 export function requiredReadsPilotForProfile(profileId: string | null | undefined): RequiredReadsPilot | null {
     const industry = typeof profileId === 'string' ? profileId.split('/')[0] : '';
-    const match = (Object.keys(REQUIRED_READS_PILOT_INDUSTRY) as RequiredReadsPilot[]).find(p => REQUIRED_READS_PILOT_INDUSTRY[p] === industry);
-    return match ?? null;
+    if (!industry) return null;
+    const byIndustry = (Object.keys(REQUIRED_READS_PILOT_INDUSTRY) as RequiredReadsPilot[]).find(p => REQUIRED_READS_PILOT_INDUSTRY[p] === industry);
+    if (byIndustry) return byIndustry;
+    const byGroup = (Object.keys(REQUIRED_READS_PILOT_TOOL_GROUP) as RequiredReadsPilot[]).find(pilot => getOperationCatalogue()
+        .some(op => op.toolGroup === REQUIRED_READS_PILOT_TOOL_GROUP[pilot] && op.profiles.includes(profileId as string)));
+    return byGroup ?? null;
 }
 
 export type RequiredReadsSkipReason =
@@ -123,7 +183,9 @@ export type RequiredReadStatus =
     | 'unpublished'
     | 'ambiguous_receipt'
     | 'no_receipt'
-    | 'upstream_failed';
+    | 'upstream_failed'
+    /** A slot the read cannot run without (stay dates, departure date) was not in the message: the model asks. */
+    | 'missing_slot';
 
 export interface RequiredReadRecord {
     tool: string;
@@ -166,6 +228,10 @@ export interface RequiredReadsIo {
     /** Agent Test / evaluation: an exception is evidence and is rethrown, not swallowed. */
     rethrow?(error: unknown): boolean;
     now?(): number;
+    /** Slot values of the customer's current message (`requiredReadSlotsIn`): stay dates, departure date, people. */
+    slots?: RequiredReadSlots;
+    /** The customer's current message: a receipt with several rows resolves to the one row the customer NAMED. */
+    customerText?: string;
 }
 
 interface ReceiptRef { tool: string; container: string; field: string }
@@ -177,18 +243,62 @@ function parseReceipt(source: string): ReceiptRef[] {
     });
 }
 
+const fold = (value: unknown) => normalizeForIntent(value).replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+
 /**
- * The one record id a receipt names: the only row, or the only still-open row.
+ * The one row whose name the customer said («¿la Cabaña del Lago tiene piscina?»), or none when no name or more than one name
+ * appears. A name shorter than three characters never matches: it would match inside ordinary words.
+ */
+function namedRow(rows: any[], customerText: string | undefined): any | undefined {
+    if (!customerText) return undefined;
+    const text = ` ${fold(customerText)} `;
+    const named = rows.filter(row => {
+        const name = typeof row?.name === 'string' ? fold(row.name) : '';
+        return name.length >= 3 && text.includes(` ${name} `);
+    });
+    return named.length === 1 ? named[0] : undefined;
+}
+
+/**
+ * The one record id a receipt names: the only row, the one row the customer named, or the only still-open row.
  * `null` with a reason when there is none or more than one.
  */
-export function pickReceiptId(result: any, ref: ReceiptRef): { id: string } | { reason: 'no_receipt' | 'ambiguous_receipt' } {
+export function pickReceiptId(result: any, ref: ReceiptRef, customerText?: string): { id: string } | { reason: 'no_receipt' | 'ambiguous_receipt' } {
     const rows: any[] = Array.isArray(result?.[ref.container]) ? result[ref.container] : [];
     const ids = (list: any[]) => list.map(row => row?.[ref.field]).filter((id): id is string => typeof id === 'string' && !!id.trim());
     const all = ids(rows);
     if (!all.length) return { reason: 'no_receipt' };
     if (all.length === 1) return { id: all[0] };
+    const named = ids([namedRow(rows, customerText)].filter(Boolean));
+    if (named.length === 1) return { id: named[0] };
     const open = ids(rows.filter(row => typeof row?.status !== 'string' || !CLOSED_STATUSES.has(row.status.toLowerCase())));
     return open.length === 1 ? { id: open[0] } : { reason: 'ambiguous_receipt' };
+}
+
+/**
+ * The reads a pilot runs for an operation and this message. The catalogue's reads, except where the pilot overrides them
+ * (`stay_logistics`), plus what the message's slots make owed:
+ *   - a lodging operation with stay dates in the message reads `check_property_availability` (and the list is read for those
+ *     dates), so availability is never claimed from a dateless list;
+ *   - `package_availability` with no departure date reads `get_package_details`, whose upcoming departures are what the customer
+ *     can be told (`check_package_availability` cannot run without a date and is left `missing_slot`).
+ */
+export function requiredReadsPlan(operation: OperationDefinition, slots: RequiredReadSlots = {}): OperationRequiredRead[] {
+    const contract = (tool: string): OperationRequiredRead => {
+        const found = READ_TOOL_CONTRACTS[tool];
+        return { tool, argsFrom: found?.argsFrom ?? {}, ...(found?.projection ? { projection: found.projection } : {}) };
+    };
+    const override = PILOT_READ_OVERRIDES[operation.key];
+    const plan: OperationRequiredRead[] = override ? override.map(contract) : [...operation.requiredReads];
+    const has = (tool: string) => plan.some(read => read.tool === tool);
+    const pilot = REQUIRED_READS_PILOT_OPERATIONS[operation.key];
+    if (pilot === 'properties' && slots.check_in && slots.check_out && !has('check_property_availability')) {
+        plan.push(contract('check_property_availability'));
+    }
+    if (operation.key === 'package_availability' && !slots.starts_at && !has('get_package_details')) {
+        plan.push(contract('get_package_details'));
+    }
+    return plan;
 }
 
 /** The list of a customer-records read, with its completeness made explicit for the model and the ledger. */
@@ -200,7 +310,8 @@ export function withListEvidence(name: string, args: Record<string, unknown>, re
     const limit = Number(args.limit);
     const complete = typeof result.hasMore === 'boolean' ? !result.hasMore
         : typeof result.total === 'number' ? result.total === rows
-            : Number.isFinite(limit) && limit > 0 ? rows < limit : false;
+            : UNBOUNDED_LISTS.has(name) ? true
+                : Number.isFinite(limit) && limit > 0 ? rows < limit : false;
     const total = complete ? rows : typeof result.total === 'number' ? result.total : undefined;
     return {
         result: { ...result, ...(total !== undefined ? { total } : {}), hasMore: !complete, complete },
@@ -230,13 +341,21 @@ export async function runRequiredReads(operation: OperationDefinition, io: Requi
     const answers = new Map<string, any>();
     const failed = new Set<string>();
 
-    const plan = operation.requiredReads.map(read => {
+    const slots = io.slots ?? {};
+    const plan = requiredReadsPlan(operation, slots).map(read => {
         const receipts = Object.entries(read.argsFrom).flatMap(([arg, source]) => {
             const refs = parseReceipt(source);
             return refs.length ? [{ arg, refs }] : [];
         });
         return { read, receipts };
     });
+    /** The `slot:` arguments the message gives a value for (a `receipt:…|slot:…` alternative counts too). */
+    const slotArgs = (read: OperationRequiredRead): Record<string, unknown> => Object.fromEntries(Object.entries(read.argsFrom).flatMap(([arg, source]) => {
+        const key = source.split('|').map(part => /^slot:([a-z0-9_]+)$/.exec(part.trim())?.[1]).find(Boolean);
+        const value = key ? (slots as Record<string, unknown>)[key] : undefined;
+        return value === undefined || value === null || value === '' ? [] : [[arg, value]];
+    }));
+    const missingSlot = (tool: string, args: Record<string, unknown>) => (REQUIRED_SLOT_ARGS[tool] ?? []).some(arg => args[arg] === undefined);
 
     const runOne = async (name: string, args: Record<string, unknown>): Promise<void> => {
         const t0 = now();
@@ -262,6 +381,9 @@ export async function runRequiredReads(operation: OperationDefinition, io: Requi
             return;
         }
         const evidence = withListEvidence(name, args, result);
+        if (name === 'list_properties' && !args.checkIn && Array.isArray(evidence.result?.properties) && evidence.result.properties.length) {
+            evidence.result = { ...evidence.result, priceBasis: 'from_nightly_price', priceNote: FROM_PRICE_NOTE };
+        }
         answers.set(name, evidence.result);
         results.push({ name, args, result: evidence.result });
         reads.push({
@@ -275,8 +397,9 @@ export async function runRequiredReads(operation: OperationDefinition, io: Requi
     const first: Array<{ name: string; args: Record<string, unknown> }> = [];
     for (const { read, receipts } of plan) {
         if (receipts.length) continue;
-        const args = { ...(DEFAULT_ARGS[read.tool] ?? {}) };
+        const args = { ...(DEFAULT_ARGS[read.tool] ?? {}), ...slotArgs(read) };
         if (!published.has(read.tool)) { reads.push({ tool: read.tool, args, status: 'unpublished' }); continue; }
+        if (missingSlot(read.tool, args)) { reads.push({ tool: read.tool, args, status: 'missing_slot' }); continue; }
         if (read.projection?.status === 'live' && projected.has(read.projection.context)) { reads.push({ tool: read.tool, args, status: 'projected' }); continue; }
         const prior = io.alreadyRead.find(item => item.name === read.tool && sameArgs(item.args ?? {}, args))
             ?? (Object.keys(args).length === 0 ? io.alreadyRead.find(item => item.name === read.tool) : undefined);
@@ -299,14 +422,18 @@ export async function runRequiredReads(operation: OperationDefinition, io: Requi
         const args: Record<string, unknown> = {};
         if (!published.has(read.tool)) { reads.push({ tool: read.tool, args, status: 'unpublished' }); continue; }
         if (read.projection?.status === 'live' && projected.has(read.projection.context)) { reads.push({ tool: read.tool, args, status: 'projected' }); continue; }
+        Object.assign(args, slotArgs(read));
+        if (missingSlot(read.tool, args)) { reads.push({ tool: read.tool, args, status: 'missing_slot' }); continue; }
         let blocked: RequiredReadStatus | null = null;
         for (const { arg, refs } of receipts) {
             const ref = refs.find(candidate => answers.has(candidate.tool));
             if (!ref) {
+                // `receipt:…|slot:…`: the customer may name the record instead (a vehicle id); then it is not blocked.
+                if (args[arg] !== undefined) continue;
                 blocked = refs.some(candidate => failed.has(candidate.tool)) ? 'upstream_failed' : 'no_receipt';
                 break;
             }
-            const picked = pickReceiptId(answers.get(ref.tool), ref);
+            const picked = pickReceiptId(answers.get(ref.tool), ref, io.customerText);
             if ('reason' in picked) { blocked = picked.reason; break; }
             args[arg] = picked.id;
         }
@@ -331,7 +458,10 @@ export function buildRequiredReadsTrace(input: {
     gate: RequiredReadsGate;
     run?: RequiredReadsRun;
     latencyMs: number;
+    /** The message's slots (PR7); only their names reach the trace. */
+    slots?: RequiredReadSlots;
 }): Record<string, unknown> {
+    const slotNames = Object.keys(input.slots ?? {}).sort();
     return {
         pilot: input.pilot,
         operation: input.verdict?.operationKey ?? null,
@@ -339,6 +469,7 @@ export function buildRequiredReadsTrace(input: {
         threshold: REQUIRED_READS_CONFIDENCE_THRESHOLD,
         outcome: input.gate.run ? input.run?.outcome ?? 'nothing_to_run' : 'skipped',
         ...(input.gate.run ? {} : { reason: input.gate.reason }),
+        ...(slotNames.length ? { slots: slotNames } : {}),
         reads: (input.run?.reads ?? []).map(read => ({
             tool: read.tool, status: read.status,
             ...(read.latencyMs !== undefined ? { latencyMs: read.latencyMs } : {}),

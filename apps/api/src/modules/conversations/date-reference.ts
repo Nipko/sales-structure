@@ -92,6 +92,17 @@ export function addDaysIso(iso: string, days: number): string {
     return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
 }
 
+/** «del 3 al 5 de diciembre», «entre el 3 y el 5 de diciembre», «3-5 december»: two days of ONE month, said once. */
+const DAY_RANGE_RE = new RegExp(`\\b(\\d{1,2})\\s*(?:al|a|hasta(?: el)?|y el|y|-|to|au|ate)\\s*(\\d{1,2})\\s*(?:de\\s+|del\\s+|of\\s+)?(${MONTH_ALT})\\b`, 'g');
+
+/**
+ * Rewrites a day range with its month said once into two explicit dates («del 3 al 5 de diciembre» → «del 3 de diciembre al 5 de
+ * diciembre»), so `explicitDates` reads BOTH ends of a stay instead of only the last one.
+ */
+export function expandDayRanges(tNorm: string): string {
+    return String(tNorm ?? '').replace(DAY_RANGE_RE, (_match, from: string, to: string, month: string) => `${from} de ${month} al ${to} de ${month}`);
+}
+
 /** Every «day + month [+ year]» of the text, in the order the customer said them. */
 export function explicitDates(tNorm: string, todayIso: string): ExplicitDate[] {
     const found: ExplicitDate[] = [];

@@ -1,4 +1,5 @@
 import type { TurnContext } from '@parallext/shared';
+import { catalogPriceStatus } from './catalog-price-status';
 
 type CatalogItem = NonNullable<TurnContext['catalog']>[number];
 
@@ -11,7 +12,7 @@ type CatalogItem = NonNullable<TurnContext['catalog']>[number];
  */
 export function projectOwnCatalogRow(row: any): CatalogItem & { priceStatus: 'confirmed' | 'missing' } {
     const price = Number(row.price);
-    const priced = Number.isFinite(price) && price > 0;
+    const priced = catalogPriceStatus(price) === 'confirmed';
     const stock = row.stock == null ? null : Number(row.stock);
     return {
         id: String(row.id),
@@ -30,11 +31,12 @@ export function projectOwnCatalogRow(row: any): CatalogItem & { priceStatus: 'co
  * as 0, reads only the first variant and can hold negative oversell, so the number is not
  * something the model may tell a customer. Only the flag travels; check_stock is the source.
  */
-export function projectEcommerceCatalogRow(p: any): CatalogItem {
+export function projectEcommerceCatalogRow(p: any): CatalogItem & { priceStatus: 'confirmed' | 'missing' } {
     return {
         id: String(p.external_id),
         title: p.title,
         price: p.price_cents != null ? Number(p.price_cents) / 100 : undefined,
+        priceStatus: catalogPriceStatus(p.price_cents) === 'confirmed' ? 'confirmed' as const : 'missing' as const,
         currency: p.currency || 'USD',
         inStock: (p.inventory_quantity ?? 0) > 0,
         category: p.product_type || undefined,

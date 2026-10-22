@@ -250,3 +250,58 @@ export function countryPackStatusFor(country?: string | null): CountryPackStatus
     const code = String(country || '').toUpperCase();
     return COUNTRY_PACK_STATUS[code] || 'fallback_only';
 }
+
+/**
+ * Emergency contacts per operating country — part of the country pack, not of
+ * any prompt or template.
+ *
+ * The health safety triage (`safety-policy.ts`) tells a customer with a red
+ * flag where to go RIGHT NOW. Writing "llame al 123" into a template would be
+ * right in Colombia and wrong everywhere else, so the template only carries a
+ * placeholder and the number comes from here, keyed by the tenant's operating
+ * country. A country that is not listed gets NO number: the template then says
+ * "the emergency number of your country", which is never wrong, instead of a
+ * number that might be.
+ *
+ * Every entry is `unreviewed` until operations confirms it against the
+ * country's official source; the review status travels with the value so the
+ * trace can say which kind of number a customer was given. `crisisLine` is a
+ * national mental-health / suicide-prevention line and is only listed where a
+ * NATIONAL one exists (a city-only line would be wrong for most customers).
+ */
+export type EmergencyContactReviewStatus = 'unreviewed' | 'reviewed';
+
+export interface CountryEmergencyContactsV1 {
+    /** Medical emergency number (ambulance or unified emergency line). */
+    medical: string;
+    /** National mental-health crisis / suicide-prevention line, when one exists. */
+    crisisLine?: string;
+    reviewStatus: EmergencyContactReviewStatus;
+}
+
+export const COUNTRY_EMERGENCY_CONTACTS: Readonly<Record<string, Readonly<CountryEmergencyContactsV1>>> = Object.freeze({
+    CO: { medical: '123', reviewStatus: 'unreviewed' },
+    MX: { medical: '911', crisisLine: '800 911 2000', reviewStatus: 'unreviewed' },
+    AR: { medical: '107', reviewStatus: 'unreviewed' },
+    CL: { medical: '131', crisisLine: '*4141', reviewStatus: 'unreviewed' },
+    PE: { medical: '106', reviewStatus: 'unreviewed' },
+    BR: { medical: '192', crisisLine: '188', reviewStatus: 'unreviewed' },
+    UY: { medical: '911', crisisLine: '0800 0767', reviewStatus: 'unreviewed' },
+    PY: { medical: '911', reviewStatus: 'unreviewed' },
+    EC: { medical: '911', reviewStatus: 'unreviewed' },
+    VE: { medical: '911', reviewStatus: 'unreviewed' },
+    CR: { medical: '911', reviewStatus: 'unreviewed' },
+    PA: { medical: '911', reviewStatus: 'unreviewed' },
+    DO: { medical: '911', reviewStatus: 'unreviewed' },
+    HN: { medical: '911', reviewStatus: 'unreviewed' },
+    US: { medical: '911', crisisLine: '988', reviewStatus: 'unreviewed' },
+    CA: { medical: '911', crisisLine: '988', reviewStatus: 'unreviewed' },
+    PR: { medical: '911', crisisLine: '988', reviewStatus: 'unreviewed' },
+    ES: { medical: '112', crisisLine: '024', reviewStatus: 'unreviewed' },
+});
+
+/** The country's emergency contacts, or null when the pack does not list them (never a guessed number). */
+export function emergencyContactsFor(country?: string | null): Readonly<CountryEmergencyContactsV1> | null {
+    const code = String(country || '').trim().toUpperCase();
+    return COUNTRY_EMERGENCY_CONTACTS[code] || null;
+}

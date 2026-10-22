@@ -1,5 +1,6 @@
 {
   "unit": [
+    "apps/api/src/modules/conversations/ai-tool-executor.listing-closest-matches.spec.ts",
     "apps/api/src/modules/conversations/ai-tool-executor.listing-zero-fees.spec.ts",
     "apps/api/src/modules/conversations/ai-tool-executor.package-capacity.spec.ts",
     "apps/api/src/modules/conversations/ai-tool-executor.promotion-schedule-boundaries.spec.ts",

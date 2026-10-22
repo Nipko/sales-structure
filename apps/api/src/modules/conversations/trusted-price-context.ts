@@ -6,7 +6,47 @@ const MONEY_FIELDS = new Set([
     'amountdue', 'amountpaid', 'balance', 'balanceamount', 'discountamount', 'shippingcost',
     'shippingamount', 'taxamount', 'tuition', 'monthlyprice', 'annualprice', 'copay',
 ]);
-const KNOWLEDGE_READERS = new Set(['search_faqs', 'get_policy', 'search_knowledge_base']);
+export const KNOWLEDGE_READERS: ReadonlySet<string> = new Set(['search_faqs', 'get_policy', 'search_knowledge_base']);
+
+export interface MoneyFact { amount: number; currency?: string }
+
+/** Lower-cased, underscore-free name of a money-bearing domain field (`night_price` → `nightprice`), or null. */
+export function moneyFieldName(key: string): { field: string; cents: boolean } | null {
+    const field = key.replace(/_/g, '').toLowerCase();
+    const cents = field.endsWith('cents');
+    const base = cents ? field.slice(0, -5) : field;
+    return MONEY_FIELDS.has(base) ? { field: base, cents } : null;
+}
+
+/** Keys whose content is never business data: arguments, notes and people. */
+export const NON_DATA_KEYS: ReadonlySet<string> = new Set(['args', 'arguments', 'metadata', 'notes', 'customer', 'contact', 'input']);
+
+/** A tool answer that carries no business data: never monetary (or any other) authority. */
+export function isFailedToolResult(result: any): boolean {
+    return !result || !!result.error || result.success === false
+        || ['failed', 'error', 'unauthorized', 'provider_down', 'not_configured'].includes(result.status);
+}
+
+/** Typed amounts found in domain fields; arguments, notes and people are skipped. */
+export function collectMoneyFacts(value: unknown, inheritedCurrency?: string, into: MoneyFact[] = []): MoneyFact[] {
+    if (!value || typeof value !== 'object') return into;
+    if (Array.isArray(value)) {
+        value.forEach(item => collectMoneyFacts(item, inheritedCurrency, into));
+        return into;
+    }
+    const record = value as Record<string, unknown>;
+    const currency = typeof record.currency === 'string' ? record.currency : inheritedCurrency;
+    for (const [key, child] of Object.entries(record)) {
+        const money = moneyFieldName(key);
+        if (money && (typeof child === 'number' || typeof child === 'string')) {
+            const amount = typeof child === 'number' ? child : Number(child);
+            if (Number.isFinite(amount) && amount >= 0) into.push({ amount: money.cents ? amount / 100 : amount, currency });
+        } else if (!NON_DATA_KEYS.has(key)) {
+            collectMoneyFacts(child, currency, into);
+        }
+    }
+    return into;
+}
 
 /** Current package prices belong to catalogue readers. Policy fees are a
  * separate question and keep their published-policy/FAQ authority. */
@@ -30,28 +70,8 @@ export function buildTrustedPriceCorpus(
     executed: Array<{ name: string; result: any }> = [],
     options: { canonicalPackagePrice?: boolean } = {},
 ): string {
-    const facts: Array<{ amount: number; currency?: string }> = [];
+    const facts: MoneyFact[] = [];
     const sourceText: string[] = [];
-    const visit = (value: unknown, inheritedCurrency?: string): void => {
-        if (!value || typeof value !== 'object') return;
-        if (Array.isArray(value)) {
-            value.forEach(item => visit(item, inheritedCurrency));
-            return;
-        }
-        const record = value as Record<string, unknown>;
-        const currency = typeof record.currency === 'string' ? record.currency : inheritedCurrency;
-        for (const [key, child] of Object.entries(record)) {
-            const field = key.replace(/_/g, '').toLowerCase();
-            const isCents = field.endsWith('cents');
-            const baseField = isCents ? field.slice(0, -5) : field;
-            if (MONEY_FIELDS.has(baseField) && (typeof child === 'number' || typeof child === 'string')) {
-                const amount = typeof child === 'number' ? child : Number(child);
-                if (Number.isFinite(amount) && amount >= 0) facts.push({ amount: isCents ? amount / 100 : amount, currency });
-            } else if (!['args', 'arguments', 'metadata', 'notes', 'customer', 'contact', 'input'].includes(key)) {
-                visit(child, currency);
-            }
-        }
-    };
     const addKnowledgeText = (value: unknown): void => {
         if (!value || typeof value !== 'object') return;
         if (Array.isArray(value)) return value.forEach(addKnowledgeText);
@@ -60,18 +80,17 @@ export function buildTrustedPriceCorpus(
             else if (['data', 'results', 'faqs', 'policy', 'articles', 'chunks', 'hits'].includes(key)) addKnowledgeText(child);
         }
     };
-    visit(context.availableServices);
-    visit(context.catalog);
-    visit(context.activeObjects);
-    visit(context.recentOrders);
+    collectMoneyFacts(context.availableServices, undefined, facts);
+    collectMoneyFacts(context.catalog, undefined, facts);
+    collectMoneyFacts(context.activeObjects, undefined, facts);
+    collectMoneyFacts(context.recentOrders, undefined, facts);
     for (const hit of context.retrievedKnowledge || []) {
         if (hit.content && !options.canonicalPackagePrice) sourceText.push(hit.content);
     }
     for (const { name, result } of executed) {
-        if (!result || result.error || result.success === false
-            || ['failed', 'error', 'unauthorized', 'provider_down', 'not_configured'].includes(result.status)) continue;
+        if (isFailedToolResult(result)) continue;
         if (options.canonicalPackagePrice && KNOWLEDGE_READERS.has(name)) continue;
-        visit(result);
+        collectMoneyFacts(result, undefined, facts);
         if (KNOWLEDGE_READERS.has(name)) addKnowledgeText(result);
     }
     return JSON.stringify({ facts, sources: sourceText });

@@ -40,6 +40,33 @@ const ACTIVE_OBJECT_TOOL_NAME_RE = /^[a-z][a-z0-9_]{0,63}$/;
  *
  * The LLM receives: [Layer 1]\n\n[Layer 2]\n\n[Layer 3]
  */
+/**
+ * Rules 22a/22b with the facts ledger on (`agentRuntime.factsLedger`): a confirmed amount is one read in THIS turn OR
+ * present in <turn><verified_facts>; 22c says the history is not a source of facts. With the flag off the contract is
+ * byte-identical to the one without the ledger.
+ */
+const RULE_22A_THIS_TURN = 'Any CATALOGUE tool result read in THIS turn (products, services, listings, properties, packages, menu items, vehicles, courses, plans) whose priceStatus is "confirmed" DOES give you its amount';
+const RULE_22A_LEDGER = 'Any CATALOGUE tool result read in THIS turn (products, services, listings, properties, packages, menu items, vehicles, courses, plans) whose priceStatus is "confirmed", and any money fact in <turn><verified_facts> whose price_status is "confirmed", DOES give you its amount';
+const RULE_22A_CURRENT_THIS_TURN = 'For a current price, read it from a catalogue result of THIS turn (for a product, call get_product or check_stock in THIS turn); never take it from the conversation history.';
+const RULE_22A_CURRENT_LEDGER = 'For a current price, use the amount present in <turn><verified_facts> for that same subject or read it from a catalogue result of THIS turn (for a product without a verified fact, call get_product or check_stock in THIS turn); never take it from the conversation history. A verified fact is valid only for its own subject (subject_id): never give the amount of one item for another item.';
+const RULE_22B_THIS_TURN = 'call get_package_details or search_packages in THIS turn, even when';
+const RULE_22B_LEDGER = 'use the confirmed amount of that package in <turn><verified_facts> (source get_package_details or search_packages) or call get_package_details or search_packages in THIS turn, even when';
+const RULE_22C = '  22c. FACTS VS HISTORY: the facts of this conversation are <turn><verified_facts> (each with its subject, source and age_minutes) and the tool results of THIS turn. The conversation history is not a source of facts: never treat a destination, product, number, reference or date as named in the CURRENT customer message unless it is written there, and never deny or confirm something the customer did not ask about. An availability or record fact that is absent from <verified_facts> has expired: read it again before stating it. A record list with complete="false" is not the whole history.';
+
+function withFactsLedgerRules(rules: readonly string[]): string[] {
+    const out: string[] = [];
+    for (const rule of rules) {
+        if (rule.startsWith('  22a.')) {
+            out.push(rule.replace(RULE_22A_THIS_TURN, RULE_22A_LEDGER).replace(RULE_22A_CURRENT_THIS_TURN, RULE_22A_CURRENT_LEDGER));
+        } else if (rule.startsWith('  22b.')) {
+            out.push(rule.replace(RULE_22B_THIS_TURN, RULE_22B_LEDGER), RULE_22C);
+        } else {
+            out.push(rule);
+        }
+    }
+    return out;
+}
+
 @Injectable()
 export class PromptAssemblerService {
     constructor(private readonly personaService: PersonaService) {}
@@ -74,7 +101,7 @@ export class PromptAssemblerService {
      * Assemble the full system prompt for a given turn.
      */
     assemble(config: TenantConfig, turn: TurnContext, tenantBusinessHours?: any): string {
-        const layer1 = this.buildContractLayer();
+        const layer1 = this.buildContractLayer(turn.verifiedFacts !== undefined);
         const layer2 = this.personaService.buildSystemPrompt(this.personaConfigForTurn(config, turn), tenantBusinessHours);
         const layer3 = this.buildTurnLayer(turn);
         return `${layer1}\n\n${layer2}\n\n${layer3}`;
@@ -87,7 +114,7 @@ export class PromptAssemblerService {
      * only dynamic part and sits after the boundary.
      */
     assembleWithCacheBoundary(config: TenantConfig, turn: TurnContext, tenantBusinessHours?: any): { systemPrompt: string; cachePrefixChars: number } {
-        const layer1 = this.buildContractLayer();
+        const layer1 = this.buildContractLayer(turn.verifiedFacts !== undefined);
         const layer2 = this.personaService.buildSystemPrompt(this.personaConfigForTurn(config, turn), tenantBusinessHours);
         const stablePrefix = `${layer1}\n\n${layer2}`;
         const layer3 = this.buildTurnLayer(turn);
@@ -101,7 +128,7 @@ export class PromptAssemblerService {
      * Layer 1 — universal contract. Applies to every agent regardless of config.
      * Short, authoritative, defines the bot's relationship to the backend.
      */
-    private buildContractLayer(): string {
+    private buildContractLayer(factsLedger = false): string {
         const rules = [
             '  You are a customer-facing conversational agent.',
             '',
@@ -192,7 +219,7 @@ export class PromptAssemblerService {
             '  - Financial investment advice as if you were a licensed advisor',
             '  If the customer brings up any of these, refuse briefly in the language from <turn><language>, offer safe help related to the business when appropriate, and escalate emergencies according to the configured handoff rules.',
         ];
-        return ['<contract>', ...rules.map((rule) => escapeXmlText(rule)), '</contract>'].join('\n');
+        return ['<contract>', ...(factsLedger ? withFactsLedgerRules(rules) : rules).map((rule) => escapeXmlText(rule)), '</contract>'].join('\n');
     }
 
     /**
@@ -317,6 +344,32 @@ export class PromptAssemblerService {
                 lines.push(`    <date ${attrs.join(' ')} />`);
             }
             lines.push('  </customer_dates>');
+        }
+
+        // What the business's own tools returned in earlier turns of this conversation, still inside its TTL
+        // (`agentRuntime.factsLedger`). Rule 22a lets a confirmed amount here be quoted without reading again; every fact
+        // belongs to its own subject only.
+        if (turn.verifiedFacts && turn.verifiedFacts.length > 0) {
+            lines.push('  <verified_facts>');
+            for (const f of turn.verifiedFacts) {
+                const attrs = [
+                    `kind="${this.attrEscape(f.kind)}"`,
+                    `subject_type="${this.attrEscape(f.subjectType)}"`,
+                    `subject_id="${this.attrEscape(f.subjectId)}"`,
+                ];
+                if (f.subjectName) attrs.push(`subject="${this.attrEscape(f.subjectName)}"`);
+                attrs.push(`field="${this.attrEscape(f.field)}"`);
+                attrs.push(`value="${this.attrEscape(Array.isArray(f.value) ? f.value.join(' | ') : String(f.value))}"`);
+                if (f.currency) attrs.push(`currency="${this.attrEscape(f.currency)}"`);
+                if (f.priceStatus) attrs.push(`price_status="${this.attrEscape(f.priceStatus)}"`);
+                if (typeof f.complete === 'boolean') attrs.push(`complete="${f.complete ? 'true' : 'false'}"`);
+                if (typeof f.total === 'number') attrs.push(`total="${f.total}"`);
+                if (f.detail?.length) attrs.push(`detail="${this.attrEscape(f.detail.join(' | '))}"`);
+                attrs.push(`source="${this.attrEscape(f.source)}"`);
+                attrs.push(`age_minutes="${f.ageMinutes}"`);
+                lines.push(`    <fact ${attrs.join(' ')} />`);
+            }
+            lines.push('  </verified_facts>');
         }
 
         if (turn.business) {

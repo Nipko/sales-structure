@@ -70,6 +70,7 @@ import {
     type EffectiveCapabilityContract, type TurnCapability,
     isToolAuthorityDenial,
     type LocalizedTerm, type ToolExecutionAuthority,
+    normalizeForIntent,
 } from '@parallext/shared';
 import { outboundDedupeId, providerMessageId, turnDoneKey } from '../../common/utils/provider-message-id.util';
 import { legacyTurnReplyKey, turnReplyKey } from './turn-reply-cache';
@@ -123,6 +124,7 @@ import { arbitrateMissionFocus, missionDialogue, toolMissionAliases, missionTool
 import { MissionFocusStore } from './mission-focus-store';
 import { sanitizeRewrittenReply } from './rewrite-validation';
 import { correctRelativeWeekdays } from './relative-weekday';
+import { customerDatesIn } from './date-reference';
 import { addressFormOf, detectTransition, failedTransitionOf, handleIdentityReply, humanizeReferences, identityGate, knownRecordFacts, knownRecordIds, localizeStatusWords, namedRequestOverridesClarify, opensWithYes, requestIdentityForTool, runTransition, shortReference, transitionDoneText, transitionFailureText, transitionRequestForTool, transitionTexts, TRANSITION_TOOLS, TRANSITION_WRITER, type TransitionIO, type TransitionOutcome } from './transition-engine';
 import { resolveListChoice } from './list-choice';
 import { createdDoneText, detectOrderIntake, isOrderDetails, mergeOrderNotes, mightBeOrderRequest, orderProposalText, orderStockText, orderChoiceText, replyStillAsksConfirmation, type OrderChoice, type OrderIntake } from './order-intake';
@@ -3057,6 +3059,10 @@ export class ConversationsService {
             upcomingDays: this.promptAssembler.computeUpcomingDays(now, tz, 8),
             businessHoursStatus,
         };
+        // The days this message names, resolved against the tenant's local today (every vertical): «el 20 de noviembre»
+        // reaches the model as a future Friday, never as arithmetic the model does on <now> by itself.
+        const customerDates = customerDatesIn(normalizeForIntent(userText), new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(now));
+        if (customerDates.length) turnContext.customerDates = customerDates;
 
         // Long-term memory (#1): inject what we know about this customer across
         // conversations, when the agent has it enabled.

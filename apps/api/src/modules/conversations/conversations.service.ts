@@ -119,6 +119,7 @@ import {
     promisesActionWithoutTool,
     isBareWaitPromise,
     toolResultSucceeded,
+    claimsTeamRequest,
 } from '../../common/utils/outcome-claim.util';
 import { sanitizeToolResultForModel } from '../../common/utils/tool-error-sanitizer.util';
 import { hasToolCallMarkup, stripToolCallMarkup } from '../../common/utils/tool-call-markup.util';
@@ -151,7 +152,7 @@ import { isAttendanceReassurance, attendanceAckText } from './customer-reassuran
 import { groundPolicyReply } from './policy-grounding';
 import { catalogDomainOf, emptyCatalogText, pastDepartureIn, pastDepartureText, replyAcknowledgesPast, replyAsksCriteria, replySaysEmpty } from './catalog-first';
 import { CATALOG_EMPTY_PROBES, catalogHasNoRows } from './catalog-empty.util';
-import { HUMAN_OFFER_MARK, HUMAN_OFFER_TTL_MS, NO_DATA_WAIT_REPLACEMENT, NO_DATA_NO_OFFER, noDataWaitReplacementText, noDataNoOfferText, containsHumanOffer, isHumanOfferText, isAffirmation, isAffirmationOfHumanOffer, isLiveHumanOffer, withReturnNotice, offerInsteadOfPromise, policyPersonOfferText, withPolicyPersonOffer } from './human-offer';
+import { HUMAN_OFFER_MARK, HUMAN_OFFER_TTL_MS, NO_DATA_WAIT_REPLACEMENT, NO_DATA_NO_OFFER, noDataWaitReplacementText, noDataNoOfferText, containsHumanOffer, isHumanOfferText, isAffirmation, isAffirmationOfHumanOffer, isLiveHumanOffer, withReturnNotice, offerInsteadOfPromise, policyPersonOfferText, withPolicyPersonOffer, teamRequestClaimAction } from './human-offer';
 import { LanguageDetectorService } from './language-detector.service';
 import { BusinessInfoService } from '../business-info/business-info.service';
 import { PaymentOperationService } from './payment-operation.service';
@@ -6297,6 +6298,44 @@ export class ConversationsService {
                     );
                     finalResponse = handoffText(userLanguage).unavailable;
                 }
+            } else if (!draftMode && !postToolHandoff) {
+                // «He registrado su consulta para que alguien del equipo confirme…» / «Le avisaré en cuanto tenga la respuesta»
+                // with only `ensure_crm_lead` behind it (production, Telegram): the customer was promised a callback nobody
+                // would make. Such a claim is true only with a receipt of THIS turn (a created follow-up task); otherwise the
+                // customer's «sí» to the offer is honoured with a real handoff, and an unasked claim becomes the offer.
+                const teamAction = teamRequestClaimAction({
+                    reply: finalResponse, executed: [...executedToolsThisTurn, ...engineExecutedTools],
+                    customerAuthorized: humanHandoffAuthorized, replay: !!handoffReturn,
+                    fixedText: !!deterministicReply || isSystemFixedText(finalResponse) || isErrorFallback(finalResponse),
+                });
+                if (teamAction === 'replay_rewrite') {
+                    this.recordAgentSignal(tenantId, 'team_request_claim_replay_rewritten', session);
+                    finalResponse = rewriteReplayPromise(finalResponse, userLanguage, handoffReturn?.noteLeft === true);
+                } else if (teamAction === 'rewrite_offer') {
+                    this.logger.warn(`[Pipeline] La respuesta dice que pasó la consulta al equipo sin traspaso ni tarea en ${conversation.id} — reescrita como oferta`);
+                    this.recordAgentSignal(tenantId, 'team_request_claim_rewritten', session);
+                    finalResponse = offerInsteadOfPromise(finalResponse, userLanguage, allowHumanHandoff);
+                    if (!session && allowHumanHandoff) await this.rememberHumanOffer(schemaName, conversation.id, finalResponse);
+                } else if (teamAction === 'honour') {
+                    try {
+                        if (!allowHumanHandoff) throw new Error('human_delivery_unavailable');
+                        if (!(await this.handoffService.isInHandoff(tenantId, conversation.id))) {
+                            this.logger.warn(`[Pipeline] HANDOFF: el cliente aceptó la oferta y la respuesta dice que pasó la consulta al equipo en ${conversation.id}`);
+                            this.recordAgentSignal(tenantId, 'team_request_claim_honored', session);
+                            this.analyticsService.trackEvent({
+                                tenantId, eventType: 'handoff_triggered',
+                                conversationId: conversation.id, contactId: conversation.contact_id || undefined,
+                                data: { reason: 'customer_accepted_human_offer', fromTeamRequestClaim: true },
+                            }).catch(() => {});
+                            // The claim the model wrote is now true: the request IS with the team.
+                            await this.escalateWithinTurn(tenantId, conversation, msg, 'customer_accepted_human_offer',
+                                'none', userLanguage, inboundMessageId, replyProvenance);
+                        }
+                    } catch (e: any) {
+                        this.logger.error(`[Pipeline] No se pudo escalar tras la consulta al equipo: ${e?.message}`);
+                        finalResponse = handoffText(userLanguage).unavailable;
+                    }
+                }
             }
 
             // Classifier unavailable + term backstop: the urgency footer goes last, after every rewrite above.
@@ -7403,8 +7442,9 @@ export class ConversationsService {
         // promete pasar con una persona: ésa la cumple `escalateWithinTurn`
         // más abajo y borrarla dejaría al cliente sin traspaso.
         const hasDirective = !!(trustedContext as any)?.directive;
+        // A claim that the request went to the team is decided after the reply, with the handoff (see `teamRequestClaimAction`).
         if ((executedTools || []).length === 0 && !hasDirective
-            && !isSystemFixedText(response) && !promisesHumanHandoff(response)
+            && !isSystemFixedText(response) && !promisesHumanHandoff(response) && !claimsTeamRequest(response)
             && isBareWaitPromise(response)) {
             this.recordAgentSignal(tenantId, 'wait_promise_without_tool', session);
             this.logger.warn(`[Guardrail] Respuesta = promesa de espera sin herramienta — reemplazada por texto honesto: "${response.slice(0, 100)}"`);
@@ -7422,7 +7462,7 @@ export class ConversationsService {
         // under way and nobody will be notified. When the engine gave the turn its text (a re-ask at confirm), that text
         // is what the customer gets; otherwise the honest fixed one. A directive turn used to skip every guard here.
         const wroteSomething = (executedTools || []).some(tool => isBusinessWriteTool(tool?.name) && toolResultSucceeded(tool?.result));
-        if (!wroteSomething && !(priorActions || []).some(action => action?.awaiting) && !isSystemFixedText(response) && !promisesHumanHandoff(response) && promisesActionWithoutTool(response)) {
+        if (!wroteSomething && !(priorActions || []).some(action => action?.awaiting) && !isSystemFixedText(response) && !promisesHumanHandoff(response) && !claimsTeamRequest(response) && promisesActionWithoutTool(response)) {
             this.recordAgentSignal(tenantId, 'action_promise_without_tool', session);
             this.logger.warn(`[Guardrail] Respuesta promete una acción en curso sin herramienta — reemplazada: "${response.slice(0, 100)}"`);
             // (the engine's own text; the instruction the model got after it is not for the customer)

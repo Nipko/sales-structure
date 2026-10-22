@@ -1,4 +1,4 @@
-import { offersHumanHandoff, removeHandoffPromiseSentences } from '../../common/utils/outcome-claim.util';
+import { claimsTeamRequest, offersHumanHandoff, promisesHumanHandoff, removeHandoffPromiseSentences, teamRequestBacked } from '../../common/utils/outcome-claim.util';
 
 /**
  * The honest "I don't have that confirmed" reply offers a person from the team.
@@ -152,4 +152,26 @@ export function offerInsteadOfPromise(response: string, lang: string | undefined
     const kept = removeHandoffPromiseSentences(response);
     if (!canOffer) return kept || noDataNoOfferText(lang);
     return kept ? `${kept}\n\n${humanOfferQuestionText(lang)}` : noDataWaitReplacementText(lang);
+}
+
+/**
+ * What the turn does with a reply that says the customer's request already went to the team («He registrado su consulta
+ * para que alguien del equipo confirme…», «I've passed your request to the team», «Le avisaré en cuanto tenga la respuesta»):
+ *   · `none`: no such claim, a transfer promise the existing handoff branches already decide, a fixed system text, or a
+ *     receipt of THIS turn makes it true (a created follow-up task, a tool that asked for a person);
+ *   · `replay_rewrite`: the replay of an unattended handoff never transfers again, so the claim goes;
+ *   · `honour`: the customer asked for a person or accepted the offer of one («Sí, por favor»), so the handoff is opened
+ *     and the claim becomes true;
+ *   · `rewrite_offer`: nobody asked, so the claim becomes the offer in question form (`offerInsteadOfPromise`).
+ * `ensure_crm_lead` is never a receipt: a lead is not a request the team will act on.
+ */
+export type TeamRequestClaimAction = 'none' | 'replay_rewrite' | 'honour' | 'rewrite_offer';
+export function teamRequestClaimAction(input: {
+    reply: unknown; executed?: ReadonlyArray<{ name?: string; result?: any }>;
+    customerAuthorized: boolean; replay?: boolean; fixedText?: boolean;
+}): TeamRequestClaimAction {
+    if (input.fixedText || typeof input.reply !== 'string' || !claimsTeamRequest(input.reply)) return 'none';
+    if (promisesHumanHandoff(input.reply) || teamRequestBacked(input.executed)) return 'none';
+    if (input.replay) return 'replay_rewrite';
+    return input.customerAuthorized ? 'honour' : 'rewrite_offer';
 }

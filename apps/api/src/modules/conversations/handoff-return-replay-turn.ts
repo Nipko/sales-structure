@@ -1,6 +1,6 @@
 import { normalizeForIntent } from '@parallext/shared';
 import { normalizeCustomerIntent } from '../../common/conversation/intent-normalizer';
-import { offersHumanHandoff, promisesHumanHandoff } from '../../common/utils/outcome-claim.util';
+import { claimsTeamRequest, offersHumanHandoff, promisesHumanHandoff } from '../../common/utils/outcome-claim.util';
 
 /**
  * ═══ THE TURN THAT ANSWERS WHAT THE CUSTOMER WROTE WHILE NOBODY ANSWERED ═══
@@ -232,6 +232,8 @@ function namesPersonTransfer(sentence: string): boolean {
     const text = normalizeForIntent(sentence);
     if (offersHumanHandoff(sentence) && (/[?\u00bf]/.test(sentence) || OFFER_FRAME.test(text))) return true;
     if (PERSON_SUBJECT.test(text) && ATTENTION_PROMISE.test(text) && IMMINENT.test(text)) return true;
+    // «He pasado su consulta al equipo» / «Le avisaré en cuanto tenga la respuesta»: the same promise in other words.
+    if (claimsTeamRequest(sentence)) return true;
     return promisesHumanHandoff(sentence) && PERSON_CONTACT.test(text);
 }
 

@@ -1,6 +1,8 @@
 import { appointmentRecordReadId } from './appointment-record-read';
 import { isCanonicalConsentRecovery, canonicalConsentRecoveryDirective } from './canonical-consent-recovery';
 import { DemoAllowanceService } from '../throttle/demo-allowance.service';
+import { FeatureFlagsService, SAFETY_TRIAGE_FLAG } from '../throttle/feature-flags.service';
+import { runSafetyTriage, type SafetyTriageTurnOutcome } from './runtime/safety-triage';
 import { demoAllowanceExhaustedText } from '../widget/widget-demo-link';
 import { recordFirstReply } from '../../common/utils/first-reply.util';
 import { stripInternalMarkers } from '../../common/utils/internal-markers.util';
@@ -636,6 +638,8 @@ export class ConversationsService {
         @Optional() private readonly proactiveDispatch?: ProactiveDispatchService,
         /** The team's follow-up list: where a request nobody answered is left. */
         @Optional() private readonly tasksService?: TasksService,
+        /** Per-tenant flags (`agentRuntime.safetyTriage`). Absent in hand-built specs: every flag reads off. */
+        @Optional() private readonly featureFlags?: FeatureFlagsService,
     ) {}
 
     /**
@@ -3283,6 +3287,49 @@ export class ConversationsService {
             if (complaint) personOfferReason = `offer:${complaint}`;
         }
 
+        // ═══ SAFETY TRIAGE (salud / mascotas, flag agentRuntime.safetyTriage) ═══
+        //
+        // Antes del contrato, de los motores y de toda lectura automática. Una
+        // señal de alarma es dueña del turno: la respuesta es la plantilla de
+        // urgencia palabra por palabra, una persona entra ya y nada se agenda.
+        // La política (clases, términos, plantillas) es dato versionado en
+        // `packages/shared/src/safety-policy.ts`; acá sólo se conecta.
+        const safetyTriage: SafetyTriageTurnOutcome | null = await runSafetyTriage({
+            text: userText,
+            industry: turnContext.verticalContext?.industry || config.industry,
+            subType: turnContext.verticalContext?.subType,
+            language: userLanguage,
+            // A platform-default country is a guess: an emergency number is only given for a country the tenant
+            // has (declared, derived or inferred); otherwise the template says "the emergency number of your country".
+            country: regional && regional.operatingCountry.source !== 'fallback' ? regional.operatingCountry.value : null,
+        }, {
+            enabled: () => this.safetyTriageEnabled(tenantId, session),
+            // Session router in Agent Test (spend + trace); the plain router otherwise — a
+            // classification is not a source of the reply, so it never goes through replySourceRouter.
+            classify: request => (session ? llmRouter : this.llmRouter).execute({ ...request, tenantId, executionContext,
+                traceContext: { conversationId: conversation.id, stage: 'safety_triage' } }),
+            escalate: async reason => {
+                // Agent Test shows what production would do without touching the queue.
+                if (session) return 'simulated';
+                if (!allowHumanHandoff) return 'unavailable';
+                // The urgency reply already announces the transfer: no second notice.
+                await this.escalateWithinTurn(tenantId, conversation, msg, reason, 'none',
+                    userLanguage, inboundMessageId, replyProvenance);
+                this.analyticsService.trackEvent({ tenantId, eventType: 'handoff_triggered', conversationId: conversation.id,
+                    contactId: conversation.contact_id || undefined, data: { reason, deterministic: true } }).catch(() => {});
+                return 'opened';
+            },
+            trace: metadata => turnTrace.add('decision', 'safety_triage', metadata),
+            signal: name => this.recordAgentSignal(tenantId, name, session),
+            warn: message => this.logger.warn(`${message} (conversation ${conversation.id})`),
+        });
+        if (safetyTriage?.reply) {
+            engineProducedText = safetyTriage.reply;
+            deterministicReply = safetyTriage.reply;
+            personOfferReason = null;
+        }
+        if (safetyTriage?.deferredHandoffReason && !pendingOperationHandoff) pendingOperationHandoff = safetyTriage.deferredHandoffReason;
+
         // ═══ EL CONTRATO EFECTIVO SE RESUELVE PRIMERO ═══
         //
         // Antes se resolvía al FINAL, después de que el motor de reservas ya
@@ -3415,7 +3462,7 @@ export class ConversationsService {
         const blockedOperation = capability.contract?.writersBlocked
             ? deniedOperationalIntent(userText)
             : null;
-        if (blockedOperation && !draftMode) {
+        if (blockedOperation && !draftMode && !safetyTriage?.reply) {
             const reason = `capability_denied_intent:${blockedOperation}`;
             try {
                 if (!allowHumanHandoff) throw new Error('human_delivery_unavailable');
@@ -3479,7 +3526,8 @@ export class ConversationsService {
             await missionStore.save(missionFocus);
             updateMissionScope();
         };
-        if (!draftMode && conversation.contact_id) {
+        // A safety escalation owns the turn: no task is arbitrated (nor consumed) by this message.
+        if (!draftMode && conversation.contact_id && !safetyTriage?.reply) {
             missionStore = new MissionFocusStore(this.prisma, schemaName, conversation.id, conversation.contact_id, session);
             missionFocus = await missionStore.load();
             // When the focus was last written: the question «¿cuál?» of the transition engine is answered by the NEXT message, soon.
@@ -4872,7 +4920,7 @@ export class ConversationsService {
             });
             const ragConfig = config.rag;
             const ragEnabled = ragConfig?.enabled !== false;
-            if (hasKnowledge && ragEnabled) {
+            if (hasKnowledge && ragEnabled && !safetyTriage?.reply) {
                 // Clamp topK so a misconfigured agent can't flood the prompt with
                 // dozens of chunks (cost + context blowout). Chunks are already
                 // capped at CHUNK_MAX_CHARS each at ingest time.
@@ -5855,7 +5903,9 @@ export class ConversationsService {
                 .find((row: any) => row?.direction === 'outbound')?.content_text;
             const humanHandoffAuthorized = !!(await this.resolveHandoffReason(userText, conversation, config, tenantId, !draftMode, executionContext))
                 || isAffirmationOfHumanOffer(userText, lastOutboundText);
-            if (handoffReturn && !draftMode && promisesHumanHandoff(finalResponse)) {
+            if (safetyTriage?.reply) {
+                // The safety triage already opened (or could not open) the handoff and its reply says so.
+            } else if (handoffReturn && !draftMode && promisesHumanHandoff(finalResponse)) {
                 // Never honoured on the replay, however the customer's words read: the team
                 // was not available, and a promise of a transfer would repeat the wait.
                 this.logger.warn(`[Pipeline] Promesa de traspaso en el reintento de ${conversation.id} — reescrita, sin escalar`);
@@ -5893,6 +5943,11 @@ export class ConversationsService {
                     );
                     finalResponse = handoffText(userLanguage).unavailable;
                 }
+            }
+
+            // Classifier unavailable + term backstop: the urgency footer goes last, after every rewrite above.
+            if (safetyTriage?.footer && finalResponse && !finalResponse.includes(safetyTriage.footer)) {
+                finalResponse = `${finalResponse.trimEnd()}\n\n${safetyTriage.footer}`;
             }
 
             // What this turn actually did, kept for the next one.
@@ -6235,6 +6290,25 @@ export class ConversationsService {
             );
         } catch (e: any) {
             this.logger.warn(`[Pipeline] Could not persist tool context (non-fatal): ${e.message}`);
+        }
+    }
+
+    /**
+     * `agentRuntime.safetyTriage` for this tenant (off by default). Agent Test
+     * reads the tenant's own settings without touching the runtime Redis cache
+     * the flag service keeps; a read failure is "off", which is the behaviour
+     * every tenant had before the flag existed.
+     */
+    private async safetyTriageEnabled(tenantId: string, session?: AgentTurnSession): Promise<boolean> {
+        try {
+            if (session) {
+                const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
+                return (tenant?.settings as any)?.featureFlags?.[SAFETY_TRIAGE_FLAG] === true;
+            }
+            return (await this.featureFlags?.isFeatureEnabled(tenantId, SAFETY_TRIAGE_FLAG)) === true;
+        } catch (error: any) {
+            this.logger.warn(`[SafetyTriage] flag unavailable for ${tenantId}: ${error?.message}`);
+            return false;
         }
     }
 

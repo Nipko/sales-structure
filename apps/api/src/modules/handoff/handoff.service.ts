@@ -1220,6 +1220,12 @@ export class HandoffService {
             // 5. Build prioritized skills array
             const targetSkills: string[] = [];
 
+            // 0. A health red flag (safety triage, reason `safety_red_flag:<class>:priority=urgent`)
+            // goes first to whoever is tagged clinical / urgent, ahead of lead value.
+            if (reason?.startsWith('safety_red_flag:')) {
+                targetSkills.push('clinical', 'urgent');
+            }
+
             // A. VIP Lead (Score >= 80) -> route to senior or supervisor agents
             if (leadScore >= 80) {
                 targetSkills.push('senior', 'supervisor');

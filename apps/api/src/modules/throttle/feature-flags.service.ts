@@ -16,6 +16,9 @@ import { mutateTenantSettingsAtomic } from '../../common/utils/tenant-settings.u
  */
 
 const CACHE_PREFIX = 'feature_flags:';
+
+/** Per-tenant flag of the health safety triage runtime. */
+export const SAFETY_TRIAGE_FLAG = 'agentRuntime.safetyTriage';
 const CACHE_TTL = 300;
 
 /**
@@ -38,6 +41,10 @@ export const FEATURE_FLAGS_REGISTRY: Array<{
     { key: 'killBroadcasts',     label: 'Disable broadcasts',           description: 'Block all broadcast/campaign sending',                    category: 'killswitch',   default: false },
     { key: 'killHandoff',        label: 'Disable handoff escalation',   description: 'Skip the handoff trigger pipeline',                       category: 'killswitch',   default: false },
     { key: 'experimentalCopilot', label: 'AI Copilot suggestions',      description: 'Show AI-generated reply suggestions in the inbox',       category: 'experimental', default: false },
+    // Health safety triage (packages/shared/src/safety-policy.ts). OFF by default and
+    // must stay off until a clinician has reviewed the urgency templates
+    // (SAFETY_TEMPLATE_REVIEW); turning it off again is the killswitch.
+    { key: SAFETY_TRIAGE_FLAG, label: 'Health safety triage', description: 'Red-flag triage for health/pet businesses: urgency advice + priority human handoff (requires clinical review of templates)', category: 'experimental', default: false },
 ];
 
 @Injectable()

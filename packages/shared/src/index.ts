@@ -46,6 +46,7 @@ export * from './country-language-pack';
 export * from './subtype-experience-profile';
 export * from './subtype-taxonomy-migration';
 export * from './vertical-domain-contract';
+export * from './safety-policy';
 export * from './vertical-certification-contract';
 export * from './vertical-operation-contract';
 export * from './vertical-authoring-package';

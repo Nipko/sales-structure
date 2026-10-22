@@ -165,6 +165,30 @@ describe('es→pt / es→fr: a short Spanish reply whose catalog name takes most
     });
 });
 
+describe('a reply that switches language mid-way is judged sentence by sentence', () => {
+    // Production 2026-10-22, dental, Portuguese from the first message.
+    const MIXED = 'Sinto muito que esteja passando por isso. Inchaço no rosto e febre após a extração de um dente podem indicar uma infección o complicación que requiere atención médica. Le recomiendo que busque atención urgente en la clínica o un servicio de urgencias odontológicas para que un especialista pueda evaluar su situación y brindarle el tratamiento adecuado. ¿Quiere que le ayude a agendar una cita lo antes posible?';
+    const PORTUGUESE = 'Sinto muito que esteja passando por isso. Inchaço no rosto e febre após a extração de um dente podem indicar uma infecção ou complicação que requer atenção médica. Recomendo que procure atendimento urgente na clínica ou num serviço de urgências odontológicas para que um especialista possa avaliar a sua situação. Quer que eu ajude a agendar uma consulta o quanto antes?';
+
+    it('the whole text is not clearly Spanish, but one of its sentences is', () => {
+        expect(replyLanguageOf(MIXED)).toBeNull();
+        expect(languageMismatch(MIXED, 'pt')).toBe('es');
+        expect(languageMismatch(PORTUGUESE, 'pt')).toBeNull();
+    });
+
+    it('the mixed reply is rewritten; a rewrite still carrying a Spanish sentence is rejected', async () => {
+        const ok = build(PORTUGUESE);
+        expect(await run(ok.service, MIXED, 'pt', {}, 'estou com o rosto inchado e febre depois de tirar um dente, o que faço?')).toBe(PORTUGUESE);
+        expect(ok.execute).toHaveBeenCalledTimes(1);
+
+        // Only the opening translated: the Spanish advice sentence is kept as it was.
+        const halfway = 'Sinto muito que esteja passando por isso. Inchaço no rosto e febre após a extração de um dente podem indicar uma infecção. Le recomiendo que busque atención urgente en la clínica o un servicio de urgencias odontológicas para que un especialista pueda evaluar su situación y brindarle el tratamiento adecuado.';
+        const still = build(halfway);
+        expect(await run(still.service, MIXED, 'pt', {}, 'o que faço?')).toBe(MIXED);
+        expect(rejections(still.service)).toEqual([{ reason: 'still_source_language', attempt: 1, missing: [] }]);
+    });
+});
+
 describe('the reply-language guard runs on model-written replies of engine-directive turns', () => {
     it('dental fr: a booking directive voiced in Spanish is rewritten into French', async () => {
         const { service, execute } = build(DENTAL_FR);

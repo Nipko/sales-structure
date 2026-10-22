@@ -115,11 +115,29 @@ export function replyLanguageOf(text: string, ignore: readonly string[] = []): R
  */
 export function languageMismatch(text: string, code: string, ignore: readonly string[] = []): ReplyLang | null {
     const written = replyLanguageOf(text, ignore);
-    if (written) return written !== code ? written : null;
-    const ranked = scoresOf(text, ignore);
-    const [best, bestScore] = ranked[0];
-    const own = ranked.find(([lang]) => lang === code)?.[1] ?? 0;
-    return best !== code && bestScore >= 2 && own === 0 && ranked[1][1] === 0 ? best : null;
+    if (written && written !== code) return written;
+    if (!written) {
+        const ranked = scoresOf(text, ignore);
+        const [best, bestScore] = ranked[0];
+        const own = ranked.find(([lang]) => lang === code)?.[1] ?? 0;
+        if (best !== code && bestScore >= 2 && own === 0 && ranked[1][1] === 0) return best;
+    }
+    return sentenceInOtherLanguage(text, code, ignore);
+}
+
+/**
+ * A reply that opens in the turn language and drifts into another one mid-way («Sinto muito… Le recomiendo que busque
+ * atención urgente…», production 2026-10-22) scores as undecided — or even as the turn language — as a whole. Each
+ * sentence of 6+ words is judged on its own, with the same strict bar: one clearly in another language is a mismatch.
+ */
+function sentenceInOtherLanguage(text: string, code: string, ignore: readonly string[]): ReplyLang | null {
+    const sentences = ownLanguageText(text, ignore).split(/(?<=[.!?…])\s+|[\n\r]+|(?=[¿¡])/);
+    for (const sentence of sentences) {
+        if (sentence.trim().split(/\s+/).filter(word => /\p{L}/u.test(word)).length < 6) continue;
+        const written = replyLanguageOf(sentence);
+        if (written && written !== code) return written;
+    }
+    return null;
 }
 
 /** Why a language rewrite cannot be sent: it is empty, it is still in the source language, or it lost a figure, URL or name. */

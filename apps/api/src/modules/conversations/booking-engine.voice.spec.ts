@@ -3,7 +3,7 @@ import { resolve } from 'path';
 
 /**
  * Clean-chat regression 2026-10-08: the booking engine's texts mixed «tú» and «usted» in the same conversation
- * («Cuéntame, ¿qué día te viene mejor?» then «¿Desea cambiar su cita…?»). The persona/country formality is applied
+ * («Cuéntame, ¿qué día te viene mejor?» then «¿Desea cambiar la cita en curso…?»). The persona/country formality is applied
  * when the model voices the engine's text; the engine's own wording is the baseline it starts from, so it is
  * ONE register: usted in Spanish, the neutral «você» / «vous» forms in Portuguese and French.
  */

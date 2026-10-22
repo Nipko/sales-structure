@@ -7,7 +7,7 @@ import { authorityFor } from './__fixtures__/tool-authority.fixture';
  * Follow-ups of the "offer, don't apply" change (PR #55):
  *  - an ORDER to switch service has to work at the late steps too (ask_name / ask_email / confirm), where
  *    the interpreter deliberately does not read service names, and must not be taken for a slot correction;
- *  - a dormant draft that is resumed by a question about another service gets the offer, not a silent switch;
+ *  - a dormant (stale) draft is not resumed by a question about another service: the question is answered on its own;
  *  - a question about another DAY or hour of the draft's own service answers and offers; it does not rewrite
  *    the draft (it used to overwrite the date, clear the time and hand the turn to the model).
  */
@@ -117,7 +117,7 @@ describe('an order to switch service works at the late steps', () => {
             expect(result.text ?? '').not.toMatch(/identificar|corregir/i);
             expect(draftCore(result.state)).toEqual(draftCore(open));
             expect(result.state.pendingSwitch).toMatchObject({ serviceId: COLOR.id });
-            expect(result.text).toContain('¿Desea cambiar su cita de Corte y estilo por Color y tratamiento');
+            expect(result.text).toContain('¿Desea cambiar la cita en curso de Corte y estilo (todavía sin confirmar) por Color y tratamiento');
         });
     });
 
@@ -144,33 +144,34 @@ describe('an order to switch service works at the late steps', () => {
     });
 });
 
-describe('a dormant draft resumed by a question about another service gets the offer', () => {
+describe('a dormant draft is not resumed by a question about another service (production 2026-10-22)', () => {
+    // Past the continuity window the draft is stale: a question that carries a service, a day or an hour is a NEW
+    // question. Resuming the old draft for it turned every later question into «¿Desea cambiar su cita…?» about a
+    // booking the customer was no longer making (see booking-stale-draft.spec.ts).
     const dormant = (draft: BookingState): BookingState => {
         const savedAt = new Date(T0).toISOString();
         return restoreBookingMission({ ...draft, savedAt }, savedAt, T0 + 31 * 60_000).state;
     };
 
-    it('answers the question and offers; the dormant draft is not moved silently', async () => {
-        const { turn, writes } = harness();
+    it('answers the question on its own: no change offered, nothing of the old draft carried', async () => {
+        const { turn, writes, availabilityCalls } = harness();
         const asleep = dormant(draftAt('ask_email'));
         expect(asleep.resumeOffer).toBe('pending');
         const { result } = await turn(COMPOUND, asleep);
-        expect(result.handled).toBe(true);
-        expect(result.state.serviceId).toBe(CORTE.id);
-        expect(result.text).toMatch(/120 minutos/);
-        expect(result.text).toMatch(/hay cupo/i);
-        expect(result.text).toContain('¿Desea cambiar su cita de Corte y estilo por Color y tratamiento');
-        expect(result.text).not.toMatch(/correo/i);
-        expect(result.state.pendingSwitch).toMatchObject({ serviceId: COLOR.id, date: SATURDAY, time: '16:00' });
+        expect(availabilityCalls()).toContainEqual(expect.objectContaining({ serviceId: COLOR.id, date: SATURDAY }));
+        expect(result.text ?? '').not.toMatch(/Desea cambiar|cita en curso|correo/i);
+        expect(result.state.pendingSwitch).toBeUndefined();
+        expect(result.state.missionId).not.toBe('m-draft');
+        expect(result.state.serviceId).toBe(COLOR.id);
         expect(writes()).toHaveLength(0);
     });
 
-    it('a yes then moves it, with the slot checked again', async () => {
+    it('a yes then goes on with the service of the new question, not the old draft', async () => {
         const { turn } = harness();
         const first = await turn(COMPOUND, dormant(draftAt('ask_email')));
         const second = await turn('sí', first.result.state);
-        expect(second.result.state).toMatchObject({ serviceId: COLOR.id, date: SATURDAY, time: '16:00' });
-        expect(second.result.state.pendingSwitch).toBeUndefined();
+        expect(second.result.state.serviceId).toBe(COLOR.id);
+        expect(second.result.state.missionId).not.toBe('m-draft');
     });
 });
 
@@ -186,7 +187,7 @@ describe('a question about another day or hour of the SAME service does not rewr
         expect(draftCore(result.state)).toEqual(draftCore(open));
         expect(result.state.slots).toEqual(open.slots);
         expect(result.text).toMatch(/hay cupo/i);
-        expect(result.text).toMatch(/¿Desea cambiar su cita de Corte y estilo al domingo/);
+        expect(result.text).toMatch(/¿Desea pasar la cita en curso de Corte y estilo \(todavía sin confirmar\) al domingo/);
         expect(result.text).toMatch(/10:00/);
         expect(result.state.pendingSwitch).toMatchObject({ serviceId: CORTE.id, date: SUNDAY, time: '10:00' });
         expect(availabilityCalls()).toContainEqual({ date: SUNDAY, serviceId: CORTE.id, time: '10:00' });

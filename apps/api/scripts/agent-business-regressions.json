@@ -57,8 +57,7 @@
     "apps/api/src/modules/conversations/crm-operations-output-ack-fixed.spec.ts",
     "apps/api/src/modules/conversations/crm-note-context-read.spec.ts",
     "apps/api/src/modules/conversations/agent-turn-delivery.spec.ts",
-    "apps/api/src/modules/conversations/reply-language-rewrite.spec.ts"
-,
+    "apps/api/src/modules/conversations/reply-language-rewrite.spec.ts",
     "apps/api/src/modules/conversations/customer-dates.spec.ts",
     "apps/api/src/modules/conversations/booking-stale-draft.spec.ts",
     "apps/api/src/modules/conversations/runtime/safety-policy.spec.ts",
@@ -82,7 +81,8 @@
     "apps/api/src/modules/conversations/runtime/fact-renderer.spec.ts",
     "apps/api/src/modules/conversations/conversations.rendered-facts.spec.ts",
     "apps/api/src/modules/persona/legacy-persona-rules.spec.ts",
-    "apps/api/src/modules/conversations/team-request-receipt.spec.ts"
+    "apps/api/src/modules/conversations/team-request-receipt.spec.ts",
+    "apps/api/src/modules/conversations/order-count-total.spec.ts"
   ],
   "postgres": [
     "apps/api/src/modules/faqs/faq-effects.postgres.spec.ts",

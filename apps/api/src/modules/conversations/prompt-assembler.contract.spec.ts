@@ -87,6 +87,32 @@ describe('Contrato L1 del agente', () => {
     });
 
     /**
+     * Producción 2026-10-22: el agente negó el precio (250.000) y el área (80 m²)
+     * de un inmueble que search_listings acababa de devolver, porque la 22a solo
+     * dejaba citar importes de las tools de PRODUCTO. La autoridad es el
+     * priceStatus del resultado de catálogo, sea cual sea el lector.
+     */
+    it('22a toma el importe de cualquier resultado de catálogo confirmado, no solo de productos', () => {
+        const rule = contract.slice(contract.indexOf('22a. no number without'), contract.indexOf('22b.'));
+        expect(rule).toContain('any catalogue tool result read in this turn');
+        for (const entity of ['listings', 'properties', 'packages', 'menu items', 'services', 'products']) {
+            expect(rule).toContain(entity);
+        }
+        expect(rule).toContain('whose pricestatus is "confirmed" does give you its amount');
+        expect(rule).not.toContain('a product tool result (get_product, check_stock, search_products)');
+        // Lo no confirmado sigue sin número, y nunca frena una reserva.
+        for (const status of ['"example"', '"quote"', '"missing"']) expect(rule).toContain(status);
+        expect(rule).toContain('say the price is not confirmed');
+        expect(rule).toContain('an unconfirmed price is never a condition for booking');
+        // El estado habla de importes: el área u otros datos del mismo resultado no quedan «sin confirmar».
+        expect(rule).toContain('pricestatus speaks only of amounts');
+        expect(rule).toContain('area');
+        // Sin reglas numeradas nuevas: 22b sigue siendo la siguiente.
+        expect(contract).toContain('22b. current package prices');
+        expect(contract).not.toMatch(/\n\s+22c\./);
+    });
+
+    /**
      * La regla 8 decía "be a human having a conversation" y la persona lleva
      * nombre propio. Nada le decía al modelo que no podía afirmar que lo era, y
      * el cliente no tiene forma de saberlo.

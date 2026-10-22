@@ -189,11 +189,51 @@ export function telegramAnswer(status: number, body: any): ProviderAnswer {
     };
 }
 
-/** No answer arrived. Never a rejection: the request may have been processed. */
+/**
+ * Failures that happen before a connection to the provider exists: the request
+ * was never written, so the provider cannot have processed it. Undici reports
+ * them all as `TypeError('fetch failed')` with the real code in `cause`.
+ */
+const PRE_CONNECTION_CODES = new Set([
+    'ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'EHOSTUNREACH', 'ENETUNREACH', 'UND_ERR_CONNECT_TIMEOUT',
+    'CERT_HAS_EXPIRED', 'UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'ERR_TLS_CERT_ALTNAME_INVALID', 'DEPTH_ZERO_SELF_SIGNED_CERT',
+]);
+
+/** Codes that mean "no connection" only when the failing syscall was `connect`. */
+const CONNECT_ONLY_CODES = new Set(['ETIMEDOUT', 'ECONNABORTED', 'ECONNRESET']);
+
+function transportCause(error: unknown): { code: string | null; preConnection: boolean } {
+    let current: any = error;
+    for (let depth = 0; depth < 4 && current; depth++) {
+        // Node's dual-stack connect (autoSelectFamily) reports every failed
+        // address attempt together; all of them failing at `connect` is still
+        // a request that was never written.
+        if (Array.isArray(current.errors) && current.errors.length
+            && current.errors.every((e: any) => e?.syscall === 'connect' || PRE_CONNECTION_CODES.has(e?.code))) {
+            return { code: current.code ?? current.errors[0]?.code ?? null, preConnection: true };
+        }
+        if (typeof current.code === 'string') {
+            const preConnection = PRE_CONNECTION_CODES.has(current.code)
+                || (CONNECT_ONLY_CODES.has(current.code) && current.syscall === 'connect');
+            return { code: current.code, preConnection };
+        }
+        current = current.cause;
+    }
+    return { code: null, preConnection: false };
+}
+
+/**
+ * No answer arrived. Unknown unless the failure provably happened before a
+ * connection existed; then it is a retryable rejection, because nothing reached
+ * the provider and leaving it unknown parks the reply for manual review.
+ */
 export function classifyTransportFailure(error: unknown): StrictDispatchOutcome {
     const name = (error as any)?.name;
     if (name === 'TimeoutError' || name === 'AbortError') return unknown('provider_timeout');
-    return unknown(`transport_failure:${String((error as any)?.message || error).slice(0, 80)}`);
+    const { code, preConnection } = transportCause(error);
+    if (preConnection) return rejected(`transport_not_connected:${code ?? 'connect'}`, true);
+    const message = String((error as any)?.message || error).slice(0, 80);
+    return unknown(`transport_failure:${message}${code ? `:${code}` : ''}`);
 }
 
 /**

@@ -92,8 +92,49 @@ describe('what one Meta answer proves', () => {
             .toEqual({ kind: 'unknown', errorCode: 'provider_timeout' });
         expect(classifyTransportFailure(Object.assign(new Error('aborted'), { name: 'AbortError' })))
             .toEqual({ kind: 'unknown', errorCode: 'provider_timeout' });
+        // A reset after connecting may follow a written request: still unknown.
         expect(classifyTransportFailure(new Error('ECONNRESET')))
             .toMatchObject({ kind: 'unknown', errorCode: expect.stringContaining('transport_failure') });
+        expect(classifyTransportFailure(new TypeError('fetch failed', { cause: Object.assign(new Error('other side closed'), { code: 'UND_ERR_SOCKET' }) })))
+            .toEqual({ kind: 'unknown', errorCode: 'transport_failure:fetch failed:UND_ERR_SOCKET' });
+    });
+
+    it.each(['ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'UND_ERR_CONNECT_TIMEOUT', 'CERT_HAS_EXPIRED'])(
+        'retries a fetch that failed before any connection existed (%s): nothing reached the provider', code => {
+            const error = new TypeError('fetch failed', { cause: Object.assign(new Error(code), { code }) });
+            expect(classifyTransportFailure(error))
+                .toEqual({ kind: 'rejected', errorCode: `transport_not_connected:${code}`, retryable: true });
+        });
+
+    it('retries a connect-phase timeout (production: fetch failed:ETIMEDOUT on a slow IPv6 route)', () => {
+        const connectTimeout = Object.assign(new Error('connect ETIMEDOUT 2001:67c:4e8:f004::9:443'), { code: 'ETIMEDOUT', syscall: 'connect' });
+        expect(classifyTransportFailure(new TypeError('fetch failed', { cause: connectTimeout })))
+            .toEqual({ kind: 'rejected', errorCode: 'transport_not_connected:ETIMEDOUT', retryable: true });
+    });
+
+    it('retries when every dual-stack address attempt failed at connect', () => {
+        const attempts = [
+            Object.assign(new Error('connect ETIMEDOUT ::9'), { code: 'ETIMEDOUT', syscall: 'connect' }),
+            Object.assign(new Error('connect ETIMEDOUT 149.154.166.110:443'), { code: 'ETIMEDOUT', syscall: 'connect' }),
+        ];
+        const aggregate = Object.assign(new AggregateError(attempts, 'all attempts failed'), { code: 'ETIMEDOUT' });
+        expect(classifyTransportFailure(new TypeError('fetch failed', { cause: aggregate })))
+            .toMatchObject({ kind: 'rejected', retryable: true });
+    });
+
+    it('keeps a timeout or reset outside the connect phase unknown (the request may have been written)', () => {
+        const readTimeout = Object.assign(new Error('read ETIMEDOUT'), { code: 'ETIMEDOUT', syscall: 'read' });
+        expect(classifyTransportFailure(new TypeError('fetch failed', { cause: readTimeout })))
+            .toEqual({ kind: 'unknown', errorCode: 'transport_failure:fetch failed:ETIMEDOUT' });
+        const reset = Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET', syscall: 'read' });
+        expect(classifyTransportFailure(new TypeError('fetch failed', { cause: reset })))
+            .toMatchObject({ kind: 'unknown' });
+    });
+
+    it('finds the connection code in a nested cause chain', () => {
+        const inner = Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' });
+        const error = new TypeError('fetch failed', { cause: new Error('wrapped', { cause: inner }) });
+        expect(classifyTransportFailure(error)).toMatchObject({ kind: 'rejected', retryable: true });
     });
 
     it('refuses an unmigrated channel explicitly instead of degrading it', () => {

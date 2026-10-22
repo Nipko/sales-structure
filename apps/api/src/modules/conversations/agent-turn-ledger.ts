@@ -54,6 +54,12 @@ export const TURN_LEDGER_DDL: readonly string[] = Object.freeze([
         -- below still exists for a table created before this column did.
         outcome JSONB,
         delivery_route TEXT NOT NULL DEFAULT 'unknown',
+        -- Whether the customer actually received this turn's answer, fed from
+        -- the dispatch outbox's terminal transitions. See the ALTERs below.
+        delivery_state TEXT,
+        delivery_receipt TEXT,
+        delivery_updated_at TIMESTAMPTZ,
+        answered_at TIMESTAMPTZ,
         redacted_at TIMESTAMPTZ,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -106,7 +112,59 @@ export const TURN_LEDGER_DDL: readonly string[] = Object.freeze([
         ON agent_turn_ledger(contact_id) WHERE redacted_at IS NULL`,
     `CREATE INDEX IF NOT EXISTS idx_agent_turn_ledger_unsettled
         ON agent_turn_ledger(updated_at) WHERE state <> 'settled'`,
+    // Delivery truth. `settled` used to be the last word on a turn, and it only
+    // ever meant "runTurn returned": a reply whose POST died with `fetch failed`
+    // settled exactly like one the customer read. These record what the outbox
+    // learned afterwards. Additive and nullable — NULL is "not tracked", which
+    // is what every row written by the previous binary honestly is.
+    `ALTER TABLE agent_turn_ledger ADD COLUMN IF NOT EXISTS delivery_state TEXT`,
+    `ALTER TABLE agent_turn_ledger ADD COLUMN IF NOT EXISTS delivery_receipt TEXT`,
+    `ALTER TABLE agent_turn_ledger ADD COLUMN IF NOT EXISTS delivery_updated_at TIMESTAMPTZ`,
+    `ALTER TABLE agent_turn_ledger ADD COLUMN IF NOT EXISTS answered_at TIMESTAMPTZ`,
+    // The Ops question "which customers are still waiting?" reads only the
+    // rows that are not delivered, which are few beside everything else.
+    `CREATE INDEX IF NOT EXISTS idx_agent_turn_ledger_undelivered
+        ON agent_turn_ledger(created_at) WHERE delivery_state IN ('pending','unknown','failed')`,
 ]);
+
+/**
+ * What became of a turn's answer once it left the process.
+ *
+ *   - `pending`    the turn settled with a `send` through the durable lane and
+ *                  no terminal dispatch outcome has been reported yet;
+ *   - `delivered`  a provider receipt exists for at least one of its effects —
+ *                  the customer was answered;
+ *   - `failed`     the provider definitively refused it, or its attempts ran out;
+ *   - `unknown`    an attempt was authorised and nobody can say what came back
+ *                  (`reconciliation_required`);
+ *   - `suppressed` deliberately not sent (the agent changed, a policy withdrew it).
+ */
+export const TURN_DELIVERY_STATES = ['pending', 'delivered', 'failed', 'unknown', 'suppressed'] as const;
+export type TurnDeliveryState = (typeof TURN_DELIVERY_STATES)[number];
+
+/**
+ * Monotonic order. A transition is applied only to a strictly higher rank, so
+ * a duplicate or late event is a no-op and nothing moves backwards.
+ *
+ * `delivered` is the top and absolute: a receipt is proof the customer got the
+ * answer, and no later report — a failed caption, an expired lease on another
+ * bubble — can unsay it. `failed` and `suppressed` share a rank, so neither
+ * overwrites the other and neither can fall back to `unknown` or `pending`.
+ * They are terminal for everything EXCEPT a receipt: a turn with several
+ * effects can lose one and still deliver the next, and a person resolving an
+ * uncertain effect as delivered is evidence too.
+ */
+const DELIVERY_RANK: Readonly<Record<TurnDeliveryState, number>> = Object.freeze({
+    pending: 0, unknown: 1, failed: 2, suppressed: 2, delivered: 3,
+});
+
+/** Pure: whether `next` may replace `current`. */
+export function deliveryTransitionAllowed(current: TurnDeliveryState | null | undefined,
+    next: TurnDeliveryState): boolean {
+    if (!(TURN_DELIVERY_STATES as readonly string[]).includes(next)) return false;
+    if (!current || !(TURN_DELIVERY_STATES as readonly string[]).includes(current)) return true;
+    return DELIVERY_RANK[next] > DELIVERY_RANK[current];
+}
 
 export interface TurnBinding {
     readonly conversationId: string;
@@ -158,6 +216,11 @@ export interface TurnLedgerRow {
     /** What this turn decided: send, wait, suppress or escalate. */
     readonly outcome: TurnOutcome | null;
     readonly deliveryRoute: TurnDeliveryRoute;
+    /** What the outbox reported about the answer. `null` = not tracked. */
+    readonly deliveryState: TurnDeliveryState | null;
+    readonly deliveryReceipt: string | null;
+    /** First moment a receipt proved the customer was answered. */
+    readonly answeredAt: Date | null;
     readonly redacted: boolean;
     readonly createdAt: Date;
 }
@@ -234,6 +297,10 @@ function mapRow(row: any): TurnLedgerRow {
         outcome: row.outcome && typeof row.outcome === 'object' ? Object.freeze(row.outcome) as TurnOutcome : null,
         deliveryRoute: (TURN_DELIVERY_ROUTES as readonly string[]).includes(row.delivery_route)
             ? row.delivery_route as TurnDeliveryRoute : 'unknown',
+        deliveryState: (TURN_DELIVERY_STATES as readonly string[]).includes(row.delivery_state)
+            ? row.delivery_state as TurnDeliveryState : null,
+        deliveryReceipt: row.delivery_receipt ?? null,
+        answeredAt: row.answered_at ? new Date(row.answered_at) : null,
         redacted,
         createdAt: new Date(row.created_at),
     });
@@ -416,7 +483,7 @@ export async function readRecentTurnOutcomes(query: TurnLedgerQuery, schema: str
     const [probe] = await query<any[]>(
         `SELECT to_regclass($1) IS NOT NULL AS present`, [`${schema}.agent_dispatch_outbox`]);
     const rows = probe?.present ? await query<any[]>(
-        `SELECT l.outcome, l.created_at, l.delivery_route, l.inbound_message_id,
+        `SELECT l.outcome, l.created_at, l.delivery_route, l.inbound_message_id, l.delivery_state,
                 COALESCE(d.arrived, 0)::int AS arrived
            FROM "${schema}".agent_turn_ledger l
            LEFT JOIN LATERAL (
@@ -428,7 +495,8 @@ export async function readRecentTurnOutcomes(query: TurnLedgerQuery, schema: str
           ORDER BY l.created_at DESC LIMIT ${limit}`,
         [input.conversationId, input.since.toISOString()],
     ) : await query<any[]>(
-        `SELECT l.outcome, l.created_at, l.delivery_route, l.inbound_message_id, 0 AS arrived
+        `SELECT l.outcome, l.created_at, l.delivery_route, l.inbound_message_id, l.delivery_state,
+                0 AS arrived
            FROM "${schema}".agent_turn_ledger l
           WHERE l.conversation_id = $1::uuid AND l.outcome IS NOT NULL AND l.created_at >= $2::timestamptz
           ORDER BY l.created_at DESC LIMIT ${limit}`,
@@ -441,18 +509,137 @@ export async function readRecentTurnOutcomes(query: TurnLedgerQuery, schema: str
             deliveredEffects: Number(row.arrived) || 0,
             deliveryRoute: (row.delivery_route ?? 'unknown') as TurnDeliveryRoute,
             inboundMessageId: String(row.inbound_message_id),
+            deliveryState: (TURN_DELIVERY_STATES as readonly string[]).includes(row.delivery_state)
+                ? row.delivery_state as TurnDeliveryState : null,
         })));
 }
 
-/** The turn is over. Equivalent in meaning to the Redis marker, and durable. */
+/**
+ * The turn is over. Equivalent in meaning to the Redis marker, and durable.
+ *
+ * "Over" is about the TURN, not about the customer: a `send` handed to the
+ * durable outbox settles here while its POST may still fail. So a turn that
+ * settles with a `send` through that lane starts its delivery as `pending`, and
+ * only the outbox's own terminal report moves it on. Guarded on NULL because
+ * that report can win the race — the first bubble is often accepted before
+ * runTurn returns — and a settle must never pull `delivered` back to `pending`.
+ */
 export async function settleTurnLedger(query: TurnLedgerQuery, schema: string,
     inboundMessageId: string): Promise<TurnLedgerRow | null> {
     if (!UUID.test(inboundMessageId || '')) fail('turn_ledger_inbound_invalid');
     const rows = await query<any[]>(
         `UPDATE "${schema}".agent_turn_ledger
-            SET state = 'settled', updated_at = NOW()
+            SET state = 'settled', updated_at = NOW(),
+                delivery_state = CASE
+                    WHEN delivery_state IS NULL AND delivery_route = 'durable'
+                         AND outcome ->> 'kind' = 'send' THEN 'pending'
+                    ELSE delivery_state END,
+                delivery_updated_at = CASE
+                    WHEN delivery_state IS NULL AND delivery_route = 'durable'
+                         AND outcome ->> 'kind' = 'send' THEN NOW()
+                    ELSE delivery_updated_at END
           WHERE inbound_message_id = $1::uuid RETURNING *`, [inboundMessageId]);
     return rows[0] ? mapRow(rows[0]) : null;
+}
+
+/**
+ * Record what the outbox learned about this turn's answer.
+ *
+ * Keyed by the inbound message id the dispatch rows carry as their origin
+ * (`agent_dispatch_outbox.inbound_message_id` is the same id this ledger is
+ * keyed on: the reply producer prepares its batch with the turn's inbound id),
+ * and by the conversation when the caller knows it, so an event for one
+ * conversation can never write to another's row.
+ *
+ * Idempotent and monotonic in ONE statement: the rank check is in the WHERE
+ * clause, so two events racing on the same row cannot both read the old state
+ * and let the lower one win. Returns `applied: false` for a duplicate, a
+ * downgrade or a turn that is not in the ledger (a proactive effect, a reply a
+ * person wrote).
+ */
+export async function recordTurnDeliveryOutcome(query: TurnLedgerQuery, schema: string, input: {
+    inboundMessageId: string;
+    conversationId?: string | null;
+    state: TurnDeliveryState;
+    receipt?: string | null;
+}): Promise<{ applied: boolean; row: TurnLedgerRow | null }> {
+    if (!UUID.test(input.inboundMessageId || '')) fail('turn_ledger_inbound_invalid');
+    if (input.conversationId && !UUID.test(input.conversationId)) fail('turn_ledger_conversation_invalid');
+    if (!(TURN_DELIVERY_STATES as readonly string[]).includes(input.state)) fail('turn_ledger_delivery_state_invalid');
+    const receipt = typeof input.receipt === 'string' && input.receipt.trim()
+        ? input.receipt.trim().slice(0, 300) : null;
+    // Only a receipt proves delivery. A `delivered` without one would be the
+    // exact claim this column exists to stop the system from making.
+    if (input.state === 'delivered' && !receipt) fail('turn_ledger_delivery_receipt_required');
+    const allowedFrom = (TURN_DELIVERY_STATES as readonly TurnDeliveryState[])
+        .filter(current => deliveryTransitionAllowed(current, input.state));
+    const rows = await query<any[]>(
+        `UPDATE "${schema}".agent_turn_ledger
+            SET delivery_state = $2::text,
+                delivery_receipt = COALESCE($3::text, delivery_receipt),
+                delivery_updated_at = NOW(),
+                answered_at = CASE WHEN $2::text = 'delivered' THEN COALESCE(answered_at, NOW())
+                                   ELSE answered_at END,
+                updated_at = NOW()
+          WHERE inbound_message_id = $1::uuid
+            AND ($4::uuid IS NULL OR conversation_id = $4::uuid)
+            AND (delivery_state IS NULL OR delivery_state = ANY($5::text[]))
+          RETURNING *`,
+        [input.inboundMessageId, input.state, receipt, input.conversationId ?? null, allowedFrom]);
+    if (rows[0]) return { applied: true, row: mapRow(rows[0]) };
+    return { applied: false, row: await readTurnLedger(query, schema, input.inboundMessageId) };
+}
+
+/** Turns whose answer has not reached the customer, for the Ops monitor. */
+export interface UndeliveredTurnSummary {
+    readonly total: number;
+    readonly pending: number;
+    readonly unknown: number;
+    readonly failed: number;
+    readonly oldestAgeSeconds: number;
+}
+
+/**
+ * Agent turns that decided to `send` and whose answer, `olderThanMinutes`
+ * after the customer wrote, still has no receipt. Bounded by `lookbackHours`
+ * so one forgotten row does not page forever; the dispatch reconciliation SLO
+ * keeps watching the outbox side of the same effect.
+ *
+ * Answers zero for a tenant that never took a turn through the ledger, or
+ * whose table predates the column, rather than failing: a monitor must not run
+ * DDL across every schema to ask a question.
+ */
+export async function readUndeliveredTurns(query: TurnLedgerQuery, schema: string, input: {
+    olderThanMinutes: number; lookbackHours?: number;
+}): Promise<UndeliveredTurnSummary> {
+    const empty: UndeliveredTurnSummary = Object.freeze(
+        { total: 0, pending: 0, unknown: 0, failed: 0, oldestAgeSeconds: 0 });
+    const [column] = await query<any[]>(
+        `SELECT 1 AS present FROM information_schema.columns
+          WHERE table_schema = $1 AND table_name = 'agent_turn_ledger' AND column_name = 'delivery_state'`,
+        [schema]);
+    if (!column) return empty;
+    const minutes = Math.max(1, Math.trunc(Number(input.olderThanMinutes) || 5));
+    const hours = Math.max(1, Math.trunc(Number(input.lookbackHours) || 24));
+    const [row] = await query<any[]>(
+        `SELECT COUNT(*)::int AS total,
+                COUNT(*) FILTER (WHERE delivery_state = 'pending')::int AS pending,
+                COUNT(*) FILTER (WHERE delivery_state = 'unknown')::int AS unknown,
+                COUNT(*) FILTER (WHERE delivery_state = 'failed')::int AS failed,
+                COALESCE(EXTRACT(EPOCH FROM (NOW() - MIN(created_at))), 0)::int AS oldest
+           FROM "${schema}".agent_turn_ledger
+          WHERE delivery_state IN ('pending','unknown','failed')
+            AND outcome ->> 'kind' = 'send'
+            AND created_at <= NOW() - make_interval(mins => $1::int)
+            AND created_at >= NOW() - make_interval(hours => $2::int)`,
+        [minutes, hours]);
+    return Object.freeze({
+        total: Number(row?.total) || 0,
+        pending: Number(row?.pending) || 0,
+        unknown: Number(row?.unknown) || 0,
+        failed: Number(row?.failed) || 0,
+        oldestAgeSeconds: Number(row?.oldest) || 0,
+    });
 }
 
 /**
@@ -478,6 +665,8 @@ export interface RecentTurnOutcome {
      * decides it has already happened twice.
      */
     readonly inboundMessageId: string;
+    /** What the outbox reported about this turn's answer. `null` = not tracked. */
+    readonly deliveryState: TurnDeliveryState | null;
 }
 
 export interface TurnLedgerRedactionScope {
@@ -510,7 +699,7 @@ export async function redactTurnLedger(query: TurnLedgerQuery, schema: string,
     const rows = await query<any[]>(
         `UPDATE "${schema}".agent_turn_ledger
             SET envelope = NULL, writers = '[]'::jsonb, handoff = NULL,
-                recipient = NULL, provider_message_id = NULL,
+                recipient = NULL, provider_message_id = NULL, delivery_receipt = NULL,
                 redacted_at = COALESCE(redacted_at, NOW()), updated_at = NOW()
           WHERE redacted_at IS NULL
             AND (

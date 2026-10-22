@@ -412,7 +412,7 @@ const answerLostText = (lang?: string) =>
 /** Whether the customer's message asks for something to be DONE (book, cancel, pay, change, confirm), or is a yes. */
 const asksForAction = (text: string): boolean => {
     const t = String(text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
-    return /\b(?:agend\w*|reserv\w*|cancel\w*|confirm\w*|reprogram\w*|cambi\w*|paga\w*|compr\w*|apart\w*|marc\w*|book\w*|schedule|reschedule|pay|buy|order|change|marcar|annul\w*|reserv\w*)\b/.test(t)
+    return /\b(?:agend\w*|reserv\w*|cancel\w*|confirm\w*|reprogram\w*|cambi\w*|paga\w*|compr\w*|apart(?!ament)\w*|marc\w*|book\w*|schedule|reschedule|pay|buy|order|change|marcar|annul\w*|reserv\w*)\b/.test(t)
         || /^(?:si|yes|sim|oui|ok|okay|dale|listo|vale|claro|perfecto|de acuerdo)\b/.test(t);
 };
 const TOOL_MARKUP_NUDGE: Record<string, string> = {
@@ -420,6 +420,33 @@ const TOOL_MARKUP_NUDGE: Record<string, string> = {
     en: 'You wrote a tool call as text. Never write tool calls as text: if you need to run an action, use the tool interface; otherwise answer the customer in plain language.',
     pt: 'Você escreveu uma chamada de ferramenta como texto. Nunca escreva chamadas como texto: se precisar executar uma ação, use a interface de ferramentas; senão, responda ao cliente em linguagem natural.',
     fr: "Vous avez écrit un appel d'outil sous forme de texte. N'écrivez jamais d'appels en texte : si vous devez exécuter une action, utilisez l'interface d'outils ; sinon répondez au client en langage naturel.",
+};
+/**
+ * The turn's last model call when the tool loop ends without an answer (rounds used up, the same read asked for again and
+ * again, a tool call written as text): no tools are offered, and this tells the model to answer with what the tools already
+ * returned. Without it the customer got «escríbame su pregunta otra vez» after the agent had read the very data asked for.
+ */
+const CLOSING_ANSWER_NUDGE: Record<string, string> = {
+    es: 'Ya no hay más herramientas en este mensaje. Responde ahora al cliente su último mensaje usando solo lo que las herramientas ya devolvieron arriba. Si algo no se pudo comprobar, dilo con claridad y ofrece el siguiente paso. No escribas llamadas a herramientas.',
+    en: 'No more tools are available in this message. Answer the customer\'s last message now, using only what the tools above already returned. If something could not be checked, say so plainly and offer the next step. Do not write tool calls.',
+    pt: 'Não há mais ferramentas nesta mensagem. Responda agora à última mensagem do cliente usando apenas o que as ferramentas já retornaram acima. Se algo não pôde ser verificado, diga isso com clareza e ofereça o próximo passo. Não escreva chamadas de ferramentas.',
+    fr: "Il n'y a plus d'outils dans ce message. Répondez maintenant au dernier message du client en utilisant uniquement ce que les outils ont déjà renvoyé ci-dessus. Si quelque chose n'a pas pu être vérifié, dites-le clairement et proposez l'étape suivante. N'écrivez pas d'appels d'outils.",
+};
+const closingAnswerNudge = (lang?: string) =>
+    CLOSING_ANSWER_NUDGE[String(lang || 'es').slice(0, 2).toLowerCase()] || CLOSING_ANSWER_NUDGE.es;
+/** What a read asked for again with the same arguments in the same turn gets back instead of a second execution. */
+const REPEATED_READ_NOTICE = 'This exact call (same tool, same arguments) was already made in this message; it was not run again and this is its earlier result. Do not call it again: use this result.';
+/** After this many repeated reads in one turn, the next model call is offered no tools and must answer. */
+const REPEATED_READS_BEFORE_ANSWER = 2;
+/** Arguments with keys sorted at every level, so `{a,b}` and `{b,a}` (and `''` and `{}`) are the same call. */
+const canonicalToolArguments = (raw: unknown): string => {
+    let args: unknown = raw;
+    if (typeof raw === 'string') args = raw.trim() ? JSON.parse(raw) : {};
+    if (args == null) args = {};
+    const sort = (value: unknown): unknown => Array.isArray(value) ? value.map(sort)
+        : value && typeof value === 'object' ? Object.keys(value as object).sort()
+            .reduce((o: any, k) => (o[k] = sort((value as any)[k]), o), {}) : value;
+    return JSON.stringify(sort(args));
 };
 const unverifiedClaimFallbackText = (lang?: string) =>
     UNVERIFIED_CLAIM_FALLBACK[(lang || 'es').slice(0, 2).toLowerCase()] || UNVERIFIED_CLAIM_FALLBACK.es;
@@ -5333,11 +5360,27 @@ export class ConversationsService {
                 ...STATIC_TOOL_NAMES,
             ])];
             let markupRetried = false;
+            // Reads the model ran this turn, by tool + canonical arguments. Asking for the same read again returns this
+            // result instead of a second execution (production 2026-10-22: list_customer_appointments ×4 with the same
+            // empty arguments used up every round and the customer was asked to repeat the question).
+            const turnReadResults = new Map<string, any>();
+            let repeatedReadCalls = 0;
+            // Set once the model was told to answer with what it has: no tools on the following call(s).
+            let toolsWithdrawn = false;
+            let closingNudged = false;
+            let closingCallMade = false;
+            const withdrawToolsForAnswer = (reason: string) => {
+                if (closingNudged) return;
+                toolsWithdrawn = true;
+                closingNudged = true;
+                currentMessages.push({ role: 'user', content: closingAnswerNudge(userLanguage) });
+                turnTrace.add('decision', 'tool_loop_answer_now', { reason, repeatedReadCalls });
+            };
 
             for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
                 // The server proposed or executed a transition this turn: its own text is the reply, no model call.
                 if (deterministicReply) { finalResponse = deterministicReply; break; }
-                const hasTools = tools.length > 0 && !learningSuppressed;
+                const hasTools = tools.length > 0 && !learningSuppressed && !toolsWithdrawn;
                 const styleOperation = [...executedToolsThisTurn].reverse().find(tool => isBusinessWriteTool(tool.name) && toolResultSucceeded(tool.result));
                 if (styleOperation && styleOperation !== lastStyleOperation) {
                     await refreshLearningExamples({ toolName: styleOperation.name, status: 'succeeded' });
@@ -5404,8 +5447,7 @@ export class ConversationsService {
                     const dedupedToolCalls: any[] = [];
                     const _keyFor = (tc: any): string => {
                         try {
-                            const args = typeof tc.function.arguments === 'string' ? JSON.parse(tc.function.arguments) : tc.function.arguments || {};
-                            return `${tc.function.name}:${JSON.stringify(Object.keys(args).sort().reduce((o: any, k) => (o[k]=args[k], o), {}))}`;
+                            return `${tc.function.name}:${canonicalToolArguments(tc.function.arguments)}`;
                         } catch { return `${tc.function.name}:${tc.id}`; }
                     };
                     for (const tc of originalToolCalls) {
@@ -5420,8 +5462,20 @@ export class ConversationsService {
                     if (dedupedToolCalls.length !== originalToolCalls.length) {
                         this.logger.log(`[Pipeline] Deduped ${originalToolCalls.length - dedupedToolCalls.length} duplicate tool call(s) this iteration`);
                     }
+                    // A read already run earlier in this turn with the same arguments is not run again: the model gets the
+                    // earlier result, marked as repeated. Writes always go through their own controls.
+                    const isRepeatableRead = (name: string) => !isWriteTool(name) && getToolPolicy(name)?.effect === 'read';
+                    const repeatedResultByKey = new Map<string, any>();
+                    for (const tc of dedupedToolCalls) {
+                        const key = _keyFor(tc);
+                        if (!isRepeatableRead(tc.function.name) || !turnReadResults.has(key)) continue;
+                        repeatedReadCalls++;
+                        repeatedResultByKey.set(key, { repeatedCall: true, notice: REPEATED_READ_NOTICE, result: turnReadResults.get(key) });
+                        this.logger.warn(`[Pipeline] Repeated read ${tc.function.name} with the same arguments — earlier result returned, not run again`);
+                        turnTrace.add('decision', 'tool_call_repeated', { tool: tc.function.name, repeatedReadCalls });
+                    }
                     // Execute only deduped set; fan-out results below maps back to originalToolCalls
-                    const toolCalls = dedupedToolCalls;
+                    const toolCalls = dedupedToolCalls.filter((tc: any) => !repeatedResultByKey.has(_keyFor(tc)));
 
                     // Run a single tool call: parse args, timeout-guard, isolate errors,
                     // emit its trace, and capture any _mediaToSend marker. Returns the
@@ -5567,8 +5621,13 @@ export class ConversationsService {
                     }
 
                     // Fan-out deduped results to original toolCallIds (LLM expects result per toolCallId)
-                    const _resultByKey = new Map<string, any>();
-                    dedupedToolCalls.forEach((tc: any, i: number) => _resultByKey.set(_keyFor(tc), results[i]));
+                    const _resultByKey = new Map<string, any>(repeatedResultByKey);
+                    toolCalls.forEach((tc: any, i: number) => {
+                        const key = _keyFor(tc);
+                        _resultByKey.set(key, results[i]);
+                        // A failed read may be asked for again (a timeout is not an answer); a read that answered is kept.
+                        if (isRepeatableRead(tc.function.name) && !(results[i] && results[i].error)) turnReadResults.set(key, results[i]);
+                    });
                     originalToolCalls.forEach((tc: any) => {
                         const key = _keyFor(tc);
                         const res = _resultByKey.get(key);
@@ -5586,11 +5645,20 @@ export class ConversationsService {
                         });
                     });
 
+                    // The model keeps asking for what it already has: the next call gets no tools and must answer with it.
+                    if (repeatedReadCalls >= REPEATED_READS_BEFORE_ANSWER) withdrawToolsForAnswer('repeated_reads');
+
                     continue; // Loop back for another LLM call with tool results
                 }
 
                 // No tool calls — this is the final text response
                 const writtenReply = response.content || '';
+                // The call told to answer with what it has (tools withdrawn) still asked for a tool, or said nothing: that is
+                // no answer. It already WAS the closing call, so the fixed text below is what remains.
+                if (toolsWithdrawn) {
+                    closingCallMade = true;
+                    if (response.toolCalls?.length || !writtenReply.trim()) { finalResponse = ''; break; }
+                }
                 // A tool call written AS TEXT (« <create_appointment>… », DeepSeek's DSML) is never executed — running
                 // a call parsed from text would book without the consent step — and never reaches the customer.
                 if (hasToolCallMarkup(writtenReply, markupToolNames)) {
@@ -5605,6 +5673,9 @@ export class ConversationsService {
                         currentMessages.push({ role: 'user', content: TOOL_MARKUP_NUDGE[String(userLanguage).slice(0, 2).toLowerCase()] || TOOL_MARKUP_NUDGE.es });
                         continue;
                     }
+                    // Out of retries: the closing no-tools call below answers from the tool results already gathered. Only a
+                    // call that was ALREADY that closing call falls back to the cleaned text.
+                    if (!closingNudged) { finalResponse = ''; break; }
                     finalResponse = this.cleanToolMarkupReply(writtenReply, markupToolNames, userLanguage, asksForAction(userText));
                     break;
                 }
@@ -5612,12 +5683,15 @@ export class ConversationsService {
                 break;
             }
 
-            // Tool loop exhausted all iterations without ever producing a final text
-            // answer (the LLM kept requesting tools). The side effects already ran,
-            // so force one last call WITHOUT tools to get a natural reply instead of
-            // returning empty and leaving the customer with no response.
-            if (!finalResponse) {
-                this.logger.warn(`[Pipeline] Tool loop exhausted ${MAX_TOOL_ITERATIONS} iterations without a final answer — forcing a no-tools response`);
+            // Tool loop ended without a final text answer (rounds used up, or a tool
+            // call written as text with no retry left). The side effects already ran,
+            // so force one last call WITHOUT tools, told to answer from the tool
+            // results already gathered, instead of asking the customer to repeat.
+            // Its text goes through applyOutputGuardrails like any other reply.
+            if (!finalResponse && !closingCallMade) {
+                this.logger.warn(`[Pipeline] Tool loop ended without a final answer — forcing a no-tools response from the results gathered`);
+                if (!closingNudged) withdrawToolsForAnswer('rounds_exhausted');
+                closingCallMade = true;
                 try {
                     const closing = await executeLearningModel({
                         task: 'conversation',
@@ -5639,9 +5713,10 @@ export class ConversationsService {
                 } catch (e: any) {
                     this.logger.warn(`[Pipeline] Forced no-tools response failed: ${e.message}`);
                 }
-                if (!finalResponse) {
-                    finalResponse = TOOL_LOOP_FALLBACK_REPLY;
-                }
+            }
+            // Last resort: the closing call failed or said nothing.
+            if (!finalResponse) {
+                finalResponse = TOOL_LOOP_FALLBACK_REPLY;
             }
 
             // Booking state already persisted earlier in the engine block

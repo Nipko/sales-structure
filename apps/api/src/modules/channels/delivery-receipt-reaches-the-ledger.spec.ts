@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import {
-    parseMetaDeliveryStatuses, parseProviderPricing, recordChannelDeliveryStatuses,
+    parseMetaDeliveryStatuses, parseProviderPricing, providerReportedFree, recordChannelDeliveryStatuses,
 } from './channel-delivery-status';
 import { applyDispatchProviderStatus } from './agent-dispatch-outbox';
 
@@ -134,7 +134,37 @@ describe('a delivery receipt reaches the money as well as the history', () => {
             id: 'wamid.X', status: 'delivered', recipient_id: '573001112233',
             pricing: { billable: false, pricing_model: 'PMP', category: 'utility' },
         }]);
-        expect(parsed.pricing).toEqual({ billable: false, category: 'utility', model: 'PMP' });
+        expect(parsed.pricing).toEqual({ billable: false, category: 'utility', model: 'PMP',
+            type: null, subtype: null });
+    });
+
+    it('reads pricing.type and pricing.subtype, so a paid_exempt delivery is known to be free', () => {
+        // Government / non-profit senders (from 2026-10-12): a paid category,
+        // `billable: true`, and still no charge. Dropping `subtype` here meant
+        // the ledger settled it at the reserved price.
+        const [parsed] = parseMetaDeliveryStatuses([{
+            id: 'wamid.G', status: 'delivered', recipient_id: '573001112233',
+            pricing: { billable: true, pricing_model: 'PMP', category: 'marketing',
+                type: 'regular', subtype: 'paid_exempt' },
+        }]);
+        expect(parsed.pricing).toEqual({ billable: true, category: 'marketing', model: 'PMP',
+            type: 'regular', subtype: 'paid_exempt' });
+        expect(providerReportedFree(parsed.pricing)).toBe(true);
+        // A block carrying only the subtype is still a statement, not nothing.
+        expect(parseProviderPricing({ subtype: 'paid_exempt' }))
+            .toEqual({ billable: null, category: null, model: null, type: null, subtype: 'paid_exempt' });
+    });
+
+    it('treats only an explicit provider statement as free', () => {
+        expect(providerReportedFree({ billable: false })).toBe(true);
+        expect(providerReportedFree({ billable: true, type: 'free_customer_service' })).toBe(true);
+        expect(providerReportedFree({ billable: true, type: 'FREE_ENTRY_POINT' })).toBe(true);
+        expect(providerReportedFree({ billable: true, type: 'regular', subtype: 'PAID_EXEMPT' })).toBe(true);
+        expect(providerReportedFree({ billable: true, type: 'regular' })).toBe(false);
+        expect(providerReportedFree({ billable: null, category: 'service' })).toBe(false);
+        expect(providerReportedFree({ subtype: 'something_new' })).toBe(false);
+        expect(providerReportedFree(null)).toBe(false);
+        expect(providerReportedFree(undefined)).toBe(false);
     });
 
     it('keeps a scoped receipt recipient distinct across business portfolios', () => {
@@ -154,7 +184,7 @@ describe('a delivery receipt reaches the money as well as the history', () => {
         expect(parseProviderPricing(null)).toBeNull();
         expect(parseProviderPricing({ billable: 'false' })).toBeNull();
         expect(parseProviderPricing({ pricing_model: 'PMP' }))
-            .toEqual({ billable: null, category: null, model: 'PMP' });
+            .toEqual({ billable: null, category: null, model: 'PMP', type: null, subtype: null });
     });
 
     it('carries the tenant, so the receipt can pause the number that cannot pay', async () => {

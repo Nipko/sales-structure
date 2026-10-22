@@ -15,7 +15,7 @@ import { describeBlock, type SpendBlock } from '../../billing/whatsapp-spend/spe
 import { ChannelTokenService } from '../../channels/channel-token.service';
 import { isConnectionRefusal } from '../../channels/connection-refusal';
 import { AccountPauseStore } from '../../channels/account-pause-store';
-import { approvedTemplateCategory } from '../../channels/dispatch-price-facts';
+import { approvedTemplateCategory, serviceWindowOpenForRecipient } from '../../channels/dispatch-price-facts';
 import {
     classifyTransportFailure, metaGraphAnswer, metaGraphClassifier,
 } from '../../channels/provider-error-classification';
@@ -532,9 +532,20 @@ export class WhatsappMessagingService {
         // is the one Meta approved the template AS, and it is read from the
         // templates table below.
         template: templateName ? { name: templateName, category } : null,
-        // A session message can only be delivered inside the window — Meta
-        // refuses it otherwise — so a non-template send here IS `service`.
-        insideServiceWindow: templateName ? undefined : true,
+        // ── THE WINDOW IS READ, NOT ASSUMED ─────────────────────────────
+        //
+        // This used to hardcode `true` for every non-template send, on the
+        // reasoning that Meta refuses free-form messages outside the window.
+        // Meta does refuse them — which is exactly why assuming the window
+        // priced a send Meta was about to reject as a `service` reply and let
+        // it through the gate. A free-form send is `service` only where the
+        // thread shows an inbound message inside the last 24 hours; a closed
+        // window, and one that cannot be read, both answer `false` (fail
+        // closed), which the admission resolves as `proactive_without_template`.
+        // Templates are untouched: their category comes from Meta's approval.
+        insideServiceWindow: templateName
+          ? undefined
+          : await this.recipientWindowOpen(schemaName, phoneNumberId, String(payload?.to ?? '')),
         // The destination, read to derive the tariff country and then dropped.
         recipientAddress: String(payload?.to ?? ''),
         // A template is an initiation by definition — it exists to open a
@@ -647,6 +658,26 @@ export class WhatsappMessagingService {
     } catch (error: any) {
       this.logger.warn(`[Spend] template category unreadable for ${templateName}: ${error?.message}`);
       return null;
+    }
+  }
+
+  /**
+   * Is the 24-hour customer service window open with this recipient?
+   *
+   * `true` only when confirmed. An unreadable window answers `false`: for a
+   * free-form send, "we could not tell" must not be priced and admitted as a
+   * service reply (fail closed). Never throws.
+   */
+  private async recipientWindowOpen(schemaName: string, phoneNumberId: string,
+    recipient: string): Promise<boolean> {
+    try {
+      return await serviceWindowOpenForRecipient(
+        (sql, params) => this.prisma.executeInTenantSchema(schemaName, sql, params ?? []),
+        { channelAccountId: phoneNumberId, recipient });
+    } catch (error: any) {
+      this.logger.warn(`[Spend] service window unreadable for ${phoneNumberId}: ${error?.message}. `
+        + 'Treating it as closed.');
+      return false;
     }
   }
 

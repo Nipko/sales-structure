@@ -33,6 +33,7 @@ import { consumesFreeAllowance, freeAllowanceFor } from './free-allowance';
 import { spendBlock, type SpendBlock } from './spend-diagnosis';
 import { AccountPauseStore } from '../../channels/account-pause-store';
 import { fundingSignalFrom } from '../../channels/meta-funding-signals';
+import { providerReportedFree, type ProviderPricingSignal } from '../../channels/channel-delivery-status';
 import {
     DEFAULT_REPETITION_POLICY, describeRepetition, judgeRepetition,
     type RepetitionPolicy,
@@ -842,8 +843,7 @@ export class WhatsappSpendService {
          * was inside the free allowance or a free entry point. Nothing else may
          * decide that, because everything else would be guessing.
          */
-        readonly pricing?: { readonly billable?: boolean | null;
-            readonly category?: string | null; readonly model?: string | null } | null;
+        readonly pricing?: ProviderPricingSignal | null;
     }): Promise<'settled' | 'released' | 'ignored' | 'unknown_receipt'> {
         // ── 1. THE FACT, DURABLE, BEFORE ANY CONSEQUENCE ────────────────────
         //
@@ -973,8 +973,7 @@ export class WhatsappSpendService {
         readonly providerMessageId: string;
         readonly status: 'sent' | 'delivered' | 'read' | 'failed';
         readonly errorCode?: string | null;
-        readonly pricing?: { readonly billable?: boolean | null;
-            readonly category?: string | null; readonly model?: string | null } | null;
+        readonly pricing?: ProviderPricingSignal | null;
     }): Promise<'settled' | 'released' | 'ignored' | 'unknown_receipt'> {
         return this.prisma.transactionInTenantSchema(schema, async query => {
             const row = await findReservationByProviderMessage(
@@ -1008,7 +1007,10 @@ export class WhatsappSpendService {
             // authority on the amount is the reservation's own price, and where
             // that price was never computable the effect stays pending until a
             // reconciliation against Meta's invoice resolves it.
-            const free = receipt.pricing?.billable === false;
+            // `providerReportedFree` also reads `type: free_*` and
+            // `subtype: paid_exempt` (government / non-profit senders), which
+            // can arrive with `billable: true`.
+            const free = providerReportedFree(receipt.pricing);
             if (!free && row.money.basis === 'unknown') {
                 // It arrived and nobody can say what it cost. The exposure
                 // stands, now marked as awaiting Meta's invoice rather than

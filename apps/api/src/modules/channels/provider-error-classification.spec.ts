@@ -44,6 +44,15 @@ describe('what one Meta answer proves', () => {
         }
     });
 
+    it('refuses the per-user marketing limit (131049) and never retries it immediately', () => {
+        // Meta asks not to retry for at least 24h; an immediate retry would
+        // only burn another refusal. Even an `is_transient: true` must not flip it.
+        expect(metaGraphClassifier(graph(400, err(131049))))
+            .toEqual({ kind: 'rejected', errorCode: 'meta_131049', retryable: false });
+        expect(metaGraphClassifier(graph(400, err(131049, { is_transient: true }))))
+            .toEqual({ kind: 'rejected', errorCode: 'meta_131049', retryable: false });
+    });
+
     it('honours the provider transient flag, and only when it is explicitly true', () => {
         expect(metaGraphClassifier(graph(500, err(999999, { is_transient: true }))))
             .toEqual({ kind: 'rejected', errorCode: 'meta_999999', retryable: true });

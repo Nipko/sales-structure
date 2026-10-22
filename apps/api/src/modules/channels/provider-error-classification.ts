@@ -182,11 +182,37 @@ export function telegramAnswer(status: number, body: any): ProviderAnswer {
     };
 }
 
-/** No answer arrived. Never a rejection: the request may have been processed. */
+/**
+ * Failures that happen before a connection to the provider exists: the request
+ * was never written, so the provider cannot have processed it. Undici reports
+ * them all as `TypeError('fetch failed')` with the real code in `cause`.
+ */
+const PRE_CONNECTION_CODES = new Set([
+    'ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'EHOSTUNREACH', 'ENETUNREACH', 'UND_ERR_CONNECT_TIMEOUT',
+    'CERT_HAS_EXPIRED', 'UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'ERR_TLS_CERT_ALTNAME_INVALID', 'DEPTH_ZERO_SELF_SIGNED_CERT',
+]);
+
+function transportCauseCode(error: unknown): string | null {
+    let current: any = error;
+    for (let depth = 0; depth < 4 && current; depth++) {
+        if (typeof current.code === 'string') return current.code;
+        current = current.cause;
+    }
+    return null;
+}
+
+/**
+ * No answer arrived. Unknown unless the failure provably happened before a
+ * connection existed; then it is a retryable rejection, because nothing reached
+ * the provider and leaving it unknown parks the reply for manual review.
+ */
 export function classifyTransportFailure(error: unknown): StrictDispatchOutcome {
     const name = (error as any)?.name;
     if (name === 'TimeoutError' || name === 'AbortError') return unknown('provider_timeout');
-    return unknown(`transport_failure:${String((error as any)?.message || error).slice(0, 80)}`);
+    const code = transportCauseCode(error);
+    if (code && PRE_CONNECTION_CODES.has(code)) return rejected(`transport_not_connected:${code}`, true);
+    const message = String((error as any)?.message || error).slice(0, 80);
+    return unknown(`transport_failure:${message}${code ? `:${code}` : ''}`);
 }
 
 /**

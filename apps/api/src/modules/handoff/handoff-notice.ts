@@ -70,3 +70,22 @@ export function handoffNoticeText(kind: HandoffNoticeKind, language: HandoffNoti
     if (!catalog) throw new Error('handoff_notice_kind_unknown');
     return catalog[language] || catalog.es;
 }
+
+/**
+ * What the agent cannot do, said BEFORE the transfer notice when the reason is a request only a person may grant. A customer
+ * who asked for a discount and only read «Le estoy transfiriendo…» did not learn that the discount was not confirmed
+ * (F4300-07): the transfer must not read as a yes. Deterministic like the notices above; null for every other reason.
+ */
+const HANDOFF_REASON_PREFACE: Readonly<Record<string, NoticeCatalog>> = Object.freeze({
+    discount_request: Object.freeze({
+        es: 'No puedo confirmar descuentos ni precios especiales; eso lo aprueba nuestro equipo.',
+        en: `I can't confirm discounts or special prices; our team has to approve them.`,
+        pt: 'Não posso confirmar descontos nem preços especiais; isso precisa ser aprovado pela nossa equipe.',
+        fr: `Je ne peux pas confirmer de remise ni de prix spécial ; c'est notre équipe qui les approuve.`,
+    }),
+});
+
+export function handoffReasonPreface(reason: string | null | undefined, language: HandoffNoticeLanguage): string | null {
+    const catalog = reason && Object.prototype.hasOwnProperty.call(HANDOFF_REASON_PREFACE, reason) ? HANDOFF_REASON_PREFACE[reason] : undefined;
+    return catalog ? (catalog[language] || catalog.es) : null;
+}

@@ -13,7 +13,7 @@ import { LearningService } from '../learning/learning.service';
 import { WidgetAgentReplyStore, type WidgetAgentReplyReceipt } from '../widget/widget-agent-reply.store';
 import { createAgentReplyProvenanceCollector, createAgentReplySourceAuthority,
     type AgentReplyProvenanceCollector } from './agent-reply-provenance';
-import { handoffNoticeLanguage, type HandoffNoticeKind } from '../handoff/handoff-notice';
+import { handoffNoticeLanguage, handoffReasonPreface, type HandoffNoticeKind } from '../handoff/handoff-notice';
 import type { RuntimeLearningExample } from '../learning/learning-contracts';
 import type { RuntimeLearningFootprint } from '../learning/learning-runtime-footprint';
 import { LLMSourceAuthorityUnavailable } from '../ai/interfaces/llm-source-authority';
@@ -1392,7 +1392,8 @@ export class ConversationsService {
             const handoffResult = await this.handoffService.executeHandoff(tenantId, conversation.id, normalizedMsg, handoffReason);
             const agentName = handoffResult.assignedTo ? (handoffResult as any).assignedAgentName : null;
             // Handoff runs before userLanguage is computed — derive it from this message.
-            const hl = handoffText(this.languageDetector.detect(content?.text || '', config.language || 'es'));
+            const handoffLanguage = this.languageDetector.detect(content?.text || '', config.language || 'es');
+            const hl = handoffText(handoffLanguage);
             let handoffMsg: string;
             if (agentName) {
                 handoffMsg = hl.withAgent(agentName);
@@ -1405,6 +1406,9 @@ export class ConversationsService {
                 const position = Number(queueCount?.[0]?.cnt || 1);
                 handoffMsg = position <= 1 ? hl.queueHead : hl.queueN(position);
             }
+            // A negotiation the agent cannot grant says so before the transfer, so the notice never reads as a yes (F4300-07).
+            const preface = handoffReasonPreface(handoffReason, handoffNoticeLanguage(handoffLanguage));
+            if (preface) handoffMsg = `${preface} ${handoffMsg}`;
             await this.replyOnceThroughOutbox({
                 tenantId, conversation, msg: normalizedMsg,
                 operationalScope: turnScope, inboundMessageId,

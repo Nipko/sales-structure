@@ -5686,6 +5686,13 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_turn_ledger" (
     -- ahi y uno nuevo por aca, y las dos formas terminan iguales.
     outcome JSONB,
     delivery_route TEXT NOT NULL DEFAULT 'unknown',
+    -- Si el cliente recibio de verdad la respuesta del turno, alimentado por
+    -- las transiciones terminales del outbox. Mismo patron que `outcome`: un
+    -- tenant viejo las recibe por los ALTER de mas abajo.
+    delivery_state TEXT,
+    delivery_receipt TEXT,
+    delivery_updated_at TIMESTAMPTZ,
+    answered_at TIMESTAMPTZ,
     redacted_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -5712,6 +5719,22 @@ CREATE INDEX IF NOT EXISTS idx_agent_turn_ledger_contact
     ON "{{SCHEMA_NAME}}"."agent_turn_ledger"(contact_id) WHERE redacted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_agent_turn_ledger_unsettled
     ON "{{SCHEMA_NAME}}"."agent_turn_ledger"(updated_at) WHERE state <> 'settled';
+-- La verdad de la entrega. `settled` solo significaba "runTurn volvio": una
+-- respuesta cuyo POST murio con `fetch failed` quedaba igual que una que el
+-- cliente leyo. pending | delivered | failed | unknown | suppressed, NULL =
+-- no rastreado (toda fila escrita por el binario anterior).
+-- Generado desde TURN_LEDGER_DDL (modules/conversations/agent-turn-ledger.ts).
+ALTER TABLE "{{SCHEMA_NAME}}"."agent_turn_ledger"
+    ADD COLUMN IF NOT EXISTS delivery_state TEXT;
+ALTER TABLE "{{SCHEMA_NAME}}"."agent_turn_ledger"
+    ADD COLUMN IF NOT EXISTS delivery_receipt TEXT;
+ALTER TABLE "{{SCHEMA_NAME}}"."agent_turn_ledger"
+    ADD COLUMN IF NOT EXISTS delivery_updated_at TIMESTAMPTZ;
+ALTER TABLE "{{SCHEMA_NAME}}"."agent_turn_ledger"
+    ADD COLUMN IF NOT EXISTS answered_at TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS idx_agent_turn_ledger_undelivered
+    ON "{{SCHEMA_NAME}}"."agent_turn_ledger"(created_at)
+    WHERE delivery_state IN ('pending','unknown','failed');
 -- END AGENT TURN LEDGER
 
 -- BEGIN AGENT HANDOFF EFFECTS

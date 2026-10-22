@@ -5,8 +5,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import {
     TURN_LEDGER_DDL, TurnLedgerError,
     openTurnLedger, readRecentTurnOutcomes, readTurnLedger, recordTurnDelivery, recordTurnHandoff,
-    recordTurnOutcome, recordTurnResult, redactTurnLedger, settleTurnLedger,
-    type RecentTurnOutcome,
+    recordTurnDeliveryOutcome, recordTurnOutcome, recordTurnResult, redactTurnLedger, settleTurnLedger,
+    type RecentTurnOutcome, type TurnDeliveryState,
     type TurnBinding, type TurnDeliveryRoute, type TurnEnvelope, type TurnHandoffRecord,
     type TurnLedgerRedactionScope, type TurnLedgerRow, type TurnWriterRecord,
 } from './agent-turn-ledger';
@@ -173,6 +173,27 @@ export class AgentTurnLedgerStore {
             this.logger.error(
                 `[TurnLedger] turn ${inboundMessageId} is UNSETTLED and recoverable: ${error?.message}`);
             return false;
+        }
+    }
+
+    /**
+     * What the outbox learned about this turn's answer: delivered on a receipt,
+     * failed on a definite refusal, unknown when nobody can say.
+     *
+     * Never thrown: it runs from an event handler after the dispatch already
+     * committed, and the outbox row stays the authority for the effect itself.
+     * A failure is an ERROR so the gap is visible.
+     */
+    async recordDeliveryOutcome(schema: string, input: {
+        inboundMessageId: string; conversationId?: string | null;
+        state: TurnDeliveryState; receipt?: string | null;
+    }): Promise<{ applied: boolean; row: TurnLedgerRow | null } | null> {
+        try {
+            return await this.run(schema, query => recordTurnDeliveryOutcome(query, schema, input));
+        } catch (error: any) {
+            this.logger.error(`[TurnLedger] delivery ${input.state} not recorded for `
+                + `${input.inboundMessageId}: ${error?.message}`);
+            return null;
         }
     }
 

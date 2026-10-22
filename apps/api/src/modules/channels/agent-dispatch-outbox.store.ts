@@ -1,5 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { randomUUID } from 'crypto';
+import { AGENT_DISPATCH_SETTLED_EVENT, dispatchSettledEvent } from './agent-dispatch-events';
 import { hasAgentSourceFence } from '../../common/utils/agent-source-fence';
 import { PrismaService } from '../prisma/prisma.service';
 import { resolveReadyTenantContext } from '../../common/utils/tenant-lifecycle.util';
@@ -45,8 +47,33 @@ import { assertRuntimeLearningFootprint, type RuntimeLearningFootprint } from '.
 @Injectable()
 export class AgentDispatchOutboxStore {
     private readonly initialized = new Map<string, Promise<void>>();
+    private readonly logger = new Logger(AgentDispatchOutboxStore.name);
 
-    constructor(private readonly prisma: PrismaService, private readonly redis: RedisService) {}
+    constructor(private readonly prisma: PrismaService, private readonly redis: RedisService,
+        @Optional() private readonly events?: EventEmitter2) {}
+
+    /**
+     * Tell whoever cares what became of an effect — AFTER the transition has
+     * committed, so nobody hears of a state that could still roll back. Every
+     * terminal transition passes through this store, which is why it publishes
+     * here rather than in each of the processor's many exits.
+     *
+     * Never throws: the effect's outcome is already durable, and a listener
+     * that fails must not turn a recorded send into a job BullMQ retries.
+     */
+    private publishSettled(tenantId: string, schema: string,
+        rows: readonly (DispatchRow | null | undefined)[]): void {
+        if (!this.events) return;
+        for (const row of rows) {
+            const event = dispatchSettledEvent(tenantId, schema, row);
+            if (!event) continue;
+            try {
+                this.events.emit(AGENT_DISPATCH_SETTLED_EVENT, event);
+            } catch (error: any) {
+                this.logger.warn(`[Dispatch] settled event for ${event.dispatchId} not published: ${error?.message}`);
+            }
+        }
+    }
 
     /** Bootstrap outside every fence. Ownership is verified before any DDL. */
     private async schemaFor(tenantId: string): Promise<string> {
@@ -250,10 +277,12 @@ export class AgentDispatchOutboxStore {
     /** The committed pass that retires permissions nobody settled. */
     async expireLeases(tenantId: string, limit = 100): Promise<DispatchRow[]> {
         const schema = await this.schemaFor(tenantId);
-        return this.prisma.transactionInTenantSchema(schema, async query => {
+        const rows = await this.prisma.transactionInTenantSchema(schema, async query => {
             await this.privacy(query, schema, tenantId);
             return expireDispatchLeases(query, schema, limit);
         });
+        this.publishSettled(tenantId, schema, rows);
+        return rows;
     }
 
     /**
@@ -412,7 +441,10 @@ export class AgentDispatchOutboxStore {
         await recordDispatchLatency(this.redis, 'admit', Date.now() - startedAt);
         // Reported after the commit, so the suppression is durable before
         // anybody is told about it.
-        if (row.state === 'suppressed') throw new DispatchOutboxError('dispatch_effect_superseded');
+        if (row.state === 'suppressed') {
+            this.publishSettled(tenantId, schema, [row]);
+            throw new DispatchOutboxError('dispatch_effect_superseded');
+        }
         return { schemaName: schema, leaseToken, row };
     }
 
@@ -430,6 +462,7 @@ export class AgentDispatchOutboxStore {
         // sample. Recording it would make the distribution look better the more
         // often the write broke.
         await recordDispatchLatency(this.redis, 'settle', Date.now() - startedAt);
+        this.publishSettled(tenantId, schema, [row]);
         return row;
     }
 
@@ -437,10 +470,12 @@ export class AgentDispatchOutboxStore {
     async recordLateAcceptance(tenantId: string, dispatchId: string, leaseToken: string,
         receipt: string): Promise<DispatchRow> {
         const schema = await this.schemaFor(tenantId);
-        return this.prisma.transactionInTenantSchema(schema, async query => {
+        const row = await this.prisma.transactionInTenantSchema(schema, async query => {
             await this.privacy(query, schema, tenantId);
             return recordLateDispatchAcceptance(query, schema, { dispatchId, leaseToken, receipt });
         });
+        this.publishSettled(tenantId, schema, [row]);
+        return row;
     }
 
     /** The uncertain effects waiting for a person, oldest first. */
@@ -489,10 +524,12 @@ export class AgentDispatchOutboxStore {
         actorId?: string | null; actorRole?: string | null; receipt?: string | null;
     }): Promise<{ row: DispatchRow; resolution: DispatchResolutionRecord }> {
         const schema = await this.schemaFor(tenantId);
-        return this.prisma.transactionInTenantSchema(schema, async query => {
+        const resolved = await this.prisma.transactionInTenantSchema(schema, async query => {
             await this.privacy(query, schema, tenantId);
             return resolveDispatchReconciliation(query, schema, input);
         });
+        this.publishSettled(tenantId, schema, [resolved.row]);
+        return resolved;
     }
 
     /** Decisions still to be copied into the global audit log, oldest first. */
@@ -517,9 +554,11 @@ export class AgentDispatchOutboxStore {
         errorCode: string; retryInSeconds?: number; permanent?: boolean;
     }): Promise<DispatchRow> {
         const schema = await this.schemaFor(tenantId);
-        return this.prisma.transactionInTenantSchema(schema, async query => {
+        const row = await this.prisma.transactionInTenantSchema(schema, async query => {
             await this.privacy(query, schema, tenantId);
             return recordDispatchPreflightFailure(query, schema, { dispatchId, ...input });
         });
+        this.publishSettled(tenantId, schema, [row]);
+        return row;
     }
 }

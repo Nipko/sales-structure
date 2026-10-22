@@ -2676,6 +2676,26 @@ export class AIToolExecutorService {
             } catch { partial.push('leadTags'); }
         }
 
+        // Only agent-authored notes on the resolved active lead belong in the
+        // customer-facing context. Internal human notes remain private.
+        let leadNotes: { id: string; content: string; createdAt: string; truncated?: boolean }[] | null = null;
+        if (lead) {
+            try {
+                const noteRows: any[] = await this.prisma.$queryRawUnsafe(
+                    `SELECT id, LEFT(content, 1000) AS content, created_at,
+                            char_length(content) > 1000 AS truncated
+                     FROM "${schema}".notes
+                     WHERE lead_id = $1::uuid AND created_by = 'agent'
+                     ORDER BY created_at DESC, id DESC LIMIT 5`,
+                    lead.id,
+                );
+                leadNotes = noteRows.map(row => ({
+                    id: row.id, content: row.content, createdAt: row.created_at,
+                    ...(row.truncated === true ? { truncated: true } : {}),
+                }));
+            } catch { partial.push('leadNotes'); }
+        }
+
         return readOk({
             unreadable: partial.length ? partial : undefined,
             contact: contact ? {
@@ -2687,6 +2707,7 @@ export class AIToolExecutorService {
             } : null,
             lead: lead ? {
                 tags: leadTags,
+                notes: leadNotes,
                 stage: lead.stage,
                 score: lead.score,
                 firstName: lead.first_name,

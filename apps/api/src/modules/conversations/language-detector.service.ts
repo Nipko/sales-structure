@@ -60,10 +60,17 @@ export class LanguageDetectorService {
      */
     private readonly sentenceWords: Record<string, string[]> = {
         es: ['el', 'los', 'las', 'una', 'del', 'con', 'mis', 'sus', 'estoy', 'hay', 'soy', 'eres', 'interesa', 'interesan', 'funcionan', 'funciona', 'nosotros', 'ustedes', 'usted', 'tambien', 'quiero', 'tengo', 'busco', 'necesito',
-            'hasta', 'habitaciones', 'habitacion', 'dormitorios', 'millones', 'millon', 'venta', 'buscamos', 'necesitamos', 'cuantos', 'cuantas'],
-        en: ['the', 'is', 'are', 'was', 'of', 'to', 'in', 'it', 'my', 'with', 'this', 'that', 'for', 'and', 'you', 'your', 'have', 'has', 'be', 'can', 'will', 'about', 'from', 'what', 'how', 'does', 'not', 'want', 'need'],
-        pt: ['os', 'uma', 'da', 'dos', 'das', 'com', 'nao', 'voce', 'voces', 'tem', 'estou', 'meu', 'minha', 'pra', 'quero', 'preciso', 'gostaria', 'tambem'],
-        fr: ['le', 'les', 'des', 'du', 'une', 'est', 'sont', 'avec', 'dans', 'pour', 'vous', 'nous', 'je', 'mon', 'ma', 'mes', 'pas', 'veux', 'besoin', 'voudrais'],
+            'hasta', 'habitaciones', 'habitacion', 'dormitorios', 'millones', 'millon', 'venta', 'buscamos', 'necesitamos', 'cuantos', 'cuantas',
+            // Everyday Spanish that Portuguese, English and French spell differently (pt «e/seu/muito/faço/ontem/hoje/noite/já/isso»).
+            'y', 'su', 'mi', 'lo', 'ya', 'eso', 'esto', 'mucho', 'mucha', 'muchos', 'muchas', 'hago', 'dime', 'dejas', 'puedes', 'puede', 'pueden', 'quieres', 'ayer', 'hoy', 'manana', 'tiempo', 'noche', 'noches'],
+        en: ['the', 'is', 'are', 'was', 'of', 'to', 'in', 'it', 'my', 'with', 'this', 'that', 'for', 'and', 'you', 'your', 'have', 'has', 'be', 'can', 'will', 'about', 'from', 'what', 'how', 'does', 'not', 'want', 'need',
+            'much', 'many', 'night', 'there', 'any'],
+        // Not «dos»: it is Portuguese «of the» AND Spanish «two» («me los dejas a 100 mil los dos»).
+        pt: ['os', 'uma', 'da', 'das', 'com', 'nao', 'voce', 'voces', 'tem', 'estou', 'meu', 'minha', 'pra', 'quero', 'preciso', 'gostaria', 'tambem',
+            'muito', 'muita', 'seu', 'sua', 'isso', 'isto', 'hoje', 'ontem', 'noite', 'faco', 'pode', 'tempo', 'amanha'],
+        fr: ['le', 'les', 'des', 'du', 'une', 'est', 'sont', 'avec', 'dans', 'pour', 'vous', 'nous', 'je', 'mon', 'ma', 'mes', 'pas', 'veux', 'besoin', 'voudrais',
+            // «et» (and) and everyday French that Spanish, Portuguese and English spell differently.
+            'et', 'mais', 'temps', 'demain', 'nuit', 'aujourd'],
     };
 
     /**
@@ -75,6 +82,68 @@ export class LanguageDetectorService {
         let hits = 0;
         for (const word of words) if (tokens.has(word)) hits++;
         return hits + (this.strongMarkers[lang]?.chars?.test(raw) ? 2 : 0);
+    }
+
+    /**
+     * Greetings, thanks and yes/no words. People sprinkle them across languages, so they are never evidence that the
+     * customer SWITCHED language — but they still are a sign of the language they belong to (they keep it).
+     */
+    private readonly courtesyWords = new Set(['hola', 'gracias', 'buenas', 'buenos', 'hello', 'thanks', 'thank', 'please', 'ola', 'obrigado', 'obrigada', 'sim', 'bonjour', 'bonsoir', 'merci', 'salut', 'oui']);
+
+    /**
+     * Everything the message shows of `lang`: distinct marker, function and request words (half a point for a weak
+     * marker), one point for a character only that language uses, and for Portuguese a standalone «e» (and) — «e tem
+     * estacionamento?» — which Spanish only writes before an i-sound («padre e hijo») and «e-mail» never is.
+     * With `courtesy: false` greetings and thanks do not count.
+     */
+    private languageEvidence(lang: string, tokens: Set<string>, raw: string, courtesy: boolean): number {
+        const words = new Set([...(this.markers[lang] ?? []), ...(this.sentenceWords[lang] ?? []), ...(this.strongMarkers[lang]?.words ?? [])]);
+        let hits = 0;
+        for (const word of words) if (tokens.has(word) && (courtesy || !this.courtesyWords.has(word))) hits++;
+        for (const word of this.weakMarkers[lang] ?? []) if (tokens.has(word)) hits += 0.5;
+        if (this.diacritics[lang]?.test(raw) || this.strongMarkers[lang]?.chars?.test(raw)) hits++;
+        if (lang === 'pt' && /(?:^|[\s,;:!?.¡¿])e\s+(?!h?i)\p{L}/u.test(raw)) hits++;
+        return hits;
+    }
+
+    /**
+     * A capitalised word in the middle of a sentence is a name (a hotel, a plan, a city, a brand): «Hotel Aurora con
+     * las vistas al mar», «Plan Aurora el sabado». A message built around a name is judged by the strict rules only.
+     */
+    private mentionsName(text: string): boolean {
+        const words = (text || '').trim().split(/\s+/);
+        for (let i = 1; i < words.length; i++) {
+            const word = words[i].replace(/^[^\p{L}]+/u, '');
+            if (!/^\p{Lu}/u.test(word) || /^I(?:['’]|$)/.test(word)) continue;
+            if (/[.!?:¡¿]$/.test(words[i - 1]) || /^[¡¿]/.test(words[i])) continue;
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * The language of THIS message when it plainly is not the stored one. Production 2026-10-22: «a cuánto la noche en
+     * su hotel?» and «me sangra mucho la encía, qué hago?» after an English chat, «dime el total de pedidos que tengo
+     * registrados» after a Portuguese one and «e tem estacionamento?» after an English one were all answered in the
+     * stored language: each carried one or two words of the new language and none of the old, and only a full sentence
+     * with three pieces of evidence (or two request words) could switch.
+     *
+     * The current message wins when it has three or more words, no name in it, not a single sign of the stored language
+     * (courtesy words included: «quiero ver el menu please» stays English), and evidence for one language with no
+     * competitor: two pieces, or one in a message of four words or more. Courtesy words never count towards a switch;
+     * «ok», «sí», «gracias», «muchas gracias», «what?» keep the stored language.
+     */
+    private currentMessageLanguage(previous: string | null, tokens: Set<string>, raw: string, text: string, wordCount: number): string | null {
+        if (!previous || wordCount < 3 || this.mentionsName(text)) return null;
+        if (this.languageEvidence(previous, tokens, raw, true) > 0) return null;
+        const ranked = Object.keys(this.sentenceWords)
+            .filter(lang => lang !== previous)
+            .map(lang => [lang, this.languageEvidence(lang, tokens, raw, false)] as const)
+            .sort((a, b) => b[1] - a[1]);
+        const [best, evidence] = ranked[0];
+        const rival = ranked[1]?.[1] ?? 0;
+        if (rival === 0) return evidence >= 2 || (evidence >= 1 && wordCount >= 4) ? best : null;
+        return evidence >= rival + 2 ? best : null;
     }
 
     /**
@@ -189,6 +258,8 @@ export class LanguageDetectorService {
         const wordCount = normalized.split(/\s+/).filter(Boolean).length;
         const sentenceLanguage = this.fullSentenceLanguage(prev, tokens, raw, wordCount, scores);
         if (sentenceLanguage) return { language: sentenceLanguage, persist: true };
+        const currentLanguage = this.currentMessageLanguage(prev, tokens, raw, text, wordCount);
+        if (currentLanguage) return { language: currentLanguage, persist: true };
         if (winnerScore >= 1 && secondScore === 0) {
             if (prev && prev !== winner) {
                 // A REQUEST in another language ("quiero agendar corte y estilo" after "What are your opening hours?")

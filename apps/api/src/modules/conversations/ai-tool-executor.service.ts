@@ -5787,19 +5787,25 @@ export class AIToolExecutorService {
         if (started.status === 'pending') {
             return {
                 needsVerification: true,
-                message: 'Ya hay una verificación en curso. No envíes otro código; pídele al cliente que espere el mensaje y comparta el código recibido.',
+                codeSent: false,
+                codeDeliveryPending: true,
+                message: 'La verificación está iniciada pero NO está confirmado que el código haya salido. No envíes otro ni digas que se envió: dile al cliente que si le llega un código lo escriba aquí, y ofrece una persona, como pregunta, por si no le llega.',
             };
         }
         if (started.status === 'blocked') return this.identityLockedResult();
         if (started.status === 'no_channel') {
             return {
                 error: 'identity_unverifiable',
-                message: 'No hay forma de verificar la identidad de este cliente por otro canal. NO revele información ni ejecute gestiones sensibles de seguros: ofrezca pasarlo con un asesor humano.',
+                codeSent: false,
+                message: 'No hay forma de verificar la identidad de este cliente por otro canal y NO se envió ningún código: no digas que se envió ni pidas uno. NO revele información ni ejecute gestiones sensibles de seguros: ofrezca pasarlo con un asesor humano.',
                 shouldHandoff: true,
             };
         }
         return {
             needsVerification: true,
+            codeSent: true,
+            channel: started.via,
+            maskedDestination: started.hint,
             sentVia: started.via,
             sentTo: started.hint,
             message: `Antes de dar información o ejecutar gestiones sensibles de seguros hay que verificar identidad. Se envió un código de 6 dígitos ${started.via === 'email' ? 'al correo' : 'por SMS'} ${started.hint}. Pídele al cliente ese código y llama a verify_identity_code. NO reveles datos ni radiques siniestros hasta que la verificación sea exitosa.`,
@@ -5831,16 +5837,28 @@ export class AIToolExecutorService {
             return { error: 'identity_unverifiable', message: 'No pude iniciar la verificación; no se envió ningún código. Ofrece pasar la gestión a una persona, como pregunta: solo si el cliente acepta se transfiere.', shouldHandoff: true };
         }
         if (res.status === 'already_verified') return { alreadyVerified: true };
-        if (res.status === 'pending') return { pending: true, message: 'Ya hay una verificación en curso. No envíes otro código.' };
+        if (res.status === 'pending') {
+            return { pending: true, codeSent: false,
+                message: 'La verificación está iniciada pero NO está confirmado que el código haya salido. No envíes otro ni digas que se envió: dile al cliente que si le llega un código lo escriba aquí, y ofrece una persona, como pregunta, por si no le llega.' };
+        }
         if (res.status === 'blocked') return this.identityLockedResult();
         if (res.status === 'no_channel') {
             return {
                 error: 'identity_unverifiable',
-                message: 'No hay correo ni otro canal donde mandar el código. Ofrece pasarlo con un asesor humano.',
+                codeSent: false,
+                message: 'No hay correo ni otro canal donde mandar el código, así que NO se envió ninguno: no digas que se envió. Di que por aquí no puedes verificar su identidad y ofrece pasarlo con un asesor humano.',
                 shouldHandoff: true,
             };
         }
-        return { sent: true, via: res.via, sentTo: res.hint };
+        return { sent: true, codeSent: true, via: res.via, channel: res.via, sentTo: res.hint, maskedDestination: res.hint };
+    }
+
+    /**
+     * A verification code a provider accepted is live for this conversation and contact. The reply guard reads it so
+     * «escriba el código que le envié» stays true in a later turn, and is refused when no code ever left.
+     */
+    async identityCodeDelivered(conversationId: string, contactId: string): Promise<boolean> {
+        return this.chatIdentity.hasDeliveredLiveChallenge(conversationId, contactId);
     }
 
     private async verifyIdentityCodeTool(conversationId: string | undefined, code?: string): Promise<any> {

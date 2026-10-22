@@ -57,6 +57,17 @@ export class TenantNotificationSmsService {
     }
 
     /**
+     * Whether `send()` can deliver anything at all right now: the platform switch, the reseller switch and the platform
+     * credentials (the same three gates `send()` checks first). A caller that must not promise an SMS asks this BEFORE
+     * choosing SMS as the way to reach someone: while SMS is retired every send is refused.
+     */
+    async isAvailable(): Promise<boolean> {
+        if (!this.enabled) return false;
+        if (!(await this.killSwitch.isEnabled())) return false;
+        return this.smsCredits.isEnabled();
+    }
+
+    /**
      * Estimate Twilio segments for `body`. Any non-ASCII char forces UCS-2
      * encoding (70/67-char segments) — this covers Spanish á/í/ó/ú/¿/¡, which
      * are outside GSM-7 basic. Conservative: over-estimates rather than under.

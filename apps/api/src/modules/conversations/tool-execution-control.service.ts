@@ -1643,7 +1643,10 @@ export class ToolExecutionControlService {
                 error: 'identity_verification_required',
                 needsVerification: true,
                 challengeSent: false,
-                message: 'Se requiere verificar la identidad antes de continuar. No se envió ningún código.',
+                codeSent: false,
+                nextStep: 'request_identity_code',
+                message: 'Se requiere verificar la identidad antes de continuar. NO se envió ningún código: no digas que se envió ni pidas un código. '
+                    + 'El siguiente paso es request_identity_code; si no la tienes, di que por aquí no puedes verificar su identidad y ofrece una persona, como pregunta.',
             };
         }
 
@@ -1677,18 +1680,36 @@ export class ToolExecutionControlService {
         if (started.status === 'no_channel') {
             return {
                 error: 'identity_unverifiable',
-                message: 'No hay un canal independiente para verificar la identidad. Ofrece pasar la gestión a una persona, como pregunta: solo si el cliente acepta se transfiere.',
+                codeSent: false,
+                message: 'No hay un canal independiente para verificar la identidad y NO se envió ningún código: no digas que se envió ni pidas uno. '
+                    + 'Di que por aquí no puedes verificar su identidad y ofrece pasar la gestión a una persona, como pregunta: solo si el cliente acepta se transfiere.',
                 shouldHandoff: true,
+            };
+        }
+        if (started.status === 'pending') {
+            // A challenge exists but no provider accepted the code yet (in flight, or a retry pending). Asking for «the code
+            // that was sent» here is the claim the customer can never satisfy (F4300-02).
+            return {
+                error: 'identity_verification_required',
+                needsVerification: true,
+                challengeSent: false,
+                codeSent: false,
+                codeDeliveryPending: true,
+                message: 'La verificación está iniciada pero NO está confirmado que el código haya salido. No digas que se envió un código. '
+                    + 'Dile al cliente que si le llega un código de verificación lo escriba aquí, y ofrece una persona, como pregunta, por si no le llega.',
             };
         }
         return {
             error: 'identity_verification_required',
             needsVerification: true,
-            sentVia: started.status === 'sent' ? started.via : undefined,
-            sentTo: started.status === 'sent' ? started.hint : undefined,
-            message: started.status === 'pending'
-                ? 'Ya hay una verificación en curso. Solicita el código recibido.'
-                : 'Se envió un código por un canal independiente. Verifícalo antes de continuar.',
+            challengeSent: true,
+            codeSent: true,
+            channel: started.via,
+            maskedDestination: started.hint,
+            sentVia: started.via,
+            sentTo: started.hint,
+            message: `Se envió un código de 6 dígitos ${started.via === 'email' ? 'al correo' : 'por SMS al número'} ${started.hint}. `
+                + 'Dile al cliente a dónde se envió, pídele ese código y llama a verify_identity_code antes de continuar.',
         };
     }
 

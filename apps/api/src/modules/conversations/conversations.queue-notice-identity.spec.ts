@@ -61,7 +61,9 @@ describe('the queue notice does not occupy the identity of the message it answer
             languageDetector: { detect: jest.fn().mockReturnValue('es') },
             replyOnceThroughOutbox: replyOnce,
         });
-        await service.sendQueueNoticeOnce('t', 'tenant_x', { id: 'c1', metadata: { handoff: { startedAt: '2026-10-05T20:00:00Z' } } },
+        // Inside the unattended window (past it the message returns the conversation instead).
+        const startedAt = new Date(Date.now() - 2 * 60_000).toISOString();
+        await service.sendQueueNoticeOnce('t', 'tenant_x', { id: 'c1', metadata: { handoff: { startedAt } } },
             { channelType: 'telegram' }, INBOUND, { kind: 'agent' }, 'hola', 'es');
         expect(replyOnce).toHaveBeenCalledTimes(1);
         expect(replyOnce.mock.calls[0][0]).toMatchObject({ ownIdentity: true, inboundMessageId: INBOUND });

@@ -16,16 +16,32 @@ const connection = process.env.POLICY_ATOMIC_SQL_TEST_URL;
             $queryRawUnsafe: (sql: string, ...args: any[]) => options.failVersion && sql.includes('MAX(version)')
                 ? db.$queryRawUnsafe('SELECT synthetic_missing_column') : db.$queryRawUnsafe(sql, ...args),
         });
-        s.prisma = { ...wrap(client), $transaction: (fn: any, opts: any) => client.$transaction(tx => fn(wrap(tx)), opts) };
+        let transactionResolved = false;
+        s.prisma = { ...wrap(client), $transaction: async (fn: any, opts: any) => {
+            transactionResolved = false;
+            const result = await client.$transaction(tx => fn(wrap(tx)), opts);
+            transactionResolved = true;
+            return result;
+        } };
         const committed: number[] = [];
+        const observations: Promise<void>[] = [];
         s.redis = { del: jest.fn(async () => {
-            if (options.observeCommit) {
-                const active = (await read()).filter(p => p.is_active);
-                expect(active).toHaveLength(1); committed.push(active[0].version);
-            }
+            if (options.observeCommit) expect(transactionResolved).toBe(true);
         }) };
-        s.events = { emit: jest.fn(() => { if (options.observeCommit) expect(committed.length).toBe(s.events.emit.mock.calls.length); }) };
-        return { s, committed };
+        s.events = { emit: jest.fn(() => {
+            if (!options.observeCommit) return;
+            // Cache completion is deliberately independent of the committed
+            // response. Verify the actual transaction boundary, then read back
+            // the durable row when the dependency notification is emitted.
+            expect(transactionResolved).toBe(true);
+            const observation = read().then(rows => {
+                const active = rows.filter(p => p.is_active);
+                expect(active).toHaveLength(1); committed.push(active[0].version);
+            });
+            observation.catch(() => undefined); // Assert through the awaited observation below.
+            observations.push(observation);
+        }) };
+        return { s, committed, observations };
     }
     beforeAll(async () => {
         const url = new URL(connection!), base = url.pathname.slice(1);
@@ -75,10 +91,12 @@ const connection = process.env.POLICY_ATOMIC_SQL_TEST_URL;
     });
     it('POLICYTX_B_COMMIT invalidates cache and emits only after the replacement is committed', async () => {
         const h = service({ observeCommit: true }); const result = await h.s.upsert('synthetic-tenant', input('Synthetic committed text'));
+        await Promise.all(h.observations);
         expect(result).toMatchObject({ version: 2, content: 'Synthetic committed text', isActive: true }); expect(h.committed).toEqual([2]); expect(h.s.events.emit).toHaveBeenCalledTimes(1);
     });
     it('POLICYTX_B_HISTORY preserves exact sequential versions with one active policy', async () => {
-        const h = service({ observeCommit: true }); await h.s.upsert('synthetic-tenant', input('Synthetic v2\nexact text')); await h.s.upsert('synthetic-tenant', input('Synthetic v3\nexact text'));
+        const h = service({ observeCommit: true }); await h.s.upsert('synthetic-tenant', input('Synthetic v2\nexact text')); await Promise.all(h.observations);
+        await h.s.upsert('synthetic-tenant', input('Synthetic v3\nexact text')); await Promise.all(h.observations);
         expect((await read()).map(p => [p.version, p.is_active, p.content])).toEqual([[1, false, 'Synthetic original text'], [2, false, 'Synthetic v2\nexact text'], [3, true, 'Synthetic v3\nexact text']]); expect(h.committed).toEqual([2, 3]);
     });
     it('POLICYTX_B_ISOLATION leaves the other synthetic tenant with the same UUID unchanged', async () => {

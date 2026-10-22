@@ -5,7 +5,7 @@ import { demoAllowanceExhaustedText } from '../widget/widget-demo-link';
 import { recordFirstReply } from '../../common/utils/first-reply.util';
 import { stripInternalMarkers } from '../../common/utils/internal-markers.util';
 import { projectAvailableServices } from '../appointments/service-price-status';
-import { catalogNamesOfTurn, replyLanguageOf, rewritePreserves } from './reply-language';
+import { catalogNamesOfTurn, languageMismatch, rewriteRejection, type RewriteRejectionReason, verbatimTermsOf } from './reply-language';
 import { localeForReply, normalizeReplyAmounts } from './reply-price-format';
 import { foldedSql, foldQueryText } from '../../common/utils/sql-accent-fold.util';
 import { servedAgentAuthority, type ServedAgentAuthority } from '../persona/served-agent-authority';
@@ -440,6 +440,26 @@ const REPLY_LANGUAGE_REWRITE: Record<string, string> = {
     pt: 'Sua resposta anterior não está em português, que é o idioma do cliente neste turno. Reescreva-a em português com exatamente o mesmo conteúdo, sem mudar nenhum dado, preço ou nome. Devolva apenas a mensagem.',
     fr: 'Votre réponse précédente n\'est pas en français, qui est la langue du client pour ce tour. Réécrivez-la en français avec exactement le même contenu, sans changer aucune donnée, aucun prix ni aucun nom. Renvoyez uniquement le message.',
 };
+
+/** Appended to the rewrite request, followed by the exact strings of the reply that must survive (names, figures, URLs). */
+const REPLY_LANGUAGE_KEEP: Record<string, string> = {
+    es: 'Copia estos textos exactamente como están escritos, sin traducirlos ni cambiarlos (son nombres del negocio, cifras y enlaces):',
+    en: 'Copy these exactly as they are written, without translating or changing them (they are the business\'s names, figures and links):',
+    pt: 'Copie estes textos exatamente como estão escritos, sem traduzir nem mudar (são nomes do negócio, números e links):',
+    fr: 'Recopiez ces textes exactement tels qu\'ils sont écrits, sans les traduire ni les modifier (ce sont des noms de l\'entreprise, des chiffres et des liens) :',
+};
+
+/** The second (and last) rewrite request, when the first one changed a name or a figure it had been told to copy. */
+const REPLY_LANGUAGE_RETRY: Record<string, (missing: string[]) => string> = {
+    es: missing => `Tu reescritura cambió o quitó: ${missing.join(' | ')}. Escríbela de nuevo en español y copia esos textos exactamente como están. Devuelve solo el mensaje.`,
+    en: missing => `Your rewrite changed or dropped: ${missing.join(' | ')}. Write it again in English and copy those texts exactly as they are. Return only the message.`,
+    pt: missing => `Sua reescrita mudou ou removeu: ${missing.join(' | ')}. Escreva de novo em português e copie esses textos exatamente como estão. Devolva apenas a mensagem.`,
+    fr: missing => `Votre réécriture a modifié ou supprimé : ${missing.join(' | ')}. Écrivez-la de nouveau en français en recopiant ces textes exactement tels quels. Renvoyez uniquement le message.`,
+};
+
+/** What the reply-language guard did this turn, read back by the pipeline into the turn trace. */
+interface ReplyLanguageOutcome { from: string; to: string; attempts: number; accepted: boolean; rejections: RewriteRejectionReason[] }
+const REPLY_LANGUAGE_OUTCOME = new WeakMap<object, ReplyLanguageOutcome>();
 
 // Fixed system texts must never be rewritten by the wait-promise guard.
 function isSystemFixedText(text: string): boolean {
@@ -5715,6 +5735,8 @@ export class ConversationsService {
                 finalResponse = normalizeReplyAmounts(finalResponse, localeForReply(userLanguage, turnContext.regional?.locale));
             }
             turnTrace.add('guardrail', 'output', { responseLength: finalResponse?.length || 0 });
+            const languageOutcome = REPLY_LANGUAGE_OUTCOME.get(turnContext);
+            if (languageOutcome) turnTrace.add('guardrail', languageOutcome.accepted ? 'reply_language_rewritten' : 'reply_language_rewrite_rejected', { ...languageOutcome });
             // A "how do I / can I" refund or return question ("¿puedo pedir un reembolso?")
             // is answered, not escalated. The answer also offers a person, so a customer
             // who really wants the refund says "yes" once and the acceptance below
@@ -6247,8 +6269,8 @@ export class ConversationsService {
      * often the server closed a confirmation the model would have dropped.
      * Cheap Redis counters keyed by day, read by the Ops Center.
      */
-    private recordAgentSignal(tenantId: string, signal: string, session?: AgentTurnSession): void {
-        if (session) { session.trace.steps.push({ signal }); return; }
+    private recordAgentSignal(tenantId: string, signal: string, session?: AgentTurnSession, detail?: Record<string, unknown>): void {
+        if (session) { session.trace.steps.push(detail ? { signal, ...detail } : { signal }); return; }
         const day = new Date().toISOString().slice(0, 10);
         const tenantKey = `agent:signal:${signal}:${tenantId}:${day}`;
         // Platform-wide total and the set of tenants that contributed to it.
@@ -6556,32 +6578,52 @@ export class ConversationsService {
         executedTools?: Array<{ name: string; result: any }>,
     ): Promise<string> {
         const code = String(lang || '').slice(0, 2).toLowerCase();
-        const instruction = REPLY_LANGUAGE_REWRITE[code];
-        // Engine/handoff directives and fixed system texts are already in the turn language by construction.
-        if (!instruction || (trustedContext as any)?.directive || isSystemFixedText(response)) return response;
+        const base = REPLY_LANGUAGE_REWRITE[code];
+        // Only texts the SERVER wrote are exempt: the fixed system texts, and the engine's own reply sent as is. A
+        // directive is an instruction the model voices in its own words — a French duration question on a booking
+        // turn was voiced in Spanish (production 2026-10-22) and the directive exemption let it through unchecked.
+        const engineReply = String((trustedContext as any)?.engineReplyText ?? '').trim();
+        if (!base || isSystemFixedText(response) || (engineReply && response.trim() === engineReply)) return response;
         if (response.trim().split(/\s+/).length < 8) return response;
         // Names of the business's own catalog (products, services) are not the reply's language and must survive a rewrite.
         const names = catalogNamesOfTurn(trustedContext, executedTools);
         // Only clear evidence of ANOTHER language (function words, see reply-language.ts) triggers the rewrite.
-        const written = replyLanguageOf(response, names);
-        if (!written || written === code) return response;
+        const written = languageMismatch(response, code, names);
+        if (!written) return response;
         this.recordAgentSignal(tenantId, 'reply_language_mismatch', session);
-        this.logger.warn(`[Guardrail] Reply is not in the turn language (${code}) — one rewrite: "${response.slice(0, 80)}"`);
-        try {
-            const rewritten = await llmRouter.execute({
-                task: 'conversation',
-                messages: [...currentMessages, { role: 'assistant', content: response }, { role: 'user', content: instruction }],
-                systemPrompt,
-                temperature: 0.2,
-                allowedTiers,
-                tenantId,
-            });
-            const text = rewritten.content?.trim();
-            // A translation may not change what the reply says: every figure, URL and catalog name must survive.
-            if (text && replyLanguageOf(text, names) !== written && rewritePreserves(response, text, names)) return text;
-        } catch (e: any) {
-            if (e instanceof LLMSourceAuthorityUnavailable) throw e;
-            this.logger.warn(`[Guardrail] Language rewrite failed: ${e.message}`);
+        this.logger.warn(`[Guardrail] Reply is not in the turn language (${code}) — rewrite: "${response.slice(0, 80)}"`);
+        // The request names what must be copied verbatim (catalog names, figures, URLs): a model asked to "not change any
+        // name" still translated «Corte y estilo» to «Corte e estilo», and the guard then had to drop the whole rewrite.
+        const verbatim = verbatimTermsOf(response, names);
+        const keep = [...verbatim.names, ...verbatim.figures, ...verbatim.urls];
+        const instruction = keep.length ? `${base}\n${REPLY_LANGUAGE_KEEP[code]}\n${keep.map(term => `- ${term}`).join('\n')}` : base;
+        const outcome: ReplyLanguageOutcome = { from: written, to: code, attempts: 0, accepted: false, rejections: [] };
+        if (trustedContext) REPLY_LANGUAGE_OUTCOME.set(trustedContext, outcome);
+        let messages: any[] = [...currentMessages, { role: 'assistant', content: response }, { role: 'user', content: instruction }];
+        // At most two model calls: the second only when the first lost a name or a figure the model can simply copy.
+        for (let attempt = 1; attempt <= 2; attempt++) {
+            let text: string;
+            try {
+                outcome.attempts = attempt;
+                const rewritten = await llmRouter.execute({ task: 'conversation', messages, systemPrompt, temperature: 0.2, allowedTiers, tenantId });
+                text = String(rewritten.content ?? '').trim();
+            } catch (e: any) {
+                if (e instanceof LLMSourceAuthorityUnavailable) throw e;
+                this.logger.warn(`[Guardrail] Language rewrite failed: ${e.message}`);
+                return response;
+            }
+            // A translation may not change what the reply says: every figure, URL and catalog name must survive,
+            // and it must have left the language it was asked to leave.
+            const rejection = rewriteRejection(response, text, names, written, code);
+            if (!rejection) {
+                outcome.accepted = true;
+                return text;
+            }
+            outcome.rejections.push(rejection.reason);
+            this.recordAgentSignal(tenantId, 'reply_language_rewrite_rejected', session, { reason: rejection.reason, attempt, missing: rejection.missing });
+            this.logger.warn(`[Guardrail] Language rewrite ${attempt} rejected (${rejection.reason}${rejection.missing.length ? `: ${rejection.missing.join(' | ')}` : ''}): "${text.slice(0, 80)}"`);
+            if (attempt === 2 || (rejection.reason !== 'lost_name' && rejection.reason !== 'lost_figure')) break;
+            messages = [...messages, { role: 'assistant', content: text }, { role: 'user', content: REPLY_LANGUAGE_RETRY[code](rejection.missing) }];
         }
         return response;
     }

@@ -91,33 +91,97 @@ export function ownLanguageText(text: string, ignore: readonly string[] = []): s
     return out;
 }
 
-export function replyLanguageOf(text: string, ignore: readonly string[] = []): ReplyLang | null {
+function scoresOf(text: string, ignore: readonly string[]): Array<[ReplyLang, number]> {
     const tokens = fold(ownLanguageText(text, ignore)).replace(/[^a-z\s]/g, ' ').split(/\s+/).filter(Boolean);
     const scores: Record<ReplyLang, number> = { es: 0, en: 0, pt: 0, fr: 0 };
     for (const token of tokens) {
         for (const lang of Object.keys(SETS) as ReplyLang[]) if (SETS[lang].has(token)) scores[lang]++;
     }
-    const ranked = (Object.entries(scores) as Array<[ReplyLang, number]>).sort((a, b) => b[1] - a[1]);
+    return (Object.entries(scores) as Array<[ReplyLang, number]>).sort((a, b) => b[1] - a[1]);
+}
+
+export function replyLanguageOf(text: string, ignore: readonly string[] = []): ReplyLang | null {
+    const ranked = scoresOf(text, ignore);
     const [best, bestScore] = ranked[0];
     const second = ranked[1][1];
     return (bestScore >= 4 && bestScore >= 3 * second) || (bestScore >= 3 && second === 0) ? best : null;
 }
 
-/** The language the reply is clearly written in when it is NOT `code`; null when it is `code` or cannot be told. */
+/**
+ * The language the reply is clearly written in when it is NOT `code`; null when it is `code` or cannot be told.
+ * Knowing the turn language allows one more case: a short reply whose catalog name took most of its words away
+ * («El Corte y estilo dura 45 minutos, ¿le agendo una cita?» to a Portuguese turn) has no word at all of `code`
+ * and two or more of ONE other language — that, too, is a reply written in another language.
+ */
 export function languageMismatch(text: string, code: string, ignore: readonly string[] = []): ReplyLang | null {
     const written = replyLanguageOf(text, ignore);
-    return written && written !== code ? written : null;
+    if (written) return written !== code ? written : null;
+    const ranked = scoresOf(text, ignore);
+    const [best, bestScore] = ranked[0];
+    const own = ranked.find(([lang]) => lang === code)?.[1] ?? 0;
+    return best !== code && bestScore >= 2 && own === 0 && ranked[1][1] === 0 ? best : null;
+}
+
+/** Why a language rewrite cannot be sent: it is empty, it is still in the source language, or it lost a figure, URL or name. */
+export type RewriteRejectionReason = 'empty' | 'still_source_language' | 'lost_figure' | 'lost_url' | 'lost_name';
+
+const FIGURE = /\d[\d.,:]*\d|\d/g;
+const URL_PATTERN = /https?:\/\/[^\s)>\]]+|www\.[^\s)>\]]+/gi;
+const digitsOf = (token: string) => token.replace(/[^\d]/g, '');
+const trimUrl = (url: string) => url.replace(/[.,;:!?]+$/, '');
+/** Case, accents and spacing do not make a name another name. */
+const loose = (value: string) => fold(value).replace(/\s+/g, ' ').trim();
+
+/**
+ * The exact strings of `original` a translation must carry unchanged: the catalog names it mentions (as the reply
+ * wrote them), its figures (prices, durations, hours, dates) and its URLs. They are handed to the rewrite request, so
+ * the model is told what to copy instead of being judged afterwards on something it did not know it had to keep
+ * («Corte y estilo» translated to «Corte e estilo» in a Portuguese rewrite, production 2026-10-22).
+ */
+export function verbatimTermsOf(original: string, names: readonly string[] = []): { names: string[]; figures: string[]; urls: string[] } {
+    const text = String(original || '');
+    const urls = [...new Set((text.match(URL_PATTERN) || []).map(trimUrl))];
+    // Figures inside a URL travel with the URL.
+    const figures = [...new Set(text.replace(URL_PATTERN, ' ').match(FIGURE) || [])];
+    const folded = loose(text);
+    const found = new Set<string>();
+    for (const name of names) {
+        const clean = String(name || '').trim();
+        if (clean.length < 3 || !folded.includes(loose(clean))) continue;
+        const escaped = clean.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+        found.add(text.match(new RegExp(escaped, 'iu'))?.[0] ?? clean);
+    }
+    return { names: [...found], figures, urls };
+}
+
+/**
+ * Why `rewrite` may not replace `original`, or null when it may. Figures and URLs are compared exactly (the digits,
+ * the URL itself) and are never loosened; names case-, accent- and space-folded. `missing` lists what was lost, as
+ * `original` wrote it. `sourceLang`, when given, also rejects a rewrite still written in the language being corrected
+ * (judged against `targetLang`, the turn language, when that is given).
+ */
+export function rewriteRejection(
+    original: string, rewrite: string, names: readonly string[] = [], sourceLang?: ReplyLang | null, targetLang?: string,
+): { reason: RewriteRejectionReason; missing: string[] } | null {
+    const text = String(rewrite || '').trim();
+    const have = new Set((text.match(FIGURE) || []).map(digitsOf));
+    const lostFigures = (String(original || '').match(FIGURE) || []).filter(token => !have.has(digitsOf(token)));
+    if (lostFigures.length) return { reason: 'lost_figure', missing: [...new Set(lostFigures)] };
+    const lostUrls = (String(original || '').match(URL_PATTERN) || []).map(trimUrl).filter(url => !text.includes(url));
+    if (lostUrls.length) return { reason: 'lost_url', missing: [...new Set(lostUrls)] };
+    const lowered = loose(text);
+    const lostNames = verbatimTermsOf(original, names).names.filter(name => !lowered.includes(loose(name)));
+    if (lostNames.length) return { reason: 'lost_name', missing: lostNames };
+    if (!text) return { reason: 'empty', missing: [] };
+    const stillIn = targetLang ? languageMismatch(text, targetLang, names) : replyLanguageOf(text, names);
+    if (sourceLang && stillIn === sourceLang) return { reason: 'still_source_language', missing: [] };
+    return null;
 }
 
 /** The figures, URLs and names a rewrite must still carry: a translation may not change what the reply says. */
 export function rewritePreserves(original: string, rewrite: string, names: readonly string[] = []): boolean {
-    const digits = (value: string) => (String(value).match(/\d[\d.,:]*\d|\d/g) || []).map(token => token.replace(/[^\d]/g, ''));
-    const have = new Set(digits(rewrite));
-    if (!digits(original).every(token => have.has(token))) return false;
-    const urls = String(original).match(/https?:\/\/[^\s)>\]]+|www\.[^\s)>\]]+/gi) || [];
-    if (!urls.every(url => rewrite.includes(url.replace(/[.,;:!?]+$/, '')))) return false;
-    const lowered = fold(rewrite);
-    return names.filter(name => name.trim().length >= 3 && fold(original).includes(fold(name))).every(name => lowered.includes(fold(name)));
+    const rejection = rewriteRejection(original, rewrite, names);
+    return !rejection || rejection.reason === 'empty';
 }
 
 /**

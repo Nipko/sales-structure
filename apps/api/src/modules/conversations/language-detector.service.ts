@@ -74,6 +74,20 @@ export class LanguageDetectorService {
     };
 
     /**
+     * The words of a short customer question that only one language spells this way: «qué debo llevar al tour?»
+     * (production 2026-10-22, answered in English after an English chat — none of its words was known here, and «tour»
+     * is every language's). They count for the current-message rule only, which already sets aside a message built
+     * around a name; the full-sentence rule keeps its own list, so «Hotel Aurora con las vistas al mar» still keeps
+     * the stored language.
+     */
+    private readonly questionWords: Record<string, string[]> = {
+        es: ['al', 'debo', 'debes', 'debe', 'debemos', 'deberia', 'llevar', 'llevo', 'traer', 'traigo'],
+        pt: ['ao', 'aos', 'devo', 'deves', 'deve', 'devemos', 'deveria', 'levar', 'levo', 'trazer', 'trago'],
+        fr: ['dois', 'doit', 'devons', 'devez', 'apporter', 'emporter', 'amener', 'au', 'aux'],
+        en: ['should', 'bring', 'must', 'take'],
+    };
+
+    /**
      * How much of the message is in `lang` for the purpose of a FULL-SENTENCE switch: distinct function words, plus the
      * language's strong request words, plus 2 for an unmistakable character (¿ ¡ ñ, ã õ, è ù œ…).
      */
@@ -97,7 +111,7 @@ export class LanguageDetectorService {
      * With `courtesy: false` greetings and thanks do not count.
      */
     private languageEvidence(lang: string, tokens: Set<string>, raw: string, courtesy: boolean): number {
-        const words = new Set([...(this.markers[lang] ?? []), ...(this.sentenceWords[lang] ?? []), ...(this.strongMarkers[lang]?.words ?? [])]);
+        const words = new Set([...(this.markers[lang] ?? []), ...(this.sentenceWords[lang] ?? []), ...(this.strongMarkers[lang]?.words ?? []), ...(this.questionWords[lang] ?? [])]);
         let hits = 0;
         for (const word of words) if (tokens.has(word) && (courtesy || !this.courtesyWords.has(word))) hits++;
         for (const word of this.weakMarkers[lang] ?? []) if (tokens.has(word)) hits += 0.5;
@@ -196,7 +210,10 @@ export class LanguageDetectorService {
         // marker word ("qual"), which never overrides an established Spanish conversation by itself.
         pt: /[ãõ]|(?:^|[^\p{L}])é(?![\p{L}])/u,
         fr: /[èùœëîû]/,
-        es: /[ñ¿¡]/,
+        // An accented interrogative («qué», «cómo», «dónde», «cuánto»…) is Spanish only: Portuguese writes «quê», «como»,
+        // «onde», «quanto» and French none of them. Typed with its accent it marks a Spanish question that a loanword
+        // («qué debo llevar al tour?») would otherwise leave to the stored language.
+        es: /[ñ¿¡]|(?<!\p{L})(?:qué|cómo|dónde|cuándo|cuánt[oa]s?|quién(?:es)?|cuál(?:es)?)(?!\p{L})/u,
     };
 
     /**

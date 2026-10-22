@@ -51,10 +51,10 @@ describe('applyOutputGuardrails: the reply is in the turn language', () => {
         expect(right.execute).not.toHaveBeenCalled();
     });
 
-    it('leaves short replies, engine directives and mixed-language names alone', async () => {
+    it('leaves short replies, the engine\'s own reply text and mixed-language names alone', async () => {
         const { service, execute } = build(PORTUGUESE);
         expect(await run(service, 'Con gusto, ¿algo más?', 'pt')).toBe('Con gusto, ¿algo más?');
-        expect(await run(service, SPANISH, 'pt', { directive: 'Te voy a transferir' })).toBe(SPANISH);
+        expect(await run(service, SPANISH, 'pt', { directive: SPANISH, engineReplyText: SPANISH })).toBe(SPANISH);
         // A few Spanish words in a Portuguese-turn reply are not clear evidence either.
         expect(await run(service, 'Claro, reembolso sera rapido, dias habiles despues de aprobado', 'pt')).toContain('reembolso');
         // One Spanish marker word ("cuesta") in an English reply is not evidence of another language.

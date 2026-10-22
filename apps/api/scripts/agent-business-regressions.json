@@ -23,6 +23,7 @@
     "apps/api/src/modules/conversations/conversations.property-detail-grounding.spec.ts",
     "apps/api/src/modules/conversations/conversations.service-location-domain-boundary.spec.ts",
     "apps/api/src/modules/conversations/conversations.service-location-grounding.spec.ts",
+    "apps/api/src/modules/conversations/crm-note-preference-retention.spec.ts",
     "apps/api/src/modules/conversations/faq-persistence-boundaries.spec.ts",
     "apps/api/src/modules/conversations/listing-detail-grounding.spec.ts",
     "apps/api/src/modules/conversations/own-customer-context-read.spec.ts",

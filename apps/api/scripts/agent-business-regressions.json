@@ -44,6 +44,7 @@
     "apps/api/src/modules/policies/policies.http-authorization.spec.ts",
     "apps/api/src/modules/policies/policies.input-boundaries.spec.ts",
     "apps/api/src/modules/policies/policies.input-validation.spec.ts",
+    "apps/api/src/modules/policies/policies.pending-cache.spec.ts",
     "apps/api/src/modules/tours/tours.capacity-limit.spec.ts",
     "apps/api/src/modules/trace/trace.faq-result-provenance.spec.ts"
   ],

@@ -169,7 +169,9 @@ export class PoliciesService {
             return rows[0];
         });
 
-        await this.invalidateLegacyActiveCache(tenantId, input.type);
+        // Active reads use the database. A pending legacy Redis command must
+        // not hold a committed result or its dependency notification open.
+        void this.invalidateLegacyActiveCache(tenantId, input.type);
         this.emitQualityDependency(tenantId);
         return this.rowToPolicy(row);
     }
@@ -181,7 +183,7 @@ export class PoliciesService {
             id,
         ) as any[];
         if (rows.length === 0) throw new NotFoundException('Policy not found');
-        await this.invalidateLegacyActiveCache(tenantId, rows[0].type);
+        void this.invalidateLegacyActiveCache(tenantId, rows[0].type);
         this.emitQualityDependency(tenantId);
     }
 

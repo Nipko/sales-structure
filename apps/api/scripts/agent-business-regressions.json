@@ -64,7 +64,10 @@
     "apps/api/src/modules/conversations/slot-window.window.spec.ts",
     "apps/api/src/modules/conversations/check-availability-window.spec.ts",
     "apps/api/src/modules/conversations/booking-engine.slot-window.spec.ts",
-    "apps/api/src/modules/conversations/conversations.tool-loop-repeat.spec.ts"
+    "apps/api/src/modules/conversations/conversations.tool-loop-repeat.spec.ts",
+    "apps/api/src/modules/conversations/domain-contract-tool-plan.spec.ts",
+    "apps/api/src/modules/conversations/runtime/operation-classifier.service.spec.ts",
+    "apps/api/src/modules/conversations/conversations.operation-shadow.spec.ts"
   ],
   "postgres": [
     "apps/api/src/modules/faqs/faq-effects.postgres.spec.ts",

@@ -19,6 +19,9 @@ const CACHE_PREFIX = 'feature_flags:';
 
 /** Per-tenant flag of the health safety triage runtime. */
 export const SAFETY_TRIAGE_FLAG = 'agentRuntime.safetyTriage';
+
+/** Per-tenant flag of the shadow operation classifier (operations runtime PR4). */
+export const OPERATION_CLASSIFIER_FLAG = 'agentRuntime.operationClassifier';
 const CACHE_TTL = 300;
 
 /**
@@ -46,6 +49,10 @@ export const FEATURE_FLAGS_REGISTRY: Array<{
     // (SAFETY_TEMPLATE_REVIEW); turning it off again is the killswitch.
     { key: SAFETY_TRIAGE_FLAG, label: 'Health safety triage', description: 'Red-flag triage for health/pet businesses: urgency advice + priority human handoff (requires clinical review of templates)', category: 'experimental', default: false },
     { key: 'agentRuntime.slotWindow', label: 'Part-of-day availability window', description: 'The agent reads "mañana en la tarde" / "after 3 pm" as a time window and offers only slots inside it (or says the window is full and offers the nearest)', category: 'experimental', default: false },
+    // Operations runtime PR4 (packages/shared/src/operation-catalogue.ts). SHADOW only:
+    // classifies each turn into a catalogue operation and writes a trace step; it never
+    // changes the reply, the tools or the routing. Costs one cheap `classify` call per turn.
+    { key: OPERATION_CLASSIFIER_FLAG, label: 'Operation classifier (shadow)', description: 'Shadow-classifies each customer turn into a catalogue operation and traces its required reads (no behaviour change)', category: 'experimental', default: false },
 ];
 
 /**

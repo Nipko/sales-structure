@@ -96,6 +96,7 @@ export * from './meta-connect-errors';
 
 export * from './email-verification-policy';
 export * from './intent-workflow-contract';
+export * from './operation-catalogue';
 export * from './provider-resource-binding';
 
 // ---- La receta del negocio: lo que el dia 0 prellena y de donde sale ----

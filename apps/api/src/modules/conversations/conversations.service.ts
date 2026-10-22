@@ -1,8 +1,9 @@
 import { appointmentRecordReadId } from './appointment-record-read';
 import { isCanonicalConsentRecovery, canonicalConsentRecoveryDirective } from './canonical-consent-recovery';
 import { DemoAllowanceService } from '../throttle/demo-allowance.service';
-import { FeatureFlagsService, SAFETY_TRIAGE_FLAG, SLOT_WINDOW_FLAG, resolveFeatureFlag } from '../throttle/feature-flags.service';
+import { FeatureFlagsService, OPERATION_CLASSIFIER_FLAG, SAFETY_TRIAGE_FLAG, SLOT_WINDOW_FLAG, resolveFeatureFlag } from '../throttle/feature-flags.service';
 import { runSafetyTriage, type SafetyTriageTurnOutcome } from './runtime/safety-triage';
+import { buildOperationShadowTrace, OperationClassifierService, type OperationShadowVerdict } from './runtime/operation-classifier.service';
 import { demoAllowanceExhaustedText } from '../widget/widget-demo-link';
 import { recordFirstReply } from '../../common/utils/first-reply.util';
 import { stripInternalMarkers } from '../../common/utils/internal-markers.util';
@@ -603,6 +604,9 @@ const isWriteTool = (name: string): boolean => toolRequiresSequentialExecution(n
 // messages. We wait this long for follow-ups and process the batch as one turn.
 const DEBOUNCE_MS = 800;
 
+/** Shadow operation classifier (PR4): stateless, the router is passed per turn. */
+const OPERATION_CLASSIFIER = new OperationClassifierService();
+
 /**
  * When a store-only coexistence message (`waba_echo`, `historical`) actually
  * happened, as an ISO string, or `null` when the provider timestamp is missing
@@ -703,7 +707,7 @@ export class ConversationsService {
         @Optional() private readonly proactiveDispatch?: ProactiveDispatchService,
         /** The team's follow-up list: where a request nobody answered is left. */
         @Optional() private readonly tasksService?: TasksService,
-        /** Per-tenant runtime flags (`agentRuntime.safetyTriage`, `agentRuntime.slotWindow`). Absent in hand-built specs: every flag reads as off. */
+        /** Per-tenant runtime flags (`agentRuntime.safetyTriage`, `agentRuntime.slotWindow`, `agentRuntime.operationClassifier`). Absent in hand-built specs: every flag reads as off. */
         @Optional() private readonly featureFlags?: FeatureFlagsService,
     ) {}
 
@@ -2812,6 +2816,7 @@ export class ConversationsService {
             activeObjectPolicy: tenantActiveObjectPolicyContext(tenant),
             vertical: Object.fromEntries(verticalEntries) as EvaluationTurnContextInputs['vertical'],
             safetyTriage: resolveFeatureFlag((tenant.settings as any)?.featureFlags, SAFETY_TRIAGE_FLAG),
+            operationClassifier: resolveFeatureFlag((tenant.settings as any)?.featureFlags, OPERATION_CLASSIFIER_FLAG),
         }, tenantId);
     }
 
@@ -5157,6 +5162,23 @@ export class ConversationsService {
         if (replyProvenance) history = await this.widgetHistoryWithProvenance(
             tenantId, schemaName, conversation.id, history, replyProvenance);
 
+        // ═══ OPERATION CLASSIFIER, EN SOMBRA (flag agentRuntime.operationClassifier) ═══
+        //
+        // Se lanza acá y NO se espera: corre en paralelo con la llamada del
+        // modelo y al final del turno sólo deja un paso de trace
+        // (`operation_shadow`) con la operación, sus lecturas obligatorias y si
+        // corrieron. No cambia la respuesta, las tools ni el ruteo. El flag se
+        // lee dentro de la promesa, así que un tenant apagado no paga nada en
+        // el camino de la respuesta.
+        const operationShadow: Promise<OperationShadowVerdict | null> | null = userText ? this.runOperationShadow({
+            tenantId, session, text: userText, publishedTools: turnAllowedTools,
+            previousReply: [...(history || [])].reverse().find((row: any) => row?.direction === 'outbound')?.content_text ?? null,
+            // Always the plain router, even in Agent Test: the session router counts provider calls,
+            // accumulates spend and marks `trace.error` on a failure — a shadow call must leave the
+            // session's own evidence exactly as it was.
+            router: this.llmRouter, executionContext, conversationId: conversation.id,
+        }) : null;
+
         // The tail of the customer's PREVIOUS conversation, when this one was
         // opened because the old one had been auto-resolved. Prepended so the
         // agent picks up the thread instead of greeting a stranger who is asking
@@ -6135,6 +6157,17 @@ export class ConversationsService {
                 this.logger.warn(`[KB Analytics] final-response hook unavailable: ${error.message}`);
             }
 
+            await this.traceOperationShadow(operationShadow, turnTrace, {
+                calledTools: executedToolsThisTurn.map(item => item.name),
+                autoReadTools: preExecutedTools.map(item => item.name),
+                projectedContexts: [
+                    ...((turnContext.catalog?.length ?? 0) > 0 ? ['turn_catalog' as const] : []),
+                    ...((turnContext.availableServices?.length ?? 0) > 0 ? ['available_services' as const] : []),
+                ],
+                publishedTools: turnAllowedTools,
+                domainCues: catalogDomainOf(userText),
+                engineOwned: !!engineProducedText,
+            });
             turnTrace.add('decision', 'final_response', {
                 finalResponseLength: finalResponse?.length || 0,
                 mediaCount: mediaToSend.length,
@@ -6259,6 +6292,17 @@ export class ConversationsService {
             );
 
             // Trace failed turns too — they're the most valuable for debugging/evals.
+            await this.traceOperationShadow(operationShadow, turnTrace, {
+                calledTools: executedToolsThisTurn.map(item => item.name),
+                autoReadTools: preExecutedTools.map(item => item.name),
+                projectedContexts: [
+                    ...((turnContext.catalog?.length ?? 0) > 0 ? ['turn_catalog' as const] : []),
+                    ...((turnContext.availableServices?.length ?? 0) > 0 ? ['available_services' as const] : []),
+                ],
+                publishedTools: turnAllowedTools,
+                domainCues: catalogDomainOf(userText),
+                engineOwned: !!engineProducedText,
+            });
             turnTrace.add('decision', 'error', { error: e?.message });
             await observeMission({kind:'error',state:'response_failed'});
             try { if (session) session.trace.steps.push(turnTrace.toEvent()); else this.eventEmitter.emit('llm.turn.steps', turnTrace.toEvent()); } catch { /* ignore */ }
@@ -6464,6 +6508,78 @@ export class ConversationsService {
         } catch (error: any) {
             this.logger.warn(`[SafetyTriage] flag unavailable for ${tenantId}: ${error?.message}`);
             return false;
+        }
+    }
+
+    /**
+     * `agentRuntime.operationClassifier` for this tenant (off by default). Agent
+     * Test and evaluations read the value sealed in the snapshot by
+     * `captureEvaluationContext` (same tenant settings row, no per-turn tenant
+     * or Redis lookup, like business hours); a snapshot captured before the
+     * flag existed reads as off. A read failure is "off".
+     */
+    private async operationClassifierEnabled(tenantId: string, session?: AgentTurnSession): Promise<boolean> {
+        try {
+            if (session) return resolveEvaluationTurnContext(session.snapshot.contextInputs, tenantId).operationClassifier === true;
+            return (await this.featureFlags?.isFeatureEnabled(tenantId, OPERATION_CLASSIFIER_FLAG)) === true;
+        } catch (error: any) {
+            this.logger.warn(`[OperationShadow] flag unavailable for ${tenantId}: ${error?.message}`);
+            return false;
+        }
+    }
+
+    /**
+     * The shadow classification of one turn, or null when the flag is off.
+     * Never rejects: the reply path awaits it only at the very end, bounded.
+     */
+    private async runOperationShadow(input: {
+        tenantId: string; session?: AgentTurnSession; text: string; publishedTools: readonly string[];
+        previousReply: string | null; router: { execute: (options: any) => Promise<any> };
+        executionContext?: ServiceExecutionContext; conversationId: string;
+    }): Promise<OperationShadowVerdict | null> {
+        try {
+            if (!(await this.operationClassifierEnabled(input.tenantId, input.session))) return null;
+            return await OPERATION_CLASSIFIER.classify(
+                { text: input.text, publishedTools: input.publishedTools, previousReply: input.previousReply },
+                {
+                    // A classification is not a source of the reply: never through replySourceRouter.
+                    complete: request => input.router.execute({ ...request, tenantId: input.tenantId,
+                        executionContext: input.executionContext,
+                        traceContext: { conversationId: input.conversationId, stage: 'operation_shadow' } }),
+                    warn: message => this.logger.warn(`${message} (conversation ${input.conversationId})`),
+                },
+            );
+        } catch (error: any) {
+            this.logger.warn(`[OperationShadow] skipped: ${error?.message || error}`);
+            return null;
+        }
+    }
+
+    /**
+     * Writes the `operation_shadow` step. Waits at most OPERATION_SHADOW_FLUSH_MS
+     * for a classification still in flight (it started before the model call, so
+     * it is normally done); one that is not is traced as `pending_at_end`.
+     */
+    private async traceOperationShadow(
+        pending: Promise<OperationShadowVerdict | null> | null,
+        turnTrace: TurnTraceContext,
+        turn: Parameters<typeof buildOperationShadowTrace>[1],
+    ): Promise<void> {
+        if (!pending) return;
+        const OPERATION_SHADOW_FLUSH_MS = 300;
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+            const late = new Promise<'late'>(resolve => {
+                timer = setTimeout(() => resolve('late'), OPERATION_SHADOW_FLUSH_MS);
+                (timer as any)?.unref?.();
+            });
+            const verdict = await Promise.race([pending, late]);
+            if (verdict === 'late') turnTrace.add('decision', 'operation_shadow', { fallback: 'pending_at_end' });
+            else if (verdict) turnTrace.add('decision', 'operation_shadow', buildOperationShadowTrace(verdict, turn));
+        } catch (error: any) {
+            this.logger.warn(`[OperationShadow] trace skipped: ${error?.message || error}`);
+        } finally {
+            if (timer) clearTimeout(timer);
         }
     }
 

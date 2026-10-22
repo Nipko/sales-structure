@@ -51,6 +51,7 @@
   "postgres": [
     "apps/api/src/modules/faqs/faq-effects.postgres.spec.ts",
     "apps/api/src/modules/policies/policies.atomicity.postgres.spec.ts",
-    "apps/api/src/modules/restaurants/promotions-read.postgres.spec.ts"
+    "apps/api/src/modules/restaurants/promotions-read.postgres.spec.ts",
+    "apps/api/src/modules/conversations/tour-booking-history.postgres.spec.ts"
   ]
 }

@@ -626,6 +626,8 @@ export interface Texts {
     /** The customer must verify before the records can be read: the code was sent, the server says where. */
     verifyNeeded(hint?: string): string;
     codeAlreadySent(hint?: string): string;
+    /** A verification was started but no provider accepted the code yet: never «I sent you a code». */
+    codePending(): string;
     codeWrong(): string;
     codeExpired(): string;
     codeUnavailable(): string;
@@ -680,6 +682,8 @@ export function transitionTexts(language: string | undefined, form: AddressForm 
             noOrdersAtAll: () => tu ? 'No encuentro pedidos tuyos.' : 'No encuentro pedidos suyos.',
             verifyNeeded: hint => `${tu ? 'Para ver o cambiar tus citas necesito verificar tu identidad.' : 'Para ver o cambiar sus citas necesito verificar su identidad.'} ${hint ? `${tu ? 'Te envié' : 'Le envié'} un código a ${hint}` : `${tu ? 'Te envié' : 'Le envié'} un código de verificación`}; ${tu ? 'escríbelo' : 'escríbalo'} aquí para continuar.`,
             codeAlreadySent: hint => `${tu ? 'Ya te envié' : 'Ya le envié'} un código de verificación${hint ? ` a ${hint}` : ''}; ${tu ? 'escríbelo' : 'escríbalo'} aquí para continuar.`,
+            codePending: () => tu ? 'Para ver o cambiar tus citas necesito verificar tu identidad, pero todavía no puedo confirmar que el código de verificación haya salido. Si te llega, escríbelo aquí; si en unos minutos no te llega, avísame.'
+                : 'Para ver o cambiar sus citas necesito verificar su identidad, pero todavía no puedo confirmar que el código de verificación haya salido. Si le llega, escríbalo aquí; si en unos minutos no le llega, avíseme.',
             codeWrong: () => tu ? 'Ese código no coincide. Revísalo y escríbelo de nuevo.' : 'Ese código no coincide. Revíselo y escríbalo de nuevo.',
             codeExpired: () => tu ? 'El código venció. ¿Quieres que te envíe uno nuevo?' : 'El código venció. ¿Desea que le envíe uno nuevo?',
             codeUnavailable: () => tu ? 'No pude comprobar el código en este momento. Escríbelo de nuevo en unos segundos.' : 'No pude comprobar el código en este momento. Escríbalo de nuevo en unos segundos.',
@@ -713,6 +717,7 @@ export function transitionTexts(language: string | undefined, form: AddressForm 
             noOrdersAtAll: () => 'I do not find any orders of yours.',
             verifyNeeded: hint => `To see or change your appointments I need to verify your identity. I sent a code ${hint ? `to ${hint}` : 'for verification'}; type it here to continue.`,
             codeAlreadySent: hint => `I already sent a verification code${hint ? ` to ${hint}` : ''}; type it here to continue.`,
+            codePending: () => 'To see or change your appointments I need to verify your identity, but I cannot confirm yet that the verification code went out. If it reaches you, type it here; if it has not arrived in a few minutes, let me know.',
             codeWrong: () => 'That code does not match. Please check it and type it again.',
             codeExpired: () => 'The code has expired. Would you like me to send you a new one?',
             codeUnavailable: () => 'I could not check the code right now. Please type it again in a few seconds.',
@@ -746,6 +751,7 @@ export function transitionTexts(language: string | undefined, form: AddressForm 
             noOrdersAtAll: () => 'Não encontro pedidos seus.',
             verifyNeeded: hint => `Para ver ou mudar seus agendamentos preciso verificar sua identidade. Enviei um código ${hint ? `para ${hint}` : 'de verificação'}; escreva-o aqui para continuar.`,
             codeAlreadySent: hint => `Já enviei um código de verificação${hint ? ` para ${hint}` : ''}; escreva-o aqui para continuar.`,
+            codePending: () => 'Para ver ou mudar seus agendamentos preciso verificar sua identidade, mas ainda não consigo confirmar que o código de verificação foi enviado. Se ele chegar, escreva-o aqui; se não chegar em alguns minutos, me avise.',
             codeWrong: () => 'Esse código não confere. Revise e escreva de novo.',
             codeExpired: () => 'O código expirou. Quer que eu envie um novo?',
             codeUnavailable: () => 'Não consegui verificar o código agora. Escreva de novo em alguns segundos.',
@@ -779,6 +785,7 @@ export function transitionTexts(language: string | undefined, form: AddressForm 
             noOrdersAtAll: () => 'Je ne trouve aucune commande de votre part.',
             verifyNeeded: hint => `Pour voir ou modifier vos rendez-vous, je dois vérifier votre identité. J’ai envoyé un code ${hint ? `à ${hint}` : 'de vérification'} ; saisissez-le ici pour continuer.`,
             codeAlreadySent: hint => `J’ai déjà envoyé un code de vérification${hint ? ` à ${hint}` : ''} ; saisissez-le ici pour continuer.`,
+            codePending: () => 'Pour voir ou modifier vos rendez-vous, je dois vérifier votre identité, mais je ne peux pas encore confirmer que le code de vérification est parti. S’il vous parvient, saisissez-le ici ; s’il n’arrive pas d’ici quelques minutes, dites-le-moi.',
             codeWrong: () => 'Ce code ne correspond pas. Vérifiez-le et saisissez-le à nouveau.',
             codeExpired: () => 'Le code a expiré. Souhaitez-vous que je vous en envoie un nouveau ?',
             codeUnavailable: () => 'Je n’ai pas pu vérifier le code pour le moment. Saisissez-le à nouveau dans quelques secondes.',
@@ -900,9 +907,11 @@ async function driveIdentity(request: TransitionRequest, text: string, io: Trans
         const hint = typeof started.sentTo === 'string' ? started.sentTo : existing?.hint;
         const pending: PendingIdentityRequestV1 = {
             verb: request.verb, domain: request.domain, text: text.slice(0, 400), stage: 'awaiting_code', ...(hint ? { hint } : {}),
-            codeSentAt: sentAt, askedAt: existing?.askedAt ?? sentAt,
+            // Only a code a provider accepted starts the «already sent» window; a pending one is asked for again next time.
+            ...(started.sent === true ? { codeSentAt: sentAt } : {}), askedAt: existing?.askedAt ?? sentAt,
         };
-        return { handled: true, text: started.sent === true ? T.verifyNeeded(hint) : T.codeAlreadySent(hint), awaitingIdentity: pending, executed };
+        // `pending` is a challenge no provider accepted yet: the reply never says the code was sent (F4300-02).
+        return { handled: true, text: started.sent === true ? T.verifyNeeded(hint) : T.codePending(), awaitingIdentity: pending, executed };
     }
     // No code can be issued (too many in the hour, a lockout, no e-mail or phone on file): a person is OFFERED, nothing is opened.
     if (identityGate(started) === 'blocked' || started?.shouldHandoff === true) {

@@ -8,7 +8,7 @@ import { ToolDefinition } from '@parallext/shared';
 export const LISTINGS_TOOLS: ToolDefinition[] = [
     {
         name: 'search_listings',
-        description: 'Search the agency\'s real estate catalog. Use it AS SOON AS the customer gives any criteria (operation, neighborhood, bedrooms, kind, price): every parameter is optional and the budget is optional — do not ask for it before searching. An empty result is an answer: say nothing matched and offer to adjust. `catalog_empty: true` is a different answer: the agency has not published any listing yet, so say that plainly (never that you cannot search) and offer that an advisor contacts them. Returns listings with price, area, bedrooms, neighborhood and a status flag (only available listings are returned by default).',
+        description: 'Search the agency\'s real estate catalog. Use it AS SOON AS the customer gives any criteria (operation, neighborhood, bedrooms, kind, price): every parameter is optional and the budget is optional — do not ask for it before searching. `listings` holds only exact matches. When some criterion could not be met or confirmed (for example a zone, since many listings have no neighborhood recorded), the result also carries `closestMatches`, each with `unmetCriteria`, `unconfirmedCriteria` and a `matchNote`: offer them saying what differs or is not confirmed ("no tengo uno confirmado en la zona norte, pero tengo este…"), never say there is nothing, and never claim a listed criterion is met. An empty result without `closestMatches` is an answer: say nothing matched and offer to adjust. `catalog_empty: true` is a different answer: the agency has not published any listing yet, so say that plainly (never that you cannot search) and offer that an advisor contacts them. Returns listings with price, area, bedrooms, neighborhood and a status flag (only available listings are returned by default).',
         parameters: {
             type: 'object',
             properties: {
@@ -32,7 +32,7 @@ export const LISTINGS_TOOLS: ToolDefinition[] = [
                 },
                 neighborhood: {
                     type: 'string',
-                    description: 'Neighborhood / barrio of interest. Partial match — "Chapinero" matches "Chapinero Alto"',
+                    description: 'Neighborhood / barrio of interest. Partial match — "Chapinero" matches "Chapinero Alto". Pass only a zone the customer named; listings without a recorded neighborhood come back in closestMatches as not confirmed',
                 },
                 city: {
                     type: 'string',

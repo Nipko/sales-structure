@@ -74,6 +74,10 @@ export class ChatIdentityService {
         const region = this.regionalProfile
             ? await this.regionalProfile.phoneRegionFor(tenantId).catch(() => null)
             : null;
+        // SMS is a way to reach the customer only while it can deliver. With the product retired every send was refused,
+        // the challenge stayed 'failed' and the turn was told «verification in progress, ask for the code»: a code that
+        // never left (F4300-02, Telegram contact with a phone and no e-mail).
+        const smsDeliverable = await this.smsDeliverable();
         const code = String(randomInt(100000, 1_000_000));
 
         const admitted = await this.prisma.transactionInTenantSchema(schemaName, async query => {
@@ -89,7 +93,7 @@ export class ChatIdentityService {
             const phone = contact.phone_normalized
                 || normalizePhoneE164(contact.phone || '', region) || contact.phone;
             const channel: 'email' | 'sms' | null = email ? 'email'
-                : phone && conversationChannel !== 'sms' ? 'sms' : null;
+                : phone && conversationChannel !== 'sms' && smsDeliverable ? 'sms' : null;
             const recipient = channel === 'email' ? email : channel === 'sms' ? String(phone) : '';
             if (!channel || !recipient) return { state: 'no_channel' };
 
@@ -159,6 +163,30 @@ export class ChatIdentityService {
         return outcome === 'identity:sent'
             ? { status: 'sent', via: admitted.channel, hint: admitted.hint }
             : { status: 'pending' };
+    }
+
+    /**
+     * True while the conversation has a code the provider ACCEPTED for delivery (state 'sent') that the customer can
+     * still answer. This, and not a challenge row alone, is what lets a reply say «le envié un código».
+     */
+    async hasDeliveredLiveChallenge(conversationId: string, contactId?: string): Promise<boolean> {
+        if (!UUID.test(conversationId)) return false;
+        try {
+            const rows = await this.prisma.$queryRawUnsafe<any[]>(`SELECT contact_id
+                FROM chat_identity_challenges
+                WHERE conversation_id=$1::uuid AND state='sent' AND consumed_at IS NULL AND superseded_at IS NULL
+                  AND expires_at>NOW() AND code IS NOT NULL
+                ORDER BY created_at DESC LIMIT 1`, conversationId);
+            if (!rows[0]) return false;
+            return contactId ? String(rows[0].contact_id) === contactId : true;
+        } catch { return false; }
+    }
+
+    /** SMS can deliver right now (fails closed: an unknown answer is «no»). */
+    private async smsDeliverable(): Promise<boolean> {
+        const sms = this.sms as Partial<TenantNotificationSmsService> | undefined;
+        if (typeof sms?.isAvailable !== 'function') return !!sms?.send;
+        try { return await sms.isAvailable(); } catch { return false; }
     }
 
     /**
@@ -337,7 +365,9 @@ export class ChatIdentityService {
                     {reason:'identity_verification',ref:`identity:${id}`});
                 if(!res.sent) {
                     if(res.reason==='send_failed')throw new Error('identity_sms_outcome_unknown');
-                    const state=res.reason==='opted_out'?'suppressed':'failed';
+                    // A refusal no retry can change (opted out, SMS switched off or unconfigured) closes the challenge:
+                    // leaving it 'failed' kept a phantom «verification in progress» alive for ten minutes.
+                    const state=['opted_out','monetization_disabled','platform_sms_unconfigured','invalid'].includes(String(res.reason))?'suppressed':'failed';
                     await this.prisma.$executeRawUnsafe(`UPDATE chat_identity_challenges SET state=$3,
                         error_code=$4,lease_token=NULL,lease_expires_at=NULL,
                         next_attempt_at=CASE WHEN $3='failed' THEN NOW()+INTERVAL '30 seconds' ELSE next_attempt_at END,

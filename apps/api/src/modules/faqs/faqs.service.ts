@@ -11,7 +11,7 @@ import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-eve
 import { structuredKnowledgeRelation, type StructuredKnowledgeCapture } from '../evaluation-revision/evaluation-structured-knowledge';
 import { onboardingOnceKey } from '@parallext/shared';
 import { recordOnboardingEvent } from '../../common/utils/onboarding-event.util';
-import { faqSearchTerms, pickTopicFaq, rankPartialFaqMatches, splitCompoundQuery, stripFaqQueryNoise, topicTermsOf } from './faq-search';
+import { faqSearchTerms, pickTopicFallbackFaq, pickTopicFaq, rankPartialFaqMatches, splitCompoundQuery, stripFaqQueryNoise, topicTermsOf } from './faq-search';
 
 /**
  * Plegado de diacríticos para la búsqueda de FAQs.
@@ -253,7 +253,7 @@ export class FaqsService {
         executionContext?: ServiceExecutionContext, captured?: StructuredKnowledgeCapture,
     ): Promise<FAQ[]> {
         const parts = splitCompoundQuery(message);
-        if (parts.length < 2) return [];
+        if (parts.length < 2) return this.searchTopic(tenantId, message, limit, executionContext, captured);
         const out = new Map<string, FAQ>();
         for (const part of parts) {
             const topic = topicTermsOf(part);
@@ -270,6 +270,23 @@ export class FaqsService {
             for (const row of rows) if (!out.has(row.id)) out.set(row.id, row);
         }
         return [...out.values()].slice(0, limit);
+    }
+
+    /**
+     * One question with extra words ("¿cuánto cobran de comisión por vender mi apartamento?"): everything above
+     * needs every word or the whole message, so the FAQ "¿Cuánto cobran de comisión?" was never found (production
+     * F4300-21). The FAQs holding any topic word compete, and only one whose question clearly covers the message's
+     * topic is returned (`pickTopicFallbackFaq`); words that only ask ("cuánto", "cobran") never match on their own.
+     */
+    private async searchTopic(
+        tenantId: string, message: string, limit: number,
+        executionContext?: ServiceExecutionContext, captured?: StructuredKnowledgeCapture,
+    ): Promise<FAQ[]> {
+        const topic = topicTermsOf(message);
+        if (!topic.length) return [];
+        const candidates = await this.candidatesFor(tenantId, topic, limit, executionContext, captured);
+        const picked = pickTopicFallbackFaq(candidates, message);
+        return picked ? [picked] : [];
     }
 
     /** FAQs holding ANY of the terms (the broad candidate set the ranking functions then narrow). */

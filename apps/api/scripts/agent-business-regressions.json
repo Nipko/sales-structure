@@ -1,5 +1,6 @@
 {
   "unit": [
+    "apps/api/src/modules/conversations/ai-tool-executor.listing-closest-matches.spec.ts",
     "apps/api/src/modules/conversations/ai-tool-executor.listing-zero-fees.spec.ts",
     "apps/api/src/modules/conversations/ai-tool-executor.package-capacity.spec.ts",
     "apps/api/src/modules/conversations/ai-tool-executor.promotion-schedule-boundaries.spec.ts",
@@ -11,6 +12,7 @@
     "apps/api/src/modules/conversations/appointment-record-read.spec.ts",
     "apps/api/src/modules/conversations/conversations.appointment-history-grounding.spec.ts",
     "apps/api/src/modules/conversations/conversations.faq-trace-provenance.spec.ts",
+    "apps/api/src/modules/conversations/conversations.identity-code-claim.spec.ts",
     "apps/api/src/modules/conversations/conversations.listing-financial-detail.spec.ts",
     "apps/api/src/modules/conversations/conversations.listing-location-grounding.spec.ts",
     "apps/api/src/modules/conversations/conversations.listing-rental-term.spec.ts",
@@ -27,6 +29,7 @@
     "apps/api/src/modules/conversations/crm-note-output-ack-session.spec.ts",
     "apps/api/src/modules/conversations/crm-note-preference-retention.spec.ts",
     "apps/api/src/modules/conversations/faq-persistence-boundaries.spec.ts",
+    "apps/api/src/modules/conversations/identity-code-claim.f4300.spec.ts",
     "apps/api/src/modules/conversations/listing-detail-grounding.spec.ts",
     "apps/api/src/modules/conversations/own-customer-context-read.spec.ts",
     "apps/api/src/modules/conversations/own-tour-bookings-read.spec.ts",
@@ -67,7 +70,8 @@
     "apps/api/src/modules/conversations/conversations.tool-loop-repeat.spec.ts",
     "apps/api/src/modules/conversations/domain-contract-tool-plan.spec.ts",
     "apps/api/src/modules/conversations/runtime/operation-classifier.service.spec.ts",
-    "apps/api/src/modules/conversations/conversations.operation-shadow.spec.ts"
+    "apps/api/src/modules/conversations/conversations.operation-shadow.spec.ts",
+    "apps/api/src/modules/faqs/faq-search.topic-recall.spec.ts"
   ],
   "postgres": [
     "apps/api/src/modules/faqs/faq-effects.postgres.spec.ts",
@@ -76,6 +80,7 @@
     "apps/api/src/modules/conversations/tour-booking-history.postgres.spec.ts",
     "apps/api/src/modules/conversations/customer-context-tags.postgres.spec.ts",
     "apps/api/src/modules/conversations/crm-note-context.postgres.spec.ts",
-    "apps/api/src/modules/conversations/agent-turn-delivery.postgres.spec.ts"
+    "apps/api/src/modules/conversations/agent-turn-delivery.postgres.spec.ts",
+    "apps/api/src/modules/faqs/faq-search.topic-recall.postgres.spec.ts"
   ]
 }

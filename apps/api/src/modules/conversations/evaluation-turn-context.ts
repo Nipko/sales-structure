@@ -17,6 +17,8 @@ export interface EvaluationTurnContextInputs {
     business: NonNullable<TurnContext['business']> | null;
     activeObjectPolicy: ActiveObjectPolicyContext;
     vertical: Record<EvaluationContextLanguage, VerticalContext | null>;
+    /** `agentRuntime.operationClassifier` as the tenant had it at capture. Optional: older snapshots lack it and read as off. */
+    operationClassifier?: boolean;
 }
 
 const record = (value: unknown): value is Record<string, any> => !!value && typeof value === 'object' && !Array.isArray(value);
@@ -26,6 +28,7 @@ export function resolveEvaluationTurnContext(input: EvaluationTurnContextInputs 
         || !Object.hasOwn(input, 'businessHours') || !(input.businessHours === null || record(input.businessHours))
         || !Object.hasOwn(input, 'business') || !(input.business === null || record(input.business))
         || !record(input.activeObjectPolicy)
+        || (Object.hasOwn(input, 'operationClassifier') && typeof input.operationClassifier !== 'boolean')
         || !record(input.regional) || input.regional.tenantId !== tenantId || input.regional.version !== 1
         || !record(input.vertical) || EVALUATION_CONTEXT_LANGUAGES.some(language => !Object.hasOwn(input.vertical, language)
             || !(input.vertical[language] === null || record(input.vertical[language]))))

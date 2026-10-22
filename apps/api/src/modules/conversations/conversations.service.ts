@@ -1,7 +1,7 @@
 import { appointmentRecordReadId } from './appointment-record-read';
 import { isCanonicalConsentRecovery, canonicalConsentRecoveryDirective } from './canonical-consent-recovery';
 import { DemoAllowanceService } from '../throttle/demo-allowance.service';
-import { FeatureFlagsService, OPERATION_CLASSIFIER_FLAG } from '../throttle/feature-flags.service';
+import { FeatureFlagsService, OPERATION_CLASSIFIER_FLAG, resolveFeatureFlag } from '../throttle/feature-flags.service';
 import { buildOperationShadowTrace, OperationClassifierService, type OperationShadowVerdict } from './runtime/operation-classifier.service';
 import { demoAllowanceExhaustedText } from '../widget/widget-demo-link';
 import { recordFirstReply } from '../../common/utils/first-reply.util';
@@ -2720,6 +2720,7 @@ export class ConversationsService {
             regional, business: projectBusinessTurnContext(identity),
             activeObjectPolicy: tenantActiveObjectPolicyContext(tenant),
             vertical: Object.fromEntries(verticalEntries) as EvaluationTurnContextInputs['vertical'],
+            operationClassifier: resolveFeatureFlag((tenant.settings as any)?.featureFlags, OPERATION_CLASSIFIER_FLAG),
         }, tenantId);
     }
 
@@ -6286,15 +6287,14 @@ export class ConversationsService {
 
     /**
      * `agentRuntime.operationClassifier` for this tenant (off by default). Agent
-     * Test reads the tenant's own settings without touching the runtime Redis
-     * cache the flag service keeps; a read failure is "off".
+     * Test and evaluations read the value sealed in the snapshot by
+     * `captureEvaluationContext` (same tenant settings row, no per-turn tenant
+     * or Redis lookup, like business hours); a snapshot captured before the
+     * flag existed reads as off. A read failure is "off".
      */
     private async operationClassifierEnabled(tenantId: string, session?: AgentTurnSession): Promise<boolean> {
         try {
-            if (session) {
-                const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
-                return (tenant?.settings as any)?.featureFlags?.[OPERATION_CLASSIFIER_FLAG] === true;
-            }
+            if (session) return resolveEvaluationTurnContext(session.snapshot.contextInputs, tenantId).operationClassifier === true;
             return (await this.featureFlags?.isFeatureEnabled(tenantId, OPERATION_CLASSIFIER_FLAG)) === true;
         } catch (error: any) {
             this.logger.warn(`[OperationShadow] flag unavailable for ${tenantId}: ${error?.message}`);

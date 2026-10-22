@@ -58,7 +58,11 @@
     "apps/api/src/modules/conversations/booking-stale-draft.spec.ts",
     "apps/api/src/modules/conversations/runtime/safety-policy.spec.ts",
     "apps/api/src/modules/conversations/runtime/safety-triage.spec.ts",
-    "apps/api/src/modules/conversations/conversations.safety-triage.spec.ts"
+    "apps/api/src/modules/conversations/conversations.safety-triage.spec.ts",
+    "apps/api/src/modules/conversations/time-window.spec.ts",
+    "apps/api/src/modules/conversations/slot-window.window.spec.ts",
+    "apps/api/src/modules/conversations/check-availability-window.spec.ts",
+    "apps/api/src/modules/conversations/booking-engine.slot-window.spec.ts"
   ],
   "postgres": [
     "apps/api/src/modules/faqs/faq-effects.postgres.spec.ts",

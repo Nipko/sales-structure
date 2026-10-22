@@ -1,6 +1,7 @@
 import { ConflictException } from '@nestjs/common';
 import { AIToolExecutorService } from './ai-tool-executor.service';
-import { APPOINTMENT_TOOLS } from './tools/appointment-tools';
+import { APPOINTMENT_TOOLS, CHECK_AVAILABILITY_WINDOW_PROPERTY, withSlotWindowParameter } from './tools/appointment-tools';
+import { PARTS_OF_DAY, parseTimeWindow } from './time-window';
 import { INSURANCE_TOOLS } from './tools/insurance-tools';
 import { RESTAURANTS_TOOLS } from './tools/restaurants-tools';
 import { HOME_SERVICES_TOOLS, PET_SERVICES_TOOLS, PHOTOGRAPHY_TOOLS } from './tools/tier3-tools';
@@ -102,6 +103,36 @@ describe('AI tool schema and runtime alignment', () => {
         expect(cancelQuote.description).toContain('"draft" or "sent"');
         expect(cancelQuote.description).toContain('records the withdrawal as "rejected"');
         expect(cancelQuote.description).not.toContain('"pending" status');
+    });
+
+    it('keeps the static check_availability schema without `window` (what a tenant with agentRuntime.slotWindow off sees)', () => {
+        const checkAvailability = tool(APPOINTMENT_TOOLS, 'check_availability');
+        expect(Object.keys(checkAvailability.parameters.properties).sort()).toEqual(['date', 'serviceId', 'staffId', 'time', 'vehicleId']);
+        expect(checkAvailability.parameters.required).toEqual(['date', 'serviceId']);
+    });
+
+    it('advertises check_availability `window` exactly as the executor reads it, only through the flag overlay', () => {
+        const before = JSON.stringify(APPOINTMENT_TOOLS);
+        const overlaid = withSlotWindowParameter(APPOINTMENT_TOOLS);
+        const window = tool(overlaid, 'check_availability').parameters.properties.window;
+        // Same fields and vocabulary as TimeWindow / parseTimeWindow.
+        expect(window).toBe(CHECK_AVAILABILITY_WINDOW_PROPERTY);
+        expect(Object.keys(window.properties).sort()).toEqual(['from', 'partOfDay', 'to']);
+        expect(window.properties.partOfDay.enum).toEqual([...PARTS_OF_DAY]);
+        expect(parseTimeWindow({ partOfDay: 'afternoon', from: '15:00', to: '18:00' })).toEqual({ partOfDay: 'afternoon', from: '15:00', to: '18:00' });
+        expect(window.description).toContain('outsideRequestedWindow');
+        expect(window.description).toContain('Ignored when time is given');
+        // `time` stays for compatibility; `window` is optional.
+        expect(tool(overlaid, 'check_availability').parameters.properties.time).toBeDefined();
+        expect(tool(overlaid, 'check_availability').parameters.required).toEqual(['date', 'serviceId']);
+        // Every other tool is the very same object, and the shared static definitions are not mutated.
+        overlaid.filter(definition => definition.name !== 'check_availability').forEach(definition => {
+            expect(APPOINTMENT_TOOLS).toContain(definition);
+        });
+        expect(JSON.stringify(APPOINTMENT_TOOLS)).toBe(before);
+        // The OpenAI `{ type, function }` shape is handled too.
+        const wrapped = withSlotWindowParameter([{ type: 'function', function: tool(APPOINTMENT_TOOLS, 'check_availability') }]);
+        expect((wrapped[0] as any).function.parameters.properties.window).toBe(CHECK_AVAILABILITY_WINDOW_PROPERTY);
     });
 
     it('advertises exactly the fields persisted by request_photo_quote', () => {

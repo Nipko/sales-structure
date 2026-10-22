@@ -18,6 +18,7 @@ import { procedureDialogueMessages } from './procedure-dialogue-messages';
 import { containsMissionDirective, isCollectionCancellation, isDirectedCorrection, isNamedMissionResume, mentionedMissionDomains, missionDialogue, parseDirectedSlotCorrection } from './mission-focus';
 import { coerceProcedureSlot } from './procedure-slot-interpolation';
 import { nearestSlots, selectSlotWindow } from './slot-window';
+import { describeTimeWindow, parseTimeWindow, sameTimeWindow, type TimeWindow } from './time-window';
 import { answerToOffer, asksDuration, bookingActKind, isAboutBooking, isInformationalDetour, isOnlyInquiry, isPushingToBook, isServiceSwitchDirective } from './informational-detour';
 import { BOOKING_OFFER_TTL_MS } from './booking-offer';
 import { foldForSearch, productSearchTerms, stemForSearch } from '../../common/utils/product-search-terms';
@@ -45,6 +46,11 @@ export interface BookingTurnContext {
     flowResponseToken?: string;
     resumeSelected?: boolean;
     startSelected?: boolean;
+    /**
+     * `agentRuntime.slotWindow` (PR8), decided by the caller like `flowCapable`: the engine
+     * reads and keeps the customer's part-of-day / hour-range window. Off = the old engine.
+     */
+    slotWindow?: boolean;
 }
 
 
@@ -107,6 +113,8 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         servicesHeader: 'Estos son nuestros servicios:',
         servicesFooter: '¿Cuál le interesa?',
         slotsAvailable: 'Horarios disponibles para {service} el {date}: {slots}. ¿Cuál horario prefiere?',
+        slotsAvailableWindow: 'Horarios disponibles {window} para {service} el {date}: {slots}. ¿Cuál horario prefiere?',
+        windowEmpty: 'El {date} no hay horarios {window} para {service}. Lo más cercano es: {slots}. ¿Le sirve alguno?',
         noAvailability: [
             'No hay disponibilidad el {date}. ¿Le gustaría probar otra fecha?',
             'No hay horarios disponibles el {date}. ¿Qué tal si intentamos con otro día?',
@@ -183,6 +191,8 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         servicesHeader: 'These are our services:',
         servicesFooter: 'Which one interests you?',
         slotsAvailable: 'Available times for {service} on {date}: {slots}. Which time do you prefer?',
+        slotsAvailableWindow: 'Available times {window} for {service} on {date}: {slots}. Which time do you prefer?',
+        windowEmpty: 'On {date} there are no times {window} for {service}. The closest available: {slots}. Would any of these work?',
         noAvailability: 'No availability on {date}. Would you like to try another date?',
         slotUnavailable: 'The {time} slot is not available. Available times: {slots}. Which one works for you?',
         slotSuggest: '{time} is not available. I recommend {suggestion}. Does that work for you?',
@@ -249,6 +259,8 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         servicesHeader: 'Estes são nossos serviços:',
         servicesFooter: 'Qual deles interessa a você?',
         slotsAvailable: 'Horários disponíveis para {service} em {date}: {slots}. Qual horário prefere?',
+        slotsAvailableWindow: 'Horários disponíveis {window} para {service} em {date}: {slots}. Qual horário prefere?',
+        windowEmpty: 'Em {date} não há horários {window} para {service}. Os mais próximos são: {slots}. Algum deles serve?',
         noAvailability: 'Sem disponibilidade em {date}. Gostaria de tentar outra data?',
         slotUnavailable: 'O horário das {time} não está disponível. Horários disponíveis: {slots}. Qual funciona para você?',
         slotSuggest: 'O horário das {time} não está disponível. Recomendo {suggestion}. Serve para você?',
@@ -315,6 +327,8 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         servicesHeader: 'Voici nos services :',
         servicesFooter: 'Lequel vous intéresse ?',
         slotsAvailable: 'Créneaux disponibles pour {service} le {date} : {slots}. Quel horaire préférez-vous ?',
+        slotsAvailableWindow: 'Créneaux disponibles {window} pour {service} le {date} : {slots}. Quel horaire préférez-vous ?',
+        windowEmpty: "Le {date}, il n'y a pas de créneau {window} pour {service}. Les plus proches : {slots}. L'un d'eux vous convient-il ?",
         noAvailability: 'Pas de disponibilité le {date}. Souhaitez-vous essayer une autre date ?',
         slotUnavailable: 'Le créneau de {time} n\'est pas disponible. Créneaux disponibles : {slots}. Lequel vous convient ?',
         slotSuggest: 'Le créneau de {time} n\'est pas disponible. Je vous recommande {suggestion}. Cela vous convient-il ?',
@@ -640,6 +654,12 @@ export interface BookingState {
     confirmationIssuedAt?: string;
     /** The last reply offered to pass the customer to a person: a bare yes next turn answers THAT, not this booking. */
     personOfferedAt?: string;
+    /**
+     * The part of the day / hour range the customer asked for («mañana en la tarde», «después de las 3»).
+     * Kept across turns until the customer gives another one (which replaces it), lifts it («a cualquier
+     * hora») or the mission closes. Only written with `agentRuntime.slotWindow` on.
+     */
+    timeWindow?: TimeWindow;
 }
 
 /** Revoking a proposal does not erase collected customer/service preferences. */
@@ -791,7 +811,12 @@ export class BookingEngineService {
         if (isOpen(result.state) && (result.handled || draftFingerprint(result.state) !== draftFingerprint(entering))) {
             result.state.progressedAt = new Date().toISOString();
         }
-        if (!isOpen(result.state)) { result.state.origin = undefined; result.state.offeredBookingAt = undefined; result.state.pendingSwitch = undefined; return result; }
+        if (!isOpen(result.state)) {
+            result.state.origin = undefined; result.state.offeredBookingAt = undefined; result.state.pendingSwitch = undefined;
+            // A closed mission (booked, cancelled, idle) does not carry its time window into the next one.
+            if ('timeWindow' in result.state) delete result.state.timeWindow;
+            return result;
+        }
         // Only a mission OPENED by this message can be tentative; one the customer already
         // confirmed (act) or that was real before stays real.
         const tentative = !wasOpen && act !== 'act';
@@ -852,6 +877,8 @@ export class BookingEngineService {
         // la exige.
         const { authority, flowCapable = false, flowData, conversationId } = turn;
         const state = { ...currentState };
+        // A window kept while `agentRuntime.slotWindow` was on is not honoured once it is off.
+        if (!turn.slotWindow && 'timeWindow' in state) delete state.timeWindow;
         if (turn.startSelected && state.step === 'idle' && (!intent.intent || intent.intent === 'unknown')) intent = { ...intent, intent: 'ask_availability' };
         state.missionId ||= turn.missionScope?.missionId || randomUUID();
         const L = language; // shorthand for msg() calls
@@ -1387,6 +1414,22 @@ export class BookingEngineService {
                 state.date = intent.dateMentioned;
             }
         }
+        // ── Part-of-day / hour-range window («mañana en la tarde», «después de las 3») ── (flag only)
+        // A new window replaces the kept one; «a cualquier hora» lifts it. When it changes and the
+        // customer named no exact hour, the slots on screen were chosen for the old window: they are
+        // dropped (and any slot already picked from them) so availability is read again for the new one.
+        if (turn.slotWindow && (intent.timeWindow || intent.timeWindowCleared)) {
+            const next = intent.timeWindowCleared ? undefined : parseTimeWindow(intent.timeWindow) ?? undefined;
+            if (!sameTimeWindow(state.timeWindow, next)) {
+                if (next) state.timeWindow = next; else delete state.timeWindow;
+                if (!intent.timeMentioned && (state.slots?.length || state.time)) {
+                    state.slots = undefined; state.suggestedSlots = undefined;
+                    state.time = undefined; state.staffId = undefined; state.staffName = undefined;
+                    invalidateBookingProposal(state);
+                    if (['ask_name', 'ask_email', 'confirm'].includes(state.step)) state.step = 'show_slots';
+                }
+            }
+        }
         // El cliente acepta la hora que se le recomendó: solo con un "sí" explícito
         // y una única recomendación pendiente se fija. Con dos, debe elegir una.
         if (state.suggestedSlots?.length === 1 && intent.isConfirmation && !intent.timeMentioned) {
@@ -1883,13 +1926,18 @@ export class BookingEngineService {
     private async loadSlots(
         schema: string, tenantId: string, contactId: string, state: BookingState, lang: string,
         authority: ToolExecutionAuthority, conversationId?: string, requestedTime?: string,
+        /** Set when the tool really applied the kept window (it reports `requestedWindow`). */
+        applied?: { window?: boolean },
     ): Promise<EngineResult | null> {
         this.logger.log(`[Decide] Checking availability: ${state.serviceName} on ${state.date}`);
+        // The kept window (flag `agentRuntime.slotWindow`) travels only without an exact hour: an
+        // hour is more precise than a part of the day and keeps its own nearest-slot rules.
+        const window = !requestedTime ? state.timeWindow : undefined;
         const result = await this.toolExecutor.execute(
             schema, tenantId, contactId, 'check_availability',
             // La hora pedida viaja a la herramienta solo si existe: sin ella el
             // contrato de la llamada es el de siempre.
-            { date: state.date, serviceId: state.serviceId, ...(requestedTime ? { time: requestedTime } : {}) },
+            { date: state.date, serviceId: state.serviceId, ...(requestedTime ? { time: requestedTime } : {}), ...(window ? { window } : {}) },
             conversationId, { authority },
         );
 
@@ -1897,6 +1945,18 @@ export class BookingEngineService {
             state.slots = selectSlotWindow(result.slots, requestedTime);
             state.step = 'show_slots';
             state.suggestedSlots = undefined;
+            // Nothing free in the requested part of the day: say so and offer the nearest free
+            // slots (they are real and selectable), never "no availability" for the whole day.
+            if (window && result.outsideRequestedWindow === true) {
+                return {
+                    handled: true, state,
+                    text: msg(lang, 'windowEmpty', {
+                        date: state.date || '', service: state.serviceName || '',
+                        window: describeTimeWindow(window, lang), slots: this.slotListText(state),
+                    }),
+                };
+            }
+            if (window && result.requestedWindow && applied) applied.window = true;
             return null;
         }
 
@@ -1920,7 +1980,8 @@ export class BookingEngineService {
         schema: string, tenantId: string, contactId: string, state: BookingState, lang: string,
         authority: ToolExecutionAuthority, conversationId?: string, requestedTime?: string,
     ): Promise<EngineResult> {
-        const failed = await this.loadSlots(schema, tenantId, contactId, state, lang, authority, conversationId, requestedTime);
+        const applied: { window?: boolean } = {};
+        const failed = await this.loadSlots(schema, tenantId, contactId, state, lang, authority, conversationId, requestedTime, applied);
         if (failed) return failed;
         if (requestedTime) {
             const exact = state.slots?.find(s => s.time === requestedTime);
@@ -1947,15 +2008,30 @@ export class BookingEngineService {
         // la tanda: en un local de una sola persona repetirlo en cada franja
         // es ruido, y en una clínica con tres doctoras es justo el dato con
         // el que el paciente elige.
-        const staffNames = new Set((state.slots ?? []).map(s => s.staffName).filter(Boolean));
-        const showStaff = staffNames.size > 1;
-        const slotList = (state.slots ?? [])
-            .map(s => `${s.time} - ${s.endTime}${showStaff && s.staffName ? ` (${s.staffName})` : ''}`)
-            .join(', ');
+        const slotList = this.slotListText(state);
+        // The list is named after the window only when the tool really filtered by it.
+        if (applied.window && state.timeWindow) {
+            return {
+                handled: true, state,
+                text: msg(lang, 'slotsAvailableWindow', {
+                    service: state.serviceName || '', date: state.date || '', slots: slotList,
+                    window: describeTimeWindow(state.timeWindow, lang),
+                }),
+            };
+        }
         return {
             handled: true, state,
             text: msg(lang, 'slotsAvailable', { service: state.serviceName || '', date: state.date || '', slots: slotList }),
         };
+    }
+
+    /** «09:00 - 09:30, 10:00 - 10:30», with the professional only when the list has more than one. */
+    private slotListText(state: BookingState): string {
+        const staffNames = new Set((state.slots ?? []).map(s => s.staffName).filter(Boolean));
+        const showStaff = staffNames.size > 1;
+        return (state.slots ?? [])
+            .map(s => `${s.time} - ${s.endTime}${showStaff && s.staffName ? ` (${s.staffName})` : ''}`)
+            .join(', ');
     }
 
     // ── Collect missing info or show confirmation ──

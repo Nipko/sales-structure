@@ -77,3 +77,84 @@ export function nearestSlots<T extends { time: string }>(
         .map(entry => entry.slot)
         .sort((a, b) => (toMinutes(a.time) ?? 0) - (toMinutes(b.time) ?? 0));
 }
+
+/** How many free slots outside the requested window are offered when the window itself is full. */
+export const NEAREST_OUTSIDE_WINDOW_COUNT = 3;
+
+/** The outcome of offering slots for a requested window ("mañana en la tarde"). */
+export type WindowedSlotSelection<T> =
+    /** Free slots inside the window, spread across it. */
+    | { kind: 'inside'; slots: T[]; insideCount: number }
+    /**
+     * Nothing free inside the window, but the day has other free slots: these are
+     * the nearest ones. The reply must say "no hay en la tarde; lo más cercano es…",
+     * never that the day has no availability.
+     */
+    | { kind: 'outsideRequestedWindow'; slots: T[]; insideCount: 0 };
+
+/**
+ * One slot per distinct start time, spread evenly over the ordered list: a
+ * window with sixteen free half-hours offers its start, its end and points in
+ * between instead of its first three hours.
+ */
+export function spreadSlots<T extends { time: string }>(slots: readonly T[], limit: number = MAX_OFFERED_SLOTS): T[] {
+    const ordered = byTime(slots);
+    if (ordered.length <= limit) return ordered;
+    const firstPerTime: T[] = [];
+    const seen = new Set<string>();
+    for (const slot of ordered) {
+        if (seen.has(slot.time)) continue;
+        seen.add(slot.time);
+        firstPerTime.push(slot);
+    }
+    if (firstPerTime.length <= limit) return firstPerTime;
+    if (limit <= 1) return firstPerTime.slice(0, Math.max(0, limit));
+    const picked = new Set<number>();
+    for (let i = 0; i < limit; i++) picked.add(Math.round(i * (firstPerTime.length - 1) / (limit - 1)));
+    return [...picked].sort((a, b) => a - b).map(index => firstPerTime[index]);
+}
+
+/**
+ * Filters the free slots to the requested window BEFORE choosing which ones to
+ * show. `fromMin` is inclusive and `toMin` exclusive on the slot start.
+ *
+ * With a requested hour as well, the hour decides inside the window (same rule as
+ * `selectSlotWindow`). An empty window answers with the free slots nearest to it
+ * (distinct start times, chronological), typed as `outsideRequestedWindow`.
+ * A day with no free slot at all returns `inside` with nothing: that is a plain
+ * "no availability", which the caller already handles.
+ */
+export function selectSlotsInWindow<T extends { time: string }>(
+    slots: readonly T[],
+    window: { fromMin: number; toMin: number },
+    requestedTime?: string | null,
+    limit: number = MAX_OFFERED_SLOTS,
+): WindowedSlotSelection<T> {
+    const ordered = byTime(slots);
+    const inside = ordered.filter(slot => {
+        const minutes = toMinutes(slot.time);
+        return minutes !== null && minutes >= window.fromMin && minutes < window.toMin;
+    });
+    if (inside.length) {
+        const requested = requestedTime ? toMinutes(requestedTime) : null;
+        return {
+            kind: 'inside',
+            slots: requested === null ? spreadSlots(inside, limit) : selectSlotWindow(inside, requestedTime, limit),
+            insideCount: inside.length,
+        };
+    }
+    if (!ordered.length) return { kind: 'inside', slots: [], insideCount: 0 };
+    const seen = new Set<string>();
+    const nearest = ordered
+        .filter(slot => toMinutes(slot.time) !== null && !seen.has(slot.time) && !!seen.add(slot.time))
+        .map(slot => {
+            const minutes = toMinutes(slot.time) as number;
+            const distance = minutes < window.fromMin ? window.fromMin - minutes : minutes - window.toMin + 1;
+            return { slot, minutes, distance };
+        })
+        .sort((a, b) => a.distance - b.distance || a.minutes - b.minutes)
+        .slice(0, Math.min(limit, NEAREST_OUTSIDE_WINDOW_COUNT))
+        .sort((a, b) => a.minutes - b.minutes)
+        .map(entry => entry.slot);
+    return { kind: 'outsideRequestedWindow', slots: nearest, insideCount: 0 };
+}

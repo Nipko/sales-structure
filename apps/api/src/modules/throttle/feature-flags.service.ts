@@ -32,6 +32,8 @@ export const REQUIRED_READS_CATALOG_FLAG = 'agentRuntime.requiredReads.catalog';
 /** PR7: hotel / vacation rental and travel agency / tours. */
 export const REQUIRED_READS_PROPERTIES_FLAG = 'agentRuntime.requiredReads.properties';
 export const REQUIRED_READS_TOURS_FLAG = 'agentRuntime.requiredReads.tours';
+/** Per-tenant flag of the rendered facts (operations runtime PR6): amounts, counts and record fields come from tokens the server renders. */
+export const RENDERED_FACTS_FLAG = 'agentRuntime.renderedFacts';
 const CACHE_TTL = 300;
 
 /**
@@ -76,6 +78,11 @@ export const FEATURE_FLAGS_REGISTRY: Array<{
     // Operations runtime PR7: the same runner for lodging and travel. Off = the turn is exactly the previous one.
     { key: REQUIRED_READS_PROPERTIES_FLAG, label: 'Required reads: hotel / vacation rental', description: 'Lodging: price, schedule, amenities and availability questions run list_properties / get_property_details (and check_property_availability when the message has stay dates) before the reply; without dates the nightly price is given as a "from" price', category: 'experimental', default: false },
     { key: REQUIRED_READS_TOURS_FLAG, label: 'Required reads: travel / tours', description: 'Travel: package price, inclusions and availability questions run search_packages / get_package_details / check_package_availability before the reply; an open question lists the existing packages', category: 'experimental', default: false },
+    // Operations runtime PR6 (apps/api/src/modules/conversations/runtime/fact-renderer.ts): the model cites prices, counts,
+    // availability and record fields as tokens (⟦fact:id⟧ / ⟦count:id⟧ / ⟦avail:id⟧) the server renders from the verified
+    // facts; an amount or count the model typed itself is replaced by a template, and the claim/price corrective retries
+    // are skipped. Off = the prompt and the reply pipeline are exactly the previous ones.
+    { key: RENDERED_FACTS_FLAG, label: 'Rendered facts', description: 'Prices, counts, availability and record fields reach the customer as values rendered by the server from the verified facts (the model writes tokens); a figure the model typed itself is replaced by a safe template', category: 'experimental', default: false },
 ];
 
 /**

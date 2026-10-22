@@ -1007,6 +1007,26 @@ export interface VerifiedFactView {
     ageMinutes: number;
 }
 
+/**
+ * One fact the model may cite by token this turn (`agentRuntime.renderedFacts`, operations runtime PR6): the server
+ * replaces `⟦fact:id⟧`, `⟦count:id⟧` or `⟦avail:id⟧` with the verified value before the customer reads the reply.
+ */
+export interface FactTokenView {
+    id: string;
+    kind: VerifiedFactView['kind'];
+    subjectType: string;
+    subjectId: string;
+    subjectName?: string;
+    field: string;
+    /** The tokens this fact renders: `fact` always; `count` for lists and numeric/list attributes; `avail` for availability. */
+    tokens: { fact: string; count?: string; avail?: string };
+    /** Short preview of the value, so the model can write the words around the token. */
+    preview: string;
+    priceStatus?: string;
+    complete?: boolean;
+    total?: number;
+}
+
 export interface TurnContext {
     /** Final generated-response diagnostics. Citations/overlap are not semantic verification. */
     knowledgeAttribution?: {
@@ -1036,6 +1056,12 @@ export interface TurnContext {
      * byte-identical to the one without the ledger; an empty array means the flag is on and nothing is live.
      */
     verifiedFacts?: VerifiedFactView[];
+    /**
+     * The facts the model may cite by token this turn (`agentRuntime.renderedFacts`): the live ledger, this turn's
+     * pre-model reads and the projected catalogue. Absent when the flag is off — the prompt is then byte-identical to the
+     * one without rendered facts; an empty array means the flag is on and no fact is citable yet.
+     */
+    factTokens?: FactTokenView[];
     businessHoursStatus: 'open' | 'closed' | 'unknown';
     business?: Pick<BusinessIdentity, 'companyName' | 'industry' | 'about' | 'phone' | 'email' | 'website' | 'address' | 'city' | 'country' | 'socialLinks'>;
     contact?: {

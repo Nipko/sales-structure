@@ -101,7 +101,7 @@ export const TOURS_TOOLS: ToolDefinition[] = [
     },
     {
         name: 'list_my_tour_bookings',
-        description: 'List all tour bookings for the current customer, including paymentStatus and a payableReference only when chargeable. Use before cancellation, payment-link creation, or payment-status lookup. Pass payableReference unchanged and never derive one yourself.',
+        description: 'List up to 10 recent tour bookings for the current customer ordered by departure date, including cancelled bookings and their independent paymentStatus. historyMayBeTruncated means older records may be omitted; never claim this is the complete history when true. A payableReference is returned only when chargeable. Use before cancellation, payment-link creation, or payment-status lookup. Pass payableReference unchanged and never derive one yourself.',
         parameters: { type: 'object', properties: {} },
     },
 ];

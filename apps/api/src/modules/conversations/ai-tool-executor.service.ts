@@ -6868,11 +6868,13 @@ export class AIToolExecutorService {
                         tp.name AS package_name
                  FROM "${schema}".tour_bookings tb
                  LEFT JOIN "${schema}".tour_packages tp ON tp.id = tb.package_id
-                 WHERE tb.contact_id = $1::uuid AND tb.status != 'cancelled'
-                 ORDER BY tb.departure_date DESC LIMIT 10`,
+                 WHERE tb.contact_id = $1::uuid
+                 ORDER BY tb.departure_date DESC, tb.id DESC LIMIT 10`,
                 contactId,
             );
             return {
+                historyLimit: 10,
+                historyMayBeTruncated: rows.length === 10,
                 bookings: rows.map(r => ({
                     id: r.id,
                     packageName: r.package_name,

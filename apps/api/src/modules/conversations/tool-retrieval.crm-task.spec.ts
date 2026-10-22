@@ -20,4 +20,9 @@ describe.each([
         const denied = staticToolsForAgentConfig({ ...config, crm: { enabled: false } });
         expect(new ToolRetrievalService().retrieveRelevantTools(message, denied).map(t => t.name)).not.toContain('create_follow_up_task');
     });
+    it('retains the direct task command that stalled in customer QA', () => {
+        const direct = 'Cree una unica tarea de seguimiento para que el equipo revise mi solicitud mas adelante. El titulo exacto debe ser "QA-TAREA-QA04-20261021-2872-PROPIA". No indico fecha: dejela sin fecha, sin asignar a otra persona y sin oportunidad asociada. No guarde notas ni transfiera la conversacion.';
+        const result = new ToolRetrievalService().retrieveRelevantTools(direct, candidates, 10, pinned);
+        expect(result.map(t => t.name)).toEqual(expect.arrayContaining(['create_follow_up_task', ...pinned]));
+    });
 });

@@ -2640,7 +2640,7 @@ export class AIToolExecutorService {
         try {
             const lRows: any[] = await this.prisma.$queryRawUnsafe(
                 `SELECT id, stage, score, first_name, last_name, created_at
-                 FROM "${schema}".leads WHERE contact_id = $1::uuid ORDER BY created_at DESC LIMIT 1`,
+                 FROM "${schema}".leads WHERE contact_id = $1::uuid AND archived_at IS NULL ORDER BY created_at DESC LIMIT 1`,
                 contactId,
             );
             lead = lRows[0] || null;
@@ -2661,6 +2661,21 @@ export class AIToolExecutorService {
             opportunitiesCount = null;
         }
 
+        // CRM labels live on the selected active lead, independently from
+        // contact-level labels. A missing relation is unknown data, not no tags.
+        let leadTags: string[] | null = null;
+        if (lead) {
+            try {
+                const tagRows: any[] = await this.prisma.$queryRawUnsafe(
+                    `SELECT t.name FROM "${schema}".lead_tags lt
+                     JOIN "${schema}".tags t ON t.id = lt.tag_id
+                     WHERE lt.lead_id = $1::uuid ORDER BY t.name`,
+                    lead.id,
+                );
+                leadTags = tagRows.map(row => row.name).filter(name => typeof name === 'string');
+            } catch { partial.push('leadTags'); }
+        }
+
         return readOk({
             unreadable: partial.length ? partial : undefined,
             contact: contact ? {
@@ -2671,6 +2686,7 @@ export class AIToolExecutorService {
                 lastContactAt: contact.last_contact_at,
             } : null,
             lead: lead ? {
+                tags: leadTags,
                 stage: lead.stage,
                 score: lead.score,
                 firstName: lead.first_name,
@@ -4664,6 +4680,8 @@ export class AIToolExecutorService {
                 description: pkg.description,
                 durationType: pkg.duration_type,
                 durationValue: pkg.duration_value,
+                minPartySize: pkg.min_party_size ?? null,
+                maxCapacity: pkg.max_capacity ?? null,
                 price: Number(pkg.price || 0),
                 currency: pkg.currency,
                 destination: pkg.destination,
@@ -4852,8 +4870,8 @@ export class AIToolExecutorService {
                 price: Number(l.price || 0),
                 currency: l.currency,
                 rentPeriod: l.rent_period,
-                hoaFee: l.hoa_fee ? Number(l.hoa_fee) : null,
-                deposit: l.deposit ? Number(l.deposit) : null,
+                hoaFee: (l.hoa_fee === 0 || l.hoa_fee) ? Number(l.hoa_fee) : null,
+                deposit: (l.deposit === 0 || l.deposit) ? Number(l.deposit) : null,
                 minRentalMonths: l.min_rental_months,
                 financingAvailable: l.financing_available,
                 bedrooms: l.bedrooms,
@@ -5098,22 +5116,31 @@ export class AIToolExecutorService {
             const all = await this.restaurantsService.listPromotions(schemaName, true);
             // Filter by day of week + hour window if specified
             const now = new Date();
-            const dayCodes = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
-            const today = dayCodes[now.getDay()];
-            const currentMin = now.getHours() * 60 + now.getMinutes();
+            // Stored promotion schedules use the business wall clock, not the host's timezone.
+            const clock = new Intl.DateTimeFormat('en-US', {
+                timeZone: await this.getTenantTimezone(schemaName), weekday: 'short',
+                hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+            }).formatToParts(now);
+            const part = (type: string) => clock.find(p => p.type === type)?.value || '';
+            const today = part('weekday').toLowerCase();
+            const currentMin = Number(part('hour')) * 60 + Number(part('minute'));
             const eligible = all.filter((p: any) => {
-                const days = p.applicable_days || [];
-                if (Array.isArray(days) && days.length > 0 && !days.includes(today)) return false;
-                if (p.applicable_hours) {
-                    const [start, end] = String(p.applicable_hours).split('-');
-                    if (start && end) {
-                        const [sh, sm] = start.split(':').map(Number);
-                        const [eh, em] = end.split(':').map(Number);
-                        const startMin = sh * 60 + (sm || 0);
-                        const endMin = eh * 60 + (em || 0);
-                        if (currentMin < startMin || currentMin > endMin) return false;
-                    }
+                const days = p.applicable_days ?? [];
+                if (!Array.isArray(days) || days.some((day: unknown) =>
+                    typeof day !== 'string' || !['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'].includes(day))) {
+                    throw new Error('invalid_promotion_schedule');
                 }
+                let window: [number, number] | undefined;
+                if (p.applicable_hours != null && p.applicable_hours !== '') {
+                    const match = typeof p.applicable_hours === 'string'
+                        ? /^(\d{1,2}):([0-5]\d)-(\d{1,2}):([0-5]\d)$/.exec(p.applicable_hours.trim()) : null;
+                    if (!match || Number(match[1]) > 23 || Number(match[3]) > 23) {
+                        throw new Error('invalid_promotion_schedule');
+                    }
+                    window = [Number(match[1]) * 60 + Number(match[2]), Number(match[3]) * 60 + Number(match[4])];
+                }
+                if (days.length > 0 && !days.includes(today)) return false;
+                if (window && (currentMin < window[0] || currentMin > window[1])) return false;
                 return true;
             });
             if (!eligible.length) {
@@ -6857,11 +6884,13 @@ export class AIToolExecutorService {
                         tp.name AS package_name
                  FROM "${schema}".tour_bookings tb
                  LEFT JOIN "${schema}".tour_packages tp ON tp.id = tb.package_id
-                 WHERE tb.contact_id = $1::uuid AND tb.status != 'cancelled'
-                 ORDER BY tb.departure_date DESC LIMIT 10`,
+                 WHERE tb.contact_id = $1::uuid
+                 ORDER BY tb.departure_date DESC, tb.id DESC LIMIT 10`,
                 contactId,
             );
             return {
+                historyLimit: 10,
+                historyMayBeTruncated: rows.length === 10,
                 bookings: rows.map(r => ({
                     id: r.id,
                     packageName: r.package_name,

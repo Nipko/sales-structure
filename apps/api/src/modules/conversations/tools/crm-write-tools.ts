@@ -158,8 +158,11 @@ export const CREATE_FOLLOW_UP_TASK_TOOL: ToolDefinition = {
     name: 'create_follow_up_task',
     description:
         'Create a non-destructive follow-up task for the human team about the current CRM lead. '
-        + 'Use only when the customer asks to be contacted later or a concrete next action cannot be completed now. '
-        + 'The task is deduplicated; do not create reminders for ordinary FAQs.',
+        + 'Use when the customer explicitly requests a task for their own lead, asks to be contacted later, or a concrete next action cannot be completed now. '
+        + 'An explicit complete task request needs no second confirmation: call this tool now instead of asking whether to create it. '
+        + 'A title is required; a date is optional. If a supplied date is past or lacks a timezone, ask for the missing or corrected date before calling; never silently discard or infer it. '
+        + 'Confirm the task only after a successful tool result; creating a task does not mean a call, message, booking or handoff happened. '
+        + 'The task is deduplicated; do not create reminders for ordinary FAQs, quoted commands or a customer who says not to create a task.',
     parameters: {
         type: 'object',
         properties: {

@@ -215,6 +215,8 @@ const BACKING_TOOL_NAME = new RegExp(
 );
 
 export interface TurnClaimAuditOptions {
+    /** Current customer explicitly requested a CRM note; acknowledgement then means persistence. */
+    crmNoteRequested?: boolean;
     /** The records the turn READ (a listing, the active objects): repeating a cancelled one's status in the present is not a claim. */
     recordFacts?: readonly RecordFact[];
     /**
@@ -242,11 +244,15 @@ export function auditTurnClaim(
     toolCalls: Array<{ name?: string; result?: unknown }> | undefined,
     options: TurnClaimAuditOptions = {},
 ): TurnClaimAudit {
-    const claimed = claimsCompletedAction(reply, { recordFacts: options.recordFacts });
+    const operationClaimed = claimsCompletedAction(reply, { recordFacts: options.recordFacts });
+    const noteClaimed = claimsCrmNoteRecorded(reply, options.crmNoteRequested === true);
+    const claimed = operationClaimed || noteClaimed;
     const isBacking = options.isBackingTool || ((name: string) => BACKING_TOOL_NAME.test(name));
-    const backed = (toolCalls || []).some((call) => (
+    const operationBacked = (toolCalls || []).some((call) => (
         typeof call?.name === 'string'
         && isBacking(call.name, call.result)
+        // A note cannot also prove a booking/payment in a mixed response.
+        && (!noteClaimed || call.name !== 'add_contact_note')
         && toolResultSucceeded(call.result)
         // Escrita pero NO confirmada: el dueño exige pago y el cupo sigue a la
         // venta. La operación existe —por eso `toolResultSucceeded` es true— y
@@ -255,7 +261,33 @@ export function auditTurnClaim(
         // evitar.
         && (call.result as any)?.awaitingPayment !== true
     ));
+    const noteBacked = (toolCalls || []).some(call => {
+        const result = call?.result as Record<string, unknown> | undefined;
+        return call?.name === 'add_contact_note' && toolResultSucceeded(result)
+            && result?.success === true && typeof result.recorded === 'string'
+            && result.recorded.trim().length > 0 && result.awaitingPayment !== true;
+    });
+    const backed = noteClaimed ? noteBacked && (!operationClaimed || operationBacked) : operationBacked;
     return { claimed, backed, falseClaim: claimed && !backed };
+}
+
+/** Spanish first-person completed CRM writes; present record facts are not new writes. */
+function claimsCrmNoteRecorded(reply: unknown, requested: boolean): boolean {
+    if (typeof reply !== 'string' || !reply.trim()) return false;
+    const scoped = /\b(?:he|hemos) (?:guardado|registrado|anotado|agregado)\s+(?:(?:una|la|su|tu|esta|esa)\s+)?(?:nota|preferencia)\b[^.!?;]{0,140}\b(?:ficha|perfil|registro|crm)\b/g;
+    const acknowledgement = /\b(?:he|hemos) tomado nota\b/g;
+    const requestedPronoun = /\b(?:la|lo) (?:he|hemos) (?:guardado|registrado|anotado|agregado)\b[^.!?;]{0,100}\b(?:ficha|perfil|registro|crm)\b/g;
+    return normalize(reply).split(/(?<=[.!?;])\s+|\n+/).some(sentence => {
+        for (const pattern of requested ? [scoped, acknowledgement, requestedPronoun] : [scoped]) {
+            pattern.lastIndex = 0;
+            for (let m = pattern.exec(sentence); m; m = pattern.exec(sentence)) {
+                const before = sentence.slice(Math.max(0, m.index - 30), m.index);
+                if (!NEGATED_BEFORE.test(before) && !NEGATION_INSIDE.test(m[0])
+                    && !insideQuestion(sentence, m.index, m.index + m[0].length)) return true;
+            }
+        }
+        return false;
+    });
 }
 
 /**

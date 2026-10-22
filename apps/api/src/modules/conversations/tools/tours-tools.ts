@@ -44,7 +44,7 @@ export const TOURS_TOOLS: ToolDefinition[] = [
     },
     {
         name: 'get_package_details',
-        description: 'Get full details of an active tour package: price, currency, duration, includes/excludes, what to bring, languages, cancellation policy, and currently available departure dates. Prefer the exact UUID returned by search_packages. A complete package name can also be resolved when it uniquely matches an active package. For partial names or ambiguous matches, use search_packages first and ask the customer to choose; never invent a UUID.',
+        description: 'Get full details of an active tour package: price, currency, duration, configured minimum/maximum travellers, includes/excludes, what to bring, languages, cancellation policy, and currently available departure dates. Traveller limits are not remaining seats: check_package_availability is required for a specific date and group. Prefer the exact UUID returned by search_packages. A complete package name can also be resolved when it uniquely matches an active package. For partial names or ambiguous matches, use search_packages first and ask the customer to choose; never invent a UUID.',
         parameters: {
             type: 'object',
             properties: {
@@ -101,7 +101,7 @@ export const TOURS_TOOLS: ToolDefinition[] = [
     },
     {
         name: 'list_my_tour_bookings',
-        description: 'List all tour bookings for the current customer, including paymentStatus and a payableReference only when chargeable. Use before cancellation, payment-link creation, or payment-status lookup. Pass payableReference unchanged and never derive one yourself.',
+        description: 'List up to 10 recent tour bookings for the current customer ordered by departure date, including cancelled bookings and their independent paymentStatus. historyMayBeTruncated means older records may be omitted; never claim this is the complete history when true. A payableReference is returned only when chargeable. Use before cancellation, payment-link creation, or payment-status lookup. Pass payableReference unchanged and never derive one yourself.',
         parameters: { type: 'object', properties: {} },
     },
 ];

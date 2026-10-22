@@ -277,7 +277,7 @@ export class ToursService {
         packageId: string,
         departureDate: string,
         partySize: unknown,
-    ): Promise<{ available: boolean; seatsLeft: number | 'unlimited' | null; reason?: string; minPartySize?: number; message?: string }> {
+    ): Promise<{ available: boolean; seatsLeft: number | 'unlimited' | null; reason?: string; minPartySize?: number; maxCapacity?: number; message?: string }> {
         const pkg = await this.getPackage(schemaName, packageId);
         if (!pkg || !pkg.is_active) {
             return { available: false, seatsLeft: 0, reason: 'package_not_found' };
@@ -296,6 +296,12 @@ export class ToursService {
         const minPartySize = Number(pkg.min_party_size) || 1;
         if (size < minPartySize) {
             return { available: false, seatsLeft: 0, reason: 'party_size_too_small', minPartySize };
+        }
+
+        const maxCapacity = parsePartySize(pkg.max_capacity);
+        if (maxCapacity !== null && size > maxCapacity) {
+            // A package limit is independent of a departure's remaining seats.
+            return { available: false, seatsLeft: null, reason: 'party_size_too_large', maxCapacity };
         }
 
         const departure = await this.departureStatus(schemaName, packageId, departureDate);
@@ -445,6 +451,16 @@ export class ToursService {
                     minPartySize,
                     requested: partySize,
                     message: `This package needs at least ${minPartySize} travellers. Nothing was booked.`,
+                });
+            }
+
+            const maxCapacity = parsePartySize(pkg.max_capacity);
+            if (maxCapacity !== null && partySize > maxCapacity) {
+                throw new BadRequestException({
+                    error: 'party_size_too_large',
+                    maxCapacity,
+                    requested: partySize,
+                    message: `This package allows at most ${maxCapacity} travellers. Nothing was booked.`,
                 });
             }
 
@@ -676,6 +692,8 @@ export class ToursService {
             for (const p of packages) {
                 const minPartySize = Number(p.min_party_size) || 1;
                 if (requested !== null && requested < minPartySize) continue;
+                const maxCapacity = parsePartySize(p.max_capacity);
+                if (requested !== null && maxCapacity !== null && requested > maxCapacity) continue;
                 const needed = requested ?? minPartySize;
                 const departure = await this.departureStatus(schemaName, p.id, params.date);
                 if (departure.kind === 'no_departure') continue;

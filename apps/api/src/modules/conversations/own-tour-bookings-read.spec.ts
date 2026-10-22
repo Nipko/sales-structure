@@ -1,0 +1,5 @@
+import { requiresOwnTourBookingsRead as read } from './own-tour-bookings-read';
+describe('conservative own tour booking read selection',()=>{
+ it.each(['Consulta mis reservas de tours actuales.','Show my tour bookings.','Consulte minhas reservas de passeios.','Affiche mes reservations de circuits.','¿Qué reservas de excursiones tengo registradas? Solo consulta; no crees ni canceles nada.','What are my tour reservations?'])('recognizes %s',q=>expect(read(q)).toBe(true));
+ it.each(['Cancela mis reservas de tours.','Show my tour bookings and create a new booking.','Consulta mis reservas de tours y paga una.','Muestra las reservas de tours de mi esposa.','Mis reservas de tours de Juan','Show my tour bookings for another customer','Consulta mis reservas de tours 57542cc7-de10-4166-b731-704bc7fa403d','Consulta mis reservas del hotel','¿Cuánto cuesta el tour?','Quiero reservar un tour','Consulta mis reservas de tours y elimina una','Affiche mes reservations de circuits et annule une reservation.'])('rejects %s',q=>expect(read(q)).toBe(false));
+});

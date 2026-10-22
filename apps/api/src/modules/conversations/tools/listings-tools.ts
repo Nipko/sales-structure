@@ -58,7 +58,7 @@ export const LISTINGS_TOOLS: ToolDefinition[] = [
     },
     {
         name: 'send_listing_image',
-        description: 'Send the customer real photos of a specific listing (up to 3). Use when showing/recommending a property would benefit from a visual — a buyer decides on the facade AND the kitchen, not one thumbnail. Only call with a listingId you got from search_listings. The images are sent for you: do not paste links or describe them in your reply.',
+        description: 'Send the customer the current published photos of a specific listing (up to 3). Call when the customer asks to receive a photo, including a new request after an earlier send: a previous result is not a send in this turn. The tool reads the current catalogue images. Use only a listingId returned by search_listings. The images are sent for you: do not substitute links, descriptions or a visit, or claim the channel cannot send images while this tool is available. Report success only from the current tool result; report missing images, errors or pending review honestly.',
         parameters: {
             type: 'object',
             properties: {

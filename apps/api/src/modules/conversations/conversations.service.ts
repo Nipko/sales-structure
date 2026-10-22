@@ -1,3 +1,4 @@
+import { appointmentRecordReadId } from './appointment-record-read';
 import { isCanonicalConsentRecovery, canonicalConsentRecoveryDirective } from './canonical-consent-recovery';
 import { DemoAllowanceService } from '../throttle/demo-allowance.service';
 import { demoAllowanceExhaustedText } from '../widget/widget-demo-link';
@@ -77,6 +78,9 @@ import { AIToolExecutorService } from './ai-tool-executor.service';
 import { buildUnverifiedPriceReply, correctivePriceInstruction, enforceVerifiedPriceReply, ResponseValidatorService } from './response-validator.service';
 import { groundInactiveCatalogReply } from './catalog-retirement-grounding';
 import { groundMissingPropertyPhotoReply, propertyPhotoCatalogue, requiresPropertyPhotoLookup } from './property-photo-grounding';
+import { requiresPropertyDetailLookup, propertyDetailIdForQuestion } from './property-detail-grounding';
+import { requiresOwnCustomerContextRead } from './own-customer-context-read';
+import { requiresOwnTourBookingsRead } from './own-tour-bookings-read';
 import { AgentTurnSession } from './agent-turn-session';
 import { sessionCanExecute, sessionLlmRouter, sessionToolExecutor } from './agent-turn-adapters';
 import { containsBookingOffer } from './booking-offer';
@@ -92,6 +96,10 @@ import { buildTrustedPriceCorpus, requiresCanonicalPackagePrice } from './truste
 import { canonicalPackageCatalogue } from './canonical-package-context';
 import { packageDetailIdForQuestion, requiresPackageDetailLookup } from './package-detail-grounding';
 import { listingDetailIdForQuestion, requiresListingDetailLookup } from './listing-detail-grounding';
+import { requiresMenuDescriptionLookup } from './menu-description-grounding';
+import { requiresServiceLocationLookup } from './service-location-grounding';
+import { requiresProductStockLookup, stockProductIdForQuestion } from './product-stock-grounding';
+import { explicitlyRequestsCrmNote } from './crm-note-request';
 import {
     auditTurnClaim,
     claimsCompletedAction,
@@ -164,6 +172,7 @@ import {
 } from './tool-policy-registry';
 import { awaitAutomaticFaqLookup, awaitToolWithSafeTimeout } from './tool-timeout-policy';
 import { boundedAutomaticFaqs } from '../faqs/automatic-faq-context';
+import { faqResultTraceMetadata } from '../../common/utils/faq-result-provenance';
 import {
     CONTROL_ERRORS_REQUIRING_HUMAN,
     handoffRequiredByResult,
@@ -3611,7 +3620,9 @@ export class ConversationsService {
         // skip that fail-safe and leave the model to improvise an unavailable
         // booking flow.
         const bookingAuthority = bookingEngineAuthorityDecision(engineAuthority);
+        const appointmentReadId = appointmentRecordReadId(userText);
         if (!draftMode && toolsEnabled
+            && !appointmentReadId
             && !engineProducedText
             && (!missionDecision || missionDecision.route === 'booking' || missionDecision.route === 'tools' && !missionFocus?.selected?.domain)
             && !procedureAwaiting) {
@@ -4169,7 +4180,14 @@ export class ConversationsService {
         // signed token, the args hash and the ledger status stay in charge.
         let preExecutedTools: Array<{ name: string; result: any }> = engineExecutedTools;
         let automaticPackageDetailRead: { packageId: string; result: any } | undefined;
+        let automaticAppointmentRead: { appointmentId: string; result: any } | undefined;
+        let automaticOwnCustomerContextRead: { result: any } | undefined;
+        let automaticOwnTourBookingsRead: { result: any } | undefined;
         let automaticListingDetailRead: { listingId: string; result: any } | undefined;
+        let automaticMenuDescriptionRead: { result: any } | undefined;
+        let automaticServiceLocationRead: { result: any } | undefined;
+        const automaticProductStockReads: Array<{ name: string; args: Record<string, unknown>; result: any }> = [];
+        const automaticPropertyDetailReads: Array<{ name: string; args: Record<string, unknown>; result: any }> = [];
         if (!draftMode && !engineProducedText
             && conversation.contact_id) {
             try {
@@ -4546,7 +4564,8 @@ export class ConversationsService {
                     .map((faq: any) => ({ source: 'faq' as const, id: faq.id, title: faq.question, content: faq.answer }));
                 turnContext.retrievedKnowledge = retrievedFaqs;
                 turnTrace.add('tool_result', 'search_faqs', { ok: !result?.error, error: result?.error,
-                    automatic: true, retrievedCount: retrievedFaqs.length });
+                    automatic: true, retrievedCount: retrievedFaqs.length,
+                    ...faqResultTraceMetadata(result?.error ? result : { faqs: retrievedFaqs }) });
             } catch (error: any) {
                 if (session || error instanceof LLMSourceAuthorityUnavailable) throw error;
                 this.logger.warn(`FAQ search failed (non-fatal): ${error.message}`);
@@ -4581,10 +4600,123 @@ export class ConversationsService {
             }
         }
 
+        // Self-profile facts come from the current contact-bound reader, not
+        // an access-denial guess. Never accept an identity from model arguments.
+        if (!engineProducedText && requiresOwnCustomerContextRead(userText)
+            && turnAllowedTools.includes('get_customer_context')) {
+            const context: ServiceExecutionContext = {
+                ...executionContext, mode: executionContext?.mode ?? 'live', persistence: 'disabled',
+            };
+            let result: any;
+            turnTrace.add('tool_call', 'get_customer_context', { origin: 'core', effect: 'read', automatic: true });
+            try {
+                result = await awaitAutomaticFaqLookup(toolExecutor.execute(
+                    schemaName, tenantId, conversation.contact_id || '', 'get_customer_context', {}, conversation.id,
+                    { authority: llmAuthority, channelType: msg.channelType, executionContext: context,
+                        commitmentBlocked, deniedTools, jurisdiction: regional?.operatingCountry.value },
+                ), 3_000, context);
+            } catch (error: any) {
+                if (session || error instanceof LLMSourceAuthorityUnavailable) throw error;
+                result = { error: 'customer_context_lookup_failed' };
+            }
+            preExecutedTools.push({ name: 'get_customer_context', result });
+            automaticOwnCustomerContextRead = { result };
+            turnTrace.add('tool_result', 'get_customer_context', { ok: !result?.error, error: result?.error, automatic: true });
+        }
+
+        // Explicit own tour history uses the current contact-bound reader.
+        if (!engineProducedText && requiresOwnTourBookingsRead(userText)
+            && turnAllowedTools.includes('list_my_tour_bookings')) {
+            const context: ServiceExecutionContext = {
+                ...executionContext, mode: executionContext?.mode ?? 'live', persistence: 'disabled',
+            };
+            let result: any;
+            turnTrace.add('tool_call', 'list_my_tour_bookings', { origin: 'core', effect: 'read', automatic: true });
+            try {
+                result = await awaitAutomaticFaqLookup(toolExecutor.execute(
+                    schemaName, tenantId, conversation.contact_id || '', 'list_my_tour_bookings', {}, conversation.id,
+                    { authority: llmAuthority, channelType: msg.channelType, executionContext: context,
+                        commitmentBlocked, deniedTools, jurisdiction: regional?.operatingCountry.value },
+                ), 3_000, context);
+            } catch (error: any) {
+                if (session || error instanceof LLMSourceAuthorityUnavailable) throw error;
+                result = { error: 'tour_bookings_lookup_failed' };
+            }
+            preExecutedTools.push({ name: 'list_my_tour_bookings', result });
+            automaticOwnTourBookingsRead = { result };
+            turnTrace.add('tool_result', 'list_my_tour_bookings', { ok: !result?.error, error: result?.error, automatic: true });
+        }
+
+        // A historical reference is a read, not the start of a booking. Keep
+        // the standard executor's tenant, ownership, assurance and authority checks.
+        if (!engineProducedText && appointmentReadId && turnAllowedTools.includes('get_appointment_details')) {
+            const context: ServiceExecutionContext = {
+                ...executionContext, mode: executionContext?.mode ?? 'live', persistence: 'disabled',
+            };
+            try {
+                turnTrace.add('tool_call', 'get_appointment_details', { origin: 'core', effect: 'read', automatic: true });
+                const result = await awaitAutomaticFaqLookup(toolExecutor.execute(
+                    schemaName, tenantId, conversation.contact_id || '', 'get_appointment_details', { appointmentId: appointmentReadId }, conversation.id,
+                    { authority: llmAuthority, channelType: msg.channelType, executionContext: context,
+                        commitmentBlocked, deniedTools, jurisdiction: regional?.operatingCountry.value },
+                ), 3_000, context);
+                preExecutedTools.push({ name: 'get_appointment_details', result });
+                automaticAppointmentRead = { appointmentId: appointmentReadId, result };
+                turnTrace.add('tool_result', 'get_appointment_details', { ok: !result?.error, error: result?.error, automatic: true });
+            } catch (error: any) {
+                if (session || error instanceof LLMSourceAuthorityUnavailable) throw error;
+                const result = { error: 'appointment_detail_lookup_failed' };
+                automaticAppointmentRead = { appointmentId: appointmentReadId, result };
+                turnTrace.add('tool_result', 'get_appointment_details', { ok: false, automatic: true, error: result.error });
+            }
+        }
+
         // A matching FAQ must not make a current-price lookup optional. Read
         // the bounded catalogue through this turn's normal executor before
         // the model sees competing sources. Keep tenant/capability/snapshot
         // authority and persistence controls identical to an explicit read.
+        if (!engineProducedText && !automaticAppointmentRead && requiresServiceLocationLookup(userText) && turnAllowedTools.includes('list_services')) {
+            const context: ServiceExecutionContext = {
+                ...executionContext, mode: executionContext?.mode ?? 'live', persistence: 'disabled',
+            };
+            turnTrace.add('tool_call', 'list_services', { origin: 'vertical', effect: 'read', automatic: true });
+            let result: any;
+            try {
+                result = await awaitAutomaticFaqLookup(toolExecutor.execute(
+                    schemaName, tenantId, conversation.contact_id || '', 'list_services', {}, conversation.id,
+                    { authority: llmAuthority, channelType: msg.channelType, executionContext: context,
+                        commitmentBlocked, deniedTools, jurisdiction: regional?.operatingCountry.value },
+                ), 3_000, context);
+            } catch (error: any) {
+                if (session || error instanceof LLMSourceAuthorityUnavailable) throw error;
+                result = { error: 'service_location_lookup_failed' };
+            }
+            preExecutedTools.push({ name: 'list_services', result });
+            automaticServiceLocationRead = { result };
+            turnTrace.add('tool_result', 'list_services', { ok: !result?.error, error: result?.error, automatic: true });
+        }
+
+        if (!engineProducedText && requiresMenuDescriptionLookup(userText) && turnAllowedTools.includes('get_menu')) {
+            const context: ServiceExecutionContext = {
+                ...executionContext, mode: executionContext?.mode ?? 'live', persistence: 'disabled',
+            };
+            turnTrace.add('tool_call', 'get_menu', { origin: 'vertical', effect: 'read', automatic: true });
+            let result: any;
+            try {
+                result = await awaitAutomaticFaqLookup(toolExecutor.execute(
+                    schemaName, tenantId, conversation.contact_id || '', 'get_menu', {}, conversation.id,
+                    { authority: llmAuthority, channelType: msg.channelType, executionContext: context,
+                        commitmentBlocked, deniedTools, jurisdiction: regional?.operatingCountry.value },
+                ), 3_000, context);
+            } catch (error: any) {
+                if (session || error instanceof LLMSourceAuthorityUnavailable) throw error;
+                result = { error: 'menu_description_lookup_failed' };
+            }
+            preExecutedTools.push({ name: 'get_menu', result });
+            automaticMenuDescriptionRead = { result };
+            turnTrace.add('tool_result', 'get_menu', { ok: !result?.error, error: result?.error, automatic: true });
+        }
+
         if (!engineProducedText && (requiresCanonicalPackagePrice(userText) || requiresPackageDetailLookup(userText))
             && turnAllowedTools.includes('search_packages')) {
             const packageExecutionContext: ServiceExecutionContext = {
@@ -4664,6 +4796,66 @@ export class ConversationsService {
                 this.logger.warn(`Listing detail lookup failed (non-fatal): ${error.message}`);
                 turnTrace.add('tool_result', 'get_listing_details', { ok: false, automatic: true, error: 'listing_detail_lookup_failed' });
             }
+        }
+
+        // Stock is a current read, never a promise, order or inventory mutation.
+        // Resolve only a unique named/UUID product from the authorized bounded catalogue.
+        if (!engineProducedText && requiresProductStockLookup(userText)
+            && turnAllowedTools.includes('search_products') && turnAllowedTools.includes('check_stock')) {
+            const context: ServiceExecutionContext = {
+                ...executionContext, mode: executionContext?.mode ?? 'live', persistence: 'disabled',
+            };
+            const options = { authority: llmAuthority, channelType: msg.channelType, executionContext: context,
+                commitmentBlocked, deniedTools, jurisdiction: regional?.operatingCountry.value };
+            const read = async (name: 'search_products' | 'check_stock', args: Record<string, unknown>) => {
+                turnTrace.add('tool_call', name, { origin: 'vertical', effect: 'read', automatic: true });
+                let result: any;
+                try {
+                    result = await awaitAutomaticFaqLookup(toolExecutor.execute(
+                        schemaName, tenantId, conversation.contact_id || '', name, args, conversation.id, options,
+                    ), 3_000, context);
+                } catch (error: any) {
+                    if (session || error instanceof LLMSourceAuthorityUnavailable) throw error;
+                    result = { error: 'product_stock_lookup_failed' };
+                }
+                preExecutedTools.push({ name, result });
+                automaticProductStockReads.push({ name, args, result });
+                turnTrace.add('tool_result', name, { ok: !result?.error, error: result?.error, automatic: true });
+                return result;
+            };
+            const result = await read('search_products', { query: '', limit: 20 });
+            const productId = stockProductIdForQuestion(userText, result);
+            if (productId) await read('check_stock', { productId });
+        }
+
+        // Property facts require a current authorized detail read before model prose.
+        // Resolve one exact property; missing capability or ambiguous names never grant access.
+        if (!engineProducedText && requiresPropertyDetailLookup(userText)
+            && turnAllowedTools.includes('list_properties') && turnAllowedTools.includes('get_property_details')) {
+            const context: ServiceExecutionContext = {
+                ...executionContext, mode: executionContext?.mode ?? 'live', persistence: 'disabled',
+            };
+            const options = { authority: llmAuthority, channelType: msg.channelType, executionContext: context,
+                commitmentBlocked, deniedTools, jurisdiction: regional?.operatingCountry.value };
+            const read = async (name: 'list_properties' | 'get_property_details', args: Record<string, unknown>) => {
+                turnTrace.add('tool_call', name, { origin: 'vertical', effect: 'read', automatic: true });
+                let result: any;
+                try {
+                    result = await awaitAutomaticFaqLookup(toolExecutor.execute(
+                        schemaName, tenantId, conversation.contact_id || '', name, args, conversation.id, options,
+                    ), 3_000, context);
+                } catch (error: any) {
+                    if (session || error instanceof LLMSourceAuthorityUnavailable) throw error;
+                    result = { error: 'property_detail_lookup_failed' };
+                }
+                preExecutedTools.push({ name, result });
+                automaticPropertyDetailReads.push({ name, args, result });
+                turnTrace.add('tool_result', name, { ok: !result?.error, error: result?.error, automatic: true });
+                return result;
+            };
+            const result = await read('list_properties', {});
+            const propertyId = propertyDetailIdForQuestion(userText, result);
+            if (propertyId) await read('get_property_details', { propertyId });
         }
 
         // 5. Knowledge retrieval — runs on EVERY turn (booking and non-booking alike).
@@ -4988,6 +5180,41 @@ export class ConversationsService {
             const currentMessages = [...messages] as any[];
             // An automatic catalogue read must reach the model through the
             // same sanitized tool-result boundary as a requested tool call.
+            if (automaticOwnCustomerContextRead) {
+                const id = 'auto_own_customer_context';
+                currentMessages.push({ role: 'assistant', content: '', toolCalls: [{ id, type: 'function',
+                    function: { name: 'get_customer_context', arguments: '{}' } }] });
+                currentMessages.push({ role: 'tool', toolCallId: id,
+                    content: JSON.stringify(sanitizeToolResultForModel(automaticOwnCustomerContextRead.result, userLanguage)) });
+            }
+            if (automaticServiceLocationRead) {
+                const id = 'auto_service_location';
+                currentMessages.push({ role: 'assistant', content: '', toolCalls: [{ id, type: 'function',
+                    function: { name: 'list_services', arguments: '{}' } }] });
+                currentMessages.push({ role: 'tool', toolCallId: id,
+                    content: JSON.stringify(sanitizeToolResultForModel(automaticServiceLocationRead.result, userLanguage)) });
+            }
+            if (automaticMenuDescriptionRead) {
+                const id = 'auto_menu_description';
+                currentMessages.push({ role: 'assistant', content: '', toolCalls: [{ id, type: 'function',
+                    function: { name: 'get_menu', arguments: '{}' } }] });
+                currentMessages.push({ role: 'tool', toolCallId: id,
+                    content: JSON.stringify(sanitizeToolResultForModel(automaticMenuDescriptionRead.result, userLanguage)) });
+            }
+            if (automaticOwnTourBookingsRead) {
+                const id = 'auto_own_tour_bookings';
+                currentMessages.push({ role: 'assistant', content: '', toolCalls: [{ id, type: 'function',
+                    function: { name: 'list_my_tour_bookings', arguments: '{}' } }] });
+                currentMessages.push({ role: 'tool', toolCallId: id,
+                    content: JSON.stringify(sanitizeToolResultForModel(automaticOwnTourBookingsRead.result, userLanguage)) });
+            }
+            if (automaticAppointmentRead) {
+                const id = 'auto_appointment_details';
+                currentMessages.push({ role: 'assistant', content: '', toolCalls: [{ id, type: 'function',
+                    function: { name: 'get_appointment_details', arguments: JSON.stringify({ appointmentId: automaticAppointmentRead.appointmentId }) } }] });
+                currentMessages.push({ role: 'tool', toolCallId: id,
+                    content: JSON.stringify(sanitizeToolResultForModel(automaticAppointmentRead.result, userLanguage)) });
+            }
             if (automaticPackageDetailRead) {
                 const id = 'auto_package_details';
                 currentMessages.push({ role: 'assistant', content: '', toolCalls: [{ id, type: 'function',
@@ -5001,6 +5228,20 @@ export class ConversationsService {
                     function: { name: 'get_listing_details', arguments: JSON.stringify({ listingId: automaticListingDetailRead.listingId }) } }] });
                 currentMessages.push({ role: 'tool', toolCallId: id,
                     content: JSON.stringify(sanitizeToolResultForModel(automaticListingDetailRead.result, userLanguage)) });
+            }
+            for (const [index, read] of automaticPropertyDetailReads.entries()) {
+                const id = `auto_property_details_${index}`;
+                currentMessages.push({ role: 'assistant', content: '', toolCalls: [{ id, type: 'function',
+                    function: { name: read.name, arguments: JSON.stringify(read.args) } }] });
+                currentMessages.push({ role: 'tool', toolCallId: id,
+                    content: JSON.stringify(sanitizeToolResultForModel(read.result, userLanguage)) });
+            }
+            for (const [index, read] of automaticProductStockReads.entries()) {
+                const id = `auto_product_stock_${index}`;
+                currentMessages.push({ role: 'assistant', content: '', toolCalls: [{ id, type: 'function',
+                    function: { name: read.name, arguments: JSON.stringify(read.args) } }] });
+                currentMessages.push({ role: 'tool', toolCallId: id,
+                    content: JSON.stringify(sanitizeToolResultForModel(read.result, userLanguage)) });
             }
             // The router invokes this authority separately for every provider
             // attempt. Keep earlier examples too: generated tool-loop prose may
@@ -5245,6 +5486,7 @@ export class ConversationsService {
                             activeObjectKind: result?.activeObject?.kind,
                             activeObjectHref: result?.activeObject?.href,
                             argumentKeys,
+                            ...(tc.function.name === 'search_faqs' ? faqResultTraceMetadata(result) : {}),
                         });
 
                         // Capture any media the tool wants sent (e.g. a product image)
@@ -6405,7 +6647,8 @@ export class ConversationsService {
         const backing = this.backingEvidence(executedTools, priorActions);
         // Saying what state a record is in (read this turn) is not claiming an action.
         const recordFacts = knownRecordFacts(executedTools || [], trustedContext);
-        const claimAudit = auditTurnClaim(response, backing, { isBackingTool, recordFacts });
+        const claimOptions = { isBackingTool, recordFacts, crmNoteRequested: explicitlyRequestsCrmNote(customerText) };
+        const claimAudit = auditTurnClaim(response, backing, claimOptions);
         // The engine decided what this turn says (a re-ask at the confirmation step, a summary, a question): when the
         // model claims a booking outcome that no tool backed, the engine's own text is the reply, word for word. No
         // rewrite round trip, which a model that insists would turn into the generic fallback.
@@ -6429,7 +6672,7 @@ export class ConversationsService {
                     messages: [
                         ...currentMessages,
                         { role: 'assistant', content: response },
-                        { role: 'user', content: 'Tu respuesta afirmó que una reserva, cobro, cita o cancelación ya fue confirmada o completada, pero ninguna herramienta ejecutó esa acción con éxito en este turno. Reescribe tu mensaje explicando con total claridad qué paso o confirmación está pendiente para realizar la acción, sin afirmar que ya está confirmada o completada. Devuelve solo el mensaje corregido.' },
+                        { role: 'user', content: 'Tu respuesta contiene una afirmación de acción completada —incluido guardar una nota en el CRM— sin un resultado exitoso de la herramienta correspondiente en este turno. Reescribe con claridad qué resultados están verificados y cuáles no. Respeta las otras operaciones realmente ejecutadas; no inventes un guardado, una confirmación ni una ejecución pendiente. Devuelve solo el mensaje corregido.' },
                     ],
                     systemPrompt,
                     temperature: 0.3,
@@ -6440,7 +6683,7 @@ export class ConversationsService {
                 // are removed or the rewrite is rejected (then the deterministic text below is what the customer reads).
                 const fixedClaim = sanitizeRewrittenReply(correctedClaim.content, { lang, names: catalogNamesOfTurn(trustedContext, executedTools) });
                 const secondAudit = fixedClaim
-                    ? auditTurnClaim(fixedClaim, backing, { isBackingTool, recordFacts })
+                    ? auditTurnClaim(fixedClaim, backing, claimOptions)
                     : null;
                 if (secondAudit && !secondAudit.falseClaim) {
                     response = fixedClaim as string;

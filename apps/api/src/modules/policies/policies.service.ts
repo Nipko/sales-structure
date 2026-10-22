@@ -93,10 +93,8 @@ export class PoliciesService {
             return rows.length ? this.rowToPolicy(rows[0]) : null;
         }
 
-        const cacheKey = `policy:${tenantId}:${type}:active`;
-        const cached = await this.redis.getJson<Policy>(cacheKey);
-        if (cached) return cached;
-
+        // Policy text is a consent source: always read the current durable version.
+        // A stale Redis entry must not restore a retired or deleted policy.
         const schemaName = await this.ensureSchema(tenantId);
         const rows = await this.prisma.$queryRawUnsafe(
             `SELECT id, type, title, content, version, effective_from, effective_to, is_active, created_at, updated_at
@@ -107,7 +105,6 @@ export class PoliciesService {
         ) as any[];
         if (rows.length === 0) return null;
         const policy = this.rowToPolicy(rows[0]);
-        await this.redis.setJson(cacheKey, policy, 600);
         return policy;
     }
 
@@ -131,35 +128,52 @@ export class PoliciesService {
      * is `max(version)+1`.
      */
     async upsert(tenantId: string, input: UpsertPolicyInput, createdBy?: string): Promise<Policy> {
+        // Reject malformed edits before schema initialization or retiring the current policy.
+        if (!input || typeof input !== 'object' || Array.isArray(input)) {
+            throw new BadRequestException('Invalid policy payload');
+        }
         if (!VALID_TYPES.includes(input.type)) throw new BadRequestException(`Invalid policy type: ${input.type}`);
+        if (typeof input.title !== 'string' || !input.title.trim() || input.title.length > 500) {
+            throw new BadRequestException('Policy title must contain 1 to 500 characters');
+        }
+        if (typeof input.content !== 'string' || !input.content.trim()) {
+            throw new BadRequestException('Policy content must contain text');
+        }
         const schemaName = await this.ensureSchema(tenantId);
 
-        // Deactivate current active version
-        await this.prisma.$executeRawUnsafe(
-            `UPDATE "${schemaName}"."policies"
-                SET is_active = false, effective_to = NOW(), updated_at = NOW()
-              WHERE type = $1 AND is_active = true`,
-            input.type,
-        );
+        const row = await withRuntimeSchemaLock(this.prisma, schemaName, async (tx) => {
+            // Deactivate current active version
+            await tx.$executeRawUnsafe(
+                `UPDATE "${schemaName}"."policies"
+                    SET is_active = false, effective_to = NOW(), updated_at = NOW()
+                  WHERE type = $1 AND is_active = true`,
+                input.type,
+            );
 
-        // Determine next version number
-        const verRows = await this.prisma.$queryRawUnsafe(
-            `SELECT COALESCE(MAX(version), 0) + 1 AS next_version FROM "${schemaName}"."policies" WHERE type = $1`,
-            input.type,
-        ) as any[];
-        const nextVersion = verRows[0]?.next_version ?? 1;
+            // Determine next version number
+            const verRows = await tx.$queryRawUnsafe(
+                `SELECT COALESCE(MAX(version), 0) + 1 AS next_version FROM "${schemaName}"."policies" WHERE type = $1`,
+                input.type,
+            ) as any[];
+            const nextVersion = verRows[0]?.next_version ?? 1;
 
-        const rows = await this.prisma.$queryRawUnsafe(
-            `INSERT INTO "${schemaName}"."policies"
-                (type, title, content, version, is_active, created_by)
-             VALUES ($1, $2, $3, $4, true, $5)
-             RETURNING id, type, title, content, version, effective_from, effective_to, is_active, created_at, updated_at`,
-            input.type, input.title, input.content, nextVersion, createdBy ?? 'system',
-        ) as any[];
+            const rows = await tx.$queryRawUnsafe(
+                `INSERT INTO "${schemaName}"."policies"
+                    (type, title, content, version, is_active, created_by)
+                 VALUES ($1, $2, $3, $4, true, $5)
+                 RETURNING id, type, title, content, version, effective_from, effective_to, is_active, created_at, updated_at`,
+                input.type, input.title, input.content, nextVersion, createdBy ?? 'system',
+            ) as any[];
 
-        await this.redis.del(`policy:${tenantId}:${input.type}:active`);
+            if (!rows[0]) throw new Error('policy_insert_returned_no_row');
+            return rows[0];
+        });
+
+        // Active reads use the database. A pending legacy Redis command must
+        // not hold a committed result or its dependency notification open.
+        void this.invalidateLegacyActiveCache(tenantId, input.type);
         this.emitQualityDependency(tenantId);
-        return this.rowToPolicy(rows[0]);
+        return this.rowToPolicy(row);
     }
 
     async delete(tenantId: string, id: string): Promise<void> {
@@ -169,7 +183,7 @@ export class PoliciesService {
             id,
         ) as any[];
         if (rows.length === 0) throw new NotFoundException('Policy not found');
-        await this.redis.del(`policy:${tenantId}:${rows[0].type}:active`);
+        void this.invalidateLegacyActiveCache(tenantId, rows[0].type);
         this.emitQualityDependency(tenantId);
     }
 
@@ -177,6 +191,16 @@ export class PoliciesService {
         const tenant = await this.prisma.tenant.findUnique({ where: { slug }, select: { id: true } });
         if (!tenant) throw new NotFoundException('Tenant not found');
         return this.getActive(tenant.id, type);
+    }
+
+    private async invalidateLegacyActiveCache(tenantId: string, type: PolicyType): Promise<void> {
+        try {
+            await this.redis.del(`policy:${tenantId}:${type}:active`);
+        } catch {
+            // The database write has committed. Do not report it as uncommitted
+            // or prevent dependency notification because a legacy cache is down.
+            this.logger.warn('Legacy policy cache invalidation failed after a committed write');
+        }
     }
 
     private rowToPolicy(r: any): Policy {

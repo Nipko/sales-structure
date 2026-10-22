@@ -48,6 +48,20 @@ export class ToolRetrievalService {
         if (explicitlyRequestsCrmNote(query)) retainedNames.add('add_contact_note');
         if (explicitlyRequestsCrmTask(query)) retainedNames.add('create_follow_up_task');
         if (explicitlyRequestsCrmTag(query)) retainedNames.add('tag_contact');
+        // A photo request needs its delivery tool, not merely catalogue text.
+        // Keep only already-enabled families; relevance never grants permission
+        // to execute a tool, including when a photo is mentioned in a refusal.
+        const photoWords = new Set(['foto', 'fotos', 'imagen', 'imagenes', 'imagem', 'imagens', 'photo', 'photos', 'image', 'images', 'picture', 'pictures', 'photographie', 'photographies']);
+        if (this.tokenize(query).some(word => photoWords.has(word))) {
+            for (const family of [
+                ['send_listing_image', 'search_listings', 'get_listing_details'],
+                ['send_property_image', 'list_properties', 'get_property_details'],
+            ]) {
+                if (candidates.some(tool => tool.name === family[0])) {
+                    for (const name of family) retainedNames.add(name);
+                }
+            }
+        }
         const mustKeep = retainedNames.size
             ? candidates.filter(t => retainedNames.has(t.name))
             : [];

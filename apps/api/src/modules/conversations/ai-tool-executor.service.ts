@@ -2640,7 +2640,7 @@ export class AIToolExecutorService {
         try {
             const lRows: any[] = await this.prisma.$queryRawUnsafe(
                 `SELECT id, stage, score, first_name, last_name, created_at
-                 FROM "${schema}".leads WHERE contact_id = $1::uuid ORDER BY created_at DESC LIMIT 1`,
+                 FROM "${schema}".leads WHERE contact_id = $1::uuid AND archived_at IS NULL ORDER BY created_at DESC LIMIT 1`,
                 contactId,
             );
             lead = lRows[0] || null;
@@ -2661,6 +2661,21 @@ export class AIToolExecutorService {
             opportunitiesCount = null;
         }
 
+        // CRM labels live on the selected active lead, independently from
+        // contact-level labels. A missing relation is unknown data, not no tags.
+        let leadTags: string[] | null = null;
+        if (lead) {
+            try {
+                const tagRows: any[] = await this.prisma.$queryRawUnsafe(
+                    `SELECT t.name FROM "${schema}".lead_tags lt
+                     JOIN "${schema}".tags t ON t.id = lt.tag_id
+                     WHERE lt.lead_id = $1::uuid ORDER BY t.name`,
+                    lead.id,
+                );
+                leadTags = tagRows.map(row => row.name).filter(name => typeof name === 'string');
+            } catch { partial.push('leadTags'); }
+        }
+
         return readOk({
             unreadable: partial.length ? partial : undefined,
             contact: contact ? {
@@ -2671,6 +2686,7 @@ export class AIToolExecutorService {
                 lastContactAt: contact.last_contact_at,
             } : null,
             lead: lead ? {
+                tags: leadTags,
                 stage: lead.stage,
                 score: lead.score,
                 firstName: lead.first_name,

@@ -23,7 +23,7 @@ export const ORDER_TOOL: ToolDefinition = {
 
 export const CUSTOMER_CONTEXT_TOOL: ToolDefinition = {
     name: 'get_customer_context',
-    description: 'Fetch CRM context for the current customer: contact name and tags, first/last contact timestamps, latest lead score and pipeline stage, and opportunity count. Optional CRM reads may be unavailable; use unreadable/health to distinguish unknown data from empty history. This tool does not return a conversation count. Use this at the start of a high-stakes conversation (refund request, complaint, VIP customer) to personalize the reply. The contact is already resolved.',
+    description: 'Fetch CRM context for the current customer: contact name and tags, first/last contact timestamps, latest active lead score, pipeline stage and CRM tags, and opportunity count. Contact labels remain in contact.tags; canonical CRM tags are in lead.tags. Optional CRM reads may be unavailable; use unreadable/health to distinguish unknown data from empty history. This tool does not return a conversation count. Use this at the start of a high-stakes conversation (refund request, complaint, VIP customer) to personalize the reply. The contact is already resolved.',
     parameters: { type: 'object', properties: {}, required: [] },
 };
 

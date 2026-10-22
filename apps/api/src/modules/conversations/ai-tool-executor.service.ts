@@ -107,6 +107,10 @@ import { foldedSql, foldQueryText } from '../../common/utils/sql-accent-fold.uti
 import { foldForSearch, likePatternForTerm, productSearchTerms } from '../../common/utils/product-search-terms';
 import { markCatalogEmpty } from './catalog-empty.util';
 import { catalogPriceStatus } from './catalog-price-status';
+import {
+    ClosestListing, closestMatchesNote, describeListingVerdict, givenListingCriteria, LOCATION_LISTING_CRITERIA,
+    ListingSearchCriteria, selectClosestListings,
+} from '../listings/listing-closest-matches';
 
 /**
  * Two products whose names differ only by accents ("Audífono" / "Audifono") both
@@ -4842,7 +4846,7 @@ export class AIToolExecutorService {
 
     private async searchListings(schemaName: string, args: any): Promise<any> {
         try {
-            const listings = await this.listingsService.search(schemaName, {
+            const criteria: ListingSearchCriteria = {
                 transactionType: args.transactionType,
                 propertyKind: args.propertyKind,
                 maxPrice: args.maxPrice,
@@ -4850,35 +4854,91 @@ export class AIToolExecutorService {
                 neighborhood: args.neighborhood,
                 city: args.city,
                 minAreaM2: args.minAreaM2,
+            };
+            const listings = await this.listingsService.search(schemaName, {
+                ...(criteria as Parameters<ListingsService['search']>[1]),
                 limit: 8,
             });
             const found = listings || [];
+            const closest = await this.closestListings(schemaName, criteria, found);
+            const project = (l: any) => ({
+                id: l.id,
+                name: l.name,
+                transactionType: l.transaction_type,
+                propertyKind: l.property_kind,
+                price: Number(l.price || 0),
+                priceStatus: catalogPriceStatus(l.price),
+                currency: l.currency,
+                bedrooms: l.bedrooms,
+                bathrooms: Number(l.bathrooms || 0),
+                areaM2: Number(l.area_m2 || 0),
+                parkingSpots: l.parking_spots,
+                stratum: l.stratum,
+                neighborhood: l.neighborhood,
+                city: l.city,
+                description: l.description,
+                status: l.status,
+            });
             return {
-                listings: found.map((l: any) => ({
-                    id: l.id,
-                    name: l.name,
-                    transactionType: l.transaction_type,
-                    propertyKind: l.property_kind,
-                    price: Number(l.price || 0),
-                    priceStatus: catalogPriceStatus(l.price),
-                    currency: l.currency,
-                    bedrooms: l.bedrooms,
-                    bathrooms: Number(l.bathrooms || 0),
-                    areaM2: Number(l.area_m2 || 0),
-                    parkingSpots: l.parking_spots,
-                    stratum: l.stratum,
-                    neighborhood: l.neighborhood,
-                    city: l.city,
-                    description: l.description,
-                    status: l.status,
-                })),
+                listings: found.map(project),
+                // Near misses are an answer too: «no tengo uno confirmado en la zona
+                // norte, pero tengo este…», never a false «no hay».
+                ...(closest.length > 0 ? {
+                    closestMatches: closest.map(({ row, verdict }) => ({
+                        ...project(row),
+                        unmetCriteria: verdict.unmet,
+                        unconfirmedCriteria: verdict.unconfirmed,
+                        matchNote: describeListingVerdict(row, criteria, verdict),
+                    })),
+                    matchNote: closestMatchesNote(found.length),
+                } : {}),
                 // The search ran; an empty list is an answer, not an outage.
-                ...(found.length === 0 ? {
+                ...(found.length === 0 && closest.length === 0 ? {
                     message: 'No hay inmuebles con esos criterios. La búsqueda se hizo correctamente: dilo así y ofrece ajustar zona, presupuesto o tipo de inmueble.',
                 } : {}),
             };
         } catch (e: any) {
             return this.safeToolFailure('search_listings', e, 'read');
+        }
+    }
+
+    /**
+     * Available listings the strict search left out but that are worth offering:
+     * those whose location field is empty when a location was asked and, when
+     * nothing matched at all, the nearest misses on any criterion. A failure here
+     * never turns a successful strict search into an error.
+     */
+    private async closestListings(
+        schemaName: string,
+        criteria: ListingSearchCriteria,
+        found: any[],
+    ): Promise<ClosestListing[]> {
+        const given = givenListingCriteria(criteria);
+        if (given.length === 0) return [];
+        const locationAsked = given.some(key => LOCATION_LISTING_CRITERIA.has(key));
+        if (found.length > 0 && !locationAsked) return [];
+        try {
+            const candidates: any[] = [];
+            if (locationAsked) {
+                // Same hard criteria without the location text: a listing with no zone stays reachable.
+                const { neighborhood: _neighborhood, city: _city, ...hard } = criteria;
+                const rows = await this.listingsService.search(schemaName, {
+                    ...(hard as Parameters<ListingsService['search']>[1]),
+                    limit: 25,
+                });
+                candidates.push(...(rows || []));
+            }
+            if (found.length === 0) {
+                candidates.push(...((await this.listingsService.search(schemaName, { limit: 25 })) || []));
+            }
+            return selectClosestListings(candidates, criteria, {
+                excludeIds: found.map((l: any) => String(l?.id)),
+                strictCount: found.length,
+                max: 3,
+            });
+        } catch (e: any) {
+            this.logger.warn(`[Tool] search_listings closest matches skipped: ${e?.message || e}`);
+            return [];
         }
     }
 

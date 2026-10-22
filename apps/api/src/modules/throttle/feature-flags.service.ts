@@ -25,6 +25,10 @@ export const OPERATION_CLASSIFIER_FLAG = 'agentRuntime.operationClassifier';
 
 /** Per-tenant flag of the typed verified-facts ledger (operations runtime PR3). */
 export const FACTS_LEDGER_FLAG = 'agentRuntime.factsLedger';
+
+/** Per-tenant flags of the required reads (operations runtime PR5), one per pilot: restaurant and store. */
+export const REQUIRED_READS_RESTAURANTS_FLAG = 'agentRuntime.requiredReads.restaurants';
+export const REQUIRED_READS_CATALOG_FLAG = 'agentRuntime.requiredReads.catalog';
 const CACHE_TTL = 300;
 
 /**
@@ -60,6 +64,12 @@ export const FEATURE_FLAGS_REGISTRY: Array<{
     // returned stays a verified fact of the conversation for its TTL, bound to its subject (prompt <verified_facts>,
     // rule 22a, price guardrail). Off = the prompt and the guardrail are exactly the previous ones.
     { key: FACTS_LEDGER_FLAG, label: 'Verified facts ledger', description: 'Keeps prices, availability, record lists and attributes read by the agent as typed facts of the conversation (with subject and TTL), so a price confirmed in one turn stays confirmed in the next', category: 'experimental', default: false },
+    // Operations runtime PR5 (apps/api/src/modules/conversations/runtime/required-reads.runner.ts): when the operation
+    // classifier is confident (>= 0.8) the turn is one of the pilot operations, the reads that operation owes run BEFORE
+    // the model (menu, my orders, order status) and reach it as tool results; a failed read is an admission, never "no
+    // records". One flag per pilot vertical; off = the turn is exactly the previous one. Costs one `classify` call per turn.
+    { key: REQUIRED_READS_RESTAURANTS_FLAG, label: 'Required reads: restaurants', description: 'Restaurants: menu, my orders and order-status questions run get_menu / list_my_orders / check_order_status before the reply', category: 'experimental', default: false },
+    { key: REQUIRED_READS_CATALOG_FLAG, label: 'Required reads: store', description: 'Stores: my-orders questions run list_my_catalog_orders (complete list with total) before the reply; product price/stock stays on the projected catalogue', category: 'experimental', default: false },
 ];
 
 /**

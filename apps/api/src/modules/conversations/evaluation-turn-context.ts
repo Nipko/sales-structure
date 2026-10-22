@@ -23,6 +23,8 @@ export interface EvaluationTurnContextInputs {
     operationClassifier?: boolean;
     /** `agentRuntime.factsLedger` as the tenant had it at capture. Optional: older snapshots lack it and read as off. */
     factsLedger?: boolean;
+    /** `agentRuntime.requiredReads.{restaurants,catalog}` as the tenant had them at capture. Optional: older snapshots lack it and read as off. */
+    requiredReads?: { restaurants: boolean; catalog: boolean };
 }
 
 const record = (value: unknown): value is Record<string, any> => !!value && typeof value === 'object' && !Array.isArray(value);
@@ -35,6 +37,8 @@ export function resolveEvaluationTurnContext(input: EvaluationTurnContextInputs 
         || (Object.hasOwn(input, 'safetyTriage') && typeof input.safetyTriage !== 'boolean')
         || (Object.hasOwn(input, 'operationClassifier') && typeof input.operationClassifier !== 'boolean')
         || (Object.hasOwn(input, 'factsLedger') && typeof input.factsLedger !== 'boolean')
+        || (Object.hasOwn(input, 'requiredReads') && (!record(input.requiredReads)
+            || typeof input.requiredReads.restaurants !== 'boolean' || typeof input.requiredReads.catalog !== 'boolean'))
         || !record(input.regional) || input.regional.tenantId !== tenantId || input.regional.version !== 1
         || !record(input.vertical) || EVALUATION_CONTEXT_LANGUAGES.some(language => !Object.hasOwn(input.vertical, language)
             || !(input.vertical[language] === null || record(input.vertical[language]))))

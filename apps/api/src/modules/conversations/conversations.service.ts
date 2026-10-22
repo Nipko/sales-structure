@@ -1,9 +1,11 @@
 import { appointmentRecordReadId } from './appointment-record-read';
 import { isCanonicalConsentRecovery, canonicalConsentRecoveryDirective } from './canonical-consent-recovery';
 import { DemoAllowanceService } from '../throttle/demo-allowance.service';
-import { FACTS_LEDGER_FLAG, FeatureFlagsService, OPERATION_CLASSIFIER_FLAG, SAFETY_TRIAGE_FLAG, SLOT_WINDOW_FLAG, resolveFeatureFlag } from '../throttle/feature-flags.service';
+import { FACTS_LEDGER_FLAG, FeatureFlagsService, OPERATION_CLASSIFIER_FLAG, REQUIRED_READS_CATALOG_FLAG, REQUIRED_READS_RESTAURANTS_FLAG, SAFETY_TRIAGE_FLAG, SLOT_WINDOW_FLAG, resolveFeatureFlag } from '../throttle/feature-flags.service';
 import { runSafetyTriage, type SafetyTriageTurnOutcome } from './runtime/safety-triage';
 import { buildOperationShadowTrace, OperationClassifierService, type OperationShadowVerdict } from './runtime/operation-classifier.service';
+import { buildRequiredReadsTrace, REQUIRED_READ_TIMEOUT_MS, requiredReadsGate, requiredReadsPilotForProfile, runRequiredReads,
+    type RequiredReadResult, type RequiredReadsPilot } from './runtime/required-reads.runner';
 import { demoAllowanceExhaustedText } from '../widget/widget-demo-link';
 import { recordFirstReply } from '../../common/utils/first-reply.util';
 import { stripInternalMarkers } from '../../common/utils/internal-markers.util';
@@ -2821,6 +2823,10 @@ export class ConversationsService {
             safetyTriage: resolveFeatureFlag((tenant.settings as any)?.featureFlags, SAFETY_TRIAGE_FLAG),
             operationClassifier: resolveFeatureFlag((tenant.settings as any)?.featureFlags, OPERATION_CLASSIFIER_FLAG),
             factsLedger: resolveFeatureFlag((tenant.settings as any)?.featureFlags, FACTS_LEDGER_FLAG),
+            requiredReads: {
+                restaurants: resolveFeatureFlag((tenant.settings as any)?.featureFlags, REQUIRED_READS_RESTAURANTS_FLAG),
+                catalog: resolveFeatureFlag((tenant.settings as any)?.featureFlags, REQUIRED_READS_CATALOG_FLAG),
+            },
         }, tenantId);
     }
 
@@ -4346,7 +4352,7 @@ export class ConversationsService {
         // other operation: read the pending row, run it with the arguments the
         // customer was actually shown, and let the LLM voice the outcome. The
         // signed token, the args hash and the ledger status stay in charge.
-        let preExecutedTools: Array<{ name: string; result: any }> = engineExecutedTools;
+        let preExecutedTools: Array<{ name: string; result: any; args?: any }> = engineExecutedTools;
         let automaticPackageDetailRead: { packageId: string; result: any } | undefined;
         let automaticAppointmentRead: { appointmentId: string; result: any } | undefined;
         let automaticOwnCustomerContextRead: { result: any } | undefined;
@@ -5181,7 +5187,17 @@ export class ConversationsService {
         // corrieron. No cambia la respuesta, las tools ni el ruteo. El flag se
         // lee dentro de la promesa, así que un tenant apagado no paga nada en
         // el camino de la respuesta.
+        //
+        // Con `agentRuntime.requiredReads.<piloto>` encendido para la vertical del
+        // tenant (restaurante, tienda), la clasificación corre aunque la sombra
+        // esté apagada y SÍ se espera: si la operación es del piloto y la
+        // confianza alcanza el umbral, sus lecturas obligatorias corren antes
+        // del modelo (ver más abajo). Ningún motor puede ser dueño del turno.
+        const requiredReadsProfile = capability.contract?.subtypeProfileId ?? capability.status?.profileId ?? null;
+        const requiredReadsPilot = userText && !engineProducedText && !handoffReturn
+            ? await this.requiredReadsPilotEnabled(tenantId, requiredReadsPilotForProfile(requiredReadsProfile), session) : null;
         const operationShadow: Promise<OperationShadowVerdict | null> | null = userText ? this.runOperationShadow({
+            force: !!requiredReadsPilot,
             tenantId, session, text: userText, publishedTools: turnAllowedTools,
             previousReply: [...(history || [])].reverse().find((row: any) => row?.direction === 'outbound')?.content_text ?? null,
             // Always the plain router, even in Agent Test: the session router counts provider calls,
@@ -5189,6 +5205,59 @@ export class ConversationsService {
             // session's own evidence exactly as it was.
             router: this.llmRouter, executionContext, conversationId: conversation.id,
         }) : null;
+
+        // ═══ LECTURAS OBLIGATORIAS (PR5, flag agentRuntime.requiredReads.<piloto>) ═══
+        //
+        // Producción (7f9826aa, 3/3): «¿cuántos pedidos tengo?» contestado sin leer
+        // los pedidos; «¿cómo va mi pedido?» pidiendo un número sin listar los del
+        // cliente; el precio del plato negado cuando get_menu no se llamaba. Las
+        // lecturas que la operación debe corren acá, con el mismo ejecutor y el
+        // mismo contexto de solo lectura que las lecturas automáticas de arriba,
+        // y llegan al modelo como resultados de tool. Una lectura que falla es
+        // "no pude consultar", nunca "no hay registros".
+        const requiredReadResults: RequiredReadResult[] = [];
+        if (requiredReadsPilot && operationShadow) {
+            const started = Date.now();
+            const verdict = await operationShadow;
+            const gate = requiredReadsGate(verdict, requiredReadsPilot);
+            let run: Awaited<ReturnType<typeof runRequiredReads>> | undefined;
+            if (gate.run) {
+                const context: ServiceExecutionContext = {
+                    ...executionContext, mode: executionContext?.mode ?? 'live', persistence: 'disabled',
+                };
+                const options = { authority: llmAuthority, channelType: msg.channelType, executionContext: context,
+                    commitmentBlocked, deniedTools, jurisdiction: regional?.operatingCountry.value };
+                run = await runRequiredReads(gate.operation, {
+                    publishedTools: turnAllowedTools,
+                    alreadyRead: preExecutedTools,
+                    projectedContexts: [
+                        ...((turnContext.catalog?.length ?? 0) > 0 ? ['turn_catalog' as const] : []),
+                        ...((turnContext.availableServices?.length ?? 0) > 0 ? ['available_services' as const] : []),
+                    ],
+                    rethrow: error => !!session || error instanceof LLMSourceAuthorityUnavailable,
+                    execute: async (name, args) => {
+                        turnTrace.add('tool_call', name, { origin: toolOrigin(name), effect: 'read', automatic: true, requiredRead: true });
+                        try {
+                            const result = await awaitToolWithSafeTimeout(toolExecutor.execute(
+                                schemaName, tenantId, conversation.contact_id || '', name, args, conversation.id, options,
+                            ), REQUIRED_READ_TIMEOUT_MS, `required_read_${name}`, getToolPolicy(name));
+                            turnTrace.add('tool_result', name, { ok: !result?.error, error: result?.error, automatic: true, requiredRead: true });
+                            return result;
+                        } catch (error: any) {
+                            turnTrace.add('tool_result', name, { ok: false, automatic: true, requiredRead: true, error: 'required_read_failed' });
+                            throw error;
+                        }
+                    },
+                });
+                for (const read of run.results) {
+                    preExecutedTools.push({ name: read.name, args: read.args, result: read.result });
+                    requiredReadResults.push(read);
+                }
+            }
+            turnTrace.add('decision', 'required_reads', buildRequiredReadsTrace({
+                pilot: requiredReadsPilot, verdict, gate, run, latencyMs: Date.now() - started,
+            }));
+        }
 
         // The tail of the customer's PREVIOUS conversation, when this one was
         // opened because the old one had been auto-resolved. Prepended so the
@@ -5425,6 +5494,13 @@ export class ConversationsService {
             }
             for (const [index, read] of automaticProductStockReads.entries()) {
                 const id = `auto_product_stock_${index}`;
+                currentMessages.push({ role: 'assistant', content: '', toolCalls: [{ id, type: 'function',
+                    function: { name: read.name, arguments: JSON.stringify(read.args) } }] });
+                currentMessages.push({ role: 'tool', toolCallId: id,
+                    content: JSON.stringify(sanitizeToolResultForModel(read.result, userLanguage)) });
+            }
+            for (const [index, read] of requiredReadResults.entries()) {
+                const id = `required_read_${index}`;
                 currentMessages.push({ role: 'assistant', content: '', toolCalls: [{ id, type: 'function',
                     function: { name: read.name, arguments: JSON.stringify(read.args) } }] });
                 currentMessages.push({ role: 'tool', toolCallId: id,
@@ -6611,16 +6687,36 @@ export class ConversationsService {
     }
 
     /**
+     * The required-reads pilot this turn may run (`agentRuntime.requiredReads.<pilot>`, off by default), or null. Only
+     * the pilot of the tenant's own vertical is read: a non-pilot vertical costs nothing. Agent Test and evaluations
+     * read the value sealed in the snapshot by `captureEvaluationContext` (no per-turn tenant or Redis lookup); a
+     * snapshot captured before the flag existed reads as off. A read failure is "off".
+     */
+    private async requiredReadsPilotEnabled(tenantId: string, pilot: RequiredReadsPilot | null, session?: AgentTurnSession): Promise<RequiredReadsPilot | null> {
+        if (!pilot) return null;
+        try {
+            if (session) return resolveEvaluationTurnContext(session.snapshot.contextInputs, tenantId).requiredReads?.[pilot] === true ? pilot : null;
+            const flag = pilot === 'restaurants' ? REQUIRED_READS_RESTAURANTS_FLAG : REQUIRED_READS_CATALOG_FLAG;
+            return (await this.featureFlags?.isFeatureEnabled(tenantId, flag)) === true ? pilot : null;
+        } catch (error: any) {
+            this.logger.warn(`[RequiredReads] flag unavailable for ${tenantId}: ${error?.message}`);
+            return null;
+        }
+    }
+
+    /**
      * The shadow classification of one turn, or null when the flag is off.
      * Never rejects: the reply path awaits it only at the very end, bounded.
      */
     private async runOperationShadow(input: {
+        /** Classify even with the shadow flag off: the required reads need the verdict. */
+        force?: boolean;
         tenantId: string; session?: AgentTurnSession; text: string; publishedTools: readonly string[];
         previousReply: string | null; router: { execute: (options: any) => Promise<any> };
         executionContext?: ServiceExecutionContext; conversationId: string;
     }): Promise<OperationShadowVerdict | null> {
         try {
-            if (!(await this.operationClassifierEnabled(input.tenantId, input.session))) return null;
+            if (!input.force && !(await this.operationClassifierEnabled(input.tenantId, input.session))) return null;
             return await OPERATION_CLASSIFIER.classify(
                 { text: input.text, publishedTools: input.publishedTools, previousReply: input.previousReply },
                 {

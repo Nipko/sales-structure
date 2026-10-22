@@ -111,21 +111,91 @@ export function topicTermsOf(part: string): string[] {
  * The FAQ a one-word topic ("garantía") points to: its QUESTION holds the word, and among several the one that
  * shares most with the rest of the message ("Audífono QA") wins. Two equally good FAQs are a guess: none.
  */
-export function pickTopicFaq(rows: FAQ[], topic: string, message: string): FAQ | null {
+export function pickTopicFaq(rows: FAQ[], topic: string, message: string, echoTiebreak = false): FAQ | null {
     const term = canon(topic);
     const own = rows.filter(row => canonTokens(row.question).has(term));
     if (!own.length) return null;
     const context = new Set(canonTerms(message).filter(t => t !== term && !QUESTION_FILLER.has(t)));
+    // `echoTiebreak` (single-question fallback only): between FAQs the context cannot separate, the one whose
+    // QUESTION repeats more of the customer's own words ("cuánto COBRAN de comisión") is the one the customer
+    // phrased. Still equal after that: none.
+    const words = echoTiebreak ? canonTerms(message) : [];
     const scored = own.map(row => {
         const doc = canonTokens(`${row.question} ${row.answer}`);
-        return { row, score: [...context].filter(t => doc.has(t)).length };
-    }).sort((a, b) => b.score - a.score);
-    if (scored.length > 1 && scored[0].score === scored[1].score) return null;
+        const question = canonTokens(row.question);
+        return { row, score: [...context].filter(t => doc.has(t)).length, echo: words.filter(t => question.has(t)).length };
+    }).sort((a, b) => b.score - a.score || b.echo - a.echo);
+    if (scored.length > 1 && scored[0].score === scored[1].score && scored[0].echo === scored[1].echo) return null;
     // A price FAQ that shares nothing else with the message is about something else ("¿qué precio tiene el
     // Audífono?" is not "¿Cuál es el precio de la instalación?"), and its figure would pass the price guardrail as
     // retrieved knowledge. Product prices come from the catalog tools, so a price topic needs real context.
     if (scored[0].score === 0 && PRICE_TOPICS.has(term)) return null;
     return scored[0].row;
+}
+
+const FILLER_CANON = new Set([...QUESTION_FILLER].map(canon));
+/** Comparison form of the topic words of a message (`topicTermsOf`, canonicalised). */
+const topicCanonOf = (message: string): string[] => canonTerms(message).filter(t => !FILLER_CANON.has(t));
+
+/**
+ * The topic words a FAQ QUESTION adds that the message never says ("Faro AZUL" for a "Faro Rojo" message). Words
+ * written as alternatives with a slash next to a covered word ("comisión / honorarios") are the same topic, not
+ * an addition.
+ */
+function questionExtras(question: string, message: Set<string>): string[] {
+    const own = topicCanonOf(question);
+    const alternates = new Set<string>();
+    for (const slash of fold(question).matchAll(/([\p{L}\p{N}]+)\s*\/\s*([\p{L}\p{N}]+)/gu)) {
+        const [left, right] = [canon(slash[1]), canon(slash[2])];
+        if (message.has(left)) alternates.add(right);
+        if (message.has(right)) alternates.add(left);
+    }
+    return own.filter(t => !message.has(t) && !alternates.has(t));
+}
+
+/**
+ * Last resort for ONE question that carries extra words ("¿cuánto cobran de comisión por vender mi apartamento?"):
+ * the strict search needs every word, and the fallbacks need the whole message, so they find nothing even though
+ * "¿Cuánto cobran de comisión?" answers it. `rows` are the FAQs holding ANY topic word of the message.
+ *
+ * A FAQ is returned only when (a) its QUESTION covers a clear majority (at least two, more than half) of the
+ * message's topic words, or (b) exactly one topic word of the message appears in any candidate question and
+ * `pickTopicFaq` singles out one FAQ for it. Words that only ask ("cuánto", "cobran") never count as topic.
+ * A FAQ whose question adds its own topic word while a topic word of the message appears nowhere in the FAQ
+ * ("tour Faro Azul" for "tour Faro Rojo"), or that asks something else of the topic ("cuánto DURA" for "cuánto
+ * CUESTA"), is about something else and never answers. Equals: none.
+ */
+export function pickTopicFallbackFaq(rows: FAQ[], message: string): FAQ | null {
+    const topic = topicCanonOf(message);
+    if (!topic.length || !rows.length) return null;
+    const said = new Set(canonTerms(message));
+    const words = [...said];
+    // What the message asks about its topic ("cuánto CUESTA la visita guiada"): a FAQ question that asks something
+    // else of the same topic ("¿Cuánto DURA la visita guiada?") answers a different question.
+    const asks = words.filter(t => FILLER_CANON.has(t));
+    const scored = rows.map(row => {
+        const question = canonTokens(row.question);
+        const content = canonTokens(`${row.question} ${row.answer}`);
+        const covered = topic.filter(t => question.has(t));
+        const questionAsks = canonTerms(row.question).filter(t => FILLER_CANON.has(t));
+        const asksOther = asks.length > 0 && questionAsks.length > 0 && !questionAsks.some(t => asks.includes(t));
+        const substitutes = asksOther || (questionExtras(row.question, said).length > 0 && topic.some(t => !content.has(t)));
+        return { row, covered: covered.length, coveredTerms: covered, echo: words.filter(t => question.has(t)).length, substitutes };
+    });
+    const eligible = scored.filter(s => !s.substitutes);
+
+    if (topic.length >= 2) {
+        const majority = eligible.filter(s => s.covered >= 2 && s.covered * 2 > topic.length)
+            .sort((a, b) => b.covered - a.covered || b.echo - a.echo);
+        if (majority.length) {
+            const [best, next] = majority;
+            return next && next.covered === best.covered && next.echo === best.echo ? null : best.row;
+        }
+    }
+
+    const hit = new Set(scored.flatMap(s => s.coveredTerms));
+    if (hit.size !== 1) return null;
+    return pickTopicFaq(eligible.map(s => s.row), [...hit][0], message, true);
 }
 
 const PRICE_TOPICS = new Set(['precio', 'costo', 'coste', 'valor', 'tarifa', 'price', 'pricing', 'fee', 'preco', 'custo', 'prix', 'tarif', 'cout']);

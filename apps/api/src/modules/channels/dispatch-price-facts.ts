@@ -109,6 +109,40 @@ export async function serviceWindowOpen(
 }
 
 /**
+ * Is the 24-hour window open between this business number and this recipient?
+ *
+ * For a producer that holds an address rather than a conversation — the inline
+ * REST surface. Meta's window is per (business number, customer), so the read
+ * is scoped to the WhatsApp conversations of `channelAccountId` with the
+ * contact whose WhatsApp id is `recipient` (digits, as Meta's `wa_id`; a stored
+ * leading `+` is tolerated). Same semantics as `serviceWindowOpen`: `false`
+ * when no inbound message exists or the newest is older than the window.
+ * Throws when unreadable; the caller decides what unreadable means.
+ */
+export async function serviceWindowOpenForRecipient(
+    query: PriceFactQuery,
+    input: { readonly channelAccountId: string; readonly recipient: string },
+): Promise<boolean> {
+    const account = String(input.channelAccountId ?? '').trim();
+    const recipient = String(input.recipient ?? '').replace(/[^\d]/g, '');
+    if (!account || !recipient) return false;
+    const rows = await query<any[]>(
+        `SELECT MAX(m.created_at) > clock_timestamp() - INTERVAL '${SERVICE_WINDOW_HOURS} hours'
+                AS open
+           FROM contacts ct
+           JOIN conversations c ON c.contact_id = ct.id
+           JOIN messages m ON m.conversation_id = c.id
+          WHERE ct.channel_type = 'whatsapp'
+            AND ct.external_id IN ($2, '+' || $2)
+            AND c.channel_type = 'whatsapp'
+            AND c.channel_account_id = $1
+            AND m.direction = 'inbound'`,
+        [account, recipient]);
+    const open = rows?.[0]?.open;
+    return open === null || open === undefined ? false : Boolean(open);
+}
+
+/**
  * Everything the admission needs to price one dispatch row, read from the
  * tenant's own database.
  *

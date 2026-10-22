@@ -16,6 +16,12 @@ import { mutateTenantSettingsAtomic } from '../../common/utils/tenant-settings.u
  */
 
 const CACHE_PREFIX = 'feature_flags:';
+
+/** Per-tenant flag of the health safety triage runtime. */
+export const SAFETY_TRIAGE_FLAG = 'agentRuntime.safetyTriage';
+
+/** Per-tenant flag of the shadow operation classifier (operations runtime PR4). */
+export const OPERATION_CLASSIFIER_FLAG = 'agentRuntime.operationClassifier';
 const CACHE_TTL = 300;
 
 /**
@@ -38,7 +44,34 @@ export const FEATURE_FLAGS_REGISTRY: Array<{
     { key: 'killBroadcasts',     label: 'Disable broadcasts',           description: 'Block all broadcast/campaign sending',                    category: 'killswitch',   default: false },
     { key: 'killHandoff',        label: 'Disable handoff escalation',   description: 'Skip the handoff trigger pipeline',                       category: 'killswitch',   default: false },
     { key: 'experimentalCopilot', label: 'AI Copilot suggestions',      description: 'Show AI-generated reply suggestions in the inbox',       category: 'experimental', default: false },
+    // Health safety triage (packages/shared/src/safety-policy.ts). OFF by default and
+    // must stay off until a clinician has reviewed the urgency templates
+    // (SAFETY_TEMPLATE_REVIEW); turning it off again is the killswitch.
+    { key: SAFETY_TRIAGE_FLAG, label: 'Health safety triage', description: 'Red-flag triage for health/pet businesses: urgency advice + priority human handoff (requires clinical review of templates)', category: 'experimental', default: false },
+    { key: 'agentRuntime.slotWindow', label: 'Part-of-day availability window', description: 'The agent reads "mañana en la tarde" / "after 3 pm" as a time window and offers only slots inside it (or says the window is full and offers the nearest)', category: 'experimental', default: false },
+    // Operations runtime PR4 (packages/shared/src/operation-catalogue.ts). SHADOW only:
+    // classifies each turn into a catalogue operation and writes a trace step; it never
+    // changes the reply, the tools or the routing. Costs one cheap `classify` call per turn.
+    { key: OPERATION_CLASSIFIER_FLAG, label: 'Operation classifier (shadow)', description: 'Shadow-classifies each customer turn into a catalogue operation and traces its required reads (no behaviour change)', category: 'experimental', default: false },
 ];
+
+/**
+ * Pure resolution of one flag against a tenant's `settings.featureFlags`
+ * record: explicit value wins, otherwise the registry default; unknown keys
+ * are off. Shared by the cached service path and by readers that already hold
+ * the tenant's settings (the Agent Test snapshot capture).
+ */
+export function resolveFeatureFlag(flags: unknown, flagKey: string): boolean {
+    const definition = FEATURE_FLAGS_REGISTRY.find(f => f.key === flagKey);
+    if (!definition) return false;
+    if (flags && typeof flags === 'object' && Object.prototype.hasOwnProperty.call(flags, flagKey)) {
+        return Boolean((flags as Record<string, unknown>)[flagKey]);
+    }
+    return definition.default;
+}
+
+/** Agent runtime flag: part-of-day / range availability window (PR8). Default off. */
+export const SLOT_WINDOW_FLAG = 'agentRuntime.slotWindow';
 
 @Injectable()
 export class FeatureFlagsService {
@@ -74,13 +107,8 @@ export class FeatureFlagsService {
      * false when the flag isn't in the registry — defensive.
      */
     async isFeatureEnabled(tenantId: string, flagKey: string): Promise<boolean> {
-        const definition = FEATURE_FLAGS_REGISTRY.find(f => f.key === flagKey);
-        if (!definition) return false;
-        const flags = await this.getFlags(tenantId);
-        if (Object.prototype.hasOwnProperty.call(flags, flagKey)) {
-            return Boolean(flags[flagKey]);
-        }
-        return definition.default;
+        if (!FEATURE_FLAGS_REGISTRY.some(f => f.key === flagKey)) return false;
+        return resolveFeatureFlag(await this.getFlags(tenantId), flagKey);
     }
 
     /**

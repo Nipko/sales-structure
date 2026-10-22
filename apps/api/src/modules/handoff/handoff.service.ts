@@ -10,14 +10,17 @@ import { LLMRouterService } from '../ai/router/llm-router.service';
 import { AiResolutionService } from '../analytics/ai-resolution.service';
 import { normalizeCustomerIntent } from '../../common/conversation/intent-normalizer';
 import {
+    asksPriceConcessionForSelf,
     DEFECT_ON_ARRIVAL_KEYWORDS,
     isAnswerableCustomTrigger,
     isAnswerableTopicWord,
     isDefectOnArrivalKeyword,
+    isDiscountExistenceQuestion,
     isHypotheticalDefectQuestion,
     policyOverrideLabel,
     policyQuestionScope,
     POLICY_TOPIC_KEYWORDS,
+    PRICE_COMPARISON_KEYWORDS,
     SOFT_DEFECT_KEYWORDS,
     softDefectAsFact,
 } from './handoff-policy-question';
@@ -223,6 +226,13 @@ export class HandoffService {
             const reason = reasonForPolicyLabel(own, topics, enabled);
             if (reason) return reason;
         }
+        // Whether a discount or promotion EXISTS («¿tienen algún descuento esta semana?», «hay promociones hoy?»,
+        // «do you have any discounts?») is a read the agent answers from its promotions, not a negotiation (see
+        // `isDiscountExistenceQuestion`). The model is not asked, so it cannot turn the question into a transfer
+        // (F4300-07); everything else in the message is still judged by the rules.
+        if (topics.discount && !topics.refund && !topics.customTrigger && isDiscountExistenceQuestion(message)) {
+            return this.evaluateHandoff(message, conversation, config, operatingCountry, 'rules');
+        }
         const label = await this.classifyPolicyMessage(message, tenantId, executionContext);
         if (!label) return this.shouldHandoff(message, conversation, config, operatingCountry);
         const reason = reasonForPolicyLabel(label, topics, enabled);
@@ -417,7 +427,12 @@ export class HandoffService {
             // Portuguese / French
             'desconto', 'mais barato', 'melhor preco', 'remise', 'moins cher',
         ];
-        if (enabled('discount_request') && escalates(discountKeywords)) {
+        // A price comparison («¿cuál es el más barato?», «¿tienen precio especial para grupos?») is a catalogue
+        // read the agent answers; it is a negotiation only when it asks for the price to be lowered for the
+        // customer («me lo dejas más barato», «dame un mejor precio») — F4300-07.
+        const priceComparisonIsRead = !asksPriceConcessionForSelf(message);
+        if (enabled('discount_request')
+            && escalates(discountKeywords.filter(kw => !(priceComparisonIsRead && PRICE_COMPARISON_KEYWORDS.has(kw))))) {
             return 'discount_request';
         }
 
@@ -1219,6 +1234,12 @@ export class HandoffService {
 
             // 5. Build prioritized skills array
             const targetSkills: string[] = [];
+
+            // 0. A health red flag (safety triage, reason `safety_red_flag:<class>:priority=urgent`)
+            // goes first to whoever is tagged clinical / urgent, ahead of lead value.
+            if (reason?.startsWith('safety_red_flag:')) {
+                targetSkills.push('clinical', 'urgent');
+            }
 
             // A. VIP Lead (Score >= 80) -> route to senior or supervisor agents
             if (leadScore >= 80) {

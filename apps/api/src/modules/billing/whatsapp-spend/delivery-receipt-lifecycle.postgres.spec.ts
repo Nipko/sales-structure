@@ -176,6 +176,22 @@ integration('what a delivery receipt does to the money', () => {
         expect((await row(effect.effectKey)).evidence).toBe('provider_reported_free');
     });
 
+    it('settles at zero a paid_exempt delivery that Meta still marks billable', async () => {
+        // Government / non-profit senders: a paid category, `billable: true`,
+        // and `subtype: paid_exempt` — Meta will not invoice it.
+        const effect = await sent();
+
+        await expect(service().applyDeliveryReceipt(schema, {
+            providerMessageId: effect.providerMessageId, status: 'delivered',
+            pricing: { billable: true, category: 'marketing', model: 'PMP',
+                type: 'regular', subtype: 'paid_exempt' },
+        })).resolves.toBe('settled');
+
+        const after = await accountCounter();
+        expect(Number(after.settled_minor)).toBe(0);
+        expect((await row(effect.effectKey)).evidence).toBe('provider_reported_free');
+    });
+
     it('treats a read receipt as the delivery it implies, even arriving first', async () => {
         // Meta does not promise an order. `read` before `delivered` used to mean
         // the money was never resolved at all, because only one of the two was

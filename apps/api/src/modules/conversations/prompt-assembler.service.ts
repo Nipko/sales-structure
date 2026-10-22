@@ -301,6 +301,24 @@ export class PromptAssemblerService {
             lines.push('  </upcoming_days>');
         }
 
+        // The days the customer's current message names, already resolved against the tenant's local today: whether a day
+        // is past or future is a fact the backend computed, not calendar arithmetic left to the model.
+        if (turn.customerDates && turn.customerDates.length > 0) {
+            lines.push('  <customer_dates>');
+            for (const d of turn.customerDates) {
+                const attrs = [
+                    `iso="${this.attrEscape(d.date)}"`,
+                    `weekday="${this.attrEscape(d.weekday)}"`,
+                    `relation="${this.attrEscape(d.relation)}"`,
+                    `year_stated="${d.yearStated ? 'true' : 'false'}"`,
+                ];
+                if (d.yearAssumed) attrs.push('year_assumed="true"');
+                if (d.nextYearDate) attrs.push(`next_year_iso="${this.attrEscape(d.nextYearDate)}"`);
+                lines.push(`    <date ${attrs.join(' ')} />`);
+            }
+            lines.push('  </customer_dates>');
+        }
+
         if (turn.business) {
             lines.push('  <business>');
             const b = turn.business;

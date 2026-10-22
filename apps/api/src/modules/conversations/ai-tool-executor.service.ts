@@ -13,7 +13,7 @@ import { evaluationNamespaceTimezone } from '../simulation/eval-temporal-context
 import { RepairOrderTerms, RepairTermsChangedError, repairRequestHash, repairTermsReviewResult, repairActionErrorResult } from '../repair-orders/repair-order-terms';
 import { catalogHash, catalogActionError, catalogTermsReviewResult } from '../orders/catalog-order-contract';
 import { shortReference, withShortReference } from './transition-engine';
-import { BadRequestException, ConflictException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -102,11 +102,35 @@ import {
 } from '../../common/utils/payment-policy.util';
 import { attachWriterActiveObject } from './writer-active-object';
 import { RepairOrdersService } from '../repair-orders/repair-orders.service';
-import { selectSlotWindow } from './slot-window';
+import { selectSlotWindow, selectSlotsInWindow } from './slot-window';
+import { minutesToHhmm, parseTimeWindow, resolveTimeWindow, type TimeWindow } from './time-window';
+import { FeatureFlagsService, SLOT_WINDOW_FLAG } from '../throttle/feature-flags.service';
 import { foldedSql, foldQueryText } from '../../common/utils/sql-accent-fold.util';
 import { foldForSearch, likePatternForTerm, productSearchTerms } from '../../common/utils/product-search-terms';
 import { markCatalogEmpty } from './catalog-empty.util';
 import { catalogPriceStatus } from './catalog-price-status';
+
+/**
+ * The business's opening window of the day as check_availability sees it: the
+ * earliest opening and the latest closing of the open `availability_slots` rows
+ * (a window ending at 00:00 ends at midnight). It clamps the part-of-day
+ * boundaries of a requested window ("afternoon" = 12:00 until this closing).
+ */
+function openingWindowOf(rows: Array<{ start_time?: string; end_time?: string }>): { openMin: number; closeMin: number } | null {
+    let openMin: number | null = null;
+    let closeMin: number | null = null;
+    for (const row of rows) {
+        const [sh, sm] = String(row.start_time ?? '').split(':').map(Number);
+        const [eh, em] = String(row.end_time ?? '').split(':').map(Number);
+        if (![sh, sm, eh, em].every(Number.isFinite)) continue;
+        const start = sh * 60 + sm;
+        const end = (eh * 60 + em) || 1440;
+        if (end <= start) continue;
+        openMin = openMin === null ? start : Math.min(openMin, start);
+        closeMin = closeMin === null ? end : Math.max(closeMin, end);
+    }
+    return openMin === null || closeMin === null ? null : { openMin, closeMin };
+}
 
 /**
  * Two products whose names differ only by accents ("Audífono" / "Audifono") both
@@ -172,6 +196,8 @@ export class AIToolExecutorService {
         private readonly tasksService?: TasksService,
         private readonly repairOrders?: RepairOrdersService,
         private readonly appointmentsService?: AppointmentsService,
+        /** Per-tenant runtime flags (`agentRuntime.slotWindow`). Absent in hand-built specs: the flag reads as off. */
+        @Optional() private readonly featureFlags?: FeatureFlagsService,
     ) { }
 
     /**
@@ -726,8 +752,13 @@ export class AIToolExecutorService {
                 case 'list_services':
                     return this.listServices(schemaName);
 
-                case 'check_availability':
-                    return this.checkAvailability(schemaName, args.date, args.serviceId, args.staffId, canonicalSandbox, args.vehicleId, typeof args.time === 'string' ? args.time : undefined);
+                case 'check_availability': {
+                    // `window` is read only for a tenant with `agentRuntime.slotWindow` on, and only when
+                    // the call carries one: with the flag off (or no window) the call is the one it always was.
+                    const window = args.window !== undefined && await this.slotWindowEnabled(tenantId)
+                        ? parseTimeWindow(args.window) ?? undefined : undefined;
+                    return this.checkAvailability(schemaName, args.date, args.serviceId, args.staffId, canonicalSandbox, args.vehicleId, typeof args.time === 'string' ? args.time : undefined, window);
+                }
 
                 case 'create_appointment':
                     return this.createAppointment(schemaName, tenantId, contactId, args as any, conversationId, opts?.evalMode, canonicalSandbox, operationalScope, executionIdempotencyKey, opts?.channelType);
@@ -3015,7 +3046,17 @@ export class AIToolExecutorService {
         };
     }
 
-    private async checkAvailability(schema: string, date: string, serviceId: string, staffId?: string, namespace?: EvalNamespaceLease, vehicleId?: string, requestedTime?: string): Promise<any> {
+    /** `agentRuntime.slotWindow` for this tenant; any failure to read it is "off". */
+    private async slotWindowEnabled(tenantId: string): Promise<boolean> {
+        if (!this.featureFlags || !tenantId) return false;
+        try {
+            return await this.featureFlags.isFeatureEnabled(tenantId, SLOT_WINDOW_FLAG);
+        } catch {
+            return false;
+        }
+    }
+
+    private async checkAvailability(schema: string, date: string, serviceId: string, staffId?: string, namespace?: EvalNamespaceLease, vehicleId?: string, requestedTime?: string, window?: TimeWindow): Promise<any> {
         const directory = await tenantActorDirectory(this.prisma,schema,namespace);
         const resolvedStaffId = staffId
             ? await assertActiveTenantUser(this.prisma, schema, staffId, namespace)
@@ -3216,7 +3257,17 @@ export class AIToolExecutorService {
         // para que segundo cliente no vea mismo hueco libre y luego falle al crear.
         // La tanda visible se centra en la hora pedida, si la hay; los holds cubren
         // exactamente lo que se ofrece.
-        const offeredSlots = selectSlotWindow(availableSlots, requestedTime);
+        // With a requested window («mañana en la tarde») and no exact hour, the slots are filtered to
+        // that window BEFORE choosing and spread across it; a full window answers with the nearest
+        // free slots, typed, so nobody says the day has no availability. An exact hour keeps the
+        // hour-centred offer it always had.
+        const windowed = window && !requestedTime && availableSlots.length
+            ? (() => {
+                const resolved = resolveTimeWindow(window, openingWindowOf(slots));
+                return { resolved, selection: selectSlotsInWindow(availableSlots, resolved) };
+            })()
+            : null;
+        const offeredSlots = windowed ? windowed.selection.slots : selectSlotWindow(availableSlots, requestedTime);
         for (const s of offeredSlots) {
             const holdKey = `slot:hold:${resolvedServiceId}:${date}:${s.time}`;
             // Best-effort, no bloquea respuesta; NX evita pisar hold existente
@@ -3238,15 +3289,36 @@ export class AIToolExecutorService {
             userNames = Object.fromEntries(users.map((u: any) => [u.id, `${u.firstName} ${u.lastName}`.trim()]));
         }
 
+        const offered = offeredSlots.map(s => ({
+            time: s.time,
+            endTime: s.endTime,
+            staffName: userNames[s.userId] || undefined,
+            staffId: s.userId || undefined,
+        }));
+        if (windowed) {
+            const requestedWindow = {
+                ...(window?.partOfDay ? { partOfDay: window.partOfDay } : {}),
+                from: minutesToHhmm(windowed.resolved.fromMin),
+                to: minutesToHhmm(Math.max(windowed.resolved.fromMin, windowed.resolved.toMin)),
+            };
+            if (windowed.selection.kind === 'outsideRequestedWindow') {
+                return {
+                    available: true,
+                    date,
+                    requestedWindow,
+                    outsideRequestedWindow: true,
+                    slots: offered,
+                    message: `No free slot inside the requested window (${requestedWindow.from}-${requestedWindow.to}) on ${date}. `
+                        + 'Tell the customer there is nothing in that part of the day and offer these nearest free slots instead; '
+                        + 'never say the day has no availability.',
+                };
+            }
+            return { available: true, date, requestedWindow, slots: offered };
+        }
         return {
             available: availableSlots.length > 0,
             date,
-            slots: offeredSlots.map(s => ({
-                time: s.time,
-                endTime: s.endTime,
-                staffName: userNames[s.userId] || undefined,
-                staffId: s.userId || undefined,
-            })),
+            slots: offered,
         };
     }
 

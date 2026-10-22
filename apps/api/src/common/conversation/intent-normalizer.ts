@@ -108,6 +108,46 @@ const HUMAN_REQUEST_REFUSAL = /\b(?:no (?:quiero|deseo|necesito)|no me (?:pases|
 // does not change the normalized evidence used by confirmation/consent gates.
 const STRUCTURED_REFERENCE = /\b(?=[A-Za-z0-9_-]*\d)[A-Za-z0-9]+(?:[-_][A-Za-z0-9]+){2,}\b/g;
 
+/** A verb that asks to be put through. «quiero / necesito» only count when they govern the person (see WANT_OTHER_ACTION). */
+const HUMAN_REQUEST_VERB = /\b(hablar|habla|comunicar|pasame|pasar|quiero|necesito|talk|speak|falar|parler)\b/;
+
+/**
+ * «lo quiero comprar», «necesito saber el precio», «quiero reservar»: the want-verb governs ANOTHER action, so it is not a
+ * request for a person even when a person word appears elsewhere (F4300-07: «¿tienen disponible el producto QA Agente
+ * Stock? lo quiero comprar» was transferred as `human_request`). «quiero hablar / comunicarme / que me atienda…» still count.
+ */
+const WANT_OTHER_ACTION = /\b(?:quiero|necesito)\s+(?!(?:hablar|hablarle|comunicar\w*|pasar\w*|contactar\w*|charlar|platicar|conversar)\b)[a-z]+(?:ar|er|ir)(?:lo|la|los|las|le|les|me|se|te)?\b/g;
+
+/**
+ * A run of two or more Capitalised words inside a clause is a name («el producto QA Agente Stock», «el plan Asesor Premium»):
+ * its words are not a role being asked for. A run that opens the clause, opens with the request verb, or is shouted in
+ * capitals («QUIERO UN ASESOR») is read as words; so is a run right after a sentence ends («¿…? Quiero Un Asesor»).
+ */
+const CAPITALISED_RUN = /(?<=[A-Za-zÁÉÍÓÚÑÜáéíóúñü0-9,]\s+)(?:[A-ZÁÉÍÓÚÑÜ][\wÁÉÍÓÚÑÜáéíóúñü]*)(?:\s+[A-ZÁÉÍÓÚÑÜ0-9][\wÁÉÍÓÚÑÜáéíóúñü]*)+/g;
+
+function maskProperNames(text: string, personWords: readonly string[]): string {
+    return text.replace(CAPITALISED_RUN, (run) => {
+        if (run === run.toUpperCase()) return run;
+        const first = normalizeForIntent(run.split(/\s+/)[0]);
+        // «quiero hablar con un Asesor Comercial»: a role written with capitals is still the role.
+        if (HUMAN_REQUEST_VERB.test(first) || personWords.includes(first)) return run;
+        return ' ';
+    });
+}
+
+/**
+ * The request-for-a-person alias the message asks for: a person word, and a verb that asks to be put through. Names are
+ * masked first, and a want-verb that governs another action («lo quiero comprar») does not count.
+ */
+function humanRequestAlias(raw: unknown, aliases: readonly IntentAlias[]): IntentAlias | undefined {
+    const personWords = aliases.filter(a => a.intent === 'request_human').map(a => a.value);
+    const text = normalizeForIntent(maskProperNames(String(raw ?? '').replace(STRUCTURED_REFERENCE, ' '), personWords))
+        .replace(HUMAN_REQUEST_REFUSAL, ' ');
+    const alias = aliases.find(a => a.intent === 'request_human'
+        && new RegExp(`\\b${a.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(text));
+    return alias && HUMAN_REQUEST_VERB.test(text.replace(WANT_OTHER_ACTION, ' ')) ? alias : undefined;
+}
+
 const CORRECTION_ANYWHERE = /\b(quise decir|quería decir|me equivoque|corrijo|corrigiendo|mas bien|en realidad|na verdade|quis dizer|corrigindo|actually|i meant|je voulais dire)\b/;
 
 const COURTESY = /^(?:muchas gracias|gracias|thank you|thanks|obrigado|obrigada|merci|por favor|please|s il vous plait|s'il vous plait)(?:\s+|$)/;
@@ -289,11 +329,8 @@ export function normalizeCustomerIntent(
 
     // A human explicitly asking for a person must be heard in a long message
     // too — it usually arrives inside a complaint, not as a single word.
-    const humanRequestText = normalizeForIntent(String(raw ?? '').replace(STRUCTURED_REFERENCE, ' '))
-        .replace(HUMAN_REQUEST_REFUSAL, ' ');
-    const humanAlias = aliases.find(a => a.intent === 'request_human'
-        && new RegExp(`\\b${a.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(humanRequestText));
-    if (humanAlias && /\b(hablar|habla|comunicar|pasame|pasar|quiero|necesito|talk|speak|falar|parler)\b/.test(humanRequestText)) {
+    const humanAlias = humanRequestAlias(raw, aliases);
+    if (humanAlias) {
         return {
             ...base, intent: 'request_human', confidence: humanAlias.confidence,
             matched: humanAlias.value, packId: pack?.id,

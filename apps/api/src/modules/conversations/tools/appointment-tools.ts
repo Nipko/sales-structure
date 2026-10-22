@@ -8,6 +8,48 @@ import {
     normalizeCustomerIntent,
 } from '../../../common/conversation/intent-normalizer';
 
+/**
+ * The optional `window` argument of check_availability (PR8, flag `agentRuntime.slotWindow`).
+ *
+ * It is NOT part of the static descriptor below: a tenant with the flag off must
+ * see exactly the schema it always saw. The turn adds it with
+ * `withSlotWindowParameter` only when the flag is on, and the executor reads it
+ * only then. Fields mirror `TimeWindow` (time-window.ts).
+ */
+export const CHECK_AVAILABILITY_WINDOW_PROPERTY = Object.freeze({
+    type: 'object',
+    description: 'Optional part of the day or hour range the customer asked for, when they did not give one exact time '
+        + '("mañana en la tarde", "after 3 pm", "entre 14h e 17h"). Only slots inside it are returned, spread across it. '
+        + 'afternoon = 12:00 until closing, morning = opening until 12:00, evening = 18:00 until closing; from is inclusive, to exclusive. '
+        + 'If the result has outsideRequestedWindow=true, nothing is free inside the window: say so and offer the returned nearest slots; '
+        + 'never say the day has no availability. Ignored when time is given.',
+    properties: {
+        partOfDay: { type: 'string', enum: ['morning', 'afternoon', 'evening'] },
+        from: { type: 'string', description: 'HH:MM 24h, earliest start ("después de las 15:00" → 15:00)' },
+        to: { type: 'string', description: 'HH:MM 24h, slots must start before it ("antes de las 11" → 11:00)' },
+    },
+});
+
+/**
+ * The turn's tool list with `window` added to check_availability. Accepts both
+ * the bare `{ name, parameters }` shape and the OpenAI `{ function: {...} }` one,
+ * and never mutates the shared static definitions.
+ */
+export function withSlotWindowParameter<T>(tools: readonly T[]): T[] {
+    const extend = (definition: any) => ({
+        ...definition,
+        parameters: {
+            ...definition.parameters,
+            properties: { ...(definition.parameters?.properties ?? {}), window: CHECK_AVAILABILITY_WINDOW_PROPERTY },
+        },
+    });
+    return tools.map((tool: any) => {
+        if (tool?.name === 'check_availability' && tool.parameters) return extend(tool);
+        if (tool?.function?.name === 'check_availability' && tool.function.parameters) return { ...tool, function: extend(tool.function) };
+        return tool;
+    });
+}
+
 export const APPOINTMENT_TOOLS: ToolDefinition[] = [
     {
         name: 'list_services',

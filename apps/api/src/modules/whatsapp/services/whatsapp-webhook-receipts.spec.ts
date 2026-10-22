@@ -78,7 +78,7 @@ describe('the API’s own Meta webhook reaches the ledger', () => {
             pricing: { billable: false, pricing_model: 'PMP', category: 'service' },
         }]));
         expect(h.receipts[0].receipt.pricing)
-            .toEqual({ billable: false, category: 'service', model: 'PMP' });
+            .toEqual({ billable: false, category: 'service', model: 'PMP', type: null, subtype: null });
     });
 
     it('resolves the tenant once for a batch, not once per receipt', async () => {

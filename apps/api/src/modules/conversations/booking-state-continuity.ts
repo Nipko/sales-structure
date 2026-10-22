@@ -12,11 +12,20 @@ export function restoreBookingMission(
     now = Date.now(),
 ): { state: BookingState; requiresRevalidation: boolean } {
     if (!saved?.step || saved.step === 'idle') return { state: { step: 'idle' }, requiresRevalidation: false };
-    const stamp = Date.parse(savedAt || saved.savedAt || '');
-    const age = now - stamp;
     // `savedAt` is rewritten on every turn, including turns the engine declines
-    // (an informational question answered by the model). A dormant mission is
-    // therefore bounded by the moment it went dormant, not by the last write.
+    // (an informational question answered by the model). The continuity window
+    // is therefore measured from the last turn the booking itself moved
+    // (`progressedAt`, stamped by the engine): a conversation that keeps going
+    // about other things for hours does not keep a draft at «¿cuál es su correo?»
+    // live (production 2026-10-22: a draft built at 08:35 was still answering
+    // «¿Desea cambiar su cita…?» at 12:09). Older states without the stamp fall
+    // back to the last write, as before. A dormant mission is bounded by the
+    // moment it went dormant, not by the last write.
+    // The booking cannot have moved after the state was written: a later stamp is not trusted.
+    const written = Date.parse(savedAt || saved.savedAt || '');
+    const progressed = Date.parse(saved.progressedAt || '');
+    const stamp = Number.isFinite(progressed) && !(progressed > written) ? progressed : written;
+    const age = now - stamp;
     // A mission opened by a question and never confirmed with a datum is not a task to resume:
     // past the continuity window it simply expires.
     if (saved.origin === 'question' && !(Number.isFinite(age) && age >= 0 && age <= BOOKING_PROPOSAL_TTL_MS)) {
@@ -48,6 +57,7 @@ export function restoreBookingMission(
         // Past the continuity window the mission is dormant: kept, but the next
         // booking turn asks whether to resume it instead of continuing silently.
         resumeOffer: saved.resumeOffer ?? 'pending',
+        progressedAt: saved.progressedAt,
         dormantSince: saved.dormantSince
             ?? new Date(Number.isFinite(stamp) ? stamp : now).toISOString(),
     };

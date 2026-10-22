@@ -1,4 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
+import type { VerifiedFactView } from '@parallext/shared';
+import { ledgerBacksAmount } from './runtime/facts-ledger';
 
 export interface PriceValidationResult {
     ok: boolean;
@@ -10,6 +12,18 @@ interface MoneyMention {
     amount: number;
     /** Undefined means that the marker is ambiguous (for example "$" or "pesos"). */
     currency?: string;
+    /** Where the mention sits in the text it was read from (response side). */
+    index?: number;
+    length?: number;
+}
+
+/**
+ * The conversation's live verified facts (`agentRuntime.factsLedger`). An amount that is not in this turn's evidence
+ * still passes when a live confirmed money fact of the SAME subject backs it (see `ledgerBacksAmount`).
+ */
+export interface PriceLedger {
+    facts: readonly VerifiedFactView[];
+    customerText?: string;
 }
 
 const UNVERIFIED_PRICE_REPLIES: Record<string, string> = {
@@ -42,7 +56,7 @@ export function buildUnverifiedPriceReply(systemPrompt: string): string {
 export class ResponseValidatorService {
     private readonly logger = new Logger(ResponseValidatorService.name);
 
-    validatePrices(responseText: string, inputCorpus: string): PriceValidationResult {
+    validatePrices(responseText: string, inputCorpus: string, ledger?: PriceLedger): PriceValidationResult {
         const stated = this.extractMoneyAmounts(responseText || '');
         if (stated.length === 0) return { ok: true, hallucinatedPrices: [] };
 
@@ -52,6 +66,9 @@ export class ResponseValidatorService {
         ];
         const hallucinated = stated
             .filter(mention => !this.matchesAny(mention, allowed))
+            .filter(mention => !ledger?.facts.length || !ledgerBacksAmount(responseText, {
+                amount: mention.amount, currency: mention.currency, index: mention.index ?? 0, length: mention.length ?? 0,
+            }, ledger.facts, ledger.customerText))
             .map(mention => mention.amount)
             .filter((amount, index, all) => all.indexOf(amount) === index);
         return { ok: hallucinated.length === 0, hallucinatedPrices: hallucinated };
@@ -70,7 +87,7 @@ export class ResponseValidatorService {
         let m: RegExpExecArray | null;
         while ((m = re.exec(text)) !== null) {
             const n = this.normalize(m[2] || m[3]);
-            if (n != null) out.push({ amount: n, currency: this.normalizeCurrency(m[1] || m[4]) });
+            if (n != null) out.push({ amount: n, currency: this.normalizeCurrency(m[1] || m[4]), index: m.index, length: m[0].length });
         }
         return out;
     }
@@ -168,8 +185,9 @@ export function enforceVerifiedPriceReply(
     inputCorpus: string,
     systemPrompt: string,
     validator: Pick<ResponseValidatorService, 'validatePrices'>,
+    ledger?: PriceLedger,
 ): VerifiedPriceReply {
-    const validation = validator.validatePrices(candidate, inputCorpus);
+    const validation = ledger ? validator.validatePrices(candidate, inputCorpus, ledger) : validator.validatePrices(candidate, inputCorpus);
     return validation.ok
         ? { reply: candidate, validation, blocked: false }
         : { reply: buildUnverifiedPriceReply(systemPrompt), validation, blocked: true };

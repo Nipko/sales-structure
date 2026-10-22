@@ -1,7 +1,7 @@
 import { appointmentRecordReadId } from './appointment-record-read';
 import { isCanonicalConsentRecovery, canonicalConsentRecoveryDirective } from './canonical-consent-recovery';
 import { DemoAllowanceService } from '../throttle/demo-allowance.service';
-import { FeatureFlagsService, OPERATION_CLASSIFIER_FLAG, SAFETY_TRIAGE_FLAG, SLOT_WINDOW_FLAG, resolveFeatureFlag } from '../throttle/feature-flags.service';
+import { FACTS_LEDGER_FLAG, FeatureFlagsService, OPERATION_CLASSIFIER_FLAG, SAFETY_TRIAGE_FLAG, SLOT_WINDOW_FLAG, resolveFeatureFlag } from '../throttle/feature-flags.service';
 import { runSafetyTriage, type SafetyTriageTurnOutcome } from './runtime/safety-triage';
 import { buildOperationShadowTrace, OperationClassifierService, type OperationShadowVerdict } from './runtime/operation-classifier.service';
 import { demoAllowanceExhaustedText } from '../widget/widget-demo-link';
@@ -97,6 +97,8 @@ import { EVALUATION_CONTEXT_LANGUAGES, evaluationContextLanguage, projectBusines
     resolveEvaluationTurnContext, type EvaluationTurnContextInputs } from './evaluation-turn-context';
 import { isAgentTestSafeToolName } from './agent-test-tool-policy';
 import { buildTrustedPriceCorpus, requiresCanonicalPackagePrice } from './trusted-price-context';
+import { liveVerifiedFacts, mergeVerifiedFacts, verifiedFactViews, type VerifiedFact } from './runtime/facts-ledger';
+import { extractVerifiedFacts } from './runtime/facts-extractors';
 import { canonicalPackageCatalogue } from './canonical-package-context';
 import { packageDetailIdForQuestion, requiresPackageDetailLookup } from './package-detail-grounding';
 import { listingDetailIdForQuestion, requiresListingDetailLookup } from './listing-detail-grounding';
@@ -2818,6 +2820,7 @@ export class ConversationsService {
             vertical: Object.fromEntries(verticalEntries) as EvaluationTurnContextInputs['vertical'],
             safetyTriage: resolveFeatureFlag((tenant.settings as any)?.featureFlags, SAFETY_TRIAGE_FLAG),
             operationClassifier: resolveFeatureFlag((tenant.settings as any)?.featureFlags, OPERATION_CLASSIFIER_FLAG),
+            factsLedger: resolveFeatureFlag((tenant.settings as any)?.featureFlags, FACTS_LEDGER_FLAG),
         }, tenantId);
     }
 
@@ -3166,6 +3169,13 @@ export class ConversationsService {
         // reaches the model as a future Friday, never as arithmetic the model does on <now> by itself.
         const customerDates = customerDatesIn(normalizeForIntent(userText), new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(now));
         if (customerDates.length) turnContext.customerDates = customerDates;
+        // The conversation's verified facts (flag agentRuntime.factsLedger): what the business's tools returned in earlier
+        // turns, typed, bound to a subject and still inside its TTL (the 30-minute session boundary does not clear them).
+        // Flag off: no `verifiedFacts` key at all, so the prompt and the price guardrail are exactly the previous ones.
+        const factsLedger = await this.factsLedgerEnabled(tenantId, session);
+        const ledgerFacts: VerifiedFact[] = factsLedger
+            ? liveVerifiedFacts((session ? session.metadata : (conversation.metadata as any))?.verifiedFacts, now) : [];
+        if (factsLedger) turnContext.verifiedFacts = verifiedFactViews(ledgerFacts, now);
 
         // Long-term memory (#1): inject what we know about this customer across
         // conversations, when the agent has it enabled.
@@ -6159,6 +6169,7 @@ export class ConversationsService {
             // `create_property_booking` had returned, which the payment link then
             // had to be invented from.
             await this.persistToolContext(schemaName, conversation.id, executedToolsThisTurn, session);
+            if (factsLedger) await this.persistVerifiedFacts(schemaName, conversation.id, ledgerFacts, executedToolsThisTurn, inboundMessageId, session);
 
             // Record only the final generated text, after guards and handoff/media
             // rewrites. Citation/overlap is observable attribution, never entailment.
@@ -6530,6 +6541,55 @@ export class ConversationsService {
         } catch (error: any) {
             this.logger.warn(`[SafetyTriage] flag unavailable for ${tenantId}: ${error?.message}`);
             return false;
+        }
+    }
+
+    /**
+     * `agentRuntime.factsLedger` for this tenant (off by default). Agent Test and
+     * evaluations read the value sealed in the snapshot by
+     * `captureEvaluationContext` (no per-turn tenant or Redis lookup); a snapshot
+     * captured before the flag existed reads as off. A read failure is "off":
+     * the prompt and the guardrail every tenant had before the ledger.
+     */
+    private async factsLedgerEnabled(tenantId: string, session?: AgentTurnSession): Promise<boolean> {
+        try {
+            if (session) return resolveEvaluationTurnContext(session.snapshot.contextInputs, tenantId).factsLedger === true;
+            return (await this.featureFlags?.isFeatureEnabled(tenantId, FACTS_LEDGER_FLAG)) === true;
+        } catch (error: any) {
+            this.logger.warn(`[FactsLedger] flag unavailable for ${tenantId}: ${error?.message}`);
+            return false;
+        }
+    }
+
+    /**
+     * The verified-facts ledger after this turn (flag agentRuntime.factsLedger): the live facts the turn started with,
+     * minus what its successful writes made stale, plus the typed facts of its successful reads. Written as the one
+     * `verifiedFacts` key of the conversation metadata (Agent Test: the session's), under the conversation lock that
+     * serialises turns, so no other key is touched. Nothing new and nothing invalidated: no write.
+     */
+    private async persistVerifiedFacts(
+        schemaName: string,
+        conversationId: string,
+        previous: VerifiedFact[],
+        executed: Array<{ name: string; result: any; args?: any }>,
+        inboundMessageId: string | undefined,
+        session?: AgentTurnSession,
+    ): Promise<void> {
+        try {
+            const now = new Date();
+            const { facts, invalidations } = extractVerifiedFacts(executed, now, inboundMessageId);
+            if (!facts.length && !invalidations.length) return;
+            const merged = mergeVerifiedFacts(previous, facts, invalidations, now);
+            if (session) {
+                session.metadata.verifiedFacts = merged;
+                return;
+            }
+            await this.prisma.executeInTenantSchema(schemaName,
+                `UPDATE conversations SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{verifiedFacts}', $2::jsonb) WHERE id = $1::uuid`,
+                [conversationId, JSON.stringify(merged)],
+            );
+        } catch (e: any) {
+            this.logger.warn(`[FactsLedger] Could not persist verified facts (non-fatal): ${e.message}`);
         }
     }
 
@@ -7195,7 +7255,10 @@ export class ConversationsService {
             canonicalPackagePrice: requiresCanonicalPackagePrice(customerText),
         });
 
-        const check = this.responseValidator.validatePrices(response, corpus);
+        // Flag agentRuntime.factsLedger: an amount a catalogue tool returned in an earlier turn is still authority for
+        // the SAME subject (the room A price never validates the same number said for room B).
+        const ledger = trustedContext?.verifiedFacts ? { facts: trustedContext.verifiedFacts, customerText } : undefined;
+        const check = ledger ? this.responseValidator.validatePrices(response, corpus, ledger) : this.responseValidator.validatePrices(response, corpus);
         if (check.ok) return response;
 
         this.logger.warn(`[Guardrail] Response stated price(s) not in context: ${check.hallucinatedPrices.join(', ')} — corrective retry`);
@@ -7214,7 +7277,7 @@ export class ConversationsService {
             });
             const fixed = corrected.content?.trim();
             if (fixed) {
-                const enforced = enforceVerifiedPriceReply(fixed, corpus, systemPrompt, this.responseValidator);
+                const enforced = enforceVerifiedPriceReply(fixed, corpus, systemPrompt, this.responseValidator, ledger);
                 if (enforced.blocked) {
                     if(session)this.recordAgentSignal(tenantId,'unverified_price',session);
                     else this.eventEmitter.emit('response.guardrail.failed', { tenantId, conversationId, prices: enforced.validation.hallucinatedPrices });

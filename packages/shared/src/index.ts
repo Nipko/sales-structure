@@ -990,6 +990,23 @@ export interface TurnCapability {
     profileId?: string;
 }
 
+/** One live verified fact as the turn sees it (`<turn><verified_facts>`); the stored form lives in the API's facts ledger. */
+export interface VerifiedFactView {
+    kind: 'money' | 'availability' | 'record_list' | 'record_status' | 'attribute';
+    subjectType: string;
+    subjectId: string;
+    subjectName?: string;
+    field: string;
+    value: string | number | boolean | string[];
+    currency?: string;
+    priceStatus?: string;
+    complete?: boolean;
+    total?: number;
+    detail?: string[];
+    source: string;
+    ageMinutes: number;
+}
+
 export interface TurnContext {
     /** Final generated-response diagnostics. Citations/overlap are not semantic verification. */
     knowledgeAttribution?: {
@@ -1013,6 +1030,12 @@ export interface TurnContext {
      * (`date-reference.customerDatesIn`): the model reads whether a day is past or future instead of computing it.
      */
     customerDates?: Array<{ date: string; weekday: string; relation: 'past' | 'today' | 'future'; yearStated: boolean; yearAssumed?: boolean; nextYearDate?: string }>;
+    /**
+     * The conversation's live verified facts (`agentRuntime.factsLedger`): what the business's own tools returned in
+     * earlier turns, each bound to its subject and still inside its TTL. Absent when the flag is off — the prompt is then
+     * byte-identical to the one without the ledger; an empty array means the flag is on and nothing is live.
+     */
+    verifiedFacts?: VerifiedFactView[];
     businessHoursStatus: 'open' | 'closed' | 'unknown';
     business?: Pick<BusinessIdentity, 'companyName' | 'industry' | 'about' | 'phone' | 'email' | 'website' | 'address' | 'city' | 'country' | 'socialLinks'>;
     contact?: {

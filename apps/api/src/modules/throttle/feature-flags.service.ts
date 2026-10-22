@@ -22,6 +22,9 @@ export const SAFETY_TRIAGE_FLAG = 'agentRuntime.safetyTriage';
 
 /** Per-tenant flag of the shadow operation classifier (operations runtime PR4). */
 export const OPERATION_CLASSIFIER_FLAG = 'agentRuntime.operationClassifier';
+
+/** Per-tenant flag of the typed verified-facts ledger (operations runtime PR3). */
+export const FACTS_LEDGER_FLAG = 'agentRuntime.factsLedger';
 const CACHE_TTL = 300;
 
 /**
@@ -53,6 +56,10 @@ export const FEATURE_FLAGS_REGISTRY: Array<{
     // classifies each turn into a catalogue operation and writes a trace step; it never
     // changes the reply, the tools or the routing. Costs one cheap `classify` call per turn.
     { key: OPERATION_CLASSIFIER_FLAG, label: 'Operation classifier (shadow)', description: 'Shadow-classifies each customer turn into a catalogue operation and traces its required reads (no behaviour change)', category: 'experimental', default: false },
+    // Operations runtime PR3 (apps/api/src/modules/conversations/runtime/facts-ledger.ts): what the business's tools
+    // returned stays a verified fact of the conversation for its TTL, bound to its subject (prompt <verified_facts>,
+    // rule 22a, price guardrail). Off = the prompt and the guardrail are exactly the previous ones.
+    { key: FACTS_LEDGER_FLAG, label: 'Verified facts ledger', description: 'Keeps prices, availability, record lists and attributes read by the agent as typed facts of the conversation (with subject and TTL), so a price confirmed in one turn stays confirmed in the next', category: 'experimental', default: false },
 ];
 
 /**

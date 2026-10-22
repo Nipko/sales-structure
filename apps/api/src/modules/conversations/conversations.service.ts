@@ -99,6 +99,7 @@ import { listingDetailIdForQuestion, requiresListingDetailLookup } from './listi
 import { requiresMenuDescriptionLookup } from './menu-description-grounding';
 import { requiresServiceLocationLookup } from './service-location-grounding';
 import { requiresProductStockLookup, stockProductIdForQuestion } from './product-stock-grounding';
+import { explicitlyRequestsCrmNote } from './crm-note-request';
 import {
     auditTurnClaim,
     claimsCompletedAction,
@@ -6646,7 +6647,8 @@ export class ConversationsService {
         const backing = this.backingEvidence(executedTools, priorActions);
         // Saying what state a record is in (read this turn) is not claiming an action.
         const recordFacts = knownRecordFacts(executedTools || [], trustedContext);
-        const claimAudit = auditTurnClaim(response, backing, { isBackingTool, recordFacts });
+        const claimOptions = { isBackingTool, recordFacts, crmNoteRequested: explicitlyRequestsCrmNote(customerText) };
+        const claimAudit = auditTurnClaim(response, backing, claimOptions);
         // The engine decided what this turn says (a re-ask at the confirmation step, a summary, a question): when the
         // model claims a booking outcome that no tool backed, the engine's own text is the reply, word for word. No
         // rewrite round trip, which a model that insists would turn into the generic fallback.
@@ -6670,7 +6672,7 @@ export class ConversationsService {
                     messages: [
                         ...currentMessages,
                         { role: 'assistant', content: response },
-                        { role: 'user', content: 'Tu respuesta afirmó que una reserva, cobro, cita o cancelación ya fue confirmada o completada, pero ninguna herramienta ejecutó esa acción con éxito en este turno. Reescribe tu mensaje explicando con total claridad qué paso o confirmación está pendiente para realizar la acción, sin afirmar que ya está confirmada o completada. Devuelve solo el mensaje corregido.' },
+                        { role: 'user', content: 'Tu respuesta contiene una afirmación de acción completada —incluido guardar una nota en el CRM— sin un resultado exitoso de la herramienta correspondiente en este turno. Reescribe con claridad qué resultados están verificados y cuáles no. Respeta las otras operaciones realmente ejecutadas; no inventes un guardado, una confirmación ni una ejecución pendiente. Devuelve solo el mensaje corregido.' },
                     ],
                     systemPrompt,
                     temperature: 0.3,
@@ -6681,7 +6683,7 @@ export class ConversationsService {
                 // are removed or the rewrite is rejected (then the deterministic text below is what the customer reads).
                 const fixedClaim = sanitizeRewrittenReply(correctedClaim.content, { lang, names: catalogNamesOfTurn(trustedContext, executedTools) });
                 const secondAudit = fixedClaim
-                    ? auditTurnClaim(fixedClaim, backing, { isBackingTool, recordFacts })
+                    ? auditTurnClaim(fixedClaim, backing, claimOptions)
                     : null;
                 if (secondAudit && !secondAudit.falseClaim) {
                     response = fixedClaim as string;

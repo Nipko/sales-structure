@@ -21,6 +21,7 @@ import {
     DISPATCH_LATENCY_BUCKETS_MS, DISPATCH_LATENCY_OPERATIONS, DISPATCH_LATENCY_WINDOW_MINUTES,
     readDispatchLatency,
 } from '../channels/dispatch-latency';
+import { readUndeliveredTurns } from '../conversations/agent-turn-ledger';
 import { PAYMENT_PROVIDER_NAMES, PaymentProviderName } from '../billing/types/provider-types';
 import { SubscriptionStatus } from '../billing/types/subscription-status.enum';
 import * as os from 'os';
@@ -1121,6 +1122,91 @@ export class PlatformMonitorService implements OnModuleInit {
         }
     }
 
+    /**
+     * Customers who wrote, whose agent decided to answer, and who received
+     * nothing.
+     *
+     * The turn ledger settles when the turn returns, which says nothing about
+     * the POST that follows. Production QA (2026-10-22): a Telegram reply died
+     * with `fetch failed`, the outbox filed it for reconciliation, and the
+     * ledger said `settled / send`. The only watcher was the reconciliation SLA,
+     * an hour later. This one reads the delivery state the outbox now feeds back
+     * (`agent_turn_ledger.delivery_state`) and fires after a few minutes.
+     *
+     * Every five minutes because the threshold is minutes. Reads the primitive,
+     * not the store, so it never runs DDL across tenant schemas to ask.
+     */
+    @Cron('*/5 * * * *')
+    async checkUnansweredAgentTurnsCron() {
+        await this.cronLock.runExclusive(
+            'platform-monitor.checkUnansweredAgentTurns',
+            240,
+            () => this.checkUnansweredAgentTurns(),
+        );
+    }
+
+    async checkUnansweredAgentTurns() {
+        try {
+            const cfg = await this.alertConfig.get();
+            const minutes = Math.max(1, Math.trunc(cfg.agentDelivery.unansweredAfterMinutes || 5));
+            const tenants = await this.prisma.tenant.findMany({
+                where: { isActive: true },
+                select: { id: true, name: true, schemaName: true },
+            });
+            let total = 0;
+            let pending = 0;
+            let unknown = 0;
+            let failed = 0;
+            let oldestSeconds = 0;
+            const byTenant: Array<{ name: string; total: number }> = [];
+            for (const t of tenants) {
+                // Harness fixtures must never page a human.
+                if (!t.schemaName || t.schemaName.startsWith('tenant_eval_')) continue;
+                try {
+                    const summary = await this.prisma.transactionInTenantSchema(
+                        t.schemaName,
+                        (query) => readUndeliveredTurns(query, t.schemaName, { olderThanMinutes: minutes }),
+                    );
+                    total += summary.total;
+                    pending += summary.pending;
+                    unknown += summary.unknown;
+                    failed += summary.failed;
+                    oldestSeconds = Math.max(oldestSeconds, summary.oldestAgeSeconds);
+                    if (summary.total > 0) byTenant.push({ name: t.name, total: summary.total });
+                } catch {
+                    // One unreadable schema is that tenant's problem; keep sweeping.
+                }
+            }
+
+            if (total > 0 && total >= cfg.agentDelivery.unanswered) {
+                const list = byTenant
+                    .sort((a, b) => b.total - a.total)
+                    .slice(0, 5)
+                    .map((x) => `<li><b>${this.escapeHtml(x.name)}</b> — ${x.total} sin respuesta</li>`)
+                    .join('');
+                const rest = byTenant.length > 5 ? `<li>y ${byTenant.length - 5} tenant(s) más</li>` : '';
+                await this.alert(
+                    'agent:turn_unanswered',
+                    `${total} cliente(s) sin recibir la respuesta del agente`,
+                    `<b>${total}</b> turno(s) del agente decidieron responder y, pasados ${minutes} min desde el`
+                    + ` mensaje del cliente, no hay recibo del proveedor. La más antigua espera hace`
+                    + ` <b>${this.durationLabel(oldestSeconds)}</b>.<br>`
+                    + ` Pendientes <b>${pending}</b> · resultado desconocido <b>${unknown}</b>`
+                    + ` · fallidos <b>${failed}</b>.<br>`
+                    + ` El turno figura como terminado: el fallo está en el envío, no en el modelo.`
+                    + ` <b>Qué revisar:</b> conectividad del canal (p. ej. <code>fetch failed</code>), la cola de`
+                    + ` reconciliación del outbox y los workers de <code>outbound-messages</code>.`
+                    + `<ul style="margin:6px 0 6px 18px;list-style:disc;">${list}${rest}</ul>`,
+                    total,
+                );
+            } else {
+                await this.incidents.resolveByKey('agent:turn_unanswered');
+            }
+        } catch (e: any) {
+            this.logger.debug(`Unanswered-turn check skipped: ${e.message}`);
+        }
+    }
+
     /** Names the tenants behind a signal, so the alert points somewhere. */
     private async topTenantsFor(signal: string, days: string[]): Promise<string> {
         try {
@@ -1973,6 +2059,7 @@ export class PlatformMonitorService implements OnModuleInit {
         // the agent incidents — the ones about a customer who was promised
         // something nobody closed.
         await this.checkAgentReliability();
+        await this.checkUnansweredAgentTurns();
     }
 
     // ── Manual status (for /health/detailed or admin API) ──

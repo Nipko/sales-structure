@@ -60,6 +60,7 @@ import { AttributionModule } from '../attribution/attribution.module';
 import { EmailModule } from '../email/email.module';
 import { SmsCreditsModule } from '../sms-credits/sms-credits.module';
 import { AgentTurnLedgerStore } from './agent-turn-ledger.store';
+import { AgentTurnDeliveryListener } from './agent-turn-delivery.listener';
 import { ChatIdentityService } from './chat-identity.service';
 import { AgentTestRateLimitGuard } from './agent-test-rate-limit.guard';
 import { AgentTestRequestGuard } from './agent-test-request.guard';
@@ -162,6 +163,7 @@ import { TurnCapabilityComposerService } from './turn-capability-composer.servic
         PreChatService,
         ChatIdentityService,
         AgentTurnLedgerStore,
+        AgentTurnDeliveryListener,
     ],
     controllers: [ConversationsController, AgentTestController, ToolApprovalController],
     exports: [APPROVED_EFFECT_DELIVERY,IsolatedEvalNamespace, ConversationsService, ConversationsGateway, PromptAssemblerService, LanguageDetectorService, ActiveOperationsContextService, AgentTestService, AIToolExecutorService, ToolApprovalWorkflowService, EffectiveCapabilityService, VerticalTurnContextService, TurnCapabilityComposerService, AgentTurnLedgerStore],

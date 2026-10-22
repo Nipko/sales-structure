@@ -28,6 +28,12 @@ export interface AlertConfig {
      * requests is noise, not a signal about the path.
      */
     dispatchLatency: { p95Ms: number; minSamples: number };
+    /**
+     * Agent turns that decided to answer and whose answer has no provider
+     * receipt `unansweredAfterMinutes` after the customer wrote. `unanswered`
+     * is how many of them raise the incident.
+     */
+    agentDelivery: { unansweredAfterMinutes: number; unanswered: number };
     queueDepth: Record<string, { warn: number; crit: number }>;
     /** Alert when a queue's failed count is greater than its own threshold. */
     queueFailedByQueue: Record<string, number>;
@@ -63,6 +69,11 @@ export const ALERT_CONFIG_DEFAULTS: AlertConfig = {
     // on 24 vCPU without PgBouncer). It is also a bucket edge, which is what
     // keeps the comparison against a bucketed p95 sound.
     dispatchLatency: { p95Ms: 500, minSamples: 50 },
+    // Five minutes is far past any healthy send (admit + POST + settle is well
+    // under a second) and far inside the one-hour reconciliation SLA, which is
+    // the only other thing that would notice. One turn is already a customer
+    // who wrote and heard nothing.
+    agentDelivery: { unansweredAfterMinutes: 5, unanswered: 1 },
     queueDepth: {
         // La cola de ENTRANTES faltaba, y es la que el propio platform-monitor
         // llama "la más importante de la plataforma": un backlog acá significa
@@ -169,6 +180,7 @@ export class AlertConfigService {
             slaBreaches: nums(base.slaBreaches, p.slaBreaches),
             dispatchReconciliation: nums(base.dispatchReconciliation, p.dispatchReconciliation),
             dispatchLatency: nums(base.dispatchLatency, p.dispatchLatency),
+            agentDelivery: nums(base.agentDelivery, p.agentDelivery),
             queueDepth: qd,
             queueFailedByQueue: qf,
             queueFailed: num(p.queueFailed, base.queueFailed),

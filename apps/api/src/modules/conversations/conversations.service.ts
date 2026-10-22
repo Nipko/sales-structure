@@ -1,7 +1,7 @@
 import { appointmentRecordReadId } from './appointment-record-read';
 import { isCanonicalConsentRecovery, canonicalConsentRecoveryDirective } from './canonical-consent-recovery';
 import { DemoAllowanceService } from '../throttle/demo-allowance.service';
-import { FeatureFlagsService, SAFETY_TRIAGE_FLAG } from '../throttle/feature-flags.service';
+import { FeatureFlagsService, SAFETY_TRIAGE_FLAG, resolveFeatureFlag } from '../throttle/feature-flags.service';
 import { runSafetyTriage, type SafetyTriageTurnOutcome } from './runtime/safety-triage';
 import { demoAllowanceExhaustedText } from '../widget/widget-demo-link';
 import { recordFirstReply } from '../../common/utils/first-reply.util';
@@ -2717,6 +2717,7 @@ export class ConversationsService {
             regional, business: projectBusinessTurnContext(identity),
             activeObjectPolicy: tenantActiveObjectPolicyContext(tenant),
             vertical: Object.fromEntries(verticalEntries) as EvaluationTurnContextInputs['vertical'],
+            safetyTriage: resolveFeatureFlag((tenant.settings as any)?.featureFlags, SAFETY_TRIAGE_FLAG),
         }, tenantId);
     }
 
@@ -6295,16 +6296,15 @@ export class ConversationsService {
 
     /**
      * `agentRuntime.safetyTriage` for this tenant (off by default). Agent Test
-     * reads the tenant's own settings without touching the runtime Redis cache
-     * the flag service keeps; a read failure is "off", which is the behaviour
-     * every tenant had before the flag existed.
+     * and evaluations read the value sealed in the snapshot by
+     * `captureEvaluationContext` (same tenant settings row, no per-turn tenant
+     * or Redis lookup, like business hours); a snapshot captured before the
+     * flag existed reads as off. A read failure is "off", which is the
+     * behaviour every tenant had before the flag existed.
      */
     private async safetyTriageEnabled(tenantId: string, session?: AgentTurnSession): Promise<boolean> {
         try {
-            if (session) {
-                const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
-                return (tenant?.settings as any)?.featureFlags?.[SAFETY_TRIAGE_FLAG] === true;
-            }
+            if (session) return resolveEvaluationTurnContext(session.snapshot.contextInputs, tenantId).safetyTriage === true;
             return (await this.featureFlags?.isFeatureEnabled(tenantId, SAFETY_TRIAGE_FLAG)) === true;
         } catch (error: any) {
             this.logger.warn(`[SafetyTriage] flag unavailable for ${tenantId}: ${error?.message}`);

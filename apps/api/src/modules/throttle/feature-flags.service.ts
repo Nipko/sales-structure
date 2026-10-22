@@ -47,6 +47,21 @@ export const FEATURE_FLAGS_REGISTRY: Array<{
     { key: SAFETY_TRIAGE_FLAG, label: 'Health safety triage', description: 'Red-flag triage for health/pet businesses: urgency advice + priority human handoff (requires clinical review of templates)', category: 'experimental', default: false },
 ];
 
+/**
+ * Pure resolution of one flag against a tenant's `settings.featureFlags`
+ * record: explicit value wins, otherwise the registry default; unknown keys
+ * are off. Shared by the cached service path and by readers that already hold
+ * the tenant's settings (the Agent Test snapshot capture).
+ */
+export function resolveFeatureFlag(flags: unknown, flagKey: string): boolean {
+    const definition = FEATURE_FLAGS_REGISTRY.find(f => f.key === flagKey);
+    if (!definition) return false;
+    if (flags && typeof flags === 'object' && Object.prototype.hasOwnProperty.call(flags, flagKey)) {
+        return Boolean((flags as Record<string, unknown>)[flagKey]);
+    }
+    return definition.default;
+}
+
 @Injectable()
 export class FeatureFlagsService {
     private readonly logger = new Logger(FeatureFlagsService.name);
@@ -81,13 +96,8 @@ export class FeatureFlagsService {
      * false when the flag isn't in the registry — defensive.
      */
     async isFeatureEnabled(tenantId: string, flagKey: string): Promise<boolean> {
-        const definition = FEATURE_FLAGS_REGISTRY.find(f => f.key === flagKey);
-        if (!definition) return false;
-        const flags = await this.getFlags(tenantId);
-        if (Object.prototype.hasOwnProperty.call(flags, flagKey)) {
-            return Boolean(flags[flagKey]);
-        }
-        return definition.default;
+        if (!FEATURE_FLAGS_REGISTRY.some(f => f.key === flagKey)) return false;
+        return resolveFeatureFlag(await this.getFlags(tenantId), flagKey);
     }
 
     /**

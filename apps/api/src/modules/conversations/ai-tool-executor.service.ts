@@ -106,13 +106,7 @@ import { selectSlotWindow } from './slot-window';
 import { foldedSql, foldQueryText } from '../../common/utils/sql-accent-fold.util';
 import { foldForSearch, likePatternForTerm, productSearchTerms } from '../../common/utils/product-search-terms';
 import { markCatalogEmpty } from './catalog-empty.util';
-
-/**
- * Products carry no price_status column: a price above zero IS the confirmed price.
- * Without this the model, told by prompt rule 22a that only priceStatus="confirmed"
- * gives an amount, denied the price of every product (regresion 5-oct).
- */
-const productPriceStatus = (price: unknown): 'confirmed' | 'missing' => (Number(price) > 0 ? 'confirmed' : 'missing');
+import { catalogPriceStatus } from './catalog-price-status';
 
 /**
  * Two products whose names differ only by accents ("Audífono" / "Audifono") both
@@ -1520,7 +1514,7 @@ export class AIToolExecutorService {
                     description: p.description,
                     category: p.category,
                     price: Number(p.price || 0),
-                    priceStatus: productPriceStatus(p.price),
+                    priceStatus: catalogPriceStatus(p.price),
                     currency: p.currency || null,
                     stock: p.stock ?? null,
                     isAvailable: !!p.is_available,
@@ -1581,7 +1575,7 @@ export class AIToolExecutorService {
                     description: p.description,
                     category: p.category,
                     price: Number(p.price || 0),
-                    priceStatus: productPriceStatus(p.price),
+                    priceStatus: catalogPriceStatus(p.price),
                     currency: p.currency || null,
                     stock: p.stock ?? null,
                     isAvailable: !!p.is_available,
@@ -1806,7 +1800,8 @@ export class AIToolExecutorService {
             );
             const vehicles = rows.map((r: any) => {
                 const { price_cents, ...rest } = r;
-                return { ...rest, price: Number(price_cents) / 100 };
+                const price = Number(price_cents) / 100;
+                return { ...rest, price, priceStatus: catalogPriceStatus(price) };
             });
             return { count: vehicles.length, vehicles };
         } catch (e: any) {
@@ -1860,7 +1855,8 @@ export class AIToolExecutorService {
             );
             if (!rows.length) return { error: 'vehicle_not_found' };
             const { price_cents, ...rest } = rows[0];
-            return { ...rest, price: Number(price_cents) / 100 };
+            const price = Number(price_cents) / 100;
+            return { ...rest, price, priceStatus: catalogPriceStatus(price) };
         } catch (e: any) {
             this.logger.warn(`[Tool] get_vehicle_details failed: ${e.message}`);
             return { error: 'No se pudieron obtener los detalles del vehículo.' };
@@ -1913,7 +1909,7 @@ export class AIToolExecutorService {
                     // Same fields and same coercion as get_product: an answer about
                     // stock that omits the price makes the agent guess or stay silent.
                     price: Number(p.price || 0),
-                    priceStatus: productPriceStatus(p.price),
+                    priceStatus: catalogPriceStatus(p.price),
                     currency: p.currency || null,
                     stock: p.stock ?? null,
                     // An inactive product is not for sale whatever units remain.
@@ -2755,6 +2751,7 @@ export class AIToolExecutorService {
                         id: p.external_id,
                         title: p.title,
                         price: p.price_cents != null ? Number(p.price_cents) / 100 : null,
+                        priceStatus: catalogPriceStatus(p.price_cents),
                         currency: p.currency || 'USD',
                         inStock: (p.inventory_quantity ?? 0) > 0,
                         handle: p.handle,
@@ -4043,6 +4040,8 @@ export class AIToolExecutorService {
                 bathrooms: p.bathrooms,
                 nightPrice: Number(p.night_price || 0),
                 cleaningFee: Number(p.cleaning_fee || 0),
+                // One status for the stay's amounts (night, cleaning, totals): the night price.
+                priceStatus: catalogPriceStatus(p.night_price),
                 currency: p.currency || 'COP',
                 minNights: p.min_nights,
                 images: Array.isArray(p.images) ? p.images : [],
@@ -4135,13 +4134,14 @@ export class AIToolExecutorService {
             // When the business runs its own channel manager, availability is a
             // mirror and the stay cannot be closed here. Saying so is the only
             // honest answer: the alternative is a booking the PMS never sees.
+            const priced = { ...avail, priceStatus: catalogPriceStatus(avail?.nightPrice) };
             if (avail.canBookDirectly === false) {
                 return {
-                    ...avail,
+                    ...priced,
                     message: 'Este alojamiento se administra desde el channel manager del negocio. Puedes informar disponibilidad, pero la reserva la confirma el equipo — no la des por hecha.',
                 };
             }
-            return avail;
+            return priced;
         } catch (e: any) {
             this.logger.warn(`[Tool] check_property_availability failed: ${e.message}`);
             // These errors are raised before any availability query. Preserve
@@ -4205,6 +4205,8 @@ export class AIToolExecutorService {
                 bathrooms: p.bathrooms,
                 nightPrice: Number(p.night_price || 0),
                 cleaningFee: Number(p.cleaning_fee || 0),
+                // One status for the stay's amounts (night, cleaning, totals): the night price.
+                priceStatus: catalogPriceStatus(p.night_price),
                 currency: p.currency || 'COP',
                 minNights: p.min_nights,
                 checkInTime: p.check_in_time,
@@ -4650,6 +4652,7 @@ export class AIToolExecutorService {
                     durationType: p.duration_type,
                     durationValue: p.duration_value,
                     price: Number(p.price || 0),
+                    priceStatus: catalogPriceStatus(p.price),
                     currency: p.currency || null,
                     destination: p.destination,
                     languages: p.languages || [],
@@ -4704,6 +4707,7 @@ export class AIToolExecutorService {
                 minPartySize: pkg.min_party_size ?? null,
                 maxCapacity: pkg.max_capacity ?? null,
                 price: Number(pkg.price || 0),
+                priceStatus: catalogPriceStatus(pkg.price),
                 currency: pkg.currency,
                 destination: pkg.destination,
                 departureLocation: pkg.departure_location,
@@ -4856,6 +4860,7 @@ export class AIToolExecutorService {
                     transactionType: l.transaction_type,
                     propertyKind: l.property_kind,
                     price: Number(l.price || 0),
+                    priceStatus: catalogPriceStatus(l.price),
                     currency: l.currency,
                     bedrooms: l.bedrooms,
                     bathrooms: Number(l.bathrooms || 0),
@@ -4889,6 +4894,7 @@ export class AIToolExecutorService {
                 transactionType: l.transaction_type,
                 propertyKind: l.property_kind,
                 price: Number(l.price || 0),
+                priceStatus: catalogPriceStatus(l.price),
                 currency: l.currency,
                 rentPeriod: l.rent_period,
                 hoaFee: (l.hoa_fee === 0 || l.hoa_fee) ? Number(l.hoa_fee) : null,
@@ -5105,6 +5111,7 @@ export class AIToolExecutorService {
                     name: i.name,
                     description: i.description,
                     price: Number(i.price || 0),
+                    priceStatus: catalogPriceStatus(i.price),
                     currency: i.currency,
                     category: i.category_name,
                     tags: i.tags || [],
@@ -5470,6 +5477,7 @@ export class AIToolExecutorService {
                     durationHours: c.duration_hours,
                     durationWeeks: c.duration_weeks,
                     price: Number(c.price),
+                    priceStatus: catalogPriceStatus(c.price),
                     currency: c.currency,
                     certification: c.certification,
                 })),
@@ -5508,6 +5516,7 @@ export class AIToolExecutorService {
                     durationHours: c.duration_hours,
                     durationWeeks: c.duration_weeks,
                     price: Number(c.price),
+                    priceStatus: catalogPriceStatus(c.price),
                     currency: c.currency,
                     certification: c.certification,
                 })),

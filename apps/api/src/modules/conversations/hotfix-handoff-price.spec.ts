@@ -45,9 +45,10 @@ describe('product tools carry priceStatus (regresion 5-oct)', () => {
 describe('prompt: product price and handoff wording (regresion 5-oct)', () => {
     const prompt = readFileSync(resolve(__dirname, 'prompt-assembler.service.ts'), 'utf8');
 
-    it('22a scopes the priceStatus rule to services and tells the model to call the product tool this turn', () => {
+    it('22a takes the amount from any catalogue result with priceStatus="confirmed" and tells the model to call the product tool this turn', () => {
         const rule = prompt.slice(prompt.indexOf('22a. NO NUMBER WITHOUT'), prompt.indexOf('22. NEVER CONVERT'));
-        expect(rule).toContain('SERVICE tool result whose priceStatus is present');
+        expect(rule).toContain('Any CATALOGUE tool result read in THIS turn');
+        expect(rule).toContain('whose priceStatus is "confirmed" DOES give you its amount');
         expect(rule).toContain('get_product or check_stock in THIS turn');
         expect(rule).toContain('never take it from the conversation history');
     });

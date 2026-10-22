@@ -84,7 +84,7 @@ describe('the receipts the deployed worker posts reach the money', () => {
         const h = harness();
         await post(h, { pricing: { billable: false, pricing_model: 'PMP', category: 'service' } });
         expect(h.receipts[0].receipt.pricing)
-            .toEqual({ billable: false, category: 'service', model: 'PMP' });
+            .toEqual({ billable: false, category: 'service', model: 'PMP', type: null, subtype: null });
     });
 
     it('never reads a missing pricing block as free', async () => {

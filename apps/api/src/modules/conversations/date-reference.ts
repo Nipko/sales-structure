@@ -19,7 +19,7 @@
 const MONTHS: Record<string, number> = {
     enero: 1, febrero: 2, marzo: 3, abril: 4, mayo: 5, junio: 6, julio: 7, agosto: 8, septiembre: 9, setiembre: 9, octubre: 10, noviembre: 11, diciembre: 12,
     janeiro: 1, fevereiro: 2, marco: 3, maio: 5, junho: 6, julho: 7, setembro: 9, outubro: 10, novembro: 11, dezembro: 12,
-    janvier: 1, fevrier: 2, mars: 3, avril: 4, mai: 5, juin: 6, juillet: 7, aout: 8, decembre: 12,
+    janvier: 1, fevrier: 2, mars: 3, avril: 4, mai: 5, juin: 6, juillet: 7, aout: 8, septembre: 9, octobre: 10, novembre: 11, decembre: 12,
     january: 1, february: 2, march: 3, april: 4, may: 5, june: 6, july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
 };
 const MONTH_ALT = Object.keys(MONTHS).sort((a, b) => b.length - a.length).join('|');
@@ -262,4 +262,61 @@ export function readDateReference(tNorm: string, todayIso: string, options: { re
         return { kind: 'date', date: nextWeekdayDate(distinct[0], todayIso, today), via: 'weekday' };
     }
     return distinct.length > 1 ? { kind: 'ambiguous', of: 'weekdays' } : { kind: 'none' };
+}
+
+/** English weekday names, the same spelling `<upcoming_days>` uses. */
+const WEEKDAY_NAMES_EN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+/** A message longer than this is not read for dates (a pasted document is not a request for a day). */
+const CUSTOMER_DATES_MAX_TEXT = 2000;
+const CUSTOMER_DATES_MAX = 6;
+
+export interface CustomerDate {
+    /** YYYY-MM-DD the customer named, resolved against the tenant's local today. */
+    date: string;
+    /** English weekday of `date`. */
+    weekday: string;
+    relation: 'past' | 'today' | 'future';
+    yearStated: boolean;
+    /** No year said, this year's day had passed and next year's is close: `date` is next year's, assumed rather than asked. */
+    yearAssumed?: boolean;
+    /** No year said, this year's day had passed and next year's is far: `date` is this year's (past); this is the one to offer back. */
+    nextYearDate?: string;
+}
+
+/**
+ * The days the customer's CURRENT message names, resolved as facts for the turn context, so «¿hay disponibilidad para el 20 de
+ * noviembre?» reaches the model as 2026-11-20, a Friday, in the future, and the model never does calendar arithmetic of its own.
+ *
+ * It reads with the readers above and keeps their semantics: an explicit day + month (+ year) first; a year-less day that passed
+ * this year is next year's when that is close, and this year's (past) with next year's offered back when it is far. Only when the
+ * message has no explicit date are a relative day («hoy», «mañana»), a bare day of the month («el viernes 17», «dia 16») and a
+ * weekday («el viernes») read. `tNorm` is folded text (`normalizeForIntent`).
+ */
+export function customerDatesIn(tNorm: string, todayIso: string): CustomerDate[] {
+    const text = String(tNorm ?? '');
+    if (!text || text.length > CUSTOMER_DATES_MAX_TEXT || !/^\d{4}-\d{2}-\d{2}$/.test(todayIso)) return [];
+    const out: CustomerDate[] = [];
+    const seen = new Set<string>();
+    const add = (date: string, yearStated: boolean, extra: Pick<CustomerDate, 'yearAssumed' | 'nextYearDate'> = {}) => {
+        if (seen.has(date) || out.length >= CUSTOMER_DATES_MAX) return;
+        seen.add(date);
+        const relation = date < todayIso ? 'past' : date === todayIso ? 'today' : 'future';
+        out.push({ date, weekday: WEEKDAY_NAMES_EN[weekdayOfIso(date)], relation, yearStated, ...extra });
+    };
+    const explicit = explicitDates(text, todayIso);
+    for (const found of explicit) {
+        if (found.rolledForward && !found.nearFuture) add(found.thisYearDate, false, { nextYearDate: found.date });
+        else if (found.rolledForward) add(found.date, false, { yearAssumed: true });
+        else add(found.date, found.yearStated);
+    }
+    if (explicit.length) return out;
+    const relative = relativeDayIso(text, todayIso);
+    if (relative) add(relative, false);
+    const dayOnly = dayOfMonthOnly(text, todayIso);
+    if (dayOnly) { add(dayOnly, false); return out; }
+    const saysToday = /\b(?:hoy|today|aujourd|hoje)\b/.test(text);
+    for (const weekday of new Set(weekdayMentions(text).filter(day => !day.selector).map(day => day.weekday))) {
+        add(nextWeekdayDate(weekday, todayIso, saysToday), false);
+    }
+    return out;
 }

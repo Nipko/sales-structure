@@ -101,6 +101,7 @@ Rules:
 - If the message mixes a general question with the customer's own case, choose personal_case.
 - A request only to list orders or read their recorded status is none, even if it mentions cancelled, refunded or paid. Denying an inference between statuses does not request a refund; a separate actual refund request or grievance still takes its own label.
 - A defect word that only names a kind of product in a general question ("productos defectuosos", "damaged items", "produtos com defeito") is policy_info. A defect the customer reports about their own order is personal_case.
+- Asking whether a discount, promotion or offer exists ("¿tienen descuentos?", "is there any promotion this week?") is policy_info, not negotiation: negotiation needs a request for a concession for the customer.
 - Asking about an existing, named discount ("¿cómo consigo el descuento del 10%?", "can I get the student discount?") is policy_howto, not negotiation.
 - If unsure between policy_info and policy_howto choose policy_info.
 
@@ -109,6 +110,7 @@ Examples (message => label):
 "¿Aceptan devoluciones si el producto no funciona?" => policy_info
 "¿Aceptan devoluciones de productos dañados?" => policy_info
 "O desconto de Black Friday já chegou?" => policy_info
+"¿Tienen algún descuento esta semana?" => policy_info
 "política de reembolso" => policy_info
 "Estoy pensando comprar para mi papá, ¿se puede devolver?" => policy_info
 "¿Cómo solicito una devolución?" => policy_howto

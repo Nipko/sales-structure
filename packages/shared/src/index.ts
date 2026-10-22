@@ -46,6 +46,7 @@ export * from './country-language-pack';
 export * from './subtype-experience-profile';
 export * from './subtype-taxonomy-migration';
 export * from './vertical-domain-contract';
+export * from './safety-policy';
 export * from './vertical-certification-contract';
 export * from './vertical-operation-contract';
 export * from './vertical-authoring-package';
@@ -95,6 +96,7 @@ export * from './meta-connect-errors';
 
 export * from './email-verification-policy';
 export * from './intent-workflow-contract';
+export * from './operation-catalogue';
 export * from './provider-resource-binding';
 
 // ---- La receta del negocio: lo que el dia 0 prellena y de donde sale ----
@@ -1006,6 +1008,11 @@ export interface TurnContext {
     capability?: TurnCapability;
     now: string;
     upcomingDays: Array<{ date: string; weekday: string; label?: string }>;
+    /**
+     * The days the customer's CURRENT message names, resolved deterministically against the tenant's local today
+     * (`date-reference.customerDatesIn`): the model reads whether a day is past or future instead of computing it.
+     */
+    customerDates?: Array<{ date: string; weekday: string; relation: 'past' | 'today' | 'future'; yearStated: boolean; yearAssumed?: boolean; nextYearDate?: string }>;
     businessHoursStatus: 'open' | 'closed' | 'unknown';
     business?: Pick<BusinessIdentity, 'companyName' | 'industry' | 'about' | 'phone' | 'email' | 'website' | 'address' | 'city' | 'country' | 'socialLinks'>;
     contact?: {

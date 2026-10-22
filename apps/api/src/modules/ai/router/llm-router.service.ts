@@ -14,7 +14,15 @@ import {
     persistenceDisabled,
 } from '../../../common/types/execution-context';
 
-type TaskType = 'conversation' | 'tool_calling';
+/**
+ * - `conversation` / `tool_calling`: the reply of a turn.
+ * - `classify`: a short, strict-JSON, temperature-0 judgement that runs BEFORE
+ *   the reply (the health safety triage today). It never decides tools and
+ *   never writes, so it takes a fixed cheap chain: no value-based reordering,
+ *   no tool-calling floor and no sticky affinity — the same message must reach
+ *   the same model whatever the conversation did before.
+ */
+export type TaskType = 'conversation' | 'tool_calling' | 'classify';
 
 export interface ModelConfig {
     id: string;
@@ -78,6 +86,17 @@ const FALLBACK_CHAINS: Record<TaskType, string[]> = {
         'deepseek-chat',                 // tier_4 — basic tools, $0.0001/1k
         'gpt-4o',                        // tier_1 — gold standard tools, $0.0125/1k
         'claude-sonnet-4-6',             // tier_1 — excellent tools, $0.015/1k
+    ],
+    // Cheap, JSON-capable models first; a premium model only as the last
+    // resort so a classification is still produced when the cheap providers
+    // are down (an unavailable classifier degrades the safety triage).
+    classify: [
+        'gpt-4o-mini',                   // tier_2 — reliable JSON mode, $0.0006/1k out
+        'grok-4-1-fast-non-reasoning',   // tier_2 — cheap, OpenAI-compatible JSON
+        'gemini-2.5-flash',              // tier_3 — cheap
+        'deepseek-chat',                 // tier_4 — budget fallback
+        'gpt-4.1-mini',                  // tier_2 — backup
+        'claude-sonnet-4-6',             // tier_1 — last resort
     ],
 };
 
@@ -456,7 +475,9 @@ export class LLMRouterService {
             // uno con herramientas: lo que esta en juego no es si hay tools, es
             // si el cliente va a creerle al mensaje.
             const protectedTurn = toolCallingTurn || options.voicedWrite === true;
-            if (options.routingFactors && !protectedTurn) {
+            // A classification keeps its fixed chain: no value reorder, no floor, no affinity.
+            const fixedChain = options.task === 'classify';
+            if (options.routingFactors && !protectedTurn && !fixedChain) {
                 const tIdx = candidates.findIndex(c => c.tier === targetTier);
                 if (tIdx > 0) {
                     const [picked] = candidates.splice(tIdx, 1);
@@ -483,7 +504,7 @@ export class LLMRouterService {
             // unconfigured, breaker open, or context too small) it's silently absent
             // and normal tier order applies. Never overrides the breaker.
             const convId = options.traceContext?.conversationId;
-            const affinity = noPersistence ? null : await this.getAffinity(convId, options.task);
+            const affinity = noPersistence || fixedChain ? null : await this.getAffinity(convId, options.task);
             if (affinity) {
                 const stickyIdx = candidates.findIndex(c => c.provider === affinity.provider && c.id === affinity.model);
                 if (stickyIdx > 0) {
@@ -531,7 +552,7 @@ export class LLMRouterService {
                     // Remember this provider+model for the conversation's next turn (cache
                     // warmth) — but NOT when it was an out-of-plan escalation, or the sticky
                     // would keep pinning a premium model ahead of healthy in-plan ones.
-                    if (!noPersistence && !escalated) {
+                    if (!noPersistence && !escalated && !fixedChain) {
                         this.setAffinity(convId, candidate.provider, candidate.id, options.task).catch(() => {});
                     }
                     if (accountOperationalUsage) {

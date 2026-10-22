@@ -300,7 +300,8 @@ describe('Shared runtime integrity', () => {
         llm.mockImplementation(async request=>{
             const invoke=async()=>{
                 calls++;
-                if(calls<=5)return{content:'OLD_LOOP_PROSE',toolCalls:[{id:`call-${calls}`,function:{name:'search_products',arguments:'{}'}}]};
+                // Five DIFFERENT reads use up the rounds (the same read asked for again is answered from the first one).
+                if(calls<=5)return{content:'OLD_LOOP_PROSE',toolCalls:[{id:`call-${calls}`,function:{name:'search_products',arguments:JSON.stringify({query:`q${calls}`})}}]};
                 return{content:calls===6?'REVOKED_CLOSING':'La consulta cuesta COP 20000.'};
             };
             return request.withSourceAuthority?request.withSourceAuthority(invoke):invoke();

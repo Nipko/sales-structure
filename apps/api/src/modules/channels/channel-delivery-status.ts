@@ -37,6 +37,33 @@ export interface ProviderPricingSignal {
     readonly category?: string | null;
     /** `PMP`, `CBP` — which of Meta's pricing models applied. */
     readonly model?: string | null;
+    /** Meta's `pricing.type`: `regular`, `free_customer_service`, `free_entry_point`. */
+    readonly type?: string | null;
+    /** Meta's `pricing.subtype`, e.g. `paid_exempt` (government / non-profit senders). */
+    readonly subtype?: string | null;
+}
+
+/**
+ * Did the provider state that THIS delivery costs nothing?
+ *
+ * Three ways Meta says it, each an explicit statement and none an inference:
+ *   · `billable: false`;
+ *   · a `type` in the `free_*` family (`free_customer_service`,
+ *     `free_entry_point`), the PMP way of naming a free delivery;
+ *   · `subtype: 'paid_exempt'` — a message in a paid category whose sender is
+ *     exempt from the charge (government / non-profit, from 2026-10-12). It can
+ *     arrive with `billable: true` and `type: 'regular'`, so it has to be read
+ *     on its own: settling it at the reserved price charges for a message Meta
+ *     will never invoice.
+ * A missing field is never free (see `parseProviderPricing`).
+ */
+export function providerReportedFree(pricing: ProviderPricingSignal | null | undefined): boolean {
+    if (!pricing) return false;
+    if (pricing.billable === false) return true;
+    const type = String(pricing.type ?? '').trim().toLowerCase();
+    if (type.startsWith('free_')) return true;
+    const subtype = String(pricing.subtype ?? '').trim().toLowerCase();
+    return subtype === 'paid_exempt';
 }
 
 export interface ChannelDeliveryStatusEvent {
@@ -188,8 +215,10 @@ export function parseProviderPricing(pricing: unknown): ProviderPricingSignal | 
     const billable = typeof raw.billable === 'boolean' ? raw.billable : null;
     const category = typeof raw.category === 'string' ? raw.category : null;
     const model = typeof raw.pricing_model === 'string' ? raw.pricing_model : null;
-    if (billable === null && !category && !model) return null;
-    return Object.freeze({ billable, category, model });
+    const type = typeof raw.type === 'string' ? raw.type : null;
+    const subtype = typeof raw.subtype === 'string' ? raw.subtype : null;
+    if (billable === null && !category && !model && !type && !subtype) return null;
+    return Object.freeze({ billable, category, model, type, subtype });
 }
 
 export function parseMetaDeliveryStatuses(

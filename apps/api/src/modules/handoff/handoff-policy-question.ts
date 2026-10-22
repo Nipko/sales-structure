@@ -389,7 +389,7 @@ const PERSONAL_REQUEST_HIGH = /\b(?:me (?:lo |la |los |las )?(?:hace|hacen|haces
 /** A favour asked about a price: diminutives, "hay posibilidad de descuento", "se puede un descuento". */
 const NEGOTIATION_SIGNAL = new RegExp(
     '\\b(?:descuent(?:ito|ico|azo)|rebajit[ao]|desconto(?:zinho|zito)|(?:posibilidad|chance|possibilidade|possibilite|possibility) (?:de|d|of) (?:un |uma? )?(?:descuento|desconto|rebaja|remise|discount)|'
-    + '(?:se puede|es posible|puedo (?:pedir|solicitar|obtener)|como (?:pido|solicito|consigo)|e possivel|posso (?:pedir|solicitar)|est[ -]il possible|puis[ -]je (?:demander|obtenir)|is it possible|can i (?:get|ask for|have)|hay (?:alguna )?(?:posibilidad|chance))\\b'
+    + '(?:se puede|es posible|puedo (?:pedir|solicitar|obtener)|como (?:pido|solicito|consigo)|e possivel|tem como|da pra|da para|posso (?:pedir|solicitar)|est[ -]il possible|puis[ -]je (?:demander|obtenir)|is it possible|can i (?:get|ask for|have)|hay (?:alguna )?(?:posibilidad|chance))\\b'
     // only an indefinite noun phrase, or nothing, may stand between the frame and the discount:
     // "se puede hacer un descuento" asks for one; "can I get THE student discount" names an existing one
     + '(?:\\s+(?:hacer|hacerme|dar|darme|conseguir|obtener|pedir|solicitar|tener|to|get|have|ask|for|make|give|fazer|ter|faire|avoir|obtenir|demander|de|un|una|algun|alguna|algunos|a|an|any|some|um|uma|algum|alguma|des|reembolso|devolucion|refund|remboursement|y|o|e|ou|and|or|et))*'
@@ -397,6 +397,62 @@ const NEGOTIATION_SIGNAL = new RegExp(
     + '|(?:cuanto|cuanta|que) (?:descuent\\w*|rebaj\\w*|descont\\w*) me (?:da|dan|das)|quanto (?:de )?desconto me dao)',
 );
 const REFUND_NOW = /\b(?:devolucion|devolucao|reembolso|remboursement)s? (?:ya|ahora|hoy|ja|agora|maintenant|now|urgente)\b|\b(?:que|para que) me (?:devuelv\w+|reembols\w+|devolv\w+|rembours\w+)\b/;
+
+// ---------------------------------------------------------------------------
+// A price comparison is a catalogue read, not a negotiation
+//
+// Production 2026-10-22 (F4300-07): «¿cuál es el tour más barato que tienen?» was transferred as `discount_request` because «más
+// barato» was a discount keyword. Asking which item is the cheapest, whether there is something cheaper, or whether a special
+// price / offer exists is answered from the catalogue and the promotions; only asking the business to lower the price FOR the
+// customer («me lo dejas más barato», «dame un mejor precio», «¿lo pueden dejar más barato?») is a concession a person approves.
+// ---------------------------------------------------------------------------
+
+/** Discount keywords that, on their own, only compare prices («el más barato», «mejor precio», «moins cher»). */
+export const PRICE_COMPARISON_KEYWORDS: ReadonlySet<string> = new Set([
+    'mas barato', 'mejor precio', 'precio especial', 'oferta especial', 'mais barato', 'melhor preco', 'moins cher',
+]);
+
+const PRICE_COMPARISON = '(?:mas barat[oa]s?|mejor precio|precio especial|oferta especial|mais barat[oa]s?|melhor preco|moins cher|meilleur prix|better price|cheaper|special price)';
+/**
+ * A verb that asks the business to change the price, directly before the comparison (an optional object pronoun or indefinite
+ * article between): «dámelo más barato», «me lo dejas más barato», «¿lo pueden dejar más barato?», «hazme un mejor precio»,
+ * «faz mais barato pra mim», «faites-moi un meilleur prix». «dame el más barato» (the cheapest item) is an order, not a concession.
+ */
+const PRICE_CONCESSION_PHRASE = new RegExp(
+    '\\b(?:haz\\w*|hag\\w*|dam\\w*|dem\\w*|den\\w*|da|das|dan|dej\\w*|pon\\w*|vend\\w*|rebaj\\w*|baj\\w*|consig\\w*|faz\\w*|faca\\w*|deix\\w*|faites|give|make|sell|let'
+    // «lo quiero más barato», «necesito un precio especial»; «quiero algo más barato» / «quiero el más barato» stay a read
+    + '|quiero|quisiera|queria|necesito|quero|preciso|gostaria|want|need)'
+    + '(?:\\s+(?:me|melo|mela|lo|la|los|las|nos|it|them|us|moi|pra mim|para mim))*'
+    + '\\s+(?:(?:un|una|um|uma|a|an)\\s+)?' + PRICE_COMPARISON + '\\b',
+);
+
+/**
+ * Whether a message asks the business to lower a price for the customer (a negotiation a person must approve), as opposed to
+ * comparing prices or asking whether an offer exists (a read the agent answers).
+ */
+export function asksPriceConcessionForSelf(raw: unknown): boolean {
+    const text = normalizeForIntent(raw);
+    if (!text) return false;
+    return NEGOTIATION_SIGNAL.test(text) || PERSONAL_REQUEST_HIGH.test(text)
+        || FOR_ME_AT_CLAUSE_END.test(String(raw ?? '')) || PRICE_CONCESSION_PHRASE.test(text) || BETTER_PRICE_FOR_THIS.test(text);
+}
+
+/** «¿tiene un mejor precio?»: a better price for THIS purchase (the indefinite article); «el mejor precio» is a superlative. */
+const BETTER_PRICE_FOR_THIS = /\b(?:un|um|a)\s+(?:mejor precio|melhor preco|better price|meilleur prix)\b/;
+
+const DISCOUNT_OR_OFFER_WORD = /\b(?:descuent\w*|rebaj\w*|descont\w*|remise\w*|discount\w*|promo\w*|ofert\w*|offre\w*|offer\w*)\b/;
+
+/**
+ * «¿tienen algún descuento esta semana?», «hay promociones hoy?», «do you have any discounts?»: ONE question, in a plain policy
+ * frame, about whether a discount EXISTS — no request for oneself, no grievance, no own case (see `policyQuestionScope`) and no
+ * negotiation wording. The agent answers it from its promotions; the model is not asked, so it cannot turn it into a transfer
+ * (F4300-07). A message with a second sentence («tem como melhorar o valor? vi que existe desconto») is still the model's to read.
+ */
+export function isDiscountExistenceQuestion(raw: unknown): boolean {
+    if (policyQuestionScope(raw) !== 'all' || asksPriceConcessionForSelf(raw)) return false;
+    const sentences = String(raw ?? '').split(/[?!.;\n]+/).map(sentence => normalizeForIntent(sentence)).filter(Boolean);
+    return sentences.length === 1 && POLICY_FRAME_BASE.test(sentences[0]) && DISCOUNT_OR_OFFER_WORD.test(sentences[0]);
+}
 
 export type OverrideLabel = 'personal_case' | 'negotiation';
 

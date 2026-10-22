@@ -1,11 +1,14 @@
 import { appointmentRecordReadId } from './appointment-record-read';
 import { isCanonicalConsentRecovery, canonicalConsentRecoveryDirective } from './canonical-consent-recovery';
 import { DemoAllowanceService } from '../throttle/demo-allowance.service';
+import { FeatureFlagsService, OPERATION_CLASSIFIER_FLAG, SAFETY_TRIAGE_FLAG, SLOT_WINDOW_FLAG, resolveFeatureFlag } from '../throttle/feature-flags.service';
+import { runSafetyTriage, type SafetyTriageTurnOutcome } from './runtime/safety-triage';
+import { buildOperationShadowTrace, OperationClassifierService, type OperationShadowVerdict } from './runtime/operation-classifier.service';
 import { demoAllowanceExhaustedText } from '../widget/widget-demo-link';
 import { recordFirstReply } from '../../common/utils/first-reply.util';
 import { stripInternalMarkers } from '../../common/utils/internal-markers.util';
 import { projectAvailableServices } from '../appointments/service-price-status';
-import { catalogNamesOfTurn, replyLanguageOf, rewritePreserves } from './reply-language';
+import { catalogNamesOfTurn, languageMismatch, rewriteRejection, type RewriteRejectionReason, verbatimTermsOf } from './reply-language';
 import { localeForReply, normalizeReplyAmounts } from './reply-price-format';
 import { foldedSql, foldQueryText } from '../../common/utils/sql-accent-fold.util';
 import { servedAgentAuthority, type ServedAgentAuthority } from '../persona/served-agent-authority';
@@ -13,7 +16,7 @@ import { LearningService } from '../learning/learning.service';
 import { WidgetAgentReplyStore, type WidgetAgentReplyReceipt } from '../widget/widget-agent-reply.store';
 import { createAgentReplyProvenanceCollector, createAgentReplySourceAuthority,
     type AgentReplyProvenanceCollector } from './agent-reply-provenance';
-import { handoffNoticeLanguage, type HandoffNoticeKind } from '../handoff/handoff-notice';
+import { handoffNoticeLanguage, handoffReasonPreface, type HandoffNoticeKind } from '../handoff/handoff-notice';
 import type { RuntimeLearningExample } from '../learning/learning-contracts';
 import type { RuntimeLearningFootprint } from '../learning/learning-runtime-footprint';
 import { LLMSourceAuthorityUnavailable } from '../ai/interfaces/llm-source-authority';
@@ -70,6 +73,7 @@ import {
     type EffectiveCapabilityContract, type TurnCapability,
     isToolAuthorityDenial,
     type LocalizedTerm, type ToolExecutionAuthority,
+    normalizeForIntent,
 } from '@parallext/shared';
 import { outboundDedupeId, providerMessageId, turnDoneKey } from '../../common/utils/provider-message-id.util';
 import { legacyTurnReplyKey, turnReplyKey } from './turn-reply-cache';
@@ -123,6 +127,7 @@ import { arbitrateMissionFocus, missionDialogue, toolMissionAliases, missionTool
 import { MissionFocusStore } from './mission-focus-store';
 import { sanitizeRewrittenReply } from './rewrite-validation';
 import { correctRelativeWeekdays } from './relative-weekday';
+import { customerDatesIn } from './date-reference';
 import { addressFormOf, detectTransition, failedTransitionOf, handleIdentityReply, humanizeReferences, identityGate, knownRecordFacts, knownRecordIds, localizeStatusWords, namedRequestOverridesClarify, opensWithYes, requestIdentityForTool, runTransition, shortReference, transitionDoneText, transitionFailureText, transitionRequestForTool, transitionTexts, TRANSITION_TOOLS, TRANSITION_WRITER, type TransitionIO, type TransitionOutcome } from './transition-engine';
 import { resolveListChoice } from './list-choice';
 import { createdDoneText, detectOrderIntake, isOrderDetails, mergeOrderNotes, mightBeOrderRequest, orderProposalText, orderStockText, orderChoiceText, replyStillAsksConfirmation, type OrderChoice, type OrderIntake } from './order-intake';
@@ -133,6 +138,7 @@ import { IntentInterpreterService } from './intent-interpreter.service';
 import { normalizePhoneE164 } from '../../common/utils/phone.util';
 import { PromptAssemblerService } from './prompt-assembler.service';
 import { resolveBusinessWindow } from './business-window';
+import { withSlotWindowParameter } from './tools/appointment-tools';
 import { hasDispatchOutbox, noHumanReplySql } from '../handoff/handoff-human-reply';
 import { isAttendanceReassurance, attendanceAckText } from './customer-reassurance';
 import { groundPolicyReply } from './policy-grounding';
@@ -412,7 +418,7 @@ const answerLostText = (lang?: string) =>
 /** Whether the customer's message asks for something to be DONE (book, cancel, pay, change, confirm), or is a yes. */
 const asksForAction = (text: string): boolean => {
     const t = String(text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
-    return /\b(?:agend\w*|reserv\w*|cancel\w*|confirm\w*|reprogram\w*|cambi\w*|paga\w*|compr\w*|apart\w*|marc\w*|book\w*|schedule|reschedule|pay|buy|order|change|marcar|annul\w*|reserv\w*)\b/.test(t)
+    return /\b(?:agend\w*|reserv\w*|cancel\w*|confirm\w*|reprogram\w*|cambi\w*|paga\w*|compr\w*|apart(?!ament)\w*|marc\w*|book\w*|schedule|reschedule|pay|buy|order|change|marcar|annul\w*|reserv\w*)\b/.test(t)
         || /^(?:si|yes|sim|oui|ok|okay|dale|listo|vale|claro|perfecto|de acuerdo)\b/.test(t);
 };
 const TOOL_MARKUP_NUDGE: Record<string, string> = {
@@ -420,6 +426,33 @@ const TOOL_MARKUP_NUDGE: Record<string, string> = {
     en: 'You wrote a tool call as text. Never write tool calls as text: if you need to run an action, use the tool interface; otherwise answer the customer in plain language.',
     pt: 'Você escreveu uma chamada de ferramenta como texto. Nunca escreva chamadas como texto: se precisar executar uma ação, use a interface de ferramentas; senão, responda ao cliente em linguagem natural.',
     fr: "Vous avez écrit un appel d'outil sous forme de texte. N'écrivez jamais d'appels en texte : si vous devez exécuter une action, utilisez l'interface d'outils ; sinon répondez au client en langage naturel.",
+};
+/**
+ * The turn's last model call when the tool loop ends without an answer (rounds used up, the same read asked for again and
+ * again, a tool call written as text): no tools are offered, and this tells the model to answer with what the tools already
+ * returned. Without it the customer got «escríbame su pregunta otra vez» after the agent had read the very data asked for.
+ */
+const CLOSING_ANSWER_NUDGE: Record<string, string> = {
+    es: 'Ya no hay más herramientas en este mensaje. Responde ahora al cliente su último mensaje usando solo lo que las herramientas ya devolvieron arriba. Si algo no se pudo comprobar, dilo con claridad y ofrece el siguiente paso. No escribas llamadas a herramientas.',
+    en: 'No more tools are available in this message. Answer the customer\'s last message now, using only what the tools above already returned. If something could not be checked, say so plainly and offer the next step. Do not write tool calls.',
+    pt: 'Não há mais ferramentas nesta mensagem. Responda agora à última mensagem do cliente usando apenas o que as ferramentas já retornaram acima. Se algo não pôde ser verificado, diga isso com clareza e ofereça o próximo passo. Não escreva chamadas de ferramentas.',
+    fr: "Il n'y a plus d'outils dans ce message. Répondez maintenant au dernier message du client en utilisant uniquement ce que les outils ont déjà renvoyé ci-dessus. Si quelque chose n'a pas pu être vérifié, dites-le clairement et proposez l'étape suivante. N'écrivez pas d'appels d'outils.",
+};
+const closingAnswerNudge = (lang?: string) =>
+    CLOSING_ANSWER_NUDGE[String(lang || 'es').slice(0, 2).toLowerCase()] || CLOSING_ANSWER_NUDGE.es;
+/** What a read asked for again with the same arguments in the same turn gets back instead of a second execution. */
+const REPEATED_READ_NOTICE = 'This exact call (same tool, same arguments) was already made in this message; it was not run again and this is its earlier result. Do not call it again: use this result.';
+/** After this many repeated reads in one turn, the next model call is offered no tools and must answer. */
+const REPEATED_READS_BEFORE_ANSWER = 2;
+/** Arguments with keys sorted at every level, so `{a,b}` and `{b,a}` (and `''` and `{}`) are the same call. */
+const canonicalToolArguments = (raw: unknown): string => {
+    let args: unknown = raw;
+    if (typeof raw === 'string') args = raw.trim() ? JSON.parse(raw) : {};
+    if (args == null) args = {};
+    const sort = (value: unknown): unknown => Array.isArray(value) ? value.map(sort)
+        : value && typeof value === 'object' ? Object.keys(value as object).sort()
+            .reduce((o: any, k) => (o[k] = sort((value as any)[k]), o), {}) : value;
+    return JSON.stringify(sort(args));
 };
 const unverifiedClaimFallbackText = (lang?: string) =>
     UNVERIFIED_CLAIM_FALLBACK[(lang || 'es').slice(0, 2).toLowerCase()] || UNVERIFIED_CLAIM_FALLBACK.es;
@@ -440,6 +473,26 @@ const REPLY_LANGUAGE_REWRITE: Record<string, string> = {
     pt: 'Sua resposta anterior não está em português, que é o idioma do cliente neste turno. Reescreva-a em português com exatamente o mesmo conteúdo, sem mudar nenhum dado, preço ou nome. Devolva apenas a mensagem.',
     fr: 'Votre réponse précédente n\'est pas en français, qui est la langue du client pour ce tour. Réécrivez-la en français avec exactement le même contenu, sans changer aucune donnée, aucun prix ni aucun nom. Renvoyez uniquement le message.',
 };
+
+/** Appended to the rewrite request, followed by the exact strings of the reply that must survive (names, figures, URLs). */
+const REPLY_LANGUAGE_KEEP: Record<string, string> = {
+    es: 'Copia estos textos exactamente como están escritos, sin traducirlos ni cambiarlos (son nombres del negocio, cifras y enlaces):',
+    en: 'Copy these exactly as they are written, without translating or changing them (they are the business\'s names, figures and links):',
+    pt: 'Copie estes textos exatamente como estão escritos, sem traduzir nem mudar (são nomes do negócio, números e links):',
+    fr: 'Recopiez ces textes exactement tels qu\'ils sont écrits, sans les traduire ni les modifier (ce sont des noms de l\'entreprise, des chiffres et des liens) :',
+};
+
+/** The second (and last) rewrite request, when the first one changed a name or a figure it had been told to copy. */
+const REPLY_LANGUAGE_RETRY: Record<string, (missing: string[]) => string> = {
+    es: missing => `Tu reescritura cambió o quitó: ${missing.join(' | ')}. Escríbela de nuevo en español y copia esos textos exactamente como están. Devuelve solo el mensaje.`,
+    en: missing => `Your rewrite changed or dropped: ${missing.join(' | ')}. Write it again in English and copy those texts exactly as they are. Return only the message.`,
+    pt: missing => `Sua reescrita mudou ou removeu: ${missing.join(' | ')}. Escreva de novo em português e copie esses textos exatamente como estão. Devolva apenas a mensagem.`,
+    fr: missing => `Votre réécriture a modifié ou supprimé : ${missing.join(' | ')}. Écrivez-la de nouveau en français en recopiant ces textes exactement tels quels. Renvoyez uniquement le message.`,
+};
+
+/** What the reply-language guard did this turn, read back by the pipeline into the turn trace. */
+interface ReplyLanguageOutcome { from: string; to: string; attempts: number; accepted: boolean; rejections: RewriteRejectionReason[] }
+const REPLY_LANGUAGE_OUTCOME = new WeakMap<object, ReplyLanguageOutcome>();
 
 // Fixed system texts must never be rewritten by the wait-promise guard.
 function isSystemFixedText(text: string): boolean {
@@ -551,6 +604,24 @@ const isWriteTool = (name: string): boolean => toolRequiresSequentialExecution(n
 // messages. We wait this long for follow-ups and process the batch as one turn.
 const DEBOUNCE_MS = 800;
 
+/** Shadow operation classifier (PR4): stateless, the router is passed per turn. */
+const OPERATION_CLASSIFIER = new OperationClassifierService();
+
+/**
+ * When a store-only coexistence message (`waba_echo`, `historical`) actually
+ * happened, as an ISO string, or `null` when the provider timestamp is missing
+ * or unreadable. The job travels through BullMQ as JSON, so `timestamp` arrives
+ * as a string as often as a Date; an epoch of 0 (`parseInt('')*1000` upstream
+ * yields NaN, a bare `0` yields 1970) is not a fact either.
+ */
+export function storeOnlyOccurredAt(timestamp: unknown): string | null {
+    if (timestamp === null || timestamp === undefined || timestamp === '') return null;
+    const date = timestamp instanceof Date ? timestamp : new Date(timestamp as any);
+    const ms = date.getTime();
+    if (!Number.isFinite(ms) || ms <= 0) return null;
+    return date.toISOString();
+}
+
 /**
  * Marks that a turn ran to completion for a given provider message id.
  *
@@ -636,7 +707,22 @@ export class ConversationsService {
         @Optional() private readonly proactiveDispatch?: ProactiveDispatchService,
         /** The team's follow-up list: where a request nobody answered is left. */
         @Optional() private readonly tasksService?: TasksService,
+        /** Per-tenant runtime flags (`agentRuntime.safetyTriage`, `agentRuntime.slotWindow`, `agentRuntime.operationClassifier`). Absent in hand-built specs: every flag reads as off. */
+        @Optional() private readonly featureFlags?: FeatureFlagsService,
     ) {}
+
+    /**
+     * `agentRuntime.slotWindow` for this tenant (PR8). Off when the flag service is
+     * absent or cannot be read, so a flag outage never changes a reply.
+     */
+    private async slotWindowEnabled(tenantId: string): Promise<boolean> {
+        if (!this.featureFlags || !tenantId) return false;
+        try {
+            return await this.featureFlags.isFeatureEnabled(tenantId, SLOT_WINDOW_FLAG);
+        } catch {
+            return false;
+        }
+    }
 
     /**
      * One reply, committed before it leaves.
@@ -1392,7 +1478,8 @@ export class ConversationsService {
             const handoffResult = await this.handoffService.executeHandoff(tenantId, conversation.id, normalizedMsg, handoffReason);
             const agentName = handoffResult.assignedTo ? (handoffResult as any).assignedAgentName : null;
             // Handoff runs before userLanguage is computed — derive it from this message.
-            const hl = handoffText(this.languageDetector.detect(content?.text || '', config.language || 'es'));
+            const handoffLanguage = this.languageDetector.detect(content?.text || '', config.language || 'es');
+            const hl = handoffText(handoffLanguage);
             let handoffMsg: string;
             if (agentName) {
                 handoffMsg = hl.withAgent(agentName);
@@ -1405,6 +1492,9 @@ export class ConversationsService {
                 const position = Number(queueCount?.[0]?.cnt || 1);
                 handoffMsg = position <= 1 ? hl.queueHead : hl.queueN(position);
             }
+            // A negotiation the agent cannot grant says so before the transfer, so the notice never reads as a yes (F4300-07).
+            const preface = handoffReasonPreface(handoffReason, handoffNoticeLanguage(handoffLanguage));
+            if (preface) handoffMsg = `${preface} ${handoffMsg}`;
             await this.replyOnceThroughOutbox({
                 tenantId, conversation, msg: normalizedMsg,
                 operationalScope: turnScope, inboundMessageId,
@@ -2412,10 +2502,22 @@ export class ConversationsService {
 
             const schemaName = await this.tenantSchema(tenantId);
             const direction = msg.direction === 'outbound' ? 'outbound' : 'inbound';
+            // ── THE MESSAGE HAPPENED WHEN THE PROVIDER SAYS IT DID ──────────
+            //
+            // A backfilled chat from March stored with `created_at = NOW()` looks
+            // like the customer wrote a minute ago, and every 24-hour service
+            // window read (`MAX(created_at)` of inbound messages) then treats a
+            // long-closed thread as open: free-form sends get admitted and priced
+            // as service replies, and Meta refuses them. The provider timestamp
+            // is the fact; it is clamped to NOW() so a skewed clock can never
+            // push the window open into the future, and an unreadable one falls
+            // back to NOW() exactly as before.
+            const occurredAt = storeOnlyOccurredAt(msg.timestamp);
             await this.prisma.executeInTenantSchema(schemaName,
-                `INSERT INTO messages (conversation_id, direction, content_type, content_text, status, metadata)
-                 VALUES ($1::uuid, $2, $3, $4, 'delivered', $5::jsonb)`,
-                [conversation.id, direction, msg.content.type, msg.content.text, JSON.stringify(msg.metadata || {})],
+                `INSERT INTO messages (conversation_id, direction, content_type, content_text, status, metadata, created_at)
+                 VALUES ($1::uuid, $2, $3, $4, 'delivered', $5::jsonb,
+                         COALESCE(LEAST($6::timestamptz, NOW()), NOW()))`,
+                [conversation.id, direction, msg.content.type, msg.content.text, JSON.stringify(msg.metadata || {}), occurredAt],
             );
 
             this.logger.log(`[StoreOnly] Stored ${source} message (${direction}) for tenant ${tenantId} — AI skipped`);
@@ -2713,6 +2815,8 @@ export class ConversationsService {
             regional, business: projectBusinessTurnContext(identity),
             activeObjectPolicy: tenantActiveObjectPolicyContext(tenant),
             vertical: Object.fromEntries(verticalEntries) as EvaluationTurnContextInputs['vertical'],
+            safetyTriage: resolveFeatureFlag((tenant.settings as any)?.featureFlags, SAFETY_TRIAGE_FLAG),
+            operationClassifier: resolveFeatureFlag((tenant.settings as any)?.featureFlags, OPERATION_CLASSIFIER_FLAG),
         }, tenantId);
     }
 
@@ -3057,6 +3161,10 @@ export class ConversationsService {
             upcomingDays: this.promptAssembler.computeUpcomingDays(now, tz, 8),
             businessHoursStatus,
         };
+        // The days this message names, resolved against the tenant's local today (every vertical): «el 20 de noviembre»
+        // reaches the model as a future Friday, never as arithmetic the model does on <now> by itself.
+        const customerDates = customerDatesIn(normalizeForIntent(userText), new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(now));
+        if (customerDates.length) turnContext.customerDates = customerDates;
 
         // Long-term memory (#1): inject what we know about this customer across
         // conversations, when the agent has it enabled.
@@ -3258,6 +3366,8 @@ export class ConversationsService {
         const toolsConfig = config.tools?.appointments ?? (config as any)?.tools?.appointments;
         const toolsEnabled = toolsConfig?.enabled === true;
         let tools: any[] = [];
+        // PR8: part-of-day / hour-range window for availability. Read once per turn; off = the old offer, byte for byte.
+        const slotWindowEnabled = this.featureFlags ? await this.slotWindowEnabled(tenantId) : false;
         let bookingState: BookingState = await this.loadBookingState(conversation.id, conversation.metadata, session);
         let engineProducedText: string | null = null;
         // The engine is waiting for the customer's explicit yes/no (summary shown, nothing booked this turn).
@@ -3282,6 +3392,49 @@ export class ConversationsService {
             const complaint = await this.resolveComplaintOffer(userText, conversation, config, tenantId, true, executionContext);
             if (complaint) personOfferReason = `offer:${complaint}`;
         }
+
+        // ═══ SAFETY TRIAGE (salud / mascotas, flag agentRuntime.safetyTriage) ═══
+        //
+        // Antes del contrato, de los motores y de toda lectura automática. Una
+        // señal de alarma es dueña del turno: la respuesta es la plantilla de
+        // urgencia palabra por palabra, una persona entra ya y nada se agenda.
+        // La política (clases, términos, plantillas) es dato versionado en
+        // `packages/shared/src/safety-policy.ts`; acá sólo se conecta.
+        const safetyTriage: SafetyTriageTurnOutcome | null = await runSafetyTriage({
+            text: userText,
+            industry: turnContext.verticalContext?.industry || config.industry,
+            subType: turnContext.verticalContext?.subType,
+            language: userLanguage,
+            // A platform-default country is a guess: an emergency number is only given for a country the tenant
+            // has (declared, derived or inferred); otherwise the template says "the emergency number of your country".
+            country: regional && regional.operatingCountry.source !== 'fallback' ? regional.operatingCountry.value : null,
+        }, {
+            enabled: () => this.safetyTriageEnabled(tenantId, session),
+            // Session router in Agent Test (spend + trace); the plain router otherwise — a
+            // classification is not a source of the reply, so it never goes through replySourceRouter.
+            classify: request => (session ? llmRouter : this.llmRouter).execute({ ...request, tenantId, executionContext,
+                traceContext: { conversationId: conversation.id, stage: 'safety_triage' } }),
+            escalate: async reason => {
+                // Agent Test shows what production would do without touching the queue.
+                if (session) return 'simulated';
+                if (!allowHumanHandoff) return 'unavailable';
+                // The urgency reply already announces the transfer: no second notice.
+                await this.escalateWithinTurn(tenantId, conversation, msg, reason, 'none',
+                    userLanguage, inboundMessageId, replyProvenance);
+                this.analyticsService.trackEvent({ tenantId, eventType: 'handoff_triggered', conversationId: conversation.id,
+                    contactId: conversation.contact_id || undefined, data: { reason, deterministic: true } }).catch(() => {});
+                return 'opened';
+            },
+            trace: metadata => turnTrace.add('decision', 'safety_triage', metadata),
+            signal: name => this.recordAgentSignal(tenantId, name, session),
+            warn: message => this.logger.warn(`${message} (conversation ${conversation.id})`),
+        });
+        if (safetyTriage?.reply) {
+            engineProducedText = safetyTriage.reply;
+            deterministicReply = safetyTriage.reply;
+            personOfferReason = null;
+        }
+        if (safetyTriage?.deferredHandoffReason && !pendingOperationHandoff) pendingOperationHandoff = safetyTriage.deferredHandoffReason;
 
         // ═══ EL CONTRATO EFECTIVO SE RESUELVE PRIMERO ═══
         //
@@ -3415,7 +3568,7 @@ export class ConversationsService {
         const blockedOperation = capability.contract?.writersBlocked
             ? deniedOperationalIntent(userText)
             : null;
-        if (blockedOperation && !draftMode) {
+        if (blockedOperation && !draftMode && !safetyTriage?.reply) {
             const reason = `capability_denied_intent:${blockedOperation}`;
             try {
                 if (!allowHumanHandoff) throw new Error('human_delivery_unavailable');
@@ -3479,7 +3632,8 @@ export class ConversationsService {
             await missionStore.save(missionFocus);
             updateMissionScope();
         };
-        if (!draftMode && conversation.contact_id) {
+        // A safety escalation owns the turn: no task is arbitrated (nor consumed) by this message.
+        if (!draftMode && conversation.contact_id && !safetyTriage?.reply) {
             missionStore = new MissionFocusStore(this.prisma, schemaName, conversation.id, conversation.contact_id, session);
             missionFocus = await missionStore.load();
             // When the focus was last written: the question «¿cuál?» of the transition engine is answered by the NEXT message, soon.
@@ -3696,6 +3850,7 @@ export class ConversationsService {
                 regional?.operatingCountry.value,
                 bookingState.step === 'confirm' && bookingState.serviceName ? [bookingState.serviceName] : [],
                 dateISO => resolveBusinessWindow(bizHours, config.hours, dateISO, agendaHours),
+                ...(slotWindowEnabled ? [{ slotWindow: true }] as const : [] as const),
             );
             turnTrace.add('intent','interpreted',{intent:intent.intent,bookingStep:bookingState.step});
             await observeMission({kind:'intent',intent:intent.intent});
@@ -3720,6 +3875,7 @@ export class ConversationsService {
                         missionScope,
                         resumeSelected: missionDecision?.action === 'resume',
                         startSelected: missionDecision?.action === 'select' && missionDecision.route === 'booking',
+                        ...(slotWindowEnabled ? { slotWindow: true } : {}),
                     },
                 );
                 bookingState = deniedResult.state;
@@ -3782,6 +3938,7 @@ export class ConversationsService {
                         flowResponseToken: (msg.content as any)?.interactiveReply?.flowToken,
                         resumeSelected: missionDecision?.action === 'resume',
                         startSelected: missionDecision?.action === 'select' && missionDecision.route === 'booking',
+                        ...(slotWindowEnabled ? { slotWindow: true } : {}),
                     },
                 );
 
@@ -4502,6 +4659,8 @@ export class ConversationsService {
         // above re-adds tools from the agent's feature flags, overriding the
         // `tools = []` set in the express phase, so enforce it as the last word.
         if (engineProducedText) tools = [];
+        // PR8: only a tenant with `agentRuntime.slotWindow` sees check_availability's `window` argument.
+        if (slotWindowEnabled && tools.length) tools = withSlotWindowParameter(tools);
         // The replay never transfers. The tools that MAY end in a handoff (payment link, claim,
         // emergency triage…) stay: their handoff only happens through the post-tool path, which is
         // off for this turn. Only a tool whose sole effect is handing off is withheld.
@@ -4872,7 +5031,7 @@ export class ConversationsService {
             });
             const ragConfig = config.rag;
             const ragEnabled = ragConfig?.enabled !== false;
-            if (hasKnowledge && ragEnabled) {
+            if (hasKnowledge && ragEnabled && !safetyTriage?.reply) {
                 // Clamp topK so a misconfigured agent can't flood the prompt with
                 // dozens of chunks (cost + context blowout). Chunks are already
                 // capped at CHUNK_MAX_CHARS each at ingest time.
@@ -5002,6 +5161,23 @@ export class ConversationsService {
         let history = (historyDesc || []).reverse();
         if (replyProvenance) history = await this.widgetHistoryWithProvenance(
             tenantId, schemaName, conversation.id, history, replyProvenance);
+
+        // ═══ OPERATION CLASSIFIER, EN SOMBRA (flag agentRuntime.operationClassifier) ═══
+        //
+        // Se lanza acá y NO se espera: corre en paralelo con la llamada del
+        // modelo y al final del turno sólo deja un paso de trace
+        // (`operation_shadow`) con la operación, sus lecturas obligatorias y si
+        // corrieron. No cambia la respuesta, las tools ni el ruteo. El flag se
+        // lee dentro de la promesa, así que un tenant apagado no paga nada en
+        // el camino de la respuesta.
+        const operationShadow: Promise<OperationShadowVerdict | null> | null = userText ? this.runOperationShadow({
+            tenantId, session, text: userText, publishedTools: turnAllowedTools,
+            previousReply: [...(history || [])].reverse().find((row: any) => row?.direction === 'outbound')?.content_text ?? null,
+            // Always the plain router, even in Agent Test: the session router counts provider calls,
+            // accumulates spend and marks `trace.error` on a failure — a shadow call must leave the
+            // session's own evidence exactly as it was.
+            router: this.llmRouter, executionContext, conversationId: conversation.id,
+        }) : null;
 
         // The tail of the customer's PREVIOUS conversation, when this one was
         // opened because the old one had been auto-resolved. Prepended so the
@@ -5333,11 +5509,27 @@ export class ConversationsService {
                 ...STATIC_TOOL_NAMES,
             ])];
             let markupRetried = false;
+            // Reads the model ran this turn, by tool + canonical arguments. Asking for the same read again returns this
+            // result instead of a second execution (production 2026-10-22: list_customer_appointments ×4 with the same
+            // empty arguments used up every round and the customer was asked to repeat the question).
+            const turnReadResults = new Map<string, any>();
+            let repeatedReadCalls = 0;
+            // Set once the model was told to answer with what it has: no tools on the following call(s).
+            let toolsWithdrawn = false;
+            let closingNudged = false;
+            let closingCallMade = false;
+            const withdrawToolsForAnswer = (reason: string) => {
+                if (closingNudged) return;
+                toolsWithdrawn = true;
+                closingNudged = true;
+                currentMessages.push({ role: 'user', content: closingAnswerNudge(userLanguage) });
+                turnTrace.add('decision', 'tool_loop_answer_now', { reason, repeatedReadCalls });
+            };
 
             for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
                 // The server proposed or executed a transition this turn: its own text is the reply, no model call.
                 if (deterministicReply) { finalResponse = deterministicReply; break; }
-                const hasTools = tools.length > 0 && !learningSuppressed;
+                const hasTools = tools.length > 0 && !learningSuppressed && !toolsWithdrawn;
                 const styleOperation = [...executedToolsThisTurn].reverse().find(tool => isBusinessWriteTool(tool.name) && toolResultSucceeded(tool.result));
                 if (styleOperation && styleOperation !== lastStyleOperation) {
                     await refreshLearningExamples({ toolName: styleOperation.name, status: 'succeeded' });
@@ -5404,8 +5596,7 @@ export class ConversationsService {
                     const dedupedToolCalls: any[] = [];
                     const _keyFor = (tc: any): string => {
                         try {
-                            const args = typeof tc.function.arguments === 'string' ? JSON.parse(tc.function.arguments) : tc.function.arguments || {};
-                            return `${tc.function.name}:${JSON.stringify(Object.keys(args).sort().reduce((o: any, k) => (o[k]=args[k], o), {}))}`;
+                            return `${tc.function.name}:${canonicalToolArguments(tc.function.arguments)}`;
                         } catch { return `${tc.function.name}:${tc.id}`; }
                     };
                     for (const tc of originalToolCalls) {
@@ -5420,8 +5611,20 @@ export class ConversationsService {
                     if (dedupedToolCalls.length !== originalToolCalls.length) {
                         this.logger.log(`[Pipeline] Deduped ${originalToolCalls.length - dedupedToolCalls.length} duplicate tool call(s) this iteration`);
                     }
+                    // A read already run earlier in this turn with the same arguments is not run again: the model gets the
+                    // earlier result, marked as repeated. Writes always go through their own controls.
+                    const isRepeatableRead = (name: string) => !isWriteTool(name) && getToolPolicy(name)?.effect === 'read';
+                    const repeatedResultByKey = new Map<string, any>();
+                    for (const tc of dedupedToolCalls) {
+                        const key = _keyFor(tc);
+                        if (!isRepeatableRead(tc.function.name) || !turnReadResults.has(key)) continue;
+                        repeatedReadCalls++;
+                        repeatedResultByKey.set(key, { repeatedCall: true, notice: REPEATED_READ_NOTICE, result: turnReadResults.get(key) });
+                        this.logger.warn(`[Pipeline] Repeated read ${tc.function.name} with the same arguments — earlier result returned, not run again`);
+                        turnTrace.add('decision', 'tool_call_repeated', { tool: tc.function.name, repeatedReadCalls });
+                    }
                     // Execute only deduped set; fan-out results below maps back to originalToolCalls
-                    const toolCalls = dedupedToolCalls;
+                    const toolCalls = dedupedToolCalls.filter((tc: any) => !repeatedResultByKey.has(_keyFor(tc)));
 
                     // Run a single tool call: parse args, timeout-guard, isolate errors,
                     // emit its trace, and capture any _mediaToSend marker. Returns the
@@ -5567,8 +5770,13 @@ export class ConversationsService {
                     }
 
                     // Fan-out deduped results to original toolCallIds (LLM expects result per toolCallId)
-                    const _resultByKey = new Map<string, any>();
-                    dedupedToolCalls.forEach((tc: any, i: number) => _resultByKey.set(_keyFor(tc), results[i]));
+                    const _resultByKey = new Map<string, any>(repeatedResultByKey);
+                    toolCalls.forEach((tc: any, i: number) => {
+                        const key = _keyFor(tc);
+                        _resultByKey.set(key, results[i]);
+                        // A failed read may be asked for again (a timeout is not an answer); a read that answered is kept.
+                        if (isRepeatableRead(tc.function.name) && !(results[i] && results[i].error)) turnReadResults.set(key, results[i]);
+                    });
                     originalToolCalls.forEach((tc: any) => {
                         const key = _keyFor(tc);
                         const res = _resultByKey.get(key);
@@ -5586,11 +5794,20 @@ export class ConversationsService {
                         });
                     });
 
+                    // The model keeps asking for what it already has: the next call gets no tools and must answer with it.
+                    if (repeatedReadCalls >= REPEATED_READS_BEFORE_ANSWER) withdrawToolsForAnswer('repeated_reads');
+
                     continue; // Loop back for another LLM call with tool results
                 }
 
                 // No tool calls — this is the final text response
                 const writtenReply = response.content || '';
+                // The call told to answer with what it has (tools withdrawn) still asked for a tool, or said nothing: that is
+                // no answer. It already WAS the closing call, so the fixed text below is what remains.
+                if (toolsWithdrawn) {
+                    closingCallMade = true;
+                    if (response.toolCalls?.length || !writtenReply.trim()) { finalResponse = ''; break; }
+                }
                 // A tool call written AS TEXT (« <create_appointment>… », DeepSeek's DSML) is never executed — running
                 // a call parsed from text would book without the consent step — and never reaches the customer.
                 if (hasToolCallMarkup(writtenReply, markupToolNames)) {
@@ -5605,6 +5822,9 @@ export class ConversationsService {
                         currentMessages.push({ role: 'user', content: TOOL_MARKUP_NUDGE[String(userLanguage).slice(0, 2).toLowerCase()] || TOOL_MARKUP_NUDGE.es });
                         continue;
                     }
+                    // Out of retries: the closing no-tools call below answers from the tool results already gathered. Only a
+                    // call that was ALREADY that closing call falls back to the cleaned text.
+                    if (!closingNudged) { finalResponse = ''; break; }
                     finalResponse = this.cleanToolMarkupReply(writtenReply, markupToolNames, userLanguage, asksForAction(userText));
                     break;
                 }
@@ -5612,12 +5832,15 @@ export class ConversationsService {
                 break;
             }
 
-            // Tool loop exhausted all iterations without ever producing a final text
-            // answer (the LLM kept requesting tools). The side effects already ran,
-            // so force one last call WITHOUT tools to get a natural reply instead of
-            // returning empty and leaving the customer with no response.
-            if (!finalResponse) {
-                this.logger.warn(`[Pipeline] Tool loop exhausted ${MAX_TOOL_ITERATIONS} iterations without a final answer — forcing a no-tools response`);
+            // Tool loop ended without a final text answer (rounds used up, or a tool
+            // call written as text with no retry left). The side effects already ran,
+            // so force one last call WITHOUT tools, told to answer from the tool
+            // results already gathered, instead of asking the customer to repeat.
+            // Its text goes through applyOutputGuardrails like any other reply.
+            if (!finalResponse && !closingCallMade) {
+                this.logger.warn(`[Pipeline] Tool loop ended without a final answer — forcing a no-tools response from the results gathered`);
+                if (!closingNudged) withdrawToolsForAnswer('rounds_exhausted');
+                closingCallMade = true;
                 try {
                     const closing = await executeLearningModel({
                         task: 'conversation',
@@ -5639,9 +5862,10 @@ export class ConversationsService {
                 } catch (e: any) {
                     this.logger.warn(`[Pipeline] Forced no-tools response failed: ${e.message}`);
                 }
-                if (!finalResponse) {
-                    finalResponse = TOOL_LOOP_FALLBACK_REPLY;
-                }
+            }
+            // Last resort: the closing call failed or said nothing.
+            if (!finalResponse) {
+                finalResponse = TOOL_LOOP_FALLBACK_REPLY;
             }
 
             // Booking state already persisted earlier in the engine block
@@ -5715,6 +5939,8 @@ export class ConversationsService {
                 finalResponse = normalizeReplyAmounts(finalResponse, localeForReply(userLanguage, turnContext.regional?.locale));
             }
             turnTrace.add('guardrail', 'output', { responseLength: finalResponse?.length || 0 });
+            const languageOutcome = REPLY_LANGUAGE_OUTCOME.get(turnContext);
+            if (languageOutcome) turnTrace.add('guardrail', languageOutcome.accepted ? 'reply_language_rewritten' : 'reply_language_rewrite_rejected', { ...languageOutcome });
             // A "how do I / can I" refund or return question ("¿puedo pedir un reembolso?")
             // is answered, not escalated. The answer also offers a person, so a customer
             // who really wants the refund says "yes" once and the acceptance below
@@ -5855,7 +6081,9 @@ export class ConversationsService {
                 .find((row: any) => row?.direction === 'outbound')?.content_text;
             const humanHandoffAuthorized = !!(await this.resolveHandoffReason(userText, conversation, config, tenantId, !draftMode, executionContext))
                 || isAffirmationOfHumanOffer(userText, lastOutboundText);
-            if (handoffReturn && !draftMode && promisesHumanHandoff(finalResponse)) {
+            if (safetyTriage?.reply) {
+                // The safety triage already opened (or could not open) the handoff and its reply says so.
+            } else if (handoffReturn && !draftMode && promisesHumanHandoff(finalResponse)) {
                 // Never honoured on the replay, however the customer's words read: the team
                 // was not available, and a promise of a transfer would repeat the wait.
                 this.logger.warn(`[Pipeline] Promesa de traspaso en el reintento de ${conversation.id} — reescrita, sin escalar`);
@@ -5895,6 +6123,11 @@ export class ConversationsService {
                 }
             }
 
+            // Classifier unavailable + term backstop: the urgency footer goes last, after every rewrite above.
+            if (safetyTriage?.footer && finalResponse && !finalResponse.includes(safetyTriage.footer)) {
+                finalResponse = `${finalResponse.trimEnd()}\n\n${safetyTriage.footer}`;
+            }
+
             // What this turn actually did, kept for the next one.
             //
             // The history the model reads back is text only: its own tool calls
@@ -5924,6 +6157,17 @@ export class ConversationsService {
                 this.logger.warn(`[KB Analytics] final-response hook unavailable: ${error.message}`);
             }
 
+            await this.traceOperationShadow(operationShadow, turnTrace, {
+                calledTools: executedToolsThisTurn.map(item => item.name),
+                autoReadTools: preExecutedTools.map(item => item.name),
+                projectedContexts: [
+                    ...((turnContext.catalog?.length ?? 0) > 0 ? ['turn_catalog' as const] : []),
+                    ...((turnContext.availableServices?.length ?? 0) > 0 ? ['available_services' as const] : []),
+                ],
+                publishedTools: turnAllowedTools,
+                domainCues: catalogDomainOf(userText),
+                engineOwned: !!engineProducedText,
+            });
             turnTrace.add('decision', 'final_response', {
                 finalResponseLength: finalResponse?.length || 0,
                 mediaCount: mediaToSend.length,
@@ -6048,6 +6292,17 @@ export class ConversationsService {
             );
 
             // Trace failed turns too — they're the most valuable for debugging/evals.
+            await this.traceOperationShadow(operationShadow, turnTrace, {
+                calledTools: executedToolsThisTurn.map(item => item.name),
+                autoReadTools: preExecutedTools.map(item => item.name),
+                projectedContexts: [
+                    ...((turnContext.catalog?.length ?? 0) > 0 ? ['turn_catalog' as const] : []),
+                    ...((turnContext.availableServices?.length ?? 0) > 0 ? ['available_services' as const] : []),
+                ],
+                publishedTools: turnAllowedTools,
+                domainCues: catalogDomainOf(userText),
+                engineOwned: !!engineProducedText,
+            });
             turnTrace.add('decision', 'error', { error: e?.message });
             await observeMission({kind:'error',state:'response_failed'});
             try { if (session) session.trace.steps.push(turnTrace.toEvent()); else this.eventEmitter.emit('llm.turn.steps', turnTrace.toEvent()); } catch { /* ignore */ }
@@ -6239,6 +6494,96 @@ export class ConversationsService {
     }
 
     /**
+     * `agentRuntime.safetyTriage` for this tenant (off by default). Agent Test
+     * and evaluations read the value sealed in the snapshot by
+     * `captureEvaluationContext` (same tenant settings row, no per-turn tenant
+     * or Redis lookup, like business hours); a snapshot captured before the
+     * flag existed reads as off. A read failure is "off", which is the
+     * behaviour every tenant had before the flag existed.
+     */
+    private async safetyTriageEnabled(tenantId: string, session?: AgentTurnSession): Promise<boolean> {
+        try {
+            if (session) return resolveEvaluationTurnContext(session.snapshot.contextInputs, tenantId).safetyTriage === true;
+            return (await this.featureFlags?.isFeatureEnabled(tenantId, SAFETY_TRIAGE_FLAG)) === true;
+        } catch (error: any) {
+            this.logger.warn(`[SafetyTriage] flag unavailable for ${tenantId}: ${error?.message}`);
+            return false;
+        }
+    }
+
+    /**
+     * `agentRuntime.operationClassifier` for this tenant (off by default). Agent
+     * Test and evaluations read the value sealed in the snapshot by
+     * `captureEvaluationContext` (same tenant settings row, no per-turn tenant
+     * or Redis lookup, like business hours); a snapshot captured before the
+     * flag existed reads as off. A read failure is "off".
+     */
+    private async operationClassifierEnabled(tenantId: string, session?: AgentTurnSession): Promise<boolean> {
+        try {
+            if (session) return resolveEvaluationTurnContext(session.snapshot.contextInputs, tenantId).operationClassifier === true;
+            return (await this.featureFlags?.isFeatureEnabled(tenantId, OPERATION_CLASSIFIER_FLAG)) === true;
+        } catch (error: any) {
+            this.logger.warn(`[OperationShadow] flag unavailable for ${tenantId}: ${error?.message}`);
+            return false;
+        }
+    }
+
+    /**
+     * The shadow classification of one turn, or null when the flag is off.
+     * Never rejects: the reply path awaits it only at the very end, bounded.
+     */
+    private async runOperationShadow(input: {
+        tenantId: string; session?: AgentTurnSession; text: string; publishedTools: readonly string[];
+        previousReply: string | null; router: { execute: (options: any) => Promise<any> };
+        executionContext?: ServiceExecutionContext; conversationId: string;
+    }): Promise<OperationShadowVerdict | null> {
+        try {
+            if (!(await this.operationClassifierEnabled(input.tenantId, input.session))) return null;
+            return await OPERATION_CLASSIFIER.classify(
+                { text: input.text, publishedTools: input.publishedTools, previousReply: input.previousReply },
+                {
+                    // A classification is not a source of the reply: never through replySourceRouter.
+                    complete: request => input.router.execute({ ...request, tenantId: input.tenantId,
+                        executionContext: input.executionContext,
+                        traceContext: { conversationId: input.conversationId, stage: 'operation_shadow' } }),
+                    warn: message => this.logger.warn(`${message} (conversation ${input.conversationId})`),
+                },
+            );
+        } catch (error: any) {
+            this.logger.warn(`[OperationShadow] skipped: ${error?.message || error}`);
+            return null;
+        }
+    }
+
+    /**
+     * Writes the `operation_shadow` step. Waits at most OPERATION_SHADOW_FLUSH_MS
+     * for a classification still in flight (it started before the model call, so
+     * it is normally done); one that is not is traced as `pending_at_end`.
+     */
+    private async traceOperationShadow(
+        pending: Promise<OperationShadowVerdict | null> | null,
+        turnTrace: TurnTraceContext,
+        turn: Parameters<typeof buildOperationShadowTrace>[1],
+    ): Promise<void> {
+        if (!pending) return;
+        const OPERATION_SHADOW_FLUSH_MS = 300;
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+            const late = new Promise<'late'>(resolve => {
+                timer = setTimeout(() => resolve('late'), OPERATION_SHADOW_FLUSH_MS);
+                (timer as any)?.unref?.();
+            });
+            const verdict = await Promise.race([pending, late]);
+            if (verdict === 'late') turnTrace.add('decision', 'operation_shadow', { fallback: 'pending_at_end' });
+            else if (verdict) turnTrace.add('decision', 'operation_shadow', buildOperationShadowTrace(verdict, turn));
+        } catch (error: any) {
+            this.logger.warn(`[OperationShadow] trace skipped: ${error?.message || error}`);
+        } finally {
+            if (timer) clearTimeout(timer);
+        }
+    }
+
+    /**
      * Counts something worth knowing about how the agent behaved.
      *
      * These are the four numbers nobody had: how often the agent claimed an
@@ -6247,8 +6592,8 @@ export class ConversationsService {
      * often the server closed a confirmation the model would have dropped.
      * Cheap Redis counters keyed by day, read by the Ops Center.
      */
-    private recordAgentSignal(tenantId: string, signal: string, session?: AgentTurnSession): void {
-        if (session) { session.trace.steps.push({ signal }); return; }
+    private recordAgentSignal(tenantId: string, signal: string, session?: AgentTurnSession, detail?: Record<string, unknown>): void {
+        if (session) { session.trace.steps.push(detail ? { signal, ...detail } : { signal }); return; }
         const day = new Date().toISOString().slice(0, 10);
         const tenantKey = `agent:signal:${signal}:${tenantId}:${day}`;
         // Platform-wide total and the set of tenants that contributed to it.
@@ -6556,32 +6901,52 @@ export class ConversationsService {
         executedTools?: Array<{ name: string; result: any }>,
     ): Promise<string> {
         const code = String(lang || '').slice(0, 2).toLowerCase();
-        const instruction = REPLY_LANGUAGE_REWRITE[code];
-        // Engine/handoff directives and fixed system texts are already in the turn language by construction.
-        if (!instruction || (trustedContext as any)?.directive || isSystemFixedText(response)) return response;
+        const base = REPLY_LANGUAGE_REWRITE[code];
+        // Only texts the SERVER wrote are exempt: the fixed system texts, and the engine's own reply sent as is. A
+        // directive is an instruction the model voices in its own words — a French duration question on a booking
+        // turn was voiced in Spanish (production 2026-10-22) and the directive exemption let it through unchecked.
+        const engineReply = String((trustedContext as any)?.engineReplyText ?? '').trim();
+        if (!base || isSystemFixedText(response) || (engineReply && response.trim() === engineReply)) return response;
         if (response.trim().split(/\s+/).length < 8) return response;
         // Names of the business's own catalog (products, services) are not the reply's language and must survive a rewrite.
         const names = catalogNamesOfTurn(trustedContext, executedTools);
         // Only clear evidence of ANOTHER language (function words, see reply-language.ts) triggers the rewrite.
-        const written = replyLanguageOf(response, names);
-        if (!written || written === code) return response;
+        const written = languageMismatch(response, code, names);
+        if (!written) return response;
         this.recordAgentSignal(tenantId, 'reply_language_mismatch', session);
-        this.logger.warn(`[Guardrail] Reply is not in the turn language (${code}) — one rewrite: "${response.slice(0, 80)}"`);
-        try {
-            const rewritten = await llmRouter.execute({
-                task: 'conversation',
-                messages: [...currentMessages, { role: 'assistant', content: response }, { role: 'user', content: instruction }],
-                systemPrompt,
-                temperature: 0.2,
-                allowedTiers,
-                tenantId,
-            });
-            const text = rewritten.content?.trim();
-            // A translation may not change what the reply says: every figure, URL and catalog name must survive.
-            if (text && replyLanguageOf(text, names) !== written && rewritePreserves(response, text, names)) return text;
-        } catch (e: any) {
-            if (e instanceof LLMSourceAuthorityUnavailable) throw e;
-            this.logger.warn(`[Guardrail] Language rewrite failed: ${e.message}`);
+        this.logger.warn(`[Guardrail] Reply is not in the turn language (${code}) — rewrite: "${response.slice(0, 80)}"`);
+        // The request names what must be copied verbatim (catalog names, figures, URLs): a model asked to "not change any
+        // name" still translated «Corte y estilo» to «Corte e estilo», and the guard then had to drop the whole rewrite.
+        const verbatim = verbatimTermsOf(response, names);
+        const keep = [...verbatim.names, ...verbatim.figures, ...verbatim.urls];
+        const instruction = keep.length ? `${base}\n${REPLY_LANGUAGE_KEEP[code]}\n${keep.map(term => `- ${term}`).join('\n')}` : base;
+        const outcome: ReplyLanguageOutcome = { from: written, to: code, attempts: 0, accepted: false, rejections: [] };
+        if (trustedContext) REPLY_LANGUAGE_OUTCOME.set(trustedContext, outcome);
+        let messages: any[] = [...currentMessages, { role: 'assistant', content: response }, { role: 'user', content: instruction }];
+        // At most two model calls: the second only when the first lost a name or a figure the model can simply copy.
+        for (let attempt = 1; attempt <= 2; attempt++) {
+            let text: string;
+            try {
+                outcome.attempts = attempt;
+                const rewritten = await llmRouter.execute({ task: 'conversation', messages, systemPrompt, temperature: 0.2, allowedTiers, tenantId });
+                text = String(rewritten.content ?? '').trim();
+            } catch (e: any) {
+                if (e instanceof LLMSourceAuthorityUnavailable) throw e;
+                this.logger.warn(`[Guardrail] Language rewrite failed: ${e.message}`);
+                return response;
+            }
+            // A translation may not change what the reply says: every figure, URL and catalog name must survive,
+            // and it must have left the language it was asked to leave.
+            const rejection = rewriteRejection(response, text, names, written, code);
+            if (!rejection) {
+                outcome.accepted = true;
+                return text;
+            }
+            outcome.rejections.push(rejection.reason);
+            this.recordAgentSignal(tenantId, 'reply_language_rewrite_rejected', session, { reason: rejection.reason, attempt, missing: rejection.missing });
+            this.logger.warn(`[Guardrail] Language rewrite ${attempt} rejected (${rejection.reason}${rejection.missing.length ? `: ${rejection.missing.join(' | ')}` : ''}): "${text.slice(0, 80)}"`);
+            if (attempt === 2 || (rejection.reason !== 'lost_name' && rejection.reason !== 'lost_figure')) break;
+            messages = [...messages, { role: 'assistant', content: text }, { role: 'user', content: REPLY_LANGUAGE_RETRY[code](rejection.missing) }];
         }
         return response;
     }

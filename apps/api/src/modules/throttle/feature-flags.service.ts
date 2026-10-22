@@ -38,7 +38,11 @@ export const FEATURE_FLAGS_REGISTRY: Array<{
     { key: 'killBroadcasts',     label: 'Disable broadcasts',           description: 'Block all broadcast/campaign sending',                    category: 'killswitch',   default: false },
     { key: 'killHandoff',        label: 'Disable handoff escalation',   description: 'Skip the handoff trigger pipeline',                       category: 'killswitch',   default: false },
     { key: 'experimentalCopilot', label: 'AI Copilot suggestions',      description: 'Show AI-generated reply suggestions in the inbox',       category: 'experimental', default: false },
+    { key: 'agentRuntime.slotWindow', label: 'Part-of-day availability window', description: 'The agent reads "mañana en la tarde" / "after 3 pm" as a time window and offers only slots inside it (or says the window is full and offers the nearest)', category: 'experimental', default: false },
 ];
+
+/** Agent runtime flag: part-of-day / range availability window (PR8). Default off. */
+export const SLOT_WINDOW_FLAG = 'agentRuntime.slotWindow';
 
 @Injectable()
 export class FeatureFlagsService {

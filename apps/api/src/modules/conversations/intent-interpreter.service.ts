@@ -7,6 +7,7 @@ import {
 } from '../../common/conversation/intent-normalizer';
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { BusinessWindowResolver, disambiguateBareHour } from './business-window';
+import { extractTimeWindow, type TimeWindow } from './time-window';
 import { isInformationalDetour } from './informational-detour';
 import { nextWeekdayDate, readDateReference, relativeDayIso, weekdayMentions } from './date-reference';
 
@@ -49,6 +50,19 @@ export interface InterpretedIntent {
     dateAmbiguous?: boolean;
     /** A day with no year that already passed this year, and next year's is far away: the caller asks «¿Se refiere al ... de <next year>?» instead of assuming it. */
     dateYearQuestion?: { thisYear: string; nextYear: string };
+    /**
+     * Part of the day / hour range asked for («mañana en la tarde», «after 3 pm», «entre 14h e 17h»).
+     * Only read with `agentRuntime.slotWindow` on; absent otherwise.
+     */
+    timeWindow?: TimeWindow;
+    /** «a cualquier hora» / «any time»: an earlier window no longer applies (flag on only). */
+    timeWindowCleared?: boolean;
+}
+
+/** Per-call options of `interpret`. Passed per call: the service is a singleton shared by every tenant. */
+export interface InterpretOptions {
+    /** `agentRuntime.slotWindow`: read part-of-day / hour-range windows. */
+    slotWindow?: boolean;
 }
 
 @Injectable()
@@ -77,11 +91,13 @@ export class IntentInterpreterService {
         acceptedReferents?: readonly string[],
         /** Business hours per date; without them an unqualified hour is never reinterpreted. */
         businessWindowFor?: BusinessWindowResolver,
+        options?: InterpretOptions,
     ): Promise<InterpretedIntent> {
-        const interpreted = await this.interpretMessage(
+        let interpreted = await this.interpretMessage(
             userText, currentBookingStep, availableServices, todayDate, upcomingDays, tenantId, operatingCountry, acceptedReferents,
             businessWindowFor,
         );
+        if (options?.slotWindow) interpreted = this.withTimeWindow(interpreted, userText, currentBookingStep, todayDate, businessWindowFor);
         // Mid-mission, "¿cuánto cuesta el corte?" names a service and "¿a qué hora
         // abren?" resembles an availability request, so the extractors label them
         // select_service / ask_availability and the booking flow takes them as its
@@ -96,6 +112,33 @@ export class IntentInterpreterService {
             return { ...interpreted, intent: 'general_question', isConfirmation: false, questionTopic: userText };
         }
         return interpreted;
+    }
+
+    /**
+     * Adds the window the message asks for (flag `agentRuntime.slotWindow` only). It
+     * runs on the deterministic AND the LLM reading, so neither path loses it:
+     *   - an hour that is a range bound («después de las 13:00») is not a time to book,
+     *     so `timeMentioned` is dropped and the engine offers the range instead of
+     *     taking 13:00 as the chosen slot;
+     *   - at the name step a window is never a name («mejor en la tarde»);
+     *   - a window alone is an availability request.
+     */
+    private withTimeWindow(
+        interpreted: InterpretedIntent, userText: string, step: string, todayDate: string,
+        businessWindowFor?: BusinessWindowResolver,
+    ): InterpretedIntent {
+        const extracted = extractTimeWindow(userText, businessWindowFor?.(interpreted.dateMentioned || todayDate) ?? null);
+        if (!extracted) return interpreted;
+        if (extracted.cleared) return { ...interpreted, timeWindowCleared: true };
+        const out: InterpretedIntent = { ...interpreted, timeWindow: extracted.window };
+        // A range bound is not a time to book; and with no number in the message an hour can only
+        // have been guessed (by the LLM reading) from the part of the day.
+        // («après-midi» is the afternoon, not «midi» = noon.)
+        const hourText = userText.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/apres[-\s]?midi/g, ' ');
+        if (extracted.fromRange || !/\d|mediod|meio|midi|noon|medianoche|minuit|midnight/.test(hourText)) out.timeMentioned = null;
+        if (step === 'ask_name' && out.nameProvided) out.nameProvided = null;
+        if (['unknown', 'provide_info'].includes(out.intent) && !out.emailProvided && !out.nameProvided) out.intent = 'ask_availability';
+        return out;
     }
 
     private async interpretMessage(

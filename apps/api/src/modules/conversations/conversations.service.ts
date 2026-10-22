@@ -133,6 +133,8 @@ import { IntentInterpreterService } from './intent-interpreter.service';
 import { normalizePhoneE164 } from '../../common/utils/phone.util';
 import { PromptAssemblerService } from './prompt-assembler.service';
 import { resolveBusinessWindow } from './business-window';
+import { withSlotWindowParameter } from './tools/appointment-tools';
+import { FeatureFlagsService, SLOT_WINDOW_FLAG } from '../throttle/feature-flags.service';
 import { hasDispatchOutbox, noHumanReplySql } from '../handoff/handoff-human-reply';
 import { isAttendanceReassurance, attendanceAckText } from './customer-reassurance';
 import { groundPolicyReply } from './policy-grounding';
@@ -636,7 +638,22 @@ export class ConversationsService {
         @Optional() private readonly proactiveDispatch?: ProactiveDispatchService,
         /** The team's follow-up list: where a request nobody answered is left. */
         @Optional() private readonly tasksService?: TasksService,
+        /** Per-tenant runtime flags (`agentRuntime.slotWindow`). Absent in hand-built specs: every flag reads as off. */
+        @Optional() private readonly featureFlags?: FeatureFlagsService,
     ) {}
+
+    /**
+     * `agentRuntime.slotWindow` for this tenant (PR8). Off when the flag service is
+     * absent or cannot be read, so a flag outage never changes a reply.
+     */
+    private async slotWindowEnabled(tenantId: string): Promise<boolean> {
+        if (!this.featureFlags || !tenantId) return false;
+        try {
+            return await this.featureFlags.isFeatureEnabled(tenantId, SLOT_WINDOW_FLAG);
+        } catch {
+            return false;
+        }
+    }
 
     /**
      * One reply, committed before it leaves.
@@ -3258,6 +3275,8 @@ export class ConversationsService {
         const toolsConfig = config.tools?.appointments ?? (config as any)?.tools?.appointments;
         const toolsEnabled = toolsConfig?.enabled === true;
         let tools: any[] = [];
+        // PR8: part-of-day / hour-range window for availability. Read once per turn; off = the old offer, byte for byte.
+        const slotWindowEnabled = this.featureFlags ? await this.slotWindowEnabled(tenantId) : false;
         let bookingState: BookingState = await this.loadBookingState(conversation.id, conversation.metadata, session);
         let engineProducedText: string | null = null;
         // The engine is waiting for the customer's explicit yes/no (summary shown, nothing booked this turn).
@@ -3696,6 +3715,7 @@ export class ConversationsService {
                 regional?.operatingCountry.value,
                 bookingState.step === 'confirm' && bookingState.serviceName ? [bookingState.serviceName] : [],
                 dateISO => resolveBusinessWindow(bizHours, config.hours, dateISO, agendaHours),
+                ...(slotWindowEnabled ? [{ slotWindow: true }] as const : [] as const),
             );
             turnTrace.add('intent','interpreted',{intent:intent.intent,bookingStep:bookingState.step});
             await observeMission({kind:'intent',intent:intent.intent});
@@ -3720,6 +3740,7 @@ export class ConversationsService {
                         missionScope,
                         resumeSelected: missionDecision?.action === 'resume',
                         startSelected: missionDecision?.action === 'select' && missionDecision.route === 'booking',
+                        ...(slotWindowEnabled ? { slotWindow: true } : {}),
                     },
                 );
                 bookingState = deniedResult.state;
@@ -3782,6 +3803,7 @@ export class ConversationsService {
                         flowResponseToken: (msg.content as any)?.interactiveReply?.flowToken,
                         resumeSelected: missionDecision?.action === 'resume',
                         startSelected: missionDecision?.action === 'select' && missionDecision.route === 'booking',
+                        ...(slotWindowEnabled ? { slotWindow: true } : {}),
                     },
                 );
 
@@ -4502,6 +4524,8 @@ export class ConversationsService {
         // above re-adds tools from the agent's feature flags, overriding the
         // `tools = []` set in the express phase, so enforce it as the last word.
         if (engineProducedText) tools = [];
+        // PR8: only a tenant with `agentRuntime.slotWindow` sees check_availability's `window` argument.
+        if (slotWindowEnabled && tools.length) tools = withSlotWindowParameter(tools);
         // The replay never transfers. The tools that MAY end in a handoff (payment link, claim,
         // emergency triage…) stay: their handoff only happens through the post-tool path, which is
         // off for this turn. Only a tool whose sole effect is handing off is withheld.

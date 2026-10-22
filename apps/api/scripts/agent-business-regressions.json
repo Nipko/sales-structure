@@ -52,7 +52,11 @@
     "apps/api/src/modules/conversations/crm-other-output-ack-fixed.spec.ts",
     "apps/api/src/modules/conversations/crm-operations-output-ack-fixed.spec.ts",
     "apps/api/src/modules/conversations/crm-note-context-read.spec.ts",
-    "apps/api/src/modules/conversations/agent-turn-delivery.spec.ts"
+    "apps/api/src/modules/conversations/agent-turn-delivery.spec.ts",
+    "apps/api/src/modules/conversations/time-window.spec.ts",
+    "apps/api/src/modules/conversations/slot-window.window.spec.ts",
+    "apps/api/src/modules/conversations/check-availability-window.spec.ts",
+    "apps/api/src/modules/conversations/booking-engine.slot-window.spec.ts"
   ],
   "postgres": [
     "apps/api/src/modules/faqs/faq-effects.postgres.spec.ts",

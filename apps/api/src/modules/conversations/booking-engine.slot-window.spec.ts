@@ -155,9 +155,10 @@ describe('flag on: the explicit-hour case', () => {
     });
 
     it('an exact hour («el sábado a las 3 pm») behaves exactly as with the flag off', async () => {
+        // `missionId` and `progressedAt` (the draft's continuity stamp) are per-run: equal by construction, not by value.
         const on = await salon(true).turn('quiero un corte el sábado a las 3 pm');
         const off = await salon(false).turn('quiero un corte el sábado a las 3 pm');
-        expect({ ...on.state, missionId: 'x' }).toEqual({ ...off.state, missionId: 'x' });
+        expect({ ...on.state, missionId: 'x', progressedAt: 'x' }).toEqual({ ...off.state, missionId: 'x', progressedAt: 'x' });
         expect(on.text).toBe(off.text);
         expect(on.state.time).toBe('15:00');
     });
@@ -235,7 +236,8 @@ describe('flag off: byte-identical behaviour', () => {
         const intent = await interpreter.interpret(text, 'idle', SERVICES.map(s => s.name), today, upcoming, SALON_TENANT_ID, null, [], salonHours, { slotWindow: false });
         const explicitOff = await engine.process('tenant_salon', SALON_TENANT_ID, 'contact', intent, text, { step: 'idle' }, {}, today, 'es',
             { authority, conversationId: 'conv', slotWindow: false });
+        // `missionId` and `progressedAt` (the draft's continuity stamp) are per-run values, not behaviour.
         expect(explicitOff.text).toBe(plain.text);
-        expect(JSON.stringify({ ...explicitOff.state, missionId: 'x' })).toBe(JSON.stringify({ ...plain.state, missionId: 'x' }));
+        expect(JSON.stringify({ ...explicitOff.state, missionId: 'x', progressedAt: 'x' })).toBe(JSON.stringify({ ...plain.state, missionId: 'x', progressedAt: 'x' }));
     });
 });

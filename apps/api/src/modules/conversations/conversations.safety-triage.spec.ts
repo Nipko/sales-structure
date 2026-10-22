@@ -185,7 +185,8 @@ describe('health safety triage inside the turn (agentRuntime.safetyTriage)', () 
     it('a business without a safety class never reads the flag nor calls the classifier', async () => {
         const t = fixture({ flag: true, industry: 'restaurantes', subType: 'comida_rapida' });
         expect(await t.run(PRODUCTION_QA8[0])).toBe(MODEL_REPLY);
-        expect(t.featureFlags.isFeatureEnabled).not.toHaveBeenCalled();
+        // Other runtime flags (slot window, operation shadow) are read on every turn; this one is not.
+        expect(t.featureFlags.isFeatureEnabled).not.toHaveBeenCalledWith(expect.anything(), SAFETY_TRIAGE_FLAG);
         expect(t.tasks()).not.toContain('classify');
     });
 });

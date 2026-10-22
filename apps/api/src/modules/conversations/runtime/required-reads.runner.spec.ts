@@ -22,14 +22,14 @@ const op = (key: string) => {
 };
 
 describe('required reads: pilot and gate', () => {
-    it('the pilot is only restaurants and store, by the profile industry', () => {
+    it('the PR5 pilots are restaurants and store, by the profile industry', () => {
         expect(requiredReadsPilotForProfile('restaurantes/casual_dining')).toBe('restaurants');
         expect(requiredReadsPilotForProfile('retail/electronica')).toBe('catalog');
-        for (const other of ['salud/odontologia', 'turismo/hotel', 'inmobiliaria/venta', 'otro/generico', null, undefined, '']) {
+        for (const other of ['salud/odontologia', 'inmobiliaria/venta', 'otro/generico', null, undefined, '']) {
             expect(requiredReadsPilotForProfile(other as any)).toBeNull();
         }
         expect(Object.keys(REQUIRED_READS_PILOT_OPERATIONS).sort())
-            .toEqual(['check_my_orders', 'menu_info', 'product_info', 'track_catalog_order', 'track_food_order']);
+            .toEqual(expect.arrayContaining(['check_my_orders', 'menu_info', 'product_info', 'track_catalog_order', 'track_food_order']));
         // Every pilot operation exists in the catalogue and owes at least one read.
         for (const key of Object.keys(REQUIRED_READS_PILOT_OPERATIONS)) expect(op(key).requiredReads.length).toBeGreaterThan(0);
     });

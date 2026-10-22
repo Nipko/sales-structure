@@ -1,11 +1,12 @@
 import { appointmentRecordReadId } from './appointment-record-read';
 import { isCanonicalConsentRecovery, canonicalConsentRecoveryDirective } from './canonical-consent-recovery';
 import { DemoAllowanceService } from '../throttle/demo-allowance.service';
-import { FACTS_LEDGER_FLAG, FeatureFlagsService, OPERATION_CLASSIFIER_FLAG, REQUIRED_READS_CATALOG_FLAG, REQUIRED_READS_RESTAURANTS_FLAG, SAFETY_TRIAGE_FLAG, SLOT_WINDOW_FLAG, resolveFeatureFlag } from '../throttle/feature-flags.service';
+import { FACTS_LEDGER_FLAG, FeatureFlagsService, OPERATION_CLASSIFIER_FLAG, REQUIRED_READS_CATALOG_FLAG, REQUIRED_READS_PROPERTIES_FLAG, REQUIRED_READS_RESTAURANTS_FLAG, REQUIRED_READS_TOURS_FLAG, SAFETY_TRIAGE_FLAG, SLOT_WINDOW_FLAG, resolveFeatureFlag } from '../throttle/feature-flags.service';
 import { runSafetyTriage, type SafetyTriageTurnOutcome } from './runtime/safety-triage';
 import { buildOperationShadowTrace, OperationClassifierService, type OperationShadowVerdict } from './runtime/operation-classifier.service';
 import { buildRequiredReadsTrace, REQUIRED_READ_TIMEOUT_MS, requiredReadsGate, requiredReadsPilotForProfile, runRequiredReads,
     type RequiredReadResult, type RequiredReadsPilot } from './runtime/required-reads.runner';
+import { requiredReadSlotsIn } from './runtime/required-read-slots';
 import { demoAllowanceExhaustedText } from '../widget/widget-demo-link';
 import { recordFirstReply } from '../../common/utils/first-reply.util';
 import { stripInternalMarkers } from '../../common/utils/internal-markers.util';
@@ -205,6 +206,14 @@ import { normalizeCustomerIntent } from '../../common/conversation/intent-normal
 // reachable by ANY plan: every plan's allowedTiers includes tier_4_budget, whose chain
 // entry deepseek-chat has maxContextTokens=64_000. We reserve room for the system prompt
 // + the reply, and cap the history so very long conversations don't blow up cost.
+/** The per-tenant flag of each required-reads pilot (PR5: restaurants, store; PR7: lodging, travel). */
+const REQUIRED_READS_FLAG_BY_PILOT: Readonly<Record<RequiredReadsPilot, string>> = Object.freeze({
+    restaurants: REQUIRED_READS_RESTAURANTS_FLAG,
+    catalog: REQUIRED_READS_CATALOG_FLAG,
+    properties: REQUIRED_READS_PROPERTIES_FLAG,
+    tours: REQUIRED_READS_TOURS_FLAG,
+});
+
 const MIN_MODEL_CONTEXT_TOKENS = 64_000;
 const SYSTEM_PROMPT_RESERVE_TOKENS = 6_000;     // fallback when systemPrompt length unknown
 const DEFAULT_RESPONSE_RESERVE_TOKENS = 1_500;  // when persona doesn't pin maxTokens
@@ -2826,6 +2835,8 @@ export class ConversationsService {
             requiredReads: {
                 restaurants: resolveFeatureFlag((tenant.settings as any)?.featureFlags, REQUIRED_READS_RESTAURANTS_FLAG),
                 catalog: resolveFeatureFlag((tenant.settings as any)?.featureFlags, REQUIRED_READS_CATALOG_FLAG),
+                properties: resolveFeatureFlag((tenant.settings as any)?.featureFlags, REQUIRED_READS_PROPERTIES_FLAG),
+                tours: resolveFeatureFlag((tenant.settings as any)?.featureFlags, REQUIRED_READS_TOURS_FLAG),
             },
         }, tenantId);
     }
@@ -5189,7 +5200,7 @@ export class ConversationsService {
         // el camino de la respuesta.
         //
         // Con `agentRuntime.requiredReads.<piloto>` encendido para la vertical del
-        // tenant (restaurante, tienda), la clasificación corre aunque la sombra
+        // tenant (restaurante, tienda; PR7: hotel, viajes), la clasificación corre aunque la sombra
         // esté apagada y SÍ se espera: si la operación es del piloto y la
         // confianza alcanza el umbral, sus lecturas obligatorias corren antes
         // del modelo (ver más abajo). Ningún motor puede ser dueño del turno.
@@ -5206,7 +5217,7 @@ export class ConversationsService {
             router: this.llmRouter, executionContext, conversationId: conversation.id,
         }) : null;
 
-        // ═══ LECTURAS OBLIGATORIAS (PR5, flag agentRuntime.requiredReads.<piloto>) ═══
+        // ═══ LECTURAS OBLIGATORIAS (PR5/PR7, flag agentRuntime.requiredReads.<piloto>) ═══
         //
         // Producción (7f9826aa, 3/3): «¿cuántos pedidos tengo?» contestado sin leer
         // los pedidos; «¿cómo va mi pedido?» pidiendo un número sin listar los del
@@ -5221,6 +5232,9 @@ export class ConversationsService {
             const verdict = await operationShadow;
             const gate = requiredReadsGate(verdict, requiredReadsPilot);
             let run: Awaited<ReturnType<typeof runRequiredReads>> | undefined;
+            // PR7: the stay dates, departure date and people the message gives (only the lodging and travel reads take slots).
+            const slots = requiredReadsPilot === 'properties' || requiredReadsPilot === 'tours'
+                ? requiredReadSlotsIn(userText, new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(now)) : undefined;
             if (gate.run) {
                 const context: ServiceExecutionContext = {
                     ...executionContext, mode: executionContext?.mode ?? 'live', persistence: 'disabled',
@@ -5228,6 +5242,7 @@ export class ConversationsService {
                 const options = { authority: llmAuthority, channelType: msg.channelType, executionContext: context,
                     commitmentBlocked, deniedTools, jurisdiction: regional?.operatingCountry.value };
                 run = await runRequiredReads(gate.operation, {
+                    ...(slots ? { slots, customerText: userText } : {}),
                     publishedTools: turnAllowedTools,
                     alreadyRead: preExecutedTools,
                     projectedContexts: [
@@ -5255,7 +5270,7 @@ export class ConversationsService {
                 }
             }
             turnTrace.add('decision', 'required_reads', buildRequiredReadsTrace({
-                pilot: requiredReadsPilot, verdict, gate, run, latencyMs: Date.now() - started,
+                pilot: requiredReadsPilot, verdict, gate, run, latencyMs: Date.now() - started, slots,
             }));
         }
 
@@ -6696,7 +6711,7 @@ export class ConversationsService {
         if (!pilot) return null;
         try {
             if (session) return resolveEvaluationTurnContext(session.snapshot.contextInputs, tenantId).requiredReads?.[pilot] === true ? pilot : null;
-            const flag = pilot === 'restaurants' ? REQUIRED_READS_RESTAURANTS_FLAG : REQUIRED_READS_CATALOG_FLAG;
+            const flag = REQUIRED_READS_FLAG_BY_PILOT[pilot];
             return (await this.featureFlags?.isFeatureEnabled(tenantId, flag)) === true ? pilot : null;
         } catch (error: any) {
             this.logger.warn(`[RequiredReads] flag unavailable for ${tenantId}: ${error?.message}`);

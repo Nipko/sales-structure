@@ -399,8 +399,8 @@ const DECLARED_READ_OPERATIONS: readonly DeclaredReadOperation[] = Object.freeze
     },
     {
         key: 'property_info', toolGroup: 'properties',
-        description: 'The guest asks the nightly price, capacity, amenities or details of a property/room, with or without dates (no dates: the price "from" the fixed nightly price).',
-        reads: ['list_properties', 'get_property_details'], factKinds: ['price', 'capacity', 'item_attributes'],
+        description: 'The guest asks the nightly price, capacity, amenities, check-in or check-out time, house rules or details of a property/room, or whether it is free on some dates (no dates: the price "from" the fixed nightly price).',
+        reads: ['list_properties', 'get_property_details'], factKinds: ['price', 'capacity', 'item_attributes', 'availability'],
         alsoVisible: ['check_property_availability'],
     },
     {

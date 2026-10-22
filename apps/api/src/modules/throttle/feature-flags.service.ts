@@ -29,6 +29,9 @@ export const FACTS_LEDGER_FLAG = 'agentRuntime.factsLedger';
 /** Per-tenant flags of the required reads (operations runtime PR5), one per pilot: restaurant and store. */
 export const REQUIRED_READS_RESTAURANTS_FLAG = 'agentRuntime.requiredReads.restaurants';
 export const REQUIRED_READS_CATALOG_FLAG = 'agentRuntime.requiredReads.catalog';
+/** PR7: hotel / vacation rental and travel agency / tours. */
+export const REQUIRED_READS_PROPERTIES_FLAG = 'agentRuntime.requiredReads.properties';
+export const REQUIRED_READS_TOURS_FLAG = 'agentRuntime.requiredReads.tours';
 const CACHE_TTL = 300;
 
 /**
@@ -70,6 +73,9 @@ export const FEATURE_FLAGS_REGISTRY: Array<{
     // records". One flag per pilot vertical; off = the turn is exactly the previous one. Costs one `classify` call per turn.
     { key: REQUIRED_READS_RESTAURANTS_FLAG, label: 'Required reads: restaurants', description: 'Restaurants: menu, my orders and order-status questions run get_menu / list_my_orders / check_order_status before the reply', category: 'experimental', default: false },
     { key: REQUIRED_READS_CATALOG_FLAG, label: 'Required reads: store', description: 'Stores: my-orders questions run list_my_catalog_orders (complete list with total) before the reply; product price/stock stays on the projected catalogue', category: 'experimental', default: false },
+    // Operations runtime PR7: the same runner for lodging and travel. Off = the turn is exactly the previous one.
+    { key: REQUIRED_READS_PROPERTIES_FLAG, label: 'Required reads: hotel / vacation rental', description: 'Lodging: price, schedule, amenities and availability questions run list_properties / get_property_details (and check_property_availability when the message has stay dates) before the reply; without dates the nightly price is given as a "from" price', category: 'experimental', default: false },
+    { key: REQUIRED_READS_TOURS_FLAG, label: 'Required reads: travel / tours', description: 'Travel: package price, inclusions and availability questions run search_packages / get_package_details / check_package_availability before the reply; an open question lists the existing packages', category: 'experimental', default: false },
 ];
 
 /**

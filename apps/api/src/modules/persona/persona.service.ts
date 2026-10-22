@@ -23,6 +23,7 @@ import { normalizeRequiredFields } from './required-fields.util';
 import { VERTICAL_REGISTRY } from '../verticals/vertical-definitions';
 import { PERSONA_CACHE_CHANNELS, personaChannelCacheKeys } from '../../common/utils/persona-cache.util';
 import { escapeXmlAttribute, escapeXmlText } from '../../common/utils/xml.util';
+import { REAL_ESTATE_PUBLISHED_PRICE_RULE, rewriteLegacyPersonaRule } from './legacy-persona-rules';
 import { businessHoursConfigured, hasScheduleEntries, unknownHoursInstruction } from '../conversations/informational-hours';
 import type { ServiceExecutionContext } from '../../common/types/execution-context';
 import { persistenceDisabled } from '../../common/types/execution-context';
@@ -266,7 +267,7 @@ export class PersonaService {
         if (behavior?.rules?.length > 0) {
             lines.push('  <rules>');
             behavior.rules.forEach((rule) => {
-                lines.push(`    <rule>${escapeXmlText(rule)}</rule>`);
+                lines.push(`    <rule>${escapeXmlText(rewriteLegacyPersonaRule(rule))}</rule>`);
             });
             lines.push('  </rules>');
         }
@@ -1942,7 +1943,7 @@ export class PersonaService {
                             'Para propiedades de venta, pregunta si necesita financiación — varias propiedades aplican a crédito hipotecario / VIS',
                             'Para arriendo, después de mostrar opciones, aclara que la administración suele pagarse aparte y pregunta si tiene codeudor',
                             'Captura nombre completo, teléfono y email antes de agendar visita',
-                            'NUNCA prometas precio final ni descuentos — el asesor confirma en la visita',
+                            REAL_ESTATE_PUBLISHED_PRICE_RULE,
                             'Para temas legales (derecho de retracto, escrituración, registro), escala al asesor humano',
                         ],
                         forbiddenTopics: [

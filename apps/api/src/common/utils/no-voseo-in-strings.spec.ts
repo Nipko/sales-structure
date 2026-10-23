@@ -106,6 +106,11 @@ const ALLOWED: Array<{ file: string; words: string[]; why: string }> = [
             + '«ouvrés» is French («jours ouvrés») in a chunk that is not under an `fr` key.',
     },
     {
+        file: 'modules/conversations/order-intake.ts',
+        words: ['podes'],
+        why: 'Portuguese «podes» («podes me trazer…?») in the words a CUSTOMER types to ask for a dish; never sent.',
+    },
+    {
         file: 'modules/conversations/emotion.service.ts',
         words: ['explicame'],
         why: 'Confusion keywords a CUSTOMER types, listed next to the tú spelling on purpose.',

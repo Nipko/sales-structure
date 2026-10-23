@@ -71,7 +71,7 @@ const ASKS_NEED = /\b(?:busca\w*|necesit\w*|prefier\w*|requier\w*|quier\w*|desea
 
 function fold(text: unknown): string {
     return String(text ?? '').normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
-        .replace(/[’'`´_\-]/g, ' ').replace(/[^\p{L}\p{N}?\s]/gu, ' ').replace(/\s+/g, ' ').trim();
+        .replace(/[’'`´_-]/g, ' ').replace(/[^\p{L}\p{N}?\s]/gu, ' ').replace(/\s+/g, ' ').trim();
 }
 
 export function allergenFamilyOf(word: string): AllergenFamily | null {

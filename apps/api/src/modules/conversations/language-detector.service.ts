@@ -215,10 +215,10 @@ export class LanguageDetectorService {
             'puede', 'puedes', 'pueden', 'quiero', 'quisiera', 'necesito', 'busco', 'debo', 'consultalo', 'consultala', 'consultalos',
             'consultame', 'revisalo', 'revisala', 'confirmalo', 'confirmala', 'confirmame', 'averigualo', 'dime', 'dame', 'mandame',
             'enviame', 'hago', 'estoy', 'incluye', 'incluyen', 'sirve', 'llega', 'quedan', 'hacen', 'aceptan', 'donde', 'cual',
-            'cuales', 'cuando', 'quien', 'quienes', 'manejan', 'ofrecen', 'traen'],
+            'cuales', 'cuando', 'quien', 'quienes', 'manejan', 'ofrecen', 'traen', 'esta', 'estan'],
         pt: ['tem', 'voce', 'voces', 'quanto', 'quanta', 'quantos', 'quantas', 'custa', 'custam', 'posso', 'pode', 'podem', 'quero',
             'preciso', 'gostaria', 'consegue', 'inclui', 'incluem', 'fica', 'ficam', 'estou', 'faz', 'fazem', 'procuro', 'devo', 'qual',
-            'quais', 'aceitam', 'oferecem'],
+            'quais', 'aceitam', 'oferecem', 'esta', 'estao'],
         fr: ['coute', 'coutent', 'combien', 'je', 'est', 'sont', 'avez', 'pouvez', 'puis', 'peux', 'veux', 'voudrais', 'faut',
             'inclut', 'dois', 'doit', 'cherche', 'ai', 'reste', 'proposez', 'acceptez', 'quel', 'quelle', 'quels', 'quelles'],
         en: ['is', 'are', 'does', 'have', 'has', 'can', 'could', 'would', 'how', 'what', 'cost', 'costs', 'need', 'want', 'include',
@@ -287,14 +287,21 @@ export class LanguageDetectorService {
         const tokens = new Set(words);
         for (const t of [...tokens]) if (t.includes("'")) for (const part of t.split("'")) if (part) tokens.add(part);
         const raw = free.normalize('NFC').toLowerCase();
+        const vocabularies = new Map(Object.keys(this.predicateWords).map(lang => [lang, new Set([...(this.markers[lang] ?? []),
+            ...(this.sentenceWords[lang] ?? []), ...(this.strongMarkers[lang]?.words ?? []), ...(this.questionWords[lang] ?? []),
+            ...this.predicateWords[lang], ...(this.clearWords[lang] ?? [])])] as const));
+        // A word two of the languages spell the same way («disponible» is Spanish AND French, «está» Spanish AND
+        // Portuguese) is evidence for neither. Production (store, stored «es»): «le Aurora est disponible ?» was answered in
+        // Spanish because «disponible» counted as a Spanish word next to the French «le» and «est», and a rival with any
+        // evidence makes the message undecided. It still says the message HAS a verb, for each language that owns it.
+        const shared = (token: string) => [...vocabularies.values()].filter(vocabulary => vocabulary.has(token)).length > 1;
         const ranked = Object.keys(this.predicateWords).map(lang => {
-            const vocabulary = new Set([...(this.markers[lang] ?? []), ...(this.sentenceWords[lang] ?? []), ...(this.strongMarkers[lang]?.words ?? []),
-                ...(this.questionWords[lang] ?? []), ...this.predicateWords[lang], ...(this.clearWords[lang] ?? [])]);
+            const vocabulary = vocabularies.get(lang)!;
             let hits = 0;
             let predicates = 0;
             let verbs = 0;
             for (const token of tokens) {
-                if (vocabulary.has(token)) hits++;
+                if (vocabulary.has(token) && !shared(token)) hits++;
                 if (this.predicateWords[lang].includes(token)) {
                     predicates++;
                     if (!this.interrogatives.has(token)) verbs++;

@@ -65,6 +65,45 @@ describe('the current message language wins over the stored conversation languag
     });
 });
 
+/**
+ * Production QA (store, Telegram, gpt-4.1-mini): with «es» stored, «le Aurora est disponible ?» was answered in Spanish.
+ * With the name taken out the words are «le», «est», «disponible»: «disponible» is Spanish AND French, so it counted as
+ * Spanish evidence and the French message was undecided. A word two languages share is now evidence for neither.
+ */
+describe('a word two languages share is evidence for neither', () => {
+    const detector = new LanguageDetectorService();
+
+    it.each([
+        ['le Aurora est disponible ?', 'es', 'fr'],
+        ['le Aurora est disponible ?', 'pt', 'fr'],
+        ['le Aurora est disponible ?', 'en', 'fr'],
+        ['les casques Aurora sont disponibles ?', 'es', 'fr'],
+        ['vous avez le Aurora ?', 'es', 'fr'],
+        ['est disponible ?', 'es', 'fr'],
+        ['el Aurora está disponible?', 'fr', 'es'],
+        ['el Aurora está disponible?', 'pt', 'es'],
+        ['el Aurora está disponible?', 'en', 'es'],
+        ['o Aurora está disponível?', 'es', 'pt'],
+        ['o Aurora está disponível?', 'fr', 'pt'],
+        ['is the Aurora available?', 'es', 'en'],
+        ['is the Aurora available?', 'fr', 'en'],
+    ])('«%s» after a %s conversation is %s', (text, stored, expected) => {
+        expect(detector.detectDetailed(text, stored, stored)).toEqual({ language: expected, persist: true });
+    });
+
+    it.each([
+        ['Aurora', 'es'], ['ok', 'es'], ['disponible?', 'es'], ['disponible?', 'fr'], ['Aurora disponible', 'es'],
+        ['Aurora disponible', 'fr'], ['ok Aurora', 'fr'], ['15', 'es'],
+    ])('a message with no word of its own («%s») keeps the stored %s', (text, stored) => {
+        expect(detector.detectDetailed(text, stored, stored)).toEqual({ language: stored, persist: true });
+    });
+
+    it('a Spanish message with the shared word stays Spanish after a French conversation', () => {
+        expect(detector.detect('¿el Aurora está disponible en negro?', 'fr', 'fr')).toBe('es');
+        expect(detector.detect('tienen el Aurora disponible?', 'fr', 'fr')).toBe('es');
+    });
+});
+
 describe('the output guard checks the reply against the current message language', () => {
     const build = (rewrite: string) => {
         const service: any = Object.create(ConversationsService.prototype);

@@ -215,14 +215,22 @@ export class LanguageDetectorService {
             'puede', 'puedes', 'pueden', 'quiero', 'quisiera', 'necesito', 'busco', 'debo', 'consultalo', 'consultala', 'consultalos',
             'consultame', 'revisalo', 'revisala', 'confirmalo', 'confirmala', 'confirmame', 'averigualo', 'dime', 'dame', 'mandame',
             'enviame', 'hago', 'estoy', 'incluye', 'incluyen', 'sirve', 'llega', 'quedan', 'hacen', 'aceptan', 'donde', 'cual',
-            'cuales', 'cuando', 'quien', 'quienes', 'manejan', 'ofrecen', 'traen', 'esta', 'estan'],
+            'cuales', 'cuando', 'quien', 'quienes', 'manejan', 'ofrecen', 'traen', 'esta', 'estan',
+            // What a shop customer asks a business (production QA: «venden cargadores?» after a French case was answered in
+            // French — no word of it was known). Not «vende»/«vender» (Portuguese spells them the same) nor «vale» (pt too).
+            'venden', 'abren', 'cierran', 'atienden', 'reciben', 'envian', 'entregan', 'cobran', 'trabajan', 'sirven', 'preparan',
+            'valen', 'llevan'],
         pt: ['tem', 'voce', 'voces', 'quanto', 'quanta', 'quantos', 'quantas', 'custa', 'custam', 'posso', 'pode', 'podem', 'quero',
             'preciso', 'gostaria', 'consegue', 'inclui', 'incluem', 'fica', 'ficam', 'estou', 'faz', 'fazem', 'procuro', 'devo', 'qual',
-            'quais', 'aceitam', 'oferecem', 'esta', 'estao'],
+            'quais', 'aceitam', 'oferecem', 'esta', 'estao',
+            'vendem', 'abrem', 'fecham', 'atendem', 'recebem', 'enviam', 'entregam', 'cobram', 'trabalham', 'servem', 'levam', 'trazem'],
         fr: ['coute', 'coutent', 'combien', 'je', 'est', 'sont', 'avez', 'pouvez', 'puis', 'peux', 'veux', 'voudrais', 'faut',
-            'inclut', 'dois', 'doit', 'cherche', 'ai', 'reste', 'proposez', 'acceptez', 'quel', 'quelle', 'quels', 'quelles'],
+            'inclut', 'dois', 'doit', 'cherche', 'ai', 'reste', 'proposez', 'acceptez', 'quel', 'quelle', 'quels', 'quelles',
+            'vendez', 'vendent', 'faites', 'ouvrez', 'fermez', 'livrez', 'envoyez', 'travaillez'],
+        // Not «stock» (a loanword in Spanish and French: «hay stock?» is Spanish) nor «charge» (a French word too).
         en: ['is', 'are', 'does', 'have', 'has', 'can', 'could', 'would', 'how', 'what', 'cost', 'costs', 'need', 'want', 'include',
-            'includes', 'should', 'where', 'when', 'which', 'offer', 'accept'],
+            'includes', 'should', 'where', 'when', 'which', 'offer', 'accept',
+            'sell', 'sells', 'open', 'deliver', 'ship', 'make', 'carry'],
     };
 
     /**
@@ -253,13 +261,20 @@ export class LanguageDetectorService {
      */
     private readonly contentWords: Record<string, string[]> = {
         en: ['price', 'prices', 'pricing', 'haircut', 'haircuts', 'room', 'rooms', 'night', 'nights', 'stock', 'delivery', 'shipping',
-            'available', 'dish', 'dishes', 'headphones', 'warranty', 'discount', 'refund', 'size', 'weekend', 'breakfast', 'appointment'],
+            'available', 'dish', 'dishes', 'headphones', 'warranty', 'discount', 'refund', 'size', 'weekend', 'breakfast', 'appointment',
+            // Shop and service nouns. Not «cases» (French «cases»), «desserts» (French too) nor «location» (French «location» = rental).
+            'charger', 'chargers', 'speaker', 'speakers', 'makeup', 'rent'],
         es: ['precio', 'precios', 'habitacion', 'habitaciones', 'noche', 'noches', 'envio', 'envios', 'domicilio', 'descuento',
-            'desayuno', 'talla', 'manicura', 'audifonos', 'existencias', 'cita'],
+            'desayuno', 'talla', 'manicura', 'audifonos', 'existencias', 'cita',
+            'cargador', 'cargadores', 'funda', 'fundas', 'parlante', 'parlantes', 'postre', 'postres', 'maquillaje', 'arriendo'],
+        // Not «capas» nor «sobremesas»: Spanish spells them the same. «café da manhã» counts by its «manha» (and «da»).
         pt: ['preco', 'precos', 'quarto', 'quartos', 'noite', 'noites', 'frete', 'cabelo', 'desconto', 'tamanho', 'fones', 'estoque',
-            'diaria', 'diarias'],
+            'diaria', 'diarias',
+            'carregador', 'carregadores', 'capinha', 'capinhas', 'manha', 'maquiagem', 'aluguel'],
+        // «petit-déjeuner» splits into «petit» and «dejeuner». Not «desserts» (English too) nor «location» (English too).
         fr: ['prix', 'chambre', 'chambres', 'nuit', 'nuits', 'livraison', 'manucure', 'cheveux', 'remise', 'taille', 'remboursement',
-            'dejeuner', 'casque', 'casques'],
+            'dejeuner', 'casque', 'casques',
+            'chargeur', 'chargeurs', 'coque', 'coques', 'ecouteurs', 'petit', 'maquillage', 'loyer'],
     };
 
     /**

@@ -137,6 +137,43 @@ describe('a short message made only of nouns is read by its content words', () =
     });
 });
 
+/**
+ * Production QA after #185 (store, stored «fr» from an earlier case): «venden cargadores?» was answered in French.
+ * Neither «venden» nor «cargadores» was a known word, so the message was neutral and the stored language won. The
+ * verbs a shop customer asks with («venden», «sell», «vendem», «vendez») and shop nouns of one language now count.
+ */
+describe('common customer verbs and shop nouns are evidence of the current message language', () => {
+    const detector = new LanguageDetectorService();
+
+    it.each([
+        ['venden cargadores?', 'fr', 'es'],
+        ['venden cargadores?', 'en', 'es'],
+        ['do you sell chargers?', 'es', 'en'],
+        ['vocês vendem carregadores?', 'es', 'pt'],
+        ['vous vendez des chargeurs ?', 'es', 'fr'],
+        ['abren el domingo?', 'en', 'es'],
+        ['do you deliver?', 'es', 'en'],
+        ['vocês entregam?', 'es', 'pt'],
+        ['chargers price?', 'es', 'en'],
+        ['precio de los cargadores?', 'fr', 'es'],
+        ['petit-déjeuner compris ?', 'es', 'fr'],
+    ])('«%s» after a %s conversation is %s', (text, stored, expected) => {
+        expect(detector.detectDetailed(text, stored, stored)).toEqual({ language: expected, persist: true });
+    });
+
+    it.each([
+        ['ok', 'fr'], ['Aurora', 'fr'], ['15', 'pt'], ['ok', 'es'], ['Aurora', 'en'], ['15', 'fr'], ['cargadores?', 'fr'],
+    ])('a language-neutral «%s» keeps the stored %s', (text, stored) => {
+        expect(detector.detectDetailed(text, stored, stored)).toEqual({ language: stored, persist: true });
+    });
+
+    it('borrowed words keep a Spanish message Spanish', () => {
+        expect(detector.detect('tienen delivery?', 'es', 'es')).toBe('es');
+        expect(detector.detect('hay stock?', 'es', 'es')).toBe('es');
+        expect(detector.detect('hay stock?', 'fr', 'fr')).toBe('es');
+    });
+});
+
 describe('the output guard checks the reply against the current message language', () => {
     const build = (rewrite: string) => {
         const service: any = Object.create(ConversationsService.prototype);

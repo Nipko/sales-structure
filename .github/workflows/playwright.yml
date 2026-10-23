@@ -28,7 +28,9 @@ jobs:
   smoke:
     name: Chromium smoke
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # The production build behind the smoke takes ~15 min on a hosted runner; at 20 the tests were cut
+    # off mid-run (deploys of 8e28cc0e and bd6009bb cancelled with no failing test).
+    timeout-minutes: 35
     env:
       CI: 'true'
 

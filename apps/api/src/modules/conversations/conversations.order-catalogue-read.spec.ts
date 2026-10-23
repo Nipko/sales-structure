@@ -42,6 +42,26 @@ describe('a restaurant order reads the current menu before the model takes it', 
         expect(JSON.parse(menu!).order_note).toBe(MENU_ORDER_NOTE);
     });
 
+    // Production QA after #189: asked as a question, the order reached the model with no menu read, and it called the real dish's price
+    // «no confirmado» while asking for an address.
+    it.each(['¿me puedes pedir una lasaña?', '¿me pides un burrito?'])('question form «%s»: get_menu, read only, and the note', async message => {
+        const h = restaurant();
+        const r = await h.turn(message);
+        expect(r.debug.runtimeError).toBeUndefined();
+        expect(names(h.f)).toEqual(['get_menu']);
+        const call = h.f.toolExecutor.execute.mock.calls.find((c: any[]) => c[3] === 'get_menu')!;
+        expect(call[6].executionContext.persistence).toBe('disabled');
+        const menu = h.toolMessages().find((content: string) => content.includes('Bandeja QA Paisa'));
+        expect(menu).toBeDefined();
+        expect(JSON.parse(menu!).order_note).toBe(MENU_ORDER_NOTE);
+    });
+
+    it.each(['¿cuánto vale el plato?', '¿tienen postres?'])('information question «%s» carries no order note', async message => {
+        const h = restaurant();
+        await h.turn(message);
+        expect(h.toolMessages().some((content: string) => content.includes('order_note'))).toBe(false);
+    });
+
     it('a message that is not an order reads nothing', async () => {
         const h = restaurant();
         await h.turn('¿A qué hora abren hoy?');
@@ -121,7 +141,23 @@ describe('the words that gate the read', () => {
     it.each(['¿Tienen pizza?', 'no quiero la pizza', 'quiero la información del menú', 'quiero cancelar mi pedido', 'hola', 'quiero saber el precio de la pizza'])('«%s» is not', text => {
         expect(mightBeMenuOrderRequest(text)).toBe(false);
     });
+    it.each([
+        '¿me puedes pedir una lasaña?', '¿me pides un burrito?', 'Hola, ¿me podrías traer dos empanadas?', '¿me mandas una pizza?', '¿puedes traerme una limonada?',
+        'Você pode me trazer um suco?', 'pode trazer-me uma pizza?',
+        'Vous pouvez me commander une pizza ?', "Pouvez-vous m'apporter une salade ?",
+        'Can you get me a burger?', 'can I order a pizza?',
+    ])('question-form order «%s» is a menu order', text => {
+        expect(mightBeMenuOrderRequest(text)).toBe(true);
+    });
+    it.each([
+        '¿cuánto vale el plato?', '¿tienen postres?', '¿qué platos hay?', '¿me puedes traer la cuenta?', '¿me puedes mandar el menú?',
+        '¿me puedes cancelar el pedido?', '¿me pueden devolver el dinero de la pizza?', '¿no me puedes traer una pizza?', '¿me puedes explicar el plato?',
+        'Quanto custa a pizza?', 'Vous avez des desserts ?', 'how much is the pizza?', 'can you tell me the price of a pizza?',
+    ])('question «%s» is not', text => {
+        expect(mightBeMenuOrderRequest(text)).toBe(false);
+    });
     it('the store gate is unchanged: a desire with no buying verb is not a store order', () => {
+        expect(mightBeOrderRequest('¿me puedes pedir una lasaña?')).toBe(false);
         expect(mightBeOrderRequest('Quiero el combo de hamburguesa con papas')).toBe(false);
         expect(mightBeOrderRequest('quiero comprar un cargador')).toBe(true);
     });

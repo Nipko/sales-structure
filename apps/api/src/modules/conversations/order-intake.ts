@@ -122,19 +122,55 @@ export function mightBeOrderRequest(raw: string): boolean {
 /** «quiero el combo de…», «quisiera una pizza»: a desire form opening the message, then what is wanted (an article or a quantity). */
 const DESIRE_THEN_ITEM = /^(?:hola\s+|buenas\s+|buenos dias\s+|buenas tardes\s+|buenas noches\s+)?(?:quiero|quisiera|queria|deseo|me gustaria|me da|me das|me trae|me traes|dame|deme|i want|i would like|i d like|i ll have|can i get|quero|gostaria|je veux|je voudrais|j aimerais)\s+(?:el|la|los|las|un|una|unos|unas|uno|dos|tres|cuatro|cinco|\d+|a|an|the|o|os|um|uma|le|les|une|des)\s+\S/;
 
+/** What follows an order verb when an item is named: an article or a quantity, then a word. */
+const ITEM_FOLLOWS = String.raw`\s+(?:el|la|los|las|un|una|unos|unas|uno|dos|tres|cuatro|cinco|\d+|a|an|the|some|two|three|o|os|um|uma|dois|duas|le|les|une|des|du|deux|trois)\s+\S`;
+/** Greetings and fillers that may open a question-form order («hola, ¿me pides…?», «and can I get…»). */
+const QUESTION_LEAD = String.raw`^(?:(?:hola|buenas|buenos dias|buenas tardes|buenas noches|oye|oiga|hey|hi|hello|ola|oi|bom dia|boa tarde|boa noite|bonjour|bonsoir|salut|por favor|please|s il vous plait|y|and|e|et)\s+)*`;
 /**
- * The words alone, for a menu: an order request ({@link mightBeOrderRequest}), or a message that opens with a desire form and names
- * what is wanted with no buying verb («Quiero el combo de hamburguesa con papas»), which is how a dish is ordered. Same exclusions:
- * a question, a complaint, a cancellation or a negation is not an order. Only gates a read, never a write.
+ * A question that asks the business to place or bring an item: «¿me puedes pedir una lasaña?», «¿me pides un burrito?», «pode me trazer
+ * um suco?», «vous pouvez me commander une pizza ?», «can you get me a burger?», «can I order a pizza?». Production QA after #189: these
+ * reached the model with no menu read, and it called the real dish's price «no confirmado».
+ */
+const QUESTION_ORDER = new RegExp(QUESTION_LEAD + '(?:'
+    // es: «me puedes/podrías pedir/traer/mandar/vender…», «puedes traerme…», «me pides/traes/mandas…», «puedo pedir…»
+    + '(?:tu |usted |ustedes )?(?:me|nos) (?:puedes|puede|pueden|podrias|podria|podrian) (?:pedir|traer|mandar|enviar|vender|preparar|servir|dar|ordenar)'
+    + '|(?:puedes|puede|pueden|podrias|podria|podrian) (?:pedirme|traerme|mandarme|enviarme|venderme|prepararme|servirme|darme|pedirnos|traernos|mandarnos)'
+    + '|(?:tu |usted |ustedes )?(?:me|nos) (?:pides|pide|piden|traes|trae|traen|mandas|manda|mandan|envias|envia|envian|vendes|vende|venden|preparas|prepara|preparan|sirves|sirve|sirven|das|da|dan)'
+    + '|(?:puedo|podria|podemos|se puede) (?:pedir|ordenar)'
+    // pt: «pode me trazer…», «você pode trazer-me…», «me traz…», «posso pedir…»
+    + '|(?:voce |vc |o senhor |a senhora )?(?:pode|poderia|podes|podem|poderiam) (?:me |nos )?(?:trazer|mandar|enviar|vender|pedir|preparar|servir|dar)(?: me| nos)?'
+    + '|(?:me|nos) (?:traz|traga|manda|mande|envia|vende|venda|prepara|serve)'
+    + '|(?:posso|podemos) (?:pedir|encomendar)'
+    // fr: «vous pouvez me commander…», «pouvez-vous m'apporter…», «je peux commander…»
+    + '|(?:est ce que )?(?:vous pouvez|pouvez vous|tu peux|peux tu|tu pourrais|pourrais tu|vous pourriez|pourriez vous) (?:me |m |nous )?(?:commander|apporter|envoyer|vendre|servir|preparer|donner|amener)'
+    + '|(?:est ce que )?(?:je peux|puis je|je pourrais|pourrais je|on peut) (?:commander|avoir|prendre)'
+    // en: «can you get me…», «could you bring us…», «can I order…», «may I have…»
+    + '|(?:can|could|would|will) (?:you|u) (?:please )?(?:get|bring|send|order|sell|make|grab) (?:me|us)'
+    + '|(?:can|could|may) (?:i|we) (?:please )?(?:get|order|have)'
+    + ')' + ITEM_FOLLOWS);
+/** What a question-form request may ask to be brought that is not a dish: the bill, the menu itself. */
+const NOT_AN_ITEM = /\b(?:menu|carta|cuenta|cardapio|conta|bill|check|addition|recibo|ticket)\b/;
+
+/**
+ * The words alone, for a menu: an order request ({@link mightBeOrderRequest}), a message that opens with a desire form and names
+ * what is wanted with no buying verb («Quiero el combo de hamburguesa con papas»), which is how a dish is ordered, or a question that
+ * asks for an item to be ordered or brought ({@link QUESTION_ORDER}: «¿me puedes pedir una lasaña?»). Information questions
+ * («¿cuánto vale…?», «¿tienen…?»), complaints, cancellations and negations are not orders. Only gates a read, never a write.
  */
 export function mightBeMenuOrderRequest(raw: string): boolean {
     if (mightBeOrderRequest(raw)) return true;
     const original = String(raw ?? '');
     if (!original.trim() || original.length > 400) return false;
     const text = fold(original).replace(/['’]/g, ' ');
-    if (/[?¿]/.test(text) || isInformationSeekingMessage(original)) return false;
     const plain = text.replace(/[,.;!?¿¡]/g, ' ').replace(/\s+/g, ' ').trim();
     if (NOT_AN_ORDER.test(plain)) return false;
+    if (/[?¿]/.test(text)) {
+        // A question only counts in its order form; the question marks aside, it must not be an information question either.
+        if (isInformationSeekingMessage(original.replace(/[?¿]/g, ' '))) return false;
+        const spaced = plain.replace(/-/g, ' ').replace(/\s+/g, ' ');
+        return QUESTION_ORDER.test(spaced) && !NOT_AN_ITEM.test(spaced);
+    }
+    if (isInformationSeekingMessage(original)) return false;
     return DESIRE_THEN_ITEM.test(plain);
 }
 

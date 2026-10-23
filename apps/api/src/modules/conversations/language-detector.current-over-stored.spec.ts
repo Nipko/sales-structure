@@ -104,6 +104,39 @@ describe('a word two languages share is evidence for neither', () => {
     });
 });
 
+/**
+ * Production QA 2026-10-22 (stored «es»): «haircut price?» was answered in Spanish. A message with no verb or
+ * interrogative decided nothing, so the stored language won. Content words of ONE language («haircut», «price»,
+ * «precio», «preço», «prix») now decide it: two of them, or one next to a function word of the same language.
+ */
+describe('a short message made only of nouns is read by its content words', () => {
+    const detector = new LanguageDetectorService();
+
+    it.each([
+        ['haircut price?', 'es', 'en'],
+        ['dish price?', 'es', 'en'],
+        ['headphones stock?', 'es', 'en'],
+        ['preço do Tour QA Aurora?', 'es', 'pt'],
+        ['prix de la manucure ?', 'es', 'fr'],
+        ['precio del corte?', 'en', 'es'],
+        ['il en reste ?', 'es', 'fr'],
+    ])('«%s» after a %s conversation is %s', (text, stored, expected) => {
+        expect(detector.detectDetailed(text, stored, stored)).toEqual({ language: expected, persist: true });
+    });
+
+    it.each([
+        ['price?', 'es'], ['Aurora?', 'es'], ['price?', 'fr'], ['precio?', 'en'], ['hotel tour?', 'es'], ['menu total?', 'pt'],
+        ['delivery precio?', 'en'], ['stock disponible?', 'en'], ['Hotel Aurora price?', 'es'],
+    ])('«%s» keeps the stored %s', (text, stored) => {
+        expect(detector.detectDetailed(text, stored, stored)).toEqual({ language: stored, persist: true });
+    });
+
+    it('a Spanish message with a verb and an English loanword stays Spanish', () => {
+        expect(detector.detect('tienen delivery?', 'en', 'en')).toBe('es');
+        expect(detector.detect('hay stock?', 'en', 'en')).toBe('es');
+    });
+});
+
 describe('the output guard checks the reply against the current message language', () => {
     const build = (rewrite: string) => {
         const service: any = Object.create(ConversationsService.prototype);

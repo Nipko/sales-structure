@@ -1,4 +1,4 @@
-import { claimsTeamRequest, offersHumanHandoff, promisesHumanHandoff, removeHandoffPromiseSentences, teamRequestBacked } from '../../common/utils/outcome-claim.util';
+import { claimsTeamRequest, isBareWaitPromise, offersHumanHandoff, promisesHumanHandoff, removeHandoffPromiseSentences, teamRequestBacked } from '../../common/utils/outcome-claim.util';
 
 /**
  * The honest "I don't have that confirmed" reply offers a person from the team.
@@ -147,24 +147,108 @@ const ACCEPT_REQUEST_FILL = new Set([
 const ACCEPT_BLOCKERS = new Set(['no', 'not', 'nao', 'non', 'pas', 'nunca', 'never', 'pero', 'but', 'mas', 'mais', 'antes', 'before', 'avant', 'primero', 'first', 'mejor', 'better', 'despues', 'later', 'luego']);
 
 /**
- * The customer accepts the offer of a person: a bare agreement («sí», «dale», «yes please») or one that tells the agent
- * to go ahead («Sí, por favor pídanle que lo confirme», «ok hazlo», «por favor consúltelo», «yes, go ahead and ask
- * them», «sim, pode pedir», «oui, allez-y»). Production (Telegram, travel): «Sí, por favor pídanle que lo confirme» had
- * seven words, `isAffirmation` stops at four, so the accepted offer was read as nobody asking and was offered again.
- * A question, a negation or a condition («sí, pero antes…») is never an acceptance.
+ * The customer accepts the offer of a person. Three forms, in es/en/pt/fr:
+ *   · a bare agreement («sí», «dale», «yes please», «sim, por favor»);
+ *   · a «yes» that echoes the offer, whatever other words come with it: a request verb, clitics folded («Sí, por favor
+ *     pídalo», «Yes, please check with the team», «oui, demandez-leur»), or the person offered («…comunícame con
+ *     alguien del equipo para que me confirme la garantía»); or a «yes» followed only by courtesy;
+ *   · a request made only of request words and courtesy («pídanle que lo confirme», «ok hazlo», «por favor consúltelo»).
+ * Production (Telegram, travel): «Sí, por favor pídanle que lo confirme» had seven words and `isAffirmation` stops at
+ * four. Production QA (F4300-25): «Sí, por favor pídalo.» and «Yes, please check with the team.» had one word outside a
+ * closed list, so the accepted offer reached the model, which offered it again or said «Un momento, por favor».
+ * A question, a negation or a condition («sí, pero antes…», «no gracias», «si me confirman el precio, entonces sí») is
+ * never an acceptance, and neither is a «yes» that does not echo the offer and adds content («sí, el lunes»).
  */
 export function isOfferAcceptance(text: unknown): boolean {
     if (isAffirmation(text)) return true;
-    if (typeof text !== 'string' || /[?？¿]/.test(text)) return false;
-    const tokens = text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
-        .replace(/[’']/g, ' ').replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(Boolean);
-    if (tokens.length === 0 || tokens.length > 10) return false;
-    if (tokens.some(t => ACCEPT_BLOCKERS.has(t))) return false;
+    const tokens = unblockedReplyTokens(text);
+    if (!tokens) return false;
     const known = (t: string) => AFFIRM_CORE.has(t) || AFFIRM_FILL.has(t) || ACCEPT_REQUEST.has(t) || ACCEPT_REQUEST_FILL.has(t);
-    if (!tokens.every(known)) return false;
+    const head = affirmationHeadLength(tokens);
+    if (head > 0) {
+        // A «yes» that echoes the offer (who, or the asking) is an acceptance whatever other words come with it.
+        const tail = tokens.slice(head);
+        if (tail.some(t => isRequestVerb(t) || OFFER_PERSON_WORDS.has(t))) return true;
+        if (tail.every(t => known(t) || GRATITUDE_ROOT.test(t))) return true;
+    }
+    if (tokens.length > 10) return false;
+    if (!tokens.every(t => known(t) || isRequestVerb(t))) return false;
     // Something must say yes or ask for it: «por favor» alone, «que lo» or «the team» are not an acceptance.
     return tokens.some(t => AFFIRM_CORE.has(t) && !['favor', 'please', 'plait', 'gusto'].includes(t))
-        || tokens.some(t => ACCEPT_REQUEST.has(t) && !['it', 'that', 'them', 'be', 'would', 'fine', 'y', 'le', 'la', 'leur', 'lui', 'isso'].includes(t));
+        || tokens.some(t => (ACCEPT_REQUEST.has(t) || isRequestVerb(t)) && !['it', 'that', 'them', 'be', 'would', 'fine', 'y', 'le', 'la', 'leur', 'lui', 'isso'].includes(t));
+}
+
+/** Customer-typed words, accents folded and apostrophes split («d'accord» → «d», «accord»). */
+function offerReplyTokens(text: string): string[] {
+    return text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .replace(/[’']/g, ' ').replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(Boolean);
+}
+
+/**
+ * The words that open a «yes» in es/en/pt/fr. Not «quiero»/«quero»: «quiero un corte» asks for something else.
+ * Two-word openings («por favor», «de acuerdo», «d'accord», «of course», «bien sûr», «com certeza») are read as pairs.
+ */
+const AFFIRM_HEAD = new Set([
+    'si', 'sii', 'claro', 'dale', 'ok', 'okay', 'vale', 'listo', 'bueno', 'perfecto', 'correcto', 'porfa', 'obvio', 'exacto',
+    'yes', 'yeah', 'yep', 'yup', 'sure', 'please', 'absolutely', 'definitely', 'certainly',
+    'sim', 'pode', 'beleza', 'certo', 'isso', 'oui', 'ouais', 'volontiers', 'parfait', 'accord',
+]);
+const AFFIRM_HEAD_PAIRS = new Set(['por favor', 'de acuerdo', 'd accord', 'of course', 'bien sur', 'com certeza', 's il', 'go ahead', 'allez y']);
+
+/** Words that make a «yes» conditional («depende del precio», «only if», «seulement si»), next to `ACCEPT_BLOCKERS`. */
+const CONDITION_WORDS = new Set(['if', 'unless', 'depende', 'depends', 'dependiendo', 'salvo', 'excepto', 'sauf', 'seulement', 'only', 'solamente']);
+
+/**
+ * The verbs of asking, checking, confirming and contacting, by ROOT. The clitics a customer glues to them («pídalo»,
+ * «comunícame», «consúltemelo», «pídanselo») are stripped before the root is read, so the forms are never enumerated.
+ */
+const REQUEST_VERB_ROOT = /^(?:pid|pregunt|consult|confirm|verifi|comunic|comuniqu|contact|conect|avis|averig|revis|chequ|pergunt|demand|appel)[a-z]{0,5}$|^(?:ask|check|confirm|contact|connect|reach|verify|call)(?:s|ed|ing)?$|^(?:pedir|pede|peca|pecam|pedem|chame|chama|ligue)$/;
+const CLITICS = /(?:me|te|se|nos|le|les)?(?:lo|la|los|las|le|les|me|te|nos|se)$/;
+export function isRequestVerb(token: string): boolean {
+    if (REQUEST_VERB_ROOT.test(token)) return true;
+    const bare = token.replace(CLITICS, '');
+    return bare !== token && bare.length >= 3 && REQUEST_VERB_ROOT.test(bare);
+}
+
+/** Who the offer is about: a reply naming them («con alguien del equipo», «check with the team») echoes the offer. */
+const OFFER_PERSON_WORDS = new Set([
+    'equipo', 'alguien', 'persona', 'asesor', 'asesora', 'agente', 'humano', 'encargado', 'encargada',
+    'team', 'someone', 'somebody', 'person', 'agent', 'human', 'staff',
+    'equipe', 'alguem', 'pessoa', 'atendente', 'quelqu', 'conseiller', 'conseillere', 'humain',
+]);
+/** Thanks that may follow the «yes» with nothing else («sí, se lo agradezco», «yes, much appreciated»). */
+const GRATITUDE_ROOT = /^(?:agradec|agradezc|amable|appreciat|obrigad|gracia|merci|thank|perfeit|genial|excelent|great|awesome)/;
+
+/** A reply to an offer is a sentence or two; anything longer is about something else. */
+const MAX_OFFER_REPLY_TOKENS = 25;
+
+/** The message's words when nothing in it refuses, conditions or asks; null otherwise. */
+function unblockedReplyTokens(text: unknown): string[] | null {
+    if (typeof text !== 'string' || /[?？¿]/.test(text)) return null;
+    const tokens = offerReplyTokens(text);
+    if (tokens.length === 0 || tokens.length > MAX_OFFER_REPLY_TOKENS) return null;
+    if (tokens.some(t => ACCEPT_BLOCKERS.has(t) || CONDITION_WORDS.has(t))) return null;
+    // «si me confirman el precio, entonces sí»: an «if … then» is a condition, not a yes.
+    const then = tokens.indexOf('entonces');
+    if (then >= 3 && tokens.slice(0, then).includes('si')) return null;
+    return tokens;
+}
+
+/** How many leading tokens are the «yes» itself: 0 when the message does not open with one. */
+function affirmationHeadLength(tokens: string[]): number {
+    if (tokens.length >= 2 && AFFIRM_HEAD_PAIRS.has(`${tokens[0]} ${tokens[1]}`)) return 2;
+    return AFFIRM_HEAD.has(tokens[0]) ? 1 : 0;
+}
+
+/**
+ * The message OPENS with a «yes» in any of the four languages and nothing in it refuses, conditions or asks («Sí, el
+ * lunes», «Yes, of course, thanks so much»). Looser than `isOfferAcceptance` and never an acceptance on its own: it
+ * says the customer answered yes to whatever the agent asked last (see `repliesYesToHumanOffer`).
+ */
+export function opensWithAffirmation(text: unknown): boolean {
+    if (isAffirmation(text)) return true;
+    const tokens = unblockedReplyTokens(text);
+    return !!tokens && affirmationHeadLength(tokens) > 0;
 }
 
 /** The sentences of a message, emoji-only and empty segments left out. */
@@ -200,6 +284,26 @@ export function isLiveHumanOffer(mark: any, now = Date.now()): boolean {
 export function isAffirmationOfHumanOffer(userText: unknown, previousOutbound: unknown): boolean {
     return isOfferAcceptance(userText)
         && (containsHumanOffer(previousOutbound) || offersHumanHandoff(previousOutbound));
+}
+
+/**
+ * The agent's last message ENDED by offering a person and the customer answered with a «yes»: an acceptance, or a
+ * message that opens with one and neither refuses, conditions nor asks. Looser than `isAffirmationOfHumanOffer`
+ * because the offer has to be the last thing said, so that is what the «yes» answers.
+ */
+export function repliesYesToHumanOffer(userText: unknown, previousOutbound: unknown): boolean {
+    return endsWithHumanOffer(previousOutbound) && (isOfferAcceptance(userText) || opensWithAffirmation(userText));
+}
+
+/**
+ * The same offer is never made twice in a row. The customer said yes to the offer of a person and the reply would
+ * offer it AGAIN or only ask to wait («Un momento, por favor»): the turn opens the handoff instead, deterministically
+ * and without another model call. A reply that already promises the transfer is honoured by its own branch.
+ */
+export function repeatsAcceptedHumanOffer(reply: unknown, userText: unknown, previousOutbound: unknown): boolean {
+    if (typeof reply !== 'string' || !reply.trim() || promisesHumanHandoff(reply)) return false;
+    if (!repliesYesToHumanOffer(userText, previousOutbound)) return false;
+    return endsWithHumanOffer(reply) || isBareWaitPromise(reply);
 }
 
 /**

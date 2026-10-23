@@ -29,6 +29,17 @@
  *   - travel: availability needs `check_package_availability` (a date) or the upcoming departures; price and what is included
  *     come from `search_packages`, read unfiltered so «¿qué planes manejan?» lists the packages instead of asking for filters.
  *
+ * The `listings` pilot extends it to real estate (`inmobiliaria`, tool family `realEstate`). Production QA (real-estate QA
+ * tenant, gpt-4.1-mini, after #177): with `search_listings` in the turn the price, operation, bathrooms and area were right 2/2;
+ * without it «El precio del apartamento no está confirmado» and an advisor 0/3, «2 baños» invented with no
+ * `get_listing_details`, and «¿qué propiedades tienen?» answered with three filter questions while the agency has one listing:
+ *   - `listing_info` (price, area, rooms, bathrooms, sale or rent, details) reads `search_listings` with the filters the message
+ *     states (operation, property kind, bedrooms; none → unfiltered), then `get_listing_details` on the listing the customer
+ *     named or the only match, otherwise `ambiguous_receipt`;
+ *   - `find_listing` (an open «¿qué propiedades tienen?») reads only `search_listings`, so the model lists what exists; a
+ *     filter that is too strict comes back with `closestMatches` (listing-closest-matches.ts), never an empty «no hay»;
+ *   - a visit is the appointment flow: its writes are not touched.
+ *
  * Invariants:
  *   - Only reads, only the pilot operations, only tools the turn publishes.
  *   - A failed read is an ADMIT ("no pude consultar"), never an empty list: the
@@ -49,7 +60,7 @@ import { isFailedToolResult } from '../trusted-price-context';
 import { OPERATION_CONFIDENCE_THRESHOLD, type OperationShadowVerdict } from './operation-classifier.service';
 import type { RequiredReadSlots } from './required-read-slots';
 
-export type RequiredReadsPilot = 'restaurants' | 'catalog' | 'properties' | 'tours';
+export type RequiredReadsPilot = 'restaurants' | 'catalog' | 'properties' | 'tours' | 'listings';
 
 /**
  * Confidence at or above which the runtime acts on the verdict. The plan names
@@ -76,6 +87,8 @@ export const REQUIRED_READS_PILOT_INDUSTRY: Readonly<Partial<Record<RequiredRead
 export const REQUIRED_READS_PILOT_TOOL_GROUP: Readonly<Partial<Record<RequiredReadsPilot, string>>> = Object.freeze({
     properties: 'properties',
     tours: 'tours',
+    // Real estate: the profiles that publish search_listings / get_listing_details (`inmobiliaria/*`).
+    listings: 'realEstate',
 });
 
 /**
@@ -98,6 +111,9 @@ export const REQUIRED_READS_PILOT_OPERATIONS: Readonly<Record<string, RequiredRe
     package_info: 'tours',
     package_availability: 'tours',
     book_tour: 'tours',
+    // Real estate. `listing_info`: one listing's price, area, rooms, bathrooms, operation; `find_listing`: what is on offer.
+    listing_info: 'listings',
+    find_listing: 'listings',
 });
 
 /**
@@ -107,6 +123,8 @@ export const REQUIRED_READS_PILOT_OPERATIONS: Readonly<Record<string, RequiredRe
  */
 const PILOT_READ_OVERRIDES: Readonly<Record<string, readonly string[]>> = Object.freeze({
     stay_logistics: Object.freeze(['list_properties', 'get_property_details']),
+    // An open «¿qué propiedades tienen?»: the list is the answer; the details of one listing are not guessed.
+    find_listing: Object.freeze(['search_listings']),
 });
 
 /** Arguments a read cannot run without. Absent from the message, the read is not run and the model asks. */
@@ -117,6 +135,14 @@ const REQUIRED_SLOT_ARGS: Readonly<Record<string, readonly string[]>> = Object.f
 
 /** Lists the reader returns whole (no limit, no paging): what was read is all there is. */
 const UNBOUNDED_LISTS = new Set(['list_properties']);
+
+/**
+ * Search readers that return a bounded list under another name than `list_*`. `search_listings` returns at most 8 exact matches
+ * (`AiToolExecutorService.searchListings`): fewer than that is the whole match set; 8 may not be.
+ */
+const BOUNDED_SEARCHES: Readonly<Record<string, { container: string; limit: number }>> = Object.freeze({
+    search_listings: Object.freeze({ container: 'listings', limit: 8 }),
+});
 
 /** What the model is told about a property list read without dates: the nightly price is a "from" price, not a quote. */
 export const FROM_PRICE_NOTE = 'Sin fechas: nightPrice es el precio por noche "desde" de cada alojamiento (minNights es la estadía mínima). Dalo como "desde"; el total depende de las fechas y se consulta con check_property_availability.';
@@ -133,6 +159,8 @@ const DEFAULT_ARGS: Readonly<Record<string, Readonly<Record<string, unknown>>>> 
     search_products: Object.freeze({ query: '', limit: 20 }),
     // Unfiltered: «¿qué planes manejan?» lists every package instead of asking for filters first.
     search_packages: Object.freeze({}),
+    // Unfiltered unless the message states a filter (operation, property kind, bedrooms): «¿qué propiedades tienen?» lists them.
+    search_listings: Object.freeze({}),
 });
 
 /** Record statuses after which an order is no longer "the one in progress". */
@@ -303,7 +331,18 @@ export function requiredReadsPlan(operation: OperationDefinition, slots: Require
 
 /** The list of a customer-records read, with its completeness made explicit for the model and the ledger. */
 export function withListEvidence(name: string, args: Record<string, unknown>, result: any): { result: any; rows?: number; complete?: boolean; total?: number } {
-    if (!result || typeof result !== 'object' || isFailedToolResult(result) || !/^list_/.test(name)) return { result };
+    if (!result || typeof result !== 'object' || isFailedToolResult(result)) return { result };
+    const bounded = BOUNDED_SEARCHES[name];
+    if (bounded) {
+        if (!Array.isArray(result[bounded.container])) return { result };
+        const rows = result[bounded.container].length;
+        const complete = rows < bounded.limit;
+        return {
+            result: { ...result, ...(complete ? { total: rows } : {}), hasMore: !complete, complete },
+            rows, complete, ...(complete ? { total: rows } : {}),
+        };
+    }
+    if (!/^list_/.test(name)) return { result };
     const entry = Object.entries(result).find(([, value]) => Array.isArray(value));
     if (!entry) return { result };
     const rows = (entry[1] as unknown[]).length;
@@ -438,6 +477,14 @@ export async function runRequiredReads(operation: OperationDefinition, io: Requi
             args[arg] = picked.id;
         }
         if (blocked) { reads.push({ tool: read.tool, args, status: blocked }); continue; }
+        // Already read this turn for the same record (the automatic listing-detail lookup records no args, only the result).
+        const prior = io.alreadyRead.find(item => item.name === read.tool && !isFailedToolResult(item.result) && (item.args
+            ? sameArgs(item.args, args) : Object.values(args).some(value => typeof value === 'string' && value === item.result?.id)));
+        if (prior) {
+            answers.set(read.tool, prior.result);
+            reads.push({ tool: read.tool, args, status: 'already_read' });
+            continue;
+        }
         await runOne(read.tool, args);
     }
 

@@ -3,6 +3,7 @@ import { TurnTraceContext } from '../trace/turn-trace-context';
 import {
     FACTS_LEDGER_FLAG,
     REQUIRED_READS_CATALOG_FLAG,
+    REQUIRED_READS_LISTINGS_FLAG,
     REQUIRED_READS_RESTAURANTS_FLAG,
 } from '../throttle/feature-flags.service';
 
@@ -203,8 +204,8 @@ describe('required reads through the turn (PR5)', () => {
         expect(offTurn.result.reply).toBe('Actualmente tiene tres pedidos recientes y todos están cancelados.');
         jest.restoreAllMocks();
 
-        // The other pilot's flag does nothing for a store: same turn, byte for byte.
-        const other = store({ [REQUIRED_READS_RESTAURANTS_FLAG]: true });
+        // The other pilots' flags (restaurant, real estate) do nothing for a store: same turn, byte for byte.
+        const other = store({ [REQUIRED_READS_RESTAURANTS_FLAG]: true, [REQUIRED_READS_LISTINGS_FLAG]: true });
         const otherTurn = await other.turn(STORE_QUESTION);
         expect(other.classifyCalls()).toHaveLength(0);
         expect(other.executed()).toEqual(off.executed());

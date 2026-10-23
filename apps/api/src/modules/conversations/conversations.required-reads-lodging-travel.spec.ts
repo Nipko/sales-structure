@@ -1,6 +1,6 @@
 import { agentTurnFixture, publishTools } from './__fixtures__/agent-turn.fixture';
 import { TurnTraceContext } from '../trace/turn-trace-context';
-import { REQUIRED_READS_PROPERTIES_FLAG, REQUIRED_READS_TOURS_FLAG } from '../throttle/feature-flags.service';
+import { REQUIRED_READS_LISTINGS_FLAG, REQUIRED_READS_PROPERTIES_FLAG, REQUIRED_READS_TOURS_FLAG } from '../throttle/feature-flags.service';
 
 /**
  * Operations runtime PR7 through the real turn (Agent Test runtime session): hotel / vacation rental and travel run the reads
@@ -205,6 +205,9 @@ describe('required reads PR7: flags', () => {
     it.each([
         ['hotel', REQUIRED_READS_TOURS_FLAG, 'cuánto cuesta la noche?'],
         ['tours', REQUIRED_READS_PROPERTIES_FLAG, 'qué planes manejan?'],
+        // The real-estate pilot's flag does nothing for lodging or travel either.
+        ['hotel', REQUIRED_READS_LISTINGS_FLAG, 'cuánto cuesta la noche?'],
+        ['tours', REQUIRED_READS_LISTINGS_FLAG, 'qué planes manejan?'],
     ] as const)('%s: the other vertical\'s flag leaves model input and tools identical to the baseline', async (vertical, otherFlag, question) => {
         const off = fixture(vertical, {}, '{"operationKey":"none","confidence":0.9}');
         const offTurn = await off.turn(question);

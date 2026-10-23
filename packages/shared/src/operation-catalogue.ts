@@ -189,6 +189,7 @@ export const READ_TOOL_CONTRACTS: Readonly<Record<string, ReadToolContract>> = O
     // real estate
     search_listings: read('A0', ['price', 'area', 'item_attributes', 'availability'], {
         transactionType: 'slot:operation', neighborhood: 'slot:zone', maxPrice: 'slot:budget',
+        propertyKind: 'slot:property_kind', minBedrooms: 'slot:bedrooms',
     }, PLANNED_CATALOG),
     get_listing_details: read('A0', ['price', 'area', 'item_attributes'], { listingId: 'receipt:search_listings.listings[].id' }, PLANNED_CATALOG),
     // restaurants
@@ -405,7 +406,7 @@ const DECLARED_READ_OPERATIONS: readonly DeclaredReadOperation[] = Object.freeze
     },
     {
         key: 'listing_info', toolGroup: 'realEstate',
-        description: 'The customer asks the price, area (m2), rooms or details of a specific property listing for sale or rent.',
+        description: 'The customer asks the price, area (m2), rooms, bathrooms, whether it is for sale or rent, or other details of a property listing for sale or rent.',
         reads: ['search_listings', 'get_listing_details'], factKinds: ['price', 'area', 'item_attributes'],
         alsoVisible: ['send_listing_image'],
     },

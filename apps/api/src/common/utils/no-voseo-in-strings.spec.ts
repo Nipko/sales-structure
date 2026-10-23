@@ -110,6 +110,12 @@ const ALLOWED: Array<{ file: string; words: string[]; why: string }> = [
         words: ['explicame'],
         why: 'Confusion keywords a CUSTOMER types, listed next to the tú spelling on purpose.',
     },
+    {
+        file: 'modules/conversations/language-detector.service.ts',
+        words: ['revisalo', 'revisala', 'confirmalo', 'confirmala', 'mandame'],
+        why: 'Words a CUSTOMER types, written without accents, used only to recognise that a short message '
+            + 'is Spanish; the detector never sends them.',
+    },
 ];
 
 const LOCALE_KEYS = new Set(['en', 'pt', 'fr']);

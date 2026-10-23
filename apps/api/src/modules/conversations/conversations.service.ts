@@ -154,7 +154,7 @@ import { isAttendanceReassurance, attendanceAckText } from './customer-reassuran
 import { groundPolicyReply } from './policy-grounding';
 import { catalogDomainOf, emptyCatalogText, pastDepartureIn, pastDepartureText, replyAcknowledgesPast, replyAsksCriteria, replySaysEmpty } from './catalog-first';
 import { CATALOG_EMPTY_PROBES, catalogHasNoRows } from './catalog-empty.util';
-import { HUMAN_OFFER_MARK, HUMAN_OFFER_TTL_MS, NO_DATA_WAIT_REPLACEMENT, NO_DATA_NO_OFFER, noDataWaitReplacementText, noDataNoOfferText, containsHumanOffer, endsWithHumanOffer, isHumanOfferText, isOfferAcceptance, isAffirmationOfHumanOffer, isLiveHumanOffer, withReturnNotice, offerInsteadOfPromise, policyPersonOfferText, withPolicyPersonOffer, teamRequestClaimAction } from './human-offer';
+import { HUMAN_OFFER_MARK, HUMAN_OFFER_TTL_MS, NO_DATA_WAIT_REPLACEMENT, NO_DATA_NO_OFFER, noDataWaitReplacementText, noDataNoOfferText, containsHumanOffer, endsWithHumanOffer, isOfferAcceptance, isAffirmationOfHumanOffer, repliesYesToHumanOffer, repeatsAcceptedHumanOffer, isLiveHumanOffer, withReturnNotice, offerInsteadOfPromise, policyPersonOfferText, withPolicyPersonOffer, teamRequestClaimAction } from './human-offer';
 import { LanguageDetectorService } from './language-detector.service';
 import { BusinessInfoService } from '../business-info/business-info.service';
 import { PaymentOperationService } from './payment-operation.service';
@@ -6355,7 +6355,9 @@ export class ConversationsService {
             const lastOutboundText = [...(history || [])].reverse()
                 .find((row: any) => row?.direction === 'outbound')?.content_text;
             const humanHandoffAuthorized = !!(await this.resolveHandoffReason(userText, conversation, config, tenantId, !draftMode, executionContext))
-                || isAffirmationOfHumanOffer(userText, lastOutboundText);
+                || isAffirmationOfHumanOffer(userText, lastOutboundText)
+                // A «yes» to the offer of a person that ended the previous message (F4300-25: «Sí, por favor pídalo.»).
+                || repliesYesToHumanOffer(userText, lastOutboundText);
             if (safetyTriage?.reply) {
                 // The safety triage already opened (or could not open) the handoff and its reply says so.
             } else if (handoffReturn && !draftMode && promisesHumanHandoff(finalResponse)) {
@@ -6394,6 +6396,28 @@ export class ConversationsService {
                     this.logger.error(
                         `[Pipeline] No se pudo escalar tras la promesa del agente: ${e?.message}`,
                     );
+                    finalResponse = handoffText(userLanguage).unavailable;
+                }
+            } else if (!draftMode && !postToolHandoff && allowHumanHandoff && repeatsAcceptedHumanOffer(finalResponse, userText, lastOutboundText)) {
+                // The same offer is never made twice in a row (F4300-25, production QA): the customer said yes to the offer
+                // of a person («Sí, por favor pídalo.», «Yes, please check with the team.») and the reply offered it again
+                // or only said «Un momento, por favor». The yes is honoured here, deterministically and with no model
+                // retry: the reply becomes the transfer notice and the handoff opens through the same path as a promise.
+                try {
+                    if (!(await this.handoffService.isInHandoff(tenantId, conversation.id))) {
+                        this.logger.warn(`[Pipeline] HANDOFF: el cliente aceptó la oferta y la respuesta la repetía en ${conversation.id}`);
+                        this.recordAgentSignal(tenantId, 'human_offer_repeat_honored', session);
+                        this.analyticsService.trackEvent({
+                            tenantId, eventType: 'handoff_triggered',
+                            conversationId: conversation.id, contactId: conversation.contact_id || undefined,
+                            data: { reason: 'customer_accepted_human_offer', fromRepeatedOffer: true },
+                        }).catch(() => {});
+                        await this.escalateWithinTurn(tenantId, conversation, msg, 'customer_accepted_human_offer',
+                            'none', userLanguage, inboundMessageId, replyProvenance);
+                    }
+                    finalResponse = handoffText(userLanguage).transferring;
+                } catch (e: any) {
+                    this.logger.error(`[Pipeline] No se pudo escalar tras aceptar la oferta repetida: ${e?.message}`);
                     finalResponse = handoffText(userLanguage).unavailable;
                 }
             } else if (!draftMode && !postToolHandoff) {
@@ -7569,7 +7593,7 @@ export class ConversationsService {
             // the offer, state the transfer (a real handoff promise, honoured by
             // `promisesHumanHandoff` → `escalateWithinTurn`).
             const lastAssistant = [...(currentMessages || [])].reverse().find(m => m?.role === 'assistant');
-            const offeredBefore = typeof lastAssistant?.content === 'string' && isHumanOfferText(lastAssistant.content);
+            const offeredBefore = typeof lastAssistant?.content === 'string' && endsWithHumanOffer(lastAssistant.content);
             response = !humanOfferAvailable ? noDataNoOfferText(lang)
                 : offeredBefore ? handoffText(lang).transferring : noDataWaitReplacementText(lang);
         }

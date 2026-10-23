@@ -83,7 +83,9 @@
     "apps/api/src/modules/persona/legacy-persona-rules.spec.ts",
     "apps/api/src/modules/conversations/team-request-receipt.spec.ts",
     "apps/api/src/modules/conversations/order-count-total.spec.ts",
-    "apps/api/src/modules/conversations/language-detector.current-over-stored.spec.ts"
+    "apps/api/src/modules/conversations/language-detector.current-over-stored.spec.ts",
+    "apps/api/src/modules/conversations/runtime/required-reads.listings.spec.ts",
+    "apps/api/src/modules/conversations/conversations.required-reads-listings.spec.ts"
   ],
   "postgres": [
     "apps/api/src/modules/faqs/faq-effects.postgres.spec.ts",

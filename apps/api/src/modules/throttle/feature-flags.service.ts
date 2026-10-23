@@ -32,6 +32,8 @@ export const REQUIRED_READS_CATALOG_FLAG = 'agentRuntime.requiredReads.catalog';
 /** PR7: hotel / vacation rental and travel agency / tours. */
 export const REQUIRED_READS_PROPERTIES_FLAG = 'agentRuntime.requiredReads.properties';
 export const REQUIRED_READS_TOURS_FLAG = 'agentRuntime.requiredReads.tours';
+/** Real estate (`inmobiliaria`): listing price, area, rooms and bathrooms, and what is on offer. */
+export const REQUIRED_READS_LISTINGS_FLAG = 'agentRuntime.requiredReads.listings';
 /** Per-tenant flag of the rendered facts (operations runtime PR6): amounts, counts and record fields come from tokens the server renders. */
 export const RENDERED_FACTS_FLAG = 'agentRuntime.renderedFacts';
 const CACHE_TTL = 300;
@@ -78,6 +80,8 @@ export const FEATURE_FLAGS_REGISTRY: Array<{
     // Operations runtime PR7: the same runner for lodging and travel. Off = the turn is exactly the previous one.
     { key: REQUIRED_READS_PROPERTIES_FLAG, label: 'Required reads: hotel / vacation rental', description: 'Lodging: price, schedule, amenities and availability questions run list_properties / get_property_details (and check_property_availability when the message has stay dates) before the reply; without dates the nightly price is given as a "from" price', category: 'experimental', default: false },
     { key: REQUIRED_READS_TOURS_FLAG, label: 'Required reads: travel / tours', description: 'Travel: package price, inclusions and availability questions run search_packages / get_package_details / check_package_availability before the reply; an open question lists the existing packages', category: 'experimental', default: false },
+    // The same runner for real estate. Off = the turn is exactly the previous one.
+    { key: REQUIRED_READS_LISTINGS_FLAG, label: 'Required reads: real estate', description: 'Real estate: listing price, area, rooms, bathrooms and sale/rent questions run search_listings (with the operation, property kind and bedrooms the message states) and get_listing_details on the named or only listing before the reply; an open question lists the published listings', category: 'experimental', default: false },
     // Operations runtime PR6 (apps/api/src/modules/conversations/runtime/fact-renderer.ts): the model cites prices, counts,
     // availability and record fields as tokens (⟦fact:id⟧ / ⟦count:id⟧ / ⟦avail:id⟧) the server renders from the verified
     // facts; an amount or count the model typed itself is replaced by a template, and the claim/price corrective retries

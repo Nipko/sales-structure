@@ -21,6 +21,12 @@ export interface RequiredReadSlots {
     /** People in the stay / on the trip, when the customer said how many. */
     guests?: number;
     travellers?: number;
+    /** Real estate (`listingSearchSlotsIn`): sale or rent, when the message says exactly one. */
+    operation?: 'sale' | 'rent';
+    /** Real estate: the one property kind the message names (`search_listings.propertyKind`). */
+    property_kind?: 'apartment' | 'house' | 'commercial' | 'land' | 'office';
+    /** Real estate: «3 habitaciones» → at least 3 bedrooms. */
+    bedrooms?: number;
 }
 
 const COUNT_WORDS: Record<string, number> = {
@@ -59,6 +65,42 @@ export function requiredReadSlotsIn(text: unknown, todayIso: string): RequiredRe
     if (people !== undefined) {
         slots.guests = people;
         slots.travellers = people;
+    }
+    return slots;
+}
+
+// ── Real estate (`listings` pilot) ───────────────────────────────────────
+
+/** «en arriendo», «para alquilar», «for rent», «aluguel», «à louer». English «location» is a place, so it is not here. */
+const RENT = /\b(?:arriendo|arriendos|arrendar|arrienda\w*|alquiler(?:es)?|alquilar|alquila\w*|renta|rentar|rent|rental|renting|lease|aluguel|alugar|aluga\w*|louer|loue\w*)\b/;
+/** «en venta», «para comprar», «for sale», «à vendre». «Vender (mi casa)» is the customer selling: not a search filter. */
+const SALE = /\b(?:venta|ventas|compra|comprar|compro|sale|buy|buying|purchase|venda|achat|acheter|a vendre)\b/;
+const PROPERTY_KINDS: ReadonlyArray<[NonNullable<RequiredReadSlots['property_kind']>, RegExp]> = [
+    ['apartment', /\b(?:apartamentos?|apto|aptos|apartaestudios?|departamentos?|apartments?|flats?|appartements?)\b/],
+    ['house', /\b(?:casas?|houses?|maisons?)\b/],
+    ['commercial', /\b(?:locales? comerciales?|local comercial|bodegas?|commercial)\b/],
+    ['land', /\b(?:lotes?|terrenos?|land|plots?|terrains?)\b/],
+    ['office', /\b(?:oficinas?|offices?|escritorios?|bureaux?)\b/],
+];
+const BEDROOMS = new RegExp(`\\b${COUNT}\\s+(?:habitaciones?|alcobas?|cuartos?|dormitorios?|recamaras?|bedrooms?|rooms?|quartos?|chambres?)\\b`);
+
+/**
+ * The `search_listings` filters the customer stated in this message: the operation (sale or rent), the property kind and a minimum
+ * of bedrooms. Only what is said, and only when it is one value: «casa o apartamento» names no single kind. Zone and budget are left
+ * to the model (a free-text zone or a price said in words is not read deterministically).
+ */
+export function listingSearchSlotsIn(text: unknown): RequiredReadSlots {
+    const folded = normalizeForIntent(text);
+    if (!folded) return {};
+    const slots: RequiredReadSlots = {};
+    const rent = RENT.test(folded), sale = SALE.test(folded);
+    if (rent !== sale) slots.operation = rent ? 'rent' : 'sale';
+    const kinds = PROPERTY_KINDS.filter(([, pattern]) => pattern.test(folded)).map(([kind]) => kind);
+    if (kinds.length === 1) slots.property_kind = kinds[0];
+    const bedrooms = BEDROOMS.exec(folded);
+    if (bedrooms) {
+        const value = /^\d+$/.test(bedrooms[1]) ? Number(bedrooms[1]) : COUNT_WORDS[bedrooms[1]];
+        if (Number.isInteger(value) && value >= 1 && value <= 20) slots.bedrooms = value;
     }
     return slots;
 }

@@ -25,7 +25,7 @@ describe('required reads: pilot and gate', () => {
     it('the PR5 pilots are restaurants and store, by the profile industry', () => {
         expect(requiredReadsPilotForProfile('restaurantes/casual_dining')).toBe('restaurants');
         expect(requiredReadsPilotForProfile('retail/electronica')).toBe('catalog');
-        for (const other of ['salud/odontologia', 'inmobiliaria/venta', 'otro/generico', null, undefined, '']) {
+        for (const other of ['salud/odontologia', 'otro/generico', null, undefined, '']) {
             expect(requiredReadsPilotForProfile(other as any)).toBeNull();
         }
         expect(Object.keys(REQUIRED_READS_PILOT_OPERATIONS).sort())
@@ -39,7 +39,9 @@ describe('required reads: pilot and gate', () => {
         expect(requiredReadsGate(verdict('none', 0.99, 'none'), 'catalog')).toEqual({ run: false, reason: 'fallback:none' });
         expect(requiredReadsGate(verdict('track_catalog_order', 0.5, 'low_confidence'), 'catalog')).toEqual({ run: false, reason: 'fallback:low_confidence' });
         expect(requiredReadsGate(verdict('track_catalog_order', REQUIRED_READS_CONFIDENCE_THRESHOLD - 0.01), 'catalog')).toEqual({ run: false, reason: 'below_threshold' });
-        expect(requiredReadsGate(verdict('listing_info', 0.95), 'catalog')).toEqual({ run: false, reason: 'not_pilot_operation' });
+        expect(requiredReadsGate(verdict('service_info', 0.95), 'catalog')).toEqual({ run: false, reason: 'not_pilot_operation' });
+        // Real estate has its own pilot (`listings`, required-reads.listings.spec.ts).
+        expect(requiredReadsGate(verdict('listing_info', 0.95), 'catalog')).toEqual({ run: false, reason: 'pilot_mismatch' });
         expect(requiredReadsGate(verdict('menu_info', 0.95), 'catalog')).toEqual({ run: false, reason: 'pilot_mismatch' });
         const gate = requiredReadsGate(verdict('track_catalog_order', REQUIRED_READS_CONFIDENCE_THRESHOLD), 'catalog');
         expect(gate.run && gate.operation.key).toBe('track_catalog_order');

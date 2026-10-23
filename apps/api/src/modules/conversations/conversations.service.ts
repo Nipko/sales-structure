@@ -1,12 +1,12 @@
 import { appointmentRecordReadId } from './appointment-record-read';
 import { isCanonicalConsentRecovery, canonicalConsentRecoveryDirective } from './canonical-consent-recovery';
 import { DemoAllowanceService } from '../throttle/demo-allowance.service';
-import { FACTS_LEDGER_FLAG, FeatureFlagsService, OPERATION_CLASSIFIER_FLAG, RENDERED_FACTS_FLAG, REQUIRED_READS_CATALOG_FLAG, REQUIRED_READS_PROPERTIES_FLAG, REQUIRED_READS_RESTAURANTS_FLAG, REQUIRED_READS_TOURS_FLAG, SAFETY_TRIAGE_FLAG, SLOT_WINDOW_FLAG, resolveFeatureFlag } from '../throttle/feature-flags.service';
+import { FACTS_LEDGER_FLAG, FeatureFlagsService, OPERATION_CLASSIFIER_FLAG, RENDERED_FACTS_FLAG, REQUIRED_READS_CATALOG_FLAG, REQUIRED_READS_LISTINGS_FLAG, REQUIRED_READS_PROPERTIES_FLAG, REQUIRED_READS_RESTAURANTS_FLAG, REQUIRED_READS_TOURS_FLAG, SAFETY_TRIAGE_FLAG, SLOT_WINDOW_FLAG, resolveFeatureFlag } from '../throttle/feature-flags.service';
 import { runSafetyTriage, type SafetyTriageTurnOutcome } from './runtime/safety-triage';
 import { buildOperationShadowTrace, OperationClassifierService, type OperationShadowVerdict } from './runtime/operation-classifier.service';
 import { buildRequiredReadsTrace, REQUIRED_READ_TIMEOUT_MS, requiredReadsGate, requiredReadsPilotForProfile, runRequiredReads,
     type RequiredReadResult, type RequiredReadsPilot } from './runtime/required-reads.runner';
-import { requiredReadSlotsIn } from './runtime/required-read-slots';
+import { listingSearchSlotsIn, requiredReadSlotsIn } from './runtime/required-read-slots';
 import { demoAllowanceExhaustedText } from '../widget/widget-demo-link';
 import { recordFirstReply } from '../../common/utils/first-reply.util';
 import { stripInternalMarkers } from '../../common/utils/internal-markers.util';
@@ -208,12 +208,13 @@ import { normalizeCustomerIntent } from '../../common/conversation/intent-normal
 // reachable by ANY plan: every plan's allowedTiers includes tier_4_budget, whose chain
 // entry deepseek-chat has maxContextTokens=64_000. We reserve room for the system prompt
 // + the reply, and cap the history so very long conversations don't blow up cost.
-/** The per-tenant flag of each required-reads pilot (PR5: restaurants, store; PR7: lodging, travel). */
+/** The per-tenant flag of each required-reads pilot (PR5: restaurants, store; PR7: lodging, travel; real estate). */
 const REQUIRED_READS_FLAG_BY_PILOT: Readonly<Record<RequiredReadsPilot, string>> = Object.freeze({
     restaurants: REQUIRED_READS_RESTAURANTS_FLAG,
     catalog: REQUIRED_READS_CATALOG_FLAG,
     properties: REQUIRED_READS_PROPERTIES_FLAG,
     tours: REQUIRED_READS_TOURS_FLAG,
+    listings: REQUIRED_READS_LISTINGS_FLAG,
 });
 
 const MIN_MODEL_CONTEXT_TOKENS = 64_000;
@@ -2842,6 +2843,7 @@ export class ConversationsService {
                 catalog: resolveFeatureFlag((tenant.settings as any)?.featureFlags, REQUIRED_READS_CATALOG_FLAG),
                 properties: resolveFeatureFlag((tenant.settings as any)?.featureFlags, REQUIRED_READS_PROPERTIES_FLAG),
                 tours: resolveFeatureFlag((tenant.settings as any)?.featureFlags, REQUIRED_READS_TOURS_FLAG),
+                listings: resolveFeatureFlag((tenant.settings as any)?.featureFlags, REQUIRED_READS_LISTINGS_FLAG),
             },
         }, tenantId);
     }
@@ -5209,7 +5211,7 @@ export class ConversationsService {
         // el camino de la respuesta.
         //
         // Con `agentRuntime.requiredReads.<piloto>` encendido para la vertical del
-        // tenant (restaurante, tienda; PR7: hotel, viajes), la clasificación corre aunque la sombra
+        // tenant (restaurante, tienda; PR7: hotel, viajes; inmobiliaria), la clasificación corre aunque la sombra
         // esté apagada y SÍ se espera: si la operación es del piloto y la
         // confianza alcanza el umbral, sus lecturas obligatorias corren antes
         // del modelo (ver más abajo). Ningún motor puede ser dueño del turno.
@@ -5242,8 +5244,10 @@ export class ConversationsService {
             const gate = requiredReadsGate(verdict, requiredReadsPilot);
             let run: Awaited<ReturnType<typeof runRequiredReads>> | undefined;
             // PR7: the stay dates, departure date and people the message gives (only the lodging and travel reads take slots).
+            // Real estate: the search filters the message states (sale or rent, property kind, bedrooms).
             const slots = requiredReadsPilot === 'properties' || requiredReadsPilot === 'tours'
-                ? requiredReadSlotsIn(userText, new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(now)) : undefined;
+                ? requiredReadSlotsIn(userText, new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(now))
+                : requiredReadsPilot === 'listings' ? listingSearchSlotsIn(userText) : undefined;
             if (gate.run) {
                 const context: ServiceExecutionContext = {
                     ...executionContext, mode: executionContext?.mode ?? 'live', persistence: 'disabled',

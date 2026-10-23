@@ -26,7 +26,7 @@ export interface EvaluationTurnContextInputs {
     /** `agentRuntime.renderedFacts` as the tenant had it at capture. Optional: older snapshots lack it and read as off. */
     renderedFacts?: boolean;
     /** `agentRuntime.requiredReads.{restaurants,catalog}` as the tenant had them at capture. Optional: older snapshots lack it and read as off. */
-    requiredReads?: { restaurants: boolean; catalog: boolean; properties?: boolean; tours?: boolean };
+    requiredReads?: { restaurants: boolean; catalog: boolean; properties?: boolean; tours?: boolean; listings?: boolean };
 }
 
 const record = (value: unknown): value is Record<string, any> => !!value && typeof value === 'object' && !Array.isArray(value);
@@ -42,8 +42,8 @@ export function resolveEvaluationTurnContext(input: EvaluationTurnContextInputs 
         || (Object.hasOwn(input, 'renderedFacts') && typeof input.renderedFacts !== 'boolean')
         || (Object.hasOwn(input, 'requiredReads') && (!record(input.requiredReads)
             || typeof input.requiredReads.restaurants !== 'boolean' || typeof input.requiredReads.catalog !== 'boolean'
-            // PR7 pilots: optional, a snapshot sealed before them reads as off.
-            || ['properties', 'tours'].some(pilot => Object.hasOwn(input.requiredReads!, pilot)
+            // PR7 and real-estate pilots: optional, a snapshot sealed before them reads as off.
+            || ['properties', 'tours', 'listings'].some(pilot => Object.hasOwn(input.requiredReads!, pilot)
                 && typeof (input.requiredReads as Record<string, unknown>)[pilot] !== 'boolean')))
         || !record(input.regional) || input.regional.tenantId !== tenantId || input.regional.version !== 1
         || !record(input.vertical) || EVALUATION_CONTEXT_LANGUAGES.some(language => !Object.hasOwn(input.vertical, language)

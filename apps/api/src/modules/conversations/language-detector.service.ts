@@ -12,6 +12,12 @@ import { Injectable } from '@nestjs/common';
  *
  * Returns a short language code ('es' | 'en' | 'pt' | 'fr' | fallback).
  */
+/** What the turn knows beyond the message: the catalogue names in play and the customer's recent messages (oldest first). */
+export interface LanguageDetectionContext {
+    names?: readonly string[];
+    recentCustomerMessages?: readonly string[];
+}
+
 @Injectable()
 export class LanguageDetectorService {
     // Curated stop-word sets — high-signal words that are unlikely to appear
@@ -199,6 +205,149 @@ export class LanguageDetectorService {
     }
 
     /**
+     * The words that make a short message SAY something in one language: its verbs and interrogatives («tiene», «hay»,
+     * «cuánto», «consúltalo»; «tem», «você», «quanto»; «coûte», «combien», «je»; «does», «have»). A message built of
+     * nouns, names and courtesy words («Plan Aurora el sabado por favor», «Hotel Aurora con las vistas al mar») has
+     * none, so it is never read as a switch. Words two of the languages share («funciona», «vale», «existe») are not here.
+     */
+    private readonly predicateWords: Record<string, string[]> = {
+        es: ['tiene', 'tienen', 'tienes', 'tengo', 'tenemos', 'hay', 'cuesta', 'cuestan', 'cuanto', 'cuanta', 'cuantos', 'cuantas', 'puedo',
+            'puede', 'puedes', 'pueden', 'quiero', 'quisiera', 'necesito', 'busco', 'debo', 'consultalo', 'consultala', 'consultalos',
+            'consultame', 'revisalo', 'revisala', 'confirmalo', 'confirmala', 'confirmame', 'averigualo', 'dime', 'dame', 'mandame',
+            'enviame', 'hago', 'estoy', 'incluye', 'incluyen', 'sirve', 'llega', 'quedan', 'hacen', 'aceptan', 'donde', 'cual',
+            'cuales', 'cuando', 'quien', 'quienes', 'manejan', 'ofrecen', 'traen'],
+        pt: ['tem', 'voce', 'voces', 'quanto', 'quanta', 'quantos', 'quantas', 'custa', 'custam', 'posso', 'pode', 'podem', 'quero',
+            'preciso', 'gostaria', 'consegue', 'inclui', 'incluem', 'fica', 'ficam', 'estou', 'faz', 'fazem', 'procuro', 'devo', 'qual',
+            'quais', 'aceitam', 'oferecem'],
+        fr: ['coute', 'coutent', 'combien', 'je', 'est', 'sont', 'avez', 'pouvez', 'puis', 'peux', 'veux', 'voudrais', 'faut',
+            'inclut', 'dois', 'doit', 'cherche', 'ai', 'reste', 'proposez', 'acceptez', 'quel', 'quelle', 'quels', 'quelles'],
+        en: ['is', 'are', 'does', 'have', 'has', 'can', 'could', 'would', 'how', 'what', 'cost', 'costs', 'need', 'want', 'include',
+            'includes', 'should', 'where', 'when', 'which', 'offer', 'accept'],
+    };
+
+    /**
+     * Words of one language only that a short question often carries next to a name: months, «cupo», «personas».
+     * They support a predicate word; on their own they decide nothing.
+     */
+    private readonly clearWords: Record<string, string[]> = {
+        es: ['enero', 'febrero', 'marzo', 'mayo', 'junio', 'julio', 'septiembre', 'setiembre', 'octubre', 'noviembre', 'diciembre',
+            'cupo', 'cupos', 'personas', 'precio', 'precios'],
+        pt: ['janeiro', 'fevereiro', 'maio', 'junho', 'julho', 'setembro', 'outubro', 'novembro', 'dezembro', 'vaga', 'vagas',
+            'pessoas', 'preco', 'frete', 'na', 'nas', 'ao'],
+        fr: ['janvier', 'fevrier', 'mars', 'avril', 'mai', 'juin', 'juillet', 'aout', 'septembre', 'octobre', 'novembre', 'decembre',
+            'garantie', 'semaine', 'samedi', 'dimanche', 'personnes', 'prix', 'il', 'ce'],
+        en: ['january', 'february', 'march', 'april', 'june', 'july', 'august', 'september', 'october', 'november', 'december',
+            'warranty', 'week', 'saturday', 'sunday', 'people', 'price', 'the', 'an', 'it', 'there', 'any'],
+    };
+
+    /** Accented words of ONE language, tested on the raw text: «sí» (pt «sim», fr «oui»), «há» (es «hay»), «você», «où». */
+    private readonly clearCharacters: Record<string, RegExp> = {
+        es: /(?<!\p{L})sí(?!\p{L})|[ñ¿¡]|(?<!\p{L})(?:qué|cómo|dónde|cuándo|cuánt[oa]s?|quién(?:es)?|cuál(?:es)?)(?!\p{L})/u,
+        pt: /[ãõ]|(?<!\p{L})(?:há|é|você|vocês)(?!\p{L})/u,
+        fr: /[èùœëîû]|(?<!\p{L})(?:ça|où)(?!\p{L})/u,
+    };
+
+    /**
+     * The message with every name taken out: the catalogue names of the turn, a capitalised word in the middle of a
+     * sentence («el Aurora», «el Tour QA Aurora»), a word in capitals («QA», «PDF») and figures. A name is how the
+     * business wrote it, not the customer's language — but the words AROUND it are.
+     */
+    nameFreeText(text: string, names: readonly string[] = []): string {
+        let out = String(text || '');
+        const known = [...new Set(names.map(name => String(name || '').trim()).filter(name => name.length >= 3))]
+            .sort((a, b) => b.length - a.length);
+        for (const name of known) out = out.replace(new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'giu'), ' ');
+        const words = out.trim().split(/\s+/).filter(Boolean);
+        const kept: string[] = [];
+        for (let i = 0; i < words.length; i++) {
+            const word = words[i].replace(/^[^\p{L}\d]+/u, '');
+            const letters = word.replace(/[^\p{L}]/gu, '');
+            if (/\d/.test(word) && letters.length <= 2) continue;
+            if (letters.length >= 2 && letters === letters.toUpperCase() && letters !== letters.toLowerCase()) continue;
+            const sentenceStart = i === 0 || /[.!?:¡¿]$/.test(words[i - 1]) || /^[¡¿]/.test(words[i]);
+            if (!sentenceStart && /^\p{Lu}/u.test(word) && !/^I(?:['’]|$)/.test(word)) continue;
+            kept.push(words[i]);
+        }
+        return kept.join(' ');
+    }
+
+    /**
+     * The language of the message by its own words once names are taken out, or null when it cannot be told.
+     * It needs a predicate word (a verb or an interrogative, see `predicateWords`), two pieces of evidence or two words,
+     * and not a single sign of any other language. «el Aurora tiene garantía?», «hay cupo en el Tour QA Aurora el 15 de
+     * noviembre para 2?» and «Sí, por favor consúltalo.» are Spanish whatever the stored language (production
+     * 2026-10-22: answered in French and in Portuguese). «Aurora», «ok», «15», «👍», «gracias», «el Want Pack» and
+     * «Plan Aurora el sabado por favor» carry no predicate and decide nothing.
+     */
+    clearLanguageOf(text: string, names: readonly string[] = []): string | null {
+        const free = this.nameFreeText(text, names);
+        const normalized = this.normalize(free);
+        if (!normalized) return null;
+        const words = normalized.split(/\s+/).filter(token => /[a-z]/.test(token));
+        const tokens = new Set(words);
+        for (const t of [...tokens]) if (t.includes("'")) for (const part of t.split("'")) if (part) tokens.add(part);
+        const raw = free.normalize('NFC').toLowerCase();
+        const ranked = Object.keys(this.predicateWords).map(lang => {
+            const vocabulary = new Set([...(this.markers[lang] ?? []), ...(this.sentenceWords[lang] ?? []), ...(this.strongMarkers[lang]?.words ?? []),
+                ...(this.questionWords[lang] ?? []), ...this.predicateWords[lang], ...(this.clearWords[lang] ?? [])]);
+            let hits = 0;
+            let predicates = 0;
+            let verbs = 0;
+            for (const token of tokens) {
+                if (vocabulary.has(token)) hits++;
+                if (this.predicateWords[lang].includes(token)) {
+                    predicates++;
+                    if (!this.interrogatives.has(token)) verbs++;
+                }
+            }
+            if (this.clearCharacters[lang]?.test(raw)) hits++;
+            if (lang === 'pt' && /(?<!\p{L})há(?!\p{L})/u.test(raw)) { predicates++; verbs++; }
+            return { lang, hits, predicates, verbs };
+        }).sort((a, b) => b.hits - a.hits);
+        const [best, second] = ranked;
+        if (best.hits === 0 || second.hits > 0 || best.predicates === 0) return null;
+        if (best.hits >= 2) return best.lang;
+        // ONE word of evidence: it must be a verb («tiene garantía?»), in a message of two words that are not a bare
+        // acknowledgement. A lone interrogative is as often a borrowed word: «ok what», «cual», «how?» decide nothing.
+        const content = words.filter(word => !this.acknowledgements.has(word));
+        return best.verbs > 0 && content.length >= 2 ? best.lang : null;
+    }
+
+    /** Interrogatives of the predicate lists: evidence, but never enough on their own. */
+    private readonly interrogatives = new Set(['cuanto', 'cuanta', 'cuantos', 'cuantas', 'donde', 'cual', 'cuales', 'cuando', 'quien', 'quienes',
+        'quanto', 'quanta', 'quantos', 'quantas', 'qual', 'quais', 'combien', 'quel', 'quelle', 'quels', 'quelles', 'how', 'what', 'where',
+        'when', 'which']);
+
+    /** Acknowledgements that carry no language: «ok», «okay», «vale». */
+    private readonly acknowledgements = new Set(['ok', 'okay', 'oki', 'okey', 'k', 'vale', 'dale', 'listo', 'perfect', 'perfecto', 'perfeito', 'parfait', 'super', 'cool']);
+
+    /**
+     * The language the customer was writing in: the newest of their recent messages whose own words tell it. It
+     * replaces a stored language that lagged behind them (a Spanish message the detector once missed left «fr» stored,
+     * and «Sí, por favor» was answered in French).
+     */
+    private recentCustomerLanguage(messages: readonly string[] | undefined, names: readonly string[]): string | null {
+        for (const message of [...(messages ?? [])].reverse().slice(0, 5)) {
+            const language = this.strongLanguageOf(message) ?? this.clearLanguageOf(message, names);
+            if (language) return language;
+        }
+        return null;
+    }
+
+    /** The language the marker words alone decide, with no stored language to lean on. */
+    private strongLanguageOf(text: string): string | null {
+        const normalized = this.normalize(text || '');
+        if (normalized.length < 3) return null;
+        const tokens = new Set(normalized.split(/\s+/).filter(Boolean));
+        const raw = (text || '').normalize('NFC').toLowerCase();
+        const ranked = Object.entries(this.markers).map(([lang, words]) =>
+            [lang, words.filter(word => tokens.has(word)).length + (this.diacritics[lang]?.test(raw) ? 1 : 0)] as const)
+            .sort((a, b) => b[1] - a[1]);
+        const margin = ranked[0][1] - (ranked[1]?.[1] ?? 0);
+        return (ranked[0][1] >= 2 && margin >= 2) || (ranked[0][1] >= 3 && margin >= 1) ? ranked[0][0] : null;
+    }
+
+    /**
      * Distinctive diacritics, tested on the RAW text (normalize() strips accents).
      * Only characters that belong to ONE of the four languages count:
      * ã/õ are Portuguese only; è/ù/œ/ë/î/û are French only; ñ/¿/¡ are Spanish
@@ -225,8 +374,8 @@ export class LanguageDetectorService {
      * at least 2 and beats second place by at least 2 (3+ hits need only 1).
      * Otherwise we cannot tell — stick with fallback.
      */
-    detect(text: string, fallback: string, previous?: string | null): string {
-        return this.detectDetailed(text, fallback, previous).language;
+    detect(text: string, fallback: string, previous?: string | null, context?: LanguageDetectionContext): string {
+        return this.detectDetailed(text, fallback, previous, context).language;
     }
 
     /**
@@ -239,7 +388,14 @@ export class LanguageDetectorService {
      * previous language a single marker is accepted for this turn only
      * (`persist: false`).
      */
-    detectDetailed(text: string, fallback: string, previous?: string | null): { language: string; persist: boolean } {
+    detectDetailed(text: string, fallback: string, previous?: string | null, context?: LanguageDetectionContext): { language: string; persist: boolean } {
+        const names = context?.names ?? [];
+        // The customer's own recent messages outrank a stored language that lagged behind them.
+        const recent = this.recentCustomerLanguage(context?.recentCustomerMessages, names);
+        if (recent && recent !== (previous ? this.short(previous) : null)) {
+            previous = recent;
+            fallback = recent;
+        }
         const normalized = this.normalize(text);
         if (normalized.length < 3) return { language: this.short(fallback), persist: true };
 
@@ -272,6 +428,10 @@ export class LanguageDetectorService {
             return { language: winner, persist: true };
         }
         const prev = previous ? this.short(previous) : null;
+        // Clear words of ONE language around the names of the message («el Aurora tiene garantía?») decide the turn,
+        // whatever language is stored. Only a message that says nothing in any language keeps the stored one.
+        const clear = this.clearLanguageOf(text, names);
+        if (clear) return { language: clear, persist: !!prev };
         const wordCount = normalized.split(/\s+/).filter(Boolean).length;
         const sentenceLanguage = this.fullSentenceLanguage(prev, tokens, raw, wordCount, scores);
         if (sentenceLanguage) return { language: sentenceLanguage, persist: true };

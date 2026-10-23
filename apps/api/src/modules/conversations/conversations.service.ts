@@ -11,7 +11,7 @@ import { demoAllowanceExhaustedText } from '../widget/widget-demo-link';
 import { recordFirstReply } from '../../common/utils/first-reply.util';
 import { stripInternalMarkers } from '../../common/utils/internal-markers.util';
 import { projectAvailableServices } from '../appointments/service-price-status';
-import { catalogNamesOfTurn, languageMismatch, rewriteRejection, type RewriteRejectionReason, verbatimTermsOf } from './reply-language';
+import { catalogNamesOfTurn, languageMismatch, replyLanguageOf, rewriteRejection, type RewriteRejectionReason, verbatimTermsOf } from './reply-language';
 import { localeForReply, normalizeReplyAmounts } from './reply-price-format';
 import { foldedSql, foldQueryText } from '../../common/utils/sql-accent-fold.util';
 import { servedAgentAuthority, type ServedAgentAuthority } from '../persona/served-agent-authority';
@@ -3113,8 +3113,12 @@ export class ConversationsService {
         // A single weak marker never overrides an established language and a
         // change decided on weak evidence is not persisted (detectDetailed).
         const fallbackLanguage = previousLanguage || configuredLanguage;
-        const detectedLanguage = this.languageDetector.detect(userText, fallbackLanguage, previousLanguage);
-        const detail = this.languageDetector.detectDetailed?.(userText, fallbackLanguage, previousLanguage);
+        // The customer's own recent messages (when the turn already holds them) outrank a stored language that lagged.
+        const languageContext = {
+            recentCustomerMessages: (session?.history ?? []).filter(row => row?.role === 'user').slice(-5).map(row => String(row.content ?? '')),
+        };
+        const detectedLanguage = this.languageDetector.detect(userText, fallbackLanguage, previousLanguage, languageContext);
+        const detail = this.languageDetector.detectDetailed?.(userText, fallbackLanguage, previousLanguage, languageContext);
         const detection = { language: detectedLanguage, persist: detail && detail.language === detectedLanguage ? detail.persist : true };
         const userLanguage = detectedLanguage;
         (msg as any).detectedLang = detectedLanguage; // expose this turn's language to auto-progress
@@ -7207,11 +7211,14 @@ export class ConversationsService {
         // turn was voiced in Spanish (production 2026-10-22) and the directive exemption let it through unchecked.
         const engineReply = String((trustedContext as any)?.engineReplyText ?? '').trim();
         if (!base || isSystemFixedText(response) || (engineReply && response.trim() === engineReply)) return response;
-        if (response.trim().split(/\s+/).length < 8) return response;
+        const replyWords = response.trim().split(/\s+/).length;
+        if (replyWords < 4) return response;
         // Names of the business's own catalog (products, services) are not the reply's language and must survive a rewrite.
         const names = catalogNamesOfTurn(trustedContext, executedTools);
-        // Only clear evidence of ANOTHER language (function words, see reply-language.ts) triggers the rewrite.
-        const written = languageMismatch(response, code, names);
+        // Only clear evidence of ANOTHER language (function words, see reply-language.ts) triggers the rewrite. A short
+        // reply («Je vérifie la garantie pour vous.», production 2026-10-22) is judged by the strict bar alone.
+        const strict = replyWords < 8 ? replyLanguageOf(response, names) : null;
+        const written = replyWords < 8 ? (strict && strict !== code ? strict : null) : languageMismatch(response, code, names);
         if (!written) return response;
         this.recordAgentSignal(tenantId, 'reply_language_mismatch', session);
         this.logger.warn(`[Guardrail] Reply is not in the turn language (${code}) — rewrite: "${response.slice(0, 80)}"`);

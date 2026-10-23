@@ -800,8 +800,30 @@ export function offersHumanHandoff(reply: unknown): boolean {
     return normalize(reply)
         .split(/(?<=[.!?])\s+|\n+/)
         .some(sentence => HANDOFF_PROMISE.test(sentence) || OFFER_QUESTION.test(sentence)
-            || (sentence.includes('?') && OFFER_TRANSFER.test(sentence) && !HANDS_OVER_AN_OBJECT.test(sentence)));
+            || (sentence.includes('?') && OFFER_TRANSFER.test(sentence) && !HANDS_OVER_AN_OBJECT.test(sentence))
+            || (FOLLOW_UP_OFFER.test(sentence) && !FOLLOW_UP_OF_A_TRANSACTION.test(sentence)));
 }
+
+/**
+ * The offer of a person worded as a FOLLOW-UP by the team (F4300-25, production QA 23-oct): to note the question for the
+ * team, to remind or tell the customer once the team confirms, to pass the question on («¿Quiere que le recuerde cuando
+ * el equipo confirme esa información?», «puedo anotar su consulta para que el equipo confirme…», «want me to let you know
+ * once the team confirms?», «posso anotar sua pergunta para a equipe…», «voulez-vous que je note votre question pour
+ * l'équipe ?»). Read as a family: an offer lead, a follow-up verb by root, then the person or team who answers. A lead
+ * that is negated («no puedo avisar al equipo») offers nothing.
+ */
+const FOLLOW_UP_LEAD = String.raw`(?<!\b(?:no|not|nao|ne|n) )\b(?:quiere|quieres|desea|deseas|gustaria|prefiere|prefieres|puedo|podemos|le parece`
+    + String.raw`|would you|do you want|want me to|shall i|should i|can i|may i|i can|i could|we can`
+    + String.raw`|voulez|souhaitez|veux-tu|puis-je|je peux|je pourrais|on peut|quer|deseja|posso)\b`;
+const FOLLOW_UP_VERB = String.raw`(?:avis\w*|recuerd\w*|recordar\w*|notifi\w*|anot\w*|apunt\w*|registr\w*|tom(?:e|o|ar|emos) nota|transmit\w*|traslad\w*`
+    + String.raw`|let you know|keep you (?:posted|updated|informed)|remind\w*|inform\w*|note|write (?:it |this |that |your \w+ )?down`
+    + String.raw`|pass (?:it|this|that|your \w+|the \w+) (?:on|along)|forward\w*`
+    + String.raw`|lembr\w*|encaminh\w*|repass\w*|previen\w*|prevenir|rappel\w*|noter|transmet\w*)`;
+const FOLLOW_UP_PARTY = '(?:' + HUMAN_TARGET.slice(1, -1) + "|alguien|someone|somebody|alguem|quelqu'un|staff|personal)";
+const FOLLOW_UP_OFFER = new RegExp(FOLLOW_UP_LEAD + String.raw`[^?.!]{0,40}\b` + FOLLOW_UP_VERB + String.raw`\b[^?.!]{0,80}\b` + FOLLOW_UP_PARTY + String.raw`\b`);
+/** Noting an order, a booking or a purchase for the team is a transaction, not the offer of a person. */
+const FOLLOW_UP_OF_A_TRANSACTION =
+    /\b(?:pedido|orden|order|cita|reserva\w*|appointment|booking|book|agend\w*|turno|encomenda|commande|rendez|compra|purchase|carrito|cart)\b/;
 
 /**
  * What a question has to name to be an offer of a PERSON. Deliberately not the

@@ -1498,8 +1498,8 @@ export class ConversationsService {
             }).catch(() => {});
             const handoffResult = await this.handoffService.executeHandoff(tenantId, conversation.id, normalizedMsg, handoffReason);
             const agentName = handoffResult.assignedTo ? (handoffResult as any).assignedAgentName : null;
-            // Handoff runs before userLanguage is computed — derive it from this message.
-            const handoffLanguage = this.languageDetector.detect(content?.text || '', config.language || 'es');
+            // Handoff runs before userLanguage is computed: this message's language, read against the conversation's.
+            const handoffLanguage = await this.turnStartLanguage(schemaName, conversation, config, content?.text, inboundMessageId);
             const hl = handoffText(handoffLanguage);
             let handoffMsg: string;
             if (agentName) {
@@ -1598,7 +1598,7 @@ export class ConversationsService {
         // A waiting text that was only "sí" cannot be read as consent to what was
         // proposed before the handoff: ask again instead of running the pending step.
         const consentReply = replayTurn && !recoveredEnvelope && !resumedReply && isBareConsent(content?.text)
-            ? staleConsentReply(this.languageDetector.detect(content?.text || '', config.language || 'es'),
+            ? staleConsentReply(await this.turnStartLanguage(schemaName, conversation, config, content?.text, inboundMessageId),
                 (normalizedMsg as any).handoffReturn?.noteLeft === true)
             : null;
         let response = recoveredEnvelope ? recoveredEnvelope.text
@@ -1626,7 +1626,7 @@ export class ConversationsService {
         // it neither promises a transfer nor offers a person (a «sí» would start another wait).
         if (replayTurn && typeof response === 'string' && response && !recoveredEnvelope && !resumedReply
             && !isSystemFixedText(response) && !isErrorFallback(response)) {
-            const replayLanguage = this.languageDetector.detect(content?.text || '', config.language || 'es');
+            const replayLanguage = await this.turnStartLanguage(schemaName, conversation, config, content?.text, inboundMessageId);
             const noteLeft = (normalizedMsg as any).handoffReturn?.noteLeft === true;
             response = withRequestLeftNote(sanitizeReplayReply(response, replayLanguage, noteLeft), replayLanguage, noteLeft);
         }
@@ -8778,6 +8778,26 @@ export class ConversationsService {
      * which wrote «He tomado nota para que alguien del equipo…» while nobody was told. With no mark, the offer must be
      * the last outbound message and recent (the same TTL as the mark).
      */
+    /**
+     * The customer's language for a reply sent BEFORE the turn resolves `userLanguage` (the transfer notice of an accepted
+     * offer, the replay notices). Production QA (23-oct): «Sim, por favor pergunte ao corretor e me avise por aqui» in a
+     * Portuguese conversation got the Spanish transfer notice, because the message was read alone against the tenant
+     * default («por favor», «aqui» are Spanish too). Read it as the turn does: the current message's evidence first, then
+     * the customer's recent messages and the conversation's stored language, the tenant default last.
+     */
+    private async turnStartLanguage(schemaName: string, conversation: any, config: any, text: string | undefined,
+        inboundMessageId?: string): Promise<string> {
+        const previous = (conversation?.metadata as any)?.detectedLanguage || null;
+        const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+            `SELECT content_text FROM messages WHERE conversation_id = $1::uuid AND direction = 'inbound'
+                AND ($2::uuid IS NULL OR id <> $2::uuid) ORDER BY created_at DESC LIMIT 5`,
+            [conversation?.id, inboundMessageId || null],
+        ).catch(() => []);
+        const recentCustomerMessages = (Array.isArray(rows) ? rows : [])
+            .map(row => row?.content_text).filter((t): t is string => typeof t === 'string' && !!t.trim()).reverse();
+        return this.languageDetector.detect(text || '', previous || config?.language || 'es', previous, { recentCustomerMessages });
+    }
+
     private async resolveHumanOfferAcceptance(schemaName: string, conversation: any, text?: string): Promise<boolean> {
         const mark = (conversation?.metadata as any)?.[HUMAN_OFFER_MARK];
         if (mark) {

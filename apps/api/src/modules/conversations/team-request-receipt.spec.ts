@@ -8,7 +8,7 @@ import { PromptAssemblerService } from './prompt-assembler.service';
 import { ResponseValidatorService } from './response-validator.service';
 import { HandoffService } from '../handoff/handoff.service';
 import { rewriteReplayPromise } from './handoff-return-replay-turn';
-import { HUMAN_OFFER_QUESTION, NO_DATA_WAIT_REPLACEMENT, isAffirmationOfHumanOffer, offerInsteadOfPromise, teamRequestClaimAction } from './human-offer';
+import { HUMAN_OFFER_MARK, HUMAN_OFFER_QUESTION, NO_DATA_WAIT_REPLACEMENT, endsWithHumanOffer, isAffirmationOfHumanOffer, isOfferAcceptance, offerInsteadOfPromise, teamRequestClaimAction, withoutQuestions } from './human-offer';
 
 /**
  * Production QA (Telegram, 3 cases): the agent offered «¿Quiere que alguien del equipo le confirme…?», the customer said
@@ -284,5 +284,201 @@ describe('TEAMREQ_E the pipeline wiring', () => {
         const rewrite = branch.slice(branch.indexOf("teamAction === 'rewrite_offer'"), branch.indexOf("teamAction === 'honour'"));
         expect(rewrite).toContain('offerInsteadOfPromise(finalResponse, userLanguage, allowHumanHandoff)');
         expect(rewrite).toContain('this.rememberHumanOffer(schemaName, conversation.id, finalResponse)');
+    });
+});
+
+/**
+ * Production QA after #180 (Telegram, gpt-4.1-mini). The offer of a person was the model's own words, not our fixed
+ * sentence, so no mark was left and the customer's «sí» reached the model:
+ *  - store: the reply «He tomado nota para que alguien del equipo confirme…» was not read as a claim: no handoff, `active`;
+ *  - travel: «Sí, por favor pídanle que lo confirme» (seven words) was not read as an acceptance, so the claim was rewritten
+ *    as the offer AFTER «¿Desea que le ayude con algo más mientras tanto?»: two questions, the offer made again;
+ *  - hotel: worked (a real handoff), and must keep working.
+ */
+const FOLLOWUP = {
+    store: {
+        offer: 'No tengo información específica sobre la garantía del Audífono QA Aurora. ¿Quiere que le pida a alguien del equipo que se lo confirme?',
+        accept: 'Sí, por favor.',
+        reply: 'He tomado nota para que alguien del equipo confirme la garantía del Audífono QA Aurora y le contacte. ¿Desea que le ayude con algo más mientras tanto?',
+    },
+    travel: {
+        offer: 'No tengo confirmado si el Tour QA Aurora incluye el almuerzo. ¿Quiere que le pida a alguien del equipo que lo confirme por usted?',
+        accept: 'Sí, por favor pídanle que lo confirme.',
+        reply: 'He pasado su consulta al equipo para que confirmen si el Tour QA Aurora incluye el almuerzo. ¿Desea que le ayude con algo más mientras tanto?',
+    },
+    hotel: {
+        offer: 'No tengo confirmado el horario del spa. ¿Quiere que le consulte con alguien del equipo para confirmarlo?',
+        accept: 'Sí, por favor.',
+        reply: 'Con gusto, le paso con alguien del equipo para que le confirme el horario del spa.',
+    },
+};
+
+describe('TEAMREQ_G the offer in the model\'s own words, accepted', () => {
+    it.each(Object.entries(FOLLOWUP))('TEAMREQ_G_01 %s: the offer is recognised and the customer\'s words accept it', (_name, row) => {
+        expect(endsWithHumanOffer(row.offer)).toBe(true);
+        expect(isOfferAcceptance(row.accept)).toBe(true);
+        expect(isAffirmationOfHumanOffer(row.accept, row.offer)).toBe(true);
+    });
+
+    it('TEAMREQ_G_02 store: «He tomado nota para que alguien del equipo… le contacte» is a team-request claim', () => {
+        expect(claimsTeamRequest(FOLLOWUP.store.reply)).toBe(true);
+        expect(teamRequestClaimAction({ reply: FOLLOWUP.store.reply, executed: [ensureLead], customerAuthorized: true })).toBe('honour');
+    });
+
+    it.each(Object.entries(FOLLOWUP))('TEAMREQ_G_03 %s: a whole turn opens the real handoff and keeps the reply', async (_name, row) => {
+        const { run, handoff } = liveTurn(row.offer, row.reply);
+        expect(await run(row.accept)).toBe(row.reply);
+        expect(handoff.executeHandoff).toHaveBeenCalledTimes(1);
+        expect(['customer_accepted_human_offer', 'agent_promised_handoff']).toContain(handoff.executeHandoff.mock.calls[0][3]);
+    });
+
+    it.each(['store', 'travel'] as const)('TEAMREQ_G_04 %s: unasked, the claim becomes ONE question, never «¿algo más?» followed by the offer', async name => {
+        const row = FOLLOWUP[name];
+        const { run, handoff } = liveTurn('El hotel abre la recepción las 24 horas.', row.reply);
+        const out = await run('¿Y tienen parqueadero?');
+        expect(handoff.executeHandoff).not.toHaveBeenCalled();
+        expect(out.match(/\?/g)).toHaveLength(1);
+        expect(out).not.toMatch(/algo más/);
+        expect(out === NO_DATA_WAIT_REPLACEMENT.es || out.endsWith(HUMAN_OFFER_QUESTION.es)).toBe(true);
+        // and the pure function, on the production reply
+        const rewritten = offerInsteadOfPromise(row.reply, 'es', true);
+        expect(rewritten.match(/\?/g)).toHaveLength(1);
+        expect(rewritten).toBe(NO_DATA_WAIT_REPLACEMENT.es);
+    });
+
+    it('TEAMREQ_G_05 the information around the claim stays; only its questions go', () => {
+        const reply = 'La habitación doble cuesta 250.000 COP. He tomado nota para que alguien del equipo confirme el desayuno. ¿Desea algo más?';
+        expect(offerInsteadOfPromise(reply, 'es', true)).toBe(`La habitación doble cuesta 250.000 COP.\n\n${HUMAN_OFFER_QUESTION.es}`);
+        expect(withoutQuestions('Tenemos 3 modelos, ¿cuál prefiere?')).toBe('Tenemos 3 modelos.');
+        expect(withoutQuestions('Mientras tanto, ¿desea algo más?')).toBe('');
+        expect(withoutQuestions('Abrimos a las 9.\nAnything else?')).toBe('Abrimos a las 9.');
+    });
+});
+
+describe('TEAMREQ_H the acceptance is decided at turn start from the previous assistant message', () => {
+    const harness = (lastOutbound: string | null, minutesAgo = 1) => {
+        const row: any = { metadata: {} as Record<string, any> };
+        const service: any = Object.create(ConversationsService.prototype);
+        service.logger = { warn: jest.fn() };
+        service.prisma = { executeInTenantSchema: jest.fn(async (_s: string, sql: string, params: any[]) => {
+            if (sql.includes("'{" + HUMAN_OFFER_MARK + "}'")) row.metadata[HUMAN_OFFER_MARK] = JSON.parse(params[1]);
+            else if (sql.includes("- '" + HUMAN_OFFER_MARK + "'")) delete row.metadata[HUMAN_OFFER_MARK];
+            else if (/direction = 'outbound'/.test(sql)) {
+                return lastOutbound === null ? [] : [{ content_text: lastOutbound, created_at: new Date(Date.now() - minutesAgo * 60_000) }];
+            }
+            return [];
+        }) };
+        const conversation = () => ({ id: 'conv', metadata: JSON.parse(JSON.stringify(row.metadata)) });
+        return { service, row, conversation };
+    };
+    const fresh = () => ({ id: 'conv', metadata: {} });
+
+    it.each(Object.entries(FOLLOWUP))('TEAMREQ_H_01 %s: no mark, the offer is the last message, the «sí» escalates before the model runs', async (_name, row) => {
+        const { service, conversation } = harness(row.offer);
+        expect(await service.resolveHumanOfferAcceptance('schema', conversation(), row.accept)).toBe(true);
+    });
+
+    it('TEAMREQ_H_02 the free-text offer also leaves the mark, and the mark path accepts it', async () => {
+        const { service, row, conversation } = harness(FOLLOWUP.travel.offer, 60);
+        expect(await service.rememberHumanOffer('schema', 'conv', FOLLOWUP.travel.offer)).toBe(true);
+        expect(row.metadata[HUMAN_OFFER_MARK]).toBeDefined();
+        // the mark is live, so the age of the message does not matter
+        expect(await service.resolveHumanOfferAcceptance('schema', conversation(), FOLLOWUP.travel.accept)).toBe(true);
+        expect(row.metadata[HUMAN_OFFER_MARK]).toBeUndefined();
+    });
+
+    it('TEAMREQ_H_03 an old offer, another last message, or a message that is not an acceptance does nothing', async () => {
+        expect(await harness(FOLLOWUP.store.offer, 16).service.resolveHumanOfferAcceptance('schema', fresh(), 'sí')).toBe(false);
+        expect(await harness('Recordatorio: su cita es mañana a las 10:00.').service.resolveHumanOfferAcceptance('schema', fresh(), 'sí')).toBe(false);
+        expect(await harness(null).service.resolveHumanOfferAcceptance('schema', fresh(), 'sí')).toBe(false);
+        for (const text of ['sí pero antes dime el precio del corte', 'no gracias', '¿cuánto cuesta?', 'quiero un corte']) {
+            expect(await harness(FOLLOWUP.store.offer).service.resolveHumanOfferAcceptance('schema', fresh(), text)).toBe(false);
+        }
+        // an offer followed by another question: the «sí» answers that one
+        const two = `${FOLLOWUP.store.offer} ¿O prefiere ver otro modelo?`;
+        expect(await harness(two).service.resolveHumanOfferAcceptance('schema', fresh(), 'sí')).toBe(false);
+    });
+
+    it('TEAMREQ_H_04 an expired mark is not rescued by the message history', async () => {
+        const { service, row, conversation } = harness(FOLLOWUP.store.offer, 1);
+        row.metadata[HUMAN_OFFER_MARK] = { at: new Date(Date.now() - 20 * 60_000).toISOString(), expiresAt: new Date(Date.now() - 5 * 60_000).toISOString() };
+        expect(await service.resolveHumanOfferAcceptance('schema', conversation(), 'sí')).toBe(false);
+    });
+});
+
+describe('TEAMREQ_I the offer, the acceptance and the claim in four languages', () => {
+    it.each([
+        '¿Quiere que le pida a alguien del equipo que lo confirme?',
+        '¿Quiere que le consulte con alguien del equipo?',
+        '¿Quiere que le pregunte a alguien del equipo?',
+        '¿Desea que alguien del equipo le confirme el horario?',
+        '¿Quiere que lo consulte con el equipo?',
+        '¿Le conecto con un asesor?',
+        '¿Le pido a una persona del equipo que lo confirme?',
+        'Would you like me to ask someone from the team to confirm it?',
+        'Do you want me to check with the team?',
+        'Shall I ask a colleague to confirm it?',
+        'Quer que eu peça a alguém da equipe para confirmar?',
+        'Posso perguntar para a equipe?',
+        "Voulez-vous que je demande à quelqu'un de l'équipe ?",
+        'Souhaitez-vous que je vérifie avec un collègue ?',
+    ])('TEAMREQ_I_01 an offer of a person: «%s»', text => {
+        expect(endsWithHumanOffer(text)).toBe(true);
+    });
+
+    it.each([
+        '¿Desea agendar con nuestro equipo de estilistas?',
+        '¿Quiere el kit del equipo de fútbol?',
+        '¿Desea agendar con el especialista?',
+        '¿Le agendo el sábado a las 4?',
+        '¿Quiere que le pida a alguien del equipo que lo confirme? ¿O prefiere ver otro modelo?',
+        'Would you like to book with our team of stylists?',
+    ])('TEAMREQ_I_02 not an offer a «sí» would accept: «%s»', text => {
+        expect(endsWithHumanOffer(text)).toBe(false);
+    });
+
+    it.each([
+        'sí', 'Sí, por favor.', 'Sí, por favor pídanle que lo confirme.', 'sí, pídanle', 'dale', 'ok hazlo', 'por favor consúltelo',
+        'sí, que lo confirmen', 'adelante', 'yes, go ahead', 'yes please ask them', 'please do', 'sim, pode pedir', 'sim, por favor',
+        'oui, allez-y', "oui, demandez-leur s'il vous plaît",
+    ])('TEAMREQ_I_03 an acceptance: «%s»', text => {
+        expect(isOfferAcceptance(text)).toBe(true);
+    });
+
+    it.each([
+        'no', 'no gracias', 'sí pero antes dime el precio del corte', 'mejor no', 'ok pero primero el precio', '¿y cuánto cuesta?',
+        'quiero un corte', 'sí, el lunes', 'no, pídanle nada', 'yes but first tell me the price', 'non merci', 'não, obrigado', 'que lo',
+    ])('TEAMREQ_I_04 not an acceptance: «%s»', text => {
+        expect(isOfferAcceptance(text)).toBe(false);
+    });
+
+    it.each([
+        'He tomado nota para que alguien del equipo confirme la garantía del Audífono QA Aurora y le contacte.',
+        'Dejé anotado para que el equipo lo confirme.',
+        'Le contactarán en cuanto tengan la respuesta.',
+        'Alguien del equipo le contactará pronto.',
+        'Se pondrán en contacto con usted hoy mismo.',
+        "I've made a note so someone from the team can confirm it.",
+        'Someone from our team will contact you shortly.',
+        'You will be contacted shortly.',
+        'Tomei nota para que alguém da equipe confirme.',
+        'Você será contatado em breve.',
+        "J'ai pris note pour que quelqu'un de l'équipe vous le confirme.",
+        'Vous serez contacté rapidement.',
+    ])('TEAMREQ_I_05 a team-request claim: «%s»', text => {
+        expect(claimsTeamRequest(text)).toBe(true);
+    });
+
+    it.each([
+        '¿Quiere que tome nota para que alguien del equipo le contacte?',
+        'Si lo desea, tomo nota para que alguien del equipo le contacte.',
+        'No he tomado nota todavía.',
+        'No le contactarán sin su autorización.',
+        'Le avisarán por correo cuando su pedido se envíe.',
+        'Would you like to be contacted by our team?',
+        'If you want, you will be contacted tomorrow.',
+        'Si quiere, le contactarán mañana.',
+    ])('TEAMREQ_I_06 not a claim: «%s»', text => {
+        expect(claimsTeamRequest(text)).toBe(false);
     });
 });

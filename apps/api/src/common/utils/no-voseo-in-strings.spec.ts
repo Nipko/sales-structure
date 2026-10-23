@@ -113,8 +113,14 @@ const ALLOWED: Array<{ file: string; words: string[]; why: string }> = [
     {
         file: 'modules/conversations/language-detector.service.ts',
         words: ['revisalo', 'revisala', 'confirmalo', 'confirmala', 'mandame'],
-        why: 'Words a CUSTOMER types, written without accents, used only to recognise that a short message '
-            + 'is Spanish; the detector never sends them.',
+        why: 'Words a CUSTOMER types that tell the language of their message, accents folded: the tú imperative '
+            + '«revísalo», «confírmalo», «mándame» folds to the same spelling as the voseo one.',
+    },
+    {
+        file: 'modules/conversations/human-offer.ts',
+        words: ['confirmalo'],
+        why: 'Words a CUSTOMER types to accept the offer of a person, accents folded: the tú imperative «confírmalo» '
+            + 'folds to the same spelling as the voseo one.',
     },
 ];
 

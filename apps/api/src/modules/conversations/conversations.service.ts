@@ -152,7 +152,7 @@ import { isAttendanceReassurance, attendanceAckText } from './customer-reassuran
 import { groundPolicyReply } from './policy-grounding';
 import { catalogDomainOf, emptyCatalogText, pastDepartureIn, pastDepartureText, replyAcknowledgesPast, replyAsksCriteria, replySaysEmpty } from './catalog-first';
 import { CATALOG_EMPTY_PROBES, catalogHasNoRows } from './catalog-empty.util';
-import { HUMAN_OFFER_MARK, HUMAN_OFFER_TTL_MS, NO_DATA_WAIT_REPLACEMENT, NO_DATA_NO_OFFER, noDataWaitReplacementText, noDataNoOfferText, containsHumanOffer, isHumanOfferText, isAffirmation, isAffirmationOfHumanOffer, isLiveHumanOffer, withReturnNotice, offerInsteadOfPromise, policyPersonOfferText, withPolicyPersonOffer, teamRequestClaimAction } from './human-offer';
+import { HUMAN_OFFER_MARK, HUMAN_OFFER_TTL_MS, NO_DATA_WAIT_REPLACEMENT, NO_DATA_NO_OFFER, noDataWaitReplacementText, noDataNoOfferText, containsHumanOffer, endsWithHumanOffer, isHumanOfferText, isOfferAcceptance, isAffirmationOfHumanOffer, isLiveHumanOffer, withReturnNotice, offerInsteadOfPromise, policyPersonOfferText, withPolicyPersonOffer, teamRequestClaimAction } from './human-offer';
 import { LanguageDetectorService } from './language-detector.service';
 import { BusinessInfoService } from '../business-info/business-info.service';
 import { PaymentOperationService } from './payment-operation.service';
@@ -8624,9 +8624,12 @@ export class ConversationsService {
         return label ? label === 'policy_howto' : isActionOrientedRefundQuestion(userText);
     }
 
-    /** Leave the short-lived "a person was offered" mark when the reply is our offer. */
+    /**
+     * Leave the short-lived "a person was offered" mark when the reply offers one: our fixed offer, or the model's own
+     * words ending the reply («¿Quiere que le pida a alguien del equipo que lo confirme por usted?», see `endsWithHumanOffer`).
+     */
     private async rememberHumanOffer(schemaName: string, conversationId: string, reply: string): Promise<boolean> {
-        if (!containsHumanOffer(reply)) return false;
+        if (!endsWithHumanOffer(reply)) return false;
         const now = Date.now();
         const mark = { at: new Date(now).toISOString(), expiresAt: new Date(now + HUMAN_OFFER_TTL_MS).toISOString() };
         await this.prisma.executeInTenantSchema(schemaName,
@@ -8637,26 +8640,39 @@ export class ConversationsService {
     }
 
     /**
-     * Judge the inbound message against a pending offer: an affirmation inside the
-     * TTL escalates; anything else just clears the mark. Returns true to escalate.
+     * Judge the inbound message against an offer of a person: an acceptance («sí», «Sí, por favor pídanle que lo
+     * confirme», «ok hazlo») escalates; anything else just clears the mark. Returns true to escalate.
+     *
+     * The offer is read from the PREVIOUS assistant message, not only from the mark: production (Telegram, store and
+     * travel) — the model offered a person in its own words («¿Quiere que le pida a alguien del equipo que se lo
+     * confirme?»), no mark was left because only our fixed sentences left one, and the customer's «sí» reached the model,
+     * which wrote «He tomado nota para que alguien del equipo…» while nobody was told. With no mark, the offer must be
+     * the last outbound message and recent (the same TTL as the mark).
      */
     private async resolveHumanOfferAcceptance(schemaName: string, conversation: any, text?: string): Promise<boolean> {
         const mark = (conversation?.metadata as any)?.[HUMAN_OFFER_MARK];
-        if (!mark) return false;
-        await this.prisma.executeInTenantSchema(schemaName,
-            `UPDATE conversations SET metadata = COALESCE(metadata, '{}'::jsonb) - '${HUMAN_OFFER_MARK}' WHERE id = $1::uuid`,
-            [conversation.id],
-        ).catch(e => this.logger.warn(`[HumanOffer] mark not cleared: ${e?.message}`));
-        delete (conversation.metadata as any)[HUMAN_OFFER_MARK];
-        if (!isLiveHumanOffer(mark) || !isAffirmation(text)) return false;
+        if (mark) {
+            await this.prisma.executeInTenantSchema(schemaName,
+                `UPDATE conversations SET metadata = COALESCE(metadata, '{}'::jsonb) - '${HUMAN_OFFER_MARK}' WHERE id = $1::uuid`,
+                [conversation.id],
+            ).catch(e => this.logger.warn(`[HumanOffer] mark not cleared: ${e?.message}`));
+            delete (conversation.metadata as any)[HUMAN_OFFER_MARK];
+            if (!isLiveHumanOffer(mark)) return false;
+        }
+        if (!isOfferAcceptance(text)) return false;
         // The offer must still be the LAST outbound message: a reminder, template,
         // notice or human message sent after it changes what "yes" answers.
         const last = await this.prisma.executeInTenantSchema<any[]>(schemaName,
-            `SELECT content_text FROM messages WHERE conversation_id = $1::uuid AND direction = 'outbound'
+            `SELECT content_text, created_at FROM messages WHERE conversation_id = $1::uuid AND direction = 'outbound'
               ORDER BY created_at DESC LIMIT 1`,
             [conversation.id],
         ).catch(() => []);
-        return containsHumanOffer(last?.[0]?.content_text);
+        const row = last?.[0];
+        if (!endsWithHumanOffer(row?.content_text)) return false;
+        if (mark) return true;
+        const sentAt = row?.created_at ? new Date(row.created_at).getTime() : NaN;
+        const age = Date.now() - sentAt;
+        return Number.isFinite(sentAt) && age >= 0 && age <= HUMAN_OFFER_TTL_MS;
     }
 
     /** A persisted suggestion is the only output of a draft turn. */

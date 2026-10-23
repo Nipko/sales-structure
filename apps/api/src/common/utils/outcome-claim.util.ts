@@ -705,15 +705,20 @@ const TEAM_REQUEST_CLAIM: ReadonlyArray<{ re: RegExp; objectGuard?: boolean }> =
         + '|ya (?:solicite|pedi|avise|notifique|informe|alerte)'
         + '|estoy (?:solicitando|avisando|notificando|consultando|comunicando))\\s+(?:(?:le|lo|la)\\s+)?' + TEAM_DEST) },
     // es — «he registrado su consulta para que alguien del equipo confirme», «he dejado anotada su solicitud para el equipo»
-    { re: new RegExp('\\b(?:(?:he|hemos)\\s+(?:registrado|anotado|dejado|apuntado|creado|abierto)|ya (?:registre|anote|deje|apunte)'
-        + '|estoy (?:registrando|anotando|dejando))\\b[^.!?;]{0,80}\\b(?:para que|para el|para la|para nuestro|para nuestra|al)\\s+' + TEAM_WORDS + TEAM_TARGET + '\\b') },
+    // es — «he tomado nota para que alguien del equipo confirme… y le contacte», «dejé anotado para que el equipo…» (production, store)
+    { re: new RegExp('\\b(?:(?:he|hemos)\\s+(?:registrado|anotado|dejado|apuntado|creado|abierto|tomado nota)|ya (?:registre|anote|deje|apunte|tome nota)'
+        + '|tome nota|tomamos nota|(?:deje|dejamos) (?:anotad|registrad|apuntad)[oa]s?|(?:deje|dejamos) (?:constancia|nota)'
+        + '|estoy (?:registrando|anotando|dejando|tomando nota))\\b[^.!?;]{0,80}\\b(?:para que|para el|para la|para nuestro|para nuestra|al)\\s+' + TEAM_WORDS + TEAM_TARGET + '\\b') },
     // es — «le estoy transfiriendo (con el equipo)»
     { re: /\b(?:le|lo|la|te|los|las) estoy (?:transfiriendo|pasando|comunicando|conectando|derivando)(?:\s*$|\s+(?:con|a|al)\s+(?:[a-z']+\s+){0,3}(?:asesor|asesora|agente|equipo|persona|especialista|humano|alguien)\b)/ },
     // es/pt/fr — «su consulta fue enviada al equipo», «su solicitud quedó registrada para que el equipo…»
     { re: new RegExp('\\b' + REQUEST_NOUN + '\\b[^.!?;]{0,30}\\b(?:fue|ha sido|quedo|esta|foi|ficou|a ete|est) (?:enviad|registrad|pasad|trasladad|remitid|escalad|derivad|transferid|anotad|encaminhad|repassad)[oa]s?\\b[^.!?;]{0,60}'
         + '(?:' + TEAM_DEST + '|\\bpara que\\s+' + TEAM_WORDS + TEAM_TARGET + '\\b)') },
     // es — the team's announced action: «alguien del equipo le confirmará / le escribirá / le responderá»
-    { re: new RegExp(TEAM_TARGET + '\\b[^.!?;]{0,40}\\b(?:le|te|les) (?:confirmara|respondera|contestara|escribira|llamara|avisara|informara|contactara)\\b') },
+    { re: new RegExp(TEAM_TARGET + '\\b[^.!?;]{0,40}\\b(?:le|te|les) (?:confirmara|respondera|contestara|escribira|llamara|avisara|informara|contactara)n?\\b') },
+    // es — the team, unnamed: «le contactarán», «le llamarán para confirmarlo», «se pondrán en contacto con usted». Not
+    // about an order, a payment or a delivery («le avisarán por correo cuando su pedido se envíe» is information).
+    { re: /\b(?:(?:le|te|les|lo|la|los|las) (?:contactaran|llamaran|escribiran|confirmaran|responderan|avisaran|informaran|contestaran|recontactaran)|se pondran en contacto con (?:usted|ustedes|contigo))\b(?![^.!?;]*\b(?:pedido|pedidos|envio|despacho|pago|factura|correo|email|paquete|compra|banco)\b)/ },
     // es — the callback: «le avisaré en cuanto tenga la respuesta», «le escribo apenas me confirmen», «le mantendré informado»
     { re: /\b(?:le|te|les) (?:avisare|aviso|avisamos|avisaremos|notificare|notificaremos|informare|informaremos|escribire|escribo|escribiremos|confirmare|confirmo|confirmaremos|contactare|contactaremos|respondere|comunicare)\b(?! que\b)[^.!?;]{0,30}\b(?:cuando|en cuanto|apenas|tan pronto|una vez|ni bien)\b[^.!?;]{0,40}\b(?:tenga|tengamos|tengan|sepa|sepamos|reciba|recibamos|me (?:respondan|confirmen|contesten|digan|avisen|informen)|nos (?:respondan|confirmen|contesten|digan|avisen|informen)|respondan|confirmen|contesten|el equipo|respuesta|confirmacion|novedad|novedades|noticias)\b/ },
     { re: /\b(?:le|te|les) (?:mantendre|mantendremos) (?:informad|al tanto|al corriente)|\b(?:le|te|les) (?:avisare|avisaremos|notificare|informare)\s*$/ },
@@ -722,16 +727,18 @@ const TEAM_REQUEST_CLAIM: ReadonlyArray<{ re: RegExp; objectGuard?: boolean }> =
         + "|(?:i(?:'m| am)|we(?:'re| are))\\s+(?:passing|forwarding|sending|escalating|referring|relaying|handing|transferring))\\b[^.!?;]{0,80}" + TEAM_DEST) },
     // en — «I've asked someone from the team to confirm it», «we have notified our staff»
     { re: new RegExp("\\b(?:i(?:'ve| have)|we(?:'ve| have)|i|we)\\s+(?:already\\s+|just\\s+)?(?:asked|requested|notified|informed|alerted|contacted)\\s+(?!you\\b)" + TEAM_WORDS + TEAM_TARGET + '\\b') },
-    { re: new RegExp("\\b(?:i(?:'ve| have)|we(?:'ve| have))\\s+(?:logged|registered|recorded|noted|created|opened)\\b[^.!?;]{0,80}\\bso (?:that )?" + TEAM_WORDS + TEAM_TARGET + '\\b') },
-    { re: new RegExp(TEAM_TARGET + "\\b[^.!?;]{0,40}\\bwill (?:confirm (?:it|this|that|the)|call you|reply to you|respond to you|let you know|be in touch|follow up with you)\\b") },
+    { re: new RegExp("\\b(?:i(?:'ve| have)|we(?:'ve| have))\\s+(?:logged|registered|recorded|noted|created|opened|made a note|taken (?:a )?note|left a note|noted (?:it|this|that) down)\\b[^.!?;]{0,80}\\bso (?:that )?" + TEAM_WORDS + TEAM_TARGET + '\\b') },
+    { re: new RegExp(TEAM_TARGET + "\\b[^.!?;]{0,40}\\bwill (?:confirm (?:it|this|that|the)|call you|reply to you|respond to you|let you know|be in touch|follow up with you|contact you|reach out to you|get back to you)\\b") },
+    { re: /\byou(?:'ll| will) be (?:contacted|called)\b(?![^.!?;]*\b(?:order|payment|delivery|shipping|email|bank)\b)/ },
     // en — the callback: «I'll let you know (as soon as I hear back)», «I'll get back to you»
     { re: /\b(?:i(?:'ll| will)|we(?:'ll| will)) (?:let you know|get back to you|keep you (?:posted|updated|informed)|update you|follow up)(?:\s*$|[^.!?;]{0,6}\b(?:as soon as|once|when|after|the moment)\b)/ },
     // pt — «passei sua solicitação para a equipe», «estou encaminhando para um atendente»
     { objectGuard: true, re: new RegExp('\\b(?:(?:ja\\s+)?(?:passei|encaminhei|enviei|repassei|transferi|escalei|mandei)|estou (?:passando|encaminhando|enviando|repassando|transferindo|escalando))\\b[^.!?;]{0,80}' + TEAM_DEST) },
     // pt — «pedi a alguém da equipe para confirmar», «já avisei a equipe», «acionei um atendente»
     { re: new RegExp('\\b(?:ja\\s+)?(?:solicitei|pedi|avisei|informei|notifiquei|acionei)\\s+(?:(?:a|ao|para|o)\\s+)?' + TEAM_WORDS + TEAM_TARGET + '\\b') },
-    { re: new RegExp('\\b(?:registrei|anotei|deixei (?:registrad|anotad)[oa])\\b[^.!?;]{0,80}\\bpara que\\s+' + TEAM_WORDS + TEAM_TARGET + '\\b') },
-    { re: new RegExp(TEAM_TARGET + '\\b[^.!?;]{0,40}\\b(?:(?:vai|ira) (?:te |lhe )?(?:confirmar|responder|retornar|ligar|avisar|contatar)|entrara em contato|vai entrar em contato|(?:te|lhe) retorna)\\b') },
+    { re: new RegExp('\\b(?:registrei|anotei|tomei nota|deixei (?:registrad|anotad)[oa])\\b[^.!?;]{0,80}\\bpara que\\s+' + TEAM_WORDS + TEAM_TARGET + '\\b') },
+    { re: new RegExp(TEAM_TARGET + '\\b[^.!?;]{0,40}\\b(?:(?:vai|ira|vao|irao) (?:te |lhe )?(?:confirmar|responder|retornar|ligar|avisar|contatar)|entrara em contato|entrarao em contato|vai entrar em contato|vao entrar em contato|(?:te|lhe) retorna)\\b') },
+    { re: /\b(?:voce sera (?:contatad|contactad)[oa]|(?:vao|irao) entrar em contato com (?:voce|o senhor|a senhora)|entrarao em contato com (?:voce|o senhor|a senhora))\b(?![^.!?;]*\b(?:pedido|pagamento|entrega|email|banco)\b)/ },
     // pt — the callback: «vou te avisar assim que tiver a resposta»
     { re: /\b(?:(?:vou|irei) (?:te |lhe )?(?:avisar|informar|notificar|retornar)|(?:te|lhe) (?:aviso|informo|retorno)|avisarei|informarei|retornarei)\b[^.!?;]{0,20}\b(?:assim que|quando|logo que|tao logo)\b[^.!?;]{0,40}\b(?:tiver|tivermos|souber|soubermos|receber|recebermos|responderem|confirmarem|me (?:responderem|confirmarem|avisarem)|resposta|retorno|confirmacao|a equipe|novidades)\b/ },
     // fr — «j'ai transmis votre demande à l'équipe», «je transmets votre question à un conseiller»
@@ -739,7 +746,8 @@ const TEAM_REQUEST_CLAIM: ReadonlyArray<{ re: RegExp; objectGuard?: boolean }> =
         + "|je (?:transmets|fais suivre|suis en train de transmettre))\\b[^.!?;]{0,80}" + TEAM_DEST) },
     // fr — «j'ai demandé à quelqu'un de l'équipe de confirmer»
     { re: new RegExp("\\b(?:j'ai|nous avons)\\s+(?:deja\\s+)?(?:demande|prevenu|averti|informe|notifie|contacte|sollicite)\\s+(?:(?:a|au|aux)\\s+)?" + TEAM_WORDS + TEAM_TARGET + '\\b') },
-    { re: new RegExp("\\b(?:j'ai|nous avons)\\s+(?:enregistre|note|consigne|cree|ouvert)\\b[^.!?;]{0,80}\\bpour qu(?:e\\s+|')" + TEAM_WORDS + TEAM_TARGET + '\\b') },
+    { re: new RegExp("\\b(?:j'ai|nous avons)\\s+(?:enregistre|note|consigne|cree|ouvert|pris note)\\b[^.!?;]{0,80}\\bpour qu(?:e\\s+|')" + TEAM_WORDS + TEAM_TARGET + '\\b') },
+    { re: /\b(?:vous serez (?:contacte|recontacte|rappele)e?s?|on (?:vous|te) (?:contactera|recontactera|rappellera))\b(?![^.!?;]*\b(?:commande|paiement|livraison|email|banque)\b)/ },
     { re: new RegExp(TEAM_TARGET + "\\b[^.!?;]{0,40}\\b(?:vous (?:confirmera|recontactera|contactera|repondra|rappellera|reviendra)|reviendra vers vous)\\b") },
     // fr — the callback: «je vous tiendrai informé», «je reviens vers vous dès que…», «je vous préviendrai dès que…»
     { re: /\bje (?:vous |te )?(?:tiendrai|tiens) (?:au courant|informee?)|\bje (?:reviens|reviendrai) vers (?:vous|toi)\b|\bje vous recontacterai\b|\bje (?:vous |te )?(?:previendrai|informerai|avertirai|notifierai)\b[^.!?;]{0,20}\b(?:des que|une fois que|quand|lorsque)\b/ },
@@ -807,7 +815,17 @@ const OFFER_TARGET =
     + '|alguem da equipe|alguem de nossa equipe|uma pessoa|um atendente|um humano|um consultor'
     + "|quelqu'un de l'equipe|quelqu'un de notre equipe|un conseiller|une personne"
     + '|hablar con (?:un|una) (?:agente|asesor|asesora|persona|humano)|(?:speak|talk) (?:to|with) (?:(?:a|an) (?:human|agent|person|advisor|representative)|someone)'
-    + '|falar com (?:um|uma) (?:atendente|agente|pessoa|humano|consultor)|parler a (?:un|une) (?:conseiller|agent|personne))';
+    + '|falar com (?:um|uma) (?:atendente|agente|pessoa|humano|consultor)|parler a (?:un|une) (?:conseiller|agent|personne)'
+    // The model's own wording of the offer (production, store and travel: «¿Quiere que le pida a alguien del equipo que lo
+    // confirme por usted?»): a colleague, a team member, or the team as the one asked («con el equipo», «al equipo»).
+    + '|alguien del personal|un companero|una companera|un colega|someone (?:on|in) (?:our |the )?team|a colleague|a team member'
+    + '|a member of (?:our|the) team|alguem do time|alguem da nossa equipe|um colega'
+    + "|un collegue|un membre de (?:l'equipe|notre equipe)"
+    // The team as the one ASKED («¿Quiere que lo consulte con el equipo?»), never the team as a place to book with
+    // («¿Desea agendar con nuestro equipo de estilistas?»): an asking verb comes right before it.
+    + '|(?:pida|pidamos|pregunte|preguntemos|consulte|consultemos|confirme|verifique|preguntar|consultar|ask|check with|confirm with'
+    + '|peca|pergunte|perguntar|pedir|verificar|demande|demander|verifie|verifier)'
+    + '\\b[^?.!]{0,30}\\b(?:equipo|team|equipe))';
 
 /** A transfer verb followed by a human destination: "¿Quiere que lo conecte con nuestro equipo?". */
 const OFFER_TRANSFER = new RegExp(
@@ -825,8 +843,11 @@ const HANDS_OVER_AN_OBJECT = new RegExp(
 );
 
 const OFFER_QUESTION = new RegExp(
-    '\\b(?:quiere|quieres|desea|deseas|gustaria|prefiere|prefieres|would you|do you want|voulez|souhaitez|quer|gostaria)\\b[^?]{0,80}\\b'
-    + OFFER_TARGET,
+    '\\b(?:quiere|quieres|desea|deseas|gustaria|prefiere|prefieres|would you|do you want|want me to|shall i|should i|can i|may i'
+    + "|voulez|souhaitez|puis-je|dois-je|quer|gostaria|posso|devo)\\b[^?]{0,80}\\b"
+    + OFFER_TARGET
+    // «¿Le consulto con alguien del equipo?», «¿Le pido a una persona del equipo que lo confirme?»: the offer as a question with no lead verb.
+    + '|\\b(?:le|te|les) (?:pido|pregunto|consulto|conecto|comunico|paso)\\b[^?.!]{0,40}' + OFFER_TARGET + '[^?.!]*\\?',
 );
 
 // ── Verification codes ─────────────────────────────────────────────────────────────────────────────────────────────

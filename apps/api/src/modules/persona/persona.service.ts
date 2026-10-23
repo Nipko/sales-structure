@@ -23,7 +23,13 @@ import { normalizeRequiredFields } from './required-fields.util';
 import { VERTICAL_REGISTRY } from '../verticals/vertical-definitions';
 import { PERSONA_CACHE_CHANNELS, personaChannelCacheKeys } from '../../common/utils/persona-cache.util';
 import { escapeXmlAttribute, escapeXmlText } from '../../common/utils/xml.util';
-import { REAL_ESTATE_PUBLISHED_PRICE_RULE, rewriteLegacyPersonaRule } from './legacy-persona-rules';
+import {
+    DENTAL_ASSESSMENT_RULE,
+    DENTAL_REASON_RULE,
+    DENTAL_ROUTINE_BOOKING_RULE,
+    REAL_ESTATE_PUBLISHED_PRICE_RULE,
+    rewriteLegacyPersonaRule,
+} from './legacy-persona-rules';
 import { businessHoursConfigured, hasScheduleEntries, unknownHoursInstruction } from '../conversations/informational-hours';
 import type { ServiceExecutionContext } from '../../common/types/execution-context';
 import { persistenceDisabled } from '../../common/types/execution-context';
@@ -1672,7 +1678,7 @@ export class PersonaService {
             {
                 id: 'tpl_salud_dental',
                 name: 'Sofía - Recepción Odontológica',
-                description: 'Especializada en odontología: agenda limpiezas, ortodoncia, blanqueamiento. Conoce planes de tratamiento multi-sesión y maneja recall semestral.',
+                description: 'Especializada en odontología: agenda citas y valoraciones de los servicios del catálogo de la clínica. Conoce planes de tratamiento multi-sesión y maneja recall semestral.',
                 icon: 'tooth',
                 is_builtin: true,
                 config_json: {
@@ -1685,10 +1691,12 @@ export class PersonaService {
                     },
                     behavior: {
                         rules: [
-                            'Pregunta el motivo: ¿limpieza de rutina, dolor, tratamiento estético, ortodoncia?',
+                            DENTAL_REASON_RULE,
                             'Si el paciente reporta DOLOR INTENSO, traumatismo o sangrado abundante, ESCALA INMEDIATAMENTE — es urgencia',
-                            'Para limpieza/control rutinario: agenda directamente desde el calendario',
-                            'Para ortodoncia/blanqueamiento/tratamientos: ofrece valoración previa de 30min',
+                            DENTAL_ROUTINE_BOOKING_RULE,
+                            // Nombrar tratamientos concretos aca hacia que el modelo los
+                            // diera por ofrecidos aunque no estuvieran en el catalogo.
+                            DENTAL_ASSESSMENT_RULE,
                             'Si el paciente ya tiene plan de tratamiento activo, USA get_treatment_plan para ver su progreso y list_upcoming_sessions para próximas citas',
                             'NUNCA des diagnósticos ni recomiendes medicamentos',
                             // Sin documento de identidad: el contrato L1 del ensamblador lo

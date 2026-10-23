@@ -56,7 +56,7 @@ export function factKey(fact: Pick<VerifiedFact, 'kind' | 'subject' | 'field'>):
     return `${fact.kind}|${fact.subject.type}|${fact.subject.id}|${fact.field}`;
 }
 
-function wellFormed(fact: any): fact is VerifiedFact {
+export function wellFormed(fact: any): fact is VerifiedFact {
     if (!fact || typeof fact !== 'object' || fact.v !== 1 || !KINDS.has(fact.kind)) return false;
     if (!fact.subject || typeof fact.subject.type !== 'string' || typeof fact.subject.id !== 'string' || !fact.subject.id) return false;
     if (typeof fact.field !== 'string' || !fact.source || typeof fact.source.tool !== 'string') return false;

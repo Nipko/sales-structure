@@ -1,7 +1,7 @@
 import { appointmentRecordReadId } from './appointment-record-read';
 import { isCanonicalConsentRecovery, canonicalConsentRecoveryDirective } from './canonical-consent-recovery';
 import { DemoAllowanceService } from '../throttle/demo-allowance.service';
-import { FACTS_LEDGER_FLAG, FeatureFlagsService, OPERATION_CLASSIFIER_FLAG, REQUIRED_READS_CATALOG_FLAG, REQUIRED_READS_PROPERTIES_FLAG, REQUIRED_READS_RESTAURANTS_FLAG, REQUIRED_READS_TOURS_FLAG, SAFETY_TRIAGE_FLAG, SLOT_WINDOW_FLAG, resolveFeatureFlag } from '../throttle/feature-flags.service';
+import { FACTS_LEDGER_FLAG, FeatureFlagsService, OPERATION_CLASSIFIER_FLAG, RENDERED_FACTS_FLAG, REQUIRED_READS_CATALOG_FLAG, REQUIRED_READS_PROPERTIES_FLAG, REQUIRED_READS_RESTAURANTS_FLAG, REQUIRED_READS_TOURS_FLAG, SAFETY_TRIAGE_FLAG, SLOT_WINDOW_FLAG, resolveFeatureFlag } from '../throttle/feature-flags.service';
 import { runSafetyTriage, type SafetyTriageTurnOutcome } from './runtime/safety-triage';
 import { buildOperationShadowTrace, OperationClassifierService, type OperationShadowVerdict } from './runtime/operation-classifier.service';
 import { buildRequiredReadsTrace, REQUIRED_READ_TIMEOUT_MS, requiredReadsGate, requiredReadsPilotForProfile, runRequiredReads,
@@ -102,6 +102,7 @@ import { isAgentTestSafeToolName } from './agent-test-tool-policy';
 import { buildTrustedPriceCorpus, requiresCanonicalPackagePrice } from './trusted-price-context';
 import { liveVerifiedFacts, mergeVerifiedFacts, verifiedFactViews, type VerifiedFact } from './runtime/facts-ledger';
 import { extractVerifiedFacts } from './runtime/facts-extractors';
+import { factRegistry, factTokensForToolResult, factTokenViews, neutralizeFactTokens, projectedCatalogFacts, renderReplyFacts } from './runtime/fact-renderer';
 import { canonicalPackageCatalogue } from './canonical-package-context';
 import { packageDetailIdForQuestion, requiresPackageDetailLookup } from './package-detail-grounding';
 import { listingDetailIdForQuestion, requiresListingDetailLookup } from './listing-detail-grounding';
@@ -138,7 +139,7 @@ import { addressFormOf, detectTransition, failedTransitionOf, handleIdentityRepl
 import { resolveListChoice } from './list-choice';
 import { createdDoneText, detectOrderIntake, isOrderDetails, mergeOrderNotes, mightBeOrderRequest, orderProposalText, orderStockText, orderChoiceText, replyStillAsksConfirmation, type OrderChoice, type OrderIntake } from './order-intake';
 import { persistConversationRuntimeState } from './conversation-runtime-state';
-import type { ConversationMissionFocusV1, MissionExecutionScopeV1 } from '@parallext/shared';
+import type { ConversationMissionFocusV1, MissionExecutionScopeV1, VerifiedFactView } from '@parallext/shared';
 import { ProcedureEngineService } from './procedure-engine.service';
 import { IntentInterpreterService } from './intent-interpreter.service';
 import { normalizePhoneE164 } from '../../common/utils/phone.util';
@@ -507,6 +508,8 @@ const REPLY_LANGUAGE_RETRY: Record<string, (missing: string[]) => string> = {
 /** What the reply-language guard did this turn, read back by the pipeline into the turn trace. */
 interface ReplyLanguageOutcome { from: string; to: string; attempts: number; accepted: boolean; rejections: RewriteRejectionReason[] }
 const REPLY_LANGUAGE_OUTCOME = new WeakMap<object, ReplyLanguageOutcome>();
+/** Rendered facts (PR6): the live facts a turn's reply was rendered from, for the price check of the output guardrail. */
+const RENDERED_FACTS_TURN = new WeakMap<object, VerifiedFactView[]>();
 
 // Fixed system texts must never be rewritten by the wait-promise guard.
 function isSystemFixedText(text: string): boolean {
@@ -2832,6 +2835,7 @@ export class ConversationsService {
             safetyTriage: resolveFeatureFlag((tenant.settings as any)?.featureFlags, SAFETY_TRIAGE_FLAG),
             operationClassifier: resolveFeatureFlag((tenant.settings as any)?.featureFlags, OPERATION_CLASSIFIER_FLAG),
             factsLedger: resolveFeatureFlag((tenant.settings as any)?.featureFlags, FACTS_LEDGER_FLAG),
+            renderedFacts: resolveFeatureFlag((tenant.settings as any)?.featureFlags, RENDERED_FACTS_FLAG),
             requiredReads: {
                 restaurants: resolveFeatureFlag((tenant.settings as any)?.featureFlags, REQUIRED_READS_RESTAURANTS_FLAG),
                 catalog: resolveFeatureFlag((tenant.settings as any)?.featureFlags, REQUIRED_READS_CATALOG_FLAG),
@@ -5401,6 +5405,13 @@ export class ConversationsService {
         // Assemble with a cache boundary: the contract+persona prefix is stable
         // across turns and can be cached by the provider (90% off on Anthropic;
         // better OpenAI auto-cache hit-rate). Only the <turn> block changes.
+        // Rendered facts (flag agentRuntime.renderedFacts, PR6): the facts the model may cite by token this turn — the live
+        // ledger, the reads that already ran before the model and the catalogue the turn projects. Flag off: no
+        // `factTokens` key, so the prompt is exactly the previous one.
+        const renderedFacts = await this.renderedFactsEnabled(tenantId, session);
+        const turnFactBase: VerifiedFact[] = renderedFacts
+            ? [...ledgerFacts, ...projectedCatalogFacts(turnContext, now), ...extractVerifiedFacts(preExecutedTools, now).facts] : [];
+        if (renderedFacts) turnContext.factTokens = factTokenViews(factRegistry(turnFactBase), now);
         let { systemPrompt, cachePrefixChars } = this.promptAssembler.assembleWithCacheBoundary(config, turnContext, promptHours);
         if (session) { session.trace.systemPrompt = systemPrompt; session.trace.turnContext = turnContext; }
 
@@ -5449,6 +5460,17 @@ export class ConversationsService {
             const voicedWrite = preExecutedTools.some(t => isBusinessWriteTool(t.name));
             const MAX_TOOL_ITERATIONS = 5;
             const currentMessages = [...messages] as any[];
+            // What a tool result looks like to the model. Flag agentRuntime.renderedFacts on: a token-looking text inside
+            // the data is made plain (it can never be cited), and a result of the model's own call carries the tokens of
+            // its facts (`fact_tokens`). Flag off: exactly the previous serialisation.
+            const modelToolContent = (result: any, name?: string, args?: any): string => {
+                const sanitized = sanitizeToolResultForModel(result, userLanguage);
+                if (!renderedFacts) return JSON.stringify(sanitized);
+                const plain = neutralizeFactTokens(JSON.stringify(sanitized));
+                const facts = name ? extractVerifiedFacts([{ name, result, args }], new Date()).facts : [];
+                if (!facts.length || !sanitized || typeof sanitized !== 'object' || Array.isArray(sanitized)) return plain;
+                return JSON.stringify({ ...JSON.parse(plain), fact_tokens: factTokensForToolResult(facts) });
+            };
             // An automatic catalogue read must reach the model through the
             // same sanitized tool-result boundary as a requested tool call.
             if (automaticOwnCustomerContextRead) {
@@ -5456,70 +5478,70 @@ export class ConversationsService {
                 currentMessages.push({ role: 'assistant', content: '', toolCalls: [{ id, type: 'function',
                     function: { name: 'get_customer_context', arguments: '{}' } }] });
                 currentMessages.push({ role: 'tool', toolCallId: id,
-                    content: JSON.stringify(sanitizeToolResultForModel(automaticOwnCustomerContextRead.result, userLanguage)) });
+                    content: modelToolContent(automaticOwnCustomerContextRead.result) });
             }
             if (automaticServiceLocationRead) {
                 const id = 'auto_service_location';
                 currentMessages.push({ role: 'assistant', content: '', toolCalls: [{ id, type: 'function',
                     function: { name: 'list_services', arguments: '{}' } }] });
                 currentMessages.push({ role: 'tool', toolCallId: id,
-                    content: JSON.stringify(sanitizeToolResultForModel(automaticServiceLocationRead.result, userLanguage)) });
+                    content: modelToolContent(automaticServiceLocationRead.result) });
             }
             if (automaticMenuDescriptionRead) {
                 const id = 'auto_menu_description';
                 currentMessages.push({ role: 'assistant', content: '', toolCalls: [{ id, type: 'function',
                     function: { name: 'get_menu', arguments: '{}' } }] });
                 currentMessages.push({ role: 'tool', toolCallId: id,
-                    content: JSON.stringify(sanitizeToolResultForModel(automaticMenuDescriptionRead.result, userLanguage)) });
+                    content: modelToolContent(automaticMenuDescriptionRead.result) });
             }
             if (automaticOwnTourBookingsRead) {
                 const id = 'auto_own_tour_bookings';
                 currentMessages.push({ role: 'assistant', content: '', toolCalls: [{ id, type: 'function',
                     function: { name: 'list_my_tour_bookings', arguments: '{}' } }] });
                 currentMessages.push({ role: 'tool', toolCallId: id,
-                    content: JSON.stringify(sanitizeToolResultForModel(automaticOwnTourBookingsRead.result, userLanguage)) });
+                    content: modelToolContent(automaticOwnTourBookingsRead.result) });
             }
             if (automaticAppointmentRead) {
                 const id = 'auto_appointment_details';
                 currentMessages.push({ role: 'assistant', content: '', toolCalls: [{ id, type: 'function',
                     function: { name: 'get_appointment_details', arguments: JSON.stringify({ appointmentId: automaticAppointmentRead.appointmentId }) } }] });
                 currentMessages.push({ role: 'tool', toolCallId: id,
-                    content: JSON.stringify(sanitizeToolResultForModel(automaticAppointmentRead.result, userLanguage)) });
+                    content: modelToolContent(automaticAppointmentRead.result) });
             }
             if (automaticPackageDetailRead) {
                 const id = 'auto_package_details';
                 currentMessages.push({ role: 'assistant', content: '', toolCalls: [{ id, type: 'function',
                     function: { name: 'get_package_details', arguments: JSON.stringify({ packageId: automaticPackageDetailRead.packageId }) } }] });
                 currentMessages.push({ role: 'tool', toolCallId: id,
-                    content: JSON.stringify(sanitizeToolResultForModel(automaticPackageDetailRead.result, userLanguage)) });
+                    content: modelToolContent(automaticPackageDetailRead.result) });
             }
             if (automaticListingDetailRead) {
                 const id = 'auto_listing_details';
                 currentMessages.push({ role: 'assistant', content: '', toolCalls: [{ id, type: 'function',
                     function: { name: 'get_listing_details', arguments: JSON.stringify({ listingId: automaticListingDetailRead.listingId }) } }] });
                 currentMessages.push({ role: 'tool', toolCallId: id,
-                    content: JSON.stringify(sanitizeToolResultForModel(automaticListingDetailRead.result, userLanguage)) });
+                    content: modelToolContent(automaticListingDetailRead.result) });
             }
             for (const [index, read] of automaticPropertyDetailReads.entries()) {
                 const id = `auto_property_details_${index}`;
                 currentMessages.push({ role: 'assistant', content: '', toolCalls: [{ id, type: 'function',
                     function: { name: read.name, arguments: JSON.stringify(read.args) } }] });
                 currentMessages.push({ role: 'tool', toolCallId: id,
-                    content: JSON.stringify(sanitizeToolResultForModel(read.result, userLanguage)) });
+                    content: modelToolContent(read.result) });
             }
             for (const [index, read] of automaticProductStockReads.entries()) {
                 const id = `auto_product_stock_${index}`;
                 currentMessages.push({ role: 'assistant', content: '', toolCalls: [{ id, type: 'function',
                     function: { name: read.name, arguments: JSON.stringify(read.args) } }] });
                 currentMessages.push({ role: 'tool', toolCallId: id,
-                    content: JSON.stringify(sanitizeToolResultForModel(read.result, userLanguage)) });
+                    content: modelToolContent(read.result) });
             }
             for (const [index, read] of requiredReadResults.entries()) {
                 const id = `required_read_${index}`;
                 currentMessages.push({ role: 'assistant', content: '', toolCalls: [{ id, type: 'function',
                     function: { name: read.name, arguments: JSON.stringify(read.args) } }] });
                 currentMessages.push({ role: 'tool', toolCallId: id,
-                    content: JSON.stringify(sanitizeToolResultForModel(read.result, userLanguage)) });
+                    content: modelToolContent(read.result) });
             }
             // The router invokes this authority separately for every provider
             // attempt. Keep earlier examples too: generated tool-loop prose may
@@ -5890,9 +5912,9 @@ export class ConversationsService {
                             // los handlers devuelven `{ error: e.message }` con el
                             // texto crudo de la excepcion y el modelo se lo
                             // parafraseaba al cliente.
-                            content: JSON.stringify(
-                                sanitizeToolResultForModel(res ?? { error: 'tool_failed' }, userLanguage),
-                            ),
+                            content: modelToolContent(res ?? { error: 'tool_failed' }, tc.function.name, (() => {
+                                try { return JSON.parse(tc.function.arguments || '{}'); } catch { return {}; }
+                            })()),
                         });
                     });
 
@@ -5998,6 +6020,37 @@ export class ConversationsService {
                         this.recordAgentSignal(tenantId, 'created_record_reply_replaced', session);
                         deterministicReply = text;
                     }
+                }
+            }
+            // Rendered facts (flag agentRuntime.renderedFacts, PR6). The model wrote tokens for the verified facts; the
+            // server puts the values in, in the customer's language and the data's currency. A sentence citing an unknown
+            // or expired fact, an example price or a token copied from customer text / tool data, and a sentence in which
+            // the model typed an amount, a count, an amenity no record lists or denied a confirmed price, is replaced by a
+            // template. The fallback rate per tenant is the signal pair rendered_facts_turn / rendered_facts_fallback.
+            if (renderedFacts && !deterministicReply && finalResponse && !isPipelineFallbackReply(finalResponse)
+                && !(engineTextIsReply && engineProducedText && finalResponse.trim() === engineProducedText.trim())) {
+                const renderNow = new Date();
+                const turnTools = [...executedToolsThisTurn, ...engineExecutedTools];
+                const turnFacts = [...turnFactBase, ...extractVerifiedFacts(turnTools, renderNow).facts];
+                const stored = factsLedger ? (session ? session.metadata : (conversation.metadata as any))?.verifiedFacts : undefined;
+                const rendering = renderReplyFacts({
+                    reply: finalResponse,
+                    facts: [...(Array.isArray(stored) ? stored : []), ...turnFacts],
+                    now: renderNow, language: userLanguage, locale: localeForReply(userLanguage, turnContext.regional?.locale),
+                    customerText: userText || '',
+                    untrusted: [userText || '', ...turnTools.map(tool => { try { return JSON.stringify(tool.result ?? null); } catch { return ''; } })],
+                    serverText: [turnContext.directive, engineProducedText].filter(Boolean).join('\n'),
+                });
+                if (rendering.text) finalResponse = rendering.text;
+                RENDERED_FACTS_TURN.set(turnContext, verifiedFactViews(liveVerifiedFacts(turnFacts, renderNow).filter(fact => fact.kind === 'money'), renderNow));
+                const reasons = [...new Set(rendering.fallbacks.map(fallback => fallback.reason))];
+                turnTrace.add('guardrail', 'rendered_facts', {
+                    tokens: rendering.tokens, rendered: rendering.rendered, fallbacks: rendering.fallbacks.length, reasons,
+                });
+                this.recordAgentSignal(tenantId, 'rendered_facts_turn', session);
+                if (rendering.fallbacks.length) {
+                    this.recordAgentSignal(tenantId, 'rendered_facts_fallback', session, { reasons });
+                    this.logger.warn(`[RenderedFacts] ${rendering.fallbacks.length} sentence(s) fell back to a template (${reasons.join(', ')}) in ${conversation.id}`);
                 }
             }
             // Output guardrail (#3): catch invented prices before the reply leaves.
@@ -6653,6 +6706,21 @@ export class ConversationsService {
     }
 
     /**
+     * `agentRuntime.renderedFacts` for this tenant (off by default, operations runtime PR6). Agent Test and evaluations
+     * read the value sealed in the snapshot by `captureEvaluationContext` (no per-turn tenant or Redis lookup); a
+     * snapshot captured before the flag existed reads as off. A read failure is "off": the previous prompt and pipeline.
+     */
+    private async renderedFactsEnabled(tenantId: string, session?: AgentTurnSession): Promise<boolean> {
+        try {
+            if (session) return resolveEvaluationTurnContext(session.snapshot.contextInputs, tenantId).renderedFacts === true;
+            return (await this.featureFlags?.isFeatureEnabled(tenantId, RENDERED_FACTS_FLAG)) === true;
+        } catch (error: any) {
+            this.logger.warn(`[RenderedFacts] flag unavailable for ${tenantId}: ${error?.message}`);
+            return false;
+        }
+    }
+
+    /**
      * The verified-facts ledger after this turn (flag agentRuntime.factsLedger): the live facts the turn started with,
      * minus what its successful writes made stale, plus the typed facts of its successful reads. Written as the one
      * `verifiedFacts` key of the conversation metadata (Agent Test: the session's), under the conversation lock that
@@ -7161,6 +7229,9 @@ export class ConversationsService {
     ): Promise<string> {
         const llmRouter = modelRouter || (session ? sessionLlmRouter(this.llmRouter, session) : this.llmRouter);
         if (!response || isErrorFallback(response)) return response;
+        // Rendered facts (flag agentRuntime.renderedFacts, PR6): the figures were rendered by the server, so the claim,
+        // promise-later and price guards below decide without a corrective model retry.
+        const renderedFactsOn = Array.isArray(trustedContext?.factTokens);
 
         // Guardrail 0: the reply is in the customer's language. The turn language is decided by the detector
         // and written into the prompt, yet a long history or knowledge in another language still pulled the
@@ -7221,6 +7292,11 @@ export class ConversationsService {
             this.recordAgentSignal(tenantId, 'claim_unbacked', session);
             this.logger.warn(`[Guardrail] The model claimed a completed action on an engine turn with nothing booked — the engine text is the reply: "${response.slice(0, 100)}"`);
             response = engineText;
+        } else if (claimAudit.falseClaim && renderedFactsOn) {
+            // Rendered facts (PR6): no corrective model round trip — the deterministic text the retry fell back to anyway.
+            this.recordAgentSignal(tenantId, 'claim_unbacked', session);
+            this.logger.warn(`[Guardrail] Response claimed completed action without backing tool execution — deterministic fallback (rendered facts): "${response.slice(0, 100)}"`);
+            response = unverifiedClaimFallbackText(lang);
         } else if (claimAudit.falseClaim) {
             this.recordAgentSignal(tenantId, 'claim_unbacked', session);
             this.logger.warn(`[Guardrail] Response claimed completed action without backing tool execution — corrective retry: "${response.slice(0, 100)}"`);
@@ -7276,7 +7352,12 @@ export class ConversationsService {
         // salvedad los dos arreglos se pisan: uno le pide al modelo que anuncie
         // el envío y el otro lo castiga por anunciarlo.
         const backendWillDeliver = (executedTools || []).some(t => !!(t?.result as any)?.paymentLink);
-        if (outcomeAlreadyKnown && !backendWillDeliver && promisesLaterDelivery(response)) {
+        if (renderedFactsOn && outcomeAlreadyKnown && !backendWillDeliver && promisesLaterDelivery(response)) {
+            // No corrective retry with rendered facts: the signal stays so the owner sees it in the agent's health.
+            this.recordAgentSignal(tenantId, 'deferred_after_execution', session);
+            this.recordAgentSignal(tenantId, 'deferred_after_execution_unfixed', session);
+            this.logger.warn(`[Guardrail] La operacion ya se ejecuto y la respuesta la difiere — sin reintento (rendered facts): "${response.slice(0, 100)}"`);
+        } else if (outcomeAlreadyKnown && !backendWillDeliver && promisesLaterDelivery(response)) {
             this.recordAgentSignal(tenantId, 'deferred_after_execution', session);
             this.logger.warn(`[Guardrail] La operacion ya se ejecuto y la respuesta la difiere — reintento correctivo: "${response.slice(0, 100)}"`);
             try {
@@ -7368,9 +7449,19 @@ export class ConversationsService {
 
         // Flag agentRuntime.factsLedger: an amount a catalogue tool returned in an earlier turn is still authority for
         // the SAME subject (the room A price never validates the same number said for room B).
-        const ledger = trustedContext?.verifiedFacts ? { facts: trustedContext.verifiedFacts, customerText } : undefined;
+        // Rendered facts: the money facts the reply was rendered from are authority for their own subject, like the ledger's.
+        const renderedViews = renderedFactsOn ? RENDERED_FACTS_TURN.get(trustedContext as object) ?? [] : [];
+        const ledger = trustedContext?.verifiedFacts ? { facts: [...trustedContext.verifiedFacts, ...renderedViews], customerText }
+            : renderedViews.length ? { facts: renderedViews, customerText } : undefined;
         const check = ledger ? this.responseValidator.validatePrices(response, corpus, ledger) : this.responseValidator.validatePrices(response, corpus);
         if (check.ok) return response;
+        if (renderedFactsOn) {
+            // No corrective retry: an amount that still is not backed after rendering fails closed on the price.
+            this.logger.warn(`[Guardrail] Response stated price(s) not in context: ${check.hallucinatedPrices.join(', ')} — fail closed (rendered facts)`);
+            if (session) this.recordAgentSignal(tenantId, 'unverified_price', session);
+            else this.eventEmitter.emit('response.guardrail.failed', { tenantId, conversationId, prices: check.hallucinatedPrices });
+            return buildUnverifiedPriceReply(systemPrompt);
+        }
 
         this.logger.warn(`[Guardrail] Response stated price(s) not in context: ${check.hallucinatedPrices.join(', ')} — corrective retry`);
         try {

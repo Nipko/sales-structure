@@ -79,6 +79,8 @@
     "apps/api/src/modules/conversations/conversations.required-reads.spec.ts",
     "apps/api/src/modules/conversations/runtime/required-reads.lodging-travel.spec.ts",
     "apps/api/src/modules/conversations/conversations.required-reads-lodging-travel.spec.ts",
+    "apps/api/src/modules/conversations/runtime/fact-renderer.spec.ts",
+    "apps/api/src/modules/conversations/conversations.rendered-facts.spec.ts",
     "apps/api/src/modules/persona/legacy-persona-rules.spec.ts"
   ],
   "postgres": [

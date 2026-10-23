@@ -635,9 +635,11 @@ export function removeHandoffPromiseSentences(reply: string): string {
         const sentence = parts[i];
         const separator = parts[i + 1] ?? '';
         let kept: string | null = sentence;
-        if (sentence.trim() && promisesHumanHandoff(sentence)) {
+        // A claim that the request was already passed to the team is the same promise in other words.
+        const promises = (text: string) => promisesHumanHandoff(text) || claimsTeamRequest(text);
+        if (sentence.trim() && promises(sentence)) {
             const withData = sentence.split(/(?<=,)\s+|\s+(?:y|and|e|et)\s+/)
-                .filter(clause => !promisesHumanHandoff(clause) && /\d/.test(clause))
+                .filter(clause => !promises(clause) && /\d/.test(clause))
                 .join(', ').replace(/[,;:\s]+$/, '');
             kept = withData ? `${withData}.` : null;
         }
@@ -671,6 +673,113 @@ const CONDITIONAL_OFFER = new RegExp(
         '\\bsi (vous|tu) (voulez|veux|le souhaitez|souhaitez|preferez|prefere|desirez|le desirez)\\b',
     ].join('|'),
 );
+
+/**
+ * «He registrado su consulta para que alguien del equipo confirme…», «He solicitado a alguien del equipo que le confirme el
+ * precio», «Estoy pasando su solicitud al equipo… Le avisaré en cuanto tenga la respuesta». The reply says the customer's
+ * request already reached the team, or that the customer will be called back. In production (Telegram, 3 cases) the customer
+ * had just said «Sí, por favor» to the agent's own offer of a person, the only tool of the turn was `ensure_crm_lead`, and
+ * nothing opened a handoff or left a task: `promisesHumanHandoff` only knows TRANSFER verbs («le paso con…»), so the honour
+ * path never ran, and the action guard is off whenever any business write (the lead) succeeded.
+ *
+ * Narrow like the other claim detectors: a first-person deed (or the team's announced action) with a human destination; a
+ * question, a conditional offer («si quiere, le aviso cuando…») or a negation is not a claim. «Nuestro equipo tiene diez años
+ * de experiencia» or «He enviado la foto del equipo» name the team without saying anything was passed to it.
+ */
+/** Up to four words before the target, elided articles included («de l'équipe», «à l'équipe»). */
+const TEAM_WORDS = "(?:[a-z]+\\s+|[a-z]+'\\s*){0,4}";
+const TEAM_TARGET = '(?:' + HUMAN_TARGET.slice(1, -1) + "|alguien|someone|staff|person|alguem|quelqu'un|collegue|collegues|responsable)";
+const TEAM_DEST = '\\b(?:a|al|ao|aos|au|aux|con|com|para|to|with|avec|vers)\\s+' + TEAM_WORDS + TEAM_TARGET + '\\b';
+/** The thing handed over is a document, an order or a payment, not the customer's request: «He enviado su pedido al equipo de cocina». */
+const HANDED_OVER_AN_OBJECT = /\b(?:pedido|pedidos|orden|order|orders|commande|encomenda|pago|pagamento|payment|paiement|factura|invoice|fatura|facture|enlace|link|lien|comprobante|receipt|recibo|recu|foto|fotos|photo|photos|menu|catalogo|catalog|catalogue|cardapio)\b/;
+const REQUEST_NOUN = '(?:consulta|solicitud|pregunta|caso|peticion|duda|mensaje|requerimiento|solicitacao|pergunta|duvida|demande|question|requete|dossier)';
+
+/** `objectGuard`: the pattern hands something over, so a sentence about an order / a document / a payment is not a team request. */
+const TEAM_REQUEST_CLAIM: ReadonlyArray<{ re: RegExp; objectGuard?: boolean }> = [
+    // es — «he pasado su consulta al equipo», «ya trasladé su solicitud a un asesor», «estoy pasando su solicitud al equipo»
+    { objectGuard: true, re: new RegExp('\\b(?:(?:he|hemos|ya)\\s+(?:pasado|enviado|trasladado|remitido|escalado|derivado|transmitido|transferido|reenviado|elevado)'
+        + '|ya (?:pase|envie|traslade|remiti|escale|derive|transmiti|reenvie)'
+        + '|estoy (?:pasando|enviando|trasladando|remitiendo|escalando|derivando|transmitiendo|transfiriendo|reenviando))\\b[^.!?;]{0,80}' + TEAM_DEST) },
+    // es — «he solicitado a alguien del equipo que…», «ya avisé al equipo», «estoy consultando con el equipo»
+    { re: new RegExp('\\b(?:(?:he|hemos)\\s+(?:solicitado|pedido|avisado|notificado|informado|comunicado|alertado)'
+        + '|ya (?:solicite|pedi|avise|notifique|informe|alerte)'
+        + '|estoy (?:solicitando|avisando|notificando|consultando|comunicando))\\s+(?:(?:le|lo|la)\\s+)?' + TEAM_DEST) },
+    // es — «he registrado su consulta para que alguien del equipo confirme», «he dejado anotada su solicitud para el equipo»
+    { re: new RegExp('\\b(?:(?:he|hemos)\\s+(?:registrado|anotado|dejado|apuntado|creado|abierto)|ya (?:registre|anote|deje|apunte)'
+        + '|estoy (?:registrando|anotando|dejando))\\b[^.!?;]{0,80}\\b(?:para que|para el|para la|para nuestro|para nuestra|al)\\s+' + TEAM_WORDS + TEAM_TARGET + '\\b') },
+    // es — «le estoy transfiriendo (con el equipo)»
+    { re: /\b(?:le|lo|la|te|los|las) estoy (?:transfiriendo|pasando|comunicando|conectando|derivando)(?:\s*$|\s+(?:con|a|al)\s+(?:[a-z']+\s+){0,3}(?:asesor|asesora|agente|equipo|persona|especialista|humano|alguien)\b)/ },
+    // es/pt/fr — «su consulta fue enviada al equipo», «su solicitud quedó registrada para que el equipo…»
+    { re: new RegExp('\\b' + REQUEST_NOUN + '\\b[^.!?;]{0,30}\\b(?:fue|ha sido|quedo|esta|foi|ficou|a ete|est) (?:enviad|registrad|pasad|trasladad|remitid|escalad|derivad|transferid|anotad|encaminhad|repassad)[oa]s?\\b[^.!?;]{0,60}'
+        + '(?:' + TEAM_DEST + '|\\bpara que\\s+' + TEAM_WORDS + TEAM_TARGET + '\\b)') },
+    // es — the team's announced action: «alguien del equipo le confirmará / le escribirá / le responderá»
+    { re: new RegExp(TEAM_TARGET + '\\b[^.!?;]{0,40}\\b(?:le|te|les) (?:confirmara|respondera|contestara|escribira|llamara|avisara|informara|contactara)\\b') },
+    // es — the callback: «le avisaré en cuanto tenga la respuesta», «le escribo apenas me confirmen», «le mantendré informado»
+    { re: /\b(?:le|te|les) (?:avisare|aviso|avisamos|avisaremos|notificare|notificaremos|informare|informaremos|escribire|escribo|escribiremos|confirmare|confirmo|confirmaremos|contactare|contactaremos|respondere|comunicare)\b(?! que\b)[^.!?;]{0,30}\b(?:cuando|en cuanto|apenas|tan pronto|una vez|ni bien)\b[^.!?;]{0,40}\b(?:tenga|tengamos|tengan|sepa|sepamos|reciba|recibamos|me (?:respondan|confirmen|contesten|digan|avisen|informen)|nos (?:respondan|confirmen|contesten|digan|avisen|informen)|respondan|confirmen|contesten|el equipo|respuesta|confirmacion|novedad|novedades|noticias)\b/ },
+    { re: /\b(?:le|te|les) (?:mantendre|mantendremos) (?:informad|al tanto|al corriente)|\b(?:le|te|les) (?:avisare|avisaremos|notificare|informare)\s*$/ },
+    // en — «I've passed your request to the team», «I'm forwarding this to our staff»
+    { objectGuard: true, re: new RegExp("\\b(?:(?:i(?:'ve| have)|we(?:'ve| have)|i|we)\\s+(?:already\\s+|just\\s+)?(?:passed|forwarded|sent|escalated|referred|relayed|submitted|handed|transferred)"
+        + "|(?:i(?:'m| am)|we(?:'re| are))\\s+(?:passing|forwarding|sending|escalating|referring|relaying|handing|transferring))\\b[^.!?;]{0,80}" + TEAM_DEST) },
+    // en — «I've asked someone from the team to confirm it», «we have notified our staff»
+    { re: new RegExp("\\b(?:i(?:'ve| have)|we(?:'ve| have)|i|we)\\s+(?:already\\s+|just\\s+)?(?:asked|requested|notified|informed|alerted|contacted)\\s+(?!you\\b)" + TEAM_WORDS + TEAM_TARGET + '\\b') },
+    { re: new RegExp("\\b(?:i(?:'ve| have)|we(?:'ve| have))\\s+(?:logged|registered|recorded|noted|created|opened)\\b[^.!?;]{0,80}\\bso (?:that )?" + TEAM_WORDS + TEAM_TARGET + '\\b') },
+    { re: new RegExp(TEAM_TARGET + "\\b[^.!?;]{0,40}\\bwill (?:confirm (?:it|this|that|the)|call you|reply to you|respond to you|let you know|be in touch|follow up with you)\\b") },
+    // en — the callback: «I'll let you know (as soon as I hear back)», «I'll get back to you»
+    { re: /\b(?:i(?:'ll| will)|we(?:'ll| will)) (?:let you know|get back to you|keep you (?:posted|updated|informed)|update you|follow up)(?:\s*$|[^.!?;]{0,6}\b(?:as soon as|once|when|after|the moment)\b)/ },
+    // pt — «passei sua solicitação para a equipe», «estou encaminhando para um atendente»
+    { objectGuard: true, re: new RegExp('\\b(?:(?:ja\\s+)?(?:passei|encaminhei|enviei|repassei|transferi|escalei|mandei)|estou (?:passando|encaminhando|enviando|repassando|transferindo|escalando))\\b[^.!?;]{0,80}' + TEAM_DEST) },
+    // pt — «pedi a alguém da equipe para confirmar», «já avisei a equipe», «acionei um atendente»
+    { re: new RegExp('\\b(?:ja\\s+)?(?:solicitei|pedi|avisei|informei|notifiquei|acionei)\\s+(?:(?:a|ao|para|o)\\s+)?' + TEAM_WORDS + TEAM_TARGET + '\\b') },
+    { re: new RegExp('\\b(?:registrei|anotei|deixei (?:registrad|anotad)[oa])\\b[^.!?;]{0,80}\\bpara que\\s+' + TEAM_WORDS + TEAM_TARGET + '\\b') },
+    { re: new RegExp(TEAM_TARGET + '\\b[^.!?;]{0,40}\\b(?:(?:vai|ira) (?:te |lhe )?(?:confirmar|responder|retornar|ligar|avisar|contatar)|entrara em contato|vai entrar em contato|(?:te|lhe) retorna)\\b') },
+    // pt — the callback: «vou te avisar assim que tiver a resposta»
+    { re: /\b(?:(?:vou|irei) (?:te |lhe )?(?:avisar|informar|notificar|retornar)|(?:te|lhe) (?:aviso|informo|retorno)|avisarei|informarei|retornarei)\b[^.!?;]{0,20}\b(?:assim que|quando|logo que|tao logo)\b[^.!?;]{0,40}\b(?:tiver|tivermos|souber|soubermos|receber|recebermos|responderem|confirmarem|me (?:responderem|confirmarem|avisarem)|resposta|retorno|confirmacao|a equipe|novidades)\b/ },
+    // fr — «j'ai transmis votre demande à l'équipe», «je transmets votre question à un conseiller»
+    { objectGuard: true, re: new RegExp("\\b(?:(?:j'ai|nous avons)\\s+(?:deja\\s+)?(?:transmis|transfere|envoye|fait suivre|remonte|signale|communique|passe|relaye)"
+        + "|je (?:transmets|fais suivre|suis en train de transmettre))\\b[^.!?;]{0,80}" + TEAM_DEST) },
+    // fr — «j'ai demandé à quelqu'un de l'équipe de confirmer»
+    { re: new RegExp("\\b(?:j'ai|nous avons)\\s+(?:deja\\s+)?(?:demande|prevenu|averti|informe|notifie|contacte|sollicite)\\s+(?:(?:a|au|aux)\\s+)?" + TEAM_WORDS + TEAM_TARGET + '\\b') },
+    { re: new RegExp("\\b(?:j'ai|nous avons)\\s+(?:enregistre|note|consigne|cree|ouvert)\\b[^.!?;]{0,80}\\bpour qu(?:e\\s+|')" + TEAM_WORDS + TEAM_TARGET + '\\b') },
+    { re: new RegExp(TEAM_TARGET + "\\b[^.!?;]{0,40}\\b(?:vous (?:confirmera|recontactera|contactera|repondra|rappellera|reviendra)|reviendra vers vous)\\b") },
+    // fr — the callback: «je vous tiendrai informé», «je reviens vers vous dès que…», «je vous préviendrai dès que…»
+    { re: /\bje (?:vous |te )?(?:tiendrai|tiens) (?:au courant|informee?)|\bje (?:reviens|reviendrai) vers (?:vous|toi)\b|\bje vous recontacterai\b|\bje (?:vous |te )?(?:previendrai|informerai|avertirai|notifierai)\b[^.!?;]{0,20}\b(?:des que|une fois que|quand|lorsque)\b/ },
+];
+
+/** A team-request / callback claim in one of the four languages (see `TEAM_REQUEST_CLAIM`). */
+export function claimsTeamRequest(reply: unknown): boolean {
+    if (typeof reply !== 'string' || !reply.trim()) return false;
+    return normalize(reply).replace(/[’`]/g, "'")
+        .split(/(?<=[.!?;…])\s+|\n+/)
+        .some(sentence => {
+            if (!sentence.trim() || sentence.includes('?') || sentence.includes('¿') || CONDITIONAL_OFFER.test(sentence)) return false;
+            const clause = sentence.replace(/[.!;…\s]+$/, '');
+            return TEAM_REQUEST_CLAIM.some(({ re, objectGuard }) => {
+                const m = re.exec(clause);
+                if (!m) return false;
+                if (objectGuard && HANDED_OVER_AN_OBJECT.test(m[0])) return false;
+                const before = clause.slice(Math.max(0, m.index - 30), m.index);
+                return !NEGATED_BEFORE.test(before) && !NEGATION_INSIDE.test(m[0]) && !OFFER_LEAD_IN.test(before);
+            });
+        });
+}
+
+/**
+ * The receipt that makes a team-request claim true IN THIS TURN: a follow-up task this turn CREATED (the same typed receipt
+ * the CRM task claim needs: `success`, `created: true`, a task uuid), or a tool result that asked for a person and succeeded
+ * (the pipeline opens that handoff right after the reply). A lead (`ensure_crm_lead`), a note on the contact or a read is
+ * never a request the team will act on.
+ */
+export function teamRequestBacked(executedTools: ReadonlyArray<{ name?: string; result?: any }> | undefined): boolean {
+    return (executedTools || []).some(tool => {
+        const result = tool?.result;
+        if (!result || typeof result !== 'object' || !toolResultSucceeded(result) || result.awaitingPayment === true) return false;
+        if (tool.name === 'create_follow_up_task') {
+            return result.success === true && result.created === true && typeof result.taskId === 'string'
+                && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(result.taskId);
+        }
+        return tool.name !== 'ensure_crm_lead' && result.shouldHandoff === true && result.verified !== false;
+    });
+}
 
 /**
  * Does the text OFFER (or promise) a person from the team, in any mood? Used on

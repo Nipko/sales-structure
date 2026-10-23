@@ -59,7 +59,14 @@ export interface ActiveOperationsContextResult {
     activeObjects?: ActiveObjectsContextV1;
     activeBookings?: TurnContext['activeBookings'];
     recentOrders?: TurnContext['recentOrders'];
+    recordTotals?: TurnContext['recordTotals'];
     failures: ActiveOperationsLoaderFailure[];
+}
+
+/** The real count a loader read with `COUNT(*) OVER() AS total_count` (absent when no row came back or the column is missing). */
+function recordTotal(totals: Map<ActiveObjectContextItemV1['kind'], number> | undefined, kind: ActiveObjectContextItemV1['kind'], rows: any[] | null | undefined): void {
+    const total = Number(rows?.[0]?.total_count);
+    if (totals && rows?.length && Number.isInteger(total) && total >= rows.length) totals.set(kind, total);
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -277,6 +284,7 @@ export class ActiveOperationsContextService {
         if (result.activeObjects) turnContext.activeObjects = result.activeObjects;
         if (result.activeBookings?.length) turnContext.activeBookings = result.activeBookings;
         if (result.recentOrders?.length) turnContext.recentOrders = result.recentOrders;
+        if (result.recordTotals?.length) turnContext.recordTotals = result.recordTotals;
         return result;
     }
 
@@ -287,6 +295,8 @@ export class ActiveOperationsContextService {
         const maxItems = boundedLimit(input.maxItems);
         const timezone = safeTimezone(input.timezone);
         const loaderNames = resolveActiveOperationsLoaders(input.config);
+        /** How many records of a kind the customer really has (the loaders only bring the newest few). */
+        const totals = new Map<ActiveObjectContextItemV1['kind'], number>();
         const loaderPromises = loaderNames.map((loader) => this.runLoader(
             loader,
             input.schemaName,
@@ -294,6 +304,7 @@ export class ActiveOperationsContextService {
             timezone,
             maxItems,
             this.detailsToolFor(loader, input.config),
+            totals,
         ));
         const settled = await Promise.allSettled(loaderPromises);
         const failures: ActiveOperationsLoaderFailure[] = [];
@@ -333,12 +344,30 @@ export class ActiveOperationsContextService {
             asOf: (input.now || new Date()).toISOString(),
             items: boundedItems,
         };
+        const recordTotals = this.deriveRecordTotals(boundedItems, totals);
         return {
             activeObjects,
             activeBookings: this.deriveActiveBookings(boundedItems),
             recentOrders: this.deriveRecentOrders(boundedItems),
+            ...(recordTotals.length ? { recordTotals } : {}),
             failures,
         };
+    }
+
+    /**
+     * A kind whose list in the prompt is PARTIAL (the customer has 6 orders, the 3 newest are listed) carries its real total, so
+     * the model cannot present the listed count as the customer's total. A complete list adds nothing.
+     */
+    private deriveRecordTotals(
+        items: ActiveObjectContextItemV1[],
+        totals: Map<ActiveObjectContextItemV1['kind'], number>,
+    ): NonNullable<TurnContext['recordTotals']> {
+        const out: NonNullable<TurnContext['recordTotals']> = [];
+        for (const [kind, total] of totals) {
+            const shown = items.filter((item) => item.kind === kind).length;
+            if (shown > 0 && total > shown) out.push({ kind, total, shown });
+        }
+        return out;
     }
 
     private runLoader(
@@ -348,6 +377,7 @@ export class ActiveOperationsContextService {
         timezone: string,
         maxItems: number,
         detailsTool: string | undefined,
+        totals?: Map<ActiveObjectContextItemV1['kind'], number>,
     ): Promise<ActiveObjectContextItemV1[]> {
         switch (loader) {
             case 'appointments':
@@ -357,9 +387,9 @@ export class ActiveOperationsContextService {
             case 'tour_bookings':
                 return this.loadTourBookings(schemaName, contactId, timezone, Math.min(5, maxItems), detailsTool);
             case 'orders':
-                return this.loadOrders(schemaName, contactId, Math.min(3, maxItems), detailsTool);
+                return this.loadOrders(schemaName, contactId, Math.min(3, maxItems), detailsTool, totals);
             case 'food_orders':
-                return this.loadFoodOrders(schemaName, contactId, Math.min(3, maxItems), detailsTool);
+                return this.loadFoodOrders(schemaName, contactId, Math.min(3, maxItems), detailsTool, totals);
             case 'memberships':
                 return this.loadMemberships(schemaName, contactId, Math.min(2, maxItems), detailsTool);
             case 'class_bookings':
@@ -852,17 +882,21 @@ export class ActiveOperationsContextService {
         contactId: string,
         limit: number,
         detailsTool: string | undefined,
+        totals?: Map<ActiveObjectContextItemV1['kind'], number>,
     ): Promise<ActiveObjectContextItemV1[]> {
+        // COUNT(*) OVER() is taken before the LIMIT: the customer's real number of orders, in the same query.
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `SELECT id, status, total_amount, currency,
                     to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS starts_at_iso,
-                    to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS updated_at_iso
+                    to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS updated_at_iso,
+                    COUNT(*) OVER()::int AS total_count
              FROM orders
              WHERE contact_id = $1::uuid
              ORDER BY created_at DESC LIMIT ${limit}`,
             [contactId],
         );
+        recordTotal(totals, 'order', rows);
         return (rows || []).map((row: any) => ({
             kind: 'order',
             id: String(row.id),
@@ -882,18 +916,21 @@ export class ActiveOperationsContextService {
         contactId: string,
         limit: number,
         detailsTool: string | undefined,
+        totals?: Map<ActiveObjectContextItemV1['kind'], number>,
     ): Promise<ActiveObjectContextItemV1[]> {
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `SELECT id, status, total, currency,
                     to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS starts_at_iso,
                     to_char(estimated_delivery_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS ends_at_iso,
-                    to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS updated_at_iso
+                    to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS updated_at_iso,
+                    COUNT(*) OVER()::int AS total_count
              FROM food_orders
              WHERE contact_id = $1::uuid
              ORDER BY created_at DESC LIMIT ${limit}`,
             [contactId],
         );
+        recordTotal(totals, 'food_order', rows);
         return (rows || []).map((row: any) => ({
             kind: 'food_order',
             id: String(row.id),

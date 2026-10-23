@@ -1115,6 +1115,15 @@ export interface TurnContext {
         currency?: string;
         date?: string;
     }>;
+    /**
+     * The customer's REAL number of records of a kind whose list in this context is partial (6 orders, the 3 newest listed):
+     * without it a model reading the list says «usted tiene 3 pedidos». Only present when total > shown.
+     */
+    recordTotals?: Array<{
+        kind: ActiveObjectKind;
+        total: number;
+        shown: number;
+    }>;
     /** Directive from booking engine — tells the LLM WHAT to communicate, not HOW */
     directive?: string;
     /** Long-term memory about this customer (cross-conversation): durable facts +

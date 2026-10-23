@@ -109,6 +109,7 @@ import { foldedSql, foldQueryText } from '../../common/utils/sql-accent-fold.uti
 import { foldForSearch, likePatternForTerm, productSearchTerms } from '../../common/utils/product-search-terms';
 import { markCatalogEmpty } from './catalog-empty.util';
 import { catalogPriceStatus } from './catalog-price-status';
+import { listTotal } from './list-total';
 import {
     ClosestListing, closestMatchesNote, describeListingVerdict, givenListingCriteria, LOCATION_LISTING_CRITERIA,
     ListingSearchCriteria, selectClosestListings,
@@ -2027,7 +2028,8 @@ export class AIToolExecutorService {
             }
             params.push(limit);
             const rows: any[] = await this.prisma.$queryRawUnsafe(
-                `SELECT id, status, total_amount, currency, payment_status, items, created_at
+                `SELECT id, status, total_amount, currency, payment_status, items, created_at,
+                        COUNT(*) OVER()::int AS total_count
                  FROM "${schema}".orders
                  WHERE ${conds.join(' AND ')}
                  ORDER BY created_at DESC
@@ -2045,6 +2047,8 @@ export class AIToolExecutorService {
                     items: Array.isArray(o.items) ? o.items : [],
                     createdAt: o.created_at,
                 })),
+                // The customer's real number of orders: the list is only the newest `limit`.
+                ...listTotal(rows),
             });
         } catch (e: any) {
             // `{orders: []}` after an exception had neither `error` nor
@@ -4021,7 +4025,8 @@ export class AIToolExecutorService {
         const rows: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT a.id, a.service_id, a.assigned_to, a.service_name, a.status, a.customer_name, a.payment_status, a.amount_due, a.hold_expires_at, a.metadata,
                     ${appointmentPriceSql('a', 's')} AS price, ${appointmentCurrencySql('a', 's')} AS currency,
-                    to_char(a.start_at, 'YYYY-MM-DD') AS local_date, to_char(a.start_at, 'HH24:MI') AS local_time
+                    to_char(a.start_at, 'YYYY-MM-DD') AS local_date, to_char(a.start_at, 'HH24:MI') AS local_time,
+                    COUNT(*) OVER()::int AS total_count
              FROM "${schema}".appointments a LEFT JOIN "${schema}".services s ON s.id = a.service_id
              WHERE a.contact_id = $1::uuid AND a.status NOT IN ('cancelled')
                AND a.start_at >= date_trunc('day', NOW() AT TIME ZONE $2::text)
@@ -4048,6 +4053,7 @@ export class AIToolExecutorService {
                 payableReference: r.status === 'pending_payment' && new Date(r.hold_expires_at).getTime() > Date.now()
                     ? this.payableReference('appointment', r.id, r.payment_status, r.status) : null,
             })),
+            ...listTotal(rows),
         };
     }
 
@@ -7165,7 +7171,8 @@ export class AIToolExecutorService {
         try {
             const rows: any[] = await this.prisma.$queryRawUnsafe(
                 `SELECT fo.id, fo.status, fo.payment_status, fo.order_type, fo.total, fo.currency, fo.created_at,
-                        (SELECT COUNT(*)::int FROM "${schema}".food_order_items WHERE order_id = fo.id) AS item_count
+                        (SELECT COUNT(*)::int FROM "${schema}".food_order_items WHERE order_id = fo.id) AS item_count,
+                        COUNT(*) OVER()::int AS total_count
                  FROM "${schema}".food_orders fo
                  WHERE fo.contact_id = $1::uuid
                  ORDER BY fo.created_at DESC LIMIT $2`,
@@ -7183,6 +7190,8 @@ export class AIToolExecutorService {
                     itemCount: Number(o.item_count || 0),
                     createdAt: o.created_at,
                 })),
+                // The customer's real number of orders (the list is the newest few): «tiene 3 pedidos» is never read off a cut list.
+                ...listTotal(rows),
             };
         } catch (e: any) {
             // Sin la colección vacía: devolver `[]` junto al error hacía que el

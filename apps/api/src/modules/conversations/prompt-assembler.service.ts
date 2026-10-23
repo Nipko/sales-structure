@@ -588,12 +588,16 @@ export class PromptAssemblerService {
         // (notes, addresses, access codes, clinical descriptions, etc.) never
         // cross this boundary even if an unsafe caller supplies them via `any`.
         lines.push(...this.renderActiveObjects(turn.activeObjects));
+        lines.push(...this.renderRecordTotals(turn.recordTotals));
 
         // Legacy blocks remain byte-compatible while their loaders migrate to
         // activeObjects. They are not projected automatically because legacy
         // `details` may contain data the new allow-listed contract forbids.
         if (turn.recentOrders && turn.recentOrders.length > 0) {
-            lines.push('  <recent_orders>');
+            const orderTotal = this.partialTotal(turn.recordTotals, 'order');
+            lines.push(orderTotal
+                ? `  <recent_orders total="${orderTotal.total}" shown="${orderTotal.shown}" partial="true">`
+                : '  <recent_orders>');
             for (const o of turn.recentOrders) {
                 const attrs: string[] = [`id="${this.attrEscape(o.id)}"`, `status="${this.attrEscape(o.status)}"`];
                 if (o.total != null) attrs.push(`total="${this.attrEscape(String(o.total))}"`);
@@ -684,6 +688,28 @@ export class PromptAssemblerService {
             preferredSource:note.preferredSource,reviewScope:note.reviewScope,correctness:'not_verified',
         }));
         return `    <item ${attrs.join(' ')}>${this.xmlEscape(item.content)}${conflicts?.length ? `<conflicts>${this.xmlEscape(JSON.stringify(conflicts))}</conflicts>` : ''}</item>`;
+    }
+
+    private partialTotal(totals: TurnContext['recordTotals'], kind: string): { total: number; shown: number } | undefined {
+        const found = (Array.isArray(totals) ? totals : []).find(entry => entry?.kind === kind);
+        if (!found || !Number.isInteger(found.total) || !Number.isInteger(found.shown) || found.shown < 1 || found.total <= found.shown) return undefined;
+        return { total: found.total, shown: found.shown };
+    }
+
+    /**
+     * A partial list of the customer's records says so, with the real total: «6 orders in total; only the 3 most recent are
+     * listed». Without it the model counts the listed rows and tells the customer that is how many they have.
+     */
+    private renderRecordTotals(totals: TurnContext['recordTotals']): string[] {
+        const lines: string[] = [];
+        for (const entry of Array.isArray(totals) ? totals : []) {
+            if (!ACTIVE_OBJECT_KIND_SET.has(String(entry?.kind || ''))) continue;
+            const partial = this.partialTotal([entry], entry.kind);
+            if (!partial) continue;
+            lines.push(`    <count kind="${this.attrEscape(entry.kind)}" total="${partial.total}" shown="${partial.shown}" partial="true">`
+                + `${partial.total} in total; only the ${partial.shown} most recent are listed. When asked how many there are, the answer is ${partial.total}, never ${partial.shown}.</count>`);
+        }
+        return lines.length ? ['  <record_totals>', ...lines, '  </record_totals>'] : [];
     }
 
     private renderActiveObjects(context: ActiveObjectsContext | undefined): string[] {

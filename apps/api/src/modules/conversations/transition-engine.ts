@@ -372,10 +372,26 @@ export function localizeStatusWords(text: string, language?: string): string {
     return translated.replace(new RegExp(`${SPAN_MARK}(\\d+)${SPAN_MARK}`, 'g'), (_m, index: string) => parked[Number(index)]);
 }
 
+/** How many orders the «¿qué pedidos tengo?» listing shows (the newest ones). */
+export const ORDER_LISTING_SHOWN = 5;
+/** The limit the listing asks the reader for (its maximum): the TOTAL told to the customer is counted on these rows. */
+export const ORDER_LISTING_READ_LIMIT = 50;
+
+/**
+ * How many orders the customer has, as the reader returned them - never the number SHOWN (the listing shows the newest
+ * {@link ORDER_LISTING_SHOWN}). `atLeast` is set when the reader may have cut the list (it returned as many rows as asked for,
+ * or said so), so the customer is told «al menos N» rather than a total nobody counted.
+ */
+export function orderListingTotal(result: any, limit = ORDER_LISTING_READ_LIMIT): { total: number; atLeast: boolean } {
+    const rows: any[] = Array.isArray(result?.orders) ? result.orders.filter((row: any) => typeof row?.id === 'string') : [];
+    if (typeof result?.total === 'number' && result.total >= rows.length) return { total: result.total, atLeast: false };
+    return { total: rows.length, atLeast: result?.hasMore === true || (limit > 0 && rows.length >= limit) };
+}
+
 /** EVERY order of the customer, newest first, with its status: for «¿qué pedidos tengo?» (the cancellable ones are a subset). */
 export function orderListing(result: any, locale = 'es-CO', language = 'es'): Candidate[] {
     const rows: any[] = Array.isArray(result?.orders) ? result.orders : [];
-    return rows.filter(row => typeof row?.id === 'string').slice(0, 5).map(row => {
+    return rows.filter(row => typeof row?.id === 'string').slice(0, ORDER_LISTING_SHOWN).map(row => {
         const items: any[] = Array.isArray(row.items) ? row.items : [];
         const label = items.slice(0, 2).map(item => `${Number(item.quantity) > 1 ? `${item.quantity} ` : ''}${item.productName}`).join(', ') + (items.length > 2 ? '…' : '');
         const amount = Number(row.totalAmount);
@@ -605,7 +621,8 @@ export interface Texts {
     noAppointments(): string;
     noOrders(): string;
     notCancellable(c: Candidate): string;
-    list(cs: Candidate[]): string;
+    /** `total`: how many upcoming appointments the reader counted when it returned fewer than that (defaults to the ones shown). */
+    list(cs: Candidate[], total?: number): string;
     askWhich(verb: 'cancel' | 'reschedule', domain: TransitionDomain, cs: Candidate[]): string;
     proposeCancel(domain: TransitionDomain, c: Candidate): string;
     proposeReschedule(c: Candidate, target: { date: string; time: string }): string;
@@ -621,7 +638,11 @@ export interface Texts {
     /** The appointment's start time has already passed: not cancelled or moved by chat (a no-show is not a cancellation); a person is offered. */
     alreadyStarted(verb: 'cancel' | 'reschedule', c: Candidate): string;
     /** «¿Qué pedidos tengo?» / «¿cuál es el estado de mi pedido?»: the server's own listing, with the status and the reference. */
-    listOrders(cs: Candidate[]): string;
+    /**
+     * `total`: how many orders the customer has (the reader's rows, not the ones shown); `atLeast` when the reader may have cut it.
+     * When it equals the ones shown the text is the plain «Usted tiene N pedidos».
+     */
+    listOrders(cs: Candidate[], total?: number, atLeast?: boolean): string;
     noOrdersAtAll(): string;
     /** The customer must verify before the records can be read: the code was sent, the server says where. */
     verifyNeeded(hint?: string): string;
@@ -660,7 +681,7 @@ export function transitionTexts(language: string | undefined, form: AddressForm 
             notCancellable: c => tu
                 ? `El pedido ${c.ref} ya no se puede cancelar por este chat. ¿Quieres que le pida a alguien del equipo que lo revise?`
                 : `El pedido ${c.ref} ya no se puede cancelar por este chat. ¿Desea que le pida a alguien del equipo que lo revise?`,
-            list: cs => `${tu ? (cs.length === 1 ? 'Tienes una cita' : `Tienes ${cs.length} citas`) : (cs.length === 1 ? 'Usted tiene una cita' : `Usted tiene ${cs.length} citas`)}:\n${cs.map(c => line(c, 'appointment', 'es')).join('\n')}\n${tu ? '¿Quieres cancelar o mover alguna?' : '¿Desea cancelar o mover alguna?'}`,
+            list: (cs, total = cs.length) => `${total > cs.length ? `${tu ? 'Tienes' : 'Usted tiene'} ${total} citas próximas; estas son las ${cs.length} más cercanas` : tu ? (cs.length === 1 ? 'Tienes una cita' : `Tienes ${cs.length} citas`) : (cs.length === 1 ? 'Usted tiene una cita' : `Usted tiene ${cs.length} citas`)}:\n${cs.map(c => line(c, 'appointment', 'es')).join('\n')}\n${tu ? '¿Quieres cancelar o mover alguna?' : '¿Desea cancelar o mover alguna?'}`,
             askWhich: (verb, domain, cs) => `${tu ? 'Tienes' : 'Usted tiene'} ${cs.length} ${domain === 'appointment' ? 'citas' : 'pedidos'}:\n${cs.map(c => line(c, domain, 'es')).join('\n')}\n${tu ? '¿Cuál quieres' : '¿Cuál desea'} ${verb === 'cancel' ? 'cancelar' : 'mover'}? ${tu ? 'Dime' : 'Indíqueme'} la referencia${domain === 'appointment' ? ', o el día y la hora' : ''}.`,
             proposeCancel: (domain, c) => domain === 'appointment'
                 ? `${tu ? '¿Confirmas que quieres cancelar' : '¿Confirma que desea cancelar'} ${S('appointment')} de ${c.label} del ${when(c, 'es')} (Ref. ${c.ref})? La cita se anula y el horario queda libre.`
@@ -678,7 +699,7 @@ export function transitionTexts(language: string | undefined, form: AddressForm 
             pastDate: c => `${tu ? 'Esa fecha ya pasó.' : 'Esa fecha ya pasó.'} ${tu ? '¿Para qué día y hora quieres' : '¿Para qué día y hora desea'} mover ${S('appointment')} de ${c.label} (Ref. ${c.ref})?`,
             alreadyStarted: (verb, c) => `${tu ? 'Tu cita' : 'Su cita'} de ${c.label} (Ref. ${c.ref}) era el ${when(c, 'es')}: ya comenzó o ya pasó, así que no puedo ${verb === 'cancel' ? 'cancelarla' : 'moverla'} desde este chat. ${policyPersonOfferText('es')}`,
             dateConflict: (c, d, w) => `El ${dayOf(d, 'es')} no es ${WEEKDAY_NAMES_ES[w]}. ${tu ? '¿Qué día y hora quieres exactamente' : '¿Qué día y hora desea exactamente'} para mover ${S('appointment')} de ${c.label} (Ref. ${c.ref})?`,
-            listOrders: cs => `${tu ? (cs.length === 1 ? 'Tienes un pedido' : `Tienes ${cs.length} pedidos`) : (cs.length === 1 ? 'Usted tiene un pedido' : `Usted tiene ${cs.length} pedidos`)}:\n${cs.map(c => orderLine(c)).join('\n')}${orderHint(cs, tu ? 'Si quieres anular alguno, dime la referencia.' : 'Si desea anular alguno, indíqueme la referencia.')}`,
+            listOrders: (cs, total = cs.length, atLeast = false) => `${total > cs.length || atLeast ? `${tu ? 'Tienes' : 'Usted tiene'} ${atLeast ? 'al menos ' : ''}${total} pedidos; estos son los ${cs.length} más recientes` : tu ? (cs.length === 1 ? 'Tienes un pedido' : `Tienes ${cs.length} pedidos`) : (cs.length === 1 ? 'Usted tiene un pedido' : `Usted tiene ${cs.length} pedidos`)}:\n${cs.map(c => orderLine(c)).join('\n')}${orderHint(cs, tu ? 'Si quieres anular alguno, dime la referencia.' : 'Si desea anular alguno, indíqueme la referencia.')}`,
             noOrdersAtAll: () => tu ? 'No encuentro pedidos tuyos.' : 'No encuentro pedidos suyos.',
             verifyNeeded: hint => `${tu ? 'Para ver o cambiar tus citas necesito verificar tu identidad.' : 'Para ver o cambiar sus citas necesito verificar su identidad.'} ${hint ? `${tu ? 'Te envié' : 'Le envié'} un código a ${hint}` : `${tu ? 'Te envié' : 'Le envié'} un código de verificación`}; ${tu ? 'escríbelo' : 'escríbalo'} aquí para continuar.`,
             codeAlreadySent: hint => `${tu ? 'Ya te envié' : 'Ya le envié'} un código de verificación${hint ? ` a ${hint}` : ''}; ${tu ? 'escríbelo' : 'escríbalo'} aquí para continuar.`,
@@ -698,7 +719,7 @@ export function transitionTexts(language: string | undefined, form: AddressForm 
             noAppointments: () => 'You have no upcoming appointments. Would you like to book one?',
             noOrders: () => 'I do not find any orders of yours that can be cancelled.',
             notCancellable: c => `Order ${c.ref} can no longer be cancelled in this chat. Would you like me to ask someone from the team to review it?`,
-            list: cs => `You have ${cs.length === 1 ? 'one appointment' : `${cs.length} appointments`}:\n${cs.map(c => line(c, 'appointment', 'en')).join('\n')}\nWould you like to cancel or move one?`,
+            list: (cs, total = cs.length) => `${total > cs.length ? `You have ${total} upcoming appointments; here are the next ${cs.length}` : `You have ${cs.length === 1 ? 'one appointment' : `${cs.length} appointments`}`}:\n${cs.map(c => line(c, 'appointment', 'en')).join('\n')}\nWould you like to cancel or move one?`,
             askWhich: (verb, domain, cs) => `You have ${cs.length} ${domain === 'appointment' ? 'appointments' : 'orders'}:\n${cs.map(c => line(c, domain, 'en')).join('\n')}\nWhich one would you like to ${verb === 'cancel' ? 'cancel' : 'move'}? Tell me the reference${domain === 'appointment' ? ', or the day and time' : ''}.`,
             proposeCancel: (domain, c) => domain === 'appointment'
                 ? `Do you confirm you want to cancel your ${c.label} appointment on ${when(c, 'en')} (Ref. ${c.ref})?`
@@ -713,7 +734,7 @@ export function transitionTexts(language: string | undefined, form: AddressForm 
             pastDate: c => `That date has already passed. Which day and time would you like to move your ${c.label} appointment (Ref. ${c.ref}) to?`,
             alreadyStarted: (verb, c) => `Your ${c.label} appointment (Ref. ${c.ref}) was on ${when(c, 'en')}: it has already started or passed, so I cannot ${verb === 'cancel' ? 'cancel' : 'move'} it from this chat. ${policyPersonOfferText('en')}`,
             dateConflict: (c, d, w) => `${dayOf(d, 'en')} is not a ${WEEKDAY_NAMES_EN[w]}. Which day and time exactly would you like to move your ${c.label} appointment (Ref. ${c.ref}) to?`,
-            listOrders: cs => `You have ${cs.length === 1 ? 'one order' : `${cs.length} orders`}:\n${cs.map(c => orderLine(c)).join('\n')}${orderHint(cs, 'If you want to cancel one, tell me its reference.')}`,
+            listOrders: (cs, total = cs.length, atLeast = false) => `${total > cs.length || atLeast ? `You have ${atLeast ? 'at least ' : ''}${total} orders; here are the ${cs.length} most recent` : `You have ${cs.length === 1 ? 'one order' : `${cs.length} orders`}`}:\n${cs.map(c => orderLine(c)).join('\n')}${orderHint(cs, 'If you want to cancel one, tell me its reference.')}`,
             noOrdersAtAll: () => 'I do not find any orders of yours.',
             verifyNeeded: hint => `To see or change your appointments I need to verify your identity. I sent a code ${hint ? `to ${hint}` : 'for verification'}; type it here to continue.`,
             codeAlreadySent: hint => `I already sent a verification code${hint ? ` to ${hint}` : ''}; type it here to continue.`,
@@ -732,7 +753,7 @@ export function transitionTexts(language: string | undefined, form: AddressForm 
             noAppointments: () => 'Você não tem agendamentos próximos. Quer agendar um?',
             noOrders: () => 'Não encontro pedidos seus que possam ser cancelados.',
             notCancellable: c => `O pedido ${c.ref} não pode mais ser cancelado por este chat. Quer que eu peça a alguém da equipe para revisar?`,
-            list: cs => `Você tem ${cs.length === 1 ? 'um agendamento' : `${cs.length} agendamentos`}:\n${cs.map(c => line(c, 'appointment', 'pt')).join('\n')}\nQuer cancelar ou mudar algum?`,
+            list: (cs, total = cs.length) => `${total > cs.length ? `Você tem ${total} agendamentos futuros; estes são os ${cs.length} mais próximos` : `Você tem ${cs.length === 1 ? 'um agendamento' : `${cs.length} agendamentos`}`}:\n${cs.map(c => line(c, 'appointment', 'pt')).join('\n')}\nQuer cancelar ou mudar algum?`,
             askWhich: (verb, domain, cs) => `Você tem ${cs.length} ${domain === 'appointment' ? 'agendamentos' : 'pedidos'}:\n${cs.map(c => line(c, domain, 'pt')).join('\n')}\nQual você quer ${verb === 'cancel' ? 'cancelar' : 'mudar'}? Informe a referência${domain === 'appointment' ? ', ou o dia e a hora' : ''}.`,
             proposeCancel: (domain, c) => domain === 'appointment'
                 ? `Confirma que quer cancelar o agendamento de ${c.label} em ${when(c, 'pt')} (Ref. ${c.ref})?`
@@ -747,7 +768,7 @@ export function transitionTexts(language: string | undefined, form: AddressForm 
             pastDate: c => `Essa data já passou. Para que dia e hora quer mudar o agendamento de ${c.label} (Ref. ${c.ref})?`,
             alreadyStarted: (verb, c) => `O seu agendamento de ${c.label} (Ref. ${c.ref}) era em ${when(c, 'pt')}: já começou ou já passou, então não consigo ${verb === 'cancel' ? 'cancelá-lo' : 'mudá-lo'} por este chat. ${policyPersonOfferText('pt')}`,
             dateConflict: (c, d, w) => `${dayOf(d, 'pt')} não é ${WEEKDAY_NAMES_PT[w]}. Para que dia e hora exatamente quer mudar o agendamento de ${c.label} (Ref. ${c.ref})?`,
-            listOrders: cs => `Você tem ${cs.length === 1 ? 'um pedido' : `${cs.length} pedidos`}:\n${cs.map(c => orderLine(c)).join('\n')}${orderHint(cs, 'Se quiser cancelar algum, informe a referência.')}`,
+            listOrders: (cs, total = cs.length, atLeast = false) => `${total > cs.length || atLeast ? `Você tem ${atLeast ? 'pelo menos ' : ''}${total} pedidos; estes são os ${cs.length} mais recentes` : `Você tem ${cs.length === 1 ? 'um pedido' : `${cs.length} pedidos`}`}:\n${cs.map(c => orderLine(c)).join('\n')}${orderHint(cs, 'Se quiser cancelar algum, informe a referência.')}`,
             noOrdersAtAll: () => 'Não encontro pedidos seus.',
             verifyNeeded: hint => `Para ver ou mudar seus agendamentos preciso verificar sua identidade. Enviei um código ${hint ? `para ${hint}` : 'de verificação'}; escreva-o aqui para continuar.`,
             codeAlreadySent: hint => `Já enviei um código de verificação${hint ? ` para ${hint}` : ''}; escreva-o aqui para continuar.`,
@@ -766,7 +787,7 @@ export function transitionTexts(language: string | undefined, form: AddressForm 
             noAppointments: () => 'Vous n’avez aucun rendez-vous à venir. Souhaitez-vous en prendre un ?',
             noOrders: () => 'Je ne trouve aucune commande de votre part pouvant être annulée.',
             notCancellable: c => `La commande ${c.ref} ne peut plus être annulée par ce chat. Souhaitez-vous que je demande à quelqu’un de l’équipe de la vérifier ?`,
-            list: cs => `Vous avez ${cs.length === 1 ? 'un rendez-vous' : `${cs.length} rendez-vous`} :\n${cs.map(c => line(c, 'appointment', 'fr')).join('\n')}\nSouhaitez-vous en annuler ou en déplacer un ?`,
+            list: (cs, total = cs.length) => `${total > cs.length ? `Vous avez ${total} rendez-vous à venir ; voici les ${cs.length} prochains` : `Vous avez ${cs.length === 1 ? 'un rendez-vous' : `${cs.length} rendez-vous`}`} :\n${cs.map(c => line(c, 'appointment', 'fr')).join('\n')}\nSouhaitez-vous en annuler ou en déplacer un ?`,
             askWhich: (verb, domain, cs) => `Vous avez ${cs.length} ${domain === 'appointment' ? 'rendez-vous' : 'commandes'} :\n${cs.map(c => line(c, domain, 'fr')).join('\n')}\nLequel souhaitez-vous ${verb === 'cancel' ? 'annuler' : 'déplacer'} ? Indiquez la référence${domain === 'appointment' ? ', ou le jour et l’heure' : ''}.`,
             proposeCancel: (domain, c) => domain === 'appointment'
                 ? `Confirmez-vous l’annulation de votre rendez-vous ${c.label} du ${when(c, 'fr')} (Réf. ${c.ref}) ?`
@@ -781,7 +802,7 @@ export function transitionTexts(language: string | undefined, form: AddressForm 
             pastDate: c => `Cette date est déjà passée. Pour quel jour et quelle heure souhaitez-vous déplacer votre rendez-vous ${c.label} (Réf. ${c.ref}) ?`,
             alreadyStarted: (verb, c) => `Votre rendez-vous ${c.label} (Réf. ${c.ref}) était le ${when(c, 'fr')} : il a déjà commencé ou est passé, je ne peux donc pas ${verb === 'cancel' ? 'l’annuler' : 'le déplacer'} depuis ce chat. ${policyPersonOfferText('fr')}`,
             dateConflict: (c, d, w) => `Le ${dayOf(d, 'fr')} n’est pas un ${WEEKDAY_NAMES_FR[w]}. Pour quel jour et quelle heure exactement souhaitez-vous déplacer votre rendez-vous ${c.label} (Réf. ${c.ref}) ?`,
-            listOrders: cs => `Vous avez ${cs.length === 1 ? 'une commande' : `${cs.length} commandes`} :\n${cs.map(c => orderLine(c)).join('\n')}${orderHint(cs, 'Pour en annuler une, indiquez sa référence.')}`,
+            listOrders: (cs, total = cs.length, atLeast = false) => `${total > cs.length || atLeast ? `Vous avez ${atLeast ? 'au moins ' : ''}${total} commandes ; voici les ${cs.length} plus récentes` : `Vous avez ${cs.length === 1 ? 'une commande' : `${cs.length} commandes`}`} :\n${cs.map(c => orderLine(c)).join('\n')}${orderHint(cs, 'Pour en annuler une, indiquez sa référence.')}`,
             noOrdersAtAll: () => 'Je ne trouve aucune commande de votre part.',
             verifyNeeded: hint => `Pour voir ou modifier vos rendez-vous, je dois vérifier votre identité. J’ai envoyé un code ${hint ? `à ${hint}` : 'de vérification'} ; saisissez-le ici pour continuer.`,
             codeAlreadySent: hint => `J’ai déjà envoyé un code de vérification${hint ? ` à ${hint}` : ''} ; saisissez-le ici pour continuer.`,
@@ -997,14 +1018,16 @@ async function runTransitionInner(request: TransitionRequest, text: string, io: 
     };
 
     if (request.domain === 'order') {
-        const listed = await io.execute('list_my_catalog_orders', {});
+        // The listing asks for the reader's maximum: the total the customer is told is counted on those rows, not on the 5 shown.
+        const listed = await io.execute('list_my_catalog_orders', request.verb === 'list' ? { limit: ORDER_LISTING_READ_LIMIT } : {});
         executed.push({ name: 'list_my_catalog_orders', result: listed });
         const stop = await identityStop(listed);
         if (stop) return stop;
         if (!listed || listed.error || !Array.isArray(listed.orders)) return { ...NOT_HANDLED, executed };
         if (request.verb === 'list') {
             const rows = orderListing(listed, io.locale || 'es-CO', io.language);
-            return { handled: true, text: rows.length ? T.listOrders(rows) : T.noOrdersAtAll(), awaitingWriter: null, executed };
+            const { total, atLeast } = orderListingTotal(listed);
+            return { handled: true, text: rows.length ? T.listOrders(rows, total, atLeast) : T.noOrdersAtAll(), awaitingWriter: null, executed };
         }
         const candidates = orderCandidates(listed, io.locale || 'es-CO');
         if (!candidates.length) return { handled: true, text: T.noOrders(), awaitingWriter: null, executed };
@@ -1029,7 +1052,9 @@ async function runTransitionInner(request: TransitionRequest, text: string, io: 
     if (!listed || listed.error || !Array.isArray(listed.appointments)) return { ...NOT_HANDLED, executed };
     const candidates = appointmentCandidates(listed);
     if (request.verb === 'list') {
-        return { handled: true, text: candidates.length ? T.list(candidates) : T.noAppointments(), awaitingWriter: null, executed };
+        // The reader returns the next 10; when it counted more, the customer is told how many there are, not only the ones shown.
+        const hidden = listed.hasMore === true && typeof listed.total === 'number' ? Math.max(0, listed.total - listed.appointments.length) : 0;
+        return { handled: true, text: candidates.length ? T.list(candidates, candidates.length + hidden) : T.noAppointments(), awaitingWriter: null, executed };
     }
     if (!candidates.length) return { handled: true, text: T.noAppointments(), awaitingWriter: null, executed };
     const shown = pending && pendingTargetId ? candidates.find(candidate => candidate.id === pendingTargetId) : undefined;

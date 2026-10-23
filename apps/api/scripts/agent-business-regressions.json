@@ -17,6 +17,7 @@
     "apps/api/src/modules/conversations/conversations.listing-location-grounding.spec.ts",
     "apps/api/src/modules/conversations/conversations.listing-rental-term.spec.ts",
     "apps/api/src/modules/conversations/conversations.menu-description-grounding.spec.ts",
+    "apps/api/src/modules/conversations/conversations.order-catalogue-read.spec.ts",
     "apps/api/src/modules/conversations/conversations.over-escalation.spec.ts",
     "apps/api/src/modules/conversations/conversations.own-customer-context.spec.ts",
     "apps/api/src/modules/conversations/conversations.own-tour-bookings.spec.ts",

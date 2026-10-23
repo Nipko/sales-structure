@@ -4,7 +4,7 @@ import { DemoAllowanceService } from '../throttle/demo-allowance.service';
 import { CATALOG_OVER_FAQ_FLAG, FACTS_LEDGER_FLAG, FeatureFlagsService, OPERATION_CLASSIFIER_FLAG, RENDERED_FACTS_FLAG, REQUIRED_READS_CATALOG_FLAG, REQUIRED_READS_LISTINGS_FLAG, REQUIRED_READS_PROPERTIES_FLAG, REQUIRED_READS_RESTAURANTS_FLAG, REQUIRED_READS_TOURS_FLAG, SAFETY_TRIAGE_FLAG, SLOT_WINDOW_FLAG, resolveFeatureFlag } from '../throttle/feature-flags.service';
 import { runSafetyTriage, type SafetyTriageTurnOutcome } from './runtime/safety-triage';
 import { buildOperationShadowTrace, OperationClassifierService, type OperationShadowVerdict } from './runtime/operation-classifier.service';
-import { buildRequiredReadsTrace, REQUIRED_READ_TIMEOUT_MS, requiredReadsGate, requiredReadsPilotForProfile, runRequiredReads,
+import { buildRequiredReadsTrace, REQUIRED_READ_TIMEOUT_MS, requiredReadDefaultArgs, requiredReadsGate, requiredReadsPilotForProfile, runRequiredReads,
     type RequiredReadResult, type RequiredReadsPilot } from './runtime/required-reads.runner';
 import { listingSearchSlotsIn, requiredReadSlotsIn } from './runtime/required-read-slots';
 import { demoAllowanceExhaustedText } from '../widget/widget-demo-link';
@@ -108,6 +108,7 @@ import { canonicalPackageCatalogue } from './canonical-package-context';
 import { packageDetailIdForQuestion, requiresPackageDetailLookup } from './package-detail-grounding';
 import { listingDetailIdForQuestion, requiresListingDetailLookup } from './listing-detail-grounding';
 import { requiresMenuDescriptionLookup } from './menu-description-grounding';
+import { CATALOGUE_ORDER_NOTE, MENU_ORDER_NOTE, withOrderNote } from './order-catalogue-read';
 import { requiresServiceLocationLookup } from './service-location-grounding';
 import { requiresProductStockLookup, stockProductIdForQuestion } from './product-stock-grounding';
 import { explicitlyRequestsCrmNote } from './crm-note-request';
@@ -139,7 +140,7 @@ import { customerDatesIn } from './date-reference';
 import { guardIdentityCodeClaim } from './identity-code-claim';
 import { addressFormOf, detectTransition, failedTransitionOf, handleIdentityReply, humanizeReferences, identityGate, knownRecordFacts, knownRecordIds, localizeStatusWords, namedRequestOverridesClarify, opensWithYes, requestIdentityForTool, runTransition, shortReference, transitionDoneText, transitionFailureText, transitionRequestForTool, transitionTexts, TRANSITION_TOOLS, TRANSITION_WRITER, type TransitionIO, type TransitionOutcome } from './transition-engine';
 import { resolveListChoice } from './list-choice';
-import { createdDoneText, detectOrderIntake, isOrderDetails, mergeOrderNotes, mightBeOrderRequest, orderProposalText, orderStockText, orderChoiceText, replyStillAsksConfirmation, type OrderChoice, type OrderIntake } from './order-intake';
+import { createdDoneText, detectOrderIntake, isOrderDetails, mergeOrderNotes, mightBeMenuOrderRequest, mightBeOrderRequest, orderProposalText, orderStockText, orderChoiceText, replyStillAsksConfirmation, type OrderChoice, type OrderIntake } from './order-intake';
 import { persistConversationRuntimeState } from './conversation-runtime-state';
 import type { ConversationMissionFocusV1, MissionExecutionScopeV1, VerifiedFactView } from '@parallext/shared';
 import { ProcedureEngineService } from './procedure-engine.service';
@@ -4383,7 +4384,8 @@ export class ConversationsService {
         let automaticOwnCustomerContextRead: { result: any } | undefined;
         let automaticOwnTourBookingsRead: { result: any } | undefined;
         let automaticListingDetailRead: { listingId: string; result: any } | undefined;
-        let automaticMenuDescriptionRead: { result: any } | undefined;
+        let automaticMenuDescriptionRead: { result: any; orderRequest: boolean } | undefined;
+        let automaticCatalogueOrderRead: { args: Record<string, unknown>; result: any } | undefined;
         let automaticServiceLocationRead: { result: any } | undefined;
         const automaticProductStockReads: Array<{ name: string; args: Record<string, unknown>; result: any }> = [];
         const automaticPropertyDetailReads: Array<{ name: string; args: Record<string, unknown>; result: any }> = [];
@@ -4661,6 +4663,9 @@ export class ConversationsService {
         // recortada convertiría "esta tool no era relevante para este mensaje"
         // en "esta tool no está autorizada", y mandaría a una persona una
         // conversación que no lo necesita.
+        // What the turn publishes, before an evaluation session narrows it to what it may execute: an order request
+        // reads the menu / catalogue in Agent Test exactly as in a live turn, though Agent Test never runs the writer.
+        const publishedTurnTools = tools.map(t => String(t?.name)).filter(Boolean);
         if (session) {
             session.trace.advertisedTools = [...tools];
             session.trace.capability = capability.contract;
@@ -4917,11 +4922,15 @@ export class ConversationsService {
             turnTrace.add('tool_result', 'list_services', { ok: !result?.error, error: result?.error, automatic: true });
         }
 
-        if (!engineProducedText && requiresMenuDescriptionLookup(userText) && turnAllowedTools.includes('get_menu')) {
+        // An order request reads the current menu first too («quiero pedir una pizza» with one dish on the menu): what is not on it
+        // is said, not taken. Read only; place_order still rejects items that are not on the menu.
+        const menuOrderRequest = publishedTurnTools.includes('place_order') && mightBeMenuOrderRequest(userText);
+        if (!engineProducedText && (requiresMenuDescriptionLookup(userText) || menuOrderRequest) && turnAllowedTools.includes('get_menu')
+            && !preExecutedTools.some(tool => tool.name === 'get_menu')) {
             const context: ServiceExecutionContext = {
                 ...executionContext, mode: executionContext?.mode ?? 'live', persistence: 'disabled',
             };
-            turnTrace.add('tool_call', 'get_menu', { origin: 'vertical', effect: 'read', automatic: true });
+            turnTrace.add('tool_call', 'get_menu', { origin: 'vertical', effect: 'read', automatic: true, ...(menuOrderRequest ? { orderRequest: true } : {}) });
             let result: any;
             try {
                 result = await awaitAutomaticFaqLookup(toolExecutor.execute(
@@ -4934,7 +4943,7 @@ export class ConversationsService {
                 result = { error: 'menu_description_lookup_failed' };
             }
             preExecutedTools.push({ name: 'get_menu', result });
-            automaticMenuDescriptionRead = { result };
+            automaticMenuDescriptionRead = { result, orderRequest: menuOrderRequest };
             turnTrace.add('tool_result', 'get_menu', { ok: !result?.error, error: result?.error, automatic: true });
         }
 
@@ -5047,6 +5056,33 @@ export class ConversationsService {
             const result = await read('search_products', { query: '', limit: 20 });
             const productId = stockProductIdForQuestion(userText, result);
             if (productId) await read('check_stock', { productId });
+        }
+
+        // A store order the deterministic intake did not match («quiero comprar un cargador» where only headphones are sold) reads
+        // the current catalogue before the model answers: what is not in it is said, not taken. Read only; the order contract
+        // still rejects products that are not in the catalogue.
+        if (!engineProducedText && !orderIntake && !orderChoice && publishedTurnTools.includes('place_catalog_order')
+            && turnAllowedTools.includes('search_products') && mightBeOrderRequest(userText)
+            && !preExecutedTools.some(tool => tool.name === 'search_products')) {
+            const context: ServiceExecutionContext = {
+                ...executionContext, mode: executionContext?.mode ?? 'live', persistence: 'disabled',
+            };
+            const args = requiredReadDefaultArgs('search_products');
+            turnTrace.add('tool_call', 'search_products', { origin: 'vertical', effect: 'read', automatic: true, orderRequest: true });
+            let result: any;
+            try {
+                result = await awaitAutomaticFaqLookup(toolExecutor.execute(
+                    schemaName, tenantId, conversation.contact_id || '', 'search_products', args, conversation.id,
+                    { authority: llmAuthority, channelType: msg.channelType, executionContext: context,
+                        commitmentBlocked, deniedTools, jurisdiction: regional?.operatingCountry.value },
+                ), 3_000, context);
+            } catch (error: any) {
+                if (session || error instanceof LLMSourceAuthorityUnavailable) throw error;
+                result = { error: 'catalogue_order_lookup_failed' };
+            }
+            preExecutedTools.push({ name: 'search_products', args, result });
+            automaticCatalogueOrderRead = { args, result };
+            turnTrace.add('tool_result', 'search_products', { ok: !result?.error, error: result?.error, automatic: true, orderRequest: true });
         }
 
         // Property facts require a current authorized detail read before model prose.
@@ -5536,7 +5572,15 @@ export class ConversationsService {
                 currentMessages.push({ role: 'assistant', content: '', toolCalls: [{ id, type: 'function',
                     function: { name: 'get_menu', arguments: '{}' } }] });
                 currentMessages.push({ role: 'tool', toolCallId: id,
-                    content: modelToolContent(automaticMenuDescriptionRead.result) });
+                    content: modelToolContent(automaticMenuDescriptionRead.orderRequest
+                        ? withOrderNote(automaticMenuDescriptionRead.result, MENU_ORDER_NOTE) : automaticMenuDescriptionRead.result) });
+            }
+            if (automaticCatalogueOrderRead) {
+                const id = 'auto_catalogue_order';
+                currentMessages.push({ role: 'assistant', content: '', toolCalls: [{ id, type: 'function',
+                    function: { name: 'search_products', arguments: JSON.stringify(automaticCatalogueOrderRead.args) } }] });
+                currentMessages.push({ role: 'tool', toolCallId: id,
+                    content: modelToolContent(withOrderNote(automaticCatalogueOrderRead.result, CATALOGUE_ORDER_NOTE)) });
             }
             if (automaticOwnTourBookingsRead) {
                 const id = 'auto_own_tour_bookings';

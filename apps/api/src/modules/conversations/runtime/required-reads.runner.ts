@@ -163,6 +163,11 @@ const DEFAULT_ARGS: Readonly<Record<string, Readonly<Record<string, unknown>>>> 
     search_listings: Object.freeze({}),
 });
 
+/** The arguments a required read of `tool` runs with when the message states no filter (a fresh copy). */
+export function requiredReadDefaultArgs(tool: string): Record<string, unknown> {
+    return { ...(DEFAULT_ARGS[tool] ?? {}) };
+}
+
 /** Record statuses after which an order is no longer "the one in progress". */
 const CLOSED_STATUSES = new Set(['cancelled', 'canceled', 'delivered', 'completed', 'rejected', 'refunded', 'failed', 'expired', 'closed']);
 

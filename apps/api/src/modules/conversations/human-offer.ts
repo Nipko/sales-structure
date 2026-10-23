@@ -202,7 +202,9 @@ const CONDITION_WORDS = new Set(['if', 'unless', 'depende', 'depends', 'dependie
  * The verbs of asking, checking, confirming and contacting, by ROOT. The clitics a customer glues to them («pídalo»,
  * «comunícame», «consúltemelo», «pídanselo») are stripped before the root is read, so the forms are never enumerated.
  */
-const REQUEST_VERB_ROOT = /^(?:pid|pregunt|consult|confirm|verifi|comunic|comuniqu|contact|conect|avis|averig|revis|chequ|pergunt|demand|appel)[a-z]{0,5}$|^(?:ask|check|confirm|contact|connect|reach|verify|call)(?:s|ed|ing)?$|^(?:pedir|pede|peca|pecam|pedem|chame|chama|ligue)$/;
+// The follow-up verbs of the offer too (F4300-25: «Sí, porfa, anótela y me avisa»): anotar, apuntar, recordar, lembrar,
+// remind, note, noter, rappeler, prévenir.
+const REQUEST_VERB_ROOT = /^(?:pid|pregunt|consult|confirm|verifi|comunic|comuniqu|contact|conect|avis|averig|revis|chequ|pergunt|demand|appel|anot|apunt|recuerd|lembr|notifi|rappel|previen)[a-z]{0,5}$|^(?:ask|check|confirm|contact|connect|reach|verify|call|remind|notify|note)(?:s|ed|ing)?$|^(?:pedir|pede|peca|pecam|pedem|chame|chama|ligue|notez|noter)$/;
 const CLITICS = /(?:me|te|se|nos|le|les)?(?:lo|la|los|las|le|les|me|te|nos|se)$/;
 export function isRequestVerb(token: string): boolean {
     if (REQUEST_VERB_ROOT.test(token)) return true;
@@ -267,7 +269,30 @@ export function endsWithHumanOffer(text: unknown): boolean {
     if (containsHumanOffer(text) || isHumanOfferText(text)) return true;
     const sentences = sentencesOf(text);
     const last = sentences[sentences.length - 1];
-    return !!last && offersHumanHandoff(last);
+    if (!last) return false;
+    if (offersHumanHandoff(last)) return true;
+    // «…puedo anotar su consulta para que el equipo confirme la información. ¿Quiere que lo haga?» (F4300-25, production
+    // QA): the last question only points back at the offer before it, so the «sí» answers that one.
+    const before = sentences[sentences.length - 2];
+    return !!before && isGoAheadQuestion(last) && offersHumanHandoff(before);
+}
+
+/**
+ * Words of a question that asks only whether to go ahead with what was just said, with no content of its own: «¿Quiere
+ * que lo haga?», «¿Desea que proceda?», «Want me to do that?», «Shall I go ahead?», «Quer que eu faça isso?», «Voulez-vous
+ * que je le fasse ?». It must carry a verb of doing / going ahead and nothing outside this set.
+ */
+const GO_AHEAD_DO = new Set(['haga', 'hago', 'hagamos', 'hacerlo', 'proceda', 'procedo', 'procedamos', 'do', 'proceed', 'ahead',
+    'faca', 'facamos', 'fazer', 'prossiga', 'fasse', 'faire']);
+const GO_AHEAD_FRAME = new Set([...GO_AHEAD_DO,
+    'quiere', 'quieres', 'desea', 'deseas', 'prefiere', 'le', 'te', 'parece', 'que', 'lo', 'la', 'eso', 'asi', 'usted', 'entonces',
+    'would', 'you', 'like', 'me', 'to', 'want', 'shall', 'should', 'i', 'that', 'it', 'so', 'go', 'then',
+    'quer', 'deseja', 'eu', 'isso', 'o', 'a', 'voce', 'entao',
+    'voulez', 'souhaitez', 'vous', 'je', 'ce', 'cela', 'ca', 'veux', 'tu', 'alors']);
+function isGoAheadQuestion(sentence: string): boolean {
+    if (!/[?？]/.test(sentence)) return false;
+    const tokens = offerReplyTokens(sentence);
+    return tokens.length > 0 && tokens.length <= 8 && tokens.every(t => GO_AHEAD_FRAME.has(t)) && tokens.some(t => GO_AHEAD_DO.has(t));
 }
 
 export type HumanOfferMark = { at: string; expiresAt: string };

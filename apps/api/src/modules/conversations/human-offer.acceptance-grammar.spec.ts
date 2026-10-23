@@ -1,6 +1,7 @@
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { ConversationsService } from './conversations.service';
+import { LanguageDetectorService } from './language-detector.service';
 import {
     HUMAN_OFFER_QUESTION, NO_DATA_WAIT_REPLACEMENT, POLICY_PERSON_OFFER_QUESTION,
     endsWithHumanOffer, isAffirmationOfHumanOffer, isOfferAcceptance, isRequestVerb, opensWithAffirmation,
@@ -156,5 +157,133 @@ describe('F4300-25 the acceptance escalates at turn start, before the model', ()
     });
     it.each(['no gracias', 'sí, pero ¿cuánto cuesta?', 'no, mejor después'])('«%s» does not escalate', async text => {
         expect(await harness(MODEL_OFFERS.es[0]).resolveHumanOfferAcceptance('schema', { id: 'conv', metadata: {} }, text)).toBe(false);
+    });
+});
+
+/**
+ * F4300-25 residual (production QA 23-oct, after #191): the offer was worded as a FOLLOW-UP by the team — remind or tell
+ * the customer once the team confirms, note the question for the team — and was not read as the offer of a person, so
+ * the customer's «sí» reached the model, which offered the person again. The family is recognised (offer lead, follow-up
+ * verb by root, the team as the one who answers) and its acceptances are honoured by the same path.
+ */
+const FOLLOW_UP_PRODUCTION = {
+    store: {
+        offer: 'No tengo la confirmación aún sobre si el Audífono QA Aurora es Bluetooth. ¿Quiere que le recuerde cuando el equipo confirme esa información?',
+        accept: 'Sí, por favor pregúntele a alguien del equipo y me avisa por aquí',
+    },
+    restaurant: {
+        offer: 'No puedo comunicarme directamente con la cocina, pero puedo anotar su consulta para que el equipo confirme la información sobre la opción sin gluten y le responda lo antes posible. ¿Quiere que lo haga?',
+        accept: 'Sí, porfa, anótela y me avisa cuando la cocina me confirme si es seguro.',
+    },
+};
+const FOLLOW_UP_OFFERS: Record<Lang, string[]> = {
+    es: [
+        FOLLOW_UP_PRODUCTION.store.offer, FOLLOW_UP_PRODUCTION.restaurant.offer,
+        '¿Quiere que le avise cuando el equipo confirme el horario?',
+        '¿Desea que anote su pregunta para que alguien del equipo le responda?',
+        'Puedo dejar registrada su consulta con el equipo. ¿Desea que proceda?',
+    ],
+    en: [
+        'Want me to let you know once the team confirms?',
+        'Would you like me to note your question for the team so they can confirm it?',
+        'I can pass your question on to the team. Would you like me to do that?',
+    ],
+    pt: [
+        'Posso anotar sua pergunta para a equipe e avisar quando confirmarem?',
+        'Quer que eu avise quando a equipe confirmar?',
+        'Posso anotar sua pergunta para a equipe. Quer que eu faça isso?',
+    ],
+    fr: [
+        "Voulez-vous que je note votre question pour l'équipe ?",
+        "Souhaitez-vous que je vous prévienne quand l'équipe aura confirmé ?",
+    ],
+};
+const NOT_A_PERSON_OFFER = [
+    '¿Quiere que le agende una cita con nuestro equipo para el sábado?',
+    '¿Quiere que anote su pedido para que el equipo lo prepare?',
+    'Puedo anotar su pedido. ¿Quiere que lo haga?',
+    '¿Le puedo ayudar con algo más?',
+    '¿Quiere que le recuerde su cita un día antes?',
+    'Can I help you with anything else?',
+    'Would you like me to book an appointment with our team?',
+    'Would you like me to let you know when the product is back in stock?',
+    'Would you like me to place the order for you?',
+    'Posso anotar o seu pedido para a equipe preparar?',
+    "Voulez-vous que je note votre commande pour l'équipe ?",
+    'No puedo avisar al equipo desde aquí. ¿Quiere que lo haga?',
+    'La garantía es de 12 meses. ¿Quiere que lo haga?',
+];
+
+describe('F4300-25 an offer worded as a follow-up by the team is an offer of a person', () => {
+    const offers = (Object.keys(FOLLOW_UP_OFFERS) as Lang[]).flatMap(lang => FOLLOW_UP_OFFERS[lang].map(offer => [lang, offer] as const));
+    it.each(offers)('%s: «%s» offers a person and ends with that offer', (_lang, offer) => {
+        expect(endsWithHumanOffer(offer)).toBe(true);
+        expect(repliesYesToHumanOffer('yes please', offer)).toBe(true);
+    });
+
+    it.each(NOT_A_PERSON_OFFER)('«%s» is not an offer of a person', text => {
+        expect(endsWithHumanOffer(text)).toBe(false);
+        expect(isAffirmationOfHumanOffer('sí', text)).toBe(false);
+    });
+
+    it.each(Object.entries(FOLLOW_UP_PRODUCTION))('regression (%s): the yes is an acceptance of that offer', (_name, { offer, accept }) => {
+        expect(isOfferAcceptance(accept)).toBe(true);
+        expect(isAffirmationOfHumanOffer(accept, offer)).toBe(true);
+        expect(repliesYesToHumanOffer(accept, offer)).toBe(true);
+        // The model answered with the standard offer again: the turn opens the handoff instead.
+        expect(repeatsAcceptedHumanOffer(NO_DATA_WAIT_REPLACEMENT.es, accept, offer)).toBe(true);
+    });
+
+    it.each(Object.entries(FOLLOW_UP_PRODUCTION))('regression (%s): the yes escalates at turn start, before the model', async (_name, { offer, accept }) => {
+        const service: any = Object.create(ConversationsService.prototype);
+        service.logger = { warn: jest.fn() };
+        service.prisma = { executeInTenantSchema: jest.fn(async (_s: string, sql: string) =>
+            /direction = 'outbound'/.test(sql) ? [{ content_text: offer, created_at: new Date(Date.now() - 60_000) }] : []) };
+        expect(await service.resolveHumanOfferAcceptance('schema', { id: 'conv', metadata: {} }, accept)).toBe(true);
+        expect(await service.resolveHumanOfferAcceptance('schema', { id: 'conv', metadata: {} }, 'no gracias')).toBe(false);
+    });
+
+    it('the follow-up verbs a customer echoes are request verbs, by root', () => {
+        for (const t of ['anotela', 'anotelo', 'apuntelo', 'recuerdeme', 'lembre', 'remind', 'notez', 'rappelez']) expect(isRequestVerb(t)).toBe(true);
+    });
+});
+
+describe('F4300-25 the transfer notice of an accepted offer is in the customer language', () => {
+    const PT_ACCEPT = 'Sim, por favor pergunte ao corretor e me avise por aqui';
+    const service = (recentInbound: string[]) => {
+        const s: any = Object.create(ConversationsService.prototype);
+        s.languageDetector = new LanguageDetectorService();
+        // Newest first, as the query orders them.
+        s.prisma = { executeInTenantSchema: jest.fn(async (_s: string, sql: string) =>
+            /direction = 'inbound'/.test(sql) ? [...recentInbound].reverse().map(content_text => ({ content_text })) : []) };
+        return s;
+    };
+
+    it('regression: «Sim, por favor pergunte ao corretor e me avise por aqui» in a Portuguese conversation gets the notice in Portuguese', async () => {
+        const lang = await service(['o condomínio tem piscina?']).turnStartLanguage('schema', { id: 'conv', metadata: {} }, { language: 'es-CO' }, PT_ACCEPT, 'in-1');
+        expect(lang).toBe('pt');
+        expect(isOfferAcceptance(PT_ACCEPT)).toBe(true);
+    });
+
+    it('the stored conversation language holds when the message itself is not decisive', async () => {
+        const lang = await service([]).turnStartLanguage('schema', { id: 'conv', metadata: { detectedLanguage: 'pt' } }, { language: 'es-CO' }, PT_ACCEPT, 'in-1');
+        expect(lang).toBe('pt');
+    });
+
+    it.each([
+        ['en', 'Yes, please check with the team.', ['Does the apartment have parking?']],
+        ['fr', "Oui, demandez-leur s'il vous plaît", ["Bonjour, est-ce que l'appartement a un parking ?"]],
+        ['es', 'Sí, por favor pídalo.', ['¿El audífono tiene garantía?']],
+    ])('%s: «%s» keeps the customer language', async (expected, text, recent) => {
+        const lang = await service(recent as string[]).turnStartLanguage('schema', { id: 'conv', metadata: {} }, { language: 'es-CO' }, text, 'in-1');
+        expect(lang).toBe(expected);
+    });
+
+    it('the early handoff branch and the replay notices read the language through it', () => {
+        const src = readFileSync(resolve(__dirname, 'conversations.service.ts'), 'utf8');
+        const start = src.indexOf('if (handoffReason && !draftMode) {');
+        const branch = src.slice(start, src.indexOf('originKey: `handoff-notice:${inboundMessageId}`', start));
+        expect(branch).toContain('const handoffLanguage = await this.turnStartLanguage(schemaName, conversation, config, content?.text, inboundMessageId);');
+        expect(src).not.toContain("this.languageDetector.detect(content?.text || '', config.language || 'es')");
     });
 });

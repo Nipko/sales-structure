@@ -86,6 +86,22 @@ function withRenderedFactsRules(rules: readonly string[]): string[] {
     return out;
 }
 
+/**
+ * Rule 20b with the catalogue authority on (`agentRuntime.catalogOverFaq`, F4300-24): the service catalogue decides what
+ * the business offers; a FAQ or document about a service the catalogue does not list is not proof that it is offered.
+ * With the flag off the contract is byte-identical to the one without it.
+ */
+const RULE_20B_CATALOGUE = '  20b. THE CATALOGUE DECIDES WHAT IS OFFERED: when <turn><catalogue_authority> is present, its <offered> services are the complete list of services this business offers. A FAQ, a document, a knowledge item or a tool result that talks about a service is NOT proof that the service is offered. A service listed in <catalogue_authority><not_in_catalogue>, or named by a knowledge item or tool result marked not_in_catalogue, is not among the services: when the customer asks whether the business offers it, say plainly in <turn><language> that it is not among the services, give none of its durations, prices or details from that FAQ or document, and offer the services in <offered>. Never say "yes, we offer" (or an equivalent) for a service absent from <offered>.';
+
+function withCatalogueRule(rules: readonly string[]): string[] {
+    const out: string[] = [];
+    for (const rule of rules) {
+        out.push(rule);
+        if (rule.startsWith('  20. ')) out.push(RULE_20B_CATALOGUE);
+    }
+    return out;
+}
+
 @Injectable()
 export class PromptAssemblerService {
     constructor(private readonly personaService: PersonaService) {}
@@ -120,7 +136,7 @@ export class PromptAssemblerService {
      * Assemble the full system prompt for a given turn.
      */
     assemble(config: TenantConfig, turn: TurnContext, tenantBusinessHours?: any): string {
-        const layer1 = this.buildContractLayer(turn.verifiedFacts !== undefined, turn.factTokens !== undefined);
+        const layer1 = this.buildContractLayer(turn.verifiedFacts !== undefined, turn.factTokens !== undefined, turn.catalogueAuthority !== undefined);
         const layer2 = this.personaService.buildSystemPrompt(this.personaConfigForTurn(config, turn), tenantBusinessHours);
         const layer3 = this.buildTurnLayer(turn);
         return `${layer1}\n\n${layer2}\n\n${layer3}`;
@@ -133,7 +149,7 @@ export class PromptAssemblerService {
      * only dynamic part and sits after the boundary.
      */
     assembleWithCacheBoundary(config: TenantConfig, turn: TurnContext, tenantBusinessHours?: any): { systemPrompt: string; cachePrefixChars: number } {
-        const layer1 = this.buildContractLayer(turn.verifiedFacts !== undefined, turn.factTokens !== undefined);
+        const layer1 = this.buildContractLayer(turn.verifiedFacts !== undefined, turn.factTokens !== undefined, turn.catalogueAuthority !== undefined);
         const layer2 = this.personaService.buildSystemPrompt(this.personaConfigForTurn(config, turn), tenantBusinessHours);
         const stablePrefix = `${layer1}\n\n${layer2}`;
         const layer3 = this.buildTurnLayer(turn);
@@ -147,7 +163,7 @@ export class PromptAssemblerService {
      * Layer 1 — universal contract. Applies to every agent regardless of config.
      * Short, authoritative, defines the bot's relationship to the backend.
      */
-    private buildContractLayer(factsLedger = false, renderedFacts = false): string {
+    private buildContractLayer(factsLedger = false, renderedFacts = false, catalogOverFaq = false): string {
         const rules = [
             '  You are a customer-facing conversational agent.',
             '',
@@ -238,7 +254,8 @@ export class PromptAssemblerService {
             '  - Financial investment advice as if you were a licensed advisor',
             '  If the customer brings up any of these, refuse briefly in the language from <turn><language>, offer safe help related to the business when appropriate, and escalate emergencies according to the configured handoff rules.',
         ];
-        const ledgerRules = factsLedger ? withFactsLedgerRules(rules) : rules;
+        const catalogueRules = catalogOverFaq ? withCatalogueRule(rules) : rules;
+        const ledgerRules = factsLedger ? withFactsLedgerRules(catalogueRules) : catalogueRules;
         return ['<contract>', ...(renderedFacts ? withRenderedFactsRules(ledgerRules) : ledgerRules).map((rule) => escapeXmlText(rule)), '</contract>'].join('\n');
     }
 
@@ -630,6 +647,15 @@ export class PromptAssemblerService {
             lines.push('  </retrieved_knowledge>');
         }
 
+        // The catalogue as the authority for what is offered (`agentRuntime.catalogOverFaq`, rule 20b). Only with a
+        // catalogue: without one there is nothing to decide against.
+        if (turn.catalogueAuthority && turn.catalogueAuthority.offered.length > 0) {
+            lines.push('  <catalogue_authority kind="services">');
+            for (const name of turn.catalogueAuthority.offered) lines.push(`    <offered>${this.xmlEscape(name)}</offered>`);
+            for (const name of turn.catalogueAuthority.notInCatalogue) lines.push(`    <not_in_catalogue>${this.xmlEscape(name)}</not_in_catalogue>`);
+            lines.push('  </catalogue_authority>');
+        }
+
         if (turn.possibleKnowledge && turn.possibleKnowledge.length > 0) {
             lines.push('  <possible_knowledge>');
             for (const item of turn.possibleKnowledge) {
@@ -678,6 +704,7 @@ export class PromptAssemblerService {
         if (item.validFrom) attrs.push(`valid_from="${this.attrEscape(item.validFrom)}"`);
         if (item.validTo) attrs.push(`valid_to="${this.attrEscape(item.validTo)}"`);
         if (item.conflictReviewStatus) attrs.push(`conflict_review="${this.attrEscape(item.conflictReviewStatus)}"`);
+        if (item.notInCatalogue?.length) attrs.push(`not_in_catalogue="${this.attrEscape(item.notInCatalogue.join('; '))}"`);
         // Escape the content: KB items can come from crawled third-party URLs and
         // must be treated as untrusted DATA. Without escaping, `</item>`,
         // `<directive>` or similar in the content could break out of the XML and

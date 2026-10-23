@@ -25,6 +25,8 @@ export interface EvaluationTurnContextInputs {
     factsLedger?: boolean;
     /** `agentRuntime.renderedFacts` as the tenant had it at capture. Optional: older snapshots lack it and read as off. */
     renderedFacts?: boolean;
+    /** `agentRuntime.catalogOverFaq` as the tenant had it at capture. Optional: older snapshots lack it and read as off. */
+    catalogOverFaq?: boolean;
     /** `agentRuntime.requiredReads.{restaurants,catalog}` as the tenant had them at capture. Optional: older snapshots lack it and read as off. */
     requiredReads?: { restaurants: boolean; catalog: boolean; properties?: boolean; tours?: boolean; listings?: boolean };
 }
@@ -40,6 +42,7 @@ export function resolveEvaluationTurnContext(input: EvaluationTurnContextInputs 
         || (Object.hasOwn(input, 'operationClassifier') && typeof input.operationClassifier !== 'boolean')
         || (Object.hasOwn(input, 'factsLedger') && typeof input.factsLedger !== 'boolean')
         || (Object.hasOwn(input, 'renderedFacts') && typeof input.renderedFacts !== 'boolean')
+        || (Object.hasOwn(input, 'catalogOverFaq') && typeof input.catalogOverFaq !== 'boolean')
         || (Object.hasOwn(input, 'requiredReads') && (!record(input.requiredReads)
             || typeof input.requiredReads.restaurants !== 'boolean' || typeof input.requiredReads.catalog !== 'boolean'
             // PR7 and real-estate pilots: optional, a snapshot sealed before them reads as off.

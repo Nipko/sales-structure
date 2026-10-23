@@ -36,6 +36,8 @@ export const REQUIRED_READS_TOURS_FLAG = 'agentRuntime.requiredReads.tours';
 export const REQUIRED_READS_LISTINGS_FLAG = 'agentRuntime.requiredReads.listings';
 /** Per-tenant flag of the rendered facts (operations runtime PR6): amounts, counts and record fields come from tokens the server renders. */
 export const RENDERED_FACTS_FLAG = 'agentRuntime.renderedFacts';
+/** Per-tenant flag: the service catalogue decides what is offered, over a FAQ about a service it does not list (F4300-24). */
+export const CATALOG_OVER_FAQ_FLAG = 'agentRuntime.catalogOverFaq';
 const CACHE_TTL = 300;
 
 /**
@@ -87,6 +89,11 @@ export const FEATURE_FLAGS_REGISTRY: Array<{
     // facts; an amount or count the model typed itself is replaced by a template, and the claim/price corrective retries
     // are skipped. Off = the prompt and the reply pipeline are exactly the previous ones.
     { key: RENDERED_FACTS_FLAG, label: 'Rendered facts', description: 'Prices, counts, availability and record fields reach the customer as values rendered by the server from the verified facts (the model writes tokens); a figure the model typed itself is replaced by a safe template', category: 'experimental', default: false },
+    // F4300-24 (apps/api/src/modules/conversations/runtime/catalog-over-faq.ts): for an agent that reads a service catalogue
+    // (list_services), a FAQ or document naming a service the catalogue does not list is marked not_in_catalogue, the
+    // contract says the catalogue decides what is offered (rule 20b), and a reply saying «sí, ofrecemos X» for such an X is
+    // replaced by a not-offered answer that lists the catalogue. Off = the prompt and the reply pipeline are exactly the previous ones.
+    { key: CATALOG_OVER_FAQ_FLAG, label: 'Catalogue over FAQ', description: 'The service catalogue decides what the business offers: a FAQ or document about a service the catalogue does not list is not presented as an offered service, and the agent answers that it is not among the services and offers the real ones', category: 'experimental', default: false },
 ];
 
 /**

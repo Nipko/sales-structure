@@ -5253,17 +5253,23 @@ export class AIToolExecutorService {
                     currency: i.currency,
                     category: i.category_name,
                     tags: i.tags || [],
-                    allergens,
+                    // F4300-26: an empty or missing list is said as what it is, "not_informed", never left as [] for the model
+                    // to read as "free of allergens".
+                    allergens: allergens.length ? allergens : 'not_informed',
                     // Only reported while filtering: an empty list is "nothing recorded", not "no allergens".
                     ...(filtering ? { allergensDeclared: allergens.length > 0 } : {}),
                     prepTimeMinutes: i.prep_time_minutes,
                 };
             });
             const undeclared = filtering && mapped.some(m => m.allergensDeclared === false);
+            const notInformed = mapped.some(m => m.allergens === 'not_informed');
             return {
                 count: items.length,
                 ...(mapped.some(item => item.prepTimeMinutes == null) ? {
                     preparationTimeNotice: 'A null prepTimeMinutes means the kitchen preparation time is not recorded for that dish. Do not invent minutes or substitute an order/delivery ETA. This is not an access failure: explain that the time is not recorded and needs confirmation from the kitchen.',
+                } : {}),
+                ...(notInformed ? {
+                    allergenInfoNotice: 'allergens "not_informed" means the business has not registered allergen information for that dish. It is NOT "free of allergens": say the information is not registered and the customer must confirm it with the business before consuming it.',
                 } : {}),
                 ...(filtering ? {
                     // The filter only knows what the kitchen recorded; it is not a guarantee.

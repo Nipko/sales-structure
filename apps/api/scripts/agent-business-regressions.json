@@ -8,6 +8,7 @@
     "apps/api/src/modules/conversations/ai-tool-executor.promotion-timezone-failure.spec.ts",
     "apps/api/src/modules/conversations/ai-tool-executor.promotion-timezone.spec.ts",
     "apps/api/src/modules/conversations/ai-tool-executor.service-retail-projection.spec.ts",
+    "apps/api/src/modules/conversations/allergen-claim.f4300.spec.ts",
     "apps/api/src/modules/conversations/appointment-history-grounding.spec.ts",
     "apps/api/src/modules/conversations/appointment-record-read.spec.ts",
     "apps/api/src/modules/conversations/conversations.appointment-history-grounding.spec.ts",

@@ -138,6 +138,7 @@ import { sanitizeRewrittenReply } from './rewrite-validation';
 import { correctRelativeWeekdays } from './relative-weekday';
 import { customerDatesIn } from './date-reference';
 import { guardIdentityCodeClaim } from './identity-code-claim';
+import { guardAllergenClaim } from './allergen-claim';
 import { addressFormOf, detectTransition, failedTransitionOf, handleIdentityReply, humanizeReferences, identityGate, knownRecordFacts, knownRecordIds, localizeStatusWords, namedRequestOverridesClarify, opensWithYes, requestIdentityForTool, runTransition, shortReference, transitionDoneText, transitionFailureText, transitionRequestForTool, transitionTexts, TRANSITION_TOOLS, TRANSITION_WRITER, type TransitionIO, type TransitionOutcome } from './transition-engine';
 import { resolveListChoice } from './list-choice';
 import { createdDoneText, detectOrderIntake, isOrderDetails, mergeOrderNotes, mightBeMenuOrderRequest, mightBeOrderRequest, orderProposalText, orderStockText, orderChoiceText, replyStillAsksConfirmation, type OrderChoice, type OrderIntake } from './order-intake';
@@ -7416,6 +7417,26 @@ export class ConversationsService {
         // and written into the prompt, yet a long history or knowledge in another language still pulled the
         // model back (a Portuguese refund question answered in Spanish). One rewrite, only on clear evidence.
         response = await this.alignReplyLanguage(response, lang, currentMessages, systemPrompt, allowedTiers, tenantId, llmRouter, trustedContext, session, executedTools);
+
+        // F4300-26 (health): «no contiene lácteos», «a gluten-free option», «does not list nuts» about a dish whose allergen list is
+        // empty. A reply may say an item is free of an allergen or safe for an allergy only when the item's own data says so (an
+        // explicit tag, no recorded allergen of that family); otherwise the customer reads that the business has not registered it.
+        if (!isSystemFixedText(response)) {
+            const allergenClaim = guardAllergenClaim({
+                reply: response,
+                sources: [
+                    ...(executedTools || []).map(tool => tool?.result),
+                    ...(currentMessages || []).filter((message: any) => message?.role === 'tool').map((message: any) => message.content),
+                    (trustedContext as any)?.verifiedFacts,
+                ],
+                lang, canOfferPerson: humanOfferAvailable,
+            });
+            if (allergenClaim.replaced) {
+                this.recordAgentSignal(tenantId, 'allergen_claim_unbacked', session);
+                this.logger.warn(`[Guardrail] The reply claimed an item is free of an allergen without data backing it (${allergenClaim.situation}) — replaced: "${response.slice(0, 100)}"`);
+                return allergenClaim.text;
+            }
+        }
 
         // A healthy read (`status: ok`) is not permission to sell an inactive product.
         // Ground this narrow single-product answer without another model attempt.

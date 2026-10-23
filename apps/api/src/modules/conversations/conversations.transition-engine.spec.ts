@@ -260,8 +260,10 @@ describe('ordinary conversation is left to the model', () => {
             const h = world({
                 tools: STORE, industry: 'retail', orders: [order],
                 script: request => {
-                    const last = String((request.messages ?? []).slice(-1)[0]?.content ?? '');
-                    if (request.task === 'tool_calling' && /quiero comprar/.test(last)) {
+                    // The customer's message (an order the intake does not match is followed by the automatic catalogue read).
+                    const last = String([...(request.messages ?? [])].reverse().find((m: any) => m.role === 'user')?.content ?? '');
+                    const thread = JSON.stringify(request.messages ?? []);
+                    if (request.task === 'tool_calling' && /quiero comprar/.test(last) && !thread.includes('confirmation_required')) {
                         return { content: '', toolCalls: [{ id: 'c1', function: { name: 'place_catalog_order', arguments: JSON.stringify({ items: [{ productId: 'p1', quantity: 1 }] }) } }], model: 'test', usage: { promptTokens: 1, completionTokens: 1 }, cost: 0 };
                     }
                     if (JSON.stringify(request.messages ?? []).includes('confirmation_required')) return answer('Su pedido está listo para su confirmación. ¿Lo confirmo?');

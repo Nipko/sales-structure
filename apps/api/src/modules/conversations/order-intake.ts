@@ -119,6 +119,25 @@ export function mightBeOrderRequest(raw: string): boolean {
     return !negatedAt(text, verbAt) && !negatedAt(text, desire?.index ?? verbAt);
 }
 
+/** «quiero el combo de…», «quisiera una pizza»: a desire form opening the message, then what is wanted (an article or a quantity). */
+const DESIRE_THEN_ITEM = /^(?:hola\s+|buenas\s+|buenos dias\s+|buenas tardes\s+|buenas noches\s+)?(?:quiero|quisiera|queria|deseo|me gustaria|me da|me das|me trae|me traes|dame|deme|i want|i would like|i d like|i ll have|can i get|quero|gostaria|je veux|je voudrais|j aimerais)\s+(?:el|la|los|las|un|una|unos|unas|uno|dos|tres|cuatro|cinco|\d+|a|an|the|o|os|um|uma|le|les|une|des)\s+\S/;
+
+/**
+ * The words alone, for a menu: an order request ({@link mightBeOrderRequest}), or a message that opens with a desire form and names
+ * what is wanted with no buying verb («Quiero el combo de hamburguesa con papas»), which is how a dish is ordered. Same exclusions:
+ * a question, a complaint, a cancellation or a negation is not an order. Only gates a read, never a write.
+ */
+export function mightBeMenuOrderRequest(raw: string): boolean {
+    if (mightBeOrderRequest(raw)) return true;
+    const original = String(raw ?? '');
+    if (!original.trim() || original.length > 400) return false;
+    const text = fold(original).replace(/['’]/g, ' ');
+    if (/[?¿]/.test(text) || isInformationSeekingMessage(original)) return false;
+    const plain = text.replace(/[,.;!?¿¡]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (NOT_AN_ORDER.test(plain)) return false;
+    return DESIRE_THEN_ITEM.test(plain);
+}
+
 /**
  * «Quiero pedir 1 Audífono QA Aurora»: a request to buy ONE product the tenant sells, with the quantity it states (one when it
  * states none). Conservative on purpose, like the transition engine: a question, a price or stock enquiry, a complaint, a

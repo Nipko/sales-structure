@@ -7511,7 +7511,7 @@ export class ConversationsService {
             this.logger.warn(`[Guardrail] Response stated price(s) not in context: ${check.hallucinatedPrices.join(', ')} — fail closed (rendered facts)`);
             if (session) this.recordAgentSignal(tenantId, 'unverified_price', session);
             else this.eventEmitter.emit('response.guardrail.failed', { tenantId, conversationId, prices: check.hallucinatedPrices });
-            return buildUnverifiedPriceReply(systemPrompt);
+            return buildUnverifiedPriceReply(systemPrompt, trustedContext?.regional?.addressForm);
         }
 
         this.logger.warn(`[Guardrail] Response stated price(s) not in context: ${check.hallucinatedPrices.join(', ')} — corrective retry`);
@@ -7530,7 +7530,7 @@ export class ConversationsService {
             });
             const fixed = corrected.content?.trim();
             if (fixed) {
-                const enforced = enforceVerifiedPriceReply(fixed, corpus, systemPrompt, this.responseValidator, ledger);
+                const enforced = enforceVerifiedPriceReply(fixed, corpus, systemPrompt, this.responseValidator, ledger, trustedContext?.regional?.addressForm);
                 if (enforced.blocked) {
                     if(session)this.recordAgentSignal(tenantId,'unverified_price',session);
                     else this.eventEmitter.emit('response.guardrail.failed', { tenantId, conversationId, prices: enforced.validation.hallucinatedPrices });
@@ -7543,7 +7543,7 @@ export class ConversationsService {
         // Couldn't correct: surface for monitoring and fail closed on the price.
         if(session)this.recordAgentSignal(tenantId,'unverified_price',session);
         else this.eventEmitter.emit('response.guardrail.failed', { tenantId, conversationId, prices: check.hallucinatedPrices });
-        return buildUnverifiedPriceReply(systemPrompt);
+        return buildUnverifiedPriceReply(systemPrompt, trustedContext?.regional?.addressForm);
     }
 
     /**

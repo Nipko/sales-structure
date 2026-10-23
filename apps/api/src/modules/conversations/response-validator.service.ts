@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { VerifiedFactView } from '@parallext/shared';
 import { ledgerBacksAmount } from './runtime/facts-ledger';
+import { addressFormOf } from './transition-engine';
 
 export interface PriceValidationResult {
     ok: boolean;
@@ -27,15 +28,26 @@ export interface PriceLedger {
 }
 
 const UNVERIFIED_PRICE_REPLIES: Record<string, string> = {
-    es: 'No tengo un precio verificado en la información disponible. Puedo ayudarte a confirmarlo con el equipo.',
+    es: 'No tengo un precio verificado en la información disponible. Puedo ayudarle a confirmarlo con el equipo.',
     en: 'I do not have a verified price in the available information. I can help you confirm it with the team.',
     pt: 'Não tenho um preço verificado nas informações disponíveis. Posso ajudar a confirmá-lo com a equipe.',
     fr: 'Je ne dispose pas d’un prix vérifié dans les informations disponibles. Je peux vous aider à le confirmer auprès de l’équipe.',
 };
+/** The Spanish «tú» variant. Portuguese (neutral «você» construction), English and French («vous») have one register. */
+const UNVERIFIED_PRICE_REPLY_ES_TU = 'No tengo un precio verificado en la información disponible. Puedo ayudarte a confirmarlo con el equipo.';
 
-/** Deterministic fail-closed reply used when a corrective LLM pass is still unsafe. */
-export function buildUnverifiedPriceReply(systemPrompt: string): string {
+/**
+ * Deterministic fail-closed reply used when a corrective LLM pass is still unsafe.
+ *
+ * It is said in the turn's form of address, like the transition-engine texts: a persona that addresses the customer as
+ * «usted» got «Puedo ayudarte» here and the register switched mid-conversation. `form` is the turn's resolved
+ * `regional.addressForm`; without it the `<address_form>` the prompt assembler wrote into the system prompt (the same
+ * value) is read. Both go through `addressFormOf`, so «vos» reads as «tú» and anything unknown as «usted».
+ */
+export function buildUnverifiedPriceReply(systemPrompt: string, form?: unknown): string {
     const language = systemPrompt.match(/<language>\s*(es|en|pt|fr)\s*<\/language>/i)?.[1]?.toLowerCase() || 'es';
+    const declared = form ?? systemPrompt.match(/<address_form>\s*([^<]*?)\s*<\/address_form>/i)?.[1];
+    if (language === 'es' && addressFormOf(declared) === 'tu') return UNVERIFIED_PRICE_REPLY_ES_TU;
     return UNVERIFIED_PRICE_REPLIES[language] || UNVERIFIED_PRICE_REPLIES.es;
 }
 
@@ -186,9 +198,10 @@ export function enforceVerifiedPriceReply(
     systemPrompt: string,
     validator: Pick<ResponseValidatorService, 'validatePrices'>,
     ledger?: PriceLedger,
+    form?: unknown,
 ): VerifiedPriceReply {
     const validation = ledger ? validator.validatePrices(candidate, inputCorpus, ledger) : validator.validatePrices(candidate, inputCorpus);
     return validation.ok
         ? { reply: candidate, validation, blocked: false }
-        : { reply: buildUnverifiedPriceReply(systemPrompt), validation, blocked: true };
+        : { reply: buildUnverifiedPriceReply(systemPrompt, form), validation, blocked: true };
 }

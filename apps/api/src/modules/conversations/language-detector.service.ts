@@ -215,10 +215,10 @@ export class LanguageDetectorService {
             'puede', 'puedes', 'pueden', 'quiero', 'quisiera', 'necesito', 'busco', 'debo', 'consultalo', 'consultala', 'consultalos',
             'consultame', 'revisalo', 'revisala', 'confirmalo', 'confirmala', 'confirmame', 'averigualo', 'dime', 'dame', 'mandame',
             'enviame', 'hago', 'estoy', 'incluye', 'incluyen', 'sirve', 'llega', 'quedan', 'hacen', 'aceptan', 'donde', 'cual',
-            'cuales', 'cuando', 'quien', 'quienes', 'manejan', 'ofrecen', 'traen'],
+            'cuales', 'cuando', 'quien', 'quienes', 'manejan', 'ofrecen', 'traen', 'esta', 'estan'],
         pt: ['tem', 'voce', 'voces', 'quanto', 'quanta', 'quantos', 'quantas', 'custa', 'custam', 'posso', 'pode', 'podem', 'quero',
             'preciso', 'gostaria', 'consegue', 'inclui', 'incluem', 'fica', 'ficam', 'estou', 'faz', 'fazem', 'procuro', 'devo', 'qual',
-            'quais', 'aceitam', 'oferecem'],
+            'quais', 'aceitam', 'oferecem', 'esta', 'estao'],
         fr: ['coute', 'coutent', 'combien', 'je', 'est', 'sont', 'avez', 'pouvez', 'puis', 'peux', 'veux', 'voudrais', 'faut',
             'inclut', 'dois', 'doit', 'cherche', 'ai', 'reste', 'proposez', 'acceptez', 'quel', 'quelle', 'quels', 'quelles'],
         en: ['is', 'are', 'does', 'have', 'has', 'can', 'could', 'would', 'how', 'what', 'cost', 'costs', 'need', 'want', 'include',
@@ -239,6 +239,58 @@ export class LanguageDetectorService {
         en: ['january', 'february', 'march', 'april', 'june', 'july', 'august', 'september', 'october', 'november', 'december',
             'warranty', 'week', 'saturday', 'sunday', 'people', 'price', 'the', 'an', 'it', 'there', 'any'],
     };
+
+    /**
+     * Nouns and adjectives of ONE language that a short customer question carries when it has no verb: «haircut price?»,
+     * «precio del corte?», «prix de la manucure ?». Production QA 2026-10-22: with «es» stored, «haircut price?» was
+     * answered in Spanish because a message with no predicate word decided nothing. They decide a message only when no
+     * language has a predicate in it, with two of them or one next to a function word of the same language, and no
+     * evidence for any other language (see `contentLanguage`); a bare «price?» stays neutral.
+     * Never here: names and catalogue terms (taken out before), and words two languages share — «hotel», «tour», «menu»,
+     * «total», «disponible», «entrega» (es AND pt), «corte» (es AND pt «corte de cabelo»), «garantia», «reembolso»,
+     * «pedido», «parking» (en AND fr). «stock» and «delivery» are English loanwords in Spanish and French: they count for
+     * English only, and a single one never decides, so a Spanish message needs a second English word to read as English.
+     */
+    private readonly contentWords: Record<string, string[]> = {
+        en: ['price', 'prices', 'pricing', 'haircut', 'haircuts', 'room', 'rooms', 'night', 'nights', 'stock', 'delivery', 'shipping',
+            'available', 'dish', 'dishes', 'headphones', 'warranty', 'discount', 'refund', 'size', 'weekend', 'breakfast', 'appointment'],
+        es: ['precio', 'precios', 'habitacion', 'habitaciones', 'noche', 'noches', 'envio', 'envios', 'domicilio', 'descuento',
+            'desayuno', 'talla', 'manicura', 'audifonos', 'existencias', 'cita'],
+        pt: ['preco', 'precos', 'quarto', 'quartos', 'noite', 'noites', 'frete', 'cabelo', 'desconto', 'tamanho', 'fones', 'estoque',
+            'diaria', 'diarias'],
+        fr: ['prix', 'chambre', 'chambres', 'nuit', 'nuits', 'livraison', 'manucure', 'cheveux', 'remise', 'taille', 'remboursement',
+            'dejeuner', 'casque', 'casques'],
+    };
+
+    /**
+     * Function words that count next to a content word only: Portuguese «do» (of the) is an English verb too, so it is no
+     * evidence in a sentence, but in a message with no predicate («preço do Tour QA Aurora?») it cannot be the English «do».
+     */
+    private readonly contentFunctionWords: Record<string, string[]> = { pt: ['do'] };
+
+    /**
+     * The language of a short message with no predicate word, by its content words (see `contentWords`): two of one
+     * language, or one plus a function word of the same language, and no word or character of any other language. A word
+     * more than one language owns counts for nobody.
+     */
+    private contentLanguage(tokens: Set<string>, raw: string, vocabularies: Map<string, Set<string>>): string | null {
+        const langs = Object.keys(this.contentWords);
+        const owners = (token: string) => langs.filter(lang => vocabularies.get(lang)?.has(token)
+            || this.contentWords[lang].includes(token) || (this.contentFunctionWords[lang] ?? []).includes(token));
+        const evidence = new Map(langs.map(lang => [lang, { content: 0, function: 0 }]));
+        for (const token of tokens) {
+            const owned = owners(token);
+            if (owned.length !== 1) continue;
+            const entry = evidence.get(owned[0])!;
+            if (this.contentWords[owned[0]].includes(token)) entry.content++;
+            else entry.function++;
+        }
+        for (const lang of langs) if (this.clearCharacters[lang]?.test(raw)) evidence.get(lang)!.function++;
+        const present = langs.filter(lang => evidence.get(lang)!.content + evidence.get(lang)!.function > 0);
+        if (present.length !== 1) return null;
+        const { content, function: functionWords } = evidence.get(present[0])!;
+        return content >= 2 || (content >= 1 && functionWords >= 1) ? present[0] : null;
+    }
 
     /** Accented words of ONE language, tested on the raw text: «sí» (pt «sim», fr «oui»), «há» (es «hay»), «você», «où». */
     private readonly clearCharacters: Record<string, RegExp> = {
@@ -287,14 +339,21 @@ export class LanguageDetectorService {
         const tokens = new Set(words);
         for (const t of [...tokens]) if (t.includes("'")) for (const part of t.split("'")) if (part) tokens.add(part);
         const raw = free.normalize('NFC').toLowerCase();
+        const vocabularies = new Map(Object.keys(this.predicateWords).map(lang => [lang, new Set([...(this.markers[lang] ?? []),
+            ...(this.sentenceWords[lang] ?? []), ...(this.strongMarkers[lang]?.words ?? []), ...(this.questionWords[lang] ?? []),
+            ...this.predicateWords[lang], ...(this.clearWords[lang] ?? [])])] as const));
+        // A word two of the languages spell the same way («disponible» is Spanish AND French, «está» Spanish AND
+        // Portuguese) is evidence for neither. Production (store, stored «es»): «le Aurora est disponible ?» was answered in
+        // Spanish because «disponible» counted as a Spanish word next to the French «le» and «est», and a rival with any
+        // evidence makes the message undecided. It still says the message HAS a verb, for each language that owns it.
+        const shared = (token: string) => [...vocabularies.values()].filter(vocabulary => vocabulary.has(token)).length > 1;
         const ranked = Object.keys(this.predicateWords).map(lang => {
-            const vocabulary = new Set([...(this.markers[lang] ?? []), ...(this.sentenceWords[lang] ?? []), ...(this.strongMarkers[lang]?.words ?? []),
-                ...(this.questionWords[lang] ?? []), ...this.predicateWords[lang], ...(this.clearWords[lang] ?? [])]);
+            const vocabulary = vocabularies.get(lang)!;
             let hits = 0;
             let predicates = 0;
             let verbs = 0;
             for (const token of tokens) {
-                if (vocabulary.has(token)) hits++;
+                if (vocabulary.has(token) && !shared(token)) hits++;
                 if (this.predicateWords[lang].includes(token)) {
                     predicates++;
                     if (!this.interrogatives.has(token)) verbs++;
@@ -305,6 +364,8 @@ export class LanguageDetectorService {
             return { lang, hits, predicates, verbs };
         }).sort((a, b) => b.hits - a.hits);
         const [best, second] = ranked;
+        // No verb or interrogative in any language: only content words of one language can tell it («haircut price?»).
+        if (ranked.every(entry => entry.predicates === 0)) return this.contentLanguage(tokens, raw, vocabularies);
         if (best.hits === 0 || second.hits > 0 || best.predicates === 0) return null;
         if (best.hits >= 2) return best.lang;
         // ONE word of evidence: it must be a verb («tiene garantía?»), in a message of two words that are not a bare

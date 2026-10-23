@@ -12,7 +12,7 @@ import { appointmentPriceSql, appointmentCurrencySql, type AppointmentServiceTer
 import { isInformationSeekingMessage, isPauseMessage, isResumeMessage, normalizeCustomerIntent } from '../../common/conversation/intent-normalizer';
 import { isBookingStatusQuestion } from './booking-status-question';
 import { appointmentChangeRequest } from './appointment-transition';
-import { HUMAN_OFFER_TTL_MS, isAffirmation } from './human-offer';
+import { HUMAN_OFFER_TTL_MS, isOfferAcceptance } from './human-offer';
 import { normalizeForIntent } from '@parallext/shared';
 import { procedureDialogueMessages } from './procedure-dialogue-messages';
 import { containsMissionDirective, isCollectionCancellation, isDirectedCorrection, isNamedMissionResume, mentionedMissionDomains, missionDialogue, parseDirectedSlotCorrection } from './mission-focus';
@@ -770,7 +770,7 @@ export class BookingEngineService {
         if (currentState.personOfferedAt) {
             const offeredAt = Date.parse(currentState.personOfferedAt);
             currentState = { ...currentState, personOfferedAt: undefined };
-            if (isAffirmation(rawText) && Number.isFinite(offeredAt) && Date.now() - offeredAt >= 0 && Date.now() - offeredAt <= HUMAN_OFFER_TTL_MS) {
+            if (isOfferAcceptance(rawText) && Number.isFinite(offeredAt) && Date.now() - offeredAt >= 0 && Date.now() - offeredAt <= HUMAN_OFFER_TTL_MS) {
                 return { handled: false, state: currentState };
             }
         }

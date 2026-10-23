@@ -65,6 +65,78 @@ describe('the current message language wins over the stored conversation languag
     });
 });
 
+/**
+ * Production QA (store, Telegram, gpt-4.1-mini): with «es» stored, «le Aurora est disponible ?» was answered in Spanish.
+ * With the name taken out the words are «le», «est», «disponible»: «disponible» is Spanish AND French, so it counted as
+ * Spanish evidence and the French message was undecided. A word two languages share is now evidence for neither.
+ */
+describe('a word two languages share is evidence for neither', () => {
+    const detector = new LanguageDetectorService();
+
+    it.each([
+        ['le Aurora est disponible ?', 'es', 'fr'],
+        ['le Aurora est disponible ?', 'pt', 'fr'],
+        ['le Aurora est disponible ?', 'en', 'fr'],
+        ['les casques Aurora sont disponibles ?', 'es', 'fr'],
+        ['vous avez le Aurora ?', 'es', 'fr'],
+        ['est disponible ?', 'es', 'fr'],
+        ['el Aurora está disponible?', 'fr', 'es'],
+        ['el Aurora está disponible?', 'pt', 'es'],
+        ['el Aurora está disponible?', 'en', 'es'],
+        ['o Aurora está disponível?', 'es', 'pt'],
+        ['o Aurora está disponível?', 'fr', 'pt'],
+        ['is the Aurora available?', 'es', 'en'],
+        ['is the Aurora available?', 'fr', 'en'],
+    ])('«%s» after a %s conversation is %s', (text, stored, expected) => {
+        expect(detector.detectDetailed(text, stored, stored)).toEqual({ language: expected, persist: true });
+    });
+
+    it.each([
+        ['Aurora', 'es'], ['ok', 'es'], ['disponible?', 'es'], ['disponible?', 'fr'], ['Aurora disponible', 'es'],
+        ['Aurora disponible', 'fr'], ['ok Aurora', 'fr'], ['15', 'es'],
+    ])('a message with no word of its own («%s») keeps the stored %s', (text, stored) => {
+        expect(detector.detectDetailed(text, stored, stored)).toEqual({ language: stored, persist: true });
+    });
+
+    it('a Spanish message with the shared word stays Spanish after a French conversation', () => {
+        expect(detector.detect('¿el Aurora está disponible en negro?', 'fr', 'fr')).toBe('es');
+        expect(detector.detect('tienen el Aurora disponible?', 'fr', 'fr')).toBe('es');
+    });
+});
+
+/**
+ * Production QA 2026-10-22 (stored «es»): «haircut price?» was answered in Spanish. A message with no verb or
+ * interrogative decided nothing, so the stored language won. Content words of ONE language («haircut», «price»,
+ * «precio», «preço», «prix») now decide it: two of them, or one next to a function word of the same language.
+ */
+describe('a short message made only of nouns is read by its content words', () => {
+    const detector = new LanguageDetectorService();
+
+    it.each([
+        ['haircut price?', 'es', 'en'],
+        ['dish price?', 'es', 'en'],
+        ['headphones stock?', 'es', 'en'],
+        ['preço do Tour QA Aurora?', 'es', 'pt'],
+        ['prix de la manucure ?', 'es', 'fr'],
+        ['precio del corte?', 'en', 'es'],
+        ['il en reste ?', 'es', 'fr'],
+    ])('«%s» after a %s conversation is %s', (text, stored, expected) => {
+        expect(detector.detectDetailed(text, stored, stored)).toEqual({ language: expected, persist: true });
+    });
+
+    it.each([
+        ['price?', 'es'], ['Aurora?', 'es'], ['price?', 'fr'], ['precio?', 'en'], ['hotel tour?', 'es'], ['menu total?', 'pt'],
+        ['delivery precio?', 'en'], ['stock disponible?', 'en'], ['Hotel Aurora price?', 'es'],
+    ])('«%s» keeps the stored %s', (text, stored) => {
+        expect(detector.detectDetailed(text, stored, stored)).toEqual({ language: stored, persist: true });
+    });
+
+    it('a Spanish message with a verb and an English loanword stays Spanish', () => {
+        expect(detector.detect('tienen delivery?', 'en', 'en')).toBe('es');
+        expect(detector.detect('hay stock?', 'en', 'en')).toBe('es');
+    });
+});
+
 describe('the output guard checks the reply against the current message language', () => {
     const build = (rewrite: string) => {
         const service: any = Object.create(ConversationsService.prototype);

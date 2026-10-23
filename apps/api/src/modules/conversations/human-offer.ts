@@ -113,6 +113,79 @@ export function isAffirmation(text: unknown): boolean {
     return tokens.every(t => AFFIRM_CORE.has(t) || AFFIRM_FILL.has(t)) && tokens.some(t => AFFIRM_CORE.has(t));
 }
 
+/**
+ * Words that ask the agent to go ahead with what it offered: «pídanle», «consúltelo», «hazlo», «go ahead», «pode pedir»,
+ * «allez-y». Customer-typed, accents folded. Kept to verbs of asking, checking, confirming, contacting and doing, so a
+ * message that asks for something ELSE («sí, pero antes dime el precio») is never an acceptance.
+ */
+const ACCEPT_REQUEST = new Set([
+    // es (usted / ustedes / tú)
+    'pidanle', 'pidale', 'pidales', 'pidan', 'pida', 'pideles', 'pidele', 'pidelo', 'pidanlo',
+    'pregunten', 'preguntenle', 'pregunte', 'preguntele', 'preguntales', 'pregunteles',
+    'consulte', 'consultelo', 'consultela', 'consulten', 'consultenlo', 'consultalo', 'consultala', 'consultele',
+    'confirme', 'confirmen', 'confirmenlo', 'confirmelo', 'confirmela', 'confirmar', 'confirmarlo', 'confirmalo',
+    'averigue', 'averiguelo', 'averiguen', 'averigualo', 'revise', 'reviselo', 'revisen',
+    'hazlo', 'hagalo', 'haganlo', 'hagale', 'hagan', 'haga', 'proceda', 'procedan', 'procede', 'adelante',
+    'avisen', 'avisenle', 'avise', 'aviseles', 'contacte', 'contacten', 'contactenme', 'conecteme', 'conectame', 'comuniqueme', 'paseme',
+    // en
+    'go', 'ahead', 'do', 'it', 'ask', 'check', 'confirm', 'contact', 'connect', 'them', 'that', 'thats', 'fine', 'would', 'be',
+    // pt
+    'pedir', 'preguntar', 'consultar', 'perguntar', 'verificar',
+    'pode', 'pede', 'peca', 'pergunte', 'pergunta', 'confirme', 'verifique', 'faca', 'faz', 'isso', 'manda', 'chame',
+    // fr
+    'allez', 'y', 'vas', 'demandez', 'leur', 'lui', 'verifiez', 'confirmez', 'faites', 'le', 'la',
+]);
+/** Pronouns and courtesy that go with such a request («que lo confirme», «por usted», «a alguien del equipo»). */
+const ACCEPT_REQUEST_FILL = new Set([
+    'que', 'lo', 'la', 'le', 'les', 'los', 'me', 'se', 'mi', 'a', 'al', 'el', 'del', 'equipo', 'alguien', 'persona', 'usted', 'ustedes',
+    'ellos', 'mismo', 'ahora', 'ya', 'nomas', 'tambien', 'eso', 'esto', 'mucho', 'muchas',
+    'me', 'to', 'for', 'please', 'someone', 'team', 'the', 'now', 'sure', 'yes', 'ok', 'okay', 'thanks',
+    'por', 'favor', 'pra', 'para', 'mim', 'alguem', 'da', 'equipe', 'agora', 'sim', 'obrigado', 'obrigada',
+    'oui', 's', 'il', 'vous', 'plait', 'merci', 'de', 'l', 'equipe', 'quelqu', 'un', 'maintenant',
+]);
+/** Words that make a «sí» something else: a refusal, a condition, a question about something other than the offer. */
+const ACCEPT_BLOCKERS = new Set(['no', 'not', 'nao', 'non', 'pas', 'nunca', 'never', 'pero', 'but', 'mas', 'mais', 'antes', 'before', 'avant', 'primero', 'first', 'mejor', 'better', 'despues', 'later', 'luego']);
+
+/**
+ * The customer accepts the offer of a person: a bare agreement («sí», «dale», «yes please») or one that tells the agent
+ * to go ahead («Sí, por favor pídanle que lo confirme», «ok hazlo», «por favor consúltelo», «yes, go ahead and ask
+ * them», «sim, pode pedir», «oui, allez-y»). Production (Telegram, travel): «Sí, por favor pídanle que lo confirme» had
+ * seven words, `isAffirmation` stops at four, so the accepted offer was read as nobody asking and was offered again.
+ * A question, a negation or a condition («sí, pero antes…») is never an acceptance.
+ */
+export function isOfferAcceptance(text: unknown): boolean {
+    if (isAffirmation(text)) return true;
+    if (typeof text !== 'string' || /[?？¿]/.test(text)) return false;
+    const tokens = text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .replace(/[’']/g, ' ').replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(Boolean);
+    if (tokens.length === 0 || tokens.length > 10) return false;
+    if (tokens.some(t => ACCEPT_BLOCKERS.has(t))) return false;
+    const known = (t: string) => AFFIRM_CORE.has(t) || AFFIRM_FILL.has(t) || ACCEPT_REQUEST.has(t) || ACCEPT_REQUEST_FILL.has(t);
+    if (!tokens.every(known)) return false;
+    // Something must say yes or ask for it: «por favor» alone, «que lo» or «the team» are not an acceptance.
+    return tokens.some(t => AFFIRM_CORE.has(t) && !['favor', 'please', 'plait', 'gusto'].includes(t))
+        || tokens.some(t => ACCEPT_REQUEST.has(t) && !['it', 'that', 'them', 'be', 'would', 'fine', 'y', 'le', 'la', 'leur', 'lui', 'isso'].includes(t));
+}
+
+/** The sentences of a message, emoji-only and empty segments left out. */
+function sentencesOf(text: string): string[] {
+    return text.split(/(?<=[.!?…])\s+|\n+/).map(s => s.trim()).filter(s => /\p{L}/u.test(s));
+}
+
+/**
+ * The message ends by offering a person, so a «sí» answers that offer: one of our fixed offers, or the model's own words
+ * as the LAST sentence («¿Quiere que le pida a alguien del equipo que lo confirme por usted?», «¿Le conecto con un
+ * asesor?», «Would you like me to check with someone from the team?»). An offer followed by another question
+ * («…¿O prefiere ver otro modelo?») does not count: the «sí» would answer that one.
+ */
+export function endsWithHumanOffer(text: unknown): boolean {
+    if (typeof text !== 'string' || !text.trim()) return false;
+    if (containsHumanOffer(text) || isHumanOfferText(text)) return true;
+    const sentences = sentencesOf(text);
+    const last = sentences[sentences.length - 1];
+    return !!last && offersHumanHandoff(last);
+}
+
 export type HumanOfferMark = { at: string; expiresAt: string };
 export function isLiveHumanOffer(mark: any, now = Date.now()): boolean {
     const exp = mark && typeof mark.expiresAt === 'string' ? Date.parse(mark.expiresAt) : NaN;
@@ -125,7 +198,7 @@ export function isLiveHumanOffer(mark: any, now = Date.now()): boolean {
  * sentence. The previous outbound message must itself offer a person.
  */
 export function isAffirmationOfHumanOffer(userText: unknown, previousOutbound: unknown): boolean {
-    return isAffirmation(userText)
+    return isOfferAcceptance(userText)
         && (containsHumanOffer(previousOutbound) || offersHumanHandoff(previousOutbound));
 }
 
@@ -151,7 +224,39 @@ export function withReturnNotice<T extends string | null | undefined>(notice: st
 export function offerInsteadOfPromise(response: string, lang: string | undefined, canOffer: boolean): string {
     const kept = removeHandoffPromiseSentences(response);
     if (!canOffer) return kept || noDataNoOfferText(lang);
-    return kept ? `${kept}\n\n${humanOfferQuestionText(lang)}` : noDataWaitReplacementText(lang);
+    // The offer is the ONE question of the reply. Production (travel): «¿Desea que le ayude con algo más mientras tanto?»
+    // stayed in front of the appended offer, two questions in a row, and a «sí» could answer either.
+    const statements = withoutQuestions(kept);
+    return statements ? `${statements}\n\n${humanOfferQuestionText(lang)}` : noDataWaitReplacementText(lang);
+}
+
+/**
+ * The text without its questions. A sentence that states something before its «¿…?» keeps the statement («Tenemos
+ * tres modelos, ¿cuál prefiere?» → «Tenemos tres modelos.»); a question with nothing before it goes whole.
+ */
+export function withoutQuestions(text: string): string {
+    const parts = text.split(/((?<=[.!?…])[ \t]+|\n+)/);
+    let out = '';
+    let pendingSeparator = '';
+    for (let i = 0; i < parts.length; i += 2) {
+        let sentence = parts[i];
+        const separator = parts[i + 1] ?? '';
+        if (/[?？]/.test(sentence)) {
+            const opening = sentence.indexOf('¿');
+            sentence = opening > 0 ? sentence.slice(0, opening).replace(/[\s,;:—–-]+$/, '') : '';
+            // «Mientras tanto, ¿…?» leaves a connector, not a statement: only a figure or a clause of four words stays.
+            if (!/\d/.test(sentence) && sentence.trim().split(/\s+/).length < 4) sentence = '';
+            if (sentence && !/[.!…]$/.test(sentence)) sentence += '.';
+        }
+        if (!/[\p{L}\d]/u.test(sentence)) {
+            // An emoji-only or emptied segment. Its own separator goes with it; a line break that preceded it stays.
+            pendingSeparator = pendingSeparator.includes('\n') ? pendingSeparator : separator.includes('\n') ? separator : pendingSeparator;
+            continue;
+        }
+        out += (out ? (pendingSeparator || ' ') : '') + sentence;
+        pendingSeparator = separator;
+    }
+    return out.trim();
 }
 
 /**

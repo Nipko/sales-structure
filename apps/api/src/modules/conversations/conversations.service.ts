@@ -8769,16 +8769,6 @@ export class ConversationsService {
     }
 
     /**
-     * Judge the inbound message against an offer of a person: an acceptance («sí», «Sí, por favor pídanle que lo
-     * confirme», «ok hazlo») escalates; anything else just clears the mark. Returns true to escalate.
-     *
-     * The offer is read from the PREVIOUS assistant message, not only from the mark: production (Telegram, store and
-     * travel) — the model offered a person in its own words («¿Quiere que le pida a alguien del equipo que se lo
-     * confirme?»), no mark was left because only our fixed sentences left one, and the customer's «sí» reached the model,
-     * which wrote «He tomado nota para que alguien del equipo…» while nobody was told. With no mark, the offer must be
-     * the last outbound message and recent (the same TTL as the mark).
-     */
-    /**
      * The customer's language for a reply sent BEFORE the turn resolves `userLanguage` (the transfer notice of an accepted
      * offer, the replay notices). Production QA (23-oct): «Sim, por favor pergunte ao corretor e me avise por aqui» in a
      * Portuguese conversation got the Spanish transfer notice, because the message was read alone against the tenant
@@ -8798,6 +8788,16 @@ export class ConversationsService {
         return this.languageDetector.detect(text || '', previous || config?.language || 'es', previous, { recentCustomerMessages });
     }
 
+    /**
+     * Judge the inbound message against an offer of a person: an acceptance («sí», «Sí, por favor pídanle que lo
+     * confirme», «ok hazlo») escalates; anything else just clears the mark. Returns true to escalate.
+     *
+     * The offer is read from the PREVIOUS assistant message, not only from the mark: production (Telegram, store and
+     * travel) — the model offered a person in its own words («¿Quiere que le pida a alguien del equipo que se lo
+     * confirme?»), no mark was left because only our fixed sentences left one, and the customer's «sí» reached the model,
+     * which wrote «He tomado nota para que alguien del equipo…» while nobody was told. With no mark, the offer must be
+     * the last outbound message and recent (the same TTL as the mark).
+     */
     private async resolveHumanOfferAcceptance(schemaName: string, conversation: any, text?: string): Promise<boolean> {
         const mark = (conversation?.metadata as any)?.[HUMAN_OFFER_MARK];
         if (mark) {

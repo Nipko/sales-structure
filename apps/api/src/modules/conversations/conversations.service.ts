@@ -1,7 +1,7 @@
 import { appointmentRecordReadId } from './appointment-record-read';
 import { isCanonicalConsentRecovery, canonicalConsentRecoveryDirective } from './canonical-consent-recovery';
 import { DemoAllowanceService } from '../throttle/demo-allowance.service';
-import { FACTS_LEDGER_FLAG, FeatureFlagsService, OPERATION_CLASSIFIER_FLAG, RENDERED_FACTS_FLAG, REQUIRED_READS_CATALOG_FLAG, REQUIRED_READS_LISTINGS_FLAG, REQUIRED_READS_PROPERTIES_FLAG, REQUIRED_READS_RESTAURANTS_FLAG, REQUIRED_READS_TOURS_FLAG, SAFETY_TRIAGE_FLAG, SLOT_WINDOW_FLAG, resolveFeatureFlag } from '../throttle/feature-flags.service';
+import { CATALOG_OVER_FAQ_FLAG, FACTS_LEDGER_FLAG, FeatureFlagsService, OPERATION_CLASSIFIER_FLAG, RENDERED_FACTS_FLAG, REQUIRED_READS_CATALOG_FLAG, REQUIRED_READS_LISTINGS_FLAG, REQUIRED_READS_PROPERTIES_FLAG, REQUIRED_READS_RESTAURANTS_FLAG, REQUIRED_READS_TOURS_FLAG, SAFETY_TRIAGE_FLAG, SLOT_WINDOW_FLAG, resolveFeatureFlag } from '../throttle/feature-flags.service';
 import { runSafetyTriage, type SafetyTriageTurnOutcome } from './runtime/safety-triage';
 import { buildOperationShadowTrace, OperationClassifierService, type OperationShadowVerdict } from './runtime/operation-classifier.service';
 import { buildRequiredReadsTrace, REQUIRED_READ_TIMEOUT_MS, requiredReadsGate, requiredReadsPilotForProfile, runRequiredReads,
@@ -11,6 +11,7 @@ import { demoAllowanceExhaustedText } from '../widget/widget-demo-link';
 import { recordFirstReply } from '../../common/utils/first-reply.util';
 import { stripInternalMarkers } from '../../common/utils/internal-markers.util';
 import { projectAvailableServices } from '../appointments/service-price-status';
+import { AbsentSubjects, absentServicesIn, annotateKnowledgeItems, annotateKnowledgeToolResult, notOfferedReply, offerClaimForAbsent, type CatalogueEntry } from './runtime/catalog-over-faq';
 import { catalogNamesOfTurn, languageMismatch, replyLanguageOf, rewriteRejection, type RewriteRejectionReason, verbatimTermsOf } from './reply-language';
 import { localeForReply, normalizeReplyAmounts } from './reply-price-format';
 import { foldedSql, foldQueryText } from '../../common/utils/sql-accent-fold.util';
@@ -2838,6 +2839,8 @@ export class ConversationsService {
             operationClassifier: resolveFeatureFlag((tenant.settings as any)?.featureFlags, OPERATION_CLASSIFIER_FLAG),
             factsLedger: resolveFeatureFlag((tenant.settings as any)?.featureFlags, FACTS_LEDGER_FLAG),
             renderedFacts: resolveFeatureFlag((tenant.settings as any)?.featureFlags, RENDERED_FACTS_FLAG),
+            // Only when on: a snapshot of a tenant with the flag off is exactly the previous one.
+            ...(resolveFeatureFlag((tenant.settings as any)?.featureFlags, CATALOG_OVER_FAQ_FLAG) ? { catalogOverFaq: true } : {}),
             requiredReads: {
                 restaurants: resolveFeatureFlag((tenant.settings as any)?.featureFlags, REQUIRED_READS_RESTAURANTS_FLAG),
                 catalog: resolveFeatureFlag((tenant.settings as any)?.featureFlags, REQUIRED_READS_CATALOG_FLAG),
@@ -4771,6 +4774,26 @@ export class ConversationsService {
             }
         }
 
+        // Catalogue over FAQ (flag agentRuntime.catalogOverFaq, F4300-24): for an agent that reads a service catalogue, the
+        // catalogue decides what is offered. It is read here (the same cached read as <available_services>) so the FAQ,
+        // RAG and tool results of this turn can be checked against it. Flag off: nothing is read and nothing changes.
+        const catalogOverFaq = await this.catalogOverFaqEnabled(tenantId, session);
+        let serviceCatalogue: CatalogueEntry[] = [];
+        const absentServices = new AbsentSubjects();
+        if (catalogOverFaq) {
+            if (turnAllowedTools.includes('list_services')) {
+                const services = await this.loadServicesForPrompt({
+                    known: bookingState.services, cache, toolExecutor, schemaName, tenantId,
+                    contactId: conversation.contact_id || '', conversationId: conversation.id,
+                    authority: engineAuthority,
+                });
+                serviceCatalogue = services
+                    .filter((service: any) => typeof service?.name === 'string' && service.name.trim())
+                    .map((service: any) => ({ name: service.name.trim(), description: typeof service.description === 'string' ? service.description : null }));
+            }
+            absentServices.add(absentServicesIn(userText, serviceCatalogue));
+        }
+
         // An empty FAQ does not establish that a named property is unknown.
         // Resolve photo requests through the authorized current catalogue before
         // the model can deny its existence. This is a read, never a media send.
@@ -5418,6 +5441,16 @@ export class ConversationsService {
         // ledger, the reads that already ran before the model and the catalogue the turn projects. Flag off: no
         // `factTokens` key, so the prompt is exactly the previous one.
         const renderedFacts = await this.renderedFactsEnabled(tenantId, session);
+        // Catalogue over FAQ (flag agentRuntime.catalogOverFaq): every FAQ / RAG item naming a service the catalogue does
+        // not list says so, and the turn carries the catalogue as the authority for what is offered (rule 20b).
+        if (catalogOverFaq) {
+            if (turnContext.retrievedKnowledge) turnContext.retrievedKnowledge = annotateKnowledgeItems(turnContext.retrievedKnowledge, serviceCatalogue, absentServices);
+            if (turnContext.possibleKnowledge) turnContext.possibleKnowledge = annotateKnowledgeItems(turnContext.possibleKnowledge, serviceCatalogue, absentServices);
+            turnContext.catalogueAuthority = {
+                offered: [...new Set(serviceCatalogue.map(service => service.name))].slice(0, 30),
+                notInCatalogue: absentServices.list().map(subject => subject.phrase),
+            };
+        }
         const turnFactBase: VerifiedFact[] = renderedFacts
             ? [...ledgerFacts, ...projectedCatalogFacts(turnContext, now), ...extractVerifiedFacts(preExecutedTools, now).facts] : [];
         if (renderedFacts) turnContext.factTokens = factTokenViews(factRegistry(turnFactBase), now);
@@ -5473,6 +5506,8 @@ export class ConversationsService {
             // the data is made plain (it can never be cited), and a result of the model's own call carries the tokens of
             // its facts (`fact_tokens`). Flag off: exactly the previous serialisation.
             const modelToolContent = (result: any, name?: string, args?: any): string => {
+                // Catalogue over FAQ: a FAQ / chunk naming a service absent from the catalogue carries not_in_catalogue.
+                if (catalogOverFaq) result = annotateKnowledgeToolResult(name, result, serviceCatalogue, absentServices);
                 const sanitized = sanitizeToolResultForModel(result, userLanguage);
                 if (!renderedFacts) return JSON.stringify(sanitized);
                 const plain = neutralizeFactTokens(JSON.stringify(sanitized));
@@ -6029,6 +6064,17 @@ export class ConversationsService {
                         this.recordAgentSignal(tenantId, 'created_record_reply_replaced', session);
                         deterministicReply = text;
                     }
+                }
+            }
+            // Catalogue over FAQ (flag agentRuntime.catalogOverFaq, F4300-24): a reply that presents a service the catalogue
+            // does not list as offered («Sí, ofrecemos tratamiento de ortodoncia», from a seeded FAQ) is replaced by the
+            // not-offered answer, which lists the catalogue. Server texts are left alone.
+            if (catalogOverFaq && !deterministicReply && finalResponse && !isPipelineFallbackReply(finalResponse) && !engineProducedText) {
+                const claimed = offerClaimForAbsent(finalResponse, absentServices.list(), serviceCatalogue);
+                if (claimed) {
+                    deterministicReply = notOfferedReply(claimed, serviceCatalogue, userLanguage, addressFormOf(regional?.addressForm.value));
+                    turnTrace.add('guardrail', 'catalog_over_faq', { subject: claimed.key });
+                    this.recordAgentSignal(tenantId, 'catalog_over_faq_reply_replaced', session);
                 }
             }
             // Rendered facts (flag agentRuntime.renderedFacts, PR6). The model wrote tokens for the verified facts; the
@@ -6763,6 +6809,21 @@ export class ConversationsService {
             return (await this.featureFlags?.isFeatureEnabled(tenantId, RENDERED_FACTS_FLAG)) === true;
         } catch (error: any) {
             this.logger.warn(`[RenderedFacts] flag unavailable for ${tenantId}: ${error?.message}`);
+            return false;
+        }
+    }
+
+    /**
+     * `agentRuntime.catalogOverFaq` for this tenant (off by default, F4300-24). Agent Test and evaluations read the value
+     * sealed in the snapshot by `captureEvaluationContext` (no per-turn tenant or Redis lookup); a snapshot captured
+     * before the flag existed reads as off. A read failure is "off": the previous prompt and pipeline.
+     */
+    private async catalogOverFaqEnabled(tenantId: string, session?: AgentTurnSession): Promise<boolean> {
+        try {
+            if (session) return resolveEvaluationTurnContext(session.snapshot.contextInputs, tenantId).catalogOverFaq === true;
+            return (await this.featureFlags?.isFeatureEnabled(tenantId, CATALOG_OVER_FAQ_FLAG)) === true;
+        } catch (error: any) {
+            this.logger.warn(`[CatalogOverFaq] flag unavailable for ${tenantId}: ${error?.message}`);
             return false;
         }
     }

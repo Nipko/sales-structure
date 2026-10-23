@@ -789,6 +789,11 @@ export interface RetrievedKnowledgeItem {
     isRegulated?: boolean;
     conflictReviewStatus?: 'available' | 'unavailable';
     conflicts?: import('./knowledge-conflict-contract').KnowledgeConflictAnnotation[];
+    /**
+     * Services this item names that the business's service catalogue does not list (`agentRuntime.catalogOverFaq`).
+     * Absent with the flag off, and when the item names no such service.
+     */
+    notInCatalogue?: string[];
 }
 
 // ---- Versioned active domain-object context ----
@@ -1094,6 +1099,13 @@ export interface TurnContext {
         description?: string;
     }>;
     retrievedKnowledge?: RetrievedKnowledgeItem[];
+    /**
+     * The service catalogue as the authority for what the business offers (`agentRuntime.catalogOverFaq`). Absent when
+     * the flag is off — the prompt is then byte-identical to the one without it. `offered` is the catalogue read this
+     * turn (empty when the agent reads no service catalogue); `notInCatalogue` the services this turn's message or
+     * knowledge named that the catalogue does not list.
+     */
+    catalogueAuthority?: { offered: string[]; notInCatalogue: string[] };
     /** Probable but unverified knowledge; must be presented with uncertainty. */
     possibleKnowledge?: RetrievedKnowledgeItem[];
     /** E-commerce catalog sample (T2.17): real products so the agent never invents them. */

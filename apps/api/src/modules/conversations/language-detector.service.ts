@@ -54,7 +54,9 @@ export class LanguageDetectorService {
             // «Busco apartamento en venta en Usaquen de 3 habitaciones, hasta 600 millones» is recognised after an English chat.
             'hasta', 'habitaciones', 'habitacion', 'dormitorios', 'millones', 'millon', 'venta', 'buscamos', 'quisieramos', 'necesitamos', 'cuantos', 'cuantas', 'quien', 'quienes', 'cuando'], chars: /[ñ¿¡]/ },
         en: { words: ['want', 'need', 'would', 'could', 'looking', 'what', 'where', 'when', 'how', 'book', 'booking', 'appointment', 'schedule', 'available', 'availability'] },
-        pt: { words: ['quero', 'gostaria', 'preciso', 'procuro', 'quanto', 'custa', 'voce', 'voces', 'nao', 'agendar', 'marcar', 'reservar', 'consulta', 'disponivel'], chars: /[ãõ]/ },
+        // Not «consulta»: Spanish spells it the same («qué consulta me recomiendan…?» after a Portuguese case was read as a
+        // sign of Portuguese and kept it, production QA 24-oct).
+        pt: { words: ['quero', 'gostaria', 'preciso', 'procuro', 'quanto', 'custa', 'voce', 'voces', 'nao', 'agendar', 'marcar', 'reservar', 'disponivel'], chars: /[ãõ]/ },
         fr: { words: ['veux', 'besoin', 'voudrais', 'cherche', 'combien', 'reserver', 'rendez', 'disponible', 'disponibilite'], chars: /[èùœëîû]/ },
     };
 
@@ -223,7 +225,9 @@ export class LanguageDetectorService {
             // What a product or a dish is or holds (production QA 23/24-oct: «el audífono Aurora trae estuche?» after a Portuguese
             // case and «de qué color es el audífono Aurora?» after an English one were answered in the previous language).
             // Not «lleva» (Portuguese «leva» is another word, but «sale» and «come» are English words).
-            'es', 'trae', 'contiene', 'contienen', 'viene', 'vienen', 'lleva'],
+            'es', 'trae', 'contiene', 'contienen', 'viene', 'vienen', 'lleva',
+            // Advice a customer asks for: the «ie» of these stems is Spanish only (pt «recomenda», «sugere», fr «recommande»).
+            'recomiendan', 'recomienda', 'recomiendas', 'recomiendo', 'sugieren', 'sugiere', 'sugieres', 'aconsejan', 'aconseja'],
         pt: ['tem', 'voce', 'voces', 'quanto', 'quanta', 'quantos', 'quantas', 'custa', 'custam', 'posso', 'pode', 'podem', 'quero',
             'preciso', 'gostaria', 'consegue', 'inclui', 'incluem', 'fica', 'ficam', 'estou', 'faz', 'fazem', 'procuro', 'devo', 'qual',
             'quais', 'aceitam', 'oferecem', 'esta', 'estao',
@@ -239,7 +243,11 @@ export class LanguageDetectorService {
         // Not «stock» (a loanword in Spanish and French: «hay stock?» is Spanish) nor «charge» (a French word too).
         en: ['is', 'are', 'does', 'have', 'has', 'can', 'could', 'would', 'how', 'what', 'cost', 'costs', 'need', 'want', 'include',
             'includes', 'should', 'where', 'when', 'which', 'offer', 'accept',
-            'sell', 'sells', 'open', 'deliver', 'ship', 'make', 'carry', 'contain', 'contains'],
+            'sell', 'sells', 'open', 'deliver', 'ship', 'make', 'carry', 'contain', 'contains',
+            // The imperatives of a request (production QA 24-oct: «tell me about the Aurora tour» after a Spanish case was
+            // answered in Spanish — once the name is out, «about» and «the» were evidence but nothing was a verb). Not «show»
+            // («el show»), «describe» (Spanish «describe»), «send» nor «give» («please send it» keeps the stored language).
+            'tell', 'explain', 'recommend'],
     };
 
     /**
@@ -255,7 +263,11 @@ export class LanguageDetectorService {
      */
     private readonly predicatePatterns: Record<string, RegExp[]> = {
         pt: [/(?<!\p{L})o que(?!\p{L})/u, /uíd[oa]s?(?!\p{L})/u],
-        es: [/^[\s¿¡"'«]*(?:me|te)\s+\p{L}{2,}(?:as|es)(?!\p{L})/u],
+        // A clitic before an «ustedes» verb anywhere in the message («qué consulta me recomiendan…?», «nos envían…»):
+        // Portuguese writes «me recomendam» / «nos enviam», French and English put no -an/-en verb there.
+        es: [/^[\s¿¡"'«]*(?:me|te)\s+\p{L}{2,}(?:as|es)(?!\p{L})/u, /(?<!\p{L})(?:me|te|nos|les?)\s+\p{L}{3,}(?:an|en)(?!\p{L})/u],
+        // An English request or question frame: «tell me about…», «what is…», «how much…», «what's…».
+        en: [/(?<!\p{L})(?:tell|show|give|send)\s+(?:me|us)(?!\p{L})/u, /(?<!\p{L})(?:what|how|where|which|who)(?:['’]s|\s+(?:is|are|was|much|many|long|does|do|can))(?!\p{L})/u],
         fr: [/\p{L}-(?:t-)?(?:il|elle|ils|elles|on|vous|nous|je|tu)(?!\p{L})/u, /(?<!\p{L})est-ce(?!\p{L})/u],
     };
 
@@ -265,7 +277,9 @@ export class LanguageDetectorService {
      */
     private readonly clearWords: Record<string, string[]> = {
         es: ['enero', 'febrero', 'marzo', 'mayo', 'junio', 'julio', 'septiembre', 'setiembre', 'octubre', 'noviembre', 'diciembre',
-            'cupo', 'cupos', 'personas', 'precio', 'precios'],
+            'cupo', 'cupos', 'personas', 'precio', 'precios',
+            // Portuguese «melhor(es)», French «meilleur»: «qué consulta es mejor…?».
+            'mejor', 'mejores'],
         pt: ['janeiro', 'fevereiro', 'maio', 'junho', 'julho', 'setembro', 'outubro', 'novembro', 'dezembro', 'vaga', 'vagas',
             'pessoas', 'preco', 'frete', 'na', 'nas', 'ao', 'sem'],
         fr: ['janvier', 'fevrier', 'mars', 'avril', 'mai', 'juin', 'juillet', 'aout', 'septembre', 'octobre', 'novembre', 'decembre',
@@ -335,7 +349,8 @@ export class LanguageDetectorService {
 
     /** Accented words of ONE language, tested on the raw text: «sí» (pt «sim», fr «oui»), «há» (es «hay»), «você», «où». */
     private readonly clearCharacters: Record<string, RegExp> = {
-        es: /(?<!\p{L})sí(?!\p{L})|[ñ¿¡]|(?<!\p{L})(?:qué|cómo|dónde|cuándo|cuánt[oa]s?|quién(?:es)?|cuál(?:es)?)(?!\p{L})/u,
+        // «-ión» / «-iones» (revisión, información): Portuguese writes «-ão» / «-ões», French and English no accent.
+        es: /(?<!\p{L})sí(?!\p{L})|[ñ¿¡]|(?<!\p{L})(?:qué|cómo|dónde|cuándo|cuánt[oa]s?|quién(?:es)?|cuál(?:es)?)(?!\p{L})|\p{L}{2,}ión(?!\p{L})|\p{L}{2,}iones(?!\p{L})/u,
         pt: /[ãõ]|(?<!\p{L})(?:há|é|você|vocês)(?!\p{L})/u,
         fr: /[èùœëîû]|(?<!\p{L})(?:ça|où)(?!\p{L})/u,
     };
@@ -406,6 +421,9 @@ export class LanguageDetectorService {
             // text included, in Spanish.
             if (lang === 'pt' && /(?<!\p{L})(?:há|é)(?!\p{L})/u.test(raw)) { predicates++; verbs++; }
             if ((this.predicatePatterns[lang] ?? []).some(pattern => pattern.test(raw))) { hits++; predicates++; verbs++; }
+            // An accented Spanish interrogative («qué consulta…?», «cuál es…?») asks a question in Spanish only: Portuguese writes
+            // «que»/«quê»/«qual», French none of them. It is a predicate, never a verb, so on its own it still decides nothing.
+            if (lang === 'es' && this.spanishInterrogative.test(raw)) predicates++;
             return { lang, hits, predicates, verbs };
         }).sort((a, b) => b.hits - a.hits);
         const [best, second] = ranked;
@@ -418,6 +436,8 @@ export class LanguageDetectorService {
         const content = words.filter(word => !this.acknowledgements.has(word));
         return best.verbs > 0 && content.length >= 2 ? best.lang : null;
     }
+
+    private readonly spanishInterrogative = /(?<!\p{L})(?:qué|cómo|dónde|cuándo|cuánt[oa]s?|quién(?:es)?|cuál(?:es)?)(?!\p{L})/u;
 
     /** Interrogatives of the predicate lists: evidence, but never enough on their own. */
     private readonly interrogatives = new Set(['cuanto', 'cuanta', 'cuantos', 'cuantas', 'donde', 'cual', 'cuales', 'cuando', 'quien', 'quienes',

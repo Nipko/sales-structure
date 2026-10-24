@@ -139,3 +139,97 @@ describe('the reply is aligned to the current message language', () => {
         expect(wholeReplyMismatch('The Aurora cuesta 129.900 COP today.', 'en')).toBeNull();
     });
 });
+
+
+/**
+ * F4300-16 after #198, production QA 24-oct (same shared customer): «qué consulta me recomiendan para una revisión general?»
+ * after a Portuguese case was answered «Para uma revisão geral, recomendo agendar uma "Consulta general"…» (2/2, also «qué
+ * consulta es mejor…?»), and «tell me about the Aurora tour» after a Spanish case «El Tour QA Aurora es una experiencia
+ * ficticia…». Before the fix the detector kept the previous language for all three: «consulta» counted as a sign of
+ * Portuguese (Spanish spells it the same), and once the name was out, «tell me about the tour» had evidence («about»,
+ * «the») but no verb. Spanish-only shapes («qué», «me recomiendan», «una», «-ión», «mejor») and English request frames
+ * («tell me», «what is», «how much») now decide the turn.
+ */
+describe('words shared by Spanish and Portuguese, and English request frames, do not keep the previous case language', () => {
+    const SHARED_NAMES = ['Consulta general', 'Tour QA Aurora'];
+    it.each([
+        ['qué consulta me recomiendan para una revisión general?', 'pt', 'es'],
+        ['qué consulta es mejor para una revisión general?', 'pt', 'es'],
+        ['que consulta me recomiendan para una revision general?', 'pt', 'es'],
+        ['tell me about the Aurora tour', 'es', 'en'],
+        ['tell me about the Tour QA Aurora', 'pt', 'en'],
+        ['what is the Aurora tour?', 'es', 'en'],
+        ['how much is a Consulta general?', 'pt', 'en'],
+        ['quais produtos vocês vendem?', 'es', 'pt'],
+        ['Tem outros produtos?', 'es', 'pt'],
+        ['qual consulta vocês recomendam para uma revisão geral?', 'es', 'pt'],
+    ])('«%s» after a %s case is %s', (text, previous, expected) => {
+        for (const context of [undefined, { recentCustomerMessages: RECENT[previous] }, { recentCustomerMessages: RECENT[previous], names: SHARED_NAMES }]) {
+            expect(detector.detectDetailed(text, previous, previous, context)).toEqual({ language: expected, persist: true });
+        }
+    });
+
+    it.each([
+        ['consulta general', 'pt'], ['consulta general', 'es'], ['a consulta', 'pt'], ['el show', 'en'], ['Aurora tour', 'es'],
+    ])('a shared or product-only «%s» keeps the previous %s', (text, previous) => {
+        expect(detector.detect(text, previous, previous, { recentCustomerMessages: RECENT[previous] })).toBe(previous);
+    });
+
+    it('a Spanish question about a show or a Portuguese «me recomendam» is not read as English or Spanish', () => {
+        expect(detector.detect('a qué hora es el show?', 'en', 'en')).toBe('es');
+        expect(detector.detect('vocês me recomendam qual consulta?', 'es', 'es')).toBe('pt');
+    });
+});
+
+describe('the reply guard follows the confident current-message language even around a catalogue name of another language', () => {
+    const build = (rewrite: string) => {
+        const service: any = Object.create(ConversationsService.prototype);
+        const execute = jest.fn(async () => ({ content: rewrite }));
+        Object.assign(service, {
+            logger: { warn: jest.fn() }, eventEmitter: { emit: jest.fn() }, languageDetector: detector,
+            responseValidator: { validatePrices: jest.fn(() => ({ ok: true, hallucinatedPrices: [] })) },
+            recordAgentSignal: jest.fn(), llmRouter: { execute },
+        });
+        return { service, execute };
+    };
+    const run = (service: any, reply: string, lang: string, message: string, context: any = {}) =>
+        service.applyOutputGuardrails(reply, 'sys', [{ role: 'user', content: message }], [], 'tenant', 'conv', [], lang, [], context);
+    const SERVICES = { availableServices: [{ name: 'Consulta general' }], catalog: [{ title: 'Tour QA Aurora' }] };
+
+    it.each([
+        ['qué consulta me recomiendan para una revisión general?', 'pt',
+            'Para uma revisão geral, recomendo agendar uma "Consulta general", que inclui avaliação completa com o nosso clínico.',
+            'Para una revisión general, le recomiendo agendar una "Consulta general", que incluye una evaluación completa con nuestro clínico.'],
+        ['qué consulta es mejor para una revisión general?', 'pt',
+            'Para uma revisão geral, recomendo a Consulta general.',
+            'Para una revisión general, le recomiendo la Consulta general.'],
+        ['tell me about the Aurora tour', 'es',
+            'El Tour QA Aurora es una experiencia ficticia de prueba que incluye un recorrido guiado.',
+            'The Tour QA Aurora is a fictional test experience that includes a guided walk.'],
+        ['Tem outros produtos?', 'es',
+            'Sí, también tenemos el Tour QA Aurora y la Consulta general.',
+            'Sim, também temos o Tour QA Aurora e a Consulta general.'],
+    ])('«%s» (stored %s): the reply in the previous language is rewritten', async (message, previous, reply, rewrite) => {
+        const lang = detector.detect(message, previous, previous, { recentCustomerMessages: RECENT[previous], names: ['Consulta general', 'Tour QA Aurora'] });
+        expect(lang).not.toBe(previous);
+        for (const context of [{}, SERVICES]) {
+            const { service, execute } = build(rewrite);
+            expect(await run(service, reply, lang, message, context)).toBe(rewrite);
+            expect(execute).toHaveBeenCalledTimes(1);
+        }
+    });
+
+    it('a reply in the turn language that quotes a catalogue name of another language is left alone', async () => {
+        for (const [reply, lang] of [
+            ['Para uma revisão geral, recomendo agendar uma "Consulta general" com o nosso clínico.', 'pt'],
+            ['For a general check-up I recommend booking a Consulta general with our clinician.', 'en'],
+            ['The Tour QA Aurora is a fictional test experience with a guided walk.', 'en'],
+        ]) {
+            for (const context of [{}, SERVICES]) {
+                const { service, execute } = build('should not be used');
+                expect(await run(service, reply, lang, 'x', context)).toBe(reply);
+                expect(execute).not.toHaveBeenCalled();
+            }
+        }
+    });
+});

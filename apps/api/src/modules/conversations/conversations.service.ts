@@ -5114,8 +5114,9 @@ export class ConversationsService {
             const context: ServiceExecutionContext = {
                 ...executionContext, mode: executionContext?.mode ?? 'live', persistence: 'disabled',
             };
+            // customerText (F4300-29): the read runs with query "", so the product the customer names reaches it only this way.
             const options = { authority: llmAuthority, channelType: msg.channelType, executionContext: context,
-                commitmentBlocked, deniedTools, jurisdiction: regional?.operatingCountry.value };
+                commitmentBlocked, deniedTools, jurisdiction: regional?.operatingCountry.value, customerText: userText };
             const read = async (name: 'search_products' | 'check_stock', args: Record<string, unknown>) => {
                 turnTrace.add('tool_call', name, { origin: 'vertical', effect: 'read', automatic: true });
                 let result: any;
@@ -5157,7 +5158,7 @@ export class ConversationsService {
                 result = await awaitAutomaticFaqLookup(toolExecutor.execute(
                     schemaName, tenantId, conversation.contact_id || '', 'search_products', args, conversation.id,
                     { authority: llmAuthority, channelType: msg.channelType, executionContext: context,
-                        commitmentBlocked, deniedTools, jurisdiction: regional?.operatingCountry.value },
+                        commitmentBlocked, deniedTools, jurisdiction: regional?.operatingCountry.value, customerText: userText },
                 ), 3_000, context);
             } catch (error: any) {
                 if (session || error instanceof LLMSourceAuthorityUnavailable) throw error;
@@ -5401,7 +5402,7 @@ export class ConversationsService {
                     ...executionContext, mode: executionContext?.mode ?? 'live', persistence: 'disabled',
                 };
                 const options = { authority: llmAuthority, channelType: msg.channelType, executionContext: context,
-                    commitmentBlocked, deniedTools, jurisdiction: regional?.operatingCountry.value };
+                    commitmentBlocked, deniedTools, jurisdiction: regional?.operatingCountry.value, customerText: userText };
                 run = await runRequiredReads(gate.operation, {
                     ...(slots ? { slots, customerText: userText } : {}),
                     publishedTools: turnAllowedTools,
@@ -5956,6 +5957,8 @@ export class ConversationsService {
                                 toolExecutor.execute(schemaName, tenantId, contactId, tc.function.name, args, conversation.id, {
                                     authority: llmAuthority,
                                     channelType: msg.channelType,
+                                    // Server-origin: search_products also returns the named products not for sale (F4300-29).
+                                    customerText: userText,
                                     executionContext,
                                     knowledgeSearch: {
                                         agentId: resolvedAgentId,

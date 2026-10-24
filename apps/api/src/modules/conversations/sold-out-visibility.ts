@@ -42,8 +42,9 @@ export const NOT_FOR_SALE_MATCHES_NOTE = 'The products under notForSale match th
 export const NOT_FOR_SALE_MATCH_LIMIT = 5;
 
 /** The default read of a name query also looks for the matching products not for sale (an empty query is a browse, not a name). */
-export function readsNotForSaleMatches(scope: { availability: ProductAvailability }, terms: readonly string[]): boolean {
-    return scope.availability === 'available' && terms.length > 0;
+export function readsNotForSaleMatches(scope: { availability: ProductAvailability }, terms: readonly string[], customerText = ''): boolean {
+    // A browse (query "") also looks when the server passes the customer's message: the automatic reads of the store run that way.
+    return scope.availability === 'available' && (terms.length > 0 || customerText.trim().length > 0);
 }
 
 /** A row the not-for-sale read returned, as `notForSale` carries it; null for a row that is actually for sale and in stock. */
@@ -170,6 +171,7 @@ const DENIES_HAVING = new RegExp([
     /\b(?:we )?(?:don't|do not) (?:have|carry|sell|stock)\b/,
     /\bnot (?:in|part of) our catalog(?:ue)?\b/,
     /\b(?:nous )?n'(?:avons|vendons) pas\b/,
+    /\b(?:nous )?ne (?:l'|les )?(?:avons|vendons|proposons) pas\b/,
     /\bpas dans (?:notre|le) catalogue\b/,
 ].map(re => re.source).join('|'));
 const SAYS_SOLD_OUT = new RegExp(`\\b${SOLD_OUT}`);
@@ -185,8 +187,15 @@ function notForSaleNames(sources: readonly unknown[]): string[] {
     for (const raw of sources) {
         const value = parse(raw) as any;
         if (!value || typeof value !== 'object' || Array.isArray(value) || value.error || value.stale === true) continue;
-        if (!Array.isArray(value.notForSale)) continue;
-        for (const p of value.notForSale) {
+        // `notForSale` of a default read, and (F4300-29) the products a read itself marks not for sale: a sold-out list
+        // (scope unavailable_only), or a row with isAvailable false / soldOut.
+        const rows = [
+            ...(Array.isArray(value.notForSale) ? value.notForSale : []),
+            ...(Array.isArray(value.products)
+                ? value.products.filter((p: any) => value.scope === 'unavailable_only' || p?.isAvailable === false || p?.inStock === false || p?.soldOut === true)
+                : []),
+        ];
+        for (const p of rows) {
             if (!p || typeof p.name !== 'string' || !p.name.trim()) continue;
             names.push(Array.from(p.name, (char: string) => (char.charCodeAt(0) <= 31 || char.charCodeAt(0) === 127 ? ' ' : char)).join('').trim().slice(0, 120));
         }

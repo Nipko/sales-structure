@@ -333,6 +333,11 @@ export class AIToolExecutorService {
             /** Server-origin only: a step-up read reports an unverified chat without sending a code (see the guard). */
             identityChallenge?: 'start' | 'none';
             channelType?: string;
+            /**
+             * Server-origin only: the customer's message of this turn. search_products uses it to also return, under
+             * `notForSale`, the products not for sale that the message names (F4300-29), whatever query the read runs with.
+             */
+            customerText?: string;
             readOnly?: boolean;
             /** Trusted automatic context lookup; no views, DDL or ledger writes. */
             automaticFaqContext?: boolean;
@@ -791,7 +796,8 @@ export class AIToolExecutorService {
                     return this.sendBookingLink(tenantId);
 
                 case 'search_products':
-                    return this.searchProducts(schemaName, args.query, args.limit, args.category, undefined, args.availability);
+                    // `customerText` comes from opts (the server), never from args (the model).
+                    return this.searchProducts(schemaName, args.query, args.limit, args.category, undefined, args.availability, opts.customerText);
 
                 case 'get_product':
                     return this.getProduct(schemaName, args.productId);
@@ -1516,7 +1522,7 @@ export class AIToolExecutorService {
      * "available", and its result says `scope: 'available_only'` so an empty list of sold-out items is never read into it. Ordering
      * does not go through here: place_catalog_order re-reads the product and rejects one that is not for sale or has no stock.
      */
-    private async searchProducts(schema: string, query: string, limit = 5, category?: string, maxPrice?: number, availability?: unknown): Promise<any> {
+    private async searchProducts(schema: string, query: string, limit = 5, category?: string, maxPrice?: number, availability?: unknown, customerText?: string): Promise<any> {
         const scope = productAvailabilityScope(availability);
         const conds: string[] = [];
         const params: any[] = [];
@@ -1553,8 +1559,9 @@ export class AIToolExecutorService {
                      LIMIT $${params.length}`;
         try {
             const rows: any[] = await this.prisma.$queryRawUnsafe(sql, ...params);
-            const notForSale = readsNotForSaleMatches(scope, terms) && maxPrice === undefined
-                ? await this.notForSaleMatches(schema, matchConds, matchParams, rows) : [];
+            const mentionedIn = typeof customerText === 'string' ? foldQueryText(customerText).slice(0, 2000) : '';
+            const notForSale = readsNotForSaleMatches(scope, terms, mentionedIn) && maxPrice === undefined
+                ? await this.notForSaleMatches(schema, terms.length ? matchConds : [], terms.length ? matchParams : [], rows, mentionedIn) : [];
             // `scope` and `note` go after readOk: a text field would make an empty list read as `status: ok`. `notForSale` goes
             // inside: a named product that exists but is sold out is an answer («está agotado»), not «nothing matched».
             const read = readOk({
@@ -1592,18 +1599,35 @@ export class AIToolExecutorService {
      * ese producto en nuestro catálogo», because the default read of a name query only returns products for sale. The same words, with
      * the "unavailable" predicate of `productAvailabilityScope`, find the products that exist but cannot be sold; they travel apart
      * from `products` (what may be offered or ordered) and are never priced. A failure here costs only this hint, never the read.
+     *
+     * `mentionedIn` (F4300-29, second residual): the store's AUTOMATIC reads run before the model with `query: ''`, so the words of a
+     * name never reached this read and the model answered from the for-sale list alone («Solo está disponible el Audífono QA Aurora»).
+     * With the customer's message (server-origin, never a model argument), a product not for sale whose name the message mentions is
+     * found too: every word of the name of three letters or more without digits starts a word of the message («QA Agente Stock
+     * 20261020T1737Z» is mentioned by «tienen el QA Agente Stock?»). The same rule as the turn <catalog>'s «mentioned».
      */
-    private async notForSaleMatches(schema: string, matchConds: string[], matchParams: any[], forSale: any[]): Promise<Record<string, unknown>[]> {
+    private async notForSaleMatches(schema: string, matchConds: string[], matchParams: any[], forSale: any[], mentionedIn = ''): Promise<Record<string, unknown>[]> {
         const unavailable = productAvailabilityScope('unavailable').where;
         const listed = new Set((forSale || []).map(row => String(row?.id)));
+        const params = [...matchParams];
+        const named: string[] = [];
+        if (matchConds.length) named.push(`(${matchConds.join(' AND ')})`);
+        if (mentionedIn.trim()) {
+            params.push(mentionedIn);
+            const message = `(' ' || regexp_replace(${foldedSql(`$${params.length}::text`)}, '[^a-z0-9]+', ' ', 'g') || ' ')`;
+            named.push(`COALESCE((SELECT bool_and(position((' ' || word) IN ${message}) > 0)
+                                   FROM unnest(regexp_split_to_array(${foldedSql('name')}, '[^a-z0-9]+')) AS word
+                                  WHERE char_length(word) >= 3 AND word !~ '[0-9]'), false)`);
+        }
+        if (!named.length) return [];
         try {
             const rows: any[] = await this.prisma.$queryRawUnsafe(
                 `SELECT id, name, stock, is_available
                    FROM "${schema}".products
-                  WHERE ${[...matchConds, unavailable].join(' AND ')}
+                  WHERE ${unavailable} AND (${named.join(' OR ')})
                   ORDER BY name ASC
-                  LIMIT $${matchParams.length + 1}`,
-                ...matchParams, NOT_FOR_SALE_MATCH_LIMIT,
+                  LIMIT $${params.length + 1}`,
+                ...params, NOT_FOR_SALE_MATCH_LIMIT,
             );
             return (Array.isArray(rows) ? rows : [])
                 .filter(row => !listed.has(String(row?.id)))

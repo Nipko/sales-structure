@@ -192,11 +192,39 @@ export type RequiredReadsSkipReason =
     | 'pilot_mismatch';
 
 export type RequiredReadsGate =
-    | { run: true; operation: OperationDefinition; pilot: RequiredReadsPilot }
+    /** `source: 'lexical_cue'`: the message's own words named the operation (`operation-lexical-cues.ts`), not the classifier. */
+    | { run: true; operation: OperationDefinition; pilot: RequiredReadsPilot; source?: 'lexical_cue' }
     | { run: false; reason: RequiredReadsSkipReason };
 
-/** Whether this verdict moves the turn into forced reads. Pure. */
-export function requiredReadsGate(verdict: OperationShadowVerdict | null | undefined, pilot: RequiredReadsPilot): RequiredReadsGate {
+/**
+ * Operations a lexical cue may take a turn from even when the classifier is confident: the FAQ intent. «how much is the
+ * Spark dish?» is not "something the business already answered" because the price was said earlier in the conversation.
+ */
+const LEXICAL_CUE_OVERRIDABLE = new Set(['none', 'ask_question']);
+
+/**
+ * Whether this verdict moves the turn into forced reads. Pure.
+ *
+ * `lexicalOperation` (from `lexicalRequiredReadsOperation`) is the pilot operation the message's own words name. It runs the
+ * reads when the classifier did not (no verdict, a fallback, below the threshold, the FAQ intent), unless the classifier
+ * confidently named another business operation. The confidence threshold is the same for every classifier verdict.
+ */
+export function requiredReadsGate(
+    verdict: OperationShadowVerdict | null | undefined,
+    pilot: RequiredReadsPilot,
+    lexicalOperation?: string | null,
+): RequiredReadsGate {
+    const byClassifier = classifierGate(verdict, pilot);
+    if (byClassifier.run || !lexicalOperation || REQUIRED_READS_PILOT_OPERATIONS[lexicalOperation] !== pilot) return byClassifier;
+    const confidentElsewhere = !!verdict && !verdict.fallback && !LEXICAL_CUE_OVERRIDABLE.has(verdict.operationKey)
+        && verdict.confidence >= Math.max(REQUIRED_READS_CONFIDENCE_THRESHOLD, OPERATION_CONFIDENCE_THRESHOLD)
+        && verdict.operationKey !== lexicalOperation;
+    if (confidentElsewhere) return byClassifier;
+    const operation = getOperation(lexicalOperation);
+    return operation ? { run: true, operation, pilot, source: 'lexical_cue' } : byClassifier;
+}
+
+function classifierGate(verdict: OperationShadowVerdict | null | undefined, pilot: RequiredReadsPilot): RequiredReadsGate {
     if (!verdict) return { run: false, reason: 'no_verdict' };
     if (verdict.fallback) return { run: false, reason: `fallback:${verdict.fallback}` };
     if (!(verdict.confidence >= Math.max(REQUIRED_READS_CONFIDENCE_THRESHOLD, OPERATION_CONFIDENCE_THRESHOLD))) return { run: false, reason: 'below_threshold' };
@@ -516,8 +544,12 @@ export function buildRequiredReadsTrace(input: {
     const slotNames = Object.keys(input.slots ?? {}).sort();
     return {
         pilot: input.pilot,
-        operation: input.verdict?.operationKey ?? null,
+        operation: input.gate.run ? input.gate.operation.key : input.verdict?.operationKey ?? null,
         confidence: input.verdict?.confidence ?? null,
+        // The message's words ran the reads: what the classifier said is kept for the error analysis.
+        ...(input.gate.run && input.gate.source === 'lexical_cue'
+            ? { source: 'lexical_cue', classifierOperation: input.verdict?.operationKey ?? null, classifierFallback: input.verdict?.fallback ?? null }
+            : {}),
         threshold: REQUIRED_READS_CONFIDENCE_THRESHOLD,
         outcome: input.gate.run ? input.run?.outcome ?? 'nothing_to_run' : 'skipped',
         ...(input.gate.run ? {} : { reason: input.gate.reason }),

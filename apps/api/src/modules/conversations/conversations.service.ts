@@ -6,6 +6,7 @@ import { runSafetyTriage, type SafetyTriageTurnOutcome } from './runtime/safety-
 import { buildOperationShadowTrace, OperationClassifierService, type OperationShadowVerdict } from './runtime/operation-classifier.service';
 import { buildRequiredReadsTrace, REQUIRED_READ_TIMEOUT_MS, requiredReadDefaultArgs, requiredReadsGate, requiredReadsPilotForProfile, runRequiredReads,
     type RequiredReadResult, type RequiredReadsPilot } from './runtime/required-reads.runner';
+import { lexicalRequiredReadsOperation } from './runtime/operation-lexical-cues';
 import { listingSearchSlotsIn, requiredReadSlotsIn } from './runtime/required-read-slots';
 import { demoAllowanceExhaustedText } from '../widget/widget-demo-link';
 import { recordFirstReply } from '../../common/utils/first-reply.util';
@@ -5386,7 +5387,9 @@ export class ConversationsService {
         if (requiredReadsPilot && operationShadow) {
             const started = Date.now();
             const verdict = await operationShadow;
-            const gate = requiredReadsGate(verdict, requiredReadsPilot);
+            // A menu question in the message's own words (es/pt/fr/en) runs the reads the classifier missed. Production 24-oct:
+            // English price questions came back as the FAQ intent or under the threshold, and get_menu never ran.
+            const gate = requiredReadsGate(verdict, requiredReadsPilot, lexicalRequiredReadsOperation(userText, requiredReadsPilot, turnAllowedTools));
             let run: Awaited<ReturnType<typeof runRequiredReads>> | undefined;
             // PR7: the stay dates, departure date and people the message gives (only the lodging and travel reads take slots).
             // Real estate: the search filters the message states (sale or rent, property kind, bedrooms).

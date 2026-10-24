@@ -86,6 +86,11 @@ export function buildOperationClassifierPrompt(candidates: readonly OperationDef
         ...lines,
         '- none: a greeting, thanks, small talk, or anything that matches no operation above.',
         'A question about the price, size, availability or details of a specific item the business has belongs to that item\'s operation, even when the item was named earlier in the conversation.',
+        // Production 24-oct: «how much is the Spark QA Plato?» never reached a confident menu_info (FAQ intent / under the threshold) in
+        // English only. The FAQ intent is for general questions about the business, never for an item's price or details.
+        ...(candidates.some(op => op.key === 'ask_question')
+            ? ['ask_question is only for general questions about the business (opening hours, location, payment methods, policies); a question about the price or details of an item it sells is never ask_question, in any language, even when the price was already said earlier in the conversation.']
+            : []),
         'Answer ONLY with one JSON object, no prose: {"operationKey": "<one key above or none>", "confidence": number between 0 and 1}',
     ].join('\n');
 }

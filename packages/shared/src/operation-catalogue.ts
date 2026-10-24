@@ -388,7 +388,7 @@ const DECLARED_READ_OPERATIONS: readonly DeclaredReadOperation[] = Object.freeze
     },
     {
         key: 'menu_info', toolGroup: 'restaurants',
-        description: 'The customer asks what is on the menu, or the price, ingredients, allergens or preparation time of a dish or drink.',
+        description: 'The customer asks what is on the menu, whether there are dishes of some kind (vegetarian, gluten-free), or the price, ingredients, allergens or preparation time of a dish or drink, in any language ("how much is the X dish?", "price of X?", "what does X cost?", "¿cuánto cuesta el plato X?", "quanto custa o prato X?", "combien coûte le plat X ?"), even when its price was mentioned earlier in the conversation.',
         reads: ['get_menu'], factKinds: ['price', 'item_attributes', 'duration'],
         alsoVisible: ['get_promotions'],
     },

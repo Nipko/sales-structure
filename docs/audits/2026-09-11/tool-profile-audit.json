@@ -2,7 +2,7 @@
   "version": 1,
   "evidenceKind": "structural_only",
   "sourceHashEncoding": "utf8-lf",
-  "sourceRevision": "199e1df3528a8eb657feeb733a8e101ac13ebe0b",
+  "sourceRevision": "67397a8cbe97c1a6aec763b48ff4893aa2d953bd",
   "summary": {
     "verticals": 20,
     "profiles": 80,
@@ -108,7 +108,7 @@
     "packages/shared/src/navigation-telemetry.ts": "375b89677ba1218e39cf8e6193d29fe85660808418c278df6867ad4826412054",
     "packages/shared/src/onboarding-events.ts": "9d1fe8f1cfaaa6c9d35526277661f065c36dacc77b764782303fb66603cd249b",
     "packages/shared/src/onboarding-stage-contract.ts": "daf4eee6270d6422e40cff8d1467fefe5f69547b1c7a682c38cabd7bb480cb80",
-    "packages/shared/src/operation-catalogue.ts": "01d4580e318a8bbffcf3931a4f7ace362a529f501389ad29779e3f4e42c1e0bc",
+    "packages/shared/src/operation-catalogue.ts": "9c2d239b98ad2644c8f11960de3482015c477c0b0f6e1f96a1017302c9d9fbb7",
     "packages/shared/src/operation-task-eval-pack.ts": "2c7c08867dd6eca35b889cc269b44e5150206d6ae1163346bb4629d50e6a042f",
     "packages/shared/src/outbound-message-contract.ts": "4bb303bf085583a36b8872e5aba311169e2bea124f59b8452ba8147590c0664b",
     "packages/shared/src/pet-task-eval-pack.ts": "a9d07ebcaaae42e78952cbc290655087eada53136275fb5a4c7ec94fa34ae97d",

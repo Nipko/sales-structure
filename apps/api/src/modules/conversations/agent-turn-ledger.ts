@@ -1,4 +1,4 @@
-import { assertTurnOutcome, type TurnOutcome } from '@parallext/shared';
+import { OUTBOUND_CONTRACT_VERSION, assertTurnOutcome, type TurnOutcome } from '@parallext/shared';
 import type { RuntimeLearningFootprint } from '../learning/learning-runtime-footprint';
 
 /**
@@ -435,13 +435,19 @@ export async function recordTurnHandoff(query: TurnLedgerQuery, schema: string, 
  */
 export async function recordTurnOutcome(query: TurnLedgerQuery, schema: string, input: {
     inboundMessageId: string; outcome: TurnOutcome;
+    /**
+     * Keep a decision that is already there. A fixed reply sent from inside a
+     * turn that already decided (the stalled-ask route records `escalate` and
+     * then sends its notice) must not overwrite that decision with its own.
+     */
+    onlyIfUndecided?: boolean;
 }): Promise<TurnLedgerRow | null> {
     if (!UUID.test(input.inboundMessageId || '')) fail('turn_ledger_inbound_invalid');
     assertTurnOutcome(input.outcome);
     const rows = await query<any[]>(
         `UPDATE "${schema}".agent_turn_ledger
             SET outcome = $2::jsonb, updated_at = NOW()
-          WHERE inbound_message_id = $1::uuid
+          WHERE inbound_message_id = $1::uuid${input.onlyIfUndecided ? ' AND outcome IS NULL' : ''}
           RETURNING *`,
         [input.inboundMessageId, JSON.stringify(input.outcome)]);
     return rows[0] ? mapRow(rows[0]) : null;
@@ -515,6 +521,35 @@ export async function readRecentTurnOutcomes(query: TurnLedgerQuery, schema: str
 }
 
 /**
+ * A decision recorded by a deterministic path, in the shape the model path uses.
+ *
+ * The turns that answer without the model — a fixed reply, a transfer notice,
+ * an opt-out that deliberately says nothing — never write an envelope, so the
+ * outcome is the only thing that can carry them past `open`. Effects stay empty
+ * like every other recorded outcome: the reason says which path decided.
+ */
+export function deterministicTurnOutcome(kind: TurnOutcome['kind'], reason: string): TurnOutcome {
+    const outcome: TurnOutcome = Object.freeze({
+        version: OUTBOUND_CONTRACT_VERSION, kind, reason,
+        effects: Object.freeze([]) as readonly string[],
+    });
+    assertTurnOutcome(outcome);
+    return outcome;
+}
+
+/**
+ * The reason a settle records when the turn reached the end with neither an
+ * answer nor a decision on its row.
+ *
+ * Not a claim that the customer heard nothing: it says the path that ran did
+ * not record what it did. It exists so the row can close — the alternative is
+ * the result constraint refusing the settle, the row staying `open` forever and
+ * a later redelivery being free to run the turn again — and it is never one of
+ * the reasons the episode counters read, so it cannot silence anybody.
+ */
+export const SETTLED_WITHOUT_DECISION = 'settled_without_recorded_decision';
+
+/**
  * The turn is over. Equivalent in meaning to the Redis marker, and durable.
  *
  * "Over" is about the TURN, not about the customer: a `send` handed to the
@@ -523,23 +558,44 @@ export async function readRecentTurnOutcomes(query: TurnLedgerQuery, schema: str
  * only the outbox's own terminal report moves it on. Guarded on NULL because
  * that report can win the race — the first bubble is often accepted before
  * runTurn returns — and a settle must never pull `delivered` back to `pending`.
+ *
+ * A row that would close with neither envelope nor outcome (nor redaction) used
+ * to be refused by `agent_turn_ledger_result`, and the whole statement rolled
+ * back: the turn stayed `open` with an ERROR nobody could act on. Such a row now
+ * closes with `SETTLED_WITHOUT_DECISION` as its outcome, in this same statement,
+ * and `onFallback` tells the caller it happened so it can say which path left
+ * the row bare. Every other row settles exactly as before.
  */
 export async function settleTurnLedger(query: TurnLedgerQuery, schema: string,
-    inboundMessageId: string): Promise<TurnLedgerRow | null> {
+    inboundMessageId: string, options: { onFallback?: () => void } = {}): Promise<TurnLedgerRow | null> {
     if (!UUID.test(inboundMessageId || '')) fail('turn_ledger_inbound_invalid');
     const rows = await query<any[]>(
-        `UPDATE "${schema}".agent_turn_ledger
+        `WITH prior AS (
+            SELECT inbound_message_id,
+                   (state <> 'settled' AND envelope IS NULL AND outcome IS NULL
+                        AND redacted_at IS NULL) AS bare
+              FROM "${schema}".agent_turn_ledger
+             WHERE inbound_message_id = $1::uuid
+             FOR UPDATE
+         )
+         UPDATE "${schema}".agent_turn_ledger l
             SET state = 'settled', updated_at = NOW(),
+                outcome = CASE WHEN prior.bare THEN $2::jsonb ELSE l.outcome END,
                 delivery_state = CASE
-                    WHEN delivery_state IS NULL AND delivery_route = 'durable'
-                         AND outcome ->> 'kind' = 'send' THEN 'pending'
-                    ELSE delivery_state END,
+                    WHEN l.delivery_state IS NULL AND l.delivery_route = 'durable'
+                         AND l.outcome ->> 'kind' = 'send' THEN 'pending'
+                    ELSE l.delivery_state END,
                 delivery_updated_at = CASE
-                    WHEN delivery_state IS NULL AND delivery_route = 'durable'
-                         AND outcome ->> 'kind' = 'send' THEN NOW()
-                    ELSE delivery_updated_at END
-          WHERE inbound_message_id = $1::uuid RETURNING *`, [inboundMessageId]);
-    return rows[0] ? mapRow(rows[0]) : null;
+                    WHEN l.delivery_state IS NULL AND l.delivery_route = 'durable'
+                         AND l.outcome ->> 'kind' = 'send' THEN NOW()
+                    ELSE l.delivery_updated_at END
+           FROM prior
+          WHERE l.inbound_message_id = prior.inbound_message_id
+          RETURNING l.*, prior.bare AS settled_bare`,
+        [inboundMessageId, JSON.stringify(deterministicTurnOutcome('suppress', SETTLED_WITHOUT_DECISION))]);
+    if (!rows[0]) return null;
+    if (rows[0].settled_bare === true) options.onFallback?.();
+    return mapRow(rows[0]);
 }
 
 /**

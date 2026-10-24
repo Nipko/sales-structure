@@ -91,7 +91,8 @@
     "apps/api/src/modules/conversations/conversations.required-reads-listings.spec.ts",
     "apps/api/src/modules/conversations/unverified-price-reply-formality.spec.ts",
     "apps/api/src/modules/conversations/runtime/catalog-over-faq.spec.ts",
-    "apps/api/src/modules/conversations/conversations.catalog-over-faq.spec.ts"
+    "apps/api/src/modules/conversations/conversations.catalog-over-faq.spec.ts",
+    "apps/api/src/modules/conversations/turn-ledger-deterministic-settle.spec.ts"
   ],
   "postgres": [
     "apps/api/src/modules/faqs/faq-effects.postgres.spec.ts",

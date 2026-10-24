@@ -40,7 +40,8 @@ import { OutboundQueueService } from '../channels/outbound-queue.service';
 import { AgentDispatchOutboxStore } from '../channels/agent-dispatch-outbox.store';
 import { ProactiveDispatchService, effectIsDurable } from '../channels/proactive-dispatch.service';
 import { AgentTurnLedgerStore } from './agent-turn-ledger.store';
-import type { TurnEnvelope, TurnLedgerRow, TurnWriterRecord } from './agent-turn-ledger';
+import { deterministicTurnOutcome, type TurnEnvelope, type TurnLedgerRow, type TurnWriterRecord } from './agent-turn-ledger';
+import type { TurnOutcome } from '@parallext/shared';
 import { DispatchRolloutService } from '../channels/dispatch-rollout.service';
 import { buildDispatchItems } from '../channels/dispatch-items';
 import type { DispatchItem } from '../channels/agent-dispatch-outbox';
@@ -58,7 +59,7 @@ import {
 import { TasksService } from '../crm/services/tasks/tasks.service';
 import { conversationHistorySql } from './conversation-history-query';
 import { enqueueOperationalNoticesForTenantRoles, ensureOperationalNoticeOutbox } from '../operational-notices/operational-notice-outbox';
-import { resolveTurnOutcome } from './turn-outcome-wait';
+import { TURN_OUTCOME_REASONS, resolveTurnOutcome } from './turn-outcome-wait';
 import { ChannelTokenService } from '../channels/channel-token.service';
 import { ConversationsGateway } from './conversations.gateway';
 import { HandoffService } from '../handoff/handoff.service';
@@ -785,6 +786,11 @@ export class ConversationsService {
          * inbound as its origin made the real answer look "already sent".
          */
         readonly ownIdentity?: boolean;
+        /**
+         * What the turn decided by sending this. Defaults to a `send` named after
+         * the origin key; the transfer notice passes its `escalate`.
+         */
+        readonly outcome?: TurnOutcome;
     }): Promise<boolean> {
         const contactId = String(input.conversation?.contact_id || '');
         const channelAccountId = String(input.msg.channelAccountId ?? '').trim();
@@ -797,6 +803,10 @@ export class ConversationsService {
             throw new Error(`durable_reply_transport_unavailable:${input.msg.channelType}`);
         }
         const answersInbound = !!input.inboundMessageId && PERSISTED_ID.test(input.inboundMessageId);
+        if (answersInbound && !input.ownIdentity) {
+            await this.recordDeterministicTurnOutcome(input.msg, input.inboundMessageId!,
+                input.outcome ?? deterministicTurnOutcome('send', `fixed_reply:${input.originKey.split(':')[0]}`));
+        }
         const result = await this.proactiveDispatch.send(input.tenantId, {
             originKey: input.originKey,
             conversationId: String(input.conversation.id),
@@ -822,6 +832,28 @@ export class ConversationsService {
         });
         if (effectIsDurable(result)) return true;
         throw new Error(`durable_reply_not_committed:${result.kind}:${(result as any).reason}`);
+    }
+
+    /**
+     * What a turn that never reaches the model decided, on its ledger row.
+     *
+     * The model path records an envelope and an outcome; the deterministic
+     * early returns of runTurn (the transfer after an accepted human offer, a
+     * keyword handoff, the appointment buttons, the attendance answer, the quota
+     * fallback, an opt-out, a refused or stale reply) recorded nothing, so the
+     * settle at the end carried neither and `agent_turn_ledger_result` refused
+     * it: the row stayed `open` and the log said UNSETTLED. Recorded BEFORE the
+     * effect, like the model path, and only when no decision is there yet — a
+     * turn that already decided (the stalled-ask route) keeps its own.
+     *
+     * Only for this turn's own row: an inbound that is not the one the turn
+     * opened has no claim on it.
+     */
+    private async recordDeterministicTurnOutcome(msg: NormalizedMessage, inboundMessageId: string,
+        outcome: TurnOutcome): Promise<void> {
+        const ref = (msg as any)?.turnLedgerRef;
+        if (!this.turnLedger || !ref?.schemaName || ref.inboundMessageId !== inboundMessageId) return;
+        await this.turnLedger.recordOutcome(ref.schemaName, inboundMessageId, outcome, { onlyIfUndecided: true });
     }
 
     /**
@@ -927,7 +959,7 @@ export class ConversationsService {
         // the only record of "this turn finished" with it; the row does not.
         const ledgerRef = (normalizedMsg as any).turnLedgerRef;
         if (this.turnLedger && ledgerRef?.schemaName && ledgerRef?.inboundMessageId) {
-            await this.turnLedger.settle(ledgerRef.schemaName, ledgerRef.inboundMessageId);
+            await this.turnLedger.settle(ledgerRef.schemaName, ledgerRef.inboundMessageId, 'processIncomingMessage');
         }
     }
 
@@ -1282,6 +1314,8 @@ export class ConversationsService {
         // second reply.
         if (replayTurn && await this.returnReplayIsStale(schemaName, String(conversation.id), ledgerInboundId)) {
             this.logger.warn(`[Pipeline] Return replay of ${conversation.id} skipped: the customer was already answered`);
+            await this.recordDeterministicTurnOutcome(normalizedMsg, ledgerInboundId,
+                deterministicTurnOutcome('suppress', 'return_replay_already_answered'));
             return;
         }
         this.logger.log(`[Pipeline] Message saved for conversation ${conversation.id}`);
@@ -1445,6 +1479,8 @@ export class ConversationsService {
             // Recorded by the call above. The return notice must not wait weeks
             // for a customer who asked to be left alone.
             if (replayTurn) await this.clearReturnNoticePending(schemaName, String(conversation.id));
+            await this.recordDeterministicTurnOutcome(normalizedMsg, ledgerInboundId,
+                deterministicTurnOutcome('suppress', 'customer_opted_out'));
             return;
         }
 
@@ -1517,11 +1553,20 @@ export class ConversationsService {
             // A negotiation the agent cannot grant says so before the transfer, so the notice never reads as a yes (F4300-07).
             const preface = handoffReasonPreface(handoffReason, handoffNoticeLanguage(handoffLanguage));
             if (preface) handoffMsg = `${preface} ${handoffMsg}`;
+            // The transfer is this turn's whole result: recorded as the hand-off it
+            // is, and as an `escalate` the settle can close the row on.
+            if (this.turnLedger && priorTurn) {
+                await this.turnLedger.recordHandoff(schemaName, ledgerInboundId, {
+                    reason: handoffReason, noticeKind: 'handoff_notice',
+                    receiptId: handoffResult?.receipt?.id ?? null,
+                });
+            }
             await this.replyOnceThroughOutbox({
                 tenantId, conversation, msg: normalizedMsg,
                 operationalScope: turnScope, inboundMessageId,
                 item: { kind: 'text', payload: { text: handoffMsg } },
                 originKey: `handoff-notice:${inboundMessageId}`,
+                outcome: deterministicTurnOutcome('escalate', `handoff:${handoffReason}`),
             });
             return;
         }
@@ -1558,6 +1603,8 @@ export class ConversationsService {
             if (fallback) {
                 if (draftMode) {
                     await this.persistDraft(tenantId, schemaName, conversation.id, fallback, contact?.name, inboundMessageId);
+                    await this.recordDeterministicTurnOutcome(normalizedMsg, ledgerInboundId,
+                        deterministicTurnOutcome('suppress', TURN_OUTCOME_REASONS.awaitingHumanReview));
                     return;
                 }
                 await this.replyOnceThroughOutbox({
@@ -1568,6 +1615,9 @@ export class ConversationsService {
                 });
             }
             this.eventEmitter.emit('billing.quota.ai_messages_exhausted', { tenantId });
+            // With a fallback text the reply above already recorded its `send`.
+            await this.recordDeterministicTurnOutcome(normalizedMsg, ledgerInboundId,
+                deterministicTurnOutcome('suppress', 'ai_quota_exhausted'));
             return;
         }
 
@@ -1649,6 +1699,8 @@ export class ConversationsService {
             this.logger.error(`[Learning] Refusing to deliver the reply to ${ledgerInboundId}: `
                 + `it derives from learned examples whose source could not be stated`);
             this.recordAgentSignal(tenantId, 'learning_provenance_refused');
+            await this.recordDeterministicTurnOutcome(normalizedMsg, ledgerInboundId,
+                deterministicTurnOutcome('suppress', 'learning_provenance_refused'));
             return;
         }
 

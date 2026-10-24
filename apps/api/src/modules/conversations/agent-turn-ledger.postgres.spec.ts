@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
 import { Client } from 'pg';
 import {
-    TURN_LEDGER_DDL, TurnLedgerError,
+    SETTLED_WITHOUT_DECISION, TURN_LEDGER_DDL, TurnLedgerError,
     openTurnLedger, readRecentTurnOutcomes, readTurnLedger, recordTurnDelivery, recordTurnHandoff,
     recordTurnOutcome, recordTurnResult, redactPendingDrafts, redactTurnLedger, settleTurnLedger,
     type TurnBinding, type TurnEnvelope,
@@ -381,6 +381,35 @@ integration('the durable record of a turn', () => {
             await expect(query(`UPDATE "${schema}".agent_turn_ledger SET state = 'settled'
                                  WHERE inbound_message_id = $1::uuid`, [bind.inboundMessageId]))
                 .rejects.toThrow(/agent_turn_ledger_result/);
+        });
+
+        it('settles a bare row with a named outcome instead of tripping the constraint (production 2026-10-23)', async () => {
+            // The accepted human offer returned before the model with nothing on
+            // its row; the settle hit agent_turn_ledger_result and the row stayed
+            // open. The settle now closes it in one statement and says so.
+            const bind = binding();
+            await openTurnLedger(query, schema, bind);
+            const onFallback = jest.fn();
+            const settled = await settleTurnLedger(query, schema, bind.inboundMessageId, { onFallback });
+            expect(onFallback).toHaveBeenCalledTimes(1);
+            expect(settled?.state).toBe('settled');
+            expect(settled?.outcome).toMatchObject({ kind: 'suppress', reason: SETTLED_WITHOUT_DECISION, effects: [] });
+
+            // A row that recorded its decision keeps it, and nobody is warned.
+            const decided = binding();
+            await openTurnLedger(query, schema, decided);
+            await recordTurnOutcome(query, schema, { inboundMessageId: decided.inboundMessageId,
+                outcome: outcome('escalate', 'handoff:customer_accepted_human_offer') });
+            const quiet = jest.fn();
+            const kept = await settleTurnLedger(query, schema, decided.inboundMessageId, { onFallback: quiet });
+            expect(quiet).not.toHaveBeenCalled();
+            expect(kept?.outcome).toMatchObject({ kind: 'escalate', reason: 'handoff:customer_accepted_human_offer' });
+
+            // A decision recorded "only if undecided" never replaces one already there.
+            await recordTurnOutcome(query, schema, { inboundMessageId: decided.inboundMessageId,
+                outcome: outcome('send', 'fixed_reply:handoff-notice'), onlyIfUndecided: true });
+            expect((await readTurnLedger(query, schema, decided.inboundMessageId))?.outcome)
+                .toMatchObject({ kind: 'escalate' });
         });
 
         it('replays a settled silence from the ledger alone, with no Redis in the picture', async () => {

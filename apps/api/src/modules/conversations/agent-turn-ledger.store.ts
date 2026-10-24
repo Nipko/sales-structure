@@ -3,7 +3,7 @@ import type { TurnOutcome } from '@parallext/shared';
 import { hasAgentSourceFence } from '../../common/utils/agent-source-fence';
 import { PrismaService } from '../prisma/prisma.service';
 import {
-    TURN_LEDGER_DDL, TurnLedgerError,
+    SETTLED_WITHOUT_DECISION, TURN_LEDGER_DDL, TurnLedgerError,
     openTurnLedger, readRecentTurnOutcomes, readTurnLedger, recordTurnDelivery, recordTurnHandoff,
     recordTurnDeliveryOutcome, recordTurnOutcome, recordTurnResult, redactTurnLedger, settleTurnLedger,
     type RecentTurnOutcome, type TurnDeliveryState,
@@ -122,9 +122,11 @@ export class AgentTurnLedgerStore {
      * effects is the boundary doing its job, and swallowing it would let the
      * caller believe silence was recorded while a chargeable message went out.
      */
-    async recordOutcome(schema: string, inboundMessageId: string, outcome: TurnOutcome): Promise<void> {
+    async recordOutcome(schema: string, inboundMessageId: string, outcome: TurnOutcome,
+        options: { onlyIfUndecided?: boolean } = {}): Promise<void> {
         try {
-            await this.run(schema, query => recordTurnOutcome(query, schema, { inboundMessageId, outcome }));
+            await this.run(schema, query => recordTurnOutcome(query, schema, {
+                inboundMessageId, outcome, onlyIfUndecided: options.onlyIfUndecided === true }));
         } catch (error: any) {
             if (String(error?.message || '').startsWith('turn_outcome_')) throw error;
             this.logger.warn(`[TurnLedger] outcome not recorded for ${inboundMessageId}: ${error?.message}`);
@@ -164,10 +166,24 @@ export class AgentTurnLedgerStore {
      * deliberately not), and throwing here would undo nothing and retry an
      * effect. What changes is that the row stays in a state a sweep can find,
      * and the failure is an ERROR with the reason attached rather than a shrug.
+     *
+     * A turn whose path recorded neither an answer nor a decision is not one of
+     * those failures any more. The deterministic early returns of runTurn (the
+     * accepted human offer among them) used to settle bare, the result
+     * constraint refused every one, and the row stayed `open` — invisible even to
+     * `unsettled()`, which skips `open`. Such a row now closes with
+     * `SETTLED_WITHOUT_DECISION` and ONE warning naming `via`, the path that
+     * asked for the settle: the paths that answer without the model record
+     * their own outcome, so this line is the gap the next one leaves.
      */
-    async settle(schema: string, inboundMessageId: string): Promise<boolean> {
+    async settle(schema: string, inboundMessageId: string, via = 'unspecified'): Promise<boolean> {
         try {
-            await this.run(schema, query => settleTurnLedger(query, schema, inboundMessageId));
+            await this.run(schema, query => settleTurnLedger(query, schema, inboundMessageId, {
+                onFallback: () => this.logger.warn(
+                    `[TurnLedger] turn ${inboundMessageId} settled with no recorded answer or decision `
+                    + `(via ${via}); recorded as suppress/${SETTLED_WITHOUT_DECISION}. `
+                    + `The path that answered it must record its own outcome.`),
+            }));
             return true;
         } catch (error: any) {
             this.logger.error(

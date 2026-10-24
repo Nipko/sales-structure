@@ -20,8 +20,10 @@ import {
 import { RegionalProfileService } from '../tenants/regional-profile.service';
 import { appointmentServiceTermsHash, appointmentTermsReviewResult } from '../appointments/appointment-service-terms';
 import { commitmentFamilyForTool } from './commitment-families';
+import { WRITER_ACTIVE_OBJECTS } from './writer-active-object';
 import {
-    commitmentProposalHash, commitmentReviewResult, ensureCommitmentProposals,
+    acceptedCommitmentExists, commitmentProposalHash, commitmentReviewResult, ensureCommitmentProposals,
+    linkAcceptedCommitment,
     type CommitmentProposal,
 } from './commitment-proposal';
 import { APPOINTMENT_RECORD_TOOLS, getToolPolicy, getToolPolicyForContext, pendingActionForTool, type ToolPolicy } from './tool-policy-registry';
@@ -1931,24 +1933,49 @@ export class ToolExecutionControlService {
         // after it: catching the error is not enough, because the COMMIT fails
         // anyway. So a tenant without the table is never queried at all.
         if (!ledger.request_payload?.commitmentProposal) return;
-        const entityId = this.commitmentEntityId(result);
-        if (!entityId) return;
-        await this.query(schemaName,
-            `UPDATE commitment_proposals SET consumed_entity_id = $2::uuid, consumed_at = NOW()
-              WHERE idempotency_key = $1 AND consumed_entity_id IS NULL`,
-            [ledger.idempotency_key, entityId]);
+        const family = commitmentFamilyForTool(ledger.tool_name);
+        if (!family) return;
+        const commitmentQuery = ((sql: string, params: any[] = []) => this.query(schemaName, sql, params)) as any;
+        const entityId = this.commitmentEntityId(ledger.tool_name, result);
+        // F4300-31: `place_order` answers `{ orderId }`, which the old candidate
+        // list did not read, so this returned here in silence and every food
+        // order was born without its accepted proposal — uncollectable, and an
+        // orphan for the pre-deploy gate. A payable acceptance that cannot be
+        // attached is no longer dropped: the completion fails, the ledger goes
+        // to reconciliation, and a person sees it.
+        const outcome = entityId
+            ? await linkAcceptedCommitment(commitmentQuery, {
+                idempotencyKey: ledger.idempotency_key, entityId, family: family.family })
+            : (await acceptedCommitmentExists(commitmentQuery, {
+                idempotencyKey: ledger.idempotency_key, family: family.family }) ? 'conflict' : 'no_acceptance');
+        if (outcome !== 'conflict') return;
+        if (family.payable) throw new Error('commitment_link_failed');
+        this.logger.warn(`[commitment] ${family.family} acceptance for ledger ${ledger.id} is not linked to a row`);
     }
 
-    /** The id of the row a writer produced, wherever it put it. */
-    private commitmentEntityId(result: Record<string, unknown>): string | null {
+    /**
+     * The id of the row a writer produced, wherever it put it.
+     *
+     * The tool's own result contract (`WRITER_ACTIVE_OBJECTS`, the one that
+     * builds the deep link the human surface opens) is read first, so a writer
+     * that names its row `orderId`, `quoteId` or `repairOrderId` is read the way
+     * the rest of the product already reads it.
+     */
+    private commitmentEntityId(toolName: string, result: Record<string, unknown>): string | null {
+        const definition = WRITER_ACTIVE_OBJECTS[toolName];
+        const active = (result as any)?.activeObject;
+        const nested = (path: string): unknown => path.split('.').reduce<any>(
+            (value, key) => (value && typeof value === 'object' ? value[key] : undefined), result);
         const candidates = [
+            active && (!definition?.kind || active.kind === definition.kind) ? active.id : undefined,
+            ...(definition?.resultKeys ?? []).map(nested),
             (result as any)?.id, (result as any)?.booking?.id, (result as any)?.order?.id,
             (result as any)?.appointment?.id, (result as any)?.request?.id, (result as any)?.quote?.id,
             (result as any)?.rental?.id, (result as any)?.session?.id, (result as any)?.bookingId,
         ];
         for (const candidate of candidates) {
             const text = String(candidate ?? '').toLowerCase();
-            if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(text)) return text;
+            if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(text)) return text;
         }
         return null;
     }

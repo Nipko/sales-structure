@@ -25,7 +25,7 @@ const TYPE_BY_TOOL: Array<[RegExp, string]> = [
 ];
 /** Descriptive attributes that stay true like a price does (24h); never people, notes or free text. */
 const ATTRIBUTE_FIELDS = new Set(['amenities', 'capacity', 'maxguests', 'bedrooms', 'bathrooms', 'beds', 'area', 'aream2',
-    'durationminutes', 'durationdays', 'nights', 'includes', 'inclusions', 'excludes', 'exclusions', 'allergens', 'preptimeminutes']);
+    'duration', 'durationminutes', 'durationdays', 'nights', 'includes', 'inclusions', 'excludes', 'exclusions', 'allergens', 'preptimeminutes']);
 const AVAILABILITY_SUBJECT_ARGS = ['serviceId', 'propertyId', 'packageId', 'listingId', 'productId', 'vehicleId', 'courseId', 'classId'];
 const READ_META_STATUSES = new Set(['ok', 'empty', 'stale', 'error']);
 const MAX_LIST_ITEMS = 15;

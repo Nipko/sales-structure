@@ -91,6 +91,14 @@ export function buildOperationClassifierPrompt(candidates: readonly OperationDef
         ...(candidates.some(op => op.key === 'ask_question')
             ? ['ask_question is only for general questions about the business (opening hours, location, payment methods, policies); a question about the price or details of an item it sells is never ask_question, in any language, even when the price was already said earlier in the conversation.']
             : []),
+        // Production 24-oct (lodging and travel flags on): «à quelle heure est l'enregistrement ?» / «what time is check-out?» came
+        // back as the FAQ intent and only search_faqs ran; the check-in/check-out times are fields of the property.
+        ...(candidates.some(op => op.key === 'property_info')
+            ? ['For a lodging business, the check-in or check-out (arrival or departure) time, address, capacity, bedrooms, bathrooms, amenities, minimum stay and nightly price of a property are property_info, never ask_question, in any language.']
+            : []),
+        ...(candidates.some(op => op.key === 'package_availability' || op.key === 'package_info')
+            ? ['For a travel business, how many seats are left and the next departures or dates of a tour are package_availability; its duration, price and what it includes or excludes are package_info; never ask_question, in any language.']
+            : []),
         'Answer ONLY with one JSON object, no prose: {"operationKey": "<one key above or none>", "confidence": number between 0 and 1}',
     ].join('\n');
 }

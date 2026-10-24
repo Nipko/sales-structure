@@ -342,7 +342,8 @@ export function pickReceiptId(result: any, ref: ReceiptRef, customerText?: strin
  *   - a lodging operation with stay dates in the message reads `check_property_availability` (and the list is read for those
  *     dates), so availability is never claimed from a dateless list;
  *   - `package_availability` with no departure date reads `get_package_details`, whose upcoming departures are what the customer
- *     can be told (`check_package_availability` cannot run without a date and is left `missing_slot`).
+ *     can be told (`check_package_availability` cannot run without a date and is left `missing_slot`);
+ *   - a tour operation with a departure date in the message reads `check_package_availability` for that date.
  */
 export function requiredReadsPlan(operation: OperationDefinition, slots: RequiredReadSlots = {}): OperationRequiredRead[] {
     const contract = (tool: string): OperationRequiredRead => {
@@ -358,6 +359,10 @@ export function requiredReadsPlan(operation: OperationDefinition, slots: Require
     }
     if (operation.key === 'package_availability' && !slots.starts_at && !has('get_package_details')) {
         plan.push(contract('get_package_details'));
+    }
+    // A departure date in any tour question («¿cuánto cuesta el tour X el 15 de diciembre?») reads that departure's seats too.
+    if (pilot === 'tours' && slots.starts_at && !has('check_package_availability')) {
+        plan.push(contract('check_package_availability'));
     }
     return plan;
 }

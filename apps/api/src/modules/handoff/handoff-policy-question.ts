@@ -1,5 +1,6 @@
 import { normalizeForIntent } from '@parallext/shared';
 import { isInformationSeekingMessage } from '../../common/conversation/intent-normalizer';
+import { customTriggerFires } from './custom-trigger-negation';
 
 /**
  * A question ABOUT a policy is not a complaint.
@@ -558,9 +559,9 @@ export function complaintIsOfferOnly(
     if (reason !== 'complaint' || !isProductDefectReport(raw)) return false;
     // In a health, veterinary or vehicle business a defect is a safety matter: a person hears it at once, whatever the words.
     if (isSafetyCriticalContext(business.industry, business.subType)) return false;
-    const text = normalizeForIntent(raw);
+    // The same keyword rule as `evaluateHandoff`: a keyword the customer only denies is not present (F4300-30).
     return !triggers.some(trigger => {
         const needle = normalizeForIntent(trigger);
-        return !!needle && !POLICY_TOPIC_KEYWORDS.has(needle) && text.includes(needle);
+        return !!needle && !POLICY_TOPIC_KEYWORDS.has(needle) && customTriggerFires(raw, trigger);
     });
 }

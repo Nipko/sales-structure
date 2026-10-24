@@ -64,6 +64,7 @@ import { ChannelTokenService } from '../channels/channel-token.service';
 import { ConversationsGateway } from './conversations.gateway';
 import { HandoffService } from '../handoff/handoff.service';
 import { complaintIsOfferOnly, isActionOrientedRefundQuestion } from '../handoff/handoff-policy-question';
+import { triggerDecisionNeedsPreviousOutbound } from '../handoff/custom-trigger-negation';
 import { KnowledgeService } from '../knowledge/knowledge.service';
 import { knowledgeHitToContext } from '../knowledge/knowledge-contracts';
 import { resolveKnowledgeReplica } from '../evaluation-revision/evaluation-knowledge-replica';
@@ -8799,10 +8800,38 @@ export class ConversationsService {
         text: string, conversation: any, config: any, tenantId: string, classify: boolean, executionContext?: unknown,
     ): Promise<string | null> {
         const service: any = this.handoffService;
+        const triggerContext = await this.handoffTriggerContext(text, conversation, config, tenantId);
+        // Passed only when it was read, so every other turn calls the service exactly as before.
+        const extra = triggerContext ? [triggerContext] : [];
         if (classify && typeof service?.decideHandoff === 'function') {
-            return service.decideHandoff(text, conversation, config, undefined, tenantId, executionContext);
+            return service.decideHandoff(text, conversation, config, undefined, tenantId, executionContext, ...extra);
         }
-        return service?.shouldHandoff?.(text, conversation, config) ?? null;
+        return (triggerContext
+            ? service?.shouldHandoff?.(text, conversation, config, undefined, triggerContext)
+            : service?.shouldHandoff?.(text, conversation, config)) ?? null;
+    }
+
+    /**
+     * The agent's previous message, read only when a business keyword decision depends on it: the customer opens
+     * with a bare «no» and mentions a keyword («No, de alergias estoy bien» after «¿tiene alguna alergia?»), F4300-30.
+     * Every other turn costs nothing; a failed read keeps the keyword rule as it was.
+     */
+    private async handoffTriggerContext(
+        text: string, conversation: any, config: any, tenantId: string,
+    ): Promise<{ previousOutbound?: string | null } | undefined> {
+        if (!conversation?.id || !triggerDecisionNeedsPreviousOutbound(text, config?.behavior?.handoffTriggers || [])) return undefined;
+        try {
+            const schemaName = await this.prisma.getTenantSchemaName(tenantId);
+            const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
+                `SELECT content_text FROM messages WHERE conversation_id = $1::uuid AND direction = 'outbound'
+                  ORDER BY created_at DESC LIMIT 1`,
+                [conversation.id],
+            );
+            return { previousOutbound: rows?.[0]?.content_text ?? null };
+        } catch (error: any) {
+            this.logger.warn(`[Handoff] previous outbound not read for ${conversation?.id}: ${error?.message}`);
+            return undefined;
+        }
     }
 
     /** Typing indicator; it never blocks or fails the turn. */

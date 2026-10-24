@@ -797,7 +797,8 @@ export function teamRequestBacked(executedTools: ReadonlyArray<{ name?: string; 
  */
 export function offersHumanHandoff(reply: unknown): boolean {
     if (typeof reply !== 'string' || !reply.trim()) return false;
-    return normalize(reply)
+    // Typographic apostrophes fold to «'» so «quelqu’un de la clinique» reads like «quelqu'un de l'équipe».
+    return normalize(reply).replace(/[’`]/g, "'")
         .split(/(?<=[.!?])\s+|\n+/)
         .some(sentence => HANDOFF_PROMISE.test(sentence) || OFFER_QUESTION.test(sentence)
             || (sentence.includes('?') && OFFER_TRANSFER.test(sentence) && !HANDS_OVER_AN_OBJECT.test(sentence))
@@ -826,6 +827,47 @@ const FOLLOW_UP_OF_A_TRANSACTION =
     /\b(?:pedido|orden|order|cita|reserva\w*|appointment|booking|book|agend\w*|turno|encomenda|commande|rendez|compra|purchase|carrito|cart)\b/;
 
 /**
+ * The business named by its KIND, or one of its staff areas (production QA 24-oct, dental, pt: «Deseja que eu peça para
+ * alguém da clínica confirmar para você?»): read as word roots in es/en/pt/fr, accents folded. On its own it is a place,
+ * never a person («fotos del hotel», «the clinic's address», «el menú del restaurante»); it names the person offered only
+ * as «someone FROM it», as the one ASKED («consulte con recepción»), or as the one put through to («le comunico con la cocina»).
+ */
+const BUSINESS_AREA = String.raw`(?:clinic(?:a|as|s)?|clinique|consultorio|cabinet|restaurant(?:e|es|s)?|cocina|kitchen|cozinha|cuisine`
+    + String.raw`|hote(?:l|is|les|ls)|recep(?:cion|cao|tion)|front desk|agenc(?:ia|e|y)|tienda|store|shop|loja|boutique|salon|salao`
+    + String.raw`|inmobiliaria|imobiliaria|oficina|office|escritorio|bureau|sucursal|branch|filial|empresa|negocio|business|company|entreprise`
+    + String.raw`|administracion|administration|administracao|ventas|vendas|ventes|sales|atencion al cliente|customer service|atendimento|service client)`;
+/** Staff roles, by root: the person offered when the reply asks them, puts the customer through to them or has them answer. */
+const BUSINESS_ROLE = String.raw`(?:asesor(?:a|es|as)?|consultor(?:a|es|as)?|corretor(?:a|es|as)?|corredor(?:a|es|as)?|agentes?|agent`
+    + String.raw`|recepcionistas?|receptionists?|receptionniste|especialistas?|specialists?|specialiste|doctor(?:a|es|as)?|doutor(?:a|es|as)?`
+    + String.raw`|medic(?:o|a|os|as)|medecin|odontolog(?:o|a|os|as)|dentistas?|dentists?|chef|gerente|managers?|encargad(?:o|a|os|as)`
+    + String.raw`|responsables?|responsavel|conseill(?:er|ere|ers)|advisors?|advisers?|representantes?|representatives?|atendentes?|vendedor(?:a|es|as)?|vendeur)`;
+const PARTY_DET = String.raw`(?:(?:la|el|los|las|a|o|as|os|the|our|your|nuestra|nuestro|nuestras|nuestros|nossa|nosso|notre|nos|le|les|su|sua|un|una|um|uma|an)\s+|l'\s*)?`;
+const PARTY_PREP = String.raw`\b(?:con|com|with|to|a|al|ao|aos|as|au|aux|avec|aupres de|para)\s+`;
+/** «someone from the clinic», «alguém da recepção», «quelqu'un de la cuisine», «alguien de nuestra agencia», «someone at the front desk». */
+const SOMEONE_OF_THE_BUSINESS = String.raw`\b(?:alguien|alguem|someone|somebody|quelqu'un|una persona|uma pessoa|a person|une personne)\s+`
+    + String.raw`(?:de|del|da|do|das|dos|du|des|from|at|in|on)\s+` + PARTY_DET + String.raw`(?:\w+\s+)?(?:` + BUSINESS_AREA + '|' + BUSINESS_ROLE + String.raw`)\b`;
+/** Asking verbs, with the clitics glued to them («preguntarle», «pídale»). Not the noun «consulta»: «agendar una consulta con el especialista» books. */
+const ASKING_VERB = String.raw`(?:pida|pidamos|pregunte|preguntemos|consulte|consultemos|preguntar|consultar|pedir|perguntar|pergunte|peca|demande|demander|ask|check with)(?:le|les|lo|la|selo|sela)?`;
+const TALK_VERB = String.raw`(?:hablar|hable|hables|speak|talk|falar|fale|parler|conversar)`;
+/**
+ * What the person offered does for the customer: confirm, call back, reply. Not «atender» / «revisar» / «help»: «una cita
+ * para que la doctora lo atienda» books.
+ */
+const PARTY_ANSWERS = String.raw`(?:confirm\w*|contact\w*|contat\w*|llam\w*|ligu\w*|lig(?:ar|a)|call\w*|appel\w*|rappel\w*|respond\w*|repond\w*`
+    + String.raw`|escrib\w*|retorn\w*|get back|get in touch|reach out|entr\w* em contato|ponga en contacto)`;
+const BUSINESS_PARTY_OFFERED = '(?:' + SOMEONE_OF_THE_BUSINESS
+    // asked: «consulte con la clínica», «check with the front desk», «peça para o corretor», «demander à la réception»,
+    // and the one asked as the direct object: «ask the kitchen», «check with reception»
+    + String.raw`|\b(?:ask|check with)\s+` + PARTY_DET + '(?:' + BUSINESS_AREA + '|' + BUSINESS_ROLE + String.raw`)\b`
+    // A thing asked for in between is an order, not a person («¿Quiere que le pida el menú a la cocina?»).
+    + String.raw`|\b` + ASKING_VERB + String.raw`\b(?:(?!\b(?:menu|carta|cardapio|foto|fotos|photos?|catalog\w*|link|enlace|lien|factura|invoice|fatura|pedido|order|commande|encomenda|reserva\w*|booking|cita|mesa|table|plato|prato|dish|plat)\b)[^?.!]){0,30}?` + PARTY_PREP + PARTY_DET + '(?:' + BUSINESS_AREA + '|' + BUSINESS_ROLE + String.raw`)\b`
+    // spoken to: «hablar con el asesor», «talk to the manager», «falar com o corretor», «parler au conseiller»
+    + String.raw`|\b` + TALK_VERB + String.raw`\s+(?:con|with|to|com|a|au|avec)\s+` + PARTY_DET + '(?:' + BUSINESS_ROLE + '|' + BUSINESS_AREA + String.raw`)\b`
+    // answering: «que el doctor le confirme», «para o corretor entrar em contato», «pour qu'un conseiller vous rappelle»
+    + String.raw`|\b(?:que|para|pour que|pour qu'|so that|for)\s*` + PARTY_DET + BUSINESS_ROLE + String.raw`\s+(?:\w+\s+){0,2}?` + PARTY_ANSWERS + String.raw`\b`
+    + ')';
+
+/**
  * What a question has to name to be an offer of a PERSON. Deliberately not the
  * bare "equipo"/"especialista": "¿Quiere el kit del equipo de fútbol?" and "¿Desea
  * agendar con el especialista?" are about a product and a booking, and a "sí" to
@@ -847,12 +889,14 @@ const OFFER_TARGET =
     // («¿Desea agendar con nuestro equipo de estilistas?»): an asking verb comes right before it.
     + '|(?:pida|pidamos|pregunte|preguntemos|consulte|consultemos|confirme|verifique|preguntar|consultar|ask|check with|confirm with'
     + '|peca|pergunte|perguntar|pedir|verificar|demande|demander|verifie|verifier)'
-    + '\\b[^?.!]{0,30}\\b(?:equipo|team|equipe))';
+    + '\\b[^?.!]{0,30}\\b(?:equipo|team|equipe)'
+    + '|' + BUSINESS_PARTY_OFFERED + ')';
 
-/** A transfer verb followed by a human destination: "¿Quiere que lo conecte con nuestro equipo?". */
+/** A transfer verb followed by a human destination: "¿Quiere que lo conecte con nuestro equipo?", «¿Le comunico con recepción?». */
 const OFFER_TRANSFER = new RegExp(
-    '\\b(?:conecte|conecto|comunique|comunico|pase|paso|transfiera|transfiero|derive|derivo|connect|transfer|put you|pass you'
-    + '|transfira|passe|passar|conectar|mette|mets|transfere|transferer|passer)\\b[^?.!]{0,40}\\b' + HUMAN_TARGET + '\\b',
+    '\\b(?:conecte|conecto|comunique|comunico|pase|paso|transfira|transfiera|transfiero|derive|derivo|connect|transfer|put you|pass you'
+    + '|passe|passar|conectar|mette|mets|transfere|transferer|passer)\\b[^?.!]{0,40}(?:\\b' + HUMAN_TARGET + '\\b'
+    + '|' + PARTY_PREP + PARTY_DET + '(?:' + BUSINESS_AREA + '|' + BUSINESS_ROLE + ')\\b)',
 );
 
 /**
@@ -865,8 +909,9 @@ const HANDS_OVER_AN_OBJECT = new RegExp(
 );
 
 const OFFER_QUESTION = new RegExp(
-    '\\b(?:quiere|quieres|desea|deseas|gustaria|prefiere|prefieres|would you|do you want|want me to|shall i|should i|can i|may i'
-    + "|voulez|souhaitez|puis-je|dois-je|quer|gostaria|posso|devo)\\b[^?]{0,80}\\b"
+    // pt «Deseja que eu peça…» / «Prefere que…» and fr «Aimeriez-vous…» are the same lead as es «Desea…» (production QA 24-oct).
+    '\\b(?:quiere|quieres|quisiera|desea|deseas|gustaria|prefiere|prefieres|would you|do you want|want me to|shall i|should i|can i|may i'
+    + "|voulez|souhaitez|aimeriez|preferez|puis-je|dois-je|quer|deseja|desejaria|prefere|gostaria|posso|devo)\\b[^?]{0,80}\\b"
     + OFFER_TARGET
     // «¿Le consulto con alguien del equipo?», «¿Le pido a una persona del equipo que lo confirme?»: the offer as a question with no lead verb.
     + '|\\b(?:le|te|les) (?:pido|pregunto|consulto|conecto|comunico|paso)\\b[^?.!]{0,40}' + OFFER_TARGET + '[^?.!]*\\?',

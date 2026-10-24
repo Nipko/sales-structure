@@ -50,7 +50,7 @@ const WORDS: Record<ReplyLang, readonly string[]> = {
 const VOCABULARY: Record<ReplyLang, readonly string[]> = {
     es: ['pago', 'pagos', 'tarjeta', 'tarjetas', 'recargo', 'enlace', 'enlaces', 'llega', 'llegara', 'sucursal', 'sucursales', 'tallas', 'talla',
         'colores', 'negro', 'rojo', 'recordatorio', 'lamentablemente', 'descuento', 'perfecto', 'dos', 'treinta', 'cuarenta', 'siempre',
-        'tarda', 'tardan', 'ubicados', 'indicaciones'],
+        'tarda', 'tardan', 'ubicados', 'indicaciones', 'tengo', 'siento', 'hablo'],
     en: ['accept', 'credit', 'cards', 'card', 'debit', 'bank', 'transfers', 'transfer', 'payments', 'payment', 'per', 'month', 'taxes', 'included',
         'free', 'shipping', 'costs', 'cost', 'units', 'colors', 'black', 'blue', 'red', 'store', 'located', 'floor', 'mall', 'arrive', 'arrives',
         'shipped', 'link', 'reminder', 'sorry', 'understand', 'frustration', 'team', 'review', 'solution', 'warranty', 'slots', 'sunday',
@@ -61,7 +61,7 @@ const VOCABULARY: Record<ReplyLang, readonly string[]> = {
         'preto', 'vermelho', 'lembrete', 'desconto', 'entendi', 'perfeito', 'cidade', 'andar', 'loja', 'lojas', 'tamanhos', 'tamanho', 'ambos',
         'frete', 'gratis', 'atendimento', 'seguranca', 'chega', 'sempre', 'recomendo', 'sugiro', 'carrega', 'compativel', 'celulares', 'escrever', 'ajuda',
         'prazer', 'prefere', 'saude', 'economizar', 'aguardando', 'localizacao', 'indicacoes', 'estacao', 'proxima', 'chegar', 'fico', 'eu', 'meu',
-        'minha', 'meus', 'minhas'],
+        'minha', 'meus', 'minhas', 'tenho', 'sinto', 'falo'],
     fr: ['carte', 'cartes', 'virement', 'bancaire', 'paiement', 'paiements', 'frais', 'comprises', 'gratuite', 'boutique', 'magasin', 'magasins',
         'etage', 'ville', 'zone', 'lien', 'rappel', 'desole', 'comprends', 'equipe', 'examiner', 'couleur', 'couleurs', 'noir', 'bleu', 'rouge',
         'tailles', 'taille', 'moyenne', 'epuise', 'oui', 'deux', 'trois', 'cinq', 'trente', 'quarante', 'jours', 'jour', 'toujours', 'jamais',
@@ -114,15 +114,38 @@ export function replyLanguageOf(text: string, ignore: readonly string[] = []): R
  * and two or more of ONE other language — that, too, is a reply written in another language.
  */
 export function languageMismatch(text: string, code: string, ignore: readonly string[] = []): ReplyLang | null {
+    return wholeReplyMismatch(text, code, ignore) ?? sentenceInOtherLanguage(text, code, ignore);
+}
+
+/**
+ * `languageMismatch` judged on the reply as a whole, for a reply too short to hold a sentence of its own (4 to 7 words).
+ * Production QA 23/24-oct: «Não tenho informação confirmada…» to a Spanish turn had no word of Spanish and two of
+ * Portuguese, but a short reply was judged by the strict bar only and went out as written.
+ */
+export function wholeReplyMismatch(text: string, code: string, ignore: readonly string[] = []): ReplyLang | null {
     const written = replyLanguageOf(text, ignore);
-    if (written && written !== code) return written;
-    if (!written) {
-        const ranked = scoresOf(text, ignore);
-        const [best, bestScore] = ranked[0];
-        const own = ranked.find(([lang]) => lang === code)?.[1] ?? 0;
-        if (best !== code && bestScore >= 2 && own === 0 && ranked[1][1] === 0) return best;
-    }
-    return sentenceInOtherLanguage(text, code, ignore);
+    if (written) return written !== code ? written : null;
+    const ranked = scoresOf(text, ignore);
+    const [best, bestScore] = ranked[0];
+    const own = ranked.find(([lang]) => lang === code)?.[1] ?? 0;
+    return best !== code && bestScore >= 2 && own === 0 && ranked[1][1] === 0 ? best : null;
+}
+
+/**
+ * A reply saying the agent does not speak a language, or speaks only one («Lo siento, pero no hablo francés», production
+ * QA 23/24-oct, to a French message after a Spanish case): the language it is written in, whatever its length. The
+ * agent answers in every language it supports, so such a reply is never right for a turn in another language.
+ */
+const LANGUAGE_DENIAL: Record<ReplyLang, RegExp> = {
+    es: /(?<!\p{L})(?:no\s+(?:hablo|s[eé]\s+hablar|puedo\s+(?:hablar|responder|escribir)(?:te|le)?\s+en)|s[oó]lo\s+(?:hablo|puedo\s+(?:hablar|responder)))(?!\p{L})/iu,
+    en: /(?<!\p{L})I\s+(?:(?:do\s+not|don['’]t|can\s*not|can['’]t)\s+(?:speak|reply\s+in|respond\s+in|write\s+in)|only\s+speak)(?!\p{L})/iu,
+    pt: /(?<!\p{L})(?:n[ãa]o\s+(?:falo|sei\s+falar|consigo\s+(?:falar|responder|escrever)\s+em)|s[óo]\s+falo)(?!\p{L})/iu,
+    fr: /(?<!\p{L})je\s+ne\s+(?:parle|sais\s+pas\s+parler|peux\s+pas\s+(?:parler|r[ée]pondre|[ée]crire)\s+en)(?!\p{L})/iu,
+};
+
+export function languageDenialOf(text: string): ReplyLang | null {
+    for (const lang of Object.keys(LANGUAGE_DENIAL) as ReplyLang[]) if (LANGUAGE_DENIAL[lang].test(String(text || ''))) return lang;
+    return null;
 }
 
 /**
@@ -141,7 +164,7 @@ function sentenceInOtherLanguage(text: string, code: string, ignore: readonly st
 }
 
 /** Why a language rewrite cannot be sent: it is empty, it is still in the source language, or it lost a figure, URL or name. */
-export type RewriteRejectionReason = 'empty' | 'still_source_language' | 'lost_figure' | 'lost_url' | 'lost_name';
+export type RewriteRejectionReason = 'empty' | 'still_source_language' | 'denies_language' | 'lost_figure' | 'lost_url' | 'lost_name';
 
 const FIGURE = /\d[\d.,:]*\d|\d/g;
 const URL_PATTERN = /https?:\/\/[^\s)>\]]+|www\.[^\s)>\]]+/gi;
@@ -191,6 +214,8 @@ export function rewriteRejection(
     const lostNames = verbatimTermsOf(original, names).names.filter(name => !lowered.includes(loose(name)));
     if (lostNames.length) return { reason: 'lost_name', missing: lostNames };
     if (!text) return { reason: 'empty', missing: [] };
+    // A rewrite of «I do not speak French» that still says so in French is no answer either.
+    if (languageDenialOf(original) && languageDenialOf(text)) return { reason: 'denies_language', missing: [] };
     const stillIn = targetLang ? languageMismatch(text, targetLang, names) : replyLanguageOf(text, names);
     if (sourceLang && stillIn === sourceLang) return { reason: 'still_source_language', missing: [] };
     return null;

@@ -12,7 +12,7 @@ import { recordFirstReply } from '../../common/utils/first-reply.util';
 import { stripInternalMarkers } from '../../common/utils/internal-markers.util';
 import { projectAvailableServices } from '../appointments/service-price-status';
 import { AbsentSubjects, absentServicesIn, annotateKnowledgeItems, annotateKnowledgeToolResult, notOfferedReply, offerClaimForAbsent, type CatalogueEntry } from './runtime/catalog-over-faq';
-import { catalogNamesOfTurn, languageMismatch, replyLanguageOf, rewriteRejection, type RewriteRejectionReason, verbatimTermsOf } from './reply-language';
+import { catalogNamesOfTurn, languageDenialOf, languageMismatch, rewriteRejection, type RewriteRejectionReason, verbatimTermsOf, wholeReplyMismatch } from './reply-language';
 import { localeForReply, normalizeReplyAmounts } from './reply-price-format';
 import { foldedSql, foldQueryText } from '../../common/utils/sql-accent-fold.util';
 import { servedAgentAuthority, type ServedAgentAuthority } from '../persona/served-agent-authority';
@@ -493,6 +493,17 @@ const REPLY_LANGUAGE_REWRITE: Record<string, string> = {
     en: 'Your previous reply is not in English, which is the customer\'s language in this turn. Rewrite it in English with exactly the same content, without changing any fact, price or name. Return only the message.',
     pt: 'Sua resposta anterior não está em português, que é o idioma do cliente neste turno. Reescreva-a em português com exatamente o mesmo conteúdo, sem mudar nenhum dado, preço ou nome. Devolva apenas a mensagem.',
     fr: 'Votre réponse précédente n\'est pas en français, qui est la langue du client pour ce tour. Réécrivez-la en français avec exactement le même contenu, sans changer aucune donnée, aucun prix ni aucun nom. Renvoyez uniquement le message.',
+};
+
+/**
+ * The rewrite request for a reply that said the agent does not speak the customer's language («Lo siento, pero no hablo
+ * francés», production QA 23/24-oct): a translation of it would still say so, so the model is told to answer instead.
+ */
+const REPLY_LANGUAGE_DENIAL_REWRITE: Record<string, string> = {
+    es: 'Tu respuesta anterior dice que no hablas el idioma del cliente, pero sí lo hablas: el cliente escribe en español. Responde a su último mensaje en español, sin decir que no hablas un idioma y sin inventar ningún dato, precio ni nombre. Devuelve solo el mensaje.',
+    en: 'Your previous reply says you do not speak the customer\'s language, but you do: the customer writes in English. Answer their last message in English, without saying you do not speak a language and without inventing any fact, price or name. Return only the message.',
+    pt: 'Sua resposta anterior diz que você não fala o idioma do cliente, mas você fala: o cliente escreve em português. Responda à última mensagem dele em português, sem dizer que não fala um idioma e sem inventar nenhum dado, preço ou nome. Devolva apenas a mensagem.',
+    fr: 'Votre réponse précédente dit que vous ne parlez pas la langue du client, mais vous la parlez : le client écrit en français. Répondez à son dernier message en français, sans dire que vous ne parlez pas une langue et sans inventer aucune donnée, aucun prix ni aucun nom. Renvoyez uniquement le message.',
 };
 
 /** Appended to the rewrite request, followed by the exact strings of the reply that must survive (names, figures, URLs). */
@@ -7398,21 +7409,25 @@ export class ConversationsService {
         executedTools?: Array<{ name: string; result: any }>,
     ): Promise<string> {
         const code = String(lang || '').slice(0, 2).toLowerCase();
-        const base = REPLY_LANGUAGE_REWRITE[code];
         // Only texts the SERVER wrote are exempt: the fixed system texts, and the engine's own reply sent as is. A
         // directive is an instruction the model voices in its own words — a French duration question on a booking
         // turn was voiced in Spanish (production 2026-10-22) and the directive exemption let it through unchecked.
         const engineReply = String((trustedContext as any)?.engineReplyText ?? '').trim();
-        if (!base || isSystemFixedText(response) || (engineReply && response.trim() === engineReply)) return response;
+        if (!REPLY_LANGUAGE_REWRITE[code] || isSystemFixedText(response) || (engineReply && response.trim() === engineReply)) return response;
+        // «Lo siento, pero no hablo francés» to a French turn (production QA 23/24-oct): a reply that says the agent does not
+        // speak the customer's language is in the wrong language whatever its length, and is not to be translated but answered.
+        const denial = languageDenialOf(response);
+        const denies = !!denial && denial !== code;
         const replyWords = response.trim().split(/\s+/).length;
-        if (replyWords < 4) return response;
+        if (replyWords < 4 && !denies) return response;
         // Names of the business's own catalog (products, services) are not the reply's language and must survive a rewrite.
         const names = catalogNamesOfTurn(trustedContext, executedTools);
         // Only clear evidence of ANOTHER language (function words, see reply-language.ts) triggers the rewrite. A short
-        // reply («Je vérifie la garantie pour vous.», production 2026-10-22) is judged by the strict bar alone.
-        const strict = replyWords < 8 ? replyLanguageOf(response, names) : null;
-        const written = replyWords < 8 ? (strict && strict !== code ? strict : null) : languageMismatch(response, code, names);
+        // reply («Je vérifie la garantie pour vous.», production 2026-10-22; «Não tenho informação confirmada…», production
+        // QA 23/24-oct) is judged as a whole: it holds no sentence long enough to be judged on its own.
+        const written = denies ? denial : replyWords < 8 ? wholeReplyMismatch(response, code, names) : languageMismatch(response, code, names);
         if (!written) return response;
+        const base = denies ? REPLY_LANGUAGE_DENIAL_REWRITE[code] : REPLY_LANGUAGE_REWRITE[code];
         this.recordAgentSignal(tenantId, 'reply_language_mismatch', session);
         this.logger.warn(`[Guardrail] Reply is not in the turn language (${code}) — rewrite: "${response.slice(0, 80)}"`);
         // The request names what must be copied verbatim (catalog names, figures, URLs): a model asked to "not change any

@@ -219,20 +219,44 @@ export class LanguageDetectorService {
             // What a shop customer asks a business (production QA: «venden cargadores?» after a French case was answered in
             // French — no word of it was known). Not «vende»/«vender» (Portuguese spells them the same) nor «vale» (pt too).
             'venden', 'abren', 'cierran', 'atienden', 'reciben', 'envian', 'entregan', 'cobran', 'trabajan', 'sirven', 'preparan',
-            'valen', 'llevan'],
+            'valen', 'llevan',
+            // What a product or a dish is or holds (production QA 23/24-oct: «el audífono Aurora trae estuche?» after a Portuguese
+            // case and «de qué color es el audífono Aurora?» after an English one were answered in the previous language).
+            // Not «lleva» (Portuguese «leva» is another word, but «sale» and «come» are English words).
+            'es', 'trae', 'contiene', 'contienen', 'viene', 'vienen', 'lleva'],
         pt: ['tem', 'voce', 'voces', 'quanto', 'quanta', 'quantos', 'quantas', 'custa', 'custam', 'posso', 'pode', 'podem', 'quero',
             'preciso', 'gostaria', 'consegue', 'inclui', 'incluem', 'fica', 'ficam', 'estou', 'faz', 'fazem', 'procuro', 'devo', 'qual',
             'quais', 'aceitam', 'oferecem', 'esta', 'estao',
             'vendem', 'abrem', 'fecham', 'atendem', 'recebem', 'enviam', 'entregam', 'cobram', 'trabalham', 'servem', 'levam', 'trazem',
             // «sou» (I am): Spanish writes «soy», French «suis».
-            'sou'],
+            'sou',
+            'traz', 'contem', 'vem'],
         fr: ['coute', 'coutent', 'combien', 'je', 'est', 'sont', 'avez', 'pouvez', 'puis', 'peux', 'veux', 'voudrais', 'faut',
             'inclut', 'dois', 'doit', 'cherche', 'ai', 'reste', 'proposez', 'acceptez', 'quel', 'quelle', 'quels', 'quelles',
-            'vendez', 'vendent', 'faites', 'ouvrez', 'fermez', 'livrez', 'envoyez', 'travaillez'],
+            'vendez', 'vendent', 'faites', 'ouvrez', 'fermez', 'livrez', 'envoyez', 'travaillez',
+            // «le plat Spark contient-il du soja ?» (production QA, answered in Spanish after a Spanish case).
+            'contient', 'contiennent', 'comprend', 'vient'],
         // Not «stock» (a loanword in Spanish and French: «hay stock?» is Spanish) nor «charge» (a French word too).
         en: ['is', 'are', 'does', 'have', 'has', 'can', 'could', 'would', 'how', 'what', 'cost', 'costs', 'need', 'want', 'include',
             'includes', 'should', 'where', 'when', 'which', 'offer', 'accept',
-            'sell', 'sells', 'open', 'deliver', 'ship', 'make', 'carry'],
+            'sell', 'sells', 'open', 'deliver', 'ship', 'make', 'carry', 'contain', 'contains'],
+    };
+
+    /**
+     * Constructions that are a verb or a question of ONE language whatever the words around them, tested on the message
+     * with names taken out. Production QA 23/24-oct (one test customer whose history spans cases): «o que está incluído no
+     * Spark QA Tour?» was answered in French, «me mandas dos del plato Spark?» in English and «le plat Spark contient-il du
+     * soja ?» in Spanish — each word of them is shared («o», «que», «está», «no», «me», «dos») or unknown, but the
+     * construction is not:
+     *  - pt «o que» (Spanish says «qué» / «lo que», French «ce que») and «-uído» (Spanish writes «incluido», «construido»);
+     *  - es a message opening with «me/te» and a «tú» verb («me mandas», «me pasas», «te puedo»… Portuguese says «me manda»);
+     *  - fr the inverted subject of a question («contient-il», «avez-vous», «est-ce que»).
+     * Each counts as one word of evidence AND as a verb of its language.
+     */
+    private readonly predicatePatterns: Record<string, RegExp[]> = {
+        pt: [/(?<!\p{L})o que(?!\p{L})/u, /uíd[oa]s?(?!\p{L})/u],
+        es: [/^[\s¿¡"'«]*(?:me|te)\s+\p{L}{2,}(?:as|es)(?!\p{L})/u],
+        fr: [/\p{L}-(?:t-)?(?:il|elle|ils|elles|on|vous|nous|je|tu)(?!\p{L})/u, /(?<!\p{L})est-ce(?!\p{L})/u],
     };
 
     /**
@@ -381,6 +405,7 @@ export class LanguageDetectorService {
             // Spark é sem glúten? sou celíaca» (stored «es») had no other predicate and was answered, the fixed allergen
             // text included, in Spanish.
             if (lang === 'pt' && /(?<!\p{L})(?:há|é)(?!\p{L})/u.test(raw)) { predicates++; verbs++; }
+            if ((this.predicatePatterns[lang] ?? []).some(pattern => pattern.test(raw))) { hits++; predicates++; verbs++; }
             return { lang, hits, predicates, verbs };
         }).sort((a, b) => b.hits - a.hits);
         const [best, second] = ranked;

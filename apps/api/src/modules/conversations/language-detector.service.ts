@@ -16,6 +16,8 @@ import { Injectable } from '@nestjs/common';
 export interface LanguageDetectionContext {
     names?: readonly string[];
     recentCustomerMessages?: readonly string[];
+    /** The tenant's configured language: it breaks a tie between two languages a message may be in («hora de entrada?»). */
+    preferred?: string | null;
 }
 
 @Injectable()
@@ -234,7 +236,10 @@ export class LanguageDetectorService {
             'vendem', 'abrem', 'fecham', 'atendem', 'recebem', 'enviam', 'entregam', 'cobram', 'trabalham', 'servem', 'levam', 'trazem',
             // «sou» (I am): Spanish writes «soy», French «suis».
             'sou',
-            'traz', 'contem', 'vem'],
+            'traz', 'contem', 'vem',
+            // F4300-16 (production 24-oct): «quando sai o Spark QA Tour?» and «quantos pedidos eu já fiz aí?» were answered in the
+            // previous case's language. Spanish writes «cuando», «sale», «hice», «hizo»; French «quand», «sort», «fait».
+            'quando', 'sai', 'saem', 'fiz', 'fez', 'fizemos'],
         fr: ['coute', 'coutent', 'combien', 'je', 'est', 'sont', 'avez', 'pouvez', 'puis', 'peux', 'veux', 'voudrais', 'faut',
             'inclut', 'dois', 'doit', 'cherche', 'ai', 'reste', 'proposez', 'acceptez', 'quel', 'quelle', 'quels', 'quelles',
             'vendez', 'vendent', 'faites', 'ouvrez', 'fermez', 'livrez', 'envoyez', 'travaillez',
@@ -351,9 +356,71 @@ export class LanguageDetectorService {
     private readonly clearCharacters: Record<string, RegExp> = {
         // «-ión» / «-iones» (revisión, información): Portuguese writes «-ão» / «-ões», French and English no accent.
         es: /(?<!\p{L})sí(?!\p{L})|[ñ¿¡]|(?<!\p{L})(?:qué|cómo|dónde|cuándo|cuánt[oa]s?|quién(?:es)?|cuál(?:es)?)(?!\p{L})|\p{L}{2,}ión(?!\p{L})|\p{L}{2,}iones(?!\p{L})/u,
-        pt: /[ãõ]|(?<!\p{L})(?:há|é|você|vocês)(?!\p{L})/u,
+        // «-ário(s)» / «-ária(s)» (horário, salário) and «-ência» / «-ância»: Spanish writes «horario», «-encia», French
+        // «horaire», «-ence». «já» (es «ya»), «aí» (es «ahí», fr «là»), «lá» (es «allá»).
+        pt: /[ãõ]|(?<!\p{L})(?:há|é|você|vocês|já|aí|lá)(?!\p{L})|\p{L}ári[oa]s?(?!\p{L})|\p{L}[êâ]nci[oa]s?(?!\p{L})/u,
         fr: /[èùœëîû]|(?<!\p{L})(?:ça|où)(?!\p{L})/u,
     };
+
+    /**
+     * Everyday words two or three of the four languages spell the same way (accents aside), with the languages that own
+     * them. Alone they tell nothing, but a message made of them still RULES OUT the languages that never write them:
+     * «hora de entrada?» is Spanish or Portuguese, never English; «precio de la consulta especializada?» is Spanish
+     * («precio»), never French. They override the single-language lists for the same word («van», «son» are English too).
+     */
+    private readonly sharedWords: Record<string, readonly string[]> = {
+        de: ['es', 'pt', 'fr'], que: ['es', 'pt', 'fr'], a: ['es', 'pt', 'fr'], se: ['es', 'pt', 'fr'], te: ['es', 'pt', 'fr'],
+        me: ['es', 'pt', 'fr', 'en'], no: ['es', 'pt', 'en'], la: ['es', 'fr'], en: ['es', 'fr'], o: ['es', 'pt'], por: ['es', 'pt'],
+        para: ['es', 'pt'], mas: ['es', 'pt'], mais: ['pt', 'fr'], eu: ['pt', 'fr'], ai: ['pt', 'fr'], van: ['es', 'en'], son: ['es', 'en'],
+        hora: ['es', 'pt'], horas: ['es', 'pt'], horario: ['es', 'pt'], horarios: ['es', 'pt'], entrada: ['es', 'pt'], sabado: ['es', 'pt'],
+        domingo: ['es', 'pt'], consulta: ['es', 'pt'], consultas: ['es', 'pt'], especializada: ['es', 'pt'], especializado: ['es', 'pt'],
+        general: ['es', 'pt'], barato: ['es', 'pt'], barata: ['es', 'pt'], caro: ['es', 'pt'], cara: ['es', 'pt', 'fr'], pedido: ['es', 'pt'],
+        pedidos: ['es', 'pt'], reserva: ['es', 'pt'], esta: ['es', 'pt'], este: ['es', 'pt'], ja: ['pt'], prato: ['pt'], pratos: ['pt'],
+        plato: ['es'], platos: ['es'], saida: ['pt'], salida: ['es'],
+    };
+
+    /** The languages that write `token`: the shared table first, else every single-language list that holds it. */
+    private ownersOf(token: string): readonly string[] {
+        if (this.sharedWords[token]) return this.sharedWords[token];
+        const lists = [this.markers, this.sentenceWords, this.questionWords, this.predicateWords, this.clearWords, this.contentWords, this.weakMarkers];
+        return Object.keys(this.predicateWords).filter(lang =>
+            lists.some(list => list[lang]?.includes(token)) || !!this.strongMarkers[lang]?.words.includes(token));
+    }
+
+    /**
+     * F4300-16 (production 24-oct, image 7f375dd8): the language of a message every word of which the STORED language
+     * never writes, even when no word of it is unique to one language. One test customer ran many cases in one
+     * conversation and «precio de la consulta especializada?» (after French), «qual o prato mais barato?» and
+     * «hora de entrada?» (after English), «horário de sábado?» (after Spanish) were answered in the previous language:
+     * «de», «la», «mais», «hora», «entrada» are each shared, so no rule found ONE language, and the stored one stayed.
+     *
+     * Each known word (and each accent of one language) narrows the languages the message can be in; unknown words narrow
+     * nothing. The message decides when three or more non-courtesy words are known, the languages left are not empty and
+     * the stored language is not among them. Among two left, the tenant's language wins, then es, pt, fr, en. A message
+     * around a name («Hotel Aurora con las vistas al mar») is left to the strict rules, as is anything shorter: «ok»,
+     * «gracias», «uma consulta», «consulta general» keep the stored language.
+     */
+    private languageExcludingStored(previous: string | null, text: string, names: readonly string[], preferred?: string | null): string | null {
+        if (!previous || this.mentionsName(text)) return null;
+        const free = this.nameFreeText(text, names);
+        const tokens = new Set(this.normalize(free).split(/\s+/).filter(token => /[a-z]/.test(token)));
+        const raw = free.normalize('NFC').toLowerCase();
+        let candidates = new Set(Object.keys(this.predicateWords));
+        let known = 0;
+        for (const token of tokens) {
+            const owners = this.ownersOf(token);
+            if (!owners.length) continue;
+            candidates = new Set([...candidates].filter(lang => owners.includes(lang)));
+            if (!this.courtesyWords.has(token) && !this.acknowledgements.has(token)) known++;
+        }
+        for (const [lang, pattern] of Object.entries(this.clearCharacters)) {
+            if (pattern.test(raw)) candidates = new Set([...candidates].filter(candidate => candidate === lang));
+        }
+        if (known < 3 || !candidates.size || candidates.has(previous)) return null;
+        const preferredShort = preferred ? this.short(preferred) : null;
+        if (preferredShort && candidates.has(preferredShort)) return preferredShort;
+        return ['es', 'pt', 'fr', 'en'].find(lang => candidates.has(lang)) ?? null;
+    }
 
     /**
      * The message with every name taken out: the catalogue names of the turn, a capitalised word in the middle of a
@@ -441,7 +508,7 @@ export class LanguageDetectorService {
 
     /** Interrogatives of the predicate lists: evidence, but never enough on their own. */
     private readonly interrogatives = new Set(['cuanto', 'cuanta', 'cuantos', 'cuantas', 'donde', 'cual', 'cuales', 'cuando', 'quien', 'quienes',
-        'quanto', 'quanta', 'quantos', 'quantas', 'qual', 'quais', 'combien', 'quel', 'quelle', 'quels', 'quelles', 'how', 'what', 'where',
+        'quanto', 'quanta', 'quantos', 'quantas', 'qual', 'quais', 'quando', 'combien', 'quel', 'quelle', 'quels', 'quelles', 'how', 'what', 'where',
         'when', 'which']);
 
     /** Acknowledgements that carry no language: «ok», «okay», «vale». */
@@ -563,6 +630,8 @@ export class LanguageDetectorService {
         if (sentenceLanguage) return { language: sentenceLanguage, persist: true };
         const currentLanguage = this.currentMessageLanguage(prev, tokens, raw, text, wordCount);
         if (currentLanguage) return { language: currentLanguage, persist: true };
+        const notStored = this.languageExcludingStored(prev, text, names, context?.preferred);
+        if (notStored) return { language: notStored, persist: true };
         if (winnerScore >= 1 && secondScore === 0) {
             if (prev && prev !== winner) {
                 // A REQUEST in another language ("quiero agendar corte y estilo" after "What are your opening hours?")

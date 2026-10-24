@@ -99,6 +99,7 @@
     "apps/api/src/modules/handoff/negated-keyword-trigger.f4300.spec.ts",
     "apps/api/src/modules/conversations/sold-out-visibility.f4300.spec.ts",
     "apps/api/src/modules/conversations/order-agreed-terms-link.f4300.spec.ts",
+    "apps/api/src/modules/conversations/current-message-language.f4300-16b.spec.ts",
     "apps/api/src/modules/conversations/sold-out-name-lookup.f4300.spec.ts"
   ],
   "postgres": [

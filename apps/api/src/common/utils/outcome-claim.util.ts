@@ -57,6 +57,10 @@ const COMPLETION_CLAIM = new RegExp(
         // are order/ticket status, true without a write this turn.
         BOOKING_SUBJECT + ' ' + SUBJECT_GAP + '(esta|quedo|fue) (lista|listo|programada|programado)',
         '\\b(he|hemos) (reservado|agendado|programado|apartado)\\b',
+        // The agent as the doer of a cancellation: «he cancelado su pedido», «I've cancelled your order», «cancelei o pedido».
+        '\\b(he|hemos) (cancelado|anulado)\\b',
+        "\\b(i've|i have|we've|we have|i|we) (cancelled|canceled) (your|the|it)\\b",
+        '\\b(cancelei|anulei) (a|o|sua|seu|suas|seus) ',
         '\\b(he|hemos) confirmado (tu|su|la|el) ' + BOOKING_SUBJECT,
         '\\bya (te |le )?(reserve|agende|aparte) ',
         "\\b(i've|i have|we've|we have) (booked|scheduled|reserved|confirmed) (your|the) ",
@@ -129,9 +133,14 @@ const HEADLINE_CLAIM = new RegExp(
 /**
  * Saying what STATE a record is in is not claiming an ACTION: «su pedido está cancelado» / «el otro pedido, cuyo estado es
  * cancelado» report a status the customer asked about. What makes a sentence a status report is a record that was READ this
- * turn (a listing, the active objects) with that very status, named in the sentence, which only repeats it in the PRESENT
- * («el pedido D1D0D14A está cancelado»). Wording alone («el estado de su pedido está …») excuses nothing. A past or reflexive
- * form («quedó cancelado», «fue cancelado», «ya cancelé») is the deed, whatever was read.
+ * turn (a listing, check_order_status, the active objects) with that very status, which the sentence only repeats in the
+ * present or in the impersonal passive («el pedido D1D0D14A está cancelado», «su pedido fue cancelado», «your order was
+ * cancelled», «seu pedido foi cancelado»). The record is the one the sentence names (its reference or product), or the only
+ * record the turn read. Wording alone («el estado de su pedido está …») excuses nothing. The agent as the doer («ya cancelé»,
+ * «he cancelado», «I cancelled», «cancelei») or the settling «quedó cancelado» is the deed, whatever was read.
+ *
+ * F4300-33 (restaurant, required reads on): «¿en qué va mi último pedido?» → list_my_orders + check_order_status said
+ * CANCELLED, and the status report was replaced by «No puedo darle esa acción por confirmada…».
  *
  * Only «cancelled» is read this way. «Está confirmada» / «está reservada» are exactly the sentences a model invents to close a
  * booking it never made, so a booking or a payment status is never excused by a record that merely exists.
@@ -143,11 +152,24 @@ const CANCELLED_STATUSES = new Set(['cancelled', 'canceled', 'cancelado', 'cance
 /** A record the turn read: its status and the words that identify it (its short reference, its product or service name). */
 export interface RecordFact { status: string; tokens: readonly string[] }
 
-function reportsReadCancellation(matched: string, sentence: string, facts: readonly RecordFact[]): boolean {
-    if (!/\besta\b|\bis\b|\best\b/.test(matched) || /\b(?:quedo|fue|foi|was|a ete|ha sido)\b/.test(matched)) return false;
+/** The status repeated as a state: present («está», «is», «est») or impersonal passive («fue», «was», «has been», «foi», «a été»). */
+const STATE_OR_PASSIVE = /\b(?:esta|estan|is|are|est|sont|fue|fueron|ha sido|han sido|was|were|has been|have been|foi|foram|a ete|ont ete)\b/;
+/** «quedó cancelado» settles a deed; «cancelé / cancelei / I cancelled» name the doer. */
+const DEED_FORM = /\b(?:quedo|quedaron|ficou)\b|\b(?:cancele|cancelei|anule|anulei)\b|\b(?:i|we|i've|we've) (?:have )?(?:cancelled|canceled)\b/;
+
+function isCancelled(fact: RecordFact): boolean {
+    return CANCELLED_STATUSES.has(String(fact.status).toLowerCase());
+}
+
+function reportsReadCancellation(matched: string, sentence: string, before: string, facts: readonly RecordFact[]): boolean {
+    if (!STATE_OR_PASSIVE.test(matched) || DEED_FORM.test(matched) || DEED_FORM.test(before.slice(-12))) return false;
     if (!CANCELLED_PARTICIPLE.test(matched)) return false;
-    return facts.some(fact => CANCELLED_STATUSES.has(String(fact.status).toLowerCase())
-        && fact.tokens.some(token => normalize(String(token)).length >= 3 && sentence.includes(normalize(String(token)))));
+    const named = (fact: RecordFact) => fact.tokens.some(token => normalize(String(token)).length >= 3 && sentence.includes(normalize(String(token))));
+    if (facts.some(fact => isCancelled(fact) && named(fact))) return true;
+    // «Su último pedido fue cancelado» names no reference: it can only be about the record when the turn read exactly one.
+    if (facts.some(named)) return false;
+    const records = new Set(facts.map(fact => normalize(String(fact.tokens[0] ?? ''))));
+    return records.size === 1 && facts.every(isCancelled);
 }
 
 export function claimsCompletedAction(reply: unknown, options: { recordFacts?: readonly RecordFact[] } = {}): boolean {
@@ -162,7 +184,7 @@ export function claimsCompletedAction(reply: unknown, options: { recordFacts?: r
             // A cancelled status of a record that was READ this turn and is only repeated in the present. Nothing else is excused:
             // naming «el estado» does not make «está confirmada» / «está agendada» / «está pagado» a report (that is how a booking
             // that never happened gets announced).
-            if (reportsReadCancellation(m[0], sentence, options.recordFacts ?? [])) continue;
+            if (reportsReadCancellation(m[0], sentence, before, options.recordFacts ?? [])) continue;
             if (OFFER_LEAD_IN.test(before) || insideQuestion(sentence, m.index, m.index + m[0].length)) continue;
             if (/\besta\b/.test(m[0])) {
                 const subject = sentence.slice(Math.max(0, m.index - 60), m.index);

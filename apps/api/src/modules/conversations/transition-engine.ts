@@ -1188,8 +1188,10 @@ export function knownRecordFacts(executed: ReadonlyArray<{ name: string; result:
     for (const { name, result } of executed || []) {
         if (!result || typeof result !== 'object' || isWriteResultName(name)) continue;
         for (const row of [...(Array.isArray(result.appointments) ? result.appointments : []), result.appointment]) add(row?.status, row?.id, row?.service);
-        for (const row of [...(Array.isArray(result.orders) ? result.orders : []), result.order]) {
-            add(row?.status, row?.id, ...(Array.isArray(row?.items) ? row.items.map((item: any) => item?.productName) : []));
+        // check_order_status answers with the order itself at the root ({ id, status, items: [{ name }] }).
+        const flatOrder = /order/.test(name) && typeof result.status === 'string' && typeof result.id === 'string' ? result : null;
+        for (const row of [...(Array.isArray(result.orders) ? result.orders : []), result.order, flatOrder]) {
+            add(row?.status, row?.id, ...(Array.isArray(row?.items) ? row.items.map((item: any) => item?.productName ?? item?.name) : []));
         }
     }
     for (const item of Array.isArray(context?.activeObjects?.items) ? context.activeObjects.items : []) {
@@ -1197,6 +1199,29 @@ export function knownRecordFacts(executed: ReadonlyArray<{ name: string; result:
     }
     for (const order of Array.isArray(context?.recentOrders) ? context.recentOrders : []) add(order?.status, order?.id, order?.label);
     return facts;
+}
+
+/**
+ * The tool results the runtime handed the model THIS turn as synthetic tool messages (required reads, automatic reads), which
+ * are not in the turn's executed tools: only the messages after the customer's last message, each paired with the tool call that
+ * names it. F4300-33: list_my_orders + check_order_status ran as required reads, so the claim audit saw no record at all.
+ */
+export function toolReadsOfTurnMessages(messages: ReadonlyArray<any> | undefined): Array<{ name: string; result: any }> {
+    const list = messages || [];
+    let start = 0;
+    for (let index = list.length - 1; index >= 0; index--) if (list[index]?.role === 'user') { start = index + 1; break; }
+    const names = new Map<string, string>();
+    const reads: Array<{ name: string; result: any }> = [];
+    for (const message of list.slice(start)) {
+        if (message?.role === 'assistant' && Array.isArray(message.toolCalls)) {
+            for (const call of message.toolCalls) if (call?.id && typeof call?.function?.name === 'string') names.set(call.id, call.function.name);
+        } else if (message?.role === 'tool' && names.has(message.toolCallId)) {
+            let result: any = message.content;
+            if (typeof result === 'string') { try { result = JSON.parse(result); } catch { continue; } }
+            if (result && typeof result === 'object' && !result.error) reads.push({ name: names.get(message.toolCallId) as string, result });
+        }
+    }
+    return reads;
 }
 
 /** A write's own result is not a read of a record's state (it is what the claim guard audits). */

@@ -142,7 +142,7 @@ import { customerDatesIn } from './date-reference';
 import { guardIdentityCodeClaim } from './identity-code-claim';
 import { guardAllergenClaim } from './allergen-claim';
 import { asksAboutSoldOutProducts, guardSoldOutClaim } from './sold-out-visibility';
-import { addressFormOf, detectTransition, failedTransitionOf, handleIdentityReply, humanizeReferences, identityGate, knownRecordFacts, knownRecordIds, localizeStatusWords, namedRequestOverridesClarify, opensWithYes, requestIdentityForTool, runTransition, shortReference, transitionDoneText, transitionFailureText, transitionRequestForTool, transitionTexts, TRANSITION_TOOLS, TRANSITION_WRITER, type TransitionIO, type TransitionOutcome } from './transition-engine';
+import { addressFormOf, detectTransition, failedTransitionOf, handleIdentityReply, humanizeReferences, identityGate, knownRecordFacts, knownRecordIds, localizeStatusWords, namedRequestOverridesClarify, opensWithYes, requestIdentityForTool, runTransition, shortReference, toolReadsOfTurnMessages, transitionDoneText, transitionFailureText, transitionRequestForTool, transitionTexts, TRANSITION_TOOLS, TRANSITION_WRITER, type TransitionIO, type TransitionOutcome } from './transition-engine';
 import { resolveListChoice } from './list-choice';
 import { createdDoneText, detectOrderIntake, isOrderDetails, mergeOrderNotes, mightBeMenuOrderRequest, mightBeOrderRequest, orderProposalText, orderStockText, orderChoiceText, replyStillAsksConfirmation, type OrderChoice, type OrderIntake } from './order-intake';
 import { persistConversationRuntimeState } from './conversation-runtime-state';
@@ -7581,8 +7581,9 @@ export class ConversationsService {
             name.startsWith('mcp__') ? result?._executionEffect === 'write' : isBusinessWriteTool(name)
         );
         const backing = this.backingEvidence(executedTools, priorActions);
-        // Saying what state a record is in (read this turn) is not claiming an action.
-        const recordFacts = knownRecordFacts(executedTools || [], trustedContext);
+        // Saying what state a record is in (read this turn) is not claiming an action. The reads include the ones the runtime
+        // ran before the model (required / automatic reads reach the model only as tool messages, not as executed tools).
+        const recordFacts = knownRecordFacts([...(executedTools || []), ...toolReadsOfTurnMessages(currentMessages)], trustedContext);
         const claimOptions = { isBackingTool, recordFacts, crmNoteRequested: explicitlyRequestsCrmNote(customerText) };
         const claimAudit = auditTurnClaim(response, backing, claimOptions);
         // The engine decided what this turn says (a re-ask at the confirmation step, a summary, a question): when the

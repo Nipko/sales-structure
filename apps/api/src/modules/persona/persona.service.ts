@@ -30,7 +30,7 @@ import {
     REAL_ESTATE_PUBLISHED_PRICE_RULE,
     rewriteLegacyPersonaRule,
 } from './legacy-persona-rules';
-import { businessHoursConfigured, hasScheduleEntries, unknownHoursInstruction } from '../conversations/informational-hours';
+import { businessHoursConfigured, hasScheduleEntries, scheduleTimeZoneElement, unknownHoursInstruction } from '../conversations/informational-hours';
 import type { ServiceExecutionContext } from '../../common/types/execution-context';
 import { persistenceDisabled } from '../../common/types/execution-context';
 import {
@@ -352,7 +352,7 @@ export class PersonaService {
                 lines.push('    <status>unknown</status>');
                 lines.push(`    <instruction>${escapeXmlText(unknownHoursInstruction(language))}</instruction>`);
             } else {
-                if (tenantBusinessHours.timezone) lines.push(`    <timezone>${escapeXmlText(tenantBusinessHours.timezone)}</timezone>`);
+                if (tenantBusinessHours.timezone) lines.push(`    ${scheduleTimeZoneElement(tenantBusinessHours.timezone)}`);
                 for (const [day, value] of Object.entries(tenantBusinessHours.schedule || {})) {
                     const entry = value as any;
                     const windows: Array<{ open: string; close: string }> = Array.isArray(entry?.windows) ? entry.windows : [];
@@ -379,7 +379,7 @@ export class PersonaService {
             if (tenantBusinessHours.is247) {
                 lines.push('    <mode>24/7</mode>');
             } else {
-                if (tenantBusinessHours.timezone) lines.push(`    <timezone>${escapeXmlText(tenantBusinessHours.timezone)}</timezone>`);
+                if (tenantBusinessHours.timezone) lines.push(`    ${scheduleTimeZoneElement(tenantBusinessHours.timezone)}`);
                 const schedule = tenantBusinessHours.schedule || {};
                 for (const [day, value] of Object.entries(schedule)) {
                     if (!value || typeof value !== 'object') continue;
@@ -401,7 +401,7 @@ export class PersonaService {
         } else if (agentConfigured) {
             lines.push('  <business_hours>');
             if (hours.timezone || tenantBusinessHours?.timezone) {
-                lines.push(`    <timezone>${escapeXmlText(hours.timezone || tenantBusinessHours.timezone)}</timezone>`);
+                lines.push(`    ${scheduleTimeZoneElement(hours.timezone || tenantBusinessHours.timezone)}`);
             }
             for (const [day, value] of Object.entries(hours.schedule)) {
                 if (typeof value === 'string') {

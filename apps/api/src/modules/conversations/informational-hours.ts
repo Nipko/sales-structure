@@ -29,6 +29,20 @@
  * the bot outside the slots. The derived object is marked `informational` so nothing downstream
  * confuses it with configured hours.
  */
+import { escapeXmlAttribute, escapeXmlText } from '../../common/utils/xml.util';
+
+/**
+ * The clock the hours and dates are read on, rendered as exactly that (F4300-28). A bare
+ * `<timezone>America/Bogota</timezone>` was read as where the business is: a hotel whose
+ * property says «Ciudad QA» answered «Estamos en Bogotá» in es/en/pt. The element name and
+ * its `meaning` attribute say it is a clock, never a location; the location travels only in
+ * `<business><address>/<city>` (or `<location_status>not_registered</location_status>`).
+ */
+export const SCHEDULE_TIME_ZONE_MEANING = 'clock for hours and dates only; it does not say where the business is';
+
+export function scheduleTimeZoneElement(timezone: string): string {
+    return `<schedule_time_zone meaning="${escapeXmlAttribute(SCHEDULE_TIME_ZONE_MEANING)}">${escapeXmlText(timezone)}</schedule_time_zone>`;
+}
 
 export interface AvailabilityRow {
     user_id?: string | null;

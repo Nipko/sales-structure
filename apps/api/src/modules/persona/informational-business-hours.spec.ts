@@ -88,7 +88,7 @@ describe('the prompt carries the informational hours', () => {
     it('lists the derived days and never claims they gate the assistant', () => {
         const prompt = service.buildSystemPrompt(config(), deriveInformationalHours(citasRows, 'America/Bogota'));
         expect(prompt).toContain('<business_hours>');
-        expect(prompt).toContain('<timezone>America/Bogota</timezone>');
+        expect(prompt).toContain('>America/Bogota</schedule_time_zone>');
         expect(prompt).toContain('<day name="monday" start="09:00" end="19:00" />');
         expect(prompt).toContain('<day name="saturday" start="09:00" end="19:00" />');
         expect(prompt).toContain('<day name="sunday">closed</day>');

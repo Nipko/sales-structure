@@ -223,7 +223,9 @@ export class LanguageDetectorService {
         pt: ['tem', 'voce', 'voces', 'quanto', 'quanta', 'quantos', 'quantas', 'custa', 'custam', 'posso', 'pode', 'podem', 'quero',
             'preciso', 'gostaria', 'consegue', 'inclui', 'incluem', 'fica', 'ficam', 'estou', 'faz', 'fazem', 'procuro', 'devo', 'qual',
             'quais', 'aceitam', 'oferecem', 'esta', 'estao',
-            'vendem', 'abrem', 'fecham', 'atendem', 'recebem', 'enviam', 'entregam', 'cobram', 'trabalham', 'servem', 'levam', 'trazem'],
+            'vendem', 'abrem', 'fecham', 'atendem', 'recebem', 'enviam', 'entregam', 'cobram', 'trabalham', 'servem', 'levam', 'trazem',
+            // «sou» (I am): Spanish writes «soy», French «suis».
+            'sou'],
         fr: ['coute', 'coutent', 'combien', 'je', 'est', 'sont', 'avez', 'pouvez', 'puis', 'peux', 'veux', 'voudrais', 'faut',
             'inclut', 'dois', 'doit', 'cherche', 'ai', 'reste', 'proposez', 'acceptez', 'quel', 'quelle', 'quels', 'quelles',
             'vendez', 'vendent', 'faites', 'ouvrez', 'fermez', 'livrez', 'envoyez', 'travaillez'],
@@ -241,7 +243,7 @@ export class LanguageDetectorService {
         es: ['enero', 'febrero', 'marzo', 'mayo', 'junio', 'julio', 'septiembre', 'setiembre', 'octubre', 'noviembre', 'diciembre',
             'cupo', 'cupos', 'personas', 'precio', 'precios'],
         pt: ['janeiro', 'fevereiro', 'maio', 'junho', 'julho', 'setembro', 'outubro', 'novembro', 'dezembro', 'vaga', 'vagas',
-            'pessoas', 'preco', 'frete', 'na', 'nas', 'ao'],
+            'pessoas', 'preco', 'frete', 'na', 'nas', 'ao', 'sem'],
         fr: ['janvier', 'fevrier', 'mars', 'avril', 'mai', 'juin', 'juillet', 'aout', 'septembre', 'octobre', 'novembre', 'decembre',
             'garantie', 'semaine', 'samedi', 'dimanche', 'personnes', 'prix', 'il', 'ce'],
         en: ['january', 'february', 'march', 'april', 'june', 'july', 'august', 'september', 'october', 'november', 'december',
@@ -375,7 +377,10 @@ export class LanguageDetectorService {
                 }
             }
             if (this.clearCharacters[lang]?.test(raw)) hits++;
-            if (lang === 'pt' && /(?<!\p{L})há(?!\p{L})/u.test(raw)) { predicates++; verbs++; }
+            // «há» (there is) and a standalone «é» (is) are Portuguese verbs none of the other three languages writes: «o prato
+            // Spark é sem glúten? sou celíaca» (stored «es») had no other predicate and was answered, the fixed allergen
+            // text included, in Spanish.
+            if (lang === 'pt' && /(?<!\p{L})(?:há|é)(?!\p{L})/u.test(raw)) { predicates++; verbs++; }
             return { lang, hits, predicates, verbs };
         }).sort((a, b) => b.hits - a.hits);
         const [best, second] = ranked;

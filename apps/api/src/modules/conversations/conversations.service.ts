@@ -3176,6 +3176,13 @@ export class ConversationsService {
         const languageContext = {
             recentCustomerMessages: (session?.history ?? []).filter(row => row?.role === 'user').slice(-5).map(row => String(row.content ?? '')),
         };
+        // A live turn holds no history yet, so a stored language that lagged outranked the message: «o prato Spark é sem
+        // glúten? sou celíaca» (a name in it, so it cannot switch on its own) kept «es», and the fixed allergen text of
+        // #194 went out in Spanish to a Portuguese conversation. When the message read alone points to ANOTHER language
+        // than the stored one, it is read as turnStartLanguage reads it: with the customer's recent messages.
+        if (!session && previousLanguage && this.languageDetector.detect(userText, previousLanguage, null) !== previousLanguage) {
+            languageContext.recentCustomerMessages = await this.recentCustomerTexts(schemaName, conversation.id, inboundMessageId);
+        }
         const detectedLanguage = this.languageDetector.detect(userText, fallbackLanguage, previousLanguage, languageContext);
         const detail = this.languageDetector.detectDetailed?.(userText, fallbackLanguage, previousLanguage, languageContext);
         const detection = { language: detectedLanguage, persist: detail && detail.language === detectedLanguage ? detail.persist : true };
@@ -8851,14 +8858,19 @@ export class ConversationsService {
     private async turnStartLanguage(schemaName: string, conversation: any, config: any, text: string | undefined,
         inboundMessageId?: string): Promise<string> {
         const previous = (conversation?.metadata as any)?.detectedLanguage || null;
+        const recentCustomerMessages = await this.recentCustomerTexts(schemaName, conversation?.id, inboundMessageId);
+        return this.languageDetector.detect(text || '', previous || config?.language || 'es', previous, { recentCustomerMessages });
+    }
+
+    /** The customer's last five messages before this one, oldest first (the language evidence a live turn lacks). */
+    private async recentCustomerTexts(schemaName: string, conversationId: string | undefined, inboundMessageId?: string): Promise<string[]> {
         const rows = await this.prisma.executeInTenantSchema<any[]>(schemaName,
             `SELECT content_text FROM messages WHERE conversation_id = $1::uuid AND direction = 'inbound'
                 AND ($2::uuid IS NULL OR id <> $2::uuid) ORDER BY created_at DESC LIMIT 5`,
-            [conversation?.id, inboundMessageId || null],
+            [conversationId, inboundMessageId || null],
         ).catch(() => []);
-        const recentCustomerMessages = (Array.isArray(rows) ? rows : [])
+        return (Array.isArray(rows) ? rows : [])
             .map(row => row?.content_text).filter((t): t is string => typeof t === 'string' && !!t.trim()).reverse();
-        return this.languageDetector.detect(text || '', previous || config?.language || 'es', previous, { recentCustomerMessages });
     }
 
     /**

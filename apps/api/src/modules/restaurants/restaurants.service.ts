@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -16,6 +16,7 @@ import type { EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
 import { OperationConfirmationService } from '../email-templates/operation-confirmation.service';
 import { escapeReceiptHtml, receiptMoney } from '../email-templates/receipt-format.util';
 import { menuLabelCandidates, menuLabelCandidatesSql } from './menu-label.util';
+import { linkAcceptedCommitment } from '../conversations/commitment-proposal';
 
 export { menuLabelCandidates };
 
@@ -481,7 +482,17 @@ export class RestaurantsService {
      * notificación push al dueño del restaurante, y un pedido simulado no
      * puede mandarlo a la cocina.
      */
-    execution: { sandboxNamespace?: EvalNamespaceLease } = {},
+    execution: {
+        sandboxNamespace?: EvalNamespaceLease;
+        /**
+         * The guarded operation this order answers (`tool_execution_ledger.
+         * idempotency_key`). When the customer accepted a proposal for it, the
+         * acceptance is attached to the new order INSIDE this transaction, so
+         * an order and the agreement a charge reads exist together or not at
+         * all (F4300-31).
+         */
+        commitmentKey?: string;
+    } = {},
     tenantId?: string): Promise<any> {
         if (!data.items?.length) throw new BadRequestException('Order must have at least one item');
         if (data.orderType === 'delivery' && !data.deliveryAddress) {
@@ -582,6 +593,23 @@ export class RestaurantsService {
                 `SELECT * FROM food_order_items WHERE order_id = $1::uuid ORDER BY created_at`,
                 [order.id],
             );
+            if (execution.commitmentKey) {
+                // Asked first: a failed statement here would abort the order's
+                // own transaction, and `to_regclass` cannot fail.
+                const store = await query<Array<{ t: string | null }>>(
+                    `SELECT to_regclass('commitment_proposals')::text AS t`);
+                if (store?.[0]?.t) {
+                    const outcome = await linkAcceptedCommitment(query as any, {
+                        idempotencyKey: execution.commitmentKey,
+                        entityId: String(order.id),
+                        family: 'restaurant_orders',
+                    });
+                    // An acceptance already attached to another order is not
+                    // consent for this one: roll the order back rather than
+                    // create an order no agreement stands behind.
+                    if (outcome === 'conflict') throw new ConflictException('commitment_already_consumed');
+                }
+            }
             return { ...order, items, estimated_delivery_minutes: estimatedMinutes };
         });
 

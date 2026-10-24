@@ -141,7 +141,7 @@ import { correctRelativeWeekdays } from './relative-weekday';
 import { customerDatesIn } from './date-reference';
 import { guardIdentityCodeClaim } from './identity-code-claim';
 import { guardAllergenClaim } from './allergen-claim';
-import { asksAboutSoldOutProducts, guardSoldOutClaim } from './sold-out-visibility';
+import { asksAboutSoldOutProducts, guardNotForSaleDenial, guardSoldOutClaim } from './sold-out-visibility';
 import { addressFormOf, detectTransition, failedTransitionOf, handleIdentityReply, humanizeReferences, identityGate, knownRecordFacts, knownRecordIds, localizeStatusWords, namedRequestOverridesClarify, opensWithYes, requestIdentityForTool, runTransition, shortReference, transitionDoneText, transitionFailureText, transitionRequestForTool, transitionTexts, TRANSITION_TOOLS, TRANSITION_WRITER, type TransitionIO, type TransitionOutcome } from './transition-engine';
 import { resolveListChoice } from './list-choice';
 import { createdDoneText, detectOrderIntake, isOrderDetails, mergeOrderNotes, mightBeMenuOrderRequest, mightBeOrderRequest, orderProposalText, orderStockText, orderChoiceText, replyStillAsksConfirmation, type OrderChoice, type OrderIntake } from './order-intake';
@@ -7542,6 +7542,21 @@ export class ConversationsService {
                 this.recordAgentSignal(tenantId, 'sold_out_claim_unbacked', session);
                 this.logger.warn(`[Guardrail] The reply said nothing is sold out without a read of the unavailable products (${soldOutClaim.situation}) — replaced: "${response.slice(0, 100)}"`);
                 return soldOutClaim.text;
+            }
+            // F4300-29 residual: «No, no tenemos el producto QA Agente Stock en nuestro catálogo» while search_products of this turn
+            // found it under notForSale (is_available = false, stock 0). It exists and is sold out; the reply says so, and offers nothing.
+            const denial = guardNotForSaleDenial({
+                reply: response,
+                sources: [
+                    ...(executedTools || []).map(tool => tool?.result),
+                    ...(currentMessages || []).filter((message: any) => message?.role === 'tool').map((message: any) => message.content),
+                ],
+                lang,
+            });
+            if (denial.replaced) {
+                this.recordAgentSignal(tenantId, 'sold_out_product_denied', session);
+                this.logger.warn(`[Guardrail] The reply denied a product that exists but is sold out (${denial.product}) — replaced: "${response.slice(0, 100)}"`);
+                return denial.text;
             }
         }
 

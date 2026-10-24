@@ -109,7 +109,7 @@ import { foldedSql, foldQueryText } from '../../common/utils/sql-accent-fold.uti
 import { foldForSearch, likePatternForTerm, productSearchTerms } from '../../common/utils/product-search-terms';
 import { markCatalogEmpty } from './catalog-empty.util';
 import { catalogPriceStatus } from './catalog-price-status';
-import { productAvailabilityScope } from './sold-out-visibility';
+import { notForSaleMatch, NOT_FOR_SALE_MATCH_LIMIT, NOT_FOR_SALE_MATCHES_NOTE, productAvailabilityScope, readsNotForSaleMatches } from './sold-out-visibility';
 import { listTotal } from './list-total';
 import {
     ClosestListing, closestMatchesNote, describeListingVerdict, givenListingCriteria, LOCATION_LISTING_CRITERIA,
@@ -1535,6 +1535,9 @@ export class AIToolExecutorService {
             conds.push(`${foldedSql('category')} = ${foldedSql(`$${params.length + 1}::text`)}`);
             params.push(foldQueryText(category));
         }
+        // What the query names (words and category), before availability and budget: the not-for-sale read below matches the same.
+        const matchConds = [...conds];
+        const matchParams = [...params];
         if (scope.where) conds.push(scope.where);
         if (typeof maxPrice === 'number' && Number.isFinite(maxPrice)) {
             // The customer's budget holds on every path; an unpriced product cannot be shown to fit it.
@@ -1550,7 +1553,10 @@ export class AIToolExecutorService {
                      LIMIT $${params.length}`;
         try {
             const rows: any[] = await this.prisma.$queryRawUnsafe(sql, ...params);
-            // `scope` and `note` go after readOk: a text field would make an empty list read as `status: ok`.
+            const notForSale = readsNotForSaleMatches(scope, terms) && maxPrice === undefined
+                ? await this.notForSaleMatches(schema, matchConds, matchParams, rows) : [];
+            // `scope` and `note` go after readOk: a text field would make an empty list read as `status: ok`. `notForSale` goes
+            // inside: a named product that exists but is sold out is an answer («está agotado»), not «nothing matched».
             const read = readOk({
                 products: rows.map(p => ({
                     id: p.id,
@@ -1569,13 +1575,44 @@ export class AIToolExecutorService {
                     // necesita ver la marca acá y no descubrirlo al confirmar.
                     requiresPrescription: !!p.requires_prescription,
                 })),
+                ...(notForSale.length ? { notForSale } : {}),
             });
-            return { ...read, scope: scope.label, ...(scope.note ? { note: scope.note } : {}) };
+            const note = notForSale.length ? `${scope.note ? `${scope.note} ` : ''}${NOT_FOR_SALE_MATCHES_NOTE}` : scope.note;
+            return { ...read, scope: scope.label, ...(note ? { note } : {}) };
         } catch (e: any) {
             this.logger.warn(`[Tool] search_products failed: ${e.message}`);
             return readFailed(TOOL_READ_ERROR_CODES.READ_FAILED, {
                 message: 'No pude consultar el catálogo en este momento.',
             });
+        }
+    }
+
+    /**
+     * F4300-29 residual: «tienen el QA Agente Stock?» about a product with is_available = false and stock 0 was answered «no tenemos
+     * ese producto en nuestro catálogo», because the default read of a name query only returns products for sale. The same words, with
+     * the "unavailable" predicate of `productAvailabilityScope`, find the products that exist but cannot be sold; they travel apart
+     * from `products` (what may be offered or ordered) and are never priced. A failure here costs only this hint, never the read.
+     */
+    private async notForSaleMatches(schema: string, matchConds: string[], matchParams: any[], forSale: any[]): Promise<Record<string, unknown>[]> {
+        const unavailable = productAvailabilityScope('unavailable').where;
+        const listed = new Set((forSale || []).map(row => String(row?.id)));
+        try {
+            const rows: any[] = await this.prisma.$queryRawUnsafe(
+                `SELECT id, name, stock, is_available
+                   FROM "${schema}".products
+                  WHERE ${[...matchConds, unavailable].join(' AND ')}
+                  ORDER BY name ASC
+                  LIMIT $${matchParams.length + 1}`,
+                ...matchParams, NOT_FOR_SALE_MATCH_LIMIT,
+            );
+            return (Array.isArray(rows) ? rows : [])
+                .filter(row => !listed.has(String(row?.id)))
+                .map(notForSaleMatch)
+                .filter((row): row is Record<string, unknown> => row !== null)
+                .slice(0, NOT_FOR_SALE_MATCH_LIMIT);
+        } catch (e: any) {
+            this.logger.warn(`[Tool] search_products not-for-sale matches failed: ${e.message}`);
+            return [];
         }
     }
 

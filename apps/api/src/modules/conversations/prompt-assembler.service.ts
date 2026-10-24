@@ -590,7 +590,7 @@ export class PromptAssemblerService {
             }
             // F4300-29: the own catalogue lists products for sale only; an absent sold-out product is not proof that none exists.
             if (turn.catalogScope === 'available_only') {
-                lines.push('    <scope>available_only: only products for sale are listed here; sold-out or withdrawn products are not, so this list cannot show that nothing is sold out. To answer which products are sold out, call search_products with availability "unavailable".</scope>');
+                lines.push('    <scope>available_only: only products for sale are listed here; sold-out or withdrawn products are not, so this list cannot show that nothing is sold out. To answer which products are sold out, call search_products with availability "unavailable". A product the customer names that is not listed here may exist and be sold out: search_products by its name returns it under notForSale.</scope>');
             }
             lines.push('  </catalog>');
         }

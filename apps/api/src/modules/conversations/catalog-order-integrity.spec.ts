@@ -88,9 +88,15 @@ describe('search_products respeta la disponibilidad y su propio dominio', () => 
             { authority: authorityFor('search_products') },
         );
 
-        expect(query).toHaveBeenCalledTimes(1);
-        expect(query.mock.calls[0][0]).not.toContain('courses');
+        // The read for sale, then (F4300-29 residual) the same name among the products not for sale: both over `products`.
+        expect(query).toHaveBeenCalledTimes(2);
+        for (const [sql] of query.mock.calls) {
+            expect(sql).not.toContain('courses');
+            expect(sql).toContain('.products');
+        }
+        expect(query.mock.calls[1][0]).toContain('is_available IS NOT TRUE');
         expect(result.products).toEqual([]);
+        expect(result).not.toHaveProperty('notForSale');
         expect(result.status).toBe('empty');
     });
 

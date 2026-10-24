@@ -50,22 +50,27 @@ const WORDS: Record<ReplyLang, readonly string[]> = {
 const VOCABULARY: Record<ReplyLang, readonly string[]> = {
     es: ['pago', 'pagos', 'tarjeta', 'tarjetas', 'recargo', 'enlace', 'enlaces', 'llega', 'llegara', 'sucursal', 'sucursales', 'tallas', 'talla',
         'colores', 'negro', 'rojo', 'recordatorio', 'lamentablemente', 'descuento', 'perfecto', 'dos', 'treinta', 'cuarenta', 'siempre',
-        'tarda', 'tardan', 'ubicados', 'indicaciones', 'tengo', 'siento', 'hablo'],
+        'tarda', 'tardan', 'ubicados', 'indicaciones', 'tengo', 'siento', 'hablo',
+        // Renting a listing (F4300-16 residual, production 24-oct: «Sí, el Spark QA Inmueble está en arriendo» to an English turn).
+        'arriendo', 'arriendos', 'alquiler', 'alquileres', 'arrendamiento'],
     en: ['accept', 'credit', 'cards', 'card', 'debit', 'bank', 'transfers', 'transfer', 'payments', 'payment', 'per', 'month', 'taxes', 'included',
         'free', 'shipping', 'costs', 'cost', 'units', 'colors', 'black', 'blue', 'red', 'store', 'located', 'floor', 'mall', 'arrive', 'arrives',
         'shipped', 'link', 'reminder', 'sorry', 'understand', 'frustration', 'team', 'review', 'solution', 'warranty', 'slots', 'sunday',
         'saturday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'morning', 'evening', 'afternoon', 'size', 'sizes', 'both',
-        'two', 'three', 'five', 'thirty', 'hours', 'opening', 'business', 'address', 'city', 'center', 'close', 'near', 'next', 'day'],
+        'two', 'three', 'five', 'thirty', 'hours', 'opening', 'business', 'address', 'city', 'center', 'close', 'near', 'next', 'day',
+        'rent', 'rental', 'lease'],
     pt: ['dois', 'duas', 'depois', 'leva', 'levam', 'uteis', 'trinta', 'quarenta', 'vinte', 'sim', 'aceitamos', 'pagamento', 'pagamentos',
         'cartao', 'segue', 'avisar', 'precisar', 'precisa', 'procura', 'ja', 'maioria', 'mudar', 'marcado', 'ficou', 'agendamento', 'cores',
         'preto', 'vermelho', 'lembrete', 'desconto', 'entendi', 'perfeito', 'cidade', 'andar', 'loja', 'lojas', 'tamanhos', 'tamanho', 'ambos',
         'frete', 'gratis', 'atendimento', 'seguranca', 'chega', 'sempre', 'recomendo', 'sugiro', 'carrega', 'compativel', 'celulares', 'escrever', 'ajuda',
         'prazer', 'prefere', 'saude', 'economizar', 'aguardando', 'localizacao', 'indicacoes', 'estacao', 'proxima', 'chegar', 'fico', 'eu', 'meu',
-        'minha', 'meus', 'minhas', 'tenho', 'sinto', 'falo'],
+        'minha', 'meus', 'minhas', 'tenho', 'sinto', 'falo',
+        'aluguel', 'alugar', 'locacao'],
     fr: ['carte', 'cartes', 'virement', 'bancaire', 'paiement', 'paiements', 'frais', 'comprises', 'gratuite', 'boutique', 'magasin', 'magasins',
         'etage', 'ville', 'zone', 'lien', 'rappel', 'desole', 'comprends', 'equipe', 'examiner', 'couleur', 'couleurs', 'noir', 'bleu', 'rouge',
         'tailles', 'taille', 'moyenne', 'epuise', 'oui', 'deux', 'trois', 'cinq', 'trente', 'quarante', 'jours', 'jour', 'toujours', 'jamais',
-        'meilleure', 'meilleur', 'maintenant', 'adresse', 'horaires', 'ouverture', 'forfait', 'coute', 'mois', 'complet', 'seulement', 'simplement'],
+        'meilleure', 'meilleur', 'maintenant', 'adresse', 'horaires', 'ouverture', 'forfait', 'coute', 'mois', 'complet', 'seulement', 'simplement',
+        'loyer', 'louer'],
 };
 
 const SETS = Object.fromEntries(

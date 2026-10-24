@@ -377,6 +377,9 @@ export class LanguageDetectorService {
         general: ['es', 'pt'], barato: ['es', 'pt'], barata: ['es', 'pt'], caro: ['es', 'pt'], cara: ['es', 'pt', 'fr'], pedido: ['es', 'pt'],
         pedidos: ['es', 'pt'], reserva: ['es', 'pt'], esta: ['es', 'pt'], este: ['es', 'pt'], ja: ['pt'], prato: ['pt'], pratos: ['pt'],
         plato: ['es'], platos: ['es'], saida: ['pt'], salida: ['es'],
+        // F4300-16 residual (production 24-oct): «qual o valor do Spark QA Inmueble?». «valor» is Spanish AND Portuguese (French
+        // «valeur», English «value»); «do» is Portuguese «of the» AND the English verb, never Spanish or French.
+        valor: ['es', 'pt'], valores: ['es', 'pt'], do: ['pt', 'en'],
     };
 
     /** The languages that write `token`: the shared table first, else every single-language list that holds it. */
@@ -396,12 +399,18 @@ export class LanguageDetectorService {
      *
      * Each known word (and each accent of one language) narrows the languages the message can be in; unknown words narrow
      * nothing. The message decides when three or more non-courtesy words are known, the languages left are not empty and
-     * the stored language is not among them. Among two left, the tenant's language wins, then es, pt, fr, en. A message
-     * around a name («Hotel Aurora con las vistas al mar») is left to the strict rules, as is anything shorter: «ok»,
-     * «gracias», «uma consulta», «consulta general» keep the stored language.
+     * the stored language is not among them. Among two left, the tenant's language wins, then es, pt, fr, en. Anything
+     * shorter keeps the stored language: «ok», «gracias», «uma consulta», «consulta general».
+     *
+     * Names are taken out first and never count. F4300-16 residual (production 24-oct, image b168adb0): «qual o valor do
+     * Spark QA Inmueble?» after a French case was answered in French because a message with a capitalised name in it was
+     * set aside altogether, and listing and product names are in most sales questions. A message around a name decides
+     * only when the words left carry a verb or a question word of a remaining language («qual», «is», «est», «es»): a noun
+     * phrase around a name («Hotel Aurora con las vistas al mar», «Plan Aurora el sabado por favor») keeps the stored one.
      */
     private languageExcludingStored(previous: string | null, text: string, names: readonly string[], preferred?: string | null): string | null {
-        if (!previous || this.mentionsName(text)) return null;
+        if (!previous) return null;
+        const aroundName = this.mentionsName(text);
         const free = this.nameFreeText(text, names);
         const tokens = new Set(this.normalize(free).split(/\s+/).filter(token => /[a-z]/.test(token)));
         const raw = free.normalize('NFC').toLowerCase();
@@ -417,9 +426,17 @@ export class LanguageDetectorService {
             if (pattern.test(raw)) candidates = new Set([...candidates].filter(candidate => candidate === lang));
         }
         if (known < 3 || !candidates.size || candidates.has(previous)) return null;
+        if (aroundName && ![...candidates].some(lang => this.hasPredicate(lang, tokens, raw))) return null;
         const preferredShort = preferred ? this.short(preferred) : null;
         if (preferredShort && candidates.has(preferredShort)) return preferredShort;
         return ['es', 'pt', 'fr', 'en'].find(lang => candidates.has(lang)) ?? null;
+    }
+
+    /** Whether the (name-free) message holds a verb or a question word of `lang` (see `predicateWords`, `predicatePatterns`). */
+    private hasPredicate(lang: string, tokens: Set<string>, raw: string): boolean {
+        if ((this.predicateWords[lang] ?? []).some(word => tokens.has(word))) return true;
+        if (lang === 'pt' && /(?<!\p{L})(?:há|é)(?!\p{L})/u.test(raw)) return true;
+        return (this.predicatePatterns[lang] ?? []).some(pattern => pattern.test(raw));
     }
 
     /**

@@ -111,6 +111,7 @@ import { markCatalogEmpty } from './catalog-empty.util';
 import { catalogPriceStatus } from './catalog-price-status';
 import { notForSaleMatch, NOT_FOR_SALE_MATCH_LIMIT, NOT_FOR_SALE_MATCHES_NOTE, productAvailabilityScope, readsNotForSaleMatches } from './sold-out-visibility';
 import { listTotal } from './list-total';
+import { PACKAGE_FIELD_AUTHORITY, packageDuration } from './package-structured-fields';
 import {
     ClosestListing, closestMatchesNote, describeListingVerdict, givenListingCriteria, LOCATION_LISTING_CRITERIA,
     ListingSearchCriteria, selectClosestListings,
@@ -4804,6 +4805,7 @@ export class AIToolExecutorService {
                     description: p.description,
                     durationType: p.duration_type,
                     durationValue: p.duration_value,
+                    duration: packageDuration(p.duration_type, p.duration_value),
                     price: Number(p.price || 0),
                     priceStatus: catalogPriceStatus(p.price),
                     currency: p.currency || null,
@@ -4811,6 +4813,8 @@ export class AIToolExecutorService {
                     languages: p.languages || [],
                     seatsLeft: p.available_seats ?? null,
                 })),
+                // Production 24-oct: a package description («a fictional QA experience») was read over its 4-hour duration.
+                ...(packages.length ? { fieldAuthority: PACKAGE_FIELD_AUTHORITY } : {}),
             };
         } catch (e: any) {
             // A date that cannot be sold is not a failed search: say which problem it is, so the
@@ -4857,6 +4861,7 @@ export class AIToolExecutorService {
                 description: pkg.description,
                 durationType: pkg.duration_type,
                 durationValue: pkg.duration_value,
+                duration: packageDuration(pkg.duration_type, pkg.duration_value),
                 minPartySize: pkg.min_party_size ?? null,
                 maxCapacity: pkg.max_capacity ?? null,
                 price: Number(pkg.price || 0),
@@ -4876,6 +4881,7 @@ export class AIToolExecutorService {
                     seatsLeft: i.available_seats,
                     priceOverride: i.price_override ? Number(i.price_override) : null,
                 })),
+                fieldAuthority: PACKAGE_FIELD_AUTHORITY,
             };
         } catch (e: any) {
             return this.safeToolFailure('get_package_details', e, 'read');

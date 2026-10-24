@@ -400,7 +400,7 @@ const DECLARED_READ_OPERATIONS: readonly DeclaredReadOperation[] = Object.freeze
     },
     {
         key: 'property_info', toolGroup: 'properties',
-        description: 'The guest asks the nightly price, capacity, amenities, check-in or check-out time, house rules or details of a property/room, or whether it is free on some dates (no dates: the price "from" the fixed nightly price).',
+        description: 'The guest asks the nightly price, minimum stay, capacity, bedrooms or bathrooms, amenities, address, check-in or check-out (arrival or departure) time, house rules or details of a property/room, or whether it is free on some dates (no dates: the price "from" the fixed nightly price), in any language ("what time is check-in?", "what time is check-out?", "¿a qué hora es el check-in?", "que horas é o check-out?", "à quelle heure est l\'enregistrement ?", "where is the property?", "how many guests fit?", "do you have wifi?"). These are property details, not general FAQs.',
         reads: ['list_properties', 'get_property_details'], factKinds: ['price', 'capacity', 'item_attributes', 'availability'],
         alsoVisible: ['check_property_availability'],
     },
@@ -412,12 +412,12 @@ const DECLARED_READ_OPERATIONS: readonly DeclaredReadOperation[] = Object.freeze
     },
     {
         key: 'package_info', toolGroup: 'tours',
-        description: 'The customer asks the price, duration, what is included or details of a specific tour/travel package.',
+        description: 'The customer asks the price, duration, what is included or excluded or details of a specific tour/travel package, in any language ("how long is the X tour?", "¿cuánto dura el tour X?", "quanto tempo dura o passeio X?", "combien de temps dure le tour X ?", "what does X include?").',
         reads: ['search_packages', 'get_package_details'], factKinds: ['price', 'item_attributes', 'capacity', 'schedule'],
     },
     {
         key: 'package_availability', toolGroup: 'tours',
-        description: 'The customer asks whether a tour/package has availability (seats) for a date and group size.',
+        description: 'The customer asks whether a tour/package has availability, how many seats are left, or when its next departures or dates are, with or without a date and group size, in any language ("how many seats are left for X?", "¿cuántos cupos quedan para X?", "quantas vagas restam no X?", "combien de places restent pour X ?", "when is the next departure?").',
         reads: ['search_packages', 'check_package_availability'], factKinds: ['availability', 'price'],
         onReadFailure: 'ask',
     },

@@ -7,13 +7,18 @@ import { ToolDefinition } from '@parallext/shared';
 export const CATALOG_TOOLS: ToolDefinition[] = [
     {
         name: 'search_products',
-        description: 'Search the product catalog by natural-language query (name, description, category). Returns top matches with price and availability. Use when the customer asks about what you sell, or requests a product.',
+        description: 'Search the product catalog by natural-language query (name, description, category). Returns top matches with price, stock, isAvailable and inStock, plus `scope`. By default (availability "available") only products for sale are listed and the result says scope "available_only": it cannot show whether anything is sold out. When the customer asks what is sold out, out of stock or unavailable, call it with availability "unavailable" (query "" for the whole catalogue) and name what it returns. Use when the customer asks about what you sell, or requests a product. Never offer or order a product whose isAvailable or inStock is false.',
         parameters: {
             type: 'object',
             properties: {
-                query: { type: 'string', description: 'Free-text search query' },
+                query: { type: 'string', description: 'Free-text search query ("" for the whole catalogue)' },
                 limit: { type: 'number', description: 'Max results to return (default 5)' },
                 category: { type: 'string', description: 'Optional category filter' },
+                availability: {
+                    type: 'string',
+                    enum: ['available', 'unavailable', 'any'],
+                    description: 'Which products to list: "available" (default, products for sale), "unavailable" (sold out or withdrawn from sale) or "any" (both)',
+                },
             },
             required: ['query'],
         },

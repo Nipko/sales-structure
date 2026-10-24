@@ -109,6 +109,7 @@ import { foldedSql, foldQueryText } from '../../common/utils/sql-accent-fold.uti
 import { foldForSearch, likePatternForTerm, productSearchTerms } from '../../common/utils/product-search-terms';
 import { markCatalogEmpty } from './catalog-empty.util';
 import { catalogPriceStatus } from './catalog-price-status';
+import { productAvailabilityScope } from './sold-out-visibility';
 import { listTotal } from './list-total';
 import {
     ClosestListing, closestMatchesNote, describeListingVerdict, givenListingCriteria, LOCATION_LISTING_CRITERIA,
@@ -790,7 +791,7 @@ export class AIToolExecutorService {
                     return this.sendBookingLink(tenantId);
 
                 case 'search_products':
-                    return this.searchProducts(schemaName, args.query, args.limit, args.category);
+                    return this.searchProducts(schemaName, args.query, args.limit, args.category, undefined, args.availability);
 
                 case 'get_product':
                     return this.getProduct(schemaName, args.productId);
@@ -1509,8 +1510,14 @@ export class AIToolExecutorService {
      * `courses` lookup, which handed a pharmacy or a parts store a list of
      * classes. A catalog search now answers about the catalog, or says nothing
      * matched — and a query that throws says so instead of returning zero rows.
+     *
+     * `availability` (F4300-29): asked «¿qué productos tienen agotados?», the agent answered «todos están disponibles» because this
+     * read only ever returned products for sale. "unavailable" lists the sold-out or withdrawn ones, "any" both; the default stays
+     * "available", and its result says `scope: 'available_only'` so an empty list of sold-out items is never read into it. Ordering
+     * does not go through here: place_catalog_order re-reads the product and rejects one that is not for sale or has no stock.
      */
-    private async searchProducts(schema: string, query: string, limit = 5, category?: string, maxPrice?: number): Promise<any> {
+    private async searchProducts(schema: string, query: string, limit = 5, category?: string, maxPrice?: number, availability?: unknown): Promise<any> {
+        const scope = productAvailabilityScope(availability);
         const conds: string[] = [];
         const params: any[] = [];
         // A product answers when EVERY significant word of the query is found in its name, description or category: accent- and case-
@@ -1528,7 +1535,7 @@ export class AIToolExecutorService {
             conds.push(`${foldedSql('category')} = ${foldedSql(`$${params.length + 1}::text`)}`);
             params.push(foldQueryText(category));
         }
-        conds.push(`is_available = true`);
+        if (scope.where) conds.push(scope.where);
         if (typeof maxPrice === 'number' && Number.isFinite(maxPrice)) {
             // The customer's budget holds on every path; an unpriced product cannot be shown to fit it.
             conds.push(`(price > 0 AND price <= $${params.length + 1})`);
@@ -1543,7 +1550,8 @@ export class AIToolExecutorService {
                      LIMIT $${params.length}`;
         try {
             const rows: any[] = await this.prisma.$queryRawUnsafe(sql, ...params);
-            return readOk({
+            // `scope` and `note` go after readOk: a text field would make an empty list read as `status: ok`.
+            const read = readOk({
                 products: rows.map(p => ({
                     id: p.id,
                     name: p.name,
@@ -1554,6 +1562,7 @@ export class AIToolExecutorService {
                     currency: p.currency || null,
                     stock: p.stock ?? null,
                     isAvailable: !!p.is_available,
+                    inStock: p.is_available === true && (p.stock == null || Number(p.stock) > 0),
                     // Un producto de venta bajo fórmula se sigue mostrando: el
                     // cliente merece saber que el negocio lo tiene. Lo que no
                     // se puede es pedirlo por chat, y para eso el agente
@@ -1561,6 +1570,7 @@ export class AIToolExecutorService {
                     requiresPrescription: !!p.requires_prescription,
                 })),
             });
+            return { ...read, scope: scope.label, ...(scope.note ? { note: scope.note } : {}) };
         } catch (e: any) {
             this.logger.warn(`[Tool] search_products failed: ${e.message}`);
             return readFailed(TOOL_READ_ERROR_CODES.READ_FAILED, {

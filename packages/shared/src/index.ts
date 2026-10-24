@@ -1119,6 +1119,11 @@ export interface TurnContext {
         stock?: number;
         category?: string;
     }>;
+    /**
+     * `available_only` when `catalog` holds the tenant's own products for sale only (F4300-29): the prompt then says that
+     * sold-out or withdrawn products are not listed, so «nothing is sold out» is never read into it.
+     */
+    catalogScope?: 'available_only';
     /** The current customer's recent orders (T2.17) for support/sales context. */
     recentOrders?: Array<{
         id: string;

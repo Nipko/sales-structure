@@ -6,6 +6,7 @@ import { INSURANCE_TOOLS } from './tools/insurance-tools';
 import { RESTAURANTS_TOOLS } from './tools/restaurants-tools';
 import { HOME_SERVICES_TOOLS, PET_SERVICES_TOOLS, PHOTOGRAPHY_TOOLS } from './tools/tier3-tools';
 import { CREATE_PAYMENT_LINK_TOOL, GET_PAYMENT_STATUS_TOOL } from './tools/payment-tools';
+import { CATALOG_TOOLS } from './tools/catalog-tools';
 import { authorityFor } from './__fixtures__/tool-authority.fixture';
 
 describe('AI tool schema and runtime alignment', () => {
@@ -133,6 +134,30 @@ describe('AI tool schema and runtime alignment', () => {
         // The OpenAI `{ type, function }` shape is handled too.
         const wrapped = withSlotWindowParameter([{ type: 'function', function: tool(APPOINTMENT_TOOLS, 'check_availability') }]);
         expect((wrapped[0] as any).function.parameters.properties.window).toBe(CHECK_AVAILABILITY_WINDOW_PROPERTY);
+    });
+
+    it('advertises search_products `availability` exactly as the executor reads it (F4300-29)', async () => {
+        const searchProducts = tool(CATALOG_TOOLS, 'search_products');
+        expect(Object.keys(searchProducts.parameters.properties).sort()).toEqual(['availability', 'category', 'limit', 'query']);
+        expect(searchProducts.parameters.required).toEqual(['query']);
+        expect(searchProducts.parameters.properties.availability.enum).toEqual(['available', 'unavailable', 'any']);
+        expect(searchProducts.description).toContain('available_only');
+
+        const harness = createHarness();
+        harness.prisma.$queryRawUnsafe.mockResolvedValue([]);
+        const scopes: string[] = [];
+        for (const availability of [undefined, ...searchProducts.parameters.properties.availability.enum]) {
+            const result: any = await harness.executor.execute(
+                schemaName, tenantId, contactId, 'search_products', { query: '', ...(availability ? { availability } : {}) }, conversationId,
+                { authority: authorityFor('search_products') },
+            );
+            scopes.push(result.scope);
+        }
+        expect(scopes).toEqual(['available_only', 'available_only', 'unavailable_only', 'all']);
+        const sqls = harness.prisma.$queryRawUnsafe.mock.calls.map((call: any[]) => call[0]);
+        expect(sqls[0]).toContain('is_available = true');
+        expect(sqls[2]).toContain('is_available IS NOT TRUE');
+        expect(sqls[3]).not.toMatch(/is_available (=|IS)/);
     });
 
     it('advertises exactly the fields persisted by request_photo_quote', () => {

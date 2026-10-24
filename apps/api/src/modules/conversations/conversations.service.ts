@@ -141,7 +141,7 @@ import { correctRelativeWeekdays } from './relative-weekday';
 import { customerDatesIn } from './date-reference';
 import { guardIdentityCodeClaim } from './identity-code-claim';
 import { guardAllergenClaim } from './allergen-claim';
-import { asksAboutSoldOutProducts, guardSoldOutClaim } from './sold-out-visibility';
+import { asksAboutSoldOutProducts, guardNotForSaleDenial, guardSoldOutClaim } from './sold-out-visibility';
 import { addressFormOf, detectTransition, failedTransitionOf, handleIdentityReply, humanizeReferences, identityGate, knownRecordFacts, knownRecordIds, localizeStatusWords, namedRequestOverridesClarify, opensWithYes, requestIdentityForTool, runTransition, shortReference, toolReadsOfTurnMessages, transitionDoneText, transitionFailureText, transitionRequestForTool, transitionTexts, TRANSITION_TOOLS, TRANSITION_WRITER, type TransitionIO, type TransitionOutcome } from './transition-engine';
 import { resolveListChoice } from './list-choice';
 import { createdDoneText, detectOrderIntake, isOrderDetails, mergeOrderNotes, mightBeMenuOrderRequest, mightBeOrderRequest, orderProposalText, orderStockText, orderChoiceText, replyStillAsksConfirmation, type OrderChoice, type OrderIntake } from './order-intake';
@@ -3187,6 +3187,8 @@ export class ConversationsService {
         const fallbackLanguage = previousLanguage || configuredLanguage;
         // The customer's own recent messages (when the turn already holds them) outrank a stored language that lagged.
         const languageContext = {
+            // The tenant's language breaks a tie between two languages the message may be in («hora de entrada?»: es or pt).
+            preferred: configuredLanguage,
             recentCustomerMessages: (session?.history ?? []).filter(row => row?.role === 'user').slice(-5).map(row => String(row.content ?? '')),
         };
         // A live turn holds no history yet, so a stored language that lagged outranked the message: «o prato Spark é sem
@@ -7543,6 +7545,21 @@ export class ConversationsService {
                 this.logger.warn(`[Guardrail] The reply said nothing is sold out without a read of the unavailable products (${soldOutClaim.situation}) — replaced: "${response.slice(0, 100)}"`);
                 return soldOutClaim.text;
             }
+            // F4300-29 residual: «No, no tenemos el producto QA Agente Stock en nuestro catálogo» while search_products of this turn
+            // found it under notForSale (is_available = false, stock 0). It exists and is sold out; the reply says so, and offers nothing.
+            const denial = guardNotForSaleDenial({
+                reply: response,
+                sources: [
+                    ...(executedTools || []).map(tool => tool?.result),
+                    ...(currentMessages || []).filter((message: any) => message?.role === 'tool').map((message: any) => message.content),
+                ],
+                lang,
+            });
+            if (denial.replaced) {
+                this.recordAgentSignal(tenantId, 'sold_out_product_denied', session);
+                this.logger.warn(`[Guardrail] The reply denied a product that exists but is sold out (${denial.product}) — replaced: "${response.slice(0, 100)}"`);
+                return denial.text;
+            }
         }
 
         // A healthy read (`status: ok`) is not permission to sell an inactive product.
@@ -8936,7 +8953,7 @@ export class ConversationsService {
         inboundMessageId?: string): Promise<string> {
         const previous = (conversation?.metadata as any)?.detectedLanguage || null;
         const recentCustomerMessages = await this.recentCustomerTexts(schemaName, conversation?.id, inboundMessageId);
-        return this.languageDetector.detect(text || '', previous || config?.language || 'es', previous, { recentCustomerMessages });
+        return this.languageDetector.detect(text || '', previous || config?.language || 'es', previous, { recentCustomerMessages, preferred: config?.language });
     }
 
     /** The customer's last five messages before this one, oldest first (the language evidence a live turn lacks). */

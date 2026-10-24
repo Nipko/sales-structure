@@ -46,6 +46,7 @@ import {
 } from '@parallext/shared';
 import { randomUUID } from 'crypto';
 import { handoffAgentI18n } from './handoff-i18n';
+import { customTriggerFires, type TriggerContext } from './custom-trigger-negation';
 import {
     HANDOFF_ANNOUNCEMENT_DESTINATIONS, HANDOFF_EFFECTS_DDL, HandoffEffectError,
     admitHandoffEffect, expireHandoffEffectLeases, prepareHandoffEffects, projectHandoffEffects,
@@ -212,11 +213,13 @@ export class HandoffService {
         tenantId?: string,
         /** The turn's execution context (Agent Test, evaluation, draft): the router keeps it read-only and accounts the spend. */
         executionContext?: ClassifierExecutionContext,
+        /** The agent's previous message, so a bare «no» to its own question about a keyword's topic is not that keyword (F4300-30). */
+        triggerContext?: TriggerContext,
     ): Promise<string | null> {
         const topics = policyTopicsIn(message, config.behavior?.handoffTriggers || []);
         // No refund / return / discount word: nothing for a model to read, the rules decide.
-        if (!topics) return this.shouldHandoff(message, conversation, config, operatingCountry);
-        const strong = this.evaluateHandoff(message, conversation, config, operatingCountry, 'ignore_topics');
+        if (!topics) return this.shouldHandoff(message, conversation, config, operatingCountry, triggerContext);
+        const strong = this.evaluateHandoff(message, conversation, config, operatingCountry, 'ignore_topics', triggerContext);
         if (strong) return strong;
         const enabled = (cat: string) => this.categoryEnabled(config, cat);
         // Nothing this tenant could route the answer to: no reason to ask the model.
@@ -231,16 +234,16 @@ export class HandoffService {
         // `isDiscountExistenceQuestion`). The model is not asked, so it cannot turn the question into a transfer
         // (F4300-07); everything else in the message is still judged by the rules.
         if (topics.discount && !topics.refund && !topics.customTrigger && isDiscountExistenceQuestion(message)) {
-            return this.evaluateHandoff(message, conversation, config, operatingCountry, 'rules');
+            return this.evaluateHandoff(message, conversation, config, operatingCountry, 'rules', triggerContext);
         }
         const label = await this.classifyPolicyMessage(message, tenantId, executionContext);
-        if (!label) return this.shouldHandoff(message, conversation, config, operatingCountry);
+        if (!label) return this.shouldHandoff(message, conversation, config, operatingCountry, triggerContext);
         const reason = reasonForPolicyLabel(label, topics, enabled);
         if (reason) return reason;
         // `none` means the topic word was incidental ("¿me devuelven la llamada?"): the
         // rest of the message is judged as it always was, defects included.
         return label === 'none'
-            ? this.evaluateHandoff(message, conversation, config, operatingCountry, 'keep_defects')
+            ? this.evaluateHandoff(message, conversation, config, operatingCountry, 'keep_defects', triggerContext)
             : null;
     }
 
@@ -326,8 +329,10 @@ export class HandoffService {
         config: TenantConfig,
         /** Operating country, so national ways of asking for a person are heard. */
         operatingCountry?: string | null,
+        /** The agent's previous message (see `decideHandoff`). */
+        triggerContext?: TriggerContext,
     ): string | null {
-        return this.evaluateHandoff(message, conversation, config, operatingCountry, 'rules');
+        return this.evaluateHandoff(message, conversation, config, operatingCountry, 'rules', triggerContext);
     }
 
     /**
@@ -343,6 +348,7 @@ export class HandoffService {
         config: TenantConfig,
         operatingCountry: string | null | undefined,
         mode: 'rules' | 'ignore_topics' | 'keep_defects',
+        triggerContext: TriggerContext = {},
     ): string | null {
         const triggers = config.behavior?.handoffTriggers || [];
         // Accent-stripped, because the raw `toLowerCase()` meant `devolución`
@@ -466,7 +472,11 @@ export class HandoffService {
             // informational question as above, so the same exemption applies;
             // any other trigger, or a personal case, is unchanged.
             if (mode !== 'rules' ? POLICY_TOPIC_KEYWORDS.has(needle) : isAnswerableCustomTrigger(policyScope, needle, message)) continue;
-            if (needle && text.includes(needle)) {
+            // A keyword the customer only denies («No tengo alergias, solo que esté bien cocido», «sin
+            // alergias», «I'm not allergic»), or a bare «no» to the agent's own question about it, is not
+            // the topic the owner wants a person for (F4300-30). An affirmed mention fires as before.
+            // Refund / return / discount words keep their own policy rules above: «no hay reembolso» is a grievance.
+            if (needle && (POLICY_TOPIC_KEYWORDS.has(needle) ? text.includes(needle) : customTriggerFires(message, trigger, triggerContext))) {
                 return `custom_trigger:${trigger}`;
             }
         }

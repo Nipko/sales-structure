@@ -112,6 +112,7 @@ import { catalogPriceStatus } from './catalog-price-status';
 import { notForSaleMatch, NOT_FOR_SALE_MATCH_LIMIT, NOT_FOR_SALE_MATCHES_NOTE, productAvailabilityScope, readsNotForSaleMatches } from './sold-out-visibility';
 import { listTotal } from './list-total';
 import { PACKAGE_FIELD_AUTHORITY, packageDuration } from './package-structured-fields';
+import { LISTING_FIELD_AUTHORITY } from './listing-structured-fields';
 import {
     ClosestListing, closestMatchesNote, describeListingVerdict, givenListingCriteria, LOCATION_LISTING_CRITERIA,
     ListingSearchCriteria, selectClosestListings,
@@ -5051,6 +5052,8 @@ export class AIToolExecutorService {
                 ...(found.length === 0 && closest.length === 0 ? {
                     message: 'No hay inmuebles con esos criterios. La búsqueda se hizo correctamente: dilo así y ofrece ajustar zona, presupuesto o tipo de inmueble.',
                 } : {}),
+                // Production 24-oct: «Je n'ai pas la surface confirmée» / «price not confirmed» for a listing with 80 m² and 250.000 EUR.
+                ...(found.length || closest.length ? { fieldAuthority: LISTING_FIELD_AUTHORITY } : {}),
             };
         } catch (e: any) {
             return this.safeToolFailure('search_listings', e, 'read');
@@ -5130,6 +5133,7 @@ export class AIToolExecutorService {
                 imagesCount: (l.images || []).length,
                 externalUrl: l.external_url,
                 status: l.status,
+                fieldAuthority: LISTING_FIELD_AUTHORITY,
             };
         } catch (e: any) {
             return this.safeToolFailure('get_listing_details', e, 'read');

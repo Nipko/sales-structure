@@ -3187,6 +3187,8 @@ export class ConversationsService {
         const fallbackLanguage = previousLanguage || configuredLanguage;
         // The customer's own recent messages (when the turn already holds them) outrank a stored language that lagged.
         const languageContext = {
+            // The tenant's language breaks a tie between two languages the message may be in («hora de entrada?»: es or pt).
+            preferred: configuredLanguage,
             recentCustomerMessages: (session?.history ?? []).filter(row => row?.role === 'user').slice(-5).map(row => String(row.content ?? '')),
         };
         // A live turn holds no history yet, so a stored language that lagged outranked the message: «o prato Spark é sem
@@ -8935,7 +8937,7 @@ export class ConversationsService {
         inboundMessageId?: string): Promise<string> {
         const previous = (conversation?.metadata as any)?.detectedLanguage || null;
         const recentCustomerMessages = await this.recentCustomerTexts(schemaName, conversation?.id, inboundMessageId);
-        return this.languageDetector.detect(text || '', previous || config?.language || 'es', previous, { recentCustomerMessages });
+        return this.languageDetector.detect(text || '', previous || config?.language || 'es', previous, { recentCustomerMessages, preferred: config?.language });
     }
 
     /** The customer's last five messages before this one, oldest first (the language evidence a live turn lacks). */

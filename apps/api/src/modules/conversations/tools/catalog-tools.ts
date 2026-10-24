@@ -7,7 +7,7 @@ import { ToolDefinition } from '@parallext/shared';
 export const CATALOG_TOOLS: ToolDefinition[] = [
     {
         name: 'search_products',
-        description: 'Search the product catalog by natural-language query (name, description, category). Returns top matches with price, stock, isAvailable and inStock, plus `scope`. By default (availability "available") only products for sale are listed and the result says scope "available_only": it cannot show whether anything is sold out. When the customer asks what is sold out, out of stock or unavailable, call it with availability "unavailable" (query "" for the whole catalogue) and name what it returns. Use when the customer asks about what you sell, or requests a product. Never offer or order a product whose isAvailable or inStock is false.',
+        description: 'Search the product catalog by natural-language query (name, description, category). Returns top matches with price, stock, isAvailable and inStock, plus `scope`. By default (availability "available") only products for sale are listed and the result says scope "available_only": it cannot show whether anything is sold out. When the customer asks what is sold out, out of stock or unavailable, call it with availability "unavailable" (query "" for the whole catalogue) and name what it returns. A search by name also returns `notForSale`: products that match and exist but are sold out or withdrawn; tell the customer such a product is sold out (never that it is not in the catalogue). Use when the customer asks about what you sell, or requests a product. Never offer or order a product whose isAvailable or inStock is false, nor one listed under notForSale.',
         parameters: {
             type: 'object',
             properties: {

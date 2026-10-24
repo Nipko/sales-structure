@@ -30,6 +30,37 @@ export function productAvailabilityScope(value: unknown): { availability: Produc
     return { availability, where: 'is_available = true', label: 'available_only', note: AVAILABLE_ONLY_NOTE };
 }
 
+/**
+ * F4300-29 residual (production 24-oct): «tienen el QA Agente Stock?» / «vocês têm o QA Agente Stock?» was answered «No, no tenemos
+ * el producto QA Agente Stock en nuestro catálogo» about a product that exists with is_available = false and stock 0. A default
+ * (available_only) name query left it out, so the read the model had said it did not exist. Such a query now also returns the
+ * products that match the name but are not for sale, in a separate `notForSale` list (never `products`, which stays what can be
+ * offered and ordered), each marked `soldOut: true` / `inStock: false`, with this note.
+ */
+export const NOT_FOR_SALE_MATCHES_NOTE = 'The products under notForSale match the search and DO exist in the catalogue, but they are not for sale right now (sold out or withdrawn). Tell the customer the product exists and is sold out / not available right now; never say it is not in the catalogue, never offer it as available, quote it for purchase or order it.';
+/** At most this many not-for-sale matches ride along with a name query. */
+export const NOT_FOR_SALE_MATCH_LIMIT = 5;
+
+/** The default read of a name query also looks for the matching products not for sale (an empty query is a browse, not a name). */
+export function readsNotForSaleMatches(scope: { availability: ProductAvailability }, terms: readonly string[]): boolean {
+    return scope.availability === 'available' && terms.length > 0;
+}
+
+/** A row the not-for-sale read returned, as `notForSale` carries it; null for a row that is actually for sale and in stock. */
+export function notForSaleMatch(row: any): Record<string, unknown> | null {
+    if (!row || row.id == null || typeof row.name !== 'string') return null;
+    const inStock = row.is_available === true && (row.stock == null || Number(row.stock) > 0);
+    if (inStock) return null;
+    return {
+        id: row.id,
+        name: row.name,
+        stock: row.stock ?? null,
+        isAvailable: row.is_available === true,
+        inStock: false,
+        soldOut: true,
+    };
+}
+
 const fold = (text: unknown) => String(text ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[’`]/g, "'");
 
 /** Sold-out vocabulary on folded text, es/en/pt/fr. */
@@ -128,4 +159,74 @@ export function guardSoldOutClaim(input: SoldOutClaimInput): { text: string; rep
     const reply = fold(input.reply);
     if (soldOut.every(name => reply.includes(fold(name)))) return keep;
     return { text: (LISTED[code] || LISTED.es)(soldOut.slice(0, 20).join(', ')), replaced: true, situation: 'contradicted' };
+}
+
+/** «We do not have / it is not in our catalogue», es/en/pt/fr, on folded text. */
+const DENIES_HAVING = new RegExp([
+    /\bno (?:lo |la )?(?:tenemos|manejamos|vendemos|contamos con|disponemos de|existe)\b/,
+    /\bno (?:esta|se encuentra|figura|aparece) en (?:nuestro|el) catalogo\b/,
+    /\bnao (?:temos|trabalhamos com|vendemos|existe)\b/,
+    /\bnao (?:esta|consta|aparece) no (?:nosso )?catalogo\b/,
+    /\b(?:we )?(?:don't|do not) (?:have|carry|sell|stock)\b/,
+    /\bnot (?:in|part of) our catalog(?:ue)?\b/,
+    /\b(?:nous )?n'(?:avons|vendons) pas\b/,
+    /\bpas dans (?:notre|le) catalogue\b/,
+].map(re => re.source).join('|'));
+const SAYS_SOLD_OUT = new RegExp(`\\b${SOLD_OUT}`);
+
+/** The words that identify a product name: three letters or more, no digits (a «20261020T1737Z» suffix is not said by anyone). */
+function nameWords(name: string): string[] {
+    return [...new Set((fold(name).match(/[\p{L}\p{N}]+/gu) ?? []).filter(word => word.length >= 3 && !/\d/.test(word)))];
+}
+
+/** The products this turn's reads returned under `notForSale` (they exist, matched the name asked about, and are not for sale). */
+function notForSaleNames(sources: readonly unknown[]): string[] {
+    const names: string[] = [];
+    for (const raw of sources) {
+        const value = parse(raw) as any;
+        if (!value || typeof value !== 'object' || Array.isArray(value) || value.error || value.stale === true) continue;
+        if (!Array.isArray(value.notForSale)) continue;
+        for (const p of value.notForSale) {
+            if (!p || typeof p.name !== 'string' || !p.name.trim()) continue;
+            names.push(Array.from(p.name, (char: string) => (char.charCodeAt(0) <= 31 || char.charCodeAt(0) === 127 ? ' ' : char)).join('').trim().slice(0, 120));
+        }
+    }
+    return [...new Set(names)];
+}
+
+const EXISTS_SOLD_OUT: Record<string, (name: string) => string> = {
+    es: name => `Sí, ${name} está en nuestro catálogo, pero en este momento está agotado y no está disponible para la venta.`,
+    en: name => `Yes, ${name} is in our catalogue, but it is sold out right now and not available for sale.`,
+    pt: name => `Sim, ${name} está no nosso catálogo, mas no momento está esgotado e não está disponível para venda.`,
+    fr: name => `Oui, ${name} figure dans notre catalogue, mais il est épuisé pour le moment et n’est pas disponible à la vente.`,
+};
+
+export interface NotForSaleDenialInput {
+    reply: string;
+    /** Tool results of this turn and tool messages of the thread (objects or JSON strings). */
+    sources: readonly unknown[];
+    lang?: string;
+}
+
+/**
+ * F4300-29 residual. A reply that says the business does not have a product a read of this turn found under `notForSale` («No, no
+ * tenemos el producto QA Agente Stock en nuestro catálogo») is replaced by the fixed text: it exists and is sold out. Only a clause
+ * that denies having it AND names it (every identifying word of the name) is read as that claim; nothing is offered for sale.
+ */
+export function guardNotForSaleDenial(input: NotForSaleDenialInput): { text: string; replaced: boolean; product?: string } {
+    const keep = { text: input.reply, replaced: false };
+    const names = notForSaleNames(input.sources);
+    if (!names.length) return keep;
+    const clauses = fold(input.reply).split(/[.;:!?¡¿\n]+/);
+    for (const name of names) {
+        const words = nameWords(name);
+        if (!words.length) continue;
+        // «No tenemos cargadores, pero el QA Agente Stock está agotado» already says what the read says.
+        const denied = clauses.some(clause => DENIES_HAVING.test(clause) && !SAYS_SOLD_OUT.test(clause)
+            && words.every(word => clause.split(/[^\p{L}\p{N}]+/u).includes(word)));
+        if (!denied) continue;
+        const code = String(input.lang || 'es').slice(0, 2).toLowerCase();
+        return { text: (EXISTS_SOLD_OUT[code] || EXISTS_SOLD_OUT.es)(name), replaced: true, product: name };
+    }
+    return keep;
 }

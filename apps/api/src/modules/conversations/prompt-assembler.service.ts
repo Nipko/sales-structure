@@ -588,6 +588,10 @@ export class PromptAssemblerService {
                 if (p.category) attrs.push(`category="${this.attrEscape(p.category)}"`);
                 lines.push(`    <product ${attrs.join(' ')}>${this.attrEscape(p.title)}</product>`);
             }
+            // F4300-29: the own catalogue lists products for sale only; an absent sold-out product is not proof that none exists.
+            if (turn.catalogScope === 'available_only') {
+                lines.push('    <scope>available_only: only products for sale are listed here; sold-out or withdrawn products are not, so this list cannot show that nothing is sold out. To answer which products are sold out, call search_products with availability "unavailable".</scope>');
+            }
             lines.push('  </catalog>');
         }
 

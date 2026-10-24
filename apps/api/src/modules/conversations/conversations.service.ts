@@ -141,6 +141,7 @@ import { correctRelativeWeekdays } from './relative-weekday';
 import { customerDatesIn } from './date-reference';
 import { guardIdentityCodeClaim } from './identity-code-claim';
 import { guardAllergenClaim } from './allergen-claim';
+import { asksAboutSoldOutProducts, guardSoldOutClaim } from './sold-out-visibility';
 import { addressFormOf, detectTransition, failedTransitionOf, handleIdentityReply, humanizeReferences, identityGate, knownRecordFacts, knownRecordIds, localizeStatusWords, namedRequestOverridesClarify, opensWithYes, requestIdentityForTool, runTransition, shortReference, transitionDoneText, transitionFailureText, transitionRequestForTool, transitionTexts, TRANSITION_TOOLS, TRANSITION_WRITER, type TransitionIO, type TransitionOutcome } from './transition-engine';
 import { resolveListChoice } from './list-choice';
 import { createdDoneText, detectOrderIntake, isOrderDetails, mergeOrderNotes, mightBeMenuOrderRequest, mightBeOrderRequest, orderProposalText, orderStockText, orderChoiceText, replyStillAsksConfirmation, type OrderChoice, type OrderIntake } from './order-intake';
@@ -5102,8 +5103,11 @@ export class ConversationsService {
 
         // Stock is a current read, never a promise, order or inventory mutation.
         // Resolve only a unique named/UUID product from the authorized bounded catalogue.
-        if (!engineProducedText && requiresProductStockLookup(userText)
-            && turnAllowedTools.includes('search_products') && turnAllowedTools.includes('check_stock')) {
+        // F4300-29: «¿qué productos tienen agotados?» reads the products NOT for sale (availability "unavailable"): the
+        // available-only list made «todos están disponibles» look true while a product had stock 0.
+        const soldOutQuestion = asksAboutSoldOutProducts(userText);
+        const stockQuestion = requiresProductStockLookup(userText) && turnAllowedTools.includes('check_stock');
+        if (!engineProducedText && (soldOutQuestion || stockQuestion) && turnAllowedTools.includes('search_products')) {
             const context: ServiceExecutionContext = {
                 ...executionContext, mode: executionContext?.mode ?? 'live', persistence: 'disabled',
             };
@@ -5125,9 +5129,12 @@ export class ConversationsService {
                 turnTrace.add('tool_result', name, { ok: !result?.error, error: result?.error, automatic: true });
                 return result;
             };
-            const result = await read('search_products', { query: '', limit: 20 });
-            const productId = stockProductIdForQuestion(userText, result);
-            if (productId) await read('check_stock', { productId });
+            if (soldOutQuestion) await read('search_products', { query: '', limit: 20, availability: 'unavailable' });
+            if (stockQuestion) {
+                const result = await read('search_products', { query: '', limit: 20 });
+                const productId = stockProductIdForQuestion(userText, result);
+                if (productId) await read('check_stock', { productId });
+            }
         }
 
         // A store order the deterministic intake did not match («quiero comprar un cargador» where only headphones are sold) reads
@@ -5135,7 +5142,8 @@ export class ConversationsService {
         // still rejects products that are not in the catalogue.
         if (!engineProducedText && !orderIntake && !orderChoice && publishedTurnTools.includes('place_catalog_order')
             && turnAllowedTools.includes('search_products') && mightBeOrderRequest(userText)
-            && !preExecutedTools.some(tool => tool.name === 'search_products')) {
+            // A read of the sold-out products is not the catalogue the order chooses from.
+            && !preExecutedTools.some(tool => tool.name === 'search_products' && tool.result?.scope !== 'unavailable_only')) {
             const context: ServiceExecutionContext = {
                 ...executionContext, mode: executionContext?.mode ?? 'live', persistence: 'disabled',
             };
@@ -5294,7 +5302,11 @@ export class ConversationsService {
         if (cfgTools?.catalog?.enabled === true) {
             try {
                 const own = await this.loadOwnCatalogForTurn(schemaName, userText);
-                if (own.length) turnContext.catalog = [...(turnContext.catalog ?? []), ...own];
+                if (own.length) {
+                    turnContext.catalog = [...(turnContext.catalog ?? []), ...own];
+                    // F4300-29: these are only the products for sale; the prompt says so, so «nothing is sold out» is not read into it.
+                    turnContext.catalogScope = 'available_only';
+                }
             } catch (e: any) {
                 this.logger.debug(`[Catalog] own catalog injection skipped: ${e.message}`);
             }
@@ -7510,6 +7522,26 @@ export class ConversationsService {
                 this.recordAgentSignal(tenantId, 'allergen_claim_unbacked', session);
                 this.logger.warn(`[Guardrail] The reply claimed an item is free of an allergen without data backing it (${allergenClaim.situation}) — replaced: "${response.slice(0, 100)}"`);
                 return allergenClaim.text;
+            }
+        }
+
+        // F4300-29 (store): «No, all the products in our catalog are currently available» to «is anything sold out?». A reply
+        // may say nothing is sold out only when a read of this turn looked at the products not for sale; otherwise it is the
+        // fixed text: the sold-out products that read returned, or that it cannot be confirmed.
+        if (!isSystemFixedText(response)) {
+            const soldOutClaim = guardSoldOutClaim({
+                customerText: lastCustomerText(currentMessages),
+                reply: response,
+                sources: [
+                    ...(executedTools || []).map(tool => tool?.result),
+                    ...(currentMessages || []).filter((message: any) => message?.role === 'tool').map((message: any) => message.content),
+                ],
+                lang,
+            });
+            if (soldOutClaim.replaced) {
+                this.recordAgentSignal(tenantId, 'sold_out_claim_unbacked', session);
+                this.logger.warn(`[Guardrail] The reply said nothing is sold out without a read of the unavailable products (${soldOutClaim.situation}) — replaced: "${response.slice(0, 100)}"`);
+                return soldOutClaim.text;
             }
         }
 

@@ -1052,7 +1052,7 @@ export class AIToolExecutorService {
                     return this.getPromotions(schemaName);
 
                 case 'place_order':
-                    return this.placeOrder(schemaName, contactId, conversationId, args, canonicalSandbox, tenantId);
+                    return this.placeOrder(schemaName, contactId, conversationId, args, canonicalSandbox, tenantId, executionIdempotencyKey);
 
                 case 'cancel_order':
                     return this.cancelOrder(schemaName, contactId, args.orderId, args.reason);
@@ -5349,6 +5349,8 @@ export class AIToolExecutorService {
         args: any,
         namespace?: EvalNamespaceLease,
         tenantId?: string,
+        /** The guarded operation's key: its accepted proposal is linked to the order in the order's own transaction. */
+        commitmentKey?: string,
     ): Promise<any> {
         try {
             if (!Array.isArray(args.items) || args.items.length === 0) {
@@ -5432,7 +5434,7 @@ export class AIToolExecutorService {
                 items: resolvedItems,
                 paymentMethod: args.paymentMethod,
                 notes: args.notes,
-            }, { sandboxNamespace: namespace }, tenantId);
+            }, { sandboxNamespace: namespace, commitmentKey }, tenantId);
 
             return {
                 orderId: order.id,

@@ -203,6 +203,55 @@ export async function ensureCommitmentProposals(query: CommitmentQuery): Promise
 }
 
 /**
+ * ═══ THE ACCEPTANCE AND THE ROW IT BECAME ═══
+ *
+ * An accepted proposal is only an agreement a charge can find once
+ * `consumed_entity_id` names the row the writer produced: every
+ * `commitmentAgreedTermsSql` reads it, and nothing else. So this is the ONE
+ * statement that writes that link, used by the writer inside its own
+ * transaction (the order and its agreement commit or roll back together) and
+ * by the ledger's completion as the backstop for writers that do not yet.
+ *
+ * It never creates an acceptance. It only attaches the one the customer gave
+ * for THIS ledger operation (`idempotency_key`) and this family, and only when
+ * it is not already attached to a different row.
+ *
+ *   · `linked`        — the accepted proposal now names `entityId` (idempotent);
+ *   · `no_acceptance` — nothing was accepted for this operation (a ledger opened
+ *                       before the contract existed): nothing to link, and
+ *                       nothing is invented;
+ *   · `conflict`      — the acceptance exists but belongs to another row.
+ */
+export type CommitmentLinkOutcome = 'linked' | 'no_acceptance' | 'conflict';
+
+export async function linkAcceptedCommitment(
+    query: CommitmentQuery,
+    link: { idempotencyKey: string; entityId: string; family: string },
+): Promise<CommitmentLinkOutcome> {
+    const linked = await query<Array<{ id: string }>>(
+        `UPDATE commitment_proposals
+            SET consumed_entity_id = $2::uuid, consumed_at = COALESCE(consumed_at, NOW())
+          WHERE idempotency_key = $1 AND family = $3 AND accepted_at IS NOT NULL
+            AND (consumed_entity_id IS NULL OR consumed_entity_id = $2::uuid)
+          RETURNING id`,
+        [link.idempotencyKey, link.entityId, link.family]);
+    if (Array.isArray(linked) && linked.length) return 'linked';
+    return await acceptedCommitmentExists(query, link) ? 'conflict' : 'no_acceptance';
+}
+
+/** Whether this operation carries an acceptance at all, linked or not. */
+export async function acceptedCommitmentExists(
+    query: CommitmentQuery, link: { idempotencyKey: string; family: string },
+): Promise<boolean> {
+    const rows = await query<Array<{ id: string }>>(
+        `SELECT id FROM commitment_proposals
+          WHERE idempotency_key = $1 AND family = $2 AND accepted_at IS NOT NULL
+          LIMIT 1`,
+        [link.idempotencyKey, link.family]);
+    return Array.isArray(rows) && rows.length > 0;
+}
+
+/**
  * The negation every counter uses, and the reason it is a function.
  *
  * Every `*AgreedTermsSql` is TOTAL — it returns true or false and never NULL —

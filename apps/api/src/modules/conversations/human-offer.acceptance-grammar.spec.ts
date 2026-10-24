@@ -287,3 +287,82 @@ describe('F4300-25 the transfer notice of an accepted offer is in the customer l
         expect(src).not.toContain("this.languageDetector.detect(content?.text || '', config.language || 'es')");
     });
 });
+
+/**
+ * Production QA 24-oct (dental tenant, pt, 3/3): «Deseja que eu peça para alguém da clínica confirmar para você?» →
+ * «Sim, por favor.» did not hand off. The pt lead «Deseja» was not read as an offer lead, and the business named by its
+ * KIND («alguém da clínica») was not read as the person offered, so the «sim» reached the model, which asked for full name
+ * and phone as for a callback. The business and its staff areas and roles are read as a family, by root, in es/en/pt/fr.
+ */
+describe('the business named by its kind is the person offered', () => {
+    const PRODUCTION_OFFER = 'O preço da consulta especializada não está confirmado no sistema. '
+        + 'Deseja que eu peça para alguém da clínica confirmar para você?';
+
+    it('production pair: «Sim, por favor.» accepts «…alguém da clínica confirmar…»', () => {
+        expect(endsWithHumanOffer(PRODUCTION_OFFER)).toBe(true);
+        expect(isAffirmationOfHumanOffer('Sim, por favor.', PRODUCTION_OFFER)).toBe(true);
+        expect(repliesYesToHumanOffer('Sim, por favor.', PRODUCTION_OFFER)).toBe(true);
+        // #191: offering the same person again after the «sim» is a repeated offer: the turn hands off instead.
+        expect(repeatsAcceptedHumanOffer('Deseja que eu peça para alguém da clínica confirmar?', 'Sim, por favor.', PRODUCTION_OFFER)).toBe(true);
+    });
+
+    it.each([
+        // pt
+        'Deseja que eu peça para alguém da equipe confirmar para você?',
+        'Deseja que eu peça para alguém da recepção confirmar?',
+        'Quer que o corretor entre em contato com você?',
+        'Deseja falar com o corretor?',
+        // es
+        '¿Quiere que le pida a alguien de la clínica que lo confirme?',
+        '¿Desea que le consulte a alguien del restaurante?',
+        '¿Quiere que lo consulte con la cocina?',
+        '¿Desea que alguien del hotel le confirme la tarifa?',
+        '¿Quiere que le pregunte a alguien de la agencia?',
+        '¿Desea que le pida a alguien de la inmobiliaria que lo confirme?',
+        '¿Desea que le comunique con recepción?',
+        '¿Quiere que el asesor le confirme el precio?',
+        '¿Desea hablar con el asesor?',
+        '¿Quiere que le pida a un asesor que lo confirme?',
+        // en
+        'Would you like me to ask someone from the clinic to confirm it?',
+        'Do you want me to check with the kitchen?',
+        'Shall I ask the front desk?',
+        'Would you like someone from reception to call you back?',
+        // fr
+        'Voulez-vous que je demande à quelqu’un de la clinique ?',
+        'Voulez-vous que je demande à la réception ?',
+        "Souhaitez-vous qu'un conseiller vous rappelle ?",
+        'Souhaitez-vous parler à un conseiller ?',
+    ])('«%s» offers a person', offer => {
+        expect(endsWithHumanOffer(offer)).toBe(true);
+        expect(repliesYesToHumanOffer('Sí, por favor', offer)).toBe(true);
+    });
+
+    it.each([
+        '¿Quiere el kit del equipo de fútbol?',
+        '¿Desea agendar con el especialista?',
+        '¿Quiere agendar una consulta con el especialista?',
+        '¿Quiere una cita con la doctora?',
+        'Deseja agendar uma consulta com o dentista?',
+        '¿Desea que le muestre fotos del hotel?',
+        '¿Quiere ver el menú del restaurante?',
+        '¿Le paso el menú del restaurante?',
+        '¿Le paso la dirección de la clínica?',
+        '¿Quiere que le pida el menú a la cocina?',
+        '¿Desea reservar una mesa en el restaurante?',
+        '¿Quiere que le consulte la disponibilidad del hotel?',
+        '¿Quiere saber el horario de la recepción?',
+        '¿Le puedo ayudar con algo más?',
+        "Would you like the clinic's address?",
+        'Would you like to book with our specialist?',
+        'Voulez-vous voir la carte du restaurant ?',
+    ])('«%s» offers no person', reply => {
+        expect(endsWithHumanOffer(reply)).toBe(false);
+        expect(repliesYesToHumanOffer('Sí, por favor', reply)).toBe(false);
+    });
+
+    it('a «yes» naming the role offered echoes the offer', () => {
+        expect(isOfferAcceptance('Sí, con el asesor por favor')).toBe(true);
+        expect(isOfferAcceptance('Sim, com o corretor')).toBe(true);
+    });
+});

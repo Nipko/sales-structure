@@ -168,7 +168,7 @@ export function isOfferAcceptance(text: unknown): boolean {
     if (head > 0) {
         // A «yes» that echoes the offer (who, or the asking) is an acceptance whatever other words come with it.
         const tail = tokens.slice(head);
-        if (tail.some(t => isRequestVerb(t) || OFFER_PERSON_WORDS.has(t))) return true;
+        if (tail.some(t => isRequestVerb(t) || isOfferPersonWord(t))) return true;
         if (tail.every(t => known(t) || GRATITUDE_ROOT.test(t))) return true;
     }
     if (tokens.length > 10) return false;
@@ -218,6 +218,12 @@ const OFFER_PERSON_WORDS = new Set([
     'team', 'someone', 'somebody', 'person', 'agent', 'human', 'staff',
     'equipe', 'alguem', 'pessoa', 'atendente', 'quelqu', 'conseiller', 'conseillere', 'humain',
 ]);
+/**
+ * The staff roles the offer may name instead of the team («¿Quiere que el asesor le confirme?», «Quer que o corretor entre em
+ * contato?», «quelqu'un de la réception»), by root, so «Sí, con el asesor» / «Sim, com o corretor» echo the offer too.
+ */
+const OFFER_ROLE_ROOT = /^(?:asesor|consultor|corretor|corredor|recepcionist|receptionist|recepcion|recepcao|reception|especialist|specialist|doctor|doutor|medic[oa]s?$|medecin|odontolog|dentist|gerente|manager|encargad|responsabl|conseill|advisor|representant|vendedor)/;
+const isOfferPersonWord = (t: string): boolean => OFFER_PERSON_WORDS.has(t) || OFFER_ROLE_ROOT.test(t);
 /** Thanks that may follow the «yes» with nothing else («sí, se lo agradezco», «yes, much appreciated»). */
 const GRATITUDE_ROOT = /^(?:agradec|agradezc|amable|appreciat|obrigad|gracia|merci|thank|perfeit|genial|excelent|great|awesome)/;
 

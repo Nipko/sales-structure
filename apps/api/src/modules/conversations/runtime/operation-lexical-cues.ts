@@ -23,6 +23,15 @@
  * bathrooms, amenities, minimum stay, nightly price, availability) is `property_info` (list_properties → get_property_details),
  * and a tour question is `package_availability` (seats left, departures, dates: the departures and their seats) or
  * `package_info` (duration, what it includes or excludes, price), under the same rules.
+ *
+ * And with `requiredReads.listings` on (real-estate QA tenant), «quelle est la surface du Spark QA Inmueble ?» ran only
+ * `search_faqs` and answered «Je n'ai pas la surface confirmée» (the listing has 80 m²), and «what properties are available?»
+ * listed the listing from the history but said «The price is not confirmed in the catalog» (250.000 EUR): the classifier gave
+ * the FAQ intent or a listing operation under the threshold. So a question about a listing's price, area, bedrooms or
+ * bathrooms, sale or rent, address, or whether it is still available is `listing_info` (search_listings → get_listing_details
+ * on the listing named or the only one), and «what properties do you have / are available?» is `find_listing`
+ * (search_listings: the list, with each listing's price and area, is the answer). A visit, the customer's own appointment, a
+ * complaint, a payment or the customer's own property is never a listing read.
  */
 import { normalizeForIntent } from '@parallext/shared';
 import type { RequiredReadsPilot } from './required-reads.runner';
@@ -142,14 +151,59 @@ export function tourQuestionOperation(text: unknown): 'package_availability' | '
     return null;
 }
 
+// ── Real estate (listings for sale or rent) ─────────────────────────────────────────────────────────────────────────────
+
+/** What a real-estate agency lists. */
+const LISTING = /\b(?:inmuebles?|propiedad\w*|apartamentos?|aptos?|apartaestudios?|departamentos?|casas?|lotes?|terrenos?|locales?|oficinas?|bodegas?|fincas?|imovel|imoveis|propriedades?|biens?|proprietes?|appartements?|maisons?|terrains?|logements?|properties|property|listings?|apartments?|flats?|houses?|homes?|condos?|units?|plots?)\b/;
+/** The same, as an offer: «what properties do you have?», «¿qué inmuebles tienen?», «quels biens avez-vous ?». */
+const LISTINGS = /\b(?:inmuebles|propiedades|apartamentos|casas|lotes|oficinas|imoveis|propriedades|biens|proprietes|appartements|maisons|properties|listings|apartments|flats|houses|homes|units|options|opciones|opcoes)\b/;
+/** Area: «la surface», «cuántos metros», «80 m²», «how big». */
+const AREA = /\b(?:areas?|superficie|surface|metros?|metraje|mts|metres?|meters?|square (?:meters|metres|feet)|sqm|sq ft|tamano|tamanho|taille|size|how big|que tan grande|quao grande)\b|\bm(?:2\b|²)/;
+/** Bedrooms, bathrooms and the rest of a listing's layout. */
+const LAYOUT = /\b(?:habitacion\w*|alcobas?|cuartos?|recamaras?|dormitorios?|banos?|quartos?|banheiros?|suites?|chambres?|pieces|salles? de bains?|salles? d eau|bedrooms?|bathrooms?|rooms?|baths?|parqueaderos?|garajes?|garagem|garages?|parking|estacionamientos?|estrato|pisos?|andar|etage|floors?)\b/;
+/** Sale or rent: «¿es para venta o arriendo?», «is it for rent?», «c'est à louer ?». */
+const SALE_OR_RENT = /\b(?:venta|vende\w*|arriendo|arrienda\w*|alquiler|alquila\w*|renta|rentar|venda|vende|aluguel|aluga\w*|alugar|louer|loue|vendre|vente|sale|rent|rental|lease|buy|comprar|acheter)\b/;
+/** Where the listing is (the business's own address is a FAQ: only with a listing word). */
+const LISTING_PLACE = /\b(?:direccion|ubicacion|ubicad[oa]s?|donde (?:queda|quedan|esta|estan)|barrio|sector|zona|endereco|localizacao|localizad[oa]s?|onde (?:fica|ficam|esta|estao)|bairro|adresse|ou (?:se trouve|se situe|est)|situe\w*|quartier|address|location|located|where is|where are|neighbou?rhood|area)\b/;
+const STILL_AVAILABLE = /\b(?:disponib\w*|available|availability|todavia|aun|ainda|toujours|still)\b/;
+/** «what properties do you have?», «¿qué inmuebles tienen?», «quais imóveis vocês têm?», «quels biens avez-vous ?». */
+const OFFER = /\b(?:que|cuales|qual|quais|quel\w*|what|which|tienen|tiene|hay|manejan|ofrecen|tem|tens|tem disponivel|avez vous|vous avez|y a t il|proposez|do you have|have you got|is there|are there|any|show me|muestrame|mostrar|mostre|montrez)\b/;
+/**
+ * Never a listing read: a visit or appointment (scheduling it, the customer's own one), a complaint, a payment, the agency's
+ * commission, or the customer's own property («quiero vender mi casa»). Those belong to the classifier and their own flows.
+ */
+const NOT_LISTING = /\b(?:visitas?|visitar|visite\w*|visit\w*|viewing|agend\w*|cita|citas|appointments?|rendez vous|rdv|reunion|meeting|schedul\w*|reprogram\w*|reagend\w*|remarc\w*|conocer|conhecer|tour the|comision\w*|commission\w*|honorarios|honoraires|(?:mi|mis|meu|meus|minha|minhas|ma|mes|mon|my|our|nuestra|nuestro) (?:casa|apartamento|apto|inmueble|propiedad|imovel|maison|appartement|bien|house|home|apartment|flat|property|lote|terreno|local|oficina)|(?:su|sus|vuestra|vuestras|sua|suas|seu|seus|votre|vos|your) (?:oficinas?|offices?|bureaux?|escritorios?|agencia|agence|agency|inmobiliaria|imobiliaria|negocio|business))\b/;
+
+/**
+ * The listings operation the message's words name: `listing_info` for a listing's price, area, bedrooms or bathrooms, sale or
+ * rent, address or availability; `find_listing` for «what properties do you have / are available?»; null when it is neither.
+ * Spanish, Portuguese, French and English. Pure.
+ */
+export function listingQuestionOperation(text: unknown): 'listing_info' | 'find_listing' | null {
+    const t = folded(text);
+    if (!t || t.length > 400 || NOT_CATALOGUE.test(t) || NOT_LISTING.test(t)) return null;
+    const listing = LISTING.test(t);
+    const question = asked(text, t);
+    if (PRICE_WORDS.test(t) || AREA.test(t)) return 'listing_info';
+    if (question && LAYOUT.test(t)) return 'listing_info';
+    if (listing && LISTING_PLACE.test(t)) return 'listing_info';
+    // An open offer question first: «what properties are available?» is the list, «is the apartment still available?» one listing.
+    if (LISTINGS.test(t) && OFFER.test(t)) return 'find_listing';
+    if (question && SALE_OR_RENT.test(t)) return 'listing_info';
+    if (listing && STILL_AVAILABLE.test(t)) return 'listing_info';
+    return null;
+}
+
 /**
  * The pilot operation the message's own words name, when the turn publishes its read; null otherwise: the restaurant menu
- * (`menu_info` → get_menu), a lodging's details (`property_info` → list_properties) and a tour's details or departures
- * (`package_info` / `package_availability` → search_packages).
+ * (`menu_info` → get_menu), a lodging's details (`property_info` → list_properties), a tour's details or departures
+ * (`package_info` / `package_availability` → search_packages) and a real-estate listing or the listings on offer
+ * (`listing_info` / `find_listing` → search_listings).
  */
 export function lexicalRequiredReadsOperation(text: unknown, pilot: RequiredReadsPilot, publishedTools: readonly string[]): string | null {
     if (pilot === 'restaurants' && publishedTools.includes('get_menu') && isMenuQuestion(text)) return 'menu_info';
     if (pilot === 'properties' && publishedTools.includes('list_properties') && isLodgingQuestion(text)) return 'property_info';
     if (pilot === 'tours' && publishedTools.includes('search_packages')) return tourQuestionOperation(text);
+    if (pilot === 'listings' && publishedTools.includes('search_listings')) return listingQuestionOperation(text);
     return null;
 }

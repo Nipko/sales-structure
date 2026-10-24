@@ -406,7 +406,7 @@ const DECLARED_READ_OPERATIONS: readonly DeclaredReadOperation[] = Object.freeze
     },
     {
         key: 'listing_info', toolGroup: 'realEstate',
-        description: 'The customer asks the price, area (m2), rooms, bathrooms, whether it is for sale or rent, or other details of a property listing for sale or rent.',
+        description: 'The customer asks the price, area (m2), rooms, bathrooms, whether it is for sale or rent, the address or location, whether it is still available, or other details of a property listing for sale or rent, in any language ("how much is the apartment?", "what is the area of X?", "quelle est la surface du X ?", "¿cuántos metros tiene?", "quantos quartos tem o imóvel?", "is it for sale or rent?", "¿es para venta o arriendo?", "where is the house?"). These are listing details, not general FAQs; scheduling a visit is not this operation.',
         reads: ['search_listings', 'get_listing_details'], factKinds: ['price', 'area', 'item_attributes'],
         alsoVisible: ['send_listing_image'],
     },

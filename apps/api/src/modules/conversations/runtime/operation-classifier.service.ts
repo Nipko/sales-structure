@@ -99,6 +99,11 @@ export function buildOperationClassifierPrompt(candidates: readonly OperationDef
         ...(candidates.some(op => op.key === 'package_availability' || op.key === 'package_info')
             ? ['For a travel business, how many seats are left and the next departures or dates of a tour are package_availability; its duration, price and what it includes or excludes are package_info; never ask_question, in any language.']
             : []),
+        // Production 24-oct (real-estate flag on): «quelle est la surface du Spark QA Inmueble ?» and «what properties are
+        // available?» came back as the FAQ intent (or under the threshold) and only search_faqs ran; area and price are listing fields.
+        ...(candidates.some(op => op.key === 'listing_info' || op.key === 'find_listing')
+            ? ['For a real-estate business, the price, area (m2), bedrooms, bathrooms, sale or rent, address or availability of a listing are listing_info; "what properties do you have?" or "what properties are available?" is find_listing; never ask_question, in any language. Scheduling a visit is neither.']
+            : []),
         'Answer ONLY with one JSON object, no prose: {"operationKey": "<one key above or none>", "confidence": number between 0 and 1}',
     ].join('\n');
 }

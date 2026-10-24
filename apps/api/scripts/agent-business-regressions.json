@@ -92,7 +92,9 @@
     "apps/api/src/modules/conversations/unverified-price-reply-formality.spec.ts",
     "apps/api/src/modules/conversations/runtime/catalog-over-faq.spec.ts",
     "apps/api/src/modules/conversations/conversations.catalog-over-faq.spec.ts",
-    "apps/api/src/modules/conversations/turn-ledger-deterministic-settle.spec.ts"
+    "apps/api/src/modules/conversations/turn-ledger-deterministic-settle.spec.ts",
+    "apps/api/src/modules/conversations/business-location-not-timezone.f4300.spec.ts",
+    "apps/api/src/modules/conversations/allergen-reply-language.f4300.spec.ts"
   ],
   "postgres": [
     "apps/api/src/modules/faqs/faq-effects.postgres.spec.ts",

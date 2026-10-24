@@ -15,6 +15,7 @@ import {
 } from '@parallext/shared';
 import { PersonaService } from '../persona/persona.service';
 import { toUsted } from './register-adapt';
+import { scheduleTimeZoneElement } from './informational-hours';
 import { escapeXmlAttribute, escapeXmlText } from '../../common/utils/xml.util';
 
 const ACTIVE_OBJECT_KIND_SET = new Set<string>(ACTIVE_OBJECT_KINDS);
@@ -198,7 +199,7 @@ export class PromptAssemblerService {
             '  13c. WORKFLOW AUTHORITY: an intent with state_authority="backend_workflow" is controlled by deterministic backend state. Never choose, skip, or announce its next state yourself. When workflow_readiness is not "ready" or default_deny="true" and no permitted runtime tool advances it, do not start or promise the operation; answer informationally or use the configured handoff. Only an accepted tool/workflow result can advance or complete it.',
             '  13d. EMPTY CATALOGUE IS AN ANSWER: when a read tool returns catalog_empty=true, the business has not published that catalogue yet. Say so plainly in <turn><language> (for example that there are no properties, packages or products published yet), distinguish it from "nothing matches these filters", and never tell the customer that you cannot search or that the tool is unavailable. Do not invent options, do not ask for budget, dates or personal data in order to search, and offer, as a question, that someone from the team contacts them when there are options (ask for name and phone only if they accept).',
             '  13e. CATALOGUE READS BEFORE ASKING: for a read of the business\'s own OFFER (search, details, availability or prices of listings, packages, products, menu, plans or services), personal data (name, phone, email) and the items in <required_information> are never a precondition. Call the read tool with what the customer already said and ask for contact details only when you are about to commit something (a booking, a quote request, a visit, a handoff). A persona rule that asks for those details "before showing" or "before quoting" options does not apply to searching. This does NOT relax customer-owned reads (list_my_*, get_my_*, order, booking, enrolment, policy or claim status, treatment plans, pets): those keep their identity, ownership and verification requirements.',
-            '  13f. WHERE THE BUSINESS IS: when the customer asks where the business is, how to get there or for its address (also inside a message about their appointment), answer in the FIRST sentence with <turn><business><address> and <city> when they are present, and add the opening hours only if they help. Never answer with a question like "do you want the address?" when you have it. When <address> is absent, say plainly that you do not have the address on file and offer, as a question, that someone from the team shares it; never invent a street, a landmark or directions. When only <city> is present, give the city AND say in the same answer that the exact address is not on file («Estamos en Bogotá, pero no tengo la dirección exacta registrada»), then make that offer; a city alone is never presented as the address, and you never ask "do you want me to confirm the exact address?" as if you had it.',
+            '  13f. WHERE THE BUSINESS IS: when the customer asks where the business is, how to get there or for its address (also inside a message about their appointment), answer in the FIRST sentence with <turn><business><address> and <city> when they are present, and add the opening hours only if they help. Never answer with a question like "do you want the address?" when you have it. When <address> is absent, say plainly that you do not have the address on file and offer, as a question, that someone from the team shares it; never invent a street, a landmark or directions. When only <city> is present, give the city AND say in the same answer that the exact address is not on file («Estamos en <city>, pero no tengo la dirección exacta registrada», with the value of <city>), then make that offer; when <business><location_status> is not_registered, neither the city nor the address is on file: say so and make the same offer. The location comes ONLY from <business><address>/<city> or from the address/city of a property, listing or venue in a tool result of THIS turn; never from <schedule_time_zone> (a clock, not a place), <regional>, the phone prefix or the currency; a city alone is never presented as the address, and you never ask "do you want me to confirm the exact address?" as if you had it.',
             '  14. BOOKING/RESERVATION DETAILS & DUPLICATES: Check <turn><active_bookings> inside the turn context before answering. If the customer already has a confirmed booking for given dates, or asks for details of their booking, do NOT call check_property_availability or check availability tools which will return "unavailable" due to their own booking. Instead, directly retrieve the booking details from <active_bookings> and confirm them in a friendly, conversational manner.',
             '  15. PREMIUM FORMATTING FOR CONFIRMATIONS: When confirming or presenting details of any reservation, appointment, order, or booking, format known details as a clean, readable list in the language from <turn><language>. Include only fields actually present in context or tool results; never fill missing names, dates, prices, or instructions. Use emojis only when the persona permits them.',
             '  16. NEVER CLAIM AN ACTION HAPPENED UNLESS A TOOL CONFIRMED IT. Reserving, booking, paying, cancelling, rescheduling and issuing a payment link are things the backend does, not things you can narrate into existence. You may say an action is done ONLY when you called the tool in this same turn AND its result reports success. If you did not call the tool, or the result carries an error, or it asks for confirmation, or it says nothing was executed, then it did NOT happen: tell the customer plainly what is still pending and what you need from them. Announcing a booking, a payment or a cancellation that does not exist in the backend is the single worst thing you can do — it is worse than saying you cannot help.',
@@ -268,7 +269,7 @@ export class PromptAssemblerService {
         if (turn.channelType) lines.push(`  <channel>${this.xmlEscape(turn.channelType)}</channel>`);
 
         lines.push(`  <language>${this.xmlEscape(turn.language)}</language>`);
-        lines.push(`  <timezone>${this.xmlEscape(turn.timezone)}</timezone>`);
+        lines.push(`  ${scheduleTimeZoneElement(turn.timezone)}`);
         // Country, currency and form of address travel as DATA, never as a list
         // of idioms to imitate. `<business><country>` is free text the tenant
         // typed; this is the resolved operating identity that tools, formats and
@@ -439,6 +440,9 @@ export class PromptAssemblerService {
             if (b.website) lines.push(`    <website>${this.xmlEscape(b.website)}</website>`);
             if (b.address) lines.push(`    <address>${this.xmlEscape(b.address)}</address>`);
             if (b.city) lines.push(`    <city>${this.xmlEscape(b.city)}</city>`);
+            // F4300-28: with neither an address nor a city the location is stated as unknown, so the model does not
+            // fill it from the schedule time zone or the country.
+            if (!String(b.address ?? '').trim() && !String(b.city ?? '').trim()) lines.push('    <location_status>not_registered</location_status>');
             if (b.country) lines.push(`    <country>${this.xmlEscape(b.country)}</country>`);
             if (b.socialLinks) {
                 const socialEntries = Object.entries(b.socialLinks).filter(([, v]) => !!v);
@@ -451,6 +455,8 @@ export class PromptAssemblerService {
                 }
             }
             lines.push('  </business>');
+        } else {
+            lines.push('  <business>', '    <location_status>not_registered</location_status>', '  </business>');
         }
 
         if (turn.verticalContext) {

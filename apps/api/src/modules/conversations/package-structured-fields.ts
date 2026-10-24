@@ -18,3 +18,11 @@ export function packageDuration(type: unknown, value: unknown): string | null {
 
 /** Told to the model with every package read: the configured fields win over the description. */
 export const PACKAGE_FIELD_AUTHORITY = 'duration (durationType/durationValue), price, includes and excludes are the configured values of each package. description is free text written by the business: it never overrides, negates or replaces those fields. When duration is set, that is how long the package lasts, whatever its description says.';
+
+/**
+ * Told to the model with a package list read without a date. Production 2026-10-24: «combien de places restent pour le Spark QA
+ * Tour ?» got `seatsLeft: null` from search_packages (seats belong to a departure, and a dateless search reads none) and the
+ * reply said there was no precise number of seats while the 2026-12-15 09:00 departure had 10. The dateless list no longer
+ * carries a null seat count; it says where the seats are.
+ */
+export const PACKAGE_SEATS_NOTE = 'Seats belong to each departure, not to the package: this list was read without a date, so it carries no seat count. The seats left are upcomingDepartures[].seatsLeft in get_package_details (or check_package_availability for one date). Never say the seat count is unknown before reading them.';

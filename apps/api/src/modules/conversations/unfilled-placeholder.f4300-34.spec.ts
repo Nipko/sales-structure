@@ -1,7 +1,7 @@
 import { ConversationsService } from './conversations.service';
 import { agentTurnFixture } from './__fixtures__/agent-turn.fixture';
 import {
-    emergencyFallbackText, findUnfilledPlaceholders, guardUnfilledPlaceholders, hasUnfilledPlaceholder, placeholderFallbackText,
+    emergencyFallbackText, findUnbackedContacts, findUnfilledPlaceholders, guardUnfilledPlaceholders, hasUnfilledPlaceholder, placeholderFallbackText,
 } from './unfilled-placeholder';
 
 /**
@@ -133,7 +133,7 @@ describe('F4300-34 guard: the production reply and its es / pt / fr variants', (
 
     it('a reply with no slot is returned untouched, whatever brackets it legitimately uses', () => {
         const reply = 'Su pedido Ref. [5603A623] está en camino [1]. Vea el menú: [Ver menú](https://example.com/menu).';
-        expect(guardUnfilledPlaceholders({ reply, lang: 'es' })).toEqual({ changed: false, text: reply, action: 'none', placeholders: [] });
+        expect(guardUnfilledPlaceholders({ reply, lang: 'es', sources: ['<menu_url>https://example.com/menu</menu_url>'] })).toEqual({ changed: false, text: reply, action: 'none', placeholders: [], contacts: [] });
     });
 });
 
@@ -148,7 +148,7 @@ describe('F4300-34 through applyOutputGuardrails', () => {
         s.llmRouter = { execute: jest.fn(async () => { throw new Error('no model call expected'); }) };
         return s;
     }
-    const FAQ_SYSTEM = '<faq>¿Qué hago en una urgencia fuera de horario? Acude al servicio de urgencias más cercano o llama a la línea de emergencias de tu ciudad.</faq>';
+    const FAQ_SYSTEM = '<faq>¿Qué hago en una urgencia fuera de horario? Acude al servicio de urgencias más cercano o llama a la línea de emergencias de tu ciudad.</faq><menu_url>https://example.com/menu</menu_url>';
     const guard = (s: any, reply: string, customer: string, lang: string, context: any = {}) =>
         s.applyOutputGuardrails(reply, FAQ_SYSTEM, [{ role: 'user', content: customer }], [], 'synthetic-tenant', 'synthetic-conversation', [], lang, [], context);
 
@@ -204,5 +204,182 @@ describe('F4300-34 through a ConversationsService Agent Test turn (dental, no em
         const prompt = String(r.debug.systemPrompt || f.llmRouter.execute.mock.calls.map(([request]: any[]) => JSON.stringify(request.messages)).join('\n'));
         expect(prompt).toContain('CONTACT AND EMERGENCY DETAILS');
         expect(prompt).toContain('never write a slot to be filled in later');
+    });
+});
+
+/**
+ * F4300-34 residual (production 25-oct, the same dental tenant, no emergency phone configured):
+ *  - PT «quebrei um dente e dói muito, o que faço?» → «…por favor ligue para o número de plantão: 123-456-7890.» (an INVENTED phone);
+ *  - ES «se me partió una muela…» → «¿Quiere que le proporcione el número de guardia para emergencias…?» (an OFFER of a number
+ *    that does not exist).
+ * A contact detail (phone, national emergency number, e-mail, link, handle) or an offer of a phone the business data does not
+ * hold goes like a placeholder; for an emergency, the local-emergency text, never a number.
+ */
+const DENTAL_FAQ = '<business><name>Clínica Dental QA</name><city>Bogotá</city></business><faq>¿Qué hago en una urgencia fuera de horario? Acude al servicio de urgencias más cercano o llama a la línea de emergencias de tu ciudad.</faq>';
+const INVENTED_PHONE: Array<[string, string, string]> = [
+    ['pt', 'quebrei um dente e dói muito, o que faço?',
+        'Para emergências odontológicas fora do nosso horário de atendimento, por favor ligue para o número de plantão: 123-456-7890.'],
+    ['es', 'se me partió una muela y me duele mucho, ¿qué hago?',
+        'Para emergencias odontológicas fuera de nuestro horario de atención, por favor llame al número de guardia: 123-456-7890.'],
+    ['en', 'I broke a tooth and it hurts a lot, what should I do?',
+        'For dental emergencies outside of our office hours, please call our on-call number: (123) 456-7890.'],
+    ['fr', "je me suis cassé une dent et j'ai très mal, que faire ?",
+        'Pour les urgences dentaires en dehors de nos horaires, veuillez appeler le numéro de garde : 01 23 45 67 89.'],
+];
+const NUMBER_OFFER: Array<[string, string, string, string]> = [
+    ['es', 'se me partió una muela y me duele mucho, ¿qué hago?',
+        'Lamento mucho lo que le pasó. ¿Quiere que le proporcione el número de guardia para emergencias odontológicas?', 'Lamento mucho lo que le pasó.'],
+    ['pt', 'quebrei um dente e dói muito, o que faço?',
+        'Sinto muito pelo que aconteceu. Quer que eu passe o número de plantão para emergências odontológicas?', 'Sinto muito pelo que aconteceu.'],
+    ['en', 'I broke a tooth and it hurts a lot, what should I do?',
+        'I am very sorry that happened to you. Would you like me to give you the emergency number for after-hours dental care?', 'I am very sorry that happened to you.'],
+    ['fr', "je me suis cassé une dent et j'ai très mal, que faire ?",
+        'Je suis vraiment désolé pour ce qui vous arrive. Voulez-vous que je vous donne le numéro de garde pour les urgences dentaires ?', 'Je suis vraiment désolé pour ce qui vous arrive.'],
+];
+
+describe('F4300-34 contacts: what is a contact detail the business data does not hold', () => {
+    it.each([
+        ['Llámenos al 123-456-7890.', '123-456-7890'],
+        ['Call (123) 456-7890 now.', '(123) 456-7890'],
+        ['Ligue para +55 11 98765-4321.', '+55 11 98765-4321'],
+        ['Appelez le 01 23 45 67 89.', '01 23 45 67 89'],
+        ['Escríbanos al 3001234567.', '3001234567'],
+        ['Si es una emergencia, llame al 123.', '123'],
+        ['In an emergency, call 911.', '911'],
+        ['Em caso de emergência, ligue 192.', '192'],
+        ['Escríbanos a urgencias@clinicadental.com.', 'urgencias@clinicadental.com'],
+        ['Más información en https://clinicadental.example/urgencias.', 'https://clinicadental.example/urgencias'],
+        ['Escríbanos por WhatsApp: https://wa.me/573001234567.', 'https://wa.me/573001234567'],
+        ['Síganos en @clinicadentalqa.', '@clinicadentalqa'],
+    ])('«%s» → %s', (text, contact) => {
+        expect(findUnbackedContacts(text, [DENTAL_FAQ]).map(hit => hit.text)).toContain(contact);
+    });
+
+    it.each([
+        'Su pedido 12345678 está en camino.',
+        'Su pedido Ref. 5603A623 fue confirmado.',
+        'Código de reserva: 98765432.',
+        'El total es $1.250.000.',
+        'El total es 1.250.000 COP.',
+        'O valor é R$ 1.234.567,00.',
+        'Son 13.500 pesos por persona.',
+        'Su cita es el 24/10/2026 a las 10:00.',
+        'Su cita es el 2026-10-24 a las 10:00.',
+        'Atendemos de 08:00 a 18:00, de lunes a sábado.',
+        'Precios vigentes 2024-2025.',
+        'El 15% de descuento aplica hasta el 30.',
+        'Llame entre las 15 y las 18 horas.',
+        'Tenemos 120 opciones de menú.',
+    ])('«%s» has none', text => expect(findUnbackedContacts(text, [DENTAL_FAQ])).toEqual([]));
+
+    it('a phone, e-mail, link, handle or emergency number the business data holds passes, however it is written', () => {
+        const business = '<business><phone>+57 300 123 4567</phone><email>citas@clinicadental.com</email><website>https://clinicadental.example</website><instagram>@clinicadentalqa</instagram></business><faq>En una urgencia llame al 123.</faq>';
+        expect(findUnbackedContacts('Puede llamarnos al 300 123 4567 o al +573001234567.', [business])).toEqual([]);
+        expect(findUnbackedContacts('Escríbanos a citas@clinicadental.com o visite https://clinicadental.example/.', [business])).toEqual([]);
+        expect(findUnbackedContacts('Síganos en @clinicadentalqa. Si es una emergencia, llame al 123.', [business])).toEqual([]);
+        // the phone of a tool result (a listing, a branch) is data too
+        expect(findUnbackedContacts('La sede norte atiende al 601 555 0199.', [{ branches: [{ name: 'Norte', phone: '6015550199' }] }])).toEqual([]);
+        // with a phone on file, offering it is fine; without one, the offer is the defect
+        expect(findUnbackedContacts('¿Quiere que le proporcione el número de teléfono de la clínica?', [business])).toEqual([]);
+        expect(findUnbackedContacts('¿Quiere que le proporcione el número de guardia para emergencias?', [DENTAL_FAQ]).map(hit => hit.kind)).toEqual(['contact_offer']);
+    });
+});
+
+describe('F4300-34 contacts: the two production replies, es / pt / en / fr, through the guard', () => {
+    it.each(INVENTED_PHONE)('[%s] an invented on-call phone → the local-emergency text, no number', (lang, customer, reply) => {
+        const out = guardUnfilledPlaceholders({ reply, customerText: customer, lang, sources: [DENTAL_FAQ] });
+        expect(out.action).toBe('emergency_fallback');
+        expect(out.contacts).toHaveLength(1);
+        expect(out.text).toBe(emergencyFallbackText(lang));
+        expect(out.text).not.toMatch(/\d/);
+    });
+
+    it.each(NUMBER_OFFER)('[%s] an offer of an emergency number not on file → removed, the local-emergency text in its place', (lang, customer, reply, kept) => {
+        const out = guardUnfilledPlaceholders({ reply, customerText: customer, lang, sources: [DENTAL_FAQ] });
+        expect(out.action).toBe('emergency_fallback');
+        expect(out.text).toBe(`${kept} ${emergencyFallbackText(lang)}`);
+    });
+
+    it('the same replies with the phone on file are sent as written', () => {
+        const business = `${DENTAL_FAQ}<business><phone>123-456-7890</phone></business>`;
+        expect(guardUnfilledPlaceholders({ reply: INVENTED_PHONE[0][2], customerText: INVENTED_PHONE[0][1], lang: 'pt', sources: [business] }).changed).toBe(false);
+        expect(guardUnfilledPlaceholders({ reply: NUMBER_OFFER[0][2], customerText: NUMBER_OFFER[0][1], lang: 'es', sources: [business] }).changed).toBe(false);
+    });
+
+    it('an invented phone outside an emergency: the sentence goes, the rest stands', () => {
+        const out = guardUnfilledPlaceholders({ reply: 'Abrimos de lunes a viernes de 8:00 a 18:00. Para agendar llame al 601 555 0199.', customerText: '¿horario?', lang: 'es', sources: [DENTAL_FAQ] });
+        expect(out.action).toBe('removed');
+        expect(out.text).toBe('Abrimos de lunes a viernes de 8:00 a 18:00.');
+    });
+});
+
+describe('F4300-34 contacts through applyOutputGuardrails and an Agent Test turn', () => {
+    function service() {
+        const s: any = Object.create(ConversationsService.prototype);
+        s.logger = { warn: jest.fn(), log: jest.fn(), error: jest.fn() };
+        s.eventEmitter = { emit: jest.fn() };
+        s.recordAgentSignal = jest.fn();
+        s.alignReplyLanguage = jest.fn(async (reply: string) => reply);
+        s.responseValidator = { validatePrices: jest.fn(() => ({ ok: true, hallucinatedPrices: [] })) };
+        s.llmRouter = { execute: jest.fn(async () => { throw new Error('no model call expected'); }) };
+        return s;
+    }
+    const guard = (s: any, system: string, reply: string, customer: string, lang: string) =>
+        s.applyOutputGuardrails(reply, system, [{ role: 'user', content: customer }], [], 'synthetic-tenant', 'synthetic-conversation', [], lang, [], {});
+
+    it.each(INVENTED_PHONE)('[%s] the invented phone never reaches the customer; unbacked_contact is recorded', async (lang, customer, reply) => {
+        const s = service();
+        expect(await guard(s, DENTAL_FAQ, reply, customer, lang)).toBe(emergencyFallbackText(lang));
+        expect(s.recordAgentSignal).toHaveBeenCalledWith('synthetic-tenant', 'unbacked_contact', undefined, expect.objectContaining({ action: 'emergency_fallback' }));
+    });
+
+    it.each(NUMBER_OFFER)('[%s] the offer of a number not on file never reaches the customer', async (lang, customer, reply, kept) => {
+        const s = service();
+        expect(await guard(s, DENTAL_FAQ, reply, customer, lang)).toBe(`${kept} ${emergencyFallbackText(lang)}`);
+    });
+
+    it.each([
+        'Puede llamarnos al 300 123 4567, de lunes a viernes.',
+        'Su pedido 12345678 por $1.250.000 llega el 24/10/2026 a las 10:00.',
+    ])('«%s» with the phone in the business info passes untouched', async reply => {
+        const s = service();
+        expect(await guard(s, `${DENTAL_FAQ}<business><phone>+57 300 123 4567</phone></business>`, reply, 'hola', 'es')).toBe(reply);
+        expect(s.recordAgentSignal).not.toHaveBeenCalledWith('synthetic-tenant', 'unbacked_contact', undefined, expect.anything());
+    });
+
+    function dental(language: string, reply: string) {
+        const f = agentTurnFixture();
+        f.personaService.getAgent.mockResolvedValue({ version: 3, config_json: { language, industry: 'salud', rag: { enabled: false }, llm: {} } });
+        f.verticalTurnContext.resolve.mockResolvedValue({ industry: 'salud', subType: 'dental' });
+        f.llmRouter.execute.mockImplementation(async (request: any) => ({
+            content: ['conversation', 'tool_calling'].includes(request.task) ? reply : '{}',
+            model: 'test', usage: { promptTokens: 1, completionTokens: 1 }, cost: 0,
+        }));
+        const signal = jest.spyOn(f.runtime as any, 'recordAgentSignal');
+        return { signal, turn: (message: string) => f.service.test('tenant', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', { message, channelType: 'telegram' }, { agentSnapshot: undefined }) };
+    }
+
+    it.each(INVENTED_PHONE)('[%s] Agent Test turn: the invented phone is replaced by the local-emergency text', async (lang, customer, reply) => {
+        const { signal, turn } = dental(lang, reply);
+        const r = await turn(customer);
+        expect(r.debug.runtimeError).toBeUndefined();
+        expect(r.reply).not.toMatch(/456|45 67/);
+        expect(r.reply).toContain(emergencyFallbackText(lang));
+        expect(signal).toHaveBeenCalledWith('tenant', 'unbacked_contact', expect.anything(), expect.objectContaining({ action: 'emergency_fallback' }));
+    });
+
+    it.each(NUMBER_OFFER)('[%s] Agent Test turn: the offer of a number that does not exist is replaced', async (lang, customer, reply) => {
+        const { turn } = dental(lang, reply);
+        const r = await turn(customer);
+        expect(r.debug.runtimeError).toBeUndefined();
+        expect(r.reply).not.toContain(reply.split('. ')[1]);
+        expect(r.reply).toContain(emergencyFallbackText(lang));
+    });
+
+    it('the prompt forbids offering a number that is not on file', async () => {
+        const { turn } = dental('es', 'Acuda al servicio de urgencias más cercano.');
+        const r = await turn('se me partió una muela');
+        expect(r.debug.systemPrompt).toContain('Never promise, give or OFFER one that is not there');
+        expect(r.debug.systemPrompt).toContain('¿quiere que le proporcione el número de guardia?');
     });
 });

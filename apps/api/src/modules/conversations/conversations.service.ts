@@ -530,7 +530,7 @@ const REPLY_LANGUAGE_RETRY: Record<string, (missing: string[]) => string> = {
 interface ReplyLanguageOutcome { from: string; to: string; attempts: number; accepted: boolean; rejections: RewriteRejectionReason[] }
 const REPLY_LANGUAGE_OUTCOME = new WeakMap<object, ReplyLanguageOutcome>();
 /** What the unfilled-placeholder guard did this turn (F4300-34), read back by the pipeline into the turn trace. */
-const UNFILLED_PLACEHOLDER_OUTCOME = new WeakMap<object, Pick<UnfilledPlaceholderGuardResult, 'action' | 'placeholders'>>();
+const UNFILLED_PLACEHOLDER_OUTCOME = new WeakMap<object, Pick<UnfilledPlaceholderGuardResult, 'action' | 'placeholders' | 'contacts'>>();
 /** Rendered facts (PR6): the live facts a turn's reply was rendered from, for the price check of the output guardrail. */
 const RENDERED_FACTS_TURN = new WeakMap<object, VerifiedFactView[]>();
 
@@ -6280,6 +6280,7 @@ export class ConversationsService {
             if (finalResponse) finalResponse = humanizeReferences(finalResponse, knownRecordIds([...executedToolsThisTurn, ...engineExecutedTools], turnContext));
             // «El estado es pending»: an internal status word copied from a tool result is put in the customer's language.
             if (finalResponse && !isErrorFallback(finalResponse)) finalResponse = localizeStatusWords(finalResponse, userLanguage);
+            let catalogFirstApplied = false; // server text from its own catalogue reads: not checked against this turn's sources
             // Travel packages / property listings: a departure date that already passed, and a catalogue with nothing published, are
             // said FIRST. The model sometimes answered with a question («¿a qué destino?», «¿para cuántas personas?») or an offer of the team.
             if (finalResponse && !isErrorFallback(finalResponse) && !draftMode && !handoffReturn && !engineTextIsReply && !deterministicReply) {
@@ -6291,6 +6292,7 @@ export class ConversationsService {
                 if (catalogFirst) {
                     this.recordAgentSignal(tenantId, 'catalog_first_answer', session);
                     finalResponse = catalogFirst;
+                    catalogFirstApplied = true;
                 }
             }
             // «Mañana es domingo» on a Friday: the calendar the model was given says otherwise, so the weekday is corrected.
@@ -6309,7 +6311,7 @@ export class ConversationsService {
                 finalResponse = normalizeReplyAmounts(finalResponse, localeForReply(userLanguage, turnContext.regional?.locale));
             }
             // F4300-34: a corrective rewrite inside the guardrails, or a step after them, may still carry a slot of the model's.
-            if (finalResponse && !deterministicReply && !(engineTextIsReply && engineProducedText && finalResponse.trim() === engineProducedText.trim())) {
+            if (finalResponse && !deterministicReply && !catalogFirstApplied && !(engineTextIsReply && engineProducedText && finalResponse.trim() === engineProducedText.trim())) {
                 finalResponse = this.removeUnfilledPlaceholders(finalResponse, systemPrompt, currentMessages, [...executedToolsThisTurn, ...engineExecutedTools],
                     tenantId, userLanguage, turnContext, session, allowHumanHandoff);
             }
@@ -7506,24 +7508,31 @@ export class ConversationsService {
         tenantId: string, lang: string | undefined, trustedContext: Partial<TurnContext> | undefined, session: AgentTurnSession | undefined,
         canOfferPerson: boolean,
     ): string {
-        if (!response || isErrorFallback(response) || isSystemFixedText(response)) return response;
+        // The pipeline's own fallbacks (including its «[Error Generating AI Response]» marker) are not model text.
+        if (!response || isPipelineFallbackReply(response) || isSystemFixedText(response)) return response;
         const outcome = guardUnfilledPlaceholders({
             reply: response,
             customerText: lastCustomerText(currentMessages),
+            // The business data of the turn (business info / FAQ / knowledge in the prompt, tool results, verified facts) and what
+            // the customer wrote: a phone, e-mail or link the reply gives must come from one of them. Earlier agent messages are
+            // not a source: an invented number repeated is still invented.
             sources: [
                 systemPrompt,
                 ...(executedTools || []).map(tool => tool?.result),
-                ...(currentMessages || []).filter((message: any) => message?.role === 'tool').map((message: any) => message.content),
+                ...(currentMessages || []).filter((message: any) => message?.role === 'tool' || message?.role === 'user').map((message: any) => message.content),
+                (trustedContext as any)?.retrievedKnowledge, (trustedContext as any)?.verifiedFacts,
             ],
             lang, canOfferPerson,
         });
         if (!outcome.changed) return response;
         if (trustedContext) {
             const previous = UNFILLED_PLACEHOLDER_OUTCOME.get(trustedContext);
-            UNFILLED_PLACEHOLDER_OUTCOME.set(trustedContext, { action: outcome.action, placeholders: [...(previous?.placeholders || []), ...outcome.placeholders] });
+            UNFILLED_PLACEHOLDER_OUTCOME.set(trustedContext, { action: outcome.action,
+                placeholders: [...(previous?.placeholders || []), ...outcome.placeholders], contacts: [...(previous?.contacts || []), ...outcome.contacts] });
         }
-        this.recordAgentSignal(tenantId, 'unfilled_placeholder', session, { action: outcome.action, placeholders: outcome.placeholders });
-        this.logger.warn(`[Guardrail] The reply carried an unfilled placeholder (${outcome.placeholders.join(' | ')}) — ${outcome.action}: "${response.slice(0, 100)}"`);
+        if (outcome.placeholders.length) this.recordAgentSignal(tenantId, 'unfilled_placeholder', session, { action: outcome.action, placeholders: outcome.placeholders });
+        if (outcome.contacts.length) this.recordAgentSignal(tenantId, 'unbacked_contact', session, { action: outcome.action, contacts: outcome.contacts });
+        this.logger.warn(`[Guardrail] The reply carried an unfilled placeholder or a contact detail not in the business data (${[...outcome.placeholders, ...outcome.contacts].join(' | ')}) — ${outcome.action}: "${response.slice(0, 100)}"`);
         return outcome.text;
     }
 

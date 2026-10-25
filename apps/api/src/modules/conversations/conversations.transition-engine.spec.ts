@@ -218,7 +218,12 @@ describe('two kinds of object', () => {
 describe('references and register in what the model writes', () => {
     it('a raw UUID in a reply is shown as the short reference; a URL keeps its ids', async () => {
         const h = world({
-            tools: STORE, industry: 'retail',
+            // the link comes from the order read of this turn (F4300-34: a link the business data does not hold is not sent)
+            tools: STORE, industry: 'retail', orders: [{ ...order, detailUrl: `https://x.example/orders/${ORDER}` }],
+            script: request => (request.tools?.length && !(request.messages ?? []).some((message: any) => message?.role === 'tool')
+                ? { content: '', toolCalls: [{ id: 'read-orders', type: 'function', function: { name: 'list_my_catalog_orders', arguments: '{}' } }],
+                    model: 'test', usage: { promptTokens: 1, completionTokens: 1 }, cost: 0 }
+                : undefined),
             model: () => `Su pedido ${ORDER} está pendiente. Detalle: https://x.example/orders/${ORDER}`,
         });
         await h.turn('hola');

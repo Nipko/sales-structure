@@ -105,7 +105,8 @@ describe('alignReplyLanguage: the rewrite is told what to keep and gets one more
     it('a lost URL is never sent and not retried; a figure lost twice keeps the original after two calls', async () => {
         const original = 'Puede ver todos nuestros servicios y sus precios en https://salon.example.com/servicios cuando guste, con mucho gusto.';
         const noUrl = build('Você pode ver todos os nossos serviços e preços no nosso site quando quiser, com muito prazer.');
-        expect(await run(noUrl.service, original, 'pt', SALON_CONTEXT, 'onde vejo os preços?')).toBe(original);
+        // the link is the business's own (F4300-34: a link the business data does not hold is not sent)
+        expect(await run(noUrl.service, original, 'pt', { ...SALON_CONTEXT, retrievedKnowledge: ['Precios: https://salon.example.com/servicios'] }, 'onde vejo os preços?')).toBe(original);
         expect(noUrl.execute).toHaveBeenCalledTimes(1);
         expect(rejections(noUrl.service)[0].reason).toBe('lost_url');
 

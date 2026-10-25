@@ -43,6 +43,8 @@ export interface UnfilledPlaceholderGuardResult {
     /** 'removed': sentences dropped, the rest stands; 'fallback': fixed text; 'emergency_fallback': the emergency text was used. */
     readonly action: 'none' | 'removed' | 'fallback' | 'emergency_fallback';
     readonly placeholders: string[];
+    /** Contact details (phones, emergency numbers, e-mails, links, handles, offers of a phone) the business data does not hold. */
+    readonly contacts: string[];
 }
 
 const fold = (text: string) => text.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -125,8 +127,121 @@ export function hasUnfilledPlaceholder(text: string, sources?: ReadonlyArray<unk
     return findUnfilledPlaceholders(text, sources).length > 0;
 }
 
+/*
+ * F4300-34 residual (production 25-oct, the same dental tenant with no emergency phone): «ligue para o número de plantão:
+ * 123-456-7890» (an INVENTED phone) and «¿Quiere que le proporcione el número de guardia para emergencias…?» (an OFFER of a
+ * number that does not exist). A contact detail in a reply must be one the turn's business data holds.
+ */
+export type ContactKind = 'phone' | 'emergency_number' | 'email' | 'url' | 'handle' | 'contact_offer';
+export interface ContactHit { readonly kind: ContactKind; readonly text: string; readonly index: number }
+
+/** A run of digits with phone separators (7 to 15 digits once the separators are gone). */
+const PHONE_CANDIDATE = /\+?\(?\d[\d \t().-]{5,22}\d/g;
+const DIGITS_RUN = /\d{7,15}/g;
+/** Words before a number that make it a reference, a code or an amount, never a phone. */
+const REFERENCE_BEFORE = /(?:ref\.?|referencia|reference|referência|pedido|orden|order|commande|encomenda|reserva|booking|réservation|reservation|codigo|código|code|cod\.?|factura|invoice|fatura|facture|nº|n°|no\.|#|id|nit|rut|cpf|cnpj|dni|cc|guia|guía|tracking|seguimiento|rastreio|suivi)\s*[:#]?\s*$/i;
+const CURRENCY_BEFORE = /(?:[$€£¥₡₲₱]|r\$|us\$|cop|usd|eur|brl|mxn|clp|pen|ars)\s*$/i;
+const CURRENCY_AFTER = /^\s*(?:[$€£]|cop|usd|eur|brl|mxn|clp|pen|ars|pesos?|reais|real|euros?|d[oó]lares|dollars?|soles|bolivianos|%|k\b|mil\b|millones|millions?|milh(?:ão|ões))/i;
+const EMAIL = /[\p{L}\p{N}._%+-]+@[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)+/gu;
+const URL_RE = /\b(?:https?:\/\/|www\.)[^\s<>()[\]"'«»]+/gi;
+const HANDLE = /(?<![\p{L}\p{N}._@/])@[A-Za-z0-9_.]{3,30}[A-Za-z0-9_]/gu;
+/** National emergency numbers a model is tempted to write («llame al 123», «call 911», «ligue 192»). */
+const EMERGENCY_NUMBER = /(?:llam\w*|marqu\w*|comuniqu\w*|call\w*|dial\w*|phone|ring|lig\w*|disque\w*|t[eé]l[eé]fon\w*|appel\w*|compos\w*|contact\w*|line\w*|l[ií]nea|n[uú]m[eé]ro|number)(?!\p{L})[^.!?\n\d]{0,40}?(?<![\p{L}\p{N}:.,])(911|112|123|125|132|190|192|193|199|999|000|106|116|117|119|110|120|066|080)(?!\p{N}|\s*(?:[:.,]\d|h\b|hs\b|horas?|hours?|min|am\b|pm\b|%|pesos|reais|euros|d[oó]lares|usd|cop|eur|brl))/gu;
+/** An offer to give a phone / contact («¿quiere que le proporcione el número…?»), es / en / pt / fr, on folded text. */
+const CONTACT_OFFER = [
+    /\b(?:quiere|quieres|desea|deseas|le gustaria|te gustaria|puedo|podria|prefiere)\b.{0,40}\b(?:proporcion\w*|dar\w*|le de|te de|doy|compart\w*|pas[eao]\w*|envi\w*|facilit\w*|indic\w*)\b.{0,40}\b(?:telefono|whatsapp|celular|numero (?:de )?(?:telefono|contacto|guardia|turno|emergencias?|urgencias?|whatsapp|celular)|linea (?:de )?(?:guardia|emergencias?|urgencias?|atencion))\b/,
+    /\b(?:would you like|do you want|shall i|should i|can i|i can|let me|may i)\b.{0,40}\b(?:give|provide|share|send|pass|get)\b.{0,40}\b(?:phone|whatsapp|(?:emergency|on-call|after-hours|contact|phone|guard) (?:number|line)|hotline)\b/,
+    /\b(?:quer|queres|deseja|gostaria|posso|prefere)\b.{0,40}\b(?:passe\w*|passar|dar|lhe de|forneca|fornecer|compartilh\w*|envi\w*|inform\w*|indic\w*)\b.{0,40}\b(?:telefone|whatsapp|celular|numero (?:de )?(?:telefone|contato|plantao|emergencias?|urgencias?|whatsapp|celular)|linha (?:de )?(?:plantao|emergencias?|urgencias?))\b/,
+    /\b(?:voulez-vous|souhaitez-vous|desirez-vous|puis-je|je peux)\b.{0,40}\b(?:donn\w*|fourni\w*|communiqu\w*|transmet\w*|envoi\w*|envoy\w*|partag\w*|indiqu\w*)\b.{0,40}\b(?:telephone|whatsapp|numero (?:de )?(?:telephone|contact|garde|urgences?|whatsapp)|ligne (?:de )?(?:garde|urgences?))\b/,
+];
+
+const digitsOf = (text: string) => text.replace(/\D/g, '');
+
+/** The phones the business data writes (digits only), however it writes them. */
+function sourcePhones(corpus: string): string[] {
+    const phones = new Set<string>();
+    for (const match of corpus.matchAll(PHONE_CANDIDATE)) {
+        const digits = digitsOf(match[0]);
+        if (digits.length >= 7 && digits.length <= 15) phones.add(digits);
+    }
+    for (const match of corpus.matchAll(DIGITS_RUN)) phones.add(match[0]);
+    return [...phones];
+}
+
+const PHONE_FIELD = /["<](?:phone|telefono|teléfono|telefone|téléphone|whatsapp|celular|mobile|movil|móvil|tel)\w*["']?>?\s*:?\s*"?\+?\d[\d \t().-]{5,}\d/i;
+/** Does the business data hold a phone at all (a phone field, or a number that reads as a phone)? Dates and amounts do not count. */
+function holdsPhone(corpus: string): boolean {
+    if (PHONE_FIELD.test(corpus)) return true;
+    for (const match of corpus.matchAll(PHONE_CANDIDATE)) if (looksLikePhone(corpus, match[0], match.index!)) return true;
+    return false;
+}
+
+const phoneBacked = (digits: string, phones: string[]) =>
+    phones.some(source => source === digits || (Math.min(source.length, digits.length) >= 7 && (source.endsWith(digits) || digits.endsWith(source))));
+
+/** Is this digit run a phone? Dates, times, amounts, ranges of years and references are not. */
+function looksLikePhone(text: string, match: string, index: number): boolean {
+    const digits = digitsOf(match);
+    if (digits.length < 7 || digits.length > 15) return false;
+    const before = text.slice(Math.max(0, index - 24), index);
+    const after = text.slice(index + match.length, index + match.length + 16);
+    if (/[\p{L}\p{N}$€£/#]$/u.test(before) || /^[\p{L}\p{N}%/:]/u.test(after)) return false;
+    if (REFERENCE_BEFORE.test(before) || CURRENCY_BEFORE.test(before) || CURRENCY_AFTER.test(after)) return false;
+    const m = match.trim();
+    if (/^\d{4}-\d{1,2}-\d{1,2}/.test(m) || /^\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}$/.test(m)) return false; // a date
+    if (/^\d{1,3}(?:[.,]\d{3})+(?:[.,]\d{1,2})?$/.test(m)) return false; // an amount grouped by thousands
+    if (/^(?:19|20)\d{2}\s*[-–]\s*(?:19|20)\d{2}$/.test(m)) return false; // a range of years
+    return true;
+}
+
+const normalizeUrl = (url: string) => url.toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/+$/, '');
+
+/**
+ * The contact details of the text that the business data of the turn (`sources`) does not hold: a phone, an emergency
+ * number, an e-mail, a link or a handle, and an offer to give a phone when the data holds no phone at all.
+ */
+export function findUnbackedContacts(text: string, sources?: ReadonlyArray<unknown>): ContactHit[] {
+    if (!text) return [];
+    const corpus = sourceText(sources);
+    const lower = corpus.toLowerCase();
+    const phones = sourcePhones(corpus);
+    const hits: ContactHit[] = [];
+    const inside = (index: number) => hits.some(hit => index >= hit.index && index < hit.index + hit.text.length);
+    for (const match of text.matchAll(URL_RE)) {
+        const url = match[0].replace(/[.,;:!?)\]]+$/, '');
+        const normalized = normalizeUrl(url);
+        if (normalized && !lower.includes(normalized)) hits.push({ kind: 'url', text: url, index: match.index! });
+    }
+    for (const match of text.matchAll(EMAIL)) {
+        if (inside(match.index!)) continue;
+        if (!lower.includes(match[0].toLowerCase())) hits.push({ kind: 'email', text: match[0], index: match.index! });
+    }
+    for (const match of text.matchAll(HANDLE)) {
+        if (inside(match.index!)) continue;
+        if (!lower.includes(match[0].toLowerCase())) hits.push({ kind: 'handle', text: match[0], index: match.index! });
+    }
+    for (const match of text.matchAll(PHONE_CANDIDATE)) {
+        const raw = match[0].replace(/[\s(.-]+$/, '');
+        const index = match.index! + (match[0].length - match[0].trimStart().length);
+        if (inside(index) || !looksLikePhone(text, raw.trim(), index)) continue;
+        if (!phoneBacked(digitsOf(raw), phones)) hits.push({ kind: 'phone', text: raw.trim(), index });
+    }
+    for (const match of text.toLowerCase().matchAll(EMERGENCY_NUMBER)) {
+        const number = match[1];
+        const index = match.index! + match[0].lastIndexOf(number);
+        if (inside(index)) continue;
+        if (!new RegExp(`(?<![\\d.,:])\\b${number}\\b(?![\\d]|[.,:]\\d)`).test(corpus)) hits.push({ kind: 'emergency_number', text: text.slice(index, index + number.length), index });
+    }
+    if (!holdsPhone(corpus)) {
+        const folded = fold(text);
+        const offer = CONTACT_OFFER.find(re => re.test(folded));
+        if (offer) hits.push({ kind: 'contact_offer', text: text.trim(), index: 0 });
+    }
+    return hits.sort((a, b) => a.index - b.index);
+}
+
 /** Health / safety emergency words, es / en / pt / fr, on folded text. */
-const EMERGENCY = /\b(?:emergenc\w*|emergenz\w*|urgenc\w*|urgent\w*|urgente|guardia|on[- ]call|after[- ]hours|dolor\w*|duele|dueles?|pain\w*|hurts?|hurting|dor|doi|doendo|douleur\w*|mal aux?|sangr\w*|bleed\w*|saign\w*|accident\w*|fractur\w*|broke|broken|rompi\w*|roto|rota|quebr\w*|cass[ea]\w*|injur\w*|herid\w*|lesion\w*|blessure\w*|swell\w*|hinchaz\w*|inchac\w*|gonfl\w*|fever|fiebre|febre|fievre|ambulanc\w*|samu|poison\w*|envenen\w*|intoxica\w*)\b/;
+const EMERGENCY = /\b(?:emergenc\w*|emergenz\w*|urgenc\w*|urgent\w*|urgente|guardia|plantao|de garde|on[- ]call|after[- ]hours|dolor\w*|duele|dueles?|pain\w*|hurts?|hurting|dor|doi|doendo|douleur\w*|mal aux?|sangr\w*|bleed\w*|saign\w*|accident\w*|fractur\w*|broke|broken|rompi\w*|roto|rota|quebr\w*|cass[ea]\w*|injur\w*|herid\w*|lesion\w*|blessure\w*|swell\w*|hinchaz\w*|inchac\w*|gonfl\w*|fever|fiebre|febre|fievre|ambulanc\w*|samu|poison\w*|envenen\w*|intoxica\w*)\b/;
 export const mentionsEmergency = (text: string | undefined): boolean => !!text && EMERGENCY.test(fold(text));
 
 /** A sentence that is only courtesy: it carries nothing the customer asked for. */
@@ -199,17 +314,18 @@ const tidy = (sentence: string) => sentence
 
 export function guardUnfilledPlaceholders(input: UnfilledPlaceholderGuardInput): UnfilledPlaceholderGuardResult {
     const reply = input.reply || '';
-    const all = findUnfilledPlaceholders(reply, input.sources);
-    if (!all.length) return { changed: false, text: reply, action: 'none', placeholders: [] };
+    const pieces = splitSentences(reply).map(piece => ({ piece, hits: findUnfilledPlaceholders(piece.text, input.sources),
+        contacts: findUnbackedContacts(piece.text, input.sources) }));
+    const placeholders = pieces.flatMap(entry => entry.hits.map(hit => hit.text));
+    const contacts = pieces.flatMap(entry => entry.contacts.map(hit => hit.text));
+    if (!placeholders.length && !contacts.length) return { changed: false, text: reply, action: 'none', placeholders: [], contacts: [] };
     const lang = code(input.lang);
-    const placeholders = all.map(hit => hit.text);
     const out: Piece[] = [];
     let removedAt = -1;
     let removedEmergency = false;
-    for (const piece of splitSentences(reply)) {
-        const hits = findUnfilledPlaceholders(piece.text, input.sources);
-        if (!hits.length) { out.push(piece); continue; }
-        if (hits.every(hit => hit.name)) {
+    for (const { piece, hits, contacts: unbacked } of pieces) {
+        if (!hits.length && !unbacked.length) { out.push(piece); continue; }
+        if (!unbacked.length && hits.every(hit => hit.name)) {
             let text = piece.text;
             for (const hit of hits) text = text.split(hit.text).join('');
             text = tidy(text);
@@ -226,15 +342,15 @@ export function guardUnfilledPlaceholders(input: UnfilledPlaceholderGuardInput):
     }
     if (removedAt < 0) {
         // only name slots, each taken out of its sentence
-        return { changed: true, text: out.map((piece, index) => (index ? piece.sep || ' ' : '') + piece.text).join('').trim(), action: 'removed', placeholders };
+        return { changed: true, text: out.map((piece, index) => (index ? piece.sep || ' ' : '') + piece.text).join('').trim(), action: 'removed', placeholders, contacts };
     }
     const emergency = removedEmergency || mentionsEmergency(input.customerText);
     if (!out.some(piece => !isCourtesy(piece.text))) {
         const text = emergency ? emergencyFallbackText(lang) : placeholderFallbackText(lang, input.canOfferPerson !== false);
-        return { changed: true, text, action: emergency ? 'emergency_fallback' : 'fallback', placeholders };
+        return { changed: true, text, action: emergency ? 'emergency_fallback' : 'fallback', placeholders, contacts };
     }
     // the customer is never left without the emergency instruction the removed sentence was giving
     if (removedEmergency) out.splice(removedAt, 0, { text: emergencyFallbackText(lang), sep: removedAt ? ' ' : '' });
     const text = out.map((piece, index) => (index ? piece.sep || ' ' : '') + piece.text).join('').trim();
-    return { changed: true, text, action: removedEmergency ? 'emergency_fallback' : 'removed', placeholders };
+    return { changed: true, text, action: removedEmergency ? 'emergency_fallback' : 'removed', placeholders, contacts };
 }

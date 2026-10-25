@@ -99,6 +99,11 @@ function isVoseo(token: string): boolean {
 /** Text that is legitimately in another register, by file and word. */
 const ALLOWED: Array<{ file: string; words: string[]; why: string }> = [
     {
+        file: 'common/utils/outcome-claim.util.ts',
+        words: ['tenes'],
+        why: 'An Argentine customer-facing reply «no tenés reservas» has to be RECOGNISED as an absence claim (#223); the pattern is never sent.',
+    },
+    {
         file: 'modules/knowledge/evaluation/retrieval-dataset.ts',
         words: ['cancelás', 'pagás', 'llevás', 'ouvrés'],
         why: 'Tenant-written knowledge chunks for the retrieval benchmark: a tenant writes in its own '
@@ -117,9 +122,9 @@ const ALLOWED: Array<{ file: string; words: string[]; why: string }> = [
     },
     {
         file: 'modules/conversations/language-detector.service.ts',
-        words: ['revisalo', 'revisala', 'confirmalo', 'confirmala', 'mandame'],
+        words: ['revisalo', 'revisala', 'confirmalo', 'confirmala', 'mandame', 'explicame'],
         why: 'Words a CUSTOMER types that tell the language of their message, accents folded: the tú imperative '
-            + '«revísalo», «confírmalo», «mándame» folds to the same spelling as the voseo one.',
+            + '«revísalo», «confírmalo», «mándame», «explícame» (#218) folds to the same spelling as the voseo one.',
     },
     {
         file: 'modules/conversations/human-offer.ts',

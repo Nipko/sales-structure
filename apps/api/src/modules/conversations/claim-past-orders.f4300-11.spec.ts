@@ -127,7 +127,7 @@ describe('F4300-11 (b): the deterministic correction from the orders read', () =
     ])('[%s] %s', (lang, expected) => {
         const text = pastOrdersReportText(reads, lang) as string;
         // the French thousands separator is a (narrow) no-break space
-        expect(text.replace(/[  ]/g, ' ')).toBe(expected);
+        expect(text.replace(/[\u00a0\u202f]/g, ' ')).toBe(expected);
         expect(claimsCompletedAction(text)).toBe(false);
     });
 

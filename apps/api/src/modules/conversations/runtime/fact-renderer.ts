@@ -1,9 +1,11 @@
-import type { FactTokenView, TurnContext } from '@parallext/shared';
+import type { FactTokenView, TurnContext, VerifiedFactView } from '@parallext/shared';
 import { catalogPriceStatus } from '../catalog-price-status';
+import { spokenItemName } from '../description-authority';
+import { replyLanguageOf } from '../reply-language';
 import { normalizeReplyAmounts } from '../reply-price-format';
-import { ResponseValidatorService } from '../response-validator.service';
-import { humanizeReferences, localizeStatusWords, orderStatusLabel } from '../transition-engine';
-import { FACT_TTL_MS, factKey, wellFormed, type VerifiedFact } from './facts-ledger';
+import { quantitiesIn, ResponseValidatorService } from '../response-validator.service';
+import { addressFormOf, humanizeReferences, localizeStatusWords, orderStatusLabel, type AddressForm } from '../transition-engine';
+import { FACT_TTL_MS, factKey, verifiedFactViews, wellFormed, type VerifiedFact } from './facts-ledger';
 
 /**
  * Rendered facts (operations runtime PR6, flag `agentRuntime.renderedFacts`).
@@ -219,9 +221,10 @@ export function renderToken(kind: string, fact: VerifiedFact | undefined, ctx: R
         return text === null ? { ok: false, reason: 'wrong_token_kind' } : { ok: true, text };
     }
     switch (fact.kind) {
-        // An example (or quote / missing) price is never rendered as a confirmed amount.
-        case 'money': return fact.priceStatus === 'confirmed' && typeof fact.value === 'number'
-            ? { ok: true, text: moneyText(fact, ctx) } : { ok: false, reason: 'example_price' };
+        // An example (or quote / missing) price is never rendered as a confirmed amount, and neither is 0: an empty price
+        // column (`cleaningFee: 0` of a hotel room, production QA 2026-10-24: «The price of … is 0 COP») is a missing amount.
+        case 'money': if (fact.priceStatus !== 'confirmed' || typeof fact.value !== 'number') return { ok: false, reason: 'example_price' };
+            return fact.value > 0 ? { ok: true, text: moneyText(fact, ctx) } : { ok: false, reason: 'missing_price' };
         case 'availability': return { ok: true, text: availabilityText(fact, ctx) };
         case 'record_list': return Array.isArray(fact.value) ? { ok: true, text: recordListText(fact, ctx) } : { ok: false, reason: 'wrong_token_kind' };
         case 'record_status': return { ok: true, text: orderStatusLabel(fact.value, ctx.lang) };
@@ -231,7 +234,7 @@ export function renderToken(kind: string, fact: VerifiedFact | undefined, ctx: R
 
 // ── Detection of what the model typed itself ─────────────────────────────────
 
-export type FallbackReason = 'unknown_fact' | 'expired_fact' | 'wrong_token_kind' | 'example_price' | 'malformed_token'
+export type FallbackReason = 'unknown_fact' | 'expired_fact' | 'wrong_token_kind' | 'example_price' | 'missing_price' | 'malformed_token'
     | 'untrusted_token' | 'unrendered_amount' | 'unrendered_count' | 'unbacked_amenity' | 'price_denied';
 
 const norm = (text: string) => ` ${text.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/m²/g, 'm2').replace(/[^a-z0-9]+/g, ' ').trim()} `;
@@ -260,15 +263,30 @@ const CATEGORY_FIELDS: Partial<Record<CountCategory, string[]>> = {
 };
 const CATEGORY_RECORDS: Partial<Record<CountCategory, RegExp>> = { orders: /order|pedido/, appointments: /appointment|cita/, bookings: /booking|reserv/ };
 
-function countCategories(sentence: string, lang: Lang): CountCategory[] {
+/** The value of a typed count: digits («13 500» is one number) or a number word of the reply language. */
+function typedNumber(raw: string, lang: Lang): number | null {
+    if (/^[0-9 ]+$/.test(raw)) return Number(raw.replace(/ /g, ''));
+    const words = NUMBER_WORDS[lang].split('|');
+    const index = words.indexOf(raw);
+    if (index < 0) return null;
+    // Portuguese has «dois» and «duas» for 2: every word after them is one lower in the list.
+    return lang === 'pt' ? (index <= 1 ? 2 : index + 1) : index + 2;
+}
+
+interface TypedCount { category: CountCategory; value: number | null }
+function typedCounts(sentence: string, lang: Lang): TypedCount[] {
     const text = norm(sentence);
-    const found = new Set<CountCategory>();
+    const found: TypedCount[] = [];
     for (const match of text.matchAll(COUNT_RES[lang])) {
         const noun = match[2];
         const category = COUNT_NOUNS.find(([, nouns]) => new RegExp(`^(?:${nouns})$`).test(noun))?.[0];
-        if (category) found.add(category);
+        if (category) found.push({ category, value: typedNumber(match[1], lang) });
     }
-    return [...found];
+    return found;
+}
+
+function countCategories(sentence: string, lang: Lang): CountCategory[] {
+    return [...new Set(typedCounts(sentence, lang).map(count => count.category))];
 }
 
 const AMENITY_TERMS = ['piscina', 'pool', 'piscine', 'parqueadero', 'estacionamiento', 'estacionamento', 'parking', 'garaje', 'garage', 'garagem',
@@ -292,6 +310,9 @@ const PRICE_DENIAL = [
 const LABEL_STOPWORDS = new Set(['de', 'del', 'la', 'el', 'los', 'las', 'y', 'con', 'en', 'the', 'of', 'and', 'with', 'do', 'da', 'dos', 'das', 'e', 'com', 'du', 'des', 'le', 'les', 'et', 'avec']);
 function names(text: string, name?: string): boolean {
     if (!name) return false;
+    // «Spark QA Plato» names «Spark QA Plato 20261018T110518Z»: the technical stamp is not part of how anyone says it.
+    const spoken = spokenItemName(name);
+    if (spoken !== name.trim() && names(text, spoken)) return true;
     const label = norm(name);
     if (label.trim().length < 2) return false;
     const hay = norm(text);
@@ -302,12 +323,15 @@ function names(text: string, name?: string): boolean {
 
 // ── Templates ────────────────────────────────────────────────────────────────
 
-const T: Record<Lang, {
+interface Templates {
     unknown: string; example: (name?: string) => string; amount: string; count: string;
     price: (name: string, amount: string) => string; has: (name: string, parts: string[]) => string;
-    records: (total: string, noun: string, shown?: string) => string; recordsAtLeast: (shown: string, noun: string) => string;
+    /** `recorded`: the noun with its participle, agreed in number and gender («1 cita registrada», «6 pedidos registrados»). */
+    records: (total: string, recorded: string, shown?: string) => string; recordsAtLeast: (shown: string, noun: string) => string;
     amenitiesListed: (name: string, list: string) => string; amenityMissing: (name?: string) => string;
-}> = {
+    duration: (name: string, minutes: string) => string;
+}
+const T: Record<Lang, Templates> = {
     es: {
         unknown: 'Ese dato no lo tengo confirmado en este momento; si quieres, lo consulto de nuevo.',
         example: name => `${name ? `El precio de ${name}` : 'Ese precio'} es solo de referencia y todavía no está confirmado por el negocio.`,
@@ -315,10 +339,11 @@ const T: Record<Lang, {
         count: 'Prefiero no darte una cantidad que no tengo confirmada en el sistema.',
         price: (name, amount) => `El precio de ${name} es ${amount}.`,
         has: (name, parts) => `Según la ficha, ${name} tiene ${listOf(parts, 'es')}.`,
-        records: (total, noun, shown) => `Tienes ${total} ${noun} registrados${shown ? `; te muestro ${shown} de ${total}` : ''}.`,
+        records: (total, recorded, shown) => `Tienes ${total} ${recorded}${shown ? `; te muestro ${shown} de ${total}` : ''}.`,
         recordsAtLeast: (shown, noun) => `Encontré al menos ${shown} ${noun} a tu nombre.`,
         amenitiesListed: (name, list) => `Según la ficha, ${name} incluye: ${list}.`,
         amenityMissing: name => `En la ficha${name ? ` de ${name}` : ''} no aparece ese servicio, así que no puedo confirmártelo.`,
+        duration: (name, minutes) => `${name} dura ${minutes} minutos.`,
     },
     en: {
         unknown: "I don't have that detail confirmed right now; I can check it again if you like.",
@@ -327,10 +352,11 @@ const T: Record<Lang, {
         count: "I'd rather not give you a number I don't have confirmed in the system.",
         price: (name, amount) => `The price of ${name} is ${amount}.`,
         has: (name, parts) => `According to the listing, ${name} has ${listOf(parts, 'en')}.`,
-        records: (total, noun, shown) => `You have ${total} ${noun} on record${shown ? `; here are ${shown} of ${total}` : ''}.`,
+        records: (total, recorded, shown) => `You have ${total} ${recorded}${shown ? `; here are ${shown} of ${total}` : ''}.`,
         recordsAtLeast: (shown, noun) => `I found at least ${shown} ${noun} under your name.`,
         amenitiesListed: (name, list) => `According to the listing, ${name} includes: ${list}.`,
         amenityMissing: name => `The listing${name ? ` for ${name}` : ''} does not show that feature, so I can't confirm it.`,
+        duration: (name, minutes) => `${name} takes ${minutes} minutes.`,
     },
     pt: {
         unknown: 'Não tenho esse dado confirmado neste momento; se quiser, consulto de novo.',
@@ -339,10 +365,11 @@ const T: Record<Lang, {
         count: 'Prefiro não passar uma quantidade que não tenho confirmada no sistema.',
         price: (name, amount) => `O preço de ${name} é ${amount}.`,
         has: (name, parts) => `Segundo a ficha, ${name} tem ${listOf(parts, 'pt')}.`,
-        records: (total, noun, shown) => `Você tem ${total} ${noun} registrados${shown ? `; mostro ${shown} de ${total}` : ''}.`,
+        records: (total, recorded, shown) => `Você tem ${total} ${recorded}${shown ? `; mostro ${shown} de ${total}` : ''}.`,
         recordsAtLeast: (shown, noun) => `Encontrei pelo menos ${shown} ${noun} no seu nome.`,
         amenitiesListed: (name, list) => `Segundo a ficha, ${name} inclui: ${list}.`,
         amenityMissing: name => `A ficha${name ? ` de ${name}` : ''} não mostra esse serviço, então não posso confirmá-lo.`,
+        duration: (name, minutes) => `${name} dura ${minutes} minutos.`,
     },
     fr: {
         unknown: "Je n'ai pas cette information confirmée pour le moment ; je peux la vérifier à nouveau si vous voulez.",
@@ -351,12 +378,29 @@ const T: Record<Lang, {
         count: "Je préfère ne pas vous donner un nombre que je n'ai pas confirmé dans le système.",
         price: (name, amount) => `Le prix de ${name} est de ${amount}.`,
         has: (name, parts) => `D'après la fiche, ${name} a ${listOf(parts, 'fr')}.`,
-        records: (total, noun, shown) => `Vous avez ${total} ${noun} enregistrés${shown ? ` ; je vous en montre ${shown} sur ${total}` : ''}.`,
+        records: (total, recorded, shown) => `Vous avez ${total} ${recorded}${shown ? ` ; je vous en montre ${shown} sur ${total}` : ''}.`,
         recordsAtLeast: (shown, noun) => `J'ai trouvé au moins ${shown} ${noun} à votre nom.`,
         amenitiesListed: (name, list) => `D'après la fiche, ${name} comprend : ${list}.`,
         amenityMissing: name => `La fiche${name ? ` de ${name}` : ''} n'indique pas ce service, je ne peux donc pas le confirmer.`,
+        duration: (name, minutes) => `${name} dure ${minutes} minutes.`,
     },
 };
+/**
+ * The Spanish «usted» register. The templates speak to the customer the way the rest of the reply does (production QA
+ * 2026-10-24: «Tienes 6 pedidos registrados» next to «¿Le ayudo con algo más?»). Portuguese («você» constructions),
+ * English and French («vous») have one register.
+ */
+const ES_USTED: Templates = {
+    ...T.es,
+    unknown: 'Ese dato no lo tengo confirmado en este momento; si desea, lo consulto de nuevo.',
+    amount: 'Prefiero no darle una cifra que no tengo confirmada en el sistema.',
+    count: 'Prefiero no darle una cantidad que no tengo confirmada en el sistema.',
+    records: (total, recorded, shown) => `Tiene ${total} ${recorded}${shown ? `; le muestro ${shown} de ${total}` : ''}.`,
+    recordsAtLeast: (shown, noun) => `Encontré al menos ${shown} ${noun} a su nombre.`,
+    amenityMissing: name => `En la ficha${name ? ` de ${name}` : ''} no aparece ese servicio, así que no puedo confirmárselo.`,
+};
+const templatesFor = (lang: Lang, form: AddressForm): Templates => (lang === 'es' && form === 'usted' ? ES_USTED : T[lang]);
+const LOCALE_OF: Record<Lang, string> = { es: 'es-CO', en: 'en-US', pt: 'pt-BR', fr: 'fr-FR' };
 
 const FIELD_LABELS: Record<Lang, Record<string, [string, string]>> = {
     es: { bathrooms: ['baño', 'baños'], bedrooms: ['habitación', 'habitaciones'], area: ['m²', 'm²'], units: ['unidad disponible', 'unidades disponibles'] },
@@ -364,11 +408,18 @@ const FIELD_LABELS: Record<Lang, Record<string, [string, string]>> = {
     pt: { bathrooms: ['banheiro', 'banheiros'], bedrooms: ['quarto', 'quartos'], area: ['m²', 'm²'], units: ['unidade disponível', 'unidades disponíveis'] },
     fr: { bathrooms: ['salle de bain', 'salles de bain'], bedrooms: ['chambre', 'chambres'], area: ['m²', 'm²'], units: ['unité disponible', 'unités disponibles'] },
 };
-const RECORD_NOUNS: Record<Lang, Record<string, string>> = {
-    es: { orders: 'pedidos', appointments: 'citas', bookings: 'reservas' },
-    en: { orders: 'orders', appointments: 'appointments', bookings: 'bookings' },
-    pt: { orders: 'pedidos', appointments: 'consultas', bookings: 'reservas' },
-    fr: { orders: 'commandes', appointments: 'rendez-vous', bookings: 'réservations' },
+/** [one, many] of each record noun, alone and with its «on record» participle («1 pedido registrado», «6 citas registradas»). */
+const RECORD_NOUNS: Record<Lang, Record<string, [string, string]>> = {
+    es: { orders: ['pedido', 'pedidos'], appointments: ['cita', 'citas'], bookings: ['reserva', 'reservas'] },
+    en: { orders: ['order', 'orders'], appointments: ['appointment', 'appointments'], bookings: ['booking', 'bookings'] },
+    pt: { orders: ['pedido', 'pedidos'], appointments: ['consulta', 'consultas'], bookings: ['reserva', 'reservas'] },
+    fr: { orders: ['commande', 'commandes'], appointments: ['rendez-vous', 'rendez-vous'], bookings: ['réservation', 'réservations'] },
+};
+const RECORDED: Record<Lang, Record<string, [string, string]>> = {
+    es: { orders: ['pedido registrado', 'pedidos registrados'], appointments: ['cita registrada', 'citas registradas'], bookings: ['reserva registrada', 'reservas registradas'] },
+    en: { orders: ['order on record', 'orders on record'], appointments: ['appointment on record', 'appointments on record'], bookings: ['booking on record', 'bookings on record'] },
+    pt: { orders: ['pedido registrado', 'pedidos registrados'], appointments: ['consulta registrada', 'consultas registradas'], bookings: ['reserva registrada', 'reservas registradas'] },
+    fr: { orders: ['commande enregistrée', 'commandes enregistrées'], appointments: ['rendez-vous enregistré', 'rendez-vous enregistrés'], bookings: ['réservation enregistrée', 'réservations enregistrées'] },
 };
 
 // ── The reply ────────────────────────────────────────────────────────────────
@@ -386,6 +437,8 @@ export interface RenderFactsInput {
     untrusted?: readonly string[];
     /** Server-authored text of the turn (an engine directive): its amounts are not the model's. */
     serverText?: string;
+    /** The customer's form of address (`regional.addressForm`): a Spanish template says «usted» or «tú» like the rest of the reply. */
+    addressForm?: unknown;
 }
 
 export interface RenderFactsOutcome {
@@ -397,9 +450,25 @@ export interface RenderFactsOutcome {
 
 const validator = new ResponseValidatorService();
 
+/**
+ * The field that IS the price of an item, per kind of record, best first. A hotel room's price is its night price, never
+ * its cleaning fee (production QA 2026-10-24: «The price of Spark QA Habitacion … is 0 COP» — `cleaningFee: 0`, the last
+ * money field of the record, was taken for the room's price); a fee, a deposit, a total or a balance is never «the price of X».
+ */
+const PRICE_FIELDS_LODGING = ['nightprice', 'pricepernight', 'price'];
+const PRICE_FIELDS = ['price', 'unitprice', 'nightprice', 'pricepernight', 'monthlyprice', 'annualprice', 'tuition'];
+function priceFieldRank(fact: VerifiedFact): number {
+    const field = (fact.field.split('.').pop() || '').replace(/[^a-z]/gi, '').toLowerCase();
+    return (LODGING_SUBJECT.test(fact.subject.type) ? PRICE_FIELDS_LODGING : PRICE_FIELDS).indexOf(field);
+}
+
+/** The customer's message asks about a price or an amount («how much», «what's the nightly rate», «cuánto pago»). */
+const PRICE_QUESTION = / (?:precio|precios|cuanto|cuesta|cuestan|vale|valen|costo|costos|coste|tarifa|tarifas|pago|pagar|total|price|prices|cost|costs|much|rate|rates|fee|fees|preco|precos|quanto|custa|custam|valor|prix|combien|coute|coutent|tarif|tarifs|payer) /;
+/** A sentence about how long something takes. */
+const DURATION_WORDS = / (?:min|mins|minuto|minutos|minute|minutes|hora|horas|hour|hours|heure|heures|dura|duran|duracion|duracao|duree|duration|takes|long|demora|tarda|leva) /;
+
 export function renderReplyFacts(input: RenderFactsInput): RenderFactsOutcome {
-    const lang = langOf(input.language);
-    const ctx: RenderContext = { lang, locale: input.locale, now: input.now };
+    const turnLang = langOf(input.language);
     const registry = factRegistry(input.facts);
     const live = [...registry.values()].filter(fact => isLive(fact, input.now));
     const untrusted = (input.untrusted || []).filter(text => typeof text === 'string' && text.includes('⟦'));
@@ -407,28 +476,72 @@ export function renderReplyFacts(input: RenderFactsInput): RenderFactsOutcome {
     const outcome: RenderFactsOutcome = { text: input.reply, tokens: 0, rendered: 0, fallbacks: [] };
     if (!input.reply) return outcome;
 
-    const subjectFor = (sentence: string, candidates: VerifiedFact[]): VerifiedFact | undefined => {
-        const bySubject = new Map(candidates.map(fact => [`${fact.subject.type}|${fact.subject.id}`, fact]));
+    // One language per reply. A template is written in the language the rest of the reply is written in: when the model
+    // answered a French turn in Spanish, a French template in the middle («El Spark QA Tour tiene… Le prix de … est de
+    // 125 EUR. ¿Le gustaría…», production QA 2026-10-24) left a reply the language guard could no longer read as Spanish,
+    // and it went out mixed. A reply written in one language is what that guard rewrites into the customer's, whole.
+    const subjectNames = [...new Set(live.flatMap(fact => (fact.subject.name ? [fact.subject.name, spokenItemName(fact.subject.name)] : [])))];
+    const written = replyLanguageOf(input.reply.replace(FACT_TOKEN_RE, ' '), subjectNames);
+    const lang: Lang = written && written !== turnLang ? written : turnLang;
+    const ctx: RenderContext = { lang, locale: lang === turnLang ? input.locale : LOCALE_OF[lang], now: input.now };
+    const t = templatesFor(lang, addressFormOf(input.addressForm));
+    /** A record name as the customer says it: no technical stamp («Spark QA Plato 20261018T110518Z» → «Spark QA Plato»). */
+    const say = (name: string) => neutralizeFactTokens(spokenItemName(name));
+    const subjectKey = (fact: VerifiedFact) => `${fact.subject.type}|${fact.subject.id}`;
+    // No customer text (a pure call): every amount sentence is about a price, as before.
+    const asksPrice = !customerText.trim() || PRICE_QUESTION.test(norm(customerText));
+
+    const subjectFor = (sentence: string, candidates: VerifiedFact[], single = true): VerifiedFact | undefined => {
+        const bySubject = new Map(candidates.map(fact => [subjectKey(fact), fact]));
         const pool = [...bySubject.values()];
         return pool.find(fact => names(sentence, fact.subject.name)) ?? pool.find(fact => names(customerText, fact.subject.name))
-            ?? (pool.length === 1 ? pool[0] : undefined);
+            ?? (single && pool.length === 1 ? pool[0] : undefined);
     };
-    const confirmedMoney = live.filter(fact => fact.kind === 'money' && fact.priceStatus === 'confirmed' && typeof fact.value === 'number' && fact.subject.name);
-    const examplePriced = new Set(live.filter(fact => fact.kind === 'money' && fact.priceStatus !== 'confirmed').map(fact => `${fact.subject.type}|${fact.subject.id}`));
+    // The price of each named item: its price field, never a fee, and never an empty (0) amount.
+    const bestPrice = new Map<string, VerifiedFact>();
+    for (const fact of live) {
+        if (fact.kind !== 'money' || fact.priceStatus !== 'confirmed' || typeof fact.value !== 'number' || !(fact.value > 0) || !fact.subject.name) continue;
+        const rank = priceFieldRank(fact);
+        if (rank < 0) continue;
+        const current = bestPrice.get(subjectKey(fact));
+        if (!current || rank <= priceFieldRank(current)) bestPrice.set(subjectKey(fact), fact);
+    }
+    const confirmedMoney = [...bestPrice.values()];
+    const examplePriced = new Set(live.filter(fact => fact.kind === 'money' && fact.priceStatus !== 'confirmed').map(subjectKey));
+
+    // What backs an amount the model typed: a confirmed amount of the subject the sentence (or the customer) names, the
+    // server's own text, an amount of a record with no name (an order's total) — and, as in the price guard (F4300-36), a
+    // total computed from them (2 × 13.500 when the customer asked «si pido dos»).
+    const confirmedAmounts = live.filter(fact => fact.kind === 'money' && fact.priceStatus === 'confirmed' && typeof fact.value === 'number' && fact.value > 0);
+    const moneyViews: VerifiedFactView[] = verifiedFactViews(confirmedAmounts, input.now);
+    const ledger = moneyViews.length ? { facts: moneyViews, customerText } : undefined;
+    const corpus = [input.serverText || '', ...confirmedAmounts.filter(fact => !fact.subject.name)
+        .map(fact => JSON.stringify({ amount: fact.value, ...(fact.currency ? { currency: fact.currency } : {}) }))].join('\n');
+    const amountBacked = (sentence: string) => validator.validatePrices(sentence, corpus, ledger, { customerText }).ok;
+    const statesAmount = (sentence: string) => !validator.validatePrices(sentence, '').ok;
 
     const priceTemplate = (sentence: string): string | null => {
-        const fact = subjectFor(sentence, confirmedMoney);
-        if (!fact || examplePriced.has(`${fact.subject.type}|${fact.subject.id}`)) return null;
-        return T[lang].price(neutralizeFactTokens(fact.subject.name!), moneyText(fact, ctx));
+        // An item nobody named is priced only when the customer asked for a price: «how many orders have I made?» never
+        // gets «The price of Spark QA Plato is 13,500 COP» appended (production QA 2026-10-24).
+        const fact = subjectFor(sentence, confirmedMoney, asksPrice);
+        if (!fact || examplePriced.has(subjectKey(fact))) return null;
+        return t.price(say(fact.subject.name!), moneyText(fact, ctx));
+    };
+    const recordListFor = (category: CountCategory): VerifiedFact | undefined => {
+        const pattern = CATEGORY_RECORDS[category];
+        const lists = live.filter(f => f.kind === 'record_list' && Array.isArray(f.value));
+        return lists.find(f => pattern?.test(`${f.subject.type} ${f.source.tool}`)) ?? (lists.length === 1 ? lists[0] : undefined);
+    };
+    const fieldFacts = (category: CountCategory): VerifiedFact[] => {
+        const fields = CATEGORY_FIELDS[category] ?? [];
+        return live.filter(f => f.kind === 'attribute' && typeof f.value === 'number' && fields.some(field => field.toLowerCase() === f.field.toLowerCase()));
     };
     const countTemplate = (sentence: string, categories: CountCategory[]): string | null => {
         const parts: string[] = [];
         let owner: string | undefined;
         for (const category of categories) {
-            const fields = CATEGORY_FIELDS[category];
-            if (fields) {
-                const fact = subjectFor(sentence, live.filter(f => f.kind === 'attribute' && typeof f.value === 'number'
-                    && fields.some(field => field.toLowerCase() === f.field.toLowerCase())));
+            if (CATEGORY_FIELDS[category]) {
+                const fact = subjectFor(sentence, fieldFacts(category));
                 if (!fact) continue;
                 const value = fact.value as number;
                 const [one, many] = FIELD_LABELS[lang][category] ?? ['', ''];
@@ -437,26 +550,69 @@ export function renderReplyFacts(input: RenderFactsInput): RenderFactsOutcome {
                 // The other record fields of the same subject are said with it: «2 baños» never stands alone for a 1-bathroom, 2-bedroom listing.
                 continue;
             }
-            const pattern = CATEGORY_RECORDS[category];
-            const lists = live.filter(f => f.kind === 'record_list' && Array.isArray(f.value));
-            const list = lists.find(f => pattern?.test(`${f.subject.type} ${f.source.tool}`)) ?? (lists.length === 1 ? lists[0] : undefined);
+            const list = recordListFor(category);
             if (!list) continue;
-            const noun = RECORD_NOUNS[lang][category] ?? '';
             const shown = (list.value as string[]).length;
             const total = typeof list.total === 'number' ? list.total : shown;
+            const pick = (forms: [string, string] | undefined, n: number) => (forms ? forms[n === 1 ? 0 : 1] : '');
             return list.complete === false && total <= shown
-                ? T[lang].recordsAtLeast(String(shown), noun)
-                : T[lang].records(String(total), noun, total > shown ? String(shown) : undefined);
+                ? t.recordsAtLeast(String(shown), pick(RECORD_NOUNS[lang][category], shown))
+                : t.records(String(total), pick(RECORDED[lang][category], total), total > shown ? String(shown) : undefined);
         }
         if (!parts.length) return null;
-        return T[lang].has(neutralizeFactTokens(owner ?? ''), parts).replace(/ {2,}/g, ' ');
+        return t.has(owner ? say(owner) : '', parts).replace(/ {2,}/g, ' ');
+    };
+    /** A count the model typed that the record says: the field of the subject it names, the known total of a list. */
+    const countBacked = (sentence: string, count: TypedCount): boolean => {
+        if (count.value === null) return false;
+        if (CATEGORY_FIELDS[count.category]) {
+            // «2 unidades» when the customer asked for two is the quantity, not the stock.
+            if (count.category === 'units' && quantitiesIn(customerText).includes(count.value)) return true;
+            const candidates = fieldFacts(count.category);
+            const owner = subjectFor(sentence, candidates);
+            return !!owner && candidates.some(f => subjectKey(f) === subjectKey(owner) && f.value === count.value);
+        }
+        const list = recordListFor(count.category);
+        if (!list) return false;
+        const total = typeof list.total === 'number' ? list.total : list.complete === false ? null : (list.value as string[]).length;
+        return total !== null && total === count.value;
+    };
+    const durationTemplate = (sentence: string): string | null => {
+        if (!DURATION_WORDS.test(norm(sentence))) return null;
+        const fact = subjectFor(sentence, live.filter(f => f.kind === 'attribute' && typeof f.value === 'number' && f.value > 0 && /^durationminutes$/i.test(f.field)));
+        return fact?.subject.name ? t.duration(say(fact.subject.name), numberOf(fact.value as number, ctx.locale)) : null;
+    };
+    const serverCategories = input.serverText ? countCategories(input.serverText, lang) : [];
+    /**
+     * What a sentence with an unbacked figure becomes: the record's values for what the sentence was about — its price,
+     * its counts, its duration — so the rest of the answer survives («80 m²», «45 minutos» were dropped with the whole
+     * sentence when only the price was restated, production QA 2026-10-24). '' drops the sentence: an amount nobody asked
+     * about and no record can say.
+     */
+    const fallbackFor = (sentence: string, failed: 'amount' | 'count'): string => {
+        const pieces: string[] = [];
+        if (statesAmount(sentence)) {
+            const price = priceTemplate(sentence);
+            if (price) pieces.push(price);
+            else if (failed === 'amount' && asksPrice) pieces.push(t.amount);
+        }
+        const categories = countCategories(sentence, lang).filter(category => !serverCategories.includes(category));
+        if (categories.length) {
+            const counts = countTemplate(sentence, categories);
+            if (counts) pieces.push(counts);
+            else if (failed === 'count') pieces.push(t.count);
+        }
+        const duration = durationTemplate(sentence);
+        if (duration) pieces.push(duration);
+        if (pieces.length) return pieces.join(' ');
+        return failed === 'count' ? t.count : asksPrice ? t.amount : '';
     };
     const amenityTemplate = (sentence: string): string => {
         const lodging = live.filter(fact => LODGING_SUBJECT.test(fact.subject.type));
         const listed = subjectFor(sentence, live.filter(fact => fact.kind === 'attribute' && /amenit|includ|inclus/i.test(fact.field) && Array.isArray(fact.value)));
-        if (listed) return T[lang].amenitiesListed(neutralizeFactTokens(listed.subject.name ?? ''), attributeText(listed, ctx));
+        if (listed) return t.amenitiesListed(listed.subject.name ? say(listed.subject.name) : '', attributeText(listed, ctx));
         const owner = subjectFor(sentence, lodging);
-        return T[lang].amenityMissing(owner?.subject.name ? neutralizeFactTokens(owner.subject.name) : undefined);
+        return t.amenityMissing(owner?.subject.name ? say(owner.subject.name) : undefined);
     };
     const lodgingTurn = live.some(fact => LODGING_SUBJECT.test(fact.subject.type));
     const backedAmenities = norm(live.filter(fact => fact.kind === 'attribute' && /amenit|includ|inclus|feature/i.test(fact.field))
@@ -466,24 +622,24 @@ export function renderReplyFacts(input: RenderFactsInput): RenderFactsOutcome {
         const tokens = [...sentence.matchAll(FACT_TOKEN_RE)];
         outcome.tokens += tokens.length;
         const stripped = sentence.replace(FACT_TOKEN_RE, ' ');
-        if (stripped.includes('⟦') || stripped.includes('⟧')) return { text: T[lang].unknown, reason: 'malformed_token' };
+        if (stripped.includes('⟦') || stripped.includes('⟧')) return { text: t.unknown, reason: 'malformed_token' };
         const values: string[] = [];
         for (const token of tokens) {
-            if (untrusted.some(text => text.includes(token[0]))) return { text: T[lang].unknown, reason: 'untrusted_token' };
+            if (untrusted.some(text => text.includes(token[0]))) return { text: t.unknown, reason: 'untrusted_token' };
             const fact = registry.get(token[2]);
             const rendered = renderToken(token[1], fact, ctx);
             if (!rendered.ok) {
-                return { text: rendered.reason === 'example_price' ? T[lang].example(fact?.subject.name ? neutralizeFactTokens(fact.subject.name) : undefined) : T[lang].unknown,
+                return { text: rendered.reason === 'example_price' ? t.example(fact?.subject.name ? say(fact.subject.name) : undefined) : t.unknown,
                     reason: rendered.reason };
             }
             values.push(rendered.text);
         }
-        // What the model typed itself (the sentence without its tokens).
-        if (!validator.validatePrices(stripped, input.serverText || '').ok) {
-            return { text: priceTemplate(stripped) ?? T[lang].amount, reason: 'unrendered_amount' };
-        }
-        const categories = countCategories(stripped, lang).filter(category => !(input.serverText && countCategories(input.serverText, lang).includes(category)));
-        if (categories.length) return { text: countTemplate(stripped, categories) ?? T[lang].count, reason: 'unrendered_count' };
+        // What the model typed itself (the sentence without its tokens): kept when the verified facts back it — the room's
+        // 150.000 COP, the listing's 80 m², 2 × 13.500 for two dishes. Only an unbacked figure falls back.
+        if (!amountBacked(stripped)) return { text: fallbackFor(stripped, 'amount'), reason: 'unrendered_amount' };
+        const unbacked = typedCounts(stripped, lang)
+            .filter(count => !serverCategories.includes(count.category) && !countBacked(stripped, count));
+        if (unbacked.length) return { text: fallbackFor(stripped, 'count'), reason: 'unrendered_count' };
         const plain = norm(stripped);
         if (lodgingTurn && !NEGATION.test(plain) && AMENITY_TERMS.some(term => plain.includes(` ${term} `) && !backedAmenities.includes(` ${term} `))) {
             return { text: amenityTemplate(stripped), reason: 'unbacked_amenity' };
@@ -508,12 +664,12 @@ export function renderReplyFacts(input: RenderFactsInput): RenderFactsOutcome {
         const { text, reason } = sentenceOut(part);
         if (reason) {
             outcome.fallbacks.push({ reason });
-            // A template said once is enough.
-            if (seen.has(text)) { if (out.length && index > 0) out.pop(); continue; }
+            // A sentence dropped, or a template said once already: it goes with the separator before it.
+            if (!text || seen.has(text)) { if (out.length && index > 0) out.pop(); continue; }
             seen.add(text);
         }
         out.push(text);
     }
-    outcome.text = out.join('').trim();
+    outcome.text = out.join('').trim() || (outcome.fallbacks.length ? t.amount : '');
     return outcome;
 }

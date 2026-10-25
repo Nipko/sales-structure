@@ -149,7 +149,11 @@ const NOT_REAL = new RegExp([
 const ROW_LISTS = ['items', 'products', 'properties', 'packages', 'listings', 'vehicles', 'services', 'courses', 'plans', 'promotions', 'results', 'rooms'];
 const CLOSED_STATUS = /^(?:inactive|inactivo|archived|draft|sold|sold_out|soldout|unavailable|withdrawn|retired|disabled|paused|reserved|rented|closed|agotado)$/;
 
-interface CatalogRow { name: string; description: string; offered: boolean }
+/** `labels`: the row's place fields (address, city, zone…), said as they are like its name, never a claim. */
+interface CatalogRow { name: string; description: string; offered: boolean; labels?: string[] }
+
+/** Where a record is: the business writes these, and a QA or real one may hold any word («Direccion sintetica QA»). */
+const PLACE_FIELDS = ['address', 'city', 'location', 'location_address', 'locationAddress', 'neighborhood', 'zone', 'district', 'destination', 'departure_location', 'departureLocation', 'street', 'country', 'state'];
 
 function parse(source: unknown): unknown {
     if (typeof source !== 'string') return source;
@@ -181,7 +185,8 @@ function catalogRows(sources: readonly unknown[]): { rows: CatalogRow[]; markedU
             if (!row || typeof row !== 'object' || typeof row.name !== 'string' || !row.name.trim()) continue;
             const offered = offeredRow(row, scopeUnavailable);
             if (!offered) markedUnavailable = true;
-            rows.push({ name: row.name.trim().slice(0, 120), description: typeof row.description === 'string' ? row.description : '', offered });
+            const labels = PLACE_FIELDS.map(key => row[key]).filter((v): v is string => typeof v === 'string' && !!v.trim()).map(v => v.trim().slice(0, 120));
+            rows.push({ name: row.name.trim().slice(0, 120), description: typeof row.description === 'string' ? row.description : '', offered, labels });
         }
     }
     return { rows, markedUnavailable };
@@ -409,8 +414,9 @@ export function guardDescriptionStatusClaim(input: DescriptionStatusClaimInput):
     // A read of the turn already said «no» for some item or date (a stay, a departure, a notForSale list): the reply may be
     // relaying it about a named, otherwise offered item, so the check stands aside rather than delete a true sentence.
     if (markedUnavailable) return keep;
-    const nameTokens = new Set(rows.flatMap(row => fold(row.name).match(/[\p{L}\p{N}]+/gu) ?? []));
-    const longNameTokens = new Set(rows.flatMap(row => nameWords(row.name)));
+    // A place field is said like a name: «Direccion sintetica QA» is where the hotel is, not a claim that it is synthetic.
+    const nameTokens = new Set(rows.flatMap(row => [row.name, ...(row.labels ?? [])].flatMap(text => fold(text).match(/[\p{L}\p{N}]+/gu) ?? [])));
+    const longNameTokens = new Set(rows.flatMap(row => [row.name, ...(row.labels ?? [])].flatMap(text => nameWords(text))));
     const isClaim = (text: string) => {
         const bare = withoutNames(text, nameTokens, longNameTokens);
         return NOT_FOR_SALE.test(bare) || NOT_REAL.test(bare);

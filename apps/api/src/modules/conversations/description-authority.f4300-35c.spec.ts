@@ -150,3 +150,19 @@ describe('3. production QA 25-oct (image fe2edd65): «where is my order?» → �
         expect(guardDescriptionStatusClaim({ reply, sources: [DISH], lang: 'en' }).changed).toBe(false);
     });
 });
+
+describe('4. production QA 25-oct (image 57da6e58): «what is the hotel\'s address?» → the address sentence was removed', () => {
+    const ROOM_AT = { rooms: [{ name: 'Spark QA Habitacion 20261018T113247Z', description: 'Habitación sintética para pruebas, no comercializable.',
+        address: 'Direccion sintetica QA', city: 'Ciudad QA', maxGuests: 2, nightPrice: 150000 }] };
+    it('a place field is said like a name: the address that holds «sintetica» stays', () => {
+        const reply = 'The hotel is located at Direccion sintetica QA, in Ciudad QA. If you need more details or assistance, just let me know!';
+        expect(guardDescriptionStatusClaim({ reply, sources: [ROOM_AT], lang: 'en' }).changed).toBe(false);
+    });
+    it('a claim about the room itself still goes', () => {
+        const reply = 'The Spark QA Habitacion is a synthetic room for QA purposes. It is located at Direccion sintetica QA.';
+        const out = guardDescriptionStatusClaim({ reply, sources: [ROOM_AT], lang: 'en' });
+        expect(out.changed).toBe(true);
+        expect(out.text).toContain('Direccion sintetica QA');
+        expect(out.text).not.toMatch(/synthetic room/i);
+    });
+});

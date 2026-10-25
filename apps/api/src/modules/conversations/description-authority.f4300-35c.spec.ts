@@ -127,3 +127,26 @@ describe('2. the coordinated remainder of a removed claim clause', () => {
         expect(guardDescriptionStatusClaim({ reply, sources: [plain], lang: 'en' }).changed).toBe(false);
     });
 });
+
+describe('3. production QA 25-oct (image fe2edd65): «where is my order?» → «As for Spark QA Plato, however, this order was cancelled…»', () => {
+    it('en: the «However» left by a removed sentence goes, and «on its way» is no possessive of the dish', () => {
+        const reply = 'The Spark QA Plato 20261018T113247Z is a synthetic QA dish and is not for sale. However, this order was cancelled, so it is not on its way. If you want to place a new order, just let me know!';
+        const out = guardDescriptionStatusClaim({ reply, sources: [DISH], lang: 'en' });
+        expect(out).toMatchObject({ changed: true, action: 'removed' });
+        expect(out.text).toBe('This order was cancelled, so it is not on its way. If you want to place a new order, just let me know!');
+    });
+    it('es / pt / fr: «Sin embargo», «Porém», «Cependant» after a removed sentence go too', () => {
+        const cases: Array<[string, string, string]> = [
+            ['El Spark QA Plato es un plato sintético de QA y no está a la venta. Sin embargo, ese pedido fue cancelado.', 'es', 'Ese pedido fue cancelado.'],
+            ['O Spark QA Plato é um prato sintético de QA e não está à venda. Porém, esse pedido foi cancelado.', 'pt', 'Esse pedido foi cancelado.'],
+            ["Le Spark QA Plato est un plat synthétique de QA et n'est pas à vendre. Cependant, cette commande a été annulée.", 'fr', 'Cette commande a été annulée.'],
+        ];
+        for (const [reply, lang, expected] of cases) {
+            expect(guardDescriptionStatusClaim({ reply, sources: [DISH], lang }).text).toBe(expected);
+        }
+    });
+    it('a «However» whose contrast is still there stays', () => {
+        const reply = 'The Spark QA Plato costs 13,500 COP. However, preparation time is not recorded.';
+        expect(guardDescriptionStatusClaim({ reply, sources: [DISH], lang: 'en' }).changed).toBe(false);
+    });
+});

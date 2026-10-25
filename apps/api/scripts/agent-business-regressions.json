@@ -107,7 +107,8 @@
     "apps/api/src/modules/conversations/conversations.required-reads-english-menu.spec.ts",
     "apps/api/src/modules/conversations/conversations.required-reads-lodging-tours-cues.spec.ts",
     "apps/api/src/modules/conversations/conversations.required-reads-listings-cues.spec.ts",
-    "apps/api/src/modules/conversations/conversations.required-reads-tour-seats.spec.ts"
+    "apps/api/src/modules/conversations/conversations.required-reads-tour-seats.spec.ts",
+    "apps/api/src/modules/conversations/claim-status-delivery.f4300-33.spec.ts"
   ],
   "postgres": [
     "apps/api/src/modules/faqs/faq-effects.postgres.spec.ts",

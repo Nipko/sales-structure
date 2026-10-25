@@ -72,6 +72,22 @@ const COMPLETION_CLAIM = new RegExp(
         "\\bj['’]ai (reserve|programme) ",
         "\\bj['’]ai confirme (votre|le|la) ",
         BOOKING_SUBJECT + ' ' + SUBJECT_GAP + '(est|a ete) (confirme|confirmee|reserve|reservee|pris|prise|valide|validee)\\b',
+        // A DELIVERY stated as done (F4300-33): «ya le entregamos su pedido», «su pedido fue entregado / ya llegó», «your order
+        // has been delivered / has arrived», «seu pedido foi entregue / já chegou», «votre commande a été livrée». The agent does
+        // not deliver: the doer forms are always claims, the state forms are excused only by a record read as delivered.
+        '\\b(esta|quedo|fue|ha sido) (entregado|entregada|entregados|entregadas)\\b',
+        '\\bya (te |le |les )?(entregamos|entregue|entregaron) ',
+        '\\b(he|hemos) entregado\\b',
+        "\\b(order|package|delivery) (is|has been|was) delivered\\b",
+        "\\b(i've|i have|we've|we have|we) delivered (your|the|it)\\b",
+        '\\b(foi|esta) (entregue|entregues)\\b',
+        // not «entregamos a domicilio / em [zonas]» (present tense, what the business does): only a delivered order as object
+        '\\bja entregamos\\b|\\bentregamos (o seu|a sua|seu|sua|o|a) (pedido|encomenda|compra)\\b',
+        "\\b(a ete|est) (livre|livree|livres|livrees)\\b",
+        "\\bnous avons livre ",
+        OPERATION_SUBJECT + ' ' + SUBJECT_GAP + '\\b(ya llego|ha llegado|has arrived|already arrived|ja chegou|est arrivee?)\\b'
+            // «su pedido ya llegó a la cocina» is the order being prepared, not delivered
+            + '(?! (?:a la|al|a|to the|na|en) (?:cocina|restaurante|kitchen|restaurant|cozinha|cuisine))',
     ].join('|'),
     'g',
 );
@@ -137,42 +153,76 @@ const HEADLINE_CLAIM = new RegExp(
  * present or in the impersonal passive («el pedido D1D0D14A está cancelado», «su pedido fue cancelado», «your order was
  * cancelled», «seu pedido foi cancelado»). The record is the one the sentence names (its reference or product), or the only
  * record the turn read. Wording alone («el estado de su pedido está …») excuses nothing. The agent as the doer («ya cancelé»,
- * «he cancelado», «I cancelled», «cancelei») or the settling «quedó cancelado» is the deed, whatever was read.
+ * «he cancelado», «I cancelled», «cancelei», «ya le entregamos», «we delivered») is the deed, whatever was read.
  *
  * F4300-33 (restaurant, required reads on): «¿en qué va mi último pedido?» → list_my_orders + check_order_status said
- * CANCELLED, and the status report was replaced by «No puedo darle esa acción por confirmada…».
+ * CANCELLED, and the status report was replaced by «No puedo darle esa acción por confirmada…». After #205 the same happened
+ * to «¿ya llegó mi pedido?»: «no ha llegado porque quedó cancelado» — «quedó» is how a status is said in Spanish, so with a
+ * record read as cancelled it is a report too, unless the customer asked this very turn for a cancellation (then «quedó
+ * cancelado» answers the request as done, and stays a claim). A DELIVERY is read the same way: «su pedido fue entregado /
+ * ya llegó» is a report only of a record read as delivered; negated or not-yet delivery («aún no ha llegado», «not
+ * delivered yet», «não foi entregue») never was a claim.
  *
- * Only «cancelled» is read this way. «Está confirmada» / «está reservada» are exactly the sentences a model invents to close a
- * booking it never made, so a booking or a payment status is never excused by a record that merely exists.
+ * Only «cancelled» and «delivered» are read this way. «Está confirmada» / «está reservada» are exactly the sentences a model
+ * invents to close a booking it never made, so a booking or a payment status is never excused by a record that merely exists.
  */
 
 const CANCELLED_PARTICIPLE = /\b(?:cancelad[oa]s?|anulad[oa]s?|cancelled|canceled|annulee?s?)\b/;
 const CANCELLED_STATUSES = new Set(['cancelled', 'canceled', 'cancelado', 'cancelada', 'anulado', 'anulada', 'voided']);
+const DELIVERED_WORDS = /\b(?:entregad[oa]s?|entregues?|delivered|livree?s?|llego|ha llegado|arrived|chegou|arrivee?)\b/;
+const DELIVERED_STATUSES = new Set(['delivered', 'completed', 'picked_up', 'fulfilled', 'entregado', 'entregada', 'entregue']);
+const STATUS_FAMILIES: ReadonlyArray<{ words: RegExp; statuses: ReadonlySet<string> }> = [
+    { words: CANCELLED_PARTICIPLE, statuses: CANCELLED_STATUSES },
+    { words: DELIVERED_WORDS, statuses: DELIVERED_STATUSES },
+];
 
 /** A record the turn read: its status and the words that identify it (its short reference, its product or service name). */
 export interface RecordFact { status: string; tokens: readonly string[] }
 
-/** The status repeated as a state: present («está», «is», «est») or impersonal passive («fue», «was», «has been», «foi», «a été»). */
-const STATE_OR_PASSIVE = /\b(?:esta|estan|is|are|est|sont|fue|fueron|ha sido|han sido|was|were|has been|have been|foi|foram|a ete|ont ete)\b/;
-/** «quedó cancelado» settles a deed; «cancelé / cancelei / I cancelled» name the doer. */
-const DEED_FORM = /\b(?:quedo|quedaron|ficou)\b|\b(?:cancele|cancelei|anule|anulei)\b|\b(?:i|we|i've|we've) (?:have )?(?:cancelled|canceled)\b/;
+/**
+ * The status repeated as a state: present («está», «is», «est»), impersonal passive («fue», «was», «has been», «foi», «a été»)
+ * or arrival («ya llegó», «has arrived», «já chegou»).
+ */
+const STATE_OR_PASSIVE = /\b(?:esta|estan|is|are|est|sont|fue|fueron|ha sido|han sido|was|were|has been|have been|foi|foram|a ete|ont ete|llego|ha llegado|arrived|chegou)\b/;
+/** «quedó / ficou cancelado»: a status, or the answer to a request to cancel. */
+const SETTLED = /\b(?:quedo|quedaron|ficou|ficaram)\b/;
+/** The agent as the doer: «cancelé / cancelei / I cancelled», «entregamos / le entregué / we delivered / nous avons livré». */
+const DEED_FORM = new RegExp([
+    '\\b(?:cancele|cancelei|anule|anulei|entregamos)\\b', '\\b(?:te|le|les) entregue\\b', '\\b(?:he|hemos) (?:cancelado|anulado|entregado)\\b',
+    "\\b(?:i|we|i've|we've) (?:have )?(?:cancelled|canceled|delivered)\\b", '\\bnous avons livre\\b',
+].join('|'));
 
-function isCancelled(fact: RecordFact): boolean {
-    return CANCELLED_STATUSES.has(String(fact.status).toLowerCase());
+export interface ClaimDetectionOptions {
+    recordFacts?: readonly RecordFact[];
+    /** The customer asked THIS turn for a cancellation: «quedó cancelado» then answers the request, it does not report a state. */
+    customerRequestedCancellation?: boolean;
 }
 
-function reportsReadCancellation(matched: string, sentence: string, before: string, facts: readonly RecordFact[]): boolean {
-    if (!STATE_OR_PASSIVE.test(matched) || DEED_FORM.test(matched) || DEED_FORM.test(before.slice(-12))) return false;
-    if (!CANCELLED_PARTICIPLE.test(matched)) return false;
+/**
+ * Does the customer's message speak of cancelling (es/en/pt/fr)? Deliberately wide: any mention keeps «quedó cancelado» a claim,
+ * the conservative reading; only a message that never mentions it («¿ya llegó mi pedido?») lets it be a status.
+ */
+export function mentionsCancellation(customerText: unknown): boolean {
+    return /\b(?:cancel\w*|anul\w*|annul\w*)/.test(normalize(String(customerText ?? '')));
+}
+
+function reportsReadStatus(matched: string, sentence: string, before: string, options: ClaimDetectionOptions): boolean {
+    const facts = options.recordFacts ?? [];
+    if (DEED_FORM.test(matched) || DEED_FORM.test(before.slice(-14))) return false;
+    const settled = SETTLED.test(matched);
+    if (!(settled ? !options.customerRequestedCancellation : STATE_OR_PASSIVE.test(matched))) return false;
+    const family = STATUS_FAMILIES.find(candidate => candidate.words.test(matched));
+    if (!family) return false;
+    const inFamily = (fact: RecordFact) => family.statuses.has(String(fact.status).toLowerCase());
     const named = (fact: RecordFact) => fact.tokens.some(token => normalize(String(token)).length >= 3 && sentence.includes(normalize(String(token))));
-    if (facts.some(fact => isCancelled(fact) && named(fact))) return true;
+    if (facts.some(fact => inFamily(fact) && named(fact))) return true;
     // «Su último pedido fue cancelado» names no reference: it can only be about the record when the turn read exactly one.
     if (facts.some(named)) return false;
     const records = new Set(facts.map(fact => normalize(String(fact.tokens[0] ?? ''))));
-    return records.size === 1 && facts.every(isCancelled);
+    return records.size === 1 && facts.every(inFamily);
 }
 
-export function claimsCompletedAction(reply: unknown, options: { recordFacts?: readonly RecordFact[] } = {}): boolean {
+export function claimsCompletedAction(reply: unknown, options: ClaimDetectionOptions = {}): boolean {
     if (typeof reply !== 'string' || !reply.trim()) return false;
     // Per sentence: a negation in one clause must not cancel a claim in another.
     return normalize(reply).split(/(?<=[.!?;])\s+|\n+/).some(sentence => {
@@ -181,10 +231,11 @@ export function claimsCompletedAction(reply: unknown, options: { recordFacts?: r
         for (let m = COMPLETION_CLAIM.exec(sentence); m; m = COMPLETION_CLAIM.exec(sentence)) {
             const before = sentence.slice(Math.max(0, m.index - 30), m.index);
             if (NEGATED_BEFORE.test(before) || NEGATION_INSIDE.test(m[0]) || DATA_OF_BEFORE.test(before)) continue;
-            // A cancelled status of a record that was READ this turn and is only repeated in the present. Nothing else is excused:
-            // naming «el estado» does not make «está confirmada» / «está agendada» / «está pagado» a report (that is how a booking
-            // that never happened gets announced).
-            if (reportsReadCancellation(m[0], sentence, before, options.recordFacts ?? [])) continue;
+            // A cancelled / delivered status of a record that was READ this turn, only repeated. Nothing else is excused: naming
+            // «el estado» does not make «está confirmada» / «está agendada» / «está pagado» a report (that is how a booking that
+            // never happened gets announced). The match is read to the end of its last word («ya está cancelad|o»).
+            const matched = m[0] + (/^[a-z]*/.exec(sentence.slice(m.index + m[0].length))?.[0] ?? '');
+            if (reportsReadStatus(matched, sentence, before, options)) continue;
             if (OFFER_LEAD_IN.test(before) || insideQuestion(sentence, m.index, m.index + m[0].length)) continue;
             if (/\besta\b/.test(m[0])) {
                 const subject = sentence.slice(Math.max(0, m.index - 60), m.index);
@@ -239,8 +290,10 @@ const BACKING_TOOL_NAME = new RegExp(
 export interface TurnClaimAuditOptions {
     /** Current customer explicitly requested a CRM note; acknowledgement then means persistence. */
     crmNoteRequested?: boolean;
-    /** The records the turn READ (a listing, the active objects): repeating a cancelled one's status in the present is not a claim. */
+    /** The records the turn READ (a listing, the active objects): repeating a cancelled / delivered one's status is not a claim. */
     recordFacts?: readonly RecordFact[];
+    /** The customer asked this turn for a cancellation: «quedó cancelado» then answers it as done. */
+    customerRequestedCancellation?: boolean;
     /**
      * Canonical "this tool commits a business change" predicate. Callers inside
      * the API pass the tool-policy registry so the audit tracks the real writer
@@ -266,7 +319,9 @@ export function auditTurnClaim(
     toolCalls: Array<{ name?: string; result?: unknown }> | undefined,
     options: TurnClaimAuditOptions = {},
 ): TurnClaimAudit {
-    const operationClaimed = claimsCompletedAction(reply, { recordFacts: options.recordFacts });
+    const operationClaimed = claimsCompletedAction(reply, {
+        recordFacts: options.recordFacts, customerRequestedCancellation: options.customerRequestedCancellation,
+    });
     const noteClaimed = claimsCrmNoteRecorded(reply, options.crmNoteRequested === true);
     const crmClaims: Array<{ name: string; field: string; claimed: boolean; created?: boolean; recorded?: boolean; idField?: string }> = [
         { name: 'add_contact_note', field: 'recorded', claimed: noteClaimed },

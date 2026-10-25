@@ -125,6 +125,7 @@ import {
     isBareWaitPromise,
     toolResultSucceeded,
     claimsTeamRequest,
+    mentionsCancellation,
 } from '../../common/utils/outcome-claim.util';
 import { sanitizeToolResultForModel } from '../../common/utils/tool-error-sanitizer.util';
 import { hasToolCallMarkup, stripToolCallMarkup } from '../../common/utils/tool-call-markup.util';
@@ -7607,7 +7608,8 @@ export class ConversationsService {
         // Saying what state a record is in (read this turn) is not claiming an action. The reads include the ones the runtime
         // ran before the model (required / automatic reads reach the model only as tool messages, not as executed tools).
         const recordFacts = knownRecordFacts([...(executedTools || []), ...toolReadsOfTurnMessages(currentMessages)], trustedContext);
-        const claimOptions = { isBackingTool, recordFacts, crmNoteRequested: explicitlyRequestsCrmNote(customerText) };
+        const claimOptions = { isBackingTool, recordFacts, crmNoteRequested: explicitlyRequestsCrmNote(customerText),
+            customerRequestedCancellation: mentionsCancellation(customerText) };
         const claimAudit = auditTurnClaim(response, backing, claimOptions);
         // The engine decided what this turn says (a re-ask at the confirmation step, a summary, a question): when the
         // model claims a booking outcome that no tool backed, the engine's own text is the reply, word for word. No

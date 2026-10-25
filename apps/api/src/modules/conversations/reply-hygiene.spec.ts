@@ -55,12 +55,16 @@ describe('stating a record\'s status is not claiming an action', () => {
         expect(claimsCompletedAction('Su pedido C03EBDD7 está pagado.', { recordFacts: facts })).toBe(true);
     });
 
-    it('a DEED stays a claim whatever was read: past, passive and first-person forms', () => {
-        for (const text of ['El pedido D1D0D14A quedó cancelado.', 'La cita fue cancelada.', 'Ya cancelé su pedido.', 'Su cita quedó reservada.']) {
+    it('a DEED stays a claim whatever was read: first-person forms, and «quedó cancelado» answering a request to cancel', () => {
+        for (const text of ['La cita fue cancelada.', 'Ya cancelé su pedido.', 'Su cita quedó reservada.']) {
             expect(claimsCompletedAction(text, { recordFacts: read })).toBe(true);
         }
+        expect(claimsCompletedAction('El pedido D1D0D14A quedó cancelado.', { recordFacts: read, customerRequestedCancellation: true })).toBe(true);
         // and a claim with no backing write in the turn is still false
-        expect(auditTurnClaim('El pedido D1D0D14A quedó cancelado.', [], { isBackingTool, recordFacts: read }).falseClaim).toBe(true);
+        expect(auditTurnClaim('El pedido D1D0D14A quedó cancelado.', [], { isBackingTool, recordFacts: read, customerRequestedCancellation: true }).falseClaim).toBe(true);
+        // F4300-33: to a status question («¿ya llegó mi pedido?») «quedó cancelado» reports the cancelled record that was read
+        expect(claimsCompletedAction('El pedido D1D0D14A quedó cancelado.', { recordFacts: read })).toBe(false);
+        expect(claimsCompletedAction('El pedido C03EBDD7 quedó cancelado.', { recordFacts: read })).toBe(true);
     });
 });
 

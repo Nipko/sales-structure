@@ -137,12 +137,51 @@ describe('F4300-33 follow-up: applyOutputGuardrails on the production turn', () 
         s.responseValidator = { validatePrices: jest.fn(() => ({ ok: true, hallucinatedPrices: [] })) };
         return s;
     }
-    const guard = (s: any, reply: string, question: string, status: string, lang: string) => {
+    const guard = (s: any, reply: string, question: string, status: string, lang: string, context: any = {}) => {
         // the corrective rewrite insists, as in production: an unbacked claim ends in the fixed fallback
         s.llmRouter = { execute: jest.fn(async () => ({ content: reply, model: 'test', usage: { promptTokens: 1, completionTokens: 1 }, cost: 0 })) };
-        return s.applyOutputGuardrails(reply, '', turnMessages(question, status), [], 'synthetic-tenant', 'synthetic-conversation', [], lang, [], {});
+        return s.applyOutputGuardrails(reply, '', turnMessages(question, status), [], 'synthetic-tenant', 'synthetic-conversation', [], lang, [], context);
     };
     const FALLBACK = /No puedo darle esa acción por confirmada|I cannot treat that as done|Não posso considerar isso concluído|Je ne peux pas considérer cela comme fait/;
+
+    // Production worker log 25-oct 00:33 UTC (image a758ba75, #205 in): «ma commande est-elle arrivée ?» → this exact reply →
+    // «[Guardrail] Response claimed completed action without backing tool execution — corrective retry» → the fallback. The turn
+    // context carried the cancelled food order AND the lead's open CRM opportunity as active objects: two «records», so a
+    // sentence naming none was not about «the only record read».
+    const ACTIVE_OBJECTS = { activeObjects: { items: [
+        { kind: 'food_order', id: ORDER_ID, source: 'food_orders', status: 'cancelled', statusClass: 'cancelled', amount: 13500, currency: 'COP' },
+        { kind: 'crm_opportunity', id: '0e1f2a3b-1b2c-4d5e-8f90-123456789abc', source: 'opportunities', status: 'consulta', statusClass: 'active', label: 'Pedido restaurante' },
+    ] } };
+    const PRODUCTION: Array<[keyof typeof ARRIVED, string, string]> = [
+        ['fr', 'ma commande est-elle arrivée ?', 'Votre commande a été annulée et le paiement est en attente. Si vous souhaitez, je peux vous aider à passer une nouvelle commande.'],
+        ['es', 'ya llegó mi pedido?', 'Su pedido fue anulado y el pago está pendiente.'],
+        ['pt', 'meu pedido já chegou?', 'Seu pedido foi cancelado e o pagamento está pendente.'],
+        ['en', 'has my order arrived?', 'Your order was cancelled and the payment is pending.'],
+    ];
+
+    it('an open CRM opportunity among the active objects is not a record a status report is about', () => {
+        const facts = knownRecordFacts(toolReadsOfTurnMessages(turnMessages('ma commande est-elle arrivée ?', 'cancelled')), ACTIVE_OBJECTS);
+        expect(facts.length).toBeGreaterThan(0);
+        expect(facts.every(fact => fact.status === 'cancelled')).toBe(true);
+    });
+
+    it.each(PRODUCTION)('[%s] «%s» → «%s» (production reply) is sent as written', async (lang, question, reply) => {
+        const s = service();
+        const out = await guard(s, reply, question, 'cancelled', lang, ACTIVE_OBJECTS);
+        expect(out).toBe(reply);
+        expect(s.recordAgentSignal).not.toHaveBeenCalledWith('synthetic-tenant', 'claim_unbacked', undefined);
+    });
+
+    it.each([
+        ['fr', 'ma commande est-elle arrivée ?', 'Nous avons livré votre commande.'],
+        ['es', 'ya llegó mi pedido?', 'Ya cancelé su pedido 5603A623.'],
+        ['pt', 'meu pedido já chegou?', 'Entregamos o seu pedido hoje.'],
+        ['en', 'has my order arrived?', 'We delivered your order this afternoon.'],
+    ])('[%s] «%s» → «%s» in the same production context is still replaced', async (lang, question, reply) => {
+        const s = service();
+        const out = await guard(s, reply, question, 'cancelled', lang, ACTIVE_OBJECTS);
+        expect(out).toMatch(FALLBACK);
+    });
 
     it.each(CANCELLED_REPORTS)('[%s] «%s» is sent as written', async (lang, reply) => {
         const s = service();

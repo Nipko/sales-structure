@@ -43,6 +43,12 @@ const MESSAGES: Array<[string, string]> = [
     ["parlez-moi de l'Audífono QA Aurora", 'fr'],
     ['how much is the Color y tratamiento?', 'en'],
     ['combien coûte la Consulta general ?', 'fr'],
+    // Production QA 25-oct (image fab82f84): «háblame del Audífono QA Aurora» after a Portuguese case was answered in Portuguese.
+    ['háblame del Audífono QA Aurora', 'es'],
+    ['cuéntame sobre la Spark QA Habitacion', 'es'],
+    ['dime el precio del Spark QA Plato', 'es'],
+    ['muéstrame el Spark QA Inmueble', 'es'],
+    ['explícame la Consulta general', 'es'],
 ];
 
 describe('F4300-16 residual: the words around a catalogue name decide the reply language', () => {

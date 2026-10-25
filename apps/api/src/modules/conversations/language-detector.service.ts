@@ -245,7 +245,12 @@ export class LanguageDetectorService {
             // Not «lleva» (Portuguese «leva» is another word, but «sale» and «come» are English words).
             'es', 'trae', 'contiene', 'contienen', 'viene', 'vienen', 'lleva',
             // Advice a customer asks for: the «ie» of these stems is Spanish only (pt «recomenda», «sugere», fr «recommande»).
-            'recomiendan', 'recomienda', 'recomiendas', 'recomiendo', 'sugieren', 'sugiere', 'sugieres', 'aconsejan', 'aconseja'],
+            'recomiendan', 'recomienda', 'recomiendas', 'recomiendo', 'sugieren', 'sugiere', 'sugieres', 'aconsejan', 'aconseja',
+            // The imperatives of a request (production QA 25-oct, image fab82f84: «háblame del Audífono QA Aurora» after a Portuguese case
+            // was answered in Portuguese — once the name is out only «del» was left). Pronoun-attached forms are Spanish only (pt «fala»,
+            // «conta», «diz», «mostra»; fr «parlez», «dites»).
+            'hablame', 'hableme', 'hablenme', 'cuentame', 'cuenteme', 'cuentenme', 'dime', 'digame', 'diganme', 'muestrame', 'muestreme',
+            'muestrenme', 'explicame', 'expliqueme', 'describeme', 'describame', 'ensename', 'ensenenme', 'recomiendame', 'recomiendeme'],
         pt: ['tem', 'voce', 'voces', 'quanto', 'quanta', 'quantos', 'quantas', 'custa', 'custam', 'posso', 'pode', 'podem', 'quero',
             'preciso', 'gostaria', 'consegue', 'inclui', 'incluem', 'fica', 'ficam', 'estou', 'faz', 'fazem', 'procuro', 'devo', 'qual',
             'quais', 'aceitam', 'oferecem', 'esta', 'estao',

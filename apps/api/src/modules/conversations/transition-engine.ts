@@ -1178,6 +1178,8 @@ export function failedTransitionOf(executed: ReadonlyArray<{ name: string; resul
  * The appointments and orders the turn READ (tool results, the active objects), each with its status and the words that identify
  * it (short reference, product or service name). A reply repeating the status of ONE of them in the present only reports it.
  */
+const NOT_A_CUSTOMER_RECORD: ReadonlySet<string> = new Set(['crm_opportunity', 'course', 'property', 'tour_package', 'real_estate_listing', 'vehicle', 'pet']);
+
 export function knownRecordFacts(executed: ReadonlyArray<{ name: string; result: any }>, context?: any): RecordFact[] {
     const facts: RecordFact[] = [];
     const add = (status: unknown, id: unknown, ...names: unknown[]) => {
@@ -1195,6 +1197,9 @@ export function knownRecordFacts(executed: ReadonlyArray<{ name: string; result:
         }
     }
     for (const item of Array.isArray(context?.activeObjects?.items) ? context.activeObjects.items : []) {
+        // A sales opportunity or a catalogue item is no record of the customer's whose status a reply reports: counted, an open
+        // CRM opportunity made «Votre commande a été annulée» about one of TWO records (F4300-33, 25-oct, FR) and so a claim.
+        if (NOT_A_CUSTOMER_RECORD.has(String(item?.kind))) continue;
         add(item?.statusClass === 'cancelled' ? 'cancelled' : item?.status, item?.id, item?.label, item?.reference);
     }
     for (const order of Array.isArray(context?.recentOrders) ? context.recentOrders : []) add(order?.status, order?.id, order?.label);

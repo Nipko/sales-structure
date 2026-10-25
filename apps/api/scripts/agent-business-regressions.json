@@ -101,6 +101,7 @@
     "apps/api/src/modules/conversations/order-agreed-terms-link.f4300.spec.ts",
     "apps/api/src/modules/conversations/current-message-language.f4300-16b.spec.ts",
     "apps/api/src/modules/conversations/current-message-language.f4300-16c.spec.ts",
+    "apps/api/src/modules/conversations/current-message-language.f4300-16d.spec.ts",
     "apps/api/src/modules/conversations/sold-out-name-lookup.f4300.spec.ts",
     "apps/api/src/modules/conversations/claim-status-read.f4300-33.spec.ts",
     "apps/api/src/modules/conversations/sold-out-name-autoread.f4300.spec.ts",
@@ -108,7 +109,8 @@
     "apps/api/src/modules/conversations/conversations.required-reads-lodging-tours-cues.spec.ts",
     "apps/api/src/modules/conversations/conversations.required-reads-listings-cues.spec.ts",
     "apps/api/src/modules/conversations/conversations.required-reads-tour-seats.spec.ts",
-    "apps/api/src/modules/conversations/unfilled-placeholder.f4300-34.spec.ts"
+    "apps/api/src/modules/conversations/unfilled-placeholder.f4300-34.spec.ts",
+    "apps/api/src/modules/conversations/claim-status-delivery.f4300-33.spec.ts"
   ],
   "postgres": [
     "apps/api/src/modules/faqs/faq-effects.postgres.spec.ts",

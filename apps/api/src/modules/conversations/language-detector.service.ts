@@ -257,7 +257,10 @@ export class LanguageDetectorService {
             'hablame', 'hableme', 'hablenme', 'cuentame', 'cuenteme', 'cuentenme', 'dime', 'digame', 'diganme', 'muestrame', 'muestreme',
             'muestrenme', 'explicame', 'expliqueme', 'describeme', 'describame', 'ensename', 'ensenenme', 'recomiendame', 'recomiendeme',
             // F4300-16f: «¿abierto mañana?». Portuguese writes «aberto», French «ouvert».
-            'abierto', 'abierta', 'abiertos', 'abiertas'],
+            'abierto', 'abierta', 'abiertos', 'abiertas',
+            // F4300-16g (production QA 25-oct, image c9db6219): «ponen implantes dentales?» after an English case was answered in
+            // English twice — no word of it was known. Portuguese writes «põem», «fazemos», «ficam»/«restam», French «mettez».
+            'ponen', 'pones', 'ponemos', 'pongo', 'hacemos', 'haces', 'hace', 'quedaba', 'quedaban', 'quedamos'],
         pt: ['tem', 'voce', 'voces', 'quanto', 'quanta', 'quantos', 'quantas', 'custa', 'custam', 'posso', 'pode', 'podem', 'quero',
             'preciso', 'gostaria', 'consegue', 'inclui', 'incluem', 'fica', 'ficam', 'estou', 'faz', 'fazem', 'procuro', 'devo', 'qual',
             'quais', 'aceitam', 'oferecem', 'esta', 'estao',
@@ -313,7 +316,9 @@ export class LanguageDetectorService {
         es: [/^[\s¿¡"'«]*(?:me|te)\s+\p{L}{2,}(?:as|es)(?!\p{L})/u, /(?<!\p{L})(?:me|te|nos|les?)\s+\p{L}{3,}(?:an|en)(?!\p{L})/u],
         // An English request or question frame: «tell me about…», «what is…», «how much…», «what's…».
         en: [/(?<!\p{L})(?:tell|show|give|send)\s+(?:me|us)(?!\p{L})/u, /(?<!\p{L})(?:what|how|where|which|who)(?:['’]s|\s+(?:is|are|was|much|many|long|does|do|can))(?!\p{L})/u],
-        fr: [/\p{L}-(?:t-)?(?:il|elle|ils|elles|on|vous|nous|je|tu)(?!\p{L})/u, /(?<!\p{L})est-ce(?!\p{L})/u],
+        // F4300-16g: «j'ai réservé un tour ?» (production QA 25-oct, answered in English): the elided «j'» (I) before a verb is
+        // French only — Spanish, Portuguese and English never elide a «j».
+        fr: [/\p{L}-(?:t-)?(?:il|elle|ils|elles|on|vous|nous|je|tu)(?!\p{L})/u, /(?<!\p{L})est-ce(?!\p{L})/u, /(?<!\p{L})j['’]\p{L}/u],
     };
 
     /**
@@ -326,7 +331,9 @@ export class LanguageDetectorService {
             // Portuguese «melhor(es)», French «meilleur»: «qué consulta es mejor…?».
             'mejor', 'mejores'],
         pt: ['janeiro', 'fevereiro', 'maio', 'junho', 'julho', 'setembro', 'outubro', 'novembro', 'dezembro', 'vaga', 'vagas',
-            'pessoas', 'preco', 'frete', 'na', 'nas', 'ao', 'sem'],
+            'pessoas', 'preco', 'frete', 'na', 'nas', 'ao', 'sem',
+            // F4300-16g: «quanto fica dois pratos Spark?». Spanish writes «platos», «dos»; French «plats», «deux».
+            'prato', 'pratos', 'duas'],
         fr: ['janvier', 'fevrier', 'mars', 'avril', 'mai', 'juin', 'juillet', 'aout', 'septembre', 'octobre', 'novembre', 'decembre',
             'garantie', 'semaine', 'samedi', 'dimanche', 'personnes', 'prix', 'il', 'ce',
             // «parlez-moi…», «vous avez quoi à manger ?», «qu'est-ce qu'il y a…»: Spanish «mí/qué», Portuguese «mim/quê».
@@ -437,6 +444,11 @@ export class LanguageDetectorService {
         // F4300-16f: «algo vegetariano?» is Spanish or Portuguese; «promotions» is English or French.
         algo: ['es', 'pt'], vegetariano: ['es', 'pt'], vegetariana: ['es', 'pt'], vegetarianos: ['es', 'pt'], vegetarianas: ['es', 'pt'],
         promotion: ['en', 'fr'], promotions: ['en', 'fr'],
+        // F4300-16g (production QA 25-oct): «quanto fica dois pratos Spark?» after an English case was answered in English —
+        // «dois» is Portuguese «two» AND French «(je) dois», so it was French evidence next to «quanto fica». And «cuántos
+        // Audífono QA Aurora les quedan?» after a French case was answered in French: «les»/«le» are French articles AND the
+        // Spanish dative pronouns («les quedan», «le queda»).
+        dois: ['pt', 'fr'], les: ['es', 'fr'], le: ['es', 'fr'],
     };
 
     /**

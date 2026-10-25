@@ -5409,7 +5409,9 @@ export class ConversationsService {
                 const options = { authority: llmAuthority, channelType: msg.channelType, executionContext: context,
                     commitmentBlocked, deniedTools, jurisdiction: regional?.operatingCountry.value, customerText: userText };
                 run = await runRequiredReads(gate.operation, {
-                    ...(slots ? { slots, customerText: userText } : {}),
+                    // The customer's words name the one row a receipt needs (a listing, a property, a tour, a product: «tell me
+                    // about the Audífono QA Aurora» reads get_product on that product among several).
+                    ...(slots ? { slots } : {}), customerText: userText,
                     publishedTools: turnAllowedTools,
                     alreadyRead: preExecutedTools,
                     projectedContexts: [

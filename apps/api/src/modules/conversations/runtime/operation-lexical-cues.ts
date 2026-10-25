@@ -32,6 +32,14 @@
  * on the listing named or the only one), and «what properties do you have / are available?» is `find_listing`
  * (search_listings: the list, with each listing's price and area, is the answer). A visit, the customer's own appointment, a
  * complaint, a payment or the customer's own property is never a listing read.
+ *
+ * F4300-35 follow-up (production 2026-10-24, store QA tenant with `requiredReads.catalog` on): «tell me about the Audífono QA
+ * Aurora» ran ONLY `search_faqs` (no product read), and the reply repeated the product's description as its state («a fictional
+ * test product that does not correspond to real inventory») next to «2 units available»: with no catalogue row in the turn,
+ * neither the description note nor the output check could apply. A request to be told about or described an item («tell me
+ * about X», «háblame de X», «me fala sobre X», «parlez-moi de X», «describe X», «details of X») is the item read of every pilot
+ * (`product_info`, `menu_info`, `property_info`, `package_info`, `listing_info`), unless it names a topic that is not a catalogue
+ * item (the business itself, its hours, policies, payment, shipping, returns, privacy) or the customer's own records.
  */
 import { normalizeForIntent } from '@parallext/shared';
 import type { RequiredReadsPilot } from './required-reads.runner';
@@ -59,6 +67,38 @@ const folded = (text: unknown): string => normalizeForIntent(text)
     .trim();
 
 /**
+ * «Tell me about / describe X»: the customer asks to be told what an item is (F4300-35 follow-up). es/pt/fr/en, folded text
+ * (accents gone, apostrophes and hyphens are spaces: «parlez-moi de l'Audífono» is «parlez moi de l audifono»).
+ */
+const TELL_ABOUT = new RegExp(`\\b(?:${[
+    // es
+    /\b(?:hablame|hableme|hablanos|cuentame|cuenteme|cuentanos|dime|digame|informame|informeme) (?:mas )?(?:de|del|sobre|acerca)\b/,
+    /\b(?:describe\w*|describa\w*|descripcion)\b/,
+    /\b(?:detalles?|informacion|info|caracteristicas|especificaciones) (?:de|del|sobre|acerca)\b/,
+    /\b(?:que me puedes|que me puede|que puedes|que puede) (?:decir|contar) (?:de|del|sobre|acerca)\b/,
+    // pt
+    /\b(?:me )?(?:fala|fale|conta|conte|diga|diz|explica|explique)(?: me)? (?:mais )?(?:sobre|do|da|de)\b/,
+    /\b(?:descreva|descreve|descricao|detalhes (?:do|da|de|sobre)|informac\w* (?:sobre|do|da))\b/,
+    // fr
+    /\b(?:parlez|parle|dites|dis|racontez|raconte) (?:moi|nous) (?:en plus |plus )?(?:de|du|des|d|sur)\b/,
+    /\b(?:decri\w*|details (?:du|de|des|sur)|informations? (?:sur|du|de la|des))\b/,
+    // en
+    /\b(?:tell|show) (?:me|us) (?:more )?about\b/,
+    /\b(?:what can you tell me about|more about|details (?:of|on|about|for)|information (?:about|on)|info (?:about|on)|specs (?:of|for))\b/,
+].map(re => re.source).join('|')})\\b`);
+/**
+ * What a «tell me about» names that is not a catalogue item: the business itself, its hours, policies, payment, shipping,
+ * returns, privacy, or the customer's own records. Those belong to the classifier and their own reads.
+ */
+const NOT_ITEM_TOPIC = /\b(?:(?:about|sobre|de|acerca de|sur) (?:you|yourself|yourselves|ustedes|usted|vosotros|ti|vous|toi|voces|voce|vos)|yourselves|empresa|company|compania|companhia|entreprise|negocio|business|marca|brand|equipo|team|equipe|historia|history|histoire|horarios?|hours|heures|horaires?|opening|abren|cierran|abrem|fecham|politicas?|policy|policies|politique\w*|terminos|terms|termos|conditions|condiciones|condicoes|privacidad|privacy|privacidade|confidentialite|datos personales|personal data|pagos?|payments?|pagamentos?|paiements?|metodos de pago|envios?|shipping|delivery|domicilios?|entregas?|livraison\w*|devoluc\w*|devolu\w*|returns?|reembols\w*|refunds?|rembours\w*|garantias? de la tienda|faq|faqs|preguntas frecuentes|perguntas frequentes|ubicacion|location|address|direccion|endereco|adresse|contacto|contact|contato|telefono|phone|whatsapp|email|correo|redes sociales|social media|(?:mi|mis|meu|meus|minha|minhas|ma|mes|mon|my|our|nuestro|nuestros|nuestra|nuestras) (?:pedidos?|ordens?|orders?|commandes?|encomendas?|reservas?|reservations?|bookings?|cuenta|account|conta|compte|citas?|appointments?|compras?|purchases?))\b/;
+
+/** The message asks to be told about or described an item, not about the business or the customer's own records. Pure. */
+export function isTellAboutItem(text: unknown): boolean {
+    const t = folded(text);
+    return !!t && t.length <= 400 && TELL_ABOUT.test(t) && !NOT_ITEM_TOPIC.test(t);
+}
+
+/**
  * The message asks about the menu or one of its items: what is on the menu, or the price, ingredients, allergens, diet or
  * preparation time of a dish or drink. Spanish, Portuguese, French and English. Pure.
  */
@@ -66,6 +106,7 @@ export function isMenuQuestion(text: unknown): boolean {
     const t = folded(text);
     if (!t || t.length > 400 || NOT_MENU.test(t)) return false;
     if (MENU.test(t)) return true;
+    if (isTellAboutItem(text)) return true;
     return DISH.test(t) && (PRICE.test(t) || ATTRIBUTE.test(t) || HAVE.test(t));
 }
 
@@ -119,6 +160,7 @@ export function isLodgingQuestion(text: unknown): boolean {
     if (MINIMUM.test(t) && NIGHTS.test(t)) return true;
     if (LODGING.test(t) && PRICE_WORDS.test(t)) return true;
     if (AVAILABLE.test(t) && (LODGING.test(t) || /\d/.test(t))) return true;
+    if (isTellAboutItem(text)) return true;
     return asked(text, t) && (ROOMS.test(t) || AMENITY.test(t));
 }
 
@@ -156,6 +198,7 @@ export function tourQuestionOperation(text: unknown): 'package_availability' | '
     if ((SEATS.test(t) && LEFT.test(t)) || DEPARTURES.test(t) || (TOUR.test(t) && WHEN_OR_AVAILABLE.test(t))) return 'package_availability';
     if (DURATION.test(t) || INCLUDES.test(t) || (TOUR.test(t) && PRICE_WORDS.test(t))) return 'package_info';
     if (LANGUAGE.test(t) && (TOUR.test(t) || GUIDE.test(t))) return 'package_info';
+    if (isTellAboutItem(text)) return 'package_info';
     return null;
 }
 
@@ -199,17 +242,32 @@ export function listingQuestionOperation(text: unknown): 'listing_info' | 'find_
     if (LISTINGS.test(t) && OFFER.test(t)) return 'find_listing';
     if (question && SALE_OR_RENT.test(t)) return 'listing_info';
     if (listing && STILL_AVAILABLE.test(t)) return 'listing_info';
+    if (isTellAboutItem(text)) return 'listing_info';
     return null;
+}
+
+// ── Store (product catalogue) ───────────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The message asks to be told about or described a product of the store (F4300-35 follow-up: «tell me about the Audífono QA
+ * Aurora» ran only search_faqs). Never the customer's own order, a payment, a return or a complaint. Pure.
+ */
+export function isProductQuestion(text: unknown): boolean {
+    const t = folded(text);
+    if (!t || t.length > 400 || NOT_CATALOGUE.test(t) || NOT_MENU.test(t)) return false;
+    return isTellAboutItem(text);
 }
 
 /**
  * The pilot operation the message's own words name, when the turn publishes its read; null otherwise: the restaurant menu
  * (`menu_info` → get_menu), a lodging's details (`property_info` → list_properties), a tour's details or departures
  * (`package_info` / `package_availability` → search_packages) and a real-estate listing or the listings on offer
- * (`listing_info` / `find_listing` → search_listings).
+ * (`listing_info` / `find_listing` → search_listings), and a product the customer asks to be told about (`product_info` →
+ * search_products → get_product).
  */
 export function lexicalRequiredReadsOperation(text: unknown, pilot: RequiredReadsPilot, publishedTools: readonly string[]): string | null {
     if (pilot === 'restaurants' && publishedTools.includes('get_menu') && isMenuQuestion(text)) return 'menu_info';
+    if (pilot === 'catalog' && publishedTools.includes('search_products') && isProductQuestion(text)) return 'product_info';
     if (pilot === 'properties' && publishedTools.includes('list_properties') && isLodgingQuestion(text)) return 'property_info';
     if (pilot === 'tours' && publishedTools.includes('search_packages')) return tourQuestionOperation(text);
     if (pilot === 'listings' && publishedTools.includes('search_listings')) return listingQuestionOperation(text);

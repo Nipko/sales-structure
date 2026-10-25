@@ -111,8 +111,9 @@ import { markCatalogEmpty } from './catalog-empty.util';
 import { catalogPriceStatus } from './catalog-price-status';
 import { notForSaleMatch, NOT_FOR_SALE_MATCH_LIMIT, NOT_FOR_SALE_MATCHES_NOTE, productAvailabilityScope, readsNotForSaleMatches } from './sold-out-visibility';
 import { listTotal } from './list-total';
-import { PACKAGE_FIELD_AUTHORITY, PACKAGE_SEATS_NOTE, packageDuration } from './package-structured-fields';
+import { PACKAGE_FIELD_AUTHORITY, PACKAGE_LANGUAGES_NOTE, PACKAGE_SEATS_NOTE, packageDuration, packageLanguages } from './package-structured-fields';
 import { LISTING_FIELD_AUTHORITY } from './listing-structured-fields';
+import { attachDescriptionAuthority } from './description-authority';
 import {
     ClosestListing, closestMatchesNote, describeListingVerdict, givenListingCriteria, LOCATION_LISTING_CRITERIA,
     ListingSearchCriteria, selectClosestListings,
@@ -1257,7 +1258,8 @@ export class AIToolExecutorService {
             // «nothing matches these filters».
             const handlerResult = await markCatalogEmpty(this.prisma, toolName, schemaName, await executeHandler());
             if (handlerResult?.error === 'agent_operational_revision_changed') throw new ServedAgentAuthorityError();
-            const result = attachWriterActiveObject(toolName, handlerResult, args);
+            // F4300-35: a catalogue row's description is marketing text, never its sale or availability state.
+            const result = attachDescriptionAuthority(toolName, attachWriterActiveObject(toolName, handlerResult, args));
             if(['place_catalog_order','cancel_catalog_order'].includes(toolName) && result && typeof result==='object' && 'success' in result && result.success===true) catalogCommitted=true;
             if (this.toolExecutionControl && controlDecision) {
                 // A handler result is not acknowledged until the central ledger
@@ -4811,13 +4813,15 @@ export class AIToolExecutorService {
                     priceStatus: catalogPriceStatus(p.price),
                     currency: p.currency || null,
                     destination: p.destination,
-                    languages: p.languages || [],
+                    // F4300-32: an empty list is said as what it is, never left for the model to guess a language.
+                    languages: packageLanguages(p.languages),
                     // Seats belong to a departure: only a dated search has them (PACKAGE_SEATS_NOTE says where they are otherwise).
                     ...(p.available_seats !== undefined && p.available_seats !== null ? { seatsLeft: p.available_seats } : {}),
                 })),
                 // Production 24-oct: a package description («a fictional QA experience») was read over its 4-hour duration.
                 ...(packages.length ? { fieldAuthority: PACKAGE_FIELD_AUTHORITY } : {}),
                 ...(packages.length && !args.date ? { seatsNote: PACKAGE_SEATS_NOTE } : {}),
+                ...(packages.length ? { languagesNote: PACKAGE_LANGUAGES_NOTE } : {}),
             };
         } catch (e: any) {
             // A date that cannot be sold is not a failed search: say which problem it is, so the
@@ -4872,7 +4876,7 @@ export class AIToolExecutorService {
                 currency: pkg.currency,
                 destination: pkg.destination,
                 departureLocation: pkg.departure_location,
-                languages: pkg.languages || [],
+                languages: packageLanguages(pkg.languages),
                 includes: pkg.includes || [],
                 excludes: pkg.excludes || [],
                 whatToBring: pkg.what_to_bring,
@@ -4885,6 +4889,7 @@ export class AIToolExecutorService {
                     priceOverride: i.price_override ? Number(i.price_override) : null,
                 })),
                 fieldAuthority: PACKAGE_FIELD_AUTHORITY,
+                languagesNote: PACKAGE_LANGUAGES_NOTE,
             };
         } catch (e: any) {
             return this.safeToolFailure('get_package_details', e, 'read');

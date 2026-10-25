@@ -131,11 +131,18 @@ const SEATS = /\b(?:cupos?|lugares|plazas?|asientos?|places?|vagas?|seats?|spots
 /** …that are left. */
 const LEFT = /\b(?:quedan|queda|restan|resta|disponibles?|libres?|hay|left|remaining|available|restent|reste|restantes?|restam|sobram|sobra|disponiveis|livres?|how many|cuant\w*|quant\w*|combien|still)\b/;
 /** Departures and their dates, on their own. */
-const DEPARTURES = /\b(?:salidas|proxim\w* salida|siguiente salida|saidas|proxim\w* saida|departs|prochain\w* depart|next departure|departures|fechas|datas|dates|proxim\w* fecha|proxim\w* data|prochain\w* date|next date)\b/;
+const DEPARTURES = /\b(?:salidas|proxim\w* salida|siguiente salida|saidas|proxim\w* saida|departs|prochain\w* depart|next departure|departures?|fechas|datas|dates|proxim\w* fecha|proxim\w* data|prochain\w* date|next date)\b/;
 /** When it leaves, or whether it is available: about a tour. */
 const WHEN_OR_AVAILABLE = /\b(?:cuando sale\w*|quando sai\w*|quand part\w*|when does|when do|when is|horarios?|schedule|disponib\w*|available|availability)\b/;
 /** How long it lasts. */
 const DURATION = /\b(?:cuanto dura\w*|duracion|dura|duran|duracao|quanto tempo|combien de temps|duree|dure|durent|how long|duration|lasts|cuant[oa]s (?:dias|horas|noches)|quant[oa]s (?:dias|horas|noites)|combien de (?:jours|heures|nuits)|how many (?:days|hours|nights))\b/;
+/**
+ * The languages it is guided in (F4300-32, production 2026-10-24): «en qué idiomas es el Spark QA Tour?» ran only search_faqs and
+ * search_packages and was answered «no tengo esa información» (the package has languages ['es']); «em que idiomas é o Tour QA
+ * Aurora?» (languages []) was answered «espanhol». Only next to a tour word or a guide: «¿en qué idiomas atienden?» is not a tour.
+ */
+const LANGUAGE = /\b(?:idiomas?|idiomes?|lenguas?|linguas?|languages?|langues?|langue|bilingu\w*|in english|en ingles|em ingles|en anglais|in spanish|en espanol|em espanhol|en espagnol|in french|en frances|em frances|en francais|in portuguese|en portugues|em portugues|en portugais)\b/;
+const GUIDE = /\b(?:guias?|guides?|guided|guiad[oa]s?|guidee?s?)\b/;
 /** What it includes or excludes, and what to bring. */
 const INCLUDES = /\b(?:incluye\w*|incluid\w*|inclui\w*|inclus\w*|incluso|include\w*|exclu\w*|comprend\w*|que trae|what to bring|que llevar|o que levar|apporter)\b/;
 
@@ -148,6 +155,7 @@ export function tourQuestionOperation(text: unknown): 'package_availability' | '
     if (!t || t.length > 400 || NOT_CATALOGUE.test(t) || MY_BOOKING.test(t)) return null;
     if ((SEATS.test(t) && LEFT.test(t)) || DEPARTURES.test(t) || (TOUR.test(t) && WHEN_OR_AVAILABLE.test(t))) return 'package_availability';
     if (DURATION.test(t) || INCLUDES.test(t) || (TOUR.test(t) && PRICE_WORDS.test(t))) return 'package_info';
+    if (LANGUAGE.test(t) && (TOUR.test(t) || GUIDE.test(t))) return 'package_info';
     return null;
 }
 

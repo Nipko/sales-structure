@@ -258,14 +258,55 @@ export function isProductQuestion(text: unknown): boolean {
     return isTellAboutItem(text);
 }
 
+// ── The customer's own past orders («what did I buy last time?») ───────────────────────────────────────────────────────
+
+/**
+ * F4300-11 (production QA 2026-10-22 and 25-oct): «¿cuáles son mis pedidos?», «what did I buy last time?» (store) and «qué pedí
+ * la última vez?» (restaurant) are questions about the customer's own orders. The store's answer was replaced by the
+ * outcome-claim template twice in a row; the restaurant read only list_my_orders, which carries no items, and answered «No tengo
+ * detalles específicos de los ítems que pidió» about an order whose dish was one detail read away.
+ *
+ * Folded text (accents gone, apostrophes are spaces: «qu'est-ce que j'ai acheté» is «qu est ce que j ai achete»).
+ */
+const PAST_ORDERS = new RegExp(`(?:${[
+    // es: «qué pedí / compré», «lo que compré», «mis pedidos», «mi último pedido», «mi última compra», «mis compras»
+    /\b(?:que|cual|cuales|lo que) (?:fue lo que )?(?:yo )?(?:le )?(?:pedi|compre|ordene|encargue|pedimos|compramos)\b/,
+    /\b(?:mis|mi) (?:ultim[oa]s? |anterior(?:es)? |previ[oa]s? )?(?:pedidos|compras|ordenes)\b/,
+    /\bmi (?:ultim[oa]|anterior|previ[oa]) (?:pedido|compra|orden)\b|\bmi (?:pedido|compra|orden) (?:anterior|pasad[oa])\b/,
+    // en: «what did I buy / order», «what I purchased», «my last order», «my orders», «my purchase history»
+    /\bwhat (?:did|have) (?:i|we) (?:order|buy|purchase|get)\w*\b|\bwhat (?:i|we) (?:ordered|bought|purchased)\b/,
+    /\bmy (?:last|latest|previous|recent|most recent|past) (?:orders?|purchases?)\b|\bmy (?:orders|purchases|order history|purchase history)\b/,
+    // pt: «o que eu pedi / comprei», «meus pedidos», «meu último pedido», «minha última compra»
+    /\b(?:o que|que) (?:eu )?(?:pedi|comprei|encomendei|pedimos|compramos)\b/,
+    /\b(?:meus pedidos|minhas compras|minhas encomendas|meu ultimo pedido|minha ultima compra|minha ultima encomenda|meu pedido anterior|minha compra anterior)\b/,
+    // fr: «qu'est-ce que j'ai acheté / commandé», «ce que j'ai acheté», «mes commandes», «ma dernière commande», «mon dernier achat»
+    /\b(?:qu est ce que|ce que|qu) j ai (?:commande|achete|pris)\b|\bj ai (?:commande|achete) quoi\b/,
+    /\b(?:mes commandes|mes achats|ma derniere commande|mon dernier achat|ma commande precedente|mon achat precedent)\b/,
+].map(re => re.source).join('|')})`);
+/**
+ * A write about those orders, or a new order: never only a question about the past («cancel my last order», «I want to pay my
+ * order», «repeat what I ordered», «quiero pedir lo mismo otra vez»).
+ */
+const PAST_ORDERS_ACTION = /\b(?:cancel\w*|anul\w*|annul\w*|reembols\w*|refund\w*|rembours\w*|devol\w*|devolu\w*|pagar|pay|payer|pague|paye|repet\w*|repeat\w*|repit\w*|again|otra vez|de nuevo|de novo|outra vez|encore|modific\w*|cambiar|change\w*|alterar|quiero (?:pedir|comprar|ordenar)|want to (?:order|buy)|quero (?:pedir|comprar)|je veux (?:commander|acheter)|quej\w*|reclam\w*|complain\w*|plainte\w*)\b/;
+
+/** The customer asks about their own past orders or purchases (es/en/pt/fr), and asks for nothing to be done to them. Pure. */
+export function isPastOrdersQuestion(text: unknown): boolean {
+    const t = folded(text);
+    return !!t && t.length <= 400 && PAST_ORDERS.test(t) && !PAST_ORDERS_ACTION.test(t);
+}
+
 /**
  * The pilot operation the message's own words name, when the turn publishes its read; null otherwise: the restaurant menu
  * (`menu_info` → get_menu), a lodging's details (`property_info` → list_properties), a tour's details or departures
  * (`package_info` / `package_availability` → search_packages) and a real-estate listing or the listings on offer
  * (`listing_info` / `find_listing` → search_listings), and a product the customer asks to be told about (`product_info` →
- * search_products → get_product).
+ * search_products → get_product), and the customer's own past orders (`check_my_orders` → list_my_orders, `track_catalog_order` →
+ * list_my_catalog_orders).
  */
 export function lexicalRequiredReadsOperation(text: unknown, pilot: RequiredReadsPilot, publishedTools: readonly string[]): string | null {
+    // F4300-11: «qué pedí la última vez?» / «what did I buy last time?» is the customer's own orders, before any menu or product word.
+    if (pilot === 'restaurants' && publishedTools.includes('list_my_orders') && isPastOrdersQuestion(text)) return 'check_my_orders';
+    if (pilot === 'catalog' && publishedTools.includes('list_my_catalog_orders') && isPastOrdersQuestion(text)) return 'track_catalog_order';
     if (pilot === 'restaurants' && publishedTools.includes('get_menu') && isMenuQuestion(text)) return 'menu_info';
     if (pilot === 'catalog' && publishedTools.includes('search_products') && isProductQuestion(text)) return 'product_info';
     if (pilot === 'properties' && publishedTools.includes('list_properties') && isLodgingQuestion(text)) return 'property_info';

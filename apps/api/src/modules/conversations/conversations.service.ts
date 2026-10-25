@@ -6,7 +6,8 @@ import { runSafetyTriage, type SafetyTriageTurnOutcome } from './runtime/safety-
 import { buildOperationShadowTrace, OperationClassifierService, type OperationShadowVerdict } from './runtime/operation-classifier.service';
 import { buildRequiredReadsTrace, REQUIRED_READ_TIMEOUT_MS, requiredReadDefaultArgs, requiredReadsGate, requiredReadsPilotForProfile, runRequiredReads,
     type RequiredReadResult, type RequiredReadsPilot } from './runtime/required-reads.runner';
-import { isTellAboutItem, lexicalRequiredReadsOperation } from './runtime/operation-lexical-cues';
+import { isPastOrdersQuestion, isTellAboutItem, lexicalRequiredReadsOperation } from './runtime/operation-lexical-cues';
+import { pastOrdersReportText } from './past-orders-report';
 import { listingSearchSlotsIn, requiredReadSlotsIn } from './runtime/required-read-slots';
 import { demoAllowanceExhaustedText } from '../widget/widget-demo-link';
 import { recordFirstReply } from '../../common/utils/first-reply.util';
@@ -211,7 +212,7 @@ import {
     VerticalTurnContextService,
 } from './vertical-turn-context.service';
 import { TurnCapabilityComposerService, type ComposedTurnCapability } from './turn-capability-composer.service';
-import { normalizeCustomerIntent } from '../../common/conversation/intent-normalizer';
+import { isInformationSeekingMessage, normalizeCustomerIntent } from '../../common/conversation/intent-normalizer';
 
 /** Max characters of history to send to the LLM to avoid exceeding context window */
 // History budget in TOKENS (not chars), measured against the smallest context window
@@ -483,6 +484,8 @@ const canonicalToolArguments = (raw: unknown): string => {
 };
 const unverifiedClaimFallbackText = (lang?: string) =>
     UNVERIFIED_CLAIM_FALLBACK[(lang || 'es').slice(0, 2).toLowerCase()] || UNVERIFIED_CLAIM_FALLBACK.es;
+/** Is this text the fixed «I cannot treat that as done…» reply, in any language? */
+const isUnverifiedClaimFallback = (text: unknown) => typeof text === 'string' && Object.values(UNVERIFIED_CLAIM_FALLBACK).includes(text.trim());
 
 /** The text of the customer's latest message in a model transcript (a string, or the text parts of a multimodal one). */
 function lastCustomerText(messages: ReadonlyArray<any> | undefined): string {
@@ -490,6 +493,19 @@ function lastCustomerText(messages: ReadonlyArray<any> | undefined): string {
     const content = last?.content;
     if (typeof content === 'string') return content;
     if (Array.isArray(content)) return content.map((part: any) => (typeof part === 'string' ? part : String(part?.text ?? ''))).join(' ').trim();
+    return '';
+}
+
+/** The agent's reply before the customer's latest message (what the customer is answering), or '' when there is none. */
+function lastAssistantText(messages: ReadonlyArray<any> | undefined): string {
+    const list = messages || [];
+    let index = list.length - 1;
+    while (index >= 0 && list[index]?.role !== 'user') index--;
+    for (index--; index >= 0; index--) {
+        const message = list[index];
+        if (message?.role === 'user') return '';
+        if (message?.role === 'assistant' && typeof message.content === 'string' && message.content.trim()) return message.content;
+    }
     return '';
 }
 
@@ -7690,7 +7706,21 @@ export class ConversationsService {
         // model claims a booking outcome that no tool backed, the engine's own text is the reply, word for word. No
         // rewrite round trip, which a model that insists would turn into the generic fallback.
         const engineText = String((trustedContext as any)?.engineReplyText ?? '').trim();
-        if (claimAudit.falseClaim && isAttendanceReassurance(customerText)) {
+        // F4300-11: a question about the customer's own past orders («what did I buy last time?», «¿cuáles son mis pedidos?»), or
+        // the customer's clarification right after the fixed claim text («I'm not asking you to confirm anything…»), asks for
+        // nothing to be done. A claim caught in that draft is corrected from the orders the turn read: the newest order with its
+        // real status, never «I cannot treat that as done — shall I ask the team?» (twice in a row in production).
+        const draftBeforeClaimGuard = response;
+        const claimTemplateWasLastReply = isUnverifiedClaimFallback(lastAssistantText(currentMessages));
+        const questionOnly = isPastOrdersQuestion(customerText)
+            || (claimTemplateWasLastReply && isInformationSeekingMessage(customerText) && !mentionsCancellation(customerText));
+        const pastOrdersReply = claimAudit.falseClaim && questionOnly
+            ? pastOrdersReportText([...(executedTools || []), ...toolReadsOfTurnMessages(currentMessages)], lang) : null;
+        if (claimAudit.falseClaim && pastOrdersReply && !claimsCompletedAction(pastOrdersReply)) {
+            this.recordAgentSignal(tenantId, 'claim_unbacked', session);
+            this.logger.warn(`[Guardrail] A question about past orders drew an unbacked outcome claim — answered from the orders read: "${response.slice(0, 100)}"`);
+            response = pastOrdersReply;
+        } else if (claimAudit.falseClaim && isAttendanceReassurance(customerText)) {
             // «No cancelen mi cita, voy en camino»: the customer asked for nothing to be done. The reply claimed an outcome nothing
             // backed; the answer is an acknowledgement, not «I cannot treat that as done — shall I ask a person?».
             this.recordAgentSignal(tenantId, 'claim_unbacked', session);
@@ -7741,6 +7771,14 @@ export class ConversationsService {
                 this.logger.warn(`[Guardrail] False claim corrective retry failed: ${e.message}`);
                 response = unverifiedClaimFallbackText(lang);
             }
+        }
+        // F4300-11: the fixed claim text never goes out twice in a row to a question. With no order read to answer from, the
+        // draft goes without the sentences that claimed an outcome; when nothing else is left, the honest «I could not answer».
+        if (questionOnly && claimTemplateWasLastReply && isUnverifiedClaimFallback(response)) {
+            const kept = draftBeforeClaimGuard.split(/(?<=[.!?])\s+|\n+/)
+                .filter(sentence => sentence.trim() && !auditTurnClaim(sentence, backing, claimOptions).falseClaim).join(' ').trim();
+            this.logger.warn('[Guardrail] The fixed claim text was the previous reply to this question — not sent again');
+            response = kept && !auditTurnClaim(kept, backing, claimOptions).falseClaim ? kept : answerLostText(lang);
         }
 
         // Prometer para después algo que YA se hizo deja al cliente esperando.

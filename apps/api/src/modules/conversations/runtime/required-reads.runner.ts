@@ -59,6 +59,7 @@ import { toolBatchRequiresSequentialExecution } from '../tool-policy-registry';
 import { isFailedToolResult } from '../trusted-price-context';
 import { OPERATION_CONFIDENCE_THRESHOLD, type OperationShadowVerdict } from './operation-classifier.service';
 import type { RequiredReadSlots } from './required-read-slots';
+import { isPastOrdersQuestion } from './operation-lexical-cues';
 
 export type RequiredReadsPilot = 'restaurants' | 'catalog' | 'properties' | 'tours' | 'listings';
 
@@ -367,7 +368,9 @@ function wordNamedRow(rows: Array<{ row: any; name: string }>, text: string): an
  * The one record id a receipt names: the only row, the one row the customer named, or the only still-open row.
  * `null` with a reason when there is none or more than one.
  */
-export function pickReceiptId(result: any, ref: ReceiptRef, customerText?: string): { id: string } | { reason: 'no_receipt' | 'ambiguous_receipt' } {
+export function pickReceiptId(
+    result: any, ref: ReceiptRef, customerText?: string, options: { newest?: boolean } = {},
+): { id: string } | { reason: 'no_receipt' | 'ambiguous_receipt' } {
     const rows: any[] = Array.isArray(result?.[ref.container]) ? result[ref.container] : [];
     const ids = (list: any[]) => list.map(row => row?.[ref.field]).filter((id): id is string => typeof id === 'string' && !!id.trim());
     const all = ids(rows);
@@ -375,9 +378,30 @@ export function pickReceiptId(result: any, ref: ReceiptRef, customerText?: strin
     if (all.length === 1) return { id: all[0] };
     const named = ids([namedRow(rows, customerText)].filter(Boolean));
     if (named.length === 1) return { id: named[0] };
+    // «what did I order last time?»: the newest record, whatever its status (F4300-11).
+    if (options.newest) {
+        const id = newestRow(rows)?.[ref.field];
+        if (typeof id === 'string' && id.trim()) return { id };
+    }
     const open = ids(rows.filter(row => typeof row?.status !== 'string' || !CLOSED_STATUSES.has(row.status.toLowerCase())));
     return open.length === 1 ? { id: open[0] } : { reason: 'ambiguous_receipt' };
 }
+
+/** The most recent row by `createdAt` (or `created_at`); without a date on every row, the first (order readers list newest first). */
+function newestRow(rows: any[]): any {
+    const time = (row: any) => Date.parse(String(row?.createdAt ?? row?.created_at ?? ''));
+    if (!rows.every(row => Number.isFinite(time(row)))) return rows[0];
+    return rows.reduce((best, row) => (time(row) > time(best) ? row : best), rows[0]);
+}
+
+/**
+ * The detail read that holds what a past order contained, for an orders list that does not carry its items: the restaurant's
+ * list_my_orders gives only `itemCount` (F4300-11, «qué pedí la última vez?» → «No tengo detalles específicos de los ítems
+ * que pidió» about an order with one dish). The store's list_my_catalog_orders carries each order's items already.
+ */
+const PAST_ORDER_DETAIL_READ: Readonly<Record<string, string>> = Object.freeze({
+    check_my_orders: 'check_order_status',
+});
 
 /**
  * The reads a pilot runs for an operation and this message. The catalogue's reads, except where the pilot overrides them
@@ -388,7 +412,7 @@ export function pickReceiptId(result: any, ref: ReceiptRef, customerText?: strin
  *     can be told (`check_package_availability` cannot run without a date and is left `missing_slot`);
  *   - a tour operation with a departure date in the message reads `check_package_availability` for that date.
  */
-export function requiredReadsPlan(operation: OperationDefinition, slots: RequiredReadSlots = {}): OperationRequiredRead[] {
+export function requiredReadsPlan(operation: OperationDefinition, slots: RequiredReadSlots = {}, customerText?: string): OperationRequiredRead[] {
     const contract = (tool: string): OperationRequiredRead => {
         const found = READ_TOOL_CONTRACTS[tool];
         return { tool, argsFrom: found?.argsFrom ?? {}, ...(found?.projection ? { projection: found.projection } : {}) };
@@ -407,6 +431,9 @@ export function requiredReadsPlan(operation: OperationDefinition, slots: Require
     if (pilot === 'tours' && slots.starts_at && !has('check_package_availability')) {
         plan.push(contract('check_package_availability'));
     }
+    // «qué pedí la última vez?» / «what did I order?»: what the order held is in its detail read (of the newest order).
+    const detail = PAST_ORDER_DETAIL_READ[operation.key];
+    if (detail && !has(detail) && isPastOrdersQuestion(customerText)) plan.push(contract(detail));
     return plan;
 }
 
@@ -462,7 +489,9 @@ export async function runRequiredReads(operation: OperationDefinition, io: Requi
     const failed = new Set<string>();
 
     const slots = io.slots ?? {};
-    const plan = requiredReadsPlan(operation, slots).map(read => {
+    // A question about the customer's past orders: an order detail read is of the newest order when several were listed.
+    const pastOrders = isPastOrdersQuestion(io.customerText);
+    const plan = requiredReadsPlan(operation, slots, io.customerText).map(read => {
         const receipts = Object.entries(read.argsFrom).flatMap(([arg, source]) => {
             const refs = parseReceipt(source);
             return refs.length ? [{ arg, refs }] : [];
@@ -553,7 +582,7 @@ export async function runRequiredReads(operation: OperationDefinition, io: Requi
                 blocked = refs.some(candidate => failed.has(candidate.tool)) ? 'upstream_failed' : 'no_receipt';
                 break;
             }
-            const picked = pickReceiptId(answers.get(ref.tool), ref, io.customerText);
+            const picked = pickReceiptId(answers.get(ref.tool), ref, io.customerText, { newest: pastOrders });
             if ('reason' in picked) { blocked = picked.reason; break; }
             args[arg] = picked.id;
         }

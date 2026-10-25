@@ -111,7 +111,7 @@ import { markCatalogEmpty } from './catalog-empty.util';
 import { catalogPriceStatus } from './catalog-price-status';
 import { notForSaleMatch, NOT_FOR_SALE_MATCH_LIMIT, NOT_FOR_SALE_MATCHES_NOTE, productAvailabilityScope, readsNotForSaleMatches } from './sold-out-visibility';
 import { listTotal } from './list-total';
-import { PACKAGE_FIELD_AUTHORITY, packageDuration } from './package-structured-fields';
+import { PACKAGE_FIELD_AUTHORITY, PACKAGE_SEATS_NOTE, packageDuration } from './package-structured-fields';
 import { LISTING_FIELD_AUTHORITY } from './listing-structured-fields';
 import {
     ClosestListing, closestMatchesNote, describeListingVerdict, givenListingCriteria, LOCATION_LISTING_CRITERIA,
@@ -4812,10 +4812,12 @@ export class AIToolExecutorService {
                     currency: p.currency || null,
                     destination: p.destination,
                     languages: p.languages || [],
-                    seatsLeft: p.available_seats ?? null,
+                    // Seats belong to a departure: only a dated search has them (PACKAGE_SEATS_NOTE says where they are otherwise).
+                    ...(p.available_seats !== undefined && p.available_seats !== null ? { seatsLeft: p.available_seats } : {}),
                 })),
                 // Production 24-oct: a package description («a fictional QA experience») was read over its 4-hour duration.
                 ...(packages.length ? { fieldAuthority: PACKAGE_FIELD_AUTHORITY } : {}),
+                ...(packages.length && !args.date ? { seatsNote: PACKAGE_SEATS_NOTE } : {}),
             };
         } catch (e: any) {
             // A date that cannot be sold is not a failed search: say which problem it is, so the

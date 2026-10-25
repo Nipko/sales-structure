@@ -1182,18 +1182,24 @@ const NOT_A_CUSTOMER_RECORD: ReadonlySet<string> = new Set(['crm_opportunity', '
 
 export function knownRecordFacts(executed: ReadonlyArray<{ name: string; result: any }>, context?: any): RecordFact[] {
     const facts: RecordFact[] = [];
-    const add = (status: unknown, id: unknown, ...names: unknown[]) => {
-        if (typeof status !== 'string' || !status.trim()) return;
+    const add = (status: unknown, id: unknown, ...names: unknown[]): RecordFact | null => {
+        if (typeof status !== 'string' || !status.trim()) return null;
         const tokens = [typeof id === 'string' && id ? shortReference(id) : '', ...names].filter((token): token is string => typeof token === 'string' && token.trim().length >= 3);
-        if (tokens.length) facts.push({ status: status.trim().toLowerCase(), tokens });
+        if (!tokens.length) return null;
+        const fact: RecordFact = { status: status.trim().toLowerCase(), tokens };
+        facts.push(fact);
+        return fact;
     };
     for (const { name, result } of executed || []) {
         if (!result || typeof result !== 'object' || isWriteResultName(name)) continue;
         for (const row of [...(Array.isArray(result.appointments) ? result.appointments : []), result.appointment]) add(row?.status, row?.id, row?.service);
         // check_order_status answers with the order itself at the root ({ id, status, items: [{ name }] }).
         const flatOrder = /order/.test(name) && typeof result.status === 'string' && typeof result.id === 'string' ? result : null;
-        for (const row of [...(Array.isArray(result.orders) ? result.orders : []), result.order, flatOrder]) {
-            add(row?.status, row?.id, ...(Array.isArray(row?.items) ? row.items.map((item: any) => item?.productName ?? item?.name) : []));
+        const listed: any[] = Array.isArray(result.orders) ? result.orders : [];
+        for (const row of [...listed, result.order, flatOrder]) {
+            const fact = add(row?.status, row?.id, ...(Array.isArray(row?.items) ? row.items.map((item: any) => item?.productName ?? item?.name) : []));
+            // The order readers list newest first: the first row is «su último pedido» (F4300-11).
+            if (fact && row === listed[0]) fact.latest = true;
         }
     }
     for (const item of Array.isArray(context?.activeObjects?.items) ? context.activeObjects.items : []) {

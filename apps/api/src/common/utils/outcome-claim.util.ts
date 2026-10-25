@@ -177,7 +177,12 @@ const STATUS_FAMILIES: ReadonlyArray<{ words: RegExp; statuses: ReadonlySet<stri
 ];
 
 /** A record the turn read: its status and the words that identify it (its short reference, its product or service name). */
-export interface RecordFact { status: string; tokens: readonly string[] }
+export interface RecordFact {
+    status: string;
+    tokens: readonly string[];
+    /** The newest record of a listing the turn read (the order readers list newest first): «su último pedido» is this one. */
+    latest?: boolean;
+}
 
 /**
  * The status repeated as a state: present («está», «is», «est»), impersonal passive («fue», «was», «has been», «foi», «a été»)
@@ -216,11 +221,18 @@ function reportsReadStatus(matched: string, sentence: string, before: string, op
     const inFamily = (fact: RecordFact) => family.statuses.has(String(fact.status).toLowerCase());
     const named = (fact: RecordFact) => fact.tokens.some(token => normalize(String(token)).length >= 3 && sentence.includes(normalize(String(token))));
     if (facts.some(fact => inFamily(fact) && named(fact))) return true;
-    // «Su último pedido fue cancelado» names no reference: it can only be about the record when the turn read exactly one.
     if (facts.some(named)) return false;
-    const records = new Set(facts.map(fact => normalize(String(fact.tokens[0] ?? ''))));
-    return records.size === 1 && facts.every(inFamily);
+    // «Su último pedido fue cancelado» / «that order has been cancelled» names no reference. It is a report when it is true of
+    // whichever record it means: every record the turn read has that status (F4300-11: six orders read, all cancelled, and
+    // «what did I buy last time?» answered with the template), or it says «last / latest» and the newest record of the
+    // listing has it.
+    if (facts.length && facts.every(inFamily)) return true;
+    const newest = facts.filter(fact => fact.latest);
+    return LATEST_WORD.test(sentence) && newest.length > 0 && newest.every(inFamily);
 }
+
+/** «último / last / latest / most recent / dernier / mais recente»: the newest record of a listing. */
+const LATEST_WORD = /\b(?:ultim[oa]s?|mas recientes?|last|latest|most recent|newest|derniere?s?|plus recente?s?|mais recentes?)\b/;
 
 export function claimsCompletedAction(reply: unknown, options: ClaimDetectionOptions = {}): boolean {
     if (typeof reply !== 'string' || !reply.trim()) return false;

@@ -178,7 +178,8 @@ describe('references', () => {
         expect(knownRecordIds(executed, context).sort()).toEqual([ORDER, ORDER_2, APPT].sort());
         // a write's own result is the thing the claim guard audits, never evidence of a read state
         expect(knownRecordFacts(executed, context)).toEqual([
-            { status: 'cancelled', tokens: ['C03EBDD7', 'Audífono QA Aurora'] },
+            // the first row of an orders listing is the newest order («su último pedido», F4300-11)
+            { status: 'cancelled', tokens: ['C03EBDD7', 'Audífono QA Aurora'], latest: true },
             { status: 'confirmed', tokens: ['AE3D0C86'] },
         ]);
         expect(knownRecordFacts([{ name: 'cancel_catalog_order', result: { order: { id: ORDER_2, status: 'cancelled' } } }])).toEqual([]);

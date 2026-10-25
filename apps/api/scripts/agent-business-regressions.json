@@ -118,7 +118,9 @@
     "apps/api/src/modules/conversations/description-authority.f4300-35b.spec.ts",
     "apps/api/src/modules/conversations/conversations.required-reads-tell-about-cues.spec.ts",
     "apps/api/src/modules/conversations/description-authority.f4300-35c.spec.ts",
-    "apps/api/src/modules/conversations/conversations.required-reads-tell-about-projected.spec.ts"
+    "apps/api/src/modules/conversations/conversations.required-reads-tell-about-projected.spec.ts",
+    "apps/api/src/modules/conversations/claim-past-orders.f4300-11.spec.ts",
+    "apps/api/src/modules/conversations/runtime/required-reads.past-orders.f4300-11.spec.ts"
   ],
   "postgres": [
     "apps/api/src/modules/faqs/faq-effects.postgres.spec.ts",

@@ -150,7 +150,7 @@ const ROW_LISTS = ['items', 'products', 'properties', 'packages', 'listings', 'v
 const CLOSED_STATUS = /^(?:inactive|inactivo|archived|draft|sold|sold_out|soldout|unavailable|withdrawn|retired|disabled|paused|reserved|rented|closed|agotado)$/;
 
 /** `labels`: the row's place fields (address, city, zone…), said as they are like its name, never a claim. */
-interface CatalogRow { name: string; description: string; offered: boolean; labels: string[] }
+interface CatalogRow { name: string; description: string; offered: boolean; labels?: string[] }
 
 /** Where a record is: the business writes these, and a QA or real one may hold any word («Direccion sintetica QA»). */
 const PLACE_FIELDS = ['address', 'city', 'location', 'location_address', 'locationAddress', 'neighborhood', 'zone', 'district', 'destination', 'departure_location', 'departureLocation', 'street', 'country', 'state'];
@@ -415,8 +415,8 @@ export function guardDescriptionStatusClaim(input: DescriptionStatusClaimInput):
     // relaying it about a named, otherwise offered item, so the check stands aside rather than delete a true sentence.
     if (markedUnavailable) return keep;
     // A place field is said like a name: «Direccion sintetica QA» is where the hotel is, not a claim that it is synthetic.
-    const nameTokens = new Set(rows.flatMap(row => [row.name, ...row.labels].flatMap(text => fold(text).match(/[\p{L}\p{N}]+/gu) ?? [])));
-    const longNameTokens = new Set(rows.flatMap(row => [row.name, ...row.labels].flatMap(text => nameWords(text))));
+    const nameTokens = new Set(rows.flatMap(row => [row.name, ...(row.labels ?? [])].flatMap(text => fold(text).match(/[\p{L}\p{N}]+/gu) ?? [])));
+    const longNameTokens = new Set(rows.flatMap(row => [row.name, ...(row.labels ?? [])].flatMap(text => nameWords(text))));
     const isClaim = (text: string) => {
         const bare = withoutNames(text, nameTokens, longNameTokens);
         return NOT_FOR_SALE.test(bare) || NOT_REAL.test(bare);

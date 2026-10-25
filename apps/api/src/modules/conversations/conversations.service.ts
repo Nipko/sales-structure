@@ -145,6 +145,7 @@ import { guardIdentityCodeClaim } from './identity-code-claim';
 import { guardAllergenClaim } from './allergen-claim';
 import { guardUnfilledPlaceholders, UNFILLED_PLACEHOLDER_FIXED_TEXTS, type UnfilledPlaceholderGuardResult } from './unfilled-placeholder';
 import { asksAboutSoldOutProducts, guardNotForSaleDenial, guardSoldOutClaim } from './sold-out-visibility';
+import { guardDescriptionStatusClaim } from './description-authority';
 import { addressFormOf, detectTransition, failedTransitionOf, handleIdentityReply, humanizeReferences, identityGate, knownRecordFacts, knownRecordIds, localizeStatusWords, namedRequestOverridesClarify, opensWithYes, requestIdentityForTool, runTransition, shortReference, toolReadsOfTurnMessages, transitionDoneText, transitionFailureText, transitionRequestForTool, transitionTexts, TRANSITION_TOOLS, TRANSITION_WRITER, type TransitionIO, type TransitionOutcome } from './transition-engine';
 import { resolveListChoice } from './list-choice';
 import { createdDoneText, detectOrderIntake, isOrderDetails, mergeOrderNotes, mightBeMenuOrderRequest, mightBeOrderRequest, orderProposalText, orderStockText, orderChoiceText, replyStillAsksConfirmation, type OrderChoice, type OrderIntake } from './order-intake';
@@ -7620,6 +7621,21 @@ export class ConversationsService {
                 this.recordAgentSignal(tenantId, 'sold_out_product_denied', session);
                 this.logger.warn(`[Guardrail] The reply denied a product that exists but is sold out (${denial.product}) — replaced: "${response.slice(0, 100)}"`);
                 return denial.text;
+            }
+            // F4300-35: «Spark QA Plato … no está a la venta» about a dish the menu read returned active and available (its description
+            // said «no vender»). A sentence that states an item the reads offer is not for sale goes; the structured fields decide.
+            const descriptionStatus = guardDescriptionStatusClaim({
+                reply: response,
+                sources: [
+                    ...(executedTools || []).map(tool => tool?.result),
+                    ...(currentMessages || []).filter((message: any) => message?.role === 'tool').map((message: any) => message.content),
+                ],
+                lang,
+            });
+            if (descriptionStatus.changed) {
+                this.recordAgentSignal(tenantId, 'description_read_as_status', session, { action: descriptionStatus.action, items: descriptionStatus.items });
+                this.logger.warn(`[Guardrail] The reply stated an offered item is not for sale from its description (${descriptionStatus.items.join(' | ')}) — ${descriptionStatus.action}: "${response.slice(0, 100)}"`);
+                response = descriptionStatus.text;
             }
         }
 

@@ -112,17 +112,18 @@ const NOT_REAL = new RegExp([
     /\bno (?:es|son) (?:para |de )?(?:uso )?comercial\w*/,
     /\bno (?:permite|permiten|admite|admiten|acepta|aceptan) (?:reservas?|pedidos?|compras?|ventas?) reales?\b/,
     /\bno (?:corresponde|corresponden|pertenece|pertenecen) a (?:un |una |ningun |ninguna |el |la |los |las )?(?:inventario|stock|producto|oferta|catalogo)s? real\w*/,
-    /\b(?:para|de) (?:uso )?(?:pruebas?|testeo|qa|test)\b/,
+    // A trial offer («clase de prueba», «aula de teste», «séance de test») is a real product: only the plural «de/para pruebas» and «de QA» count.
+    /\bpara (?:uso de )?(?:pruebas|testeo|qa|test)\b|\bde (?:pruebas(?: de qa)?|qa)\b/,
     // pt
     /\bnao (?:e|sao) (?:uma |um )?(?:oferta|produto|item|prato|quarto|imovel|pacote)s? (?:comercia\w*|rea(?:l|is))\b/,
     /\bnao (?:e|sao) (?:para |de )?(?:uso )?comercia\w*/,
     /\bnao (?:permite|permitem|aceita|aceitam) (?:reservas?|pedidos?|compras?) reais?\b/,
     /\bnao (?:corresponde|correspondem|pertence|pertencem) a (?:um |uma |nenhum |nenhuma |o |a |os |as )?(?:inventario|estoque|produto|oferta|catalogo)s? rea(?:l|is)\b/,
-    /\b(?:de|para) (?:testes?|qa)\b/,
+    /\bpara (?:uso de )?(?:testes|qa)\b|\bde (?:testes|qa)\b/,
     // fr
     /\b(?:n'est|ne sont) pas (?:une |un )?(?:offre|produit|article|plat|chambre|bien|forfait)s? (?:commercia\w*|reel\w*)/,
     /\b(?:inventaire|stock) reel\b/,
-    /\b(?:de|pour (?:les )?)tests?\b/,
+    /\bpour (?:les )?tests\b|\bde (?:tests|qa)\b/,
     /\bpas (?:destine\w* )?(?:a un |a l'|a )?usage commercial\b/,
     // any language
     /\b(?:sintetic\w*|synthetic|synthetique\w*|fictici\w*|fictional|fictitious|fictif|fictive|fictifs|fictives)\b/,

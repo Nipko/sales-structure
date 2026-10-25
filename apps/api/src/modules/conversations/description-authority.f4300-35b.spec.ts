@@ -92,6 +92,17 @@ describe('2. «not for commercial use», «not a real offer», «not real invent
         expect(out.text).toBe('The Audífono QA Aurora costs 119,900 COP and there are 2 units available.');
     });
 
+    it('a trial offer is a product, not a claim: «clase de prueba», «aula de teste», «séance de test»', () => {
+        const course = { courses: [{ name: 'Inglés A1', description: 'Curso de inglés básico. Incluye clase de prueba gratuita.', isActive: true }] };
+        for (const [reply, lang] of [
+            ['El curso Inglés A1 tiene una clase de prueba gratuita de 30 minutos.', 'es'],
+            ['O curso Inglés A1 tem uma aula de teste gratuita.', 'pt'],
+            ['Le cours Inglés A1 propose une séance de test gratuite.', 'fr'],
+        ] as const) {
+            expect(guardDescriptionStatusClaim({ reply, sources: [course], lang }).changed).toBe(false);
+        }
+    });
+
     it('a name with «QA» or «Test» in it is a name, not a claim', () => {
         const qaName = { products: [{ ...PRODUCT, name: 'Test Kit Aurora', description: 'Kit de audio.' }] };
         expect(guardDescriptionStatusClaim({ reply: 'El Test Kit Aurora cuesta 119.900 COP.', sources: [qaName] }).changed).toBe(false);

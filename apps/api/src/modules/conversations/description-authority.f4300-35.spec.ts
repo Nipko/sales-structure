@@ -87,6 +87,7 @@ describe('the output check: a sentence that states an offered item is not for sa
         expect(guardDescriptionStatusClaim({ reply: 'El QA Agente Stock no está a la venta en este momento.', sources: [soldOut] }).changed).toBe(false);
         // An availability read that says no: a «not available to book» sentence without a name is the data.
         expect(guardDescriptionStatusClaim({ reply: 'Lo siento, no está disponible para reservar en esas fechas.', sources: [ROOM, { available: false }] }).changed).toBe(false);
+        expect(guardDescriptionStatusClaim({ reply: 'La Spark QA Habitacion no se puede reservar del 3 al 5 de diciembre.', sources: [ROOM, { available: false }] }).changed).toBe(false);
         // «Not sold out», «not sold separately», «no se vende por separado» are not claims of not for sale.
         expect(guardDescriptionStatusClaim({ reply: 'The Spark QA Plato is not sold out.', sources }).changed).toBe(false);
         expect(guardDescriptionStatusClaim({ reply: 'The sauce of the Spark QA Plato is not sold separately.', sources }).changed).toBe(false);

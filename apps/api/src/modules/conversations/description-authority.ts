@@ -174,6 +174,9 @@ export function guardDescriptionStatusClaim(input: DescriptionStatusClaimInput):
     const { rows, markedUnavailable } = catalogRows(input.sources);
     const offered = rows.filter(row => row.offered);
     if (!offered.length) return keep;
+    // A read of the turn already said «no» for some item or date (a stay, a departure, a notForSale list): the reply may be
+    // relaying it about a named, otherwise offered item, so the check stands aside rather than delete a true sentence.
+    if (markedUnavailable) return keep;
     const unavailable = rows.filter(row => !row.offered);
     const echoed = offered.filter(row => DESCRIPTION_STATE.test(fold(row.description)));
 

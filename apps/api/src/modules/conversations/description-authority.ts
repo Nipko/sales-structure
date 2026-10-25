@@ -25,6 +25,20 @@
  *  - en hotel «a synthetic room for QA purposes, not for commercial use» and en store «a fictional test product and does not
  *    correspond to real inventory» were not caught: «not a real / commercial offer», «not real inventory», «synthetic / fictional
  *    / test item», «for QA / testing» are the same description-as-state claim (`NOT_REAL`), es/en/pt/fr.
+ *
+ * Second follow-up (production after #217, 03d9fae9):
+ *  - en hotel «According to the catalogue, Spark QA Habitacion 20261018T113247Z is available. The room accommodates…», fr real
+ *    estate «D'après le catalogue, Spark QA Inmueble 20261018T2220Z est disponible. Dans la ville de Spark QA Ciudad. Il dispose
+ *    de 2 chambres…»: the availability sentence was put in front whenever the removed text was the only one to name the item,
+ *    with the record's technical suffix. The item is named again only where the first sentence left needs it (it opens on «it /
+ *    il / ele / its / sus…», or carries «sus / its / ses / dele» of the item), inside that sentence, by its spoken name
+ *    (`spokenItemName`: no «20261018T113247Z» / date suffix). A clause left without its verb («dans la ville de Spark QA
+ *    Ciudad», the complement of the removed «est un bien fictif de test») joins the next sentence («Dans la ville de Spark QA
+ *    Ciudad, Spark QA Inmueble dispose de 2 chambres») or the one before, instead of standing as a sentence;
+ *  - en tour «It is not a commercial offer and does not allow real bookings.» was sent as «Does not allow real bookings.»: «does
+ *    not allow / accept real bookings», «ne permet pas de réservations réelles», «não permite fazer reservas reais» are the claim
+ *    too, and a predicate left after its removed subject clause («It is a test tour and does not include transport») gets the
+ *    subject back («It does not include transport»).
  */
 
 /** Told to the model with every catalogue read whose rows carry a description. */
@@ -103,6 +117,7 @@ const DESCRIPTION_STATE = new RegExp([
 const NOT_REAL = new RegExp([
     // en
     /\bnot (?:intended |meant |designed |available )?for (?:commercial|real|actual|public) (?:use|sale|sales|purposes?|bookings?|orders?|customers?)\b/,
+    /\b(?:does not|doesn't|do not|don't|cannot|can't|can not|will not|won't) (?:allow|accept|take|support|permit|admit|enable|process) (?:any )?(?:real|actual|genuine) (?:bookings?|reservations?|orders?|purchases?|sales?|transactions?)\b/,
     /\bnot (?:a |an )?(?:real|actual|genuine|commercial) (?:offer|offering|product|item|dish|meal|room|listing|property|package|tour|reservation|booking|inventory|stock)\b/,
     /\b(?:does not|doesn't|do not|don't|is not|isn't|are not|aren't) (?:correspond|belong|tied|linked|part of)\w* (?:to )?(?:any |the |our )?(?:real|actual|live) (?:inventory|stock|products?|catalog(?:ue)?|offer)\b/,
     /\b(?:fictional|fictitious|fake|dummy|synthetic|placeholder|test|testing|qa) (?:test |qa )?(?:product|item|dish|meal|room|listing|property|package|tour|offer|entry|record|data|unit)s?\b/,
@@ -110,19 +125,20 @@ const NOT_REAL = new RegExp([
     // es
     /\bno (?:es|son|constituye|constituyen|representa|representan) (?:una |un )?(?:oferta|producto|articulo|plato|habitacion|inmueble|paquete)s? (?:comercial\w*|real\w*)\b/,
     /\bno (?:es|son) (?:para |de )?(?:uso )?comercial\w*/,
-    /\bno (?:permite|permiten|admite|admiten|acepta|aceptan) (?:reservas?|pedidos?|compras?|ventas?) reales?\b/,
+    /\bno (?:permite|permiten|admite|admiten|acepta|aceptan) (?:hacer |realizar )?(?:reservas?|pedidos?|compras?|ventas?) reales?\b/,
     /\bno (?:corresponde|corresponden|pertenece|pertenecen) a (?:un |una |ningun |ninguna |el |la |los |las )?(?:inventario|stock|producto|oferta|catalogo)s? real\w*/,
     // A trial offer («clase de prueba», «aula de teste», «séance de test») is a real product: only the plural «de/para pruebas» and «de QA» count.
     /\bpara (?:uso de )?(?:pruebas|testeo|qa|test)\b|\bde (?:pruebas(?: de qa)?|qa)\b/,
     // pt
     /\bnao (?:e|sao) (?:uma |um )?(?:oferta|produto|item|prato|quarto|imovel|pacote)s? (?:comercia\w*|rea(?:l|is))\b/,
     /\bnao (?:e|sao) (?:para |de )?(?:uso )?comercia\w*/,
-    /\bnao (?:permite|permitem|aceita|aceitam) (?:reservas?|pedidos?|compras?) reais?\b/,
+    /\bnao (?:permite|permitem|aceita|aceitam|admite|admitem) (?:fazer |realizar )?(?:reservas?|pedidos?|compras?|vendas?) reais?\b/,
     /\bnao (?:corresponde|correspondem|pertence|pertencem) a (?:um |uma |nenhum |nenhuma |o |a |os |as )?(?:inventario|estoque|produto|oferta|catalogo)s? rea(?:l|is)\b/,
     /\bpara (?:uso de )?(?:testes|qa)\b|\bde (?:testes|qa)\b/,
     // fr
     /\b(?:n'est|ne sont) pas (?:une |un )?(?:offre|produit|article|plat|chambre|bien|forfait)s? (?:commercia\w*|reel\w*)/,
     /\b(?:inventaire|stock) reel\b/,
+    /\bne (?:permet|permettent|accepte|acceptent|prend|prennent|autorise|autorisent) pas (?:de |d'|les |des )?(?:faire |passer |effectuer )?(?:de |d'|des )?(?:(?:reservations?|commandes?|achats?|ventes?) reel\w*|(?:vrai\w*|veritable\w*) (?:reservations?|commandes?|achats?|ventes?))/,
     /\bpour (?:les )?tests\b|\bde (?:tests|qa)\b/,
     /\bpas (?:destine\w* )?(?:a un |a l'|a )?usage commercial\b/,
     // any language
@@ -183,6 +199,85 @@ function names(sentence: string, row: CatalogRow): boolean {
     return words.every(word => said.has(word));
 }
 
+/**
+ * A record name as the customer would say it: without the technical stamp QA and import tooling append («Spark QA Habitacion
+ * 20261018T113247Z», «… 2026-10-18», «… 20261018»). Only such a stamp at the end goes («iPhone 15», «Tour 2» stay). Pure.
+ */
+const TECHNICAL_SUFFIX = /(?:[\s_-]+(?:\d{8}T\d{4,6}(?:\.\d+)?Z?|\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:?\d{2}(?::?\d{2})?(?:\.\d+)?Z?)?|\d{8,}))+\s*$/i;
+export function spokenItemName(name: string): string {
+    const spoken = String(name ?? '').replace(TECHNICAL_SUFFIX, '').trim();
+    return spoken || String(name ?? '').trim();
+}
+
+/** «As for X, …»: names the item at the head of a sentence whose possessive («sus ingredientes», «its price») points at it. */
+const AS_FOR: Record<string, (name: string) => string> = {
+    es: name => `En cuanto a ${name}, `,
+    en: name => `As for ${name}, `,
+    pt: name => `Quanto a ${name}, `,
+    fr: name => `Quant à ${name}, `,
+};
+/** A subject pronoun opening the sentence that stands for the item: replaced by its name. Impersonal uses are not the item. */
+const SUBJECT_PRONOUN: Record<string, RegExp> = {
+    es: /^(?:él|ella)\s+/iu,
+    en: /^(?:it(?:'s|’s| is)|it)\s+(?!(?:is |'s |’s )?(?:important|possible|necessary|recommended|advisable|best|better|worth|a good idea|likely|unlikely|seems|looks|depends|appears)\b)/iu,
+    pt: /^(?:ele|ela)\s+/iu,
+    fr: /^(?:il|elle|c'est|c’est)\s+(?!(?:y a|faut|est (?:possible|important|nécessaire|necessaire|recommandé|recommande|conseillé|conseille|préférable|preferable))\b)/iu,
+};
+/** A possessive of the item at the start («Its price», «Sus ingredientes», «Ses chambres»). */
+const LEADING_POSSESSIVE: Record<string, RegExp> = {
+    es: /^(?:su|sus)\s/iu,
+    en: /^(?:its|their)\s/iu,
+    pt: /^(?:seu|sua|seus|suas)\s/iu,
+    fr: /^(?:son|sa|ses|leur|leurs)\s/iu,
+};
+/** A possessive of the item further in («no hay información sobre sus ingredientes»). pt «seu/sua» is the customer's «your»: only «dele/dela». */
+const INNER_POSSESSIVE: Record<string, RegExp> = {
+    es: /(?<![\p{L}\p{N}])(?:su|sus)\s/iu,
+    en: /(?<![\p{L}\p{N}])(?:its|their)\s/iu,
+    pt: /(?<![\p{L}\p{N}])(?:dele|dela|deles|delas)(?![\p{L}\p{N}])/iu,
+    fr: /(?<![\p{L}\p{N}])(?:ses|leurs?)\s/iu,
+};
+
+/** The first letter of a sentence lowered when it is an ordinary word (not «I», an acronym or a name). */
+function lowerFirst(text: string): string {
+    return text.replace(/^(\s*)(\p{Lu})(\p{Ll}*)(?![\p{L}\p{N}])/u, (all, lead: string, first: string, rest: string) =>
+        rest.length >= 1 ? lead + first.toLowerCase() + rest : all);
+}
+
+/**
+ * The sentence with the item named where a pronoun of it opens it: «It costs…» → «Spark QA Habitacion costs…», «Il dispose…» →
+ * «Spark QA Inmueble dispose…», «Its price…» → «Spark QA Plato's price…». Null when it does not open on one. Pure.
+ */
+function namedSubject(sentence: string, name: string, lang: string): string | null {
+    const marker = /^\s*(?:[-*•]\s+)?/.exec(sentence)?.[0] ?? '';
+    const body = sentence.slice(marker.length);
+    const subject = SUBJECT_PRONOUN[lang]?.exec(body);
+    if (subject) {
+        const word = subject[0].trim().toLowerCase();
+        const verb = /^(?:it's|it’s|it is)$/.test(word) ? 'is ' : /^c['’]est$/.test(word) ? 'est ' : '';
+        return marker + name + ' ' + verb + body.slice(subject[0].length);
+    }
+    if (lang === 'en' && /^its\s/i.test(body)) return marker + `${name}’s ` + body.slice(4);
+    return null;
+}
+
+/**
+ * The first sentence of what is left, with the item named when it needs it: it opens on a pronoun of the item, or carries a
+ * possessive of it («sus ingredientes»), and does not name it. A question, or a sentence that already names it, stays. Pure.
+ */
+function withAntecedent(text: string, name: string, lang: string): string {
+    const end = /[.!?…]+["»”)]*(?=\s|$)/u.exec(text);
+    const first = end ? text.slice(0, end.index + end[0].length) : text;
+    const rest = text.slice(first.length);
+    if (/\?\s*$/.test(first) || names(first, { name, description: '', offered: true })) return text;
+    const subject = namedSubject(first, name, lang);
+    if (subject) return subject + rest;
+    const marker = /^\s*(?:[-*•]\s+)?/.exec(first)?.[0] ?? '';
+    const body = first.slice(marker.length);
+    if (!LEADING_POSSESSIVE[lang]?.test(body) && !INNER_POSSESSIVE[lang]?.test(body)) return text;
+    return marker + (AS_FOR[lang] ?? AS_FOR.es)(name) + lowerFirst(body) + rest;
+}
+
 const AVAILABLE_TEXT: Record<string, (names: string) => string> = {
     es: names => `Según el catálogo, ${names} está disponible.`,
     en: names => `According to the catalogue, ${names} is available.`,
@@ -220,6 +315,13 @@ const NEGATIVE_ADDITIVE_OPENING = /^(\s*(?:[-*•]\s+)?)(tampoco|tampouco)\s+(?!
 /** What is left at the start of a sentence whose first clause went: a connector or a relative pronoun. */
 const LEADING_CONNECTOR = /^(?:(?:que|which|who|lo que|o que|ce qui|qui|and|y|e|et|but|pero|mas|mais|so|then|therefore|thus|por eso|por lo tanto|por isso|portanto|entonces|ent[aã]o|donc|ainsi|also|tambi[eé]n|tamb[eé]m|aussi|however|sin embargo|por[eé]m|cependant|aunque|although|though|note|nota|ojo|importante)(?![\p{L}\p{N}])[\s,:]*)+/iu;
 
+/** A clause that opens on its verb: the predicate of a subject said in the clause before it («… and does not include transport»). */
+const SUBJECTLESS = /^(?:does|doesn't|doesn’t|do|don't|don’t|cannot|can't|can’t|can|has|have|is|are|includes?|offers?|costs?|comes|features|no|tiene|tienen|incluye|incluyen|cuesta|ofrece|está|esta|não|nao|tem|têm|inclui|custa|oferece|é|ne|n'|n’|comprend|inclut|coûte|offre|dispose|propose|est)(?![\p{L}])/iu;
+/** The subject of a copular clause: «It» in «It is not a commercial offer», «The Spark QA Plato» in «The Spark QA Plato is a test dish». */
+const COPULA_SUBJECT = /^\s*(\p{L}.*?)\s+(?:is|are|es|son|está|están|é|são|est|sont)(?![\p{L}])/iu;
+/** A clause that opens on a preposition or a participle of place: no verb of its own («dans la ville de X», «located in X»). */
+const VERBLESS_OPENING = /^\s*(?:dans|en|à|au|aux|sur|près|pres|chez|in|at|on|near|inside|within|with|con|cerca|junto|em|na|nas|nos|perto|com|situé\w*|situe\w*|située?s?|located|situated|ubicad\w*|situad\w*|localizad\w*)(?![\p{L}])/iu;
+
 const capitalize = (text: string) => text.replace(/^(\s*(?:[-*•]\s+)?[¿¡"«“(]*)(\p{Ll})/u, (_, lead: string, letter: string) => lead + letter.toUpperCase());
 
 /** The folded words of a text, without the runs of words that are an item's name (with its short words: «Spark QA Plato»). */
@@ -246,7 +348,7 @@ function contentWords(text: string, nameTokens: ReadonlySet<string>): number {
  * join two statements; a claim clause goes with the delimiter before it, and a fragment of two words or fewer joined by «and»
  * right after a removed clause goes too («… for QA and testing purposes»). `text` is null when nothing that says anything is left. Pure.
  */
-function withoutClaimClauses(sentence: string, isClaim: (text: string) => boolean, nameTokens: ReadonlySet<string>): { text: string | null; removed: string } {
+function withoutClaimClauses(sentence: string, isClaim: (text: string) => boolean, nameTokens: ReadonlySet<string>): { text: string | null; removed: string; fragment?: boolean } {
     const parts = sentence.split(CLAUSE_DELIMITER);
     const clauses = parts.filter((_, i) => i % 2 === 0);
     const delimiters = parts.filter((_, i) => i % 2 === 1);
@@ -263,8 +365,19 @@ function withoutClaimClauses(sentence: string, isClaim: (text: string) => boolea
     let text = clauses[kept[0]];
     for (let k = 1; k < kept.length; k++) text += delimiters[kept[k - 1]] + clauses[kept[k]];
     const marker = /^\s*(?:[-*•]\s+|\d+[.)]\s+)/.exec(sentence)?.[0] ?? '';
+    let fragment = false;
     if (kept[0] > 0) {
-        text = capitalize(text.replace(LEADING_CONNECTOR, ''));
+        const bare = text.replace(LEADING_CONNECTOR, '');
+        // «It is not a commercial offer and does not include transport»: the predicate gets its subject back.
+        const subject = drop[kept[0] - 1] && /^\s+(?:y|e|and|et)\s+$/iu.test(delimiters[kept[0] - 1]) && SUBJECTLESS.test(bare)
+            ? COPULA_SUBJECT.exec(clauses[kept[0] - 1].slice(marker.length))?.[1] : undefined;
+        if (subject && subject.split(/\s+/).length <= 6) text = capitalize(subject) + ' ' + lowerFirst(bare);
+        else {
+            text = capitalize(bare);
+            // «…est un bien fictif de test, dans la ville de X.»: the complement of the removed clause, with no verb of its own.
+            fragment = kept.length === 1 && /^\s*[,;:]\s+$/.test(delimiters[kept[0] - 1]) && VERBLESS_OPENING.test(bare)
+                && bare.split(/\s+/).length <= 12;
+        }
         if (marker && !text.startsWith(marker)) text = marker + text;
     }
     if (kept[kept.length - 1] < clauses.length - 1) {
@@ -272,7 +385,7 @@ function withoutClaimClauses(sentence: string, isClaim: (text: string) => boolea
         text = text.replace(/[\s,;:—–-]+$/u, '') + terminal;
     }
     if (contentWords(text.slice(marker.length), nameTokens) < 2) return { text: null, removed: sentence };
-    return { text, removed };
+    return { text, removed, fragment };
 }
 
 /**
@@ -281,7 +394,8 @@ function withoutClaimClauses(sentence: string, isClaim: (text: string) => boolea
  * offered item, or names no item while no read of the turn marks any item unavailable and an offered item's description speaks
  * of its own state (a test item, «no vender»). Only the clauses that make the claim go: the rest of the sentence (the answer,
  * the item's name) stays. A sentence that opens on «also» after a removed one loses it; when the removed text was the only one
- * to name the item, the reply starts by saying the catalogue lists it as available. Pure.
+ * to name the item and the first sentence left points at it («It costs…», «sus ingredientes»), that sentence names it (by its
+ * spoken name). Only when nothing is left does the reply say the catalogue lists it as available. Pure.
  */
 export function guardDescriptionStatusClaim(input: DescriptionStatusClaimInput): DescriptionStatusClaimResult {
     const keep: DescriptionStatusClaimResult = { text: input.reply, changed: false, action: 'none', items: [], removed: [] };
@@ -301,16 +415,24 @@ export function guardDescriptionStatusClaim(input: DescriptionStatusClaimInput):
     const unavailable = rows.filter(row => !row.offered);
     const echoed = offered.filter(row => DESCRIPTION_STATE.test(fold(row.description)));
 
+    const code = String(input.lang || 'es').slice(0, 2).toLowerCase();
+    const lang = AVAILABLE_TEXT[code] ? code : 'es';
     const items = new Set<string>();
     const named = new Set<string>();
     const removed: string[] = [];
     let previousDropped = false;
+    /** Whether a removal came before (or inside) the first sentence the reply keeps: only then can its pronouns point at nothing. */
+    let firstKeptAfterRemoval: boolean | null = null;
+    /** The one item the removed text named, by its spoken name, when it is a single one. */
+    const soleNamed = () => named.size === 1 ? spokenItemName([...named][0]) : null;
     const lines = input.reply.split('\n').map(line => {
         if (!line.trim()) return line;
         const sentences = line.split(/(?<=[.!?…])\s+/);
         const kept: string[] = [];
+        let fragment: string | null = null;
         for (const sentence of sentences) {
             let next: string | null = sentence;
+            let isFragment = false;
             const claims = isClaim(sentence);
             const namedHere = claims ? offered.filter(row => names(sentence, row)) : [];
             // A sentence about an item the reads mark unavailable says what the data says.
@@ -320,25 +442,43 @@ export function guardDescriptionStatusClaim(input: DescriptionStatusClaimInput):
                 removed.push(cut.removed);
                 offered.filter(row => names(cut.removed, row)).forEach(row => named.add(row.name));
                 next = cut.text;
+                isFragment = !!cut.fragment;
             } else if (previousDropped) {
                 next = capitalize(sentence.replace(ADDITIVE_OPENING, '$1'))
                     .replace(NEGATIVE_ADDITIVE_OPENING, (_, lead: string, word: string) => lead + (/^tampou/i.test(word) ? 'Não ' : 'No '));
             }
             previousDropped = next === null;
-            if (next !== null) kept.push(next);
+            if (next !== null && fragment !== null && !/\?["»”)]*\s*$/.test(next)) {
+                // The verbless complement leads the next sentence: «Dans la ville de X, Spark QA Inmueble dispose de 2 chambres.»
+                const name = soleNamed();
+                const subject = name ? namedSubject(next, name, lang) : null;
+                next = fragment.replace(/[.!?…]+["»”)]*\s*$/u, '') + ', ' + (subject ?? lowerFirst(next));
+                fragment = null;
+            }
+            if (next !== null && isFragment) { fragment = next; continue; }
+            if (next !== null) {
+                if (firstKeptAfterRemoval === null) firstKeptAfterRemoval = removed.length > 0;
+                kept.push(next);
+            }
+        }
+        if (fragment !== null && kept.length) {
+            // Nothing after it on the line: it closes the sentence before («…, dans la ville de X.»).
+            const last = kept.length - 1;
+            const terminal = /[.!?…]+["»”)]*\s*$/u.exec(kept[last])?.[0] ?? '.';
+            if (!/\?/.test(terminal)) kept[last] = kept[last].slice(0, kept[last].length - terminal.length) + ', ' + lowerFirst(fragment);
         }
         return kept.length ? kept.join(' ') : null;
     }).filter((line): line is string => line !== null);
     if (!removed.length) return keep;
 
-    const code = String(input.lang || 'es').slice(0, 2).toLowerCase();
-    const available = AVAILABLE_TEXT[code] || AVAILABLE_TEXT.es;
-    const text = lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+    const available = AVAILABLE_TEXT[lang];
+    let text = lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
     if (/\p{L}/u.test(text) && text.split(/\s+/).length >= 3) {
-        // The removed text was the only one to name the item: «sus ingredientes» would point at nothing.
-        const unnamed = [...named].filter(name => !offered.some(row => row.name === name && names(text, row)));
-        const lead = unnamed.length ? `${available(unnamed.slice(0, 5).join(', '))} ` : '';
-        return { text: lead + text, changed: true, action: 'removed', items: [...items], removed };
+        // The removed text was the only one to name the item: «sus ingredientes», «It costs…» would point at nothing. The item
+        // is named in that sentence, by its spoken name; nothing is put in front of a sentence that needs no antecedent.
+        const name = soleNamed();
+        if (name && firstKeptAfterRemoval) text = withAntecedent(text, name, lang);
+        return { text, changed: true, action: 'removed', items: [...items], removed };
     }
-    return { text: available([...items].slice(0, 5).join(', ')), changed: true, action: 'fallback', items: [...items], removed };
+    return { text: available([...items].slice(0, 5).map(spokenItemName).join(', ')), changed: true, action: 'fallback', items: [...items], removed };
 }

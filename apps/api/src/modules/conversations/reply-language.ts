@@ -176,6 +176,15 @@ function sentenceInOtherLanguage(text: string, code: string, ignore: readonly st
 export type RewriteRejectionReason = 'empty' | 'still_source_language' | 'denies_language' | 'lost_figure' | 'lost_url' | 'lost_name';
 
 const FIGURE = /\d[\d.,:]*\d|\d/g;
+/**
+ * A figure grouped by spaces («13 500», «1 200 000», with a space, a no-break or a narrow no-break space: the French
+ * and Portuguese way of writing thousands) is ONE figure. Production QA 25-oct (image 0330ef7a): a French draft said
+ * «13 500», its Spanish rewrite «13.500»; read as the two figures «13» and «500», the rewrite was rejected for losing
+ * both, the retry asked to copy «13 | 500», and the model complied with «Las cifras 13 y 500 son parte de este precio.»
+ */
+const FIGURE_WITH_GROUPS = /\d{1,3}(?:[ \u00a0\u202f]\d{3})+(?:[.,]\d+)?(?!\d)|\d[\d.,:]*\d|\d/g;
+/** The figures of a text, a space-grouped figure as one. */
+const figuresOf = (text: string): string[] => String(text || '').match(FIGURE_WITH_GROUPS) || [];
 const URL_PATTERN = /https?:\/\/[^\s)>\]]+|www\.[^\s)>\]]+/gi;
 const digitsOf = (token: string) => token.replace(/[^\d]/g, '');
 const trimUrl = (url: string) => url.replace(/[.,;:!?]+$/, '');
@@ -192,7 +201,7 @@ export function verbatimTermsOf(original: string, names: readonly string[] = [])
     const text = String(original || '');
     const urls = [...new Set((text.match(URL_PATTERN) || []).map(trimUrl))];
     // Figures inside a URL travel with the URL.
-    const figures = [...new Set(text.replace(URL_PATTERN, ' ').match(FIGURE) || [])];
+    const figures = [...new Set(figuresOf(text.replace(URL_PATTERN, ' ')))];
     const folded = loose(text);
     const found = new Set<string>();
     for (const name of names) {
@@ -214,8 +223,10 @@ export function rewriteRejection(
     original: string, rewrite: string, names: readonly string[] = [], sourceLang?: ReplyLang | null, targetLang?: string,
 ): { reason: RewriteRejectionReason; missing: string[] } | null {
     const text = String(rewrite || '').trim();
-    const have = new Set((text.match(FIGURE) || []).map(digitsOf));
-    const lostFigures = (String(original || '').match(FIGURE) || []).filter(token => !have.has(digitsOf(token)));
+    // A space-grouped figure is kept whether the rewrite writes it whole («13.500», «13500», «13 500») or as the same groups.
+    const have = new Set([...(text.match(FIGURE) || []), ...figuresOf(text)].map(digitsOf));
+    const lostFigures = figuresOf(original).filter(token => !have.has(digitsOf(token))
+        && !(/\s/.test(token) && (token.match(FIGURE) || []).every(part => have.has(digitsOf(part)))));
     if (lostFigures.length) return { reason: 'lost_figure', missing: [...new Set(lostFigures)] };
     const lostUrls = (String(original || '').match(URL_PATTERN) || []).map(trimUrl).filter(url => !text.includes(url));
     if (lostUrls.length) return { reason: 'lost_url', missing: [...new Set(lostUrls)] };

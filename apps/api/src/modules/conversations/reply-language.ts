@@ -1,3 +1,5 @@
+import { withoutLoanwords } from './language-loanwords';
+
 /**
  * The language a reply is written in, judged by FUNCTION and SERVICE words (articles, prepositions, auxiliaries,
  * the words of a sales reply): a reply of a dozen words always has several, unlike the marker words the
@@ -5,7 +7,8 @@
  * mais, a, o, se, este, dias, sabado…) are left out, so a hit is evidence.
  *
  * What is NOT the reply's own language is removed before scoring: URLs and e-mails, text in quotes, markdown
- * links, and every catalog name known this turn ("Case for iPhone 15 with MagSafe" inside a Spanish reply).
+ * links, every catalog name known this turn ("Case for iPhone 15 with MagSafe" inside a Spanish reply) and the
+ * loanwords every language writes alike ("check-in", "tour", "wifi", see language-loanwords.ts).
  *
  * Returns null unless one language is clearly ahead: at least 4 hits and three times the runner-up, or at least 3 hits
  * and none for any other language.
@@ -26,7 +29,7 @@ const WORDS: Record<ReplyLang, readonly string[]> = {
     en: ['the', 'and', 'of', 'to', 'in', 'is', 'are', 'you', 'your', 'for', 'with', 'this', 'that', 'it', 'we', 'our', 'can', 'will', 'if',
         'not', 'be', 'have', 'has', 'at', 'by', 'from', 'but', 'please', 'hello', 'thanks', 'thank', 'would', 'could', 'about', 'what',
         'which', 'when', 'where', 'how', 'there', 'their', 'they', 'them', 'these', 'those', 'than', 'then', 'also', 'just', 'very',
-        'more', 'any', 'some', 'other', 'available', 'price', 'delivery', 'order', 'product', 'products', 'appointment', 'today',
+        'more', 'any', 'some', 'other', 'available', 'price', 'order', 'product', 'products', 'appointment', 'today',
         'tomorrow', 'name', 'time', 'date', 'help', 'need', 'want', 'let', 'know', 'does', 'am', 'was', 'were', 'been', 'its', 'my', 'us',
         'ask', 'return', 'refund', 'policy', 'within', 'days', 'purchase', 'receipt'],
     pt: ['os', 'um', 'uma', 'uns', 'umas', 'do', 'da', 'dos', 'das', 'em', 'na', 'nas', 'seu', 'sua', 'seus', 'suas', 'ele', 'ela', 'nao',
@@ -93,7 +96,8 @@ export function ownLanguageText(text: string, ignore: readonly string[] = []): s
         const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         out = out.replace(new RegExp(escaped, 'giu'), ' ');
     }
-    return out;
+    // Loanwords («check-in», «tour», «wifi», «delivery», «ok») are written alike in a reply of any language: no evidence.
+    return withoutLoanwords(out);
 }
 
 function scoresOf(text: string, ignore: readonly string[]): Array<[ReplyLang, number]> {

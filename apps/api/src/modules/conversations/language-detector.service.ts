@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { withoutLoanwords } from './language-loanwords';
 
 /**
  * Lightweight heuristic language detector.
@@ -301,11 +302,12 @@ export class LanguageDetectorService {
      * evidence for any other language (see `contentLanguage`); a bare «price?» stays neutral.
      * Never here: names and catalogue terms (taken out before), and words two languages share — «hotel», «tour», «menu»,
      * «total», «disponible», «entrega» (es AND pt), «corte» (es AND pt «corte de cabelo»), «garantia», «reembolso»,
-     * «pedido», «parking» (en AND fr). «stock» and «delivery» are English loanwords in Spanish and French: they count for
-     * English only, and a single one never decides, so a Spanish message needs a second English word to read as English.
+     * «pedido», «parking» (en AND fr). «stock» is an English loanword in Spanish and French: it counts for English only,
+     * and a single one never decides, so a Spanish message needs a second English word to read as English. «delivery»,
+     * «check-in», «tour», «wifi»… are taken out of the message before anything is scored (see language-loanwords.ts).
      */
     private readonly contentWords: Record<string, string[]> = {
-        en: ['price', 'prices', 'pricing', 'haircut', 'haircuts', 'room', 'rooms', 'night', 'nights', 'stock', 'delivery', 'shipping',
+        en: ['price', 'prices', 'pricing', 'haircut', 'haircuts', 'room', 'rooms', 'night', 'nights', 'stock', 'shipping',
             'available', 'dish', 'dishes', 'headphones', 'warranty', 'discount', 'refund', 'size', 'weekend', 'breakfast', 'appointment',
             // Shop and service nouns. Not «cases» (French «cases»), «desserts» (French too) nor «location» (French «location» = rental).
             'charger', 'chargers', 'speaker', 'speakers', 'makeup', 'rent'],
@@ -444,11 +446,13 @@ export class LanguageDetectorService {
      * sentence («el Aurora», «el Tour QA Aurora»), a word in capitals («QA», «PDF») and figures. A name is how the
      * business wrote it, not the customer's language — but the words AROUND it are.
      */
-    nameFreeText(text: string, names: readonly string[] = []): string {
+    nameFreeText(text: string, names: readonly string[] = [], keepLoanwords = false): string {
         let out = String(text || '');
         const known = [...new Set(names.map(name => String(name || '').trim()).filter(name => name.length >= 3))]
             .sort((a, b) => b.length - a.length);
         for (const name of known) out = out.replace(new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'giu'), ' ');
+        // Loanwords («check-in», «tour», «wifi») are no language either; names first, so «Tour QA Aurora» goes as a name.
+        if (!keepLoanwords) out = withoutLoanwords(out);
         const words = out.trim().split(/\s+/).filter(Boolean);
         const kept: string[] = [];
         for (let i = 0; i < words.length; i++) {
@@ -517,7 +521,9 @@ export class LanguageDetectorService {
         if (best.hits >= 2) return best.lang;
         // ONE word of evidence: it must be a verb («tiene garantía?»), in a message of two words that are not a bare
         // acknowledgement. A lone interrogative is as often a borrowed word: «ok what», «cual», «how?» decide nothing.
-        const content = words.filter(word => !this.acknowledgements.has(word));
+        // A loanword is no evidence, but it is a word the customer wrote: «tienen delivery?» is a two-word Spanish question.
+        const content = this.normalize(this.nameFreeText(text, names, true)).split(/\s+/)
+            .filter(word => /[a-z]/.test(word) && !this.acknowledgements.has(word));
         return best.verbs > 0 && content.length >= 2 ? best.lang : null;
     }
 
@@ -545,8 +551,9 @@ export class LanguageDetectorService {
     }
 
     /** The language the marker words alone decide, with no stored language to lean on. */
-    private strongLanguageOf(text: string): string | null {
-        const normalized = this.normalize(text || '');
+    private strongLanguageOf(message: string): string | null {
+        const text = withoutLoanwords(message);
+        const normalized = this.normalize(text);
         if (normalized.length < 3) return null;
         const tokens = new Set(normalized.split(/\s+/).filter(Boolean));
         const raw = (text || '').normalize('NFC').toLowerCase();
@@ -606,7 +613,11 @@ export class LanguageDetectorService {
             previous = recent;
             fallback = recent;
         }
-        const normalized = this.normalize(text);
+        // F4300-16 residual (production 24-oct): «a qué hora es el check-in?» after an English case was answered in English —
+        // the «in» of «check-in» was an English word. Loanwords are no evidence of any language, so they are scored out.
+        // `text` keeps them for the name rules (nameFreeText takes them out after the names).
+        const plain = withoutLoanwords(text || '');
+        const normalized = this.normalize(plain);
         if (normalized.length < 3) return { language: this.short(fallback), persist: true };
 
         const tokens = new Set(normalized.split(/\s+/).filter(Boolean));
@@ -614,7 +625,7 @@ export class LanguageDetectorService {
         for (const t of [...tokens]) {
             if (t.includes("'")) for (const part of t.split("'")) if (part) tokens.add(part);
         }
-        const raw = (text || '').normalize('NFC').toLowerCase();
+        const raw = plain.normalize('NFC').toLowerCase();
 
         const scores: Record<string, number> = {};
         for (const [lang, words] of Object.entries(this.markers)) {

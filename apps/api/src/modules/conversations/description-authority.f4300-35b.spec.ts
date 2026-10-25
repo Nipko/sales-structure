@@ -43,7 +43,8 @@ describe('1. only the clause that makes the claim goes: the answer in the same s
     it('es (production): «sus ingredientes» gets its antecedent back when the removed sentence was the only one naming the dish', () => {
         const reply = 'El Spark QA Plato es un plato sintético de QA y no está a la venta. No se ha registrado información sobre sus ingredientes. ¿Te ayudo con algo más?';
         const out = guardDescriptionStatusClaim({ reply, sources: [menu], lang: 'es' });
-        expect(out.text).toBe('Según el catálogo, Spark QA Plato está disponible. No se ha registrado información sobre sus ingredientes. ¿Te ayudo con algo más?');
+        // F4300-35c: named inside that sentence, no «Según el catálogo … está disponible» in front.
+        expect(out.text).toBe('En cuanto a Spark QA Plato, no se ha registrado información sobre sus ingredientes. ¿Te ayudo con algo más?');
         expect(out.text).not.toMatch(/sintético|venta/);
     });
 
@@ -61,7 +62,7 @@ describe('1. only the clause that makes the claim goes: the answer in the same s
 
     it('es: «Tampoco» after a removed sentence becomes «No»', () => {
         const out = guardDescriptionStatusClaim({ reply: 'El Spark QA Plato es un plato ficticio y no se vende. Tampoco hay información de alérgenos.', sources: [menu], lang: 'es' });
-        expect(out.text).toBe('Según el catálogo, Spark QA Plato está disponible. No hay información de alérgenos.');
+        expect(out.text).toBe('No hay información de alérgenos.');
     });
 });
 
@@ -70,7 +71,7 @@ describe('2. «not for commercial use», «not a real offer», «not real invent
         const reply = 'The Spark QA Habitacion room is a synthetic room for QA purposes, not for commercial use. It costs 180,000 COP per night and check-in is at 15:00.';
         const out = guardDescriptionStatusClaim({ reply, sources: [ROOM], lang: 'en' });
         expect(out).toMatchObject({ changed: true, action: 'removed', items: ['Spark QA Habitacion'] });
-        expect(out.text).toBe('According to the catalogue, Spark QA Habitacion is available. It costs 180,000 COP per night and check-in is at 15:00.');
+        expect(out.text).toBe('Spark QA Habitacion costs 180,000 COP per night and check-in is at 15:00.');
     });
 
     it.each([
@@ -165,7 +166,7 @@ describe('through ConversationsService: the reply of the turn', () => {
             'El Spark QA Plato es un plato sintético de QA y no está a la venta. No se ha registrado información sobre sus ingredientes.');
         const r = await turn('¿cuáles son los ingredientes del plato Spark?');
         expect(r.debug.runtimeError).toBeUndefined();
-        expect(r.reply).toMatch(/Spark QA Plato está disponible\. No se ha registrado información sobre sus ingredientes\./);
+        expect(r.reply).toMatch(/En cuanto a Spark QA Plato, no se ha registrado información sobre sus ingredientes\./);
         expect(r.reply).not.toMatch(/sintético|a la venta/);
     });
 

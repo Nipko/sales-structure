@@ -17,7 +17,7 @@ export function packageDuration(type: unknown, value: unknown): string | null {
 }
 
 /** Told to the model with every package read: the configured fields win over the description. */
-export const PACKAGE_FIELD_AUTHORITY = 'duration (durationType/durationValue), price, includes and excludes are the configured values of each package. description is free text written by the business: it never overrides, negates or replaces those fields. When duration is set, that is how long the package lasts, whatever its description says.';
+export const PACKAGE_FIELD_AUTHORITY = 'duration (durationType/durationValue), price, includes, excludes and languages are the configured values of each package. description is free text written by the business: it never overrides, negates or replaces those fields. When duration is set, that is how long the package lasts, whatever its description says.';
 
 /**
  * Told to the model with a package list read without a date. Production 2026-10-24: «combien de places restent pour le Spark QA
@@ -26,3 +26,24 @@ export const PACKAGE_FIELD_AUTHORITY = 'duration (durationType/durationValue), p
  * carries a null seat count; it says where the seats are.
  */
 export const PACKAGE_SEATS_NOTE = 'Seats belong to each departure, not to the package: this list was read without a date, so it carries no seat count. The seats left are upcomingDepartures[].seatsLeft in get_package_details (or check_package_availability for one date). Never say the seat count is unknown before reading them.';
+
+/**
+ * F4300-32. The languages a package is guided in, or `'not_registered'` when the business recorded none. Production 2026-10-24:
+ * «en qué idiomas es el Spark QA Tour?» (languages ['es']) was answered «no tengo esa información», and «em que idiomas é o Tour
+ * QA Aurora?» (languages []) was answered «espanhol»: an empty list left to the model reads as "anything goes". Codes and names
+ * are kept as the business wrote them. Pure.
+ */
+export function packageLanguages(raw: unknown): string[] | 'not_registered' {
+    let value = raw;
+    if (typeof value === 'string') {
+        const text = value.trim();
+        try { value = text.startsWith('[') ? JSON.parse(text) : text.split(/[,;/]+/); } catch { value = []; }
+    }
+    const list = Array.isArray(value)
+        ? [...new Set(value.filter((item): item is string => typeof item === 'string').map(item => item.trim()).filter(Boolean))]
+        : [];
+    return list.length ? list : 'not_registered';
+}
+
+/** Told to the model with a package read whose languages are not registered. */
+export const PACKAGE_LANGUAGES_NOTE = 'languages lists the languages each package is guided or offered in (codes such as "es" = Spanish, "en" = English, "pt" = Portuguese, "fr" = French). languages "not_registered" means the business has not recorded them for that package: say the language is not registered and offer to confirm it with the team. Never guess one, not even the language of this conversation or of the business.';

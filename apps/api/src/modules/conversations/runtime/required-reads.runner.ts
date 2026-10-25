@@ -350,7 +350,11 @@ function wordNamedRow(rows: Array<{ row: any; name: string }>, text: string): an
     const scored = rows.flatMap(({ row, name }) => {
         const words = name.split(' ').filter(Boolean);
         const spoken = words.filter(word => !/\d/.test(word));
-        if (!spoken.length || spoken.join('').length < 4 || !spoken.every(startsAWord)) return [];
+        // F4300-32: «when is the next departure of the Spark tour?» for «Spark QA Tour 20261018T2140Z». A two-letter word (a «QA»,
+        // a «de») may go unsaid when at least two longer words of the name are all said; a one-word name still needs its word.
+        const long = spoken.filter(word => word.length >= 3);
+        const said = spoken.every(startsAWord) || (long.length >= 2 && long.every(startsAWord));
+        if (!spoken.length || spoken.join('').length < 4 || !said) return [];
         return [{ row, score: words.filter(startsAWord).length }];
     });
     if (!scored.length) return undefined;

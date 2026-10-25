@@ -88,15 +88,20 @@ export class LanguageDetectorService {
         es: ['el', 'los', 'las', 'una', 'del', 'con', 'mis', 'sus', 'estoy', 'hay', 'soy', 'eres', 'interesa', 'interesan', 'funcionan', 'funciona', 'nosotros', 'ustedes', 'usted', 'tambien', 'quiero', 'tengo', 'busco', 'necesito',
             'hasta', 'habitaciones', 'habitacion', 'dormitorios', 'millones', 'millon', 'venta', 'buscamos', 'necesitamos', 'cuantos', 'cuantas',
             // Everyday Spanish that Portuguese, English and French spell differently (pt «e/seu/muito/faço/ontem/hoje/noite/já/isso»).
-            'y', 'su', 'mi', 'lo', 'ya', 'eso', 'esto', 'mucho', 'mucha', 'muchos', 'muchas', 'hago', 'dime', 'dejas', 'puedes', 'puede', 'pueden', 'quieres', 'ayer', 'hoy', 'manana', 'tiempo', 'noche', 'noches'],
+            'y', 'su', 'mi', 'lo', 'ya', 'eso', 'esto', 'mucho', 'mucha', 'muchos', 'muchas', 'hago', 'dime', 'dejas', 'puedes', 'puede', 'pueden', 'quieres', 'ayer', 'hoy', 'manana', 'tiempo', 'noche', 'noches',
+            // F4300-16f: quantifiers of a short question (pt «algum/alguma», fr «quelque», en «any»). Not «algo»: Portuguese too.
+            'alguna', 'alguno', 'algun', 'algunas', 'algunos'],
         en: ['the', 'is', 'are', 'was', 'of', 'to', 'in', 'it', 'my', 'with', 'this', 'that', 'for', 'and', 'you', 'your', 'have', 'has', 'be', 'can', 'will', 'about', 'from', 'what', 'how', 'does', 'not', 'want', 'need',
-            'much', 'many', 'night', 'there', 'any'],
+            'much', 'many', 'night', 'there', 'any',
+            // F4300-16f: the time and quantity words a short question carries («any promotions today?»).
+            'anything', 'something', 'today', 'tonight', 'tomorrow'],
         // Not «dos»: it is Portuguese «of the» AND Spanish «two» («me los dejas a 100 mil los dos»).
         pt: ['os', 'uma', 'da', 'das', 'com', 'nao', 'voce', 'voces', 'tem', 'estou', 'meu', 'minha', 'pra', 'quero', 'preciso', 'gostaria', 'tambem',
-            'muito', 'muita', 'seu', 'sua', 'isso', 'isto', 'hoje', 'ontem', 'noite', 'faco', 'pode', 'tempo', 'amanha'],
+            'muito', 'muita', 'seu', 'sua', 'isso', 'isto', 'hoje', 'ontem', 'noite', 'faco', 'pode', 'tempo', 'amanha',
+            'alguma', 'algum', 'algumas', 'alguns'],
         fr: ['le', 'les', 'des', 'du', 'une', 'est', 'sont', 'avec', 'dans', 'pour', 'vous', 'nous', 'je', 'mon', 'ma', 'mes', 'pas', 'veux', 'besoin', 'voudrais',
             // «et» (and) and everyday French that Spanish, Portuguese and English spell differently.
-            'et', 'mais', 'temps', 'demain', 'nuit', 'aujourd'],
+            'et', 'mais', 'temps', 'demain', 'nuit', 'aujourd', 'quelque', 'quelques'],
     };
 
     /**
@@ -250,7 +255,9 @@ export class LanguageDetectorService {
             // was answered in Portuguese — once the name is out only «del» was left). Pronoun-attached forms are Spanish only (pt «fala»,
             // «conta», «diz», «mostra»; fr «parlez», «dites»).
             'hablame', 'hableme', 'hablenme', 'cuentame', 'cuenteme', 'cuentenme', 'dime', 'digame', 'diganme', 'muestrame', 'muestreme',
-            'muestrenme', 'explicame', 'expliqueme', 'describeme', 'describame', 'ensename', 'ensenenme', 'recomiendame', 'recomiendeme'],
+            'muestrenme', 'explicame', 'expliqueme', 'describeme', 'describame', 'ensename', 'ensenenme', 'recomiendame', 'recomiendeme',
+            // F4300-16f: «¿abierto mañana?». Portuguese writes «aberto», French «ouvert».
+            'abierto', 'abierta', 'abiertos', 'abiertas'],
         pt: ['tem', 'voce', 'voces', 'quanto', 'quanta', 'quantos', 'quantas', 'custa', 'custam', 'posso', 'pode', 'podem', 'quero',
             'preciso', 'gostaria', 'consegue', 'inclui', 'incluem', 'fica', 'ficam', 'estou', 'faz', 'fazem', 'procuro', 'devo', 'qual',
             'quais', 'aceitam', 'oferecem', 'esta', 'estao',
@@ -263,14 +270,18 @@ export class LanguageDetectorService {
             'quando', 'sai', 'saem', 'fiz', 'fez', 'fizemos',
             // Production QA 25-oct (image 0330ef7a): «me fala mais sobre o Spark QA Inmueble» was answered in Spanish — no word of
             // it was known. Spanish says «háblame», «cuéntame», «dime», «muéstrame»; French «parlez», «racontez», «dites».
-            'fala', 'falam', 'falar', 'conta', 'contam', 'contar', 'diz', 'dizem', 'mostra', 'mostram'],
+            'fala', 'falam', 'falar', 'conta', 'contam', 'contar', 'diz', 'dizem', 'mostra', 'mostram',
+            // F4300-16f: «aberto amanhã?». Spanish writes «abierto», «disponible».
+            'aberto', 'aberta', 'abertos', 'abertas', 'disponivel', 'disponiveis'],
         fr: ['coute', 'coutent', 'combien', 'je', 'est', 'sont', 'avez', 'pouvez', 'puis', 'peux', 'veux', 'voudrais', 'faut',
             'inclut', 'dois', 'doit', 'cherche', 'ai', 'reste', 'proposez', 'acceptez', 'quel', 'quelle', 'quels', 'quelles',
             'vendez', 'vendent', 'faites', 'ouvrez', 'fermez', 'livrez', 'envoyez', 'travaillez',
             // «le plat Spark contient-il du soja ?» (production QA, answered in Spanish after a Spanish case).
             'contient', 'contiennent', 'comprend', 'vient',
             // «parlez-moi du Spark QA Inmueble» (production QA 25-oct: answered in Spanish, no word of it was known).
-            'parlez', 'parle', 'racontez', 'raconte', 'dites', 'montrez', 'expliquez', 'explique', 'donnez', 'conseillez', 'recommandez'],
+            'parlez', 'parle', 'racontez', 'raconte', 'dites', 'montrez', 'expliquez', 'explique', 'donnez', 'conseillez', 'recommandez',
+            // F4300-16f: «ouvert demain ?». Not «disponible» (Spanish too).
+            'ouvert', 'ouverte', 'ouverts', 'ouvertes'],
         // Not «stock» (a loanword in Spanish and French: «hay stock?» is Spanish) nor «charge» (a French word too).
         en: ['is', 'are', 'does', 'have', 'has', 'can', 'could', 'would', 'how', 'what', 'cost', 'costs', 'need', 'want', 'include',
             'includes', 'should', 'where', 'when', 'which', 'offer', 'accept',
@@ -278,7 +289,10 @@ export class LanguageDetectorService {
             // The imperatives of a request (production QA 24-oct: «tell me about the Aurora tour» after a Spanish case was
             // answered in Spanish — once the name is out, «about» and «the» were evidence but nothing was a verb). Not «show»
             // («el show»), «describe» (Spanish «describe»), «send» nor «give» («please send it» keeps the stored language).
-            'tell', 'explain', 'recommend'],
+            'tell', 'explain', 'recommend',
+            // F4300-16f (production QA 25-oct): the adjective is the predicate of a question with no verb («parking available?»,
+            // «open tomorrow?»). Spanish writes «abierto»/«disponible», Portuguese «aberto»/«disponível», French «ouvert».
+            'available'],
     };
 
     /**
@@ -337,20 +351,27 @@ export class LanguageDetectorService {
         en: ['price', 'prices', 'pricing', 'haircut', 'haircuts', 'room', 'rooms', 'night', 'nights', 'stock', 'shipping',
             'available', 'dish', 'dishes', 'headphones', 'warranty', 'discount', 'refund', 'size', 'weekend', 'breakfast', 'appointment',
             // Shop and service nouns. Not «cases» (French «cases»), «desserts» (French too) nor «location» (French «location» = rental).
-            'charger', 'chargers', 'speaker', 'speakers', 'makeup', 'rent'],
+            'charger', 'chargers', 'speaker', 'speakers', 'makeup', 'rent',
+            // F4300-16f: what a short restaurant question asks for, and its time and quantity words, which count as content
+            // here so «any promotions today?» decides by two of them. Not «promotion(s)» (French too) nor «vegan» (French «végan»).
+            'vegetarian', 'vegetarians', 'any', 'anything', 'something', 'today', 'tonight', 'tomorrow'],
         es: ['precio', 'precios', 'habitacion', 'habitaciones', 'noche', 'noches', 'envio', 'envios', 'domicilio', 'descuento',
             'desayuno', 'talla', 'manicura', 'audifonos', 'existencias', 'cita',
-            'cargador', 'cargadores', 'funda', 'fundas', 'parlante', 'parlantes', 'postre', 'postres', 'maquillaje', 'arriendo'],
+            'cargador', 'cargadores', 'funda', 'fundas', 'parlante', 'parlantes', 'postre', 'postres', 'maquillaje', 'arriendo',
+            // Not «algo» nor «vegetariano» (Portuguese too).
+            'promocion', 'promociones', 'alguna', 'alguno', 'algun', 'algunas', 'algunos', 'hoy', 'manana'],
         // Not «capas» nor «sobremesas»: Spanish spells them the same. «café da manhã» counts by its «manha» (and «da»).
         pt: ['preco', 'precos', 'quarto', 'quartos', 'noite', 'noites', 'frete', 'cabelo', 'desconto', 'tamanho', 'fones', 'estoque',
             'diaria', 'diarias',
             'carregador', 'carregadores', 'capinha', 'capinhas', 'manha', 'maquiagem', 'aluguel',
             // «o que tem no cardápio hoje?»: Spanish «carta» / «menú», French «carte».
-            'cardapio', 'cardapios'],
+            'cardapio', 'cardapios',
+            'promocao', 'promocoes', 'prato', 'pratos', 'alguma', 'algum', 'algumas', 'alguns', 'hoje', 'amanha'],
         // «petit-déjeuner» splits into «petit» and «dejeuner». Not «desserts» (English too) nor «location» (English too).
         fr: ['prix', 'chambre', 'chambres', 'nuit', 'nuits', 'livraison', 'manucure', 'cheveux', 'remise', 'taille', 'remboursement',
             'dejeuner', 'casque', 'casques',
-            'chargeur', 'chargeurs', 'coque', 'coques', 'ecouteurs', 'petit', 'maquillage', 'loyer'],
+            'chargeur', 'chargeurs', 'coque', 'coques', 'ecouteurs', 'petit', 'maquillage', 'loyer',
+            'vegetarien', 'vegetarienne', 'vegetariens', 'vegetariennes', 'chose', 'quelque', 'quelques', 'aujourd', 'demain'],
     };
 
     /**
@@ -413,7 +434,18 @@ export class LanguageDetectorService {
         valor: ['es', 'pt'], valores: ['es', 'pt'], do: ['pt', 'en'],
         // «me fala mais sobre o…», «háblame sobre el…»: Spanish AND Portuguese (French «sur», English «about»).
         sobre: ['es', 'pt'],
+        // F4300-16f: «algo vegetariano?» is Spanish or Portuguese; «promotions» is English or French.
+        algo: ['es', 'pt'], vegetariano: ['es', 'pt'], vegetariana: ['es', 'pt'], vegetarianos: ['es', 'pt'], vegetarianas: ['es', 'pt'],
+        promotion: ['en', 'fr'], promotions: ['en', 'fr'],
     };
+
+    /**
+     * The time and quantity words of a short question with no verb («algo vegetariano?», «any … today?»): with one of them,
+     * two known words are enough for `languageExcludingStored` to rule the stored language out.
+     */
+    private readonly quantityAndTimeWords = new Set(['algo', 'alguna', 'alguno', 'algun', 'algunas', 'algunos', 'hoy', 'manana',
+        'alguma', 'algum', 'algumas', 'alguns', 'hoje', 'amanha', 'quelque', 'quelques', 'aujourd', 'demain', 'any', 'anything',
+        'something', 'today', 'tonight', 'tomorrow']);
 
     /** The languages that write `token`: the shared table first, else every single-language list that holds it. */
     private ownersOf(token: string): readonly string[] {
@@ -458,7 +490,8 @@ export class LanguageDetectorService {
         for (const [lang, pattern] of Object.entries(this.clearCharacters)) {
             if (pattern.test(raw)) candidates = new Set([...candidates].filter(candidate => candidate === lang));
         }
-        if (known < 3 || !candidates.size || candidates.has(previous)) return null;
+        const enough = known >= 3 || (known >= 2 && [...tokens].some(token => this.quantityAndTimeWords.has(token)));
+        if (!enough || !candidates.size || candidates.has(previous)) return null;
         if (aroundName && ![...candidates].some(lang => this.hasPredicate(lang, tokens, raw))) return null;
         const preferredShort = preferred ? this.short(preferred) : null;
         if (preferredShort && candidates.has(preferredShort)) return preferredShort;

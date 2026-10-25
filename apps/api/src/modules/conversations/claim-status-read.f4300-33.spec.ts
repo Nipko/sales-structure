@@ -1,4 +1,4 @@
-import { auditTurnClaim, claimsCompletedAction } from '../../common/utils/outcome-claim.util';
+import { auditTurnClaim, claimsCompletedAction, mentionsCancellation } from '../../common/utils/outcome-claim.util';
 import { ConversationsService } from './conversations.service';
 import { isBusinessWriteTool } from './tool-policy-registry';
 import { knownRecordFacts, toolReadsOfTurnMessages } from './transition-engine';
@@ -80,10 +80,12 @@ describe('F4300-33: a status read this turn is a report, in es / en / pt', () =>
         expect(auditTurnClaim(reply, [], { isBackingTool, recordFacts: facts }).falseClaim).toBe(false);
     });
 
-    it.each(CLAIMS)('[%s] «%s» → «%s» is the agent claiming the deed: still a false claim', (_lang, _question, reply) => {
-        expect(auditTurnClaim(reply, [], { isBackingTool, recordFacts: facts }).falseClaim).toBe(true);
+    it.each(CLAIMS)('[%s] «%s» → «%s» is the agent claiming the deed: still a false claim', (_lang, question, reply) => {
+        const customerRequestedCancellation = mentionsCancellation(question);
+        expect(auditTurnClaim(reply, [], { isBackingTool, recordFacts: facts, customerRequestedCancellation }).falseClaim).toBe(true);
         // backed by the cancel receipt it is true
-        expect(auditTurnClaim(reply, [{ name: 'cancel_order', result: { success: true, orderId: ORDER_ID } }], { isBackingTool, recordFacts: facts }).falseClaim).toBe(false);
+        expect(auditTurnClaim(reply, [{ name: 'cancel_order', result: { success: true, orderId: ORDER_ID } }],
+            { isBackingTool, recordFacts: facts, customerRequestedCancellation }).falseClaim).toBe(false);
     });
 
     it('the status is excused only for what was read: another status, another record or nothing read stays a claim', () => {

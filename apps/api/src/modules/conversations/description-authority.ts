@@ -345,6 +345,24 @@ const TRAILING_CONNECTOR = /(?:[\s,;:]+(?:y|e|and|et|ni|nor|or|ou|pero|but|mas|m
 
 const CONTRASTIVE_DELIMITER = /^\s+(?:mas|mais|pero|but|porem|porém|sin embargo|however|cependant)\s+$/iu;
 
+/**
+ * F4300-38 (production 25-oct, tours QA tenant, 6 of 12 «what does it include?»): «O pacote Tour QA Aurora inclui um percurso
+ * virtual com guia sintética.» / «Le Tour QA Aurora comprend un parcours virtuel avec un guide synthétique.» had no delimiter to
+ * split at, so the whole clause went and the reply said only what is NOT included. A clause that says what the item includes,
+ * whose only claim is the adjective («sintética», «synthétique»), loses the adjective and keeps what it includes.
+ */
+const CLAIM_ADJECTIVE = /\s*(?<![\p{L}\p{N}])(?:sint[eé]tic\w*|synthetic|synth[eé]tique\w*|fict[ií]ci\w*|fictional|fictitious|fictif|fictive|fictifs|fictives)(?![\p{L}\p{N}])/giu;
+const INCLUDES_CUE = /(?<![\p{L}])(?:incluye\w*|incluy\w*|inclu[ií]\w*|includ\w*|comprend\w*|with|con|com|avec|trae|traz|offers?|ofrece\w*|oferece\w*|propose\w*)(?![\p{L}])/iu;
+const ITEM_IS = /(?<![\p{L}])(?:is|es|é|est|son|são|sont)\s+(?:an?|un|una|um|uma|une)(?![\p{L}])/iu;
+
+/** The clause without its claim adjective, when that is all that made it a claim; null otherwise. Pure. */
+function softenedClaimClause(clause: string, isClaim: (text: string) => boolean, nameTokens: ReadonlySet<string>): string | null {
+    if (!INCLUDES_CUE.test(clause) || ITEM_IS.test(clause)) return null;
+    const softened = clause.replace(CLAIM_ADJECTIVE, '').replace(/\s+([,.;:!?…])/g, '$1');
+    if (softened === clause || isClaim(softened) || contentWords(softened, nameTokens) < 2) return null;
+    return softened;
+}
+
 /** The kept text without a connector the removed clause left orphaned. Pure. */
 function withoutOrphanConnectors(text: string): string {
     return text
@@ -382,7 +400,20 @@ function withoutClaimClauses(sentence: string, isClaim: (text: string) => boolea
     const parts = sentence.split(CLAUSE_DELIMITER);
     const clauses = parts.filter((_, i) => i % 2 === 0);
     const delimiters = parts.filter((_, i) => i % 2 === 1);
-    const drop = clauses.map(clause => isClaim(clause));
+    const softenedAt: number[] = [];
+    const drop = clauses.map((clause, i) => {
+        if (!isClaim(clause)) return false;
+        const softened = softenedClaimClause(clause, isClaim, nameTokens);
+        if (softened === null) return true;
+        clauses[i] = softened;
+        softenedAt.push(i);
+        return false;
+    });
+    // Only adjectives went: the sentence is said without them.
+    if (!drop.some(Boolean) && softenedAt.length) {
+        const removed = softenedAt.map(i => parts[i * 2]).join(' … ');
+        return { text: withoutOrphanConnectors(clauses.map((clause, i) => clause + (delimiters[i] ?? '')).join('')), removed };
+    }
     // The claim spans a delimiter («no es, en realidad, comercializable»): the whole sentence goes.
     if (!drop.some(Boolean)) return { text: null, removed: sentence };
     for (let i = 1; i < clauses.length; i++) {

@@ -87,7 +87,7 @@ import { outboundDedupeId, providerMessageId, turnDoneKey } from '../../common/u
 import { legacyTurnReplyKey, turnReplyKey } from './turn-reply-cache';
 import { IdentityService } from '../identity/identity.service';
 import { AIToolExecutorService } from './ai-tool-executor.service';
-import { buildUnverifiedPriceReply, correctivePriceInstruction, enforceVerifiedPriceReply, ResponseValidatorService } from './response-validator.service';
+import { buildUnverifiedPriceReply, correctivePriceInstruction, enforceVerifiedPriceReply, ResponseValidatorService, withoutUnverifiedPriceSentences } from './response-validator.service';
 import { groundInactiveCatalogReply } from './catalog-retirement-grounding';
 import { groundMissingPropertyPhotoReply, propertyPhotoCatalogue, requiresPropertyPhotoLookup } from './property-photo-grounding';
 import { requiresPropertyDetailLookup, propertyDetailIdForQuestion } from './property-detail-grounding';
@@ -7930,14 +7930,22 @@ export class ConversationsService {
         const renderedViews = renderedFactsOn ? RENDERED_FACTS_TURN.get(trustedContext as object) ?? [] : [];
         const ledger = trustedContext?.verifiedFacts ? { facts: [...trustedContext.verifiedFacts, ...renderedViews], customerText }
             : renderedViews.length ? { facts: renderedViews, customerText } : undefined;
-        const check = ledger ? this.responseValidator.validatePrices(response, corpus, ledger) : this.responseValidator.validatePrices(response, corpus);
+        // F4300-36: a total the reply computes from those amounts (2 × 13.500 when the customer asked «y si pido dos») is
+        // backed by the quantity the customer's message says.
+        const priceOptions = { customerText };
+        const addressForm = trustedContext?.regional?.addressForm;
+        const check = this.responseValidator.validatePrices(response, corpus, ledger, priceOptions);
         if (check.ok) return response;
+        // F4300-36: when the reply still states a verified price, only the sentences with the unbacked amount go (the real
+        // price stays); the whole-reply template is the fallback when nothing verifiable is left.
+        const failClosed = () => withoutUnverifiedPriceSentences(response, check, corpus, systemPrompt, this.responseValidator, ledger, addressForm, priceOptions)
+            ?? buildUnverifiedPriceReply(systemPrompt, addressForm);
         if (renderedFactsOn) {
             // No corrective retry: an amount that still is not backed after rendering fails closed on the price.
             this.logger.warn(`[Guardrail] Response stated price(s) not in context: ${check.hallucinatedPrices.join(', ')} — fail closed (rendered facts)`);
             if (session) this.recordAgentSignal(tenantId, 'unverified_price', session);
             else this.eventEmitter.emit('response.guardrail.failed', { tenantId, conversationId, prices: check.hallucinatedPrices });
-            return buildUnverifiedPriceReply(systemPrompt, trustedContext?.regional?.addressForm);
+            return failClosed();
         }
 
         this.logger.warn(`[Guardrail] Response stated price(s) not in context: ${check.hallucinatedPrices.join(', ')} — corrective retry`);
@@ -7956,7 +7964,7 @@ export class ConversationsService {
             });
             const fixed = corrected.content?.trim();
             if (fixed) {
-                const enforced = enforceVerifiedPriceReply(fixed, corpus, systemPrompt, this.responseValidator, ledger, trustedContext?.regional?.addressForm);
+                const enforced = enforceVerifiedPriceReply(fixed, corpus, systemPrompt, this.responseValidator, ledger, addressForm, priceOptions);
                 if (enforced.blocked) {
                     if(session)this.recordAgentSignal(tenantId,'unverified_price',session);
                     else this.eventEmitter.emit('response.guardrail.failed', { tenantId, conversationId, prices: enforced.validation.hallucinatedPrices });
@@ -7969,7 +7977,7 @@ export class ConversationsService {
         // Couldn't correct: surface for monitoring and fail closed on the price.
         if(session)this.recordAgentSignal(tenantId,'unverified_price',session);
         else this.eventEmitter.emit('response.guardrail.failed', { tenantId, conversationId, prices: check.hallucinatedPrices });
-        return buildUnverifiedPriceReply(systemPrompt, trustedContext?.regional?.addressForm);
+        return failClosed();
     }
 
     /**

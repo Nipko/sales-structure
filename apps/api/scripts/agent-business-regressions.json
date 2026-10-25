@@ -122,7 +122,9 @@
     "apps/api/src/modules/conversations/claim-past-orders.f4300-11.spec.ts",
     "apps/api/src/modules/conversations/runtime/required-reads.past-orders.f4300-11.spec.ts",
     "apps/api/src/modules/conversations/runtime/required-reads.own-bookings.f4300-08.spec.ts",
-    "apps/api/src/modules/conversations/conversations.required-reads-own-bookings.spec.ts"
+    "apps/api/src/modules/conversations/conversations.required-reads-own-bookings.spec.ts",
+    "apps/api/src/modules/conversations/conversations.price-totals.f4300-36.spec.ts",
+    "apps/api/src/modules/conversations/response-validator.computed-totals.f4300-36.spec.ts"
   ],
   "postgres": [
     "apps/api/src/modules/faqs/faq-effects.postgres.spec.ts",

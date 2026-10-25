@@ -203,6 +203,17 @@ export type RequiredReadsGate =
 const LEXICAL_CUE_OVERRIDABLE = new Set(['none', 'ask_question']);
 
 /**
+ * A confident read verdict of the same pilot that the message's words narrow to a read that owes more. Production 2026-10-24:
+ * «combien de places restent pour le Spark QA Tour ?» answered «no specific number of seats» after search_packages alone; a
+ * seats or departure question is `package_availability` (the departures and their seats, and a dated departure's availability)
+ * even when the classifier confidently said `package_info`. Only read operations are upgraded, never a booking or another
+ * pilot's operation.
+ */
+const LEXICAL_CUE_UPGRADES: Readonly<Record<string, readonly string[]>> = Object.freeze({
+    package_info: Object.freeze(['package_availability']),
+});
+
+/**
  * Whether this verdict moves the turn into forced reads. Pure.
  *
  * `lexicalOperation` (from `lexicalRequiredReadsOperation`) is the pilot operation the message's own words name. It runs the
@@ -215,6 +226,10 @@ export function requiredReadsGate(
     lexicalOperation?: string | null,
 ): RequiredReadsGate {
     const byClassifier = classifierGate(verdict, pilot);
+    if (byClassifier.run && lexicalOperation && LEXICAL_CUE_UPGRADES[byClassifier.operation.key]?.includes(lexicalOperation)) {
+        const upgraded = getOperation(lexicalOperation);
+        if (upgraded && REQUIRED_READS_PILOT_OPERATIONS[lexicalOperation] === pilot) return { run: true, operation: upgraded, pilot, source: 'lexical_cue' };
+    }
     if (byClassifier.run || !lexicalOperation || REQUIRED_READS_PILOT_OPERATIONS[lexicalOperation] !== pilot) return byClassifier;
     const confidentElsewhere = !!verdict && !verdict.fallback && !LEXICAL_CUE_OVERRIDABLE.has(verdict.operationKey)
         && verdict.confidence >= Math.max(REQUIRED_READS_CONFIDENCE_THRESHOLD, OPERATION_CONFIDENCE_THRESHOLD)
@@ -313,11 +328,35 @@ const fold = (value: unknown) => normalizeForIntent(value).replace(/[^\p{L}\p{N}
 function namedRow(rows: any[], customerText: string | undefined): any | undefined {
     if (!customerText) return undefined;
     const text = ` ${fold(customerText)} `;
+    const nameOf = (row: any) => typeof row?.name === 'string' ? fold(row.name) : '';
     const named = rows.filter(row => {
-        const name = typeof row?.name === 'string' ? fold(row.name) : '';
+        const name = nameOf(row);
         return name.length >= 3 && text.includes(` ${name} `);
     });
-    return named.length === 1 ? named[0] : undefined;
+    if (named.length === 1) return named[0];
+    if (named.length > 1) return undefined;
+    return wordNamedRow(rows.map(row => ({ row, name: nameOf(row) })), text);
+}
+
+/**
+ * The customer said the name's words but not all of it: production 2026-10-24, «combien de places restent pour le Spark QA
+ * Tour ?» for the package «Spark QA Tour 20261018T2140Z», with other packages in the list. A row is named when every word of
+ * its name that carries no digit (a code or timestamp suffix is not said aloud) starts a word of the message, and those words
+ * are at least four letters in all (so «the tour» never names «Tour»). Among several such rows the one with the most of its
+ * words in the message wins (the more specific name), and a tie is no name at all. Pure.
+ */
+function wordNamedRow(rows: Array<{ row: any; name: string }>, text: string): any | undefined {
+    const startsAWord = (word: string) => text.includes(` ${word}`);
+    const scored = rows.flatMap(({ row, name }) => {
+        const words = name.split(' ').filter(Boolean);
+        const spoken = words.filter(word => !/\d/.test(word));
+        if (!spoken.length || spoken.join('').length < 4 || !spoken.every(startsAWord)) return [];
+        return [{ row, score: words.filter(startsAWord).length }];
+    });
+    if (!scored.length) return undefined;
+    const best = Math.max(...scored.map(s => s.score));
+    const top = scored.filter(s => s.score === best);
+    return top.length === 1 ? top[0].row : undefined;
 }
 
 /**

@@ -233,7 +233,8 @@ const LEADING_POSSESSIVE: Record<string, RegExp> = {
 /** A possessive of the item further in («no hay información sobre sus ingredientes»). pt «seu/sua» is the customer's «your»: only «dele/dela». */
 const INNER_POSSESSIVE: Record<string, RegExp> = {
     es: /(?<![\p{L}\p{N}])(?:su|sus)\s/iu,
-    en: /(?<![\p{L}\p{N}])(?:its|their)\s/iu,
+    // «on its way» is an idiom, not the item's (production QA 25-oct: «…so it is not on its way» got «As for Spark QA Plato, …»).
+    en: /(?<![\p{L}\p{N}])(?:its|their)\s(?!way\b)/iu,
     pt: /(?<![\p{L}\p{N}])(?:dele|dela|deles|delas)(?![\p{L}\p{N}])/iu,
     fr: /(?<![\p{L}\p{N}])(?:ses|leurs?)\s/iu,
 };
@@ -311,6 +312,8 @@ const FILLER = new Set(('que which who lo o ce qui and y e et ni nor but pero ma
     + 'this that este esta esto ce cet cette isto essa esse').split(' '));
 /** A sentence that opens on «also» after the sentence before it was taken out. */
 const ADDITIVE_OPENING = /^(\s*(?:[-*•]\s+)?)(?:tambi[eé]n|tamb[eé]m|also|aussi|adem[aá]s|asimismo|igualmente|al[eé]m disso|de plus|moreover|furthermore|additionally|en outre)\s*,?\s+/iu;
+/** A sentence that opens on «however» after the sentence it contrasted with was taken out. Not pt «mais» («more»). */
+const CONTRASTIVE_OPENING = /^(\s*(?:[-*•]\s+)?)(?:however|but|sin embargo|no obstante|pero|por[eé]m|contudo|no entanto|cependant|toutefois|pourtant)\s*,?\s+/iu;
 const NEGATIVE_ADDITIVE_OPENING = /^(\s*(?:[-*•]\s+)?)(tampoco|tampouco)\s+(?!no\b|n[aã]o\b)/iu;
 /** What is left at the start of a sentence whose first clause went: a connector or a relative pronoun. */
 const LEADING_CONNECTOR = /^(?:(?:que|which|who|lo que|o que|ce qui|qui|and|y|e|et|but|pero|mas|mais|so|then|therefore|thus|por eso|por lo tanto|por isso|portanto|entonces|ent[aã]o|donc|ainsi|also|tambi[eé]n|tamb[eé]m|aussi|however|sin embargo|por[eé]m|cependant|aunque|although|though|note|nota|ojo|importante)(?![\p{L}\p{N}])[\s,:]*)+/iu;
@@ -444,7 +447,7 @@ export function guardDescriptionStatusClaim(input: DescriptionStatusClaimInput):
                 next = cut.text;
                 isFragment = !!cut.fragment;
             } else if (previousDropped) {
-                next = capitalize(sentence.replace(ADDITIVE_OPENING, '$1'))
+                next = capitalize(sentence.replace(ADDITIVE_OPENING, '$1').replace(CONTRASTIVE_OPENING, '$1'))
                     .replace(NEGATIVE_ADDITIVE_OPENING, (_, lead: string, word: string) => lead + (/^tampou/i.test(word) ? 'Não ' : 'No '));
             }
             previousDropped = next === null;

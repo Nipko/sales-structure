@@ -199,7 +199,11 @@ describe('the gate: the cue runs what the classifier missed, the threshold does 
         const info = requiredReadsGate(verdict('listing_info', 0.9), 'listings', 'find_listing');
         expect(info.run && info.operation.key).toBe('listing_info');
         expect(info.run && info.source).toBeUndefined();
-        expect(requiredReadsGate(verdict('view_my_appointments', 0.95), 'listings', 'listing_info')).toEqual({ run: false, reason: 'not_pilot_operation' });
+        // F4300-08: the customer's own visits are the listings pilot's own-records read; a listing cue does not take that turn.
+        const visits = requiredReadsGate(verdict('view_my_appointments', 0.95), 'listings', 'listing_info');
+        expect(visits.run && visits.operation.key).toBe('view_my_appointments');
+        expect(visits.run && visits.source).toBeUndefined();
+        expect(requiredReadsGate(verdict('book_appointment', 0.95), 'listings', 'listing_info')).toEqual({ run: false, reason: 'not_pilot_operation' });
         // A listings cue does nothing in another pilot.
         expect(requiredReadsGate(verdict('none', 0.9, 'none'), 'properties', 'listing_info')).toEqual({ run: false, reason: 'fallback:none' });
     });

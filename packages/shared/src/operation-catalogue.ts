@@ -421,6 +421,19 @@ const DECLARED_READ_OPERATIONS: readonly DeclaredReadOperation[] = Object.freeze
         reads: ['search_packages', 'check_package_availability'], factKinds: ['availability', 'price'],
         onReadFailure: 'ask',
     },
+    {
+        // F4300-08 (production 2026-10-25): «tenho alguma reserva no hotel?» and «j'ai une réservation chez vous ?» were answered
+        // «you have none» after search_faqs alone. Whether the guest has a booking is their own records, never the FAQ.
+        key: 'view_my_stay_bookings', toolGroup: 'properties',
+        description: 'The guest asks whether they have a booking or reservation, or to see their own bookings, their dates or status, in any language ("do I have a reservation?", "¿tengo alguna reserva?", "tenho alguma reserva?", "j\'ai une réservation ?", "my booking"). Not a request to book, nor whether a room is available.',
+        reads: ['list_my_property_bookings'], factKinds: ['record_list', 'record_status'],
+    },
+    {
+        // F4300-08: «do I have any tour bookings?» / «tenho alguma reserva de passeio?» answered «none» with no booking read.
+        key: 'view_my_tour_bookings', toolGroup: 'tours',
+        description: 'The customer asks whether they have a tour or trip booking, or to see their own tour bookings, their dates or status, in any language ("do I have any tour bookings?", "¿tengo alguna reserva de tour?", "tenho alguma reserva de passeio?", "j\'ai une réservation ?"). Not a request to book, nor whether a departure has seats.',
+        reads: ['list_my_tour_bookings'], factKinds: ['record_list', 'record_status'],
+    },
 ]);
 
 const unique = <T>(items: readonly T[]): T[] => [...new Set(items)];

@@ -34,6 +34,8 @@ export const REQUIRED_READS_PROPERTIES_FLAG = 'agentRuntime.requiredReads.proper
 export const REQUIRED_READS_TOURS_FLAG = 'agentRuntime.requiredReads.tours';
 /** Real estate (`inmobiliaria`): listing price, area, rooms and bathrooms, and what is on offer. */
 export const REQUIRED_READS_LISTINGS_FLAG = 'agentRuntime.requiredReads.listings';
+/** F4300-08: businesses that book appointments (salon, clinic, dental, gym…): the customer's own appointments are read before the reply. */
+export const REQUIRED_READS_APPOINTMENTS_FLAG = 'agentRuntime.requiredReads.appointments';
 /** Per-tenant flag of the rendered facts (operations runtime PR6): amounts, counts and record fields come from tokens the server renders. */
 export const RENDERED_FACTS_FLAG = 'agentRuntime.renderedFacts';
 /** Per-tenant flag: the service catalogue decides what is offered, over a FAQ about a service it does not list (F4300-24). */
@@ -84,6 +86,7 @@ export const FEATURE_FLAGS_REGISTRY: Array<{
     { key: REQUIRED_READS_TOURS_FLAG, label: 'Required reads: travel / tours', description: 'Travel: package price, inclusions and availability questions run search_packages / get_package_details / check_package_availability before the reply; an open question lists the existing packages', category: 'experimental', default: false },
     // The same runner for real estate. Off = the turn is exactly the previous one.
     { key: REQUIRED_READS_LISTINGS_FLAG, label: 'Required reads: real estate', description: 'Real estate: listing price, area, rooms, bathrooms and sale/rent questions run search_listings (with the operation, property kind and bedrooms the message states) and get_listing_details on the named or only listing before the reply; an open question lists the published listings', category: 'experimental', default: false },
+    { key: REQUIRED_READS_APPOINTMENTS_FLAG, label: 'Required reads: appointments', description: 'Appointment businesses (salon, clinic, dental, gym…): «do I have an appointment?» in any language runs list_customer_appointments before the reply, through the identity guard (where the business type needs a code, an unverified chat gets the verification step; the read sends no code)', category: 'experimental', default: false },
     // Operations runtime PR6 (apps/api/src/modules/conversations/runtime/fact-renderer.ts): the model cites prices, counts,
     // availability and record fields as tokens (⟦fact:id⟧ / ⟦count:id⟧ / ⟦avail:id⟧) the server renders from the verified
     // facts; an amount or count the model typed itself is replaced by a template, and the claim/price corrective retries

@@ -295,15 +295,96 @@ export function isPastOrdersQuestion(text: unknown): boolean {
     return !!t && t.length <= 400 && PAST_ORDERS.test(t) && !PAST_ORDERS_ACTION.test(t);
 }
 
+// ── The customer's own bookings and appointments («do I have a booking?») ─────────────────────────────────────────────────
+
+/**
+ * F4300-08 (production QA 2026-10-25, image fe2edd65): the customer asked about their OWN bookings and the agent answered «you
+ * have none» after `search_faqs` alone, with no booking read at all:
+ *   - hotel (`requiredReads.properties` on): «tenho alguma reserva no hotel?», «j'ai une réservation chez vous ?» → «você não tem
+ *     nenhuma reserva» / «Vous n'avez actuellement aucune réservation» without list_my_property_bookings (EN read it);
+ *   - tours (`requiredReads.tours` on): «do I have any tour bookings?», «tenho alguma reserva de passeio?» → «none» without
+ *     list_my_tour_bookings (ES read it);
+ *   - salon (no pilot flag): «tenho algum horário marcado?», «tengo citas agendadas?», «est-ce que j'ai un rendez-vous ?» → «no
+ *     tengo registro» without list_customer_appointments (EN read it).
+ *
+ * «Do I have a booking?» is the customer's own records; «can I book?», «I want to book», «is the room available?» are not.
+ * Folded text (accents gone, apostrophes and hyphens are spaces: «j'ai un rendez-vous» is «j ai un rendez vous»).
+ */
+const BOOKING_NOUN = '(?:reservas?|reservaciones|reservacion|citas?|turnos?|visitas?|agendamentos?|horarios? marcados?|consultas? marcadas?|'
+    + 'reservations?|rendez vous|rdv|bookings?|appointments?|visits?|tour bookings?|trip bookings?)';
+const OWN_BOOKINGS = new RegExp(`(?:${[
+    // es: «¿tengo alguna reserva?», «tengo citas agendadas?», «¿tenemos reserva para mañana?»
+    `\\b(?:tengo|tenemos|tendre|tendria) (?:algun[oa]?s? |una? |unas |unos |ya )?(?:${BOOKING_NOUN})\\b`,
+    // es / pt / fr / en: the possessive («mi reserva», «mis citas», «minha reserva», «meu agendamento», «ma réservation», «my booking»)
+    `\\b(?:mi|mis|nuestra|nuestras|nuestro|meu|meus|minha|minhas|nossa|nossas|ma|mes|mon|notre|nos|my|our) (?:${BOOKING_NOUN}|horario)\\b`,
+    // pt: «tenho alguma reserva?», «tenho algum horário marcado?», «temos agendamento?»
+    `\\b(?:tenho|temos|terei) (?:algum[a]?s? |uma? |umas |uns |ja )?(?:${BOOKING_NOUN}|consulta)\\b`,
+    // fr: «j'ai une réservation ?», «est-ce que j'ai un rendez-vous ?», «ai-je une réservation ?», «nous avons une réservation»
+    `\\b(?:j ai|ai je|avons nous|nous avons) (?:une? |des |deja une? )?(?:${BOOKING_NOUN})\\b`,
+    // en: «do I have any reservations?», «do I have any tour bookings?», «have I got an appointment?», «I have a booking»
+    `\\b(?:do|did) (?:i|we) (?:still )?have (?!to\\b)(?:a |an |any )?(?:[a-z]+ ){0,2}(?:${BOOKING_NOUN})\\b`,
+    `\\b(?:have|has) (?:i|we) (?:got )?(?:a |an |any )?(?:[a-z]+ ){0,2}(?:${BOOKING_NOUN})\\b`,
+    `\\b(?:i|we) (?:have|ve got|got) (?:a|an) (?:[a-z]+ ){0,1}(?:${BOOKING_NOUN})\\b`,
+    // the name the booking is under («a mi nombre», «no meu nome», «à mon nom», «under my name»)
+    `\\b${BOOKING_NOUN}\\b.*\\b(?:a mi nombre|a nombre mio|no meu nome|em meu nome|a mon nom|under my name|in my name)\\b`,
+].join('|')})`);
+/**
+ * Not a question about the customer's own records: booking (or asking to), availability, or a change, payment or complaint about
+ * a booking («quiero cancelar mi cita», «can I book a room?», «tengo que reservar con anticipación?», «is the room available?»).
+ */
+const OWN_BOOKINGS_NOT = new RegExp([
+    /\b(?:cancel\w*|anul\w*|annul\w*|modific\w*|cambiar|cambio|changer|change|alterar|reprogram\w*|reagend\w*|remarc\w*|reschedul\w*|mover|move|deplacer|pagar|pago|pay|paid|payment|payer|paiement|pagamento|reembols\w*|refund\w*|rembours\w*|devol\w*|quej\w*|reclam\w*|complain\w*|plainte\w*)\b/.source,
+    /\b(?:disponib\w*|available|availability|vacancy|vacancies|cupos?|vagas?|places? libres?)\b/.source,
+    /\b(?:tengo que|tenemos que|hay que|tenho que|temos que|do i have to|do i need|do we have to|j ai besoin)\b/.source,
+    // A request to book: «puedo reservar», «quiero hacer una reserva», «quero marcar», «je voudrais réserver», «can I book».
+    /\b(?:puedo|podemos|podria|quiero|queremos|quisiera|me gustaria|deseo|necesito|posso|quero|queria|gostaria|preciso|je veux|je voudrais|j aimerais|puis je|peut on|can i|could i|may i|can we|i want|i d like|i would like|want to|how do i|how can i|como hago|como puedo|como se) (?:\w+ ){0,2}(?:reservar\w*|reserver|reserve|book|agendar\w*|marcar|apartar|hacer|fazer|faire|make|prendre|pedir|sacar|tomar)\b/.source,
+].join('|'));
+
+/** A check-in / check-out or arrival / departure time question: a lodging detail even about the guest's own stay. */
+function isStayScheduleQuestion(t: string): boolean {
+    return STAY_CHECK.test(t) || (STAY_MOVE.test(t) && TIME.test(t));
+}
+
+/**
+ * The customer asks whether they have a booking, reservation, appointment or visit, or about their own ones (es/en/pt/fr), and
+ * asks for nothing to be done to them; never a request to book or an availability question. Pure.
+ */
+export function isOwnBookingsQuestion(text: unknown): boolean {
+    const t = folded(text);
+    return !!t && t.length <= 400 && OWN_BOOKINGS.test(t) && !OWN_BOOKINGS_NOT.test(t);
+}
+
+/** The read of the customer's own bookings each pilot publishes (F4300-08). */
+const OWN_BOOKINGS_OPERATION: Readonly<Partial<Record<RequiredReadsPilot, { tool: string; operation: string }>>> = Object.freeze({
+    properties: { tool: 'list_my_property_bookings', operation: 'view_my_stay_bookings' },
+    tours: { tool: 'list_my_tour_bookings', operation: 'view_my_tour_bookings' },
+    // Real estate: the customer's own visits are appointments.
+    listings: { tool: 'list_customer_appointments', operation: 'view_my_appointments' },
+    appointments: { tool: 'list_customer_appointments', operation: 'view_my_appointments' },
+});
+
+/** The own-bookings operation of the pilot when the message asks about the customer's own bookings, or null. Pure. */
+export function ownBookingsOperation(text: unknown, pilot: RequiredReadsPilot, publishedTools: readonly string[]): string | null {
+    const own = OWN_BOOKINGS_OPERATION[pilot];
+    if (!own || !publishedTools.includes(own.tool) || !isOwnBookingsQuestion(text)) return null;
+    // «what time is check-in for my reservation?» is the property's check-in time (#208), not the booking list.
+    if (pilot === 'properties' && isStayScheduleQuestion(folded(text))) return null;
+    return own.operation;
+}
+
 /**
  * The pilot operation the message's own words name, when the turn publishes its read; null otherwise: the restaurant menu
  * (`menu_info` → get_menu), a lodging's details (`property_info` → list_properties), a tour's details or departures
  * (`package_info` / `package_availability` → search_packages) and a real-estate listing or the listings on offer
  * (`listing_info` / `find_listing` → search_listings), and a product the customer asks to be told about (`product_info` →
  * search_products → get_product), and the customer's own past orders (`check_my_orders` → list_my_orders, `track_catalog_order` →
- * list_my_catalog_orders).
+ * list_my_catalog_orders), and the customer's own bookings or appointments (`view_my_stay_bookings` → list_my_property_bookings,
+ * `view_my_tour_bookings` → list_my_tour_bookings, `view_my_appointments` → list_customer_appointments).
  */
 export function lexicalRequiredReadsOperation(text: unknown, pilot: RequiredReadsPilot, publishedTools: readonly string[]): string | null {
+    // F4300-08: «tenho alguma reserva?» / «do I have any tour bookings?» is the customer's own bookings, before any catalogue word.
+    const own = ownBookingsOperation(text, pilot, publishedTools);
+    if (own) return own;
     // F4300-11: «qué pedí la última vez?» / «what did I buy last time?» is the customer's own orders, before any menu or product word.
     if (pilot === 'restaurants' && publishedTools.includes('list_my_orders') && isPastOrdersQuestion(text)) return 'check_my_orders';
     if (pilot === 'catalog' && publishedTools.includes('list_my_catalog_orders') && isPastOrdersQuestion(text)) return 'track_catalog_order';

@@ -90,7 +90,7 @@ const TOUR_DETAILS = [
 ];
 const NOT_TOURS = [
     'hello!', 'what time do you open?', 'do you accept credit cards?', 'where is your office?', 'I want to cancel my booking',
-    '¿cuál es la política de reembolso?', 'when does my booking start?', 'merci beaucoup',
+    '¿cuál es la política de reembolso?', 'merci beaucoup',
 ];
 
 type Vertical = 'hotel' | 'tours';
@@ -183,6 +183,11 @@ describe('lodging and tour questions in the message\'s own words (es/pt/fr/en)',
         expect(lexicalRequiredReadsOperation(text, 'tours', TOUR_TOOLS)).toBeNull();
     });
 
+    it('«when does my booking start?» is not a catalogue read: it is the customer\'s own bookings (F4300-08)', () => {
+        expect(tourQuestionOperation('when does my booking start?')).toBeNull();
+        expect(lexicalRequiredReadsOperation('when does my booking start?', 'tours', TOUR_TOOLS)).toBe('view_my_tour_bookings');
+    });
+
     it('only its own pilot, and only when the turn publishes the pilot read', () => {
         expect(lexicalRequiredReadsOperation('what time is check-out?', 'tours', TOUR_TOOLS)).toBeNull();
         expect(lexicalRequiredReadsOperation('what time is check-out?', 'restaurants', ['get_menu'])).toBeNull();
@@ -225,7 +230,9 @@ describe('the gate: the cue runs what the classifier missed, the threshold does 
         expect(info.run && info.operation.key).toBe('package_availability');
         const details = requiredReadsGate(verdict('package_info', 0.9), 'tours', 'package_info');
         expect(details.run && details.operation.key).toBe('package_info');
-        expect(requiredReadsGate(verdict('view_my_appointments', 0.95), 'properties', 'property_info')).toEqual({ run: false, reason: 'not_pilot_operation' });
+        // F4300-08: view_my_appointments is the appointments pilot's now, so in the hotel it is another pilot's operation.
+        expect(requiredReadsGate(verdict('view_my_appointments', 0.95), 'properties', 'property_info')).toEqual({ run: false, reason: 'pilot_mismatch' });
+        expect(requiredReadsGate(verdict('request_follow_up', 0.95), 'properties', 'property_info')).toEqual({ run: false, reason: 'not_pilot_operation' });
         // A cue of another pilot does nothing.
         expect(requiredReadsGate(verdict('none', 0.9, 'none'), 'tours', 'property_info')).toEqual({ run: false, reason: 'fallback:none' });
     });

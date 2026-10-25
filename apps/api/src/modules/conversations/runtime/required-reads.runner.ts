@@ -61,7 +61,12 @@ import { OPERATION_CONFIDENCE_THRESHOLD, type OperationShadowVerdict } from './o
 import type { RequiredReadSlots } from './required-read-slots';
 import { isPastOrdersQuestion } from './operation-lexical-cues';
 
-export type RequiredReadsPilot = 'restaurants' | 'catalog' | 'properties' | 'tours' | 'listings';
+/**
+ * `appointments` (F4300-08): the businesses that book appointments (salon, clinic, dental, gym, school…). Only the customer's
+ * own appointments (`view_my_appointments` → list_customer_appointments) are read before the model, through the central guard
+ * with no code sent: where the business type needs a verified identity, an unverified chat gets the verification step instead.
+ */
+export type RequiredReadsPilot = 'restaurants' | 'catalog' | 'properties' | 'tours' | 'listings' | 'appointments';
 
 /**
  * Confidence at or above which the runtime acts on the verdict. The plan names
@@ -90,6 +95,8 @@ export const REQUIRED_READS_PILOT_TOOL_GROUP: Readonly<Partial<Record<RequiredRe
     tours: 'tours',
     // Real estate: the profiles that publish search_listings / get_listing_details (`inmobiliaria/*`).
     listings: 'realEstate',
+    // Last: a profile of an earlier pilot that also books appointments (real-estate visits) stays in that pilot.
+    appointments: 'appointments',
 });
 
 /**
@@ -115,7 +122,24 @@ export const REQUIRED_READS_PILOT_OPERATIONS: Readonly<Record<string, RequiredRe
     // Real estate. `listing_info`: one listing's price, area, rooms, bathrooms, operation; `find_listing`: what is on offer.
     listing_info: 'listings',
     find_listing: 'listings',
+    // F4300-08: the customer's own bookings and appointments («do I have a booking?»).
+    view_my_stay_bookings: 'properties',
+    view_my_tour_bookings: 'tours',
+    view_my_appointments: 'appointments',
 });
+
+/** Operations another pilot runs too: a real-estate customer's own visits are appointments (F4300-08). */
+const REQUIRED_READS_ALSO_PILOTS: Readonly<Record<string, readonly RequiredReadsPilot[]>> = Object.freeze({
+    view_my_appointments: Object.freeze(['listings'] as const),
+});
+
+/** Whether `pilot` runs the reads of `operationKey`. Pure. */
+export function requiredReadsOperationInPilot(operationKey: string, pilot: RequiredReadsPilot): boolean {
+    return REQUIRED_READS_PILOT_OPERATIONS[operationKey] === pilot || !!REQUIRED_READS_ALSO_PILOTS[operationKey]?.includes(pilot);
+}
+
+/** The customer's own records (F4300-08): no catalogue slot adds a read to them. */
+const OWN_RECORDS_OPERATIONS: ReadonlySet<string> = new Set(['view_my_stay_bookings', 'view_my_tour_bookings', 'view_my_appointments']);
 
 /**
  * Where a pilot runs other reads than the catalogue's for an operation. `stay_logistics` owes the guest's own booking and its
@@ -136,6 +160,16 @@ const REQUIRED_SLOT_ARGS: Readonly<Record<string, readonly string[]>> = Object.f
 
 /** Lists the reader returns whole (no limit, no paging): what was read is all there is. */
 const UNBOUNDED_LISTS = new Set(['list_properties']);
+
+/**
+ * Readers that take no limit and return at most this many rows (`LIMIT 10` in the executor): fewer is the whole list, so «no
+ * bookings» read as an empty list is complete, not `hasMore` (F4300-08).
+ */
+const READER_ROW_CAP: Readonly<Record<string, number>> = Object.freeze({
+    list_my_property_bookings: 10,
+    list_my_tour_bookings: 10,
+    list_customer_appointments: 10,
+});
 
 /**
  * Search readers that return a bounded list under another name than `list_*`. `search_listings` returns at most 8 exact matches
@@ -215,6 +249,15 @@ const LEXICAL_CUE_UPGRADES: Readonly<Record<string, readonly string[]>> = Object
 });
 
 /**
+ * Verdicts an own-records cue takes the turn from (F4300-08): «do I have a booking?» read as booking, or as a catalogue or service
+ * question. The reads only change which public or own-records READ runs before the model; a write is never run here.
+ */
+const OWN_RECORDS_CUE_OVER: ReadonlySet<string> = new Set([
+    'book_stay', 'stay_logistics', 'property_info', 'book_tour', 'package_info', 'package_availability',
+    'book_appointment', 'service_info', 'listing_info', 'find_listing',
+]);
+
+/**
  * Whether this verdict moves the turn into forced reads. Pure.
  *
  * `lexicalOperation` (from `lexicalRequiredReadsOperation`) is the pilot operation the message's own words name. It runs the
@@ -231,8 +274,11 @@ export function requiredReadsGate(
         const upgraded = getOperation(lexicalOperation);
         if (upgraded && REQUIRED_READS_PILOT_OPERATIONS[lexicalOperation] === pilot) return { run: true, operation: upgraded, pilot, source: 'lexical_cue' };
     }
-    if (byClassifier.run || !lexicalOperation || REQUIRED_READS_PILOT_OPERATIONS[lexicalOperation] !== pilot) return byClassifier;
-    const confidentElsewhere = !!verdict && !verdict.fallback && !LEXICAL_CUE_OVERRIDABLE.has(verdict.operationKey)
+    if (!lexicalOperation || !requiredReadsOperationInPilot(lexicalOperation, pilot)) return byClassifier;
+    // F4300-08: the customer's own bookings, in their own words, over a booking or catalogue verdict.
+    const ownRecordsOver = OWN_RECORDS_OPERATIONS.has(lexicalOperation) && !!verdict && OWN_RECORDS_CUE_OVER.has(verdict.operationKey);
+    if (byClassifier.run && !ownRecordsOver) return byClassifier;
+    const confidentElsewhere = !!verdict && !verdict.fallback && !LEXICAL_CUE_OVERRIDABLE.has(verdict.operationKey) && !ownRecordsOver
         && verdict.confidence >= Math.max(REQUIRED_READS_CONFIDENCE_THRESHOLD, OPERATION_CONFIDENCE_THRESHOLD)
         && verdict.operationKey !== lexicalOperation;
     if (confidentElsewhere) return byClassifier;
@@ -246,7 +292,7 @@ function classifierGate(verdict: OperationShadowVerdict | null | undefined, pilo
     if (!(verdict.confidence >= Math.max(REQUIRED_READS_CONFIDENCE_THRESHOLD, OPERATION_CONFIDENCE_THRESHOLD))) return { run: false, reason: 'below_threshold' };
     const operationPilot = REQUIRED_READS_PILOT_OPERATIONS[verdict.operationKey];
     if (!operationPilot) return { run: false, reason: 'not_pilot_operation' };
-    if (operationPilot !== pilot) return { run: false, reason: 'pilot_mismatch' };
+    if (!requiredReadsOperationInPilot(verdict.operationKey, pilot)) return { run: false, reason: 'pilot_mismatch' };
     const operation = getOperation(verdict.operationKey);
     if (!operation) return { run: false, reason: 'not_pilot_operation' };
     return { run: true, operation, pilot };
@@ -262,7 +308,14 @@ export type RequiredReadStatus =
     | 'no_receipt'
     | 'upstream_failed'
     /** A slot the read cannot run without (stay dates, departure date) was not in the message: the model asks. */
-    | 'missing_slot';
+    | 'missing_slot'
+    /** The central guard asks for identity verification first (an appointment where the business type needs a code): not read. */
+    | 'identity_required';
+
+/** Refusals of the central guard that mean "verify the customer's identity first" (tool-execution-control `requireStepUpIdentity`). */
+const IDENTITY_REFUSALS: ReadonlySet<string> = new Set([
+    'identity_verification_required', 'identity_context_required', 'identity_unverifiable', 'identity_locked', 'eval_identity_fixture_required',
+]);
 
 export interface RequiredReadRecord {
     tool: string;
@@ -289,7 +342,7 @@ export interface RequiredReadsRun {
     /** In the order they ran; failed reads carry an admit result. */
     results: RequiredReadResult[];
     /** `read`: every read that could run answered. `admit`: at least one failed. `nothing_to_run`: all satisfied/unrunnable. */
-    outcome: 'read' | 'admit' | 'nothing_to_run';
+    outcome: 'read' | 'admit' | 'nothing_to_run' | 'identity_required';
     latencyMs: number;
 }
 
@@ -420,7 +473,8 @@ export function requiredReadsPlan(operation: OperationDefinition, slots: Require
     const override = PILOT_READ_OVERRIDES[operation.key];
     const plan: OperationRequiredRead[] = override ? override.map(contract) : [...operation.requiredReads];
     const has = (tool: string) => plan.some(read => read.tool === tool);
-    const pilot = REQUIRED_READS_PILOT_OPERATIONS[operation.key];
+    // The customer's own bookings are read as they are: «do I have a booking from the 3rd to the 5th?» is not an availability read.
+    const pilot = OWN_RECORDS_OPERATIONS.has(operation.key) ? null : REQUIRED_READS_PILOT_OPERATIONS[operation.key];
     if (pilot === 'properties' && slots.check_in && slots.check_out && !has('check_property_availability')) {
         plan.push(contract('check_property_availability'));
     }
@@ -458,7 +512,8 @@ export function withListEvidence(name: string, args: Record<string, unknown>, re
     const complete = typeof result.hasMore === 'boolean' ? !result.hasMore
         : typeof result.total === 'number' ? result.total === rows
             : UNBOUNDED_LISTS.has(name) ? true
-                : Number.isFinite(limit) && limit > 0 ? rows < limit : false;
+                : Number.isFinite(limit) && limit > 0 ? rows < limit
+                    : READER_ROW_CAP[name] ? rows < READER_ROW_CAP[name] : false;
     const total = complete ? rows : typeof result.total === 'number' ? result.total : undefined;
     return {
         result: { ...result, ...(total !== undefined ? { total } : {}), hasMore: !complete, complete },
@@ -517,6 +572,12 @@ export async function runRequiredReads(operation: OperationDefinition, io: Requi
             thrown = String(error?.message || error || 'read_failed').slice(0, 120);
         }
         const latencyMs = now() - t0;
+        // A read this execution may not run at all (an Agent Test read-only context and a read it does not allow): as if the turn
+        // did not publish it. The model keeps its own way to the read.
+        if (thrown === undefined && result?.error === 'read_only_tool_blocked') {
+            reads.push({ tool: name, args, status: 'unpublished', latencyMs });
+            return;
+        }
         if (thrown !== undefined || isFailedToolResult(result)) {
             failed.add(name);
             const code = thrown ?? String(result?.errorCode ?? result?.error ?? result?.status ?? 'read_failed').slice(0, 80);
@@ -526,7 +587,10 @@ export async function runRequiredReads(operation: OperationDefinition, io: Requi
                 && !!result.message.trim() && !Object.values(result).some(Array.isArray);
             const modelResult = explained ? { ...result, requiredRead: true } : admitResult(name, code);
             results.push({ name, args, result: modelResult });
-            reads.push({ tool: name, args, status: 'failed', latencyMs, error: code });
+            // F4300-08: the guard did not run the read because the chat must verify its identity first (no code was sent). The
+            // verification step reaches the model as it is; it is not a broken read.
+            const identity = explained && (result?.needsVerification === true || IDENTITY_REFUSALS.has(String(result?.error ?? '')));
+            reads.push({ tool: name, args, status: identity ? 'identity_required' : 'failed', latencyMs, error: code });
             return;
         }
         const evidence = withListEvidence(name, args, result);
@@ -603,7 +667,8 @@ export async function runRequiredReads(operation: OperationDefinition, io: Requi
         operationKey: operation.key,
         reads,
         results,
-        outcome: reads.some(r => r.status === 'failed') ? 'admit' : ran.length ? 'read' : 'nothing_to_run',
+        outcome: reads.some(r => r.status === 'failed') ? 'admit' : ran.length ? 'read'
+            : reads.some(r => r.status === 'identity_required') ? 'identity_required' : 'nothing_to_run',
         latencyMs: now() - started,
     };
 }

@@ -128,6 +128,7 @@
     "apps/api/src/modules/conversations/response-validator.computed-totals.f4300-36.spec.ts",
     "apps/api/src/modules/conversations/runtime/fact-renderer.f4300-37.spec.ts",
     "apps/api/src/modules/conversations/conversations.rendered-facts.f4300-37.spec.ts",
+    "apps/api/src/modules/conversations/conversations.rendered-facts.f4300-37b.spec.ts",
     "apps/api/src/modules/conversations/conversations.required-reads-attribute-cues.spec.ts",
     "apps/api/src/modules/conversations/description-authority.f4300-35d.spec.ts"
   ],

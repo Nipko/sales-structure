@@ -648,9 +648,23 @@ export function renderReplyFacts(input: RenderFactsInput): RenderFactsOutcome {
             const price = priceTemplate(stripped);
             if (price) return { text: price, reason: 'price_denied' };
         }
-        let i = 0;
         outcome.rendered += values.length;
-        return { text: sentence.replace(FACT_TOKEN_RE, () => values[i++]) };
+        let i = 0;
+        const marked = sentence.replace(FACT_TOKEN_RE, () => `${i++}`);
+        // «13.500 COP x 2» is no answer to «si pido dos, ¿cuánto pago?» (production QA 2026-10-25, renderedFacts on): a
+        // confirmed price the model multiplied by a quantity the customer asked for is said as the total, with its working.
+        const asked = quantitiesIn(customerText);
+        const totalOf = (index: string, times: string, whole: string): string => {
+            const token = tokens[Number(index)];
+            const fact = registry.get(token[2]);
+            const n = Number(times);
+            if (token[1] !== 'fact' || !fact || fact.kind !== 'money' || typeof fact.value !== 'number' || n < 2 || !asked.includes(n)) return whole;
+            return `${moneyText({ ...fact, value: fact.value * n }, ctx)} (${n} × ${values[Number(index)]})`;
+        };
+        const totals = marked
+            .replace(/(\d+)\s*[x×*]\s*(\d{1,3})(?![\d.,]\d)/g, (whole, index, times) => totalOf(index, times, whole))
+            .replace(/(?<![\d.,])(\d{1,3})\s*[x×*]\s*(\d+)/g, (whole, times, index) => totalOf(index, times, whole));
+        return { text: totals.replace(/(\d+)/g, (_m, index) => values[Number(index)]) };
     };
 
     // Sentences end at . ! ? … followed by a space, or at a line break; «13.500» is not an end.

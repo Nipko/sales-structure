@@ -107,7 +107,7 @@ import { isAgentTestSafeToolName } from './agent-test-tool-policy';
 import { buildTrustedPriceCorpus, requiresCanonicalPackagePrice } from './trusted-price-context';
 import { liveVerifiedFacts, mergeVerifiedFacts, verifiedFactViews, type VerifiedFact } from './runtime/facts-ledger';
 import { extractVerifiedFacts } from './runtime/facts-extractors';
-import { factRegistry, factTokensForToolResult, factTokenViews, neutralizeFactTokens, projectedCatalogFacts, renderReplyFacts } from './runtime/fact-renderer';
+import { factRegistry, factTokensForToolResult, factTokenViews, neutralizeFactTokens, projectedCatalogFacts, renderReplyFacts, type RenderFactsInput } from './runtime/fact-renderer';
 import { canonicalPackageCatalogue } from './canonical-package-context';
 import { packageDetailIdForQuestion, requiresPackageDetailLookup } from './package-detail-grounding';
 import { listingDetailIdForQuestion, requiresListingDetailLookup } from './listing-detail-grounding';
@@ -564,6 +564,11 @@ const REPLY_LANGUAGE_OUTCOME = new WeakMap<object, ReplyLanguageOutcome>();
 const UNFILLED_PLACEHOLDER_OUTCOME = new WeakMap<object, Pick<UnfilledPlaceholderGuardResult, 'action' | 'placeholders' | 'contacts'>>();
 /** Rendered facts (PR6): the live facts a turn's reply was rendered from, for the price check of the output guardrail. */
 const RENDERED_FACTS_TURN = new WeakMap<object, VerifiedFactView[]>();
+/** Rendered facts (PR6): what a turn's reply was rendered with, so a language rewrite that wrote tokens is rendered the same way. */
+const RENDERED_FACTS_INPUT = new WeakMap<object, Omit<RenderFactsInput, 'reply'>>();
+export function rememberRenderedFactsInput(turnContext: object, input: Omit<RenderFactsInput, 'reply'>): void {
+    RENDERED_FACTS_INPUT.set(turnContext, input);
+}
 
 // Fixed system texts must never be rewritten by the wait-promise guard.
 function isSystemFixedText(text: string): boolean {
@@ -6272,15 +6277,16 @@ export class ConversationsService {
                 const turnTools = [...executedToolsThisTurn, ...engineExecutedTools];
                 const turnFacts = [...turnFactBase, ...extractVerifiedFacts(turnTools, renderNow).facts];
                 const stored = factsLedger ? (session ? session.metadata : (conversation.metadata as any))?.verifiedFacts : undefined;
-                const rendering = renderReplyFacts({
-                    reply: finalResponse,
+                const renderInput: Omit<RenderFactsInput, 'reply'> = {
                     facts: [...(Array.isArray(stored) ? stored : []), ...turnFacts],
                     now: renderNow, language: userLanguage, locale: localeForReply(userLanguage, turnContext.regional?.locale),
                     customerText: userText || '',
                     untrusted: [userText || '', ...turnTools.map(tool => { try { return JSON.stringify(tool.result ?? null); } catch { return ''; } })],
                     serverText: [turnContext.directive, engineProducedText].filter(Boolean).join('\n'),
                     addressForm: turnContext.regional?.addressForm,
-                });
+                };
+                rememberRenderedFactsInput(turnContext, renderInput);
+                const rendering = renderReplyFacts({ reply: finalResponse, ...renderInput });
                 if (rendering.text) finalResponse = rendering.text;
                 RENDERED_FACTS_TURN.set(turnContext, verifiedFactViews(liveVerifiedFacts(turnFacts, renderNow).filter(fact => fact.kind === 'money'), renderNow));
                 const reasons = [...new Set(rendering.fallbacks.map(fallback => fallback.reason))];
@@ -7524,6 +7530,11 @@ export class ConversationsService {
                 outcome.attempts = attempt;
                 const rewritten = await llmRouter.execute({ task: 'conversation', messages, systemPrompt, temperature: 0.2, allowedTiers, tenantId });
                 text = String(rewritten.content ?? '').trim();
+                // Rendered facts on: the system prompt tells the model to cite figures by token, so the rewrite wrote «You have
+                // made a total of ⟦count:f0vl378k⟧ order» for «1 pedido», lost the figure, was rejected twice and the Spanish reply
+                // went to an English turn (production QA 2026-10-25). Its tokens are rendered as the reply's were.
+                const renderInput = trustedContext ? RENDERED_FACTS_INPUT.get(trustedContext) : undefined;
+                if (renderInput && text.includes('⟦')) text = renderReplyFacts({ ...renderInput, reply: text }).text;
             } catch (e: any) {
                 if (e instanceof LLMSourceAuthorityUnavailable) throw e;
                 this.logger.warn(`[Guardrail] Language rewrite failed: ${e.message}`);

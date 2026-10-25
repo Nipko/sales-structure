@@ -54,6 +54,8 @@ const VOCABULARY: Record<ReplyLang, readonly string[]> = {
     es: ['pago', 'pagos', 'tarjeta', 'tarjetas', 'recargo', 'enlace', 'enlaces', 'llega', 'llegara', 'sucursal', 'sucursales', 'tallas', 'talla',
         'colores', 'negro', 'rojo', 'recordatorio', 'lamentablemente', 'descuento', 'perfecto', 'dos', 'treinta', 'cuarenta', 'siempre',
         'tarda', 'tardan', 'ubicados', 'indicaciones', 'tengo', 'siento', 'hablo',
+        // The closing offer («¿Desea que le ayude con algo más?») left inside a French reply (production QA 2026-10-25).
+        'desea', 'desean', 'deseas', 'ayude', 'ayuda', 'ayudo', 'ayudar',
         // Renting a listing (F4300-16 residual, production 24-oct: «Sí, el Spark QA Inmueble está en arriendo» to an English turn).
         'arriendo', 'arriendos', 'alquiler', 'alquileres', 'arrendamiento'],
     en: ['accept', 'credit', 'cards', 'card', 'debit', 'bank', 'transfers', 'transfer', 'payments', 'payment', 'per', 'month', 'taxes', 'included',
@@ -73,7 +75,7 @@ const VOCABULARY: Record<ReplyLang, readonly string[]> = {
         'etage', 'ville', 'zone', 'lien', 'rappel', 'desole', 'comprends', 'equipe', 'examiner', 'couleur', 'couleurs', 'noir', 'bleu', 'rouge',
         'tailles', 'taille', 'moyenne', 'epuise', 'oui', 'deux', 'trois', 'cinq', 'trente', 'quarante', 'jours', 'jour', 'toujours', 'jamais',
         'meilleure', 'meilleur', 'maintenant', 'adresse', 'horaires', 'ouverture', 'forfait', 'coute', 'mois', 'complet', 'seulement', 'simplement',
-        'loyer', 'louer'],
+        'loyer', 'louer', 'commandes'],
 };
 
 const SETS = Object.fromEntries(

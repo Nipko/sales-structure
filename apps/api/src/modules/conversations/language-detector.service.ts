@@ -2,6 +2,21 @@ import { Injectable } from '@nestjs/common';
 import { withoutLoanwords } from './language-loanwords';
 
 /**
+ * The «y» of the French «il y a» / «il n'y a» / «qu'il y a» / «y a-t-il» (there is) is no Spanish «y» (and).
+ * Production QA 25-oct (image 0330ef7a): «qu'est-ce qu'il y a au menu ?» after a Spanish case was answered in Spanish —
+ * its «y» was a Spanish word, so the message showed a sign of the stored language and a Spanish rival to every French word.
+ */
+const FRENCH_THERE_IS_Y = /(?<=(?<!\p{L})(?:il\s+|n['’]\s*))y(?=\s+(?:a|avait|aura|aurait|en)(?!\p{L}))|(?<!\p{L})y(?=\s+(?:a|avait|aura)-t-)/giu;
+
+/** The text the detector scores: loanwords out, and the «y» of «il y a» out. */
+function scoredText(text: string): string {
+    return withoutLoanwords(text).replace(FRENCH_THERE_IS_Y, ' ');
+}
+
+/** Lowercase words that join the words of a business name («Color y tratamiento», «Corte e escova»): part of the name. */
+const NAME_JOINERS = new Set(['y', 'e', 'et', 'and', '&']);
+
+/**
  * Lightweight heuristic language detector.
  *
  * We intentionally avoid heavy NLP libraries (franc, cld3) because this runs
@@ -240,12 +255,17 @@ export class LanguageDetectorService {
             'traz', 'contem', 'vem',
             // F4300-16 (production 24-oct): «quando sai o Spark QA Tour?» and «quantos pedidos eu já fiz aí?» were answered in the
             // previous case's language. Spanish writes «cuando», «sale», «hice», «hizo»; French «quand», «sort», «fait».
-            'quando', 'sai', 'saem', 'fiz', 'fez', 'fizemos'],
+            'quando', 'sai', 'saem', 'fiz', 'fez', 'fizemos',
+            // Production QA 25-oct (image 0330ef7a): «me fala mais sobre o Spark QA Inmueble» was answered in Spanish — no word of
+            // it was known. Spanish says «háblame», «cuéntame», «dime», «muéstrame»; French «parlez», «racontez», «dites».
+            'fala', 'falam', 'falar', 'conta', 'contam', 'contar', 'diz', 'dizem', 'mostra', 'mostram'],
         fr: ['coute', 'coutent', 'combien', 'je', 'est', 'sont', 'avez', 'pouvez', 'puis', 'peux', 'veux', 'voudrais', 'faut',
             'inclut', 'dois', 'doit', 'cherche', 'ai', 'reste', 'proposez', 'acceptez', 'quel', 'quelle', 'quels', 'quelles',
             'vendez', 'vendent', 'faites', 'ouvrez', 'fermez', 'livrez', 'envoyez', 'travaillez',
             // «le plat Spark contient-il du soja ?» (production QA, answered in Spanish after a Spanish case).
-            'contient', 'contiennent', 'comprend', 'vient'],
+            'contient', 'contiennent', 'comprend', 'vient',
+            // «parlez-moi du Spark QA Inmueble» (production QA 25-oct: answered in Spanish, no word of it was known).
+            'parlez', 'parle', 'racontez', 'raconte', 'dites', 'montrez', 'expliquez', 'explique', 'donnez', 'conseillez', 'recommandez'],
         // Not «stock» (a loanword in Spanish and French: «hay stock?» is Spanish) nor «charge» (a French word too).
         en: ['is', 'are', 'does', 'have', 'has', 'can', 'could', 'would', 'how', 'what', 'cost', 'costs', 'need', 'want', 'include',
             'includes', 'should', 'where', 'when', 'which', 'offer', 'accept',
@@ -289,7 +309,9 @@ export class LanguageDetectorService {
         pt: ['janeiro', 'fevereiro', 'maio', 'junho', 'julho', 'setembro', 'outubro', 'novembro', 'dezembro', 'vaga', 'vagas',
             'pessoas', 'preco', 'frete', 'na', 'nas', 'ao', 'sem'],
         fr: ['janvier', 'fevrier', 'mars', 'avril', 'mai', 'juin', 'juillet', 'aout', 'septembre', 'octobre', 'novembre', 'decembre',
-            'garantie', 'semaine', 'samedi', 'dimanche', 'personnes', 'prix', 'il', 'ce'],
+            'garantie', 'semaine', 'samedi', 'dimanche', 'personnes', 'prix', 'il', 'ce',
+            // «parlez-moi…», «vous avez quoi à manger ?», «qu'est-ce qu'il y a…»: Spanish «mí/qué», Portuguese «mim/quê».
+            'moi', 'toi', 'quoi', 'qu', 'manger'],
         en: ['january', 'february', 'march', 'april', 'june', 'july', 'august', 'september', 'october', 'november', 'december',
             'warranty', 'week', 'saturday', 'sunday', 'people', 'price', 'the', 'an', 'it', 'there', 'any'],
     };
@@ -317,7 +339,9 @@ export class LanguageDetectorService {
         // Not «capas» nor «sobremesas»: Spanish spells them the same. «café da manhã» counts by its «manha» (and «da»).
         pt: ['preco', 'precos', 'quarto', 'quartos', 'noite', 'noites', 'frete', 'cabelo', 'desconto', 'tamanho', 'fones', 'estoque',
             'diaria', 'diarias',
-            'carregador', 'carregadores', 'capinha', 'capinhas', 'manha', 'maquiagem', 'aluguel'],
+            'carregador', 'carregadores', 'capinha', 'capinhas', 'manha', 'maquiagem', 'aluguel',
+            // «o que tem no cardápio hoje?»: Spanish «carta» / «menú», French «carte».
+            'cardapio', 'cardapios'],
         // «petit-déjeuner» splits into «petit» and «dejeuner». Not «desserts» (English too) nor «location» (English too).
         fr: ['prix', 'chambre', 'chambres', 'nuit', 'nuits', 'livraison', 'manucure', 'cheveux', 'remise', 'taille', 'remboursement',
             'dejeuner', 'casque', 'casques',
@@ -382,6 +406,8 @@ export class LanguageDetectorService {
         // F4300-16 residual (production 24-oct): «qual o valor do Spark QA Inmueble?». «valor» is Spanish AND Portuguese (French
         // «valeur», English «value»); «do» is Portuguese «of the» AND the English verb, never Spanish or French.
         valor: ['es', 'pt'], valores: ['es', 'pt'], do: ['pt', 'en'],
+        // «me fala mais sobre o…», «háblame sobre el…»: Spanish AND Portuguese (French «sur», English «about»).
+        sobre: ['es', 'pt'],
     };
 
     /** The languages that write `token`: the shared table first, else every single-language list that holds it. */
@@ -452,16 +478,23 @@ export class LanguageDetectorService {
             .sort((a, b) => b.length - a.length);
         for (const name of known) out = out.replace(new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'giu'), ' ');
         // Loanwords («check-in», «tour», «wifi») are no language either; names first, so «Tour QA Aurora» goes as a name.
-        if (!keepLoanwords) out = withoutLoanwords(out);
+        out = keepLoanwords ? out.replace(FRENCH_THERE_IS_Y, ' ') : scoredText(out);
         const words = out.trim().split(/\s+/).filter(Boolean);
         const kept: string[] = [];
+        // Whether the previous word was a name taken out: a joiner right after it («Color y tratamiento») is the name's.
+        let afterName = false;
         for (let i = 0; i < words.length; i++) {
             const word = words[i].replace(/^[^\p{L}\d]+/u, '');
             const letters = word.replace(/[^\p{L}]/gu, '');
             if (/\d/.test(word) && letters.length <= 2) continue;
-            if (letters.length >= 2 && letters === letters.toUpperCase() && letters !== letters.toLowerCase()) continue;
+            if (letters.length >= 2 && letters === letters.toUpperCase() && letters !== letters.toLowerCase()) { afterName = true; continue; }
+            // An elided article before a name («de l'Audífono QA Aurora», «d'Aurora»): the article is the customer's, the name not.
+            const elided = /^(\p{Ll}{1,2}['’])\p{Lu}/u.exec(word);
+            if (elided) { kept.push(elided[1]); afterName = true; continue; }
             const sentenceStart = i === 0 || /[.!?:¡¿]$/.test(words[i - 1]) || /^[¡¿]/.test(words[i]);
-            if (!sentenceStart && /^\p{Lu}/u.test(word) && !/^I(?:['’]|$)/.test(word)) continue;
+            if (!sentenceStart && /^\p{Lu}/u.test(word) && !/^I(?:['’]|$)/.test(word)) { afterName = true; continue; }
+            if (afterName && NAME_JOINERS.has(word.toLowerCase()) && /^\p{L}/u.test(words[i + 1] ?? '')) { afterName = false; continue; }
+            afterName = false;
             kept.push(words[i]);
         }
         return kept.join(' ');
@@ -490,7 +523,9 @@ export class LanguageDetectorService {
         // Portuguese) is evidence for neither. Production (store, stored «es»): «le Aurora est disponible ?» was answered in
         // Spanish because «disponible» counted as a Spanish word next to the French «le» and «est», and a rival with any
         // evidence makes the message undecided. It still says the message HAS a verb, for each language that owns it.
-        const shared = (token: string) => [...vocabularies.values()].filter(vocabulary => vocabulary.has(token)).length > 1;
+        // The shared table counts too: «mais» is Portuguese «more» AND French «but» («me fala mais sobre…» was French evidence).
+        const shared = (token: string) => (this.sharedWords[token]?.length ?? 0) > 1
+            || [...vocabularies.values()].filter(vocabulary => vocabulary.has(token)).length > 1;
         const ranked = Object.keys(this.predicateWords).map(lang => {
             const vocabulary = vocabularies.get(lang)!;
             let hits = 0;
@@ -552,7 +587,7 @@ export class LanguageDetectorService {
 
     /** The language the marker words alone decide, with no stored language to lean on. */
     private strongLanguageOf(message: string): string | null {
-        const text = withoutLoanwords(message);
+        const text = scoredText(message);
         const normalized = this.normalize(text);
         if (normalized.length < 3) return null;
         const tokens = new Set(normalized.split(/\s+/).filter(Boolean));
@@ -616,7 +651,7 @@ export class LanguageDetectorService {
         // F4300-16 residual (production 24-oct): «a qué hora es el check-in?» after an English case was answered in English —
         // the «in» of «check-in» was an English word. Loanwords are no evidence of any language, so they are scored out.
         // `text` keeps them for the name rules (nameFreeText takes them out after the names).
-        const plain = withoutLoanwords(text || '');
+        const plain = scoredText(text || '');
         const normalized = this.normalize(plain);
         if (normalized.length < 3) return { language: this.short(fallback), persist: true };
 

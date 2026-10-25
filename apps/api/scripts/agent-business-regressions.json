@@ -102,6 +102,7 @@
     "apps/api/src/modules/conversations/current-message-language.f4300-16b.spec.ts",
     "apps/api/src/modules/conversations/current-message-language.f4300-16c.spec.ts",
     "apps/api/src/modules/conversations/current-message-language.f4300-16d.spec.ts",
+    "apps/api/src/modules/conversations/current-message-language.f4300-16e.spec.ts",
     "apps/api/src/modules/conversations/sold-out-name-lookup.f4300.spec.ts",
     "apps/api/src/modules/conversations/claim-status-read.f4300-33.spec.ts",
     "apps/api/src/modules/conversations/sold-out-name-autoread.f4300.spec.ts",

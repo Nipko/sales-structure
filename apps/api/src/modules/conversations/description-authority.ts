@@ -330,6 +330,28 @@ const COPULA_SUBJECT = /^\s*(\p{L}.*?)\s+(?:is|are|es|son|está|están|é|são|e
 /** A clause that opens on a preposition or a participle of place: no verb of its own («dans la ville de X», «located in X»). */
 const VERBLESS_OPENING = /^\s*(?:dans|en|à|au|aux|sur|près|pres|chez|in|at|on|near|inside|within|with|con|cerca|junto|em|na|nas|nos|perto|com|situé\w*|situe\w*|située?s?|located|situated|ubicad\w*|situad\w*|localizad\w*)(?![\p{L}])/iu;
 
+/**
+ * F4300-35 residue (production 25-oct): «includes a virtual tour and a synthetic guide, but does not include …» lost the claim
+ * clause and was sent as «Inclui um percurso virtual e mas não inclui …» / «Incluant un parcours virtuel et mais excluant …»: the
+ * «and» that joined the removed clause stayed right before the «but» of the next one. An additive connector left in front of a
+ * contrastive one goes, and the contrast keeps a comma («…virtual, mas não inclui …»). pt «e mais» («and more») is not a pair.
+ */
+const ORPHAN_ADDITIVE = /\s*,?\s+(?:y|e|and|et)\s*,?\s+(?=(pero|but|mas|mais|por[eé]m|contudo|todavia|no entanto|sin embargo|no obstante|however|cependant|toutefois|pourtant)(?![\p{L}\p{N}]))/giu;
+/**
+ * A connector left at the end of what is kept, right before the sentence's punctuation («Incluye un tour virtual y.»). Lowercase
+ * only: «Contiene vitamina E.» ends on a name, not on «e».
+ */
+const TRAILING_CONNECTOR = /(?:[\s,;:]+(?:y|e|and|et|ni|nor|or|ou|pero|but|mas|mais|por[eé]m|sin embargo|however|cependant|also|tambi[eé]n|tamb[eé]m|aussi|adem[aá]s))+(?=[\s,;:]*[.!?…]*["»”)]*\s*$)/u;
+
+const CONTRASTIVE_DELIMITER = /^\s+(?:mas|mais|pero|but|porem|porém|sin embargo|however|cependant)\s+$/iu;
+
+/** The kept text without a connector the removed clause left orphaned. Pure. */
+function withoutOrphanConnectors(text: string): string {
+    return text
+        .replace(ORPHAN_ADDITIVE, (all: string, contrast: string) => (/^\s*,?\s+e\s/iu.test(all) && /^mais$/i.test(contrast) ? all : ', '))
+        .replace(TRAILING_CONNECTOR, '');
+}
+
 const capitalize = (text: string) => text.replace(/^(\s*(?:[-*•]\s+)?[¿¡"«“(]*)(\p{Ll})/u, (_, lead: string, letter: string) => lead + letter.toUpperCase());
 
 /** The folded words of a text, without the runs of words that are an item's name (with its short words: «Spark QA Plato»). */
@@ -371,7 +393,13 @@ function withoutClaimClauses(sentence: string, isClaim: (text: string) => boolea
     const kept = clauses.map((_, i) => i).filter(i => !drop[i]);
     if (!kept.length) return { text: null, removed };
     let text = clauses[kept[0]];
-    for (let k = 1; k < kept.length; k++) text += delimiters[kept[k - 1]] + clauses[kept[k]];
+    for (let k = 1; k < kept.length; k++) {
+        // «A and [claim] but C»: the contrast before C is what joins what is left, not the «and» of the removed clause.
+        const before = delimiters[kept[k] - 1];
+        const joint = kept[k] - kept[k - 1] > 1 && CONTRASTIVE_DELIMITER.test(before) && /^\s+(?:y|e|and|et)\s+$/iu.test(delimiters[kept[k - 1]])
+            ? before : delimiters[kept[k - 1]];
+        text += joint + clauses[kept[k]];
+    }
     const marker = /^\s*(?:[-*•]\s+|\d+[.)]\s+)/.exec(sentence)?.[0] ?? '';
     let fragment = false;
     if (kept[0] > 0) {
@@ -392,6 +420,7 @@ function withoutClaimClauses(sentence: string, isClaim: (text: string) => boolea
         const terminal = /[.!?…]+["»”)]*\s*$/.exec(sentence)?.[0].trim() ?? '';
         text = text.replace(/[\s,;:—–-]+$/u, '') + terminal;
     }
+    text = withoutOrphanConnectors(text);
     if (contentWords(text.slice(marker.length), nameTokens) < 2) return { text: null, removed: sentence };
     return { text, removed, fragment };
 }

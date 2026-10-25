@@ -99,6 +99,55 @@ export function isTellAboutItem(text: unknown): boolean {
 }
 
 /**
+ * F4300-08 (production 25-oct, store QA tenant with `requiredReads.catalog` on, 3 of 3): «de qué color es el Audífono QA
+ * Aurora?», «de quelle couleur est l'Audífono QA Aurora ?», «qual a cor do Audífono QA Aurora?» ran only `search_faqs` and were
+ * answered «no tengo información específica sobre el color» (the product's record says it is blue). Price, stock and «tell me
+ * about» questions did read the product; a question about one of an item's attributes named no cue, and the turn's <catalog>
+ * (name, price, stock, category only) marked the product reads `projected` even when the classifier named `product_info`.
+ *
+ * An item's attribute: colour, size, material, weight, dimensions, brand, model, warranty, compatibility. es/pt/fr/en, folded
+ * text. «peso(s)» alone is the currency («cuánto cuesta en pesos?»): only the weight verbs and «el peso» count.
+ */
+const ITEM_ATTRIBUTE = new RegExp(`\\b(?:${[
+    // colour
+    /colou?rs?|colores|couleurs?|cor|cores/,
+    // size
+    /tallas?|tamanos?|tamanhos?|tailles?|sizes?|sizing|pointures?/,
+    // material
+    /materia(?:l|les|is)|materiaux|materiau|fabric|tela|tecido|tissu|hech[oa]s? de|feit[oa]s? de|fait en|made of|made from/,
+    // weight («peso» alone is also the currency)
+    /(?:el|o|su|seu|the|its) peso|pesa|pesan|pesam|combien pese\w*|poids|weighs?|weight|how heavy/,
+    // dimensions
+    /medidas?|dimension(?:es|s)?|dimensoes|dimensao|how big/,
+    // brand, model
+    /marcas?|marques?|brands?|fabricante|fabricant|manufacturer|modelos?|models?|modeles?/,
+    // warranty
+    /garantias?|garanties?|warrant(?:y|ies)|guarantee/,
+    // compatibility
+    /compatib\w*|funciona con|funciona com|fonctionne avec|works with/,
+].map(re => re.source).join('|')})\\b`);
+/** The store's own warranty or brand as a policy, not an item's: «la garantía de la tienda», «your warranty policy». */
+const NOT_ITEM_ATTRIBUTE = /\b(?:(?:de la|da|de|of the|du|de votre|de su|de sua|your|vuestra|votre|sua|su) (?:tienda|loja|magasin|boutique|store|shop|empresa|company|entreprise|negocio|business)|(?:politica|policy|politique|terminos|terms|termos|conditions|condiciones|condicoes) (?:de|of|da|du|des)? ?(?:garantia|warranty|garantie|devoluc\w*|returns?)|(?:warranty|garantia|garantie) (?:policy|politica|politique)|(?:your|vuestra|su|sua|votre) (?:marca|brand|marque))\b/;
+
+/**
+ * The message asks about one of an item's attributes (colour, size, material, weight, dimensions, brand, model, warranty,
+ * compatibility), not the store's own policy, an order or a payment. Pure.
+ */
+export function isItemAttributeQuestion(text: unknown): boolean {
+    const t = folded(text);
+    if (!t || t.length > 400 || NOT_CATALOGUE.test(t) || NOT_MENU.test(t) || NOT_ITEM_ATTRIBUTE.test(t)) return false;
+    return ITEM_ATTRIBUTE.test(t);
+}
+
+/**
+ * The turn's <catalog> (name, price, stock, category) does not answer the message: it asks to be told about an item (#219) or
+ * about one of its attributes (F4300-08). The product reads then run instead of being declared `projected`. Pure.
+ */
+export function needsItemDetailRead(text: unknown): boolean {
+    return isTellAboutItem(text) || isItemAttributeQuestion(text);
+}
+
+/**
  * The message asks about the menu or one of its items: what is on the menu, or the price, ingredients, allergens, diet or
  * preparation time of a dish or drink. Spanish, Portuguese, French and English. Pure.
  */
@@ -107,7 +156,8 @@ export function isMenuQuestion(text: unknown): boolean {
     if (!t || t.length > 400 || NOT_MENU.test(t)) return false;
     if (MENU.test(t)) return true;
     if (isTellAboutItem(text)) return true;
-    return DISH.test(t) && (PRICE.test(t) || ATTRIBUTE.test(t) || HAVE.test(t));
+    // F4300-08: «de qué tamaño es el plato Spark?» names a dish and one of its attributes.
+    return DISH.test(t) && (PRICE.test(t) || ATTRIBUTE.test(t) || HAVE.test(t) || isItemAttributeQuestion(text));
 }
 
 // ── Lodging (hotel / vacation rental) ───────────────────────────────────────────────────────────────────────────────────
@@ -161,6 +211,8 @@ export function isLodgingQuestion(text: unknown): boolean {
     if (LODGING.test(t) && PRICE_WORDS.test(t)) return true;
     if (AVAILABLE.test(t) && (LODGING.test(t) || /\d/.test(t))) return true;
     if (isTellAboutItem(text)) return true;
+    // F4300-08: «what size is the room?», «de qué tamaño es la cabaña?»: an attribute of what is rented.
+    if (LODGING.test(t) && isItemAttributeQuestion(text)) return true;
     return asked(text, t) && (ROOMS.test(t) || AMENITY.test(t));
 }
 
@@ -243,6 +295,8 @@ export function listingQuestionOperation(text: unknown): 'listing_info' | 'find_
     if (question && SALE_OR_RENT.test(t)) return 'listing_info';
     if (listing && STILL_AVAILABLE.test(t)) return 'listing_info';
     if (isTellAboutItem(text)) return 'listing_info';
+    // F4300-08: «de qué material es la casa?», «medidas del apartamento»: an attribute of a listing.
+    if (listing && isItemAttributeQuestion(text)) return 'listing_info';
     return null;
 }
 
@@ -250,12 +304,13 @@ export function listingQuestionOperation(text: unknown): 'listing_info' | 'find_
 
 /**
  * The message asks to be told about or described a product of the store (F4300-35 follow-up: «tell me about the Audífono QA
- * Aurora» ran only search_faqs). Never the customer's own order, a payment, a return or a complaint. Pure.
+ * Aurora» ran only search_faqs), or about one of its attributes (F4300-08: «de qué color es…»). Never the customer's own order, a payment, a return or a complaint. Pure.
  */
 export function isProductQuestion(text: unknown): boolean {
     const t = folded(text);
     if (!t || t.length > 400 || NOT_CATALOGUE.test(t) || NOT_MENU.test(t)) return false;
-    return isTellAboutItem(text);
+    // F4300-08: «de qué color es el Audífono QA Aurora?» asks about one of the product's attributes.
+    return isTellAboutItem(text) || isItemAttributeQuestion(text);
 }
 
 // ── The customer's own past orders («what did I buy last time?») ───────────────────────────────────────────────────────

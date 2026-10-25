@@ -6,7 +6,7 @@ import { runSafetyTriage, type SafetyTriageTurnOutcome } from './runtime/safety-
 import { buildOperationShadowTrace, OperationClassifierService, type OperationShadowVerdict } from './runtime/operation-classifier.service';
 import { buildRequiredReadsTrace, REQUIRED_READ_TIMEOUT_MS, requiredReadDefaultArgs, requiredReadsGate, requiredReadsPilotForProfile, runRequiredReads,
     type RequiredReadResult, type RequiredReadsPilot } from './runtime/required-reads.runner';
-import { isOwnBookingsQuestion, isPastOrdersQuestion, isTellAboutItem, lexicalRequiredReadsOperation } from './runtime/operation-lexical-cues';
+import { isOwnBookingsQuestion, isPastOrdersQuestion, lexicalRequiredReadsOperation, needsItemDetailRead } from './runtime/operation-lexical-cues';
 import { pastOrdersReportText } from './past-orders-report';
 import { listingSearchSlotsIn, requiredReadSlotsIn } from './runtime/required-read-slots';
 import { demoAllowanceExhaustedText } from '../widget/widget-demo-link';
@@ -5449,7 +5449,8 @@ export class ConversationsService {
                         // F4300-35 (production after #217): the turn's <catalog> carries a product's name, price and stock, not
                         // what it is. «tell me about the Audífono QA Aurora» marked search_products / get_product `projected` and
                         // ran nothing; the model answered from the FAQ and said the description as the product's state.
-                        ...((turnContext.catalog?.length ?? 0) > 0 && !isTellAboutItem(userText) ? ['turn_catalog' as const] : []),
+                        // F4300-08: «de qué color es el Audífono QA Aurora?» neither: an item's attribute is not in the projection.
+                        ...((turnContext.catalog?.length ?? 0) > 0 && !needsItemDetailRead(userText) ? ['turn_catalog' as const] : []),
                         ...((turnContext.availableServices?.length ?? 0) > 0 ? ['available_services' as const] : []),
                     ],
                     rethrow: error => !!session || error instanceof LLMSourceAuthorityUnavailable,

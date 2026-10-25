@@ -106,7 +106,8 @@
     "apps/api/src/modules/conversations/sold-out-name-autoread.f4300.spec.ts",
     "apps/api/src/modules/conversations/conversations.required-reads-english-menu.spec.ts",
     "apps/api/src/modules/conversations/conversations.required-reads-lodging-tours-cues.spec.ts",
-    "apps/api/src/modules/conversations/conversations.required-reads-listings-cues.spec.ts"
+    "apps/api/src/modules/conversations/conversations.required-reads-listings-cues.spec.ts",
+    "apps/api/src/modules/conversations/conversations.required-reads-tour-seats.spec.ts"
   ],
   "postgres": [
     "apps/api/src/modules/faqs/faq-effects.postgres.spec.ts",

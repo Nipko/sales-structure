@@ -220,8 +220,11 @@ describe('the gate: the cue runs what the classifier missed, the threshold does 
         const stay = requiredReadsGate(verdict('book_stay', 0.9), 'properties', 'property_info');
         expect(stay.run && stay.operation.key).toBe('book_stay');
         expect(stay.run && stay.source).toBeUndefined();
+        // A seats question narrows a confident package_info to package_availability: its departures and their seats are owed.
         const info = requiredReadsGate(verdict('package_info', 0.9), 'tours', 'package_availability');
-        expect(info.run && info.operation.key).toBe('package_info');
+        expect(info.run && info.operation.key).toBe('package_availability');
+        const details = requiredReadsGate(verdict('package_info', 0.9), 'tours', 'package_info');
+        expect(details.run && details.operation.key).toBe('package_info');
         expect(requiredReadsGate(verdict('view_my_appointments', 0.95), 'properties', 'property_info')).toEqual({ run: false, reason: 'not_pilot_operation' });
         // A cue of another pilot does nothing.
         expect(requiredReadsGate(verdict('none', 0.9, 'none'), 'tours', 'property_info')).toEqual({ run: false, reason: 'fallback:none' });

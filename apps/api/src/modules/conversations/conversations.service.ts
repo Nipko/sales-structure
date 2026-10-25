@@ -1,12 +1,12 @@
 import { appointmentRecordReadId } from './appointment-record-read';
 import { isCanonicalConsentRecovery, canonicalConsentRecoveryDirective } from './canonical-consent-recovery';
 import { DemoAllowanceService } from '../throttle/demo-allowance.service';
-import { CATALOG_OVER_FAQ_FLAG, FACTS_LEDGER_FLAG, FeatureFlagsService, OPERATION_CLASSIFIER_FLAG, RENDERED_FACTS_FLAG, REQUIRED_READS_CATALOG_FLAG, REQUIRED_READS_LISTINGS_FLAG, REQUIRED_READS_PROPERTIES_FLAG, REQUIRED_READS_RESTAURANTS_FLAG, REQUIRED_READS_TOURS_FLAG, SAFETY_TRIAGE_FLAG, SLOT_WINDOW_FLAG, resolveFeatureFlag } from '../throttle/feature-flags.service';
+import { CATALOG_OVER_FAQ_FLAG, FACTS_LEDGER_FLAG, FeatureFlagsService, OPERATION_CLASSIFIER_FLAG, RENDERED_FACTS_FLAG, REQUIRED_READS_APPOINTMENTS_FLAG, REQUIRED_READS_CATALOG_FLAG, REQUIRED_READS_LISTINGS_FLAG, REQUIRED_READS_PROPERTIES_FLAG, REQUIRED_READS_RESTAURANTS_FLAG, REQUIRED_READS_TOURS_FLAG, SAFETY_TRIAGE_FLAG, SLOT_WINDOW_FLAG, resolveFeatureFlag } from '../throttle/feature-flags.service';
 import { runSafetyTriage, type SafetyTriageTurnOutcome } from './runtime/safety-triage';
 import { buildOperationShadowTrace, OperationClassifierService, type OperationShadowVerdict } from './runtime/operation-classifier.service';
 import { buildRequiredReadsTrace, REQUIRED_READ_TIMEOUT_MS, requiredReadDefaultArgs, requiredReadsGate, requiredReadsPilotForProfile, runRequiredReads,
     type RequiredReadResult, type RequiredReadsPilot } from './runtime/required-reads.runner';
-import { isPastOrdersQuestion, isTellAboutItem, lexicalRequiredReadsOperation } from './runtime/operation-lexical-cues';
+import { isOwnBookingsQuestion, isPastOrdersQuestion, isTellAboutItem, lexicalRequiredReadsOperation } from './runtime/operation-lexical-cues';
 import { pastOrdersReportText } from './past-orders-report';
 import { listingSearchSlotsIn, requiredReadSlotsIn } from './runtime/required-read-slots';
 import { demoAllowanceExhaustedText } from '../widget/widget-demo-link';
@@ -127,6 +127,8 @@ import {
     toolResultSucceeded,
     claimsTeamRequest,
     mentionsCancellation,
+    claimsNoOwnBookings,
+    ownBookingsReadBacked,
 } from '../../common/utils/outcome-claim.util';
 import { sanitizeToolResultForModel } from '../../common/utils/tool-error-sanitizer.util';
 import { hasToolCallMarkup, stripToolCallMarkup } from '../../common/utils/tool-call-markup.util';
@@ -184,6 +186,7 @@ import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { MediaProcessingService } from '../media-processing/media-processing.service';
 import { AiResolutionService } from '../analytics/ai-resolution.service';
 import {
+    APPOINTMENT_RECORD_TOOLS,
     ASYNC_GATED_TOOL_NAMES,
     STATIC_TOOL_NAMES,
     getToolPolicy,
@@ -226,6 +229,7 @@ const REQUIRED_READS_FLAG_BY_PILOT: Readonly<Record<RequiredReadsPilot, string>>
     properties: REQUIRED_READS_PROPERTIES_FLAG,
     tours: REQUIRED_READS_TOURS_FLAG,
     listings: REQUIRED_READS_LISTINGS_FLAG,
+    appointments: REQUIRED_READS_APPOINTMENTS_FLAG,
 });
 
 const MIN_MODEL_CONTEXT_TOKENS = 64_000;
@@ -443,6 +447,15 @@ const ANSWER_LOST_REPLY: Record<string, string> = {
 };
 const answerLostText = (lang?: string) =>
     ANSWER_LOST_REPLY[(lang || 'es').slice(0, 2).toLowerCase()] || ANSWER_LOST_REPLY.es;
+/** F4300-08: «you have no bookings» said with no booking read in the turn. What is true: they were not checked. */
+const OWN_BOOKINGS_UNCHECKED_REPLY: Record<string, string> = {
+    es: 'No pude revisar sus reservas o citas en este mensaje, así que no puedo confirmarle si tiene alguna. ¿Quiere que lo intente de nuevo?',
+    en: 'I could not check your bookings or appointments in this message, so I cannot confirm whether you have any. Would you like me to try again?',
+    pt: 'Não consegui verificar suas reservas ou agendamentos nesta mensagem, então não posso confirmar se você tem algum. Quer que eu tente de novo?',
+    fr: "Je n'ai pas pu vérifier vos réservations ou rendez-vous dans ce message, je ne peux donc pas confirmer si vous en avez. Voulez-vous que je réessaie ?",
+};
+const ownBookingsUncheckedText = (lang?: string) =>
+    OWN_BOOKINGS_UNCHECKED_REPLY[(lang || 'es').slice(0, 2).toLowerCase()] || OWN_BOOKINGS_UNCHECKED_REPLY.es;
 /** Whether the customer's message asks for something to be DONE (book, cancel, pay, change, confirm), or is a yes. */
 const asksForAction = (text: string): boolean => {
     const t = String(text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
@@ -560,7 +573,7 @@ function isSystemFixedText(text: string): boolean {
         ...Object.values(UNVERIFIED_CLAIM_FALLBACK), ...Object.values(ACTION_NOT_DONE_REPLY), ...Object.values(ANSWER_LOST_REPLY), ...Object.values(NO_DATA_WAIT_REPLACEMENT), ...Object.values(NO_DATA_NO_OFFER),
         ...Object.values(PARTIAL_SUCCESS_MSG), ...Object.values(BUDGET_EXHAUSTED_MSG), ...Object.values(BUDGET_EXHAUSTED_REPLAY_MSG),
         ...Object.values(HANDOFF_MSG).flatMap(h => [h.transferring, h.unavailable, h.queueHead, h.queueWaiting]),
-        ...Object.values(HANDOFF_RETURN_MSG), ...UNFILLED_PLACEHOLDER_FIXED_TEXTS,
+        ...Object.values(HANDOFF_RETURN_MSG), ...UNFILLED_PLACEHOLDER_FIXED_TEXTS, ...Object.values(OWN_BOOKINGS_UNCHECKED_REPLY),
     ];
     return fixed.some(f => f.trim() === t);
 }
@@ -2936,6 +2949,8 @@ export class ConversationsService {
                 properties: resolveFeatureFlag((tenant.settings as any)?.featureFlags, REQUIRED_READS_PROPERTIES_FLAG),
                 tours: resolveFeatureFlag((tenant.settings as any)?.featureFlags, REQUIRED_READS_TOURS_FLAG),
                 listings: resolveFeatureFlag((tenant.settings as any)?.featureFlags, REQUIRED_READS_LISTINGS_FLAG),
+                // F4300-08. Only when on: a snapshot of a tenant with the flag off is exactly the previous one.
+                ...(resolveFeatureFlag((tenant.settings as any)?.featureFlags, REQUIRED_READS_APPOINTMENTS_FLAG) ? { appointments: true } : {}),
             },
         }, tenantId);
     }
@@ -5440,9 +5455,15 @@ export class ConversationsService {
                     rethrow: error => !!session || error instanceof LLMSourceAuthorityUnavailable,
                     execute: async (name, args) => {
                         turnTrace.add('tool_call', name, { origin: toolOrigin(name), effect: 'read', automatic: true, requiredRead: true });
+                        // F4300-08: the customer's own appointments go through the whole central guard, as the transition engine reads
+                        // them: the business type decides whether a verified identity is needed, and an unverified chat gets the
+                        // verification step back (`identityChallenge: 'none'`: the read never sends a code by itself). The
+                        // read-only context would skip that guard, so it is not used for them.
+                        const readOptions = APPOINTMENT_RECORD_TOOLS.has(name)
+                            ? { ...options, executionContext, identityChallenge: 'none' as const } : options;
                         try {
                             const result = await awaitToolWithSafeTimeout(toolExecutor.execute(
-                                schemaName, tenantId, conversation.contact_id || '', name, args, conversation.id, options,
+                                schemaName, tenantId, conversation.contact_id || '', name, args, conversation.id, readOptions,
                             ), REQUIRED_READ_TIMEOUT_MS, `required_read_${name}`, getToolPolicy(name));
                             turnTrace.add('tool_result', name, { ok: !result?.error, error: result?.error, automatic: true, requiredRead: true });
                             return result;
@@ -7779,6 +7800,15 @@ export class ConversationsService {
                 .filter(sentence => sentence.trim() && !auditTurnClaim(sentence, backing, claimOptions).falseClaim).join(' ').trim();
             this.logger.warn('[Guardrail] The fixed claim text was the previous reply to this question — not sent again');
             response = kept && !auditTurnClaim(kept, backing, claimOptions).falseClaim ? kept : answerLostText(lang);
+        }
+        // F4300-08: «do I have a booking?» answered «you have none» with no read of the customer's bookings this turn (production:
+        // search_faqs alone, in a hotel, a travel agency and a salon). That absence is not a fact the turn holds: the reply says the
+        // bookings were not checked, instead of a «none» that is right only when the customer happens to have none.
+        if (!(trustedContext as any)?.directive && isOwnBookingsQuestion(customerText) && claimsNoOwnBookings(response)
+            && !ownBookingsReadBacked([...(executedTools || []), ...toolReadsOfTurnMessages(currentMessages)])) {
+            this.recordAgentSignal(tenantId, 'own_bookings_absence_unread', session);
+            this.logger.warn(`[Guardrail] The reply said the customer has no bookings, but no booking read answered this turn — replaced: "${response.slice(0, 100)}"`);
+            response = ownBookingsUncheckedText(lang);
         }
 
         // Prometer para después algo que YA se hizo deja al cliente esperando.

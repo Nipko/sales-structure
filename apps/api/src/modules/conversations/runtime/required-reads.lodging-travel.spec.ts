@@ -74,7 +74,9 @@ describe('required reads PR7: pilots and gate', () => {
 
     it('the PR7 operations are the catalogue\'s, each owes reads, and the other vertical\'s operation is a pilot mismatch', () => {
         const pr7 = Object.entries(REQUIRED_READS_PILOT_OPERATIONS).filter(([, pilot]) => pilot === 'properties' || pilot === 'tours').map(([key]) => key).sort();
-        expect(pr7).toEqual(['book_stay', 'book_tour', 'package_availability', 'package_info', 'property_info', 'stay_logistics']);
+        // F4300-08 adds the guest's and the traveller's own bookings (view_my_stay_bookings, view_my_tour_bookings).
+        expect(pr7).toEqual(['book_stay', 'book_tour', 'package_availability', 'package_info', 'property_info', 'stay_logistics',
+            'view_my_stay_bookings', 'view_my_tour_bookings']);
         for (const key of pr7) expect(op(key).requiredReads.length).toBeGreaterThan(0);
         expect(requiredReadsGate(verdict('property_info'), 'tours')).toEqual({ run: false, reason: 'pilot_mismatch' });
         expect(requiredReadsGate(verdict('package_info'), 'properties')).toEqual({ run: false, reason: 'pilot_mismatch' });

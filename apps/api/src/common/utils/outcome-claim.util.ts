@@ -1050,3 +1050,53 @@ export function identityCodeSendBacked(executedTools: ReadonlyArray<{ name?: str
     });
 }
 
+
+// ── «You have no bookings» with no booking read (F4300-08) ─────────────────────────────────────────────────────────────
+
+/**
+ * F4300-08 (production 2026-10-25): «tenho alguma reserva no hotel?» → «você não tem nenhuma reserva», «j'ai une réservation chez
+ * vous ?» → «Vous n'avez actuellement aucune réservation», «tengo citas agendadas?» → «no tengo registro de citas», each after
+ * search_faqs alone. An absence of the customer's own bookings is a fact only a read of those bookings can source.
+ */
+const OWN_RECORD_NOUN = '(?:reservas?|reservaciones|reservacion|citas?|turnos?|visitas?|agendamentos?|horarios? marcados?|consultas? marcadas?|'
+    + 'reservations?|rendez vous|rdv|bookings?|appointments?|visits?)';
+const NO_OWN_RECORDS = new RegExp([
+    // es: «no tiene(s) ninguna reserva», «no cuenta con citas», «no hay reservas a su nombre», «no encontré citas», «no tengo registro de citas»
+    String.raw`\bno (?:tienes|tiene|tienen|tenes|cuenta con|cuentas con) (?:\w+ ){0,3}${OWN_RECORD_NOUN}\b`,
+    String.raw`\bno (?:hay|encuentro|encontre|veo|aparece\w*|figura\w*|registra\w*|tenemos) (?:\w+ ){0,3}${OWN_RECORD_NOUN}\b`,
+    String.raw`\bno tengo (?:\w+ ){0,3}(?:registro|constancia) (?:\w+ ){0,3}${OWN_RECORD_NOUN}\b`,
+    // pt: «você não tem nenhuma reserva», «não há agendamentos», «não encontrei reservas», «não tenho registro de reservas»
+    String.raw`\bnao (?:tem|possui|ha|encontrei|encontro|vejo|consta\w*|aparece\w*|temos) (?:\w+ ){0,3}${OWN_RECORD_NOUN}\b`,
+    String.raw`\bnao tenho (?:\w+ ){0,3}(?:registro|registros) (?:\w+ ){0,3}${OWN_RECORD_NOUN}\b`,
+    // fr: «vous n'avez actuellement aucune réservation», «il n'y a aucun rendez-vous», «je ne trouve pas de réservation»
+    String.raw`\b(?:n avez|n as|n y a|ne trouve|ne vois|n ai trouve) (?:\w+ ){0,3}(?:aucune?|pas de|pas d) (?:\w+ ){0,1}${OWN_RECORD_NOUN}\b`,
+    // en: «you don't have any reservations», «you have no bookings», «there are no appointments», «I couldn't find any bookings»
+    String.raw`\b(?:you|we) (?:do not|don t|dont|currently don t) have (?:\w+ ){0,3}${OWN_RECORD_NOUN}\b`,
+    String.raw`\b(?:you|there) (?:currently )?(?:have|has|are|is) no (?:\w+ ){0,2}${OWN_RECORD_NOUN}\b`,
+    String.raw`\b(?:i|we) (?:could not|couldn t|can t|cannot|do not|don t|did not|didn t) (?:find|see) (?:\w+ ){0,3}${OWN_RECORD_NOUN}\b`,
+    String.raw`\b(?:i|we) (?:do not|don t) have (?:\w+ ){0,2}record (?:\w+ ){0,3}${OWN_RECORD_NOUN}\b`,
+].join('|'));
+
+/** The reply says the customer has no bookings, reservations or appointments (es/en/pt/fr). Pure. */
+export function claimsNoOwnBookings(reply: unknown): boolean {
+    if (typeof reply !== 'string' || !reply.trim()) return false;
+    const text = reply.normalize('NFD').replace(/\p{M}+/gu, '').toLowerCase()
+        .replace(/[’'`]/g, ' ').replace(/[^\p{L}\p{N}.!?\n]+/gu, ' ');
+    return text.split(/[.!?\n]+/).some(sentence => NO_OWN_RECORDS.test(sentence.replace(/\s+/g, ' ').trim()));
+}
+
+/** The readers of the customer's own bookings and appointments: an absence is sourced only when one of them answered this turn. */
+const OWN_BOOKINGS_READS: ReadonlySet<string> = new Set([
+    'list_my_property_bookings', 'list_my_tour_bookings', 'list_customer_appointments', 'get_appointment_details',
+    'get_my_class_bookings', 'list_my_enrollments', 'list_my_pet_boardings', 'list_upcoming_sessions',
+]);
+
+/** A read of the customer's own bookings answered this turn (not a refusal, not a failure). Pure. */
+export function ownBookingsReadBacked(executedTools: ReadonlyArray<{ name?: string; result?: any }> | undefined): boolean {
+    return (executedTools || []).some(tool => {
+        const result = tool?.result;
+        if (!tool?.name || !OWN_BOOKINGS_READS.has(tool.name) || !result || typeof result !== 'object') return false;
+        if (result.success === false || result.ok === false || typeof result.error === 'string' || result.needsVerification === true) return false;
+        return Object.values(result).some(Array.isArray) || typeof result.id === 'string';
+    });
+}

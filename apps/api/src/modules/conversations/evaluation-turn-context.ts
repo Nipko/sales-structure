@@ -28,7 +28,7 @@ export interface EvaluationTurnContextInputs {
     /** `agentRuntime.catalogOverFaq` as the tenant had it at capture. Optional: older snapshots lack it and read as off. */
     catalogOverFaq?: boolean;
     /** `agentRuntime.requiredReads.{restaurants,catalog}` as the tenant had them at capture. Optional: older snapshots lack it and read as off. */
-    requiredReads?: { restaurants: boolean; catalog: boolean; properties?: boolean; tours?: boolean; listings?: boolean };
+    requiredReads?: { restaurants: boolean; catalog: boolean; properties?: boolean; tours?: boolean; listings?: boolean; appointments?: boolean };
 }
 
 const record = (value: unknown): value is Record<string, any> => !!value && typeof value === 'object' && !Array.isArray(value);
@@ -46,7 +46,7 @@ export function resolveEvaluationTurnContext(input: EvaluationTurnContextInputs 
         || (Object.hasOwn(input, 'requiredReads') && (!record(input.requiredReads)
             || typeof input.requiredReads.restaurants !== 'boolean' || typeof input.requiredReads.catalog !== 'boolean'
             // PR7 and real-estate pilots: optional, a snapshot sealed before them reads as off.
-            || ['properties', 'tours', 'listings'].some(pilot => Object.hasOwn(input.requiredReads!, pilot)
+            || ['properties', 'tours', 'listings', 'appointments'].some(pilot => Object.hasOwn(input.requiredReads!, pilot)
                 && typeof (input.requiredReads as Record<string, unknown>)[pilot] !== 'boolean')))
         || !record(input.regional) || input.regional.tenantId !== tenantId || input.regional.version !== 1
         || !record(input.vertical) || EVALUATION_CONTEXT_LANGUAGES.some(language => !Object.hasOwn(input.vertical, language)

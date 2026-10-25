@@ -6278,6 +6278,7 @@ export class ConversationsService {
                     customerText: userText || '',
                     untrusted: [userText || '', ...turnTools.map(tool => { try { return JSON.stringify(tool.result ?? null); } catch { return ''; } })],
                     serverText: [turnContext.directive, engineProducedText].filter(Boolean).join('\n'),
+                    addressForm: turnContext.regional?.addressForm,
                 });
                 if (rendering.text) finalResponse = rendering.text;
                 RENDERED_FACTS_TURN.set(turnContext, verifiedFactViews(liveVerifiedFacts(turnFacts, renderNow).filter(fact => fact.kind === 'money'), renderNow));

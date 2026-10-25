@@ -13,7 +13,8 @@ function fact(kind: VerifiedFact['kind'], subject: VerifiedFact['subject'], fiel
 }
 const token = (kind: string, f: VerifiedFact) => `⟦${kind}:${factTokenId(f)}⟧`;
 const render = (reply: string, facts: VerifiedFact[], language = 'es', extra: Record<string, unknown> = {}) => renderReplyFacts({
-    reply, facts, now: NOW, language, locale: ({ es: 'es-CO', en: 'en-US', pt: 'pt-BR', fr: 'fr-FR' } as Record<string, string>)[language], ...extra,
+    // The cases below speak «tú» (a tenant with addressForm «tu»); the «usted» register is covered in fact-renderer.f4300-37.spec.ts.
+    reply, facts, now: NOW, language, locale: ({ es: 'es-CO', en: 'en-US', pt: 'pt-BR', fr: 'fr-FR' } as Record<string, string>)[language], addressForm: 'tu', ...extra,
 });
 
 const LISTING = { type: 'listing', id: 'lst-1', name: 'Apartamento Laureles' };

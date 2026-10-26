@@ -339,6 +339,10 @@ const PAST_ORDERS = new RegExp(`(?:${[
     // fr: «qu'est-ce que j'ai acheté / commandé», «ce que j'ai acheté», «mes commandes», «ma dernière commande», «mon dernier achat»
     /\b(?:qu est ce que|ce que|qu) j ai (?:commande|achete|pris)\b|\bj ai (?:commande|achete) quoi\b/,
     /\b(?:mes commandes|mes achats|ma derniere commande|mon dernier achat|ma commande precedente|mon achat precedent)\b/,
+    // F4300-45 (production QA 26-oct, image 6f1d3bf6): «¿cuándo hice mi primer pedido en la tienda?» read no order and was answered
+    // «viernes 2 de octubre», the product's creation date (the oldest order is of 8-oct). The first order is one of the customer's own.
+    /\bmi (?:primer|primera) (?:pedido|compra|orden)\b|\bmy (?:first|earliest|oldest) (?:store |shop |restaurant )?(?:orders?|purchases?)\b/,
+    /\b(?:meu primeiro pedido|minha primeira compra|minha primeira encomenda|ma premiere commande|mon premier achat)\b/,
 ].map(re => re.source).join('|')})`);
 /**
  * How many orders (production QA 26-oct, catalog pilot): «combien de commandes ai-je chez vous ?», «j'ai passé combien de
@@ -350,7 +354,7 @@ const ORDER_COUNT = /\b(?:cuant[oa]s (?:pedidos|compras|ordenes)|quant[oa]s (?:p
  * A write about those orders, or a new order: never only a question about the past («cancel my last order», «I want to pay my
  * order», «repeat what I ordered», «quiero pedir lo mismo otra vez»).
  */
-const PAST_ORDERS_ACTION = /\b(?:cancel\w*|anul\w*|annul\w*|reembols\w*|refund\w*|rembours\w*|devol\w*|devolu\w*|pagar|pay|payer|pague|paye|repet\w*|repeat\w*|repit\w*|again|otra vez|de nuevo|de novo|outra vez|encore|modific\w*|cambiar|change\w*|alterar|quiero (?:pedir|comprar|ordenar)|want to (?:order|buy)|quero (?:pedir|comprar)|je veux (?:commander|acheter)|quej\w*|reclam\w*|complain\w*|plainte\w*)\b/;
+const PAST_ORDERS_ACTION = /\b(?:cancel\w*|anul\w*|annul\w*|reembols\w*|refund\w*|rembours\w*|devol\w*|devolu\w*|pagar|pay|payer|pague|paye|repet\w*|repeat\w*|repit\w*|again|otra vez|de nuevo|de novo|outra vez|encore|modific\w*|cambiar|change\w*|alterar|quiero (?:pedir|comprar|ordenar)|want to (?:order|buy)|quero (?:pedir|comprar)|je veux (?:commander|acheter)|quej\w*|reclam\w*|complain\w*|plainte\w*|(?:quiero|quisiera|deseo|want to|would like to|d like to|quero|gostaria de|je veux|je voudrais|je souhaite) (?:hacer|realizar|make|place|fazer|passer) (?:mi|my|meu|ma|mon) (?:primer|primera|first|primeiro|primeira|premiere|premier))\b/;
 
 /** The customer asks about their own past orders or purchases (es/en/pt/fr), and asks for nothing to be done to them. Pure. */
 export function isPastOrdersQuestion(text: unknown): boolean {

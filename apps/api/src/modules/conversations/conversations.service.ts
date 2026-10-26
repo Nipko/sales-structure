@@ -7,7 +7,7 @@ import { buildOperationShadowTrace, OperationClassifierService, type OperationSh
 import { buildRequiredReadsTrace, REQUIRED_READ_TIMEOUT_MS, requiredReadDefaultArgs, requiredReadsGate, requiredReadsPilotForProfile, runRequiredReads,
     type RequiredReadResult, type RequiredReadsPilot } from './runtime/required-reads.runner';
 import { isOwnBookingsQuestion, isPastOrdersQuestion, lexicalRequiredReadsOperation, needsItemDetailRead } from './runtime/operation-lexical-cues';
-import { pastOrdersReportText, unpaidOrderCorrection } from './past-orders-report';
+import { firstOrderCorrection, pastOrdersReportText, unpaidOrderCorrection } from './past-orders-report';
 import { listingSearchSlotsIn, requiredReadSlotsIn } from './runtime/required-read-slots';
 import { demoAllowanceExhaustedText } from '../widget/widget-demo-link';
 import { recordFirstReply } from '../../common/utils/first-reply.util';
@@ -7724,6 +7724,13 @@ export class ConversationsService {
             this.recordAgentSignal(tenantId, 'claim_unbacked', session);
             this.logger.warn(`[Guardrail] The reply says the customer paid for an order read with no payment — answered from the orders read: "${response.slice(0, 100)}"`);
             response = unpaid;
+        }
+        // F4300-45: «¿cuál fue mi primer pedido?» answered with the newest order of the list is said from the oldest one read.
+        const firstOrder = firstOrderCorrection(customerText, response, [...(executedTools || []), ...toolReadsOfTurnMessages(currentMessages)],
+            lang, (trustedContext as any)?.timezone);
+        if (firstOrder) {
+            this.logger.warn(`[Guardrail] «first order» answered with the newest order — answered from the oldest order read: "${response.slice(0, 100)}"`);
+            response = firstOrder;
         }
 
         // Guardrail 1: False completion claims (claiming an action happened when no tool ran/succeeded)

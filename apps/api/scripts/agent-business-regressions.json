@@ -132,7 +132,8 @@
     "apps/api/src/modules/conversations/conversations.required-reads-attribute-cues.spec.ts",
     "apps/api/src/modules/conversations/description-authority.f4300-35d.spec.ts",
     "apps/api/src/modules/conversations/description-authority.f4300-38.spec.ts",
-    "apps/api/src/modules/conversations/runtime/operation-lexical-cues.f4300-26oct.spec.ts"
+    "apps/api/src/modules/conversations/runtime/operation-lexical-cues.f4300-26oct.spec.ts",
+    "apps/api/src/modules/conversations/runtime/fact-renderer.f4300-37c.spec.ts"
   ],
   "postgres": [
     "apps/api/src/modules/faqs/faq-effects.postgres.spec.ts",

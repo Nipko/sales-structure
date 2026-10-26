@@ -657,13 +657,16 @@ export function renderReplyFacts(input: RenderFactsInput): RenderFactsOutcome {
         const totalOf = (index: string, times: string, whole: string): string => {
             const token = tokens[Number(index)];
             const fact = registry.get(token[2]);
-            const n = Number(times);
+            const n = /^\d+$/.test(times) ? Number(times) : typedNumber(norm(times).trim(), lang) ?? 0;
             if (token[1] !== 'fact' || !fact || fact.kind !== 'money' || typeof fact.value !== 'number' || n < 2 || !asked.includes(n)) return whole;
             return `${moneyText({ ...fact, value: fact.value * n }, ctx)} (${n} × ${values[Number(index)]})`;
         };
+        // «13.500 COP multiplicado por três» (production QA 26-oct, pt) is the same: the operator and the count may be words.
+        const times = String.raw`(?:[x×*]|multiplicad[oa]s? por|multiplied by|multipli[eé]e?s? par|times|vezes|fois)`;
+        const count = String.raw`(\d{1,3}(?![\d.,]\d)|\p{L}+)`;
         const totals = marked
-            .replace(/(\d+)\s*[x×*]\s*(\d{1,3})(?![\d.,]\d)/g, (whole, index, times) => totalOf(index, times, whole))
-            .replace(/(?<![\d.,])(\d{1,3})\s*[x×*]\s*(\d+)/g, (whole, times, index) => totalOf(index, times, whole));
+            .replace(new RegExp(String.raw`(\d+)\s*${times}\s*${count}`, 'giu'), (whole, index, n) => totalOf(index, n, whole))
+            .replace(/(?<![\d.,])(\d{1,3})\s*[x×*]\s*(\d+)/g, (whole, n, index) => totalOf(index, n, whole));
         return { text: totals.replace(/(\d+)/g, (_m, index) => values[Number(index)]) };
     };
 

@@ -57,7 +57,9 @@ const VOCABULARY: Record<ReplyLang, readonly string[]> = {
         // The closing offer («¿Desea que le ayude con algo más?») left inside a French reply (production QA 2026-10-25).
         'desea', 'desean', 'deseas', 'ayude', 'ayuda', 'ayudo', 'ayudar',
         // Renting a listing (F4300-16 residual, production 24-oct: «Sí, el Spark QA Inmueble está en arriendo» to an English turn).
-        'arriendo', 'arriendos', 'alquiler', 'alquileres', 'arrendamiento'],
+        'arriendo', 'arriendos', 'alquiler', 'alquileres', 'arrendamiento',
+        // Where a listing is (F4300-16, production QA 26-oct: «O Spark QA Inmueble está ubicado en Calle…» to a Portuguese turn).
+        'ubicado', 'ubicada', 'encuentra'],
     en: ['accept', 'credit', 'cards', 'card', 'debit', 'bank', 'transfers', 'transfer', 'payments', 'payment', 'per', 'month', 'taxes', 'included',
         'free', 'shipping', 'costs', 'cost', 'units', 'colors', 'black', 'blue', 'red', 'store', 'located', 'floor', 'mall', 'arrive', 'arrives',
         'shipped', 'link', 'reminder', 'sorry', 'understand', 'frustration', 'team', 'review', 'solution', 'warranty', 'slots', 'sunday',

@@ -34,3 +34,11 @@ describe('F4300-37c · a price multiplied in words is said as the total', () => 
         expect(out.text).toBe('Cada porción es 13.500 COP multiplicado por dos ingredientes.');
     });
 });
+
+describe('F4300-42 · the currency is said once', () => {
+    it('«⟦price⟧ COP» (production QA 26-oct: «150.000 COP COP») keeps one currency code', () => {
+        expect(render(`El plato Spark cuesta ${token} COP. ¿Desea pedirlo?`, 'es', 'cuánto vale el plato Spark?').text)
+            .toBe('El plato Spark cuesta 13.500 COP. ¿Desea pedirlo?');
+        expect(render(`The Spark dish costs ${token} COP.`, 'en', 'how much is the Spark dish?').text).toBe('The Spark dish costs 13,500 COP.');
+    });
+});

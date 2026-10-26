@@ -190,3 +190,62 @@ export function unpaidOrderCorrection(reply: string, reads: ReadonlyArray<{ name
     const report = pastOrdersReportText(reads, lang);
     return report ? report + NOT_PAID[langOf(lang)] : null;
 }
+
+/**
+ * F4300-45 residual (production QA 26-oct, store tenant, image fc0c6c76): with #242 «¿cuál fue mi primer pedido en la tienda?»
+ * read the six orders, and the reply named the NEWEST one — «Su primer pedido en la tienda fue el 10 de octubre de 2026, con el
+ * número de Ref. 20FD6A98» — in es/pt/en/fr. The list comes newest first; the oldest order is of 8-oct. The customer's first
+ * order is said from the oldest order the turn read.
+ */
+const FIRST_ORDER = /(?<!\p{L})(?:mi (?:primer|primera) (?:pedido|compra|orden)|my (?:first|earliest|oldest) (?:store |shop |restaurant )?(?:order|purchase)|(?:meu primeiro pedido|minha primeira compra|minha primeira encomenda)|(?:ma premi[eè]re commande|mon premier achat))(?!\p{L})/iu;
+
+const LOCALE: Record<Lang, string> = { es: 'es-CO', en: 'en-US', pt: 'pt-BR', fr: 'fr-FR' };
+const FIRST_LEAD: Record<Lang, (ref: string, date: string) => string> = {
+    es: (ref, date) => `Su primer pedido es el ${ref}, del ${date}`,
+    en: (ref, date) => `Your first order is ${ref}, placed on ${date}`,
+    pt: (ref, date) => `Seu primeiro pedido é o ${ref}, de ${date}`,
+    fr: (ref, date) => `Votre première commande est la ${ref}, du ${date}`,
+};
+
+/** The orders the turn's list reads returned, newest list first (as `pastOrdersOfTurn` picks it). */
+function listedOrdersOfTurn(reads: ReadonlyArray<{ name?: string; result?: any }>): OrderView[] {
+    let listed: OrderView[] = [];
+    for (const read of reads || []) {
+        const result = read?.result;
+        if (!result || typeof result !== 'object' || result.error || result.success === false) continue;
+        if (!LIST_READS.has(String(read.name)) || !Array.isArray(result.orders)) continue;
+        const rows = result.orders.map(view).filter((row: OrderView | null): row is OrderView => !!row);
+        if (rows.length >= listed.length) listed = rows;
+    }
+    return listed;
+}
+
+/**
+ * The reply corrected from the orders read when the customer asks for their FIRST order and the reply names the newest one
+ * (its reference) instead of the oldest; null otherwise (another question, fewer than two dated orders, or the reply names the
+ * oldest order).
+ */
+export function firstOrderCorrection(customerText: string, reply: string, reads: ReadonlyArray<{ name?: string; result?: any }>,
+    lang?: string, timeZone?: string): string | null {
+    if (!FIRST_ORDER.test(String(customerText || ''))) return null;
+    const rows = listedOrdersOfTurn(reads).filter(row => Number.isFinite(row.createdAt));
+    if (rows.length < 2) return null;
+    const oldest = rows.reduce((best, row) => (row.createdAt < best.createdAt ? row : best), rows[0]);
+    const newest = rows.reduce((best, row) => (row.createdAt > best.createdAt ? row : best), rows[0]);
+    const text = String(reply || '').toUpperCase();
+    if (oldest.id === newest.id || text.includes(oldest.reference.toUpperCase()) || !text.includes(newest.reference.toUpperCase())) return null;
+    const l = langOf(lang);
+    let date: string;
+    try {
+        date = new Intl.DateTimeFormat(LOCALE[l], { day: 'numeric', month: 'long', year: 'numeric', timeZone: timeZone || 'UTC' }).format(new Date(oldest.createdAt));
+    } catch {
+        date = new Intl.DateTimeFormat(LOCALE[l], { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(oldest.createdAt));
+    }
+    const T = TEXT[l];
+    const items = oldest.items.map(item => (item.quantity && item.quantity > 0 ? `${item.quantity} × ${item.name}` : item.name)).join(', ');
+    const total = formatPriceWithCurrency(l, oldest.total, oldest.currency);
+    return FIRST_LEAD[l](oldest.reference, date)
+        + (items ? T.items(items) : '')
+        + (total ? T.total(total) : '')
+        + T.status(statusWord(oldest.status, l)) + '.';
+}

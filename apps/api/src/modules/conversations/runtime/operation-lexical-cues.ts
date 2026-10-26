@@ -241,6 +241,12 @@ const LANGUAGE = /\b(?:idiomas?|idiomes?|lenguas?|linguas?|languages?|langues?|l
 const GUIDE = /\b(?:guias?|guides?|guided|guiad[oa]s?|guidee?s?)\b/;
 /** What it includes or excludes, and what to bring. */
 const INCLUDES = /\b(?:incluye\w*|incluid\w*|inclui\w*|inclus\w*|incluso|include\w*|exclu\w*|comprend\w*|que trae|what to bring|que llevar|o que levar|apporter)\b/;
+/**
+ * Where it goes and where it leaves from. F4300-08 (production QA 26-oct, image 6f1d3bf6): «¿a qué destino va el Tour QA Aurora?»
+ * in the four languages ran only search_faqs and was answered «no tengo información confirmada sobre el destino» — the package
+ * says «Destino QA Aurora».
+ */
+const PLACE = /\b(?:destinos?|destinations?|a donde va|adonde va|para onde vai|aonde vai|ou va|where does|where do|desde donde sale\w*|de donde sale\w*|de onde sai\w*|d ou part\w*|punto de (?:salida|encuentro)|ponto de (?:saida|encontro)|point de (?:depart|rendez vous)|meeting point|departure point|pick ?up point)\b/;
 
 /**
  * The tour operation the message's words name: `package_availability` for seats left, departures and dates, `package_info` for
@@ -252,6 +258,7 @@ export function tourQuestionOperation(text: unknown): 'package_availability' | '
     if ((SEATS.test(t) && LEFT.test(t)) || DEPARTURES.test(t) || (TOUR.test(t) && WHEN_OR_AVAILABLE.test(t))) return 'package_availability';
     if (DURATION.test(t) || INCLUDES.test(t) || (TOUR.test(t) && PRICE_WORDS.test(t))) return 'package_info';
     if (LANGUAGE.test(t) && (TOUR.test(t) || GUIDE.test(t))) return 'package_info';
+    if (TOUR.test(t) && PLACE.test(t)) return 'package_info';
     if (isTellAboutItem(text)) return 'package_info';
     return null;
 }

@@ -7,7 +7,7 @@ import { buildOperationShadowTrace, OperationClassifierService, type OperationSh
 import { buildRequiredReadsTrace, REQUIRED_READ_TIMEOUT_MS, requiredReadDefaultArgs, requiredReadsGate, requiredReadsPilotForProfile, runRequiredReads,
     type RequiredReadResult, type RequiredReadsPilot } from './runtime/required-reads.runner';
 import { isOwnBookingsQuestion, isPastOrdersQuestion, lexicalRequiredReadsOperation, needsItemDetailRead } from './runtime/operation-lexical-cues';
-import { pastOrdersReportText } from './past-orders-report';
+import { pastOrdersReportText, unpaidOrderCorrection } from './past-orders-report';
 import { listingSearchSlotsIn, requiredReadSlotsIn } from './runtime/required-read-slots';
 import { demoAllowanceExhaustedText } from '../widget/widget-demo-link';
 import { recordFirstReply } from '../../common/utils/first-reply.util';
@@ -7716,6 +7716,14 @@ export class ConversationsService {
             // Only the unsupported sentences go: a price answered in the same message stays (and still goes through the guards below).
             if (grounded.whole) return grounded.text;
             response = grounded.text;
+        }
+
+        // F4300-43: «pagó 119.900 COP» about an order read with no payment (cancelled, payment pending) is said from the read.
+        const unpaid = unpaidOrderCorrection(response, [...(executedTools || []), ...toolReadsOfTurnMessages(currentMessages)], lang);
+        if (unpaid) {
+            this.recordAgentSignal(tenantId, 'claim_unbacked', session);
+            this.logger.warn(`[Guardrail] The reply says the customer paid for an order read with no payment — answered from the orders read: "${response.slice(0, 100)}"`);
+            response = unpaid;
         }
 
         // Guardrail 1: False completion claims (claiming an action happened when no tool ran/succeeded)

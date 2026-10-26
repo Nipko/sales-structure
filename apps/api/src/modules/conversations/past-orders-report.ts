@@ -160,3 +160,33 @@ export function pastOrdersReportText(reads: ReadonlyArray<{ name?: string; resul
         + T.status(statusWord(latest.status, l)) + payment + '.'
         + (count && count > 1 ? T.count(count) : '');
 }
+
+/**
+ * F4300-43 (production QA 26-oct, store tenant, image 994c54a7): «¿cuánto pagué en mi último pedido de la tienda?» read the six
+ * orders (all cancelled, payment pending, no payment reference) and the reply was «En su último pedido en la tienda, pagó
+ * 119.900 COP», in the four languages. Nothing was ever charged. The total of an order is not money the customer paid.
+ *
+ * Only the verbs that say the CUSTOMER paid count: «pagó», «ha pagado», «you paid», «você pagou», «vous avez payé». The nouns
+ * («el pago está pendiente», «payment: pending») say nothing of the kind.
+ */
+const PAID_CLAIM = /(?<!\p{L})(?:pagó|pagaste|pagaron|(?:ha|has|han) pagado|abonó|you(?:'ve| have)? paid|(?:você |voce )?pagou|(?:vous avez|tu as) payée?s?)(?!\p{L})/iu;
+const PAID_STATUSES = new Set(['paid', 'captured', 'succeeded', 'settled', 'approved']);
+
+const NOT_PAID: Record<Lang, string> = {
+    es: ' No consta ningún pago de este pedido.',
+    en: ' No payment is recorded for this order.',
+    pt: ' Não consta nenhum pagamento deste pedido.',
+    fr: ' Aucun paiement n’est enregistré pour cette commande.',
+};
+
+/**
+ * The reply corrected from the orders the turn read when it says the customer paid for the newest order and that order shows
+ * no payment; null when the reply claims no payment, the turn read no order, or the newest order is paid.
+ */
+export function unpaidOrderCorrection(reply: string, reads: ReadonlyArray<{ name?: string; result?: any }>, lang?: string): string | null {
+    if (!PAID_CLAIM.test(String(reply || ''))) return null;
+    const found = pastOrdersOfTurn(reads);
+    if (!found || PAID_STATUSES.has(found.latest.paymentStatus.toLowerCase())) return null;
+    const report = pastOrdersReportText(reads, lang);
+    return report ? report + NOT_PAID[langOf(lang)] : null;
+}

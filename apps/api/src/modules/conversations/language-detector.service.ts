@@ -281,7 +281,10 @@ export class LanguageDetectorService {
             'aberto', 'aberta', 'abertos', 'abertas', 'disponivel', 'disponiveis',
             // F4300-16 (production QA 26-oct): Portuguese typed the way customers type, «onde fika o spark qa inmueble» and «qto dura a
             // consulta geral», after a Spanish case was answered in Spanish. Spanish writes «donde»/«cuánto», French «où»/«combien».
-            'onde', 'qto', 'qta', 'qtos', 'qtas', 'oq'],
+            'onde', 'qto', 'qta', 'qtos', 'qtas', 'oq',
+            // «o Tour QA Aurora aceita um grupo de 10?» after an English case was answered in English (production QA 26-oct, image
+            // 6f1d3bf6). Spanish writes «acepta», French «accepte».
+            'aceita', 'aceitas'],
         fr: ['coute', 'coutent', 'combien', 'je', 'est', 'sont', 'avez', 'pouvez', 'puis', 'peux', 'veux', 'voudrais', 'faut',
             'inclut', 'dois', 'doit', 'cherche', 'ai', 'reste', 'proposez', 'acceptez', 'quel', 'quelle', 'quels', 'quelles',
             'vendez', 'vendent', 'faites', 'ouvrez', 'fermez', 'livrez', 'envoyez', 'travaillez',

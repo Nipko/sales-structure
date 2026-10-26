@@ -288,9 +288,17 @@ export class ToursService {
         if (dateProblem) return { available: false, seatsLeft: 0, reason: dateProblem };
         const size = parsePartySize(partySize);
         if (size === null) {
+            // F4300-40 (production QA 25-oct): «how many seats are left for the 15 December departure?» got «how many travellers?»
+            // and then «not confirmed in the system» — the departure had 10. The seats left are a fact of the departure, whatever
+            // the group: they are said; only «available for you» waits for the count.
+            const departure = await this.departureStatus(schemaName, packageId, departureDate);
+            if (departure.kind === 'no_departure') return { available: false, seatsLeft: 0, reason: 'no_departure_on_date' };
+            const seatsLeft = departure.kind === 'seats' ? departure.seatsLeft : 'unlimited';
             return {
-                available: false, seatsLeft: null, reason: 'party_size_required',
-                message: 'Ask the customer how many travellers there are (a whole number, at least 1) before answering about availability.',
+                available: false, seatsLeft, reason: 'party_size_required',
+                message: departure.kind === 'seats'
+                    ? `This departure has ${departure.seatsLeft} seats left: tell the customer that number. Ask how many travellers there are only to confirm a booking for a specific group.`
+                    : 'This package has no seat limit on that date. Ask how many travellers there are only to confirm a booking for a specific group.',
             };
         }
         const minPartySize = Number(pkg.min_party_size) || 1;

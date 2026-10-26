@@ -261,8 +261,17 @@ describe('ToursService booking contact integrity', () => {
         it.each([[undefined], [null], ['varios'], [0], [-2], [1.5], ['']])(
             'never says available without a usable traveller count (%p)', async (partySize) => {
                 const result = await build([{ available_seats: 6 }], true).checkAvailability(schemaName, packageId, future, partySize);
-                expect(result).toMatchObject({ available: false, reason: 'party_size_required', seatsLeft: null });
+                // F4300-40: the departure's seats left are said; «available» still waits for the count.
+                expect(result).toMatchObject({ available: false, reason: 'party_size_required', seatsLeft: 6 });
+                expect(result.message).toContain('6 seats left');
             });
+
+        it('F4300-40: without a count, a date with no departure says so and an unscheduled package has no seat limit', async () => {
+            await expect(build([], true).checkAvailability(schemaName, packageId, future, undefined))
+                .resolves.toMatchObject({ available: false, reason: 'no_departure_on_date' });
+            await expect(build([], false).checkAvailability(schemaName, packageId, future, undefined))
+                .resolves.toMatchObject({ available: false, reason: 'party_size_required', seatsLeft: 'unlimited' });
+        });
 
         it('accepts a numeric string count and checks the seats', async () => {
             const service = build([{ available_seats: 3 }], true);
@@ -279,8 +288,8 @@ describe('ToursService booking contact integrity', () => {
             });
 
         it('still asks for the traveller count when the date is fine', async () => {
-            await expect(build([], true).checkAvailability(schemaName, packageId, future, undefined))
-                .resolves.toMatchObject({ available: false, reason: 'party_size_required' });
+            await expect(build([{ available_seats: 10 }], true).checkAvailability(schemaName, packageId, future, undefined))
+                .resolves.toMatchObject({ available: false, reason: 'party_size_required', seatsLeft: 10 });
         });
 
         it('searchPackages names the problem of a past or malformed date instead of returning an empty list', async () => {

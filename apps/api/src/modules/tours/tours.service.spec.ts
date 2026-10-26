@@ -273,6 +273,17 @@ describe('ToursService booking contact integrity', () => {
                 .resolves.toMatchObject({ available: false, reason: 'party_size_required', seatsLeft: 'unlimited' });
         });
 
+        it('POST232: the departure time is part of the answer, with or without a traveller count', async () => {
+            const service = build([{ available_seats: 10, departure_time: '09:00:00' }], true);
+            const noCount = await service.checkAvailability(schemaName, packageId, future, undefined);
+            expect(noCount).toMatchObject({ available: false, seatsLeft: 10, departureTime: '09:00', reason: 'party_size_required' });
+            expect(noCount.message).toContain('leaves at 09:00');
+            await expect(service.checkAvailability(schemaName, packageId, future, 2)).resolves.toEqual({ available: true, seatsLeft: 10, departureTime: '09:00' });
+            // A departure loaded without a time says none.
+            await expect(build([{ available_seats: 4, departure_time: null }], true).checkAvailability(schemaName, packageId, future, 2))
+                .resolves.toEqual({ available: true, seatsLeft: 4 });
+        });
+
         it('accepts a numeric string count and checks the seats', async () => {
             const service = build([{ available_seats: 3 }], true);
             await expect(service.checkAvailability(schemaName, packageId, future, '2')).resolves.toEqual({ available: true, seatsLeft: 3 });

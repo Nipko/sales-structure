@@ -277,7 +277,7 @@ export class ToursService {
         packageId: string,
         departureDate: string,
         partySize: unknown,
-    ): Promise<{ available: boolean; seatsLeft: number | 'unlimited' | null; reason?: string; minPartySize?: number; maxCapacity?: number; message?: string }> {
+    ): Promise<{ available: boolean; seatsLeft: number | 'unlimited' | null; departureTime?: string; reason?: string; minPartySize?: number; maxCapacity?: number; message?: string }> {
         const pkg = await this.getPackage(schemaName, packageId);
         if (!pkg || !pkg.is_active) {
             return { available: false, seatsLeft: 0, reason: 'package_not_found' };
@@ -294,10 +294,13 @@ export class ToursService {
             const departure = await this.departureStatus(schemaName, packageId, departureDate);
             if (departure.kind === 'no_departure') return { available: false, seatsLeft: 0, reason: 'no_departure_on_date' };
             const seatsLeft = departure.kind === 'seats' ? departure.seatsLeft : 'unlimited';
+            // POST232 (production QA 26-oct): «à quelle heure part le Spark QA Tour du 15 décembre ?» read this result, which had
+            // no time, and was answered «l'heure exacte n'est pas confirmée» — the departure leaves at 09:00.
+            const at = departure.kind === 'seats' && departure.departureTime ? departure.departureTime : undefined;
             return {
-                available: false, seatsLeft, reason: 'party_size_required',
+                available: false, seatsLeft, ...(at ? { departureTime: at } : {}), reason: 'party_size_required',
                 message: departure.kind === 'seats'
-                    ? `This departure has ${departure.seatsLeft} seats left: tell the customer that number. Ask how many travellers there are only to confirm a booking for a specific group.`
+                    ? `This departure${at ? ` leaves at ${at} and` : ''} has ${departure.seatsLeft} seats left: tell the customer${at ? ' the time and' : ''} that number. Ask how many travellers there are only to confirm a booking for a specific group.`
                     : 'This package has no seat limit on that date. Ask how many travellers there are only to confirm a booking for a specific group.',
             };
         }
@@ -320,10 +323,11 @@ export class ToursService {
         if (departure.kind === 'unlimited') {
             return { available: true, seatsLeft: 'unlimited' };
         }
+        const time = departure.departureTime ? { departureTime: departure.departureTime } : {};
         if (departure.seatsLeft < size) {
-            return { available: false, seatsLeft: departure.seatsLeft, reason: 'not_enough_seats' };
+            return { available: false, seatsLeft: departure.seatsLeft, ...time, reason: 'not_enough_seats' };
         }
-        return { available: true, seatsLeft: departure.seatsLeft };
+        return { available: true, seatsLeft: departure.seatsLeft, ...time };
     }
 
     /**
@@ -335,7 +339,7 @@ export class ToursService {
         schemaName: string,
         packageId: string,
         departureDate: string,
-    ): Promise<{ kind: 'unlimited' } | { kind: 'no_departure' } | { kind: 'seats'; seatsLeft: number }> {
+    ): Promise<{ kind: 'unlimited' } | { kind: 'no_departure' } | { kind: 'seats'; seatsLeft: number; departureTime?: string }> {
         const inv = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `SELECT * FROM tour_inventory
@@ -343,7 +347,10 @@ export class ToursService {
              ORDER BY departure_time NULLS FIRST LIMIT 1`,
             [packageId, departureDate],
         );
-        if (inv?.length) return { kind: 'seats', seatsLeft: Number(inv[0].available_seats) };
+        if (inv?.length) {
+            const time = /^(\d{2}:\d{2})/.exec(String(inv[0].departure_time ?? ''))?.[1];
+            return { kind: 'seats', seatsLeft: Number(inv[0].available_seats), ...(time ? { departureTime: time } : {}) };
+        }
         return (await this.hasScheduledDepartures(schemaName, packageId))
             ? { kind: 'no_departure' }
             : { kind: 'unlimited' };

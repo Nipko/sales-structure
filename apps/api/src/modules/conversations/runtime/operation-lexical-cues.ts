@@ -227,7 +227,9 @@ const LEFT = /\b(?:quedan|queda|restan|resta|disponibles?|libres?|hay|left|remai
 /** Departures and their dates, on their own. */
 const DEPARTURES = /\b(?:salidas|proxim\w* salida|siguiente salida|saidas|proxim\w* saida|departs|prochain\w* depart|next departure|departures?|fechas|datas|dates|proxim\w* fecha|proxim\w* data|prochain\w* date|next date)\b/;
 /** When it leaves, or whether it is available: about a tour. */
-const WHEN_OR_AVAILABLE = /\b(?:cuando sale\w*|quando sai\w*|quand part\w*|when does|when do|when is|horarios?|schedule|disponib\w*|available|availability)\b/;
+// At what time it leaves (production QA 26-oct): «à quelle heure part le Spark QA Tour du 15 décembre ?» ran only search_faqs
+// (2 of 2) and was answered «je n'ai pas l'heure exacte… confirmée»; the departure is at 09:00.
+const WHEN_OR_AVAILABLE = /\b(?:cuando sale\w*|quando sai\w*|quand part\w*|when does|when do|when is|horarios?|schedule|disponib\w*|available|availability|(?:a )?que hora\w*|que horas|(?:a )?quelle heure|what time|heure de depart|hora de salida|horario de saida)\b/;
 /** How long it lasts. */
 const DURATION = /\b(?:cuanto dura\w*|duracion|dura|duran|duracao|quanto tempo|combien de temps|duree|dure|durent|how long|duration|lasts|cuant[oa]s (?:dias|horas|noches)|quant[oa]s (?:dias|horas|noites)|combien de (?:jours|heures|nuits)|how many (?:days|hours|nights))\b/;
 /**
@@ -337,6 +339,9 @@ const PAST_ORDERS = new RegExp(`(?:${[
     // fr: «qu'est-ce que j'ai acheté / commandé», «ce que j'ai acheté», «mes commandes», «ma dernière commande», «mon dernier achat»
     /\b(?:qu est ce que|ce que|qu) j ai (?:commande|achete|pris)\b|\bj ai (?:commande|achete) quoi\b/,
     /\b(?:mes commandes|mes achats|ma derniere commande|mon dernier achat|ma commande precedente|mon achat precedent)\b/,
+    // How many (production QA 26-oct, catalog pilot): «combien de commandes ai-je chez vous ?», «j'ai passé combien de commandes
+    // dans la boutique ?» ran only search_faqs (2 of 2) and the count was not said; «cuántas compras tengo» did read.
+    /\b(?:cuant[oa]s (?:pedidos|compras|ordenes)|quant[oa]s (?:pedidos|compras|encomendas)|how many (?:orders|purchases)|combien (?:de commandes|d achats))\b/,
 ].map(re => re.source).join('|')})`);
 /**
  * A write about those orders, or a new order: never only a question about the past («cancel my last order», «I want to pay my

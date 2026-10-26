@@ -1,5 +1,5 @@
 import { languageMismatch } from '../reply-language';
-import { isPastOrdersQuestion, lexicalRequiredReadsOperation } from './operation-lexical-cues';
+import { isOrderCountQuestion, isPastOrdersQuestion, lexicalRequiredReadsOperation } from './operation-lexical-cues';
 
 /**
  * Production QA 26-oct (image fee22cc7, renderedFacts on): three French turns were answered without the read that holds the
@@ -20,13 +20,15 @@ describe('how many orders: the customer\'s own orders are read', () => {
         'cuántos pedidos he hecho en la tienda?', 'cuántas compras tengo?', 'how many orders have I made?', 'how many purchases have I made in the store?',
         'quantos pedidos eu fiz?', 'quantas compras eu tenho?',
     ])('«%s»', text => {
-        expect(isPastOrdersQuestion(text)).toBe(true);
+        expect(isOrderCountQuestion(text)).toBe(true);
+        // A count needs the list only: it is not a past-orders question (which also reads the newest order's detail).
+        expect(isPastOrdersQuestion(text)).toBe(false);
         expect(lexicalRequiredReadsOperation(text, 'catalog', CATALOG)).toBe('track_catalog_order');
         expect(lexicalRequiredReadsOperation(text, 'restaurants', RESTAURANT)).toBe('check_my_orders');
     });
 
     it('a write about them is not a question («annuler mes commandes»)', () => {
-        expect(isPastOrdersQuestion('combien de commandes puis-je annuler ?')).toBe(false);
+        expect(isOrderCountQuestion('combien de commandes puis-je annuler ?')).toBe(false);
     });
 });
 

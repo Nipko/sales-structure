@@ -339,10 +339,13 @@ const PAST_ORDERS = new RegExp(`(?:${[
     // fr: «qu'est-ce que j'ai acheté / commandé», «ce que j'ai acheté», «mes commandes», «ma dernière commande», «mon dernier achat»
     /\b(?:qu est ce que|ce que|qu) j ai (?:commande|achete|pris)\b|\bj ai (?:commande|achete) quoi\b/,
     /\b(?:mes commandes|mes achats|ma derniere commande|mon dernier achat|ma commande precedente|mon achat precedent)\b/,
-    // How many (production QA 26-oct, catalog pilot): «combien de commandes ai-je chez vous ?», «j'ai passé combien de commandes
-    // dans la boutique ?» ran only search_faqs (2 of 2) and the count was not said; «cuántas compras tengo» did read.
-    /\b(?:cuant[oa]s (?:pedidos|compras|ordenes)|quant[oa]s (?:pedidos|compras|encomendas)|how many (?:orders|purchases)|combien (?:de commandes|d achats))\b/,
 ].map(re => re.source).join('|')})`);
+/**
+ * How many orders (production QA 26-oct, catalog pilot): «combien de commandes ai-je chez vous ?», «j'ai passé combien de
+ * commandes dans la boutique ?» ran only search_faqs (2 of 2) and the count was not said; «cuántas compras tengo» did read. The
+ * list answers it: no order's detail is needed, so this is not a past-orders question (which also reads the newest order).
+ */
+const ORDER_COUNT = /\b(?:cuant[oa]s (?:pedidos|compras|ordenes)|quant[oa]s (?:pedidos|compras|encomendas)|how many (?:orders|purchases)|combien (?:de commandes|d achats))\b/;
 /**
  * A write about those orders, or a new order: never only a question about the past («cancel my last order», «I want to pay my
  * order», «repeat what I ordered», «quiero pedir lo mismo otra vez»).
@@ -353,6 +356,12 @@ const PAST_ORDERS_ACTION = /\b(?:cancel\w*|anul\w*|annul\w*|reembols\w*|refund\w
 export function isPastOrdersQuestion(text: unknown): boolean {
     const t = folded(text);
     return !!t && t.length <= 400 && PAST_ORDERS.test(t) && !PAST_ORDERS_ACTION.test(t);
+}
+
+/** The customer asks how many orders or purchases they have (es/en/pt/fr), and asks for nothing to be done to them. Pure. */
+export function isOrderCountQuestion(text: unknown): boolean {
+    const t = folded(text);
+    return !!t && t.length <= 400 && ORDER_COUNT.test(t) && !PAST_ORDERS_ACTION.test(t);
 }
 
 // ── The customer's own bookings and appointments («do I have a booking?») ─────────────────────────────────────────────────
@@ -446,8 +455,9 @@ export function lexicalRequiredReadsOperation(text: unknown, pilot: RequiredRead
     const own = ownBookingsOperation(text, pilot, publishedTools);
     if (own) return own;
     // F4300-11: «qué pedí la última vez?» / «what did I buy last time?» is the customer's own orders, before any menu or product word.
-    if (pilot === 'restaurants' && publishedTools.includes('list_my_orders') && isPastOrdersQuestion(text)) return 'check_my_orders';
-    if (pilot === 'catalog' && publishedTools.includes('list_my_catalog_orders') && isPastOrdersQuestion(text)) return 'track_catalog_order';
+    const ownOrders = isPastOrdersQuestion(text) || isOrderCountQuestion(text);
+    if (pilot === 'restaurants' && publishedTools.includes('list_my_orders') && ownOrders) return 'check_my_orders';
+    if (pilot === 'catalog' && publishedTools.includes('list_my_catalog_orders') && ownOrders) return 'track_catalog_order';
     if (pilot === 'restaurants' && publishedTools.includes('get_menu') && isMenuQuestion(text)) return 'menu_info';
     if (pilot === 'catalog' && publishedTools.includes('search_products') && isProductQuestion(text)) return 'product_info';
     if (pilot === 'properties' && publishedTools.includes('list_properties') && isLodgingQuestion(text)) return 'property_info';

@@ -252,7 +252,8 @@ describe('required reads through the turn (PR5)', () => {
         ['unparseable', 'not json', 'fallback:invalid_output'],
     ])('classifier %s → no forced reads, the skip is traced', async (_label, classifier, reason) => {
         const h = store({ [REQUIRED_READS_CATALOG_FLAG]: true }, undefined, classifier);
-        const { result, requiredReads } = await h.turn(STORE_QUESTION);
+        // A message with no lexical cue: «cuántos pedidos…» is read whatever the classifier says (26-oct, the FR count it missed).
+        const { result, requiredReads } = await h.turn('¿tengo algo pendiente con ustedes?');
         expect(result.debug.runtimeError).toBeUndefined();
         expect(h.classifyCalls()).toHaveLength(1);
         expect(h.executed()).toEqual([]);

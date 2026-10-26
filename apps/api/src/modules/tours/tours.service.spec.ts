@@ -1,7 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
-import { ToursService } from './tours.service';
+import { timeOfDay, ToursService } from './tours.service';
 
 describe('ToursService booking contact integrity', () => {
     const schemaName = 'tenant_tours';
@@ -271,6 +271,15 @@ describe('ToursService booking contact integrity', () => {
                 .resolves.toMatchObject({ available: false, reason: 'no_departure_on_date' });
             await expect(build([], false).checkAvailability(schemaName, packageId, future, undefined))
                 .resolves.toMatchObject({ available: false, reason: 'party_size_required', seatsLeft: 'unlimited' });
+        });
+
+        it('POST234: a time column that arrives as a Date on 1970-01-01 is still said as HH:MM', async () => {
+            const service = build([{ available_seats: 10, departure_time: new Date('1970-01-01T09:00:00.000Z') }], true);
+            await expect(service.checkAvailability(schemaName, packageId, future, undefined))
+                .resolves.toMatchObject({ seatsLeft: 10, departureTime: '09:00' });
+            expect(timeOfDay('9:30:00')).toBe('09:30');
+            expect(timeOfDay('1970-01-01T14:15:00.000Z')).toBe('14:15');
+            expect(timeOfDay(null)).toBeUndefined();
         });
 
         it('POST232: the departure time is part of the answer, with or without a traveller count', async () => {

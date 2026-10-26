@@ -28,6 +28,9 @@ const NAME_JOINERS = new Set(['y', 'e', 'et', 'and', '&']);
  *
  * Returns a short language code ('es' | 'en' | 'pt' | 'fr' | fallback).
  */
+/** An elided article or pronoun before a word («d’Audífono», «l’hôtel»): written in French only, of the four languages. */
+const FRENCH_ELISION = /(?<!\p{L})(?:l|d|qu|j|n|c|s|m|t)['’](?=\p{L})/u;
+
 /** What the turn knows beyond the message: the catalogue names in play and the customer's recent messages (oldest first). */
 export interface LanguageDetectionContext {
     names?: readonly string[];
@@ -589,6 +592,11 @@ export class LanguageDetectorService {
                 }
             }
             if (this.clearCharacters[lang]?.test(raw)) hits++;
+            // An elided article or pronoun («d’Audífono», «l’hôtel», «qu’il») is French: Spanish, Portuguese and English do not elide
+            // before a word. F4300-16 (production QA 26-oct): «combien d’Audífono QA Aurora en stock ?» after an English case kept
+            // only «combien» once the name and the loanword «stock» were out, and was answered in English. Read on the message as
+            // written: once the name is out, «d’» is no longer before a word.
+            if (lang === 'fr' && FRENCH_ELISION.test(String(text || '').toLowerCase())) hits++;
             // «há» (there is) and a standalone «é» (is) are Portuguese verbs none of the other three languages writes: «o prato
             // Spark é sem glúten? sou celíaca» (stored «es») had no other predicate and was answered, the fixed allergen
             // text included, in Spanish.

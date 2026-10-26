@@ -667,7 +667,9 @@ export function renderReplyFacts(input: RenderFactsInput): RenderFactsOutcome {
         const totals = marked
             .replace(new RegExp(String.raw`(\d+)\s*${times}\s*${count}`, 'giu'), (whole, index, n) => totalOf(index, n, whole))
             .replace(/(?<![\d.,])(\d{1,3})\s*[x×*]\s*(\d+)/g, (whole, n, index) => totalOf(index, n, whole));
-        return { text: totals.replace(/(\d+)/g, (_m, index) => values[Number(index)]) };
+        // «150.000 COP COP» (production QA 26-oct): the rendered amount carries its currency and the model wrote it again after the token.
+        const filled = totals.replace(/(\d+)/g, (_m, index) => values[Number(index)]);
+        return { text: filled.replace(/\b([A-Z]{3})(\s+)\1\b/g, '$1') };
     };
 
     // Sentences end at . ! ? … followed by a space, or at a line break; «13.500» is not an end.

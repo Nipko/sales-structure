@@ -278,7 +278,10 @@ export class LanguageDetectorService {
             // it was known. Spanish says «háblame», «cuéntame», «dime», «muéstrame»; French «parlez», «racontez», «dites».
             'fala', 'falam', 'falar', 'conta', 'contam', 'contar', 'diz', 'dizem', 'mostra', 'mostram',
             // F4300-16f: «aberto amanhã?». Spanish writes «abierto», «disponible».
-            'aberto', 'aberta', 'abertos', 'abertas', 'disponivel', 'disponiveis'],
+            'aberto', 'aberta', 'abertos', 'abertas', 'disponivel', 'disponiveis',
+            // F4300-16 (production QA 26-oct): Portuguese typed the way customers type, «onde fika o spark qa inmueble» and «qto dura a
+            // consulta geral», after a Spanish case was answered in Spanish. Spanish writes «donde»/«cuánto», French «où»/«combien».
+            'onde', 'qto', 'qta', 'qtos', 'qtas', 'oq'],
         fr: ['coute', 'coutent', 'combien', 'je', 'est', 'sont', 'avez', 'pouvez', 'puis', 'peux', 'veux', 'voudrais', 'faut',
             'inclut', 'dois', 'doit', 'cherche', 'ai', 'reste', 'proposez', 'acceptez', 'quel', 'quelle', 'quels', 'quelles',
             'vendez', 'vendent', 'faites', 'ouvrez', 'fermez', 'livrez', 'envoyez', 'travaillez',
@@ -336,7 +339,9 @@ export class LanguageDetectorService {
         pt: ['janeiro', 'fevereiro', 'maio', 'junho', 'julho', 'setembro', 'outubro', 'novembro', 'dezembro', 'vaga', 'vagas',
             'pessoas', 'preco', 'frete', 'na', 'nas', 'ao', 'sem',
             // F4300-16g: «quanto fica dois pratos Spark?». Spanish writes «platos», «dos»; French «plats», «deux».
-            'prato', 'pratos', 'duas'],
+            'prato', 'pratos', 'duas',
+            // Spanish «general», French «général».
+            'geral'],
         fr: ['janvier', 'fevrier', 'mars', 'avril', 'mai', 'juin', 'juillet', 'aout', 'septembre', 'octobre', 'novembre', 'decembre',
             'garantie', 'semaine', 'samedi', 'dimanche', 'personnes', 'prix', 'il', 'ce',
             // «parlez-moi…», «vous avez quoi à manger ?», «qu'est-ce qu'il y a…»: Spanish «mí/qué», Portuguese «mim/quê».
@@ -612,6 +617,11 @@ export class LanguageDetectorService {
         if (ranked.every(entry => entry.predicates === 0)) return this.contentLanguage(tokens, raw, vocabularies);
         if (best.hits === 0 || second.hits > 0 || best.predicates === 0) return null;
         if (best.hits >= 2) return best.lang;
+        // A question OPENED by an interrogative of one language and carried on for two more words is a question in that language,
+        // however the rest is typed: «onde fika o spark qa inmueble» (production QA 26-oct, a Spanish reply). A lone or trailing
+        // interrogative («ok what», «how?», «el plan cual») still decides nothing.
+        const opening = this.normalize(this.nameFreeText(text, names, true)).split(/\s+/).filter(word => /[a-z]/.test(word));
+        if (opening.length >= 3 && this.interrogatives.has(opening[0]) && this.predicateWords[best.lang].includes(opening[0])) return best.lang;
         // ONE word of evidence: it must be a verb («tiene garantía?»), in a message of two words that are not a bare
         // acknowledgement. A lone interrogative is as often a borrowed word: «ok what», «cual», «how?» decide nothing.
         // A loanword is no evidence, but it is a word the customer wrote: «tienen delivery?» is a two-word Spanish question.
@@ -625,7 +635,7 @@ export class LanguageDetectorService {
     /** Interrogatives of the predicate lists: evidence, but never enough on their own. */
     private readonly interrogatives = new Set(['cuanto', 'cuanta', 'cuantos', 'cuantas', 'donde', 'cual', 'cuales', 'cuando', 'quien', 'quienes',
         'quanto', 'quanta', 'quantos', 'quantas', 'qual', 'quais', 'quando', 'combien', 'quel', 'quelle', 'quels', 'quelles', 'how', 'what', 'where',
-        'when', 'which']);
+        'when', 'which', 'onde', 'qto', 'qta', 'qtos', 'qtas', 'oq']);
 
     /** Acknowledgements that carry no language: «ok», «okay», «vale». */
     private readonly acknowledgements = new Set(['ok', 'okay', 'oki', 'okey', 'k', 'vale', 'dale', 'listo', 'perfect', 'perfecto', 'perfeito', 'parfait', 'super', 'cool']);

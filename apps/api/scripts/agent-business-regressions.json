@@ -135,7 +135,8 @@
     "apps/api/src/modules/conversations/runtime/operation-lexical-cues.f4300-26oct.spec.ts",
     "apps/api/src/modules/conversations/runtime/fact-renderer.f4300-37c.spec.ts",
     "apps/api/src/modules/conversations/reply-language.f4300-16-inmo.spec.ts",
-    "apps/api/src/modules/conversations/language-detector.f4300-16-combien.spec.ts"
+    "apps/api/src/modules/conversations/language-detector.f4300-16-combien.spec.ts",
+    "apps/api/src/modules/conversations/language-detector.f4300-16-informal.spec.ts"
   ],
   "postgres": [
     "apps/api/src/modules/faqs/faq-effects.postgres.spec.ts",

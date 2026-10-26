@@ -227,7 +227,9 @@ const LEFT = /\b(?:quedan|queda|restan|resta|disponibles?|libres?|hay|left|remai
 /** Departures and their dates, on their own. */
 const DEPARTURES = /\b(?:salidas|proxim\w* salida|siguiente salida|saidas|proxim\w* saida|departs|prochain\w* depart|next departure|departures?|fechas|datas|dates|proxim\w* fecha|proxim\w* data|prochain\w* date|next date)\b/;
 /** When it leaves, or whether it is available: about a tour. */
-const WHEN_OR_AVAILABLE = /\b(?:cuando sale\w*|quando sai\w*|quand part\w*|when does|when do|when is|horarios?|schedule|disponib\w*|available|availability)\b/;
+// At what time it leaves (production QA 26-oct): «à quelle heure part le Spark QA Tour du 15 décembre ?» ran only search_faqs
+// (2 of 2) and was answered «je n'ai pas l'heure exacte… confirmée»; the departure is at 09:00.
+const WHEN_OR_AVAILABLE = /\b(?:cuando sale\w*|quando sai\w*|quand part\w*|when does|when do|when is|horarios?|schedule|disponib\w*|available|availability|(?:a )?que hora\w*|que horas|(?:a )?quelle heure|what time|heure de depart|hora de salida|horario de saida)\b/;
 /** How long it lasts. */
 const DURATION = /\b(?:cuanto dura\w*|duracion|dura|duran|duracao|quanto tempo|combien de temps|duree|dure|durent|how long|duration|lasts|cuant[oa]s (?:dias|horas|noches)|quant[oa]s (?:dias|horas|noites)|combien de (?:jours|heures|nuits)|how many (?:days|hours|nights))\b/;
 /**
@@ -339,6 +341,12 @@ const PAST_ORDERS = new RegExp(`(?:${[
     /\b(?:mes commandes|mes achats|ma derniere commande|mon dernier achat|ma commande precedente|mon achat precedent)\b/,
 ].map(re => re.source).join('|')})`);
 /**
+ * How many orders (production QA 26-oct, catalog pilot): «combien de commandes ai-je chez vous ?», «j'ai passé combien de
+ * commandes dans la boutique ?» ran only search_faqs (2 of 2) and the count was not said; «cuántas compras tengo» did read. The
+ * list answers it: no order's detail is needed, so this is not a past-orders question (which also reads the newest order).
+ */
+const ORDER_COUNT = /\b(?:cuant[oa]s (?:pedidos|compras|ordenes)|quant[oa]s (?:pedidos|compras|encomendas)|how many (?:orders|purchases)|combien (?:de commandes|d achats))\b/;
+/**
  * A write about those orders, or a new order: never only a question about the past («cancel my last order», «I want to pay my
  * order», «repeat what I ordered», «quiero pedir lo mismo otra vez»).
  */
@@ -348,6 +356,12 @@ const PAST_ORDERS_ACTION = /\b(?:cancel\w*|anul\w*|annul\w*|reembols\w*|refund\w
 export function isPastOrdersQuestion(text: unknown): boolean {
     const t = folded(text);
     return !!t && t.length <= 400 && PAST_ORDERS.test(t) && !PAST_ORDERS_ACTION.test(t);
+}
+
+/** The customer asks how many orders or purchases they have (es/en/pt/fr), and asks for nothing to be done to them. Pure. */
+export function isOrderCountQuestion(text: unknown): boolean {
+    const t = folded(text);
+    return !!t && t.length <= 400 && ORDER_COUNT.test(t) && !PAST_ORDERS_ACTION.test(t);
 }
 
 // ── The customer's own bookings and appointments («do I have a booking?») ─────────────────────────────────────────────────
@@ -441,8 +455,9 @@ export function lexicalRequiredReadsOperation(text: unknown, pilot: RequiredRead
     const own = ownBookingsOperation(text, pilot, publishedTools);
     if (own) return own;
     // F4300-11: «qué pedí la última vez?» / «what did I buy last time?» is the customer's own orders, before any menu or product word.
-    if (pilot === 'restaurants' && publishedTools.includes('list_my_orders') && isPastOrdersQuestion(text)) return 'check_my_orders';
-    if (pilot === 'catalog' && publishedTools.includes('list_my_catalog_orders') && isPastOrdersQuestion(text)) return 'track_catalog_order';
+    const ownOrders = isPastOrdersQuestion(text) || isOrderCountQuestion(text);
+    if (pilot === 'restaurants' && publishedTools.includes('list_my_orders') && ownOrders) return 'check_my_orders';
+    if (pilot === 'catalog' && publishedTools.includes('list_my_catalog_orders') && ownOrders) return 'track_catalog_order';
     if (pilot === 'restaurants' && publishedTools.includes('get_menu') && isMenuQuestion(text)) return 'menu_info';
     if (pilot === 'catalog' && publishedTools.includes('search_products') && isProductQuestion(text)) return 'product_info';
     if (pilot === 'properties' && publishedTools.includes('list_properties') && isLodgingQuestion(text)) return 'property_info';

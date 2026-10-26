@@ -168,8 +168,37 @@ function sentenceInOtherLanguage(text: string, code: string, ignore: readonly st
     const sentences = ownLanguageText(text, ignore).split(/(?<=[.!?…])\s+|[\n\r]+|(?=[¿¡])/);
     for (const sentence of sentences) {
         if (sentence.trim().split(/\s+/).filter(word => /\p{L}/u.test(word)).length < 6) continue;
-        const written = replyLanguageOf(sentence);
+        const written = replyLanguageOf(sentence) ?? mixedInto(sentence, code);
         if (written && written !== code) return written;
+    }
+    return null;
+}
+
+/**
+ * Words of another language that are ordinary words of the turn language too, so they are no evidence inside it: French «son»
+ * («son statut») and «es» («tu es»), Portuguese «a» and «tu».
+ */
+const ALSO_IN: Partial<Record<ReplyLang, ReadonlySet<string>>> = {
+    fr: new Set(['son', 'es', 'tu', 'mi']),
+    pt: new Set(['tu', 'mi', 'son']),
+    en: new Set(['a', 'son']),
+};
+
+/**
+ * A sentence that starts in one language and ends in another («El total de su última commande est de 119 900 COP et son statut
+ * est annulé.», production QA 26-oct, a French turn) is undecided as a whole. Two or more different words of another language
+ * next to two or more of the turn language is a mixed sentence: it is in that other language for the rewrite. Pure.
+ */
+function mixedInto(sentence: string, code: string): ReplyLang | null {
+    const tokens = new Set(fold(sentence).replace(/[^a-z\s]/g, ' ').split(/\s+/).filter(Boolean));
+    const own = SETS[code as ReplyLang];
+    if (!own || [...tokens].filter(token => own.has(token)).length < 2) return null;
+    const ambiguous = ALSO_IN[code as ReplyLang] ?? new Set<string>();
+    for (const lang of Object.keys(SETS) as ReplyLang[]) {
+        // English words inside a sentence are product names more often than drift («Case for iPhone 15 with MagSafe»).
+        if (lang === code || lang === 'en') continue;
+        const foreign = [...tokens].filter(token => SETS[lang].has(token) && !own.has(token) && !ambiguous.has(token));
+        if (foreign.length >= 2) return lang;
     }
     return null;
 }

@@ -36,6 +36,16 @@ export function parsePartySize(value: unknown): number | null {
 }
 
 /**
+ * A departure's time of day as HH:MM. The `time` column reaches us as «09:00:00» or, through some drivers, as a Date on
+ * 1970-01-01 (POST234, production QA 26-oct: the time read was dropped and the answer stayed «heure non confirmée»). Pure.
+ */
+export function timeOfDay(value: unknown): string | undefined {
+    if (value instanceof Date) return Number.isNaN(value.getTime()) ? undefined : value.toISOString().slice(11, 16);
+    const text = typeof value === 'string' ? value.trim() : '';
+    return /^(\d{1,2}:\d{2})/.exec(text)?.[1]?.padStart(5, '0') ?? /T(\d{2}:\d{2})/.exec(text)?.[1];
+}
+
+/**
  * Why a departure date cannot be sold, or null when it can.
  *
  * The tenant's timezone is not known at this layer, so "today" is the UTC day
@@ -348,7 +358,7 @@ export class ToursService {
             [packageId, departureDate],
         );
         if (inv?.length) {
-            const time = /^(\d{2}:\d{2})/.exec(String(inv[0].departure_time ?? ''))?.[1];
+            const time = timeOfDay(inv[0].departure_time);
             return { kind: 'seats', seatsLeft: Number(inv[0].available_seats), ...(time ? { departureTime: time } : {}) };
         }
         return (await this.hasScheduledDepartures(schemaName, packageId))

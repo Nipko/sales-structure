@@ -7778,7 +7778,7 @@ export class ConversationsService {
         const questionOnly = isPastOrdersQuestion(customerText)
             || (claimTemplateWasLastReply && isInformationSeekingMessage(customerText) && !mentionsCancellation(customerText));
         const pastOrdersReply = claimAudit.falseClaim && questionOnly
-            ? pastOrdersReportText([...(executedTools || []), ...toolReadsOfTurnMessages(currentMessages)], lang) : null;
+            ? pastOrdersReportText([...(executedTools || []), ...toolReadsOfTurnMessages(currentMessages)], lang, customerText) : null;
         if (claimAudit.falseClaim && pastOrdersReply && !claimsCompletedAction(pastOrdersReply)) {
             this.recordAgentSignal(tenantId, 'claim_unbacked', session);
             this.logger.warn(`[Guardrail] A question about past orders drew an unbacked outcome claim — answered from the orders read: "${response.slice(0, 100)}"`);

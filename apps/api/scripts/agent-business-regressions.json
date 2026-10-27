@@ -144,7 +144,8 @@
     "apps/api/src/modules/conversations/past-orders-report.f4300-45b.spec.ts",
     "apps/api/src/modules/conversations/runtime/fact-renderer.f4300-46.spec.ts",
     "apps/api/src/modules/conversations/runtime/operation-lexical-cues.f4300-43.spec.ts",
-    "apps/api/src/modules/conversations/past-orders-report.f4300-43b.spec.ts"
+    "apps/api/src/modules/conversations/past-orders-report.f4300-43b.spec.ts",
+    "apps/api/src/modules/conversations/past-orders-report.f4300-45c.spec.ts"
   ],
   "postgres": [
     "apps/api/src/modules/faqs/faq-effects.postgres.spec.ts",

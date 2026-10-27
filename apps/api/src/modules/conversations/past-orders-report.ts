@@ -193,6 +193,31 @@ export function unpaidOrderCorrection(reply: string, reads: ReadonlyArray<{ name
 }
 
 /**
+ * F4300-11 residual (production QA 27-oct, store tenant, image e96577f4): «¿qué producto compré en mi último pedido de la tienda?»
+ * read the orders and was answered «En su último pedido de la tienda, Ref. 20FD6A98, compró 1 unidad del producto Audífono QA
+ * Aurora por 119.900 COP» — and «you purchased», «você comprou», «vous avez acheté» — without a word that the order is cancelled.
+ * A cancelled order is not a purchase: the reply that tells it as one, and never says it was cancelled, is said from the read.
+ */
+const PURCHASE_CLAIM = /(?<!\p{L})(?:compr[óo]|compraste|compraron|(?:ha|has|han) comprado|you(?:'ve| have)? (?:purchased|bought)|(?:você |voce )?comprou|(?:vous avez|tu as|j'ai|j’ai) achetée?s?)(?!\p{L})/iu;
+const CANCEL_WORD = /(?<!\p{L})(?:cancel|anul|annul)/iu;
+
+/**
+ * The report of the orders read when the reply tells the newest order (by its reference or an item of it) as bought and that order
+ * is cancelled, and the reply never says so; null otherwise.
+ */
+export function cancelledPurchaseCorrection(reply: string, reads: ReadonlyArray<{ name?: string; result?: any }>, lang?: string): string | null {
+    const text = String(reply || '');
+    if (!PURCHASE_CLAIM.test(text) || CANCEL_WORD.test(text)) return null;
+    const found = pastOrdersOfTurn(reads);
+    if (!found) return null;
+    const { latest } = found;
+    if (!CANCELLED.has(STATUS_ALIASES[latest.status.toLowerCase()] ?? latest.status.toLowerCase())) return null;
+    const folded = foldText(text);
+    const told = folded.includes(foldText(latest.reference)) || latest.items.some(item => folded.includes(foldText(item.name)));
+    return told ? pastOrdersReportText(reads, lang) : null;
+}
+
+/**
  * F4300-45 residual (production QA 26-oct, store tenant, image fc0c6c76): with #242 «¿cuál fue mi primer pedido en la tienda?»
  * read the six orders, and the reply named the NEWEST one — «Su primer pedido en la tienda fue el 10 de octubre de 2026, con el
  * número de Ref. 20FD6A98» — in es/pt/en/fr. The list comes newest first; the oldest order is of 8-oct. The customer's first
@@ -236,12 +261,16 @@ const MONTH_NAMES = [...MONTHS.keys()].join('|');
 const DAY_MONTH = new RegExp(`(?<!\\d)(\\d{1,2})(?:er|º|°)?\\s+(?:de\\s+)?(${MONTH_NAMES})(?!\\p{L})`, 'gu');
 const MONTH_DAY = new RegExp(`(?<!\\p{L})(${MONTH_NAMES})\\s+(\\d{1,2})(?!\\d)`, 'gu');
 
-/** The day-and-month dates the reply cites («7 de outubro», «October 10», «1er octobre»), as `month-day` keys. */
+// Production QA 27-oct (image c3cf6985): «feito em 2026-10-08» — the model also cites the read's ISO date.
+const ISO_DAY = /(?<!\d)\d{4}-(\d{2})-(\d{2})(?!\d)/g;
+
+/** The dates the reply cites («7 de outubro», «October 10», «1er octobre», «2026-10-08»), as `month-day` keys. */
 function citedDays(reply: string): string[] {
     const text = foldText(reply);
     return [
         ...[...text.matchAll(DAY_MONTH)].map(m => `${MONTHS.get(m[2])}-${Number(m[1])}`),
         ...[...text.matchAll(MONTH_DAY)].map(m => `${MONTHS.get(m[1])}-${Number(m[2])}`),
+        ...[...text.matchAll(ISO_DAY)].map(m => `${Number(m[1])}-${Number(m[2])}`),
     ];
 }
 
@@ -257,29 +286,31 @@ function zoned<T>(timeZone: string | undefined, make: (zone: string) => T): T {
 /**
  * The reply corrected from the orders read when the customer asks for their FIRST order and the reply names the newest one
  * (its reference) instead of the oldest, or names the oldest but tells it with another order's date; null otherwise (another
- * question, fewer than two dated orders, or the reply names the oldest order with its own date or none).
+ * question, no dated order, a reply that names another order of the list, or one that tells the oldest order — by its reference
+ * or by none — with its own date or with no date).
  *
  * F4300-45 (production QA 27-oct, image 399e594e): «qual foi meu primeiro pedido na loja?» named the oldest order, 2EACE76F, «feito
- * em 10 de outubro de 2026» — the newest order's date; 2EACE76F is of 7-oct.
+ * em 10 de outubro de 2026» — the newest order's date; 2EACE76F is of 7-oct. With #247 (c3cf6985) «when did I place my first order
+ * in the store?» got «You placed your first order on October 8, 2026»: no reference, the date of no order in the tenant's zone.
  */
 export function firstOrderCorrection(customerText: string, reply: string, reads: ReadonlyArray<{ name?: string; result?: any }>,
     lang?: string, timeZone?: string): string | null {
     if (!FIRST_ORDER.test(String(customerText || ''))) return null;
     const rows = listedOrdersOfTurn(reads).filter(row => Number.isFinite(row.createdAt));
-    if (rows.length < 2) return null;
+    if (!rows.length) return null;
     const oldest = rows.reduce((best, row) => (row.createdAt < best.createdAt ? row : best), rows[0]);
     const newest = rows.reduce((best, row) => (row.createdAt > best.createdAt ? row : best), rows[0]);
-    if (oldest.id === newest.id) return null;
     const text = String(reply || '').toUpperCase();
-    if (text.includes(oldest.reference.toUpperCase())) {
+    const names = (row: OrderView) => text.includes(row.reference.toUpperCase());
+    const newestAsFirst = oldest.id !== newest.id && names(newest) && !names(oldest);
+    if (!newestAsFirst) {
+        if (!names(oldest) && rows.some(names)) return null;
         const own = zoned(timeZone, zone => {
             const parts = new Intl.DateTimeFormat('en-US', { day: 'numeric', month: 'numeric', timeZone: zone }).formatToParts(new Date(oldest.createdAt));
             return `${Number(parts.find(p => p.type === 'month')?.value)}-${Number(parts.find(p => p.type === 'day')?.value)}`;
         });
         const cited = citedDays(String(reply || ''));
         if (!cited.length || cited.includes(own)) return null;
-    } else if (!text.includes(newest.reference.toUpperCase())) {
-        return null;
     }
     const l = langOf(lang);
     const date = zoned(timeZone, zone => new Intl.DateTimeFormat(LOCALE[l], { day: 'numeric', month: 'long', year: 'numeric', timeZone: zone })

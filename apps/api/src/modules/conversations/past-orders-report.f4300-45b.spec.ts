@@ -19,13 +19,13 @@ const spaced = (text: string | null) => String(text).replace(/\s/g, ' ');
 describe('F4300-45 · the first order is the oldest order read', () => {
     it.each([
         ['es', '¿cuál fue mi primer pedido en la tienda?', 'Su primer pedido en la tienda fue el 10 de octubre de 2026, con el número de Ref. 20FD6A98.',
-            'Su primer pedido es el 1A2B3C4D, del 8 de octubre de 2026: 1 × Audífono QA Aurora, por 119.900 COP. Estado: cancelado.'],
+            'Su primer pedido es el 1A2B3C4D, del 8 de octubre de 2026: 1 × Audífono QA Aurora, por 119.900 COP. Estado: cancelado. No consta ningún pago de este pedido.'],
         ['en', 'what was my first store order?', 'Your first store order was on October 10, 2026, with reference 20FD6A98.',
-            'Your first order is 1A2B3C4D, placed on October 8, 2026: 1 × Audífono QA Aurora, for 119,900 COP. Status: cancelled.'],
+            'Your first order is 1A2B3C4D, placed on October 8, 2026: 1 × Audífono QA Aurora, for 119,900 COP. Status: cancelled. No payment is recorded for this order.'],
         ['pt', 'qual foi meu primeiro pedido na loja?', 'Seu primeiro pedido na loja foi em 10 de outubro de 2026, com a referência 20FD6A98.',
-            'Seu primeiro pedido é o 1A2B3C4D, de 8 de outubro de 2026: 1 × Audífono QA Aurora, no valor de 119.900 COP. Status: cancelado.'],
+            'Seu primeiro pedido é o 1A2B3C4D, de 8 de outubro de 2026: 1 × Audífono QA Aurora, no valor de 119.900 COP. Status: cancelado. Não consta nenhum pagamento deste pedido.'],
         ['fr', 'quelle a été ma première commande en boutique ?', 'Votre première commande a été passée le 10 octobre 2026, avec la référence 20FD6A98.',
-            'Votre première commande est la 1A2B3C4D, du 8 octobre 2026 : 1 × Audífono QA Aurora, pour 119 900 COP. Statut : annulée.'],
+            'Votre première commande est la 1A2B3C4D, du 8 octobre 2026 : 1 × Audífono QA Aurora, pour 119 900 COP. Statut : annulée. Aucun paiement n’est enregistré pour cette commande.'],
     ])('[%s] «%s»', (lang, ask, reply, expected) => {
         expect(spaced(firstOrderCorrection(ask, reply, reads, lang, 'America/Bogota'))).toBe(spaced(expected));
     });

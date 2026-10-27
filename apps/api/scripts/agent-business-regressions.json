@@ -149,7 +149,8 @@
     "apps/api/src/modules/conversations/spelled-total.f4300-47.spec.ts",
     "apps/api/src/modules/conversations/runtime/fact-renderer.f4300-37d.spec.ts",
     "apps/api/src/modules/conversations/runtime/operation-lexical-cues.f4300-08-connectivity.spec.ts",
-    "apps/api/src/modules/conversations/past-orders-report.f4300-11b.spec.ts"
+    "apps/api/src/modules/conversations/past-orders-report.f4300-11b.spec.ts",
+    "apps/api/src/modules/conversations/runtime/operation-lexical-cues.f4300-08-color-street.spec.ts"
   ],
   "postgres": [
     "apps/api/src/modules/faqs/faq-effects.postgres.spec.ts",

@@ -7,7 +7,7 @@ import { buildOperationShadowTrace, OperationClassifierService, type OperationSh
 import { buildRequiredReadsTrace, REQUIRED_READ_TIMEOUT_MS, requiredReadDefaultArgs, requiredReadsGate, requiredReadsPilotForProfile, runRequiredReads,
     type RequiredReadResult, type RequiredReadsPilot } from './runtime/required-reads.runner';
 import { isOwnBookingsQuestion, isPastOrdersQuestion, lexicalRequiredReadsOperation, needsItemDetailRead } from './runtime/operation-lexical-cues';
-import { firstOrderCorrection, pastOrdersReportText, unpaidOrderCorrection } from './past-orders-report';
+import { cancelledPurchaseCorrection, firstOrderCorrection, pastOrdersReportText, unpaidOrderCorrection } from './past-orders-report';
 import { listingSearchSlotsIn, requiredReadSlotsIn } from './runtime/required-read-slots';
 import { demoAllowanceExhaustedText } from '../widget/widget-demo-link';
 import { recordFirstReply } from '../../common/utils/first-reply.util';
@@ -7724,6 +7724,13 @@ export class ConversationsService {
             this.recordAgentSignal(tenantId, 'claim_unbacked', session);
             this.logger.warn(`[Guardrail] The reply says the customer paid for an order read with no payment — answered from the orders read: "${response.slice(0, 100)}"`);
             response = unpaid;
+        }
+        // F4300-11: «compró el Audífono del pedido 20FD6A98» about a cancelled order, never said cancelled, is said from the read.
+        const cancelledPurchase = cancelledPurchaseCorrection(response, [...(executedTools || []), ...toolReadsOfTurnMessages(currentMessages)], lang);
+        if (cancelledPurchase) {
+            this.recordAgentSignal(tenantId, 'claim_unbacked', session);
+            this.logger.warn(`[Guardrail] The reply tells a cancelled order as bought — answered from the orders read: "${response.slice(0, 100)}"`);
+            response = cancelledPurchase;
         }
         // F4300-45: «¿cuál fue mi primer pedido?» answered with the newest order of the list is said from the oldest one read.
         const firstOrder = firstOrderCorrection(customerText, response, [...(executedTools || []), ...toolReadsOfTurnMessages(currentMessages)],

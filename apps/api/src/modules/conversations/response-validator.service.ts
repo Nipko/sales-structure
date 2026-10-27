@@ -143,6 +143,7 @@ const QUANTITY_WORDS: Record<string, number> = {
     diez: 10, ten: 10, dez: 10, dix: 10,
 };
 const QUANTITY_WORD = new RegExp(`(?<![\\p{L}\\p{N}])(${Object.keys(QUANTITY_WORDS).join('|')})(?![\\p{L}\\p{N}])`, 'giu');
+const A_WEEK = /(?<![\p{L}])(?:una semana|uma semana|a week|one week|une semaine)(?![\p{L}])/iu;
 const HALF_DOZEN = /(?<![\p{L}])(?:media docena|half a dozen|meia d[uú]zia|une demi-douzaine|demi-douzaine)(?![\p{L}])/iu;
 const PAIR = /(?<![\p{L}])(?:un par|a couple|a pair|um par|uma dupla|une paire)(?![\p{L}])/iu;
 /** A month after a day number («25 de octubre», «3 June», «12 févr.»): a date, not a quantity. «2 margaritas» stays a quantity. */
@@ -165,6 +166,8 @@ export function quantitiesIn(text: string): number[] {
     if (PAIR.test(bare)) found.add(2);
     // «media docena de platos» (production QA 27-oct) is six.
     if (HALF_DOZEN.test(bare)) found.add(6);
+    // «¿cuánto costaría una semana en la habitación?» (production QA 27-oct) is seven nights.
+    if (A_WEEK.test(bare)) found.add(7);
     return [...found];
 }
 

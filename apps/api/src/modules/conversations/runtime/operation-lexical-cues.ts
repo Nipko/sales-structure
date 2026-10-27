@@ -108,9 +108,13 @@ export function isTellAboutItem(text: unknown): boolean {
  * An item's attribute: colour, size, material, weight, dimensions, connectivity, brand, model, warranty, compatibility. es/pt/fr/en, folded
  * text. «peso(s)» alone is the currency («cuánto cuesta en pesos?»): only the weight verbs and «el peso» count.
  */
+const COLOUR_NAMES = 'azul|azuis|rojo|roja|negro|negra|blanco|blanca|verde|gris|rosa|amarillo|vermelho|preto|branco|cinza|amarelo|bleue?s?|rouges?|noire?s?|blanche?s?|verte?s?|grise?s?|jaune|blue|red|black|white|green|grey|gray|pink|yellow';
 const ITEM_ATTRIBUTE = new RegExp(`\\b(?:${[
     // colour
     /colou?rs?|colores|couleurs?|cor|cores/,
+    // a colour named (production QA 27-oct: «¿el Audífono QA Aurora es azul?», «est-il bleu ?» read nothing)
+    // («is the Audífono QA Aurora blue?»: the colour ends the question)
+    new RegExp(`(?:(?:es|son|e|sao|est(?: il| elle)?|sont(?: ils| elles)?|is|are|viene en|vem em|in) (?:de color |de cor |en |em )?(?:${COLOUR_NAMES})|(?:${COLOUR_NAMES})$)`),
     // size
     /tallas?|tamanos?|tamanhos?|tailles?|sizes?|sizing|pointures?/,
     // material
@@ -169,8 +173,8 @@ const STAY_CHECK = /\b(?:check ?ins?|check ?outs?|enregistrement|horario de entr
 /** Arriving or leaving the property: a schedule question together with a time word («a que horas é a chegada?»). */
 const STAY_MOVE = /\b(?:llegada|llegar|entrada|entrar|salida|salir|entregar|chegada|chegar|saida|sair|arrivee|arriver|depart|partir|quitter|liberer|arrival|arrive|departure|leave|vacate)\b/;
 const TIME = /\b(?:hora|horas|horario|heure|heures|horaire|time|times|when|cuando|quando|quand)\b/;
-/** Where the property is. */
-const ADDRESS = /\b(?:direccion|ubicacion|ubicad[oa]s?|donde (?:queda|quedan|esta|estan|se encuentra\w*)|endereco|localizacao|localizad[oa]s?|onde (?:fica|ficam|esta|estao)|adresse|ou (?:se trouve|se situe|etes vous|est situe\w*)|situe\w*|address|location|located|where is|where are)\b/;
+/** Where the property is («¿en qué calle está…?», «dans quelle rue…», «em que rua…», «what street…», production QA 27-oct). */
+const ADDRESS = /\b(?:(?:en )?(?:que|cual) calle|dans quelle rue|(?:em )?que rua|what street|which street|direccion|ubicacion|ubicad[oa]s?|donde (?:queda|quedan|esta|estan|se encuentra\w*)|endereco|localizacao|localizad[oa]s?|onde (?:fica|ficam|esta|estao)|adresse|ou (?:se trouve|se situe|etes vous|est situe\w*)|situe\w*|address|location|located|where is|where are)\b/;
 /** How many people fit. */
 const CAPACITY = /\b(?:capacidad|capacidade|capacite|capacity|sleeps|caben|cabem)\b/;
 const PEOPLE = /\b(?:huespedes|hospedes|guests|personas|pessoas|personnes|people|persons|adultos|adults|adultes)\b/;
@@ -277,8 +281,11 @@ const AREA = /\b(?:areas?|superficie|surface|metros?|metraje|mts|metres?|meters?
 const LAYOUT = /\b(?:habitacion\w*|alcobas?|cuartos?|recamaras?|dormitorios?|banos?|quartos?|banheiros?|suites?|chambres?|pieces|salles? de bains?|salles? d eau|bedrooms?|bathrooms?|rooms?|baths?|parqueaderos?|garajes?|garagem|garages?|parking|estacionamientos?|estrato|pisos?|andar|etage|floors?)\b/;
 /** Sale or rent: «¿es para venta o arriendo?», «is it for rent?», «c'est à louer ?». */
 const SALE_OR_RENT = /\b(?:venta|vende\w*|arriendo|arrienda\w*|alquiler|alquila\w*|renta|rentar|venda|vende|aluguel|aluga\w*|alugar|louer|loue|vendre|vente|sale|rent|rental|lease|buy|comprar|acheter)\b/;
-/** Where the listing is (the business's own address is a FAQ: only with a listing word). */
-const LISTING_PLACE = /\b(?:direccion|ubicacion|ubicad[oa]s?|donde (?:queda|quedan|esta|estan)|barrio|sector|zona|endereco|localizacao|localizad[oa]s?|onde (?:fica|ficam|esta|estao)|bairro|adresse|ou (?:se trouve|se situe|est)|situe\w*|quartier|address|location|located|where is|where are|neighbou?rhood|area)\b/;
+/**
+ * Where the listing is (the business's own address is a FAQ: only with a listing word). «¿en qué calle está el Spark QA
+ * Inmueble?», «dans quelle rue…», «em que rua…» read nothing and got «no tengo la dirección» (production QA 27-oct).
+ */
+const LISTING_PLACE = /\b(?:calle|rue|rua|street|direccion|ubicacion|ubicad[oa]s?|donde (?:queda|quedan|esta|estan)|barrio|sector|zona|endereco|localizacao|localizad[oa]s?|onde (?:fica|ficam|esta|estao)|bairro|adresse|ou (?:se trouve|se situe|est)|situe\w*|quartier|address|location|located|where is|where are|neighbou?rhood|area)\b/;
 const STILL_AVAILABLE = /\b(?:disponib\w*|available|availability|todavia|aun|ainda|toujours|still)\b/;
 /** «what properties do you have?», «¿qué inmuebles tienen?», «quais imóveis vocês têm?», «quels biens avez-vous ?». */
 const OFFER = /\b(?:que|cuales|qual|quais|quel\w*|what|which|tienen|tiene|hay|manejan|ofrecen|tem|tens|tem disponivel|avez vous|vous avez|y a t il|proposez|do you have|have you got|is there|are there|any|show me|muestrame|mostrar|mostre|montrez)\b/;

@@ -44,5 +44,22 @@ export function spelledTotalCorrection(reply: string, customerText: string, lang
         changed = true;
         return `${total} (${n} × ${text.slice(base.index!, base.index! + base.length!)})`;
     });
-    return changed ? out : null;
+    // «150.000 COP multiplicado por 7 noches», «150,000 COP multiplied by 7 nights» (production QA 27-oct, «una semana»): the
+    // amount and its working without the total — the total goes first, the working after it.
+    let worked = '';
+    let cursor = 0;
+    for (const match of out.matchAll(WORKED)) {
+        const at = match.index ?? 0;
+        const key = match[1].toLowerCase();
+        const n = /^\d+$/.test(key) ? Number(key) : NUMBER_WORDS[key];
+        const base = moneyMentionsIn(out).find(m => (m.index ?? 0) >= cursor && (m.index ?? 0) + (m.length ?? 0) === at);
+        const total = base && n && asked.includes(n) ? formatPriceWithCurrency(String(lang || 'es'), base.amount * n, base.currency) : '';
+        if (!base || !total) continue;
+        worked += `${out.slice(cursor, base.index!)}${total} (${n} × ${out.slice(base.index!, at)})`;
+        cursor = at + match[0].length;
+        changed = true;
+    }
+    return changed ? worked + out.slice(cursor) : null;
 }
+
+const WORKED = new RegExp(String.raw`\s*(?:multiplicad[oa]s? por|multiplied by|multipli[eé]e?s? par)\s+(\d{1,2}|\p{L}+)(?:\s+(?:noches|nights|noites|nuits|personas|people|pessoas|personnes|veces|times|vezes|fois))?`, 'giu');

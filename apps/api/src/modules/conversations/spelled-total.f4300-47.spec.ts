@@ -43,3 +43,23 @@ describe('F4300-47 · a total left as words is said as the amount', () => {
         expect(spelledTotalCorrection(reply, ask, 'es')).toBeNull();
     });
 });
+
+describe('F4300-47 · «una semana» is seven nights, and «X multiplicado por 7» is said as the total', () => {
+    it.each([
+        ['es', '¿cuánto costaría una semana en la habitación?',
+            'Una semana en la habitación costaría desde 150.000 COP por noche. Para una semana, el total sería desde 150.000 COP multiplicado por 7 noches.',
+            'el total sería desde 1.050.000 COP (7 × 150.000 COP).'],
+        ['en', 'how much would a week in the room cost?',
+            'For one week, the total would be from 150,000 COP multiplied by 7 nights.',
+            'the total would be from 1,050,000 COP (7 × 150,000 COP).'],
+        ['fr', 'combien coûterait une semaine dans la chambre ?',
+            'Pour une semaine, le total serait de 150 000 COP multiplié par 7 nuits.',
+            'le total serait de 1 050 000 COP (7 × 150 000 COP).'],
+    ])('[%s] «%s»', (lang, ask, reply, expected) => {
+        expect(spaced(spelledTotalCorrection(reply, ask, lang))).toContain(spaced(expected));
+    });
+
+    it('a multiplication the customer never asked for stays', () => {
+        expect(spelledTotalCorrection('El total sería 150.000 COP multiplicado por 7 noches.', '¿cuánto cuesta la noche?', 'es')).toBeNull();
+    });
+});

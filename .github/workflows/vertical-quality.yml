@@ -980,7 +980,7 @@ jobs:
 
 
   agent-business-regressions:
-    name: Agent business regressions (150 unit and 10 PostgreSQL suites)
+    name: Agent business regressions (151 unit and 10 PostgreSQL suites)
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 30

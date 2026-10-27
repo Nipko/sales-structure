@@ -169,7 +169,8 @@ export function pastOrdersReportText(reads: ReadonlyArray<{ name?: string; resul
  * Only the verbs that say the CUSTOMER paid count: «pagó», «ha pagado», «you paid», «você pagou», «vous avez payé». The nouns
  * («el pago está pendiente», «payment: pending») say nothing of the kind.
  */
-const PAID_CLAIM = /(?<!\p{L})(?:pagó|pagaste|pagaron|(?:ha|has|han) pagado|abonó|you(?:'ve| have)? paid|(?:você |voce )?pagou|(?:vous avez|tu as) payée?s?)(?!\p{L})/iu;
+// The passive says it too (production QA 27-oct): «Votre dernier Audífono QA Aurora a été payé 119 900 COP».
+const PAID_CLAIM = /(?<!\p{L})(?:pagó|pagaste|pagaron|(?:ha|has|han) pagado|abonó|(?:fue|fueron) pagad[oa]s?|you(?:'ve| have)? paid|(?:was|were) paid|(?:você |voce )?pagou|(?:foi|foram) pag[oa]s?|(?:vous avez|tu as) payée?s?|(?:a|ont) été payée?s?)(?!\p{L})/iu;
 const PAID_STATUSES = new Set(['paid', 'captured', 'succeeded', 'settled', 'approved']);
 
 const NOT_PAID: Record<Lang, string> = {
@@ -220,10 +221,46 @@ function listedOrdersOfTurn(reads: ReadonlyArray<{ name?: string; result?: any }
     return listed;
 }
 
+const foldText = (text: string): string => text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+
+/** Month names of the four languages, folded, mapped to their month number (1-12). */
+const MONTHS: ReadonlyMap<string, number> = (() => {
+    const months = new Map<string, number>();
+    for (const locale of Object.values(LOCALE)) {
+        const format = new Intl.DateTimeFormat(locale, { month: 'long', timeZone: 'UTC' });
+        for (let m = 0; m < 12; m++) months.set(foldText(format.format(new Date(Date.UTC(2026, m, 15)))), m + 1);
+    }
+    return months;
+})();
+const MONTH_NAMES = [...MONTHS.keys()].join('|');
+const DAY_MONTH = new RegExp(`(?<!\\d)(\\d{1,2})(?:er|º|°)?\\s+(?:de\\s+)?(${MONTH_NAMES})(?!\\p{L})`, 'gu');
+const MONTH_DAY = new RegExp(`(?<!\\p{L})(${MONTH_NAMES})\\s+(\\d{1,2})(?!\\d)`, 'gu');
+
+/** The day-and-month dates the reply cites («7 de outubro», «October 10», «1er octobre»), as `month-day` keys. */
+function citedDays(reply: string): string[] {
+    const text = foldText(reply);
+    return [
+        ...[...text.matchAll(DAY_MONTH)].map(m => `${MONTHS.get(m[2])}-${Number(m[1])}`),
+        ...[...text.matchAll(MONTH_DAY)].map(m => `${MONTHS.get(m[1])}-${Number(m[2])}`),
+    ];
+}
+
+/** A date formatted in the tenant's zone, or in UTC when the zone is unknown or invalid. */
+function zoned<T>(timeZone: string | undefined, make: (zone: string) => T): T {
+    try {
+        return make(timeZone || 'UTC');
+    } catch {
+        return make('UTC');
+    }
+}
+
 /**
  * The reply corrected from the orders read when the customer asks for their FIRST order and the reply names the newest one
- * (its reference) instead of the oldest; null otherwise (another question, fewer than two dated orders, or the reply names the
- * oldest order).
+ * (its reference) instead of the oldest, or names the oldest but tells it with another order's date; null otherwise (another
+ * question, fewer than two dated orders, or the reply names the oldest order with its own date or none).
+ *
+ * F4300-45 (production QA 27-oct, image 399e594e): «qual foi meu primeiro pedido na loja?» named the oldest order, 2EACE76F, «feito
+ * em 10 de outubro de 2026» — the newest order's date; 2EACE76F is of 7-oct.
  */
 export function firstOrderCorrection(customerText: string, reply: string, reads: ReadonlyArray<{ name?: string; result?: any }>,
     lang?: string, timeZone?: string): string | null {
@@ -232,15 +269,21 @@ export function firstOrderCorrection(customerText: string, reply: string, reads:
     if (rows.length < 2) return null;
     const oldest = rows.reduce((best, row) => (row.createdAt < best.createdAt ? row : best), rows[0]);
     const newest = rows.reduce((best, row) => (row.createdAt > best.createdAt ? row : best), rows[0]);
+    if (oldest.id === newest.id) return null;
     const text = String(reply || '').toUpperCase();
-    if (oldest.id === newest.id || text.includes(oldest.reference.toUpperCase()) || !text.includes(newest.reference.toUpperCase())) return null;
-    const l = langOf(lang);
-    let date: string;
-    try {
-        date = new Intl.DateTimeFormat(LOCALE[l], { day: 'numeric', month: 'long', year: 'numeric', timeZone: timeZone || 'UTC' }).format(new Date(oldest.createdAt));
-    } catch {
-        date = new Intl.DateTimeFormat(LOCALE[l], { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(oldest.createdAt));
+    if (text.includes(oldest.reference.toUpperCase())) {
+        const own = zoned(timeZone, zone => {
+            const parts = new Intl.DateTimeFormat('en-US', { day: 'numeric', month: 'numeric', timeZone: zone }).formatToParts(new Date(oldest.createdAt));
+            return `${Number(parts.find(p => p.type === 'month')?.value)}-${Number(parts.find(p => p.type === 'day')?.value)}`;
+        });
+        const cited = citedDays(String(reply || ''));
+        if (!cited.length || cited.includes(own)) return null;
+    } else if (!text.includes(newest.reference.toUpperCase())) {
+        return null;
     }
+    const l = langOf(lang);
+    const date = zoned(timeZone, zone => new Intl.DateTimeFormat(LOCALE[l], { day: 'numeric', month: 'long', year: 'numeric', timeZone: zone })
+        .format(new Date(oldest.createdAt)));
     const T = TEXT[l];
     const items = oldest.items.map(item => (item.quantity && item.quantity > 0 ? `${item.quantity} × ${item.name}` : item.name)).join(', ');
     const total = formatPriceWithCurrency(l, oldest.total, oldest.currency);

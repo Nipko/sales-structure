@@ -361,18 +361,29 @@ const ORDER_COUNT = /\b(?:cuant[oa]s (?:pedidos|compras|ordenes)|quant[oa]s (?:p
  * A write about those orders, or a new order: never only a question about the past («cancel my last order», «I want to pay my
  * order», «repeat what I ordered», «quiero pedir lo mismo otra vez»).
  */
-const PAST_ORDERS_ACTION = /\b(?:cancel\w*|anul\w*|annul\w*|reembols\w*|refund\w*|rembours\w*|devol\w*|devolu\w*|pagar|pay|payer|pague|paye|repet\w*|repeat\w*|repit\w*|again|otra vez|de nuevo|de novo|outra vez|encore|modific\w*|cambiar|change\w*|alterar|quiero (?:pedir|comprar|ordenar)|want to (?:order|buy)|quero (?:pedir|comprar)|je veux (?:commander|acheter)|quej\w*|reclam\w*|complain\w*|plainte\w*|(?:quiero|quisiera|deseo|want to|would like to|d like to|quero|gostaria de|je veux|je voudrais|je souhaite) (?:hacer|realizar|make|place|fazer|passer) (?:mi|my|meu|ma|mon) (?:primer|primera|first|primeiro|primeira|premiere|premier))\b/;
+const PAST_ORDERS_ACTION = /\b(?:cancel\w*|anul\w*|annul\w*|reembols\w*|refund\w*|rembours\w*|devol\w*|devolu\w*|repet\w*|repeat\w*|repit\w*|again|otra vez|de nuevo|de novo|outra vez|encore|modific\w*|cambiar|change\w*|alterar|quiero (?:pedir|comprar|ordenar)|want to (?:order|buy)|quero (?:pedir|comprar)|je veux (?:commander|acheter)|quej\w*|reclam\w*|complain\w*|plainte\w*|(?:quiero|quisiera|deseo|want to|would like to|d like to|quero|gostaria de|je veux|je voudrais|je souhaite) (?:hacer|realizar|make|place|fazer|passer) (?:mi|my|meu|ma|mon) (?:primer|primera|first|primeiro|primeira|premiere|premier))\b/;
+
+/** A payment to be made («I want to pay my order», «quiero pagar mi pedido»): a write, never a question about the past. */
+const PAYMENT_ACTION = /\b(?:pagar|pay|payer|pague|paye)\b/;
+/**
+ * F4300-43 (production QA 27-oct, store tenant, image 399e594e): «¿cuánto pagué por mi último Audífono QA Aurora?» and «combien
+ * ai-je payé mon dernier Audífono QA Aurora ?» ran only search_faqs («pagué» / «payé» read as a payment to make) and were
+ * answered «pagó 119.900 COP» / «a été payé 119 900 COP». No order of that customer shows a payment. How much the customer paid
+ * is asked of their own orders: the turn reads them.
+ */
+const PAST_PAYMENT = /\b(?:cuanto (?:fue lo que )?(?:yo )?(?:le )?pague|how much (?:did|have) (?:i|we) (?:pay|paid|spen[dt])|how much (?:i|we) paid|quanto (?:eu )?paguei|combien (?:ai je|j ai|est ce que j ai|avons nous) paye|j ai paye combien)\b/;
 
 /** The customer asks about their own past orders or purchases (es/en/pt/fr), and asks for nothing to be done to them. Pure. */
 export function isPastOrdersQuestion(text: unknown): boolean {
     const t = folded(text);
-    return !!t && t.length <= 400 && PAST_ORDERS.test(t) && !PAST_ORDERS_ACTION.test(t);
+    if (!t || t.length > 400 || PAST_ORDERS_ACTION.test(t)) return false;
+    return PAST_PAYMENT.test(t) || (PAST_ORDERS.test(t) && !PAYMENT_ACTION.test(t));
 }
 
 /** The customer asks how many orders or purchases they have (es/en/pt/fr), and asks for nothing to be done to them. Pure. */
 export function isOrderCountQuestion(text: unknown): boolean {
     const t = folded(text);
-    return !!t && t.length <= 400 && ORDER_COUNT.test(t) && !PAST_ORDERS_ACTION.test(t);
+    return !!t && t.length <= 400 && ORDER_COUNT.test(t) && !PAST_ORDERS_ACTION.test(t) && !PAYMENT_ACTION.test(t);
 }
 
 // ── The customer's own bookings and appointments («do I have a booking?») ─────────────────────────────────────────────────

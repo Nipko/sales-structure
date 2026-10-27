@@ -464,6 +464,8 @@ function priceFieldRank(fact: VerifiedFact): number {
 
 /** The customer's message asks about a price or an amount («how much», «what's the nightly rate», «cuánto pago»). */
 const PRICE_QUESTION = / (?:precio|precios|cuanto|cuesta|cuestan|vale|valen|costo|costos|coste|tarifa|tarifas|pago|pagar|total|price|prices|cost|costs|much|rate|rates|fee|fees|preco|precos|quanto|custa|custam|valor|prix|combien|coute|coutent|tarif|tarifs|payer) /;
+/** A sentence about a fee or an extra charge, not the item's price (cleaning, deposit, surcharge). */
+const FEE_SENTENCE = / (?:limpieza|limpeza|cleaning|menage|fee|fees|deposito|deposit|recargo|cargo extra|extra charge|surcharge|supplement|taxa|frais) /;
 /** A sentence about how long something takes. */
 const DURATION_WORDS = / (?:min|mins|minuto|minutos|minute|minutes|hora|horas|hour|hours|heure|heures|dura|duran|duracion|duracao|duree|duration|takes|long|demora|tarda|leva) /;
 
@@ -520,10 +522,17 @@ export function renderReplyFacts(input: RenderFactsInput): RenderFactsOutcome {
     const amountBacked = (sentence: string) => validator.validatePrices(sentence, corpus, ledger, { customerText }).ok;
     const statesAmount = (sentence: string) => !validator.validatePrices(sentence, '').ok;
 
+    const pricedSubjects = live.filter(fact => fact.kind === 'money' && !!fact.subject.name);
     const priceTemplate = (sentence: string): string | null => {
+        // F4300-46 (production QA 27-oct, image 84f88db8): a sentence about a FEE («¿cobram algo extra pela limpeza?») is never
+        // «the price of the room», and an item whose price is only an example is never priced as the one item with a confirmed
+        // price: «qto custa a manicure e pedicure?» got «O preço de Corte y estilo é 40.000 COP» twice.
+        if (FEE_SENTENCE.test(norm(sentence))) return null;
+        const named = subjectFor(sentence, pricedSubjects, false);
+        if (named && !bestPrice.has(subjectKey(named))) return null;
         // An item nobody named is priced only when the customer asked for a price: «how many orders have I made?» never
         // gets «The price of Spark QA Plato is 13,500 COP» appended (production QA 2026-10-24).
-        const fact = subjectFor(sentence, confirmedMoney, asksPrice);
+        const fact = named ? bestPrice.get(subjectKey(named)) : subjectFor(sentence, confirmedMoney, asksPrice);
         if (!fact || examplePriced.has(subjectKey(fact))) return null;
         return t.price(say(fact.subject.name!), moneyText(fact, ctx));
     };

@@ -8,6 +8,7 @@ import { buildRequiredReadsTrace, REQUIRED_READ_TIMEOUT_MS, requiredReadDefaultA
     type RequiredReadResult, type RequiredReadsPilot } from './runtime/required-reads.runner';
 import { isOwnBookingsQuestion, isPastOrdersQuestion, lexicalRequiredReadsOperation, needsItemDetailRead } from './runtime/operation-lexical-cues';
 import { cancelledPurchaseCorrection, firstOrderCorrection, pastOrdersReportText, unpaidOrderCorrection } from './past-orders-report';
+import { spelledTotalCorrection } from './spelled-total';
 import { listingSearchSlotsIn, requiredReadSlotsIn } from './runtime/required-read-slots';
 import { demoAllowanceExhaustedText } from '../widget/widget-demo-link';
 import { recordFirstReply } from '../../common/utils/first-reply.util';
@@ -7731,6 +7732,12 @@ export class ConversationsService {
             this.recordAgentSignal(tenantId, 'claim_unbacked', session);
             this.logger.warn(`[Guardrail] The reply tells a cancelled order as bought — answered from the orders read: "${response.slice(0, 100)}"`);
             response = cancelledPurchase;
+        }
+        // F4300-47: «para dos personas sería el doble de ese valor» after «40.000 COP» is said as the total the customer asked for.
+        const spelledTotal = spelledTotalCorrection(response, customerText, lang);
+        if (spelledTotal) {
+            this.logger.log(`[Guardrail] A total left as words is said as the amount: "${response.slice(0, 100)}"`);
+            response = spelledTotal;
         }
         // F4300-45: «¿cuál fue mi primer pedido?» answered with the newest order of the list is said from the oldest one read.
         const firstOrder = firstOrderCorrection(customerText, response, [...(executedTools || []), ...toolReadsOfTurnMessages(currentMessages)],

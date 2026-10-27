@@ -107,7 +107,7 @@ function normalizeCurrency(marker?: string): string | undefined {
 }
 
 /** Currency-adjacent amounts: "$50.000", "49 USD", "1,200 pesos", "S/ 80". */
-function moneyMentionsIn(text: string): MoneyMention[] {
+export function moneyMentionsIn(text: string): MoneyMention[] {
     const out: MoneyMention[] = [];
     // A thousands group may be separated by a space, NBSP or NNBSP ("119 900 COP", what
     // French/Portuguese locales and some models write) as well as by "." or ",": reading
@@ -143,6 +143,7 @@ const QUANTITY_WORDS: Record<string, number> = {
     diez: 10, ten: 10, dez: 10, dix: 10,
 };
 const QUANTITY_WORD = new RegExp(`(?<![\\p{L}\\p{N}])(${Object.keys(QUANTITY_WORDS).join('|')})(?![\\p{L}\\p{N}])`, 'giu');
+const HALF_DOZEN = /(?<![\p{L}])(?:media docena|half a dozen|meia d[uú]zia|une demi-douzaine|demi-douzaine)(?![\p{L}])/iu;
 const PAIR = /(?<![\p{L}])(?:un par|a couple|a pair|um par|uma dupla|une paire)(?![\p{L}])/iu;
 /** A month after a day number («25 de octubre», «3 June», «12 févr.»): a date, not a quantity. «2 margaritas» stays a quantity. */
 const MONTH = '(?:(?:enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre|january|february|march|april|june|july|august|september|october|november|december|janeiro|fevereiro|mar[cç]o|maio|junho|julho|setembro|outubro|novembro|dezembro|janvier|f[eé]vrier|mars|avril|mai|juin|juillet|ao[uû]t|septembre|octobre|novembre|d[eé]cembre)|(?:ene|feb|mar|abr|may|jun|jul|ago|sep|sept|set|oct|out|nov|dic|dez|jan|apr|aug|dec|janv|f[eé]vr?|avr|juil|d[eé]c)\\.?)(?!\\p{L})';
@@ -162,6 +163,8 @@ export function quantitiesIn(text: string): number[] {
     }
     for (const m of bare.matchAll(QUANTITY_WORD)) found.add(QUANTITY_WORDS[m[1].toLowerCase()]);
     if (PAIR.test(bare)) found.add(2);
+    // «media docena de platos» (production QA 27-oct) is six.
+    if (HALF_DOZEN.test(bare)) found.add(6);
     return [...found];
 }
 

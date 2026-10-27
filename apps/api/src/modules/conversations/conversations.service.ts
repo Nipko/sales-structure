@@ -9,6 +9,7 @@ import { buildRequiredReadsTrace, REQUIRED_READ_TIMEOUT_MS, requiredReadDefaultA
 import { isOwnBookingsQuestion, isPastOrdersQuestion, lexicalRequiredReadsOperation, needsItemDetailRead } from './runtime/operation-lexical-cues';
 import { cancelledPurchaseCorrection, firstOrderCorrection, pastOrdersReportText, unpaidOrderCorrection } from './past-orders-report';
 import { spelledTotalCorrection } from './spelled-total';
+import { stockShortfallNote } from './stock-shortfall';
 import { wrongServiceCorrection } from './wrong-service';
 import { listingSearchSlotsIn, requiredReadSlotsIn } from './runtime/required-read-slots';
 import { demoAllowanceExhaustedText } from '../widget/widget-demo-link';
@@ -7746,6 +7747,12 @@ export class ConversationsService {
         if (spelledTotal) {
             this.logger.log(`[Guardrail] A total left as words is said as the amount: "${response.slice(0, 100)}"`);
             response = spelledTotal;
+        }
+        // F4300-37: «¿cuánto costarían tres Audífono QA Aurora?» with 2 left is answered with the stock, not only the total.
+        const stockShortfall = stockShortfallNote(response, customerText, trustedContext?.catalog, lang);
+        if (stockShortfall) {
+            this.logger.log(`[Guardrail] More units asked than the stock: the stock is said: "${response.slice(0, 100)}"`);
+            response = stockShortfall;
         }
         // F4300-45: «¿cuál fue mi primer pedido?» answered with the newest order of the list is said from the oldest one read.
         const firstOrder = firstOrderCorrection(customerText, response, [...(executedTools || []), ...toolReadsOfTurnMessages(currentMessages)],

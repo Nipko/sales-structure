@@ -223,11 +223,8 @@ export function renderToken(kind: string, fact: VerifiedFact | undefined, ctx: R
     switch (fact.kind) {
         // An example (or quote / missing) price is never rendered as a confirmed amount, and neither is 0: an empty price
         // column (`cleaningFee: 0` of a hotel room, production QA 2026-10-24: «The price of … is 0 COP») is a missing amount.
-        // A FEE read as 0 is no fee, and is said (production QA 27-oct, image c6a5fa88: «⟦cleaningFee⟧» became «Ese dato no lo tengo
-        // confirmado» to «¿el precio de la noche incluye la limpieza?»); a price of 0 is still a missing price.
         case 'money': if (fact.priceStatus !== 'confirmed' || typeof fact.value !== 'number') return { ok: false, reason: 'example_price' };
-            return fact.value > 0 || (fact.value === 0 && FEE_FIELD.test(fact.field))
-                ? { ok: true, text: moneyText(fact, ctx) } : { ok: false, reason: 'missing_price' };
+            return fact.value > 0 ? { ok: true, text: moneyText(fact, ctx) } : { ok: false, reason: 'missing_price' };
         case 'availability': return { ok: true, text: availabilityText(fact, ctx) };
         case 'record_list': return Array.isArray(fact.value) ? { ok: true, text: recordListText(fact, ctx) } : { ok: false, reason: 'wrong_token_kind' };
         case 'record_status': return { ok: true, text: orderStatusLabel(fact.value, ctx.lang) };
@@ -532,6 +529,7 @@ export function renderReplyFacts(input: RenderFactsInput): RenderFactsOutcome {
         const mentions = moneyMentionsIn(sentence);
         return mentions.length > 0 && mentions.every(mention => mention.amount === 0);
     };
+    const askedFee = FEE_SENTENCE.test(norm(customerText));
     const amountBacked = (sentence: string) => zeroFeeSentence(sentence) || validator.validatePrices(sentence, corpus, ledger, { customerText }).ok;
     const statesAmount = (sentence: string) => !validator.validatePrices(sentence, '').ok;
 
@@ -649,7 +647,12 @@ export function renderReplyFacts(input: RenderFactsInput): RenderFactsOutcome {
         for (const token of tokens) {
             if (untrusted.some(text => text.includes(token[0]))) return { text: t.unknown, reason: 'untrusted_token' };
             const fact = registry.get(token[2]);
-            const rendered = renderToken(token[1], fact, ctx);
+            let rendered = renderToken(token[1], fact, ctx);
+            // A FEE read as 0 is no fee, and is said when the customer asked about that fee (production QA 27-oct, image c6a5fa88:
+            // «¿el precio de la noche incluye la limpieza?» got «Ese dato no lo tengo confirmado»). Unasked, it stays a missing amount.
+            if (!rendered.ok && rendered.reason === 'missing_price' && askedFee && fact?.value === 0 && FEE_FIELD.test(fact.field)) {
+                rendered = { ok: true, text: moneyText(fact, ctx) };
+            }
             if (!rendered.ok) {
                 return { text: rendered.reason === 'example_price' ? t.example(fact?.subject.name ? say(fact.subject.name) : undefined) : t.unknown,
                     reason: rendered.reason };

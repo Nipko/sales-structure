@@ -529,6 +529,7 @@ export function renderReplyFacts(input: RenderFactsInput): RenderFactsOutcome {
         const mentions = moneyMentionsIn(sentence);
         return mentions.length > 0 && mentions.every(mention => mention.amount === 0);
     };
+    const askedFee = FEE_SENTENCE.test(norm(customerText));
     const amountBacked = (sentence: string) => zeroFeeSentence(sentence) || validator.validatePrices(sentence, corpus, ledger, { customerText }).ok;
     const statesAmount = (sentence: string) => !validator.validatePrices(sentence, '').ok;
 
@@ -646,7 +647,12 @@ export function renderReplyFacts(input: RenderFactsInput): RenderFactsOutcome {
         for (const token of tokens) {
             if (untrusted.some(text => text.includes(token[0]))) return { text: t.unknown, reason: 'untrusted_token' };
             const fact = registry.get(token[2]);
-            const rendered = renderToken(token[1], fact, ctx);
+            let rendered = renderToken(token[1], fact, ctx);
+            // A FEE read as 0 is no fee, and is said when the customer asked about that fee (production QA 27-oct, image c6a5fa88:
+            // «¿el precio de la noche incluye la limpieza?» got «Ese dato no lo tengo confirmado»). Unasked, it stays a missing amount.
+            if (!rendered.ok && rendered.reason === 'missing_price' && askedFee && fact?.value === 0 && FEE_FIELD.test(fact.field)) {
+                rendered = { ok: true, text: moneyText(fact, ctx) };
+            }
             if (!rendered.ok) {
                 return { text: rendered.reason === 'example_price' ? t.example(fact?.subject.name ? say(fact.subject.name) : undefined) : t.unknown,
                     reason: rendered.reason };

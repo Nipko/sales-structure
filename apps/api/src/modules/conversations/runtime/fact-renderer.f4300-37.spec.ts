@@ -65,10 +65,12 @@ describe('F4300-37 · 1. the price of a record is its price field, never a 0 or 
         expect(render('It costs 99 COP per night.', [cleaningFee, nightPrice], 'en', ASK).text).toBe('The price of Spark QA Habitacion is 150,000 COP.');
     });
 
-    it('a token of a 0 amount is a missing price, not «0 COP»', () => {
+    // A FEE of 0 is no fee and is said (production QA 27-oct, F4300-37d: refusing it answered «¿incluye la limpieza?» with «no lo
+    // tengo confirmado»); a 0 is still never the room's price (1. above, and fact-renderer.f4300-37d «a PRICE token of 0»).
+    it('a fee token of 0 is said; the night price keeps its own amount', () => {
         const out = render(`The cleaning fee is ${token(cleaningFee)}.`, room, 'en', ASK);
-        expect(out.text).toBe("I don't have that detail confirmed right now; I can check it again if you like.");
-        expect(out.fallbacks).toEqual([{ reason: 'missing_price' }]);
+        expect(out.text).toBe('The cleaning fee is 0 COP.');
+        expect(out.fallbacks).toEqual([]);
         expect(render(`The nightly rate is ${token(nightPrice)}.`, room, 'en', ASK).text).toBe('The nightly rate is 150,000 COP.');
     });
 

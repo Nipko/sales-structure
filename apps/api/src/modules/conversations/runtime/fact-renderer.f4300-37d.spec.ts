@@ -1,5 +1,5 @@
 import { FACT_TTL_MS, type VerifiedFact } from './facts-ledger';
-import { renderReplyFacts } from './fact-renderer';
+import { factTokenId, renderReplyFacts } from './fact-renderer';
 
 /**
  * F4300-37 (production QA 27-oct, hotel tenant, image 1a719d86, renderedFacts on): «¿el precio de la noche incluye la limpieza?»
@@ -15,6 +15,7 @@ const money = (field: string, value: number): VerifiedFact => ({
 const render = (reply: string, facts: VerifiedFact[], language: string, customerText: string) =>
     renderReplyFacts({ reply, facts, now: NOW, language, locale: language === 'pt' ? 'pt-BR' : 'es-CO', customerText });
 const room = [money('nightPrice', 150000), money('cleaningFee', 0)];
+const token = (f: VerifiedFact) => `⟦fact:${factTokenId(f)}⟧`;
 
 describe('F4300-37 · a fee read as 0 is said, not refused', () => {
     it.each([
@@ -23,6 +24,19 @@ describe('F4300-37 · a fee read as 0 is said, not refused', () => {
     ])('[%s] «%s»', (lang, ask, reply) => {
         const out = render(reply, room, lang, ask);
         expect(out.text).toBe(reply);
+    });
+
+    it.each([
+        ['es', '¿el precio de la noche incluye la limpieza?', 'La tarifa de limpieza es de ', '0 COP'],
+        ['pt', 'o preço da diária inclui a limpeza?', 'A taxa de limpeza é de ', '0 COP'],
+    ])('[%s] the fee token of 0 is rendered, not refused (image c6a5fa88)', (lang, ask, lead, amount) => {
+        const out = render(`${lead}${token(room[1])}.`, room, lang, ask);
+        expect(out.text).toBe(`${lead}${amount}.`);
+    });
+
+    it('a PRICE token of 0 is still a missing price', () => {
+        const out = render(`La noche cuesta ${token(money('nightPrice', 0))}.`, [money('nightPrice', 0)], 'es', '¿cuánto cuesta la noche?');
+        expect(out.text).not.toContain('0 COP');
     });
 
     it('with no fee read, 0 COP for cleaning is still not backed', () => {

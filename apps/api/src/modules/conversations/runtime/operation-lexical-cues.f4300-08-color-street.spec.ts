@@ -23,6 +23,8 @@ describe('F4300-08 · the street of a listing reads the listing', () => {
     it.each([
         '¿en qué calle está el Spark QA Inmueble?', 'dans quelle rue se trouve le Spark QA Inmueble ?',
         'em que rua fica o Spark QA Inmueble?', 'what street is the Spark QA Inmueble on?',
+        // Production QA 27-oct: the typo «fika» read nothing and got «Não tenho a morada exata».
+        'onde fika o spark qa inmueble',
     ])('«%s»', text => {
         expect(lexicalRequiredReadsOperation(text, 'listings', LISTINGS)).toBe('listing_info');
     });

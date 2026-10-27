@@ -247,5 +247,7 @@ export function firstOrderCorrection(customerText: string, reply: string, reads:
     return FIRST_LEAD[l](oldest.reference, date)
         + (items ? T.items(items) : '')
         + (total ? T.total(total) : '')
-        + T.status(statusWord(oldest.status, l)) + '.';
+        + T.status(statusWord(oldest.status, l)) + '.'
+        // «¿mi primer pedido está pagado?» (production QA 27-oct): the correction must still say whether it was paid.
+        + (PAID_STATUSES.has(oldest.paymentStatus.toLowerCase()) ? '' : NOT_PAID[l]);
 }

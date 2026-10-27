@@ -9,6 +9,7 @@ import { buildRequiredReadsTrace, REQUIRED_READ_TIMEOUT_MS, requiredReadDefaultA
 import { isOwnBookingsQuestion, isPastOrdersQuestion, lexicalRequiredReadsOperation, needsItemDetailRead } from './runtime/operation-lexical-cues';
 import { cancelledPurchaseCorrection, firstOrderCorrection, pastOrdersReportText, unpaidOrderCorrection } from './past-orders-report';
 import { spelledTotalCorrection } from './spelled-total';
+import { wrongServiceCorrection } from './wrong-service';
 import { listingSearchSlotsIn, requiredReadSlotsIn } from './runtime/required-read-slots';
 import { demoAllowanceExhaustedText } from '../widget/widget-demo-link';
 import { recordFirstReply } from '../../common/utils/first-reply.util';
@@ -7732,6 +7733,13 @@ export class ConversationsService {
             this.recordAgentSignal(tenantId, 'claim_unbacked', session);
             this.logger.warn(`[Guardrail] The reply tells a cancelled order as bought — answered from the orders read: "${response.slice(0, 100)}"`);
             response = cancelledPurchase;
+        }
+        // F4300-46: «qto custa a manicure e pedicure?» answered with Corte y estilo's price is said from the manicure's own entry.
+        const wrongService = wrongServiceCorrection(response, customerText, trustedContext?.availableServices, lang);
+        if (wrongService) {
+            this.recordAgentSignal(tenantId, 'claim_unbacked', session);
+            this.logger.warn(`[Guardrail] The reply priced another service than the one asked — answered from its entry: "${response.slice(0, 100)}"`);
+            response = wrongService;
         }
         // F4300-47: «para dos personas sería el doble de ese valor» after «40.000 COP» is said as the total the customer asked for.
         const spelledTotal = spelledTotalCorrection(response, customerText, lang);

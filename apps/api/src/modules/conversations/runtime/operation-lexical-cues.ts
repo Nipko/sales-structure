@@ -174,7 +174,7 @@ const STAY_CHECK = /\b(?:check ?ins?|check ?outs?|enregistrement|horario de entr
 const STAY_MOVE = /\b(?:llegada|llegar|entrada|entrar|salida|salir|entregar|chegada|chegar|saida|sair|arrivee|arriver|depart|partir|quitter|liberer|arrival|arrive|departure|leave|vacate)\b/;
 const TIME = /\b(?:hora|horas|horario|heure|heures|horaire|time|times|when|cuando|quando|quand)\b/;
 /** Where the property is («¿en qué calle está…?», «dans quelle rue…», «em que rua…», «what street…», production QA 27-oct). */
-const ADDRESS = /\b(?:(?:en )?(?:que|cual) calle|dans quelle rue|(?:em )?que rua|what street|which street|direccion|ubicacion|ubicad[oa]s?|donde (?:queda|quedan|esta|estan|se encuentra\w*)|endereco|localizacao|localizad[oa]s?|onde (?:fica|ficam|esta|estao)|adresse|ou (?:se trouve|se situe|etes vous|est situe\w*)|situe\w*|address|location|located|where is|where are)\b/;
+const ADDRESS = /\b(?:(?:en )?(?:que|cual) calle|dans quelle rue|(?:em )?que rua|what street|which street|direccion|ubicacion|ubicad[oa]s?|donde (?:queda|quedan|esta|estan|se encuentra\w*)|endereco|localizacao|localizad[oa]s?|onde (?:fica|fika|ficam|esta|estao)|adresse|ou (?:se trouve|se situe|etes vous|est situe\w*)|situe\w*|address|location|located|where is|where are)\b/;
 /** How many people fit. */
 const CAPACITY = /\b(?:capacidad|capacidade|capacite|capacity|sleeps|caben|cabem)\b/;
 const PEOPLE = /\b(?:huespedes|hospedes|guests|personas|pessoas|personnes|people|persons|adultos|adults|adultes)\b/;
@@ -285,7 +285,7 @@ const SALE_OR_RENT = /\b(?:venta|vende\w*|arriendo|arrienda\w*|alquiler|alquila\
  * Where the listing is (the business's own address is a FAQ: only with a listing word). «¿en qué calle está el Spark QA
  * Inmueble?», «dans quelle rue…», «em que rua…» read nothing and got «no tengo la dirección» (production QA 27-oct).
  */
-const LISTING_PLACE = /\b(?:calle|rue|rua|street|direccion|ubicacion|ubicad[oa]s?|donde (?:queda|quedan|esta|estan)|barrio|sector|zona|endereco|localizacao|localizad[oa]s?|onde (?:fica|ficam|esta|estao)|bairro|adresse|ou (?:se trouve|se situe|est)|situe\w*|quartier|address|location|located|where is|where are|neighbou?rhood|area)\b/;
+const LISTING_PLACE = /\b(?:calle|rue|rua|street|direccion|ubicacion|ubicad[oa]s?|donde (?:queda|quedan|esta|estan)|barrio|sector|zona|endereco|localizacao|localizad[oa]s?|onde (?:fica|fika|ficam|esta|estao)|bairro|adresse|ou (?:se trouve|se situe|est)|situe\w*|quartier|address|location|located|where is|where are|neighbou?rhood|area)\b/;
 const STILL_AVAILABLE = /\b(?:disponib\w*|available|availability|todavia|aun|ainda|toujours|still)\b/;
 /** «what properties do you have?», «¿qué inmuebles tienen?», «quais imóveis vocês têm?», «quels biens avez-vous ?». */
 const OFFER = /\b(?:que|cuales|qual|quais|quel\w*|what|which|tienen|tiene|hay|manejan|ofrecen|tem|tens|tem disponivel|avez vous|vous avez|y a t il|proposez|do you have|have you got|is there|are there|any|show me|muestrame|mostrar|mostre|montrez)\b/;

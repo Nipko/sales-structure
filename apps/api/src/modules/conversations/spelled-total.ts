@@ -59,7 +59,65 @@ export function spelledTotalCorrection(reply: string, customerText: string, lang
         cursor = at + match[0].length;
         changed = true;
     }
-    return changed ? worked + out.slice(cursor) : null;
+    if (changed) return worked + out.slice(cursor);
+    return unitOnlyCorrection(text, String(customerText || ''), lang);
+}
+
+// «a week in the room» → «150,000 COP per night. The total price depends on the exact dates» (production QA 27-oct, en after #252):
+// the unit amount said and the total left out. The nights or people the customer named, and the reply's amount per night / per person.
+const UNITS = {
+    night: { asked: String.raw`noches?|nights?|noites?|nuits?`, per: String.raw`(?:por|per|par|a|the)\s+(?:noche|night|noite|nuit)|(?:la|a)\s+nuit|nightly|(?:por\s+)?di[aá]ria`,
+        word: { es: 'noches', en: 'nights', pt: 'noites', fr: 'nuits' } },
+    person: { asked: String.raw`personas?|people|persons?|pessoas?|personnes?`, per: String.raw`(?:por|per|par)\s+(?:persona|person|pessoa|personne)|each person|cada (?:persona|pessoa)`,
+        word: { es: 'personas', en: 'people', pt: 'pessoas', fr: 'personnes' } },
+} as const;
+const A_WEEK = /(?<!\p{L})(?:una semana|uma semana|a week|one week|une semaine)(?!\p{L})/iu;
+const FROM = /(?:desde|from|a partir de|à partir de)\s*$/iu;
+const DEFERRED = /[^.!?\n]*(?<!\p{L})(?:depende|depends|dépend|dependerá)(?!\p{L})[^.!?\n]*(?:fechas|dates|datas)[^.!?\n]*[.!?]?\s*/iu;
+const TOTAL_TEXT: Record<string, (n: number, unit: string, total: string, working: string) => string> = {
+    es: (n, unit, total, working) => `Para ${n} ${unit}: ${total} (${working}).`,
+    en: (n, unit, total, working) => `For ${n} ${unit}: ${total} (${working}).`,
+    pt: (n, unit, total, working) => `Para ${n} ${unit}: ${total} (${working}).`,
+    fr: (n, unit, total, working) => `Pour ${n} ${unit} : ${total} (${working}).`,
+};
+
+function askedCount(customerText: string, unit: string): number | null {
+    const found = new Set<number>();
+    for (const m of customerText.matchAll(new RegExp(String.raw`(?<![\p{L}\d])(\d{1,2}|\p{L}+)\s+(?:${unit})(?!\p{L})`, 'giu'))) {
+        const key = m[1].toLowerCase();
+        const n = /^\d+$/.test(key) ? Number(key) : NUMBER_WORDS[key];
+        if (n && n >= 2) found.add(n);
+    }
+    return found.size === 1 ? [...found][0] : null;
+}
+
+/** The reply that says only the amount per night / per person of a count the customer named, with that total said; null otherwise. */
+function unitOnlyCorrection(reply: string, customerText: string, lang?: string): string | null {
+    const mentions = moneyMentionsIn(reply);
+    if (!mentions.length) return null;
+    const language = String(lang || 'es').slice(0, 2);
+    for (const [key, unit] of Object.entries(UNITS)) {
+        const n = key === 'night' && A_WEEK.test(customerText) ? 7 : askedCount(customerText, unit.asked);
+        if (!n) continue;
+        const per = new RegExp(String.raw`^\s*(?:${unit.per})(?!\p{L})`, 'iu');
+        const units = mentions.filter(m => per.test(reply.slice(m.index! + m.length!)));
+        if (units.length !== 1) continue;
+        const [base] = units;
+        // The total is there already (any amount n times the unit amount).
+        if (mentions.some(m => Math.abs(m.amount - base.amount * n) < 0.005)) return null;
+        const total = formatPriceWithCurrency(language, base.amount * n, base.currency);
+        if (!total) return null;
+        const from = FROM.test(reply.slice(0, base.index!)) ? { es: 'desde ', en: 'from ', pt: 'a partir de ', fr: 'à partir de ' }[language] ?? '' : '';
+        const said = (TOTAL_TEXT[language] ?? TOTAL_TEXT.es)(n, (unit.word as Record<string, string>)[language] ?? unit.word.es,
+            from + total, `${n} × ${reply.slice(base.index!, base.index! + base.length!)}`);
+        const deferred = reply.match(DEFERRED);
+        if (deferred) return `${reply.slice(0, deferred.index!)}${said} ${reply.slice(deferred.index! + deferred[0].length)}`.trim();
+        const rest = reply.slice(base.index! + base.length!);
+        const end = rest.search(/[.!?](?!\d)/);
+        const at = end < 0 ? reply.length : base.index! + base.length! + end + 1;
+        return `${reply.slice(0, at)} ${said}${reply.slice(at)}`.replace(/ {2,}/g, ' ').trim();
+    }
+    return null;
 }
 
 const WORKED = new RegExp(String.raw`\s*(?:multiplicad[oa]s? por|multiplied by|multipli[eé]e?s? par)\s+(\d{1,2}|\p{L}+)(?:\s+(?:noches|nights|noites|nuits|personas|people|pessoas|personnes|veces|times|vezes|fois))?`, 'giu');

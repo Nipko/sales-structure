@@ -143,7 +143,7 @@ const TEXT: Record<Lang, {
  * its total and its REAL status (a cancelled order is said cancelled; its pending payment is not mentioned, it is owed by no one).
  * Null when the turn read no order.
  */
-export function pastOrdersReportText(reads: ReadonlyArray<{ name?: string; result?: any }>, lang?: string): string | null {
+export function pastOrdersReportText(reads: ReadonlyArray<{ name?: string; result?: any }>, lang?: string, customerText?: string): string | null {
     const found = pastOrdersOfTurn(reads);
     if (!found) return null;
     const l = langOf(lang);
@@ -158,7 +158,27 @@ export function pastOrdersReportText(reads: ReadonlyArray<{ name?: string; resul
         + (items ? T.items(items) : '')
         + (total ? T.total(total) : '')
         + T.status(statusWord(latest.status, l)) + payment + '.'
-        + (count && count > 1 ? T.count(count) : '');
+        + (count && count > 1 ? T.count(count) : '')
+        + nonePaidText(reads, l, customerText);
+}
+
+/**
+ * Production QA 27-oct (store tenant, image 1a719d86): «¿alguno de mis pedidos de la tienda está pagado?» got the report of the
+ * newest order and its count — never the answer. When the customer asks about payment and no order read shows one, the report
+ * says so.
+ */
+const PAYMENT_QUESTION = /(?<!\p{L})(?:pagad[oa]s?|pago|pagos|pagou|paguei|pagu[eé]|paid|pay|payée?s?|pay[eé])(?!\p{L})/iu;
+const NONE_PAID: Record<Lang, string> = {
+    es: ' Ninguno de sus pedidos consta como pagado.',
+    en: ' None of your orders shows a payment.',
+    pt: ' Nenhum dos seus pedidos consta como pago.',
+    fr: ' Aucune de vos commandes n’est enregistrée comme payée.',
+};
+
+function nonePaidText(reads: ReadonlyArray<{ name?: string; result?: any }>, lang: Lang, customerText?: string): string {
+    if (!PAYMENT_QUESTION.test(String(customerText || ''))) return '';
+    const listed = listedOrdersOfTurn(reads);
+    return listed.length && listed.every(row => !PAID_STATUSES.has(row.paymentStatus.toLowerCase())) ? NONE_PAID[lang] : '';
 }
 
 /**

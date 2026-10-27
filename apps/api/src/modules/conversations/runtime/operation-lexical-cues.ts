@@ -105,7 +105,7 @@ export function isTellAboutItem(text: unknown): boolean {
  * about» questions did read the product; a question about one of an item's attributes named no cue, and the turn's <catalog>
  * (name, price, stock, category only) marked the product reads `projected` even when the classifier named `product_info`.
  *
- * An item's attribute: colour, size, material, weight, dimensions, brand, model, warranty, compatibility. es/pt/fr/en, folded
+ * An item's attribute: colour, size, material, weight, dimensions, connectivity, brand, model, warranty, compatibility. es/pt/fr/en, folded
  * text. «peso(s)» alone is the currency («cuánto cuesta en pesos?»): only the weight verbs and «el peso» count.
  */
 const ITEM_ATTRIBUTE = new RegExp(`\\b(?:${[
@@ -119,6 +119,8 @@ const ITEM_ATTRIBUTE = new RegExp(`\\b(?:${[
     /(?:el|o|su|seu|the|its) peso|pesa|pesan|pesam|combien pese\w*|poids|weighs?|weight|how heavy/,
     // dimensions
     /medidas?|dimension(?:es|s)?|dimensoes|dimensao|how big/,
+    // connectivity (production QA 27-oct: «¿el Audífono QA Aurora es de cable?», «est-il filaire ?» read nothing)
+    /(?:de|con|com|with) cables?|com fio|cabo|filaires?|wired|wireless|inalambric[oa]s?|sem fio|sans fil|bluetooth/,
     // brand, model
     /marcas?|marques?|brands?|fabricante|fabricant|manufacturer|modelos?|models?|modeles?/,
     // warranty

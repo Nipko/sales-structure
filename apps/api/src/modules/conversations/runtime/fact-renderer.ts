@@ -3,7 +3,7 @@ import { catalogPriceStatus } from '../catalog-price-status';
 import { spokenItemName } from '../description-authority';
 import { replyLanguageOf } from '../reply-language';
 import { normalizeReplyAmounts } from '../reply-price-format';
-import { quantitiesIn, ResponseValidatorService } from '../response-validator.service';
+import { moneyMentionsIn, quantitiesIn, ResponseValidatorService } from '../response-validator.service';
 import { addressFormOf, humanizeReferences, localizeStatusWords, orderStatusLabel, type AddressForm } from '../transition-engine';
 import { FACT_TTL_MS, factKey, verifiedFactViews, wellFormed, type VerifiedFact } from './facts-ledger';
 
@@ -466,6 +466,8 @@ function priceFieldRank(fact: VerifiedFact): number {
 const PRICE_QUESTION = / (?:precio|precios|cuanto|cuesta|cuestan|vale|valen|costo|costos|coste|tarifa|tarifas|pago|pagar|total|price|prices|cost|costs|much|rate|rates|fee|fees|preco|precos|quanto|custa|custam|valor|prix|combien|coute|coutent|tarif|tarifs|payer) /;
 /** A sentence about a fee or an extra charge, not the item's price (cleaning, deposit, surcharge). */
 const FEE_SENTENCE = / (?:limpieza|limpeza|cleaning|menage|fee|fees|deposito|deposit|recargo|cargo extra|extra charge|surcharge|supplement|taxa|frais) /;
+/** A record field that is a fee, not the item's price (`cleaningFee`, `depositAmount`, `serviceFee`). */
+const FEE_FIELD = /fee|deposit|surcharge/i;
 /** A sentence about how long something takes. */
 const DURATION_WORDS = / (?:min|mins|minuto|minutos|minute|minutes|hora|horas|hour|hours|heure|heures|dura|duran|duracion|duracao|duree|duration|takes|long|demora|tarda|leva) /;
 
@@ -519,7 +521,15 @@ export function renderReplyFacts(input: RenderFactsInput): RenderFactsOutcome {
     const ledger = moneyViews.length ? { facts: moneyViews, customerText } : undefined;
     const corpus = [input.serverText || '', ...confirmedAmounts.filter(fact => !fact.subject.name)
         .map(fact => JSON.stringify({ amount: fact.value, ...(fact.currency ? { currency: fact.currency } : {}) }))].join('\n');
-    const amountBacked = (sentence: string) => validator.validatePrices(sentence, corpus, ledger, { customerText }).ok;
+    // A fee read as 0 (`cleaningFee: 0`) backs «no hay tarifa de limpieza (0 COP)» in a sentence about that fee: production QA
+    // 27-oct, «¿el precio de la noche incluye la limpieza?» got «Prefiero no darle una cifra que no tengo confirmada» in es/pt.
+    const zeroFeeRead = live.some(fact => fact.kind === 'money' && fact.value === 0 && FEE_FIELD.test(fact.field));
+    const zeroFeeSentence = (sentence: string) => {
+        if (!zeroFeeRead || !FEE_SENTENCE.test(norm(sentence))) return false;
+        const mentions = moneyMentionsIn(sentence);
+        return mentions.length > 0 && mentions.every(mention => mention.amount === 0);
+    };
+    const amountBacked = (sentence: string) => zeroFeeSentence(sentence) || validator.validatePrices(sentence, corpus, ledger, { customerText }).ok;
     const statesAmount = (sentence: string) => !validator.validatePrices(sentence, '').ok;
 
     const pricedSubjects = live.filter(fact => fact.kind === 'money' && !!fact.subject.name);

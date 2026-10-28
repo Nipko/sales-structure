@@ -178,7 +178,7 @@ export function quantitiesIn(text: string): number[] {
 function customerAmountsIn(text: string): MoneyMention[] {
     if (!text) return [];
     const out = moneyMentionsIn(text);
-    for (const m of text.matchAll(/(?<![\d.,:\/-])(\d{1,3}(?:[.,\s]\d{3})+|\d{3,})(?![\d:\/]|[.,]\d)\s*(mil|k)?(?!\p{L})/giu)) {
+    for (const m of text.matchAll(/(?<![\d.,:/-])(\d{1,3}(?:[.,\s]\d{3})+|\d{3,})(?![\d:/]|[.,]\d)\s*(mil|k)?(?!\p{L})/giu)) {
         const amount = normalizeAmount(m[1]);
         if (amount != null) out.push({ amount: m[2] ? amount * 1000 : amount, currency: undefined });
     }

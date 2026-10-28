@@ -155,6 +155,7 @@
     "apps/api/src/modules/conversations/language-detector.f4300-16-portuguese-informal.spec.ts",
     "apps/api/src/modules/faqs/faq-search.f4300-51-multilingual.spec.ts",
     "apps/api/src/modules/conversations/reply-language-rewrite.f4300-52.spec.ts",
+    "apps/api/src/modules/conversations/human-offer.f4300-13-courtesy.spec.ts",
     "apps/api/src/modules/conversations/runtime/fact-renderer.f4300-37d.spec.ts",
     "apps/api/src/modules/conversations/runtime/operation-lexical-cues.f4300-08-connectivity.spec.ts",
     "apps/api/src/modules/conversations/past-orders-report.f4300-11b.spec.ts",

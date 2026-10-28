@@ -35,6 +35,7 @@
     "apps/api/src/modules/conversations/identity-code-claim.f4300.spec.ts",
     "apps/api/src/modules/conversations/listing-detail-grounding.spec.ts",
     "apps/api/src/modules/conversations/own-customer-context-read.spec.ts",
+    "apps/api/src/modules/conversations/own-customer-context-read.f4300-55.spec.ts",
     "apps/api/src/modules/conversations/own-tour-bookings-read.spec.ts",
     "apps/api/src/modules/conversations/owned-record-payment-boundaries.spec.ts",
     "apps/api/src/modules/conversations/product-stock-grounding.spec.ts",

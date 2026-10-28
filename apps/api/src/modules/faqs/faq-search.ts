@@ -20,14 +20,47 @@ const tokens = (value: string) => fold(value).match(/[\p{L}\p{N}]+/gu) || [];
 // holds a duration word, so they are dropped from the query in that case and stay ordinary
 // words otherwise. "last"/"lasts" mean both "the final one" and "continues for", so they never
 // take part in the comparison.
-const DURATION_WORDS = new Set(['dura', 'duran', 'durar', 'duracion', 'long', 'duration', 'duracao', 'duree']);
+// «plazo»/«prazo»/«délai» de una garantía es su duración (F4300-51: «¿Cuál es el plazo de garantía…?» answers «how long is the warranty»).
+const DURATION_WORDS = new Set(['dura', 'duran', 'durar', 'duracion', 'long', 'duration', 'duracao', 'duree', 'dure', 'durent', 'plazo', 'prazo', 'delai']);
+/**
+ * F4300-51 (production QA 28-oct, store tenant): the business writes its FAQs in one language and customers ask in four. «how long
+ * is the warranty on the QA test headphone?», «combien de temps dure la garantie…?», «quanto tempo dura a garantia… de teste?» never
+ * found «¿Cuál es el plazo de garantía QA del audífono de prueba?» and the agent said it had no information. The topic words FAQs
+ * are written about compare as one concept across es/en/pt/fr, and the candidate search looks for every spelling.
+ */
+const EQUIVALENTS: Record<string, string[]> = {
+    garantia: ['garantia', 'garantias', 'warranty', 'warranties', 'guarantee', 'garantie', 'garanties'],
+    prueba: ['prueba', 'pruebas', 'test', 'tests', 'teste', 'testes', 'essai'],
+    audifono: ['audifono', 'audifonos', 'headphone', 'headphones', 'earphone', 'earphones', 'ecouteur', 'ecouteurs', 'fone', 'fones'],
+    pago: ['pago', 'pagos', 'payment', 'payments', 'pagamento', 'pagamentos', 'paiement', 'paiements'],
+    envio: ['envio', 'envios', 'shipping', 'delivery', 'deliveries', 'entrega', 'entregas', 'livraison', 'livraisons', 'domicilio', 'domicilios'],
+    horario: ['horario', 'horarios', 'hours', 'schedule', 'horaire', 'horaires'],
+    devolucion: ['devolucion', 'devoluciones', 'return', 'returns', 'refund', 'refunds', 'devolucao', 'devolucoes', 'reembolso', 'reembolsos', 'remboursement', 'retour', 'retours'],
+    cancelacion: ['cancelacion', 'cancelaciones', 'cancellation', 'cancellations', 'cancelamento', 'cancelamentos', 'annulation', 'annulations'],
+    // What a question asks («do you HAVE…» is «¿TIENEN…?»): compared as one verb, so a FAQ in another language never «asks something else».
+    tener: ['tener', 'tiene', 'tienen', 'have', 'has', 'tem', 'temos', 'ont', 'avez'],
+    costar: ['costar', 'cuesta', 'cuestan', 'cost', 'costs', 'custa', 'custam', 'coute', 'coutent', 'vale', 'valen'],
+    metodo: ['metodo', 'metodos', 'method', 'methods', 'methode', 'methodes', 'moyen', 'moyens', 'medio', 'medios', 'meio', 'meios'],
+    politica: ['politica', 'politicas', 'policy', 'policies', 'politique', 'politiques'],
+    mascota: ['mascota', 'mascotas', 'pet', 'pets', 'animal', 'animais', 'animaux', 'animales'],
+    ubicacion: ['ubicacion', 'ubicados', 'ubicado', 'location', 'address', 'endereco', 'localizacao', 'adresse', 'direccion'],
+};
+const EQUIVALENT_OF = new Map(Object.entries(EQUIVALENTS).flatMap(([concept, words]) => words.map(word => [word, concept] as const)));
+
+/** The terms with every spelling of the same topic in the four languages, for the candidate search. */
+export function withEquivalents(terms: string[]): string[] {
+    return [...new Set(terms.flatMap(term => {
+        const concept = EQUIVALENT_OF.get(term);
+        return concept ? [term, ...EQUIVALENTS[concept]] : [term];
+    }))];
+}
 const DURATION_FILLER = new Set(['tiempo', 'time', 'tempo', 'temps']);
 const AMBIGUOUS_WORDS = new Set(['last', 'lasts']);
 const DURATION = 'duration';
 // Comparison form of a term: duration words collapse into one concept and a plural
 // "s" is dropped ("visitas" = "visita"). Only for ranking; the SQL candidates keep raw terms.
 const canon = (term: string): string => DURATION_WORDS.has(term) ? DURATION
-    : term.length > 4 && term.endsWith('s') ? term.slice(0, -1) : term;
+    : EQUIVALENT_OF.get(term) ?? (term.length > 4 && term.endsWith('s') ? term.slice(0, -1) : term);
 const canonTokens = (value: string): Set<string> => new Set(tokens(value).filter(t => !AMBIGUOUS_WORDS.has(t)).map(canon));
 const canonTerms = (value: string): string[] => {
     const raw = faqSearchTerms(value).filter(t => !AMBIGUOUS_WORDS.has(t));
@@ -99,7 +132,7 @@ export function splitCompoundQuery(query: string): string[] {
 const QUESTION_FILLER = new Set([
     'tiene', 'tienen', 'tener', 'hay', 'cuesta', 'cuestan', 'vale', 'valen', 'dura', 'duran', 'incluye', 'incluyen', 'ofrece', 'ofrecen',
     'cobran', 'cobra', 'son', 'estan', 'hacen', 'hace', 'have', 'has', 'there', 'cost', 'costs', 'much', 'many', 'tem', 'custa', 'custam',
-    'ha', 'coute', 'ont', 'combien', 'quantas', 'quantos', 'cuantas', 'cuantos',
+    'ha', 'coute', 'ont', 'combien', 'quantas', 'quantos', 'cuantas', 'cuantos', 'sont', 'accept', 'accepts', 'aceptan', 'aceitam', 'acceptez',
 ]);
 
 /** The topic words of ONE part of a message: what is left after the function words and the words that only ask. */

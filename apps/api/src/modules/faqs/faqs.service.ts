@@ -11,7 +11,7 @@ import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-eve
 import { structuredKnowledgeRelation, type StructuredKnowledgeCapture } from '../evaluation-revision/evaluation-structured-knowledge';
 import { onboardingOnceKey } from '@parallext/shared';
 import { recordOnboardingEvent } from '../../common/utils/onboarding-event.util';
-import { faqSearchTerms, pickTopicFallbackFaq, pickTopicFaq, rankPartialFaqMatches, splitCompoundQuery, stripFaqQueryNoise, topicTermsOf } from './faq-search';
+import { faqSearchTerms, pickTopicFallbackFaq, pickTopicFaq, rankPartialFaqMatches, splitCompoundQuery, stripFaqQueryNoise, topicTermsOf, withEquivalents } from './faq-search';
 
 /**
  * Plegado de diacríticos para la búsqueda de FAQs.
@@ -261,7 +261,7 @@ export class FaqsService {
             if (topic.length === 1) {
                 // One topic word ("garantía"): the FAQs about it compete and the rest of the message decides, so the
                 // warranty of the product the customer names beats the warranty of a tour with the same words.
-                const candidates = await this.candidatesFor(tenantId, [topic[0]], limit, executionContext, captured);
+                const candidates = await this.candidatesFor(tenantId, withEquivalents([topic[0]]), limit, executionContext, captured);
                 const picked = pickTopicFaq(candidates, topic[0], message);
                 rows = picked ? [picked] : [];
             } else if (topic.length > 1) {
@@ -284,7 +284,8 @@ export class FaqsService {
     ): Promise<FAQ[]> {
         const topic = topicTermsOf(message);
         if (!topic.length) return [];
-        const candidates = await this.candidatesFor(tenantId, topic, limit, executionContext, captured);
+        // F4300-51: every spelling of the topic in the four languages («warranty» finds «garantía»).
+        const candidates = await this.candidatesFor(tenantId, withEquivalents(topic), limit, executionContext, captured);
         const picked = pickTopicFallbackFaq(candidates, message);
         return picked ? [picked] : [];
     }

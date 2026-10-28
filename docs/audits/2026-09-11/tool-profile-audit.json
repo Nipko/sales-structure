@@ -2,7 +2,7 @@
   "version": 1,
   "evidenceKind": "structural_only",
   "sourceHashEncoding": "utf8-lf",
-  "sourceRevision": "7e28ab93e4c1627432d1393c5d581e8f198fb53d",
+  "sourceRevision": "f10e870f837a7f9d79be2a77ee80d7af1b7eff8e",
   "summary": {
     "verticals": 20,
     "profiles": 80,
@@ -57,7 +57,7 @@
     "apps/api/src/modules/conversations/tools/pets-tools.ts": "f5cfdd5a1e4d438c0fbae49af02c1978af8eb77c0cd7fcc00499c2823a5b3ed4",
     "apps/api/src/modules/conversations/tools/repair-order-tools.ts": "2f03bbc94d8d28ba3ade80b8554d50d06378b1a8f66f3d16cf9cccfa69e6511b",
     "apps/api/src/modules/conversations/tools/resource-rental-tools.ts": "e10eafea3f554347cf95153d063181863d6fcfc82a16c58294cec2e00dc12050",
-    "apps/api/src/modules/conversations/tools/restaurants-tools.ts": "1249d988beb63726efdbf82ad93b10044032653fd2681d0b1ed4d8aa22bc782a",
+    "apps/api/src/modules/conversations/tools/restaurants-tools.ts": "8214472585d9df5fe006d7f0afdab02c84a394d188addb98c4eeae7b2e11d4eb",
     "apps/api/src/modules/conversations/tools/tier3-tools.ts": "a0808b2a2ed5967fa339a9f702d18f82d339ccb4361f0dcbaf45d12ae951b28e",
     "apps/api/src/modules/conversations/tools/tours-tools.ts": "cef69ec9de129e1739e3e0530ab243bc2f5bfccabb02bd2da639d4a3cb300e99",
     "apps/api/src/modules/conversations/tools/treatment-tools.ts": "f02a921882912ba2c6fb4a5c6c39a7a4aeda18249496a7b6713741fd1b6505ca",

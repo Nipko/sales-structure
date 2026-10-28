@@ -94,11 +94,13 @@ describe('alignReplyLanguage: the rewrite is told what to keep and gets one more
         expect(service.logger.warn).toHaveBeenCalledWith(expect.stringContaining('Language rewrite 1 rejected (lost_name: Corte y estilo)'));
     });
 
-    it('a rewrite that stays Spanish is rejected (still_source_language) with no second call', async () => {
+    // F4300-52: a rewrite that stays Spanish gets ONE more call, told to write the whole message in the turn language.
+    it('a rewrite that stays Spanish is rejected (still_source_language) and asked once more', async () => {
         const stillSpanish = 'El servicio de Corte y estilo tiene una duración de unos 45 minutos. ¿Le gustaría agendar una cita?';
         const { service, execute } = build(stillSpanish, SALON_PT_OK);
-        expect(await run(service, SALON_ES, 'pt', SALON_CONTEXT, 'e quanto tempo demora?')).toBe(SALON_ES);
-        expect(execute).toHaveBeenCalledTimes(1);
+        expect(await run(service, SALON_ES, 'pt', SALON_CONTEXT, 'e quanto tempo demora?')).toBe(SALON_PT_OK);
+        expect(execute).toHaveBeenCalledTimes(2);
+        expect(lastContent(execute, 1)).toMatch(/^Parte da sua reescrita continua em outro idioma/);
         expect(rejections(service)).toEqual([{ reason: 'still_source_language', attempt: 1, missing: [] }]);
     });
 
@@ -184,9 +186,10 @@ describe('a reply that switches language mid-way is judged sentence by sentence'
 
         // Only the opening translated: the Spanish advice sentence is kept as it was.
         const halfway = 'Sinto muito que esteja passando por isso. Inchaço no rosto e febre após a extração de um dente podem indicar uma infecção. Le recomiendo que busque atención urgente en la clínica o un servicio de urgencias odontológicas para que un especialista pueda evaluar su situación y brindarle el tratamiento adecuado.';
-        const still = build(halfway);
+        const still = build(halfway, halfway);
         expect(await run(still.service, MIXED, 'pt', {}, 'o que faço?')).toBe(MIXED);
-        expect(rejections(still.service)).toEqual([{ reason: 'still_source_language', attempt: 1, missing: [] }]);
+        // The Spanish advice is a sentence of substance: never dropped to make the rewrite pass (F4300-52 drops a closing question only).
+        expect(rejections(still.service).map(r => r.reason)).toEqual(['still_source_language', 'still_source_language']);
     });
 });
 

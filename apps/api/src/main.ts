@@ -11,6 +11,7 @@ import * as Sentry from '@sentry/nestjs';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { PublicApiModule } from './modules/public-api/public-api.module';
+import { bullBoardAuthMiddleware } from './common/utils/bull-board-auth.util';
 
 // PostgreSQL COUNT(*) returns BigInt which JSON.stringify cannot serialize
 (BigInt.prototype as any).toJSON = function () { return Number(this); };
@@ -188,19 +189,7 @@ async function bootstrap() {
     if (!bullBoardToken) {
         console.warn('BULL_BOARD_TOKEN not set — Bull Board dashboard disabled');
     }
-    app.use('/api/v1/admin/queues', (req: any, res: any, next: any) => {
-        if (!bullBoardToken) {
-            return res.status(503).json({ message: 'Bull Board disabled — BULL_BOARD_TOKEN not configured' });
-        }
-        // Allow static assets (JS, CSS, images) without auth
-        if (req.url?.includes('/static/') || req.url?.endsWith('.js') || req.url?.endsWith('.css') || req.url?.endsWith('.svg')) {
-            return next();
-        }
-        if (req.query?.token !== bullBoardToken && req.headers?.['x-admin-token'] !== bullBoardToken) {
-            return res.status(401).json({ message: 'Unauthorized' });
-        }
-        next();
-    });
+    app.use('/api/v1/admin/queues', bullBoardAuthMiddleware(bullBoardToken));
 
     // Graceful shutdown — let in-flight requests finish before exiting
     app.enableShutdownHooks();

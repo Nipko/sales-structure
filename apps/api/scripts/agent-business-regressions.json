@@ -140,6 +140,7 @@
     "apps/api/src/modules/conversations/language-detector.f4300-16-informal.spec.ts",
     "apps/api/src/modules/conversations/past-orders-report.f4300-43.spec.ts",
     "apps/api/src/modules/conversations/language-detector.f4300-16-aceita.spec.ts",
+    "apps/api/src/modules/conversations/language-detector.f4300-16-code.spec.ts",
     "apps/api/src/modules/conversations/runtime/operation-lexical-cues.f4300-45.spec.ts",
     "apps/api/src/modules/conversations/runtime/operation-lexical-cues.f4300-08-destination.spec.ts",
     "apps/api/src/modules/conversations/past-orders-report.f4300-45b.spec.ts",

@@ -168,6 +168,9 @@ export class LanguageDetectorService {
         for (let i = 1; i < words.length; i++) {
             const word = words[i].replace(/^[^\p{L}]+/u, '');
             if (!/^\p{Lu}/u.test(word) || /^I(?:['’]|$)/.test(word)) continue;
+            // F4300-16 (production QA 28-oct): an order or booking code («was my order 5603A623 delivery or pickup?») is not a name —
+            // it held the stored Spanish and the English question was answered in Spanish.
+            if (/\d/.test(words[i])) continue;
             if (/[.!?:¡¿]$/.test(words[i - 1]) || /^[¡¿]/.test(words[i])) continue;
             return true;
         }
@@ -289,7 +292,10 @@ export class LanguageDetectorService {
             'onde', 'qto', 'qta', 'qtos', 'qtas', 'oq',
             // «o Tour QA Aurora aceita um grupo de 10?» after an English case was answered in English (production QA 26-oct, image
             // 6f1d3bf6). Spanish writes «acepta», French «accepte».
-            'aceita', 'aceitas'],
+            'aceita', 'aceitas',
+            // F4300-16 (production QA 28-oct): «se formos 4, quanto pagamos pelo Spark QA Tour?» after an English case was answered in
+            // English. Spanish writes «fuéramos»/«fuimos», French «sommes».
+            'formos', 'fomos'],
         fr: ['coute', 'coutent', 'combien', 'je', 'est', 'sont', 'avez', 'pouvez', 'puis', 'peux', 'veux', 'voudrais', 'faut',
             'inclut', 'dois', 'doit', 'cherche', 'ai', 'reste', 'proposez', 'acceptez', 'quel', 'quelle', 'quels', 'quelles',
             'vendez', 'vendent', 'faites', 'ouvrez', 'fermez', 'livrez', 'envoyez', 'travaillez',

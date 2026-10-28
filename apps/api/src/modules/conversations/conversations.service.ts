@@ -59,7 +59,7 @@ import { burstBufferKeys } from './burst-debounce-key';
 import { foldedContent, fragmentFor, mergeBurst, type BurstFragment } from './burst-fragments';
 import {
     budgetExhaustedReplayText, BUDGET_EXHAUSTED_REPLAY_MSG, isBareConsent, replayAsk, returnNoteTask, returnReplayTurn,
-    rewriteReplayPromise, sanitizeReplayReply, staleConsentReply, toolsForReplay, withRequestLeftNote,
+    replayLanguageText, rewriteReplayPromise, sanitizeReplayReply, staleConsentReply, toolsForReplay, withRequestLeftNote,
     type ReturnAsk,
 } from './handoff-return-replay-turn';
 import { TasksService } from '../crm/services/tasks/tasks.service';
@@ -1714,7 +1714,7 @@ export class ConversationsService {
         // A waiting text that was only "sí" cannot be read as consent to what was
         // proposed before the handoff: ask again instead of running the pending step.
         const consentReply = replayTurn && !recoveredEnvelope && !resumedReply && isBareConsent(content?.text)
-            ? staleConsentReply(await this.turnStartLanguage(schemaName, conversation, config, content?.text, inboundMessageId),
+            ? staleConsentReply(this.replayTurnLanguage(config, content?.text),
                 (normalizedMsg as any).handoffReturn?.noteLeft === true)
             : null;
         let response = recoveredEnvelope ? recoveredEnvelope.text
@@ -1742,7 +1742,7 @@ export class ConversationsService {
         // it neither promises a transfer nor offers a person (a «sí» would start another wait).
         if (replayTurn && typeof response === 'string' && response && !recoveredEnvelope && !resumedReply
             && !isSystemFixedText(response) && !isErrorFallback(response)) {
-            const replayLanguage = await this.turnStartLanguage(schemaName, conversation, config, content?.text, inboundMessageId);
+            const replayLanguage = this.replayTurnLanguage(config, content?.text);
             const noteLeft = (normalizedMsg as any).handoffReturn?.noteLeft === true;
             response = withRequestLeftNote(sanitizeReplayReply(response, replayLanguage, noteLeft), replayLanguage, noteLeft);
         }
@@ -1752,7 +1752,7 @@ export class ConversationsService {
         // say it twice. An error fallback or an empty answer does not consume it.
         const returnNotice = returnNoticePending && !recoveredEnvelope && !resumedReply
             && typeof response === 'string' && response && !isErrorFallback(response) && !turnEffects.learningProvenanceRefused
-            ? await this.claimReturnNotice(schemaName, conversation, content?.text, config.language || 'es')
+            ? await this.claimReturnNotice(schemaName, conversation, replayLanguageText(content?.text), config.language || 'es')
             : null;
         response = withReturnNotice(returnNotice, response, !!recoveredEnvelope || !!resumedReply);
 
@@ -3252,8 +3252,11 @@ export class ConversationsService {
         if (!session && previousLanguage && this.languageDetector.detect(userText, previousLanguage, null) !== previousLanguage) {
             languageContext.recentCustomerMessages = await this.recentCustomerTexts(schemaName, conversation.id, inboundMessageId);
         }
-        const detectedLanguage = this.languageDetector.detect(userText, fallbackLanguage, previousLanguage, languageContext);
-        const detail = this.languageDetector.detectDetailed?.(userText, fallbackLanguage, previousLanguage, languageContext);
+        // F4300-23: on the replay of an unattended handoff the text joins every waiting message; its language is the last one's.
+        const replayLanguage = (msg as any)?.metadata?.handoffReturnReplay === true ? this.replayTurnLanguage(config, userText) : null;
+        const detectedLanguage = replayLanguage ?? this.languageDetector.detect(userText, fallbackLanguage, previousLanguage, languageContext);
+        const detail = replayLanguage ? { language: replayLanguage, persist: true }
+            : this.languageDetector.detectDetailed?.(userText, fallbackLanguage, previousLanguage, languageContext);
         const detection = { language: detectedLanguage, persist: detail && detail.language === detectedLanguage ? detail.persist : true };
         const userLanguage = detectedLanguage;
         (msg as any).detectedLang = detectedLanguage; // expose this turn's language to auto-progress
@@ -9045,6 +9048,15 @@ export class ConversationsService {
      * `dispatchReplyThroughOutbox` later found and treated as "already answered",
      * so the real answer was never sent.
      */
+    /**
+     * F4300-23: the language of the replay of an unattended handoff. The stored language and the recent messages are those of the
+     * episode that started the transfer («D'accord, merci» left «fr» on a Spanish conversation), so the customer's LAST waiting
+     * line is read on its own, the tenant's language breaking a tie.
+     */
+    private replayTurnLanguage(config: TenantConfig, text: string | undefined): string {
+        return this.languageDetector.detect(replayLanguageText(text), config.language || 'es', null, { preferred: config.language });
+    }
+
     private async claimReturnNotice(schemaName: string, conversation: any, text: string | undefined,
         defaultLanguage: string): Promise<string | null> {
         const handoff = (conversation?.metadata as any)?.handoff;

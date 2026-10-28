@@ -11,6 +11,7 @@ import { allCancelledCountCorrection, cancelledPurchaseCorrection, firstOrderCor
 import { spelledTotalCorrection } from './spelled-total';
 import { stockShortfallNote } from './stock-shortfall';
 import { unbackedExclusionCorrection } from './unbacked-exclusion';
+import { unbackedPaymentCorrection } from './unbacked-payment';
 import { budgetVerdictCorrection } from './budget-verdict';
 import { wrongServiceCorrection } from './wrong-service';
 import { listingSearchSlotsIn, requiredReadSlotsIn } from './runtime/required-read-slots';
@@ -7789,6 +7790,13 @@ export class ConversationsService {
             this.recordAgentSignal(tenantId, 'claim_unbacked', session);
             this.logger.warn(`[Guardrail] An exclusion no read lists is said as not recorded: "${response.slice(0, 100)}"`);
             response = unbackedExclusion;
+        }
+        // F4300-58: «¿qué medios de pago aceptan?» → «efectivo, tarjeta, PSE…» with no read that names them: not recorded.
+        const unbackedPayment = unbackedPaymentCorrection(response, customerText, [...(executedTools || []), ...toolReadsOfTurnMessages(currentMessages)], lang);
+        if (unbackedPayment) {
+            this.recordAgentSignal(tenantId, 'claim_unbacked', session);
+            this.logger.warn(`[Guardrail] Payment methods no read names are said as not recorded: "${response.slice(0, 100)}"`);
+            response = unbackedPayment;
         }
         // F4300-37: «¿cuánto costarían tres Audífono QA Aurora?» with 2 left is answered with the stock, not only the total.
         const stockShortfall = stockShortfallNote(response, customerText, trustedContext?.catalog, lang);

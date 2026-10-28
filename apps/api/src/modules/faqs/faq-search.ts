@@ -39,9 +39,18 @@ const EQUIVALENTS: Record<string, string[]> = {
     cancelacion: ['cancelacion', 'cancelaciones', 'cancellation', 'cancellations', 'cancelamento', 'cancelamentos', 'annulation', 'annulations'],
     // What a question asks («do you HAVE…» is «¿TIENEN…?»): compared as one verb, so a FAQ in another language never «asks something else».
     tener: ['tener', 'tiene', 'tienen', 'have', 'has', 'tem', 'temos', 'ont', 'avez'],
+    poder: ['poder', 'puedo', 'puede', 'pueden', 'posso', 'pode', 'podem', 'puis', 'peux', 'peut', 'can', 'could'],
     costar: ['costar', 'cuesta', 'cuestan', 'cost', 'costs', 'custa', 'custam', 'coute', 'coutent', 'vale', 'valen'],
     metodo: ['metodo', 'metodos', 'method', 'methods', 'methode', 'methodes', 'moyen', 'moyens', 'medio', 'medios', 'meio', 'meios'],
     politica: ['politica', 'politicas', 'policy', 'policies', 'politique', 'politiques'],
+    // F4300-51 residue (production QA 28-oct): «how can I contact you?», «comment puis-je vous contacter ?», «what documents do I need to
+    // buy a property?» never found «¿Cómo puedo contactarlos?» / «¿Qué documentos necesito para arrendar / comprar?».
+    contacto: ['contacto', 'contactos', 'contactar', 'contactarlos', 'contactarnos', 'contact', 'contacts', 'contato', 'contatos', 'contatar', 'contacter'],
+    documento: ['documento', 'documentos', 'document', 'documents'],
+    necesitar: ['necesitar', 'necesito', 'necesita', 'necesitan', 'need', 'needs', 'preciso', 'precisa', 'precisam', 'besoin', 'faut'],
+    comprar: ['comprar', 'compra', 'buy', 'buying', 'purchase', 'acheter', 'achat'],
+    arrendar: ['arrendar', 'arriendo', 'alquilar', 'alquiler', 'rent', 'renting', 'rental', 'alugar', 'aluguel', 'louer'],
+    inmueble: ['inmueble', 'inmuebles', 'propiedad', 'propiedades', 'property', 'properties', 'imovel', 'imoveis', 'bien', 'biens'],
     mascota: ['mascota', 'mascotas', 'pet', 'pets', 'animal', 'animais', 'animaux', 'animales'],
     ubicacion: ['ubicacion', 'ubicados', 'ubicado', 'location', 'address', 'endereco', 'localizacao', 'adresse', 'direccion'],
 };
@@ -133,6 +142,8 @@ const QUESTION_FILLER = new Set([
     'tiene', 'tienen', 'tener', 'hay', 'cuesta', 'cuestan', 'vale', 'valen', 'dura', 'duran', 'incluye', 'incluyen', 'ofrece', 'ofrecen',
     'cobran', 'cobra', 'son', 'estan', 'hacen', 'hace', 'have', 'has', 'there', 'cost', 'costs', 'much', 'many', 'tem', 'custa', 'custam',
     'ha', 'coute', 'ont', 'combien', 'quantas', 'quantos', 'cuantas', 'cuantos', 'sont', 'accept', 'accepts', 'aceptan', 'aceitam', 'acceptez',
+    // How a question is asked in the four languages («¿Cómo PUEDO…?», «comment PUIS-je…?», «como POSSO ENTRAR em contato?»).
+    'comment', 'puis', 'puedo', 'puede', 'posso', 'pode', 'entrar',
 ]);
 
 /** The topic words of ONE part of a message: what is left after the function words and the words that only ask. */

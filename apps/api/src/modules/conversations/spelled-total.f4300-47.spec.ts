@@ -75,6 +75,7 @@ describe('F4300-47 · the amount per night / per person said without the total t
         const out = spaced(spelledTotalCorrection(reply, ask, lang));
         expect(out).toContain(spaced(expected));
         expect(out).not.toMatch(/depends on the exact dates/);
+        expect(out).not.toMatch(/\.(?=\p{Lu})/u);
     });
 
     it.each([

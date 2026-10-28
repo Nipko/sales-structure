@@ -7,7 +7,7 @@ import { buildOperationShadowTrace, OperationClassifierService, type OperationSh
 import { buildRequiredReadsTrace, REQUIRED_READ_TIMEOUT_MS, requiredReadDefaultArgs, requiredReadsGate, requiredReadsPilotForProfile, runRequiredReads,
     type RequiredReadResult, type RequiredReadsPilot } from './runtime/required-reads.runner';
 import { isOwnBookingsQuestion, isPastOrdersQuestion, lexicalRequiredReadsOperation, needsItemDetailRead } from './runtime/operation-lexical-cues';
-import { cancelledPurchaseCorrection, firstOrderCorrection, pastOrdersReportText, unpaidOrderCorrection } from './past-orders-report';
+import { allCancelledCountCorrection, cancelledPurchaseCorrection, firstOrderCorrection, pastOrdersReportText, unpaidOrderCorrection } from './past-orders-report';
 import { spelledTotalCorrection } from './spelled-total';
 import { stockShortfallNote } from './stock-shortfall';
 import { wrongServiceCorrection } from './wrong-service';
@@ -7734,6 +7734,12 @@ export class ConversationsService {
             this.recordAgentSignal(tenantId, 'claim_unbacked', session);
             this.logger.warn(`[Guardrail] The reply tells a cancelled order as bought — answered from the orders read: "${response.slice(0, 100)}"`);
             response = cancelledPurchase;
+        }
+        // F4300-11: «Ha hecho un total de 6 pedidos» when the six orders read are all cancelled says that none went through.
+        const allCancelled = allCancelledCountCorrection(response, [...(executedTools || []), ...toolReadsOfTurnMessages(currentMessages)], lang);
+        if (allCancelled) {
+            this.logger.log(`[Guardrail] A count of orders that are all cancelled says so: "${response.slice(0, 100)}"`);
+            response = allCancelled;
         }
         // F4300-46: «qto custa a manicure e pedicure?» answered with Corte y estilo's price is said from the manicure's own entry.
         const wrongService = wrongServiceCorrection(response, customerText, trustedContext?.availableServices, lang);

@@ -83,7 +83,7 @@ function view(row: any): OrderView | null {
  * The newest order the turn read, merged with its detail read when there is one (the list may carry no items), and how many
  * orders the customer has when the list says it is complete. Null when the turn read no order.
  */
-export function pastOrdersOfTurn(reads: ReadonlyArray<{ name?: string; result?: any }>): { latest: OrderView; count: number | null } | null {
+export function pastOrdersOfTurn(reads: ReadonlyArray<{ name?: string; result?: any }>): { latest: OrderView; count: number | null; listed: OrderView[] } | null {
     const details = new Map<string, OrderView>();
     let listed: OrderView[] = [];
     let count: number | null = null;
@@ -113,7 +113,7 @@ export function pastOrdersOfTurn(reads: ReadonlyArray<{ name?: string; result?: 
         items: detail.items.length ? detail.items : newest.items,
         total: detail.total ?? newest.total, currency: detail.currency ?? newest.currency,
     } : newest;
-    return { latest, count: listed.length ? count : null };
+    return { latest, count: listed.length ? count : null, listed };
 }
 
 const TEXT: Record<Lang, {
@@ -344,4 +344,40 @@ export function firstOrderCorrection(customerText: string, reply: string, reads:
         + T.status(statusWord(oldest.status, l)) + '.'
         // «¿mi primer pedido está pagado?» (production QA 27-oct): the correction must still say whether it was paid.
         + (PAID_STATUSES.has(oldest.paymentStatus.toLowerCase()) ? '' : NOT_PAID[l]);
+}
+
+/**
+ * F4300-11 (production QA 27-oct, store tenant): «¿cuántos pedidos he hecho en la tienda?» read the six orders, all cancelled, and was
+ * answered «Ha hecho un total de 6 pedidos» / «You have made a total of 6 purchases» — in es/pt/en/fr — never saying that none went
+ * through. When the reply says how many orders there are, the whole list was read and every one of them is cancelled, the reply says it.
+ */
+const ALL_CANCELLED: Record<Lang, (n: number) => string> = {
+    es: n => n === 1 ? 'Ese pedido está cancelado.' : `Los ${n} están cancelados; ninguno se completó.`,
+    en: n => n === 1 ? 'That order is cancelled.' : `All ${n} are cancelled; none of them went through.`,
+    pt: n => n === 1 ? 'Esse pedido está cancelado.' : `Os ${n} estão cancelados; nenhum foi concluído.`,
+    fr: n => n === 1 ? 'Cette commande est annulée.' : `Les ${n} sont annulées ; aucune n’a abouti.`,
+};
+const COUNT_WORDS: Record<string, number> = {
+    uno: 1, una: 1, one: 1, um: 1, uma: 1, une: 1, dos: 2, two: 2, dois: 2, duas: 2, deux: 2, tres: 3, 'três': 3, three: 3, trois: 3,
+    cuatro: 4, four: 4, quatro: 4, quatre: 4, cinco: 5, five: 5, cinq: 5, seis: 6, six: 6, siete: 7, seven: 7, sete: 7, sept: 7,
+    ocho: 8, eight: 8, oito: 8, huit: 8, nueve: 9, nine: 9, nove: 9, neuf: 9, diez: 10, ten: 10, dez: 10, dix: 10,
+};
+
+export function allCancelledCountCorrection(reply: string, reads: ReadonlyArray<{ name?: string; result?: any }>, lang?: string): string | null {
+    const text = String(reply || '');
+    if (!text.trim() || CANCEL_WORD.test(text)) return null;
+    const found = pastOrdersOfTurn(reads);
+    if (!found || !found.listed.length || found.count !== found.listed.length) return null;
+    const cancelled = (row: OrderView) => CANCELLED.has(STATUS_ALIASES[row.status.toLowerCase()] ?? row.status.toLowerCase());
+    if (!found.listed.every(cancelled)) return null;
+    const n = found.listed.length;
+    // The reply says the count: «6 pedidos», «six orders», «un total de seis».
+    const said = [...text.matchAll(/(?<![\p{L}\d.,])(\d{1,3}|\p{L}+)(?![\p{L}\d])/gu)]
+        .some(m => (/^\d+$/.test(m[1]) ? Number(m[1]) : COUNT_WORDS[m[1].toLowerCase()]) === n);
+    if (!said) return null;
+    const note = ALL_CANCELLED[langOf(lang)](n);
+    const body = text.trim();
+    const closing = body.match(/(?<=[.!]\s+)[^.!?]*\?\s*$/u);
+    if (closing) return `${body.slice(0, closing.index!).trimEnd()} ${note} ${closing[0].trim()}`;
+    return `${body} ${note}`;
 }

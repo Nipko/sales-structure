@@ -76,5 +76,10 @@ export function stockShortfallNote(reply: string, customerText: string, catalog:
     const [wanted] = asked;
     if (wanted <= left || saysStock(text, left)) return null;
     const say = TEXTS[String(lang || 'es').slice(0, 2)] ?? TEXTS.es;
-    return `${text.trim()}\n\n${say(left, product.title, wanted)}`;
+    // Before the reply's closing question («¿Quiere que le ayude a hacer el pedido?»), so the question stays last.
+    const body = text.trim();
+    const closing = body.match(/(?<=[.!]\s+)[^.!?]*\?\s*$/u);
+    const note = say(left, product.title, wanted);
+    if (closing) return `${body.slice(0, closing.index!).trimEnd()} ${note} ${closing[0].trim()}`;
+    return `${body}\n\n${note}`;
 }

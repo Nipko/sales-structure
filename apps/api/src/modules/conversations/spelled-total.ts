@@ -111,7 +111,7 @@ function unitOnlyCorrection(reply: string, customerText: string, lang?: string):
         const said = (TOTAL_TEXT[language] ?? TOTAL_TEXT.es)(n, (unit.word as Record<string, string>)[language] ?? unit.word.es,
             from + total, `${n} × ${reply.slice(base.index!, base.index! + base.length!)}`);
         const deferred = reply.match(DEFERRED);
-        if (deferred) return `${reply.slice(0, deferred.index!)}${said} ${reply.slice(deferred.index! + deferred[0].length)}`.trim();
+        if (deferred) return `${reply.slice(0, deferred.index!).trimEnd()} ${said} ${reply.slice(deferred.index! + deferred[0].length)}`.trim();
         const rest = reply.slice(base.index! + base.length!);
         const end = rest.search(/[.!?](?!\d)/);
         const at = end < 0 ? reply.length : base.index! + base.length! + end + 1;

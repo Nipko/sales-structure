@@ -52,4 +52,22 @@ describe('F4300-51 · a FAQ written in one language answers the same question in
         ];
         expect(pickTopicFallbackFaq(AGENCY, message)?.id).toBe('docs');
     });
+
+    it.each([
+        ['is there a discount for children?', 'kids'], ['y a-t-il une réduction pour les enfants ?', 'kids'],
+        ['what products do you use?', 'products'], ['how much commission do you charge?', 'commission'],
+        ['how do I book a table?', 'table'], ['how long does orthodontic treatment take?', 'ortho'],
+        ['what do I do in a dental emergency?', 'emergency'], ['what is the warranty period of the QA headphone?', 'warranty'],
+    ])('batch 3: «%s» → %s', (message, id) => {
+        const MIXED = [
+            faq('kids', '¿Hay descuento para niños?', 'Las tarifas para niños dependen del paquete y de la edad.'),
+            faq('products', '¿Qué productos usan?', 'Cuéntanos si tienes alguna alergia o preferencia y lo tenemos en cuenta.'),
+            faq('commission', '¿Cuál es la comisión?', 'La comisión depende del tipo de operación.'),
+            faq('table', '¿Cómo hago una reserva?', 'Puedo reservar tu mesa ahora. Dime para cuántas personas y la fecha.'),
+            faq('ortho', '¿Cuánto tiempo dura un tratamiento de ortodoncia?', 'Depende de tu caso, generalmente entre 12 y 24 meses.'),
+            faq('emergency', '¿Qué hago en caso de emergencia?', 'Acude al servicio de urgencias más cercano.'),
+            faq('warranty', '¿Cuál es el plazo de garantía QA del audífono de prueba?', '72 días calendario desde la entrega.'),
+        ];
+        expect(pickTopicFallbackFaq(MIXED, message)?.id).toBe(id);
+    });
 });

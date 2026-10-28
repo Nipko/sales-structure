@@ -21,7 +21,7 @@ const tokens = (value: string) => fold(value).match(/[\p{L}\p{N}]+/gu) || [];
 // words otherwise. "last"/"lasts" mean both "the final one" and "continues for", so they never
 // take part in the comparison.
 // «plazo»/«prazo»/«délai» de una garantía es su duración (F4300-51: «¿Cuál es el plazo de garantía…?» answers «how long is the warranty»).
-const DURATION_WORDS = new Set(['dura', 'duran', 'durar', 'duracion', 'long', 'duration', 'duracao', 'duree', 'dure', 'durent', 'plazo', 'prazo', 'delai']);
+const DURATION_WORDS = new Set(['dura', 'duran', 'durar', 'duracion', 'long', 'duration', 'duracao', 'duree', 'dure', 'durent', 'plazo', 'prazo', 'delai', 'period', 'periodo', 'periode']);
 /**
  * F4300-51 (production QA 28-oct, store tenant): the business writes its FAQs in one language and customers ask in four. «how long
  * is the warranty on the QA test headphone?», «combien de temps dure la garantie…?», «quanto tempo dura a garantia… de teste?» never
@@ -51,6 +51,18 @@ const EQUIVALENTS: Record<string, string[]> = {
     comprar: ['comprar', 'compra', 'buy', 'buying', 'purchase', 'acheter', 'achat'],
     arrendar: ['arrendar', 'arriendo', 'alquilar', 'alquiler', 'rent', 'renting', 'rental', 'alugar', 'aluguel', 'louer'],
     inmueble: ['inmueble', 'inmuebles', 'propiedad', 'propiedades', 'property', 'properties', 'imovel', 'imoveis', 'bien', 'biens'],
+    // F4300-51 residue (production QA 28-oct, after #260): «is there a discount for children?», «what products do you use?», «how much
+    // commission do you charge?», «how do I book a table?», «how long does orthodontic treatment take?» missed the Spanish FAQ.
+    descuento: ['descuento', 'descuentos', 'discount', 'discounts', 'desconto', 'descontos', 'reduction', 'reductions', 'remise', 'remises'],
+    nino: ['nino', 'ninos', 'nina', 'ninas', 'child', 'children', 'kid', 'kids', 'crianca', 'criancas', 'enfant', 'enfants'],
+    producto: ['producto', 'productos', 'product', 'products', 'produto', 'produtos', 'produit', 'produits'],
+    comision: ['comision', 'comisiones', 'commission', 'commissions', 'comissao', 'comissoes', 'honorarios', 'fee', 'fees', 'honoraires'],
+    reserva: ['reserva', 'reservas', 'reservar', 'reservation', 'reservations', 'book', 'booking', 'reserver', 'reservacion'],
+    ortodoncia: ['ortodoncia', 'orthodontic', 'orthodontics', 'ortodontia', 'orthodontie', 'braces', 'brackets'],
+    usar: ['usar', 'usan', 'usa', 'usamos', 'use', 'uses', 'using', 'usam', 'utilizan', 'utilisez', 'utiliser', 'utilizam'],
+    mesa: ['mesa', 'mesas', 'table', 'tables'],
+    tratamiento: ['tratamiento', 'tratamientos', 'treatment', 'treatments', 'tratamento', 'tratamentos', 'traitement', 'traitements'],
+    emergencia: ['emergencia', 'emergencias', 'emergency', 'emergencies', 'urgence', 'urgences', 'urgencia', 'urgencias'],
     mascota: ['mascota', 'mascotas', 'pet', 'pets', 'animal', 'animais', 'animaux', 'animales'],
     ubicacion: ['ubicacion', 'ubicados', 'ubicado', 'location', 'address', 'endereco', 'localizacao', 'adresse', 'direccion'],
 };
@@ -144,6 +156,8 @@ const QUESTION_FILLER = new Set([
     'ha', 'coute', 'ont', 'combien', 'quantas', 'quantos', 'cuantas', 'cuantos', 'sont', 'accept', 'accepts', 'aceptan', 'aceitam', 'acceptez',
     // How a question is asked in the four languages («¿Cómo PUEDO…?», «comment PUIS-je…?», «como POSSO ENTRAR em contato?»).
     'comment', 'puis', 'puedo', 'puede', 'posso', 'pode', 'entrar',
+    // «¿Cómo HAGO una reserva?», «how do I…», «what do I DO in…», «EN CASO DE emergencia», «how long does it TAKE».
+    'hago', 'hacer', 'hace', 'faco', 'fazer', 'faire', 'fais', 'caso', 'case', 'cas', 'take', 'takes',
 ]);
 
 /** The topic words of ONE part of a message: what is left after the function words and the words that only ask. */

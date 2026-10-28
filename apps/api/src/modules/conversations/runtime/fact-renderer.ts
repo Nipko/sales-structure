@@ -691,7 +691,10 @@ export function renderReplyFacts(input: RenderFactsInput): RenderFactsOutcome {
         const count = String.raw`(\d{1,3}(?![\d.,]\d)|\p{L}+)`;
         const totals = marked
             .replace(new RegExp(String.raw`(\d+)\s*${times}\s*${count}`, 'giu'), (whole, index, n) => totalOf(index, n, whole))
-            .replace(/(?<![\d.,])(\d{1,3})\s*[x×*]\s*(\d+)/g, (whole, n, index) => totalOf(index, n, whole));
+            // F4300-47 residue (production QA 28-oct): «1.200.000 COP (8 × ⟦price⟧)» is a total with its working already; the working
+            // inside the parenthesis is not made a total again («1.200.000 COP (1.200.000 COP (8 × 150.000 COP))».
+            .replace(/(?<![\d.,])(\d{1,3})\s*[x×*]\s*(\d+)/g, (whole: string, n: string, index: string, offset: number, all: string) =>
+                /\(\s*$/.test(all.slice(0, offset)) ? whole : totalOf(index, n, whole));
         // «150.000 COP COP» (production QA 26-oct): the rendered amount carries its currency and the model wrote it again after the token.
         const filled = totals.replace(/(\d+)/g, (_m, index) => values[Number(index)]);
         return { text: filled.replace(/\b([A-Z]{3})(\s+)\1\b/g, '$1') };

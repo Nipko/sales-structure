@@ -26,6 +26,15 @@ const TEXT: Record<string, (item: string) => string> = {
     fr: item => `Les informations enregistrées ne précisent pas si cela inclut ${item}.`,
 };
 
+// «n'inclut pas d'inclusions ou d'exclusions spécifiques», «no incluye extras»: no item named, only the fact that none is recorded.
+const GENERIC_ITEM = /^(?:inclusi|exclusi|extra|item|ítem|element|élément|iten|nada|nothing|rien|specific|espec[ií]fic)/i;
+const GENERIC_TEXT: Record<string, string> = {
+    es: 'No consta en la información registrada qué incluye.',
+    en: 'What it includes is not recorded in the information I have.',
+    pt: 'Não consta na informação registrada o que inclui.',
+    fr: 'Les informations enregistrées ne précisent pas ce qui est inclus.',
+};
+
 const fold = (text: string) => String(text || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
 /** Every «excludes» entry and every menu-item text the turn read; null when the turn read no package and no menu. */
@@ -79,7 +88,7 @@ export function unbackedExclusionCorrection(reply: string, reads: ReadonlyArray<
         const words = fold(item).split(/[^a-z0-9]+/).filter(word => word.length >= 4);
         if (words.some(word => listed.includes(word))) return sentence;
         changed = true;
-        return say(item);
+        return GENERIC_ITEM.test(item) ? (GENERIC_TEXT[code] ?? GENERIC_TEXT.es) : say(item);
     });
     return changed ? sentences.join(' ') : null;
 }

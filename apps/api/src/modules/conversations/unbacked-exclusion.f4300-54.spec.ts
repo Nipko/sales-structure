@@ -31,4 +31,9 @@ describe('F4300-54 · an exclusion no read lists is said as «not recorded»', (
     ])('stays: %s', (_why, reply, reads) => {
         expect(unbackedExclusionCorrection(reply, reads as any, 'es')).toBeNull();
     });
+
+    it('a generic item says what is not recorded, not «si cela inclut inclusions»', () => {
+        expect(unbackedExclusionCorrection("Le Spark QA Tour coûte 125 EUR par personne. Le forfait n'inclut pas d'inclusions ou d'exclusions spécifiques.", SPARK_TOUR, 'fr'))
+            .toBe('Le Spark QA Tour coûte 125 EUR par personne. Les informations enregistrées ne précisent pas ce qui est inclus.');
+    });
 });

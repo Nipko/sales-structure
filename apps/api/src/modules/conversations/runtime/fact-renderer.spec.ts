@@ -175,3 +175,16 @@ describe('the projected catalogue and the prompt view', () => {
         expect(factTokenId(dishPrice)).toBe(factTokenId(fact("money", DISH, "price", 14000)));
     });
 });
+
+describe('F4300-47 residue · a total already said with its working is not multiplied again (production QA 28-oct)', () => {
+    it('«TOTAL (8 × ⟦price⟧)» keeps its working', () => {
+        const out = render(`Para 8 noches, el total sería 1.440.000 COP (8 × ${token('fact', nightPrice)}).`, [nightPrice], 'es', { customerText: '¿y por 8 noches?' });
+        expect(out.text).toContain('1.440.000 COP (8 × 180.000 COP)');
+        expect(out.text).not.toContain('1.440.000 COP (1.440.000 COP');
+    });
+
+    it('«⟦price⟧ × 8» alone is still made the total', () => {
+        const out = render(`Para 8 noches: ${token('fact', nightPrice)} x 8.`, [nightPrice], 'es', { customerText: '¿y por 8 noches?' });
+        expect(out.text).toContain('1.440.000 COP (8 × 180.000 COP)');
+    });
+});

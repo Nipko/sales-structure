@@ -208,7 +208,9 @@ function questionExtras(question: string, message: Set<string>): string[] {
         if (message.has(left)) alternates.add(right);
         if (message.has(right)) alternates.add(left);
     }
-    return own.filter(t => !message.has(t) && !alternates.has(t));
+    // F4300-53 (production QA 28-oct): «audífono DE PRUEBA», «QA», «test» mark a seeded record, not another topic — the warranty FAQ
+    // «¿Cuál es el plazo de garantía QA del audífono de prueba?» never answered «¿cuánto dura la garantía del Audífono QA Aurora?».
+    return own.filter(t => !message.has(t) && !alternates.has(t) && !GENERIC_SET.has(t));
 }
 
 /**

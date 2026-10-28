@@ -31,6 +31,8 @@ export function spelledTotalCorrection(reply: string, customerText: string, lang
     if (!asked.length) return null;
     const mentions = moneyMentionsIn(text);
     if (!mentions.length) return null;
+    const unitToken = unitTokenTotals(text, asked, lang);
+    if (unitToken) return unitToken;
     let changed = false;
     const out = text.replace(MULTIPLIER, (whole: string, doubled?: string, word?: string, count?: string, offset?: number) => {
         const key = String(doubled || word || count || '').toLowerCase();
@@ -121,3 +123,63 @@ function unitOnlyCorrection(reply: string, customerText: string, lang?: string):
 }
 
 const WORKED = new RegExp(String.raw`\s*(?:multiplicad[oa]s? por|multiplied by|multipli[eé]e?s? par)\s+(\d{1,2}|\p{L}+)(?:\s+(?:noches|nights|noites|nuits|personas|people|pessoas|personnes|veces|times|vezes|fois))?`, 'giu');
+
+/**
+ * F4300-47 residue (production QA 28-oct, rendered facts on, image ae71309a): the model cites a price by its token and has no token for
+ * the total, so it wrote the unit price where the total goes — «el total sería 3 veces 13.500 COP, es decir, 13.500 COP por cada
+ * plato», «pagará 119.900 COP cada uno, lo que suma un total de 119.900 COP por los dos», «150 000 COP par nuit multiplié par 6
+ * nuits, soit 150 000 COP» — in es/en/pt/fr, menu, store and hotel. With a quantity the customer asked for, these say the total:
+ *   · «N veces / times / fois / vezes X» → «TOTAL (N × X)»;
+ *   · «X por noche / per night / par nuit multiplicado por / multiplied by / multiplié par N …» → «TOTAL (N × X por noche)»;
+ *   · «total (de) X» / «soit X» / «es decir X» where X is the unit price already said → «TOTAL (N × X)» — never when what follows
+ *     is per unit («por cada plato», «each», «chacun», «par nuit»).
+ */
+const COUNT_TIMES = /(?<!\p{L})(\d{1,2}|\p{L}+)\s+(?:veces|times|fois|vezes)\s+$/iu;
+const UNIT_TIMES = /^\s+(?:por|per|par|a|the)\s+\p{L}+\s+(?:multiplicad[oa]s?\s+por|multiplied\s+by|multipli[eé]e?s?\s+par)\s+(\d{1,2}|\p{L}+)(?:\s+(?:noches|nights|noites|nuits|personas|people|pessoas|personnes|platos|dishes|pratos|plats|unidades|units|unités))?/iu;
+const TOTAL_LEAD = /(?<!\p{L})(?:total(?:\s+(?:de|of|del?))?|en\s+total|in\s+total|au\s+total|ao\s+todo|no\s+total|suma(?:\s+un\s+total\s+de)?|soit|es\s+decir,?|that\s+is,?|ou\s+seja,?|c['’]est-[àa]-dire,?|lo\s+que\s+(?:suma|da)(?:\s+un\s+total\s+de)?)\s*:?\s*$/iu;
+const PER_UNIT_AFTER = /^\s*(?:por\s+cada|cada\s+uno|cada\s+una|por\s+(?:noche|persona|plato|unidad)|each|per\s+\p{L}+|par\s+\p{L}+|chacun|chacune|por\s+(?:noite|pessoa|prato)|cada)(?!\p{L})/iu;
+
+function countOf(word: string): number {
+    const key = word.toLowerCase();
+    return /^\d+$/.test(key) ? Number(key) : (NUMBER_WORDS[key] ?? 0);
+}
+
+function unitTokenTotals(text: string, asked: number[], lang?: string): string | null {
+    const language = String(lang || 'es');
+    const mentions = moneyMentionsIn(text);
+    const say = (amount: number, currency: string | undefined) => formatPriceWithCurrency(language, amount, currency);
+    // 1. «N veces X», «X por noche multiplicado por N noches».
+    for (const m of mentions) {
+        const start = m.index!, end = start + m.length!;
+        const amountText = text.slice(start, end);
+        const before = text.slice(0, start).match(COUNT_TIMES);
+        if (before) {
+            const n = countOf(before[1]);
+            const total = n >= 2 && asked.includes(n) ? say(m.amount * n, m.currency) : '';
+            if (total) return `${text.slice(0, start - before[0].length)}${before[0].match(/^\s*/)![0]}${total} (${n} × ${amountText})${text.slice(end)}`.replace(/\s{2,}/g, ' ');
+        }
+        const after = text.slice(end).match(UNIT_TIMES);
+        if (after) {
+            const n = countOf(after[1]);
+            const total = n >= 2 && asked.includes(n) ? say(m.amount * n, m.currency) : '';
+            if (total) {
+                const unit = after[0].split(/\s+(?:multiplicad|multiplied|multipli)/i)[0].trim();
+                return `${text.slice(0, start)}${total} (${n} × ${amountText} ${unit})${text.slice(end + after[0].length)}`;
+            }
+        }
+    }
+    // 2. «total de X» where X is the unit price said before it, and nothing in the reply is the total yet.
+    const wanted = asked.filter(n => n >= 2);
+    if (wanted.length !== 1) return null;
+    const [n] = wanted;
+    for (let i = 1; i < mentions.length; i++) {
+        const m = mentions[i];
+        const start = m.index!, end = start + m.length!;
+        if (!mentions.slice(0, i).some(prev => Math.abs(prev.amount - m.amount) < 0.005)) continue;
+        if (mentions.some(other => Math.abs(other.amount - m.amount * n) < 0.005)) return null;
+        if (!TOTAL_LEAD.test(text.slice(Math.max(0, start - 40), start)) || PER_UNIT_AFTER.test(text.slice(end))) continue;
+        const total = say(m.amount * n, m.currency);
+        if (total) return `${text.slice(0, start)}${total} (${n} × ${text.slice(start, end)})${text.slice(end)}`;
+    }
+    return null;
+}

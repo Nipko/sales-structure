@@ -87,7 +87,11 @@ export const RESTAURANTS_TOOLS: ToolDefinition[] = [
                 paymentMethod: {
                     type: 'string',
                     enum: ['cash', 'card', 'payment_link', 'pse', 'transfer'],
-                    description: 'How the customer will pay. payment_link uses the tenant active provider selected by the backend; never select a provider by name.',
+                    description: 'How the customer will pay. payment_link uses the tenant active provider selected by the backend; never select a provider by name. '
+                        // F4300-58 (production QA 28-oct): «¿qué medios de pago aceptan?» was answered with exactly this list.
+                        + 'These are the values an order can record, NOT the payment methods this business accepts: never list them to a customer '
+                        + 'as accepted methods. What the business accepts comes only from its FAQs, policies or documents; if they do not say it, '
+                        + 'say it is not recorded.',
                 },
                 notes: { type: 'string', description: 'Free-form note for the kitchen / staff' },
             },

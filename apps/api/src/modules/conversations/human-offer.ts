@@ -159,7 +159,27 @@ const ACCEPT_BLOCKERS = new Set(['no', 'not', 'nao', 'non', 'pas', 'nunca', 'nev
  * A question, a negation or a condition («sí, pero antes…», «no gracias», «si me confirman el precio, entonces sí») is
  * never an acceptance, and neither is a «yes» that does not echo the offer and adds content («sí, el lunes»).
  */
+/**
+ * F4300-13 (production QA 28-oct, store and salon tenants): «That's fine, thanks for checking» (a polite NO) and «D'accord, merci» ×2
+ * answered «Voulez-vous que je demande à quelqu'un de l'équipe ?» and the conversation was handed to a person nobody asked for; the
+ * unattended return then stacked notices in two languages (F4300-23). An acknowledgement followed only by thanks («ok, gracias»,
+ * «d'accord, merci», «entendi, obrigado», «got it, thanks») closes the exchange, and «that's fine», «it's fine», «c'est bon», «tudo
+ * bem», «está bien así» decline it: neither accepts the offer. A real yes («sí, gracias», «yes please», «oui, merci») still does.
+ */
+const COURTESY_ACK = '(?:ok|okay|vale|listo|bueno|perfecto|perfect|great|alright|all right|d accord|entendido|entiendo|entendi|compris|parfait|noted|got it|understood|beleza|ta bom|certo)';
+const DECLINE = '(?:that s fine|that is fine|it s fine|it is fine|that s ok|that s okay|no need|c est bon|ca va|tudo bem|esta bien asi|esta bien|asi esta bien|no hace falta|nao precisa|pas besoin)';
+const THANKS = '(?:merci(?: beaucoup)?|gracias|muchas gracias|thanks?|thank you|obrigad[oa]|muito obrigad[oa])(?: (?:for|por|pour|pela|pelo) (?:checking|that|the info(?:rmation)?|letting me know|la info(?:rmacion)?|la informacion|l info(?:rmation)?|a informacao|verificar|revisar))?';
+const COURTESY_CLOSE = new RegExp(`^(?:${COURTESY_ACK} ${THANKS}|${DECLINE}(?: ${THANKS})?)$`);
+
+/** An acknowledgement with thanks, or a polite decline: the customer closes the exchange, accepting nothing. Pure. */
+export function isCourtesyClose(text: unknown): boolean {
+    if (typeof text !== 'string') return false;
+    const folded = offerReplyTokens(text).join(' ');
+    return COURTESY_CLOSE.test(folded);
+}
+
 export function isOfferAcceptance(text: unknown): boolean {
+    if (isCourtesyClose(text)) return false;
     if (isAffirmation(text)) return true;
     const tokens = unblockedReplyTokens(text);
     if (!tokens) return false;

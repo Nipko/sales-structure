@@ -159,6 +159,7 @@
     "apps/api/src/modules/conversations/human-offer.f4300-13-courtesy.spec.ts",
     "apps/api/src/modules/conversations/unbacked-exclusion.f4300-54.spec.ts",
     "apps/api/src/modules/conversations/spelled-total.f4300-47-unit-token.spec.ts",
+    "apps/api/src/modules/conversations/spelled-total.f4300-47-group.spec.ts",
     "apps/api/src/modules/conversations/runtime/fact-renderer.f4300-37d.spec.ts",
     "apps/api/src/modules/conversations/runtime/operation-lexical-cues.f4300-08-connectivity.spec.ts",
     "apps/api/src/modules/conversations/past-orders-report.f4300-11b.spec.ts",

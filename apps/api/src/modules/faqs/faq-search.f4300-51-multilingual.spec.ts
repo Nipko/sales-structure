@@ -12,6 +12,7 @@ const STORE = [
     faq('pay', '¿Cuáles son los métodos de pago?', 'Te confirmamos los medios de pago disponibles según lo que necesites.'),
     faq('where', '¿Dónde están ubicados?', 'Con gusto te compartimos nuestra dirección y cómo llegar.'),
     faq('returns', '¿Tienen política de devolución?', 'Cuéntanos tu caso y te confirmamos qué condiciones de cambio o devolución aplican.'),
+    faq('contact', '¿Cómo puedo contactarlos?', 'Puedes escribirnos aquí, llamarnos o visitarnos. Estamos para ayudarte.'),
     faq('warranty', '¿Cuál es el plazo de garantía QA del audífono de prueba?', 'Para este piloto ficticio, el audífono QA tiene garantía de 72 días calendario desde la entrega.'),
 ];
 
@@ -28,6 +29,7 @@ describe('F4300-51 · a FAQ written in one language answers the same question in
     it.each([
         ['what payment methods do you accept?', 'pay'], ['quais são os métodos de pagamento?', 'pay'],
         ['do you have a returns policy?', 'returns'], ['quels sont vos horaires ?', 'hours'],
+        ['how can I contact you?', 'contact'], ['comment puis-je vous contacter ?', 'contact'], ['como posso entrar em contato?', 'contact'],
     ])('«%s» → %s', (message, id) => {
         expect(pickTopicFallbackFaq(STORE, message)?.id).toBe(id);
     });
@@ -38,5 +40,16 @@ describe('F4300-51 · a FAQ written in one language answers the same question in
 
     it('the candidate search looks for every spelling of the topic', () => {
         expect(withEquivalents(topicTermsOf('how long is the warranty?'))).toEqual(expect.arrayContaining(['warranty', 'garantia', 'garantie']));
+    });
+
+    it.each([
+        'what documents do I need to buy a property?', 'quels documents me faut-il pour acheter un bien ?', 'que documentos preciso para comprar um imóvel?',
+    ])('«%s» → the documents FAQ of the agency', message => {
+        const AGENCY = [
+            faq('docs', '¿Qué documentos necesito para arrendar / comprar?', 'Arriendo: cédula y certificado laboral. Compra: capacidad crediticia y separación.'),
+            faq('commission', '¿Cuánto cobran de comisión / honorarios?', 'Los honorarios dependen de si es arriendo o venta.'),
+            faq('visit', '¿Cómo agendo una visita a la propiedad?', 'Agendamos visita con el asesor de zona.'),
+        ];
+        expect(pickTopicFallbackFaq(AGENCY, message)?.id).toBe('docs');
     });
 });

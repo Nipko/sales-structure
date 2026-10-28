@@ -151,6 +151,8 @@
     "apps/api/src/modules/conversations/stock-shortfall.f4300-37.spec.ts",
     "apps/api/src/modules/conversations/response-validator.customer-amounts.f4300-48.spec.ts",
     "apps/api/src/modules/conversations/past-orders-report.f4300-11c.spec.ts",
+    "apps/api/src/modules/conversations/budget-verdict.f4300-50.spec.ts",
+    "apps/api/src/modules/conversations/language-detector.f4300-16-portuguese-informal.spec.ts",
     "apps/api/src/modules/conversations/runtime/fact-renderer.f4300-37d.spec.ts",
     "apps/api/src/modules/conversations/runtime/operation-lexical-cues.f4300-08-connectivity.spec.ts",
     "apps/api/src/modules/conversations/past-orders-report.f4300-11b.spec.ts",

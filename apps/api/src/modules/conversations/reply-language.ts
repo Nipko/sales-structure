@@ -177,6 +177,22 @@ function sentenceInOtherLanguage(text: string, code: string, ignore: readonly st
 }
 
 /**
+ * F4300-52 (production QA 28-oct): a rewrite to Portuguese whose sentences were all Portuguese but the closing question («…é de 72
+ * dias corridos a partir da entrega. ¿Le puedo ayudar con algo más?») was rejected whole and the Spanish reply went out. The rewrite
+ * without its closing QUESTION when that question alone is still in `source`; null otherwise. Only the closing question: a sentence of
+ * substance left in the other language (an urgent-care advice) is never dropped. Pure.
+ */
+export function withoutSentencesIn(text: string, source: ReplyLang, code: string): string | null {
+    const sentences = String(text || '').split(/(?<=[.!?…])\s+|[\n\r]+|(?=[¿¡])/).map(sentence => sentence.trim()).filter(Boolean);
+    if (sentences.length < 2) return null;
+    const last = sentences[sentences.length - 1];
+    if (!/\?\s*$/.test(last)) return null;
+    const written = replyLanguageOf(last) ?? mixedInto(last, code) ?? wholeReplyMismatch(last, code);
+    if (written !== source) return null;
+    return sentences.slice(0, -1).join(' ').trim();
+}
+
+/**
  * Words of another language that are ordinary words of the turn language too, so they are no evidence inside it: French «son»
  * («son statut») and «es» («tu es»), Portuguese «a» and «tu».
  */

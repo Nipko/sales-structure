@@ -18,7 +18,7 @@ import { recordFirstReply } from '../../common/utils/first-reply.util';
 import { stripInternalMarkers } from '../../common/utils/internal-markers.util';
 import { projectAvailableServices } from '../appointments/service-price-status';
 import { AbsentSubjects, absentServicesIn, annotateKnowledgeItems, annotateKnowledgeToolResult, notOfferedReply, offerClaimForAbsent, type CatalogueEntry } from './runtime/catalog-over-faq';
-import { catalogNamesOfTurn, languageDenialOf, languageMismatch, rewriteRejection, type RewriteRejectionReason, verbatimTermsOf, wholeReplyMismatch } from './reply-language';
+import { catalogNamesOfTurn, languageDenialOf, languageMismatch, rewriteRejection, type ReplyLang, type RewriteRejectionReason, verbatimTermsOf, wholeReplyMismatch, withoutSentencesIn } from './reply-language';
 import { localeForReply, normalizeReplyAmounts } from './reply-price-format';
 import { foldedSql, foldQueryText } from '../../common/utils/sql-accent-fold.util';
 import { servedAgentAuthority, type ServedAgentAuthority } from '../persona/served-agent-authority';
@@ -559,6 +559,14 @@ const REPLY_LANGUAGE_RETRY: Record<string, (missing: string[]) => string> = {
     en: missing => `Your rewrite changed or dropped: ${missing.join(' | ')}. Write it again in English and copy those texts exactly as they are. Return only the message.`,
     pt: missing => `Sua reescrita mudou ou removeu: ${missing.join(' | ')}. Escreva de novo em português e copie esses textos exatamente como estão. Devolva apenas a mensagem.`,
     fr: missing => `Votre réécriture a modifié ou supprimé : ${missing.join(' | ')}. Écrivez-la de nouveau en français en recopiant ces textes exactement tels quels. Renvoyez uniquement le message.`,
+};
+
+/** F4300-52: the second rewrite request, when the first one left part of the message in the language it had to leave. */
+const REPLY_LANGUAGE_STILL: Record<string, string> = {
+    es: 'Parte de tu reescritura sigue en otro idioma. Escribe TODO el mensaje en español, también la pregunta final. Devuelve solo el mensaje.',
+    en: 'Part of your rewrite is still in another language. Write the WHOLE message in English, the closing question included. Return only the message.',
+    pt: 'Parte da sua reescrita continua em outro idioma. Escreva a mensagem INTEIRA em português, inclusive a pergunta final. Devolva apenas a mensagem.',
+    fr: 'Une partie de votre réécriture est encore dans une autre langue. Écrivez TOUT le message en français, y compris la question finale. Renvoyez uniquement le message.',
 };
 
 /** What the reply-language guard did this turn, read back by the pipeline into the turn trace. */
@@ -7554,8 +7562,18 @@ export class ConversationsService {
             outcome.rejections.push(rejection.reason);
             this.recordAgentSignal(tenantId, 'reply_language_rewrite_rejected', session, { reason: rejection.reason, attempt, missing: rejection.missing });
             this.logger.warn(`[Guardrail] Language rewrite ${attempt} rejected (${rejection.reason}${rejection.missing.length ? `: ${rejection.missing.join(' | ')}` : ''}): "${text.slice(0, 80)}"`);
-            if (attempt === 2 || (rejection.reason !== 'lost_name' && rejection.reason !== 'lost_figure')) break;
-            messages = [...messages, { role: 'assistant', content: text }, { role: 'user', content: REPLY_LANGUAGE_RETRY[code](rejection.missing) }];
+            // F4300-52: a rewrite that left a sentence in the language it had to leave is asked again once; still so, the sentences
+            // in the other language are dropped when what is left keeps every figure, URL and name.
+            if (rejection.reason === 'still_source_language' && written) {
+                const pruned = withoutSentencesIn(text, written as ReplyLang, code);
+                if (attempt === 2 && pruned && !rewriteRejection(response, pruned, names, written, code)) {
+                    outcome.accepted = true;
+                    return pruned;
+                }
+            }
+            if (attempt === 2 || !['lost_name', 'lost_figure', 'still_source_language'].includes(rejection.reason)) break;
+            const retry = rejection.reason === 'still_source_language' ? REPLY_LANGUAGE_STILL[code] : REPLY_LANGUAGE_RETRY[code](rejection.missing);
+            messages = [...messages, { role: 'assistant', content: text }, { role: 'user', content: retry }];
         }
         return response;
     }

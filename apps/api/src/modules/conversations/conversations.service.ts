@@ -10,6 +10,7 @@ import { isOwnBookingsQuestion, isPastOrdersQuestion, lexicalRequiredReadsOperat
 import { allCancelledCountCorrection, cancelledPurchaseCorrection, firstOrderCorrection, pastOrdersReportText, unpaidOrderCorrection } from './past-orders-report';
 import { spelledTotalCorrection } from './spelled-total';
 import { stockShortfallNote } from './stock-shortfall';
+import { unbackedExclusionCorrection } from './unbacked-exclusion';
 import { budgetVerdictCorrection } from './budget-verdict';
 import { wrongServiceCorrection } from './wrong-service';
 import { listingSearchSlotsIn, requiredReadSlotsIn } from './runtime/required-read-slots';
@@ -7781,6 +7782,13 @@ export class ConversationsService {
         if (budgetVerdict) {
             this.logger.warn(`[Guardrail] The enough / not-enough verdict contradicted the figures: "${response.slice(0, 100)}"`);
             response = budgetVerdict;
+        }
+        // F4300-54: «the Spark QA Tour does not include lunch», «el plato no incluye postre» with no read that excludes it: not recorded.
+        const unbackedExclusion = unbackedExclusionCorrection(response, [...(executedTools || []), ...toolReadsOfTurnMessages(currentMessages)], lang);
+        if (unbackedExclusion) {
+            this.recordAgentSignal(tenantId, 'claim_unbacked', session);
+            this.logger.warn(`[Guardrail] An exclusion no read lists is said as not recorded: "${response.slice(0, 100)}"`);
+            response = unbackedExclusion;
         }
         // F4300-37: «¿cuánto costarían tres Audífono QA Aurora?» with 2 left is answered with the stock, not only the total.
         const stockShortfall = stockShortfallNote(response, customerText, trustedContext?.catalog, lang);

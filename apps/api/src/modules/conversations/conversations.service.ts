@@ -10,6 +10,7 @@ import { isOwnBookingsQuestion, isPastOrdersQuestion, lexicalRequiredReadsOperat
 import { allCancelledCountCorrection, cancelledPurchaseCorrection, firstOrderCorrection, pastOrdersReportText, unpaidOrderCorrection } from './past-orders-report';
 import { spelledTotalCorrection } from './spelled-total';
 import { stockShortfallNote } from './stock-shortfall';
+import { budgetVerdictCorrection } from './budget-verdict';
 import { wrongServiceCorrection } from './wrong-service';
 import { listingSearchSlotsIn, requiredReadSlotsIn } from './runtime/required-read-slots';
 import { demoAllowanceExhaustedText } from '../widget/widget-demo-link';
@@ -7753,6 +7754,12 @@ export class ConversationsService {
         if (spelledTotal) {
             this.logger.log(`[Guardrail] A total left as words is said as the amount: "${response.slice(0, 100)}"`);
             response = spelledTotal;
+        }
+        // F4300-50: «con 30.000 pesos, ¿me alcanza para dos platos?» → «no le alcanza… dos suman 27.000 COP»: the verdict the figures give.
+        const budgetVerdict = budgetVerdictCorrection(response, customerText, lang);
+        if (budgetVerdict) {
+            this.logger.warn(`[Guardrail] The enough / not-enough verdict contradicted the figures: "${response.slice(0, 100)}"`);
+            response = budgetVerdict;
         }
         // F4300-37: «¿cuánto costarían tres Audífono QA Aurora?» with 2 left is answered with the stock, not only the total.
         const stockShortfall = stockShortfallNote(response, customerText, trustedContext?.catalog, lang);

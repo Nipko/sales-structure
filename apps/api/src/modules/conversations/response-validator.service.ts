@@ -9,7 +9,7 @@ export interface PriceValidationResult {
     hallucinatedPrices: number[];
 }
 
-interface MoneyMention {
+export interface MoneyMention {
     amount: number;
     /** Undefined means that the marker is ambiguous (for example "$" or "pesos"). */
     currency?: string;
@@ -175,7 +175,7 @@ export function quantitiesIn(text: string): number[] {
  * The amounts the customer's message says: with a currency («30.000 pesos») or a bare figure of three or more digits that is not a
  * quantity, a time or a date («¿cuesta menos de 15.000?»).
  */
-function customerAmountsIn(text: string): MoneyMention[] {
+export function customerAmountsIn(text: string): MoneyMention[] {
     if (!text) return [];
     const out = moneyMentionsIn(text);
     for (const m of text.matchAll(/(?<![\d.,:/-])(\d{1,3}(?:[.,\s]\d{3})+|\d{3,})(?![\d:/]|[.,]\d)\s*(mil|k)?(?!\p{L})/giu)) {

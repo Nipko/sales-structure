@@ -18,3 +18,17 @@ describe('F4300-08 · wired or wireless is read from the product', () => {
         expect(isItemAttributeQuestion(text)).toBe(false);
     });
 });
+
+describe('F4300-08 · «does it have a cable?» is the same attribute (production QA 28-oct)', () => {
+    it.each([
+        'el audifono aurora tiene cable?', 'o audifono aurora tem fio?', 'does the aurora headphone have a cable?',
+        'l’audifono aurora a un fil ?', '¿trae cable?', 'vem com fio?',
+    ])('«%s» reads the product', text => {
+        expect(isItemAttributeQuestion(text)).toBe(true);
+        expect(needsItemDetailRead(text)).toBe(true);
+    });
+
+    it.each(['¿cuánto cuesta el envío?', 'a qué hora abren?'])('not an attribute: «%s»', text => {
+        expect(isItemAttributeQuestion(text)).toBe(false);
+    });
+});

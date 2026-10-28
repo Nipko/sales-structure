@@ -83,10 +83,16 @@ const TOTAL_TEXT: Record<string, (n: number, unit: string, total: string, workin
     fr: (n, unit, total, working) => `Pour ${n} ${unit} : ${total} (${working}).`,
 };
 
-function askedCount(customerText: string, unit: string): number | null {
+// F4300-47 residue (production QA 28-oct, image 7417ba99): «si somos 4», «if there are 4 of us», «se formos 4», «si nous sommes 4» name
+// the people without the word «personas» — the reply said «125 EUR por persona» and no total, in all four languages.
+const GROUP = new RegExp(String.raw`(?<!\p{L})(?:somos|seremos|vamos|iremos|formos|seremos|sommes|serons|allons)\s+(\d{1,2}|\p{L}+)(?![\p{L}\d])|(?<![\p{L}\d])(\d{1,2}|\p{L}+)\s+of\s+us(?!\p{L})`, 'giu');
+
+function askedCount(customerText: string, unit: string, group = false): number | null {
     const found = new Set<number>();
-    for (const m of customerText.matchAll(new RegExp(String.raw`(?<![\p{L}\d])(\d{1,2}|\p{L}+)\s+(?:${unit})(?!\p{L})`, 'giu'))) {
-        const key = m[1].toLowerCase();
+    const counts = [...customerText.matchAll(new RegExp(String.raw`(?<![\p{L}\d])(\d{1,2}|\p{L}+)\s+(?:${unit})(?!\p{L})`, 'giu'))].map(m => m[1]);
+    if (group) counts.push(...[...customerText.matchAll(GROUP)].map(m => m[1] || m[2]));
+    for (const word of counts) {
+        const key = word.toLowerCase();
         const n = /^\d+$/.test(key) ? Number(key) : NUMBER_WORDS[key];
         if (n && n >= 2) found.add(n);
     }
@@ -99,7 +105,7 @@ function unitOnlyCorrection(reply: string, customerText: string, lang?: string):
     if (!mentions.length) return null;
     const language = String(lang || 'es').slice(0, 2);
     for (const [key, unit] of Object.entries(UNITS)) {
-        const n = key === 'night' && A_WEEK.test(customerText) ? 7 : askedCount(customerText, unit.asked);
+        const n = key === 'night' && A_WEEK.test(customerText) ? 7 : askedCount(customerText, unit.asked, key === 'person');
         if (!n) continue;
         const per = new RegExp(String.raw`^\s*(?:${unit.per})(?!\p{L})`, 'iu');
         const units = mentions.filter(m => per.test(reply.slice(m.index! + m.length!)));

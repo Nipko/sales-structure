@@ -28,6 +28,22 @@ describe('F4300-52 · a rewrite with one sentence left in the source language', 
         const advice = 'Sinto muito que esteja passando por isso. Le recomiendo que busque atención urgente en la clínica o en un servicio de urgencias odontológicas.';
         expect(withoutSentencesIn(advice, 'es', 'pt')).toBeNull();
     });
+
+    // Production QA 29-oct: these closing questions share too many words with Portuguese to score as Spanish; «¿» is Spanish only.
+    it.each([
+        ['pt', 'O Audífono QA Aurora tem um preço atual de 119.900 COP e há 2 unidades disponíveis em stock. ¿Le gustaría que le ayude a hacer un pedido?',
+            'O Audífono QA Aurora tem um preço atual de 119.900 COP e há 2 unidades disponíveis em stock.'],
+        ['fr', 'La durée du Spark QA Tour 20261018T2140Z est de 4 heures. ¿Desea saber algo más sobre este tour?',
+            'La durée du Spark QA Tour 20261018T2140Z est de 4 heures.'],
+    ])('a closing question opened with «¿» in a %s reply is Spanish: flagged, and dropped from the rewrite', (code, text, kept) => {
+        expect(languageMismatch(text, code)).toBe('es');
+        expect(withoutSentencesIn(text, 'es', code)).toBe(kept);
+    });
+
+    it('«¿» never flags a Spanish reply, and a two-word «¡Hola!» is not a sentence', () => {
+        expect(languageMismatch('El precio es de 119.900 COP. ¿Le gustaría hacer un pedido?', 'es')).toBeNull();
+        expect(languageMismatch('Le prix est de 119 900 COP, merci beaucoup pour votre question. ¡Hola amigo!', 'fr')).toBeNull();
+    });
 });
 
 /**

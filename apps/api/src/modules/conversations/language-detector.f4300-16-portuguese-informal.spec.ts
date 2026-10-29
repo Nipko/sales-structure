@@ -15,6 +15,8 @@ describe('F4300-16 · informal Portuguese and short French are their own languag
         ['o audifono aurora tem fio?', 'pt'], ['l’audifono aurora a un fil ?', 'fr'],
         // 29-oct: a question with no other clear Portuguese word than its verb or adjective.
         ['Que tipo de aquecimento central o apartamento possui?', 'pt'], ["A que hora exata começa o 'Spark QA Tour 20261018T2140Z'?", 'pt'],
+        ['O Audífono QA Aurora requer receita médica?', 'pt'], ["O produto 'QA Agente Stock 20261020T1737Z' exige receita médica?", 'pt'],
+        ['O Audífono QA Aurora precisa de receita médica?', 'pt'],
     ])('«%s» → %s, whatever the stored language', (text, lang) => {
         for (const previous of ['en', 'es', 'fr', 'pt', null]) {
             expect(detector.detect(text, 'es', previous)).toBe(lang);

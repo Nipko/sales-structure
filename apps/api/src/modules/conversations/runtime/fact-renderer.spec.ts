@@ -162,6 +162,7 @@ describe('what the model typed itself', () => {
             ['The room does not include any breakfast or specific amenities listed in the rate.', 'en'],
             ['O quarto não inclui café da manhã na tarifa.', 'pt'],
             ['Le tarif ne comprend pas de petit-déjeuner.', 'fr'],
+            ['La chambre ne dispose pas de piscine.', 'fr'],
         ] as const) {
             const out = render(text, [nightPrice], lang, { customerText: 'breakfast?' });
             expect(out.fallbacks).toEqual([{ reason: 'unbacked_amenity' }]);

@@ -306,7 +306,7 @@ const NEGATION = / (?:no|sin|ni|tampoco|ningun|ninguna|not|without|nao|sem|nem|p
  * something is no evidence that it is absent (open world): an absence ASSERTED for a feature the record neither lists nor excludes is
  * unbacked like an affirmation. «La ficha no registra piscina» (what the record says) is not an assertion of absence.
  */
-const ASSERTED_ABSENCE = / (?:no (?:se )?(?:incluye|incluyen|tiene|tienen|ofrece|ofrecen|cuenta con|dispone de|hay|esta incluid[oa])|(?:does|do|is|are) not (?:include|have|offer|come with|included)|doesn t (?:include|have|offer)|isn t included|there (?:is|are) no|nao (?:inclui|tem|oferece|possui|esta incluid[oa])|nao ha|n inclut pas|ne comprend pas|ne propose pas|n offre pas|n y a pas|n a pas) /;
+const ASSERTED_ABSENCE = / (?:no (?:se )?(?:incluye|incluyen|tiene|tienen|ofrece|ofrecen|cuenta con|dispone de|hay|esta incluid[oa])|(?:does|do|is|are) not (?:include|have|offer|come with|included)|doesn t (?:include|have|offer)|isn t included|there (?:is|are) no|nao (?:inclui|tem|oferece|possui|esta incluid[oa])|nao ha|n inclut pas|ne comprend pas|ne propose pas|n offre pas|ne dispose pas|n y a pas|n a pas) /;
 const LODGING_SUBJECT = /propert|listing|room|accommodation|stay|cabin|cabana/;
 
 const PRICE_DENIAL = [

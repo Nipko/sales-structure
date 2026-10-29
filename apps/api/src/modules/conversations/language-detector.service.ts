@@ -247,7 +247,9 @@ export class LanguageDetectorService {
      * none, so it is never read as a switch. Words two of the languages share («funciona», «vale», «existe») are not here.
      */
     private readonly predicateWords: Record<string, string[]> = {
-        es: ['tiene', 'tienen', 'tienes', 'tengo', 'tenemos', 'hay', 'cuesta', 'cuestan', 'cuanto', 'cuanta', 'cuantos', 'cuantas', 'puedo',
+        // F4300-16 (production QA 28-oct): «hola, soy vegetariana» after a French case and «hi, I am vegetarian» after a Spanish one kept
+        // the stored language — a self-introduction had no verb of either. pt «sou» was there already; fr «suis» too via «je».
+        es: ['soy', 'tiene', 'tienen', 'tienes', 'tengo', 'tenemos', 'hay', 'cuesta', 'cuestan', 'cuanto', 'cuanta', 'cuantos', 'cuantas', 'puedo',
             'puede', 'puedes', 'pueden', 'quiero', 'quisiera', 'necesito', 'busco', 'debo', 'consultalo', 'consultala', 'consultalos',
             'consultame', 'revisalo', 'revisala', 'confirmalo', 'confirmala', 'confirmame', 'averigualo', 'dime', 'dame', 'mandame',
             'enviame', 'hago', 'estoy', 'incluye', 'incluyen', 'sirve', 'llega', 'quedan', 'hacen', 'aceptan', 'donde', 'cual',
@@ -306,7 +308,7 @@ export class LanguageDetectorService {
             // F4300-16f: «ouvert demain ?». Not «disponible» (Spanish too).
             'ouvert', 'ouverte', 'ouverts', 'ouvertes'],
         // Not «stock» (a loanword in Spanish and French: «hay stock?» is Spanish) nor «charge» (a French word too).
-        en: ['is', 'are', 'does', 'have', 'has', 'can', 'could', 'would', 'how', 'what', 'cost', 'costs', 'need', 'want', 'include',
+        en: ['am', 'is', 'are', 'does', 'have', 'has', 'can', 'could', 'would', 'how', 'what', 'cost', 'costs', 'need', 'want', 'include',
             'includes', 'should', 'where', 'when', 'which', 'offer', 'accept',
             'sell', 'sells', 'open', 'deliver', 'ship', 'make', 'carry', 'contain', 'contains',
             // The imperatives of a request (production QA 24-oct: «tell me about the Aurora tour» after a Spanish case was

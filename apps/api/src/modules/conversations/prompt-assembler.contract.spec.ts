@@ -106,6 +106,11 @@ describe('Contrato L1 del agente', () => {
         expect(rule).toContain('an unconfirmed price is never a condition for booking');
         // El estado habla de importes: el área u otros datos del mismo resultado no quedan «sin confirmar».
         expect(rule).toContain('pricestatus speaks only of amounts');
+        // Producción QA 29-oct: «For you and two friends, the total would be three times that amount» y «three units? only 2 in
+        // stock»: el total pedido se dice como cifra con su cuenta; el límite de stock acompaña al total, no lo sustituye.
+        expect(rule).toContain('say the total as a figure with its working');
+        expect(rule).toContain('never only "three times that amount"');
+        expect(rule).toContain('a stock or capacity limit is said next to the total');
         expect(rule).toContain('area');
         // Sin reglas numeradas nuevas: 22b sigue siendo la siguiente.
         expect(contract).toContain('22b. current package prices');

@@ -1637,7 +1637,7 @@ export class AIToolExecutorService {
         if (!named.length) return [];
         try {
             const rows: any[] = await this.prisma.$queryRawUnsafe(
-                `SELECT id, name, stock, is_available
+                `SELECT id, name, stock, is_available, description, category, requires_prescription
                    FROM "${schema}".products
                   WHERE ${unavailable} AND (${named.join(' OR ')})
                   ORDER BY name ASC

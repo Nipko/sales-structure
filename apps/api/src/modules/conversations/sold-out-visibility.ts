@@ -37,7 +37,7 @@ export function productAvailabilityScope(value: unknown): { availability: Produc
  * products that match the name but are not for sale, in a separate `notForSale` list (never `products`, which stays what can be
  * offered and ordered), each marked `soldOut: true` / `inStock: false`, with this note.
  */
-export const NOT_FOR_SALE_MATCHES_NOTE = 'The products under notForSale match the search and DO exist in the catalogue, but they are not for sale right now (sold out or withdrawn). Tell the customer the product exists and is sold out / not available right now; never say it is not in the catalogue, never offer it as available, quote it for purchase or order it.';
+export const NOT_FOR_SALE_MATCHES_NOTE = 'The products under notForSale match the search and DO exist in the catalogue, but they are not for sale right now (sold out or withdrawn). Tell the customer the product exists and is sold out / not available right now; never say it is not in the catalogue, never offer it as available, quote it for purchase or order it. Its description, category and requiresPrescription are the business data of the product: answer a question about them as given (sold out does not make them unknown).';
 /** At most this many not-for-sale matches ride along with a name query. */
 export const NOT_FOR_SALE_MATCH_LIMIT = 5;
 
@@ -52,6 +52,9 @@ export function notForSaleMatch(row: any): Record<string, unknown> | null {
     if (!row || row.id == null || typeof row.name !== 'string') return null;
     const inStock = row.is_available === true && (row.stock == null || Number(row.stock) > 0);
     if (inStock) return null;
+    // F4300-54 (production QA 29-oct, store, EN and ES): «Does the product 'QA Agente Stock' require a medical prescription?» →
+    // «it is sold out, therefore I cannot confirm if it requires a prescription»: the match carried no attribute to answer with.
+    // Its descriptive fields travel with it; never its price (it is not offered).
     return {
         id: row.id,
         name: row.name,
@@ -59,6 +62,9 @@ export function notForSaleMatch(row: any): Record<string, unknown> | null {
         isAvailable: row.is_available === true,
         inStock: false,
         soldOut: true,
+        ...(typeof row.description === 'string' && row.description.trim() ? { description: row.description } : {}),
+        ...(typeof row.category === 'string' && row.category.trim() ? { category: row.category } : {}),
+        ...(row.requires_prescription == null ? {} : { requiresPrescription: row.requires_prescription === true }),
     };
 }
 

@@ -22,7 +22,7 @@ const AURORA_ID = 'b46c1e0c-c71b-4837-8f30-048e94bba422';
 const TAZA_ID = 'c46c1e0c-c71b-4837-8f30-048e94bba423';
 const QA_NAME = 'QA Agente Stock 20261020T1737Z';
 /** The production row (report CONV4300-COV2-CHECK-STOCK). */
-const qaRow = { id: QA_ID, name: QA_NAME, description: 'Producto sintético exclusivo de QA', category: null, price: '18777', currency: 'COP', stock: 0, is_available: false };
+const qaRow = { id: QA_ID, name: QA_NAME, description: 'Producto sintético exclusivo de QA', category: null, price: '18777', currency: 'COP', stock: 0, is_available: false, requires_prescription: false };
 const auroraRow = { id: AURORA_ID, name: 'Audífono QA Aurora', description: null, category: 'audio', price: '120000', currency: 'COP', stock: 5, is_available: true };
 const UNAVAILABLE_SQL = '(is_available IS NOT TRUE OR (stock IS NOT NULL AND stock <= 0))';
 
@@ -74,9 +74,12 @@ describe('F4300-29 residual data layer: a name query finds the product that exis
         expect(result.scope).toBe('available_only');
         // What may be offered or ordered is unchanged: nothing for sale matches.
         expect(result.products).toEqual([]);
-        expect(result.notForSale).toEqual([{ id: QA_ID, name: QA_NAME, stock: 0, isAvailable: false, inStock: false, soldOut: true }]);
+        // F4300-54 (production QA 29-oct): its descriptive fields come with it, so «does it need a prescription?» has an answer.
+        expect(result.notForSale).toEqual([{ id: QA_ID, name: QA_NAME, stock: 0, isAvailable: false, inStock: false, soldOut: true,
+            description: 'Producto sintético exclusivo de QA', requiresPrescription: false }]);
         // Never priced: a sold-out product is not quoted.
         expect(result.notForSale[0]).not.toHaveProperty('price');
+        expect(NOT_FOR_SALE_MATCHES_NOTE).toContain('sold out does not make them unknown');
         expect(result.note).toContain(AVAILABLE_ONLY_NOTE);
         expect(result.note).toContain(NOT_FOR_SALE_MATCHES_NOTE);
         // Same words, the #200 "unavailable" predicate, a bounded read.

@@ -300,6 +300,10 @@ export class PersonaService {
         behavior.forbiddenTopics.forEach((topic: string) => {
             lines.push(`    <topic>${escapeXmlText(topic)}</topic>`);
         });
+        // F4300-53 (production QA 29-oct, travel agency): with «Información migratoria oficial» forbidden, «¿necesito pasaporte para
+        // viajar?» was refused in four languages although the business's own FAQ «¿Qué documentos necesito para viajar?» was retrieved.
+        // A forbidden topic is what the agent never answers on its own; what the business itself published is the business speaking.
+        lines.push('    <scope>Never answer these on your own. When the business FAQs or documents retrieved this turn answer the question, answer with exactly what they say.</scope>');
         lines.push('  </forbidden_topics>');
     }
 
@@ -2170,7 +2174,7 @@ export class PersonaService {
                             'Aclara claramente qué incluye/no incluye cada paquete (vuelos, alojamiento, traslados, tours)',
                             'Pide nombre completo, teléfono y email solo cuando el cliente quiera reservar o recibir una cotización a su nombre, nunca antes de mostrar paquetes o precios',
                             'Si la fecha de salida que da el cliente ya pasó, dilo primero y pide otra fecha antes de seguir',
-                            'NO recomiendes seguros de viaje ni des requisitos migratorios (pasaporte, visa, vacunas) por tu cuenta: solo lo que figure en las preguntas frecuentes o documentos del negocio; si no hay fuente, dile que el equipo lo confirma',
+                            'NO recomiendes seguros de viaje ni des requisitos migratorios (pasaporte, visa, vacunas) por tu cuenta: cuando una pregunta frecuente o documento del negocio lo dice (p. ej. «¿Qué documentos necesito para viajar?»), responde con lo que dice, sin negarte; si no hay fuente, dile que el equipo lo confirma',
                             'NO prometas vuelos sin confirmar disponibilidad con el equipo',
                         ],
                         forbiddenTopics: ['Información migratoria oficial', 'Vacunas requeridas', 'Recomendar seguros de viaje sin fuente', 'Garantizar precios de aerolíneas'],

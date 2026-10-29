@@ -1,4 +1,10 @@
 import { ConversationsService } from './conversations.service';
+import * as queueNotice from './queue-notice';
+
+// These fixtures pin handoffs started on fixed dates in October; the queue notice they test is the one of a fresh handoff.
+// The F4300-23 cutoff near the unattended return has its own spec (queue-notice.f4300-23.spec.ts).
+beforeEach(() => { jest.spyOn(queueNotice, 'queueNoticeDue').mockReturnValue(true); });
+afterEach(() => { jest.restoreAllMocks(); });
 
 /**
  * The queue notice answers a waiting message but is not THE answer to it. After

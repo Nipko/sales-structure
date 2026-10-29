@@ -173,6 +173,8 @@ export function languageDenialOf(text: string): ReplyLang | null {
 function sentenceInOtherLanguage(text: string, code: string, ignore: readonly string[]): ReplyLang | null {
     const sentences = ownLanguageText(text, ignore).split(/(?<=[.!?…])\s+|[\n\r]+|(?=[¿¡])/);
     for (const sentence of sentences) {
+        const opening = invertedMarkSpanish(sentence, code);
+        if (opening) return opening;
         if (sentence.trim().split(/\s+/).filter(word => /\p{L}/u.test(word)).length < 6) continue;
         const written = replyLanguageOf(sentence) ?? mixedInto(sentence, code);
         if (written && written !== code) return written;
@@ -191,9 +193,20 @@ export function withoutSentencesIn(text: string, source: ReplyLang, code: string
     if (sentences.length < 2) return null;
     const last = sentences[sentences.length - 1];
     if (!/\?\s*$/.test(last)) return null;
-    const written = replyLanguageOf(last) ?? mixedInto(last, code) ?? wholeReplyMismatch(last, code);
+    const written = invertedMarkSpanish(last, code) ?? replyLanguageOf(last) ?? mixedInto(last, code) ?? wholeReplyMismatch(last, code);
     if (written !== source) return null;
     return sentences.slice(0, -1).join(' ').trim();
+}
+
+/**
+ * F4300-16 (production QA 29-oct, store PT and travel FR): «…há 2 unidades disponíveis em stock. ¿Le gustaría que le ayude a hacer un
+ * pedido?» and «…est de 4 heures. ¿Desea saber algo más sobre este tour?» went out: those closing questions share too many words with
+ * Portuguese to score as Spanish, and the rewrite holding one was accepted. «¿» and «¡» are written only in Spanish: a sentence of 3+
+ * words opening with one, in a reply whose language is not Spanish, is Spanish. Pure.
+ */
+function invertedMarkSpanish(sentence: string, code: string): ReplyLang | null {
+    if (code === 'es' || !/^\s*[¿¡]/.test(sentence)) return null;
+    return sentence.split(/\s+/).filter(word => /\p{L}/u.test(word)).length >= 3 ? 'es' : null;
 }
 
 /**

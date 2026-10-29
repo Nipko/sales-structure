@@ -13,6 +13,8 @@ describe('F4300-16 · informal Portuguese and short French are their own languag
         ['oi, somos um grupo de 12 amigos', 'pt'], ['com 30.000 pesos, dá para dois pratos Spark?', 'pt'],
         ['a coloração e tratamento demora qto mais ou menos?', 'pt'], ['qto custa a manicure e pedicure?', 'pt'],
         ['o audifono aurora tem fio?', 'pt'], ['l’audifono aurora a un fil ?', 'fr'],
+        // 29-oct: a question with no other clear Portuguese word than its verb or adjective.
+        ['Que tipo de aquecimento central o apartamento possui?', 'pt'], ["A que hora exata começa o 'Spark QA Tour 20261018T2140Z'?", 'pt'],
     ])('«%s» → %s, whatever the stored language', (text, lang) => {
         for (const previous of ['en', 'es', 'fr', 'pt', null]) {
             expect(detector.detect(text, 'es', previous)).toBe(lang);

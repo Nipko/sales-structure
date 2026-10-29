@@ -55,7 +55,10 @@ export class LanguageDetectorService {
         pt: ['nao', 'obrigado', 'obrigada', 'voce', 'voces', 'preciso', 'isso', 'tambem', 'entao', 'ola', 'sim', 'quero', 'gostaria', 'muito', 'quanto', 'custa', 'tudo', 'bom', 'uma', 'qual', 'quais', 'procuro', 'meu', 'minha', 'pessoas', 'funcionamento', 'tem', 'preco', 'precos',
             // F4300-16 (production QA 28-oct): «oi, somos um grupo de 12 amigos», «com 30.000 pesos, dá para dois pratos Spark?», «qto
             // custa…», «o audifono tem fio?» were read as Spanish (or as the stored English). Portuguese spellings no other language uses.
-            'oi', 'dois', 'duas', 'qto', 'qtos', 'qta', 'qtas', 'quantos', 'quantas', 'prato', 'pratos', 'fio', 'estao', 'ate', 'eu', 'cabem'],
+            'oi', 'dois', 'duas', 'qto', 'qtos', 'qta', 'qtas', 'quantos', 'quantas', 'prato', 'pratos', 'fio', 'estao', 'ate', 'eu', 'cabem',
+            // F4300-16 (production QA 29-oct): «Que tipo de aquecimento central o apartamento POSSUI?», «A que hora EXATA COMEÇA o tour?»
+            // were read as Spanish. Portuguese spellings Spanish never writes («posee», «exacta», «empieza», «calefacción»).
+            'possui', 'possuem', 'comeca', 'comecam', 'exata', 'exato', 'exatamente', 'aquecimento'],
         fr: ['bonjour', 'bonsoir', 'merci', 'vous', 'nous', 'veux', 'besoin', 'comment', 'aussi', "c'est", 'oui', 'est', 'sont', 'avec', 'pourquoi', 'voudrais', 'combien', 'salut', 'je', 'quel', 'quels', 'quelle', 'quelles', 'horaires', 'votre', 'pour', 'avez', 'une', 'dans', 'cherche', 'acheter', 'jusqu', 'prix', 'fil', 'filaire', 'il', 'elle',
             // F4300-16 (production QA 29-oct): «que FAIRE en cas d'urgence dentaire ?» read as Spanish — no word of it was French.
             'faire', 'fais', 'fait'],

@@ -268,7 +268,8 @@ export function pickTopicFallbackFaq(rows: FAQ[], message: string): FAQ | null {
     const words = [...said];
     // What the message asks about its topic ("cuánto CUESTA la visita guiada"): a FAQ question that asks something
     // else of the same topic ("¿Cuánto DURA la visita guiada?") answers a different question.
-    const asks = words.filter(t => FILLER_CANON.has(t));
+    // «where» is an English function word, so it never reaches `words`: the question still asks «where» (F4300-53, 29-oct).
+    const asks = [...words.filter(t => FILLER_CANON.has(t)), ...(/(?<!\p{L})(?:donde|where|onde)(?!\p{L})/u.test(fold(message)) && !words.includes('donde') ? ['donde'] : [])];
     const scored = rows.map(row => {
         const question = canonTokens(row.question);
         const content = canonTokens(`${row.question} ${row.answer}`);
@@ -290,6 +291,13 @@ export function pickTopicFallbackFaq(rows: FAQ[], message: string): FAQ | null {
     }
 
     const hit = new Set(scored.flatMap(s => s.coveredTerms));
+    // F4300-53 (production QA 29-oct, agency): «¿dónde nos encontramos para salir al tour?» hit «encuentro» in «¿Dónde es el punto de
+    // encuentro?» and «tour» in «¿En qué idiomas se hace el tour?»: two topics, so no FAQ. The FAQ that asks the same way the message
+    // asks («dónde» / «where» / «onde») is the one, when exactly one eligible FAQ shares that asking word.
+    if (hit.size > 1 && asks.length) {
+        const sameAsk = eligible.filter(s => s.covered > 0 && canonTerms(s.row.question).some(t => FILLER_CANON.has(t) && asks.includes(t)));
+        return sameAsk.length === 1 ? sameAsk[0].row : null;
+    }
     if (hit.size !== 1) return null;
     return pickTopicFaq(eligible.map(s => s.row), [...hit][0], message, true);
 }

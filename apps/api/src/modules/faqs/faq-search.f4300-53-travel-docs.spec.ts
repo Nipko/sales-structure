@@ -28,4 +28,13 @@ describe('F4300-53 · a passport is a travel document; a brand is a product', ()
     ])('%s → %s', (message, expected) => {
         expect(pickTopicFallbackFaq([DOCS, INSURANCE, PRODUCTS, MEET], message)?.id ?? null).toBe(expected);
     });
+
+    it('with the agency real FAQs, «tour» in another FAQ does not hide the meeting point (production 29-oct)', () => {
+        const LANG = faq('lang', '¿En qué idiomas se hace el tour?', 'Depende del tour y de la disponibilidad de guías.');
+        const PICKUP = faq('pickup', '¿Incluye traslado desde el hotel?', 'En la mayoría de tours sí está incluido el traslado desde hoteles del centro.');
+        for (const message of ['¿dónde nos encontramos para salir al tour?', 'where do we meet for the tour?', 'onde nos encontramos para o tour?']) {
+            expect(pickTopicFallbackFaq([DOCS, INSURANCE, PRODUCTS, MEET, LANG, PICKUP], message)?.id).toBe('meet');
+        }
+        expect(pickTopicFallbackFaq([MEET, LANG, PICKUP], '¿en qué idiomas se hace el tour?')?.id).toBe('lang');
+    });
 });

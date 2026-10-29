@@ -36,10 +36,32 @@ const TEXTS: Record<string, (n: number, total: string, unit: string) => string> 
     fr: (n, total, unit) => `Pour ${n} unités, cela ferait ${total} (${n} × ${unit}).`,
 };
 
-export function quantityTotalNote(reply: string, customerText: string, catalog: readonly PricedProduct[] | undefined, lang?: string): string | null {
+export interface ToolRead { name?: string; result?: any }
+
+/**
+ * The priced items the turn's reads returned (production QA 29-oct: the menu reaches the turn through get_menu, not the projected
+ * catalogue — «¿y si pido 3?» got «¿podría confirmarme la dirección de entrega?» and no total).
+ */
+function readItems(reads: ReadonlyArray<ToolRead> | undefined): PricedProduct[] {
+    const out: PricedProduct[] = [];
+    for (const read of reads ?? []) {
+        if (!/menu|product/i.test(String(read?.name || '')) || !read?.result || read.result.error) continue;
+        const rows = [read.result.items, read.result.products, read.result.product ? [read.result.product] : null].find(Array.isArray) ?? [];
+        for (const row of rows) {
+            const title = row?.name ?? row?.title;
+            if (title && typeof row?.price === 'number') out.push({ title: String(title), price: row.price, currency: row.currency, stock: row.stock });
+        }
+    }
+    return out;
+}
+
+export function quantityTotalNote(reply: string, customerText: string, catalog: readonly PricedProduct[] | undefined, lang?: string,
+    reads?: ReadonlyArray<ToolRead>): string | null {
     const text = String(reply || '').trim();
     if (!text || moneyMentionsIn(text).length) return null;
-    const priced = (catalog ?? []).filter(product => product?.title && typeof product.price === 'number' && Number.isFinite(product.price) && product.price > 0);
+    const known = new Map<string, PricedProduct>();
+    for (const item of [...(catalog ?? []), ...readItems(reads)]) if (item?.title && !known.has(item.title)) known.set(item.title, item);
+    const priced = [...known.values()].filter(product => product?.title && typeof product.price === 'number' && Number.isFinite(product.price) && product.price > 0);
     const named = priced.filter(product => names(customerText, product.title) || names(text, product.title));
     if (named.length !== 1) return null;
     const [product] = named;

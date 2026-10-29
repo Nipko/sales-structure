@@ -27,4 +27,10 @@ describe('F4300-47 · a quantity of the catalogue product gets its total', () =>
     ])('stays: %s', (_why, ask, reply) => {
         expect(quantityTotalNote(reply, ask, CATALOG, 'es')).toBeNull();
     });
+
+    it('a menu item read by get_menu (not in the catalogue) gets its total too', () => {
+        const reads = [{ name: 'get_menu', result: { items: [{ name: 'Spark QA Plato 20261018T110518Z', price: 13500, currency: 'COP' }] } }];
+        const reply = '¿Quiere pedir 3 unidades del plato Spark QA Plato 20261018T110518Z? ¿Podría confirmarme la dirección de entrega para su pedido?';
+        expect(spaced(quantityTotalNote(reply, '¿y si pido 3?', [], 'es', reads))).toContain(spaced('Por 3 unidades serían 40.500 COP (3 × 13.500 COP).'));
+    });
 });

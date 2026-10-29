@@ -399,7 +399,7 @@ export class LanguageDetectorService {
             // Not «algo» nor «vegetariano» (Portuguese too).
             'promocion', 'promociones', 'alguna', 'alguno', 'algun', 'algunas', 'algunos', 'hoy', 'manana'],
         // Not «capas» nor «sobremesas»: Spanish spells them the same. «café da manhã» counts by its «manha» (and «da»).
-        pt: ['preco', 'precos', 'quarto', 'quartos', 'noite', 'noites', 'frete', 'cabelo', 'desconto', 'tamanho', 'fones', 'estoque',
+        pt: ['preco', 'precos', 'quarto', 'quartos', 'noite', 'noites', 'frete', 'cabelo', 'desconto', 'tamanho', 'fone', 'fones', 'estoque',
             'diaria', 'diarias',
             'carregador', 'carregadores', 'capinha', 'capinhas', 'manha', 'maquiagem', 'aluguel',
             // «o que tem no cardápio hoje?»: Spanish «carta» / «menú», French «carte».
@@ -466,7 +466,7 @@ export class LanguageDetectorService {
         domingo: ['es', 'pt'], consulta: ['es', 'pt'], consultas: ['es', 'pt'], especializada: ['es', 'pt'], especializado: ['es', 'pt'],
         general: ['es', 'pt'], barato: ['es', 'pt'], barata: ['es', 'pt'], caro: ['es', 'pt'], cara: ['es', 'pt', 'fr'], pedido: ['es', 'pt'],
         pedidos: ['es', 'pt'], reserva: ['es', 'pt'], esta: ['es', 'pt'], este: ['es', 'pt'], ja: ['pt'], prato: ['pt'], pratos: ['pt'],
-        plato: ['es'], platos: ['es'], saida: ['pt'], salida: ['es'],
+        plato: ['es'], platos: ['es'], saida: ['pt'], salida: ['es'], funciona: ['es', 'pt'],
         // F4300-16 residual (production 24-oct): «qual o valor do Spark QA Inmueble?». «valor» is Spanish AND Portuguese (French
         // «valeur», English «value»); «do» is Portuguese «of the» AND the English verb, never Spanish or French.
         valor: ['es', 'pt'], valores: ['es', 'pt'], do: ['pt', 'en'],

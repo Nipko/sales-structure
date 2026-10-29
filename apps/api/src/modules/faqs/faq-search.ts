@@ -6,7 +6,9 @@ const FUNCTION_WORDS = new Set((
     'a al algo ante con cual cuales cuando cuanto cuantos de del el ella ellas ellos en es esa ese eso esta estas este estos hay la las lo los me mi mis nos o para por que se si sin su sus te ti tu tus un una unas uno unos y ' +
     'an and are as at be can could do does for from how i in is it its me my of on or our that the their these this to was we what when where which who with would you your ' +
     'ao aos as com como da das de do dos e ela ele eles em essa esse ha isso meu minha na nas no nos o os ou para pela pelo por qual quais quanto que sao se sem sua suas tem um uma voce voces ' +
-    'au aux avec ce ces cet cette dans de des du elle elles en est et eux il ils je la le les leur ma mes moi mon ne nos nous ou par pas pour quel quelle quels quelles qui quoi sa sans ses son sur ta tes toi ton tu un une vos votre vous'
+    'au aux avec ce ces cet cette dans de des du elle elles en est et eux il ils je la le les leur ma mes moi mon ne nos nous ou par pas pour quel quelle quels quelles qui quoi sa sans ses son sur ta tes toi ton tu un une vos votre vous' +
+    // «si QUIERO alquilar», «I WANT to…»: wanting is no topic, and no way of asking either (F4300-53, 29-oct).
+    ' quiero quero want veux'
 ).split(/\s+/));
 
 const fold = (value: string) => value.toLowerCase().normalize('NFKD').replace(/\p{M}/gu, '');
@@ -36,7 +38,9 @@ const EQUIVALENTS: Record<string, string[]> = {
     envio: ['envio', 'envios', 'shipping', 'delivery', 'deliveries', 'entrega', 'entregas', 'livraison', 'livraisons', 'domicilio', 'domicilios'],
     horario: ['horario', 'horarios', 'hours', 'schedule', 'horaire', 'horaires'],
     devolucion: ['devolucion', 'devoluciones', 'return', 'returns', 'refund', 'refunds', 'devolucao', 'devolucoes', 'reembolso', 'reembolsos', 'remboursement', 'retour', 'retours'],
-    cancelacion: ['cancelacion', 'cancelaciones', 'cancellation', 'cancellations', 'cancelamento', 'cancelamentos', 'annulation', 'annulations'],
+    cancelacion: ['cancelacion', 'cancelaciones', 'cancellation', 'cancellations', 'cancelamento', 'cancelamentos', 'annulation', 'annulations',
+        // «si je dois ANNULER…», «if I CANCEL…», «se eu CANCELAR…» ask for the cancellation policy (F4300-53, 29-oct).
+        'cancelar', 'cancelo', 'cancel', 'cancelling', 'canceling', 'annuler'],
     // What a question asks («do you HAVE…» is «¿TIENEN…?»): compared as one verb, so a FAQ in another language never «asks something else».
     tener: ['tener', 'tiene', 'tienen', 'have', 'has', 'tem', 'temos', 'ont', 'avez'],
     poder: ['poder', 'puedo', 'puede', 'pueden', 'posso', 'pode', 'podem', 'puis', 'peux', 'peut', 'can', 'could'],
@@ -57,7 +61,9 @@ const EQUIVALENTS: Record<string, string[]> = {
     // One «where» in the four languages, so «onde…?» does not «ask something else» than «¿Dónde…?».
     donde: ['donde', 'where', 'onde'],
     viajar: ['viajar', 'viaje', 'viajes', 'travel', 'traveling', 'travelling', 'trip', 'viagem', 'viagens', 'viajam', 'voyager', 'voyage', 'voyages'],
-    necesitar: ['necesitar', 'necesito', 'necesita', 'necesitan', 'need', 'needs', 'preciso', 'precisa', 'precisam', 'besoin', 'faut'],
+    necesitar: ['necesitar', 'necesito', 'necesita', 'necesitan', 'need', 'needs', 'preciso', 'precisa', 'precisam', 'besoin', 'faut',
+        // «¿es OBLIGATORIO contratar un seguro?», «is insurance REQUIRED?» ask «¿NECESITO seguro de viaje?» (F4300-53, 29-oct).
+        'obligatorio', 'obligatoria', 'obligatoire', 'mandatory', 'required', 'obrigatorio', 'obrigatoria'],
     comprar: ['comprar', 'compra', 'buy', 'buying', 'purchase', 'acheter', 'achat'],
     arrendar: ['arrendar', 'arriendo', 'alquilar', 'alquiler', 'rent', 'renting', 'rental', 'alugar', 'aluguel', 'louer'],
     inmueble: ['inmueble', 'inmuebles', 'propiedad', 'propiedades', 'property', 'properties', 'imovel', 'imoveis', 'bien', 'biens'],
@@ -68,7 +74,9 @@ const EQUIVALENTS: Record<string, string[]> = {
     nino: ['nino', 'ninos', 'nina', 'ninas', 'child', 'children', 'kid', 'kids', 'crianca', 'criancas', 'enfant', 'enfants'],
     // «¿qué MARCAS o productos usan en el tinte?» (F4300-53, 29-oct): the brand is what «¿Qué productos usan?» answers.
     producto: ['producto', 'productos', 'product', 'products', 'produto', 'produtos', 'produit', 'produits', 'marca', 'marcas', 'brand', 'brands', 'marque', 'marques'],
-    comision: ['comision', 'comisiones', 'commission', 'commissions', 'comissao', 'comissoes', 'honorarios', 'fee', 'fees', 'honoraires'],
+    comision: ['comision', 'comisiones', 'commission', 'commissions', 'comissao', 'comissoes', 'honorarios', 'fee', 'fees', 'honoraires',
+        // «quais são as TAXAS que vocês cobram?» asks «¿Cuánto cobran de comisión / honorarios?» (F4300-53, 29-oct).
+        'taxa', 'taxas'],
     reserva: ['reserva', 'reservas', 'reservar', 'reservation', 'reservations', 'book', 'booking', 'reserver', 'reservacion'],
     ortodoncia: ['ortodoncia', 'orthodontic', 'orthodontics', 'ortodontia', 'orthodontie', 'braces', 'brackets'],
     usar: ['usar', 'usan', 'usa', 'usamos', 'use', 'uses', 'using', 'usam', 'utilizan', 'utilisez', 'utiliser', 'utilizam'],
@@ -76,7 +84,12 @@ const EQUIVALENTS: Record<string, string[]> = {
     tratamiento: ['tratamiento', 'tratamientos', 'treatment', 'treatments', 'tratamento', 'tratamentos', 'traitement', 'traitements'],
     emergencia: ['emergencia', 'emergencias', 'emergency', 'emergencies', 'urgence', 'urgences', 'urgencia', 'urgencias'],
     mascota: ['mascota', 'mascotas', 'pet', 'pets', 'animal', 'animais', 'animaux', 'animales'],
-    ubicacion: ['ubicacion', 'ubicados', 'ubicado', 'location', 'address', 'endereco', 'localizacao', 'adresse', 'direccion'],
+    ubicacion: ['ubicacion', 'ubicados', 'ubicado', 'location', 'address', 'endereco', 'localizacao', 'adresse', 'direccion',
+        // «onde FICA o estabelecimento?», «where are you LOCATED?», «où êtes-vous SITUÉS ?» (F4300-53, 29-oct).
+        'fica', 'ficam', 'localizado', 'localizados', 'located', 'situe', 'situes', 'situated'],
+    seguro: ['seguro', 'seguros', 'insurance', 'assurance', 'assurances'],
+    // What a question asks «how much do you CHARGE»: one verb, so the FAQ that charges the same way wins a tie.
+    cobrar: ['cobrar', 'cobran', 'cobra', 'cobram', 'charge', 'charges', 'facturez'],
     // F4300-53 (production QA 29-oct, real FAQs read from the tenants' DB): «how much is a dental cleaning?» / «combien coûte un détartrage ?»
     // / «quanto custa uma limpeza dental?» missed «¿Cuánto cuesta una limpieza dental?» and were told the clinic does not offer it;
     // «do kids pay less?» / «¿los niños pagan menos?» missed «¿Hay descuento para niños?»; «what should I bring to my first visit?»
@@ -207,6 +220,8 @@ const QUESTION_FILLER = new Set([
     'tengo', 'tenho',
     // «I AM scared», «j’AI peur», «comment gérez-vous CELA», «price PER person» (F4300-53, 29-oct).
     'am', 'ai', 'cela', 'per',
+    // «CONTRATAR / SOUSCRIRE un seguro», «papeles que tengo que tener LISTOS», «el ESTABLECIMIENTO»: no topic of their own (29-oct).
+    'contratar', 'souscrire', 'listos', 'listas', 'ready', 'prets', 'estabelecimento', 'establecimiento', 'etablissement',
 ]);
 
 /** The topic words of ONE part of a message: what is left after the function words and the words that only ask. */

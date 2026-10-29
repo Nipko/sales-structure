@@ -27,4 +27,13 @@ describe('F4300-47 · the total is not the unit price said again', () => {
     ])('stays: %s', (_why, ask, reply) => {
         expect(spelledTotalCorrection(reply, ask, 'es')).toBeNull();
     });
+
+    it.each([
+        ['en', 'and if I order 4?', 'If you order 4 units of the Spark dish, the total price would be 54,000 COP (4 times 13,500 COP).', 'the total price would be 54,000 COP (4 × 13,500 COP).'],
+        ['pt', 'e se formos 6?', 'O custo total seria 774.000 COP (6 vezes 129.000 COP).', 'O custo total seria 774.000 COP (6 × 129.000 COP).'],
+    ])('[%s] the working of a total said already is not made a total again', (lang, ask, reply, expected) => {
+        const out = spaced(spelledTotalCorrection(reply, ask, lang));
+        expect(out).toContain(spaced(expected));
+        expect(out.match(/54,000|774\.000/g)?.length).toBe(1);
+    });
 });

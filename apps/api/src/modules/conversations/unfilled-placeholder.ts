@@ -145,8 +145,13 @@ const CURRENCY_AFTER = /^\s*(?:[$€£]|cop|usd|eur|brl|mxn|clp|pen|ars|pesos?|r
 const EMAIL = /[\p{L}\p{N}._%+-]+@[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)+/gu;
 const URL_RE = /\b(?:https?:\/\/|www\.)[^\s<>()[\]"'«»]+/gi;
 const HANDLE = /(?<![\p{L}\p{N}._@/])@[A-Za-z0-9_.]{3,30}[A-Za-z0-9_]/gu;
-/** National emergency numbers a model is tempted to write («llame al 123», «call 911», «ligue 192»). */
-const EMERGENCY_NUMBER = /(?:llam\w*|marqu\w*|comuniqu\w*|call\w*|dial\w*|phone|ring|lig\w*|disque\w*|t[eé]l[eé]fon\w*|appel\w*|compos\w*|contact\w*|line\w*|l[ií]nea|n[uú]m[eé]ro|number)(?!\p{L})[^.!?\n\d]{0,40}?(?<![\p{L}\p{N}:.,])(911|112|123|125|132|190|192|193|199|999|000|106|116|117|119|110|120|066|080)(?!\p{N}|\s*(?:[:.,]\d|h\b|hs\b|horas?|hours?|min|am\b|pm\b|%|pesos|reais|euros|d[oó]lares|usd|cop|eur|brl))/gu;
+/**
+ * National emergency numbers a model is tempted to write («llame al 123», «call 911», «ligue 192»).
+ * F4300-46 (production QA 29-oct, store, French): «Le prix de l'audiPHONE QA Aurora est de 119 900 COP» lost its whole price sentence:
+ * «phone» was found inside «audiphone» and «119» was the start of the amount «119 900». The trigger is a whole word, and a number
+ * followed by a group of three digits (a thousands group, any separator) is an amount, never an emergency number.
+ */
+const EMERGENCY_NUMBER = /(?<!\p{L})(?:llam\w*|marqu\w*|comuniqu\w*|call\w*|dial\w*|phone|ring|lig\w*|disque\w*|t[eé]l[eé]fon\w*|appel\w*|compos\w*|contact\w*|line\w*|l[ií]nea|n[uú]m[eé]ro|number)(?!\p{L})[^.!?\n\d]{0,40}?(?<![\p{L}\p{N}:.,])(911|112|123|125|132|190|192|193|199|999|000|106|116|117|119|110|120|066|080)(?!\p{N}|[\s\u00a0\u202f.,']\d{3}(?!\p{N})|\s*(?:[:.,]\d|h\b|hs\b|horas?|hours?|min|am\b|pm\b|%|pesos|reais|euros|d[oó]lares|usd|cop|eur|brl))/gu;
 /** An offer to give a phone / contact («¿quiere que le proporcione el número…?»), es / en / pt / fr, on folded text. */
 const CONTACT_OFFER = [
     /\b(?:quiere|quieres|desea|deseas|le gustaria|te gustaria|puedo|podria|prefiere)\b.{0,40}\b(?:proporcion\w*|dar\w*|le de|te de|doy|compart\w*|pas[eao]\w*|envi\w*|facilit\w*|indic\w*)\b.{0,40}\b(?:telefono|whatsapp|celular|numero (?:de )?(?:telefono|contacto|guardia|turno|emergencias?|urgencias?|whatsapp|celular)|linea (?:de )?(?:guardia|emergencias?|urgencias?|atencion))\b/,

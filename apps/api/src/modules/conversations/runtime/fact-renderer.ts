@@ -581,7 +581,13 @@ export function renderReplyFacts(input: RenderFactsInput): RenderFactsOutcome {
         if (!named && live.some(fact => fact.subject.name && !bestPrice.has(subjectKey(fact)) && names(sentence, fact.subject.name))) return null;
         // An item nobody named is priced only when the customer asked for a price: «how many orders have I made?» never
         // gets «The price of Spark QA Plato is 13,500 COP» appended (production QA 2026-10-24).
-        const fact = named ? bestPrice.get(subjectKey(named)) : subjectFor(sentence, confirmedMoney, asksPrice);
+        // F4300-46 (production QA 29-oct, salon, after #298): «Le prix de ce service est un exemple…» about Color y tratamiento, and
+        // «¿Cuánto cuesta y cuánto dura?» about the manicure of the previous turn, still became «Le prix de Corte y estilo est de 40 000
+        // COP»: the sentence names no item, so the one confirmed price of the turn was taken. With several named items in the turn the
+        // sentence's subject is not guessed, and an item the customer named without a confirmed price is the subject (none).
+        const namedSubjects = new Set(live.filter(item => !!item.subject.name).map(subjectKey));
+        if (!named && live.some(item => item.subject.name && !bestPrice.has(subjectKey(item)) && names(customerText, item.subject.name))) return null;
+        const fact = named ? bestPrice.get(subjectKey(named)) : subjectFor(sentence, confirmedMoney, asksPrice && namedSubjects.size <= 1);
         if (!fact || examplePriced.has(subjectKey(fact))) return null;
         return t.price(say(fact.subject.name!), moneyText(fact, ctx));
     };

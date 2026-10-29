@@ -13,6 +13,7 @@ import './instrument';
 
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import { drainInboundWorker } from './modules/inbound/drain-queue-workers';
 
 (BigInt.prototype as any).toJSON = function () { return Number(this); };
 
@@ -33,6 +34,8 @@ async function bootstrapWorker() {
     for (const signal of signals) {
         process.on(signal, async () => {
             console.log(`\n🛑 ${signal} received — shutting down worker gracefully...`);
+            // F4300-61: the in-flight turns finish while the database and Redis are still up.
+            await drainInboundWorker(app);
             await app.close();
             process.exit(0);
         });

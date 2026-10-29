@@ -187,7 +187,9 @@ describe('a reply that switches language mid-way is judged sentence by sentence'
         // Only the opening translated: the Spanish advice sentence is kept as it was.
         const halfway = 'Sinto muito que esteja passando por isso. Inchaço no rosto e febre após a extração de um dente podem indicar uma infecção. Le recomiendo que busque atención urgente en la clínica o un servicio de urgencias odontológicas para que un especialista pueda evaluar su situación y brindarle el tratamiento adecuado.';
         const still = build(halfway, halfway);
-        expect(await run(still.service, MIXED, 'pt', {}, 'o que faço?')).toBe(MIXED);
+        // F4300-16 (29-oct): the rewrite has ONE Spanish sentence where the reply had three, and keeps everything it says: it is
+        // closer to the customer's language than the reply, so it is what goes out.
+        expect(await run(still.service, MIXED, 'pt', {}, 'o que faço?')).toBe(halfway);
         // The Spanish advice is a sentence of substance: never dropped to make the rewrite pass (F4300-52 drops a closing question only).
         expect(rejections(still.service).map(r => r.reason)).toEqual(['still_source_language', 'still_source_language']);
     });

@@ -21,7 +21,7 @@ import { recordFirstReply } from '../../common/utils/first-reply.util';
 import { stripInternalMarkers } from '../../common/utils/internal-markers.util';
 import { projectAvailableServices } from '../appointments/service-price-status';
 import { AbsentSubjects, absentServicesIn, annotateKnowledgeItems, annotateKnowledgeToolResult, notOfferedReply, offerClaimForAbsent, type CatalogueEntry } from './runtime/catalog-over-faq';
-import { catalogNamesOfTurn, languageDenialOf, languageMismatch, rewriteRejection, type ReplyLang, type RewriteRejectionReason, verbatimTermsOf, wholeReplyMismatch, withoutSentencesIn } from './reply-language';
+import { catalogNamesOfTurn, closerToTurnLanguage, languageDenialOf, languageMismatch, rewriteRejection, type ReplyLang, type RewriteRejectionReason, verbatimTermsOf, wholeReplyMismatch, withoutSentencesIn } from './reply-language';
 import { localeForReply, normalizeReplyAmounts } from './reply-price-format';
 import { foldedSql, foldQueryText } from '../../common/utils/sql-accent-fold.util';
 import { servedAgentAuthority, type ServedAgentAuthority } from '../persona/served-agent-authority';
@@ -7545,6 +7545,8 @@ export class ConversationsService {
         const outcome: ReplyLanguageOutcome = { from: written, to: code, attempts: 0, accepted: false, rejections: [] };
         if (trustedContext) REPLY_LANGUAGE_OUTCOME.set(trustedContext, outcome);
         let messages: any[] = [...currentMessages, { role: 'assistant', content: response }, { role: 'user', content: instruction }];
+        // F4300-16: a rewrite rejected ONLY for a sentence still in the source language kept every figure, URL and name.
+        let closest: string | null = null;
         // At most two model calls: the second only when the first lost a name or a figure the model can simply copy.
         for (let attempt = 1; attempt <= 2; attempt++) {
             let text: string;
@@ -7571,10 +7573,11 @@ export class ConversationsService {
             }
             outcome.rejections.push(rejection.reason);
             this.recordAgentSignal(tenantId, 'reply_language_rewrite_rejected', session, { reason: rejection.reason, attempt, missing: rejection.missing });
-            this.logger.warn(`[Guardrail] Language rewrite ${attempt} rejected (${rejection.reason}${rejection.missing.length ? `: ${rejection.missing.join(' | ')}` : ''}): "${text.slice(0, 80)}"`);
+            this.logger.warn(`[Guardrail] Language rewrite ${attempt} rejected (${rejection.reason}${rejection.missing.length ? `: ${rejection.missing.join(' | ')}` : ''}): "${text.slice(0, 300)}"`);
             // F4300-52: a rewrite that left a sentence in the language it had to leave is asked again once; still so, the sentences
             // in the other language are dropped when what is left keeps every figure, URL and name.
             if (rejection.reason === 'still_source_language' && written) {
+                if (closerToTurnLanguage(text, closest ?? response, written as ReplyLang, code, names)) closest = text;
                 const pruned = withoutSentencesIn(text, written as ReplyLang, code);
                 if (attempt === 2 && pruned && !rewriteRejection(response, pruned, names, written, code)) {
                     outcome.accepted = true;
@@ -7584,6 +7587,12 @@ export class ConversationsService {
             if (attempt === 2 || !['lost_name', 'lost_figure', 'still_source_language'].includes(rejection.reason)) break;
             const retry = rejection.reason === 'still_source_language' ? REPLY_LANGUAGE_STILL[code] : REPLY_LANGUAGE_RETRY[code](rejection.missing);
             messages = [...messages, { role: 'assistant', content: text }, { role: 'user', content: retry }];
+        }
+        // Both rewrites still held a sentence of the source language: the one closest to the customer's language goes out, never
+        // the reply written wholly in the language the turn is not in.
+        if (closest) {
+            outcome.accepted = true;
+            return closest;
         }
         return response;
     }

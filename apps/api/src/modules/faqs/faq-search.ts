@@ -37,6 +37,8 @@ const EQUIVALENTS: Record<string, string[]> = {
     pago: ['pago', 'pagos', 'payment', 'payments', 'pagamento', 'pagamentos', 'paiement', 'paiements'],
     envio: ['envio', 'envios', 'shipping', 'delivery', 'deliveries', 'entrega', 'entregas', 'livraison', 'livraisons', 'domicilio', 'domicilios'],
     horario: ['horario', 'horarios', 'hours', 'schedule', 'horaire', 'horaires'],
+    // F4300-53 (production QA 29-oct): «what LANGUAGES is the tour in?», «en quelles LANGUES…» missed «¿En qué idiomas se hace el tour?».
+    idioma: ['idioma', 'idiomas', 'language', 'languages', 'langue', 'langues', 'lingua', 'linguas'],
     devolucion: ['devolucion', 'devoluciones', 'return', 'returns', 'refund', 'refunds', 'devolucao', 'devolucoes', 'reembolso', 'reembolsos', 'remboursement', 'retour', 'retours'],
     cancelacion: ['cancelacion', 'cancelaciones', 'cancellation', 'cancellations', 'cancelamento', 'cancelamentos', 'annulation', 'annulations',
         // «si je dois ANNULER…», «if I CANCEL…», «se eu CANCELAR…» ask for the cancellation policy (F4300-53, 29-oct).
@@ -216,6 +218,9 @@ const QUESTION_FILLER = new Set([
     'punto', 'point', 'ponto',
     // «¿DÓNDE…?», «WHERE…?», «ONDE…?» only ask where (the FAQ «¿Dónde es el punto de encuentro?» is about the meeting).
     'donde', 'where', 'onde',
+    // «horário de FUNCIONAMENTO», «OPERATING / OPENING hours», «horaires d'OUVERTURE» only say which hours (F4300-53, 29-oct): the
+    // restaurant answered «I don't have the hours configured» next to its own «¿Cuál es el horario del restaurante?».
+    'funcionamento', 'funcionamiento', 'operating', 'opening', 'ouverture',
     // «¿cuánto tiempo TENGO de garantía?», «quanto tempo TENHO…» (F4300-53).
     'tengo', 'tenho',
     // «I AM scared», «j’AI peur», «comment gérez-vous CELA», «price PER person» (F4300-53, 29-oct).

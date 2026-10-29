@@ -146,6 +146,18 @@ const QUANTITY_WORD = new RegExp(`(?<![\\p{L}\\p{N}])(${Object.keys(QUANTITY_WOR
 const A_WEEK = /(?<![\p{L}])(?:una semana|uma semana|a week|one week|une semaine)(?![\p{L}])/iu;
 const HALF_DOZEN = /(?<![\p{L}])(?:media docena|half a dozen|meia d[uú]zia|une demi-douzaine|demi-douzaine)(?![\p{L}])/iu;
 const PAIR = /(?<![\p{L}])(?:un par|a couple|a pair|um par|uma dupla|une paire)(?![\p{L}])/iu;
+/**
+ * F4300-47 (production QA 29-oct, salon): «How much would it cost for me and two friends?» is three people, not two. The customer
+ * plus a count of companions («yo y dos amigos», «eu e duas amigas», «moi et deux amis») adds the customer.
+ */
+const WITH_COMPANIONS = /(?<![\p{L}])(?:me|myself|i|yo|m[ií]|eu|moi)\s+(?:and|y|e|et)\s+(\d{1,2}|\p{L}+)\s+(?:friends?|people|colleagues|others|amig[oa]s|personas|compa[nñ]er[oa]s|colegas|pessoas|amis|amies|personnes|coll[eè]gues)(?![\p{L}])/giu;
+
+/** A small count written in digits or as a word (es/en/pt/fr, two to ten), or null. */
+export function quantityNumber(raw: string): number | null {
+    const text = String(raw || '').trim().toLowerCase();
+    if (/^\d{1,2}$/.test(text)) return Number(text);
+    return QUANTITY_WORDS[text] ?? (/^(?:one|un|uno|una|um|uma|une)$/.test(text) ? 1 : null);
+}
 /** A month after a day number («25 de octubre», «3 June», «12 févr.»): a date, not a quantity. «2 margaritas» stays a quantity. */
 const MONTH = '(?:(?:enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre|january|february|march|april|june|july|august|september|october|november|december|janeiro|fevereiro|mar[cç]o|maio|junho|julho|setembro|outubro|novembro|dezembro|janvier|f[eé]vrier|mars|avril|mai|juin|juillet|ao[uû]t|septembre|octobre|novembre|d[eé]cembre)|(?:ene|feb|mar|abr|may|jun|jul|ago|sep|sept|set|oct|out|nov|dic|dez|jan|apr|aug|dec|janv|f[eé]vr?|avr|juil|d[eé]c)\\.?)(?!\\p{L})';
 const QUANTITY_DIGITS = new RegExp(`(?<![\\d.,:/-])(\\d{1,2})(?![\\d:/]|[.,]\\d|\\s*(?:%|h\\b|am\\b|pm\\b|de\\s+${MONTH}|${MONTH}))`, 'giu');
@@ -168,6 +180,10 @@ export function quantitiesIn(text: string): number[] {
     if (HALF_DOZEN.test(bare)) found.add(6);
     // «¿cuánto costaría una semana en la habitación?» (production QA 27-oct) is seven nights.
     if (A_WEEK.test(bare)) found.add(7);
+    for (const m of bare.matchAll(WITH_COMPANIONS)) {
+        const companions = quantityNumber(m[1]);
+        if (companions != null && companions + 1 <= 50) found.add(companions + 1);
+    }
     return [...found];
 }
 

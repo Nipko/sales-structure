@@ -3,7 +3,7 @@ import { catalogPriceStatus } from '../catalog-price-status';
 import { spokenItemName } from '../description-authority';
 import { replyLanguageOf } from '../reply-language';
 import { normalizeReplyAmounts } from '../reply-price-format';
-import { moneyMentionsIn, quantitiesIn, ResponseValidatorService } from '../response-validator.service';
+import { moneyMentionsIn, quantitiesIn, quantityNumber, ResponseValidatorService } from '../response-validator.service';
 import { addressFormOf, humanizeReferences, localizeStatusWords, orderStatusLabel, type AddressForm } from '../transition-engine';
 import { FACT_TTL_MS, factKey, verifiedFactViews, wellFormed, type VerifiedFact } from './facts-ledger';
 
@@ -776,6 +776,31 @@ export function renderReplyFacts(input: RenderFactsInput): RenderFactsOutcome {
         }
         out.push(text);
     }
-    outcome.text = out.join('').trim() || (outcome.fallbacks.length ? t.amount : '');
+    outcome.text = withTotalSaid(out.join('').trim(), input.reply, registry, quantitiesIn(customerText), ctx) || (outcome.fallbacks.length ? t.amount : '');
     return outcome;
+}
+
+/**
+ * F4300-47 (production QA 29-oct, POST307 after #307): «The price for the Corte y estilo service is 40,000 COP per person. For you
+ * and two friends, the total cost would be three times that amount» — the total said only as a multiple of the price, in a sentence
+ * of its own (the per-sentence «3 × price» rendering never sees it). When the reply quotes ONE confirmed amount and says a multiple
+ * of it that the customer asked for («three times that amount», «el triple de ese valor», «três vezes esse valor», «trois fois ce
+ * montant»), the multiple is said as the total with its working. Anything else is left as written.
+ */
+const MULTIPLE_OF_AMOUNT = /(?<![\p{L}])(?:(\d{1,2}|\p{L}+) times (?:that|this|the|the same) (?:amount|price|figure|cost|rate)|(?:el|al|o|le) (doble|triple|cu[aá]druple|dobro|triplo|qu[aá]druplo) (?:de |d[eo] |du )?(?:ese |este |esse |este |ce |cet )?(?:valor|precio|monto|importe|pre[cç]o|montant|prix)?|(\d{1,2}|\p{L}+) (?:veces|vezes|fois) (?:ese|este|esse|el|o|ce|le) (?:valor|precio|monto|importe|pre[cç]o|montant|prix))(?![\p{L}])/iu;
+const MULTIPLE_WORDS: Record<string, number> = { doble: 2, dobro: 2, triple: 3, triplo: 3, 'cuádruple': 4, cuadruple: 4, 'quádruplo': 4, quadruplo: 4 };
+function withTotalSaid(text: string, reply: string, registry: Map<string, VerifiedFact>, asked: number[], ctx: RenderContext): string {
+    if (!text || !asked.length) return text;
+    const amounts = new Map<string, VerifiedFact>();
+    for (const token of reply.matchAll(FACT_TOKEN_RE)) {
+        const fact = registry.get(token[2]);
+        if (token[1] === 'fact' && fact?.kind === 'money' && typeof fact.value === 'number') amounts.set(`${fact.value}|${(fact as any).currency ?? ''}`, fact);
+    }
+    if (amounts.size !== 1) return text;
+    const [fact] = amounts.values();
+    return text.replace(MULTIPLE_OF_AMOUNT, (whole: string, times?: string, word?: string, count?: string) => {
+        const n = word ? MULTIPLE_WORDS[word.toLowerCase()] ?? null : quantityNumber(times ?? count ?? '');
+        if (!n || n < 2 || !asked.includes(n)) return whole;
+        return `${moneyText({ ...fact, value: (fact.value as number) * n }, ctx)} (${n} × ${moneyText(fact, ctx)})`;
+    });
 }

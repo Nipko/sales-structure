@@ -242,3 +242,32 @@ describe('F4300-47 residue · a total already said with its working is not multi
         expect(out.text).toContain('1.440.000 COP (8 × 180.000 COP)');
     });
 });
+
+/**
+ * F4300-47 (production QA 29-oct, POST307 after #307): «For you and two friends, the total cost would be three times that amount» —
+ * the total said only as a multiple of the price, in a sentence of its own. «me and two friends» is three people.
+ */
+describe('F4300-47 · a multiple of the one quoted amount is said as the total', () => {
+    const CUT = { type: 'service', id: 'svc-cut', name: 'Corte y estilo' };
+    const cut = fact('money', CUT, 'price', 40000, { currency: 'COP', priceStatus: 'confirmed' });
+
+    it.each([
+        ['en', `The price for the Corte y estilo service is ${token('fact', cut)} per person. For you and two friends, the total cost would be three times that amount.`,
+            'How much would the Corte y estilo cost for me and two friends?', '120,000 COP (3 × 40,000 COP)'],
+        ['es', `El Corte y estilo cuesta ${token('fact', cut)}. Para usted y dos amigos sería el triple de ese valor.`,
+            '¿Cuánto costaría el Corte y estilo para mí y dos amigos?', '120.000 COP (3 × 40.000 COP)'],
+        ['pt', `O Corte y estilo custa ${token('fact', cut)}. Para três pessoas seria três vezes esse valor.`,
+            'Quanto custa o Corte y estilo para três pessoas?', '120.000 COP (3 × 40.000 COP)'],
+    ])('(%s) the multiple becomes the total with its working', (language, reply, customerText, total) => {
+        const out = render(reply, [cut], language, { customerText });
+        expect(out.text).toContain(total);
+        expect(out.text).not.toMatch(/three times that amount|el triple|três vezes esse valor/);
+    });
+
+    it('a multiple the customer did not ask for, or a reply quoting two amounts, is left as written', () => {
+        expect(render(`Cuesta ${token('fact', cut)}; para dos sería el doble.`, [cut], 'es', { customerText: '¿Cuánto cuesta para cuatro personas?' }).text).toContain('el doble');
+        const other = fact('money', { type: 'service', id: 'svc-nails', name: 'Manicure' }, 'price', 50000, { currency: 'COP', priceStatus: 'confirmed' });
+        expect(render(`Corte ${token('fact', cut)} y manicure ${token('fact', other)}; para tres sería el triple.`, [cut, other], 'es',
+            { customerText: '¿Y para tres?' }).text).toContain('el triple');
+    });
+});

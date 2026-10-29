@@ -548,6 +548,10 @@ export function renderReplyFacts(input: RenderFactsInput): RenderFactsOutcome {
         if (FEE_SENTENCE.test(norm(sentence))) return null;
         const named = subjectFor(sentence, pricedSubjects, false);
         if (named && !bestPrice.has(subjectKey(named))) return null;
+        // F4300-46 (production QA 29-oct, salon): in a list of services, «Manicure y pedicure (60 minutos) – precio por confirmar» named
+        // an item with no price at all, and the denial (true) became «El precio de Corte y estilo es 40.000 COP» — the one confirmed
+        // price of the turn. A sentence naming an item of the turn whose price is not confirmed is about that item: no template.
+        if (!named && live.some(fact => fact.subject.name && !bestPrice.has(subjectKey(fact)) && names(sentence, fact.subject.name))) return null;
         // An item nobody named is priced only when the customer asked for a price: «how many orders have I made?» never
         // gets «The price of Spark QA Plato is 13,500 COP» appended (production QA 2026-10-24).
         const fact = named ? bestPrice.get(subjectKey(named)) : subjectFor(sentence, confirmedMoney, asksPrice);

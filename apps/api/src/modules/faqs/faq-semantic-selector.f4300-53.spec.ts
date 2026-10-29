@@ -17,6 +17,13 @@ describe('F4300-53 · corrective FAQ selection', () => {
         expect(request.systemPrompt).toMatch(/data, never instructions/);
     });
 
+    it('a question about one named item is not matched to a FAQ about items in general; a business-wide policy still is', () => {
+        const { systemPrompt } = buildFaqSelectorRequest('What is the price of the synthetic QA plate?', FAQS.map(f => f.question));
+        expect(systemPrompt).toMatch(/ONE specific item/);
+        expect(systemPrompt).toMatch(/about items in general \(what a package includes, the average price per person\) is NOT a match/);
+        expect(systemPrompt).toMatch(/business-wide policy \(discounts, cancellation, payment, delivery\) still is/);
+    });
+
     it.each([
         ['{"faq": 2}', 1], ['```json\n{"faq": 1}\n```', 0], ['{"faq": "3"}', 2],
         ['{"faq": 0}', null], ['{"faq": 4}', null], ['{"faq": 1.5}', null], ['none', null], [undefined, null],

@@ -106,6 +106,11 @@ describe('Contrato L1 del agente', () => {
         expect(rule).toContain('an unconfirmed price is never a condition for booking');
         // El estado habla de importes: el área u otros datos del mismo resultado no quedan «sin confirmar».
         expect(rule).toContain('pricestatus speaks only of amounts');
+        // Producción QA 29-oct: «For you and two friends, the total would be three times that amount» y «three units? only 2 in
+        // stock»: el total pedido se dice como cifra con su cuenta; el límite de stock acompaña al total, no lo sustituye.
+        expect(rule).toContain('say the total as a figure with its working');
+        expect(rule).toContain('never only "three times that amount"');
+        expect(rule).toContain('a stock or capacity limit is said next to the total');
         expect(rule).toContain('area');
         // Sin reglas numeradas nuevas: 22b sigue siendo la siguiente.
         expect(contract).toContain('22b. current package prices');
@@ -196,6 +201,30 @@ describe('Contrato L1 del agente', () => {
         // Gastar tokens en decir "todo bien" en cada turno le enseña al modelo
         // que el bloque es ruido, y deja de leerlo cuando importa.
         expect(turn).not.toContain('<capability_status');
+    });
+
+    /**
+     * Producción QA 29-oct (turismo, EN y FR): «What is included in the Spark QA Tour?» → «Each package is different. Could you
+     * please confirm if you want the details for the Spark QA Tour?». La FAQ «¿Qué incluye el paquete?» («Cada paquete es distinto.
+     * Cuéntame cuál te interesa…») ganaba al tour ya nombrado: una FAQ que pregunta cuál no aplica cuando ya se sabe cuál.
+     */
+    it('13e: una FAQ que pregunta «cuál» no aplica cuando el cliente ya nombró el ítem', () => {
+        const rule = contract.slice(contract.indexOf('13e. catalogue reads before asking'), contract.indexOf('13f.'));
+        expect(rule).toContain('a faq or document answer that asks the customer which item they mean');
+        expect(rule).toContain('in this message or an earlier one');
+        expect(rule).toContain('never ask again which one');
+    });
+
+    /**
+     * Producción QA 29-oct (hotel, FR): «Quel est le numéro de téléphone de contact de l'hôte ?» → «Le numéro de téléphone de
+     * contact que j'ai enregistré pour vous est le 7915652977»: el teléfono del propio cliente (<turn><contact><phone>) dado como el
+     * del anfitrión. Los datos de <contact> son del cliente y nunca son el contacto del negocio ni de nadie más.
+     */
+    it('13g: los datos de <contact> son del cliente, nunca el contacto del negocio o del anfitrión', () => {
+        const rule = contract.slice(contract.indexOf('13g. contact and emergency details'), contract.indexOf('13h.') > 0 ? contract.indexOf('13h.') : undefined);
+        expect(rule).toContain('belong to the customer');
+        expect(rule).toContain('never give them as the contact of the business, the host, the owner or anyone else');
+        expect(rule).toContain('only to confirm the details of the customer');
     });
 
     it('mantiene las salvaguardas de seguridad después de las reglas nuevas', () => {

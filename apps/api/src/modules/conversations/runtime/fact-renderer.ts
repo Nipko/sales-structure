@@ -256,8 +256,12 @@ const COUNT_NOUNS: Array<[CountCategory, string]> = [
     ['bookings', 'reservas?|reservaciones|reservations?|bookings?'],
     ['units', 'unidades|units|unites'],
 ];
+// F4300-37 residue (production QA 29-oct, dental): «consulta general (30 minutos), consulta especializada (45 minutos)» normalises to
+// « 30 minutos consulta especializada » — a duration followed by the next service was read as «30 consultas», and the safe count
+// template replaced the whole list. A unit of time or money is never the word between a count and its noun.
+const MEASURE_WORDS = '(?:minutos?|minutes?|mins?|horas?|hours?|heures?|hrs?|h|dias?|days?|jours?|noches?|nights?|noites?|nuits?|semanas?|weeks?|semaines?|cop|eur|usd|pesos?|euros?|dolares|dollars?|reais|reales)';
 const COUNT_RES = Object.fromEntries((Object.keys(NUMBER_WORDS) as Lang[]).map(lang => [lang,
-    new RegExp(` ([0-9]+(?: [0-9]+)?|${NUMBER_WORDS[lang]}) (?:[a-z]+ )?(${COUNT_NOUNS.map(([, nouns]) => nouns).join('|')}) `, 'g')])) as Record<Lang, RegExp>;
+    new RegExp(` ([0-9]+(?: [0-9]+)?|${NUMBER_WORDS[lang]}) (?:(?!${MEASURE_WORDS} )[a-z]+ )?(${COUNT_NOUNS.map(([, nouns]) => nouns).join('|')}) `, 'g')])) as Record<Lang, RegExp>;
 const CATEGORY_FIELDS: Partial<Record<CountCategory, string[]>> = {
     bathrooms: ['bathrooms', 'banos'], bedrooms: ['bedrooms', 'rooms', 'habitaciones'], area: ['area', 'aream2', 'area_m2', 'areaM2'], units: ['stock'],
 };

@@ -165,6 +165,10 @@ function unitTokenTotals(text: string, asked: number[], lang?: string): string |
         if (before) {
             const n = countOf(before[1]);
             const total = n >= 2 && asked.includes(n) ? say(m.amount * n, m.currency) : '';
+            // F4300-47 residue (production QA 29-oct, Loki): «54,000 COP (4 times 13,500 COP)» — the total is said already and the words
+            // are its working: «4 × 13,500 COP», never «54,000 COP (54,000 COP (4 × 13,500 COP))».
+            const totalSaid = mentions.some(other => other !== m && Math.abs(other.amount - m.amount * n) < 0.005);
+            if (total && totalSaid) return `${text.slice(0, start - before[0].length)}${before[0].match(/^\s*/)![0]}${n} × ${amountText}${text.slice(end)}`.replace(/\s{2,}/g, ' ');
             if (total) return `${text.slice(0, start - before[0].length)}${before[0].match(/^\s*/)![0]}${total} (${n} × ${amountText})${text.slice(end)}`.replace(/\s{2,}/g, ' ');
         }
         const after = text.slice(end).match(UNIT_TIMES);

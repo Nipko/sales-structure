@@ -198,6 +198,18 @@ describe('Contrato L1 del agente', () => {
         expect(turn).not.toContain('<capability_status');
     });
 
+    /**
+     * Producción QA 29-oct (turismo, EN y FR): «What is included in the Spark QA Tour?» → «Each package is different. Could you
+     * please confirm if you want the details for the Spark QA Tour?». La FAQ «¿Qué incluye el paquete?» («Cada paquete es distinto.
+     * Cuéntame cuál te interesa…») ganaba al tour ya nombrado: una FAQ que pregunta cuál no aplica cuando ya se sabe cuál.
+     */
+    it('13e: una FAQ que pregunta «cuál» no aplica cuando el cliente ya nombró el ítem', () => {
+        const rule = contract.slice(contract.indexOf('13e. catalogue reads before asking'), contract.indexOf('13f.'));
+        expect(rule).toContain('a faq or document answer that asks the customer which item they mean');
+        expect(rule).toContain('in this message or an earlier one');
+        expect(rule).toContain('never ask again which one');
+    });
+
     it('mantiene las salvaguardas de seguridad después de las reglas nuevas', () => {
         // Las reglas se insertaron justo antes de este bloque: si una edición
         // futura lo pisa, el agente pierde los guardarraíles enteros.

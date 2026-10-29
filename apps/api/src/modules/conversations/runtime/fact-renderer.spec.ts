@@ -133,6 +133,18 @@ describe('what the model typed itself', () => {
         expect(render('La bandeja paisa tiene precio no confirmado.', [example]).text).toBe('La bandeja paisa tiene precio no confirmado.');
     });
 
+    it('salon: a service with no confirmed price keeps its «precio por confirmar», never another service\'s price (F4300-46, 29-oct)', () => {
+        const CUT = { type: 'service', id: 'svc-cut', name: 'Corte y estilo' };
+        const NAILS = { type: 'service', id: 'svc-nails', name: 'Manicure y pedicure' };
+        const cutPrice = fact('money', CUT, 'price', 40000, { currency: 'COP', priceStatus: 'confirmed' });
+        const nailsDuration = fact('attribute', NAILS, 'durationMinutes', 60);
+        const out = render('Manicure y pedicure (60 minutos), precio por confirmar.', [cutPrice, nailsDuration], 'es', { customerText: '¿qué servicios tienen y cuánto cuestan?' });
+        expect(out.text).toBe('Manicure y pedicure (60 minutos), precio por confirmar.');
+        expect(out.fallbacks).toEqual([]);
+        // The confirmed service denied is still corrected.
+        expect(render('Corte y estilo: precio por confirmar.', [cutPrice, nailsDuration]).text).toBe('El precio de Corte y estilo es 40.000 COP.');
+    });
+
     it('hotel: an amenity the record does not list is never affirmed; a denial and a listed one pass', () => {
         const out = render('¡Claro! El Hotel Mirador tiene piscina y parqueadero gratis.', [nightPrice], 'es', { customerText: '¿Tiene piscina?' });
         expect(out.text).toBe('¡Claro! En la ficha de Hotel Mirador no aparece ese servicio, así que no puedo confirmártelo.');

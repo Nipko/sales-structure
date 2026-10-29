@@ -6318,7 +6318,7 @@ export class ConversationsService {
                 this.recordAgentSignal(tenantId, 'rendered_facts_turn', session);
                 if (rendering.fallbacks.length) {
                     this.recordAgentSignal(tenantId, 'rendered_facts_fallback', session, { reasons });
-                    this.logger.warn(`[RenderedFacts] ${rendering.fallbacks.length} sentence(s) fell back to a template (${reasons.join(', ')}) in ${conversation.id}`);
+                    this.logger.warn(`[RenderedFacts] ${rendering.fallbacks.length} sentence(s) fell back to a template (${reasons.join(', ')}) in ${conversation.id}: ${(rendering.fallbackSentences ?? []).map(sentence => JSON.stringify(sentence)).join(' | ')}`);
                 }
             }
             // Output guardrail (#3): catch invented prices before the reply leaves.

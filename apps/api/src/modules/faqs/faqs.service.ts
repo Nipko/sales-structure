@@ -291,6 +291,28 @@ export class FaqsService {
     }
 
     /** FAQs holding ANY of the terms (the broad candidate set the ranking functions then narrow). */
+    /**
+     * F4300-53 (corrective selection): the published FAQs a selector may choose from, at most `max + 1` (so the caller knows
+     * when there are too many to hand over). Read-only and snapshot-aware exactly like the search: no DDL, no view counts.
+     */
+    async publishedForSelection(
+        tenantId: string, max: number, executionContext?: ServiceExecutionContext, captured?: StructuredKnowledgeCapture,
+    ): Promise<FAQ[]> {
+        const frozen = captured ? structuredKnowledgeRelation(captured, tenantId, 'faqs', 3, executionContext) : null;
+        const schemaName = frozen ? null : persistenceDisabled(executionContext)
+            ? await this.tenantsService.getSchemaName(tenantId, executionContext)
+            : await this.ensureSchema(tenantId);
+        const rows = await this.prisma.$queryRawUnsafe(
+            `SELECT id, question, answer, category, tags, order_index, is_published, views, created_at, updated_at
+             FROM ${frozen?.relation || `"${schemaName}"."faqs"`}
+             WHERE is_published = true
+             ORDER BY order_index ASC, id ASC
+             LIMIT $1`,
+            max + 1, ...(frozen ? [frozen.json] : []),
+        ) as any[];
+        return rows.map(this.rowToFaq);
+    }
+
     private async candidatesFor(
         tenantId: string, terms: string[], limit: number,
         executionContext?: ServiceExecutionContext, captured?: StructuredKnowledgeCapture,

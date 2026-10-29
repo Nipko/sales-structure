@@ -114,6 +114,7 @@ import { listTotal } from './list-total';
 import { PACKAGE_FIELD_AUTHORITY, PACKAGE_LANGUAGES_NOTE, PACKAGE_SEATS_NOTE, packageDuration, packageLanguages } from './package-structured-fields';
 import { LISTING_FIELD_AUTHORITY } from './listing-structured-fields';
 import { attachDescriptionAuthority } from './description-authority';
+import { FAQ_SELECTOR_MAX_FAQS, selectFaqByMeaning } from '../faqs/faq-semantic-selector';
 import {
     ClosestListing, closestMatchesNote, describeListingVerdict, givenListingCriteria, LOCATION_LISTING_CRITERIA,
     ListingSearchCriteria, selectClosestListings,
@@ -344,6 +345,11 @@ export class AIToolExecutorService {
             readOnly?: boolean;
             /** Trusted automatic context lookup; no views, DDL or ledger writes. */
             automaticFaqContext?: boolean;
+            /**
+             * Server-origin only (F4300-53, corrective selection): when the lexical FAQ search finds nothing, this model call
+             * reads the message next to the published questions and names the one that answers it, or none.
+             */
+            faqSelector?: import('../faqs/faq-semantic-selector').FaqSelector;
             executionContext?: ServiceExecutionContext;
             draftScope?: { agentId: string; agentVersion: number };
             /** Trusted caller key; it is always rebound to tenant/tool/args. */
@@ -844,7 +850,8 @@ export class AIToolExecutorService {
                         {source:'agent',expectedVersion:args.catalogTerms?.orderVersion,expectedTermsHash:args.catalogTermsHash,reason:args.reason,operationalScope}),refundPerformed:false };
 
                 case 'search_faqs':
-                    return this.searchFaqs(tenantId, args.query, args.limit, opts?.executionContext, opts?.structuredKnowledgeInputs, opts?.automaticFaqContext);
+                    return this.searchFaqs(tenantId, args.query, args.limit, opts?.executionContext, opts?.structuredKnowledgeInputs, opts?.automaticFaqContext,
+                        opts?.faqSelector);
 
                 case 'get_policy':
                     return this.getPolicy(tenantId, args.type as PolicyType, opts?.executionContext, opts?.structuredKnowledgeInputs);
@@ -2056,13 +2063,27 @@ export class AIToolExecutorService {
         executionContext?: ServiceExecutionContext,
         captured?:import('../evaluation-revision/evaluation-structured-knowledge').StructuredKnowledgeCapture,
         automaticContext = false,
+        faqSelector?: import('../faqs/faq-semantic-selector').FaqSelector,
     ): Promise<any> {
-        const faqs = await this.faqsService.search(tenantId, query, limit, executionContext, captured);
+        let faqs = await this.faqsService.search(tenantId, query, limit, executionContext, captured);
+        // F4300-53 (corrective selection): asked in other words or another language, the lexical search finds nothing. One small
+        // model call then picks, among the few published questions, the one that answers the message — or none.
+        let selectedBy: 'meaning' | undefined;
+        if (!faqs.length && faqSelector && String(query || '').trim()) {
+            try {
+                const published = await this.faqsService.publishedForSelection(tenantId, FAQ_SELECTOR_MAX_FAQS, executionContext, captured);
+                const chosen = await selectFaqByMeaning(query, published, faqSelector);
+                if (chosen) { faqs = [chosen]; selectedBy = 'meaning'; }
+            } catch (e: any) {
+                this.logger.warn(`[Tool] search_faqs corrective selection failed (non-fatal): ${e.message}`);
+            }
+        }
         // View counts are analytics writes, so introspection skips them.
         if (!persistenceDisabled(executionContext)) {
             for (const f of faqs) this.faqsService.incrementViews(tenantId, f.id);
         }
         return {
+            ...(selectedBy ? { selectedBy } : {}),
             faqs: (automaticContext ? boundedAutomaticFaqs(faqs) : faqs).map(f => ({
                 id: f.id,
                 question: f.question,

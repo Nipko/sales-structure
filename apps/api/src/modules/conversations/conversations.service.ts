@@ -4897,6 +4897,10 @@ export class ConversationsService {
                     schemaName, tenantId, conversation.contact_id || '', 'search_faqs', args, conversation.id,
                     { authority: llmAuthority, channelType: msg.channelType, executionContext: faqExecutionContext,
                         automaticFaqContext: true,
+                        // F4300-53 (corrective selection): on a lexical miss, one classification call picks the published FAQ that
+                        // answers the message. Session router in Agent Test (spend + trace); never a source of the reply itself.
+                        faqSelector: request => (session ? llmRouter : this.llmRouter).execute({ ...request, tenantId, executionContext,
+                            traceContext: { conversationId: conversation.id, stage: 'faq_selector' } }),
                         commitmentBlocked, deniedTools, jurisdiction: regional?.operatingCountry.value },
                 ), 3_000, faqExecutionContext);
                 const faqs = !result?.error && Array.isArray(result?.faqs) ? boundedAutomaticFaqs(result.faqs) : [];
@@ -4907,6 +4911,7 @@ export class ConversationsService {
                 turnContext.retrievedKnowledge = retrievedFaqs;
                 turnTrace.add('tool_result', 'search_faqs', { ok: !result?.error, error: result?.error,
                     automatic: true, retrievedCount: retrievedFaqs.length,
+                    ...(result?.selectedBy ? { selectedBy: result.selectedBy } : {}),
                     ...faqResultTraceMetadata(result?.error ? result : { faqs: retrievedFaqs }) });
             } catch (error: any) {
                 if (session || error instanceof LLMSourceAuthorityUnavailable) throw error;

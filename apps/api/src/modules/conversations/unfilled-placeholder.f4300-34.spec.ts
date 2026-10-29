@@ -270,7 +270,17 @@ describe('F4300-34 contacts: what is a contact detail the business data does not
         'El 15% de descuento aplica hasta el 30.',
         'Llame entre las 15 y las 18 horas.',
         'Tenemos 120 opciones de menú.',
+        // F4300-46 (29-oct): «phone» inside «audiphone» and the thousands group of «119 900» (any separator) are no emergency call.
+        "Le prix de l'audiphone QA Aurora est de 119 900 COP.",
+        "Le prix de l'audiphone QA Aurora est de 119 900 COP.",
+        'The headphone costs 119,900 COP.',
+        'O fone custa 110.000 COP.',
     ])('«%s» has none', text => expect(findUnbackedContacts(text, [DENTAL_FAQ])).toEqual([]));
+
+    it('a real emergency number after a whole word is still caught (F4300-46 kept the guard)', () => {
+        expect(findUnbackedContacts('Para una emergencia llame al 119.', [DENTAL_FAQ]).map(hit => hit.kind)).toContain('emergency_number');
+        expect(findUnbackedContacts('Please call 911 right away.', [DENTAL_FAQ]).map(hit => hit.kind)).toContain('emergency_number');
+    });
 
     it('a phone, e-mail, link, handle or emergency number the business data holds passes, however it is written', () => {
         const business = '<business><phone>+57 300 123 4567</phone><email>citas@clinicadental.com</email><website>https://clinicadental.example</website><instagram>@clinicadentalqa</instagram></business><faq>En una urgencia llame al 123.</faq>';

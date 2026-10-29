@@ -90,7 +90,7 @@ describe('F4300-29 automatic read: the browse the store runs before the model ca
         expect(result.scope).toBe('available_only');
         // What may be offered is unchanged: the for-sale list.
         expect(result.products.map((p: any) => p.id)).toEqual([AURORA_ID]);
-        expect(result.notForSale).toEqual([{ id: QA_ID, name: QA_NAME, stock: 0, isAvailable: false, inStock: false, soldOut: true }]);
+        expect(result.notForSale).toEqual([{ id: QA_ID, name: QA_NAME, stock: 0, isAvailable: false, inStock: false, soldOut: true, description: 'Producto sintético exclusivo de QA' }]);
         expect(result.note).toMatch(/notForSale .*DO exist/);
         // The second read: the #200 "unavailable" predicate, the «mentioned» rule, the message as a bound parameter.
         expect(sql).toHaveBeenCalledTimes(2);

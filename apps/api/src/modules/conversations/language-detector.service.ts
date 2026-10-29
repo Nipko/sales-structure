@@ -56,7 +56,9 @@ export class LanguageDetectorService {
             // F4300-16 (production QA 28-oct): «oi, somos um grupo de 12 amigos», «com 30.000 pesos, dá para dois pratos Spark?», «qto
             // custa…», «o audifono tem fio?» were read as Spanish (or as the stored English). Portuguese spellings no other language uses.
             'oi', 'dois', 'duas', 'qto', 'qtos', 'qta', 'qtas', 'quantos', 'quantas', 'prato', 'pratos', 'fio', 'estao', 'ate', 'eu', 'cabem'],
-        fr: ['bonjour', 'bonsoir', 'merci', 'vous', 'nous', 'veux', 'besoin', 'comment', 'aussi', "c'est", 'oui', 'est', 'sont', 'avec', 'pourquoi', 'voudrais', 'combien', 'salut', 'je', 'quel', 'quels', 'quelle', 'quelles', 'horaires', 'votre', 'pour', 'avez', 'une', 'dans', 'cherche', 'acheter', 'jusqu', 'prix', 'fil', 'filaire', 'il', 'elle'],
+        fr: ['bonjour', 'bonsoir', 'merci', 'vous', 'nous', 'veux', 'besoin', 'comment', 'aussi', "c'est", 'oui', 'est', 'sont', 'avec', 'pourquoi', 'voudrais', 'combien', 'salut', 'je', 'quel', 'quels', 'quelle', 'quelles', 'horaires', 'votre', 'pour', 'avez', 'une', 'dans', 'cherche', 'acheter', 'jusqu', 'prix', 'fil', 'filaire', 'il', 'elle',
+            // F4300-16 (production QA 29-oct): «que FAIRE en cas d'urgence dentaire ?» read as Spanish — no word of it was French.
+            'faire', 'fais', 'fait'],
     };
 
     /**
@@ -407,7 +409,7 @@ export class LanguageDetectorService {
             'promocao', 'promocoes', 'prato', 'pratos', 'alguma', 'algum', 'algumas', 'alguns', 'hoje', 'amanha'],
         // «petit-déjeuner» splits into «petit» and «dejeuner». Not «desserts» (English too) nor «location» (English too).
         fr: ['prix', 'chambre', 'chambres', 'nuit', 'nuits', 'livraison', 'manucure', 'cheveux', 'remise', 'taille', 'remboursement',
-            'dejeuner', 'casque', 'casques',
+            'dejeuner', 'casque', 'casques', 'urgence', 'urgences', 'dentaire', 'dentaires', 'dentiste',
             'chargeur', 'chargeurs', 'coque', 'coques', 'ecouteurs', 'petit', 'maquillage', 'loyer',
             'vegetarien', 'vegetarienne', 'vegetariens', 'vegetariennes', 'chose', 'quelque', 'quelques', 'aujourd', 'demain'],
     };
@@ -775,16 +777,20 @@ export class LanguageDetectorService {
             return { language: winner, persist: true };
         }
         const prev = previous ? this.short(previous) : null;
+        // F4300-16 (production QA 29-oct): the FIRST message of a conversation has no stored language, and every rule below that
+        // weighs the message against the stored one was skipped: «como funciona a garantia do fone?» (Portuguese by its «fone» and
+        // «do») fell back to the tenant's Spanish. The tenant's language stands in for the stored one there; what persists is unchanged.
+        const basis = prev ?? this.short(fallback);
         // Clear words of ONE language around the names of the message («el Aurora tiene garantía?») decide the turn,
         // whatever language is stored. Only a message that says nothing in any language keeps the stored one.
         const clear = this.clearLanguageOf(text, names);
         if (clear) return { language: clear, persist: !!prev };
         const wordCount = normalized.split(/\s+/).filter(Boolean).length;
-        const sentenceLanguage = this.fullSentenceLanguage(prev, tokens, raw, wordCount, scores);
+        const sentenceLanguage = this.fullSentenceLanguage(basis, tokens, raw, wordCount, scores);
         if (sentenceLanguage) return { language: sentenceLanguage, persist: true };
-        const currentLanguage = this.currentMessageLanguage(prev, tokens, raw, text, wordCount);
+        const currentLanguage = this.currentMessageLanguage(basis, tokens, raw, text, wordCount);
         if (currentLanguage) return { language: currentLanguage, persist: true };
-        const notStored = this.languageExcludingStored(prev, text, names, context?.preferred);
+        const notStored = this.languageExcludingStored(basis, text, names, context?.preferred);
         if (notStored) return { language: notStored, persist: true };
         if (winnerScore >= 1 && secondScore === 0) {
             if (prev && prev !== winner) {

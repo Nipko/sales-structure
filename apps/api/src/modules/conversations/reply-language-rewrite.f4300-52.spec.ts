@@ -1,4 +1,4 @@
-import { rewriteRejection, withoutSentencesIn } from './reply-language';
+import { closerToTurnLanguage, rewriteRejection, withoutSentencesIn } from './reply-language';
 
 /**
  * F4300-52 (production QA 28-oct, store tenant): the warranty FAQ written in Spanish answered a Portuguese question in Spanish; the
@@ -27,5 +27,23 @@ describe('F4300-52 · a rewrite with one sentence left in the source language', 
     it('a sentence of substance left in the other language is never dropped', () => {
         const advice = 'Sinto muito que esteja passando por isso. Le recomiendo que busque atención urgente en la clínica o en un servicio de urgencias odontológicas.';
         expect(withoutSentencesIn(advice, 'es', 'pt')).toBeNull();
+    });
+});
+
+/**
+ * F4300-16 (production QA 29-oct, POST292-FONE-PT on image fa13d55e): the turn was detected as Portuguese, both rewrites of the
+ * Spanish warranty reply kept every figure and name but held one Spanish sentence, and the reply wholly in Spanish went out.
+ */
+describe('F4300-16 · a rewrite closer to the turn language than the reply', () => {
+    const SPANISH = 'El audífono QA Aurora tiene garantía de 72 días calendario desde la entrega. Es una garantía específica para este producto de prueba. ¿Le gustaría saber algo más sobre este audífono?';
+    const ONE_LEFT = 'O audífono QA Aurora tem garantia de 72 dias corridos a partir da entrega. Es una garantía específica para este producto de prueba. Gostaria de saber mais alguma coisa?';
+
+    it('has fewer sentences in the source language and one in the turn language', () => {
+        expect(closerToTurnLanguage(ONE_LEFT, SPANISH, 'es', 'pt', ['Audífono QA Aurora'])).toBe(true);
+    });
+
+    it('a rewrite as Spanish as the reply, or with nothing in the turn language, is not closer', () => {
+        expect(closerToTurnLanguage(SPANISH, SPANISH, 'es', 'pt', ['Audífono QA Aurora'])).toBe(false);
+        expect(closerToTurnLanguage('Es una garantía específica para este producto de prueba.', SPANISH, 'es', 'pt')).toBe(false);
     });
 });

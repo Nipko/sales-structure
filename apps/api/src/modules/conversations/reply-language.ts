@@ -193,6 +193,23 @@ export function withoutSentencesIn(text: string, source: ReplyLang, code: string
 }
 
 /**
+ * F4300-16 (production QA 29-oct, POST292 on image fa13d55e): «como funciona a garantia do fone?» was detected as Portuguese, the
+ * Spanish reply was rewritten twice, both rewrites kept every figure and name but were rejected because ONE sentence was still
+ * Spanish, and the whole Spanish reply went out. A rewrite that keeps what the reply says and has fewer sentences in the language
+ * being left — and at least one in the turn language — is closer to the customer than the original: it is the one sent. Pure.
+ */
+export function closerToTurnLanguage(rewrite: string, original: string, source: ReplyLang, code: string, ignore: readonly string[] = []): boolean {
+    // Each sentence goes to the language that scores most in it, when it scores more than the next one (lenient on purpose: it only
+    // compares two texts that say the same thing, it never decides a turn).
+    const leaning = (text: string) => ownLanguageText(text, ignore).split(/(?<=[.!?…])\s+|[\n\r]+|(?=[¿¡])/)
+        .map(sentence => scoresOf(sentence, []))
+        .map(ranked => (ranked[0][1] > ranked[1][1] ? ranked[0][0] : null));
+    const count = (langs: Array<ReplyLang | null>, lang: string) => langs.filter(written => written === lang).length;
+    const mine = leaning(rewrite);
+    return count(mine, code) > 0 && count(mine, source) < count(leaning(original), source);
+}
+
+/**
  * Words of another language that are ordinary words of the turn language too, so they are no evidence inside it: French «son»
  * («son statut») and «es» («tu es»), Portuguese «a» and «tu».
  */

@@ -76,6 +76,7 @@ export function withEquivalents(terms: string[]): string[] {
     }))];
 }
 const DURATION_FILLER = new Set(['tiempo', 'time', 'tempo', 'temps']);
+const ASKS_TIME = /(?<!\p{L})(?:cuant[oa]|quant[oa]|combien|how\s+much)\s+(?:de\s+)?(?:tiempo|tempo|temps|time)(?!\p{L})(?!\s+(?:antes|before|avant|de\s+antecedencia|d['’]avance))/u;
 const AMBIGUOUS_WORDS = new Set(['last', 'lasts']);
 const DURATION = 'duration';
 // Comparison form of a term: duration words collapse into one concept and a plural
@@ -86,7 +87,11 @@ const canonTokens = (value: string): Set<string> => new Set(tokens(value).filter
 const canonTerms = (value: string): string[] => {
     const raw = faqSearchTerms(value).filter(t => !AMBIGUOUS_WORDS.has(t));
     const hasDuration = raw.some(t => DURATION_WORDS.has(t));
-    return [...new Set(raw.filter(t => !(hasDuration && DURATION_FILLER.has(t))).map(canon))];
+    // F4300-53 (production QA 29-oct): «¿y cuánto tiempo tengo de garantía?» asks a duration with no duration word; «tiempo» stayed a
+    // topic the warranty FAQ never says, and the FAQ was dropped. «cuánto tiempo», «quanto tempo», «combien de temps» are a duration.
+    const asksTime = ASKS_TIME.test(fold(value));
+    return [...new Set(raw.filter(t => !(hasDuration && DURATION_FILLER.has(t)))
+        .map(t => asksTime && DURATION_FILLER.has(t) ? DURATION : canon(t)))];
 };
 
 // Words that only introduce a code ("Prueba QA QA_C1_T01:", "Pedido ORD_123:"). Text before a
@@ -158,6 +163,8 @@ const QUESTION_FILLER = new Set([
     'comment', 'puis', 'puedo', 'puede', 'posso', 'pode', 'entrar',
     // «¿Cómo HAGO una reserva?», «how do I…», «what do I DO in…», «EN CASO DE emergencia», «how long does it TAKE».
     'hago', 'hacer', 'hace', 'faco', 'fazer', 'faire', 'fais', 'caso', 'case', 'cas', 'take', 'takes',
+    // «¿cuánto tiempo TENGO de garantía?», «quanto tempo TENHO…» (F4300-53).
+    'tengo', 'tenho',
 ]);
 
 /** The topic words of ONE part of a message: what is left after the function words and the words that only ask. */

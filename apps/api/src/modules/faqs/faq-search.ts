@@ -85,6 +85,17 @@ const EQUIVALENTS: Record<string, string[]> = {
     pagar: ['pagar', 'pagan', 'paga', 'pagamos', 'pay', 'pays', 'paid', 'pagam', 'payer', 'paient', 'paie'],
     visita: ['visita', 'visitas', 'visit', 'visits', 'visite', 'visites', 'rendez'],
     primero: ['primera', 'primero', 'primer', 'first', 'primeira', 'primeiro', 'premier', 'premiere'],
+    // F4300-53 (production QA 29-oct, dental and restaurant): «que faire en cas d’urgence DENTAIRE ?», «j’ai PEUR du DENTISTE, comment
+    // GÉREZ-vous cela ?», «I am SCARED of the DENTIST, how do you HANDLE it?», «what is the average PRICE per PERSON?» missed «¿Atienden
+    // urgencias dentales?», «¿Cómo manejan el dolor o miedo al dentista?», «¿Cuál es el precio promedio por persona?»: with no FAQ the
+    // agent invented an on-call number, said sedation is not offered, or asked how many people the order was for.
+    dental: ['dental', 'dentales', 'dentaire', 'dentaires', 'dentario', 'dentaria', 'dentarios', 'dentarias'],
+    dentista: ['dentista', 'dentistas', 'dentist', 'dentists', 'dentiste', 'dentistes'],
+    miedo: ['miedo', 'miedos', 'temor', 'fear', 'fears', 'scared', 'afraid', 'medo', 'peur', 'ansiedad', 'anxiety', 'anxious', 'ansiedade', 'anxiete'],
+    manejar: ['manejar', 'manejan', 'manejo', 'manejamos', 'handle', 'handles', 'manage', 'lidar', 'lidam', 'gerer', 'gerez'],
+    precio: ['precio', 'precios', 'price', 'prices', 'preco', 'precos', 'prix'],
+    promedio: ['promedio', 'average'],
+    persona: ['persona', 'personas', 'person', 'persons', 'people', 'pessoa', 'pessoas', 'personne', 'personnes'],
     llevar: ['llevar', 'llevo', 'traer', 'traigo', 'trae', 'bring', 'levar', 'levo', 'trazer', 'apporter'],
 };
 const EQUIVALENT_OF = new Map(Object.entries(EQUIVALENTS).flatMap(([concept, words]) => words.map(word => [word, concept] as const)));
@@ -194,6 +205,8 @@ const QUESTION_FILLER = new Set([
     'donde', 'where', 'onde',
     // «¿cuánto tiempo TENGO de garantía?», «quanto tempo TENHO…» (F4300-53).
     'tengo', 'tenho',
+    // «I AM scared», «j’AI peur», «comment gérez-vous CELA», «price PER person» (F4300-53, 29-oct).
+    'am', 'ai', 'cela', 'per',
 ]);
 
 /** The topic words of ONE part of a message: what is left after the function words and the words that only ask. */

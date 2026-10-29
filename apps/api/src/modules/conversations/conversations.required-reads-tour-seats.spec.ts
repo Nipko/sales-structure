@@ -182,10 +182,33 @@ describe('search_packages: seats belong to a departure', () => {
         const search = await h.run('search_packages', {});
         expect(search.packages[0]).not.toHaveProperty('seatsLeft');
         expect(search.seatsNote).toBe(PACKAGE_SEATS_NOTE);
-        expect(PACKAGE_SEATS_NOTE).toMatch(/upcomingDepartures\[\] in get_package_details/);
+        expect(PACKAGE_SEATS_NOTE).toMatch(/in get_package_details of that package/);
         expect(PACKAGE_SEATS_NOTE).toMatch(/\(date, time, seatsLeft\)/);
+        expect(PACKAGE_SEATS_NOTE).toMatch(/an empty list means no departure is scheduled/);
         // Production QA 29-oct: «What are the specific departure times for the tours?» → «not listed», with a departure on file.
-        expect(PACKAGE_SEATS_NOTE).toMatch(/Never say the seat count or the departure dates or times are unknown or not recorded before reading them/);
+        expect(PACKAGE_SEATS_NOTE).toMatch(/Never say the seat count or the departure dates or times are unknown or not recorded when they are listed, or before reading them/);
+    });
+
+    // POST308 (production QA 29-oct): «What are the specific departure times for the tours?» → «not listed» after search_packages
+    // only. The dateless search now carries each package's next departures; a package with none says so with an empty list.
+    it('without a date: each package carries its next departures (date, time, seats); none scheduled is an empty list', async () => {
+        const h = executor();
+        const other = { ...DB_ROW, id: '22222222-2222-4222-8222-222222222222', name: 'Tour QA Aurora 20261014' };
+        h.toursService.searchPackages.mockResolvedValue([DB_ROW, other]);
+        h.toursService.listInventory.mockImplementation(async (_s: string, id: string) => id === DB_ROW.id
+            ? [{ departure_date: '2026-12-15', departure_time: '09:00', available_seats: 10 }] : []);
+        const search = await h.run('search_packages', {});
+        expect(search.packages[0].upcomingDepartures).toEqual([{ date: '2026-12-15', time: '09:00', seatsLeft: 10 }]);
+        expect(search.packages[1].upcomingDepartures).toEqual([]);
+        expect(search.packages[0]).not.toHaveProperty('seatsLeft');
+    });
+
+    it('a failed departures read leaves that package without upcomingDepartures (nothing claimed)', async () => {
+        const h = executor();
+        h.toursService.searchPackages.mockResolvedValue([DB_ROW]);
+        h.toursService.listInventory.mockRejectedValue(new Error('db down'));
+        const search = await h.run('search_packages', {});
+        expect(search.packages[0]).not.toHaveProperty('upcomingDepartures');
     });
 
     it('with a date: the seats of that departure, no note', async () => {

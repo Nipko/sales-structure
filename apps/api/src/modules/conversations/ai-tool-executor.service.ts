@@ -111,7 +111,7 @@ import { markCatalogEmpty } from './catalog-empty.util';
 import { catalogPriceStatus } from './catalog-price-status';
 import { notForSaleMatch, NOT_FOR_SALE_MATCH_LIMIT, NOT_FOR_SALE_MATCHES_NOTE, productAvailabilityScope, readsNotForSaleMatches } from './sold-out-visibility';
 import { listTotal } from './list-total';
-import { PACKAGE_FIELD_AUTHORITY, PACKAGE_LANGUAGES_NOTE, PACKAGE_SEATS_NOTE, packageDuration, packageLanguages } from './package-structured-fields';
+import { PACKAGE_DEPARTURES_IN_SEARCH_MAX, PACKAGE_DEPARTURES_PER_PACKAGE, PACKAGE_FIELD_AUTHORITY, PACKAGE_LANGUAGES_NOTE, PACKAGE_SEATS_NOTE, packageDuration, packageLanguages } from './package-structured-fields';
 import { LISTING_FIELD_AUTHORITY } from './listing-structured-fields';
 import { attachDescriptionAuthority } from './description-authority';
 import { FAQ_SELECTOR_MAX_FAQS, selectFaqByMeaning } from '../faqs/faq-semantic-selector';
@@ -4826,6 +4826,7 @@ export class AIToolExecutorService {
                 date: args.date,
                 partySize: args.partySize,
             });
+            const departures = args.date ? null : await this.nextDeparturesOf(schemaName, packages);
             return {
                 packages: packages.map((p: any) => ({
                     id: p.id,
@@ -4842,6 +4843,7 @@ export class AIToolExecutorService {
                     languages: packageLanguages(p.languages),
                     // Seats belong to a departure: only a dated search has them (PACKAGE_SEATS_NOTE says where they are otherwise).
                     ...(p.available_seats !== undefined && p.available_seats !== null ? { seatsLeft: p.available_seats } : {}),
+                    ...(departures?.has(p.id) ? { upcomingDepartures: departures.get(p.id) } : {}),
                 })),
                 // Production 24-oct: a package description («a fictional QA experience») was read over its 4-hour duration.
                 ...(packages.length ? { fieldAuthority: PACKAGE_FIELD_AUTHORITY } : {}),
@@ -4857,6 +4859,29 @@ export class AIToolExecutorService {
             }
             return this.safeToolFailure('search_packages', e, 'read');
         }
+    }
+
+    /**
+     * F4300-54 (production QA 29-oct, POST308 after #308): «What are the specific departure times for the tours?» → «not listed»
+     * with a note saying they are in get_package_details: the model did not make that second read for a question about every
+     * tour. A dateless search of a few packages now carries the next departures of each (date, time, seatsLeft); an empty list is
+     * «none scheduled». A package whose read fails carries none, so nothing is claimed about it.
+     */
+    private async nextDeparturesOf(schemaName: string, packages: any[]): Promise<Map<string, Array<Record<string, unknown>>>> {
+        const found = new Map<string, Array<Record<string, unknown>>>();
+        if (!packages.length || packages.length > PACKAGE_DEPARTURES_IN_SEARCH_MAX) return found;
+        const today = new Date().toISOString().split('T')[0];
+        await Promise.all(packages.map(async (p: any) => {
+            try {
+                const inventory = await this.toursService.listInventory(schemaName, p.id, today);
+                found.set(p.id, (inventory || []).slice(0, PACKAGE_DEPARTURES_PER_PACKAGE).map((i: any) => ({
+                    date: i.departure_date, time: i.departure_time, seatsLeft: i.available_seats,
+                })));
+            } catch (e: any) {
+                this.logger.warn(`[Tool] search_packages departures of ${p.id} failed: ${e.message}`);
+            }
+        }));
+        return found;
     }
 
     private async getPackageDetails(schemaName: string, packageId: string): Promise<any> {

@@ -1,4 +1,4 @@
-import { closerToTurnLanguage, rewriteRejection, withoutSentencesIn } from './reply-language';
+import { closerToTurnLanguage, languageMismatch, rewriteRejection, withoutSentencesIn } from './reply-language';
 
 /**
  * F4300-52 (production QA 28-oct, store tenant): the warranty FAQ written in Spanish answered a Portuguese question in Spanish; the
@@ -45,5 +45,22 @@ describe('F4300-16 · a rewrite closer to the turn language than the reply', () 
     it('a rewrite as Spanish as the reply, or with nothing in the turn language, is not closer', () => {
         expect(closerToTurnLanguage(SPANISH, SPANISH, 'es', 'pt', ['Audífono QA Aurora'])).toBe(false);
         expect(closerToTurnLanguage('Es una garantía específica para este producto de prueba.', SPANISH, 'es', 'pt')).toBe(false);
+    });
+});
+
+/** F4300-16 (production QA 29-oct): a Spanish courtesy close to «D'accord, merci.» / «Obrigado» was never seen as Spanish. */
+describe('F4300-16 · a Spanish courtesy close is Spanish', () => {
+    it.each([
+        'Con mucho gusto. Si necesita algo más, no dude en contactarme. ¡Que tenga un buen día!',
+        '¡De nada! Si necesita algo más, aquí estoy para ayudarle. 😊',
+    ])('«%s» to a French or Portuguese turn', reply => {
+        expect(languageMismatch(reply, 'fr')).toBe('es');
+        expect(languageMismatch(reply, 'pt')).toBe('es');
+        expect(languageMismatch(reply, 'es')).toBeNull();
+    });
+
+    it('the same close in Portuguese or French is not Spanish', () => {
+        expect(languageMismatch('Com muito gosto. Se precisar de algo mais, estou aqui para ajudar. Tenha um bom dia!', 'pt')).toBeNull();
+        expect(languageMismatch('Avec plaisir. Si vous avez besoin d’autre chose, n’hésitez pas. Bonne journée !', 'fr')).toBeNull();
     });
 });

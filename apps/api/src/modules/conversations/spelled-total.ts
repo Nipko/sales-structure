@@ -108,7 +108,10 @@ function unitOnlyCorrection(reply: string, customerText: string, lang?: string):
         const n = key === 'night' && A_WEEK.test(customerText) ? 7 : askedCount(customerText, unit.asked, key === 'person');
         if (!n) continue;
         const per = new RegExp(String.raw`^\s*(?:${unit.per})(?!\p{L})`, 'iu');
-        const units = mentions.filter(m => per.test(reply.slice(m.index! + m.length!)));
+        // «o preço por pessoa é de 125 EUR», «the price per person is 125 EUR» (production QA 28-oct, image 2d2f73f2): the unit before
+        // the amount, two words at most between them.
+        const perBefore = new RegExp(String.raw`(?:${unit.per})(?!\p{L})\s+(?:\p{L}+\s+){0,2}$`, 'iu');
+        const units = mentions.filter(m => per.test(reply.slice(m.index! + m.length!)) || perBefore.test(reply.slice(Math.max(0, m.index! - 40), m.index!)));
         if (units.length !== 1) continue;
         const [base] = units;
         // The total is there already (any amount n times the unit amount).

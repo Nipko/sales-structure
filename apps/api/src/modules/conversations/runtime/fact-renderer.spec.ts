@@ -156,6 +156,24 @@ describe('what the model typed itself', () => {
             .toEqual([{ reason: 'unrendered_amount' }]);
     });
 
+    it('hotel: an absence the record does not back is not asserted; «the record does not list it» is said instead (F4300-54, 29-oct)', () => {
+        for (const [text, lang] of [
+            ['La tarifa no incluye desayuno.', 'es'],
+            ['The room does not include any breakfast or specific amenities listed in the rate.', 'en'],
+            ['O quarto não inclui café da manhã na tarifa.', 'pt'],
+            ['Le tarif ne comprend pas de petit-déjeuner.', 'fr'],
+        ] as const) {
+            const out = render(text, [nightPrice], lang, { customerText: 'breakfast?' });
+            expect(out.fallbacks).toEqual([{ reason: 'unbacked_amenity' }]);
+        }
+        expect(render('La tarifa no incluye desayuno.', [nightPrice]).text)
+            .toBe('En la ficha de Hotel Mirador no aparece ese servicio, así que no puedo confirmártelo.');
+        // What the record says stays: it does not list it, or it excludes it in so many words.
+        expect(render('La ficha no registra desayuno.', [nightPrice]).fallbacks).toEqual([]);
+        const excludes = fact('attribute', HOTEL, 'excludes', ['desayuno']);
+        expect(render('La tarifa no incluye desayuno.', [nightPrice, excludes]).fallbacks).toEqual([]);
+    });
+
     it('hotel: an amenity the record does not list is never affirmed; a denial and a listed one pass', () => {
         const out = render('¡Claro! El Hotel Mirador tiene piscina y parqueadero gratis.', [nightPrice], 'es', { customerText: '¿Tiene piscina?' });
         expect(out.text).toBe('¡Claro! En la ficha de Hotel Mirador no aparece ese servicio, así que no puedo confirmártelo.');

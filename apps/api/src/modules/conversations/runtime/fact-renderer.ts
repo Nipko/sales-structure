@@ -300,6 +300,13 @@ const AMENITY_TERMS = ['piscina', 'pool', 'piscine', 'parqueadero', 'estacionami
     'elevador', 'ascenseur', 'bbq', 'parrilla', 'churrasqueira', 'barbecue', 'chimenea', 'fireplace', 'lareira', 'cheminee', 'calefaccion',
     'heating', 'aquecimento', 'chauffage', 'pet friendly', 'mascotas'];
 const NEGATION = / (?:no|sin|ni|tampoco|ningun|ninguna|not|without|nao|sem|nem|pas|sans|aucun|aucune|n) /;
+/**
+ * F4300-54 (production QA 29-oct, hotel, five times in four languages): «La tarifa no incluye desayuno», «The room does not include any
+ * breakfast», «O quarto não inclui café da manhã» — said because the listing does not mention breakfast. A listing that does not list
+ * something is no evidence that it is absent (open world): an absence ASSERTED for a feature the record neither lists nor excludes is
+ * unbacked like an affirmation. «La ficha no registra piscina» (what the record says) is not an assertion of absence.
+ */
+const ASSERTED_ABSENCE = / (?:no (?:se )?(?:incluye|incluyen|tiene|tienen|ofrece|ofrecen|cuenta con|dispone de|hay|esta incluid[oa])|(?:does|do|is|are) not (?:include|have|offer|come with|included)|doesn t (?:include|have|offer)|isn t included|there (?:is|are) no|nao (?:inclui|tem|oferece|possui|esta incluid[oa])|nao ha|n inclut pas|ne comprend pas|ne propose pas|n offre pas|n y a pas|n a pas) /;
 const LODGING_SUBJECT = /propert|listing|room|accommodation|stay|cabin|cabana/;
 
 const PRICE_DENIAL = [
@@ -334,6 +341,8 @@ interface Templates {
     records: (total: string, recorded: string, shown?: string) => string; recordsAtLeast: (shown: string, noun: string) => string;
     amenitiesListed: (name: string, list: string) => string; amenityMissing: (name?: string) => string;
     duration: (name: string, minutes: string) => string;
+    /** A fee read as 0, said in words where it is cited (F4300-47): never a bare «0 COP» a reader could take for a price. */
+    noFee: string;
 }
 const T: Record<Lang, Templates> = {
     es: {
@@ -348,6 +357,7 @@ const T: Record<Lang, Templates> = {
         amenitiesListed: (name, list) => `Según la ficha, ${name} incluye: ${list}.`,
         amenityMissing: name => `En la ficha${name ? ` de ${name}` : ''} no aparece ese servicio, así que no puedo confirmártelo.`,
         duration: (name, minutes) => `${name} dura ${minutes} minutos.`,
+        noFee: 'sin costo',
     },
     en: {
         unknown: "I don't have that detail confirmed right now; I can check it again if you like.",
@@ -361,6 +371,7 @@ const T: Record<Lang, Templates> = {
         amenitiesListed: (name, list) => `According to the listing, ${name} includes: ${list}.`,
         amenityMissing: name => `The listing${name ? ` for ${name}` : ''} does not show that feature, so I can't confirm it.`,
         duration: (name, minutes) => `${name} takes ${minutes} minutes.`,
+        noFee: 'free of charge',
     },
     pt: {
         unknown: 'Não tenho esse dado confirmado neste momento; se quiser, consulto de novo.',
@@ -374,6 +385,7 @@ const T: Record<Lang, Templates> = {
         amenitiesListed: (name, list) => `Segundo a ficha, ${name} inclui: ${list}.`,
         amenityMissing: name => `A ficha${name ? ` de ${name}` : ''} não mostra esse serviço, então não posso confirmá-lo.`,
         duration: (name, minutes) => `${name} dura ${minutes} minutos.`,
+        noFee: 'sem custo',
     },
     fr: {
         unknown: "Je n'ai pas cette information confirmée pour le moment ; je peux la vérifier à nouveau si vous voulez.",
@@ -387,6 +399,7 @@ const T: Record<Lang, Templates> = {
         amenitiesListed: (name, list) => `D'après la fiche, ${name} comprend : ${list}.`,
         amenityMissing: name => `La fiche${name ? ` de ${name}` : ''} n'indique pas ce service, je ne peux donc pas le confirmer.`,
         duration: (name, minutes) => `${name} dure ${minutes} minutes.`,
+        noFee: 'sans frais',
     },
 };
 /**
@@ -662,6 +675,9 @@ export function renderReplyFacts(input: RenderFactsInput): RenderFactsOutcome {
     const lodgingTurn = live.some(fact => LODGING_SUBJECT.test(fact.subject.type));
     const backedAmenities = norm(live.filter(fact => fact.kind === 'attribute' && /amenit|includ|inclus|feature/i.test(fact.field))
         .map(fact => (Array.isArray(fact.value) ? fact.value.join(' ') : String(fact.value))).join(' '));
+    // What the record EXCLUDES in so many words (a package's «excludes», a listing's exclusions): an absence it backs.
+    const backedExclusions = norm(live.filter(fact => fact.kind === 'attribute' && /exclu/i.test(fact.field))
+        .map(fact => (Array.isArray(fact.value) ? fact.value.join(' ') : String(fact.value))).join(' '));
 
     const sentenceOut = (sentence: string): { text: string; reason?: FallbackReason } => {
         const tokens = [...sentence.matchAll(FACT_TOKEN_RE)];
@@ -678,6 +694,13 @@ export function renderReplyFacts(input: RenderFactsInput): RenderFactsOutcome {
             if (!rendered.ok && rendered.reason === 'missing_price' && askedFee && fact?.value === 0 && FEE_FIELD.test(fact.field)) {
                 rendered = { ok: true, text: moneyText(fact, ctx) };
             }
+            // F4300-47 (production QA 29-oct, log of #295): «The price per night is ⟦…⟧, and there is no cleaning fee (⟦…⟧).» fell back whole,
+            // night price included, because nobody had asked about the fee. A sentence that is itself about the fee says the 0 in words
+            // («free of charge», «sin costo»): never a bare «0 COP» that could pass for a price.
+            if (!rendered.ok && rendered.reason === 'missing_price' && fact?.value === 0 && FEE_FIELD.test(fact.field)
+                && FEE_SENTENCE.test(norm(sentence.replace(FACT_TOKEN_RE, ' ')))) {
+                rendered = { ok: true, text: t.noFee };
+            }
             if (!rendered.ok) {
                 return { text: rendered.reason === 'example_price' ? t.example(fact?.subject.name ? say(fact.subject.name) : undefined) : t.unknown,
                     reason: rendered.reason };
@@ -691,7 +714,10 @@ export function renderReplyFacts(input: RenderFactsInput): RenderFactsOutcome {
             .filter(count => !serverCategories.includes(count.category) && !countBacked(stripped, count));
         if (unbacked.length) return { text: fallbackFor(stripped, 'count'), reason: 'unrendered_count' };
         const plain = norm(stripped);
-        if (lodgingTurn && !NEGATION.test(plain) && AMENITY_TERMS.some(term => plain.includes(` ${term} `) && !backedAmenities.includes(` ${term} `))) {
+        const unbackedAmenityTerm = (term: string) => plain.includes(` ${term} `) && !backedAmenities.includes(` ${term} `);
+        const assertsUnbackedAbsence = ASSERTED_ABSENCE.test(plain)
+            && AMENITY_TERMS.some(term => unbackedAmenityTerm(term) && !backedExclusions.includes(` ${term} `));
+        if (lodgingTurn && (assertsUnbackedAbsence || (!NEGATION.test(plain) && AMENITY_TERMS.some(unbackedAmenityTerm)))) {
             return { text: amenityTemplate(stripped), reason: 'unbacked_amenity' };
         }
         if (PRICE_DENIAL.some(pattern => pattern.test(plain))) {

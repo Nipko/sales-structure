@@ -97,6 +97,10 @@ const NEGATED_BEFORE = /\b(no|nunca|jamas|ni|not|never|nao|pas|jamais)\b(?: [a-z
 const NEGATION_INSIDE = /\b(no|not|nao|pas|never|nunca)\b/;
 /** "el precio de la cita esta confirmado": the data word governs, the operation is only a complement. */
 const DATA_OF_BEFORE = /(precio|tarifa|valor|price|cost|costo|horario|disponibilidad|prix|preco)\s+(de|del|of|do|da|du|des)\b(\s+(la|el|los|las|the|l'))?\s*$/;
+// F4300-37 (production QA 29-oct, agency FAQ): «We will send you the exact meeting point ONCE THE BOOKING IS CONFIRMED» states a
+// condition, not an outcome; the faithful FAQ answer was replaced by «I cannot treat that as done». Spanish, Portuguese and French
+// («una vez que la reserva esté confirmada», «quando a reserva for confirmada») already read as conditions. «Once again, …» does not.
+const CONDITION_BEFORE = /\b(?:once|when|whenever|after|until|as soon as)\s+(?:[a-z']+\s+){0,3}$/;
 
 /** Same normalisation the confirmation classifier uses: accents and case are noise. */
 function normalize(text: string): string {
@@ -242,7 +246,7 @@ export function claimsCompletedAction(reply: unknown, options: ClaimDetectionOpt
         COMPLETION_CLAIM.lastIndex = 0;
         for (let m = COMPLETION_CLAIM.exec(sentence); m; m = COMPLETION_CLAIM.exec(sentence)) {
             const before = sentence.slice(Math.max(0, m.index - 30), m.index);
-            if (NEGATED_BEFORE.test(before) || NEGATION_INSIDE.test(m[0]) || DATA_OF_BEFORE.test(before)) continue;
+            if (NEGATED_BEFORE.test(before) || NEGATION_INSIDE.test(m[0]) || DATA_OF_BEFORE.test(before) || CONDITION_BEFORE.test(before)) continue;
             // A cancelled / delivered status of a record that was READ this turn, only repeated. Nothing else is excused: naming
             // «el estado» does not make «está confirmada» / «está agendada» / «está pagado» a report (that is how a booking that
             // never happened gets announced). The match is read to the end of its last word («ya está cancelad|o»).

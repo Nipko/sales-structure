@@ -12,6 +12,7 @@ import { spelledTotalCorrection } from './spelled-total';
 import { stockShortfallNote } from './stock-shortfall';
 import { unbackedExclusionCorrection } from './unbacked-exclusion';
 import { unbackedPaymentCorrection } from './unbacked-payment';
+import { quantityTotalNote } from './quantity-total';
 import { budgetVerdictCorrection } from './budget-verdict';
 import { wrongServiceCorrection } from './wrong-service';
 import { listingSearchSlotsIn, requiredReadSlotsIn } from './runtime/required-read-slots';
@@ -7800,6 +7801,12 @@ export class ConversationsService {
             response = unbackedPayment;
         }
         // F4300-37: «¿cuánto costarían tres Audífono QA Aurora?» with 2 left is answered with the stock, not only the total.
+        // F4300-47: «¿y si me llevo 2?» answered «puedo ayudarle con el pedido de 2 unidades» with no amount: the total is said.
+        const quantityTotal = quantityTotalNote(response, customerText, trustedContext?.catalog as any, lang);
+        if (quantityTotal) {
+            this.logger.log(`[Guardrail] A quantity of a catalogue product without its total: the total is said: "${response.slice(0, 100)}"`);
+            response = quantityTotal;
+        }
         const stockShortfall = stockShortfallNote(response, customerText, trustedContext?.catalog, lang);
         if (stockShortfall) {
             this.logger.log(`[Guardrail] More units asked than the stock: the stock is said: "${response.slice(0, 100)}"`);

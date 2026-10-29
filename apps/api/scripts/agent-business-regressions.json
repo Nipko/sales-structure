@@ -152,6 +152,7 @@
     "apps/api/src/modules/faqs/faq-search.f4300-53-insurance-fees.spec.ts",
     "apps/api/src/modules/faqs/faq-search.f4300-53-hours-languages.spec.ts",
     "apps/api/src/modules/conversations/language-detector.f4300-16-first-message.spec.ts",
+    "apps/api/src/modules/conversations/informational-detour.f4300-32-hypothetical.spec.ts",
     "apps/api/src/modules/conversations/quantity-total.f4300-47.spec.ts",
     "apps/api/src/modules/inbound/drain-queue-workers.f4300-61.spec.ts",
     "apps/api/src/modules/conversations/runtime/fact-renderer.f4300-37-durations.spec.ts",

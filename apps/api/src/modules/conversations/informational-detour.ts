@@ -99,9 +99,17 @@ const REQUEST_FORMS: readonly RegExp[] = [
 /** Phrases holding a booking word that ask ABOUT booking rather than ask to book. */
 const NON_REQUEST_PHRASES = /\b(?:(?:hay que|tengo que|debo|hace falta|es necesario|toca|se debe|se necesita|es obligatorio) (?:agendar|reservar)|cuanto tiempo (?:necesito|necesitan|se necesita)|necesito (?:una )?(?:cita|reserva|turno) previa|cita previa|cuanto (?:cuesta|cuestan|vale|valen|cobran|cobra|demora|tarda|dura)(?: \w+){0,3} (?:pedir|sacar|solicitar|tomar|agendar|reservar)|(?:your|the|what s your|what is your) schedule)\b/g;
 
+/**
+ * F4300-32 (production QA 29-oct, dental): «How much total time is required if I schedule a general consultation immediately followed
+ * by a follow-up control?» was read as a request to book — the engine answered «Consulta general selected. What date works for you?».
+ * In a question that asks how long or how much, «if I schedule…» / «si agendo…» / «se eu marcar…» / «si je réserve…» is the
+ * hypothesis of the question, not a request.
+ */
+const HYPOTHETICAL_BOOKING = /(?<=\b(?:how (?:much|long|many)|cuant[oa]s?|quant[oa]s?|combien)\b.*)\b(?:if i|if we|si|se eu|se|si je|si on|s il) (?:\w+ ){0,2}?(?:schedule|book|agend\w*|reserv\w*|marc\w*|program\w*)\b/g;
+
 /** The message explicitly asks to book (or to be attended), whatever else it asks. */
 export function hasExplicitBookingRequest(raw: unknown): boolean {
-    const text = normalizeForIntent(raw).replace(NON_REQUEST_PHRASES, ' ');
+    const text = normalizeForIntent(raw).replace(NON_REQUEST_PHRASES, ' ').replace(HYPOTHETICAL_BOOKING, ' ');
     return BOOKING_COMMITMENT.test(text) || REQUEST_FORMS.some(re => re.test(text));
 }
 

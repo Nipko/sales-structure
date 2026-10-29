@@ -28,7 +28,11 @@ export const PACKAGE_FIELD_AUTHORITY = 'duration (durationType/durationValue), p
  * specific departure times listed», after search_packages only, while the Spark QA Tour departs 2026-12-15 at 09:00. Dates and
  * times are the departure's too, and the note says where they are.
  */
-export const PACKAGE_SEATS_NOTE = 'Seats, dates and times belong to each departure, not to the package: this list was read without a date, so it carries no seat count and no departure. The departures (date, time, seatsLeft) are upcomingDepartures[] in get_package_details of each package (or check_package_availability for one date). Never say the seat count or the departure dates or times are unknown or not recorded before reading them.';
+export const PACKAGE_SEATS_NOTE = 'Seats, dates and times belong to each departure, not to the package. Each package lists its next departures (date, time, seatsLeft) in upcomingDepartures[]; an empty list means no departure is scheduled. When a package carries no upcomingDepartures, they are in get_package_details of that package (or check_package_availability for one date). Never say the seat count or the departure dates or times are unknown or not recorded when they are listed, or before reading them.';
+
+/** A dateless search of up to this many packages carries the next departures of each (one inventory read per package). */
+export const PACKAGE_DEPARTURES_IN_SEARCH_MAX = 10;
+export const PACKAGE_DEPARTURES_PER_PACKAGE = 3;
 
 /**
  * F4300-32. The languages a package is guided in, or `'not_registered'` when the business recorded none. Production 2026-10-24:

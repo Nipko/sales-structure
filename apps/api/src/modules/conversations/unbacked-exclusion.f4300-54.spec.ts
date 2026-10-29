@@ -24,6 +24,7 @@ describe('F4300-54 · an exclusion no read lists is said as «not recorded»', (
 
     it.each([
         ['a read that lists the exclusion', 'El Tour QA Aurora no incluye transporte ni alojamiento.', AURORA_TOUR],
+        ['the reply translates the listed item (F4300-54 residue, 29-oct)', 'The Tour QA Aurora does not include transportation or accommodation.', AURORA_TOUR],
         ['a negation scoped to a recorded list', 'La habitación no incluye desayuno entre sus comodidades.', SPARK_TOUR],
         ['scoped to the description', 'La consulta general no incluye radiografía según la descripción del servicio.', SPARK_TOUR],
         ['no package or menu read', 'El Spark QA Tour no incluye almuerzo.', [{ name: 'search_faqs', result: { faqs: [] } }]],

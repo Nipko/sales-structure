@@ -85,8 +85,10 @@ export function unbackedExclusionCorrection(reply: string, reads: ReadonlyArray<
         const item = deniedItem(match[1]);
         if (!item) return sentence;
         // Backed when a read lists it: any word of four letters or more of the item in an excludes entry or the item's own text.
+        // F4300-54 residue (production QA 29-oct): «does not include transportation» for the excludes entry «Transporte» — the reply
+        // translates the recorded item, so a word's six-letter stem in an entry backs it too.
         const words = fold(item).split(/[^a-z0-9]+/).filter(word => word.length >= 4);
-        if (words.some(word => listed.includes(word))) return sentence;
+        if (words.some(word => listed.includes(word) || (word.length >= 6 && listed.includes(word.slice(0, 6))))) return sentence;
         changed = true;
         return GENERIC_ITEM.test(item) ? (GENERIC_TEXT[code] ?? GENERIC_TEXT.es) : say(item);
     });

@@ -59,7 +59,11 @@ const VOCABULARY: Record<ReplyLang, readonly string[]> = {
         // Renting a listing (F4300-16 residual, production 24-oct: «Sí, el Spark QA Inmueble está en arriendo» to an English turn).
         'arriendo', 'arriendos', 'alquiler', 'alquileres', 'arrendamiento',
         // Where a listing is (F4300-16, production QA 26-oct: «O Spark QA Inmueble está ubicado en Calle…» to a Portuguese turn).
-        'ubicado', 'ubicada', 'encuentra'],
+        'ubicado', 'ubicada', 'encuentra',
+        // F4300-16 (production QA 29-oct): the courtesy close «Con mucho gusto. Si necesita algo más, no dude en contactarme. ¡Que tenga un
+        // buen día!» and «¡De nada! Si necesita algo más, aquí estoy para ayudarle» went to French and Portuguese turns («D'accord, merci.»)
+        // unseen: none of their words was known. Spanish-only spellings (pt «muito», «necessita», «estou»); not «gusto»: «Con gusto, ¿algo más?» stays a short reply.
+        'mucho', 'dude', 'tenga', 'buen', 'necesita', 'necesitas', 'estoy', 'contactarme', 'cualquier'],
     en: ['accept', 'credit', 'cards', 'card', 'debit', 'bank', 'transfers', 'transfer', 'payments', 'payment', 'per', 'month', 'taxes', 'included',
         'free', 'shipping', 'costs', 'cost', 'units', 'colors', 'black', 'blue', 'red', 'store', 'located', 'floor', 'mall', 'arrive', 'arrives',
         'shipped', 'link', 'reminder', 'sorry', 'understand', 'frustration', 'team', 'review', 'solution', 'warranty', 'slots', 'sunday',

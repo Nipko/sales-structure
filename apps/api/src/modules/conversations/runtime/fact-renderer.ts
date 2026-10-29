@@ -450,6 +450,9 @@ export interface RenderFactsOutcome {
     tokens: number;
     rendered: number;
     fallbacks: Array<{ reason: FallbackReason }>;
+    /** What the model wrote in each sentence that fell back, for the log only (F4300-47: a refused total could not be told from a
+     * wrong one). Not enumerable, so outcomes compare as before. */
+    fallbackSentences?: string[];
 }
 
 const validator = new ResponseValidatorService();
@@ -715,6 +718,8 @@ export function renderReplyFacts(input: RenderFactsInput): RenderFactsOutcome {
         const { text, reason } = sentenceOut(part);
         if (reason) {
             outcome.fallbacks.push({ reason });
+            if (!outcome.fallbackSentences) Object.defineProperty(outcome, 'fallbackSentences', { value: [], enumerable: false });
+            outcome.fallbackSentences!.push(part.trim().slice(0, 200));
             // A sentence dropped, or a template said once already: it goes with the separator before it.
             if (!text || seen.has(text)) { if (out.length && index > 0) out.pop(); continue; }
             seen.add(text);

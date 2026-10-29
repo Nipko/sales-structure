@@ -144,6 +144,7 @@
     "apps/api/src/modules/conversations/language-detector.f4300-16-code.spec.ts",
     "apps/api/src/modules/conversations/language-detector.f4300-16-intro.spec.ts",
     "apps/api/src/modules/conversations/language-detector.f4300-16-anyone.spec.ts",
+    "apps/api/src/modules/conversations/language-detector.f4300-16-pay.spec.ts",
     "apps/api/src/modules/conversations/quantity-total.f4300-47.spec.ts",
     "apps/api/src/modules/inbound/drain-queue-workers.f4300-61.spec.ts",
     "apps/api/src/modules/conversations/runtime/fact-renderer.f4300-37-durations.spec.ts",

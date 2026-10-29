@@ -102,13 +102,13 @@ export class LanguageDetectorService {
         en: ['the', 'is', 'are', 'was', 'of', 'to', 'in', 'it', 'my', 'with', 'this', 'that', 'for', 'and', 'you', 'your', 'have', 'has', 'be', 'can', 'will', 'about', 'from', 'what', 'how', 'does', 'not', 'want', 'need',
             'much', 'many', 'night', 'there', 'any',
             // F4300-16f: the time and quantity words a short question carries («any promotions today?»).
-            'anything', 'something', 'today', 'tonight', 'tomorrow'],
+            'anything', 'something', 'today', 'tonight', 'tomorrow', 'kids', 'less', 'cheaper'],
         // Not «dos»: it is Portuguese «of the» AND Spanish «two» («me los dejas a 100 mil los dos»).
         pt: ['os', 'uma', 'da', 'das', 'com', 'nao', 'voce', 'voces', 'tem', 'estou', 'meu', 'minha', 'pra', 'quero', 'preciso', 'gostaria', 'tambem',
             'muito', 'muita', 'seu', 'sua', 'isso', 'isto', 'hoje', 'ontem', 'noite', 'faco', 'pode', 'tempo', 'amanha',
             'alguma', 'algum', 'algumas', 'alguns',
             // F4300-16 (production QA 28-oct): see the markers.
-            'oi', 'uns', 'umas', 'dois', 'duas', 'eu', 'qto', 'qtos', 'qtas', 'quantos', 'quantas', 'num', 'numa'],
+            'oi', 'uns', 'umas', 'dois', 'duas', 'eu', 'qto', 'qtos', 'qtas', 'quantos', 'quantas', 'num', 'numa', 'criancas', 'crianca'],
         fr: ['le', 'les', 'des', 'du', 'une', 'est', 'sont', 'avec', 'dans', 'pour', 'vous', 'nous', 'je', 'mon', 'ma', 'mes', 'pas', 'veux', 'besoin', 'voudrais',
             // «et» (and) and everyday French that Spanish, Portuguese and English spell differently.
             'et', 'mais', 'temps', 'demain', 'nuit', 'aujourd', 'quelque', 'quelques'],
@@ -297,11 +297,11 @@ export class LanguageDetectorService {
             'onde', 'qto', 'qta', 'qtos', 'qtas', 'oq',
             // «o Tour QA Aurora aceita um grupo de 10?» after an English case was answered in English (production QA 26-oct, image
             // 6f1d3bf6). Spanish writes «acepta», French «accepte».
-            'aceita', 'aceitas',
+            'aceita', 'aceitas', 'pagam', 'pagamos',
             // F4300-16 (production QA 28-oct): «se formos 4, quanto pagamos pelo Spark QA Tour?» after an English case was answered in
             // English. Spanish writes «fuéramos»/«fuimos», French «sommes».
             'formos', 'fomos'],
-        fr: ['coute', 'coutent', 'combien', 'je', 'est', 'sont', 'avez', 'pouvez', 'puis', 'peux', 'veux', 'voudrais', 'faut',
+        fr: ['paient', 'payez', 'coute', 'coutent', 'combien', 'je', 'est', 'sont', 'avez', 'pouvez', 'puis', 'peux', 'veux', 'voudrais', 'faut',
             'inclut', 'dois', 'doit', 'cherche', 'ai', 'reste', 'proposez', 'acceptez', 'quel', 'quelle', 'quels', 'quelles',
             'vendez', 'vendent', 'faites', 'ouvrez', 'fermez', 'livrez', 'envoyez', 'travaillez',
             // «le plat Spark contient-il du soja ?» (production QA, answered in Spanish after a Spanish case).
@@ -311,7 +311,9 @@ export class LanguageDetectorService {
             // F4300-16f: «ouvert demain ?». Not «disponible» (Spanish too).
             'ouvert', 'ouverte', 'ouverts', 'ouvertes'],
         // Not «stock» (a loanword in Spanish and French: «hay stock?» is Spanish) nor «charge» (a French word too).
-        en: ['am', 'is', 'are', 'does', 'have', 'has', 'can', 'could', 'would', 'how', 'what', 'cost', 'costs', 'need', 'want', 'include',
+        // F4300-16 (production QA 29-oct): «do kids pay less?» after a French case was answered in French, «crianças pagam menos?» after
+        // an English one in English — a short question whose only verb is «pay».
+        en: ['pay', 'pays', 'deliver', 'am', 'is', 'are', 'does', 'have', 'has', 'can', 'could', 'would', 'how', 'what', 'cost', 'costs', 'need', 'want', 'include',
             'includes', 'should', 'where', 'when', 'which', 'offer', 'accept',
             'sell', 'sells', 'open', 'deliver', 'ship', 'make', 'carry', 'contain', 'contains',
             // The imperatives of a request (production QA 24-oct: «tell me about the Aurora tour» after a Spanish case was

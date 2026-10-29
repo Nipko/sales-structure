@@ -18,6 +18,9 @@ describe('F4300-16 · the first message of a conversation tells its language', (
         ['¿qué hago en una urgencia dental?', 'es'],
         ['hola', 'es'],
         ['ok', 'es'],
+        // POST294 (29-oct): «aqui» is Portuguese too.
+        ['Qual é a política de pagamento e qual é o número mínimo de noites exigido para se hospedar aqui?', 'pt'],
+        ['¿Qué servicios tienen aquí?', 'es'],
     ])('«%s» → %s', (text, expected) => {
         expect(detector.detect(text, 'es-CO', undefined, context)).toBe(expected);
     });
@@ -26,5 +29,6 @@ describe('F4300-16 · the first message of a conversation tells its language', (
         expect(detector.detect('que faire en cas d’urgence dentaire ?', 'es', 'es')).toBe('fr');
         expect(detector.detect('como funciona a garantia do fone?', 'es', 'es')).toBe('pt');
         expect(detector.detect('gracias', 'en', 'en')).toBe('en');
+        expect(detector.detect('Qual é a política de pagamento e qual é o número mínimo de noites exigido para se hospedar aqui?', 'es', 'es')).toBe('pt');
     });
 });

@@ -50,7 +50,7 @@ export class LanguageDetectorService {
     private readonly markers: Record<string, string[]> = {
         // 'tres' is NOT a French marker: "très" loses its accent in normalize()
         // and collides with Spanish "tres personas".
-        es: ['hola', 'gracias', 'quiero', 'necesito', 'puedo', 'tengo', 'usted', 'ustedes', 'nosotros', 'pero', 'muy', 'tambien', 'aqui', 'ahora', 'quisiera', 'disculpa', 'cuanto', 'cuesta', 'donde', 'tienen', 'buenas', 'buenos', 'busco', 'estoy', 'cual', 'cuales', 'tienes'],
+        es: ['hola', 'gracias', 'quiero', 'necesito', 'puedo', 'tengo', 'usted', 'ustedes', 'nosotros', 'pero', 'muy', 'tambien', 'ahora', 'quisiera', 'disculpa', 'cuanto', 'cuesta', 'donde', 'tienen', 'buenas', 'buenos', 'busco', 'estoy', 'cual', 'cuales', 'tienes'],
         en: ['the', 'and', 'you', 'for', 'are', 'but', 'not', 'with', 'this', 'that', 'hello', 'thanks', 'thank', 'want', 'need', 'have', 'would', 'could', 'please', 'when', 'where', 'what', 'how', 'your', 'can', 'looking', "i'm", 'price', 'cost'],
         pt: ['nao', 'obrigado', 'obrigada', 'voce', 'voces', 'preciso', 'isso', 'tambem', 'entao', 'ola', 'sim', 'quero', 'gostaria', 'muito', 'quanto', 'custa', 'tudo', 'bom', 'uma', 'qual', 'quais', 'procuro', 'meu', 'minha', 'pessoas', 'funcionamento', 'tem', 'preco', 'precos',
             // F4300-16 (production QA 28-oct): «oi, somos um grupo de 12 amigos», «com 30.000 pesos, dá para dois pratos Spark?», «qto
@@ -469,6 +469,8 @@ export class LanguageDetectorService {
         general: ['es', 'pt'], barato: ['es', 'pt'], barata: ['es', 'pt'], caro: ['es', 'pt'], cara: ['es', 'pt', 'fr'], pedido: ['es', 'pt'],
         pedidos: ['es', 'pt'], reserva: ['es', 'pt'], esta: ['es', 'pt'], este: ['es', 'pt'], ja: ['pt'], prato: ['pt'], pratos: ['pt'],
         plato: ['es'], platos: ['es'], saida: ['pt'], salida: ['es'], funciona: ['es', 'pt'],
+        // F4300-16 (production QA 29-oct, POST294): «…para se hospedar AQUI?» was Spanish by its «aqui»; Portuguese writes it alike.
+        aqui: ['es', 'pt'],
         // F4300-16 residual (production 24-oct): «qual o valor do Spark QA Inmueble?». «valor» is Spanish AND Portuguese (French
         // «valeur», English «value»); «do» is Portuguese «of the» AND the English verb, never Spanish or French.
         valor: ['es', 'pt'], valores: ['es', 'pt'], do: ['pt', 'en'],

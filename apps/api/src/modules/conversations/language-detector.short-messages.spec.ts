@@ -45,7 +45,9 @@ describe('LanguageDetectorService keeps Spanish and ambiguous input safe', () =>
     });
 
     it('"tres" (Spanish for three) is not read as French "très"', () => {
-        expect(detector.detect('Somos tres personas y queremos viajar en diciembre', 'pt')).toBe('pt');
+        // Never French. Since F4300-16 (29-oct) a first message is weighed against the tenant's language too, so this Spanish
+        // sentence reads as Spanish instead of falling back to «pt».
+        expect(detector.detect('Somos tres personas y queremos viajar en diciembre', 'pt')).toBe('es');
     });
 
     it('a lone distinctive diacritic is enough, a shared one is not', () => {

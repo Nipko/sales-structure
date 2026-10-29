@@ -9,7 +9,7 @@ export interface PriceValidationResult {
     hallucinatedPrices: number[];
 }
 
-interface MoneyMention {
+export interface MoneyMention {
     amount: number;
     /** Undefined means that the marker is ambiguous (for example "$" or "pesos"). */
     currency?: string;
@@ -171,6 +171,21 @@ export function quantitiesIn(text: string): number[] {
     return [...found];
 }
 
+/**
+ * The amounts the customer's message says: with a currency («30.000 pesos») or a bare figure of three or more digits that is not a
+ * quantity, a time or a date («¿cuesta menos de 15.000?»).
+ */
+export function customerAmountsIn(text: string): MoneyMention[] {
+    if (!text) return [];
+    const out = moneyMentionsIn(text);
+    for (const m of text.matchAll(/(?<![\d.,:/-])(\d{1,3}(?:[.,\s]\d{3})+|\d{3,})(?![\d:/]|[.,]\d)\s*(mil|k)?(?!\p{L})/giu)) {
+        const amount = normalizeAmount(m[1]);
+        if (amount != null) out.push({ amount: m[2] ? amount * 1000 : amount, currency: undefined });
+    }
+    for (const m of text.matchAll(/(?<![\d.,])(\d{1,3})\s*(mil|k)(?!\p{L})/giu)) out.push({ amount: Number(m[1]) * 1000, currency: undefined });
+    return out;
+}
+
 /** The sentence of `text` around a mention (a thousands separator «13.500» does not end a sentence). */
 function sentenceAround(text: string, index: number, length: number): string {
     let start = 0;
@@ -232,15 +247,27 @@ export class ResponseValidatorService {
         const ledgerAmounts: MoneyMention[] = (ledger?.facts ?? [])
             .filter(fact => fact.kind === 'money' && fact.priceStatus === 'confirmed' && typeof fact.value === 'number')
             .map(fact => ({ amount: fact.value as number, currency: fact.currency ? fact.currency.toUpperCase() : undefined }));
-        const customerQuantities = quantitiesIn(options.customerText ?? ledger?.customerText ?? '');
+        const customerText = options.customerText ?? ledger?.customerText ?? '';
+        const customerQuantities = quantitiesIn(customerText);
+        // F4300-48 (production QA 27-oct, menu): «con 30.000 pesos, ¿me alcanza para dos platos Spark?» — the customer's own amount
+        // and what is left of it after a verified total («le sobran 3.000 COP») are no price the business states; the sentence
+        // that said them was dropped and the reply lost its answer.
+        // Only beside a verified amount: «¿cuesta 50.000?» → «sí, 50.000 COP» is still a price nobody gave.
+        const quantitiesAround = (mention: MoneyMention) => [...new Set([...customerQuantities,
+            ...quantitiesIn(sentenceAround(responseText, mention.index ?? 0, mention.length ?? 0))])];
+        const verifiedBeside = replyVerified.length > 0 || direct.some(entry => !entry.ok
+            && this.derivedTotal(entry.mention, [...allowed, ...ledgerAmounts], replyVerified, quantitiesAround(entry.mention)));
+        const customerAmounts = verifiedBeside ? customerAmountsIn(customerText) : [];
 
         const hallucinated = direct
             .filter(entry => !entry.ok)
             .map(entry => entry.mention)
             .filter(mention => {
-                const quantities = [...new Set([...customerQuantities,
-                    ...quantitiesIn(sentenceAround(responseText, mention.index ?? 0, mention.length ?? 0))])];
-                return !this.derivedTotal(mention, [...allowed, ...ledgerAmounts], replyVerified, quantities);
+                const quantities = quantitiesAround(mention);
+                const pool = [...allowed, ...ledgerAmounts];
+                if (customerAmounts.some(said => compatibleCurrency(mention.currency, said.currency) && Math.abs(said.amount - mention.amount) <= ROUNDING)) return false;
+                if (this.leftOver(mention, customerAmounts, [...pool, ...replyVerified], quantities)) return false;
+                return !this.derivedTotal(mention, pool, replyVerified, quantities);
             })
             .map(mention => mention.amount)
             .filter((amount, index, all) => all.indexOf(amount) === index);
@@ -281,6 +308,14 @@ export class ResponseValidatorService {
             return false;
         };
         return search(0, 0, 0, false);
+    }
+
+    /** Whether `stated` is what is left of an amount the customer said after a verified amount (or that amount times a quantity). */
+    private leftOver(stated: MoneyMention, customerAmounts: MoneyMention[], verified: MoneyMention[], quantities: number[]): boolean {
+        if (!(stated.amount > 0)) return false;
+        return customerAmounts.some(said => compatibleCurrency(stated.currency, said.currency) && verified
+            .filter(base => compatibleCurrency(stated.currency, base.currency) && base.amount > 0)
+            .some(base => [1, ...quantities].some(q => Math.abs(said.amount - base.amount * q - stated.amount) <= ROUNDING)));
     }
 
     /** Prices encoded as XML/JSON fields by the turn assembler and tool results. */

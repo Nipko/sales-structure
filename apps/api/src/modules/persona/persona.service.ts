@@ -382,6 +382,10 @@ export class PersonaService {
                 if (tenantBusinessHours.timezone) lines.push(`    ${scheduleTimeZoneElement(tenantBusinessHours.timezone)}`);
                 const schedule = tenantBusinessHours.schedule || {};
                 for (const [day, value] of Object.entries(schedule)) {
+                    if (value === null || value === false) {
+                        lines.push(`    <day name="${escapeXmlAttribute(day)}">closed</day>`);
+                        continue;
+                    }
                     if (!value || typeof value !== 'object') continue;
                     const v = value as any;
                     if (v.enabled === false) {
@@ -404,7 +408,11 @@ export class PersonaService {
                 lines.push(`    ${scheduleTimeZoneElement(hours.timezone || tenantBusinessHours.timezone)}`);
             }
             for (const [day, value] of Object.entries(hours.schedule)) {
-                if (typeof value === 'string') {
+                // F4300-60 (production QA 29-oct, travel agency): `dom: null` (closed) was left out, and «¿atienden los domingos?» was
+                // answered with Saturday's 08:00-14:00 in es/en/pt/fr. A day the schedule lists as empty is said closed.
+                if (value === null || value === false || (value && typeof value === 'object' && (value as any).enabled === false)) {
+                    lines.push(`    <day name="${escapeXmlAttribute(day)}">closed</day>`);
+                } else if (typeof value === 'string') {
                     lines.push(`    <day name="${escapeXmlAttribute(day)}">${escapeXmlText(value)}</day>`);
                 } else if (value && typeof value === 'object') {
                     const v = value as any;

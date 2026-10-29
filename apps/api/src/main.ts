@@ -12,6 +12,7 @@ import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { PublicApiModule } from './modules/public-api/public-api.module';
 import { bullBoardAuthMiddleware } from './common/utils/bull-board-auth.util';
+import { drainInboundWorker } from './modules/inbound/drain-queue-workers';
 
 // PostgreSQL COUNT(*) returns BigInt which JSON.stringify cannot serialize
 (BigInt.prototype as any).toJSON = function () { return Number(this); };
@@ -217,6 +218,8 @@ async function bootstrap() {
 
         server.close(() => console.log('HTTP server closed'));
         try {
+            // F4300-61: the in-flight turns finish while the database and Redis are still up.
+            await drainInboundWorker(app);
             await app.close();
         } catch (err) {
             console.error('Error during graceful close:', err);

@@ -2,6 +2,12 @@ import { ConversationsService } from './conversations.service';
 import { DEFAULT_PIPELINE_STAGES, PipelineService, TenantStageMapping } from '../pipeline/pipeline.service';
 import { containsHumanOffer, HUMAN_OFFER_QUESTION, offerInsteadOfPromise, withReturnNotice } from './human-offer';
 import { budgetExhaustedReplayText } from './handoff-return-replay-turn';
+import * as queueNotice from './queue-notice';
+
+// These fixtures pin handoffs started on fixed dates in October; the queue notice they test is the one of a fresh handoff.
+// The F4300-23 cutoff near the unattended return has its own spec (queue-notice.f4300-23.spec.ts).
+beforeEach(() => { jest.spyOn(queueNotice, 'queueNoticeDue').mockReturnValue(true); });
+afterEach(() => { jest.restoreAllMocks(); });
 
 /**
  * Behavior of the two customer-facing notices around an unattended handoff,

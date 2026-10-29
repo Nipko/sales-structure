@@ -52,8 +52,11 @@ export class LanguageDetectorService {
         // and collides with Spanish "tres personas".
         es: ['hola', 'gracias', 'quiero', 'necesito', 'puedo', 'tengo', 'usted', 'ustedes', 'nosotros', 'pero', 'muy', 'tambien', 'aqui', 'ahora', 'quisiera', 'disculpa', 'cuanto', 'cuesta', 'donde', 'tienen', 'buenas', 'buenos', 'busco', 'estoy', 'cual', 'cuales', 'tienes'],
         en: ['the', 'and', 'you', 'for', 'are', 'but', 'not', 'with', 'this', 'that', 'hello', 'thanks', 'thank', 'want', 'need', 'have', 'would', 'could', 'please', 'when', 'where', 'what', 'how', 'your', 'can', 'looking', "i'm", 'price', 'cost'],
-        pt: ['nao', 'obrigado', 'obrigada', 'voce', 'voces', 'preciso', 'isso', 'tambem', 'entao', 'ola', 'sim', 'quero', 'gostaria', 'muito', 'quanto', 'custa', 'tudo', 'bom', 'uma', 'qual', 'quais', 'procuro', 'meu', 'minha', 'pessoas', 'funcionamento', 'tem', 'preco', 'precos'],
-        fr: ['bonjour', 'bonsoir', 'merci', 'vous', 'nous', 'veux', 'besoin', 'comment', 'aussi', "c'est", 'oui', 'est', 'sont', 'avec', 'pourquoi', 'voudrais', 'combien', 'salut', 'je', 'quel', 'quels', 'quelle', 'quelles', 'horaires', 'votre', 'pour', 'avez', 'une', 'dans', 'cherche', 'acheter', 'jusqu', 'prix'],
+        pt: ['nao', 'obrigado', 'obrigada', 'voce', 'voces', 'preciso', 'isso', 'tambem', 'entao', 'ola', 'sim', 'quero', 'gostaria', 'muito', 'quanto', 'custa', 'tudo', 'bom', 'uma', 'qual', 'quais', 'procuro', 'meu', 'minha', 'pessoas', 'funcionamento', 'tem', 'preco', 'precos',
+            // F4300-16 (production QA 28-oct): «oi, somos um grupo de 12 amigos», «com 30.000 pesos, dá para dois pratos Spark?», «qto
+            // custa…», «o audifono tem fio?» were read as Spanish (or as the stored English). Portuguese spellings no other language uses.
+            'oi', 'dois', 'duas', 'qto', 'qtos', 'qta', 'qtas', 'quantos', 'quantas', 'prato', 'pratos', 'fio', 'estao', 'ate', 'eu', 'cabem'],
+        fr: ['bonjour', 'bonsoir', 'merci', 'vous', 'nous', 'veux', 'besoin', 'comment', 'aussi', "c'est", 'oui', 'est', 'sont', 'avec', 'pourquoi', 'voudrais', 'combien', 'salut', 'je', 'quel', 'quels', 'quelle', 'quelles', 'horaires', 'votre', 'pour', 'avez', 'une', 'dans', 'cherche', 'acheter', 'jusqu', 'prix', 'fil', 'filaire', 'il', 'elle'],
     };
 
     /**
@@ -93,7 +96,9 @@ export class LanguageDetectorService {
             // Everyday Spanish that Portuguese, English and French spell differently (pt «e/seu/muito/faço/ontem/hoje/noite/já/isso»).
             'y', 'su', 'mi', 'lo', 'ya', 'eso', 'esto', 'mucho', 'mucha', 'muchos', 'muchas', 'hago', 'dime', 'dejas', 'puedes', 'puede', 'pueden', 'quieres', 'ayer', 'hoy', 'manana', 'tiempo', 'noche', 'noches',
             // F4300-16f: quantifiers of a short question (pt «algum/alguma», fr «quelque», en «any»). Not «algo»: Portuguese too.
-            'alguna', 'alguno', 'algun', 'algunas', 'algunos'],
+            'alguna', 'alguno', 'algun', 'algunas', 'algunos',
+            // «hola, sigue alguien ahí?» (production QA 29-oct): pt «alguém/aí/ninguém», fr «quelqu'un/là/personne».
+            'alguien', 'ahi', 'nadie'],
         en: ['the', 'is', 'are', 'was', 'of', 'to', 'in', 'it', 'my', 'with', 'this', 'that', 'for', 'and', 'you', 'your', 'have', 'has', 'be', 'can', 'will', 'about', 'from', 'what', 'how', 'does', 'not', 'want', 'need',
             'much', 'many', 'night', 'there', 'any',
             // F4300-16f: the time and quantity words a short question carries («any promotions today?»).
@@ -101,7 +106,9 @@ export class LanguageDetectorService {
         // Not «dos»: it is Portuguese «of the» AND Spanish «two» («me los dejas a 100 mil los dos»).
         pt: ['os', 'uma', 'da', 'das', 'com', 'nao', 'voce', 'voces', 'tem', 'estou', 'meu', 'minha', 'pra', 'quero', 'preciso', 'gostaria', 'tambem',
             'muito', 'muita', 'seu', 'sua', 'isso', 'isto', 'hoje', 'ontem', 'noite', 'faco', 'pode', 'tempo', 'amanha',
-            'alguma', 'algum', 'algumas', 'alguns'],
+            'alguma', 'algum', 'algumas', 'alguns',
+            // F4300-16 (production QA 28-oct): see the markers.
+            'oi', 'uns', 'umas', 'dois', 'duas', 'eu', 'qto', 'qtos', 'qtas', 'quantos', 'quantas', 'num', 'numa'],
         fr: ['le', 'les', 'des', 'du', 'une', 'est', 'sont', 'avec', 'dans', 'pour', 'vous', 'nous', 'je', 'mon', 'ma', 'mes', 'pas', 'veux', 'besoin', 'voudrais',
             // «et» (and) and everyday French that Spanish, Portuguese and English spell differently.
             'et', 'mais', 'temps', 'demain', 'nuit', 'aujourd', 'quelque', 'quelques'],
@@ -163,6 +170,9 @@ export class LanguageDetectorService {
         for (let i = 1; i < words.length; i++) {
             const word = words[i].replace(/^[^\p{L}]+/u, '');
             if (!/^\p{Lu}/u.test(word) || /^I(?:['’]|$)/.test(word)) continue;
+            // F4300-16 (production QA 28-oct): an order or booking code («was my order 5603A623 delivery or pickup?») is not a name —
+            // it held the stored Spanish and the English question was answered in Spanish.
+            if (/\d/.test(words[i])) continue;
             if (/[.!?:¡¿]$/.test(words[i - 1]) || /^[¡¿]/.test(words[i])) continue;
             return true;
         }
@@ -239,7 +249,10 @@ export class LanguageDetectorService {
      * none, so it is never read as a switch. Words two of the languages share («funciona», «vale», «existe») are not here.
      */
     private readonly predicateWords: Record<string, string[]> = {
-        es: ['tiene', 'tienen', 'tienes', 'tengo', 'tenemos', 'hay', 'cuesta', 'cuestan', 'cuanto', 'cuanta', 'cuantos', 'cuantas', 'puedo',
+        // F4300-16 (production QA 28-oct): «hola, soy vegetariana» after a French case and «hi, I am vegetarian» after a Spanish one kept
+        // the stored language — a self-introduction had no verb of either. pt «sou» was there already; fr «suis» too via «je».
+        // «hola, sigue alguien ahí?» after a French case was answered in French (production QA 29-oct, RET qa03): pt «segue», fr «suit».
+        es: ['soy', 'sigue', 'siguen', 'tiene', 'tienen', 'tienes', 'tengo', 'tenemos', 'hay', 'cuesta', 'cuestan', 'cuanto', 'cuanta', 'cuantos', 'cuantas', 'puedo',
             'puede', 'puedes', 'pueden', 'quiero', 'quisiera', 'necesito', 'busco', 'debo', 'consultalo', 'consultala', 'consultalos',
             'consultame', 'revisalo', 'revisala', 'confirmalo', 'confirmala', 'confirmame', 'averigualo', 'dime', 'dame', 'mandame',
             'enviame', 'hago', 'estoy', 'incluye', 'incluyen', 'sirve', 'llega', 'quedan', 'hacen', 'aceptan', 'donde', 'cual',
@@ -284,7 +297,10 @@ export class LanguageDetectorService {
             'onde', 'qto', 'qta', 'qtos', 'qtas', 'oq',
             // «o Tour QA Aurora aceita um grupo de 10?» after an English case was answered in English (production QA 26-oct, image
             // 6f1d3bf6). Spanish writes «acepta», French «accepte».
-            'aceita', 'aceitas'],
+            'aceita', 'aceitas',
+            // F4300-16 (production QA 28-oct): «se formos 4, quanto pagamos pelo Spark QA Tour?» after an English case was answered in
+            // English. Spanish writes «fuéramos»/«fuimos», French «sommes».
+            'formos', 'fomos'],
         fr: ['coute', 'coutent', 'combien', 'je', 'est', 'sont', 'avez', 'pouvez', 'puis', 'peux', 'veux', 'voudrais', 'faut',
             'inclut', 'dois', 'doit', 'cherche', 'ai', 'reste', 'proposez', 'acceptez', 'quel', 'quelle', 'quels', 'quelles',
             'vendez', 'vendent', 'faites', 'ouvrez', 'fermez', 'livrez', 'envoyez', 'travaillez',
@@ -295,7 +311,7 @@ export class LanguageDetectorService {
             // F4300-16f: «ouvert demain ?». Not «disponible» (Spanish too).
             'ouvert', 'ouverte', 'ouverts', 'ouvertes'],
         // Not «stock» (a loanword in Spanish and French: «hay stock?» is Spanish) nor «charge» (a French word too).
-        en: ['is', 'are', 'does', 'have', 'has', 'can', 'could', 'would', 'how', 'what', 'cost', 'costs', 'need', 'want', 'include',
+        en: ['am', 'is', 'are', 'does', 'have', 'has', 'can', 'could', 'would', 'how', 'what', 'cost', 'costs', 'need', 'want', 'include',
             'includes', 'should', 'where', 'when', 'which', 'offer', 'accept',
             'sell', 'sells', 'open', 'deliver', 'ship', 'make', 'carry', 'contain', 'contains',
             // The imperatives of a request (production QA 24-oct: «tell me about the Aurora tour» after a Spanish case was

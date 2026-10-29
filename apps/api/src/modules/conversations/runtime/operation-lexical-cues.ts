@@ -123,8 +123,9 @@ const ITEM_ATTRIBUTE = new RegExp(`\\b(?:${[
     /(?:el|o|su|seu|the|its) peso|pesa|pesan|pesam|combien pese\w*|poids|weighs?|weight|how heavy/,
     // dimensions
     /medidas?|dimension(?:es|s)?|dimensoes|dimensao|how big/,
-    // connectivity (production QA 27-oct: «¿el Audífono QA Aurora es de cable?», «est-il filaire ?» read nothing)
-    /(?:de|con|com|with) cables?|com fio|cabo|filaires?|wired|wireless|inalambric[oa]s?|sem fio|sans fil|bluetooth/,
+    // connectivity (production QA 27-oct: «¿el Audífono QA Aurora es de cable?», «est-il filaire ?» read nothing; 28-oct: «tiene
+    // cable?», «tem fio?», «does it have a cable?», «a un fil ?» neither)
+    /(?:de|con|com|with) cables?|com fio|cabo|filaires?|wired|wireless|inalambric[oa]s?|sem fio|sans fil|bluetooth|(?:tiene|tienen|lleva|trae|tem|vem com|has|have|a|avec) (?:un |a |um )?(?:cables?|fios?|cord|fil)/,
     // brand, model
     /marcas?|marques?|brands?|fabricante|fabricant|manufacturer|modelos?|models?|modeles?/,
     // warranty

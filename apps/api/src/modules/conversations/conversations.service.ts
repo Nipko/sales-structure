@@ -7,9 +7,13 @@ import { buildOperationShadowTrace, OperationClassifierService, type OperationSh
 import { buildRequiredReadsTrace, REQUIRED_READ_TIMEOUT_MS, requiredReadDefaultArgs, requiredReadsGate, requiredReadsPilotForProfile, runRequiredReads,
     type RequiredReadResult, type RequiredReadsPilot } from './runtime/required-reads.runner';
 import { isOwnBookingsQuestion, isPastOrdersQuestion, lexicalRequiredReadsOperation, needsItemDetailRead } from './runtime/operation-lexical-cues';
-import { cancelledPurchaseCorrection, firstOrderCorrection, pastOrdersReportText, unpaidOrderCorrection } from './past-orders-report';
+import { allCancelledCountCorrection, cancelledPurchaseCorrection, firstOrderCorrection, pastOrdersReportText, unpaidOrderCorrection } from './past-orders-report';
 import { spelledTotalCorrection } from './spelled-total';
 import { stockShortfallNote } from './stock-shortfall';
+import { unbackedExclusionCorrection } from './unbacked-exclusion';
+import { unbackedPaymentCorrection } from './unbacked-payment';
+import { quantityTotalNote } from './quantity-total';
+import { budgetVerdictCorrection } from './budget-verdict';
 import { wrongServiceCorrection } from './wrong-service';
 import { listingSearchSlotsIn, requiredReadSlotsIn } from './runtime/required-read-slots';
 import { demoAllowanceExhaustedText } from '../widget/widget-demo-link';
@@ -17,7 +21,7 @@ import { recordFirstReply } from '../../common/utils/first-reply.util';
 import { stripInternalMarkers } from '../../common/utils/internal-markers.util';
 import { projectAvailableServices } from '../appointments/service-price-status';
 import { AbsentSubjects, absentServicesIn, annotateKnowledgeItems, annotateKnowledgeToolResult, notOfferedReply, offerClaimForAbsent, type CatalogueEntry } from './runtime/catalog-over-faq';
-import { catalogNamesOfTurn, languageDenialOf, languageMismatch, rewriteRejection, type RewriteRejectionReason, verbatimTermsOf, wholeReplyMismatch } from './reply-language';
+import { catalogNamesOfTurn, languageDenialOf, languageMismatch, rewriteRejection, type ReplyLang, type RewriteRejectionReason, verbatimTermsOf, wholeReplyMismatch, withoutSentencesIn } from './reply-language';
 import { localeForReply, normalizeReplyAmounts } from './reply-price-format';
 import { foldedSql, foldQueryText } from '../../common/utils/sql-accent-fold.util';
 import { servedAgentAuthority, type ServedAgentAuthority } from '../persona/served-agent-authority';
@@ -58,7 +62,7 @@ import { burstBufferKeys } from './burst-debounce-key';
 import { foldedContent, fragmentFor, mergeBurst, type BurstFragment } from './burst-fragments';
 import {
     budgetExhaustedReplayText, BUDGET_EXHAUSTED_REPLAY_MSG, isBareConsent, replayAsk, returnNoteTask, returnReplayTurn,
-    rewriteReplayPromise, sanitizeReplayReply, staleConsentReply, toolsForReplay, withRequestLeftNote,
+    replayLanguageText, rewriteReplayPromise, sanitizeReplayReply, staleConsentReply, toolsForReplay, withRequestLeftNote,
     type ReturnAsk,
 } from './handoff-return-replay-turn';
 import { TasksService } from '../crm/services/tasks/tasks.service';
@@ -68,6 +72,7 @@ import { TURN_OUTCOME_REASONS, resolveTurnOutcome } from './turn-outcome-wait';
 import { ChannelTokenService } from '../channels/channel-token.service';
 import { ConversationsGateway } from './conversations.gateway';
 import { HandoffService } from '../handoff/handoff.service';
+import { queueNoticeDue } from './queue-notice';
 import { complaintIsOfferOnly, isActionOrientedRefundQuestion } from '../handoff/handoff-policy-question';
 import { triggerDecisionNeedsPreviousOutbound } from '../handoff/custom-trigger-negation';
 import { KnowledgeService } from '../knowledge/knowledge.service';
@@ -558,6 +563,14 @@ const REPLY_LANGUAGE_RETRY: Record<string, (missing: string[]) => string> = {
     en: missing => `Your rewrite changed or dropped: ${missing.join(' | ')}. Write it again in English and copy those texts exactly as they are. Return only the message.`,
     pt: missing => `Sua reescrita mudou ou removeu: ${missing.join(' | ')}. Escreva de novo em português e copie esses textos exatamente como estão. Devolva apenas a mensagem.`,
     fr: missing => `Votre réécriture a modifié ou supprimé : ${missing.join(' | ')}. Écrivez-la de nouveau en français en recopiant ces textes exactement tels quels. Renvoyez uniquement le message.`,
+};
+
+/** F4300-52: the second rewrite request, when the first one left part of the message in the language it had to leave. */
+const REPLY_LANGUAGE_STILL: Record<string, string> = {
+    es: 'Parte de tu reescritura sigue en otro idioma. Escribe TODO el mensaje en español, también la pregunta final. Devuelve solo el mensaje.',
+    en: 'Part of your rewrite is still in another language. Write the WHOLE message in English, the closing question included. Return only the message.',
+    pt: 'Parte da sua reescrita continua em outro idioma. Escreva a mensagem INTEIRA em português, inclusive a pergunta final. Devolva apenas a mensagem.',
+    fr: 'Une partie de votre réécriture est encore dans une autre langue. Écrivez TOUT le message en français, y compris la question finale. Renvoyez uniquement le message.',
 };
 
 /** What the reply-language guard did this turn, read back by the pipeline into the turn trace. */
@@ -1705,7 +1718,7 @@ export class ConversationsService {
         // A waiting text that was only "sí" cannot be read as consent to what was
         // proposed before the handoff: ask again instead of running the pending step.
         const consentReply = replayTurn && !recoveredEnvelope && !resumedReply && isBareConsent(content?.text)
-            ? staleConsentReply(await this.turnStartLanguage(schemaName, conversation, config, content?.text, inboundMessageId),
+            ? staleConsentReply(this.replayTurnLanguage(config, content?.text),
                 (normalizedMsg as any).handoffReturn?.noteLeft === true)
             : null;
         let response = recoveredEnvelope ? recoveredEnvelope.text
@@ -1733,7 +1746,7 @@ export class ConversationsService {
         // it neither promises a transfer nor offers a person (a «sí» would start another wait).
         if (replayTurn && typeof response === 'string' && response && !recoveredEnvelope && !resumedReply
             && !isSystemFixedText(response) && !isErrorFallback(response)) {
-            const replayLanguage = await this.turnStartLanguage(schemaName, conversation, config, content?.text, inboundMessageId);
+            const replayLanguage = this.replayTurnLanguage(config, content?.text);
             const noteLeft = (normalizedMsg as any).handoffReturn?.noteLeft === true;
             response = withRequestLeftNote(sanitizeReplayReply(response, replayLanguage, noteLeft), replayLanguage, noteLeft);
         }
@@ -1743,7 +1756,7 @@ export class ConversationsService {
         // say it twice. An error fallback or an empty answer does not consume it.
         const returnNotice = returnNoticePending && !recoveredEnvelope && !resumedReply
             && typeof response === 'string' && response && !isErrorFallback(response) && !turnEffects.learningProvenanceRefused
-            ? await this.claimReturnNotice(schemaName, conversation, content?.text, config.language || 'es')
+            ? await this.claimReturnNotice(schemaName, conversation, replayLanguageText(content?.text), config.language || 'es')
             : null;
         response = withReturnNotice(returnNotice, response, !!recoveredEnvelope || !!resumedReply);
 
@@ -3243,8 +3256,11 @@ export class ConversationsService {
         if (!session && previousLanguage && this.languageDetector.detect(userText, previousLanguage, null) !== previousLanguage) {
             languageContext.recentCustomerMessages = await this.recentCustomerTexts(schemaName, conversation.id, inboundMessageId);
         }
-        const detectedLanguage = this.languageDetector.detect(userText, fallbackLanguage, previousLanguage, languageContext);
-        const detail = this.languageDetector.detectDetailed?.(userText, fallbackLanguage, previousLanguage, languageContext);
+        // F4300-23: on the replay of an unattended handoff the text joins every waiting message; its language is the last one's.
+        const replayLanguage = (msg as any)?.metadata?.handoffReturnReplay === true ? this.replayTurnLanguage(config, userText) : null;
+        const detectedLanguage = replayLanguage ?? this.languageDetector.detect(userText, fallbackLanguage, previousLanguage, languageContext);
+        const detail = replayLanguage ? { language: replayLanguage, persist: true }
+            : this.languageDetector.detectDetailed?.(userText, fallbackLanguage, previousLanguage, languageContext);
         const detection = { language: detectedLanguage, persist: detail && detail.language === detectedLanguage ? detail.persist : true };
         const userLanguage = detectedLanguage;
         (msg as any).detectedLang = detectedLanguage; // expose this turn's language to auto-progress
@@ -7553,8 +7569,18 @@ export class ConversationsService {
             outcome.rejections.push(rejection.reason);
             this.recordAgentSignal(tenantId, 'reply_language_rewrite_rejected', session, { reason: rejection.reason, attempt, missing: rejection.missing });
             this.logger.warn(`[Guardrail] Language rewrite ${attempt} rejected (${rejection.reason}${rejection.missing.length ? `: ${rejection.missing.join(' | ')}` : ''}): "${text.slice(0, 80)}"`);
-            if (attempt === 2 || (rejection.reason !== 'lost_name' && rejection.reason !== 'lost_figure')) break;
-            messages = [...messages, { role: 'assistant', content: text }, { role: 'user', content: REPLY_LANGUAGE_RETRY[code](rejection.missing) }];
+            // F4300-52: a rewrite that left a sentence in the language it had to leave is asked again once; still so, the sentences
+            // in the other language are dropped when what is left keeps every figure, URL and name.
+            if (rejection.reason === 'still_source_language' && written) {
+                const pruned = withoutSentencesIn(text, written as ReplyLang, code);
+                if (attempt === 2 && pruned && !rewriteRejection(response, pruned, names, written, code)) {
+                    outcome.accepted = true;
+                    return pruned;
+                }
+            }
+            if (attempt === 2 || !['lost_name', 'lost_figure', 'still_source_language'].includes(rejection.reason)) break;
+            const retry = rejection.reason === 'still_source_language' ? REPLY_LANGUAGE_STILL[code] : REPLY_LANGUAGE_RETRY[code](rejection.missing);
+            messages = [...messages, { role: 'assistant', content: text }, { role: 'user', content: retry }];
         }
         return response;
     }
@@ -7735,6 +7761,12 @@ export class ConversationsService {
             this.logger.warn(`[Guardrail] The reply tells a cancelled order as bought — answered from the orders read: "${response.slice(0, 100)}"`);
             response = cancelledPurchase;
         }
+        // F4300-11: «Ha hecho un total de 6 pedidos» when the six orders read are all cancelled says that none went through.
+        const allCancelled = allCancelledCountCorrection(response, [...(executedTools || []), ...toolReadsOfTurnMessages(currentMessages)], lang);
+        if (allCancelled) {
+            this.logger.log(`[Guardrail] A count of orders that are all cancelled says so: "${response.slice(0, 100)}"`);
+            response = allCancelled;
+        }
         // F4300-46: «qto custa a manicure e pedicure?» answered with Corte y estilo's price is said from the manicure's own entry.
         const wrongService = wrongServiceCorrection(response, customerText, trustedContext?.availableServices, lang);
         if (wrongService) {
@@ -7748,7 +7780,34 @@ export class ConversationsService {
             this.logger.log(`[Guardrail] A total left as words is said as the amount: "${response.slice(0, 100)}"`);
             response = spelledTotal;
         }
+        // F4300-50: «con 30.000 pesos, ¿me alcanza para dos platos?» → «no le alcanza… dos suman 27.000 COP»: the verdict the figures give.
+        const budgetVerdict = budgetVerdictCorrection(response, customerText, lang);
+        if (budgetVerdict) {
+            this.logger.warn(`[Guardrail] The enough / not-enough verdict contradicted the figures: "${response.slice(0, 100)}"`);
+            response = budgetVerdict;
+        }
+        // F4300-54: «the Spark QA Tour does not include lunch», «el plato no incluye postre» with no read that excludes it: not recorded.
+        const unbackedExclusion = unbackedExclusionCorrection(response, [...(executedTools || []), ...toolReadsOfTurnMessages(currentMessages)], lang);
+        if (unbackedExclusion) {
+            this.recordAgentSignal(tenantId, 'claim_unbacked', session);
+            this.logger.warn(`[Guardrail] An exclusion no read lists is said as not recorded: "${response.slice(0, 100)}"`);
+            response = unbackedExclusion;
+        }
+        // F4300-58: «¿qué medios de pago aceptan?» → «efectivo, tarjeta, PSE…» with no read that names them: not recorded.
+        const unbackedPayment = unbackedPaymentCorrection(response, customerText, [...(executedTools || []), ...toolReadsOfTurnMessages(currentMessages)], lang);
+        if (unbackedPayment) {
+            this.recordAgentSignal(tenantId, 'claim_unbacked', session);
+            this.logger.warn(`[Guardrail] Payment methods no read names are said as not recorded: "${response.slice(0, 100)}"`);
+            response = unbackedPayment;
+        }
         // F4300-37: «¿cuánto costarían tres Audífono QA Aurora?» with 2 left is answered with the stock, not only the total.
+        // F4300-47: «¿y si me llevo 2?» answered «puedo ayudarle con el pedido de 2 unidades» with no amount: the total is said.
+        const quantityTotal = quantityTotalNote(response, customerText, trustedContext?.catalog as any, lang,
+            [...(executedTools || []), ...toolReadsOfTurnMessages(currentMessages)]);
+        if (quantityTotal) {
+            this.logger.log(`[Guardrail] A quantity of a catalogue product without its total: the total is said: "${response.slice(0, 100)}"`);
+            response = quantityTotal;
+        }
         const stockShortfall = stockShortfallNote(response, customerText, trustedContext?.catalog, lang);
         if (stockShortfall) {
             this.logger.log(`[Guardrail] More units asked than the stock: the stock is said: "${response.slice(0, 100)}"`);
@@ -8842,6 +8901,8 @@ export class ConversationsService {
         const handoff = (conversation?.metadata as any)?.handoff;
         const startedAt = handoff?.startedAt;
         if (!startedAt || handoff?.queueNoticeSent === true || handoff?.queueNoticeSent === 'true') return;
+        // F4300-23: close to the unattended return the sweep answers in a minute; a queue notice now would contradict its return notice.
+        if (!queueNoticeDue(startedAt)) return;
         try {
             const run = (sql: string, params: any[]) => this.prisma.executeInTenantSchema<any[]>(schemaName, sql, params);
             const hasOutbox = await hasDispatchOutbox(run, schemaName);
@@ -9014,6 +9075,15 @@ export class ConversationsService {
      * `dispatchReplyThroughOutbox` later found and treated as "already answered",
      * so the real answer was never sent.
      */
+    /**
+     * F4300-23: the language of the replay of an unattended handoff. The stored language and the recent messages are those of the
+     * episode that started the transfer («D'accord, merci» left «fr» on a Spanish conversation), so the customer's LAST waiting
+     * line is read on its own, the tenant's language breaking a tie.
+     */
+    private replayTurnLanguage(config: TenantConfig, text: string | undefined): string {
+        return this.languageDetector.detect(replayLanguageText(text), config.language || 'es', null, { preferred: config.language });
+    }
+
     private async claimReturnNotice(schemaName: string, conversation: any, text: string | undefined,
         defaultLanguage: string): Promise<string | null> {
         const handoff = (conversation?.metadata as any)?.handoff;

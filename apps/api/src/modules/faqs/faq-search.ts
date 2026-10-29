@@ -20,19 +20,78 @@ const tokens = (value: string) => fold(value).match(/[\p{L}\p{N}]+/gu) || [];
 // holds a duration word, so they are dropped from the query in that case and stay ordinary
 // words otherwise. "last"/"lasts" mean both "the final one" and "continues for", so they never
 // take part in the comparison.
-const DURATION_WORDS = new Set(['dura', 'duran', 'durar', 'duracion', 'long', 'duration', 'duracao', 'duree']);
+// «plazo»/«prazo»/«délai» de una garantía es su duración (F4300-51: «¿Cuál es el plazo de garantía…?» answers «how long is the warranty»).
+const DURATION_WORDS = new Set(['dura', 'duran', 'durar', 'duracion', 'long', 'duration', 'duracao', 'duree', 'dure', 'durent', 'plazo', 'prazo', 'delai', 'period', 'periodo', 'periode']);
+/**
+ * F4300-51 (production QA 28-oct, store tenant): the business writes its FAQs in one language and customers ask in four. «how long
+ * is the warranty on the QA test headphone?», «combien de temps dure la garantie…?», «quanto tempo dura a garantia… de teste?» never
+ * found «¿Cuál es el plazo de garantía QA del audífono de prueba?» and the agent said it had no information. The topic words FAQs
+ * are written about compare as one concept across es/en/pt/fr, and the candidate search looks for every spelling.
+ */
+const EQUIVALENTS: Record<string, string[]> = {
+    garantia: ['garantia', 'garantias', 'warranty', 'warranties', 'guarantee', 'garantie', 'garanties'],
+    prueba: ['prueba', 'pruebas', 'test', 'tests', 'teste', 'testes', 'essai'],
+    audifono: ['audifono', 'audifonos', 'headphone', 'headphones', 'earphone', 'earphones', 'ecouteur', 'ecouteurs', 'fone', 'fones'],
+    pago: ['pago', 'pagos', 'payment', 'payments', 'pagamento', 'pagamentos', 'paiement', 'paiements'],
+    envio: ['envio', 'envios', 'shipping', 'delivery', 'deliveries', 'entrega', 'entregas', 'livraison', 'livraisons', 'domicilio', 'domicilios'],
+    horario: ['horario', 'horarios', 'hours', 'schedule', 'horaire', 'horaires'],
+    devolucion: ['devolucion', 'devoluciones', 'return', 'returns', 'refund', 'refunds', 'devolucao', 'devolucoes', 'reembolso', 'reembolsos', 'remboursement', 'retour', 'retours'],
+    cancelacion: ['cancelacion', 'cancelaciones', 'cancellation', 'cancellations', 'cancelamento', 'cancelamentos', 'annulation', 'annulations'],
+    // What a question asks («do you HAVE…» is «¿TIENEN…?»): compared as one verb, so a FAQ in another language never «asks something else».
+    tener: ['tener', 'tiene', 'tienen', 'have', 'has', 'tem', 'temos', 'ont', 'avez'],
+    poder: ['poder', 'puedo', 'puede', 'pueden', 'posso', 'pode', 'podem', 'puis', 'peux', 'peut', 'can', 'could'],
+    costar: ['costar', 'cuesta', 'cuestan', 'cost', 'costs', 'custa', 'custam', 'coute', 'coutent', 'vale', 'valen'],
+    metodo: ['metodo', 'metodos', 'method', 'methods', 'methode', 'methodes', 'moyen', 'moyens', 'medio', 'medios', 'meio', 'meios'],
+    politica: ['politica', 'politicas', 'policy', 'policies', 'politique', 'politiques'],
+    // F4300-51 residue (production QA 28-oct): «how can I contact you?», «comment puis-je vous contacter ?», «what documents do I need to
+    // buy a property?» never found «¿Cómo puedo contactarlos?» / «¿Qué documentos necesito para arrendar / comprar?».
+    contacto: ['contacto', 'contactos', 'contactar', 'contactarlos', 'contactarnos', 'contact', 'contacts', 'contato', 'contatos', 'contatar', 'contacter'],
+    documento: ['documento', 'documentos', 'document', 'documents'],
+    necesitar: ['necesitar', 'necesito', 'necesita', 'necesitan', 'need', 'needs', 'preciso', 'precisa', 'precisam', 'besoin', 'faut'],
+    comprar: ['comprar', 'compra', 'buy', 'buying', 'purchase', 'acheter', 'achat'],
+    arrendar: ['arrendar', 'arriendo', 'alquilar', 'alquiler', 'rent', 'renting', 'rental', 'alugar', 'aluguel', 'louer'],
+    inmueble: ['inmueble', 'inmuebles', 'propiedad', 'propiedades', 'property', 'properties', 'imovel', 'imoveis', 'bien', 'biens'],
+    // F4300-51 residue (production QA 28-oct, after #260): «is there a discount for children?», «what products do you use?», «how much
+    // commission do you charge?», «how do I book a table?», «how long does orthodontic treatment take?» missed the Spanish FAQ.
+    descuento: ['descuento', 'descuentos', 'discount', 'discounts', 'desconto', 'descontos', 'reduction', 'reductions', 'remise', 'remises'],
+    nino: ['nino', 'ninos', 'nina', 'ninas', 'child', 'children', 'kid', 'kids', 'crianca', 'criancas', 'enfant', 'enfants'],
+    producto: ['producto', 'productos', 'product', 'products', 'produto', 'produtos', 'produit', 'produits'],
+    comision: ['comision', 'comisiones', 'commission', 'commissions', 'comissao', 'comissoes', 'honorarios', 'fee', 'fees', 'honoraires'],
+    reserva: ['reserva', 'reservas', 'reservar', 'reservation', 'reservations', 'book', 'booking', 'reserver', 'reservacion'],
+    ortodoncia: ['ortodoncia', 'orthodontic', 'orthodontics', 'ortodontia', 'orthodontie', 'braces', 'brackets'],
+    usar: ['usar', 'usan', 'usa', 'usamos', 'use', 'uses', 'using', 'usam', 'utilizan', 'utilisez', 'utiliser', 'utilizam'],
+    mesa: ['mesa', 'mesas', 'table', 'tables'],
+    tratamiento: ['tratamiento', 'tratamientos', 'treatment', 'treatments', 'tratamento', 'tratamentos', 'traitement', 'traitements'],
+    emergencia: ['emergencia', 'emergencias', 'emergency', 'emergencies', 'urgence', 'urgences', 'urgencia', 'urgencias'],
+    mascota: ['mascota', 'mascotas', 'pet', 'pets', 'animal', 'animais', 'animaux', 'animales'],
+    ubicacion: ['ubicacion', 'ubicados', 'ubicado', 'location', 'address', 'endereco', 'localizacao', 'adresse', 'direccion'],
+};
+const EQUIVALENT_OF = new Map(Object.entries(EQUIVALENTS).flatMap(([concept, words]) => words.map(word => [word, concept] as const)));
+
+/** The terms with every spelling of the same topic in the four languages, for the candidate search. */
+export function withEquivalents(terms: string[]): string[] {
+    return [...new Set(terms.flatMap(term => {
+        const concept = EQUIVALENT_OF.get(term);
+        return concept ? [term, ...EQUIVALENTS[concept]] : [term];
+    }))];
+}
 const DURATION_FILLER = new Set(['tiempo', 'time', 'tempo', 'temps']);
+const ASKS_TIME = /(?<!\p{L})(?:cuant[oa]|quant[oa]|combien|how\s+much)\s+(?:de\s+)?(?:tiempo|tempo|temps|time)(?!\p{L})(?!\s+(?:antes|before|avant|de\s+antecedencia|d['’]avance))/u;
 const AMBIGUOUS_WORDS = new Set(['last', 'lasts']);
 const DURATION = 'duration';
 // Comparison form of a term: duration words collapse into one concept and a plural
 // "s" is dropped ("visitas" = "visita"). Only for ranking; the SQL candidates keep raw terms.
 const canon = (term: string): string => DURATION_WORDS.has(term) ? DURATION
-    : term.length > 4 && term.endsWith('s') ? term.slice(0, -1) : term;
+    : EQUIVALENT_OF.get(term) ?? (term.length > 4 && term.endsWith('s') ? term.slice(0, -1) : term);
 const canonTokens = (value: string): Set<string> => new Set(tokens(value).filter(t => !AMBIGUOUS_WORDS.has(t)).map(canon));
 const canonTerms = (value: string): string[] => {
     const raw = faqSearchTerms(value).filter(t => !AMBIGUOUS_WORDS.has(t));
     const hasDuration = raw.some(t => DURATION_WORDS.has(t));
-    return [...new Set(raw.filter(t => !(hasDuration && DURATION_FILLER.has(t))).map(canon))];
+    // F4300-53 (production QA 29-oct): «¿y cuánto tiempo tengo de garantía?» asks a duration with no duration word; «tiempo» stayed a
+    // topic the warranty FAQ never says, and the FAQ was dropped. «cuánto tiempo», «quanto tempo», «combien de temps» are a duration.
+    const asksTime = ASKS_TIME.test(fold(value));
+    return [...new Set(raw.filter(t => !(hasDuration && DURATION_FILLER.has(t)))
+        .map(t => asksTime && DURATION_FILLER.has(t) ? DURATION : canon(t)))];
 };
 
 // Words that only introduce a code ("Prueba QA QA_C1_T01:", "Pedido ORD_123:"). Text before a
@@ -99,7 +158,13 @@ export function splitCompoundQuery(query: string): string[] {
 const QUESTION_FILLER = new Set([
     'tiene', 'tienen', 'tener', 'hay', 'cuesta', 'cuestan', 'vale', 'valen', 'dura', 'duran', 'incluye', 'incluyen', 'ofrece', 'ofrecen',
     'cobran', 'cobra', 'son', 'estan', 'hacen', 'hace', 'have', 'has', 'there', 'cost', 'costs', 'much', 'many', 'tem', 'custa', 'custam',
-    'ha', 'coute', 'ont', 'combien', 'quantas', 'quantos', 'cuantas', 'cuantos',
+    'ha', 'coute', 'ont', 'combien', 'quantas', 'quantos', 'cuantas', 'cuantos', 'sont', 'accept', 'accepts', 'aceptan', 'aceitam', 'acceptez',
+    // How a question is asked in the four languages («¿Cómo PUEDO…?», «comment PUIS-je…?», «como POSSO ENTRAR em contato?»).
+    'comment', 'puis', 'puedo', 'puede', 'posso', 'pode', 'entrar',
+    // «¿Cómo HAGO una reserva?», «how do I…», «what do I DO in…», «EN CASO DE emergencia», «how long does it TAKE».
+    'hago', 'hacer', 'hace', 'faco', 'fazer', 'faire', 'fais', 'caso', 'case', 'cas', 'take', 'takes',
+    // «¿cuánto tiempo TENGO de garantía?», «quanto tempo TENHO…» (F4300-53).
+    'tengo', 'tenho',
 ]);
 
 /** The topic words of ONE part of a message: what is left after the function words and the words that only ask. */
@@ -150,7 +215,9 @@ function questionExtras(question: string, message: Set<string>): string[] {
         if (message.has(left)) alternates.add(right);
         if (message.has(right)) alternates.add(left);
     }
-    return own.filter(t => !message.has(t) && !alternates.has(t));
+    // F4300-53 (production QA 28-oct): «audífono DE PRUEBA», «QA», «test» mark a seeded record, not another topic — the warranty FAQ
+    // «¿Cuál es el plazo de garantía QA del audífono de prueba?» never answered «¿cuánto dura la garantía del Audífono QA Aurora?».
+    return own.filter(t => !message.has(t) && !alternates.has(t) && !GENERIC_SET.has(t));
 }
 
 /**

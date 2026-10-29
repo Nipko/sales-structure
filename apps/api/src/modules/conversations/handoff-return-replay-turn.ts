@@ -25,6 +25,17 @@ import { claimsTeamRequest, offersHumanHandoff, promisesHumanHandoff } from '../
  * the message, never by the message alone.
  */
 
+/**
+ * F4300-23 (production QA 28-oct): the replay text joins every message written while nobody answered, the one that started the
+ * transfer included. A conversation in Spanish whose transfer had been triggered by «D'accord, merci» got its return answered in
+ * French («Bonjour ! … J'ai noté votre demande…») next to the Spanish notice. The language of the replay is the language of the
+ * customer's LAST line. Pure.
+ */
+export function replayLanguageText(text: unknown): string {
+    const lines = String(text ?? '').split('\n').map(line => line.trim()).filter(Boolean);
+    return lines.length ? lines[lines.length - 1] : '';
+}
+
 /** What the customer asked for in the words they sent while waiting. */
 export type ReturnAsk = 'person' | 'complaint' | 'discount' | 'other';
 

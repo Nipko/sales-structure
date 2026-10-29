@@ -831,8 +831,12 @@ export class AIToolExecutorService {
 
                 case 'place_catalog_order':
                     return this.placeCatalogOrder(schemaName, contactId, conversationId, args, executionIdempotencyKey, operationalScope);
-                case 'list_my_catalog_orders':
-                    return { success:true, orders:(await this.catalogCommands().listOwned(schemaName,contactId,args.limit)).map(withShortReference) };
+                case 'list_my_catalog_orders': {
+                    // hasMore: whether the list may leave orders out (F4300-11: a count of orders is told only from a complete list).
+                    const limit = Number.isInteger(args.limit) ? args.limit : 20;
+                    const orders = (await this.catalogCommands().listOwned(schemaName,contactId,limit)).map(withShortReference);
+                    return { success:true, orders, hasMore:orders.length >= limit };
+                }
                 case 'get_catalog_order':
                     return { success:true, order:withShortReference(await this.catalogCommands().getOwned(schemaName,String(args.orderId||''),contactId)) };
                 case 'cancel_catalog_order':

@@ -24,8 +24,14 @@ describe('F4300-37 · more units asked than the stock: the stock is said', () =>
         ['es', 'quiero 5 audífonos aurora, ¿cuánto sale?', 'Cinco Audífono QA Aurora salen 599.500 COP.', 'solo quedan 2 unidades'],
     ])('[%s] «%s»', (lang, ask, reply, expected) => {
         const out = stockShortfallNote(reply, ask, CATALOG, lang);
-        expect(spaced(out)).toContain(spaced(reply));
+        expect(spaced(out)).toContain(spaced(reply.replace(/\s*¿[^?]*\?$/u, '')));
         expect(spaced(out)).toContain(spaced(expected));
+    });
+
+    it('the note goes before the closing question, which stays last', () => {
+        const out = stockShortfallNote('Tres Audífono QA Aurora costarían 359.700 COP en total (3 × 119.900 COP). ¿Quiere que le ayude a hacer el pedido?',
+            '¿cuánto costarían tres Audífono QA Aurora?', CATALOG, 'es');
+        expect(spaced(out)).toBe(spaced('Tres Audífono QA Aurora costarían 359.700 COP en total (3 × 119.900 COP). Tenga en cuenta que solo quedan 2 unidades de Audífono QA Aurora (pidió 3). ¿Quiere que le ayude a hacer el pedido?'));
     });
 
     it.each([

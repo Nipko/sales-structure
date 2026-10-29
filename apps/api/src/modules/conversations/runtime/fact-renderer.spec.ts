@@ -141,6 +141,18 @@ describe('what the model typed itself', () => {
         const out = render('Manicure y pedicure (60 minutos), precio por confirmar.', [cutPrice, nailsDuration], 'es', { customerText: '¿qué servicios tienen y cuánto cuestan?' });
         expect(out.text).toBe('Manicure y pedicure (60 minutos), precio por confirmar.');
         expect(out.fallbacks).toEqual([]);
+        // After #298 (29-oct): a sentence that names no service, in a turn with several, is never given another service's price.
+        const COLOR = { type: 'service', id: 'svc-color', name: 'Color y tratamiento' };
+        const colorExample = fact('money', COLOR, 'price', 120000, { currency: 'COP', priceStatus: 'example' });
+        const unnamed = render('El precio de este servicio es solo un ejemplo y no está confirmado.', [cutPrice, nailsDuration, colorExample], 'es',
+            { customerText: '¿Cuánto cuesta y cuánto dura?' });
+        expect(unnamed.text).not.toContain('Corte y estilo');
+        const askedColor = render('El precio no está confirmado.', [cutPrice, colorExample], 'es', { customerText: '¿Cuánto cuesta el Color y tratamiento?' });
+        // The production case: the example price under a translated name falls back, and the template must not guess Corte y estilo.
+        const translated = render("Le service Coloration et traitement coûte 120 000 COP.", [cutPrice, nailsDuration, colorExample], 'fr',
+            { customerText: 'Quel est le prix et la durée du service Couleur et traitement ?' });
+        expect(translated.text).not.toContain('Corte y estilo');
+        expect(askedColor.text).not.toContain('Corte y estilo');
         // The confirmed service denied is still corrected.
         expect(render('Corte y estilo: precio por confirmar.', [cutPrice, nailsDuration]).text).toBe('El precio de Corte y estilo es 40.000 COP.');
     });

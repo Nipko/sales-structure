@@ -86,6 +86,7 @@
     "apps/api/src/modules/conversations/conversations.rendered-facts.spec.ts",
     "apps/api/src/modules/persona/legacy-persona-rules.spec.ts",
     "apps/api/src/modules/persona/business-hours-closed-day.f4300-60.spec.ts",
+    "apps/api/src/modules/persona/forbidden-topics-faq.f4300-53.spec.ts",
     "apps/api/src/modules/conversations/team-request-receipt.spec.ts",
     "apps/api/src/modules/conversations/order-count-total.spec.ts",
     "apps/api/src/modules/conversations/language-detector.current-over-stored.spec.ts",

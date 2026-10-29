@@ -210,6 +210,18 @@ describe('Contrato L1 del agente', () => {
         expect(rule).toContain('never ask again which one');
     });
 
+    /**
+     * Producción QA 29-oct (hotel, FR): «Quel est le numéro de téléphone de contact de l'hôte ?» → «Le numéro de téléphone de
+     * contact que j'ai enregistré pour vous est le 7915652977»: el teléfono del propio cliente (<turn><contact><phone>) dado como el
+     * del anfitrión. Los datos de <contact> son del cliente y nunca son el contacto del negocio ni de nadie más.
+     */
+    it('13g: los datos de <contact> son del cliente, nunca el contacto del negocio o del anfitrión', () => {
+        const rule = contract.slice(contract.indexOf('13g. contact and emergency details'), contract.indexOf('13h.') > 0 ? contract.indexOf('13h.') : undefined);
+        expect(rule).toContain('belong to the customer');
+        expect(rule).toContain('never give them as the contact of the business, the host, the owner or anyone else');
+        expect(rule).toContain('only to confirm the details of the customer');
+    });
+
     it('mantiene las salvaguardas de seguridad después de las reglas nuevas', () => {
         // Las reglas se insertaron justo antes de este bloque: si una edición
         // futura lo pisa, el agente pierde los guardarraíles enteros.

@@ -40,7 +40,8 @@ const EQUIVALENTS: Record<string, string[]> = {
     // What a question asks («do you HAVE…» is «¿TIENEN…?»): compared as one verb, so a FAQ in another language never «asks something else».
     tener: ['tener', 'tiene', 'tienen', 'have', 'has', 'tem', 'temos', 'ont', 'avez'],
     poder: ['poder', 'puedo', 'puede', 'pueden', 'posso', 'pode', 'podem', 'puis', 'peux', 'peut', 'can', 'could'],
-    costar: ['costar', 'cuesta', 'cuestan', 'cost', 'costs', 'custa', 'custam', 'coute', 'coutent', 'vale', 'valen'],
+    // «how MUCH is…» asks the price as «¿cuánto CUESTA…?» does (F4300-53, 29-oct).
+    costar: ['costar', 'cuesta', 'cuestan', 'cost', 'costs', 'custa', 'custam', 'coute', 'coutent', 'vale', 'valen', 'much'],
     metodo: ['metodo', 'metodos', 'method', 'methods', 'methode', 'methodes', 'moyen', 'moyens', 'medio', 'medios', 'meio', 'meios'],
     politica: ['politica', 'politicas', 'policy', 'policies', 'politique', 'politiques'],
     // F4300-51 residue (production QA 28-oct): «how can I contact you?», «comment puis-je vous contacter ?», «what documents do I need to
@@ -53,7 +54,8 @@ const EQUIVALENTS: Record<string, string[]> = {
     inmueble: ['inmueble', 'inmuebles', 'propiedad', 'propiedades', 'property', 'properties', 'imovel', 'imoveis', 'bien', 'biens'],
     // F4300-51 residue (production QA 28-oct, after #260): «is there a discount for children?», «what products do you use?», «how much
     // commission do you charge?», «how do I book a table?», «how long does orthodontic treatment take?» missed the Spanish FAQ.
-    descuento: ['descuento', 'descuentos', 'discount', 'discounts', 'desconto', 'descontos', 'reduction', 'reductions', 'remise', 'remises'],
+    // «¿los niños pagan menos?», «do kids pay less?», «paient-ils moins cher ?» ask for the discount (F4300-53, 29-oct).
+    descuento: ['descuento', 'descuentos', 'discount', 'discounts', 'desconto', 'descontos', 'reduction', 'reductions', 'remise', 'remises', 'menos', 'less', 'moins', 'cher', 'cheaper'],
     nino: ['nino', 'ninos', 'nina', 'ninas', 'child', 'children', 'kid', 'kids', 'crianca', 'criancas', 'enfant', 'enfants'],
     producto: ['producto', 'productos', 'product', 'products', 'produto', 'produtos', 'produit', 'produits'],
     comision: ['comision', 'comisiones', 'commission', 'commissions', 'comissao', 'comissoes', 'honorarios', 'fee', 'fees', 'honoraires'],
@@ -65,6 +67,15 @@ const EQUIVALENTS: Record<string, string[]> = {
     emergencia: ['emergencia', 'emergencias', 'emergency', 'emergencies', 'urgence', 'urgences', 'urgencia', 'urgencias'],
     mascota: ['mascota', 'mascotas', 'pet', 'pets', 'animal', 'animais', 'animaux', 'animales'],
     ubicacion: ['ubicacion', 'ubicados', 'ubicado', 'location', 'address', 'endereco', 'localizacao', 'adresse', 'direccion'],
+    // F4300-53 (production QA 29-oct, real FAQs read from the tenants' DB): «how much is a dental cleaning?» / «combien coûte un détartrage ?»
+    // / «quanto custa uma limpeza dental?» missed «¿Cuánto cuesta una limpieza dental?» and were told the clinic does not offer it;
+    // «do kids pay less?» / «¿los niños pagan menos?» missed «¿Hay descuento para niños?»; «what should I bring to my first visit?»
+    // missed «¿Qué documentos necesito para la primera visita?» (its answer: «Trae tu documento…»).
+    limpieza: ['limpieza', 'limpiezas', 'cleaning', 'cleanings', 'limpeza', 'limpezas', 'detartrage', 'nettoyage', 'profilaxis'],
+    pagar: ['pagar', 'pagan', 'paga', 'pagamos', 'pay', 'pays', 'paid', 'pagam', 'payer', 'paient', 'paie'],
+    visita: ['visita', 'visitas', 'visit', 'visits', 'visite', 'visites', 'rendez'],
+    primero: ['primera', 'primero', 'primer', 'first', 'primeira', 'primeiro', 'premier', 'premiere'],
+    llevar: ['llevar', 'llevo', 'traer', 'traigo', 'trae', 'bring', 'levar', 'levo', 'trazer', 'apporter'],
 };
 const EQUIVALENT_OF = new Map(Object.entries(EQUIVALENTS).flatMap(([concept, words]) => words.map(word => [word, concept] as const)));
 
@@ -163,6 +174,8 @@ const QUESTION_FILLER = new Set([
     'comment', 'puis', 'puedo', 'puede', 'posso', 'pode', 'entrar',
     // «¿Cómo HAGO una reserva?», «how do I…», «what do I DO in…», «EN CASO DE emergencia», «how long does it TAKE».
     'hago', 'hacer', 'hace', 'faco', 'fazer', 'faire', 'fais', 'caso', 'case', 'cas', 'take', 'takes',
+    // «what SHOULD I bring…», «qué DEBO llevar», «o que DEVO levar», «que DOIS-je apporter» (F4300-53, 29-oct).
+    'should', 'must', 'debo', 'debe', 'devo', 'deve', 'dois', 'doit',
     // «¿cuánto tiempo TENGO de garantía?», «quanto tempo TENHO…» (F4300-53).
     'tengo', 'tenho',
 ]);

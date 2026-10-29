@@ -115,7 +115,9 @@ describe('F4300-37 · 1. hotel EN: the nightly price, never the 0 of the cleanin
         const result = await h.turn("what's the nightly rate and max guests?");
         expect(result.reply).toMatch(/^The nightly rate is 150,000 COP\. /);
         expect(result.reply).not.toMatch(/\b0 COP/);
-        expect(h.renderedStep()?.metadata).toMatchObject({ reasons: ['missing_price'] });
+        // F4300-47 (29-oct): the sentence is about the fee, so its 0 is said in words; the night price is never lost with it.
+        expect(result.reply).toContain('Cleaning: free of charge.');
+        expect(h.renderedStep()?.metadata).toMatchObject({ fallbacks: 0 });
     });
 });
 

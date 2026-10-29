@@ -341,6 +341,8 @@ interface Templates {
     records: (total: string, recorded: string, shown?: string) => string; recordsAtLeast: (shown: string, noun: string) => string;
     amenitiesListed: (name: string, list: string) => string; amenityMissing: (name?: string) => string;
     duration: (name: string, minutes: string) => string;
+    /** A fee read as 0, said in words where it is cited (F4300-47): never a bare «0 COP» a reader could take for a price. */
+    noFee: string;
 }
 const T: Record<Lang, Templates> = {
     es: {
@@ -355,6 +357,7 @@ const T: Record<Lang, Templates> = {
         amenitiesListed: (name, list) => `Según la ficha, ${name} incluye: ${list}.`,
         amenityMissing: name => `En la ficha${name ? ` de ${name}` : ''} no aparece ese servicio, así que no puedo confirmártelo.`,
         duration: (name, minutes) => `${name} dura ${minutes} minutos.`,
+        noFee: 'sin costo',
     },
     en: {
         unknown: "I don't have that detail confirmed right now; I can check it again if you like.",
@@ -368,6 +371,7 @@ const T: Record<Lang, Templates> = {
         amenitiesListed: (name, list) => `According to the listing, ${name} includes: ${list}.`,
         amenityMissing: name => `The listing${name ? ` for ${name}` : ''} does not show that feature, so I can't confirm it.`,
         duration: (name, minutes) => `${name} takes ${minutes} minutes.`,
+        noFee: 'free of charge',
     },
     pt: {
         unknown: 'Não tenho esse dado confirmado neste momento; se quiser, consulto de novo.',
@@ -381,6 +385,7 @@ const T: Record<Lang, Templates> = {
         amenitiesListed: (name, list) => `Segundo a ficha, ${name} inclui: ${list}.`,
         amenityMissing: name => `A ficha${name ? ` de ${name}` : ''} não mostra esse serviço, então não posso confirmá-lo.`,
         duration: (name, minutes) => `${name} dura ${minutes} minutos.`,
+        noFee: 'sem custo',
     },
     fr: {
         unknown: "Je n'ai pas cette information confirmée pour le moment ; je peux la vérifier à nouveau si vous voulez.",
@@ -394,6 +399,7 @@ const T: Record<Lang, Templates> = {
         amenitiesListed: (name, list) => `D'après la fiche, ${name} comprend : ${list}.`,
         amenityMissing: name => `La fiche${name ? ` de ${name}` : ''} n'indique pas ce service, je ne peux donc pas le confirmer.`,
         duration: (name, minutes) => `${name} dure ${minutes} minutes.`,
+        noFee: 'sans frais',
     },
 };
 /**
@@ -687,6 +693,13 @@ export function renderReplyFacts(input: RenderFactsInput): RenderFactsOutcome {
             // «¿el precio de la noche incluye la limpieza?» got «Ese dato no lo tengo confirmado»). Unasked, it stays a missing amount.
             if (!rendered.ok && rendered.reason === 'missing_price' && askedFee && fact?.value === 0 && FEE_FIELD.test(fact.field)) {
                 rendered = { ok: true, text: moneyText(fact, ctx) };
+            }
+            // F4300-47 (production QA 29-oct, log of #295): «The price per night is ⟦…⟧, and there is no cleaning fee (⟦…⟧).» fell back whole,
+            // night price included, because nobody had asked about the fee. A sentence that is itself about the fee says the 0 in words
+            // («free of charge», «sin costo»): never a bare «0 COP» that could pass for a price.
+            if (!rendered.ok && rendered.reason === 'missing_price' && fact?.value === 0 && FEE_FIELD.test(fact.field)
+                && FEE_SENTENCE.test(norm(sentence.replace(FACT_TOKEN_RE, ' ')))) {
+                rendered = { ok: true, text: t.noFee };
             }
             if (!rendered.ok) {
                 return { text: rendered.reason === 'example_price' ? t.example(fact?.subject.name ? say(fact.subject.name) : undefined) : t.unknown,

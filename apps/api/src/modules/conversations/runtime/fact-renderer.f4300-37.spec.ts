@@ -65,10 +65,15 @@ describe('F4300-37 · 1. the price of a record is its price field, never a 0 or 
         expect(render('It costs 99 COP per night.', [cleaningFee, nightPrice], 'en', ASK).text).toBe('The price of Spark QA Habitacion is 150,000 COP.');
     });
 
-    it('a token of a 0 amount is a missing price, not «0 COP»', () => {
+    it('a token of a 0 amount is never «0 COP»: in a sentence about the fee it is said in words (F4300-47, 29-oct), elsewhere it is missing', () => {
         const out = render(`The cleaning fee is ${token(cleaningFee)}.`, room, 'en', ASK);
-        expect(out.text).toBe("I don't have that detail confirmed right now; I can check it again if you like.");
-        expect(out.fallbacks).toEqual([{ reason: 'missing_price' }]);
+        expect(out.text).toBe('The cleaning fee is free of charge.');
+        expect(out.text).not.toMatch(/\b0 COP/);
+        expect(out.fallbacks).toEqual([]);
+        // A 0 cited where the sentence is not about the fee is still no amount at all.
+        const priced = render(`The room costs ${token(cleaningFee)}.`, room, 'en', ASK);
+        expect(priced.text).not.toMatch(/\b0 COP|free of charge/);
+        expect(priced.fallbacks).toEqual([{ reason: 'missing_price' }]);
         expect(render(`The nightly rate is ${token(nightPrice)}.`, room, 'en', ASK).text).toBe('The nightly rate is 150,000 COP.');
     });
 

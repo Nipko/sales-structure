@@ -145,6 +145,17 @@ describe('what the model typed itself', () => {
         expect(render('Corte y estilo: precio por confirmar.', [cutPrice, nailsDuration]).text).toBe('El precio de Corte y estilo es 40.000 COP.');
     });
 
+    it('hotel: the night price and a cleaning fee read as 0 in one sentence are both kept (F4300-47, 29-oct)', () => {
+        const fee = fact('money', HOTEL, 'cleaningFee', 0, { currency: 'COP', priceStatus: 'confirmed' });
+        const text = 'Le prix par nuit pour cette chambre est de 180 000 COP et les frais de ménage sont de 0 COP.';
+        const out = render(text, [nightPrice, fee], 'fr', { customerText: 'Quel est le coût total par nuit, y compris les frais de ménage ?' });
+        expect(out.text).toBe(text);
+        expect(out.fallbacks).toEqual([]);
+        // A wrong price next to the zero fee still falls back.
+        expect(render('Le prix par nuit est de 190 000 COP et les frais de ménage sont de 0 COP.', [nightPrice, fee], 'fr').fallbacks)
+            .toEqual([{ reason: 'unrendered_amount' }]);
+    });
+
     it('hotel: an amenity the record does not list is never affirmed; a denial and a listed one pass', () => {
         const out = render('¡Claro! El Hotel Mirador tiene piscina y parqueadero gratis.', [nightPrice], 'es', { customerText: '¿Tiene piscina?' });
         expect(out.text).toBe('¡Claro! En la ficha de Hotel Mirador no aparece ese servicio, así que no puedo confirmártelo.');

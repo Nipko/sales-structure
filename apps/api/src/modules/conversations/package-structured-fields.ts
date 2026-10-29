@@ -24,8 +24,11 @@ export const PACKAGE_FIELD_AUTHORITY = 'duration (durationType/durationValue), p
  * Tour ?» got `seatsLeft: null` from search_packages (seats belong to a departure, and a dateless search reads none) and the
  * reply said there was no precise number of seats while the 2026-12-15 09:00 departure had 10. The dateless list no longer
  * carries a null seat count; it says where the seats are.
+ * F4300-54 (production QA 29-oct, travel, EN and ES): «What are the specific departure times for the tours?» → «I don't have
+ * specific departure times listed», after search_packages only, while the Spark QA Tour departs 2026-12-15 at 09:00. Dates and
+ * times are the departure's too, and the note says where they are.
  */
-export const PACKAGE_SEATS_NOTE = 'Seats belong to each departure, not to the package: this list was read without a date, so it carries no seat count. The seats left are upcomingDepartures[].seatsLeft in get_package_details (or check_package_availability for one date). Never say the seat count is unknown before reading them.';
+export const PACKAGE_SEATS_NOTE = 'Seats, dates and times belong to each departure, not to the package: this list was read without a date, so it carries no seat count and no departure. The departures (date, time, seatsLeft) are upcomingDepartures[] in get_package_details of each package (or check_package_availability for one date). Never say the seat count or the departure dates or times are unknown or not recorded before reading them.';
 
 /**
  * F4300-32. The languages a package is guided in, or `'not_registered'` when the business recorded none. Production 2026-10-24:

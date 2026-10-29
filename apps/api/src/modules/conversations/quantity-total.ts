@@ -58,16 +58,24 @@ function readItems(reads: ReadonlyArray<ToolRead> | undefined): PricedProduct[] 
 export function quantityTotalNote(reply: string, customerText: string, catalog: readonly PricedProduct[] | undefined, lang?: string,
     reads?: ReadonlyArray<ToolRead>): string | null {
     const text = String(reply || '').trim();
-    if (!text || moneyMentionsIn(text).length) return null;
+    if (!text) return null;
     const known = new Map<string, PricedProduct>();
     for (const item of [...(catalog ?? []), ...readItems(reads)]) if (item?.title && !known.has(item.title)) known.set(item.title, item);
     const priced = [...known.values()].filter(product => product?.title && typeof product.price === 'number' && Number.isFinite(product.price) && product.price > 0);
-    const named = priced.filter(product => names(customerText, product.title) || names(text, product.title));
+    let named = priced.filter(product => names(customerText, product.title) || names(text, product.title));
+    // «¿y si me llevo 2?» → «el total sería 119.900 COP»: no name said, but the reply's only amount is one product's own price.
+    if (!named.length) {
+        const said = moneyMentionsIn(text);
+        named = said.length === 1 ? priced.filter(product => Math.abs(product.price! - said[0].amount) < 0.005) : [];
+    }
     if (named.length !== 1) return null;
     const [product] = named;
     const asked = quantitiesIn(String(customerText || '')).filter(n => !quantitiesIn(product.title).includes(n));
     if (asked.length !== 1) return null;
     const [n] = asked;
+    const code0 = String(lang || 'es').slice(0, 2);
+    const mentions = moneyMentionsIn(text);
+    if (mentions.length) return unitSaidAsTotal(text, mentions, product, n, code0);
     // More than the stock is the stock note's to say (F4300-37).
     if (typeof product.stock === 'number' && Number.isFinite(product.stock) && n > product.stock) return null;
     const code = String(lang || 'es').slice(0, 2);
@@ -79,4 +87,23 @@ export function quantityTotalNote(reply: string, customerText: string, catalog: 
     if (closing) return `${text.slice(0, closing.index!).trimEnd()} ${note} ${closing[0].trim()}`;
     if (/\?\s*$/.test(text)) return `${note} ${text}`;
     return `${text} ${note}`;
+}
+
+// «would be a total of», «el total sería», «ao todo», «au total», «soit»: the words that announce the total.
+const TOTAL_LEAD = /(?<!\p{L})(?:total|en\s+total|in\s+total|au\s+total|ao\s+todo|no\s+total|suma|sumar[ií]an?|soit|ferait|seriam?|ser[ií]an?|would\s+be|would\s+come\s+to|comes?\s+to)(?:\s+(?:de|of|do|da|del|à|a))?\s*:?\s*$/iu;
+
+/**
+ * F4300-47 residue (production QA 29-oct, image 8aeb23b1): «and if I take 2?» → «Ordering 2 units would be a total of 119,900 COP» —
+ * the unit price said as the total. When the only amount of the reply is the named product's unit price and the words before it
+ * announce a total, it becomes «TOTAL (n × unit)».
+ */
+function unitSaidAsTotal(text: string, mentions: ReturnType<typeof moneyMentionsIn>, product: PricedProduct, n: number, code: string): string | null {
+    if (mentions.length !== 1) return null;
+    const [m] = mentions;
+    if (Math.abs(m.amount - product.price!) >= 0.005) return null;
+    const start = m.index!, end = start + m.length!;
+    if (!TOTAL_LEAD.test(text.slice(Math.max(0, start - 40), start))) return null;
+    const total = formatPriceWithCurrency(code, product.price! * n, m.currency ?? product.currency);
+    if (!total) return null;
+    return `${text.slice(0, start)}${total} (${n} × ${text.slice(start, end)})${text.slice(end)}`;
 }

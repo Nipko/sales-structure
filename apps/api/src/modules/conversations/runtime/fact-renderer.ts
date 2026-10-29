@@ -537,7 +537,21 @@ export function renderReplyFacts(input: RenderFactsInput): RenderFactsOutcome {
         return mentions.length > 0 && mentions.every(mention => mention.amount === 0);
     };
     const askedFee = FEE_SENTENCE.test(norm(customerText));
-    const amountBacked = (sentence: string) => zeroFeeSentence(sentence) || validator.validatePrices(sentence, corpus, ledger, { customerText }).ok;
+    // F4300-47 (production QA 29-oct, hotel, log of #295): «Le prix par nuit … est de 150 000 COP et les frais de ménage sont de 0 COP.»
+    // fell back whole — the price was read, but the fee read as 0 is no amount the validator knows. With a zero fee read, the zero
+    // amounts of a sentence about a fee are left out and the rest of the sentence is checked as usual.
+    const withoutZeroFees = (sentence: string): string | null => {
+        if (!zeroFeeRead || !FEE_SENTENCE.test(norm(sentence))) return null;
+        const zeros = moneyMentionsIn(sentence).filter(mention => mention.amount === 0);
+        if (!zeros.length) return null;
+        let out = sentence;
+        for (const mention of [...zeros].sort((a, b) => b.index! - a.index!)) {
+            out = out.slice(0, mention.index!) + ' ' + out.slice(mention.index! + mention.length!);
+        }
+        return out;
+    };
+    const amountBacked = (sentence: string) => zeroFeeSentence(sentence) || validator.validatePrices(sentence, corpus, ledger, { customerText }).ok
+        || ((rest => rest !== null && validator.validatePrices(rest, corpus, ledger, { customerText }).ok)(withoutZeroFees(sentence)));
     const statesAmount = (sentence: string) => !validator.validatePrices(sentence, '').ok;
 
     const pricedSubjects = live.filter(fact => fact.kind === 'money' && !!fact.subject.name);

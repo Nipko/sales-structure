@@ -418,12 +418,22 @@ describe('Shared runtime integrity', () => {
             expect(markWritten(query)).toBe(false);
         });
 
-        it('is not appended to the placeholder the pipeline uses when the model produced nothing', async () => {
+        it('is not appended to the fallback the pipeline uses when the model produced nothing', async () => {
             const { run, llm } = fixture();
             llm.mockResolvedValue({ content: '' });
             const reply = await run('whatsapp', '¿Puedo pedir un reembolso?');
-            expect(reply).toBe('[Error Generating AI Response]');
+            // F4300-63: never the internal «[Error Generating AI Response]» marker.
+            expect(reply).not.toContain('Error Generating');
+            expect(reply).toMatch(/^Disculpa, estoy teniendo problemas/);
             expect(reply).not.toContain(OFFER);
+        });
+
+        it('answers from a closing no-tools call when the first model call came back empty (F4300-63)', async () => {
+            const { run, llm } = fixture();
+            llm.mockResolvedValueOnce({ content: '' }).mockResolvedValue({ content: 'Sí, tenemos una sección de preguntas frecuentes.' });
+            const reply = await run('whatsapp', 'Solo quería saber si tienen una FAQ del proceso de compra.');
+            expect(reply).toContain('preguntas frecuentes');
+            expect(reply).not.toContain('Error Generating');
         });
 
         it('is not appended to the fallback the pipeline sends when the tool loop never produces an answer', async () => {

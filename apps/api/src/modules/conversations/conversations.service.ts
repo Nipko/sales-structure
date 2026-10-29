@@ -6204,7 +6204,10 @@ export class ConversationsService {
                     finalResponse = this.cleanToolMarkupReply(writtenReply, markupToolNames, userLanguage, asksForAction(userText));
                     break;
                 }
-                finalResponse = writtenReply || GENERATION_ERROR_PLACEHOLDER;
+                // F4300-63 (production QA 29-oct, real estate): the model came back with no text and no tool call, and the
+                // customer read «[Error Generating AI Response]». An empty reply is no answer: the closing no-tools call below
+                // answers from what the turn gathered, and only when that too says nothing does the fixed fallback go out.
+                finalResponse = writtenReply.trim() ? writtenReply : '';
                 break;
             }
 
